@@ -184,9 +184,13 @@ def test_the_model_can_bring_a_file_into_the_store(protocol) -> None:
     assert "assembly.policy" in description
 
 
-def test_the_prompt_tells_the_agent_it_cannot_train() -> None:
+def test_the_prompt_tells_the_agent_how_a_policy_comes_in_and_that_it_trains() -> None:
+    """ADR-190 told the agent it could not train; since ADR-464 it can, and
+    the caller's own commands are still named so it invents no flags."""
+
     from cadex_cli.agent import CLI_OVERLAY
 
     assert "put_asset" in CLI_OVERLAY
-    assert "cannot train" in CLI_OVERLAY
+    assert "cannot train" not in CLI_OVERLAY
+    assert "train_start" in CLI_OVERLAY and "evaluate" in CLI_OVERLAY
     assert "cadex asset --put" in CLI_OVERLAY

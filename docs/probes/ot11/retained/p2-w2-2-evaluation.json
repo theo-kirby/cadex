@@ -1,0 +1,4075 @@
+{
+ "accepted_digest": "9edba0708253971198bd1ed4133892149fe4f6d34fd5daeba27ae66397664de1",
+ "accepted_revision": "064d8d7cd34c66d99b874282729b2a7017ad8cab873c3a79aea209c9d9dfd548",
+ "engine": {
+  "source": "dev-tree"
+ },
+ "film": {
+  "schema": "cadex-evaluation-film-v1",
+  "state": "ready",
+  "error": null,
+  "style": "studio",
+  "style_sha256": "ec44312c216e3f1ce31ea9fe52e8bb8b2b2defc005f60dd8f7b70def52582a7a",
+  "renderer": "CadexStudio studio (engine), CPU, no browser or display",
+  "floor": "the review viewport's dark prototype mat (ADR-444)",
+  "frame_px": 256,
+  "sheet": {
+   "columns": 4,
+   "rows": 3,
+   "gutter_px": 4
+  },
+  "overlay": "simulation seconds, bottom left of every frame",
+  "showing": "tessellated solids of the accepted revision at each recorded pose; collision proxies and world geometry not drawn",
+  "materials": {
+   "source": "the accepted assembly's inventory",
+   "declared": true,
+   "environment_omitted": [
+    "c_floor"
+   ]
+  },
+  "appearance": {
+   "c_battery": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_caps_fl": {
+    "role": "accent",
+    "color": "#FF6A1A"
+   },
+   "c_caps_fr": {
+    "role": "accent",
+    "color": "#FF6A1A"
+   },
+   "c_caps_rl": {
+    "role": "accent",
+    "color": "#FF6A1A"
+   },
+   "c_caps_rr": {
+    "role": "accent",
+    "color": "#FF6A1A"
+   },
+   "c_deck": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_esp32": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_foot_fl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_foot_fr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_foot_rl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_foot_rr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_fl_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_fl_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_fr_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_fr_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_rl_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_rl_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_rr_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_bolt_rr_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_horn_fl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_horn_fr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_horn_rl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_horn_rr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_servo_fl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_servo_fr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_servo_rl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hip_servo_rr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_hood": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_imu": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_fl_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_fl_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_fr_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_fr_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_rl_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_rl_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_rr_0": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_bolt_rr_1": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_horn_fl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_horn_fr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_horn_rl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_horn_rr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_servo_fl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_servo_fr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_servo_rl": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_knee_servo_rr": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_lid_fl": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_lid_fr": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_lid_rl": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_lid_rr": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_pca9685": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_regulator": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   },
+   "c_shin_fl": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_shin_fr": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_shin_rl": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_shin_rr": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_thigh_fl": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_thigh_fr": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_thigh_rl": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_thigh_rr": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_tray": {
+    "role": "shell",
+    "color": "#ECE8DF"
+   },
+   "c_visor": {
+    "role": "mechanism",
+    "color": "#2A2C31"
+   }
+  },
+  "geometry": {
+   "input_triangles": 78303,
+   "drawn_triangles": 78303,
+   "cell_mm": null,
+   "budget_triangles": 120000,
+   "input_bound_triangles": 4000000
+  },
+  "seeds": [
+   {
+    "seed": 1101,
+    "trace_sha256": "183ccfad5c69910ee4602ee3d5fff70ba2f619f482f2dbbb1d1dcdeca4c2131e",
+    "floor_z_mm": 0.0,
+    "floor_source": "the model's collision plane",
+    "overview": {
+     "file": "seed-1101-overview.png",
+     "sha256": "1db0f6532bded122aa23f3f328122aa85dc66e6f7d6786274f73dd3acd7f25e8",
+     "bytes": 149056,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      0.0,
+      0.9,
+      1.8,
+      2.72,
+      3.62,
+      4.54,
+      5.44,
+      6.36,
+      7.26,
+      8.18,
+      9.08,
+      10.0
+     ],
+     "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path",
+     "half_extent_mm": 660.5608500078068
+    },
+    "detail": {
+     "file": "seed-1101-detail.png",
+     "sha256": "a5f9da8b02a25b421d5241b70ed0f8a7247ee6968f82540f01a9a2193a021f8c",
+     "bytes": 239285,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      5.0,
+      5.04,
+      5.08,
+      5.12,
+      5.16,
+      5.2,
+      5.24,
+      5.28,
+      5.32,
+      5.36,
+      5.4,
+      5.44
+     ],
+     "requested_start_s": 5.0,
+     "start_s": 5.0,
+     "step_s": 0.04,
+     "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+     "follows": "c_tray",
+     "azimuth_degrees": 19.409402653656933,
+     "travel_mm": 920.83225724177,
+     "half_extent_mm": 161.3805844621758,
+     "start_source": "given"
+    },
+    "video": {
+     "file": "seed-1101-rollout.webm",
+     "sha256": "3e3ed9dd17db3e0b9ad5bafef4c6aeaa9f3688176af08cfdb2dd64d19231f3b8",
+     "bytes": 386403,
+     "frames": 101,
+     "fps": 10,
+     "sim_seconds": 10.0,
+     "width": 512,
+     "height": 512,
+     "projection": "orthographic hero view (35 degrees round from the front, 20 above the floor)",
+     "floor_z_mm": 0.0,
+     "render_seconds": 178.959,
+     "render_bound_seconds": 300
+    }
+   },
+   {
+    "seed": 1105,
+    "trace_sha256": "a1af7785fc2ccf970bdac08c5e25ff1a84ae6bbf636f2c059b7296aadd78b0c2",
+    "floor_z_mm": 0.0,
+    "floor_source": "the model's collision plane",
+    "overview": {
+     "file": "seed-1105-overview.png",
+     "sha256": "c0ccdc38773739ae5df60928a0589e449d7af0e565b0c59932ed54d81c3bd537",
+     "bytes": 149276,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      0.0,
+      0.9,
+      1.8,
+      2.72,
+      3.62,
+      4.54,
+      5.44,
+      6.36,
+      7.26,
+      8.18,
+      9.08,
+      10.0
+     ],
+     "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path",
+     "half_extent_mm": 467.72569204672334
+    },
+    "detail": {
+     "file": "seed-1105-detail.png",
+     "sha256": "70f1932bd623aef29362a6059b0e1209dcdf19954e6cf615b3f55f10caba07e6",
+     "bytes": 225358,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      5.0,
+      5.04,
+      5.08,
+      5.12,
+      5.16,
+      5.2,
+      5.24,
+      5.28,
+      5.32,
+      5.36,
+      5.4,
+      5.44
+     ],
+     "requested_start_s": 5.0,
+     "start_s": 5.0,
+     "step_s": 0.04,
+     "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+     "follows": "c_tray",
+     "azimuth_degrees": 12.954412766344106,
+     "travel_mm": 607.0850249468737,
+     "half_extent_mm": 174.20473495291026,
+     "start_source": "given"
+    },
+    "video": null
+   },
+   {
+    "seed": 1110,
+    "trace_sha256": "36b2dbd3cc3505b5350a3af78ff1281120ccac69196124a43d06469d7df11662",
+    "floor_z_mm": 0.0,
+    "floor_source": "the model's collision plane",
+    "overview": {
+     "file": "seed-1110-overview.png",
+     "sha256": "090b83d0beb7acbd7aee3b0b7da84e5907c132833d31ab270e85d815ed873b83",
+     "bytes": 205660,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      0.0,
+      0.56,
+      1.1400000000000001,
+      1.72,
+      2.2800000000000002,
+      2.86,
+      3.44,
+      4.0200000000000005,
+      4.58,
+      5.16,
+      5.74,
+      6.32
+     ],
+     "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path",
+     "half_extent_mm": 422.0614814175353
+    },
+    "detail": {
+     "file": "seed-1110-detail.png",
+     "sha256": "c4b22ce480c50b59682af8017000c9567b7bd33d1c46fe5619ca8972cee3aed9",
+     "bytes": 217419,
+     "width": 1036,
+     "height": 776,
+     "frames": 12,
+     "times_s": [
+      5.0,
+      5.04,
+      5.08,
+      5.12,
+      5.16,
+      5.2,
+      5.24,
+      5.28,
+      5.32,
+      5.36,
+      5.4,
+      5.44
+     ],
+     "requested_start_s": 5.0,
+     "start_s": 5.0,
+     "step_s": 0.04,
+     "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+     "follows": "c_tray",
+     "azimuth_degrees": 5.763664564852717,
+     "travel_mm": 553.8562359474872,
+     "half_extent_mm": 172.81108148141755,
+     "start_source": "given"
+    },
+    "video": null
+   }
+  ],
+  "render_seconds": 241.558
+ },
+ "label": "ot11 walk contract, without the goal predicates",
+ "model_output": "model",
+ "model_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2",
+ "mujoco_version": "3.10.0",
+ "policy_label": "walk_forward",
+ "policy_output": "walk_policy",
+ "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+ "project": "ot11-w2-negative",
+ "rig": {
+  "base": "c_tray",
+  "base_com_local_mm": [
+   -0.00748742,
+   -0.000549957,
+   86.3173
+  ],
+  "com_height_mm": 84.45862960599491,
+  "floor_mm": 0.0,
+  "hip_height_mm": 96.7006,
+  "mass_kg": 0.47909140199999994,
+  "reference_xyzw": [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ],
+  "weight_n": 4.69988665362
+ },
+ "schema": "cadex-evaluation-v1",
+ "seeds": [
+  {
+   "detail": {
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.6718403547671841,
+      "lowest_height_hip_heights": -0.17937147052243455,
+      "lowest_height_mm": -17.345328822401733,
+      "median_step_advance_mm": 37.413382444906155,
+      "median_step_clearance_hip_heights": 0.2928188294179433,
+      "median_step_clearance_mm": 28.315756496012767,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 6.48861959819326,
+      "path_mm": 1915.143881730981,
+      "peak_height_mm": 38.761283308795015,
+      "slip_mm": 718.4112472516978,
+      "slip_share": 0.37512129198479327,
+      "step_share": 0.27594348393673473,
+      "steps": 11,
+      "swings": 49
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.5986696230598669,
+      "lowest_height_hip_heights": -0.17450199251007192,
+      "lowest_height_mm": -16.87444737691946,
+      "median_step_advance_mm": 25.4999456537385,
+      "median_step_clearance_hip_heights": 0.19218327413574637,
+      "median_step_clearance_mm": 18.584237918891155,
+      "median_swing_airborne_s": 0.07000000000000006,
+      "median_swing_peak_mm": 5.6272536997696445,
+      "path_mm": 1834.5227661708568,
+      "peak_height_mm": 38.26445148036649,
+      "slip_mm": 602.8513029653553,
+      "slip_share": 0.3286147842273271,
+      "step_share": 0.36343441507825985,
+      "steps": 16,
+      "swings": 52
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.5144124168514412,
+      "lowest_height_hip_heights": -0.13623457502807318,
+      "lowest_height_mm": -13.173965145959691,
+      "median_step_advance_mm": 52.795632410112034,
+      "median_step_clearance_hip_heights": 0.06635224447320437,
+      "median_step_clearance_mm": 6.416301851905546,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.6143822090997766,
+      "path_mm": 1819.4936186015464,
+      "peak_height_mm": 68.25820039069285,
+      "slip_mm": 1087.7604174893281,
+      "slip_share": 0.5978368961389242,
+      "step_share": 0.08496618423395279,
+      "steps": 3,
+      "swings": 37
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.41019955654101997,
+      "lowest_height_hip_heights": -0.09899580329134523,
+      "lowest_height_mm": -9.572953575755058,
+      "median_step_advance_mm": 31.750593147558728,
+      "median_step_clearance_hip_heights": 0.11388315834312107,
+      "median_step_clearance_mm": 11.012569741674813,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 4.656716869772815,
+      "path_mm": 2072.1274398300097,
+      "peak_height_mm": 67.91212729221819,
+      "slip_mm": 936.9110489054364,
+      "slip_share": 0.4521493373893535,
+      "step_share": 0.16781247358610846,
+      "steps": 7,
+      "swings": 43
+     }
+    },
+    "recovery_s": [
+     null
+    ],
+    "travel_mm": [
+     865.9358351331102,
+     293.08700853354554
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 5.346485141052334,
+      "force_n": [
+       0.44144360356683626,
+       -0.6002709258697205,
+       0.0
+      ],
+      "label": "disturbance",
+      "newtons": 0.7451158564777465,
+      "start_s": 3.8786380081182266
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 6.278855041883476,
+      "height_m": 0.006793802549643356,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 5.94603383811165,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       0.0,
+       -0.0,
+       0.0
+      ],
+      "tilt_rad": 0.018756775993868807
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 10.0,
+    "solver_warnings": [],
+    "steps": 500,
+    "terminated_step": null,
+    "termination": "",
+    "truncated": true
+   },
+   "failing": [
+    "W2",
+    "W5-steps",
+    "W5-share",
+    "W6",
+    "W7",
+    "W9",
+    "W10"
+   ],
+   "frames": 501,
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 10.0,
+    "duty_factor_max": 0.6718403547671841,
+    "duty_factor_min": 0.41019955654101997,
+    "final_drift_mm": 914.1908253416349,
+    "final_heading_deg": 14.01140840914535,
+    "foot_lowest_hip_heights_min": -0.17937147052243455,
+    "lateral_ratio": null,
+    "max_drift_com_heights": 10.842162381108189,
+    "max_drift_mm": 915.7141766740684,
+    "max_heading_deg": 37.49559573907014,
+    "max_tilt_deg": 43.55272198125258,
+    "mean_forward_speed_mm_s": 92.81552983401197,
+    "mean_lateral_speed_mm_s": 16.30309971898584,
+    "mean_speed_mm_s": 119.49517103485181,
+    "recovery_s_max": null,
+    "slip_share_max": 0.5978368961389242,
+    "speed_ratio": null,
+    "step_clearance_hip_heights_min": 0.06635224447320437,
+    "step_count_ratio": 5.333333333333333,
+    "step_share_min": 0.08496618423395279,
+    "steps_min": 3
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "W1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": true,
+     "value": 1.0,
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": false,
+     "value": 43.55272198125258,
+     "why": "max_tilt_deg is 43.55, over 30"
+    },
+    {
+     "id": "W4-heading",
+     "max": 45.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": true,
+     "value": 37.49559573907014,
+     "why": ""
+    },
+    {
+     "id": "W5-steps",
+     "max": null,
+     "metric": "steps_min",
+     "min": 4.0,
+     "pass": false,
+     "value": 3,
+     "why": "steps_min is 3, under 4"
+    },
+    {
+     "id": "W5-share",
+     "max": null,
+     "metric": "step_share_min",
+     "min": 0.7,
+     "pass": false,
+     "value": 0.08496618423395279,
+     "why": "step_share_min is 0.08497, under 0.7"
+    },
+    {
+     "id": "W6",
+     "max": null,
+     "metric": "step_clearance_hip_heights_min",
+     "min": 0.08,
+     "pass": false,
+     "value": 0.06635224447320437,
+     "why": "step_clearance_hip_heights_min is 0.06635, under 0.08"
+    },
+    {
+     "id": "W7",
+     "max": 0.15,
+     "metric": "slip_share_max",
+     "min": null,
+     "pass": false,
+     "value": 0.5978368961389242,
+     "why": "slip_share_max is 0.5978, over 0.15"
+    },
+    {
+     "id": "W8-low",
+     "max": null,
+     "metric": "duty_factor_min",
+     "min": 0.4,
+     "pass": true,
+     "value": 0.41019955654101997,
+     "why": ""
+    },
+    {
+     "id": "W8-high",
+     "max": 0.85,
+     "metric": "duty_factor_max",
+     "min": null,
+     "pass": true,
+     "value": 0.6718403547671841,
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "max": 1.5,
+     "metric": "step_count_ratio",
+     "min": null,
+     "pass": false,
+     "value": 5.333333333333333,
+     "why": "step_count_ratio is 5.333, over 1.5"
+    },
+    {
+     "id": "W10",
+     "max": null,
+     "metric": "foot_lowest_hip_heights_min",
+     "min": -0.05,
+     "pass": false,
+     "value": -0.17937147052243455,
+     "why": "foot_lowest_hip_heights_min is -0.1794, under -0.05"
+    }
+   ],
+   "reward": {
+    "per_step": 1.2410412167812592,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 2.0,
+      "total": 1000.0
+     },
+     {
+      "label": "upright",
+      "per_step": 0.9308859809028052,
+      "total": 465.4429904514026
+     },
+     {
+      "label": "speed_error",
+      "per_step": -1.2445067697243561,
+      "total": -622.2533848621781
+     },
+     {
+      "label": "sideways",
+      "per_step": -0.3064296832075974,
+      "total": -153.2148416037987
+     },
+     {
+      "label": "yaw_rate",
+      "per_step": -0.13890831118959346,
+      "total": -69.45415559479673
+     }
+    ],
+    "total": 620.5206083906296
+   },
+   "seed": 1101,
+   "trace": {
+    "bytes": 5898296,
+    "file": "seed-1101-trace.json",
+    "sha256": "183ccfad5c69910ee4602ee3d5fff70ba2f619f482f2dbbb1d1dcdeca4c2131e"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.549889135254989,
+      "lowest_height_hip_heights": -0.1939063655808967,
+      "lowest_height_mm": -18.750861895492058,
+      "median_step_advance_mm": 43.0487047592495,
+      "median_step_clearance_hip_heights": 0.2608128213668367,
+      "median_step_clearance_mm": 25.220756313865927,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 6.199717164375526,
+      "path_mm": 2254.814874576283,
+      "peak_height_mm": 43.93675101804642,
+      "slip_mm": 794.2158594262405,
+      "slip_share": 0.35223107155326305,
+      "step_share": 0.24158072585961587,
+      "steps": 11,
+      "swings": 63
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.4700665188470067,
+      "lowest_height_hip_heights": -0.22188336945049883,
+      "lowest_height_mm": -21.456254955884905,
+      "median_step_advance_mm": 32.50740064936784,
+      "median_step_clearance_hip_heights": 0.1945048877680209,
+      "median_step_clearance_mm": 18.808739350100282,
+      "median_swing_airborne_s": 0.08000000000000007,
+      "median_swing_peak_mm": 7.014041658481677,
+      "path_mm": 2086.3665450015756,
+      "peak_height_mm": 37.82256767664956,
+      "slip_mm": 657.230577825595,
+      "slip_share": 0.31501203822509466,
+      "step_share": 0.30597364475123956,
+      "steps": 16,
+      "swings": 71
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.7871396895787139,
+      "lowest_height_hip_heights": -0.11916160028975047,
+      "lowest_height_mm": -11.522998244979043,
+      "median_step_advance_mm": 37.187866011176936,
+      "median_step_clearance_hip_heights": 0.09320658926407,
+      "median_step_clearance_mm": 9.013133105789127,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.397634630231913,
+      "path_mm": 1839.8104181314598,
+      "peak_height_mm": 11.24086390829573,
+      "slip_mm": 1304.6523401807983,
+      "slip_share": 0.7091232484191625,
+      "step_share": 0.04947205904297338,
+      "steps": 2,
+      "swings": 45
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.7117516629711752,
+      "lowest_height_hip_heights": -0.09330424177026368,
+      "lowest_height_mm": -9.02257616172956,
+      "median_step_advance_mm": 33.90174463724391,
+      "median_step_clearance_hip_heights": 0.08701397698850434,
+      "median_step_clearance_mm": 8.414303783174562,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.7995515055770355,
+      "path_mm": 2153.058041982249,
+      "peak_height_mm": 14.772708520026786,
+      "slip_mm": 1168.7734901363215,
+      "slip_share": 0.5428434660592198,
+      "step_share": 0.13611222065254666,
+      "steps": 6,
+      "swings": 55
+     }
+    },
+    "recovery_s": [
+     null
+    ],
+    "travel_mm": [
+     1025.8625060228765,
+     226.08783081377405
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 4.23302125602742,
+      "force_n": [
+       -0.20172208078309348,
+       -0.3880707663696685,
+       0.0
+      ],
+      "label": "disturbance",
+      "newtons": 0.4373679430253236,
+      "start_s": 4.006509711286229
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 0.8286710299719035,
+      "height_m": 0.00842467140125407,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 4.95280975374482,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       0.0,
+       -0.0,
+       0.0
+      ],
+      "tilt_rad": 0.0382472876139813
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 10.0,
+    "solver_warnings": [],
+    "steps": 500,
+    "terminated_step": null,
+    "termination": "",
+    "truncated": true
+   },
+   "failing": [
+    "W5-steps",
+    "W5-share",
+    "W7",
+    "W9",
+    "W10"
+   ],
+   "frames": 501,
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 10.0,
+    "duty_factor_max": 0.7871396895787139,
+    "duty_factor_min": 0.4700665188470067,
+    "final_drift_mm": 1050.4806464212531,
+    "final_heading_deg": 21.922236611633956,
+    "foot_lowest_hip_heights_min": -0.22188336945049883,
+    "lateral_ratio": null,
+    "max_drift_com_heights": 12.892083998935266,
+    "max_drift_mm": 1088.8477473154474,
+    "max_heading_deg": 31.94612826465965,
+    "max_tilt_deg": 13.871668302740778,
+    "mean_forward_speed_mm_s": 118.58739691171164,
+    "mean_lateral_speed_mm_s": 16.94118137385942,
+    "mean_speed_mm_s": 127.85561979676935,
+    "recovery_s_max": null,
+    "slip_share_max": 0.7091232484191625,
+    "speed_ratio": null,
+    "step_clearance_hip_heights_min": 0.08701397698850434,
+    "step_count_ratio": 8.0,
+    "step_share_min": 0.04947205904297338,
+    "steps_min": 2
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "W1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": true,
+     "value": 1.0,
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": true,
+     "value": 13.871668302740778,
+     "why": ""
+    },
+    {
+     "id": "W4-heading",
+     "max": 45.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": true,
+     "value": 31.94612826465965,
+     "why": ""
+    },
+    {
+     "id": "W5-steps",
+     "max": null,
+     "metric": "steps_min",
+     "min": 4.0,
+     "pass": false,
+     "value": 2,
+     "why": "steps_min is 2, under 4"
+    },
+    {
+     "id": "W5-share",
+     "max": null,
+     "metric": "step_share_min",
+     "min": 0.7,
+     "pass": false,
+     "value": 0.04947205904297338,
+     "why": "step_share_min is 0.04947, under 0.7"
+    },
+    {
+     "id": "W6",
+     "max": null,
+     "metric": "step_clearance_hip_heights_min",
+     "min": 0.08,
+     "pass": true,
+     "value": 0.08701397698850434,
+     "why": ""
+    },
+    {
+     "id": "W7",
+     "max": 0.15,
+     "metric": "slip_share_max",
+     "min": null,
+     "pass": false,
+     "value": 0.7091232484191625,
+     "why": "slip_share_max is 0.7091, over 0.15"
+    },
+    {
+     "id": "W8-low",
+     "max": null,
+     "metric": "duty_factor_min",
+     "min": 0.4,
+     "pass": true,
+     "value": 0.4700665188470067,
+     "why": ""
+    },
+    {
+     "id": "W8-high",
+     "max": 0.85,
+     "metric": "duty_factor_max",
+     "min": null,
+     "pass": true,
+     "value": 0.7871396895787139,
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "max": 1.5,
+     "metric": "step_count_ratio",
+     "min": null,
+     "pass": false,
+     "value": 8.0,
+     "why": "step_count_ratio is 8, over 1.5"
+    },
+    {
+     "id": "W10",
+     "max": null,
+     "metric": "foot_lowest_hip_heights_min",
+     "min": -0.05,
+     "pass": false,
+     "value": -0.22188336945049883,
+     "why": "foot_lowest_hip_heights_min is -0.2219, under -0.05"
+    }
+   ],
+   "reward": {
+    "per_step": 1.492016788790133,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 2.0,
+      "total": 1000.0
+     },
+     {
+      "label": "upright",
+      "per_step": 0.9929411623722305,
+      "total": 496.4705811861153
+     },
+     {
+      "label": "speed_error",
+      "per_step": -1.1217820991865752,
+      "total": -560.8910495932876
+     },
+     {
+      "label": "sideways",
+      "per_step": -0.28039898965721166,
+      "total": -140.19949482860582
+     },
+     {
+      "label": "yaw_rate",
+      "per_step": -0.09874328473830939,
+      "total": -49.37164236915469
+     }
+    ],
+    "total": 746.0083943950665
+   },
+   "seed": 1102,
+   "trace": {
+    "bytes": 5964583,
+    "file": "seed-1102-trace.json",
+    "sha256": "6da3601fc06977a59d181669ec07b1a980a5d28bab8c9d9ac4309b1340d22cae"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.7161862527716186,
+      "lowest_height_hip_heights": -0.19510186931524007,
+      "lowest_height_mm": -18.866467823905303,
+      "median_step_advance_mm": 33.21606499686771,
+      "median_step_clearance_hip_heights": 0.20510581746731285,
+      "median_step_clearance_mm": 19.833855612579633,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 5.967947882209341,
+      "path_mm": 1856.6358062916602,
+      "peak_height_mm": 51.49484438365876,
+      "slip_mm": 731.8340381241076,
+      "slip_share": 0.3941721018436199,
+      "step_share": 0.2875948824358063,
+      "steps": 11,
+      "swings": 41
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.6784922394678492,
+      "lowest_height_hip_heights": -0.23061613807469902,
+      "lowest_height_mm": -22.30071892150624,
+      "median_step_advance_mm": 21.603395394388976,
+      "median_step_clearance_hip_heights": 0.1708344419246919,
+      "median_step_clearance_mm": 16.51979303478286,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 7.3050262121973155,
+      "path_mm": 1609.5834913854974,
+      "peak_height_mm": 44.98910873739496,
+      "slip_mm": 614.4025226303337,
+      "slip_share": 0.3817152237946155,
+      "step_share": 0.25387688278845816,
+      "steps": 11,
+      "swings": 47
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.4722838137472284,
+      "lowest_height_hip_heights": -0.09078529864133877,
+      "lowest_height_mm": -8.778992849796644,
+      "median_step_advance_mm": 27.371186217729715,
+      "median_step_clearance_hip_heights": 0.14835990102615496,
+      "median_step_clearance_mm": 14.3464914451698,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.3446052153468315,
+      "path_mm": 1372.9623027386656,
+      "peak_height_mm": 67.87707526592943,
+      "slip_mm": 818.5929918987656,
+      "slip_share": 0.5962239387533858,
+      "step_share": 0.08116801291385797,
+      "steps": 3,
+      "swings": 35
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.48337028824833705,
+      "lowest_height_hip_heights": -0.131170238484733,
+      "lowest_height_mm": -12.68424076361677,
+      "median_step_advance_mm": 28.925477108506414,
+      "median_step_clearance_hip_heights": 0.12589401147170556,
+      "median_step_clearance_mm": 12.17402644572081,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.179348067489439,
+      "path_mm": 1631.1329552400584,
+      "peak_height_mm": 68.89657507860264,
+      "slip_mm": 937.0131415953282,
+      "slip_share": 0.5744554044997671,
+      "step_share": 0.1101435100049949,
+      "steps": 5,
+      "swings": 38
+     }
+    },
+    "recovery_s": [
+     null
+    ],
+    "travel_mm": [
+     780.1850531374155,
+     107.35106187387237
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 5.065428961865153,
+      "force_n": [
+       0.17670091473483263,
+       -0.4795434533325565,
+       0.0
+      ],
+      "label": "disturbance",
+      "newtons": 0.511062752411326,
+      "start_s": 4.6406432279376775
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 2.981407369237047,
+      "height_m": 0.007319208576052987,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 0.8977783589481492,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "tilt_rad": 0.021010532310391617
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 10.0,
+    "solver_warnings": [],
+    "steps": 500,
+    "terminated_step": null,
+    "termination": "",
+    "truncated": true
+   },
+   "failing": [
+    "W2",
+    "W5-steps",
+    "W5-share",
+    "W7",
+    "W9",
+    "W10"
+   ],
+   "frames": 501,
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 10.0,
+    "duty_factor_max": 0.7161862527716186,
+    "duty_factor_min": 0.4722838137472284,
+    "final_drift_mm": 787.5360103668148,
+    "final_heading_deg": 19.05575221725009,
+    "foot_lowest_hip_heights_min": -0.23061613807469902,
+    "lateral_ratio": null,
+    "max_drift_com_heights": 9.335332590402345,
+    "max_drift_mm": 788.4493975015647,
+    "max_heading_deg": 19.363419869434125,
+    "max_tilt_deg": 43.599967970248585,
+    "mean_forward_speed_mm_s": 70.61919805478787,
+    "mean_lateral_speed_mm_s": 8.250229821641456,
+    "mean_speed_mm_s": 98.39628746710643,
+    "recovery_s_max": null,
+    "slip_share_max": 0.5962239387533858,
+    "speed_ratio": null,
+    "step_clearance_hip_heights_min": 0.12589401147170556,
+    "step_count_ratio": 3.6666666666666665,
+    "step_share_min": 0.08116801291385797,
+    "steps_min": 3
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "W1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": true,
+     "value": 1.0,
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": false,
+     "value": 43.599967970248585,
+     "why": "max_tilt_deg is 43.6, over 30"
+    },
+    {
+     "id": "W4-heading",
+     "max": 45.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": true,
+     "value": 19.363419869434125,
+     "why": ""
+    },
+    {
+     "id": "W5-steps",
+     "max": null,
+     "metric": "steps_min",
+     "min": 4.0,
+     "pass": false,
+     "value": 3,
+     "why": "steps_min is 3, under 4"
+    },
+    {
+     "id": "W5-share",
+     "max": null,
+     "metric": "step_share_min",
+     "min": 0.7,
+     "pass": false,
+     "value": 0.08116801291385797,
+     "why": "step_share_min is 0.08117, under 0.7"
+    },
+    {
+     "id": "W6",
+     "max": null,
+     "metric": "step_clearance_hip_heights_min",
+     "min": 0.08,
+     "pass": true,
+     "value": 0.12589401147170556,
+     "why": ""
+    },
+    {
+     "id": "W7",
+     "max": 0.15,
+     "metric": "slip_share_max",
+     "min": null,
+     "pass": false,
+     "value": 0.5962239387533858,
+     "why": "slip_share_max is 0.5962, over 0.15"
+    },
+    {
+     "id": "W8-low",
+     "max": null,
+     "metric": "duty_factor_min",
+     "min": 0.4,
+     "pass": true,
+     "value": 0.4722838137472284,
+     "why": ""
+    },
+    {
+     "id": "W8-high",
+     "max": 0.85,
+     "metric": "duty_factor_max",
+     "min": null,
+     "pass": true,
+     "value": 0.7161862527716186,
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "max": 1.5,
+     "metric": "step_count_ratio",
+     "min": null,
+     "pass": false,
+     "value": 3.6666666666666665,
+     "why": "step_count_ratio is 3.667, over 1.5"
+    },
+    {
+     "id": "W10",
+     "max": null,
+     "metric": "foot_lowest_hip_heights_min",
+     "min": -0.05,
+     "pass": false,
+     "value": -0.23061613807469902,
+     "why": "foot_lowest_hip_heights_min is -0.2306, under -0.05"
+    }
+   ],
+   "reward": {
+    "per_step": 1.4379081979922794,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 2.0,
+      "total": 1000.0
+     },
+     {
+      "label": "upright",
+      "per_step": 0.920901582157667,
+      "total": 460.4507910788335
+     },
+     {
+      "label": "speed_error",
+      "per_step": -1.1868726017032694,
+      "total": -593.4363008516347
+     },
+     {
+      "label": "sideways",
+      "per_step": -0.20626901705582942,
+      "total": -103.13450852791472
+     },
+     {
+      "label": "yaw_rate",
+      "per_step": -0.08985176540628896,
+      "total": -44.92588270314448
+     }
+    ],
+    "total": 718.9540989961397
+   },
+   "seed": 1103,
+   "trace": {
+    "bytes": 5890218,
+    "file": "seed-1103-trace.json",
+    "sha256": "deefead7991dbd8cc77721234b330597b0fa15581c03ecd0daf62259523d73d1"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.5144124168514412,
+      "lowest_height_hip_heights": -0.21663969283264678,
+      "lowest_height_mm": -20.949188280732642,
+      "median_step_advance_mm": 31.250837555107747,
+      "median_step_clearance_hip_heights": 0.17914029751593857,
+      "median_step_clearance_mm": 17.322974253969768,
+      "median_swing_airborne_s": 0.08000000000000007,
+      "median_swing_peak_mm": 8.058157724080726,
+      "path_mm": 2294.3530776460007,
+      "peak_height_mm": 33.49926606825206,
+      "slip_mm": 800.7166117359224,
+      "slip_share": 0.3489945028676472,
+      "step_share": 0.4019150430980357,
+      "steps": 21,
+      "swings": 60
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.43458980044345896,
+      "lowest_height_hip_heights": -0.2078399371050046,
+      "lowest_height_mm": -20.098246622016205,
+      "median_step_advance_mm": 34.08440578416805,
+      "median_step_clearance_hip_heights": 0.1941995070587175,
+      "median_step_clearance_mm": 18.779208852282217,
+      "median_swing_airborne_s": 0.08000000000000007,
+      "median_swing_peak_mm": 8.533358818870418,
+      "path_mm": 2080.4787878425263,
+      "peak_height_mm": 33.14563583127513,
+      "slip_mm": 608.3536323478521,
+      "slip_share": 0.2924103989441391,
+      "step_share": 0.439688326803777,
+      "steps": 21,
+      "swings": 61
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.7427937915742794,
+      "lowest_height_hip_heights": -0.13792119805529898,
+      "lowest_height_mm": -13.337062604666244,
+      "median_step_advance_mm": 23.949655495103247,
+      "median_step_clearance_hip_heights": 0.1026507432826824,
+      "median_step_clearance_mm": 9.926388465881356,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.371271265144742,
+      "path_mm": 2057.51414892879,
+      "peak_height_mm": 15.799089948537848,
+      "slip_mm": 1359.0707349447719,
+      "slip_share": 0.6605401647674448,
+      "step_share": 0.04286342788257083,
+      "steps": 3,
+      "swings": 53
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.7184035476718403,
+      "lowest_height_hip_heights": -0.18593484336241764,
+      "lowest_height_mm": -17.980010914051803,
+      "median_step_advance_mm": 26.960759639636336,
+      "median_step_clearance_hip_heights": 0.08360509071527167,
+      "median_step_clearance_mm": 8.0846624352212,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.2641720523859803,
+      "path_mm": 2379.4349034581464,
+      "peak_height_mm": 20.937538370926685,
+      "slip_mm": 1464.286744063749,
+      "slip_share": 0.6153926471935127,
+      "step_share": 0.1546475653467736,
+      "steps": 6,
+      "swings": 52
+     }
+    },
+    "recovery_s": [
+     4.56457138391459
+    ],
+    "travel_mm": [
+     858.9719337649827,
+     240.6294560774638
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 1.1630224755458347,
+      "force_n": [
+       0.1838503393997168,
+       0.42559221694553206,
+       0.0
+      ],
+      "label": "disturbance",
+      "newtons": 0.4636050931795334,
+      "start_s": 3.8454286160854108
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 5.936458055360596,
+      "height_m": 0.005499333388588058,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 6.252361720965424,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       0.0,
+       -0.0,
+       0.0
+      ],
+      "tilt_rad": 0.013293210179709273
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 10.0,
+    "solver_warnings": [],
+    "steps": 500,
+    "terminated_step": null,
+    "termination": "",
+    "truncated": true
+   },
+   "failing": [
+    "W4-heading",
+    "W5-steps",
+    "W5-share",
+    "W7",
+    "W9",
+    "W10"
+   ],
+   "frames": 501,
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 10.0,
+    "duty_factor_max": 0.7427937915742794,
+    "duty_factor_min": 0.43458980044345896,
+    "final_drift_mm": 892.0399756334298,
+    "final_heading_deg": -3.5751780322646862,
+    "foot_lowest_hip_heights_min": -0.21663969283264678,
+    "lateral_ratio": null,
+    "max_drift_com_heights": 10.563599043232157,
+    "max_drift_mm": 892.187098898587,
+    "max_heading_deg": 59.2711779206809,
+    "max_tilt_deg": 18.5428284126398,
+    "mean_forward_speed_mm_s": 94.34988100000982,
+    "mean_lateral_speed_mm_s": 10.282386299005006,
+    "mean_speed_mm_s": 123.40077543728803,
+    "recovery_s_max": 4.56457138391459,
+    "slip_share_max": 0.6605401647674448,
+    "speed_ratio": null,
+    "step_clearance_hip_heights_min": 0.08360509071527167,
+    "step_count_ratio": 7.0,
+    "step_share_min": 0.04286342788257083,
+    "steps_min": 3
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "W1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": true,
+     "value": 1.0,
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": true,
+     "value": 18.5428284126398,
+     "why": ""
+    },
+    {
+     "id": "W4-heading",
+     "max": 45.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": false,
+     "value": 59.2711779206809,
+     "why": "max_heading_deg is 59.27, over 45"
+    },
+    {
+     "id": "W5-steps",
+     "max": null,
+     "metric": "steps_min",
+     "min": 4.0,
+     "pass": false,
+     "value": 3,
+     "why": "steps_min is 3, under 4"
+    },
+    {
+     "id": "W5-share",
+     "max": null,
+     "metric": "step_share_min",
+     "min": 0.7,
+     "pass": false,
+     "value": 0.04286342788257083,
+     "why": "step_share_min is 0.04286, under 0.7"
+    },
+    {
+     "id": "W6",
+     "max": null,
+     "metric": "step_clearance_hip_heights_min",
+     "min": 0.08,
+     "pass": true,
+     "value": 0.08360509071527167,
+     "why": ""
+    },
+    {
+     "id": "W7",
+     "max": 0.15,
+     "metric": "slip_share_max",
+     "min": null,
+     "pass": false,
+     "value": 0.6605401647674448,
+     "why": "slip_share_max is 0.6605, over 0.15"
+    },
+    {
+     "id": "W8-low",
+     "max": null,
+     "metric": "duty_factor_min",
+     "min": 0.4,
+     "pass": true,
+     "value": 0.43458980044345896,
+     "why": ""
+    },
+    {
+     "id": "W8-high",
+     "max": 0.85,
+     "metric": "duty_factor_max",
+     "min": null,
+     "pass": true,
+     "value": 0.7427937915742794,
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "max": 1.5,
+     "metric": "step_count_ratio",
+     "min": null,
+     "pass": false,
+     "value": 7.0,
+     "why": "step_count_ratio is 7, over 1.5"
+    },
+    {
+     "id": "W10",
+     "max": null,
+     "metric": "foot_lowest_hip_heights_min",
+     "min": -0.05,
+     "pass": false,
+     "value": -0.21663969283264678,
+     "why": "foot_lowest_hip_heights_min is -0.2166, under -0.05"
+    }
+   ],
+   "reward": {
+    "per_step": 1.2907646851023142,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 2.0,
+      "total": 1000.0
+     },
+     {
+      "label": "upright",
+      "per_step": 0.9918433246927537,
+      "total": 495.9216623463769
+     },
+     {
+      "label": "speed_error",
+      "per_step": -1.2072046980355446,
+      "total": -603.6023490177723
+     },
+     {
+      "label": "sideways",
+      "per_step": -0.34402116204032723,
+      "total": -172.0105810201636
+     },
+     {
+      "label": "yaw_rate",
+      "per_step": -0.1498527795145708,
+      "total": -74.92638975728539
+     }
+    ],
+    "total": 645.3823425511571
+   },
+   "seed": 1104,
+   "trace": {
+    "bytes": 5919038,
+    "file": "seed-1104-trace.json",
+    "sha256": "260e09d94de23249e40e0135162bbf53c240d92036f58eaa661334ce5bd1005d"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.7738359201773836,
+      "lowest_height_hip_heights": -0.14604868746061989,
+      "lowest_height_mm": -14.122995706654418,
+      "median_step_advance_mm": 35.308034316826436,
+      "median_step_clearance_hip_heights": 0.2039786341397435,
+      "median_step_clearance_mm": 19.724856308493678,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 7.094235157989618,
+      "path_mm": 1407.3654800881955,
+      "peak_height_mm": 39.29928148971512,
+      "slip_mm": 522.4083505177076,
+      "slip_share": 0.37119593873012274,
+      "step_share": 0.27128880002144273,
+      "steps": 9,
+      "swings": 36
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.7073170731707317,
+      "lowest_height_hip_heights": -0.13917150404479353,
+      "lowest_height_mm": -13.45796794403396,
+      "median_step_advance_mm": 33.738529255543014,
+      "median_step_clearance_hip_heights": 0.1888035882940318,
+      "median_step_clearance_mm": 18.25742027018585,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 6.543631524383288,
+      "path_mm": 1316.2250763817344,
+      "peak_height_mm": 31.226768425458083,
+      "slip_mm": 456.4335345182454,
+      "slip_share": 0.346774683683256,
+      "step_share": 0.2949696255872755,
+      "steps": 10,
+      "swings": 41
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.43902439024390244,
+      "lowest_height_hip_heights": -0.0996908297564668,
+      "lowest_height_mm": -9.640163051948193,
+      "median_step_advance_mm": 33.803512817657804,
+      "median_step_clearance_hip_heights": 0.10390524361051132,
+      "median_step_clearance_mm": 10.04769940028261,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.9252909619624177,
+      "path_mm": 1192.1394191320712,
+      "peak_height_mm": 69.8131543150225,
+      "slip_mm": 736.0406147440638,
+      "slip_share": 0.6174115232930835,
+      "step_share": 0.09829411200262529,
+      "steps": 3,
+      "swings": 30
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.4035476718403548,
+      "lowest_height_hip_heights": -0.08092653151231732,
+      "lowest_height_mm": -7.825644153159992,
+      "median_step_advance_mm": 28.173072782199927,
+      "median_step_clearance_hip_heights": 0.1456018412169272,
+      "median_step_clearance_mm": 14.079785406781589,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.0657986187644592,
+      "path_mm": 1297.0262122543845,
+      "peak_height_mm": 66.31607976331931,
+      "slip_mm": 830.6043690656743,
+      "slip_share": 0.6403913515533244,
+      "step_share": 0.0546838799456163,
+      "steps": 2,
+      "swings": 28
+     }
+    },
+    "recovery_s": [
+     null
+    ],
+    "travel_mm": [
+     584.9383304272707,
+     133.67069631817236
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 4.716070184979174,
+      "force_n": [
+       0.0025490291810780453,
+       -0.6924411837078731,
+       0.0
+      ],
+      "label": "disturbance",
+      "newtons": 0.6924458754621379,
+      "start_s": 4.585062002544598
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 0.5507454141873873,
+      "height_m": 0.007622059592502157,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 2.433924119624305,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       -0.0,
+       0.0,
+       0.0
+      ],
+      "tilt_rad": 0.040009966835718114
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 10.0,
+    "solver_warnings": [],
+    "steps": 500,
+    "terminated_step": null,
+    "termination": "",
+    "truncated": true
+   },
+   "failing": [
+    "W2",
+    "W5-steps",
+    "W5-share",
+    "W7",
+    "W9",
+    "W10"
+   ],
+   "frames": 501,
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 10.0,
+    "duty_factor_max": 0.7738359201773836,
+    "duty_factor_min": 0.4035476718403548,
+    "final_drift_mm": 600.0172542995975,
+    "final_heading_deg": 16.99720592345167,
+    "foot_lowest_hip_heights_min": -0.14604868746061989,
+    "lateral_ratio": null,
+    "max_drift_com_heights": 7.129238069411638,
+    "max_drift_mm": 602.1256774773958,
+    "max_heading_deg": 25.516119894228098,
+    "max_tilt_deg": 43.682197991830286,
+    "mean_forward_speed_mm_s": 58.41936992331315,
+    "mean_lateral_speed_mm_s": 7.2181229639350635,
+    "mean_speed_mm_s": 79.3273764858729,
+    "recovery_s_max": null,
+    "slip_share_max": 0.6403913515533244,
+    "speed_ratio": null,
+    "step_clearance_hip_heights_min": 0.10390524361051132,
+    "step_count_ratio": 5.0,
+    "step_share_min": 0.0546838799456163,
+    "steps_min": 2
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "W1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": true,
+     "value": 1.0,
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": false,
+     "value": 43.682197991830286,
+     "why": "max_tilt_deg is 43.68, over 30"
+    },
+    {
+     "id": "W4-heading",
+     "max": 45.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": true,
+     "value": 25.516119894228098,
+     "why": ""
+    },
+    {
+     "id": "W5-steps",
+     "max": null,
+     "metric": "steps_min",
+     "min": 4.0,
+     "pass": false,
+     "value": 2,
+     "why": "steps_min is 2, under 4"
+    },
+    {
+     "id": "W5-share",
+     "max": null,
+     "metric": "step_share_min",
+     "min": 0.7,
+     "pass": false,
+     "value": 0.0546838799456163,
+     "why": "step_share_min is 0.05468, under 0.7"
+    },
+    {
+     "id": "W6",
+     "max": null,
+     "metric": "step_clearance_hip_heights_min",
+     "min": 0.08,
+     "pass": true,
+     "value": 0.10390524361051132,
+     "why": ""
+    },
+    {
+     "id": "W7",
+     "max": 0.15,
+     "metric": "slip_share_max",
+     "min": null,
+     "pass": false,
+     "value": 0.6403913515533244,
+     "why": "slip_share_max is 0.6404, over 0.15"
+    },
+    {
+     "id": "W8-low",
+     "max": null,
+     "metric": "duty_factor_min",
+     "min": 0.4,
+     "pass": true,
+     "value": 0.4035476718403548,
+     "why": ""
+    },
+    {
+     "id": "W8-high",
+     "max": 0.85,
+     "metric": "duty_factor_max",
+     "min": null,
+     "pass": true,
+     "value": 0.7738359201773836,
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "max": 1.5,
+     "metric": "step_count_ratio",
+     "min": null,
+     "pass": false,
+     "value": 5.0,
+     "why": "step_count_ratio is 5, over 1.5"
+    },
+    {
+     "id": "W10",
+     "max": null,
+     "metric": "foot_lowest_hip_heights_min",
+     "min": -0.05,
+     "pass": false,
+     "value": -0.14604868746061989,
+     "why": "foot_lowest_hip_heights_min is -0.146, under -0.05"
+    }
+   ],
+   "reward": {
+    "per_step": 1.5682386017492278,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 2.0,
+      "total": 1000.0
+     },
+     {
+      "label": "upright",
+      "per_step": 0.8974093784582263,
+      "total": 448.70468922911317
+     },
+     {
+      "label": "speed_error",
+      "per_step": -1.005713621857574,
+      "total": -502.856810928787
+     },
+     {
+      "label": "sideways",
+      "per_step": -0.23862847268334822,
+      "total": -119.3142363416741
+     },
+     {
+      "label": "yaw_rate",
+      "per_step": -0.08482868216807615,
+      "total": -42.41434108403808
+     }
+    ],
+    "total": 784.1193008746139
+   },
+   "seed": 1105,
+   "trace": {
+    "bytes": 5901746,
+    "file": "seed-1105-trace.json",
+    "sha256": "a1af7785fc2ccf970bdac08c5e25ff1a84ae6bbf636f2c059b7296aadd78b0c2"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.4878048780487805,
+      "lowest_height_hip_heights": -0.25937332878940167,
+      "lowest_height_mm": -25.081556517932412,
+      "median_step_advance_mm": 40.74116001267575,
+      "median_step_clearance_hip_heights": 0.16791515941256624,
+      "median_step_clearance_mm": 16.237496664290802,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 6.084947237023762,
+      "path_mm": 2356.861003014699,
+      "peak_height_mm": 97.39154370441094,
+      "slip_mm": 728.6700651127229,
+      "slip_share": 0.3091697237048215,
+      "step_share": 0.3055123448314025,
+      "steps": 15,
+      "swings": 70
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.44124168514412415,
+      "lowest_height_hip_heights": -0.13794218705554817,
+      "lowest_height_mm": -13.33909225358374,
+      "median_step_advance_mm": 34.22276961954519,
+      "median_step_clearance_hip_heights": 0.19880604920936643,
+      "median_step_clearance_mm": 19.22466424217526,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 7.535899382309389,
+      "path_mm": 2309.837560606717,
+      "peak_height_mm": 81.94355555667315,
+      "slip_mm": 690.0196586806036,
+      "slip_share": 0.2987308157285998,
+      "step_share": 0.3419917141738376,
+      "steps": 18,
+      "swings": 70
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.7427937915742794,
+      "lowest_height_hip_heights": -0.15526850077052856,
+      "lowest_height_mm": -15.014557185610574,
+      "median_step_advance_mm": 49.167604845491624,
+      "median_step_clearance_hip_heights": 0.04525610176878431,
+      "median_step_clearance_mm": 4.376292194702503,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.6829903829587742,
+      "path_mm": 2318.0715935809462,
+      "peak_height_mm": 14.4862306759114,
+      "slip_mm": 1425.3276397113775,
+      "slip_share": 0.6148764531942423,
+      "step_share": 0.04480344799454318,
+      "steps": 2,
+      "swings": 58
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.5787139689578714,
+      "lowest_height_hip_heights": -0.14561731070220185,
+      "lowest_height_mm": -14.081281315289338,
+      "median_step_advance_mm": 24.402043988602433,
+      "median_step_clearance_hip_heights": 0.1117065074400082,
+      "median_step_clearance_mm": 10.802086293353256,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.861841981080798,
+      "path_mm": 2811.901676577359,
+      "peak_height_mm": 13.960187311507966,
+      "slip_mm": 1206.938315165194,
+      "slip_share": 0.42922493528802075,
+      "step_share": 0.13075662861082324,
+      "steps": 7,
+      "swings": 74
+     }
+    },
+    "recovery_s": [
+     null
+    ],
+    "travel_mm": [
+     1002.0864814880102,
+     739.7348756911676
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 1.8316282547793186,
+      "force_n": [
+       -0.2241552445866429,
+       0.8398078416904999,
+       0.0
+      ],
+      "label": "disturbance",
+      "newtons": 0.8692081365476013,
+      "start_s": 3.453032322141531
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 2.0908830875374567,
+      "height_m": 0.009944650124420886,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 5.353560652554696,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       0.0,
+       -0.0,
+       0.0
+      ],
+      "tilt_rad": 0.02392919188063926
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 10.0,
+    "solver_warnings": [],
+    "steps": 500,
+    "terminated_step": null,
+    "termination": "",
+    "truncated": true
+   },
+   "failing": [
+    "W2",
+    "W5-steps",
+    "W5-share",
+    "W6",
+    "W7",
+    "W9",
+    "W10"
+   ],
+   "frames": 501,
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 10.0,
+    "duty_factor_max": 0.7427937915742794,
+    "duty_factor_min": 0.44124168514412415,
+    "final_drift_mm": 1245.546066066947,
+    "final_heading_deg": 11.970055476679144,
+    "foot_lowest_hip_heights_min": -0.25937332878940167,
+    "lateral_ratio": null,
+    "max_drift_com_heights": 15.209143935142503,
+    "max_drift_mm": 1284.5434542424646,
+    "max_heading_deg": 43.02070713519739,
+    "max_tilt_deg": 36.95919420659055,
+    "mean_forward_speed_mm_s": 131.05584048870858,
+    "mean_lateral_speed_mm_s": 49.34584312848742,
+    "mean_speed_mm_s": 151.3757265256336,
+    "recovery_s_max": null,
+    "slip_share_max": 0.6148764531942423,
+    "speed_ratio": null,
+    "step_clearance_hip_heights_min": 0.04525610176878431,
+    "step_count_ratio": 9.0,
+    "step_share_min": 0.04480344799454318,
+    "steps_min": 2
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "W1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": true,
+     "value": 1.0,
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": false,
+     "value": 36.95919420659055,
+     "why": "max_tilt_deg is 36.96, over 30"
+    },
+    {
+     "id": "W4-heading",
+     "max": 45.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": true,
+     "value": 43.02070713519739,
+     "why": ""
+    },
+    {
+     "id": "W5-steps",
+     "max": null,
+     "metric": "steps_min",
+     "min": 4.0,
+     "pass": false,
+     "value": 2,
+     "why": "steps_min is 2, under 4"
+    },
+    {
+     "id": "W5-share",
+     "max": null,
+     "metric": "step_share_min",
+     "min": 0.7,
+     "pass": false,
+     "value": 0.04480344799454318,
+     "why": "step_share_min is 0.0448, under 0.7"
+    },
+    {
+     "id": "W6",
+     "max": null,
+     "metric": "step_clearance_hip_heights_min",
+     "min": 0.08,
+     "pass": false,
+     "value": 0.04525610176878431,
+     "why": "step_clearance_hip_heights_min is 0.04526, under 0.08"
+    },
+    {
+     "id": "W7",
+     "max": 0.15,
+     "metric": "slip_share_max",
+     "min": null,
+     "pass": false,
+     "value": 0.6148764531942423,
+     "why": "slip_share_max is 0.6149, over 0.15"
+    },
+    {
+     "id": "W8-low",
+     "max": null,
+     "metric": "duty_factor_min",
+     "min": 0.4,
+     "pass": true,
+     "value": 0.44124168514412415,
+     "why": ""
+    },
+    {
+     "id": "W8-high",
+     "max": 0.85,
+     "metric": "duty_factor_max",
+     "min": null,
+     "pass": true,
+     "value": 0.7427937915742794,
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "max": 1.5,
+     "metric": "step_count_ratio",
+     "min": null,
+     "pass": false,
+     "value": 9.0,
+     "why": "step_count_ratio is 9, over 1.5"
+    },
+    {
+     "id": "W10",
+     "max": null,
+     "metric": "foot_lowest_hip_heights_min",
+     "min": -0.05,
+     "pass": false,
+     "value": -0.25937332878940167,
+     "why": "foot_lowest_hip_heights_min is -0.2594, under -0.05"
+    }
+   ],
+   "reward": {
+    "per_step": 1.1905816619037657,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 2.0,
+      "total": 1000.0
+     },
+     {
+      "label": "upright",
+      "per_step": 0.9884455060991966,
+      "total": 494.2227530495983
+     },
+     {
+      "label": "speed_error",
+      "per_step": -1.111166760047636,
+      "total": -555.583380023818
+     },
+     {
+      "label": "sideways",
+      "per_step": -0.5310560250362076,
+      "total": -265.5280125181038
+     },
+     {
+      "label": "yaw_rate",
+      "per_step": -0.15564105911158949,
+      "total": -77.82052955579475
+     }
+    ],
+    "total": 595.2908309518829
+   },
+   "seed": 1106,
+   "trace": {
+    "bytes": 5918855,
+    "file": "seed-1106-trace.json",
+    "sha256": "0b3a5ea7ed8b3f2679ac47ea06ff9ea2aedb7b789b99c6f70b6e6d0eed127232"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.5946969696969697,
+      "lowest_height_hip_heights": -0.13511075190352595,
+      "lowest_height_mm": -13.0652907755221,
+      "median_step_advance_mm": 31.334286727827983,
+      "median_step_clearance_hip_heights": 0.17225733010742356,
+      "median_step_clearance_mm": 16.65738717578592,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.8337170366974673,
+      "path_mm": 1389.8813492070794,
+      "peak_height_mm": 41.84668175677114,
+      "slip_mm": 510.1246746058894,
+      "slip_share": 0.36702749835222487,
+      "step_share": 0.23666013430046076,
+      "steps": 8,
+      "swings": 40
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.5227272727272727,
+      "lowest_height_hip_heights": -0.1927940749078299,
+      "lowest_height_mm": -18.643302720032096,
+      "median_step_advance_mm": 30.810645455437726,
+      "median_step_clearance_hip_heights": 0.18873427638552231,
+      "median_step_clearance_mm": 18.25071776704584,
+      "median_swing_airborne_s": 0.08000000000000007,
+      "median_swing_peak_mm": 7.037403226581487,
+      "path_mm": 1313.019518331588,
+      "peak_height_mm": 45.045878392874386,
+      "slip_mm": 525.5502384477685,
+      "slip_share": 0.400260796667797,
+      "step_share": 0.18308954022584611,
+      "steps": 6,
+      "swings": 38
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.6818181818181818,
+      "lowest_height_hip_heights": -0.09559756444277075,
+      "lowest_height_mm": -9.244341840154597,
+      "median_step_advance_mm": null,
+      "median_step_clearance_hip_heights": null,
+      "median_step_clearance_mm": null,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.6273994991878205,
+      "path_mm": 1152.5851440832575,
+      "peak_height_mm": 65.97458407261061,
+      "slip_mm": 681.4427632272343,
+      "slip_share": 0.5912298685484445,
+      "step_share": 0.0,
+      "steps": 0,
+      "swings": 27
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.7310606060606061,
+      "lowest_height_hip_heights": -0.0999502836063145,
+      "lowest_height_mm": -9.665252394900776,
+      "median_step_advance_mm": 23.339179784305955,
+      "median_step_clearance_hip_heights": 0.12191343407622478,
+      "median_step_clearance_mm": 11.789102223231382,
+      "median_swing_airborne_s": 0.020000000000000018,
+      "median_swing_peak_mm": 2.958207290064358,
+      "path_mm": 1260.5570628699732,
+      "peak_height_mm": 69.68623147583807,
+      "slip_mm": 850.0471574942763,
+      "slip_share": 0.674342465353319,
+      "step_share": 0.055648152889099134,
+      "steps": 2,
+      "swings": 31
+     }
+    },
+    "recovery_s": [
+     null
+    ],
+    "travel_mm": [
+     783.3277805114922,
+     -95.32173004460314
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 2.1732789033353637,
+      "force_n": [
+       -0.5132534275056243,
+       0.7462383269131978,
+       0.0
+      ],
+      "label": "disturbance",
+      "newtons": 0.9057045442088053,
+      "start_s": 5.287679461078323
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 4.913111646346824,
+      "height_m": 0.007085206532400746,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 5.372867089343484,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       0.0,
+       -0.0,
+       0.0
+      ],
+      "tilt_rad": 0.03467230999659864
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 6.26,
+    "solver_warnings": [],
+    "steps": 313,
+    "terminated_step": 312,
+    "termination": "tipped",
+    "truncated": false
+   },
+   "failing": [
+    "W1",
+    "W2",
+    "W5-steps",
+    "W5-share",
+    "W6",
+    "W7",
+    "W9",
+    "W10"
+   ],
+   "frames": 314,
+   "metrics": {
+    "completed": 0.0,
+    "duration_s": 6.26,
+    "duty_factor_max": 0.7310606060606061,
+    "duty_factor_min": 0.5227272727272727,
+    "final_drift_mm": 789.1062310866369,
+    "final_heading_deg": -10.437769526823729,
+    "foot_lowest_hip_heights_min": -0.1927940749078299,
+    "lateral_ratio": null,
+    "max_drift_com_heights": 9.343109576462103,
+    "max_drift_mm": 789.1062310866369,
+    "max_heading_deg": 23.888498721947574,
+    "max_tilt_deg": 45.57554380776172,
+    "mean_forward_speed_mm_s": 131.53485186271791,
+    "mean_lateral_speed_mm_s": -2.048089280320238,
+    "mean_speed_mm_s": 136.00892074326347,
+    "recovery_s_max": null,
+    "slip_share_max": 0.674342465353319,
+    "speed_ratio": null,
+    "step_clearance_hip_heights_min": null,
+    "step_count_ratio": null,
+    "step_share_min": 0.0,
+    "steps_min": 0
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "W1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": false,
+     "value": 0.0,
+     "why": "completed is 0, under 1"
+    },
+    {
+     "id": "W2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": false,
+     "value": 45.57554380776172,
+     "why": "max_tilt_deg is 45.58, over 30"
+    },
+    {
+     "id": "W4-heading",
+     "max": 45.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": true,
+     "value": 23.888498721947574,
+     "why": ""
+    },
+    {
+     "id": "W5-steps",
+     "max": null,
+     "metric": "steps_min",
+     "min": 4.0,
+     "pass": false,
+     "value": 0,
+     "why": "steps_min is 0, under 4"
+    },
+    {
+     "id": "W5-share",
+     "max": null,
+     "metric": "step_share_min",
+     "min": 0.7,
+     "pass": false,
+     "value": 0.0,
+     "why": "step_share_min is 0, under 0.7"
+    },
+    {
+     "id": "W6",
+     "max": null,
+     "metric": "step_clearance_hip_heights_min",
+     "min": 0.08,
+     "pass": false,
+     "value": null,
+     "why": "step_clearance_hip_heights_min was not measured"
+    },
+    {
+     "id": "W7",
+     "max": 0.15,
+     "metric": "slip_share_max",
+     "min": null,
+     "pass": false,
+     "value": 0.674342465353319,
+     "why": "slip_share_max is 0.6743, over 0.15"
+    },
+    {
+     "id": "W8-low",
+     "max": null,
+     "metric": "duty_factor_min",
+     "min": 0.4,
+     "pass": true,
+     "value": 0.5227272727272727,
+     "why": ""
+    },
+    {
+     "id": "W8-high",
+     "max": 0.85,
+     "metric": "duty_factor_max",
+     "min": null,
+     "pass": true,
+     "value": 0.7310606060606061,
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "max": 1.5,
+     "metric": "step_count_ratio",
+     "min": null,
+     "pass": false,
+     "value": null,
+     "why": "step_count_ratio was not measured"
+    },
+    {
+     "id": "W10",
+     "max": null,
+     "metric": "foot_lowest_hip_heights_min",
+     "min": -0.05,
+     "pass": false,
+     "value": -0.1927940749078299,
+     "why": "foot_lowest_hip_heights_min is -0.1928, under -0.05"
+    }
+   ],
+   "reward": {
+    "per_step": 1.476432633756948,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 2.0,
+      "total": 626.0
+     },
+     {
+      "label": "upright",
+      "per_step": 0.9859265218475046,
+      "total": 308.59500133826896
+     },
+     {
+      "label": "speed_error",
+      "per_step": -1.1234701483393097,
+      "total": -351.6461564302039
+     },
+     {
+      "label": "sideways",
+      "per_step": -0.2654836632071873,
+      "total": -83.09638658384962
+     },
+     {
+      "label": "yaw_rate",
+      "per_step": -0.12054007654406046,
+      "total": -37.72904395829092
+     }
+    ],
+    "total": 462.1234143659247
+   },
+   "seed": 1107,
+   "trace": {
+    "bytes": 3744285,
+    "file": "seed-1107-trace.json",
+    "sha256": "9f827b194fdde1e845fbbba23e6d5e33b3642b8adaff2cfd3bd692dc3e2fb363"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.9600886917960089,
+      "lowest_height_hip_heights": -0.14186011985029096,
+      "lowest_height_mm": -13.717958705595045,
+      "median_step_advance_mm": 61.79691539704032,
+      "median_step_clearance_hip_heights": 0.22811317008757004,
+      "median_step_clearance_mm": 22.058680415370073,
+      "median_swing_airborne_s": 0.050000000000000044,
+      "median_swing_peak_mm": 3.393020059710813,
+      "path_mm": 711.0982756172873,
+      "peak_height_mm": 24.95270165077269,
+      "slip_mm": 312.97006494577647,
+      "slip_share": 0.4401220979956599,
+      "step_share": 0.17741968045252665,
+      "steps": 2,
+      "swings": 14
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.9201773835920177,
+      "lowest_height_hip_heights": -0.1375853978789816,
+      "lowest_height_mm": -13.304590526136248,
+      "median_step_advance_mm": 37.91349051576333,
+      "median_step_clearance_hip_heights": 0.10401615204807595,
+      "median_step_clearance_mm": 10.058424312740172,
+      "median_swing_airborne_s": 0.08000000000000007,
+      "median_swing_peak_mm": 5.9451855120470825,
+      "path_mm": 657.7770524814251,
+      "peak_height_mm": 19.484122886167214,
+      "slip_mm": 239.54522386656873,
+      "slip_share": 0.36417388378463267,
+      "step_share": 0.4134348683571674,
+      "steps": 6,
+      "swings": 15
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.11529933481152993,
+      "lowest_height_hip_heights": -0.06698317591740117,
+      "lowest_height_mm": -6.477313301118244,
+      "median_step_advance_mm": 43.60862023141184,
+      "median_step_clearance_hip_heights": 0.09605861521391555,
+      "median_step_clearance_mm": 9.288925726354762,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.930448835154145,
+      "path_mm": 619.1495656860909,
+      "peak_height_mm": 71.40006571238226,
+      "slip_mm": 304.0344904778327,
+      "slip_share": 0.4910517705700505,
+      "step_share": 0.07298719111707862,
+      "steps": 1,
+      "swings": 15
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.1197339246119734,
+      "lowest_height_hip_heights": -0.06344364365619577,
+      "lowest_height_mm": -6.135038407740325,
+      "median_step_advance_mm": 57.17515224049359,
+      "median_step_clearance_hip_heights": 0.07510348477638232,
+      "median_step_clearance_mm": 7.262552039967035,
+      "median_swing_airborne_s": 0.050000000000000044,
+      "median_swing_peak_mm": 3.231237610996601,
+      "path_mm": 679.6007471665508,
+      "peak_height_mm": 66.82665132215264,
+      "slip_mm": 324.511952846616,
+      "slip_share": 0.4775038199996083,
+      "step_share": 0.17531614833899328,
+      "steps": 2,
+      "swings": 10
+     }
+    },
+    "recovery_s": [
+     null
+    ],
+    "travel_mm": [
+     381.0003032048221,
+     59.92984493130697
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 3.8607479267444837,
+      "force_n": [
+       -0.33127165300833733,
+       -0.29005300353456703,
+       0.0
+      ],
+      "label": "disturbance",
+      "newtons": 0.4403085883176705,
+      "start_s": 3.3866720471276057
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 3.97303854570205,
+      "height_m": 0.0077379983518534815,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 2.3290139909188006,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       -0.0,
+       0.0,
+       0.0
+      ],
+      "tilt_rad": 0.012817992538860774
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 10.0,
+    "solver_warnings": [],
+    "steps": 500,
+    "terminated_step": null,
+    "termination": "",
+    "truncated": true
+   },
+   "failing": [
+    "W2",
+    "W5-steps",
+    "W5-share",
+    "W6",
+    "W7",
+    "W8-low",
+    "W8-high",
+    "W9",
+    "W10"
+   ],
+   "frames": 501,
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 10.0,
+    "duty_factor_max": 0.9600886917960089,
+    "duty_factor_min": 0.11529933481152993,
+    "final_drift_mm": 385.6848679370982,
+    "final_heading_deg": 22.09772877735668,
+    "foot_lowest_hip_heights_min": -0.14186011985029096,
+    "lateral_ratio": null,
+    "max_drift_com_heights": 4.610518337461814,
+    "max_drift_mm": 389.3980605553348,
+    "max_heading_deg": 23.529559102996817,
+    "max_tilt_deg": 44.0556851063483,
+    "mean_forward_speed_mm_s": 26.913658090373048,
+    "mean_lateral_speed_mm_s": 3.041136863249729,
+    "mean_speed_mm_s": 47.091837281770964,
+    "recovery_s_max": null,
+    "slip_share_max": 0.4910517705700505,
+    "speed_ratio": null,
+    "step_clearance_hip_heights_min": 0.07510348477638232,
+    "step_count_ratio": 6.0,
+    "step_share_min": 0.07298719111707862,
+    "steps_min": 1
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "W1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": true,
+     "value": 1.0,
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": false,
+     "value": 44.0556851063483,
+     "why": "max_tilt_deg is 44.06, over 30"
+    },
+    {
+     "id": "W4-heading",
+     "max": 45.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": true,
+     "value": 23.529559102996817,
+     "why": ""
+    },
+    {
+     "id": "W5-steps",
+     "max": null,
+     "metric": "steps_min",
+     "min": 4.0,
+     "pass": false,
+     "value": 1,
+     "why": "steps_min is 1, under 4"
+    },
+    {
+     "id": "W5-share",
+     "max": null,
+     "metric": "step_share_min",
+     "min": 0.7,
+     "pass": false,
+     "value": 0.07298719111707862,
+     "why": "step_share_min is 0.07299, under 0.7"
+    },
+    {
+     "id": "W6",
+     "max": null,
+     "metric": "step_clearance_hip_heights_min",
+     "min": 0.08,
+     "pass": false,
+     "value": 0.07510348477638232,
+     "why": "step_clearance_hip_heights_min is 0.0751, under 0.08"
+    },
+    {
+     "id": "W7",
+     "max": 0.15,
+     "metric": "slip_share_max",
+     "min": null,
+     "pass": false,
+     "value": 0.4910517705700505,
+     "why": "slip_share_max is 0.4911, over 0.15"
+    },
+    {
+     "id": "W8-low",
+     "max": null,
+     "metric": "duty_factor_min",
+     "min": 0.4,
+     "pass": false,
+     "value": 0.11529933481152993,
+     "why": "duty_factor_min is 0.1153, under 0.4"
+    },
+    {
+     "id": "W8-high",
+     "max": 0.85,
+     "metric": "duty_factor_max",
+     "min": null,
+     "pass": false,
+     "value": 0.9600886917960089,
+     "why": "duty_factor_max is 0.9601, over 0.85"
+    },
+    {
+     "id": "W9",
+     "max": 1.5,
+     "metric": "step_count_ratio",
+     "min": null,
+     "pass": false,
+     "value": 6.0,
+     "why": "step_count_ratio is 6, over 1.5"
+    },
+    {
+     "id": "W10",
+     "max": null,
+     "metric": "foot_lowest_hip_heights_min",
+     "min": -0.05,
+     "pass": false,
+     "value": -0.14186011985029096,
+     "why": "foot_lowest_hip_heights_min is -0.1419, under -0.05"
+    }
+   ],
+   "reward": {
+    "per_step": 1.503559964266352,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 2.0,
+      "total": 1000.0
+     },
+     {
+      "label": "upright",
+      "per_step": 0.8071362872734006,
+      "total": 403.5681436367003
+     },
+     {
+      "label": "speed_error",
+      "per_step": -1.1440112842082373,
+      "total": -572.0056421041187
+     },
+     {
+      "label": "sideways",
+      "per_step": -0.10988023479490008,
+      "total": -54.940117397450045
+     },
+     {
+      "label": "yaw_rate",
+      "per_step": -0.049684804003900795,
+      "total": -24.842402001950397
+     }
+    ],
+    "total": 751.779982133176
+   },
+   "seed": 1108,
+   "trace": {
+    "bytes": 5845675,
+    "file": "seed-1108-trace.json",
+    "sha256": "5b62c301251ae976be20aa5b4430fa4e4ad9234e7c18dddd574b89c5dabe7fa8"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.7228381374722838,
+      "lowest_height_hip_heights": -0.16757186884580386,
+      "lowest_height_mm": -16.20430026051054,
+      "median_step_advance_mm": 29.674056033750897,
+      "median_step_clearance_hip_heights": 0.16003098470983243,
+      "median_step_clearance_mm": 15.475092240031621,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 6.566828858739932,
+      "path_mm": 1780.9312873965953,
+      "peak_height_mm": 32.42938879474949,
+      "slip_mm": 837.0709885863158,
+      "slip_share": 0.4700186888231745,
+      "step_share": 0.24041225256525606,
+      "steps": 11,
+      "swings": 42
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.6319290465631929,
+      "lowest_height_hip_heights": -0.22223961913503218,
+      "lowest_height_mm": -21.490704514129092,
+      "median_step_advance_mm": 26.816002874409023,
+      "median_step_clearance_hip_heights": 0.16000383655632205,
+      "median_step_clearance_mm": 15.472466997298277,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 7.595246989257581,
+      "path_mm": 1553.9327902256937,
+      "peak_height_mm": 35.18788080361484,
+      "slip_mm": 665.3286664710438,
+      "slip_share": 0.42815794264461804,
+      "step_share": 0.25487014367096156,
+      "steps": 11,
+      "swings": 52
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.6784922394678492,
+      "lowest_height_hip_heights": -0.10815691067223628,
+      "lowest_height_mm": -10.45883815615165,
+      "median_step_advance_mm": 30.450079120164325,
+      "median_step_clearance_hip_heights": 0.09002278691143294,
+      "median_step_clearance_mm": 8.705257508007712,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.8096378353864324,
+      "path_mm": 1354.2070984261445,
+      "peak_height_mm": 70.07512988726197,
+      "slip_mm": 968.7260565078889,
+      "slip_share": 0.715345575749632,
+      "step_share": 0.02682759913856979,
+      "steps": 1,
+      "swings": 31
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.6008869179600886,
+      "lowest_height_hip_heights": -0.1357739042564074,
+      "lowest_height_mm": -13.129418005937147,
+      "median_step_advance_mm": 58.70394524412798,
+      "median_step_clearance_hip_heights": 0.09442778742645144,
+      "median_step_clearance_mm": 9.13122370081031,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.8984871932084033,
+      "path_mm": 1495.2816769374656,
+      "peak_height_mm": 66.64761211042055,
+      "slip_mm": 910.7669000070384,
+      "slip_share": 0.609093867767048,
+      "step_share": 0.08562863967926572,
+      "steps": 2,
+      "swings": 35
+     }
+    },
+    "recovery_s": [
+     null
+    ],
+    "travel_mm": [
+     901.6061825290017,
+     74.06404846481804
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 6.21657246129442,
+      "force_n": [
+       0.2923307473037107,
+       -0.019501836533550924,
+       0.0
+      ],
+      "label": "disturbance",
+      "newtons": 0.29298052400684815,
+      "start_s": 6.2598628462571
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 6.065808764130036,
+      "height_m": 0.008112855717509332,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 4.134450280774255,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       -0.0,
+       -0.0,
+       0.0
+      ],
+      "tilt_rad": 0.02030664495463685
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 10.0,
+    "solver_warnings": [],
+    "steps": 500,
+    "terminated_step": null,
+    "termination": "",
+    "truncated": true
+   },
+   "failing": [
+    "W2",
+    "W5-steps",
+    "W5-share",
+    "W7",
+    "W9",
+    "W10"
+   ],
+   "frames": 501,
+   "metrics": {
+    "completed": 1.0,
+    "duration_s": 10.0,
+    "duty_factor_max": 0.7228381374722838,
+    "duty_factor_min": 0.6008869179600886,
+    "final_drift_mm": 904.6431294436046,
+    "final_heading_deg": 18.0943073989795,
+    "foot_lowest_hip_heights_min": -0.22223961913503218,
+    "lateral_ratio": null,
+    "max_drift_com_heights": 10.739021029646198,
+    "max_drift_mm": 907.0029994738784,
+    "max_heading_deg": 19.111140067837216,
+    "max_tilt_deg": 43.68064941378238,
+    "mean_forward_speed_mm_s": 95.82506246538094,
+    "mean_lateral_speed_mm_s": 5.954626826893068,
+    "mean_speed_mm_s": 102.56203445714462,
+    "recovery_s_max": null,
+    "slip_share_max": 0.715345575749632,
+    "speed_ratio": null,
+    "step_clearance_hip_heights_min": 0.09002278691143294,
+    "step_count_ratio": 11.0,
+    "step_share_min": 0.02682759913856979,
+    "steps_min": 1
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "W1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": true,
+     "value": 1.0,
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": false,
+     "value": 43.68064941378238,
+     "why": "max_tilt_deg is 43.68, over 30"
+    },
+    {
+     "id": "W4-heading",
+     "max": 45.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": true,
+     "value": 19.111140067837216,
+     "why": ""
+    },
+    {
+     "id": "W5-steps",
+     "max": null,
+     "metric": "steps_min",
+     "min": 4.0,
+     "pass": false,
+     "value": 1,
+     "why": "steps_min is 1, under 4"
+    },
+    {
+     "id": "W5-share",
+     "max": null,
+     "metric": "step_share_min",
+     "min": 0.7,
+     "pass": false,
+     "value": 0.02682759913856979,
+     "why": "step_share_min is 0.02683, under 0.7"
+    },
+    {
+     "id": "W6",
+     "max": null,
+     "metric": "step_clearance_hip_heights_min",
+     "min": 0.08,
+     "pass": true,
+     "value": 0.09002278691143294,
+     "why": ""
+    },
+    {
+     "id": "W7",
+     "max": 0.15,
+     "metric": "slip_share_max",
+     "min": null,
+     "pass": false,
+     "value": 0.715345575749632,
+     "why": "slip_share_max is 0.7153, over 0.15"
+    },
+    {
+     "id": "W8-low",
+     "max": null,
+     "metric": "duty_factor_min",
+     "min": 0.4,
+     "pass": true,
+     "value": 0.6008869179600886,
+     "why": ""
+    },
+    {
+     "id": "W8-high",
+     "max": 0.85,
+     "metric": "duty_factor_max",
+     "min": null,
+     "pass": true,
+     "value": 0.7228381374722838,
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "max": 1.5,
+     "metric": "step_count_ratio",
+     "min": null,
+     "pass": false,
+     "value": 11.0,
+     "why": "step_count_ratio is 11, over 1.5"
+    },
+    {
+     "id": "W10",
+     "max": null,
+     "metric": "foot_lowest_hip_heights_min",
+     "min": -0.05,
+     "pass": false,
+     "value": -0.22223961913503218,
+     "why": "foot_lowest_hip_heights_min is -0.2222, under -0.05"
+    }
+   ],
+   "reward": {
+    "per_step": 1.6719659793562214,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 2.0,
+      "total": 1000.0
+     },
+     {
+      "label": "upright",
+      "per_step": 0.9529532913616907,
+      "total": 476.47664568084537
+     },
+     {
+      "label": "speed_error",
+      "per_step": -0.981244991017279,
+      "total": -490.62249550863953
+     },
+     {
+      "label": "sideways",
+      "per_step": -0.19815179121296464,
+      "total": -99.07589560648232
+     },
+     {
+      "label": "yaw_rate",
+      "per_step": -0.1015905297752247,
+      "total": -50.795264887612355
+     }
+    ],
+    "total": 835.9829896781107
+   },
+   "seed": 1109,
+   "trace": {
+    "bytes": 5920963,
+    "file": "seed-1109-trace.json",
+    "sha256": "7ffdb542e249421c2dbca86be90fcf4d3495f84ed8443f23240c41dcebcd33a2"
+   },
+   "void": ""
+  },
+  {
+   "detail": {
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.6928838951310862,
+      "lowest_height_hip_heights": -0.18085835628313396,
+      "lowest_height_mm": -17.489111567592822,
+      "median_step_advance_mm": 37.429840945520354,
+      "median_step_clearance_hip_heights": 0.194161520808852,
+      "median_step_clearance_mm": 18.77553555912847,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 4.161076061070631,
+      "path_mm": 1381.904387504705,
+      "peak_height_mm": 23.57117636928356,
+      "slip_mm": 695.476239888859,
+      "slip_share": 0.5032737765198615,
+      "step_share": 0.18734994800401458,
+      "steps": 5,
+      "swings": 35
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.49812734082397003,
+      "lowest_height_hip_heights": -0.21255436982261372,
+      "lowest_height_mm": -20.554135094468638,
+      "median_step_advance_mm": 28.830165871265482,
+      "median_step_clearance_hip_heights": 0.20036426271081,
+      "median_step_clearance_mm": 19.375344422692955,
+      "median_swing_airborne_s": 0.06000000000000005,
+      "median_swing_peak_mm": 6.114854200089262,
+      "path_mm": 1185.0388615113077,
+      "peak_height_mm": 26.505154326000635,
+      "slip_mm": 370.8378138296325,
+      "slip_share": 0.3129330403196182,
+      "step_share": 0.25299233929464404,
+      "steps": 8,
+      "swings": 42
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.8277153558052435,
+      "lowest_height_hip_heights": -0.12572598015060896,
+      "lowest_height_mm": -12.157777716151976,
+      "median_step_advance_mm": 33.65496116392808,
+      "median_step_clearance_hip_heights": 0.12222706113515894,
+      "median_step_clearance_mm": 11.81943014800655,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.1377536364150345,
+      "path_mm": 1013.7730275702514,
+      "peak_height_mm": 15.055508276310182,
+      "slip_mm": 816.2381352970851,
+      "slip_share": 0.8051487986945108,
+      "step_share": 0.036435973624103224,
+      "steps": 1,
+      "swings": 24
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.6479400749063671,
+      "lowest_height_hip_heights": -0.10490934070927563,
+      "lowest_height_mm": -10.144796192191379,
+      "median_step_advance_mm": 50.087093795745105,
+      "median_step_clearance_hip_heights": 0.09609376392136762,
+      "median_step_clearance_mm": 9.292324627454601,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 3.616057411278117,
+      "path_mm": 1113.3725543030541,
+      "peak_height_mm": 64.5773622371016,
+      "slip_mm": 616.8817045186819,
+      "slip_share": 0.5540658444781188,
+      "step_share": 0.14557918672055356,
+      "steps": 3,
+      "swings": 28
+     }
+    },
+    "recovery_s": [
+     null
+    ],
+    "travel_mm": [
+     550.0022651694334,
+     50.492788939618556
+    ]
+   },
+   "drawn": {
+    "disturbance": [
+     {
+      "azimuth_rad": 2.788587323979904,
+      "force_n": [
+       -0.49822908676817207,
+       0.18356653953915078,
+       0.0
+      ],
+      "label": "disturbance",
+      "newtons": 0.5309697706463385,
+      "start_s": 6.529507163640286
+     }
+    ],
+    "randomisation": [],
+    "reset_variation": [
+     {
+      "angular_velocity_rad_s": [
+       0.0,
+       0.0,
+       0.0
+      ],
+      "azimuth_rad": 3.950662733205172,
+      "height_m": 0.005407384720544215,
+      "label": "reset_variation",
+      "linear_azimuth_rad": 2.815964468707989,
+      "linear_speed_m_s": 0.0,
+      "linear_velocity_m_s": [
+       -0.0,
+       0.0,
+       0.0
+      ],
+      "tilt_rad": 0.02496289361740924
+     }
+    ]
+   },
+   "episode": {
+    "control_hz": 50,
+    "duration_s": 6.32,
+    "solver_warnings": [],
+    "steps": 316,
+    "terminated_step": 315,
+    "termination": "tipped",
+    "truncated": false
+   },
+   "failing": [
+    "W1",
+    "W2",
+    "W5-steps",
+    "W5-share",
+    "W7",
+    "W9",
+    "W10"
+   ],
+   "frames": 317,
+   "metrics": {
+    "completed": 0.0,
+    "duration_s": 6.32,
+    "duty_factor_max": 0.8277153558052435,
+    "duty_factor_min": 0.49812734082397003,
+    "final_drift_mm": 552.3151395955108,
+    "final_heading_deg": 20.361237497002033,
+    "foot_lowest_hip_heights_min": -0.21255436982261372,
+    "lateral_ratio": null,
+    "max_drift_com_heights": 6.539475506198684,
+    "max_drift_mm": 552.3151395955108,
+    "max_heading_deg": 21.87791032482037,
+    "max_tilt_deg": 46.25398685939687,
+    "mean_forward_speed_mm_s": 92.72555526430088,
+    "mean_lateral_speed_mm_s": 12.863135474142132,
+    "mean_speed_mm_s": 109.6634503817049,
+    "recovery_s_max": null,
+    "slip_share_max": 0.8051487986945108,
+    "speed_ratio": null,
+    "step_clearance_hip_heights_min": 0.09609376392136762,
+    "step_count_ratio": 8.0,
+    "step_share_min": 0.036435973624103224,
+    "steps_min": 1
+   },
+   "pass": false,
+   "predicates": [
+    {
+     "id": "W1",
+     "max": null,
+     "metric": "completed",
+     "min": 1.0,
+     "pass": false,
+     "value": 0.0,
+     "why": "completed is 0, under 1"
+    },
+    {
+     "id": "W2",
+     "max": 30.0,
+     "metric": "max_tilt_deg",
+     "min": null,
+     "pass": false,
+     "value": 46.25398685939687,
+     "why": "max_tilt_deg is 46.25, over 30"
+    },
+    {
+     "id": "W4-heading",
+     "max": 45.0,
+     "metric": "max_heading_deg",
+     "min": null,
+     "pass": true,
+     "value": 21.87791032482037,
+     "why": ""
+    },
+    {
+     "id": "W5-steps",
+     "max": null,
+     "metric": "steps_min",
+     "min": 4.0,
+     "pass": false,
+     "value": 1,
+     "why": "steps_min is 1, under 4"
+    },
+    {
+     "id": "W5-share",
+     "max": null,
+     "metric": "step_share_min",
+     "min": 0.7,
+     "pass": false,
+     "value": 0.036435973624103224,
+     "why": "step_share_min is 0.03644, under 0.7"
+    },
+    {
+     "id": "W6",
+     "max": null,
+     "metric": "step_clearance_hip_heights_min",
+     "min": 0.08,
+     "pass": true,
+     "value": 0.09609376392136762,
+     "why": ""
+    },
+    {
+     "id": "W7",
+     "max": 0.15,
+     "metric": "slip_share_max",
+     "min": null,
+     "pass": false,
+     "value": 0.8051487986945108,
+     "why": "slip_share_max is 0.8051, over 0.15"
+    },
+    {
+     "id": "W8-low",
+     "max": null,
+     "metric": "duty_factor_min",
+     "min": 0.4,
+     "pass": true,
+     "value": 0.49812734082397003,
+     "why": ""
+    },
+    {
+     "id": "W8-high",
+     "max": 0.85,
+     "metric": "duty_factor_max",
+     "min": null,
+     "pass": true,
+     "value": 0.8277153558052435,
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "max": 1.5,
+     "metric": "step_count_ratio",
+     "min": null,
+     "pass": false,
+     "value": 8.0,
+     "why": "step_count_ratio is 8, over 1.5"
+    },
+    {
+     "id": "W10",
+     "max": null,
+     "metric": "foot_lowest_hip_heights_min",
+     "min": -0.05,
+     "pass": false,
+     "value": -0.21255436982261372,
+     "why": "foot_lowest_hip_heights_min is -0.2126, under -0.05"
+    }
+   ],
+   "reward": {
+    "per_step": 1.7139555138995473,
+    "terms": [
+     {
+      "label": "alive",
+      "per_step": 2.0,
+      "total": 632.0
+     },
+     {
+      "label": "upright",
+      "per_step": 0.9857988639616088,
+      "total": 311.51244101186836
+     },
+     {
+      "label": "speed_error",
+      "per_step": -0.9365819163840804,
+      "total": -295.9598855773694
+     },
+     {
+      "label": "sideways",
+      "per_step": -0.23953015989054396,
+      "total": -75.69153052541189
+     },
+     {
+      "label": "yaw_rate",
+      "per_step": -0.09573127378743737,
+      "total": -30.25108251683021
+     }
+    ],
+    "total": 541.6099423922569
+   },
+   "seed": 1110,
+   "trace": {
+    "bytes": 3776749,
+    "file": "seed-1110-trace.json",
+    "sha256": "36b2dbd3cc3505b5350a3af78ff1281120ccac69196124a43d06469d7df11662"
+   },
+   "void": ""
+  }
+ ],
+ "spec": {
+  "disturbance": [
+   {
+    "applied_at": "centre_of_mass",
+    "at_high_s": 7.0,
+    "at_low_s": 3.0,
+    "azimuth_high_rad": 6.283185307179586,
+    "azimuth_low_rad": 0.0,
+    "body": "c_tray",
+    "body_id": 2,
+    "direction": "horizontal",
+    "duration_s": 0.15,
+    "frame": "world",
+    "label": "disturbance",
+    "newtons_high": 0.939977330724,
+    "newtons_low": 0.234994332681,
+    "sustained": false
+   }
+  ],
+  "episode": {
+   "control_hz": 50,
+   "control_interval_s": 0.02,
+   "episode_seconds": 10.0,
+   "max_steps": 500,
+   "reset_keyframe": "solved",
+   "reward_stage": "after_step",
+   "solver_step_s": 0.002,
+   "solver_steps_per_action": 10
+  },
+  "feet": [
+   "c_foot_fl",
+   "c_foot_fr",
+   "c_foot_rl",
+   "c_foot_rr"
+  ],
+  "predicates": [
+   {
+    "id": "W1",
+    "max": null,
+    "metric": "completed",
+    "min": 1.0
+   },
+   {
+    "id": "W2",
+    "max": 30.0,
+    "metric": "max_tilt_deg",
+    "min": null
+   },
+   {
+    "id": "W4-heading",
+    "max": 45.0,
+    "metric": "max_heading_deg",
+    "min": null
+   },
+   {
+    "id": "W5-steps",
+    "max": null,
+    "metric": "steps_min",
+    "min": 4.0
+   },
+   {
+    "id": "W5-share",
+    "max": null,
+    "metric": "step_share_min",
+    "min": 0.7
+   },
+   {
+    "id": "W6",
+    "max": null,
+    "metric": "step_clearance_hip_heights_min",
+    "min": 0.08
+   },
+   {
+    "id": "W7",
+    "max": 0.15,
+    "metric": "slip_share_max",
+    "min": null
+   },
+   {
+    "id": "W8-low",
+    "max": null,
+    "metric": "duty_factor_min",
+    "min": 0.4
+   },
+   {
+    "id": "W8-high",
+    "max": 0.85,
+    "metric": "duty_factor_max",
+    "min": null
+   },
+   {
+    "id": "W9",
+    "max": 1.5,
+    "metric": "step_count_ratio",
+    "min": null
+   },
+   {
+    "id": "W10",
+    "max": null,
+    "metric": "foot_lowest_hip_heights_min",
+    "min": -0.05
+   }
+  ],
+  "randomisation": [],
+  "reset_variation": [
+   {
+    "angular_velocity_high_rad_s": 0.0,
+    "angular_velocity_low_rad_s": 0.0,
+    "body": "c_tray",
+    "body_id": 2,
+    "clearance_mm": -0.0,
+    "height_high_m": 0.00997753267446373,
+    "height_low_m": 0.004977532674463731,
+    "label": "reset_variation",
+    "linear_velocity_high_m_s": 0.0,
+    "linear_velocity_low_m_s": 0.0,
+    "qpos_adr": 0,
+    "qvel_adr": 0,
+    "tilt_high_rad": 0.05235987755982989,
+    "tilt_low_rad": 0.0
+   }
+  ],
+  "scale": {
+   "arm_length_mm": null,
+   "com_height_mm": 84.45862960599491,
+   "hip_height_mm": 96.7006,
+   "mass_kg": 0.47909140199999994,
+   "weight_n": 4.69988665362
+  },
+  "seeds": [
+   1101,
+   1102,
+   1103,
+   1104,
+   1105,
+   1106,
+   1107,
+   1108,
+   1109,
+   1110
+  ],
+  "tip": null
+ },
+ "summary": {
+  "failed": [
+   1101,
+   1102,
+   1103,
+   1104,
+   1105,
+   1106,
+   1107,
+   1108,
+   1109,
+   1110
+  ],
+  "metrics": {
+   "completed": {
+    "max": 1.0,
+    "measured": 10,
+    "median": 1.0,
+    "min": 0.0
+   },
+   "duration_s": {
+    "max": 10.0,
+    "measured": 10,
+    "median": 10.0,
+    "min": 6.26
+   },
+   "duty_factor_max": {
+    "max": 0.9600886917960089,
+    "measured": 10,
+    "median": 0.7427937915742794,
+    "min": 0.6718403547671841
+   },
+   "duty_factor_min": {
+    "max": 0.6008869179600886,
+    "measured": 10,
+    "median": 0.45565410199556544,
+    "min": 0.11529933481152993
+   },
+   "final_drift_mm": {
+    "max": 1245.546066066947,
+    "measured": 10,
+    "median": 840.5731033600333,
+    "min": 385.6848679370982
+   },
+   "final_heading_deg": {
+    "max": 22.09772877735668,
+    "measured": 10,
+    "median": 17.545756661215584,
+    "min": -10.437769526823729
+   },
+   "foot_lowest_hip_heights_min": {
+    "max": -0.14186011985029096,
+    "measured": 10,
+    "median": -0.21459703132763025,
+    "min": -0.25937332878940167
+   },
+   "lateral_ratio": {
+    "measured": 0
+   },
+   "max_drift_com_heights": {
+    "max": 15.209143935142503,
+    "measured": 10,
+    "median": 9.95335430984713,
+    "min": 4.610518337461814
+   },
+   "max_drift_mm": {
+    "max": 1284.5434542424646,
+    "measured": 10,
+    "median": 840.6466649926119,
+    "min": 389.3980605553348
+   },
+   "max_heading_deg": {
+    "max": 59.2711779206809,
+    "measured": 10,
+    "median": 24.702309308087834,
+    "min": 19.111140067837216
+   },
+   "max_tilt_deg": {
+    "max": 46.25398685939687,
+    "measured": 10,
+    "median": 43.64030869201548,
+    "min": 13.871668302740778
+   },
+   "mean_forward_speed_mm_s": {
+    "max": 131.53485186271791,
+    "measured": 10,
+    "median": 93.58270541701089,
+    "min": 26.913658090373048
+   },
+   "mean_lateral_speed_mm_s": {
+    "max": 49.34584312848742,
+    "measured": 10,
+    "median": 9.266308060323231,
+    "min": -2.048089280320238
+   },
+   "mean_speed_mm_s": {
+    "max": 151.3757265256336,
+    "measured": 10,
+    "median": 114.57931070827836,
+    "min": 47.091837281770964
+   },
+   "recovery_s_max": {
+    "max": 4.56457138391459,
+    "measured": 1,
+    "median": 4.56457138391459,
+    "min": 4.56457138391459
+   },
+   "slip_share_max": {
+    "max": 0.8051487986945108,
+    "measured": 10,
+    "median": 0.6504657581603845,
+    "min": 0.4910517705700505
+   },
+   "speed_ratio": {
+    "measured": 0
+   },
+   "step_clearance_hip_heights_min": {
+    "max": 0.12589401147170556,
+    "measured": 9,
+    "median": 0.08701397698850434,
+    "min": 0.04525610176878431
+   },
+   "step_count_ratio": {
+    "max": 11.0,
+    "measured": 9,
+    "median": 7.0,
+    "min": 3.6666666666666665
+   },
+   "step_share_min": {
+    "max": 0.08496618423395279,
+    "measured": 10,
+    "median": 0.04713775351875828,
+    "min": 0.0
+   },
+   "steps_min": {
+    "max": 3,
+    "measured": 10,
+    "median": 2.0,
+    "min": 0
+   }
+  },
+  "pass": false,
+  "passed": [],
+  "predicates": [
+   {
+    "failed_seeds": [
+     1107,
+     1110
+    ],
+    "id": "W1",
+    "max": null,
+    "metric": "completed",
+    "min": 1.0,
+    "passed": 8,
+    "value": {
+     "max": 1.0,
+     "median": 1.0,
+     "min": 0.0
+    }
+   },
+   {
+    "failed_seeds": [
+     1101,
+     1103,
+     1105,
+     1106,
+     1107,
+     1108,
+     1109,
+     1110
+    ],
+    "id": "W2",
+    "max": 30.0,
+    "metric": "max_tilt_deg",
+    "min": null,
+    "passed": 2,
+    "value": {
+     "max": 46.25398685939687,
+     "median": 43.64030869201548,
+     "min": 13.871668302740778
+    }
+   },
+   {
+    "failed_seeds": [
+     1104
+    ],
+    "id": "W4-heading",
+    "max": 45.0,
+    "metric": "max_heading_deg",
+    "min": null,
+    "passed": 9,
+    "value": {
+     "max": 59.2711779206809,
+     "median": 24.702309308087834,
+     "min": 19.111140067837216
+    }
+   },
+   {
+    "failed_seeds": [
+     1101,
+     1102,
+     1103,
+     1104,
+     1105,
+     1106,
+     1107,
+     1108,
+     1109,
+     1110
+    ],
+    "id": "W5-steps",
+    "max": null,
+    "metric": "steps_min",
+    "min": 4.0,
+    "passed": 0,
+    "value": {
+     "max": 3,
+     "median": 2.0,
+     "min": 0
+    }
+   },
+   {
+    "failed_seeds": [
+     1101,
+     1102,
+     1103,
+     1104,
+     1105,
+     1106,
+     1107,
+     1108,
+     1109,
+     1110
+    ],
+    "id": "W5-share",
+    "max": null,
+    "metric": "step_share_min",
+    "min": 0.7,
+    "passed": 0,
+    "value": {
+     "max": 0.08496618423395279,
+     "median": 0.04713775351875828,
+     "min": 0.0
+    }
+   },
+   {
+    "failed_seeds": [
+     1101,
+     1106,
+     1107,
+     1108
+    ],
+    "id": "W6",
+    "max": null,
+    "metric": "step_clearance_hip_heights_min",
+    "min": 0.08,
+    "passed": 6,
+    "value": {
+     "max": 0.12589401147170556,
+     "median": 0.08701397698850434,
+     "min": 0.04525610176878431
+    }
+   },
+   {
+    "failed_seeds": [
+     1101,
+     1102,
+     1103,
+     1104,
+     1105,
+     1106,
+     1107,
+     1108,
+     1109,
+     1110
+    ],
+    "id": "W7",
+    "max": 0.15,
+    "metric": "slip_share_max",
+    "min": null,
+    "passed": 0,
+    "value": {
+     "max": 0.8051487986945108,
+     "median": 0.6504657581603845,
+     "min": 0.4910517705700505
+    }
+   },
+   {
+    "failed_seeds": [
+     1108
+    ],
+    "id": "W8-low",
+    "max": null,
+    "metric": "duty_factor_min",
+    "min": 0.4,
+    "passed": 9,
+    "value": {
+     "max": 0.6008869179600886,
+     "median": 0.45565410199556544,
+     "min": 0.11529933481152993
+    }
+   },
+   {
+    "failed_seeds": [
+     1108
+    ],
+    "id": "W8-high",
+    "max": 0.85,
+    "metric": "duty_factor_max",
+    "min": null,
+    "passed": 9,
+    "value": {
+     "max": 0.9600886917960089,
+     "median": 0.7427937915742794,
+     "min": 0.6718403547671841
+    }
+   },
+   {
+    "failed_seeds": [
+     1101,
+     1102,
+     1103,
+     1104,
+     1105,
+     1106,
+     1107,
+     1108,
+     1109,
+     1110
+    ],
+    "id": "W9",
+    "max": 1.5,
+    "metric": "step_count_ratio",
+    "min": null,
+    "passed": 0,
+    "value": {
+     "max": 11.0,
+     "median": 7.0,
+     "min": 3.6666666666666665
+    }
+   },
+   {
+    "failed_seeds": [
+     1101,
+     1102,
+     1103,
+     1104,
+     1105,
+     1106,
+     1107,
+     1108,
+     1109,
+     1110
+    ],
+    "id": "W10",
+    "max": null,
+    "metric": "foot_lowest_hip_heights_min",
+    "min": -0.05,
+    "passed": 0,
+    "value": {
+     "max": -0.14186011985029096,
+     "median": -0.21459703132763025,
+     "min": -0.25937332878940167
+    }
+   }
+  ],
+  "reward": {
+   "terms": [
+    {
+     "label": "alive",
+     "max": 1000.0,
+     "median": 1000.0,
+     "min": 626.0
+    },
+    {
+     "label": "upright",
+     "max": 496.4705811861153,
+     "median": 462.94689076511804,
+     "min": 308.59500133826896
+    },
+    {
+     "label": "speed_error",
+     "max": -295.9598855773694,
+     "median": -558.2372148085528,
+     "min": -622.2533848621781
+    },
+    {
+     "label": "sideways",
+     "max": -54.940117397450045,
+     "median": -111.22437243479442,
+     "min": -265.5280125181038
+    },
+    {
+     "label": "yaw_rate",
+     "max": -24.842402001950397,
+     "median": -47.14876253614959,
+     "min": -77.82052955579475
+    }
+   ],
+   "total": {
+    "max": 835.9829896781107,
+    "median": 682.1682207736484,
+    "min": 462.1234143659247
+   }
+  },
+  "seeds": 10,
+  "terminations": {
+   "horizon": 8,
+   "tipped": 2
+  },
+  "void": []
+ },
+ "task_label": "walk_forward",
+ "task_output": "walk_task",
+ "task_semantic_sha256": "c5b9d66a8ce82fcfecbec9f6494f6d680246c17c0c52cc2f44d3fa6fb3daf0b5",
+ "task_sha256": "7f36b6d3ae1991b827ef70ee8da14375ec102ba9149ddb3cfc50d51184539afd",
+ "trained_task_sha256": "b0913fa0fb93ee8a895f120f02b9031259e2bfa6667a2ffb9e7caf50e01a8f56",
+ "verdict": "fail",
+ "weights": "walk_task.cxpolicy"
+}

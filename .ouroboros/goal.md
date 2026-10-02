@@ -66,6 +66,20 @@ The human owns the checkboxes; roles report results and do not tick them.
       wanders, the spec must say so.
   - Changing a frozen item later is a recorded decision that re-evaluates
     every earlier policy.
+  - **The spec and the judge each have a job (owner, 2026-09-30).**
+    - Where the success spec measures a property (slip, stepping, foot
+      clearance, drift, heading, reach error), the spec is authoritative
+      for it.
+    - A judge blind spot on a measured property, such as the still-frame
+      judge not seeing w2-2's slip (ADR-460, ADR-461), is recorded in the
+      contract as a known limit. It does not block P1, and it does not call
+      for more judge probes.
+    - The judge's job is what the spec cannot measure: whether the
+      behaviour reads as the intended one at all, and gross failures such
+      as falling, flailing or the wrong motion.
+    - The judge's bar still applies to R1–R3. Where the judge contradicts a
+      measured predicate, the predicate wins, and the disagreement is
+      recorded.
 - [ ] **P2. The product evaluates any policy against its task's spec.**
   - The success spec is declared in xscript alongside the task, and is
     documented in `docs/XSCRIPT.md`.
@@ -115,6 +129,22 @@ The human owns the checkboxes; roles report results and do not tick them.
     into a new `ot11-*` project.
   - Every earlier training run and evaluation is published, including the
     failures.
+  - **Feet in the floor are a physics defect, not a design choice (owner,
+    2026-10-01).**
+    - Stepping feet that sink 7–15 mm into the floor on 7.5 mm feet (round
+      11, W10) are a defect in the exported contact physics: contact
+      stiffness, damping, timestep or solver settings in the product's
+      MJCF.
+    - The actor diagnoses and fixes it in the product, with a regression
+      test that fails before the fix and a before/after measurement of
+      penetration under a stepping load. It is also checked against the
+      engine and the trainer, so the two still agree.
+    - A contact `margin`, `gap` or any other setting that holds geometry
+      off the floor, or that moves the measured foot surface, does not
+      count as passing W10. That holds whoever authors it.
+    - A policy evaluated on a model that uses one is void for R1, and is
+      reported as void.
+    - W10's threshold stays frozen.
 - [ ] **R2. An arm reaches targets placed at random.**
   - Under a goal-sampling task (P3), the final pre-registered confirmation
     evaluation meets the frozen reach spec on every seed, and meets the

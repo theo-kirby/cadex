@@ -1,0 +1,208 @@
+{
+  "schema": "ot11-judge-v1",
+  "label": "w2-2",
+  "behaviour": "walk",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "dc081807c28033ec7c729ff967d078a2dfdd884f088d8fa7cf130255048d83ed",
+  "instructions_sha256": "dfeab7c7624b2a7472baaaf1e6b9d20ebaba0c80f96953ea203d5725ef02b706",
+  "intent_sha256": "7c1f31c789ac7a16aa757dfa72c57344ad45112fd18fcf5a4bb9e8f616adbb38",
+  "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+  },
+  "evaluation": {
+    "schema": "cadex-evaluation-v1",
+    "verdict": "fail",
+    "accepted_revision": "064d8d7cd34c66d99b874282729b2a7017ad8cab873c3a79aea209c9d9dfd548",
+    "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+    "task_sha256": "7f36b6d3ae1991b827ef70ee8da14375ec102ba9149ddb3cfc50d51184539afd",
+    "model_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2"
+  },
+  "seed": 1105,
+  "trace_sha256": "a1af7785fc2ccf970bdac08c5e25ff1a84ae6bbf636f2c059b7296aadd78b0c2",
+  "film_style_sha256": "ec44312c216e3f1ce31ea9fe52e8bb8b2b2defc005f60dd8f7b70def52582a7a",
+  "sheets": [
+    {
+      "sheet": "overview",
+      "sha256": "c0ccdc38773739ae5df60928a0589e449d7af0e565b0c59932ed54d81c3bd537",
+      "frames": 12,
+      "times_s": [
+        0.0,
+        0.9,
+        1.8,
+        2.72,
+        3.62,
+        4.54,
+        5.44,
+        6.36,
+        7.26,
+        8.18,
+        9.08,
+        10.0
+      ],
+      "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path"
+    },
+    {
+      "sheet": "detail",
+      "sha256": "70f1932bd623aef29362a6059b0e1209dcdf19954e6cf615b3f55f10caba07e6",
+      "frames": 12,
+      "times_s": [
+        5.0,
+        5.04,
+        5.08,
+        5.12,
+        5.16,
+        5.2,
+        5.24,
+        5.28,
+        5.32,
+        5.36,
+        5.4,
+        5.44
+      ],
+      "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+      "follows": "c_tray"
+    }
+  ],
+  "medians": {
+    "V1": 1,
+    "V2": 1,
+    "V3": 0,
+    "V4": 1
+  },
+  "total": 3,
+  "meets_bar": false,
+  "raw": [
+    {
+      "scores": {
+        "V1": {
+          "score": 1,
+          "reason": "It walks forward for roughly the first 5.5 seconds, then topples and lies overturned for the rest of the episode, so it does not keep walking."
+        },
+        "V2": {
+          "score": 1,
+          "reason": "Real stepping with lifted legs is visible in the first half, but the detail frames show the body sagging and legs splaying, and from about 6.4 s there is no gait at all."
+        },
+        "V3": {
+          "score": 0,
+          "reason": "The robot pitches down, falls and ends on its back with its legs in the air."
+        },
+        "V4": {
+          "score": 1,
+          "reason": "It starts as a regular walk and then degrades into a collapse, staying motionless and overturned from about 6.4 s to the end."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 1, \"reason\": \"It walks forward for roughly the first 5.5 seconds, then topples and lies overturned for the rest of the episode, so it does not keep walking.\"}, \"V2\": {\"score\": 1, \"reason\": \"Real stepping with lifted legs is visible in the first half, but the detail frames show the body sagging and legs splaying, and from about 6.4 s there is no gait at all.\"}, \"V3\": {\"score\": 0, \"reason\": \"The robot pitches down, falls and ends on its back with its legs in the air.\"}, \"V4\": {\"score\": 1, \"reason\": \"It starts as a regular walk and then degrades into a collapse, staying motionless and overturned from about 6.4 s to the end.\"}}",
+      "session_id": "2dbbc173-7578-4b3d-8619-711b7c54b271",
+      "duration_ms": 6787,
+      "num_turns": 3,
+      "total_cost_usd": 0.0358904,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 571,
+          "cacheReadInputTokens": 4232,
+          "cacheCreationInputTokens": 2951,
+          "webSearchRequests": 0,
+          "costUSD": 0.0358904,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 178,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 1,
+          "reason": "The robot walks forward for roughly the first five to six seconds, then flips onto its back by 6.36 s and lies there until the end."
+        },
+        "V2": {
+          "score": 1,
+          "reason": "Leg positions change between early frames, suggesting real steps, but the detail frames show the body sinking and the front legs folding forward, and the last third is spent upside down with no walking."
+        },
+        "V3": {
+          "score": 0,
+          "reason": "The robot collapses, tumbles over and ends inverted on the floor."
+        },
+        "V4": {
+          "score": 1,
+          "reason": "It begins as a fairly regular upright walk and then degrades into a fall and a motionless, overturned pose."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 1, \"reason\": \"The robot walks forward for roughly the first five to six seconds, then flips onto its back by 6.36 s and lies there until the end.\"}, \"V2\": {\"score\": 1, \"reason\": \"Leg positions change between early frames, suggesting real steps, but the detail frames show the body sinking and the front legs folding forward, and the last third is spent upside down with no walking.\"}, \"V3\": {\"score\": 0, \"reason\": \"The robot collapses, tumbles over and ends inverted on the floor.\"}, \"V4\": {\"score\": 1, \"reason\": \"It begins as a fairly regular upright walk and then degrades into a fall and a motionless, overturned pose.\"}}",
+      "session_id": "36fa38d5-63db-46f6-b388-eb7daa81302a",
+      "duration_ms": 8455,
+      "num_turns": 3,
+      "total_cost_usd": 0.0394498,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 751,
+          "cacheReadInputTokens": 4229,
+          "cacheCreationInputTokens": 2946,
+          "webSearchRequests": 0,
+          "costUSD": 0.0394498,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 371,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 1,
+          "reason": "The robot walks forward for roughly the first five and a half seconds, then flips over by 6.36 s and lies on its back without progressing for the rest of the episode."
+        },
+        "V2": {
+          "score": 1,
+          "reason": "Stepping with legs lifting and swinging is visible in the first half, but the front of the body sinks into a crouch by 5.4 s and no walking occurs at all after the fall."
+        },
+        "V3": {
+          "score": 0,
+          "reason": "The robot pitches forward, tumbles and ends upside down with its legs in the air from about 6.36 s onward."
+        },
+        "V4": {
+          "score": 1,
+          "reason": "The motion starts as a regular walk and then degrades into a collapse and a motionless overturned pose for the last four seconds."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 1, \"reason\": \"The robot walks forward for roughly the first five and a half seconds, then flips over by 6.36 s and lies on its back without progressing for the rest of the episode.\"}, \"V2\": {\"score\": 1, \"reason\": \"Stepping with legs lifting and swinging is visible in the first half, but the front of the body sinks into a crouch by 5.4 s and no walking occurs at all after the fall.\"}, \"V3\": {\"score\": 0, \"reason\": \"The robot pitches forward, tumbles and ends upside down with its legs in the air from about 6.36 s onward.\"}, \"V4\": {\"score\": 1, \"reason\": \"The motion starts as a regular walk and then degrades into a collapse and a motionless overturned pose for the last four seconds.\"}}",
+      "session_id": "056ca6ab-31b6-48c4-a0fd-d7ae185373d8",
+      "duration_ms": 4828,
+      "num_turns": 3,
+      "total_cost_usd": 0.032751,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 412,
+          "cacheReadInputTokens": 4235,
+          "cacheCreationInputTokens": 2956,
+          "webSearchRequests": 0,
+          "costUSD": 0.032751,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

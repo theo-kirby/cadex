@@ -1,0 +1,2955 @@
+{
+ "schema": "ot11-walk-round-receipt-v1",
+ "project": "ot11-quad-1",
+ "round": 5,
+ "run": "r5-swing",
+ "session": 2,
+ "trainer": {
+  "loaded": "97bc1d9aa068fa0a41ce19180ea7b3bb0c67659e63f2c769d00c08e56d890259",
+  "loaded_is": "the ADR-465 trainer with ADR-466's import-time digest (e4500356, committed 00:39:36Z); the process started at 00:50:49Z and the file was not edited before the run ended at 01:25:49Z",
+  "recorded_in_checkpoints": [
+   "97bc1d9aa068fa0a41ce19180ea7b3bb0c67659e63f2c769d00c08e56d890259"
+  ]
+ },
+ "registered": {
+  "settings": {
+   "checkpoint_every": 100,
+   "envs": 2048,
+   "iterations": 780,
+   "seed": 41
+  },
+  "budget_s": 2400.0,
+  "reason": "r4 failed all 10 seeds by standing still: W5-steps 0 (min 4), W8-high duty 1.0 (max 0.85), W3 speed_ratio ~0.00 (0.75-1.25), W10 -0.085 to -0.13 (min -0.05); its sink term sat in tanh saturation (-1.87/step standing, no gradient) and the clearance terms charged every low foot motion, so stepping never paid. This run replaces clearance with per-foot swing pay / ground-slip cost, rescales sink onto its slope, and returns gyro and joint rates to the policy (their eval-only chatter was the MJX damping bug); expected: feet lift and step forward.",
+  "accepted_revision": "b2a04e2ea7248abc028fbbc643cf9bc65cc404b2fb0959bcdadeb86cc1cd2cae",
+  "task_sha256": "0f6aba863693ec86f55f152809927ee1394ddddd95b64734321a6be5f5756461"
+ },
+ "ended": {
+  "state": "finished",
+  "wall_time_s": 2099.82,
+  "trainer_wall_time_s": 1897.5605880259536,
+  "reason": "the trainer ran every iteration and its policy hashes to its receipt.",
+  "policy_sha256": "6a7c89de9ade139024ea7964306eeceaf159bea2655cd40cf4cb08a9829cf70e"
+ },
+ "iterations_run": 780,
+ "best_iteration": 773,
+ "training_reward_per_step": {
+  "final": 0.9716793298721313,
+  "best": 1.011083960533142
+ },
+ "checkpoints": [
+  {
+   "tag": "000100",
+   "sha256": "b60ff901ec1e78e14f92357af48efd241a6dd5a704fd1614f3d44c2d0cc36ea7",
+   "iteration": 100,
+   "recorded_trainer_sha256": "97bc1d9aa068fa0a41ce19180ea7b3bb0c67659e63f2c769d00c08e56d890259"
+  },
+  {
+   "tag": "000200",
+   "sha256": "0980cbd148baefdbd6e863adde35056c52385f59f5ca3e939fcaa1deb0353b3d",
+   "iteration": 200,
+   "recorded_trainer_sha256": "97bc1d9aa068fa0a41ce19180ea7b3bb0c67659e63f2c769d00c08e56d890259"
+  },
+  {
+   "tag": "000300",
+   "sha256": "67450ecd5185ab827c778ca58503d2c9f5b390a5d84dc3befbf32eb9a84ca253",
+   "iteration": 300,
+   "recorded_trainer_sha256": "97bc1d9aa068fa0a41ce19180ea7b3bb0c67659e63f2c769d00c08e56d890259"
+  },
+  {
+   "tag": "000400",
+   "sha256": "2ef9e4875dd188d7a7f93b5626253d826cec6fc9c00e29434500b4d43c52a524",
+   "iteration": 400,
+   "recorded_trainer_sha256": "97bc1d9aa068fa0a41ce19180ea7b3bb0c67659e63f2c769d00c08e56d890259"
+  },
+  {
+   "tag": "000500",
+   "sha256": "32057482d6690016fc5c3315d5ac04dfb65fce46ccb61324672051e23d9d0831",
+   "iteration": 500,
+   "recorded_trainer_sha256": "97bc1d9aa068fa0a41ce19180ea7b3bb0c67659e63f2c769d00c08e56d890259"
+  },
+  {
+   "tag": "000600",
+   "sha256": "1dcd0307a8a363b9ae8c53789ea831d967e57dca29b2dc67b697df0e4de3078d",
+   "iteration": 600,
+   "recorded_trainer_sha256": "97bc1d9aa068fa0a41ce19180ea7b3bb0c67659e63f2c769d00c08e56d890259"
+  },
+  {
+   "tag": "000700",
+   "sha256": "518a059d2758fb3b8e8d18d90cd7042331bd67f3d890ecb2fea06dab211d3fd9",
+   "iteration": 700,
+   "recorded_trainer_sha256": "97bc1d9aa068fa0a41ce19180ea7b3bb0c67659e63f2c769d00c08e56d890259"
+  },
+  {
+   "tag": "best",
+   "sha256": "ac7d1bd4acae9971d785c99b9a986b1b0a57b8a5b7626a5418ec87825a319074",
+   "iteration": 780,
+   "recorded_trainer_sha256": "97bc1d9aa068fa0a41ce19180ea7b3bb0c67659e63f2c769d00c08e56d890259"
+  },
+  {
+   "tag": "final",
+   "sha256": "6a7c89de9ade139024ea7964306eeceaf159bea2655cd40cf4cb08a9829cf70e",
+   "iteration": 780,
+   "recorded_trainer_sha256": "97bc1d9aa068fa0a41ce19180ea7b3bb0c67659e63f2c769d00c08e56d890259"
+  }
+ ],
+ "evaluation": {
+  "report": "evaluations/dee2391353b7-6a7c89de9ade/evaluation.json",
+  "accepted_revision": "dee2391353b7c38dc7860cc1c40b47e339e1bc5d5a0d8b05da6b948f86c1f8b0",
+  "policy_sha256": "6a7c89de9ade139024ea7964306eeceaf159bea2655cd40cf4cb08a9829cf70e",
+  "model_sha256": "ade106a6b7d636a972ae90909f6344096c46446022e87a9357d94f88f2cc31a5",
+  "task_sha256": "0f6aba863693ec86f55f152809927ee1394ddddd95b64734321a6be5f5756461",
+  "verdict": "fail",
+  "summary": {
+   "seeds": 10,
+   "passed": [],
+   "failed": [
+    1101,
+    1102,
+    1103,
+    1104,
+    1105,
+    1106,
+    1107,
+    1108,
+    1109,
+    1110
+   ],
+   "void": [],
+   "pass": false,
+   "predicates": [
+    {
+     "id": "W1",
+     "metric": "completed",
+     "min": 1.0,
+     "max": null,
+     "passed": 10,
+     "failed_seeds": [],
+     "value": {
+      "min": 1.0,
+      "median": 1.0,
+      "max": 1.0
+     }
+    },
+    {
+     "id": "W2",
+     "metric": "max_tilt_deg",
+     "min": null,
+     "max": 30.0,
+     "passed": 10,
+     "failed_seeds": [],
+     "value": {
+      "min": 12.365575198130784,
+      "median": 16.24521486654236,
+      "max": 20.822087228037578
+     }
+    },
+    {
+     "id": "W3",
+     "metric": "speed_ratio",
+     "min": 0.75,
+     "max": 1.25,
+     "passed": 9,
+     "failed_seeds": [
+      1106
+     ],
+     "value": {
+      "min": 0.8249229755556535,
+      "median": 1.164036311708619,
+      "max": 1.2515734136984182
+     }
+    },
+    {
+     "id": "W4-lateral",
+     "metric": "lateral_ratio",
+     "min": null,
+     "max": 0.25,
+     "passed": 9,
+     "failed_seeds": [
+      1106
+     ],
+     "value": {
+      "min": 0.003945613557704178,
+      "median": 0.09898925766602966,
+      "max": 0.34179183430148224
+     }
+    },
+    {
+     "id": "W4-heading",
+     "metric": "max_heading_deg",
+     "min": null,
+     "max": 45.0,
+     "passed": 10,
+     "failed_seeds": [],
+     "value": {
+      "min": 18.44195989633693,
+      "median": 26.57058993930128,
+      "max": 33.34989156425887
+     }
+    },
+    {
+     "id": "W5-steps",
+     "metric": "steps_min",
+     "min": 4.0,
+     "max": null,
+     "passed": 1,
+     "failed_seeds": [
+      1101,
+      1102,
+      1103,
+      1104,
+      1105,
+      1107,
+      1108,
+      1109,
+      1110
+     ],
+     "value": {
+      "min": 1,
+      "median": 2.0,
+      "max": 6
+     }
+    },
+    {
+     "id": "W5-share",
+     "metric": "step_share_min",
+     "min": 0.7,
+     "max": null,
+     "passed": 0,
+     "failed_seeds": [
+      1101,
+      1102,
+      1103,
+      1104,
+      1105,
+      1106,
+      1107,
+      1108,
+      1109,
+      1110
+     ],
+     "value": {
+      "min": 0.013977720227514418,
+      "median": 0.03497585021583753,
+      "max": 0.08696214377459441
+     }
+    },
+    {
+     "id": "W6",
+     "metric": "step_clearance_hip_heights_min",
+     "min": 0.08,
+     "max": null,
+     "passed": 8,
+     "failed_seeds": [
+      1101,
+      1107
+     ],
+     "value": {
+      "min": 0.04847818704837579,
+      "median": 0.10359898373525786,
+      "max": 0.1235327732073088
+     }
+    },
+    {
+     "id": "W7",
+     "metric": "slip_share_max",
+     "min": null,
+     "max": 0.15,
+     "passed": 0,
+     "failed_seeds": [
+      1101,
+      1102,
+      1103,
+      1104,
+      1105,
+      1106,
+      1107,
+      1108,
+      1109,
+      1110
+     ],
+     "value": {
+      "min": 0.46136001856485387,
+      "median": 0.4942792826853306,
+      "max": 0.5308356081273965
+     }
+    },
+    {
+     "id": "W8-low",
+     "metric": "duty_factor_min",
+     "min": 0.4,
+     "max": null,
+     "passed": 0,
+     "failed_seeds": [
+      1101,
+      1102,
+      1103,
+      1104,
+      1105,
+      1106,
+      1107,
+      1108,
+      1109,
+      1110
+     ],
+     "value": {
+      "min": 0.1574279379157428,
+      "median": 0.20842572062084258,
+      "max": 0.2549889135254989
+     }
+    },
+    {
+     "id": "W8-high",
+     "metric": "duty_factor_max",
+     "min": null,
+     "max": 0.85,
+     "passed": 10,
+     "failed_seeds": [],
+     "value": {
+      "min": 0.6363636363636364,
+      "median": 0.6807095343680709,
+      "max": 0.7139689578713969
+     }
+    },
+    {
+     "id": "W9",
+     "metric": "step_count_ratio",
+     "min": null,
+     "max": 1.5,
+     "passed": 0,
+     "failed_seeds": [
+      1101,
+      1102,
+      1103,
+      1104,
+      1105,
+      1106,
+      1107,
+      1108,
+      1109,
+      1110
+     ],
+     "value": {
+      "min": 5.666666666666667,
+      "median": 14.25,
+      "max": 33.0
+     }
+    },
+    {
+     "id": "W10",
+     "metric": "foot_lowest_hip_heights_min",
+     "min": -0.05,
+     "max": null,
+     "passed": 0,
+     "failed_seeds": [
+      1101,
+      1102,
+      1103,
+      1104,
+      1105,
+      1106,
+      1107,
+      1108,
+      1109,
+      1110
+     ],
+     "value": {
+      "min": -0.20887777979382785,
+      "median": -0.1566057555988832,
+      "max": -0.1380536480992044
+     }
+    }
+   ],
+   "terminations": {
+    "horizon": 10
+   },
+   "reward": {
+    "total": {
+     "min": 364.1704052660505,
+     "median": 520.9339266806012,
+     "max": 679.4508421695449
+    },
+    "terms": [
+     {
+      "label": "alive",
+      "min": 1500.0,
+      "median": 1500.0,
+      "max": 1500.0
+     },
+     {
+      "label": "tilt",
+      "min": -39.16381942990496,
+      "median": -28.313542709466,
+      "max": -18.264789360029237
+     },
+     {
+      "label": "speed_track",
+      "min": 197.82589566514804,
+      "median": 272.73327482095056,
+      "max": 360.4096234230639
+     },
+     {
+      "label": "speed_error",
+      "min": -311.6283702348726,
+      "median": -278.87756223726706,
+      "max": -240.47091289673523
+     },
+     {
+      "label": "sideways",
+      "min": -270.28671382530337,
+      "median": -240.64039657221338,
+      "max": -173.2981586695145
+     },
+     {
+      "label": "yaw_rate",
+      "min": -85.90226501022941,
+      "median": -80.53917505206044,
+      "max": -72.8086947468398
+     },
+     {
+      "label": "heading",
+      "min": -91.52626313216894,
+      "median": -58.95642506540028,
+      "max": -53.02721268084314
+     },
+     {
+      "label": "trot_sync",
+      "min": -88.26300255939111,
+      "median": -78.2026126883822,
+      "max": -65.81988524014191
+     },
+     {
+      "label": "impact",
+      "min": -143.04735806487366,
+      "median": -141.22575414677087,
+      "max": -133.67585098891857
+     },
+     {
+      "label": "step_fl",
+      "min": 53.26418407163063,
+      "median": 88.27307441481952,
+      "max": 122.92649724330604
+     },
+     {
+      "label": "step_fr",
+      "min": -77.95447830284233,
+      "median": -67.89262745605569,
+      "max": -50.23524026713408
+     },
+     {
+      "label": "step_rl",
+      "min": -124.15858093894754,
+      "median": -109.4378116937641,
+      "max": -93.62192463833385
+     },
+     {
+      "label": "step_rr",
+      "min": -57.200616073560525,
+      "median": -48.97241149577759,
+      "max": -21.21112275348372
+     },
+     {
+      "label": "sink",
+      "min": -100.65297886372682,
+      "median": -86.489506356385,
+      "max": -69.08660982897366
+     },
+     {
+      "label": "joint_speed_hip",
+      "min": -12.6171721701443,
+      "median": -9.49914172835205,
+      "max": -8.565606833609367
+     },
+     {
+      "label": "joint_speed_knee",
+      "min": -143.8614574627349,
+      "median": -140.3383916922602,
+      "max": -137.43861028556844
+     }
+    ]
+   },
+   "metrics": {
+    "completed": {
+     "measured": 10,
+     "min": 1.0,
+     "median": 1.0,
+     "max": 1.0
+    },
+    "duration_s": {
+     "measured": 10,
+     "min": 10.0,
+     "median": 10.0,
+     "max": 10.0
+    },
+    "max_tilt_deg": {
+     "measured": 10,
+     "min": 12.365575198130784,
+     "median": 16.24521486654236,
+     "max": 20.822087228037578
+    },
+    "max_heading_deg": {
+     "measured": 10,
+     "min": 18.44195989633693,
+     "median": 26.57058993930128,
+     "max": 33.34989156425887
+    },
+    "final_heading_deg": {
+     "measured": 10,
+     "min": -14.169416112451957,
+     "median": 2.3728717185971764,
+     "max": 18.88325272163757
+    },
+    "max_drift_mm": {
+     "measured": 10,
+     "min": 564.2554300777552,
+     "median": 832.3771832831835,
+     "max": 1155.0245744586912
+    },
+    "final_drift_mm": {
+     "measured": 10,
+     "min": 561.6563970767444,
+     "median": 832.1691361648757,
+     "max": 1155.0245744586912
+    },
+    "mean_speed_mm_s": {
+     "measured": 10,
+     "min": 80.8703353519067,
+     "median": 104.33950478353172,
+     "max": 125.17231569180026
+    },
+    "max_drift_com_heights": {
+     "measured": 10,
+     "min": 6.680849934577959,
+     "median": 9.855442684380247,
+     "max": 13.675625330969222
+    },
+    "recovery_s_max": {
+     "measured": 1,
+     "min": 3.9513619918817735,
+     "median": 3.9513619918817735,
+     "max": 3.9513619918817735
+    },
+    "mean_forward_speed_mm_s": {
+     "measured": 10,
+     "min": 58.266803897694686,
+     "median": 86.82454785019527,
+     "max": 116.37890985765395
+    },
+    "mean_lateral_speed_mm_s": {
+     "measured": 10,
+     "min": -9.682461883645061,
+     "median": 4.71233997850741,
+     "max": 27.093734545519247
+    },
+    "steps_min": {
+     "measured": 10,
+     "min": 1,
+     "median": 2.0,
+     "max": 6
+    },
+    "step_count_ratio": {
+     "measured": 10,
+     "min": 5.666666666666667,
+     "median": 14.25,
+     "max": 33.0
+    },
+    "step_share_min": {
+     "measured": 10,
+     "min": 0.013977720227514418,
+     "median": 0.03497585021583753,
+     "max": 0.08696214377459441
+    },
+    "step_clearance_hip_heights_min": {
+     "measured": 10,
+     "min": 0.04847818704837579,
+     "median": 0.10359898373525786,
+     "max": 0.1235327732073088
+    },
+    "slip_share_max": {
+     "measured": 10,
+     "min": 0.46136001856485387,
+     "median": 0.4942792826853306,
+     "max": 0.5308356081273965
+    },
+    "duty_factor_min": {
+     "measured": 10,
+     "min": 0.1574279379157428,
+     "median": 0.20842572062084258,
+     "max": 0.2549889135254989
+    },
+    "duty_factor_max": {
+     "measured": 10,
+     "min": 0.6363636363636364,
+     "median": 0.6807095343680709,
+     "max": 0.7139689578713969
+    },
+    "foot_lowest_hip_heights_min": {
+     "measured": 10,
+     "min": -0.20887777979382785,
+     "median": -0.1566057555988832,
+     "max": -0.1380536480992044
+    },
+    "speed_ratio": {
+     "measured": 10,
+     "min": 0.8249229755556535,
+     "median": 1.164036311708619,
+     "max": 1.2515734136984182
+    },
+    "lateral_ratio": {
+     "measured": 10,
+     "min": 0.003945613557704178,
+     "median": 0.09898925766602966,
+     "max": 0.34179183430148224
+    }
+   }
+  },
+  "seeds": [
+   {
+    "seed": 1101,
+    "pass": false,
+    "failing": [
+     "W5-steps",
+     "W5-share",
+     "W6",
+     "W7",
+     "W8-low",
+     "W9",
+     "W10"
+    ],
+    "episode": {
+     "steps": 500,
+     "duration_s": 10.0,
+     "control_hz": 50,
+     "termination": "",
+     "terminated_step": null,
+     "truncated": true,
+     "solver_warnings": []
+    },
+    "predicates": [
+     {
+      "id": "W1",
+      "metric": "completed",
+      "value": 1.0,
+      "min": 1.0,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W2",
+      "metric": "max_tilt_deg",
+      "value": 17.595890319238116,
+      "min": null,
+      "max": 30.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W3",
+      "metric": "speed_ratio",
+      "value": 1.064036930866411,
+      "min": 0.75,
+      "max": 1.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-lateral",
+      "metric": "lateral_ratio",
+      "value": 0.026109787833577532,
+      "min": null,
+      "max": 0.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-heading",
+      "metric": "max_heading_deg",
+      "value": 27.435209798188506,
+      "min": null,
+      "max": 45.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W5-steps",
+      "metric": "steps_min",
+      "value": 1,
+      "min": 4.0,
+      "max": null,
+      "pass": false,
+      "why": "steps_min is 1, under 4"
+     },
+     {
+      "id": "W5-share",
+      "metric": "step_share_min",
+      "value": 0.015418090644069496,
+      "min": 0.7,
+      "max": null,
+      "pass": false,
+      "why": "step_share_min is 0.01542, under 0.7"
+     },
+     {
+      "id": "W6",
+      "metric": "step_clearance_hip_heights_min",
+      "value": 0.07781725601649819,
+      "min": 0.08,
+      "max": null,
+      "pass": false,
+      "why": "step_clearance_hip_heights_min is 0.07782, under 0.08"
+     },
+     {
+      "id": "W7",
+      "metric": "slip_share_max",
+      "value": 0.5250968053520186,
+      "min": null,
+      "max": 0.15,
+      "pass": false,
+      "why": "slip_share_max is 0.5251, over 0.15"
+     },
+     {
+      "id": "W8-low",
+      "metric": "duty_factor_min",
+      "value": 0.21286031042128603,
+      "min": 0.4,
+      "max": null,
+      "pass": false,
+      "why": "duty_factor_min is 0.2129, under 0.4"
+     },
+     {
+      "id": "W8-high",
+      "metric": "duty_factor_max",
+      "value": 0.6984478935698448,
+      "min": null,
+      "max": 0.85,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W9",
+      "metric": "step_count_ratio",
+      "value": 33.0,
+      "min": null,
+      "max": 1.5,
+      "pass": false,
+      "why": "step_count_ratio is 33, over 1.5"
+     },
+     {
+      "id": "W10",
+      "metric": "foot_lowest_hip_heights_min",
+      "value": -0.15684626747198652,
+      "min": -0.05,
+      "max": null,
+      "pass": false,
+      "why": "foot_lowest_hip_heights_min is -0.1568, under -0.05"
+     }
+    ],
+    "metrics": {
+     "completed": 1.0,
+     "duration_s": 10.0,
+     "max_tilt_deg": 17.595890319238116,
+     "max_heading_deg": 27.435209798188506,
+     "final_heading_deg": 3.3093175574862923,
+     "max_drift_mm": 593.6859011410182,
+     "final_drift_mm": 593.6859011410182,
+     "mean_speed_mm_s": 85.54081629597945,
+     "max_drift_com_heights": 7.029310135750511,
+     "recovery_s_max": 3.9513619918817735,
+     "mean_forward_speed_mm_s": 66.56127536301003,
+     "mean_lateral_speed_mm_s": 1.6333087012735605,
+     "steps_min": 1,
+     "step_count_ratio": 33.0,
+     "step_share_min": 0.015418090644069496,
+     "step_clearance_hip_heights_min": 0.07781725601649819,
+     "slip_share_max": 0.5250968053520186,
+     "duty_factor_min": 0.21286031042128603,
+     "duty_factor_max": 0.6984478935698448,
+     "foot_lowest_hip_heights_min": -0.15684626747198652,
+     "speed_ratio": 1.064036930866411,
+     "lateral_ratio": 0.026109787833577532
+    },
+    "shove_at_s": [
+     3.8786380081182266
+    ],
+    "feet": {
+     "c_foot_fl": {
+      "swings": 51,
+      "steps": 33,
+      "step_share": 0.6387377427500434,
+      "slip_share": 0.12002308531005712,
+      "duty_factor": 0.21286031042128603,
+      "median_step_clearance_hip_heights": 0.1557061372348377,
+      "median_step_advance_mm": 22.094799598982043,
+      "lowest_height_mm": -13.079566797834346,
+      "settled_lowest_height_mm": -13.079566797834346
+     },
+     "c_foot_fr": {
+      "swings": 77,
+      "steps": 11,
+      "step_share": 0.1616080113559804,
+      "slip_share": 0.43791099708488507,
+      "duty_factor": 0.516629711751663,
+      "median_step_clearance_hip_heights": 0.25982515316726384,
+      "median_step_advance_mm": 16.51698575790648,
+      "lowest_height_mm": -15.167128172301577,
+      "settled_lowest_height_mm": -15.167128172301577
+     },
+     "c_foot_rl": {
+      "swings": 51,
+      "steps": 1,
+      "step_share": 0.015418090644069496,
+      "slip_share": 0.5250968053520186,
+      "duty_factor": 0.6984478935698448,
+      "median_step_clearance_hip_heights": 0.07781725601649819,
+      "median_step_advance_mm": 23.279207597713754,
+      "lowest_height_mm": -14.775724639413317,
+      "settled_lowest_height_mm": -14.775724639413317
+     },
+     "c_foot_rr": {
+      "swings": 68,
+      "steps": 11,
+      "step_share": 0.1727097457911611,
+      "slip_share": 0.3261571069998842,
+      "duty_factor": 0.44789356984478934,
+      "median_step_clearance_hip_heights": 0.09713982800788173,
+      "median_step_advance_mm": 19.499589920265787,
+      "lowest_height_mm": -11.94301186020758,
+      "settled_lowest_height_mm": -11.94301186020758
+     }
+    },
+    "reward_per_step": 0.8745832540715943,
+    "reward_terms": {
+     "alive": 1500.0,
+     "tilt": -31.501665084614345,
+     "speed_track": 273.95831099248176,
+     "speed_error": -283.3572347738143,
+     "sideways": -254.81442369077087,
+     "yaw_rate": -80.84785129339716,
+     "heading": -56.897630430896626,
+     "trot_sync": -65.81988524014191,
+     "impact": -143.04735806487366,
+     "step_fl": 58.741368485207346,
+     "step_fr": -70.41530642672855,
+     "step_rl": -122.03788272918582,
+     "step_rr": -52.00701649816086,
+     "sink": -86.76906407664966,
+     "joint_speed_hip": -8.565606833609367,
+     "joint_speed_knee": -139.32712729904904
+    },
+    "trace_sha256": "b4b3bdd50007cddc2d53398ded06ecb752643e4b31dd61e2e7d0d778fbbda718"
+   },
+   {
+    "seed": 1102,
+    "pass": false,
+    "failing": [
+     "W5-steps",
+     "W5-share",
+     "W7",
+     "W8-low",
+     "W9",
+     "W10"
+    ],
+    "episode": {
+     "steps": 500,
+     "duration_s": 10.0,
+     "control_hz": 50,
+     "termination": "",
+     "terminated_step": null,
+     "truncated": true,
+     "solver_warnings": []
+    },
+    "predicates": [
+     {
+      "id": "W1",
+      "metric": "completed",
+      "value": 1.0,
+      "min": 1.0,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W2",
+      "metric": "max_tilt_deg",
+      "value": 16.36372781457911,
+      "min": null,
+      "max": 30.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W3",
+      "metric": "speed_ratio",
+      "value": 1.078948024483014,
+      "min": 0.75,
+      "max": 1.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-lateral",
+      "metric": "lateral_ratio",
+      "value": 0.09583479752169838,
+      "min": null,
+      "max": 0.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-heading",
+      "metric": "max_heading_deg",
+      "value": 23.901977499827535,
+      "min": null,
+      "max": 45.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W5-steps",
+      "metric": "steps_min",
+      "value": 2,
+      "min": 4.0,
+      "max": null,
+      "pass": false,
+      "why": "steps_min is 2, under 4"
+     },
+     {
+      "id": "W5-share",
+      "metric": "step_share_min",
+      "value": 0.02950231444866245,
+      "min": 0.7,
+      "max": null,
+      "pass": false,
+      "why": "step_share_min is 0.0295, under 0.7"
+     },
+     {
+      "id": "W6",
+      "metric": "step_clearance_hip_heights_min",
+      "value": 0.12303533526117712,
+      "min": 0.08,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W7",
+      "metric": "slip_share_max",
+      "value": 0.46136001856485387,
+      "min": null,
+      "max": 0.15,
+      "pass": false,
+      "why": "slip_share_max is 0.4614, over 0.15"
+     },
+     {
+      "id": "W8-low",
+      "metric": "duty_factor_min",
+      "value": 0.2039911308203991,
+      "min": 0.4,
+      "max": null,
+      "pass": false,
+      "why": "duty_factor_min is 0.204, under 0.4"
+     },
+     {
+      "id": "W8-high",
+      "metric": "duty_factor_max",
+      "value": 0.6962305986696231,
+      "min": null,
+      "max": 0.85,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W9",
+      "metric": "step_count_ratio",
+      "value": 13.5,
+      "min": null,
+      "max": 1.5,
+      "pass": false,
+      "why": "step_count_ratio is 13.5, over 1.5"
+     },
+     {
+      "id": "W10",
+      "metric": "foot_lowest_hip_heights_min",
+      "value": -0.15103059416500436,
+      "min": -0.05,
+      "max": null,
+      "pass": false,
+      "why": "foot_lowest_hip_heights_min is -0.151, under -0.05"
+     }
+    ],
+    "metrics": {
+     "completed": 1.0,
+     "duration_s": 10.0,
+     "max_tilt_deg": 16.36372781457911,
+     "max_heading_deg": 23.901977499827535,
+     "final_heading_deg": 2.806852760131057,
+     "max_drift_mm": 842.1973631398507,
+     "final_drift_mm": 841.7812689032352,
+     "mean_speed_mm_s": 112.45284402064632,
+     "max_drift_com_heights": 9.971714756310362,
+     "recovery_s_max": null,
+     "mean_forward_speed_mm_s": 88.59347335505421,
+     "mean_lateral_speed_mm_s": -7.8690885826440145,
+     "steps_min": 2,
+     "step_count_ratio": 13.5,
+     "step_share_min": 0.02950231444866245,
+     "step_clearance_hip_heights_min": 0.12303533526117712,
+     "slip_share_max": 0.46136001856485387,
+     "duty_factor_min": 0.2039911308203991,
+     "duty_factor_max": 0.6962305986696231,
+     "foot_lowest_hip_heights_min": -0.15103059416500436,
+     "speed_ratio": 1.078948024483014,
+     "lateral_ratio": 0.09583479752169838
+    },
+    "shove_at_s": [
+     4.006509711286229
+    ],
+    "feet": {
+     "c_foot_fl": {
+      "swings": 44,
+      "steps": 27,
+      "step_share": 0.6562655105334779,
+      "slip_share": 0.11002822857754029,
+      "duty_factor": 0.2039911308203991,
+      "median_step_clearance_hip_heights": 0.204058481439371,
+      "median_step_advance_mm": 28.03148609917892,
+      "lowest_height_mm": -13.398796392327192,
+      "settled_lowest_height_mm": -12.22474097088935
+     },
+     "c_foot_fr": {
+      "swings": 74,
+      "steps": 9,
+      "step_share": 0.14014741025372443,
+      "slip_share": 0.4053752504647265,
+      "duty_factor": 0.5121951219512195,
+      "median_step_clearance_hip_heights": 0.2116793395349356,
+      "median_step_advance_mm": 23.7542653318954,
+      "lowest_height_mm": -14.60474907411242,
+      "settled_lowest_height_mm": -14.60474907411242
+     },
+     "c_foot_rl": {
+      "swings": 54,
+      "steps": 2,
+      "step_share": 0.02950231444866245,
+      "slip_share": 0.46136001856485387,
+      "duty_factor": 0.6962305986696231,
+      "median_step_clearance_hip_heights": 0.12303533526117712,
+      "median_step_advance_mm": 22.788510014917584,
+      "lowest_height_mm": -12.761125074788211,
+      "settled_lowest_height_mm": -12.761125074788211
+     },
+     "c_foot_rr": {
+      "swings": 67,
+      "steps": 17,
+      "step_share": 0.29367621555722867,
+      "slip_share": 0.24719070707386512,
+      "duty_factor": 0.3835920177383592,
+      "median_step_clearance_hip_heights": 0.12729134947418053,
+      "median_step_advance_mm": 21.982205265730297,
+      "lowest_height_mm": -10.144725456761051,
+      "settled_lowest_height_mm": -10.144725456761051
+     }
+    },
+    "reward_per_step": 1.0145364334079658,
+    "reward_terms": {
+     "alive": 1500.0,
+     "tilt": -31.46816532845457,
+     "speed_track": 268.5153949073512,
+     "speed_error": -281.67983430687053,
+     "sideways": -236.41027488538762,
+     "yaw_rate": -76.81127862047565,
+     "heading": -62.55346708476014,
+     "trot_sync": -80.55708793234255,
+     "impact": -141.27544392585446,
+     "step_fl": 91.05364422807182,
+     "step_fr": -68.46960248030642,
+     "step_rl": -112.82817331259047,
+     "step_rr": -21.21112275348372,
+     "sink": -92.97034880775612,
+     "joint_speed_hip": -8.627412707589565,
+     "joint_speed_knee": -137.43861028556844
+    },
+    "trace_sha256": "734014bd54f5a1eca421475f445ed5ed5b38eab214b3cf665236f684b805c08d"
+   },
+   {
+    "seed": 1103,
+    "pass": false,
+    "failing": [
+     "W5-steps",
+     "W5-share",
+     "W7",
+     "W8-low",
+     "W9",
+     "W10"
+    ],
+    "episode": {
+     "steps": 500,
+     "duration_s": 10.0,
+     "control_hz": 50,
+     "termination": "",
+     "terminated_step": null,
+     "truncated": true,
+     "solver_warnings": []
+    },
+    "predicates": [
+     {
+      "id": "W1",
+      "metric": "completed",
+      "value": 1.0,
+      "min": 1.0,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W2",
+      "metric": "max_tilt_deg",
+      "value": 13.315603999593664,
+      "min": null,
+      "max": 30.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W3",
+      "metric": "speed_ratio",
+      "value": 1.1838943310588665,
+      "min": 0.75,
+      "max": 1.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-lateral",
+      "metric": "lateral_ratio",
+      "value": 0.02063913904062529,
+      "min": null,
+      "max": 0.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-heading",
+      "metric": "max_heading_deg",
+      "value": 26.896096923880506,
+      "min": null,
+      "max": 45.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W5-steps",
+      "metric": "steps_min",
+      "value": 2,
+      "min": 4.0,
+      "max": null,
+      "pass": false,
+      "why": "steps_min is 2, under 4"
+     },
+     {
+      "id": "W5-share",
+      "metric": "step_share_min",
+      "value": 0.038405290406085126,
+      "min": 0.7,
+      "max": null,
+      "pass": false,
+      "why": "step_share_min is 0.03841, under 0.7"
+     },
+     {
+      "id": "W6",
+      "metric": "step_clearance_hip_heights_min",
+      "value": 0.12182432602349487,
+      "min": 0.08,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W7",
+      "metric": "slip_share_max",
+      "value": 0.5281729709354317,
+      "min": null,
+      "max": 0.15,
+      "pass": false,
+      "why": "slip_share_max is 0.5282, over 0.15"
+     },
+     {
+      "id": "W8-low",
+      "metric": "duty_factor_min",
+      "value": 0.19290465631929046,
+      "min": 0.4,
+      "max": null,
+      "pass": false,
+      "why": "duty_factor_min is 0.1929, under 0.4"
+     },
+     {
+      "id": "W8-high",
+      "metric": "duty_factor_max",
+      "value": 0.6873614190687362,
+      "min": null,
+      "max": 0.85,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W9",
+      "metric": "step_count_ratio",
+      "value": 14.5,
+      "min": null,
+      "max": 1.5,
+      "pass": false,
+      "why": "step_count_ratio is 14.5, over 1.5"
+     },
+     {
+      "id": "W10",
+      "metric": "foot_lowest_hip_heights_min",
+      "value": -0.1544231668165211,
+      "min": -0.05,
+      "max": null,
+      "pass": false,
+      "why": "foot_lowest_hip_heights_min is -0.1544, under -0.05"
+     }
+    ],
+    "metrics": {
+     "completed": 1.0,
+     "duration_s": 10.0,
+     "max_tilt_deg": 13.315603999593664,
+     "max_heading_deg": 26.896096923880506,
+     "final_heading_deg": -6.136332854866906,
+     "max_drift_mm": 796.6245981714884,
+     "final_drift_mm": 796.6245981714884,
+     "mean_speed_mm_s": 94.27710098099831,
+     "max_drift_com_heights": 9.432127917393341,
+     "recovery_s_max": null,
+     "mean_forward_speed_mm_s": 84.53861997183834,
+     "mean_lateral_speed_mm_s": -1.4737838387492008,
+     "steps_min": 2,
+     "step_count_ratio": 14.5,
+     "step_share_min": 0.038405290406085126,
+     "step_clearance_hip_heights_min": 0.12182432602349487,
+     "slip_share_max": 0.5281729709354317,
+     "duty_factor_min": 0.19290465631929046,
+     "duty_factor_max": 0.6873614190687362,
+     "foot_lowest_hip_heights_min": -0.1544231668165211,
+     "speed_ratio": 1.1838943310588665,
+     "lateral_ratio": 0.02063913904062529
+    },
+    "shove_at_s": [
+     4.6406432279376775
+    ],
+    "feet": {
+     "c_foot_fl": {
+      "swings": 46,
+      "steps": 29,
+      "step_share": 0.6694754517730761,
+      "slip_share": 0.09512581748987621,
+      "duty_factor": 0.19290465631929046,
+      "median_step_clearance_hip_heights": 0.17392243716411807,
+      "median_step_advance_mm": 24.828550195111365,
+      "lowest_height_mm": -12.3224022842661,
+      "settled_lowest_height_mm": -12.3224022842661
+     },
+     "c_foot_fr": {
+      "swings": 65,
+      "steps": 4,
+      "step_share": 0.05829757058128849,
+      "slip_share": 0.4179727267338207,
+      "duty_factor": 0.5077605321507761,
+      "median_step_clearance_hip_heights": 0.13293671953294714,
+      "median_step_advance_mm": 20.917441746219325,
+      "lowest_height_mm": -10.901236055108676,
+      "settled_lowest_height_mm": -10.901236055108676
+     },
+     "c_foot_rl": {
+      "swings": 58,
+      "steps": 2,
+      "step_share": 0.038405290406085126,
+      "slip_share": 0.5281729709354317,
+      "duty_factor": 0.6873614190687362,
+      "median_step_clearance_hip_heights": 0.12475294729380576,
+      "median_step_advance_mm": 27.91304510322782,
+      "lowest_height_mm": -14.932812885057679,
+      "settled_lowest_height_mm": -14.932812885057679
+     },
+     "c_foot_rr": {
+      "swings": 70,
+      "steps": 14,
+      "step_share": 0.2583093401863178,
+      "slip_share": 0.264776847642357,
+      "duty_factor": 0.41019955654101997,
+      "median_step_clearance_hip_heights": 0.12182432602349487,
+      "median_step_advance_mm": 23.31644170886719,
+      "lowest_height_mm": -10.647928508677685,
+      "settled_lowest_height_mm": -10.647928508677685
+     }
+    },
+    "reward_per_step": 1.069199273314439,
+    "reward_terms": {
+     "alive": 1500.0,
+     "tilt": -27.163786066186404,
+     "speed_track": 269.6901859329951,
+     "speed_error": -276.0752901676635,
+     "sideways": -213.22969452046044,
+     "yaw_rate": -80.88303962548076,
+     "heading": -53.423455199225515,
+     "trot_sync": -70.89083522389787,
+     "impact": -142.98729672430076,
+     "step_fl": 90.6465377512112,
+     "step_fr": -67.31565243180496,
+     "step_rl": -121.21392475277933,
+     "step_rr": -38.35499579334576,
+     "sink": -84.76669704528783,
+     "joint_speed_hip": -8.791973171086624,
+     "joint_speed_knee": -140.64044630546627
+    },
+    "trace_sha256": "895a98e3002e171da31e2c7fbfdffaeacb3b88a41b2a163955d66e14d5a6c204"
+   },
+   {
+    "seed": 1104,
+    "pass": false,
+    "failing": [
+     "W5-steps",
+     "W5-share",
+     "W7",
+     "W8-low",
+     "W9",
+     "W10"
+    ],
+    "episode": {
+     "steps": 500,
+     "duration_s": 10.0,
+     "control_hz": 50,
+     "termination": "",
+     "terminated_step": null,
+     "truncated": true,
+     "solver_warnings": []
+    },
+    "predicates": [
+     {
+      "id": "W1",
+      "metric": "completed",
+      "value": 1.0,
+      "min": 1.0,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W2",
+      "metric": "max_tilt_deg",
+      "value": 17.95125279657432,
+      "min": null,
+      "max": 30.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W3",
+      "metric": "speed_ratio",
+      "value": 0.8249229755556535,
+      "min": 0.75,
+      "max": 1.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-lateral",
+      "metric": "lateral_ratio",
+      "value": 0.003945613557704178,
+      "min": null,
+      "max": 0.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-heading",
+      "metric": "max_heading_deg",
+      "value": 25.12451917484626,
+      "min": null,
+      "max": 45.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W5-steps",
+      "metric": "steps_min",
+      "value": 2,
+      "min": 4.0,
+      "max": null,
+      "pass": false,
+      "why": "steps_min is 2, under 4"
+     },
+     {
+      "id": "W5-share",
+      "metric": "step_share_min",
+      "value": 0.03410273982673457,
+      "min": 0.7,
+      "max": null,
+      "pass": false,
+      "why": "step_share_min is 0.0341, under 0.7"
+     },
+     {
+      "id": "W6",
+      "metric": "step_clearance_hip_heights_min",
+      "value": 0.1235327732073088,
+      "min": 0.08,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W7",
+      "metric": "slip_share_max",
+      "value": 0.5308356081273965,
+      "min": null,
+      "max": 0.15,
+      "pass": false,
+      "why": "slip_share_max is 0.5308, over 0.15"
+     },
+     {
+      "id": "W8-low",
+      "metric": "duty_factor_min",
+      "value": 0.24833702882483372,
+      "min": 0.4,
+      "max": null,
+      "pass": false,
+      "why": "duty_factor_min is 0.2483, under 0.4"
+     },
+     {
+      "id": "W8-high",
+      "metric": "duty_factor_max",
+      "value": 0.7139689578713969,
+      "min": null,
+      "max": 0.85,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W9",
+      "metric": "step_count_ratio",
+      "value": 14.0,
+      "min": null,
+      "max": 1.5,
+      "pass": false,
+      "why": "step_count_ratio is 14, over 1.5"
+     },
+     {
+      "id": "W10",
+      "metric": "foot_lowest_hip_heights_min",
+      "value": -0.16946516579971535,
+      "min": -0.05,
+      "max": null,
+      "pass": false,
+      "why": "foot_lowest_hip_heights_min is -0.1695, under -0.05"
+     }
+    ],
+    "metrics": {
+     "completed": 1.0,
+     "duration_s": 10.0,
+     "max_tilt_deg": 17.95125279657432,
+     "max_heading_deg": 25.12451917484626,
+     "final_heading_deg": -11.05423095482712,
+     "max_drift_mm": 569.9358660977091,
+     "final_drift_mm": 569.9358660977091,
+     "mean_speed_mm_s": 87.31485838326827,
+     "max_drift_com_heights": 6.748106957885743,
+     "recovery_s_max": null,
+     "mean_forward_speed_mm_s": 58.266803897694686,
+     "mean_lateral_speed_mm_s": 0.2786906150455797,
+     "steps_min": 2,
+     "step_count_ratio": 14.0,
+     "step_share_min": 0.03410273982673457,
+     "step_clearance_hip_heights_min": 0.1235327732073088,
+     "slip_share_max": 0.5308356081273965,
+     "duty_factor_min": 0.24833702882483372,
+     "duty_factor_max": 0.7139689578713969,
+     "foot_lowest_hip_heights_min": -0.16946516579971535,
+     "speed_ratio": 0.8249229755556535,
+     "lateral_ratio": 0.003945613557704178
+    },
+    "shove_at_s": [
+     3.8454286160854108
+    ],
+    "feet": {
+     "c_foot_fl": {
+      "swings": 52,
+      "steps": 28,
+      "step_share": 0.6020494823421916,
+      "slip_share": 0.14472780402685653,
+      "duty_factor": 0.24833702882483372,
+      "median_step_clearance_hip_heights": 0.19202529609798807,
+      "median_step_advance_mm": 25.431832667584708,
+      "lowest_height_mm": -16.387383211931954,
+      "settled_lowest_height_mm": -16.387383211931954
+     },
+     "c_foot_fr": {
+      "swings": 64,
+      "steps": 13,
+      "step_share": 0.22784042711501404,
+      "slip_share": 0.4327446899660536,
+      "duty_factor": 0.49445676274944567,
+      "median_step_clearance_hip_heights": 0.14567720228134054,
+      "median_step_advance_mm": 22.18545758052737,
+      "lowest_height_mm": -10.954909911150608,
+      "settled_lowest_height_mm": -10.954909911150608
+     },
+     "c_foot_rl": {
+      "swings": 52,
+      "steps": 2,
+      "step_share": 0.03410273982673457,
+      "slip_share": 0.5308356081273965,
+      "duty_factor": 0.7139689578713969,
+      "median_step_clearance_hip_heights": 0.12892892769804945,
+      "median_step_advance_mm": 22.803809069049535,
+      "lowest_height_mm": -13.288546435106493,
+      "settled_lowest_height_mm": -13.288546435106493
+     },
+     "c_foot_rr": {
+      "swings": 67,
+      "steps": 14,
+      "step_share": 0.24500535880661736,
+      "slip_share": 0.29210376644411445,
+      "duty_factor": 0.38802660753880264,
+      "median_step_clearance_hip_heights": 0.1235327732073088,
+      "median_step_advance_mm": 21.743992104557577,
+      "lowest_height_mm": -11.811561700850238,
+      "settled_lowest_height_mm": -11.811561700850238
+     }
+    },
+    "reward_per_step": 0.7283408105321011,
+    "reward_terms": {
+     "alive": 1500.0,
+     "tilt": -39.16381942990496,
+     "speed_track": 197.82589566514804,
+     "speed_error": -311.6283702348726,
+     "sideways": -225.05967647753,
+     "yaw_rate": -81.8919171710418,
+     "heading": -61.015219699903945,
+     "trot_sync": -75.84813744442187,
+     "impact": -140.26770914949336,
+     "step_fl": 57.55826918441902,
+     "step_fr": -55.47807505416122,
+     "step_rl": -124.15858093894754,
+     "step_rr": -41.503443994441284,
+     "sink": -86.20994863612032,
+     "joint_speed_hip": -8.74474920408442,
+     "joint_speed_knee": -140.24411214859396
+    },
+    "trace_sha256": "69c78bd222aac1eb7c17e7eec9acaed3dbf780c1e9460778e01925d609002647"
+   },
+   {
+    "seed": 1105,
+    "pass": false,
+    "failing": [
+     "W5-steps",
+     "W5-share",
+     "W7",
+     "W8-low",
+     "W9",
+     "W10"
+    ],
+    "episode": {
+     "steps": 500,
+     "duration_s": 10.0,
+     "control_hz": 50,
+     "termination": "",
+     "terminated_step": null,
+     "truncated": true,
+     "solver_warnings": []
+    },
+    "predicates": [
+     {
+      "id": "W1",
+      "metric": "completed",
+      "value": 1.0,
+      "min": 1.0,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W2",
+      "metric": "max_tilt_deg",
+      "value": 13.263599001670112,
+      "min": null,
+      "max": 30.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W3",
+      "metric": "speed_ratio",
+      "value": 1.2471112724674627,
+      "min": 0.75,
+      "max": 1.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-lateral",
+      "metric": "lateral_ratio",
+      "value": 0.10214371781036094,
+      "min": null,
+      "max": 0.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-heading",
+      "metric": "max_heading_deg",
+      "value": 33.34989156425887,
+      "min": null,
+      "max": 45.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W5-steps",
+      "metric": "steps_min",
+      "value": 3,
+      "min": 4.0,
+      "max": null,
+      "pass": false,
+      "why": "steps_min is 3, under 4"
+     },
+     {
+      "id": "W5-share",
+      "metric": "step_share_min",
+      "value": 0.05667566206488933,
+      "min": 0.7,
+      "max": null,
+      "pass": false,
+      "why": "step_share_min is 0.05668, under 0.7"
+     },
+     {
+      "id": "W6",
+      "metric": "step_clearance_hip_heights_min",
+      "value": 0.09630440335352387,
+      "min": 0.08,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W7",
+      "metric": "slip_share_max",
+      "value": 0.5161857808208936,
+      "min": null,
+      "max": 0.15,
+      "pass": false,
+      "why": "slip_share_max is 0.5162, over 0.15"
+     },
+     {
+      "id": "W8-low",
+      "metric": "duty_factor_min",
+      "value": 0.1574279379157428,
+      "min": 0.4,
+      "max": null,
+      "pass": false,
+      "why": "duty_factor_min is 0.1574, under 0.4"
+     },
+     {
+      "id": "W8-high",
+      "metric": "duty_factor_max",
+      "value": 0.647450110864745,
+      "min": null,
+      "max": 0.85,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W9",
+      "metric": "step_count_ratio",
+      "value": 9.333333333333334,
+      "min": null,
+      "max": 1.5,
+      "pass": false,
+      "why": "step_count_ratio is 9.333, over 1.5"
+     },
+     {
+      "id": "W10",
+      "metric": "foot_lowest_hip_heights_min",
+      "value": -0.1563652437257799,
+      "min": -0.05,
+      "max": null,
+      "pass": false,
+      "why": "foot_lowest_hip_heights_min is -0.1564, under -0.05"
+     }
+    ],
+    "metrics": {
+     "completed": 1.0,
+     "duration_s": 10.0,
+     "max_tilt_deg": 13.263599001670112,
+     "max_heading_deg": 33.34989156425887,
+     "final_heading_deg": 9.864251652404889,
+     "max_drift_mm": 1007.7524383297653,
+     "final_drift_mm": 1007.7524383297653,
+     "mean_speed_mm_s": 125.17231569180026,
+     "max_drift_com_heights": 11.931906106350493,
+     "recovery_s_max": null,
+     "mean_forward_speed_mm_s": 112.33225242470432,
+     "mean_lateral_speed_mm_s": 9.200489279492574,
+     "steps_min": 3,
+     "step_count_ratio": 9.333333333333334,
+     "step_share_min": 0.05667566206488933,
+     "step_clearance_hip_heights_min": 0.09630440335352387,
+     "slip_share_max": 0.5161857808208936,
+     "duty_factor_min": 0.1574279379157428,
+     "duty_factor_max": 0.647450110864745,
+     "foot_lowest_hip_heights_min": -0.1563652437257799,
+     "speed_ratio": 1.2471112724674627,
+     "lateral_ratio": 0.10214371781036094
+    },
+    "shove_at_s": [
+     4.585062002544598
+    ],
+    "feet": {
+     "c_foot_fl": {
+      "swings": 39,
+      "steps": 28,
+      "step_share": 0.789680943567823,
+      "slip_share": 0.08199188410959012,
+      "duty_factor": 0.1574279379157428,
+      "median_step_clearance_hip_heights": 0.18946937388479007,
+      "median_step_advance_mm": 26.72870388739691,
+      "lowest_height_mm": -12.256805432227843,
+      "settled_lowest_height_mm": -12.256805432227843
+     },
+     "c_foot_fr": {
+      "swings": 63,
+      "steps": 14,
+      "step_share": 0.19281443397574252,
+      "slip_share": 0.5161857808208936,
+      "duty_factor": 0.5742793791574279,
+      "median_step_clearance_hip_heights": 0.141306609625404,
+      "median_step_advance_mm": 20.71930714942532,
+      "lowest_height_mm": -15.12061288742915,
+      "settled_lowest_height_mm": -15.12061288742915
+     },
+     "c_foot_rl": {
+      "swings": 57,
+      "steps": 3,
+      "step_share": 0.05667566206488933,
+      "slip_share": 0.4372838987100568,
+      "duty_factor": 0.647450110864745,
+      "median_step_clearance_hip_heights": 0.13642815041376938,
+      "median_step_advance_mm": 27.386926034488425,
+      "lowest_height_mm": -15.001200291154298,
+      "settled_lowest_height_mm": -15.001200291154298
+     },
+     "c_foot_rr": {
+      "swings": 63,
+      "steps": 14,
+      "step_share": 0.21561808459218026,
+      "slip_share": 0.33141999699486885,
+      "duty_factor": 0.4523281596452328,
+      "median_step_clearance_hip_heights": 0.09630440335352387,
+      "median_step_advance_mm": 19.83349774028273,
+      "lowest_height_mm": -11.062300434254794,
+      "settled_lowest_height_mm": -11.062300434254794
+     }
+    },
+    "reward_per_step": 1.1442782901658932,
+    "reward_terms": {
+     "alive": 1500.0,
+     "tilt": -23.7119570523294,
+     "speed_track": 324.11295148517877,
+     "speed_error": -241.04789713391767,
+     "sideways": -262.40660338202036,
+     "yaw_rate": -82.49934565857166,
+     "heading": -91.52626313216894,
+     "trot_sync": -82.97490626842826,
+     "impact": -133.67585098891857,
+     "step_fl": 122.92649724330604,
+     "step_fr": -72.8968773687105,
+     "step_rl": -93.62192463833385,
+     "step_rr": -52.436968353382596,
+     "sink": -87.48658773548144,
+     "joint_speed_hip": -10.182450697348562,
+     "joint_speed_knee": -140.4326712359264
+    },
+    "trace_sha256": "49d521c2390c2f205d714217d9a6ddd3b690a38683842445b6b4c408fef73877"
+   },
+   {
+    "seed": 1106,
+    "pass": false,
+    "failing": [
+     "W3",
+     "W4-lateral",
+     "W5-share",
+     "W7",
+     "W8-low",
+     "W9",
+     "W10"
+    ],
+    "episode": {
+     "steps": 500,
+     "duration_s": 10.0,
+     "control_hz": 50,
+     "termination": "",
+     "terminated_step": null,
+     "truncated": true,
+     "solver_warnings": []
+    },
+    "predicates": [
+     {
+      "id": "W1",
+      "metric": "completed",
+      "value": 1.0,
+      "min": 1.0,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W2",
+      "metric": "max_tilt_deg",
+      "value": 12.365575198130784,
+      "min": null,
+      "max": 30.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W3",
+      "metric": "speed_ratio",
+      "value": 1.2515734136984182,
+      "min": 0.75,
+      "max": 1.25,
+      "pass": false,
+      "why": "speed_ratio is 1.252, over 1.25"
+     },
+     {
+      "id": "W4-lateral",
+      "metric": "lateral_ratio",
+      "value": 0.34179183430148224,
+      "min": null,
+      "max": 0.25,
+      "pass": false,
+      "why": "lateral_ratio is 0.3418, over 0.25"
+     },
+     {
+      "id": "W4-heading",
+      "metric": "max_heading_deg",
+      "value": 32.012492494326075,
+      "min": null,
+      "max": 45.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W5-steps",
+      "metric": "steps_min",
+      "value": 6,
+      "min": 4.0,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W5-share",
+      "metric": "step_share_min",
+      "value": 0.08696214377459441,
+      "min": 0.7,
+      "max": null,
+      "pass": false,
+      "why": "step_share_min is 0.08696, under 0.7"
+     },
+     {
+      "id": "W6",
+      "metric": "step_clearance_hip_heights_min",
+      "value": 0.12258099222782265,
+      "min": 0.08,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W7",
+      "metric": "slip_share_max",
+      "value": 0.4744957525132967,
+      "min": null,
+      "max": 0.15,
+      "pass": false,
+      "why": "slip_share_max is 0.4745, over 0.15"
+     },
+     {
+      "id": "W8-low",
+      "metric": "duty_factor_min",
+      "value": 0.22838137472283815,
+      "min": 0.4,
+      "max": null,
+      "pass": false,
+      "why": "duty_factor_min is 0.2284, under 0.4"
+     },
+     {
+      "id": "W8-high",
+      "metric": "duty_factor_max",
+      "value": 0.6363636363636364,
+      "min": null,
+      "max": 0.85,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W9",
+      "metric": "step_count_ratio",
+      "value": 5.666666666666667,
+      "min": null,
+      "max": 1.5,
+      "pass": false,
+      "why": "step_count_ratio is 5.667, over 1.5"
+     },
+     {
+      "id": "W10",
+      "metric": "foot_lowest_hip_heights_min",
+      "value": -0.18013508138817738,
+      "min": -0.05,
+      "max": null,
+      "pass": false,
+      "why": "foot_lowest_hip_heights_min is -0.1801, under -0.05"
+     }
+    ],
+    "metrics": {
+     "completed": 1.0,
+     "duration_s": 10.0,
+     "max_tilt_deg": 12.365575198130784,
+     "max_heading_deg": 32.012492494326075,
+     "final_heading_deg": 18.88325272163757,
+     "max_drift_mm": 1012.9571021671127,
+     "final_drift_mm": 1012.9571021671127,
+     "mean_speed_mm_s": 112.77049124637055,
+     "max_drift_com_heights": 11.993529931667426,
+     "recovery_s_max": null,
+     "mean_forward_speed_mm_s": 99.21184309237674,
+     "mean_lateral_speed_mm_s": 27.093734545519247,
+     "steps_min": 6,
+     "step_count_ratio": 5.666666666666667,
+     "step_share_min": 0.08696214377459441,
+     "step_clearance_hip_heights_min": 0.12258099222782265,
+     "slip_share_max": 0.4744957525132967,
+     "duty_factor_min": 0.22838137472283815,
+     "duty_factor_max": 0.6363636363636364,
+     "foot_lowest_hip_heights_min": -0.18013508138817738,
+     "speed_ratio": 1.2515734136984182,
+     "lateral_ratio": 0.34179183430148224
+    },
+    "shove_at_s": [
+     3.453032322141531
+    ],
+    "feet": {
+     "c_foot_fl": {
+      "swings": 49,
+      "steps": 34,
+      "step_share": 0.7001814926594089,
+      "slip_share": 0.15581484611546578,
+      "duty_factor": 0.22838137472283815,
+      "median_step_clearance_hip_heights": 0.2072232415342173,
+      "median_step_advance_mm": 29.098951418785486,
+      "lowest_height_mm": -11.720300415516359,
+      "settled_lowest_height_mm": -11.271901536712257
+     },
+     "c_foot_fr": {
+      "swings": 70,
+      "steps": 14,
+      "step_share": 0.21244622387849824,
+      "slip_share": 0.37905462152855685,
+      "duty_factor": 0.4700665188470067,
+      "median_step_clearance_hip_heights": 0.17465989869461224,
+      "median_step_advance_mm": 20.862811534208472,
+      "lowest_height_mm": -13.144781371620912,
+      "settled_lowest_height_mm": -13.144781371620912
+     },
+     "c_foot_rl": {
+      "swings": 57,
+      "steps": 6,
+      "step_share": 0.08696214377459441,
+      "slip_share": 0.4744957525132967,
+      "duty_factor": 0.6363636363636364,
+      "median_step_clearance_hip_heights": 0.14352025874811342,
+      "median_step_advance_mm": 20.91388944795903,
+      "lowest_height_mm": -17.419170451285584,
+      "settled_lowest_height_mm": -17.419170451285584
+     },
+     "c_foot_rr": {
+      "swings": 69,
+      "steps": 14,
+      "step_share": 0.1796841802567632,
+      "slip_share": 0.3367889171717631,
+      "duty_factor": 0.4789356984478936,
+      "median_step_clearance_hip_heights": 0.12258099222782265,
+      "median_step_advance_mm": 17.29946784580393,
+      "lowest_height_mm": -12.60501466264966,
+      "settled_lowest_height_mm": -12.60501466264966
+     }
+    },
+    "reward_per_step": 1.1227874190614457,
+    "reward_terms": {
+     "alive": 1500.0,
+     "tilt": -25.289743680040555,
+     "speed_track": 360.4096234230639,
+     "speed_error": -240.47091289673523,
+     "sideways": -270.28671382530337,
+     "yaw_rate": -77.79591495390221,
+     "heading": -83.77268083564422,
+     "trot_sync": -83.90907927889303,
+     "impact": -141.81897100921466,
+     "step_fl": 85.89961107842782,
+     "step_fr": -50.23524026713408,
+     "step_rl": -97.88190087246538,
+     "step_rr": -56.32275885483034,
+     "sink": -100.65297886372682,
+     "joint_speed_hip": -12.6171721701443,
+     "joint_speed_knee": -143.8614574627349
+    },
+    "trace_sha256": "52b74cde55626cd9edb0d3f412969be3315a529029f2512f4fcb5214bf85edd3"
+   },
+   {
+    "seed": 1107,
+    "pass": false,
+    "failing": [
+     "W5-steps",
+     "W5-share",
+     "W6",
+     "W7",
+     "W8-low",
+     "W9",
+     "W10"
+    ],
+    "episode": {
+     "steps": 500,
+     "duration_s": 10.0,
+     "control_hz": 50,
+     "termination": "",
+     "terminated_step": null,
+     "truncated": true,
+     "solver_warnings": []
+    },
+    "predicates": [
+     {
+      "id": "W1",
+      "metric": "completed",
+      "value": 1.0,
+      "min": 1.0,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W2",
+      "metric": "max_tilt_deg",
+      "value": 18.059412122693335,
+      "min": null,
+      "max": 30.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W3",
+      "metric": "speed_ratio",
+      "value": 1.1535952256437234,
+      "min": 0.75,
+      "max": 1.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-lateral",
+      "metric": "lateral_ratio",
+      "value": 0.13132161629598277,
+      "min": null,
+      "max": 0.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-heading",
+      "metric": "max_heading_deg",
+      "value": 28.208095021125736,
+      "min": null,
+      "max": 45.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W5-steps",
+      "metric": "steps_min",
+      "value": 1,
+      "min": 4.0,
+      "max": null,
+      "pass": false,
+      "why": "steps_min is 1, under 4"
+     },
+     {
+      "id": "W5-share",
+      "metric": "step_share_min",
+      "value": 0.023092888880912453,
+      "min": 0.7,
+      "max": null,
+      "pass": false,
+      "why": "step_share_min is 0.02309, under 0.7"
+     },
+     {
+      "id": "W6",
+      "metric": "step_clearance_hip_heights_min",
+      "value": 0.04847818704837579,
+      "min": 0.08,
+      "max": null,
+      "pass": false,
+      "why": "step_clearance_hip_heights_min is 0.04848, under 0.08"
+     },
+     {
+      "id": "W7",
+      "metric": "slip_share_max",
+      "value": 0.47635463242865944,
+      "min": null,
+      "max": 0.15,
+      "pass": false,
+      "why": "slip_share_max is 0.4764, over 0.15"
+     },
+     {
+      "id": "W8-low",
+      "metric": "duty_factor_min",
+      "value": 0.22172949002217296,
+      "min": 0.4,
+      "max": null,
+      "pass": false,
+      "why": "duty_factor_min is 0.2217, under 0.4"
+     },
+     {
+      "id": "W8-high",
+      "metric": "duty_factor_max",
+      "value": 0.6829268292682927,
+      "min": null,
+      "max": 0.85,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W9",
+      "metric": "step_count_ratio",
+      "value": 32.0,
+      "min": null,
+      "max": 1.5,
+      "pass": false,
+      "why": "step_count_ratio is 32, over 1.5"
+     },
+     {
+      "id": "W10",
+      "metric": "foot_lowest_hip_heights_min",
+      "value": -0.14656055688436684,
+      "min": -0.05,
+      "max": null,
+      "pass": false,
+      "why": "foot_lowest_hip_heights_min is -0.1466, under -0.05"
+     }
+    ],
+    "metrics": {
+     "completed": 1.0,
+     "duration_s": 10.0,
+     "max_tilt_deg": 18.059412122693335,
+     "max_heading_deg": 28.208095021125736,
+     "final_heading_deg": 1.9388906770632957,
+     "max_drift_mm": 822.5570034265162,
+     "final_drift_mm": 822.5570034265162,
+     "mean_speed_mm_s": 106.90804123540886,
+     "max_drift_com_heights": 9.73917061245013,
+     "recovery_s_max": null,
+     "mean_forward_speed_mm_s": 85.05562234533633,
+     "mean_lateral_speed_mm_s": -9.682461883645061,
+     "steps_min": 1,
+     "step_count_ratio": 32.0,
+     "step_share_min": 0.023092888880912453,
+     "step_clearance_hip_heights_min": 0.04847818704837579,
+     "slip_share_max": 0.47635463242865944,
+     "duty_factor_min": 0.22172949002217296,
+     "duty_factor_max": 0.6829268292682927,
+     "foot_lowest_hip_heights_min": -0.14656055688436684,
+     "speed_ratio": 1.1535952256437234,
+     "lateral_ratio": 0.13132161629598277
+    },
+    "shove_at_s": [
+     5.287679461078323
+    ],
+    "feet": {
+     "c_foot_fl": {
+      "swings": 50,
+      "steps": 32,
+      "step_share": 0.6872514715772358,
+      "slip_share": 0.12612441882977812,
+      "duty_factor": 0.22172949002217296,
+      "median_step_clearance_hip_heights": 0.19771665085812876,
+      "median_step_advance_mm": 25.245315067980673,
+      "lowest_height_mm": -14.172493787052403,
+      "settled_lowest_height_mm": -14.172493787052403
+     },
+     "c_foot_fr": {
+      "swings": 67,
+      "steps": 9,
+      "step_share": 0.11795615964970542,
+      "slip_share": 0.444632019495824,
+      "duty_factor": 0.5033259423503326,
+      "median_step_clearance_hip_heights": 0.13083877553319098,
+      "median_step_advance_mm": 17.59662496260893,
+      "lowest_height_mm": -13.549604083177613,
+      "settled_lowest_height_mm": -13.549604083177613
+     },
+     "c_foot_rl": {
+      "swings": 59,
+      "steps": 1,
+      "step_share": 0.023092888880912453,
+      "slip_share": 0.47635463242865944,
+      "duty_factor": 0.6829268292682927,
+      "median_step_clearance_hip_heights": 0.04847818704837579,
+      "median_step_advance_mm": 33.416321331077455,
+      "lowest_height_mm": -11.80055327898638,
+      "settled_lowest_height_mm": -11.80055327898638
+     },
+     "c_foot_rr": {
+      "swings": 67,
+      "steps": 13,
+      "step_share": 0.2227022669619911,
+      "slip_share": 0.2939102976897775,
+      "duty_factor": 0.4146341463414634,
+      "median_step_clearance_hip_heights": 0.09838461191298857,
+      "median_step_advance_mm": 21.105233989623496,
+      "lowest_height_mm": -10.576281882176456,
+      "settled_lowest_height_mm": -10.576281882176456
+     }
+    },
+    "reward_per_step": 0.7479807357319438,
+    "reward_terms": {
+     "alive": 1500.0,
+     "tilt": -25.6606781610502,
+     "speed_track": 208.55143638879377,
+     "speed_error": -307.11035841148384,
+     "sideways": -244.8705182590391,
+     "yaw_rate": -80.23049881072374,
+     "heading": -69.78026044409486,
+     "trot_sync": -71.89307046953792,
+     "impact": -141.17606436768727,
+     "step_fl": 73.55225694187791,
+     "step_fr": -77.95447830284233,
+     "step_rl": -113.69631271632495,
+     "step_rr": -45.937806493394326,
+     "sink": -80.96272991657528,
+     "joint_speed_hip": -9.243275689732108,
+     "joint_speed_knee": -139.59727342221368
+    },
+    "trace_sha256": "e041c3ff5b504ee9d1bb7707b3cb417109934aed38fc8c625023000b7da7d7ea"
+   },
+   {
+    "seed": 1108,
+    "pass": false,
+    "failing": [
+     "W5-steps",
+     "W5-share",
+     "W7",
+     "W8-low",
+     "W9",
+     "W10"
+    ],
+    "episode": {
+     "steps": 500,
+     "duration_s": 10.0,
+     "control_hz": 50,
+     "termination": "",
+     "terminated_step": null,
+     "truncated": true,
+     "solver_warnings": []
+    },
+    "predicates": [
+     {
+      "id": "W1",
+      "metric": "completed",
+      "value": 1.0,
+      "min": 1.0,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W2",
+      "metric": "max_tilt_deg",
+      "value": 13.007328210910487,
+      "min": null,
+      "max": 30.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W3",
+      "metric": "speed_ratio",
+      "value": 1.2482917768211093,
+      "min": 0.75,
+      "max": 1.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-lateral",
+      "metric": "lateral_ratio",
+      "value": 0.0835710239990921,
+      "min": null,
+      "max": 0.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-heading",
+      "metric": "max_heading_deg",
+      "value": 26.245082954722054,
+      "min": null,
+      "max": 45.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W5-steps",
+      "metric": "steps_min",
+      "value": 2,
+      "min": 4.0,
+      "max": null,
+      "pass": false,
+      "why": "steps_min is 2, under 4"
+     },
+     {
+      "id": "W5-share",
+      "metric": "step_share_min",
+      "value": 0.035848960604940486,
+      "min": 0.7,
+      "max": null,
+      "pass": false,
+      "why": "step_share_min is 0.03585, under 0.7"
+     },
+     {
+      "id": "W6",
+      "metric": "step_clearance_hip_heights_min",
+      "value": 0.09159159019023468,
+      "min": 0.08,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W7",
+      "metric": "slip_share_max",
+      "value": 0.4754662556077831,
+      "min": null,
+      "max": 0.15,
+      "pass": false,
+      "why": "slip_share_max is 0.4755, over 0.15"
+     },
+     {
+      "id": "W8-low",
+      "metric": "duty_factor_min",
+      "value": 0.17738359201773837,
+      "min": 0.4,
+      "max": null,
+      "pass": false,
+      "why": "duty_factor_min is 0.1774, under 0.4"
+     },
+     {
+      "id": "W8-high",
+      "metric": "duty_factor_max",
+      "value": 0.6718403547671841,
+      "min": null,
+      "max": 0.85,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W9",
+      "metric": "step_count_ratio",
+      "value": 15.0,
+      "min": null,
+      "max": 1.5,
+      "pass": false,
+      "why": "step_count_ratio is 15, over 1.5"
+     },
+     {
+      "id": "W10",
+      "metric": "foot_lowest_hip_heights_min",
+      "value": -0.1380536480992044,
+      "min": -0.05,
+      "max": null,
+      "pass": false,
+      "why": "foot_lowest_hip_heights_min is -0.1381, under -0.05"
+     }
+    ],
+    "metrics": {
+     "completed": 1.0,
+     "duration_s": 10.0,
+     "max_tilt_deg": 13.007328210910487,
+     "max_heading_deg": 26.245082954722054,
+     "final_heading_deg": 17.052950104194238,
+     "max_drift_mm": 1155.0245744586912,
+     "final_drift_mm": 1155.0245744586912,
+     "mean_speed_mm_s": 123.793980066409,
+     "max_drift_com_heights": 13.675625330969222,
+     "recovery_s_max": null,
+     "mean_forward_speed_mm_s": 116.37890985765395,
+     "mean_lateral_speed_mm_s": 7.79137125574126,
+     "steps_min": 2,
+     "step_count_ratio": 15.0,
+     "step_share_min": 0.035848960604940486,
+     "step_clearance_hip_heights_min": 0.09159159019023468,
+     "slip_share_max": 0.4754662556077831,
+     "duty_factor_min": 0.17738359201773837,
+     "duty_factor_max": 0.6718403547671841,
+     "foot_lowest_hip_heights_min": -0.1380536480992044,
+     "speed_ratio": 1.2482917768211093,
+     "lateral_ratio": 0.0835710239990921
+    },
+    "shove_at_s": [
+     3.3866720471276057
+    ],
+    "feet": {
+     "c_foot_fl": {
+      "swings": 43,
+      "steps": 30,
+      "step_share": 0.7457772184066866,
+      "slip_share": 0.08615361164109817,
+      "duty_factor": 0.17738359201773837,
+      "median_step_clearance_hip_heights": 0.19864434136622788,
+      "median_step_advance_mm": 29.87456319110216,
+      "lowest_height_mm": -11.33853410484199,
+      "settled_lowest_height_mm": -10.298931944060143
+     },
+     "c_foot_fr": {
+      "swings": 69,
+      "steps": 11,
+      "step_share": 0.1518769500161555,
+      "slip_share": 0.4754662556077831,
+      "duty_factor": 0.5476718403547672,
+      "median_step_clearance_hip_heights": 0.15593956345560772,
+      "median_step_advance_mm": 20.044001562783222,
+      "lowest_height_mm": -13.349870603381923,
+      "settled_lowest_height_mm": -13.349870603381923
+     },
+     "c_foot_rl": {
+      "swings": 56,
+      "steps": 2,
+      "step_share": 0.035848960604940486,
+      "slip_share": 0.4522418033425543,
+      "duty_factor": 0.6718403547671841,
+      "median_step_clearance_hip_heights": 0.10778723985371119,
+      "median_step_advance_mm": 29.697325801068274,
+      "lowest_height_mm": -13.157534247832334,
+      "settled_lowest_height_mm": -13.157534247832334
+     },
+     "c_foot_rr": {
+      "swings": 71,
+      "steps": 18,
+      "step_share": 0.2568157002051916,
+      "slip_share": 0.2983481647178955,
+      "duty_factor": 0.4434589800443459,
+      "median_step_clearance_hip_heights": 0.09159159019023468,
+      "median_step_advance_mm": 20.28664180722381,
+      "lowest_height_mm": -9.813538262175939,
+      "settled_lowest_height_mm": -9.813538262175939
+     }
+    },
+    "reward_per_step": 1.3589016843390898,
+    "reward_terms": {
+     "alive": 1500.0,
+     "tilt": -18.264789360029237,
+     "speed_track": 289.1687842291315,
+     "speed_error": -258.9360033632068,
+     "sideways": -173.2981586695145,
+     "yaw_rate": -72.8086947468398,
+     "heading": -56.29921497628381,
+     "trot_sync": -80.57668175490826,
+     "impact": -135.51064902351447,
+     "step_fl": 122.78936958466575,
+     "step_fr": -72.95205901306372,
+     "step_rl": -100.75324383836508,
+     "step_rr": -45.68553688567543,
+     "sink": -69.08660982897366,
+     "joint_speed_hip": -9.755007766971993,
+     "joint_speed_knee": -138.58066241690537
+    },
+    "trace_sha256": "3c9ea59e4f0ea5a470a12e6ccf8373499df1d91c21929ea0c69737702ca16d2a"
+   },
+   {
+    "seed": 1109,
+    "pass": false,
+    "failing": [
+     "W5-steps",
+     "W5-share",
+     "W7",
+     "W8-low",
+     "W9",
+     "W10"
+    ],
+    "episode": {
+     "steps": 500,
+     "duration_s": 10.0,
+     "control_hz": 50,
+     "termination": "",
+     "terminated_step": null,
+     "truncated": true,
+     "solver_warnings": []
+    },
+    "predicates": [
+     {
+      "id": "W1",
+      "metric": "completed",
+      "value": 1.0,
+      "min": 1.0,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W2",
+      "metric": "max_tilt_deg",
+      "value": 16.126701918505606,
+      "min": null,
+      "max": 30.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W3",
+      "metric": "speed_ratio",
+      "value": 1.001492126637988,
+      "min": 0.75,
+      "max": 1.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-lateral",
+      "metric": "lateral_ratio",
+      "value": 0.17260908330959457,
+      "min": null,
+      "max": 0.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-heading",
+      "metric": "max_heading_deg",
+      "value": 25.939909203969467,
+      "min": null,
+      "max": 45.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W5-steps",
+      "metric": "steps_min",
+      "value": 1,
+      "min": 4.0,
+      "max": null,
+      "pass": false,
+      "why": "steps_min is 1, under 4"
+     },
+     {
+      "id": "W5-share",
+      "metric": "step_share_min",
+      "value": 0.013977720227514418,
+      "min": 0.7,
+      "max": null,
+      "pass": false,
+      "why": "step_share_min is 0.01398, under 0.7"
+     },
+     {
+      "id": "W6",
+      "metric": "step_clearance_hip_heights_min",
+      "value": 0.11089356411699186,
+      "min": 0.08,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W7",
+      "metric": "slip_share_max",
+      "value": 0.4971989895807295,
+      "min": null,
+      "max": 0.15,
+      "pass": false,
+      "why": "slip_share_max is 0.4972, over 0.15"
+     },
+     {
+      "id": "W8-low",
+      "metric": "duty_factor_min",
+      "value": 0.2549889135254989,
+      "min": 0.4,
+      "max": null,
+      "pass": false,
+      "why": "duty_factor_min is 0.255, under 0.4"
+     },
+     {
+      "id": "W8-high",
+      "metric": "duty_factor_max",
+      "value": 0.656319290465632,
+      "min": null,
+      "max": 0.85,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W9",
+      "metric": "step_count_ratio",
+      "value": 32.0,
+      "min": null,
+      "max": 1.5,
+      "pass": false,
+      "why": "step_count_ratio is 32, over 1.5"
+     },
+     {
+      "id": "W10",
+      "metric": "foot_lowest_hip_heights_min",
+      "value": -0.20887777979382785,
+      "min": -0.05,
+      "max": null,
+      "pass": false,
+      "why": "foot_lowest_hip_heights_min is -0.2089, under -0.05"
+     }
+    ],
+    "metrics": {
+     "completed": 1.0,
+     "duration_s": 10.0,
+     "max_tilt_deg": 16.126701918505606,
+     "max_heading_deg": 25.939909203969467,
+     "final_heading_deg": -4.47530844801647,
+     "max_drift_mm": 564.2554300777552,
+     "final_drift_mm": 561.6563970767444,
+     "mean_speed_mm_s": 80.8703353519067,
+     "max_drift_com_heights": 6.680849934577959,
+     "recovery_s_max": null,
+     "mean_forward_speed_mm_s": 60.849588721454886,
+     "mean_lateral_speed_mm_s": 10.487542986718646,
+     "steps_min": 1,
+     "step_count_ratio": 32.0,
+     "step_share_min": 0.013977720227514418,
+     "step_clearance_hip_heights_min": 0.11089356411699186,
+     "slip_share_max": 0.4971989895807295,
+     "duty_factor_min": 0.2549889135254989,
+     "duty_factor_max": 0.656319290465632,
+     "foot_lowest_hip_heights_min": -0.20887777979382785,
+     "speed_ratio": 1.001492126637988,
+     "lateral_ratio": 0.17260908330959457
+    },
+    "shove_at_s": [
+     6.2598628462571
+    ],
+    "feet": {
+     "c_foot_fl": {
+      "swings": 49,
+      "steps": 32,
+      "step_share": 0.6618179187514343,
+      "slip_share": 0.1743922260132469,
+      "duty_factor": 0.2549889135254989,
+      "median_step_clearance_hip_heights": 0.1775398965731971,
+      "median_step_advance_mm": 24.53057754914529,
+      "lowest_height_mm": -18.391820787723386,
+      "settled_lowest_height_mm": -18.391820787723386
+     },
+     "c_foot_fr": {
+      "swings": 68,
+      "steps": 10,
+      "step_share": 0.17716144037127998,
+      "slip_share": 0.42923122789301826,
+      "duty_factor": 0.4878048780487805,
+      "median_step_clearance_hip_heights": 0.2141825923642345,
+      "median_step_advance_mm": 20.36238307066638,
+      "lowest_height_mm": -14.778903150325068,
+      "settled_lowest_height_mm": -14.778903150325068
+     },
+     "c_foot_rl": {
+      "swings": 54,
+      "steps": 1,
+      "step_share": 0.013977720227514418,
+      "slip_share": 0.4971989895807295,
+      "duty_factor": 0.656319290465632,
+      "median_step_clearance_hip_heights": 0.15871583729782818,
+      "median_step_advance_mm": 16.06507453297925,
+      "lowest_height_mm": -20.19860663273103,
+      "settled_lowest_height_mm": -20.19860663273103
+     },
+     "c_foot_rr": {
+      "swings": 66,
+      "steps": 10,
+      "step_share": 0.18791095119815718,
+      "slip_share": 0.33123932452216076,
+      "duty_factor": 0.4523281596452328,
+      "median_step_clearance_hip_heights": 0.11089356411699186,
+      "median_step_advance_mm": 17.670205561254733,
+      "lowest_height_mm": -9.890086175718867,
+      "settled_lowest_height_mm": -9.890086175718867
+     }
+    },
+    "reward_per_step": 0.9314047634187465,
+    "reward_terms": {
+     "alive": 1500.0,
+     "tilt": -29.463299352745597,
+     "speed_track": 271.50823864941935,
+     "speed_error": -284.15991978142273,
+     "sideways": -248.3971012231346,
+     "yaw_rate": -85.90226501022941,
+     "heading": -53.02721268084314,
+     "trot_sync": -69.59903033596358,
+     "impact": -137.00824645468893,
+     "step_fl": 53.26418407163063,
+     "step_fr": -65.25801641430647,
+     "step_rl": -94.84082719432269,
+     "step_rr": -57.200616073560525,
+     "sink": -83.31912937940037,
+     "joint_speed_hip": -10.37346265526191,
+     "joint_speed_knee": -140.5209144557974
+    },
+    "trace_sha256": "73fbafe48068cb2a6a742028936ea4bd13baccb0730b6070ab080ef0b5113fe7"
+   },
+   {
+    "seed": 1110,
+    "pass": false,
+    "failing": [
+     "W5-steps",
+     "W5-share",
+     "W7",
+     "W8-low",
+     "W9",
+     "W10"
+    ],
+    "episode": {
+     "steps": 500,
+     "duration_s": 10.0,
+     "control_hz": 50,
+     "termination": "",
+     "terminated_step": null,
+     "truncated": true,
+     "solver_warnings": []
+    },
+    "predicates": [
+     {
+      "id": "W1",
+      "metric": "completed",
+      "value": 1.0,
+      "min": 1.0,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W2",
+      "metric": "max_tilt_deg",
+      "value": 20.822087228037578,
+      "min": null,
+      "max": 30.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W3",
+      "metric": "speed_ratio",
+      "value": 1.1744773977735146,
+      "min": 0.75,
+      "max": 1.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-lateral",
+      "metric": "lateral_ratio",
+      "value": 0.14291267454055356,
+      "min": null,
+      "max": 0.25,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W4-heading",
+      "metric": "max_heading_deg",
+      "value": 18.44195989633693,
+      "min": null,
+      "max": 45.0,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W5-steps",
+      "metric": "steps_min",
+      "value": 3,
+      "min": 4.0,
+      "max": null,
+      "pass": false,
+      "why": "steps_min is 3, under 4"
+     },
+     {
+      "id": "W5-share",
+      "metric": "step_share_min",
+      "value": 0.03793806465081883,
+      "min": 0.7,
+      "max": null,
+      "pass": false,
+      "why": "step_share_min is 0.03794, under 0.7"
+     },
+     {
+      "id": "W6",
+      "metric": "step_clearance_hip_heights_min",
+      "value": 0.09509037681187427,
+      "min": 0.08,
+      "max": null,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W7",
+      "metric": "slip_share_max",
+      "value": 0.49135957578993167,
+      "min": null,
+      "max": 0.15,
+      "pass": false,
+      "why": "slip_share_max is 0.4914, over 0.15"
+     },
+     {
+      "id": "W8-low",
+      "metric": "duty_factor_min",
+      "value": 0.18181818181818182,
+      "min": 0.4,
+      "max": null,
+      "pass": false,
+      "why": "duty_factor_min is 0.1818, under 0.4"
+     },
+     {
+      "id": "W8-high",
+      "metric": "duty_factor_max",
+      "value": 0.6784922394678492,
+      "min": null,
+      "max": 0.85,
+      "pass": true,
+      "why": ""
+     },
+     {
+      "id": "W9",
+      "metric": "step_count_ratio",
+      "value": 10.333333333333334,
+      "min": null,
+      "max": 1.5,
+      "pass": false,
+      "why": "step_count_ratio is 10.33, over 1.5"
+     },
+     {
+      "id": "W10",
+      "metric": "foot_lowest_hip_heights_min",
+      "value": -0.19104315383427015,
+      "min": -0.05,
+      "max": null,
+      "pass": false,
+      "why": "foot_lowest_hip_heights_min is -0.191, under -0.05"
+     }
+    ],
+    "metrics": {
+     "completed": 1.0,
+     "duration_s": 10.0,
+     "max_tilt_deg": 20.822087228037578,
+     "max_heading_deg": 18.44195989633693,
+     "final_heading_deg": -14.169416112451957,
+     "max_drift_mm": 913.3726081828428,
+     "final_drift_mm": 913.3726081828428,
+     "mean_speed_mm_s": 101.77096833165459,
+     "max_drift_com_heights": 10.81443793776653,
+     "recovery_s_max": null,
+     "mean_forward_speed_mm_s": 95.16149903165096,
+     "mean_lateral_speed_mm_s": 11.579434704901924,
+     "steps_min": 3,
+     "step_count_ratio": 10.333333333333334,
+     "step_share_min": 0.03793806465081883,
+     "step_clearance_hip_heights_min": 0.09509037681187427,
+     "slip_share_max": 0.49135957578993167,
+     "duty_factor_min": 0.18181818181818182,
+     "duty_factor_max": 0.6784922394678492,
+     "foot_lowest_hip_heights_min": -0.19104315383427015,
+     "speed_ratio": 1.1744773977735146,
+     "lateral_ratio": 0.14291267454055356
+    },
+    "shove_at_s": [
+     6.529507163640286
+    ],
+    "feet": {
+     "c_foot_fl": {
+      "swings": 42,
+      "steps": 31,
+      "step_share": 0.7447529110199964,
+      "slip_share": 0.10517194595677441,
+      "duty_factor": 0.18181818181818182,
+      "median_step_clearance_hip_heights": 0.23248541452419136,
+      "median_step_advance_mm": 30.16589613483456,
+      "lowest_height_mm": -11.753697351076053,
+      "settled_lowest_height_mm": -11.753697351076053
+     },
+     "c_foot_fr": {
+      "swings": 66,
+      "steps": 13,
+      "step_share": 0.22738912607628226,
+      "slip_share": 0.41644660016420454,
+      "duty_factor": 0.48337028824833705,
+      "median_step_clearance_hip_heights": 0.20821722091690079,
+      "median_step_advance_mm": 18.711239800306096,
+      "lowest_height_mm": -14.951165109502629,
+      "settled_lowest_height_mm": -14.951165109502629
+     },
+     "c_foot_rl": {
+      "swings": 57,
+      "steps": 3,
+      "step_share": 0.03793806465081883,
+      "slip_share": 0.49135957578993167,
+      "duty_factor": 0.6784922394678492,
+      "median_step_clearance_hip_heights": 0.1442598192272812,
+      "median_step_advance_mm": 18.65111122934047,
+      "lowest_height_mm": -18.473987601666224,
+      "settled_lowest_height_mm": -18.473987601666224
+     },
+     "c_foot_rr": {
+      "swings": 70,
+      "steps": 12,
+      "step_share": 0.1951194455222237,
+      "slip_share": 0.3201270261563684,
+      "duty_factor": 0.4523281596452328,
+      "median_step_clearance_hip_heights": 0.09509037681187427,
+      "median_step_advance_mm": 17.58596283376707,
+      "lowest_height_mm": -12.443160334305349,
+      "settled_lowest_height_mm": -12.443160334305349
+     }
+    },
+    "reward_per_step": 1.2192654446915447,
+    "reward_terms": {
+     "alive": 1500.0,
+     "tilt": -33.19293885237774,
+     "speed_track": 325.38697187653935,
+     "speed_error": -245.3757227011983,
+     "sideways": -207.54999165511774,
+     "yaw_rate": -75.14343057169252,
+     "heading": -55.298237081903395,
+     "trot_sync": -88.26300255939111,
+     "impact": -142.6110482644923,
+     "step_fl": 103.90085454052728,
+     "step_fr": -62.01195084752389,
+     "step_rl": -106.04745007493774,
+     "step_rr": -53.54960147291581,
+     "sink": -96.82014773680162,
+     "joint_speed_hip": -10.75283653027377,
+     "joint_speed_knee": -143.0387457226675
+    },
+    "trace_sha256": "6390ca646c07440d2dc78656fc3d37b26971107b4ebda849f3b8bb062f65ee83"
+   }
+  ],
+  "policy_is": "runs/r5-swing/train/walk_task.cxpolicy (the final policy, iteration 780 of 780; best was iteration 773)",
+  "spec_block_equals_retained": true,
+  "w10_reading": "read on the ADR-467 code (after the 1.0 s settle); on every seed the deepest frame is after the settle, so the every-frame reading gives the same numbers (retained/p1-walk-w10-reread.json)"
+ },
+ "transfer": {
+  "training_reward_per_step_best": 1.011083960533142,
+  "evaluation_reward_per_step": [
+   0.7283408105321011,
+   1.3589016843390898
+  ]
+ },
+ "next_round": {
+  "run": "r6-trot",
+  "registered_reason_quotes_this_evaluation": true
+ }
+}

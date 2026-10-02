@@ -105,6 +105,9 @@ def test_a_restitution_of_zero_is_critical_damping_and_is_the_default() -> None:
         dyn.CONTACT_TIMECONST_S,
         1.0,
     ]
+    # A bounce keeps the spring restitution was measured on (ADR-469).
+    bouncy = _one(fx.collision_shape("sphere", radius_mm=5.0, restitution=0.5))
+    assert bouncy["solref"][0] == dyn.BOUNCE_TIMECONST_S
 
 
 @pytest.mark.parametrize("value", [0.05, 0.2, 0.29, 0.95, 0.99])
@@ -173,17 +176,17 @@ def test_a_ball_really_bounces_to_the_restitution_it_asked_for(requested) -> Non
     """
 
     dampratio = dyn.dampratio_for_restitution(requested, context="c")
-    step = dyn.CONTACT_TIMECONST_S / dyn.RESTITUTION_STEPS_PER_TIMECONST
+    step = dyn.BOUNCE_TIMECONST_S / dyn.RESTITUTION_STEPS_PER_TIMECONST
     model = mujoco.MjModel.from_xml_string(
         f"""
         <mujoco>
           <option timestep="{step}"/>
           <worldbody>
             <geom name="floor" type="plane" size="9 9 0.1"
-                  solref="{dyn.CONTACT_TIMECONST_S} {dampratio}"/>
+                  solref="{dyn.BOUNCE_TIMECONST_S} {dampratio}"/>
             <body name="b" pos="0 0 0.5"><freejoint/>
               <geom type="sphere" size="0.05"
-                    solref="{dyn.CONTACT_TIMECONST_S} {dampratio}"/>
+                    solref="{dyn.BOUNCE_TIMECONST_S} {dampratio}"/>
             </body>
           </worldbody>
         </mujoco>

@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-09-29
+Verified against source: 2026-09-30
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -3006,7 +3006,9 @@ left a third, so it is every export, not one).
 2. ~~**`put_asset` in the CLI tool surface** (row 5), and a no-model
    `cadex asset` subcommand.~~ **Done, 2026-09-06** (ADR-190,
    `cli/cadex_cli/tools.py` and `__main__.py`, no protocol op): the
-   agent is offered `put_asset` and told it cannot train, and
+   agent is offered `put_asset` and was told it cannot train (since
+   ADR-464 it can: `train_start`, `train_status`, `train_stop` and
+   `evaluate` on the bridge, `docs/CLI.md` §4), and
    `cadex asset --put FILE` brings a file home with its sha256 in the
    envelope. Row 5's evidence is the whole chain 3 → 4 → 5 → 6 → 7 run
    on a scratch copy with only the trainer command typed by hand — which

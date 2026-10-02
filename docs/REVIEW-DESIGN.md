@@ -1,6 +1,6 @@
 # REVIEW-DESIGN.md — The review dashboard as one designed page
 
-Verified against source: 2026-09-29. [Cadex-new]
+Verified against source: 2026-09-30. [Cadex-new]
 
 This is the design specification for the page `cadex review` serves
 (`cli/cadex_cli/review_static/`, ADR-286) and for the operator dashboard that
@@ -62,6 +62,7 @@ where (§12) — and the element ids do not change with the width.
 | 3 | **Model** | `#model`, `#model-status[data-showing]`, `#viewer`, `#model-fit`, `#show-collision`, `#collision-note`, `#model-components` | The accepted revision's tessellated solids in the shared environment (§4), orbit by pointer or touch, fit control, and the labelled **show collision geometry** toggle, off by default (§11). The status line ends with what is showing. | stage, *Model* tab; toggle and component list in the right sidebar's *Model settings* (`#model-settings`) |
 | 4 | **Curves** | `#curves`, `#telemetry`, `[data-metric]`, `[data-history]`, `#checkpoint-source`, `#checkpoints` | Training telemetry: the five metrics as a stat row, the three histories (reward per step, loss, episode length) as curves side by side on desk and stacked on phone, then checkpoint provenance. | stage, *Curves* tab |
 | 5 | **Videos** | `#videos-region`, `#videos`, `#videos li[data-video][data-showing]` | The run's recorded clips, playable inline and downloadable, each captioned with its identity strip (revision, style, policy, seed, and what it shows — recordings made before that was recorded say so). | stage, *Videos* tab |
+| 5a | **Evaluation** | `#evaluation`, `#evaluation-status[data-state]`, `#evaluation-dot`, `#evaluation-list button[data-evaluation]`, `#evaluation-predicates tr[data-predicate]`, `#evaluation-seeds tr[data-seed][data-filmed]`, `#evaluation-metrics tr[data-metric-row]`, `#evaluation-reward tr[data-term]`, `#evaluation-film li[data-film-seed] [data-film]`, `#evaluation-download` | A policy held to its task's success spec on every frozen seed (§17): the verdict, each predicate's tally, each seed's verdict, ending and values, the behaviour metrics, the reward by term, and the film drawn from the seeds. | stage, *Evaluation* tab |
 | 6 | **Record** | `#record`, `#training`, `#params`, `#params-note`, `#artifacts`, `#problems`, `#disk`, `#docs`, `#decisions`, `#doc-view` | The appendix: training request and receipt, parameters and specs, retained artifacts and disk use, document snapshots and decisions. Full tables at desk width; on phone each table scrolls inside its own card, never the page. | right sidebar: *Training and rollout* (`#record`), *Parameters and specs* (`#params-panel`), *Artifacts* (`#artifacts-panel`); left sidebar: *Documents and decisions* (`#docs-panel`); an opened document on the stage's *Document* tab (`#doc-panel`) |
 
 The element ids and `data-*` attributes above are the hooks the CLI suite
@@ -503,7 +504,8 @@ during a drag.
 fills it, the model status floats top-left and the orbit hint and *Fit*
 bottom-right, both as translucent `--bg` pills. Its tabs are **Concept**, **Model**,
 **Curves** (a dot in the telemetry state's colour), **Videos** (the count of
-playable clips) and, while one is open, **Document** — a document opened
+playable clips), **Evaluation** (a dot in the verdict's colour, §17) and,
+while one is open, **Document** — a document opened
 from the left sidebar comes onto the stage and leaves it when the view
 changes or its tab is closed. Inactive panels are `visibility: hidden`, not
 removed, so the canvas keeps its size and videos keep loading. Future
@@ -655,6 +657,82 @@ hero stands on the mat and fades; a changed viewport palette changes the
 drawn image; the studio video's identity covers the palette source), with
 the shadow held by `test_contact_shadow_darkens_the_floor_under_the_design_only`.
 Before/after: `docs/probes/ot10/a8-*.png`.
+
+## 17. The evaluation: a verdict, its tables and its film (ADR-459)
+
+Under the ot11 charter (P2) the page shows what `cadex evaluate` wrote
+(`docs/CLI.md`, *Evaluating a policy against its success spec*): one policy
+held to its task's success spec on every frozen seed. It answers a question
+the curves cannot: **did the policy do the behaviour, and if not, which
+measurement says so?** A reward curve is not on this panel's first screen,
+and the reward table says in words that no predicate reads it.
+
+**Where it sits.** The stage's fifth tab is **Evaluation**, after *Videos*;
+on a phone it is the card after the videos in the column (region 5a). Its
+tab carries a dot in the verdict's colour — `--ok` for pass, `--bad` for
+fail, none when the project has no evaluation — so the verdict is read
+without opening it. The stage never opens on it by itself.
+
+**Which one is shown.** `/api/project` lists the project's evaluations as
+summaries; the panel shows one, fetched whole from
+`/api/evaluation/<name>`. It is the reader's pick if they made one; else
+the newest evaluation of the selected run's policy; else the newest at the
+accepted revision; else the newest. With more than one, a row of buttons
+under the status line names each by revision, policy, verdict and relation,
+newest first, the shown one pressed.
+
+**Reading order**, top to bottom:
+
+1. **The status line** (`#evaluation-status`): the verdict and the seed
+   tally in the verdict's colour, the policy and task, the revision and
+   whether it is the accepted design — *historical: not the accepted
+   design* when it is not, so an old evaluation never reads as this design's
+   — when it was evaluated, and what failed, worst first. Without an
+   evaluation it says what makes one.
+2. **Predicates**: one row each — id, metric, bound, seeds passing, and the
+   lowest, median and highest value over the seeds. The tally is `--ok`
+   only when every seed passed it.
+3. **Seeds**: one row each — seed, verdict, how and when the episode ended
+   (`tipped at 6.26 s`, `horizon at 10 s`), then one column per predicate
+   holding that seed's value, coloured by whether it met the bound, the
+   reason in its tooltip. A filmed seed's number is underlined and jumps to
+   its film.
+4. **Behaviour metrics**: every metric the evaluation measured, a row each,
+   a column a seed.
+5. **Reward by term**: a row a term and the total, a column a seed, under
+   one muted line: what the policy was paid, not what it is judged by.
+6. **Film**: for each filmed seed, the overview sheet, the detail sheet and,
+   for the first, the video, each captioned with its frame count, time span
+   and view. A sheet opens at full size in a new tab. The note above says
+   the film stands on the dark prototype floor and where the materials came
+   from, or why there is no film.
+7. A link that downloads `evaluation.json`.
+
+**Type, colour and shape.** Sub-headings are `h3` at `--fs-1`, 600, with no
+rule: the panel's own `h2` is the only ruled heading, and it is hidden at
+desk as every stage panel's is. Tables are the page's `table.grid` with
+cells at `--fs-0`, set not to wrap, each inside a `.scroll` wrapper: a
+ten-seed, eleven-predicate table scrolls inside its card and never widens
+the page. Pass and fail are text in `--ok` and `--bad` on the panel's
+surface, never a filled cell. Numbers are five significant figures with no
+trailing zeros. The sheets and the video are drawn on the scene's `#141414`
+with the page's 1.5 px `--rule` border and 10 px radius, at the column's
+width on a phone and never above their own size at desk. Nothing is
+smaller than 12 px.
+
+**Poll cost.** The list is a summary of each report, parsed once per file
+identity on the server; the panel redraws only when the list's names,
+stamps or relations change, or the shown one does.
+
+**Held by** `cli/tests/test_review_evaluation.py` at both charter sizes,
+with ot10's `w2-2` shuffle as the failing fixture: the status line, all
+eleven predicates' tallies, ten seed rows with their endings and
+per-predicate values, the metric and reward tables, the film's images and
+video, the tab's dot, no page scroll at desk, the seed table scrolling
+inside its card on the phone with no horizontal overflow, and nothing under
+12 px; the reader's pick holding across a poll; and a project with no
+evaluation saying what makes one. `test_rendered_page_follows_the_spec`
+holds the heading and the reading order.
 
 ## Operator run status (ADR-387)
 

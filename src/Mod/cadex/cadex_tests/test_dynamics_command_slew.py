@@ -371,7 +371,11 @@ def test_a_limited_policy_still_verifies_against_the_engine(tmp_path) -> None:
     out = tmp_path / "limited.cxpolicy"
     assert _train(python, tmp_path, prepared, out,
                   "--command-slew-deg", "0.5").returncode == 0
-    dyn.verify_policy(out.read_bytes(), prepared["task"])
+    evidence = dyn.verify_policy(
+        dyn.decode_policy(out.read_bytes()), prepared["bundle"],
+        task_sha256=prepared["task_sha256"],
+    )
+    assert evidence["witness_error"] < dyn.POLICY_WITNESS_TOLERANCE
 
 
 def test_a_limited_run_is_still_reproducible_at_a_fixed_seed(tmp_path) -> None:

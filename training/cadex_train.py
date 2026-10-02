@@ -65,6 +65,11 @@ TASK_SCHEMA = "cadex-training-task-v1"
 POLICY_SCHEMA = "cadex-policy-v1"
 POLICY_MAGIC = b"CXPOLICY1\n"
 
+#: The digest of the code this process runs, taken once at import. Hashing
+#: the file at save time instead let a run that straddled an edit stamp its
+#: later checkpoints with code it never executed (ADR-466).
+TRAINER_SHA256 = hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest()
+
 #: Which fields of an action row have to agree for a policy to belong to a
 #: bundle. The engine's ``CadexDynamics._POLICY_ACTION_FIELDS``, copied here
 #: because this file may not import it, and pinned equal by
@@ -444,6 +449,59 @@ def check_curriculum_change(
     return changed
 
 
+#: ``--initial-std``'s value when it is not given and nothing is carried.
+DEFAULT_INITIAL_STD = 0.3
+
+
+def starting_log_std(
+    options: argparse.Namespace,
+    header: dict[str, Any] | None,
+    action_count: int,
+) -> tuple[list[float], str]:
+    """The exploration width a run starts at, and where it came from (ADR-471).
+
+    ``log_std`` is a *trained* parameter (ADR-103) and the container carries
+    it, per action, as the header's ``exploration.log_std``. A warm start that
+    restored the actor and reset σ to ``--initial-std`` was handing a trained
+    mean a fresh exploration width -- ot11's r21b warmed r19's actor, whose σ
+    had narrowed from 0.30 to 0.177, back at 0.30 and lost r19's gait. So,
+    in order:
+
+    * ``--initial-std`` given explicitly wins, warm or cold: ``"flag"``;
+    * otherwise a warm start carries the source's width: ``"init_from"``;
+    * otherwise the default: ``"default"``.
+
+    A source with no usable ``exploration`` block (written before ADR-103, or
+    the wrong length, or not finite) is refused rather than silently given
+    the default: the run was asked to continue a policy, and it would not be.
+    The critic is not carried because the container does not hold it.
+    """
+
+    explicit = getattr(options, "initial_std", None)
+    if explicit is not None:
+        std = float(explicit)
+        if not (math.isfinite(std) and std > 0.0):
+            raise SystemExit("--initial-std must be a finite positive number.")
+        return [math.log(std)] * int(action_count), "flag"
+    if header is None:
+        return [math.log(DEFAULT_INITIAL_STD)] * int(action_count), "default"
+    exploration = header.get("exploration") or {}
+    carried = exploration.get("log_std")
+    if (not isinstance(carried, list) or len(carried) != int(action_count)
+            or exploration.get("space", "pre_activation") != "pre_activation"):
+        raise SystemExit(
+            "--init-from: the policy carries no per-action exploration width "
+            f"for {int(action_count)} actions (header 'exploration.log_std'), "
+            "so it cannot be continued at the width it trained to. Pass "
+            "--initial-std to choose one explicitly."
+        )
+    values = [float(v) for v in carried]
+    if not all(math.isfinite(v) for v in values):
+        raise SystemExit("--init-from: the policy's exploration.log_std is "
+                         "not finite. Pass --initial-std to choose one.")
+    return values, "init_from"
+
+
 def check_policy_fits(
     header: dict[str, Any],
     bundle: dict[str, Any],
@@ -581,12 +639,30 @@ def load_bundle(bundle_path: str, table: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def goal_channels(task: dict[str, Any]) -> list[str]:
+    """Every goal channel the task declares, in bundle order (ADR-462)."""
+
+    return [
+        str(channel)
+        for record in task.get("goal") or ()
+        for channel in record["channels"]
+    ]
+
+
 def channels(task: dict[str, Any]) -> list[str]:
+    """Every name an expression may use: sensor channels, then goal channels.
+
+    The engine's ``CadexDynamics._task_channels`` is the same rule. The
+    sensor channels come out of ``sensordata``; the goal channels are what
+    the episode is asking for, appended after them, so a task that gains a
+    goal keeps the position of every channel it already had.
+    """
+
     return [
         str(channel)
         for record in task["observations"]
         for channel in record["channels"]
-    ]
+    ] + goal_channels(task)
 
 
 def actor_channels(task: dict[str, Any]) -> list[str]:
@@ -598,6 +674,9 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
     marks none, so this is every channel, which is what it always was.
     The engine's ``CadexDynamics.policy_channels`` is the same rule; this
     copy is here because the trainer imports nothing from the engine.
+
+    Every goal channel follows (ADR-462): a goal is what the robot is told
+    to do, so the policy always reads it.
     """
 
     return [
@@ -605,7 +684,7 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
         for record in task["observations"]
         if str(record.get("role") or "policy") == "policy"
         for channel in record["channels"]
-    ]
+    ] + goal_channels(task)
 
 
 # ---------------------------------------------------------------------------
@@ -664,6 +743,211 @@ RESET_VARIATION_ALGORITHM = (
     "stream and a reset here happens on device inside a jitted scan. Same "
     "arithmetic, different numbers, and nobody replays a training episode"
 )
+
+
+#: How this trainer draws an episode's goals (ADR-462), and the one
+#: per-episode draw it does **not** improvise on device.
+#:
+#: The reset variation above is redrawn with ``jax.random`` and need not
+#: match the engine, because nobody replays a training episode. A goal is
+#: different in kind: a ``point`` is where a tip is at a drawn joint
+#: configuration that touches nothing and clears a floor, which takes
+#: forward kinematics and a contact check, and a second algorithm that only
+#: resembled the bundle's would train a policy on targets the evaluation
+#: never asks for. So the goals are drawn **on the host, by the bundle's own
+#: ``goal_algorithm``**, into a pool of whole episodes before training
+#: starts, and the device only ever chooses which pooled episode an
+#: environment is given. :func:`draw_goals` is that algorithm, and a test
+#: holds it to the engine's numbers from the same seed.
+#:
+#: The pool is one stream, ``random.Random(base_seed)``, with no
+#: randomisation or reset draws in front of it. An evaluation seed's goals
+#: come after that seed's other draws, so the two coincide only for a task
+#: with none of those -- which is why a ``--seed`` that is one of the
+#: bundle's evaluation seeds is refused outright.
+GOAL_MODE = "host_pool"
+GOAL_POOL_ALGORITHM = (
+    "random.Random(base_seed) drawing `pool` consecutive episodes by the "
+    "bundle's goal_algorithm on the host; on device each environment is "
+    "given one pooled episode, chosen by jax.random.randint on every reset, "
+    "and reads segment min(step // resample_steps, segments - 1) of it"
+)
+
+
+def check_training_seed(task: dict[str, Any], seed: int) -> None:
+    """Refuse a ``--seed`` that is one of the task's evaluation seeds.
+
+    Evaluation seeds are never training seeds. The engine refuses to judge a
+    policy on the seed it was trained with, and with a goal the rule has
+    teeth: the pool's first episode is the first draws of
+    ``random.Random(seed)``, which for a task with no randomisation, reset
+    variation or disturbance are exactly the goals that evaluation seed
+    draws. Refused before anything is imported, so it costs no GPU time.
+    """
+
+    judged = [int(value) for value in (task.get("success") or {}).get("seeds") or ()]
+    if int(seed) in judged:
+        raise SystemExit(
+            f"--seed {int(seed)} is one of this task's evaluation seeds "
+            f"({judged}). Evaluation seeds are never training seeds: pick "
+            "another, and leave the spec's seeds as they are."
+        )
+
+
+def goal_tip_m(data: Any, body: int, local_m: Sequence[float]) -> list[float]:
+    """One point fixed on one body, in the world, in metres.
+
+    ``CadexDynamics._goal_tip_m``, written out again: ``xpos`` plus the
+    body's rotation, nine row-major numbers in ``xmat``, applied to the
+    offset.
+    """
+
+    origin = data.xpos[body]
+    rotation = data.xmat[body]
+    return [
+        float(origin[axis])
+        + sum(float(rotation[3 * axis + other]) * float(local_m[other])
+              for other in range(3))
+        for axis in range(3)
+    ]
+
+
+def place_goal_followers(data: Any, followers: Any) -> None:
+    """Write each coupled follower where its law puts it, in list order.
+
+    ``CadexDynamics._place_goal_followers``, written down for ADR-084's
+    reason and held to it by ``test_dynamics_goal_coupled`` (ADR-474).
+    """
+
+    for follower in followers:
+        driver = follower["driver_qpos_adr"]
+        offset = (
+            0.0 if driver is None
+            else float(data.qpos[int(driver)]) - float(follower["driver_reference"])
+        )
+        c = [float(value) for value in follower["polycoef"]]
+        data.qpos[int(follower["qpos_adr"])] = float(follower["reference"]) + (
+            c[0] + c[1] * offset + c[2] * offset**2 + c[3] * offset**3
+            + c[4] * offset**4
+        )
+
+
+def draw_goals(mujoco: Any, model: Any, task: dict[str, Any], rng: Any) -> list[dict[str, Any]]:
+    """One episode's goals, by the bundle's ``goal_algorithm``.
+
+    A second implementation of ``CadexDynamics.draw_episode_goals``, here
+    for the reason every other second implementation in this file is: the
+    trainer cannot import the engine (ADR-084), so the copy is written down
+    and ``test_dynamics_goal_trainer`` pins the two number for number. It
+    runs on the host with stock ``mujoco`` and never on device.
+
+    One row per goal, each ``{"label", "segments": [[...], ...]}``.
+    """
+
+    drawn: list[dict[str, Any]] = []
+    data = None
+    for entry in task.get("goal") or ():
+        segments: list[list[float]] = []
+        if str(entry["kind"]) != "point":
+            for _ in range(int(entry["segments"])):
+                segments.append(
+                    [rng.uniform(float(entry["low"]), float(entry["high"]))]
+                )
+            drawn.append({"label": str(entry["label"]), "segments": segments})
+            continue
+        if data is None:
+            data = mujoco.MjData(model)
+        key = int(mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_KEY, str(task["episode"]["reset_keyframe"])
+        ))
+        resting = {(int(first), int(second))
+                   for first, second in entry["resting_contacts"]}
+        body = int(entry["body_id"])
+        local = [float(value) for value in entry["local_m"]]
+        floor = entry.get("min_z_m")
+        apart = float(entry["min_separation_m"])
+        previous = [float(value) for value in entry["start_m"]]
+        for segment in range(int(entry["segments"])):
+            point = None
+            for _ in range(int(entry["attempts"])):
+                mujoco.mj_resetDataKeyframe(model, data, key)
+                for joint in entry["joints"]:
+                    data.qpos[int(joint["qpos_adr"])] = rng.uniform(
+                        float(joint["low"]), float(joint["high"])
+                    )
+                place_goal_followers(data, entry.get("followers") or ())
+                mujoco.mj_forward(model, data)
+                candidate = goal_tip_m(data, body, local)
+                if floor is not None and candidate[2] < float(floor):
+                    continue
+                if any(
+                    (
+                        min(int(data.contact[index].geom1),
+                            int(data.contact[index].geom2)),
+                        max(int(data.contact[index].geom1),
+                            int(data.contact[index].geom2)),
+                    ) not in resting
+                    for index in range(int(data.ncon))
+                ):
+                    continue
+                if math.dist(candidate, previous) < apart:
+                    continue
+                point = candidate
+                break
+            if point is None:
+                raise SystemExit(
+                    f"goal {str(entry['label'])!r} found no reachable point in "
+                    f"{int(entry['attempts'])} tries for segment {segment}; "
+                    "the engine refuses the same draw, so this bundle's goal "
+                    "cannot be trained as declared"
+                )
+            segments.append([value * float(entry["scale"]) for value in point])
+            previous = point
+        drawn.append({"label": str(entry["label"]), "segments": segments})
+    return drawn
+
+
+def goal_segment(xp: Any, steps: Any, period: int, count: int) -> Any:
+    """Which segment of a goal is in force after ``steps`` control steps.
+
+    The bundle's rule and ``CadexDynamics.goal_values``: segment
+    ``steps // resample_steps``, clamped to the last one, and segment 0 for
+    a goal that is held (``resample_steps`` 0). Integer arithmetic on the
+    episode's own step counter, never a comparison on elapsed seconds.
+
+    ``xp`` is the array module, taken as an argument for the reason
+    :func:`forward` takes ``jnp``: a test holds this to the engine with
+    ``numpy``, with no jax in the process.
+    """
+
+    if not period:
+        return xp.zeros_like(steps)
+    return xp.minimum(steps // period, count - 1)
+
+
+def goal_pool(mujoco: Any, xml: bytes, task: dict[str, Any], *,
+              base_seed: int, count: int) -> list[list[list[list[float]]]]:
+    """``count`` episodes of goals, one table per goal entry.
+
+    Entry ``i`` of the result is ``[episode][segment][channel]``. One
+    stream, in episode order, so the pool is a function of the bundle and
+    the seed and nothing else. The model is compiled here from the bundle's
+    own bytes and is not the batch's: a draw reads kinematics and contacts,
+    which no randomisation entry moves.
+    """
+
+    entries = list(task.get("goal") or ())
+    if not entries:
+        return []
+    if int(count) < 1:
+        raise SystemExit(f"--goal-pool {count} holds no episode to train on")
+    model = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
+    rng = random.Random(int(base_seed))
+    tables: list[list[list[list[float]]]] = [[] for _ in entries]
+    for _ in range(int(count)):
+        for table, row in zip(tables, draw_goals(mujoco, model, task, rng)):
+            table.append(row["segments"])
+    return tables
 
 
 def randomised_models(mujoco: Any, xml: bytes, task: dict[str, Any], *,
@@ -751,6 +1035,65 @@ def flat_parameters(np: Any, parameters) -> list[float]:
         flat.extend(np.asarray(weight, dtype=np.float32).reshape(-1).tolist())
         flat.extend(np.asarray(bias, dtype=np.float32).reshape(-1).tolist())
     return flat
+
+
+# ---------------------------------------------------------------------------
+# The physics. MJX is the engine's machine only where the two agree.
+# ---------------------------------------------------------------------------
+
+
+def match_engine_actuator_derivative(mujoco: Any, jax: Any, jnp: Any) -> None:
+    """Make MJX's ``implicitfast`` drop a clamped actuator's damping, as MuJoCo does.
+
+    ADR-465. Every Cadex servo is a force-limited affine PD actuator, and
+    under ``implicitfast`` both engines fold its ``-kv`` into the implicit
+    step. Stock MuJoCo 3.10 -- the engine, which is what evaluates a policy
+    -- leaves the term out for an actuator whose force sits at its
+    ``forcerange``; MJX 3.10's ``deriv_smooth_vel`` keeps it always. A
+    saturated servo was therefore extra-damped here and torque-limited
+    there: ot11's r2 walk policy went forwards at +2.80 reward per step in
+    this file's physics and backwards at -1.95 in the engine's, from the
+    same reset. This subtracts the term back out for exactly the clamped
+    actuators, which ``test_dynamics_mjx_forcelimit`` holds to stock MuJoCo
+    at float64 round-off.
+
+    It replaces a function in a private MJX module, which the pinned
+    ``mujoco-mjx`` in ``requirements.txt`` is what makes tolerable; the same
+    test fails loudly the day raw MJX agrees, and then this goes. Installing
+    it twice is harmless.
+    """
+
+    from mujoco.mjx._src import derivative
+
+    original = derivative.deriv_smooth_vel
+    if getattr(original, "cadex_engine_rule", False):
+        return
+    affine = int(mujoco.mjtBias.mjBIAS_AFFINE)
+    affine_gain = int(mujoco.mjtGain.mjGAIN_AFFINE)
+    no_dynamics = int(mujoco.mjtDyn.mjDYN_NONE)
+    no_actuation = int(mujoco.mjtDisableBit.mjDSBL_ACTUATION)
+
+    def deriv_smooth_vel(m, d):
+        qderiv = original(m, d)
+        if qderiv is None or m.opt.disableflags & no_actuation:
+            return qderiv
+        # The same per-actuator velocity gain MJX just added...
+        ctrl = d.ctrl.at[m.actuator_dyntype != no_dynamics].set(d.act)
+        vel = (m.actuator_biasprm[:, 2] * (m.actuator_biastype == affine)
+               + m.actuator_gainprm[:, 2] * (m.actuator_gaintype == affine_gain) * ctrl)
+        # ...taken back out wherever the force is pinned at its limit.
+        force = d.actuator_force
+        clamped = jnp.logical_and(
+            m.actuator_forcelimited,
+            jnp.logical_or(force <= m.actuator_forcerange[:, 0],
+                           force >= m.actuator_forcerange[:, 1]),
+        )
+        moment = d._impl.actuator_moment
+        return qderiv - moment.T @ jax.vmap(jnp.multiply)(
+            moment, jnp.where(clamped, vel, 0.0))
+
+    deriv_smooth_vel.cadex_engine_rule = True
+    derivative.deriv_smooth_vel = deriv_smooth_vel
 
 
 # ---------------------------------------------------------------------------
@@ -843,12 +1186,15 @@ def train(
     with neither passes no-ops and takes exactly the path it always took.
     """
 
+    check_training_seed(bundle["task"], int(options.seed))
+
     import jax
     import jax.numpy as jnp
     import numpy as np
     import mujoco
     import mujoco.mjx as mjx
 
+    match_engine_actuator_derivative(mujoco, jax, jnp)
     emit = emit or (lambda tag, iteration, reward, trained: None)
     progress = progress or (lambda **fields: None)
 
@@ -994,6 +1340,39 @@ def train(
     # a second declaration of the episode, and the engine's
     # ``evaluate_episode`` would be honouring the other one.
     horizon = int(episode["max_steps"])
+
+    # -- ADR-462: what each episode is asking for ---------------------------
+    #
+    # `goaled` is a PYTHON bool and every branch on it is taken at trace
+    # time, exactly as `carrying` is below: a task with no goal emits the
+    # graph, the carry and the key splits it always did.
+    goal_entries = list(task.get("goal") or ())
+    goaled = bool(goal_entries)
+    goal_tables = [
+        jnp.asarray(table, dtype=jnp.float32)
+        for table in goal_pool(
+            mujoco, bundle["model_xml"], task,
+            base_seed=int(options.seed),
+            count=int(getattr(options, "goal_pool", 4096)),
+        )
+    ]
+    goal_periods = [int(entry["resample_steps"]) for entry in goal_entries]
+    goal_pool_size = int(goal_tables[0].shape[0]) if goaled else 0
+
+    def goals_at(picks, steps):
+        """Each environment's goal channels at its own episode step.
+
+        ``picks`` is which pooled episode an environment holds and ``steps``
+        how many control steps of it have been taken.
+        """
+
+        return jnp.concatenate(
+            [
+                pooled[picks, goal_segment(jnp, steps, period, pooled.shape[1])]
+                for pooled, period in zip(goal_tables, goal_periods)
+            ],
+            axis=-1,
+        )
 
     def observe(data):
         return jnp.take(data.sensordata, gather) * obs_scale
@@ -1182,8 +1561,13 @@ def train(
             )
         return xfrc
 
-    def step_env(m, data, surface, *filter_state):
+    def step_env(m, data, surface, *extra):
         """One control step: clamp, scale into ctrl, integrate, observe, score.
+
+        ``extra`` is the goal this step was taken under, when the task has
+        one, then ADR-160's filter state, when it filters. The landed
+        observation carries that same goal: a reward is judged against what
+        the policy was asked when it acted, which is the engine's rule.
 
         **The only unit arithmetic on this boundary is the bundle's own
         ``clamp then x scale``**, which is the same two operations
@@ -1192,6 +1576,8 @@ def train(
         to keep that true.
         """
 
+        told = extra[0] if goaled else None
+        filter_state = extra[1:] if goaled else extra
         clamped = jnp.clip(surface, low, high)
         if carrying:
             # AFTER the clamp, so the filter's memory only ever holds a
@@ -1233,6 +1619,8 @@ def train(
 
         data, _ = jax.lax.scan(one, data, None, length=per_action)
         vector = observe(data)
+        if goaled:
+            vector = jnp.concatenate([vector, told])
         if carrying:
             # The ISSUED command joins the outputs, because it is the next
             # step's filter state and there is nowhere else to get it: it is
@@ -1245,10 +1633,14 @@ def train(
     # `surface`. Empty at alpha 1.0, which is what keeps the traced signature
     # identical to the pre-ADR-160 one.
     _filter_axes = (0, 0) if carrying else ()
+    # ADR-462's goal is per environment too, and sits in front of the filter
+    # state; empty for a task with no goal, on the same terms.
+    _goal_axes = (0,) if goaled else ()
     batched_step = (
-        jax.vmap(step_env, in_axes=(None, 0, 0) + _filter_axes)
+        jax.vmap(step_env, in_axes=(None, 0, 0) + _goal_axes + _filter_axes)
         if model_axes is None
-        else jax.vmap(step_env, in_axes=(model_axes, 0, 0) + _filter_axes)
+        else jax.vmap(step_env,
+                      in_axes=(model_axes, 0, 0) + _goal_axes + _filter_axes)
     )
     batched_forward = (
         jax.vmap(mjx.forward, in_axes=(None, 0)) if model_axes is None
@@ -1281,6 +1673,13 @@ def train(
     state = (data, first_forces, first_starts,
              jnp.zeros((envs,), dtype=jnp.float32),
              jnp.zeros((envs,), dtype=jnp.int32))
+    if goaled:
+        # ADR-462's member: which pooled episode of goals each environment
+        # holds. Episode-local like the draws beside it, and redrawn on the
+        # same `done`.
+        state = state + (
+            jax.random.randint(_start_key, (envs,), 0, goal_pool_size),
+        )
     if carrying:
         # ADR-160's sixth member (ADR-162 shares it): the previous ISSUED
         # command, per
@@ -1295,8 +1694,8 @@ def train(
         state = state + (jnp.zeros((envs, len(actions)), dtype=jnp.float32),)
     actor = initial_parameters(jax, jnp, actor_key, shapes)
     critic = initial_parameters(jax, jnp, critic_key, critic_shapes)
-    log_std = jnp.full((len(actions),), math.log(float(options.initial_std)),
-                       dtype=jnp.float32)
+    # Resolved below, once --init-from has (or has not) supplied a header.
+    log_std = jnp.zeros((len(actions),), dtype=jnp.float32)
 
     # Adam, hand-rolled, so that requirements.txt stays four lines. The
     # trainer is a thing you copy to a box; every dependency is one more
@@ -1312,6 +1711,7 @@ def train(
     seen = jnp.float32(1.0e-4)
 
     init_from_provenance: dict[str, Any] | None = None
+    source_header: dict[str, Any] | None = None
     if not getattr(options, "init_from", "") and (
             str(getattr(options, "init_from_task_change", "") or "").strip()
             or str(getattr(options, "init_from_parent_task", "") or "").strip()
@@ -1340,6 +1740,7 @@ def train(
             raise SystemExit(f"--init-from: cannot read {source}: {exc}") from exc
         decoded = decode_policy(blob, context=str(source))
         curriculum_keys = check_policy_fits(decoded["header"], bundle, options)
+        source_header = decoded["header"]
         restored = unflatten_parameters(np, decoded["weights"], shapes)
         params["actor"] = [
             (jnp.asarray(weight), jnp.asarray(bias))
@@ -1407,6 +1808,22 @@ def train(
                     flush=True,
                 )
 
+    # ADR-471: a warm start continues at the width it trained to unless
+    # --initial-std says otherwise. Before the moments are taken again, so
+    # the optimiser stays fresh either way.
+    start_log_std, std_source = starting_log_std(
+        options, source_header, len(actions))
+    params["log_std"] = jnp.asarray(start_log_std, dtype=jnp.float32)
+    moment1, moment2 = zeros_like(params), zeros_like(params)
+    if std_source == "default":
+        # A cold run's header keeps the number it always recorded.
+        options.initial_std = DEFAULT_INITIAL_STD
+    if init_from_provenance is not None:
+        init_from_provenance["log_std_source"] = std_source
+    if not options.quiet and std_source != "default":
+        print(f"action_std  {float(np.mean(np.exp(start_log_std))):.4f}  "
+              f"(from {std_source})", flush=True)
+
     scale_out = jnp.asarray(output_scale, dtype=jnp.float32)
     bias_out = jnp.asarray(output_bias, dtype=jnp.float32)
 
@@ -1459,8 +1876,17 @@ def train(
             # and EMPTY otherwise, so at alpha 1.0 the carry pytree is the
             # six-tuple it has always been.
             data, key, forces, starts, elapsed, steps, *filter_carry = carry
+            # ADR-462's `picks` sits in front of the filter state when the
+            # task has a goal, and is absent otherwise.
+            picks = filter_carry.pop(0) if goaled else None
             key, act_key = jax.random.split(key)
             vector = jax.vmap(observe)(data)
+            if goaled:
+                # `steps` is the count of steps ALREADY taken, so this is
+                # the goal in force for the step about to be taken.
+                told = goals_at(picks, steps)
+                vector = jnp.concatenate([vector, told], axis=-1)
+            goal_args = (told,) if goaled else ()
             normalised = normalise(vector, mean, variance)
             raw = net(params["actor"], jnp.take(normalised, actor_take, axis=-1))
             noise = jax.random.normal(act_key, raw.shape, dtype=jnp.float32)
@@ -1479,10 +1905,11 @@ def train(
                 # is exactly the first step of an episode and needs no
                 # separate flag in the carry.
                 data, landed, reward, terminated, issued = batched_step(
-                    model, data, surface, filter_carry[0], steps == 0)
+                    model, data, surface, *goal_args, filter_carry[0],
+                    steps == 0)
             else:
                 data, landed, reward, terminated = batched_step(
-                    model, data, surface)
+                    model, data, surface, *goal_args)
             elapsed = elapsed + control_interval
             steps = steps + 1
             # An integer compare, not a float one on `elapsed`: 600 additions
@@ -1523,6 +1950,15 @@ def train(
             starts = jnp.where(done[:, None], fresh_starts, starts)
             elapsed = jnp.where(done, 0.0, elapsed)
             steps = jnp.where(done, 0, steps)
+            if goaled:
+                # One more split, taken only by a task with a goal, so every
+                # other task's stream is the one it always was.
+                key, pick_key = jax.random.split(key)
+                picks = jnp.where(
+                    done,
+                    jax.random.randint(pick_key, (envs,), 0, goal_pool_size),
+                    picks,
+                )
             if carrying:
                 # Zeroed on `done` for the same reason `elapsed` and `steps`
                 # are. The value is not read after a reset -- `steps` is 0,
@@ -1532,7 +1968,7 @@ def train(
                 # means.
                 filter_carry = [jnp.where(done[:, None], 0.0, issued)]
             return (data, key, forces, starts, elapsed, steps,
-                    *filter_carry), (
+                    *((picks,) if goaled else ()), *filter_carry), (
                 vector, sampled, logp, value, reward, done, landed, terminated
             )
 
@@ -2048,9 +2484,7 @@ def policy_header(
             "space": "pre_activation",
         },
         "training": {
-            "trainer_sha256": hashlib.sha256(
-                Path(__file__).resolve().read_bytes()
-            ).hexdigest(),
+            "trainer_sha256": TRAINER_SHA256,
             "seed": int(options.seed),
             # ADR-160. Written as its own key as well as appearing in
             # ``hyperparameters`` below, because this is the one an
@@ -2080,6 +2514,10 @@ def policy_header(
                 if key not in ("bundle", "out", "quiet", "label", "init_from",
                                "init_from_task_change",
                                "init_from_parent_task")
+                # The goal pool's size means nothing to a task that states
+                # no goal, and leaving it out there keeps such a policy's
+                # header the one it always was (ADR-462).
+                and (key != "goal_pool" or task.get("goal"))
             },
             "init_from": trained.get("init_from"),
             # The iterations this policy actually saw, which for a
@@ -2115,6 +2553,23 @@ def policy_header(
                     for entry in task.get("disturbance") or ()
                 ],
             },
+            # The third stream (ADR-462), and the one drawn by the bundle's
+            # own algorithm. Absent for a task that states no goal, so such
+            # a policy's header is the one it always was.
+            **(
+                {
+                    "goal": {
+                        "mode": GOAL_MODE,
+                        "algorithm": GOAL_POOL_ALGORITHM,
+                        "bundle_algorithm": str(task.get("goal_algorithm") or ""),
+                        "base_seed": int(options.seed),
+                        "pool": int(getattr(options, "goal_pool", 4096)),
+                        "entries": [str(entry["label"])
+                                    for entry in task.get("goal") or ()],
+                    }
+                }
+                if task.get("goal") else {}
+            ),
             "cadex_importable": cadex_importable,
         },
         "evaluation": {
@@ -2213,7 +2668,19 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--clip", type=float, default=0.2)
     parser.add_argument("--entropy", type=float, default=1.0e-3)
     parser.add_argument("--value-weight", type=float, default=0.5)
-    parser.add_argument("--initial-std", type=float, default=0.3)
+    parser.add_argument(
+        "--initial-std", type=float, default=None,
+        help="the exploration width (σ, pre-activation) the run starts at. "
+             f"Default {DEFAULT_INITIAL_STD} on a cold run; on --init-from "
+             "the source policy's own per-action width is carried instead, "
+             "unless this is given explicitly (ADR-471)")
+    parser.add_argument(
+        "--goal-pool", type=int, default=4096,
+        help="how many episodes of goals to draw on the host before training "
+             "(ADR-462). Each is drawn by the bundle's own goal_algorithm "
+             "from --seed, and every environment is given one of them on "
+             "each reset. Ignored by a task that states no goal.",
+    )
     parser.add_argument(
         "--action-filter-alpha", type=float, default=1.0,
         help="low-pass the command before it reaches the actuators: "
@@ -2243,8 +2710,9 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
             "warm-start the actor from an existing .cxpolicy instead of a "
             "fresh network. The policy must match this bundle's task and "
             "model digests, its observation channels in order, its action "
-            "table and the network shape --hidden asks for. Only the actor "
-            "and the observation normaliser are carried: the critic and the "
+            "table and the network shape --hidden asks for. Only the actor, "
+            "its exploration width (unless --initial-std is given) and the "
+            "observation normaliser are carried: the critic and the "
             "optimiser start fresh, because the container holds neither."
         ),
     )

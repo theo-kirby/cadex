@@ -1,0 +1,280 @@
+{
+ "behaviour": "walk",
+ "note": "ot10's w2-2 policy, the project's own stored rollout trace (seed none), read against the frozen walk spec. Command 80 mm/s is the speed its task's reward asked for. Off-contract: the trace predates the contract.",
+ "pass": false,
+ "rig": {
+  "base": "c_tray",
+  "base_com_local_mm": [
+   -0.00748742,
+   -0.000549957,
+   86.3173
+  ],
+  "com_height_mm": 84.45862960599491,
+  "floor_mm": 0.0,
+  "hip_height_mm": 96.7006,
+  "mass_kg": 0.47909140199999994,
+  "reference_xyzw": [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ],
+  "weight_n": 4.69988665362
+ },
+ "schema": "ot11-measure-v1",
+ "traces": [
+  {
+   "behaviour": "walk",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "W3",
+    "W5",
+    "W7",
+    "W9",
+    "W10"
+   ],
+   "metrics": {
+    "clearance_min_mm": 7.736047999999999,
+    "command_mm_s": 80.0,
+    "feet": {
+     "c_foot_fl": {
+      "duty_factor": 0.5210643015521065,
+      "lowest_height_hip_heights": -0.18178678187336997,
+      "lowest_height_mm": -17.578890879223998,
+      "median_step_advance_mm": 44.399651750880395,
+      "median_step_clearance_hip_heights": 0.19652074789365975,
+      "median_step_clearance_mm": 19.003674233765633,
+      "median_swing_airborne_s": 0.08000000000000007,
+      "median_swing_peak_mm": 9.37324274799089,
+      "path_mm": 2607.5618034131194,
+      "peak_height_mm": 38.70768594376044,
+      "slip_mm": 845.0398973664344,
+      "slip_share": 0.32407281632225754,
+      "step_share": 0.35858956286140437,
+      "steps": 18,
+      "swings": 60
+     },
+     "c_foot_fr": {
+      "duty_factor": 0.5077605321507761,
+      "lowest_height_hip_heights": -0.22017133105471787,
+      "lowest_height_mm": -21.29069981578985,
+      "median_step_advance_mm": 31.90575939321671,
+      "median_step_clearance_hip_heights": 0.20171598898068668,
+      "median_step_clearance_mm": 19.50605716402579,
+      "median_swing_airborne_s": 0.08000000000000007,
+      "median_swing_peak_mm": 8.733471017469066,
+      "path_mm": 2414.8193906243487,
+      "peak_height_mm": 46.82658766025392,
+      "slip_mm": 804.1334448663147,
+      "slip_share": 0.3329994151895587,
+      "step_share": 0.38313094491330096,
+      "steps": 21,
+      "swings": 66
+     },
+     "c_foot_rl": {
+      "duty_factor": 0.7250554323725056,
+      "lowest_height_hip_heights": -0.08649249866718293,
+      "lowest_height_mm": -8.36387651661579,
+      "median_step_advance_mm": 38.200085285490566,
+      "median_step_clearance_hip_heights": 0.10792070122783212,
+      "median_step_clearance_mm": 10.435996561152102,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.6969468852743805,
+      "path_mm": 2312.82323219654,
+      "peak_height_mm": 18.88889040051849,
+      "slip_mm": 1540.0026920811283,
+      "slip_share": 0.6658540396183037,
+      "step_share": 0.14057090732331703,
+      "steps": 5,
+      "swings": 48
+     },
+     "c_foot_rr": {
+      "duty_factor": 0.6895787139689579,
+      "lowest_height_hip_heights": -0.09204925464366284,
+      "lowest_height_mm": -8.901218153594982,
+      "median_step_advance_mm": 41.68685365513725,
+      "median_step_clearance_hip_heights": 0.10055783203099529,
+      "median_step_clearance_mm": 9.724002692096462,
+      "median_swing_airborne_s": 0.040000000000000036,
+      "median_swing_peak_mm": 2.8040552188323353,
+      "path_mm": 2412.386726536225,
+      "peak_height_mm": 11.975140732834273,
+      "slip_mm": 1369.4687613220408,
+      "slip_share": 0.567682099332541,
+      "step_share": 0.1396383408250543,
+      "steps": 7,
+      "swings": 61
+     }
+    },
+    "hip_height_mm": 96.7006,
+    "max_heading_deg": 30.498794332509767,
+    "max_tilt_deg": 15.864104215885654,
+    "mean_forward_speed_mm_s": 152.58934620137748,
+    "mean_lateral_speed_mm_s": 12.692587892509144,
+    "sink_limit_mm": -4.83503,
+    "step_min_advance_mm": 14.50509,
+    "travel_mm": [
+     1449.4220484538291,
+     299.4329958382755
+    ]
+   },
+   "mjcf_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2",
+   "not_measured": [],
+   "pass": false,
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "predicates": [
+    {
+     "id": "W1",
+     "limit": {},
+     "name": "completes",
+     "pass": true,
+     "value": {
+      "duration_s": 10.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": ""
+    },
+    {
+     "id": "W2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": true,
+     "value": 15.864104215885654,
+     "why": ""
+    },
+    {
+     "id": "W3",
+     "limit": {
+      "max": 1.25,
+      "min": 0.75
+     },
+     "name": "tracks_speed",
+     "pass": false,
+     "value": 1.9073668275172184,
+     "why": ""
+    },
+    {
+     "id": "W4",
+     "limit": {
+      "max": [
+       0.25,
+       45.0
+      ]
+     },
+     "name": "goes_straight",
+     "pass": true,
+     "value": {
+      "lateral_ratio": 0.1586573486563643,
+      "max_heading_deg": 30.498794332509767
+     },
+     "why": ""
+    },
+    {
+     "id": "W5",
+     "limit": {
+      "min": [
+       4,
+       0.7
+      ]
+     },
+     "name": "steps",
+     "pass": false,
+     "value": {
+      "step_share": {
+       "c_foot_fl": 0.35858956286140437,
+       "c_foot_fr": 0.38313094491330096,
+       "c_foot_rl": 0.14057090732331703,
+       "c_foot_rr": 0.1396383408250543
+      },
+      "steps": {
+       "c_foot_fl": 18,
+       "c_foot_fr": 21,
+       "c_foot_rl": 5,
+       "c_foot_rr": 7
+      }
+     },
+     "why": ""
+    },
+    {
+     "id": "W6",
+     "limit": {
+      "min": 0.08
+     },
+     "name": "foot_clearance",
+     "pass": true,
+     "value": {
+      "c_foot_fl": 0.19652074789365975,
+      "c_foot_fr": 0.20171598898068668,
+      "c_foot_rl": 0.10792070122783212,
+      "c_foot_rr": 0.10055783203099529
+     },
+     "why": ""
+    },
+    {
+     "id": "W7",
+     "limit": {
+      "max": 0.15
+     },
+     "name": "foot_slip",
+     "pass": false,
+     "value": {
+      "c_foot_fl": 0.32407281632225754,
+      "c_foot_fr": 0.3329994151895587,
+      "c_foot_rl": 0.6658540396183037,
+      "c_foot_rr": 0.567682099332541
+     },
+     "why": ""
+    },
+    {
+     "id": "W8",
+     "limit": {
+      "max": 0.85,
+      "min": 0.4
+     },
+     "name": "duty_factor",
+     "pass": true,
+     "value": {
+      "c_foot_fl": 0.5210643015521065,
+      "c_foot_fr": 0.5077605321507761,
+      "c_foot_rl": 0.7250554323725056,
+      "c_foot_rr": 0.6895787139689579
+     },
+     "why": ""
+    },
+    {
+     "id": "W9",
+     "limit": {
+      "max": 1.5
+     },
+     "name": "every_leg_works",
+     "pass": false,
+     "value": 4.2,
+     "why": ""
+    },
+    {
+     "id": "W10",
+     "limit": {
+      "min": -0.05
+     },
+     "name": "on_the_floor_not_in_it",
+     "pass": false,
+     "value": {
+      "c_foot_fl": -0.18178678187336997,
+      "c_foot_fr": -0.22017133105471787,
+      "c_foot_rl": -0.08649249866718293,
+      "c_foot_rr": -0.09204925464366284
+     },
+     "why": ""
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": null,
+   "task_sha256": "b0913fa0fb93ee8a895f120f02b9031259e2bfa6667a2ffb9e7caf50e01a8f56",
+   "trace": "$PROJECTS/ot10-quadruped-3-w2/runs/w2-2/rollout/assembly-simulation-trace.json",
+   "void": []
+  }
+ ]
+}

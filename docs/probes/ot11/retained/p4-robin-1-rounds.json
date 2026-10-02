@@ -1,0 +1,355 @@
+{
+  "schema": "ot11-p4-rounds-receipt-v1",
+  "project": "ot11-robin-1",
+  "session": {
+    "model": "claude-opus-5-5",
+    "turns": 1,
+    "turn_seconds": [
+      1467.8
+    ],
+    "result": {
+      "duration_ms": 1456987,
+      "num_turns": 29,
+      "total_cost_usd": 2.8031205999999997,
+      "is_error": false
+    },
+    "tool_calls": {
+      "describe_api": {
+        "calls": 2,
+        "errors": 0,
+        "longest_s": 0.1
+      },
+      "inspect": {
+        "calls": 14,
+        "errors": 0,
+        "longest_s": 0.1
+      },
+      "train_status": {
+        "calls": 4,
+        "errors": 0,
+        "longest_s": 618.6
+      },
+      "set_params": {
+        "calls": 2,
+        "errors": 0,
+        "longest_s": 10.4
+      },
+      "edit_script": {
+        "calls": 2,
+        "errors": 0,
+        "longest_s": 9.3
+      },
+      "train_start": {
+        "calls": 1,
+        "errors": 0,
+        "longest_s": 0.4
+      },
+      "put_asset": {
+        "calls": 2,
+        "errors": 0,
+        "longest_s": 0.1
+      },
+      "evaluate": {
+        "calls": 1,
+        "errors": 0,
+        "longest_s": 189.8
+      }
+    }
+  },
+  "standing": {
+    "runs_registered": 1,
+    "runs_ended": 1,
+    "evaluations": 1,
+    "passed": true
+  },
+  "ledger": [
+    {
+      "accepted_revision": "3620c04c5fac786985359493d9fde00968c6aa0b68bcd9e2b6bb8009ecae0e61",
+      "at": 1790787045.2830029,
+      "budget_s": 900.0,
+      "kind": "train_registered",
+      "reason": "First run on the redesigned balance_task. The baseline r3-ppo-1 was paid only for staying upright and failed the contract on B3 (drift ~16 COM heights vs limit 2.0), B4 (heading ~131 deg vs 20) and B5 (never at rest after a shove); this task adds wheel-encoder positions and IMU yaw to the policy inputs and pays for holding position, heading and low speed under shoves of 0.08-0.30 x weight, so drift, heading and recovery are expected to come inside their limits.",
+      "run": "bal-1",
+      "schema": "cadex-loop-ledger-v1",
+      "settings": {
+        "checkpoint_every": 50,
+        "envs": 1024,
+        "iterations": 650,
+        "label": "bal-1 position+heading hold",
+        "seed": 7
+      },
+      "task": "balance_task"
+    },
+    {
+      "at": 1790787945.8810873,
+      "kind": "train_ended",
+      "policy_sha256": null,
+      "reason": "the wall-clock budget of 900 s ran out before the last iteration.",
+      "run": "bal-1",
+      "schema": "cadex-loop-ledger-v1",
+      "state": "budget_exhausted",
+      "wall_time_s": 900.57
+    },
+    {
+      "accepted_revision": "cbf14e3c6865fd354c5dfae1404be985a696ae65f370b66864c4143af2a909a9",
+      "at": 1790788172.333815,
+      "failing": [],
+      "kind": "evaluated",
+      "passed": 10,
+      "policy_sha256": "8919a22dae1f43bf947e66b3f8718bdf3290959a6b9a81786c569b474e901614",
+      "report": "evaluations/cbf14e3c6865-8919a22dae1f/evaluation.json",
+      "schema": "cadex-loop-ledger-v1",
+      "seeds": 10,
+      "task": "balance_task",
+      "trained_by_run": [],
+      "verdict": "pass"
+    }
+  ],
+  "runs": [
+    {
+      "registration": {
+        "run": "bal-1",
+        "settings": {
+          "checkpoint_every": 50,
+          "envs": 1024,
+          "iterations": 650,
+          "label": "bal-1 position+heading hold",
+          "seed": 7
+        },
+        "budget_s": 900.0,
+        "stop_rule": "stops at the last iteration, at the wall-clock budget, when the mean episode collapses (--stop-on-collapse), or when a stop is requested",
+        "reason": "First run on the redesigned balance_task. The baseline r3-ppo-1 was paid only for staying upright and failed the contract on B3 (drift ~16 COM heights vs limit 2.0), B4 (heading ~131 deg vs 20) and B5 (never at rest after a shove); this task adds wheel-encoder positions and IMU yaw to the policy inputs and pays for holding position, heading and low speed under shoves of 0.08-0.30 x weight, so drift, heading and recovery are expected to come inside their limits.",
+        "task_sha256": "ca60b4ce7fd49e80f53c40dac62968700a1d0a344ff14bd190da3227051404c0",
+        "accepted_revision": "3620c04c5fac786985359493d9fde00968c6aa0b68bcd9e2b6bb8009ecae0e61"
+      },
+      "status": {
+        "ended_at": 1790787945.8798852,
+        "exit": -15,
+        "iterations_run": 399,
+        "reason": "the wall-clock budget of 900 s ran out before the last iteration.",
+        "run": "bal-1",
+        "schema": "cadex-training-status-v1",
+        "started_at": 1790787045.3068664,
+        "state": "budget_exhausted",
+        "wall_time_s": 900.57
+      }
+    }
+  ],
+  "evaluations": [
+    {
+      "report": "evaluations/cbf14e3c6865-8919a22dae1f/evaluation.json",
+      "verdict": "pass",
+      "policy_sha256": "8919a22dae1f43bf947e66b3f8718bdf3290959a6b9a81786c569b474e901614",
+      "summary_predicates": [
+        {
+          "id": "B1",
+          "metric": "completed",
+          "min": 1.0,
+          "max": null,
+          "passed": 10,
+          "failed_seeds": [],
+          "value": {
+            "min": 1.0,
+            "median": 1.0,
+            "max": 1.0
+          }
+        },
+        {
+          "id": "B2",
+          "metric": "max_tilt_deg",
+          "min": null,
+          "max": 30.0,
+          "passed": 10,
+          "failed_seeds": [],
+          "value": {
+            "min": 7.026915404684558,
+            "median": 8.87428958233119,
+            "max": 11.517955708617576
+          }
+        },
+        {
+          "id": "B3",
+          "metric": "max_drift_com_heights",
+          "min": null,
+          "max": 2.0,
+          "passed": 10,
+          "failed_seeds": [],
+          "value": {
+            "min": 0.4054103884515853,
+            "median": 0.6658731096586874,
+            "max": 0.919766369077267
+          }
+        },
+        {
+          "id": "B4",
+          "metric": "max_heading_deg",
+          "min": null,
+          "max": 20.0,
+          "passed": 10,
+          "failed_seeds": [],
+          "value": {
+            "min": 0.6273299722907798,
+            "median": 0.8437501492452242,
+            "max": 0.9653385050356482
+          }
+        },
+        {
+          "id": "B5",
+          "metric": "recovery_s_max",
+          "min": null,
+          "max": 2.0,
+          "passed": 10,
+          "failed_seeds": [],
+          "value": {
+            "min": 0.22447371695404517,
+            "median": 0.3086680176652352,
+            "max": 0.420446331228189
+          }
+        }
+      ],
+      "seeds": [
+        {
+          "seed": 1101,
+          "pass": true,
+          "failing": [],
+          "metrics": {
+            "max_tilt_deg": 9.140919680540105,
+            "max_drift_com_heights": 0.7189867389833813,
+            "max_heading_deg": 0.6273299722907798,
+            "recovery_s_max": 0.26034049797044334,
+            "completed": 1.0
+          },
+          "termination": "",
+          "reward_total": 716.2014598021805
+        },
+        {
+          "seed": 1102,
+          "pass": true,
+          "failing": [],
+          "metrics": {
+            "max_tilt_deg": 8.277404338784967,
+            "max_drift_com_heights": 0.8258844850196598,
+            "max_heading_deg": 0.9653385050356482,
+            "recovery_s_max": 0.420446331228189,
+            "completed": 1.0
+          },
+          "termination": "",
+          "reward_total": 695.0545055893477
+        },
+        {
+          "seed": 1103,
+          "pass": true,
+          "failing": [],
+          "metrics": {
+            "max_tilt_deg": 7.026915404684558,
+            "max_drift_com_heights": 0.5516797868208201,
+            "max_heading_deg": 0.661158338242623,
+            "recovery_s_max": 0.22447371695404517,
+            "completed": 1.0
+          },
+          "termination": "",
+          "reward_total": 728.0303080456673
+        },
+        {
+          "seed": 1104,
+          "pass": true,
+          "failing": [],
+          "metrics": {
+            "max_tilt_deg": 8.607659484122276,
+            "max_drift_com_heights": 0.6554442656389112,
+            "max_heading_deg": 0.7394071263835236,
+            "recovery_s_max": 0.2736322296442637,
+            "completed": 1.0
+          },
+          "termination": "",
+          "reward_total": 716.9947796968596
+        },
+        {
+          "seed": 1105,
+          "pass": true,
+          "failing": [],
+          "metrics": {
+            "max_tilt_deg": 9.853347984697926,
+            "max_drift_com_heights": 0.6595908073670693,
+            "max_heading_deg": 0.8509774819982282,
+            "recovery_s_max": 0.28925590060005124,
+            "completed": 1.0
+          },
+          "termination": "",
+          "reward_total": 765.6394272291639
+        },
+        {
+          "seed": 1106,
+          "pass": true,
+          "failing": [],
+          "metrics": {
+            "max_tilt_deg": 8.25913842526696,
+            "max_drift_com_heights": 0.6721554119503056,
+            "max_heading_deg": 0.9122936090974966,
+            "recovery_s_max": 0.40182849020601985,
+            "completed": 1.0
+          },
+          "termination": "",
+          "reward_total": 735.6789015806032
+        },
+        {
+          "seed": 1107,
+          "pass": true,
+          "failing": [],
+          "metrics": {
+            "max_tilt_deg": 9.154617407229008,
+            "max_drift_com_heights": 0.4054103884515853,
+            "max_heading_deg": 0.8747725136413622,
+            "recovery_s_max": 0.3280801347304192,
+            "completed": 1.0
+          },
+          "termination": "",
+          "reward_total": 744.3440845835563
+        },
+        {
+          "seed": 1108,
+          "pass": true,
+          "failing": [],
+          "metrics": {
+            "max_tilt_deg": 11.21210693537543,
+            "max_drift_com_heights": 0.919766369077267,
+            "max_heading_deg": 0.9499088246998119,
+            "recovery_s_max": 0.33711729727686013,
+            "completed": 1.0
+          },
+          "termination": "",
+          "reward_total": 714.6562411483561
+        },
+        {
+          "seed": 1109,
+          "pass": true,
+          "failing": [],
+          "metrics": {
+            "max_tilt_deg": 8.482858509706437,
+            "max_drift_com_heights": 0.7114452904760311,
+            "max_heading_deg": 0.6480089775351574,
+            "recovery_s_max": 0.24503428843572506,
+            "completed": 1.0
+          },
+          "termination": "",
+          "reward_total": 695.0254618723689
+        },
+        {
+          "seed": 1110,
+          "pass": true,
+          "failing": [],
+          "metrics": {
+            "max_tilt_deg": 11.517955708617576,
+            "max_drift_com_heights": 0.5767318649166685,
+            "max_heading_deg": 0.8365228164922202,
+            "recovery_s_max": 0.3576232090899283,
+            "completed": 1.0
+          },
+          "termination": "",
+          "reward_total": 706.1420902268899
+        }
+      ],
+      "policy_is": "runs/bal-1/train/balance_task.000400.cxpolicy (iteration-400 checkpoint; the run ended budget_exhausted with no final policy), stored as robin-balance-1.cxpolicy"
+    }
+  ]
+}

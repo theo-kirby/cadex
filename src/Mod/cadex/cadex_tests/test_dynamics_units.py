@@ -333,6 +333,10 @@ _NO_CONVERSION_MODULES = (
     # ``vector_mm`` for it rather than spelling the factor a second time.
     # This is what keeps the third one from being written inline.
     "cadex_live_worker.py",
+    # The evaluation metrics (ADR-455) read a trace in millimetres and a rig
+    # ``evaluation_rig`` already converted; a metric that scaled a length
+    # itself would be the conversion site hazard 1 keeps paying for.
+    "CadexEvaluation.py",
 )
 
 #: **Hazard 1's fifth payment** (docs/MUJOCO.md M7, ADR-084). The offboard

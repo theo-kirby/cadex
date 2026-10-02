@@ -25,8 +25,10 @@ import math
 import os
 from pathlib import Path
 import re
+import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 
@@ -154,6 +156,12 @@ def studio_meshes(sources):
     for name, path in sources.items():
         flats[name] = stl_stream(path, STUDIO_INPUT_TRIANGLES - total)
         total += len(flats[name]) // 9
+    return drawn_meshes(flats)
+
+
+def drawn_meshes(flats):
+    """``(meshes, geometry)`` for solids already read as flat corner arrays, nine per triangle."""
+    total = sum(len(flat) // 9 for flat in flats.values())
     geometry = {'input_triangles': total, 'drawn_triangles': total, 'cell_mm': None,
                 'budget_triangles': STUDIO_TRIANGLES, 'input_bound_triangles': STUDIO_INPUT_TRIANGLES}
     if total <= STUDIO_TRIANGLES:
@@ -279,23 +287,12 @@ def _render(root, directory, style='scene'):
         with tempfile.TemporaryDirectory(prefix='.video-', dir=directory) as temporary:
             work = Path(temporary)
             if style == 'studio':
-                drawn = _studio_frames(root, record, names, meshes, frames, times, count, sample, work, started)
+                looks, materials = studio_materials(root, record, names)
+                drawn = _studio_frames(looks, materials, names, meshes, frames, times, count, sample, work, started)
                 drawn['geometry'] = geometry
             else:
                 drawn = _scene_frames(root, entries, meshes, frames, count, sample, times, work, started)
-            result = subprocess.run(['ffmpeg', '-v', 'error', '-nostdin', '-threads', '1',
-                '-framerate', str(FPS), '-i', str(work / '%04d.png'), '-an', '-c:v', 'libvpx-vp9',
-                '-threads', '1', '-pix_fmt', 'yuv420p', str(work / 'rollout.webm')],
-                capture_output=True, timeout=60)
-            require(result.returncode == 0, 'FFmpeg encoding failed')
-            # Decode every frame before publishing. Encoder exit 0 alone is not evidence.
-            check = subprocess.run(['ffmpeg', '-v', 'error', '-nostdin', '-i',
-                str(work / 'rollout.webm'), '-f', 'framemd5', '-'],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
-            decoded = [line for line in check.stdout.splitlines() if line and not line.startswith(b'#')]
-            require(check.returncode == 0 and len(decoded) == count,
-                    'video decoding/frame count failed')
-            sha = digest(work / 'rollout.webm')
+            sha = encode(work, count)
             target = directory / ('rollout-' + sha + '.webm')
             (work / 'rollout.webm').replace(target)
         video = {'path': target.name, 'sha256': sha, 'accepted_revision': revision,
@@ -317,6 +314,38 @@ def _render(root, directory, style='scene'):
         status.update(state='failed', error=f'{type(exc).__name__}: {exc}')
         atomic_json(status_path, status)
         raise
+
+
+def ffmpeg():
+    """The encoder: the one on ``PATH``, else the one beside this interpreter.
+
+    ``./cadex`` runs the pixi environment's Python without putting that
+    environment on ``PATH``, and the environment is where FFmpeg is.
+    """
+    found = shutil.which('ffmpeg')
+    beside = Path(sys.executable).parent / 'ffmpeg'
+    if not found and beside.is_file() and os.access(beside, os.X_OK):
+        found = str(beside)
+    require(found, 'FFmpeg is required and is neither on PATH nor beside the interpreter')
+    return found
+
+
+def encode(work, count):
+    """``work/%04d.png`` encoded as ``work/rollout.webm``; its sha256 once all ``count`` frames decode."""
+    encoder = ffmpeg()
+    result = subprocess.run([encoder, '-v', 'error', '-nostdin', '-threads', '1',
+        '-framerate', str(FPS), '-i', str(work / '%04d.png'), '-an', '-c:v', 'libvpx-vp9',
+        '-threads', '1', '-pix_fmt', 'yuv420p', str(work / 'rollout.webm')],
+        capture_output=True, timeout=60)
+    require(result.returncode == 0, 'FFmpeg encoding failed')
+    # Decode every frame before publishing. Encoder exit 0 alone is not evidence.
+    check = subprocess.run([encoder, '-v', 'error', '-nostdin', '-i',
+        str(work / 'rollout.webm'), '-f', 'framemd5', '-'],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+    decoded = [line for line in check.stdout.splitlines() if line and not line.startswith(b'#')]
+    require(check.returncode == 0 and len(decoded) == count,
+            'video decoding/frame count failed')
+    return digest(work / 'rollout.webm')
 
 
 def _scene_frames(root, entries, meshes, frames, count, sample, times, work, started):
@@ -460,7 +489,8 @@ def _hann(track, half):
     return out
 
 
-def _studio_frames(root, record, names, meshes, frames, times, count, sample, work, started):
+def _studio_frames(looks, materials, names, meshes, frames, times, count, sample, work, started,
+                   floor=None, held=None, overlay=None):
     """The design's studio look (CadexStudio.studio) drawn on the CPU at every sampled pose.
 
     The hero view, followed: each component is prepared once in its own frame
@@ -469,8 +499,15 @@ def _studio_frames(root, record, names, meshes, frames, times, count, sample, wo
     summary names), or without one the lowest point the robot reaches over the
     whole rollout, so a foot that lifts leaves its shadow behind; the window is fixed in size and
     its centre is a Hann-smoothed track of the robot's projected centre.
+    ``looks`` is what each drawn component is made of (:func:`studio_materials`);
+    a name it leaves out is environment geometry. ``floor`` names the floor's
+    height outright, for a caller that measured against one. ``held`` is one
+    world point per entry of ``frames`` that the window keeps inside it beside
+    the solids, and ``overlay(index, pixels, size, bounds)`` draws over the
+    frame rendered from ``frames[index]`` before its clock: how an
+    evaluation's film marks where the episode was asked to go.
     """
-    looks, materials = studio_materials(root, record, names)
+    given = floor
     environment = [name for name in names if name not in looks]
     names = [name for name in names if name in looks]
     require(bool(names), 'nothing to draw once environment geometry is left out')
@@ -493,12 +530,19 @@ def _studio_frames(root, record, names, meshes, frames, times, count, sample, wo
                 sx = w[0]*right[0] + w[1]*right[1] + w[2]*right[2]
                 sy = w[0]*up[0] + w[1]*up[1] + w[2]*up[2]
                 box = [min(box[0], sx), min(box[1], sy), max(box[2], sx), max(box[3], sy)]
+        if held is not None:
+            w = held[index]
+            sx = w[0]*right[0] + w[1]*right[1] + w[2]*right[2]
+            sy = w[0]*up[0] + w[1]*up[1] + w[2]*up[2]
+            box = [min(box[0], sx), min(box[1], sy), max(box[2], sx), max(box[3], sy)]
         boxes[index] = box
     # The floor is the environment's top face where the design declares one: the
     # rollout collides on proxies (ADR-281), so a tipping solid can pass below it,
     # and a floor at the lowest reach would lift the whole walk off its shadow.
     reach_z = lo3[2]
-    if environment:
+    if given is not None:
+        floor = given
+    elif environment:
         floor = -math.inf
         for name in environment:
             ((a, b, c), (d, e, f), (g, h, i)), (px, py, pz) = _rows(frames[0]['component_placements'][name])
@@ -521,6 +565,8 @@ def _studio_frames(root, record, names, meshes, frames, times, count, sample, wo
                                          size=size, shadow=shadow)
         canvas = studio_render.Canvas(size, size, (0, 0, 0))
         canvas.pixels = pixels
+        if overlay is not None:
+            overlay(k, canvas.pixels, size, ([cx-reach, cy-reach], [cx+reach, cy+reach]))
         clock = times[-1] if i == count-1 else i/FPS
         canvas.text(14, size-28, f'T {clock:4.1f} S', 2, clock_colour)
         (work / f'{i:04d}.png').write_bytes(studio_render.png(bytes(canvas.pixels), size))
@@ -534,7 +580,8 @@ def _studio_frames(root, record, names, meshes, frames, times, count, sample, wo
             'bounds': {'min': lo3, 'max': hi3, 'center': [(a+b)/2 for a, b in zip(lo3, hi3)],
                        'radius': math.dist(lo3, hi3)/2 or 1},
             'floor_z_mm': floor, 'lowest_reach_z_mm': reach_z,
-            'floor_source': ('top of the environment geometry: ' + ', '.join(environment)
+            'floor_source': ('given by the caller' if given is not None else
+                             'top of the environment geometry: ' + ', '.join(environment)
                              if environment else 'lowest point the drawn solids reach'),
             'framing': {'kind': 'follow', 'half_extent_mm': reach, **STUDIO},
             'sampling': '10 fps, latest solved pose plus final pose, follow window at the declared framing; tessellation preview'}

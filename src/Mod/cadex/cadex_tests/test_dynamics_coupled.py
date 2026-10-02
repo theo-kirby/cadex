@@ -374,3 +374,22 @@ def test_the_coupling_is_published_as_evidence() -> None:
     assert coupling["joint_kind"] == "screw"
     assert coupling["dependent_joint"] == "guide"
     assert coupling["slope"] == pytest.approx(-0.004 / (2.0 * math.pi))
+
+
+@pytest.mark.parametrize("kind", ["gears", "belt", "screw"])
+def test_a_coupled_mechanism_exports_as_the_model_it_simulated(kind: str) -> None:
+    """ADR-473: MuJoCo's XML parser fills an equality's data[10] with the
+    weld's torquescale default (1) whatever its type, so a coupling row
+    written from zeros reloaded with a 1 there and ``export_mjcf`` refused
+    every gear, belt and screw model as drifted. The row now starts from
+    MuJoCo's own defaults; the coupling law it carries is unchanged."""
+
+    components, joints = (_screw_stack() if kind == "screw" else _gear_train(kind))[:2]
+    built = dyn.build_model(components, joints)
+    exported = dyn.export_mjcf(built)
+    reloaded = mujoco.MjModel.from_xml_string(exported["xml"].decode("utf-8"))
+    # The writer keeps about six significant figures (a screw's slope).
+    assert list(reloaded.eq_data[0]) == pytest.approx(
+        list(built["model"].eq_data[0]), rel=dyn.MJCF_FIELD_TOLERANCE)
+    slope = {"gears": -2.0, "belt": 2.0, "screw": -0.004 / (2.0 * math.pi)}[kind]
+    assert float(reloaded.eq_data[0][1]) == pytest.approx(slope)

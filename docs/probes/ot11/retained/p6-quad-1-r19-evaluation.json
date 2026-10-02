@@ -1,0 +1,379 @@
+{
+ "schema": "ot11-walk-round-receipt-v1",
+ "project": "ot11-quad-1",
+ "round": 18,
+ "run": "r19-contact-sync",
+ "session": 6,
+ "registered": {
+  "settings": {
+   "checkpoint_every": 100,
+   "discount": 0.995,
+   "envs": 2048,
+   "iterations": 750,
+   "seed": 191
+  },
+  "init_from": "runs/r18-sync-slip/train/walk_task.cxpolicy",
+  "init_from_task_change": "reward only: sink term replaced by contact_sync (diagonal contact-state mismatch, weight 2)",
+  "budget_s": 2350.0,
+  "reason": "r18 eval: W7 fixed (slip 0.096-0.146 vs 0.15, 10/10) but W9 still fails 8/10 (step_count_ratio 1.56-2.33 vs max 1.5) while diag_sym shows diagonal joint angles matched within ~4.5 deg RMS, so the extra steps are brief touchdowns of one diagonal foot that the squared-mm trot_sync barely charges; 1107 also tipped at 5.9 s (37.6 deg vs 30). CHANGE: new contact_sync cost (weight 2) on diagonal-pair contact-state mismatch, c=exp(-((z-z_stand)/8mm)^2), in the slot of the negligible sink term (-0.03/episode; W10 at -0.013..-0.023 vs -0.05); warm start from r18, 750 iterations. Expected: W9 <=1.5 on most seeds with W7 and the rest held.",
+  "registered_at": 1790859991.1740978,
+  "accepted_revision": "45288f3e5ec9c19103eacdaaa0331b9995578c954e0ec61b15259e4c2f908c9a"
+ },
+ "ended": {
+  "state": "finished",
+  "wall_time_s": 2010.27,
+  "trainer_wall_time_s": 1861.0742022520863,
+  "reason": "the trainer ran every iteration and its policy hashes to its receipt.",
+  "policy_sha256": "de546ddd91e184e6a2c424b143c548876f5d59cbcb8a2be2c26992b0f7afb3af",
+  "best_iteration": 723,
+  "training_reward_per_step_final": 4.466886043548584,
+  "episode_steps_mean_final": 215.57894897460938,
+  "action_std_final": 0.17677104473114014
+ },
+ "evaluated_by": "the agent's own evaluate tool inside walk session 6's first turn (the same code as cadex evaluate); the actor ran nothing",
+ "project_change": "agent: a new parameter contact_w 2.0 and a contact_sync reward term (diagonal-pair contact-state mismatch, c = exp(-((z - z_stand)/8 mm)^2)) in the slot of the sink term, which it removed because a task allows at most 16 reward terms (script_history 0095 -> 0096, the registered revision); then the policy line moved from walk_r18 to walk_r19 with its sha256 (0096 -> 0097; 0098 is byte-identical to 0097). The model did not move",
+ "spec_block": {
+  "rule": "byte-identical except the values of HIP_MM and WEIGHT_N, which must equal the evaluated model's rig to the block's printed precision",
+  "frozen_sha256": "487416afd4da672e4af8ed55ed5f2b1464eeec7bf305381833fd26775b4fe900",
+  "HIP_MM": 96.7006,
+  "rig_hip_height_mm": 96.7006,
+  "WEIGHT_N": 5.05069617762,
+  "rig_weight_n": 5.050696177620001,
+  "other_lines_identical": true,
+  "valid": true,
+  "identical_to_r18_evaluated_block": true
+ },
+ "evaluation": {
+  "report": "evaluations/35122157a90f-de546ddd91e1/evaluation.json",
+  "accepted_revision": "35122157a90f84e5b81ab9c016c67ce8583b703b86620ed97dee78c915e40442",
+  "policy_sha256": "de546ddd91e184e6a2c424b143c548876f5d59cbcb8a2be2c26992b0f7afb3af",
+  "model_sha256": "6cecfa2de126d2d9f4527e28a21bae3babf01df0beadca84a7cb34fa77705914",
+  "trained_model_sha256": "6cecfa2de126d2d9f4527e28a21bae3babf01df0beadca84a7cb34fa77705914",
+  "task_sha256": "db67070400dbeb3c0cc67b9ad990cf4c9fb745e002bf91e7004d617110595f15",
+  "trained_task_sha256": "db67070400dbeb3c0cc67b9ad990cf4c9fb745e002bf91e7004d617110595f15",
+  "engine_source": "dev-tree",
+  "verdict": "fail",
+  "contact_offsets": [],
+  "void_seeds": [],
+  "terminations": {
+   "horizon": 10
+  },
+  "episodes": {
+   "1101": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 3.88,
+    "shove_n": 0.801,
+    "failing": [],
+    "steps": {
+     "fl": 9,
+     "fr": 10,
+     "rl": 12,
+     "rr": 11
+    },
+    "step_count_ratio": 1.3333
+   },
+   "1102": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 4.01,
+    "shove_n": 0.47,
+    "failing": [],
+    "steps": {
+     "fl": 11,
+     "fr": 11,
+     "rl": 13,
+     "rr": 11
+    },
+    "step_count_ratio": 1.1818
+   },
+   "1103": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 4.64,
+    "shove_n": 0.549,
+    "failing": [],
+    "steps": {
+     "fl": 10,
+     "fr": 11,
+     "rl": 11,
+     "rr": 12
+    },
+    "step_count_ratio": 1.2
+   },
+   "1104": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 3.85,
+    "shove_n": 0.498,
+    "failing": [],
+    "steps": {
+     "fl": 9,
+     "fr": 9,
+     "rl": 9,
+     "rr": 11
+    },
+    "step_count_ratio": 1.2222
+   },
+   "1105": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 4.59,
+    "shove_n": 0.744,
+    "failing": [],
+    "steps": {
+     "fl": 10,
+     "fr": 11,
+     "rl": 12,
+     "rr": 11
+    },
+    "step_count_ratio": 1.2
+   },
+   "1106": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 3.45,
+    "shove_n": 0.934,
+    "failing": [],
+    "steps": {
+     "fl": 10,
+     "fr": 11,
+     "rl": 13,
+     "rr": 10
+    },
+    "step_count_ratio": 1.3
+   },
+   "1107": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 5.29,
+    "shove_n": 0.973,
+    "failing": [],
+    "steps": {
+     "fl": 9,
+     "fr": 9,
+     "rl": 11,
+     "rr": 12
+    },
+    "step_count_ratio": 1.3333
+   },
+   "1108": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 3.39,
+    "shove_n": 0.473,
+    "failing": [],
+    "steps": {
+     "fl": 11,
+     "fr": 12,
+     "rl": 14,
+     "rr": 11
+    },
+    "step_count_ratio": 1.2727
+   },
+   "1109": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 6.26,
+    "shove_n": 0.315,
+    "failing": [
+     "W9"
+    ],
+    "steps": {
+     "fl": 7,
+     "fr": 8,
+     "rl": 11,
+     "rr": 8
+    },
+    "step_count_ratio": 1.5714
+   },
+   "1110": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 6.53,
+    "shove_n": 0.571,
+    "failing": [],
+    "steps": {
+     "fl": 11,
+     "fr": 11,
+     "rl": 12,
+     "rr": 14
+    },
+    "step_count_ratio": 1.2727
+   }
+  },
+  "passed_seeds": [
+   1101,
+   1102,
+   1103,
+   1104,
+   1105,
+   1106,
+   1107,
+   1108,
+   1110
+  ],
+  "failing_predicates": {
+   "W9": 1
+  },
+  "metrics_min_max": {
+   "completed": [
+    1.0,
+    1.0
+   ],
+   "duration_s": [
+    10.0,
+    10.0
+   ],
+   "max_tilt_deg": [
+    7.925,
+    22.9157
+   ],
+   "max_heading_deg": [
+    1.2501,
+    8.4115
+   ],
+   "final_heading_deg": [
+    -5.8412,
+    6.5368
+   ],
+   "max_drift_mm": [
+    582.8784,
+    904.8276
+   ],
+   "final_drift_mm": [
+    582.8784,
+    904.8276
+   ],
+   "mean_speed_mm_s": [
+    66.9863,
+    93.4905
+   ],
+   "max_drift_com_heights": [
+    7.3742,
+    11.4472
+   ],
+   "mean_forward_speed_mm_s": [
+    58.4785,
+    91.0878
+   ],
+   "mean_lateral_speed_mm_s": [
+    -0.9402,
+    2.874
+   ],
+   "steps_min": [
+    7,
+    11
+   ],
+   "step_count_ratio": [
+    1.1818,
+    1.5714
+   ],
+   "step_share_min": [
+    0.7856,
+    0.8922
+   ],
+   "step_clearance_hip_heights_min": [
+    0.2772,
+    0.3175
+   ],
+   "slip_share_max": [
+    0.0897,
+    0.1252
+   ],
+   "duty_factor_min": [
+    0.4501,
+    0.5144
+   ],
+   "duty_factor_max": [
+    0.5255,
+    0.5942
+   ],
+   "foot_lowest_hip_heights_min": [
+    -0.0222,
+    -0.0126
+   ],
+   "speed_ratio": [
+    0.9349,
+    0.9959
+   ],
+   "lateral_ratio": [
+    0.0018,
+    0.0473
+   ]
+  },
+  "reward_per_step_min_max": {
+   "alive": [
+    10.0,
+    10.0
+   ],
+   "tilt": [
+    -0.1703,
+    -0.0237
+   ],
+   "speed_error": [
+    -0.6993,
+    -0.3791
+   ],
+   "sideways": [
+    -0.4281,
+    -0.2458
+   ],
+   "heading": [
+    -0.0794,
+    -0.0328
+   ],
+   "body_rate": [
+    -0.2881,
+    -0.2148
+   ],
+   "trot_sync": [
+    -0.6726,
+    -0.2082
+   ],
+   "impact": [
+    -0.1142,
+    -0.1002
+   ],
+   "step_fl": [
+    -0.3773,
+    -0.3443
+   ],
+   "step_fr": [
+    -0.4772,
+    -0.4028
+   ],
+   "step_rl": [
+    -0.4984,
+    -0.4559
+   ],
+   "step_rr": [
+    -0.4459,
+    -0.383
+   ],
+   "contact_sync": [
+    -0.1766,
+    -0.1126
+   ],
+   "joint_speed": [
+    -0.1316,
+    -0.0939
+   ],
+   "diag_sym": [
+    -0.128,
+    -0.0606
+   ],
+   "hip_antiphase": [
+    -0.1515,
+    -0.0663
+   ]
+  }
+ },
+ "void_for_R1": false,
+ "void_check": "contact_offsets is empty: no geom in the evaluated model carries a margin or gap (ADR-470), and the model hashes to r17's and r18's (6cecfa2d...), the rebuilt af05ab62 lineage on ADR-469's 0.004 s spring",
+ "w9_diagnosis": {
+  "measured": "W9 (step_count_ratio) tracks the commanded speed: ordered by command, 0.628 HH/s (1109) 1.571, 0.647 (1101) 1.333, then 1.18-1.33 for 0.73-0.96. At 1109's command the front feet swing for 0.60 and 0.57 s and step 7 and 8 times, while rear-left keeps a 0.36 s swing and steps 11 times. Across all ten seeds the rear feet take shorter steps (median advance 44-71 mm against the front's 56-83 mm), and rear-left takes the most steps on 7 of 10",
+  "reading": "the rear feet keep a near-fixed cadence and the front feet lower theirs as the command falls, so the ratio rises at the bottom of the command range (0.6 HH/s); 1109 is the only seed whose command is below 0.63 HH/s, and its shove (0.31 N at 6.26 s) is the smallest of the ten, so a shove does not explain it",
+  "source": "evaluation.json seeds[].detail.feet (steps, median_swing_airborne_s, median_step_advance_mm) and seeds[].drawn.goal"
+ }
+}

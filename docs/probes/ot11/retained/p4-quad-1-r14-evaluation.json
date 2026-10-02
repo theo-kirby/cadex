@@ -1,0 +1,196 @@
+{
+ "schema": "ot11-walk-round-receipt-v1",
+ "project": "ot11-quad-1",
+ "round": 13,
+ "run": "r14-margin15-lift",
+ "session": 4,
+ "registered": {
+  "settings": {
+   "checkpoint_every": 100,
+   "envs": 2048,
+   "iterations": 800,
+   "seed": 139
+  },
+  "init_from": null,
+  "budget_s": 2400.0,
+  "reason": "r13 stepped for the first time (W5-steps 5-13 on 10/10, W10 10/10, W9 7/10) but failed W8-low duty_min 0.02-0.09 (min 0.40; duty_max only 0.12-0.31 though the film shows the body supported), W6 clearance 0.032-0.038 HH (min 0.08), W3 speed_ratio 0.28-0.64 (0.75-1.25) and W7 slip 0.12-0.22 (max 0.15). MECHANISM: foot contact margin 3 -> 1.5 mm, below the 2-2.8 mm standing sink, so a stance foot is geometrically on the floor (the 3 mm margin held lightly loaded feet above it, which the spec reads as swing). TASK: hover cost flat past ~3 mm, with swing pay growing with height (h/14 mm), so lift is no longer charged; a linear term in the speed cost keeps the slope up to speed_ratio 1. Fresh start (model changed). Expected: duty 0.4-0.7, clearance ~8 mm, speed_ratio near 1, W10 still within -0.05.",
+  "registered_at": 1790841387.8311663,
+  "accepted_revision": "4166b0a164340aa64c212fd59195f2b1220cf0eddc159051f92619c7dc0ebbf6"
+ },
+ "ended": {
+  "state": "finished",
+  "wall_time_s": 2348.43,
+  "reason": "the trainer ran every iteration and its policy hashes to its receipt."
+ },
+ "why_evaluated_late": "session 4's agent could not declare the policy: its last turn rebuilt on an engine whose CadexDynamics.py had moved to ADR-469's 0.004 s contact spring mid-session, so the task digest moved (827d... against the trained 8b96...). Declared on the physics it trained on, it verifies.",
+ "engine": {
+  "payload": "the payload staged from 570a49e7 (ADR-470), with only CadexDynamics.py replaced",
+  "change": "ADR-469's hunks reverted (CONTACT_TIMECONST_S 0.004 -> 0.02, no BOUNCE_TIMECONST_S, no floor solref); ADR-470's contact_offsets void kept",
+  "CadexDynamics_sha256": "4c0043e6803502d01b5a456ec8d6bc92a6a6a63ea75830e6d37e9249d6b677c9",
+  "equals": "git show c1c18427:src/Mod/cadex/CadexDynamics.py with the 22d30e7e..570a49e7 diff applied"
+ },
+ "project_change": "actor: cadex params policy_on=1 (script_history 0076 -> 0077, policy line only enabled); nothing the agent authored was edited",
+ "spec_block": {
+  "rule": "byte-identical except the values of HIP_MM and WEIGHT_N, which must equal the evaluated model's rig to the block's printed precision",
+  "frozen_sha256": "487416afd4da672e4af8ed55ed5f2b1464eeec7bf305381833fd26775b4fe900",
+  "line_differences": [
+   [
+    "HIP_MM = 96.7006",
+    "HIP_MM = 96.7006     # success.scale hip_height_mm of the hip 30 / knee -60 stance"
+   ],
+   [
+    "WEIGHT_N = 4.69988665362",
+    "WEIGHT_N = 5.05069617762  # success.scale weight_n with steel-ball feet (0.514851802 kg x 9.81)"
+   ]
+  ],
+  "HIP_MM": 96.7006,
+  "rig_hip_height_mm": 96.7006,
+  "WEIGHT_N": 5.05069617762,
+  "rig_weight_n": 5.050696177620001,
+  "hip_equal_at_4dp": true,
+  "weight_equal_at_11dp": true,
+  "valid": true
+ },
+ "evaluation": {
+  "report": "evaluations/6688a28a61d8-5f97b60219ba/evaluation.json",
+  "accepted_revision": "6688a28a61d83092cdfd323fb2cb673953a1263380542fd143108fe2863ccc93",
+  "policy_sha256": "5f97b60219ba3e0f49f64016551101a7beca6a368d371b8489c4d276753b64f0",
+  "model_sha256": "3df750afeddcea8d67a6b8385bc7cb657883a1525cdbb15cf2f6c5cc5c732a33",
+  "task_sha256": "8b96cafcfd1d9ea58d9ae7cf2f9d2257677af81fd939e9a0dc4d43b2b2452c02",
+  "trained_task_sha256": "8b96cafcfd1d9ea58d9ae7cf2f9d2257677af81fd939e9a0dc4d43b2b2452c02",
+  "verdict": "fail",
+  "contact_offsets": [
+   {
+    "geom": "c_foot_fl/collision0",
+    "margin_mm": 1.5,
+    "gap_mm": 0.0
+   },
+   {
+    "geom": "c_foot_fr/collision0",
+    "margin_mm": 1.5,
+    "gap_mm": 0.0
+   },
+   {
+    "geom": "c_foot_rl/collision0",
+    "margin_mm": 1.5,
+    "gap_mm": 0.0
+   },
+   {
+    "geom": "c_foot_rr/collision0",
+    "margin_mm": 1.5,
+    "gap_mm": 0.0
+   }
+  ],
+  "void_reason": "the model holds contact surfaces off their geometry: c_foot_fl/collision0 (margin 1.5 mm), c_foot_fr/collision0 (margin 1.5 mm), c_foot_rl/collision0 (margin 1.5 mm), c_foot_rr/collision0 (margin 1.5 mm)",
+  "void_seeds": [
+   1101,
+   1102,
+   1103,
+   1104,
+   1105,
+   1106,
+   1107,
+   1108,
+   1109,
+   1110
+  ],
+  "failing_predicates": {
+   "W5-share": 7,
+   "W6": 10,
+   "W7": 2,
+   "W8-low": 10,
+   "W10": 9
+  },
+  "metrics_min_max": {
+   "completed": [
+    1.0,
+    1.0
+   ],
+   "duration_s": [
+    10.0,
+    10.0
+   ],
+   "max_tilt_deg": [
+    7.8128,
+    13.7089
+   ],
+   "max_heading_deg": [
+    18.0856,
+    28.4047
+   ],
+   "final_heading_deg": [
+    12.6597,
+    25.9492
+   ],
+   "max_drift_mm": [
+    610.221,
+    940.586
+   ],
+   "final_drift_mm": [
+    610.221,
+    940.586
+   ],
+   "mean_speed_mm_s": [
+    64.3389,
+    97.5619
+   ],
+   "max_drift_com_heights": [
+    7.7201,
+    11.8996
+   ],
+   "recovery_s_max": [
+    0.6501,
+    0.6501
+   ],
+   "mean_forward_speed_mm_s": [
+    61.3401,
+    96.3376
+   ],
+   "mean_lateral_speed_mm_s": [
+    -0.3297,
+    3.4886
+   ],
+   "steps_min": [
+    19,
+    25
+   ],
+   "step_count_ratio": [
+    1.0,
+    1.2105
+   ],
+   "step_share_min": [
+    0.6,
+    0.7238
+   ],
+   "step_clearance_hip_heights_min": [
+    0.0201,
+    0.0261
+   ],
+   "slip_share_max": [
+    0.1089,
+    0.1616
+   ],
+   "duty_factor_min": [
+    0.3038,
+    0.3326
+   ],
+   "duty_factor_max": [
+    0.4013,
+    0.4922
+   ],
+   "foot_lowest_hip_heights_min": [
+    -0.0662,
+    -0.0489
+   ],
+   "speed_ratio": [
+    0.9752,
+    1.0516
+   ],
+   "lateral_ratio": [
+    0.0035,
+    0.0542
+   ]
+  }
+ },
+ "void_for_R1": true
+}

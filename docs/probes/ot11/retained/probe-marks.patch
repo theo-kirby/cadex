@@ -1,0 +1,188 @@
+diff --git a/cli/cadex_cli/film.py b/cli/cadex_cli/film.py
+index 0a8bdf40..0b7055b7 100644
+--- a/cli/cadex_cli/film.py
++++ b/cli/cadex_cli/film.py
+@@ -14,6 +14,10 @@ to look at:
+   consecutive moments a declared step apart, side-on to the direction the
+   evaluation rig's base travelled, the window following that base. A
+   mechanism with no floating base has a fixed one, and its window is fixed.
++  Its floor keeps a light mark wherever a drawn solid has touched it since
++  the episode began (ADR-461): the marks stay where they were made while
++  the window moves on, so a part set down and lifted leaves separate prints
++  and a part dragged leaves a streak.
+   Every frame carries its simulation time and nothing else;
+ - a **video** of the first filmed seed, drawn as a run's studio video is
+   (:mod:`video`), ten frames a second.
+@@ -53,6 +57,13 @@ GUTTER = 4
+ DETAIL_ELEVATION_DEGREES = 12.0
+ #: The step between detail frames when the caller names none.
+ DETAIL_STEP_S = 0.2
++#: A drawn solid this near the floor plane, or under it, is touching it, in
++#: millimetres: the height the evaluation's own metrics call contact.
++CONTACT_MM = 1.0
++#: The floor keeps its marks on a grid this fine, in millimetres.
++MARK_MM = 2.0
++#: A mark's material: the chrome's secondary ink, with no gloss.
++MARK_LOOK = (studio_render.PALETTE["ink_2"], (0.0, 1.0))
+ #: The margin round the framed extent, as a fraction of it, on each side.
+ PAD = 0.10
+ #: A design that ends up nearer its start than this fraction of its own size
+@@ -258,6 +269,16 @@ class _Stage:
+             hi = [max(p[j] for p in points) for j in range(3)]
+             self.corners[name] = [(x, y, z) for x in (lo[0], hi[0]) for y in (lo[1], hi[1])
+                                   for z in (lo[2], hi[2])]
++        # Each solid's distinct vertices, and its triangles as indices into
++        # them grouped under their first: what touching the floor is read from.
++        self.vertices, self.fans = {}, {}
++        for name in self.names:
++            index: dict[tuple, int] = {}
++            fans: dict[int, list] = {}
++            for tri in meshes[name]:
++                a, b, c = (index.setdefault(p, len(index)) for p in tri)
++                fans.setdefault(a, []).append((b, c))
++            self.vertices[name], self.fans[name] = list(index), fans
+         self.world = dict(world_flats)
+ 
+     def centre(self, poses: Mapping[str, Any], base: str | None) -> tuple[float, float, float]:
+@@ -299,10 +320,55 @@ class _Stage:
+         lowest = min(p[2] for frame in frames for p in self.box(frame["component_placements"]))
+         return lowest, "lowest point of the drawn solids' bounds"
+ 
+-    def draw(self, poses: Mapping[str, Any], basis, bounds, floor: float, clock: str) -> bytes:
++    def touched(self, frames: Sequence[Mapping[str, Any]], floor: float) -> dict[tuple[int, int], int]:
++        """Where the drawn solids touched the floor over ``frames``, and when first.
++
++        ``{(i, j): frame index}`` on a :data:`MARK_MM` grid anchored at the
++        world origin. A vertex within :data:`CONTACT_MM` of the floor plane,
++        or under it, marks the cell it is over; a triangle with all three
++        there marks every cell it covers, so a flat face laid on the floor
++        leaves its whole print and not its corners.
++        """
++
++        limit, first, still = floor + CONTACT_MM, {}, {}
++        for at, frame in enumerate(frames):
++            poses = frame["component_placements"]
++            for name in self.names:
++                ((a, b, c), (d, e, f), (g, h, i)), (px, py, pz) = pose = studio_video._rows(poses[name])
++                # A solid that has not moved marks nothing it has not marked.
++                if still.get(name) == pose:
++                    continue
++                still[name] = pose
++                if min(g*x + h*y + i*z for x, y, z in self.corners[name]) + pz > limit:
++                    continue
++                down = {k: (a*x + b*y + c*z + px, d*x + e*y + f*z + py)
++                        for k, (x, y, z) in enumerate(self.vertices[name])
++                        if g*x + h*y + i*z + pz <= limit}
++                fans = self.fans[name]
++                for k, (x0, y0) in down.items():
++                    first.setdefault((math.floor(x0 / MARK_MM), math.floor(y0 / MARK_MM)), at)
++                    for m, n in fans.get(k, ()):
++                        if m not in down or n not in down:
++                            continue
++                        (x1, y1), (x2, y2) = down[m], down[n]
++                        # Samples half a cell apart at most: no covered cell is stepped over.
++                        cuts = max(1, math.ceil(2 * max(math.hypot(x1 - x0, y1 - y0),
++                                                        math.hypot(x2 - x0, y2 - y0),
++                                                        math.hypot(x2 - x1, y2 - y1)) / MARK_MM))
++                        for u in range(cuts + 1):
++                            for v in range(cuts + 1 - u):
++                                x = x0 + ((x1 - x0) * u + (x2 - x0) * v) / cuts
++                                y = y0 + ((y1 - y0) * u + (y2 - y0) * v) / cuts
++                                first.setdefault((math.floor(x / MARK_MM), math.floor(y / MARK_MM)), at)
++        return first
++
++    def draw(self, poses: Mapping[str, Any], basis, bounds, floor: float, clock: str,
++             marks: Sequence[tuple] = ()) -> bytes:
+         posed = [tri for name in self.names
+                  for tri in studio_video._posed(self.local[name], poses[name])]
++        # The shadow is the solids' alone; the marks lie in the floor under it.
+         shadow = studio_render._contact_shadow(posed, floor=floor)
++        posed.extend(marks)
+         pixels, _ = studio_render.studio(posed, basis, bounds=bounds, size=FRAME, shadow=shadow)
+         canvas = studio_render.Canvas(FRAME, FRAME, (0, 0, 0))
+         canvas.pixels = bytearray(pixels)
+@@ -310,6 +376,24 @@ class _Stage:
+         return bytes(canvas.pixels)
+ 
+ 
++def _marks(cells: Sequence[tuple[int, int]], floor: float) -> list[tuple]:
++    """The marked cells as flat lit triangles lying in the floor, one strip a run."""
++
++    up = ((0.0, 0.0, 1.0),) * 3
++    out, run = [], None
++    for i, j in sorted(cells, key=lambda cell: (cell[1], cell[0])) + [(None, None)]:
++        if run is not None and (j, i) == (run[0], run[2] + 1):
++            run[2] = i
++            continue
++        if run is not None:
++            x0, x1, y0, y1 = run[1] * MARK_MM, (run[2] + 1) * MARK_MM, run[0] * MARK_MM, (run[0] + 1) * MARK_MM
++            corners = [(x0, y0, floor), (x1, y0, floor), (x1, y1, floor), (x0, y1, floor)]
++            out.append((MARK_LOOK, (corners[0], corners[1], corners[2]), up))
++            out.append((MARK_LOOK, (corners[0], corners[2], corners[3]), up))
++        run = [j, i, i]
++    return out
++
++
+ def _projected(points, basis) -> tuple[float, float, float, float]:
+     right, up = basis[0], basis[1]
+     xs = [p[0]*right[0] + p[1]*right[1] + p[2]*right[2] for p in points]
+@@ -392,6 +476,10 @@ def detail(stage: _Stage, frames, times, floor: float, deadline: float, *,
+ 
+     An episode that ended before the last of them is shown to its end: the
+     window of moments slides back until its last one is the final frame.
++
++    The floor of each frame carries the marks of everything that touched it
++    from the episode's first solved frame to that moment
++    (:meth:`_Stage.touched`). They are fixed to the floor, not to the window.
+     """
+ 
+     span = (STRIP - 1) * step
+@@ -418,12 +506,18 @@ def detail(stage: _Stage, frames, times, floor: float, deadline: float, *,
+                    for at in picked]
+     across = max(max(cx - b[0], b[2] - cx) for cx, b in zip(centres, boxes))
+     half = max(across, (high - low) / 2) * (1 + 2 * PAD)
++    touched = stage.touched(frames[:picked[-1] + 1], floor)
++    # A cell's place across the window, for leaving out what no frame shows.
++    across_cell = {cell: (cell[0] + 0.5) * MARK_MM * right[0] + (cell[1] + 0.5) * MARK_MM * right[1]
++                   for cell in touched}
+     drawn = []
+     for at, cx in zip(picked, centres):
+         _require(time.monotonic() < deadline, f"the filmstrip ran past {STRIP_SECONDS} seconds")
++        marks = _marks([cell for cell, since in touched.items()
++                        if since <= at and abs(across_cell[cell] - cx) <= half + MARK_MM], floor)
+         drawn.append(stage.draw(frames[at]["component_placements"], basis,
+                                 ([cx - half, cy - half], [cx + half, cy + half]), floor,
+-                                f"T {times[at]:.2f} S"))
++                                f"T {times[at]:.2f} S", marks))
+     view = ("side-on to the direction the base travelled, {:g} degrees above the floor; "
+             "the window follows the base".format(DETAIL_ELEVATION_DEGREES) if base is not None else
+             "side-on to the direction the design travelled, {:g} degrees above the floor; "
+@@ -433,6 +527,11 @@ def detail(stage: _Stage, frames, times, floor: float, deadline: float, *,
+         "requested_start_s": start, "start_s": began, "step_s": step,
+         "view": view, "follows": base,
+         "azimuth_degrees": azimuth, "travel_mm": travel, "half_extent_mm": half,
++        "marks": {"what": "where a drawn solid has touched the floor since the episode began; "
++                          "fixed to the floor",
++                  "since_s": times[0], "contact_mm": CONTACT_MM, "cell_mm": MARK_MM,
++                  "color": "#%02X%02X%02X" % tuple(MARK_LOOK[0]),
++                  "cells": [sum(1 for since in touched.values() if since <= at) for at in picked]},
+     }
+ 
+ 
+diff --git a/docs/probes/ot11/runner/judge.py b/docs/probes/ot11/runner/judge.py
+index bc65859e..44668181 100644
+--- a/docs/probes/ot11/runner/judge.py
++++ b/docs/probes/ot11/runner/judge.py
+@@ -58,7 +58,11 @@ INSTRUCTIONS = (
+     'from a filmstrip. You are given a paragraph saying what the robot was '
+     'asked to do, and two images: an overview sheet and a detail sheet. Each '
+     'sheet is twelve frames, read left to right and top to bottom, and every '
+-    'frame carries its simulation time in seconds at its bottom left. Read '
++    'frame carries its simulation time in seconds at its bottom left. In the '
++    'detail sheet the floor keeps a light mark wherever a part of the robot '
++    'has touched it since the episode began; the marks are fixed to the '
++    'floor, so a part set down and lifted leaves a separate print and a part '
++    'dragged across the floor leaves a streak or a smear. Read '
+     'both images with the Read tool before scoring. Then reply with one JSON '
+     'object and nothing else, of the form {"V1": {"score": 0, "reason": "one '
+     'sentence"}, ...} with keys V1 to V4 and integer scores 0 to 3.\n\n'

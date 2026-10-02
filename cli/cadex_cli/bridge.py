@@ -36,11 +36,14 @@ import socket
 import socketserver
 import tempfile
 import threading
+import time
 from typing import Any
 
+from . import evaluate as evaluation
+from . import loop
 from .clearance import read_fit
 from .client import CadexdClient
-from .inventory import read_inventory_summary
+from .inventory import InventoryError, read_inventory, read_inventory_summary
 from .studio import FIT_REPORT, STUDIO
 from .tools import (
     BRIDGE_TOOLS, STANDARD_DISPLAY, VIEW_ARGS, injects_display, injects_revision,
@@ -55,6 +58,16 @@ SOCKET_TIMEOUT_SECONDS = 3600.0
 #: what the model reasons about a build from, so each one carries the
 #: measured fit (ADR-346) and the published catalog identity (ADR-362).
 MODELLING_OPS = frozenset({"write_script", "edit_script", "set_params", "rebuild"})
+
+#: The longest one ``train_status`` call waits for a run to end. A turn that
+#: wants longer asks again; a tool call that blocks for an hour is a turn
+#: nobody can tell from a hung one.
+TRAIN_WAIT_MAX_S = 900.0
+#: How many filmed seeds an ``evaluate`` reply carries as pictures, two
+#: sheets each.
+EVALUATE_PICTURED_SEEDS = 2
+#: How many ledger rows ``train_status`` without a run carries.
+LEDGER_VIEW_ROWS = 40
 
 
 @dataclass
@@ -100,8 +113,13 @@ class Bridge:
         *,
         on_call: Callable[[ToolCall], None] | None = None,
         initial_revision: str = "",
+        project_root: Path | str | None = None,
     ) -> None:
         self.client = client
+        #: The project directory, which the loop tools (ADR-464) read the
+        #: accepted attempt from and write runs and evaluations into. Without
+        #: one those tools refuse; every other tool is unaffected.
+        self.project_root = Path(project_root).resolve() if project_root else None
         self.on_call = on_call
         self.state = BridgeState(revision=str(initial_revision or ""))
         self._lock = threading.Lock()
@@ -198,7 +216,9 @@ class Bridge:
 
         protocol = self.client.engine.protocol
         if tool in BRIDGE_TOOLS:
-            return self._look(arguments)
+            if tool == "look":
+                return self._look(arguments)
+            return self._loop_tool(tool, arguments)
         if tool not in protocol.OP_ARG_SPECS:
             return _content(f"No such tool: {tool!r}.", is_error=True)
 
@@ -340,6 +360,138 @@ class Bridge:
             f"{', '.join(views)}{' focus ' + ', '.join(focus) if focus else ''} "
             f"({facts['revision'][:12]})",
         ))
+        return {"content": content, "is_error": False}
+
+    # -- the training loop (ADR-464) ------------------------------------
+
+    def _loop_tool(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Answer one of the loop's four tools; a refusal is a tool error
+        whose text says what to do, never a raised exception."""
+
+        allowed = set(BRIDGE_TOOLS[tool]["input_schema"]["properties"])
+        unknown = sorted(set(arguments) - allowed)
+        try:
+            if unknown:
+                raise loop.LoopError(
+                    f"{tool} takes {', '.join(sorted(allowed))}; not {', '.join(unknown)}.")
+            if self.project_root is None:
+                raise loop.LoopError(f"{tool} needs a project directory; this session has none.")
+            reply = getattr(self, "_" + tool)(arguments)
+        except (loop.LoopError, evaluation.EvaluateError) as exc:
+            self._record(ToolCall(tool, dict(arguments), False, str(exc)))
+            return _content(json.dumps({"ok": False, "error": str(exc)}, indent=2), is_error=True)
+        return reply
+
+    def _run_dir(self, arguments: dict[str, Any]) -> Path:
+        name = str(arguments.get("run") or "")
+        run_dir = self.project_root / loop.RUNS_DIRNAME / name
+        if not name or Path(name).name != name or not (run_dir / loop.REGISTRATION_NAME).is_file():
+            known = ", ".join(run["run"] for run in loop.list_runs(self.project_root))
+            raise loop.LoopError(
+                f"no training run {name!r} in this project" + (f"; it has: {known}." if known else "."))
+        return run_dir
+
+    def _run_reply(self, tool: str, arguments: dict[str, Any], run: dict[str, Any]) -> dict[str, Any]:
+        view = {"ok": True, **loop.run_view(run)}
+        progress = view.get("progress") or {}
+        self._record(ToolCall(
+            tool, dict(arguments), True,
+            "{:s}  {:s}{:s}".format(
+                str(view["run"]), str(view["state"]),
+                "" if progress.get("iteration") is None else
+                "  iteration {:d} of {}".format(int(progress["iteration"]) + 1, progress.get("total")))))
+        return _content(json.dumps(view, indent=2, sort_keys=True, default=str))
+
+    def _train_start(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        settings = arguments.get("settings") or {}
+        if not isinstance(settings, dict):
+            raise loop.LoopError("settings must be an object of trainer settings.")
+        run_dir = loop.register(
+            self.project_root, run=str(arguments.get("run") or ""),
+            budget_s=arguments.get("budget_s"), reason=str(arguments.get("reason") or ""),
+            settings=settings, task_name=str(arguments.get("task") or ""))
+        return self._run_reply("train_start", arguments, loop.launch(run_dir))
+
+    def _train_status(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        if not arguments.get("run"):
+            runs = loop.list_runs(self.project_root)
+            view = {
+                "ok": True,
+                "runs": [{"run": run["run"], "state": run["state"],
+                          "reason": run["registration"].get("reason"),
+                          "accepted_revision": run["registration"].get("accepted_revision"),
+                          "elapsed_s": run["elapsed_s"],
+                          "task_bundle": loop.task_bundle(run)["path"],
+                          "policy_sha256": (run["status"].get("policy") or {}).get("sha256")}
+                         for run in runs],
+                "ledger": loop.read_ledger(self.project_root)[-LEDGER_VIEW_ROWS:],
+            }
+            self._record(ToolCall("train_status", dict(arguments), True, f"{len(runs)} run(s)"))
+            return _content(json.dumps(view, indent=2, sort_keys=True, default=str))
+        run_dir = self._run_dir(arguments)
+        try:
+            wait = float(arguments.get("wait_s") or 0.0)
+        except (TypeError, ValueError) as exc:
+            raise loop.LoopError("wait_s must be a number of seconds.") from exc
+        if not 0.0 <= wait <= TRAIN_WAIT_MAX_S:
+            raise loop.LoopError(f"wait_s must be within [0, {TRAIN_WAIT_MAX_S:g}] seconds.")
+        deadline = time.monotonic() + wait
+        run = loop.read_run(run_dir)
+        while run["state"] in loop.LIVE_STATES and time.monotonic() < deadline:
+            time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+            run = loop.read_run(run_dir)
+        return self._run_reply("train_status", arguments, run)
+
+    def _train_stop(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        reason = " ".join(str(arguments.get("reason") or "").split())
+        if not reason:
+            raise loop.LoopError("train_stop needs the reason the run is being stopped.")
+        run = loop.request_stop(self._run_dir(arguments), reason)
+        return self._run_reply("train_stop", arguments, run)
+
+    def _evaluate(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Measure the accepted policy on its task's frozen seeds, film it,
+        and hand the agent the numbers and the filmstrips (ADR-457, ADR-459)."""
+
+        root = self.project_root
+        inputs = evaluation.retained_inputs(
+            root, task_name=str(arguments.get("task") or ""),
+            policy_name=str(arguments.get("policy") or ""))
+        out = evaluation.check_out(root, evaluation.default_out(root, inputs))
+        measured = evaluation.run_evaluation(self.client.engine, inputs, out)
+        with self._lock:
+            try:
+                inventory = read_inventory(self.client)
+            except (InventoryError, RuntimeError, ValueError, OSError):
+                inventory = None
+        measured = evaluation.add_film(
+            root, out, measured, choice=str(arguments.get("film") or "auto"),
+            inventory=inventory)
+        trained_by = loop.runs_that_trained(root, inputs["policy_sha256"])
+        view = {"ok": True, **evaluation.agent_view(measured, out), "trained_by_run": trained_by}
+        failing = evaluation.failing_predicates(measured)
+        loop.append_ledger(
+            root, "evaluated", verdict=measured["verdict"], failing=failing,
+            accepted_revision=inputs["accepted_revision"], policy_sha256=inputs["policy_sha256"],
+            task=inputs["task_output"], passed=len(measured["summary"]["passed"]),
+            seeds=measured["summary"]["seeds"], trained_by_run=trained_by,
+            report=str((out / evaluation.REPORT_NAME).relative_to(root)))
+        content: list[dict[str, Any]] = [
+            {"type": "text", "text": json.dumps(view, indent=2, sort_keys=True, default=str)}]
+        film = measured.get("film") or {}
+        for row in (film.get("seeds") or [])[:EVALUATE_PICTURED_SEEDS]:
+            for sheet in ("overview", "detail"):
+                path = out / str((row.get(sheet) or {}).get("file") or "")
+                if path.is_file():
+                    content.append({
+                        "type": "image", "mimeType": "image/png",
+                        "data": base64.b64encode(path.read_bytes()).decode("ascii")})
+        self._record(ToolCall(
+            "evaluate", dict(arguments), True,
+            "{:s}  {:d} of {:d} seeds pass{:s}".format(
+                str(measured["verdict"]), len(measured["summary"]["passed"]),
+                int(measured["summary"]["seeds"]),
+                ("; failing " + ", ".join(failing[:4])) if failing else "")))
         return {"content": content, "is_error": False}
 
     def _read_fit(self) -> dict[str, Any]:

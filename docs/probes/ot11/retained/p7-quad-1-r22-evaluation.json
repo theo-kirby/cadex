@@ -1,0 +1,391 @@
+{
+ "schema": "ot11-walk-round-receipt-v1",
+ "project": "ot11-quad-1",
+ "round": 21,
+ "run": "r22-gentle-contact25",
+ "session": 7,
+ "registered": {
+  "settings": {
+   "checkpoint_every": 100,
+   "discount": 0.995,
+   "envs": 2048,
+   "initial_std": 0.12,
+   "iterations": 750,
+   "learning_rate": 5e-05,
+   "seed": 221
+  },
+  "init_from": "runs/r19-contact-sync/train/walk_task.cxpolicy",
+  "init_from_task_change": "reward weight only: contact_sync weight 2.0 -> 2.5",
+  "budget_s": 2350.0,
+  "reason": "r21b eval (r19's identical task, default warm start): 2/10. W7 slip 0.135-0.192 vs 0.15 on 8 seeds, W9 1.6 on 1101 vs 1.5; training reward fell 2.19 -> 0.99 in 20 iterations. Same collapse as r20, so the default warm start re-explores and loses r19's gait (r19: W7 <= 0.125, W9 fails only 1109 at 1.571). CHANGE: gentle fine-tune from r19 (initial_std 0.12 vs r19's final 0.177, learning_rate 5e-5) plus a small push on the W9 cause, contact_w 2.0 -> 2.5. Expected: r19's gait and W7 held, W9 on 1109 <= 1.5.",
+  "registered_at": 1790869712.691559,
+  "accepted_revision": "febd42dab167800f5e29b7860b5019f90144f5711d7b38a2772ba1cbb91a94c5"
+ },
+ "ended": {
+  "state": "finished",
+  "wall_time_s": 1727.12,
+  "trainer_wall_time_s": 1622.5335262860171,
+  "reason": "the trainer ran every iteration and its policy hashes to its receipt.",
+  "policy_sha256": "e91a397134ac50034740cf6810351be7c29b481660330c767e8ae90ac78f59d5",
+  "best_iteration": 5,
+  "training_reward_per_step_best": 4.362338542938232,
+  "training_reward_per_step_final": 3.429396867752075,
+  "episode_steps_mean_final": 413.73736572265625,
+  "action_std_final": 0.1154593899846077
+ },
+ "evaluated_by": "the agent's own evaluate tool inside walk session 7's third turn (the same code as cadex evaluate); the actor ran nothing",
+ "project_change": "agent: the parameter contact_w set 2.0 -> 2.5 in script.json (the task hashes to ce70f3dd..., a reward-weight-only change from r19's db670704..., declared to the trainer as --init-from-task-change); the script source is byte-identical to r21b's evaluated revision except the policy line's sha256 (script_history 0106 is the registered revision febd42da, 0108 the evaluated revision da95bfa9). The model did not move. After the evaluation the agent restored r19's revision (0111, e3b6fb20), so the project's declared policy is r19's again",
+ "spec_block": {
+  "rule": "byte-identical except the values of HIP_MM and WEIGHT_N, which must equal the evaluated model's rig to the block's printed precision",
+  "frozen_sha256": "487416afd4da672e4af8ed55ed5f2b1464eeec7bf305381833fd26775b4fe900",
+  "HIP_MM": 96.7006,
+  "rig_hip_height_mm": 96.7006,
+  "WEIGHT_N": 5.05069617762,
+  "rig_weight_n": 5.050696177620001,
+  "other_lines_identical": true,
+  "valid": true,
+  "identical_to_r20_evaluated_block": true,
+  "identical_to_r21b_evaluated_block": true
+ },
+ "evaluation": {
+  "report": "evaluations/da95bfa94936-e91a397134ac/evaluation.json",
+  "accepted_revision": "da95bfa949368c971ba9a7184e9d001e4ea296a92b69bd3e59a8b4babe8b907d",
+  "policy_sha256": "e91a397134ac50034740cf6810351be7c29b481660330c767e8ae90ac78f59d5",
+  "model_sha256": "6cecfa2de126d2d9f4527e28a21bae3babf01df0beadca84a7cb34fa77705914",
+  "trained_model_sha256": "6cecfa2de126d2d9f4527e28a21bae3babf01df0beadca84a7cb34fa77705914",
+  "task_sha256": "ce70f3dd01bcb97c1eb54b450674324f4dcaf85801dc0e52ff04c0b1bfdb11e0",
+  "trained_task_sha256": "ce70f3dd01bcb97c1eb54b450674324f4dcaf85801dc0e52ff04c0b1bfdb11e0",
+  "engine_source": "dev-tree",
+  "verdict": "fail",
+  "contact_offsets": [],
+  "void_seeds": [],
+  "terminations": {
+   "horizon": 10
+  },
+  "episodes": {
+   "1101": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 3.88,
+    "shove_n": 0.801,
+    "failing": [],
+    "steps": {
+     "fl": 6,
+     "fr": 6,
+     "rl": 8,
+     "rr": 9
+    },
+    "step_count_ratio": 1.5
+   },
+   "1102": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 4.01,
+    "shove_n": 0.47,
+    "failing": [],
+    "steps": {
+     "fl": 8,
+     "fr": 9,
+     "rl": 11,
+     "rr": 9
+    },
+    "step_count_ratio": 1.375
+   },
+   "1103": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 4.64,
+    "shove_n": 0.549,
+    "failing": [
+     "W7",
+     "W8-low"
+    ],
+    "steps": {
+     "fl": 7,
+     "fr": 8,
+     "rl": 9,
+     "rr": 10
+    },
+    "step_count_ratio": 1.4286
+   },
+   "1104": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 3.85,
+    "shove_n": 0.498,
+    "failing": [
+     "W2",
+     "W9"
+    ],
+    "steps": {
+     "fl": 6,
+     "fr": 7,
+     "rl": 10,
+     "rr": 7
+    },
+    "step_count_ratio": 1.6667
+   },
+   "1105": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 4.59,
+    "shove_n": 0.744,
+    "failing": [
+     "W8-low"
+    ],
+    "steps": {
+     "fl": 9,
+     "fr": 9,
+     "rl": 10,
+     "rr": 9
+    },
+    "step_count_ratio": 1.1111
+   },
+   "1106": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 3.45,
+    "shove_n": 0.934,
+    "failing": [],
+    "steps": {
+     "fl": 8,
+     "fr": 8,
+     "rl": 12,
+     "rr": 10
+    },
+    "step_count_ratio": 1.5
+   },
+   "1107": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 5.29,
+    "shove_n": 0.973,
+    "failing": [],
+    "steps": {
+     "fl": 7,
+     "fr": 8,
+     "rl": 10,
+     "rr": 9
+    },
+    "step_count_ratio": 1.4286
+   },
+   "1108": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 3.39,
+    "shove_n": 0.473,
+    "failing": [],
+    "steps": {
+     "fl": 10,
+     "fr": 10,
+     "rl": 10,
+     "rr": 10
+    },
+    "step_count_ratio": 1.0
+   },
+   "1109": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 6.26,
+    "shove_n": 0.315,
+    "failing": [],
+    "steps": {
+     "fl": 6,
+     "fr": 7,
+     "rl": 9,
+     "rr": 9
+    },
+    "step_count_ratio": 1.5
+   },
+   "1110": {
+    "duration_s": 10.0,
+    "termination": "horizon",
+    "shove_start_s": 6.53,
+    "shove_n": 0.571,
+    "failing": [
+     "W7"
+    ],
+    "steps": {
+     "fl": 7,
+     "fr": 8,
+     "rl": 10,
+     "rr": 9
+    },
+    "step_count_ratio": 1.4286
+   }
+  },
+  "passed_seeds": [
+   1101,
+   1102,
+   1106,
+   1107,
+   1108,
+   1109
+  ],
+  "failing_predicates": {
+   "W2": 1,
+   "W7": 2,
+   "W8-low": 2,
+   "W9": 1
+  },
+  "metrics_min_max": {
+   "completed": [
+    1.0,
+    1.0
+   ],
+   "duration_s": [
+    10.0,
+    10.0
+   ],
+   "max_tilt_deg": [
+    24.2243,
+    30.028
+   ],
+   "max_heading_deg": [
+    5.5106,
+    22.9631
+   ],
+   "final_heading_deg": [
+    -22.9631,
+    11.6824
+   ],
+   "max_drift_mm": [
+    587.7805,
+    879.8807
+   ],
+   "final_drift_mm": [
+    587.7805,
+    879.8807
+   ],
+   "mean_speed_mm_s": [
+    77.3146,
+    95.1695
+   ],
+   "max_drift_com_heights": [
+    7.4362,
+    11.1316
+   ],
+   "mean_forward_speed_mm_s": [
+    59.1387,
+    88.0689
+   ],
+   "mean_lateral_speed_mm_s": [
+    -4.1493,
+    1.1023
+   ],
+   "steps_min": [
+    6,
+    10
+   ],
+   "step_count_ratio": [
+    1.0,
+    1.6667
+   ],
+   "step_share_min": [
+    0.725,
+    0.8741
+   ],
+   "step_clearance_hip_heights_min": [
+    0.2,
+    0.2965
+   ],
+   "slip_share_max": [
+    0.0969,
+    0.1953
+   ],
+   "duty_factor_min": [
+    0.3548,
+    0.4789
+   ],
+   "duty_factor_max": [
+    0.5322,
+    0.6984
+   ],
+   "foot_lowest_hip_heights_min": [
+    -0.0308,
+    -0.0139
+   ],
+   "speed_ratio": [
+    0.8889,
+    1.0136
+   ],
+   "lateral_ratio": [
+    0.0017,
+    0.0683
+   ]
+  },
+  "reward_per_step_min_max": {
+   "alive": [
+    10.0,
+    10.0
+   ],
+   "tilt": [
+    -0.5997,
+    -0.1746
+   ],
+   "speed_error": [
+    -1.1225,
+    -0.6021
+   ],
+   "sideways": [
+    -0.5302,
+    -0.3208
+   ],
+   "heading": [
+    -0.1855,
+    -0.0681
+   ],
+   "body_rate": [
+    -0.4072,
+    -0.2949
+   ],
+   "trot_sync": [
+    -1.3389,
+    -0.7019
+   ],
+   "impact": [
+    -0.1035,
+    -0.0959
+   ],
+   "step_fl": [
+    -0.425,
+    -0.3518
+   ],
+   "step_fr": [
+    -0.5573,
+    -0.432
+   ],
+   "step_rl": [
+    -0.5703,
+    -0.4368
+   ],
+   "step_rr": [
+    -0.5384,
+    -0.4341
+   ],
+   "contact_sync": [
+    -0.3296,
+    -0.1649
+   ],
+   "joint_speed": [
+    -0.1059,
+    -0.0743
+   ],
+   "diag_sym": [
+    -0.2278,
+    -0.1406
+   ],
+   "hip_antiphase": [
+    -0.1361,
+    -0.0838
+   ]
+  }
+ },
+ "void_for_R1": false,
+ "void_check": "contact_offsets is empty: no geom in the evaluated model carries a margin or gap (ADR-470), and the model hashes to r17's to r21b's (6cecfa2d...), the rebuilt af05ab62 lineage on ADR-469's 0.004 s spring",
+ "regression_diagnosis": {
+  "measured": "6 of 10 pass every predicate (1101, 1102, 1106, 1107, 1108, 1109), from r21b's 2 and r19's 9. W7 slip fails 1103 and 1110 (0.195, 0.156 against 0.15; 0.097-0.195 over ten, r19 0.090-0.125, r21b 0.135-0.192) and the slipping foot is front-right on all ten (r21b: rear-left on nine). W8-low fails 1103 and 1105 (0.399, 0.355). W2 fails 1104 at 30.03 deg against 30 (tilt 24.2-30.0, r19 7.9-22.9), with no tip: every seed runs to the horizon. W9 fails 1104 only (1.667: rear-left 10 steps, front-left 6); 1109, r19's one failure at 1.571, passes at 1.500. Steps 6-12 per foot",
+  "training": "warm from r19 at initial_std 0.12 (below r19's final 0.177) and learning_rate 5e-5, contact_w 2.0 -> 2.5: iteration 0 reads +3.86 per step, iteration 1 -0.72, iteration 5 +4.36 (the run's best), then it falls to +0.76 at iteration 19 and climbs back to +2.81 at 50 and 3.43 at 750, never regaining r19's 4.47. sigma barely moves (0.120 -> 0.115). So r20 and r21b opened at sigma 0.30 and r22 at 0.12, and all three lost the gait in the first twenty iterations: the reset exploration width was not the only cause. The other thing --init-from resets is the critic, which starts untrained against a converged actor (ADR-471 left it out because the .cxpolicy holds no critic); that is the next candidate, and is not measured here",
+  "source": "evaluation.json seeds[].detail.feet (steps, slip_share), seeds[].metrics; runs/r22-gentle-contact25/train/train.log and progress.json; runs/r19-contact-sync/train/train.log"
+ }
+}

@@ -1,0 +1,30 @@
+HIP_MM = 96.7006
+WEIGHT_N = 4.69988665362
+SPEC_LIFT = (HX + 20.0) * _sin(rad(3.0)) + 1.0
+command = assembly.goal("command", kind="speed", between=[0.6 * HIP_MM, 1.0 * HIP_MM])
+walk_spec = assembly.success(
+    [
+        {"id": "W1", "metric": "completed", "min": 1},
+        {"id": "W2", "metric": "max_tilt_deg", "max": 30},
+        {"id": "W3", "metric": "speed_ratio", "min": 0.75, "max": 1.25},
+        {"id": "W4-lateral", "metric": "lateral_ratio", "max": 0.25},
+        {"id": "W4-heading", "metric": "max_heading_deg", "max": 45},
+        {"id": "W5-steps", "metric": "steps_min", "min": 4},
+        {"id": "W5-share", "metric": "step_share_min", "min": 0.70},
+        {"id": "W6", "metric": "step_clearance_hip_heights_min", "min": 0.08},
+        {"id": "W7", "metric": "slip_share_max", "max": 0.15},
+        {"id": "W8-low", "metric": "duty_factor_min", "min": 0.40},
+        {"id": "W8-high", "metric": "duty_factor_max", "max": 0.85},
+        {"id": "W9", "metric": "step_count_ratio", "max": 1.5},
+        {"id": "W10", "metric": "foot_lowest_hip_heights_min", "min": -0.05},
+    ],
+    seeds=[1101, 1102, 1103, 1104, 1105, 1106, 1107, 1108, 1109, 1110],
+    feet=[result["c_foot_fl"], result["c_foot_fr"], result["c_foot_rl"], result["c_foot_rr"]],
+    episode_seconds=10.0, randomisation=[],
+    reset_variation=[assembly.reset_variation(c_tray, tilt_degrees=[0.0, 3.0],
+                                              height_mm=[SPEC_LIFT, SPEC_LIFT + 5.0])],
+    disturbance=[assembly.disturbance(c_tray, newtons=[0.05 * WEIGHT_N, 0.20 * WEIGHT_N],
+                                      direction="horizontal", at_seconds=[3.0, 7.0],
+                                      duration_s=0.15)],
+    goals=[command], label="ot11 walk contract",
+)

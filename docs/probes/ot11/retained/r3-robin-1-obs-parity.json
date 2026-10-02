@@ -1,0 +1,110 @@
+{
+ "angular_velocity_frames": {
+  "gyro": {
+   "err_if_body_frame": 0.0999109776561589,
+   "err_if_world_frame": 0.0,
+   "frame": "world",
+   "target": "comp_board",
+   "tilt_deg": 108.61468906499047
+  }
+ },
+ "channels": {
+  "chassis_pos": {
+   "grounded_sensor": null,
+   "max_abs_diff": 7.429633297473259e-06,
+   "max_magnitude": 201.0095221078346,
+   "role": "privileged",
+   "unit": "mm"
+  },
+  "chassis_vel": {
+   "grounded_sensor": null,
+   "max_abs_diff": 0.00015063819791549804,
+   "max_magnitude": 1079.4804974025735,
+   "role": "privileged",
+   "unit": "mm/s"
+  },
+  "com": {
+   "grounded_sensor": null,
+   "max_abs_diff": 4.080913400261732e-05,
+   "max_magnitude": 149.02095006137398,
+   "role": "privileged",
+   "unit": "mm"
+  },
+  "com_vel": {
+   "grounded_sensor": null,
+   "max_abs_diff": 0.000511706232164677,
+   "max_magnitude": 1095.7006913519936,
+   "role": "privileged",
+   "unit": "mm/s"
+  },
+  "gyro": {
+   "grounded_sensor": "imu",
+   "max_abs_diff": 0.0002928753406917826,
+   "max_magnitude": 828.1314445652537,
+   "role": "policy",
+   "unit": "deg/s"
+  },
+  "rot": {
+   "grounded_sensor": "imu",
+   "max_abs_diff": 1.3037518631353606e-07,
+   "max_magnitude": 0.9999999248123951,
+   "role": "policy",
+   "unit": "quat"
+  },
+  "wheel_l_pos": {
+   "grounded_sensor": "enc_l",
+   "max_abs_diff": 1.6550979484175144e-06,
+   "max_magnitude": 38.953235519160124,
+   "role": "policy",
+   "unit": "deg"
+  },
+  "wheel_l_torque": {
+   "grounded_sensor": null,
+   "max_abs_diff": 3.7001695041283256e-06,
+   "max_magnitude": 91.54473097475463,
+   "role": "privileged",
+   "unit": "nmm"
+  },
+  "wheel_l_vel": {
+   "grounded_sensor": "enc_l",
+   "max_abs_diff": 1.0420299806698332e-05,
+   "max_magnitude": 420.8221858458125,
+   "role": "policy",
+   "unit": "deg/s"
+  },
+  "wheel_r_pos": {
+   "grounded_sensor": "enc_r",
+   "max_abs_diff": 1.5636483438555953e-06,
+   "max_magnitude": 35.96288802044302,
+   "role": "policy",
+   "unit": "deg"
+  },
+  "wheel_r_torque": {
+   "grounded_sensor": null,
+   "max_abs_diff": 3.6488392168854134e-06,
+   "max_magnitude": 91.90795214584291,
+   "role": "privileged",
+   "unit": "nmm"
+  },
+  "wheel_r_vel": {
+   "grounded_sensor": "enc_r",
+   "max_abs_diff": 1.3645342662157664e-05,
+   "max_magnitude": 353.57217796984185,
+   "role": "policy",
+   "unit": "deg/s"
+  }
+ },
+ "jax_backend": "gpu",
+ "model_sha256": "89ce4ad7a5213f565eee31b8a3913b2802ef983b4142634056f9db095671b7cc",
+ "mujoco": "3.10.0",
+ "schema": "cadex-ot11-obs-parity-v1",
+ "settings": {
+  "episodes": 20,
+  "every": 20,
+  "seed": 0,
+  "steps": 200
+ },
+ "states_compared": 200,
+ "task": "balance_task",
+ "task_sha256": "ca60b4ce7fd49e80f53c40dac62968700a1d0a344ff14bd190da3227051404c0"
+}

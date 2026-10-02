@@ -55,7 +55,7 @@ from .bridge import Bridge, BridgeState, ToolCall
 from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine, source_comparison
 from .export import ExportedOutput, ExportError, export_blueprints, export_outputs, parse_formats
-from .inventory import InventoryError, write_inventory
+from .inventory import InventoryError, read_inventory, write_inventory
 from .render import acquire_snapshot, describe_proxies, write_render
 from .section import write_section
 from .clearance import (
@@ -110,6 +110,21 @@ from .train import (
     run_trainer,
     trainer_command,
 )
+from .evaluate import (
+    DEFAULT_TIMEOUT_S as EVALUATE_TIMEOUT_S,
+    MAXIMUM_TIMEOUT_S as EVALUATE_MAXIMUM_TIMEOUT_S,
+    REPORT_NAME as EVALUATION_NAME,
+    EvaluateError,
+    EvaluateRefused,
+    add_film,
+    check_out,
+    default_out,
+    evaluation_cell,
+    failing_predicates,
+    read_report,
+    retained_inputs,
+    run_evaluation,
+)
 from .review_record import manifest_identity, write_run_record
 from .review_server import serve as serve_review
 from .smoke import (
@@ -145,6 +160,7 @@ from .walk import (
     collect_detached,
     declare_policy,
     declared_note_subjects,
+    behaviour_authority,
     floating_bases,
     gait_from_trace,
     read_json,
@@ -498,6 +514,55 @@ def build_parser() -> argparse.ArgumentParser:
         "--task", dest="task_name", default="", metavar="NAME",
         help="Which exported task supplies the termination rules, when the "
         "script exports more than one.",
+    )
+    evaluate_parser = subparsers.add_parser(
+        "evaluate",
+        help="Hold the accepted policy against its task's success spec "
+        "(assembly.success): one rollout per frozen seed under the spec's "
+        "conditions, then pass or fail per seed and per predicate, the "
+        "behaviour metrics, the reward by term and how each episode ended, "
+        "written to evaluation.json in the project, with a filmstrip and a "
+        "video of what the seeds did on the dark prototype floor. Reads the "
+        "accepted artifacts; never rebuilds. No AI, no tokens, no trainer.",
+    )
+    _common(evaluate_parser, inherit=True)
+    evaluate_parser.add_argument(
+        "--policy", dest="policy_name", default="", metavar="NAME",
+        help="Which declared policy output, when the script declares more than one.",
+    )
+    evaluate_parser.add_argument(
+        "--task", dest="task_name", default="", metavar="NAME",
+        help="Pick the policy declared against this task output.",
+    )
+    evaluate_parser.add_argument(
+        "--timeout", type=float, default=EVALUATE_TIMEOUT_S, metavar="SECONDS",
+        help="Kill the evaluation after this much wall time and fail; at most "
+        f"{EVALUATE_MAXIMUM_TIMEOUT_S:g} (default %(default)g).",
+    )
+    evaluate_parser.add_argument(
+        "--film", default="auto", metavar="SEEDS",
+        help="Which seeds to draw as a filmstrip on the dark prototype floor: "
+        "auto (the first failing seed, or the first seed of a pass), all, none, "
+        "or seed numbers separated by commas. The first one is also drawn as "
+        "a video (default %(default)s).",
+    )
+    evaluate_parser.add_argument(
+        "--no-video", action="store_true", default=False,
+        help="Draw the filmstrips and no video.",
+    )
+    evaluate_parser.add_argument(
+        "--detail-start", type=float, default=None, metavar="SECONDS",
+        help="Where each filmstrip's detail sheet begins (default: the seed's "
+        "first disturbance, or the middle of an episode that has none).",
+    )
+    evaluate_parser.add_argument(
+        "--detail-step", type=float, default=None, metavar="SECONDS",
+        help="The time between the detail sheet's frames (default 0.2).",
+    )
+    evaluate_parser.add_argument(
+        "--film-only", action="store_true", default=False,
+        help="Measure nothing: draw the film of the evaluation already in "
+        "--out (or the default directory) from the traces it kept.",
     )
     walk_parser = subparsers.add_parser(
         "walk",
@@ -951,7 +1016,8 @@ def command_prompt(
 
             sys.stderr.write(text)
 
-        with Bridge(client, on_call=on_call, initial_revision=revision) as bridge:
+        with Bridge(client, on_call=on_call, initial_revision=revision,
+                    project_root=report.project_root) as bridge:
             turn = turn_factory(
                 claude_path=claude_path,
                 model=model,
@@ -1704,6 +1770,88 @@ def command_smoke(args: argparse.Namespace, report: RunReport) -> int:
         return EXIT_OK
 
 
+def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
+    """Hold the accepted policy against its task's success spec (ADR-457).
+
+    Exit zero means a complete measurement on every frozen seed; read the
+    verdict for its result. Like ``smoke`` it reads what the accepted
+    revision retained and never restores, rebuilds or accepts a script, so
+    the policy evaluated is the one the engine verified. ``--out`` defaults
+    to ``evaluations/<revision>-<policy>`` in the project. The film of the
+    chosen seeds is drawn after the measurement is on disk (ADR-459); a film
+    that could not be drawn is a failure that leaves the measurement.
+    """
+
+    if not (0.0 < float(args.timeout) <= EVALUATE_MAXIMUM_TIMEOUT_S):
+        report.error = f"--timeout must be within (0, {EVALUATE_MAXIMUM_TIMEOUT_S:g}] seconds."
+        return EXIT_USAGE
+    for flag, value, least in (("--detail-start", args.detail_start, 0.0),
+                               ("--detail-step", args.detail_step, None)):
+        if value is not None and not (math.isfinite(value) and (value > 0 or value == least)):
+            report.error = f"{flag} must be a {'time' if least == 0.0 else 'positive step'} in seconds."
+            return EXIT_USAGE
+    with _engine_session(args, report, restore=False) as (engine, _client):
+        root = Path(report.project_root)
+        try:
+            inputs = retained_inputs(root, task_name=args.task_name, policy_name=args.policy_name)
+        except EvaluateRefused as exc:
+            report.error = str(exc)
+            return EXIT_REJECTED
+        report.accepted_revision = report.revision = inputs["accepted_revision"]
+        report.digest = inputs["accepted_digest"]
+        out = check_out(root, Path(args.out) if args.out else default_out(root, inputs))
+        report.out_dir = str(out)
+        _progress(
+            " · evaluate  {:s} on {:s}  {:d} seed(s)".format(
+                inputs["policy_output"], inputs["task_output"], len(inputs["seeds"]))
+        )
+        try:
+            measured = (read_report(out, inputs) if args.film_only else
+                        run_evaluation(engine, inputs, out, timeout=float(args.timeout)))
+        except EvaluateRefused as exc:
+            report.error = str(exc)
+            return EXIT_REJECTED
+        # What each part is made of, for the film: read from the pinned
+        # accepted attempt, no rebuild. Without it the film is drawn in one
+        # material and says so.
+        try:
+            inventory = read_inventory(_client)
+        except (InventoryError, CadexdError, ValueError, OSError):
+            inventory = None
+        measured = add_film(
+            root, out, measured, choice=args.film, inventory=inventory,
+            start=args.detail_start, step=args.detail_step, video=not args.no_video,
+            progress=_progress)
+        path = out / EVALUATION_NAME
+        report.evaluation = {
+            key: measured[key] for key in (
+                "schema", "verdict", "policy_output", "task_output", "model_output",
+                "policy_sha256", "task_sha256", "model_sha256", "label", "summary")
+        }
+        report.evaluation["report"] = str(path)
+        film = measured["film"]
+        report.evaluation["film"] = {
+            "state": film["state"], "error": film["error"],
+            "seeds": [{"seed": row["seed"],
+                       **{key: str(out / row[key]["file"]) for key in ("overview", "detail", "video")
+                          if row.get(key)}} for row in film["seeds"]]}
+        failing = failing_predicates(measured)
+        report.notes.append(
+            "evaluation {:s}: {:d} of {:d} seeds pass{:s}; {:s}.".format(
+                measured["verdict"], len(measured["summary"]["passed"]),
+                measured["summary"]["seeds"],
+                (", failing " + ", ".join(failing)) if failing else "", str(path))
+        )
+        if film["state"] == "failed":
+            # The measurement is complete and on disk; what was asked for
+            # beside it was not made.
+            report.error = "the evaluation was measured, and its film could not be drawn: " + str(
+                film["error"])
+            return EXIT_FAILURE
+        report.ok = True
+        return EXIT_OK
+
+
 def _remote_usage_error(args: argparse.Namespace) -> str:
     """What is wrong with ``--remote``'s company, or nothing (ADR-200).
 
@@ -2212,6 +2360,9 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         progress=read_json(train_dir / "progress.json")
         or read_json(train_dir / PROGRESS_FILENAME),
     ) if review.get("trace") else {"available": False, "reason": "no trace was exported."}
+    # ...and that reading is one behaviour's (ADR-464): a task with a
+    # success spec is judged by the spec, and the walk says so.
+    review["behaviour"] = behaviour_authority(read_json(known.get("task_bundle")))
     documentation = documentation_status(report.project_root, subjects)
     if model_path is not None:
         documentation["model"] = str(model_path)
@@ -2274,6 +2425,11 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
                 gait["planar_travel_mm"], gait["duration_s"] or 0.0,
                 gait["max_tilt_deg"], gait["heading_final_deg"],
             )
+        )
+    if review["behaviour"]["command"]:
+        report.notes.append(
+            "behaviour: the task declares a success spec, so `cadex evaluate` is the "
+            "verdict on what the policy does; the gait reading is advisory."
         )
     # A model that declares nothing asks the project for nothing, and the
     # run says nothing rather than reporting an empty check.
@@ -2345,13 +2501,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_train(args, report)
         elif command == "smoke":
             code = command_smoke(args, report)
+        elif command == "evaluate":
+            code = command_evaluate(args, report)
         elif command == "walk":
             code = command_walk(args, report)
         elif command == "review":
             code = command_review(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
-    except (ValueError, ExportError, InventoryError, TrainError, SmokeError, WalkError) as exc:
+    except (ValueError, ExportError, InventoryError, TrainError, SmokeError, EvaluateError,
+            WalkError) as exc:
         report.error = str(exc)
         code = EXIT_USAGE if isinstance(exc, ValueError) else EXIT_FAILURE
     except (EngineError, ClaudeUnavailable, ProjectBusy, CadexdError) as exc:
@@ -2437,6 +2596,13 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
             float(args.seconds), str(args.mode),
             str(report.smoke.get("verdict") or "?"),
             str(Path(str(report.out_dir or args.out)).name),
+        )
+    if command == "evaluate":
+        return "evaluate {:s} on {:s} → {:s} ({:s})".format(
+            str(report.evaluation.get("policy_output") or "?"),
+            str(report.evaluation.get("task_output") or "?"),
+            str(report.evaluation.get("verdict") or "?"),
+            str(Path(str(report.out_dir)).name),
         )
     if command == "train":
         if report.training.get("state") == "pending":
@@ -2565,6 +2731,7 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
             revision=report.accepted_revision,
             digest=report.digest,
             numbers=(smoke_cell(report.smoke) if command == "smoke" else
+                     evaluation_cell(report.evaluation) if command == "evaluate" else
                      "pending; no policy verified"
                      if report.training.get("state") == "pending" else (
                 _clearance_cell(report.walk["review"]["clearance"], previous)

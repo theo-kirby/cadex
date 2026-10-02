@@ -47,7 +47,7 @@ header#top .title { min-width: 0; }
 main#frame { display: flex; flex-direction: column; gap: var(--s4); padding: var(--gutter); }
 #left, #right, #stage, .stage-panels { display: contents; }
 #sidebar { order: 1; } #identity { order: 2; } #model { order: 3; } #model-settings { order: 4; }
-#curves { order: 5; } #videos-region { order: 6; } #record { order: 7; } #params-panel { order: 8; }
+#curves { order: 5; } #videos-region { order: 6; } #evaluation { order: 6; } #record { order: 7; } #params-panel { order: 8; }
 #artifacts-panel { order: 9; } #docs-panel { order: 10; } #doc-panel { order: 11; }
 #doc-panel:has(#doc-view.hidden) { display: none; }
 /* The concept sheet leads the model in the column (§14): same order, earlier in the source. */
@@ -153,6 +153,23 @@ ul#problems li { color: var(--bad); }
 #disk { margin-bottom: var(--s3); } #disk[data-state="counted"] #disk-summary { color: var(--ink); }
 #disk[data-state="truncated"] #disk-summary, #disk[data-state="unreadable"] #disk-summary { color: var(--warn); }
 ul#disk-shared li[data-shared="true"] { color: var(--info); }
+/* The evaluation (§17): a verdict line, then tables that scroll inside the
+   card, then the film. Pass and fail are the page's ok and bad, as text. */
+#evaluation-status { overflow-wrap: anywhere; }
+#evaluation-status[data-state="pass"] { color: var(--ok); } #evaluation-status[data-state="fail"] { color: var(--bad); }
+#evaluation-status[data-state="empty"] { color: var(--ink-2); }
+ul#evaluation-list { list-style: none; margin: var(--s2) 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--s2); }
+ul#evaluation-list:empty { display: none; }
+ul#evaluation-list button[aria-pressed="true"] { background: var(--surface-3); border-color: var(--rule-strong); }
+#evaluation table.grid { overflow-wrap: normal; white-space: nowrap; }
+#evaluation table.grid td { font-size: var(--fs-0); }
+#evaluation [data-pass="true"] { color: var(--ok); } #evaluation [data-pass="false"] { color: var(--bad); }
+#evaluation tr[data-filmed="true"] td:first-child { text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+ul#evaluation-film { list-style: none; margin: var(--s2) 0 0; padding: 0; }
+ul#evaluation-film > li { margin-bottom: var(--s5); }
+ul#evaluation-film img, ul#evaluation-film video { display: block; width: 100%; height: auto; background: var(--bg);
+  border: var(--bw) solid var(--rule); border-radius: var(--radius); margin: var(--s2) 0; }
+ul#evaluation-film .caption { font-size: var(--fs-0); color: var(--ink-2); overflow-wrap: anywhere; }
 .status-retained { color: var(--ok); } .status-missing, .status-error { color: var(--bad); } .status-none { color: var(--ink-2); }
 #policy-origin[data-tone="bad"] { color: var(--bad); }
 pre#doc-view { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-2); border: var(--bw) solid var(--rule); padding: var(--s3);
@@ -252,7 +269,9 @@ pre#doc-view { white-space: pre-wrap; overflow-wrap: anywhere; background: var(-
   .stage-panel > h2 { display: none; }
   #stage[data-active="model"] #model, #stage[data-active="curves"] #curves,
   #stage[data-active="videos"] #videos-region, #stage[data-active="doc"] #doc-panel,
-  #stage[data-active="concept"] #concept { visibility: visible; }
+  #stage[data-active="concept"] #concept, #stage[data-active="evaluation"] #evaluation { visibility: visible; }
+  .tab-dot[data-state="pass"] { background: var(--ok); } .tab-dot[data-state="fail"] { background: var(--bad); }
+  ul#evaluation-film img, ul#evaluation-film video { width: auto; max-width: 100%; }
   #concept figure { display: flex; flex-direction: column; align-items: center; }
   #concept img { width: auto; max-width: 100%; max-height: calc(100vh - var(--bar) - 150px); object-fit: contain; }
   #doc-panel:has(#doc-view.hidden) { display: block; }

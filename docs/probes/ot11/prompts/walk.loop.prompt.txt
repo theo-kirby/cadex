@@ -1,0 +1,55 @@
+This project is a copy of ot10's accepted quadruped: four legs, a hip and a knee servo on each, a tray body carrying the electronics, spherical feet. Do not start a new design. Your job in this session is to make it walk with real steps at a commanded speed, by running the training loop yourself: design the task, train, evaluate, revise.
+
+THE BEHAVIOUR. A four-legged robot walks forward across a flat floor at a steady commanded speed. It walks with real steps: each foot lifts clear of the floor, swings forward, lands and carries weight in turn, and the feet on the ground do not slide. The body stays level, keeps its heading and keeps walking after a sideways shove.
+
+WHAT EXISTS. The accepted script declares a task, `walk_task` ("walk_forward"), that pays for tracking one fixed forward speed (`target_speed`, 80 mm/s) and states no goal, so a policy trained on it never learns what speed it was asked for. ot10 trained a policy on it (`w2-2`, declared when the parameter `policy_on` is 1). Measured under the success spec below it passes 0 of 10 seeds: on every seed it fails W5 (the foot that stepped least took at most 3 steps, with at most 8 % of its travel in steps), W7 (stance slip 49-81 % of a foot's travel), W9 and W10 (feet as far as 0.26 hip heights below the floor plane); it tipped on two seeds. It shuffles. That policy was trained on a task without a goal, so it cannot be declared on the task you are about to write: switch it off or remove its declaration. It is not a starting point you can warm-start from.
+
+THE MECHANISM IS FIXED IN THIS SESSION. The spec's constants are this model's: HIP_MM is its hip height (96.7006 mm), WEIGHT_N its weight, SPEC_LIFT the lift at which a 3 degree tilt clears the floor. A changed mechanism would change what they mean. Do not change the geometry, the bodies or their collision shapes, the joints or their limits, or the actuators, and do not change the parameters that set them. Observations, sensors and everything about the task are yours.
+
+THE SUCCESS SPEC. It is frozen and it is not yours to change. Write it into the script exactly as given here, after the model is built, and pass it to the task as `success=walk_spec`; never loosen, drop or reword a predicate, a seed, a condition or the goal in any later revision:
+
+HIP_MM = 96.7006
+WEIGHT_N = 4.69988665362
+SPEC_LIFT = (HX + 20.0) * _sin(rad(3.0)) + 1.0
+command = assembly.goal("command", kind="speed", between=[0.6 * HIP_MM, 1.0 * HIP_MM])
+walk_spec = assembly.success(
+    [
+        {"id": "W1", "metric": "completed", "min": 1},
+        {"id": "W2", "metric": "max_tilt_deg", "max": 30},
+        {"id": "W3", "metric": "speed_ratio", "min": 0.75, "max": 1.25},
+        {"id": "W4-lateral", "metric": "lateral_ratio", "max": 0.25},
+        {"id": "W4-heading", "metric": "max_heading_deg", "max": 45},
+        {"id": "W5-steps", "metric": "steps_min", "min": 4},
+        {"id": "W5-share", "metric": "step_share_min", "min": 0.70},
+        {"id": "W6", "metric": "step_clearance_hip_heights_min", "min": 0.08},
+        {"id": "W7", "metric": "slip_share_max", "max": 0.15},
+        {"id": "W8-low", "metric": "duty_factor_min", "min": 0.40},
+        {"id": "W8-high", "metric": "duty_factor_max", "max": 0.85},
+        {"id": "W9", "metric": "step_count_ratio", "max": 1.5},
+        {"id": "W10", "metric": "foot_lowest_hip_heights_min", "min": -0.05},
+    ],
+    seeds=[1101, 1102, 1103, 1104, 1105, 1106, 1107, 1108, 1109, 1110],
+    feet=[result["c_foot_fl"], result["c_foot_fr"], result["c_foot_rl"], result["c_foot_rr"]],
+    episode_seconds=10.0, randomisation=[],
+    reset_variation=[assembly.reset_variation(c_tray, tilt_degrees=[0.0, 3.0],
+                                              height_mm=[SPEC_LIFT, SPEC_LIFT + 5.0])],
+    disturbance=[assembly.disturbance(c_tray, newtons=[0.05 * WEIGHT_N, 0.20 * WEIGHT_N],
+                                      direction="horizontal", at_seconds=[3.0, 7.0],
+                                      duration_s=0.15)],
+    goals=[command], label="ot11 walk contract",
+)
+
+In words: on every one of the ten seeds the robot starts tilted up to 3 degrees and dropped from up to 5 mm above the clearing lift, is commanded one forward speed drawn between 0.6 and 1.0 hip heights per second (58.0 to 96.7 mm/s) for the whole 10.0 s, and is shoved once, sideways at any angle, with 0.05 to 0.20 of its weight for 0.15 s, starting between 3 s and 7 s. The episode must run the full 10.0 s with no termination (W1) and never tilt past 30 degrees (W2). After the first second: its mean forward speed must be 0.75 to 1.25 times the commanded speed (W3), its mean sideways speed at most 0.25 of it, and it must never turn more than 45 degrees (W4). Every foot must take at least 4 real steps, a step being at least 0.10 s airborne and landing at least 0.15 hip heights from where it lifted, and make at least 70 % of its travel in steps (W5); the median peak height of every foot's steps must be at least 0.08 hip heights (W6); no foot may slide for more than 15 % of its travel while on the floor (W7); every foot must be on the floor between 40 % and 85 % of the time (W8); the busiest foot may take at most 1.5 times the steps of the idlest (W9); and no foot may go more than 0.05 hip heights below the floor (W10). One failed seed fails the policy. The evaluation seeds are not training seeds.
+
+The task must declare exactly one goal, the `command` above, of kind "speed", and no other speed goal: the spec restates it and the policy reads it by position. Pass it as `goals=[command]`. How training varies it is decided by the goal itself; everything else about the task is yours.
+
+EVERYTHING ELSE IS YOURS TO DESIGN: the task's observations, its reward terms and weights, its terminations, its control rate, its own reset variation, randomisation and disturbances, and the training settings. The reward must not be a copy of the spec's verdict, and the spec must never read the reward.
+
+THE RULES FOR TRAINING.
+- Every run is pre-registered by train_start with a wall-clock budget of at most 2400 seconds. For scale, on this mechanism on this machine, 1000 iterations of 2048 environments took about 1900 s.
+- One run at a time. The training seed is never one of the ten evaluation seeds.
+- A run's `reason` names what it is for. From the second run on it must cite a measurement from the previous evaluation: the failing predicate, its measured value and the limit.
+- After each run: store the policy, declare it on the task it was trained on, call evaluate, and read the verdict, the per-seed rows, the metrics, the reward terms, the endings and the filmstrips before deciding anything.
+- A failed evaluation is diagnosed before the next run: say which predicate failed, by how much, on which seeds, and what in the task you believe caused it. Then change the task, train again, evaluate again, and say whether the change helped.
+
+WHEN TO STOP. Stop when an evaluation passes on all ten seeds, or when four runs have been trained and evaluated, whichever comes first. Do not stop after a failed evaluation while runs remain. End with a short report: each run, what it changed and why, its evaluation, and what you would change next.

@@ -1,0 +1,41 @@
+This project is Heron, an accepted two-joint servo arm on a bench. Do not start a new design. Your job in this session is to make Heron reach targets placed at random, by running the training loop yourself: design the task, train, evaluate, revise.
+
+THE BEHAVIOUR. A robot arm fixed to a bench moves its tip to a target marker placed at random in its workspace, stops there and holds still. Halfway through, the marker jumps to a second place and the arm moves to it. Each move is direct and settles without swinging past the marker.
+
+WHAT EXISTS. The accepted script declares a task, `heron_reach_task`, that asks one question every episode: hold the tip at a fixed point, (target_x, 0, target_z) = (100, 0, 60) mm, under two pushes. It has no goal, so a policy trained on it never learns where a target is; it cannot pass the spec below. No policy has been trained in this project.
+
+THE MECHANISM IS FIXED IN THIS SESSION. The evaluation targets are points computed from this model's joints, joint ranges and tip before any training, and a changed mechanism would move them. Do not change the geometry, the bodies or their collision shapes, the joints or their limits, or the actuators. Observations, sensors and everything about the task are yours.
+
+THE SUCCESS SPEC. It is frozen and it is not yours to change. Write it into the script exactly as given here, pass it to the task as `success=reach_spec`, and never loosen, drop or reword a predicate, a seed, a condition or the goal in any later revision:
+
+ARM_MM = 144.0
+reach_target = assembly.goal("target", kind="point", tip=c_fore, tip_offset_mm=[0.0, 0.0, 0.0],
+                             joint_fraction=0.8, min_z_mm=0.10 * ARM_MM,
+                             min_separation_mm=0.25 * ARM_MM, resample_seconds=4.0)
+reach_spec = assembly.success(
+    [
+        {"id": "Q1", "metric": "completed", "min": 1},
+        {"id": "Q2", "metric": "final_error_arm_lengths_max", "max": 0.05},
+        {"id": "Q3", "metric": "time_to_target_s_max", "max": 2.0},
+        {"id": "Q4", "metric": "overshoot_ratio_max", "max": 0.20},
+    ],
+    seeds=[1101, 1102, 1103, 1104, 1105, 1106, 1107, 1108, 1109, 1110],
+    tip=c_fore, tip_offset_mm=[0.0, 0.0, 0.0],
+    episode_seconds=8.0, randomisation=[], reset_variation=[], disturbance=[],
+    goals=[reach_target], label="ot11 reach contract",
+)
+
+In words: on every one of the ten seeds the tip is sent to target A for the first 4.0 s and to target B for the next 4.0 s. Each target is where the tip is at a joint configuration drawn in the middle 80 % of both joints' ranges, at least 14.4 mm above the bench and at least 36 mm from where the tip starts that segment. The episode must run the full 8.0 s with no termination (Q1). On both segments, the tip must be within 0.05 arm lengths (7.2 mm) of the target throughout the segment's last 1.0 s (Q2), must get within 7.2 mm and stay there to the segment's end no later than 2.0 s after the target appears (Q3), and must never travel past the target, along the line from where it started that segment, by more than 0.20 of that line's length (Q4). One failed seed fails the policy. The evaluation targets are not training targets: training draws its own.
+
+The task must declare exactly one goal, named "target", of kind "point", on the tip `c_fore` with no offset: the spec restates it and the policy reads it by position. How it is drawn during training (its range, its separation, how often it changes) is yours.
+
+EVERYTHING ELSE IS YOURS TO DESIGN: the task's observations, its reward terms and weights, its terminations, its control rate, its own disturbances, and the training settings. The reward must not be a copy of the spec's verdict, and the spec must never read the reward.
+
+THE RULES FOR TRAINING.
+- Every run is pre-registered by train_start with a wall-clock budget of at most 900 seconds. For scale, on a different mechanism on this machine, 300 iterations of 1024 environments took 309 s.
+- One run at a time. The training seed is never one of the ten evaluation seeds.
+- A run's `reason` names what it is for. From the second run on it must cite a measurement from the previous evaluation: the failing predicate, its measured value and the limit.
+- After each run: store the policy, declare it on the task it was trained on, call evaluate, and read the verdict, the per-seed rows, the metrics, the reward terms, the endings and the filmstrips before deciding anything.
+- A failed evaluation is diagnosed before the next run: say which predicate failed, by how much, on which seeds, and what in the task you believe caused it. Then change the task, train again, evaluate again, and say whether the change helped.
+
+WHEN TO STOP. Stop when an evaluation passes on all ten seeds, or when four runs have been trained and evaluated, whichever comes first. Do not stop after a failed evaluation while runs remain. End with a short report: each run, what it changed and why, its evaluation, and what you would change next.

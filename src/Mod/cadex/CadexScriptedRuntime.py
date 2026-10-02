@@ -116,6 +116,11 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
         # asserted to equal DECLARED_ENGINE_MODULES exactly. Reachable from
         # the sandboxed worker, never from cadexd.
         "CadexDynamics.py",
+        # The behaviour metrics and the vocabulary a success spec may name
+        # (ADR-455, ADR-456). Staged beside CadexDynamics because that is
+        # what imports it, when a task declares a spec; pure standard
+        # library, and like CadexDynamics never imported by cadexd.
+        "CadexEvaluation.py",
         "cadex_tessellation.py",
         # The resident preview worker's entry (ADR-055). In the bundle rather
         # than beside cadexd because it runs inside the same --safe-mode
@@ -2696,31 +2701,24 @@ def _capability_api_listing() -> dict[str, dict[str, Any]]:
         "while the episode runs -- one entry is one event, and "
         "sustained=True is a force that acts for the whole episode, which is "
         "what wind is. Both go to api.task as lists, like a randomisation. "
-        "Without them every episode resets to the identical pose with every "
-        "velocity zero, a posture found once is never tested, and bracing -- "
-        "pinning every motor at its torque limit and holding a splay -- "
-        "beats balancing. A reset variation moves the mechanism's floating "
+        "A reset variation moves the mechanism's floating "
         "base RIGIDLY: a tilt whose direction is drawn, a lift, and a spin. "
-        "It never touches joint angles, because the reset pose is the solved "
-        "one with the soles on the floor and a few degrees at a knee is a "
-        "foot through it -- and the engine measures whether the declared "
-        "tilt clears the floor at the declared lift and refuses the pairing "
-        "that does not, with the millimetres in the message. "
-        "linear_velocity_mm_s is a stumble: a speed with its direction drawn, "
-        "written into the base's world-frame linear velocity, so an episode "
-        "begins with a recovery to do instead of a second of standing still. "
+        "It never touches joint angles, and the engine refuses a declared "
+        "tilt that does not clear the floor at the declared lift, with the "
+        "millimetres in the message. "
+        "linear_velocity_mm_s is a stumble: a speed with its direction drawn. "
         "A disturbance's "
         "force acts at the component's centre of mass in the world frame, and "
         "azimuth_degrees=[low, high] narrows a horizontal push to an arc "
         "where 0 degrees is WORLD +X, anticlockwise seen from above -- "
         "omitted is the whole circle, and it is refused on a vertical push, "
         "whose draw is a sign rather than an angle. The engine does not know "
-        "which way a mechanism faces, so work out which world axis your "
-        "machine's forward is -- from where its feet and toes sit -- before "
-        "declaring an arc, or the band aims 90 degrees off what you meant. "
-        "Then aim it where the mechanism has actuators: drawing over the "
-        "whole circle on a machine with no ankle roll spends most of a batch "
-        "on a question it cannot answer. "
+        "which way a mechanism faces: work out which world axis is forward "
+        "before declaring an arc. "
+        "assembly.goal(name, kind='value'|'speed'|'point', ...) in "
+        "api.task(goals=[...]) is what each episode ASKS for -- a commanded "
+        "speed, a point its tip can reach -- drawn per episode, observed by "
+        "the policy and named by a reward like a channel. "
         "actions=[...] names assembly.actuator values, and each one's range "
         "is derived from the mechanism or refused rather than defaulted: a "
         "motor is bounded by its torque_limit_nmm/force_limit_n and a "
@@ -2764,9 +2762,7 @@ def _capability_api_listing() -> dict[str, dict[str, Any]]:
         "defaults to it, which is one frame per control step; the refusal "
         "lists the rates that task can be played at. seed draws the task's "
         "assembly.randomise entries for this one episode, and without it "
-        "nothing is randomised. This is what closes the loop: design a "
-        "mechanism, train a policy for it offboard, and watch the mechanism "
-        "move under it."
+        "nothing is randomised."
     )
     return listing
 

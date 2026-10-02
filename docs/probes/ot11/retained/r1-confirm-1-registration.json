@@ -1,0 +1,192 @@
+{
+ "schema": "ot11-confirmation-registration-v1",
+ "criterion": "R1",
+ "behaviour": "walk",
+ "confirmation": 1,
+ "registered_at": "2026-10-01T19:05:00Z",
+ "project": "ot11-quad-1",
+ "project_head": "dbbf3428b80cf31a558d43c3e66a771ad7d2c242",
+ "accepted_revision": "7df101b06548122d39a0d2142bd46d1da0b82fc91d904fe0c7d4dc839dbde17a",
+ "policy_sha256": "5aaf21e70e632c8b281fcb40c1f81ea05619c91330ab8bfd2acbe442d250210c",
+ "policy_source": "run r24-r19-vw005, checkpoint walk_task.000900.cxpolicy (the trainer saved no final policy at the 3,500 s budget), declared by the product agent as assets/walk_r24.cxpolicy",
+ "task_sha256": "db67070400dbeb3c0cc67b9ad990cf4c9fb745e002bf91e7004d617110595f15",
+ "model_sha256": "6cecfa2de126d2d9f4527e28a21bae3babf01df0beadca84a7cb34fa77705914",
+ "spec_sha256": "25adaa1ead3bf62d6fb47ea41731ed5778fe5a2bc378f07779c40a8bf1f28c77",
+ "spec_sha256_rule": "sha256 of the evaluation report's spec block as canonical JSON (sorted keys, no spaces); the confirmation's spec must hash to this, which is the spec r24's round evaluation (evaluation row 35) held",
+ "spec_block": {
+  "frozen_file": "retained/walk-spec-block.txt",
+  "frozen_sha256": "487416afd4da672e4af8ed55ed5f2b1464eeec7bf305381833fd26775b4fe900",
+  "rule": "the script's spec block is byte-identical to the frozen block except the values of HIP_MM and WEIGHT_N, which must equal the evaluated model's rig as the report states it (HIP_MM 96.7006, WEIGHT_N 5.05069617762); otherwise the evaluation is void"
+ },
+ "contract_sha256": "7f39407442bae52669e4d95898dfce0b1c9155f289beabd00a2bfa386c57ea59",
+ "seeds": [
+  1101,
+  1102,
+  1103,
+  1104,
+  1105,
+  1106,
+  1107,
+  1108,
+  1109,
+  1110
+ ],
+ "conditions": {
+  "reset_variation": {
+   "tilt_deg": [
+    0.0,
+    3.0
+   ],
+   "lift_above_clearing_mm": [
+    0.0,
+    5.0
+   ]
+  },
+  "goal": {
+   "kind": "planar velocity in the base's heading frame, held for the episode",
+   "forward_hip_heights_per_s": [
+    0.6,
+    1.0
+   ],
+   "lateral": 0.0,
+   "yaw_rate": 0.0
+  },
+  "disturbance": [
+   {
+    "body": "base",
+    "direction": "horizontal",
+    "azimuth_deg": [
+     0.0,
+     360.0
+    ],
+    "force_weights": [
+     0.05,
+     0.2
+    ],
+    "duration_s": 0.15,
+    "at_s": [
+     3.0,
+     7.0
+    ]
+   }
+  ]
+ },
+ "settle_s": 1.0,
+ "episode_seconds": 10.0,
+ "predicates": [
+  {
+   "id": "W1",
+   "name": "completes",
+   "rule": "runs the full 10.0 s and ends by truncation; no termination fires"
+  },
+  {
+   "id": "W2",
+   "name": "upright",
+   "metric": "max tilt_deg over every frame",
+   "max": 30.0
+  },
+  {
+   "id": "W3",
+   "name": "tracks_speed",
+   "metric": "mean forward speed after settle_s, as a ratio of the commanded speed",
+   "min": 0.75,
+   "max": 1.25
+  },
+  {
+   "id": "W4",
+   "name": "goes_straight",
+   "metric": [
+    "abs mean lateral speed after settle_s, as a ratio of the commanded speed",
+    "max abs heading_deg over every frame"
+   ],
+   "max": [
+    0.25,
+    45.0
+   ]
+  },
+  {
+   "id": "W5",
+   "name": "steps",
+   "metric": [
+    "steps taken by each foot",
+    "share of each foot's plan path length made during steps"
+   ],
+   "min": [
+    4,
+    0.7
+   ],
+   "scope": "every foot"
+  },
+  {
+   "id": "W6",
+   "name": "foot_clearance",
+   "metric": "median peak foot_height_mm over each foot's steps, in hip heights",
+   "min": 0.08,
+   "scope": "every foot"
+  },
+  {
+   "id": "W7",
+   "name": "foot_slip",
+   "metric": "each foot's stance_slip as a share of its plan path length",
+   "max": 0.15,
+   "scope": "every foot"
+  },
+  {
+   "id": "W8",
+   "name": "duty_factor",
+   "metric": "share of frames after settle_s in which each foot is in stance",
+   "min": 0.4,
+   "max": 0.85,
+   "scope": "every foot"
+  },
+  {
+   "id": "W9",
+   "name": "every_leg_works",
+   "metric": "largest per-foot step count divided by the smallest",
+   "max": 1.5
+  },
+  {
+   "id": "W10",
+   "name": "on_the_floor_not_in_it",
+   "metric": "lowest foot_height_mm of each foot after settle_s, in hip heights",
+   "min": -0.05,
+   "scope": "every foot",
+   "added": "2026-09-30, ADR-454, after the freeze commit and before any training",
+   "window_changed": "2026-10-01, ADR-467: read after settle_s, as W3, W4 and W8 are, instead of over every frame; the limit is unchanged"
+  }
+ ],
+ "pass_rule": "A policy passes a behaviour only if every one of the ten seeds passes every predicate. No per-seed rate is granted to any behaviour. One failed seed fails the policy; results are never averaged across seeds, and all ten are reported.",
+ "void_rule": "a seed is void, and not a result, if its model digest is not the model read, it carries no policy digest, its drawn conditions are not the contract's for that seed, its frames are not one per control step or the rate is under 50 Hz, or its episode raised a solver warning. The whole evaluation is void for R1 if the report's contact_offsets is not empty, if the evaluated MJCF carries any margin= or gap= attribute, or if anything else holds geometry off the floor or moves the measured foot surface (owner, 2026-10-01); W10's threshold (-0.05 hip heights, read after settle_s per ADR-467) stays frozen",
+ "conformance": "docs/probes/ot11/runner/conformance.py must report no contract deviation for the report's spec",
+ "verify_and_reopen": "before the evaluation, the accepted revision is rebuilt from the project store by a fresh engine through `./cadex export --project ot11-quad-1 --out <scratch> --json`, which reopens the project and verifies the declared policy's digest; the envelope's accepted revision must be 7df101b0... and the policy must verify to 5aaf21e7..., or the confirmation does not run",
+ "judge": {
+  "runner": "docs/probes/ot11/runner/judge.py",
+  "runner_sha256": "c4613d7494aeeca74ff42fdc49cad149cc96c8f25393390eac0c5fb3d4470691",
+  "instructions_sha256": "dfeab7c7624b2a7472baaaf1e6b9d20ebaba0c80f96953ea203d5725ef02b706",
+  "rubric_sha256": "dc081807c28033ec7c729ff967d078a2dfdd884f088d8fa7cf130255048d83ed",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "judged_seeds": [
+   1101,
+   1105,
+   1110
+  ],
+  "calls_per_seed": 3,
+  "bar": {
+   "total_min": 9,
+   "total_max": 12,
+   "trait_min": 2,
+   "scope": "each judged seed"
+  },
+  "known_limit": "ADR-463: V2 is not a reading of stepping or slip; W5 and W7 are authoritative for those"
+ },
+ "verdict_rule": "R1's confirmation passes only if the evaluation verdict is pass with every one of the ten seeds passing W1-W10 and none void, the evaluation is not void under the contact rule, AND every judged seed (1101, 1105, 1110) meets the bar (median total >= 9 of 12, no trait median below 2). A judge call that is not a score (refusal, harness error, wrong model) is not a verdict: it is retried as a harness failure, not counted. Where the judge contradicts a measured predicate the predicate wins and the disagreement is recorded (ADR-463); a judged seed that misses the bar still fails the confirmation, and is diagnosed before any retraining.",
+ "commands": [
+  "./cadex export --project ot11-quad-1 --out <scratch>/r1-confirm-1-reopen --json",
+  "./cadex evaluate --project ot11-quad-1 --out ot11-quad-1/evaluations/r1-confirm-1 --film 1101,1105,1110 --detail-start 5.0 --detail-step 0.04 --json",
+  "pixi run python docs/probes/ot11/runner/judge.py walk --evaluation ot11-quad-1/evaluations/r1-confirm-1 --seed S --label r1-confirm-1 --out docs/probes/ot11/retained/judge-r1-confirm-1-seed-S.json   (S = 1101, 1105, 1110)"
+ ],
+ "film": "detail sheet from 5.0 s, 0.04 s apart, which is the contract's walk detail (the evaluate default, the first shove's onset at 0.2 s, is not)",
+ "no_fishing": "This confirmation is run once, and recorded in the iteration that runs it. A second R1 confirmation needs a recorded product change between the two.",
+ "earlier_evaluation": "evaluations/7df101b06548-5aaf21e70e63 (r24's training-round evaluation by the product agent, a loop round, not a confirmation)"
+}

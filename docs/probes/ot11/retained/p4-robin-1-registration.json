@@ -1,0 +1,18 @@
+{
+  "schema": "ot11-rounds-registration-v1",
+  "project": "ot11-robin-1",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "first_prompt": {
+    "file": "balance.loop.prompt.txt",
+    "sha256": "b327c89ccb85e1ba7f9b7da9b8df113681e19d1056c920105f55f804c839b19c"
+  },
+  "continue_prompt": {
+    "file": "continue.loop.prompt.txt",
+    "sha256": "970d16e7cb055cd481ba3c814f4c33bc4cf5854ef2b8adb755ec42b9799f6e3a"
+  },
+  "max_runs": 4,
+  "max_turns": 4,
+  "stop_rule": "an evaluation passes on every seed, or max_runs runs have been trained and evaluated, or max_turns turns have ended",
+  "registered_at": "2026-09-30T16:45:33Z"
+}

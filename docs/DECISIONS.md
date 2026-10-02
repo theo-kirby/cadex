@@ -29640,3 +29640,1616 @@ never zeros. A backend adds `usage` to its result frame only when it
 has some, so the existing frame-exact translator tests hold unchanged.
 Cost shows only when the harness priced the turn: Claude Code and pi do,
 and Codex does not.
+
+## ADR-454 — The ot11 evaluation contract, and the floor predicate it gained on its first day (2026-09-30)
+
+**Context.** ot10's quadruped passed the gait check and shuffled; ot9's
+Robin passed its bar and drove away. The ot11 charter's first criterion (P1)
+asks for a frozen evaluation contract for walk, reach and balance, measured
+on those two failures before anything new is trained.
+
+**Decision.** `docs/probes/ot11/README.md` and `contract.json` freeze, for
+each behaviour: a success spec as predicates on the rollout trace, none of
+which reads the reward; ten evaluation seeds (1101–1110) with their reset
+variation, goals and shoves; the pass rule (every seed, every predicate);
+and a blind video judge with its rubric, inputs, judged seeds and bar.
+Thresholds are in the mechanism's own scale (hip height, arm length, COM
+height, weight). `docs/probes/ot11/runner/measure.py` reads the walk and
+balance predicates from a trace; `cli/tests/test_ot11_contract.py` is the
+freeze and `cli/tests/test_ot11_measure.py` pins each predicate on a trace
+that passes it and one that fails it.
+
+The contract was committed with nine walk predicates (`ff066f1b`) and the
+known negatives were measured after that commit. **W10 was then added**: the
+lowest foot height of every foot, over every frame, is at least −0.05 hip
+heights.
+
+**Reason for W10.** `w2-2`'s feet go up to 21.3 mm below the floor plane on
+7.5 mm-radius feet, and no predicate read it. The reader's foot heights
+equal MuJoCo's geom positions exactly, so the penetration is in the rollout.
+A gait that goes through the floor is not a walk on it, and an evaluation
+that cannot see it is not trustworthy. The limit is 4.8 mm on that
+quadruped.
+
+**Consequences.** Both known negatives were re-measured under the changed
+contract; no other ot11 policy existed. `w2-2` fails W3, W5, W7 and W9 as
+first frozen, and W10 as added. Robin fails B3 and B4 on all ten ot9 seeds.
+The contract asks three things of later units: an evaluation rollout must
+apply the contract's conditions whatever the training task declares (P2); a
+goal must be settable per episode and changeable during it (P3); and the
+cause of the floor penetration needs measuring before a walk is trained,
+because a policy can exploit it. Any later change to a frozen item is a new
+entry here and re-evaluates every earlier ot11 policy.
+
+## ADR-455 — The behaviour metrics are engine code, and a success predicate is data (2026-09-30)
+
+**Context.** P1's known negatives were measured by a probe script,
+`docs/probes/ot11/runner/measure.py`, which carried its own numpy reader for
+gait and balance and had none for reach. P2 asks the product to evaluate any
+policy against its task's spec. A second reader in the product beside the
+probe's would be two definitions of a step.
+
+**Decision.** The reading moves into the engine, and the probe keeps only the
+contract.
+
+- **`CadexEvaluation.py`** reads a rollout trace into behaviour metrics, in
+  three families asked for by what the caller names rather than by a task
+  kind: **posture** (tilt, heading, drift, recovery time from a shove),
+  **gait** (steps, step share, foot clearance, stance slip, duty factor,
+  foot depth, commanded-speed tracking) and **reach** (final error, time to
+  target, overshoot, per target). It is pure standard library, in millimetres
+  and degrees, and outside the service's closure: a client loads it by path,
+  which is `CadexStudio`'s standing (ADR-445).
+- **`CadexEvaluation.check`** holds a flat metric table against predicates of
+  the form `{id, metric, min, max}`. A success spec is therefore a list, and
+  a spec for a fourth behaviour is a different list, not a code path. "Every
+  foot", "both targets" and "every shove" are the worst one, which the
+  metrics name flat (`steps_min`, `slip_share_max`, `recovery_s_max`). A
+  metric that was not measured is `None`, and `None` fails.
+- **`CadexDynamics.evaluation_rig`** reads the model's half once, in
+  millimetres: the floating base and its reference attitude, the floor, mass
+  and COM height, each foot's collision geoms and the hip height, and a tip
+  with the arm length behind it. It is in `CadexDynamics` because that module
+  is the only one that imports `mujoco` and the only one that converts a
+  unit. A grounded arm has no base and is still measured for reach.
+- `measure.py` is now the contract's binding and nothing else: which product
+  metric each frozen predicate bounds (`BINDING`), and the numbers the
+  contract's definitions fix. It gained the reach predicates Q1–Q4.
+
+**Removed.** `measure.py`'s own `rig`, `base_series`, `foot_series`, `gait`,
+`recovery` arithmetic and its numpy and mujoco imports (about 330 lines), in
+favour of the engine module.
+
+**Evidence.** The move is a port from numpy to plain Python, so its gate is
+agreement: `measure.py` re-run on the stored `w2-2` trace and on Robin's ten
+ot9 traces reproduces both retained P1 receipts to 1.3e-15 relative, on every
+number in them. `cadex_tests/test_evaluation_metrics.py` pins each metric on
+a motion that passes it and one that fails it, and a foot's height from a
+trace against MuJoCo's own geom position.
+
+**The w2-2 fixture.** `cadex_tests/fixtures/ot10_w2_2_feet.json` holds the
+base and the four feet of `w2-2`'s stored rollout, 5 of 62 components, with
+no commands, at 0.001 mm (153 KB). It is an extract and not the trace, which
+stays in the read-only project. It fails a walk spec on speed, step share,
+slip, leg balance and floor depth, and passes on tilt, heading, clearance and
+duty factor — the split the contract records.
+
+**Not yet.** No spec is declared in xscript, no command rolls a policy on the
+evaluation seeds, and no report is written; those are P2's next units and
+this is what they call. The commanded speed and the reach targets are passed
+to the reader by the caller until a task can state a goal (P3).
+
+## ADR-456 — A success spec is declared in xscript beside the task, and is not part of what the task is (2026-09-30)
+
+**Context.** ADR-455 made a success predicate data: `{id, metric, min, max}`
+held against behaviour metrics read from a rollout. Nothing could declare
+one. P2 asks for the spec to be declared in xscript alongside the task, and
+the charter asks that the reward never judge itself and that evaluation
+seeds never be training seeds.
+
+**Decision.** One new intermediate, `assembly.success`, passed to
+`assembly.task(..., success=spec)`.
+
+- **What it carries.** Predicates in `check()`'s shape; the evaluation
+  `seeds`; `feet` and a `tip` (with `tip_offset_mm`), which are what the gait
+  and reach families are measured on; and the conditions an evaluation
+  episode runs under — `reset_variation`, `disturbance` and
+  `episode_seconds`, as the values `assembly.task` already takes. An omitted
+  condition is the task's own; `[]` is none.
+- **A closed vocabulary.** `CadexEvaluation.METRICS` lists every metric a
+  predicate may name and what measuring it needs (a floating base, the floor
+  plane, feet, a tip, a timed shove, a goal). The reward, its terms and the
+  observation channels are not in it. A predicate that names the task's
+  reward or a reward term's label is refused as `success_reads_the_reward`;
+  any other unknown name as `unknown_success_metric`, with the list.
+- **Unmeasurable is a refusal at declaration**, not a failed seed: gait
+  metrics with no `feet`, recovery with no timed shove, posture on a
+  mechanism with no floating base, a COM-height ratio with no floor plane.
+- **Goal metrics are refused today.** `speed_ratio`, `lateral_ratio` and the
+  four reach metrics are measured against a commanded speed or a target, and
+  a task states no goal. P3 is what gives a task one; this unit does not
+  invent a second way to state it. `gait_metrics` now reads a gait with no
+  commanded speed: the speeds are measured and the two ratios are `None`.
+- **Where each check lives.** The authoring surface checks shape: a metric is
+  a name and never an expression, bounds, ids, seeds, component membership.
+  The engine checks the vocabulary and the model. The split is forced:
+  `cadex_assembly_api` is in the service's closure and `CadexEvaluation` is
+  not (ADR-455), so the API cannot import the list. `CadexDynamics` imports
+  it inside the worker, and `CadexEvaluation.py` is staged there by filename.
+- **In the bundle, outside the task's identity.** The resolved spec is the
+  bundle's `success` block (`cadex-success-spec-v1`): predicates, seeds,
+  feet, tip, its own `episode` schedule, its conditions resolved to the same
+  records the task's are, and a `scale` (mass, weight, COM height, hip
+  height, arm length). `success` is in the new `TASK_JUDGEMENT_FIELDS` and
+  not in `TASK_SEMANTIC_FIELDS`: two bundles that differ only in their spec
+  have one semantic digest and no `task_differences`, so a spec can be
+  revised and held against every earlier policy through
+  `assembly.policy(trained_task=...)` (ADR-134). A task with no spec writes
+  no `success` key and is byte for byte the bundle it was.
+- **`CadexDynamics.evaluation_task(bundle)`** returns the bundle as an
+  evaluation episode plays it: the same model, channels, actions, reward and
+  terminations under the spec's horizon, reset variation and disturbances.
+  The reward stays in it because a report decomposes it; no predicate can
+  read it.
+
+**Alternatives not taken.** A separate `assembly.evaluation` output with its
+own artifact would have kept the task bundle untouched, at the cost of a new
+publishable type through the worker, the publication table and every reader
+of outputs, and the trainer could never have seen the evaluation seeds to
+refuse them. Putting the spec in the task's identity would have orphaned
+every policy each time a threshold moved.
+
+**No protocol change.** `assembly.*` is the xscript authoring surface, not
+the cadexd op table: `OP_ARG_SPECS`, `docs/INTEGRATION.md` and the shell's
+client are unmoved. The task summary gains a `success` entry only when a
+spec is declared.
+
+**The assembly page of the API view is now at its budget.** The CLI shows
+the agent each domain's `describe_api` section under a 21,500-character cap
+(ADR-360). `assembly.success` brought that section to 21,478. So the
+vocabulary is in the export's documentation (one `inspect scope=api` read
+away) and in the refusals, which list it, and **not** in the domain's notes:
+a paragraph there measured 23,344. The next export on this surface will not
+fit until the notes are trimmed or the section is paged.
+
+**Evidence.** `cadex_tests/test_success_spec_api.py` (shape and refusals a
+reader could see), `test_success_spec_model.py` (the vocabulary, the reward
+refusal on both of a task's reward labels, every need, conditions against the
+spec's own horizon, identity, and a seeded episode played under
+`evaluation_task`), `test_success_spec_live.py` (a script through a live
+`cadexd`: the staged module, the retained bundle, and the reward refusal
+failing the script), and `test_evaluation_metrics.py` (every name in
+`METRICS` is a number its family returns).
+
+**Not in this unit.** No command evaluates a policy on the seeds and no
+report is written. The trainer does not read `success`: it does not yet
+refuse a `--seed` that is an evaluation seed, and `CURRICULUM_TASK_KEYS` does
+not list `success`, so a warm start across a spec revision is still a
+whole-file digest mismatch there.
+
+## ADR-457 — One command evaluates a policy against its task's success spec, and a seed is an independent episode (2026-09-30)
+
+**Context.** ADR-456 put a success spec in the task bundle: predicates,
+frozen seeds and the conditions an evaluation episode runs under. Nothing
+played it. P2 asks for one command that evaluates an accepted policy on its
+frozen seeds and writes a report into the project, and the charter asks that
+nothing in the pipeline be walking-specific.
+
+**Decision.** `cadex evaluate`, and one engine function behind it.
+
+- **The engine does the evaluating.** `CadexDynamics.evaluate_success(xml,
+  task, container, components=...)` plays `rollout_policy` on
+  `evaluation_task(task)` for each of the spec's seeds, at one frame per
+  control step, reads the frames with the new `CadexEvaluation.measure`,
+  holds the spec's predicates with `check`, and folds the rows with the new
+  `CadexEvaluation.summarise`. The CLI holds no metric, no episode loop and
+  no forward pass.
+- **No behaviour is named.** `measure` reads posture for a floating base,
+  gait for named feet, reach for a tip with targets and recovery for a
+  shove, by what the rig and the episode carry. The command has no flag for
+  a behaviour. Two tests strip the docstrings and assert that neither the
+  engine function nor the CLI modules contain a behaviour's name.
+- **The CLI reads retained artifacts and runs a child**, the way `cadex
+  smoke` does (ADR-352). It never rebuilds or accepts a script, so the
+  policy evaluated is the one the accepted revision verified: the receipt
+  names the task and the weights, every file is checked against its
+  recorded digest, and the staged weights must hash to the receipt's
+  `policy_sha256`. `cli/cadex_cli/evaluate_runner.py` runs by path under the
+  engine's own interpreter and imports `CadexDynamics` from the module
+  directory the plan names. `smoke.retained_attempt` is the shared reader of
+  the accepted pin.
+- **The report** is `evaluation.json` (`cadex-evaluation-v1`) in
+  `evaluations/<revision>-<policy>/`: per seed, the verdict, every predicate
+  row, the metric table, per-foot and per-shove detail, how the episode
+  ended, the reward term by term and every drawn value; and a summary.
+  Each seed also leaves its frames as a
+  `cadex-assembly-simulation-trace-v1`, which the project's `.gitignore`
+  already keeps out of its history. The `PROGRESS.md` row carries the
+  verdict and the failing predicates.
+- **Every seed must pass.** The summary gives min, median and max of each
+  metric over the seeds for reading a failure. No verdict is an average.
+- **A failed evaluation exits zero.** It is a measurement. Nothing to
+  evaluate (no declared policy, no spec) is exit 3.
+
+**A seed is an independent episode, and that was a defect first.**
+`apply_randomisation` multiplies its draws into the compiled model in place.
+The first version of `evaluate_success` took a compiled model and played
+every seed on it, so each seed started from the previous seed's masses. The
+agreement gate caught it: re-measured under the w2 task's own conditions,
+seeds 1103 to 1110 disagreed with the retained P1 receipts, which had
+compiled a model per seed. The function now takes the model's bytes and
+compiles one per seed, and it reproduces all ten P1 receipts to 2.0e-15.
+`test_a_seed_is_an_independent_episode_whatever_was_played_before_it` fails
+on a shared model. `apply_randomisation` itself is unchanged: a caller that
+plays two seeded episodes on one compiled model still compounds them.
+
+**A void seed.** MuJoCo resets the state on a bad acceleration and counts a
+warning, so the frames after it are finite and are not the mechanism.
+`rollout_policy` now returns `solver_warnings` with the episode, read at
+every control step. A seed with any is `void` and has not passed, whatever
+its predicates read. The first live fixture for this command went unstable
+and read as a calm block, which is how this was found.
+
+**The evaluation seed rule is enforced here.** A spec seed equal to the
+policy header's training seed is refused
+(`evaluation_seed_is_the_training_seed`). The trainer still does not refuse
+one on its side.
+
+**`rollout_policy`'s episode summary gained three keys**:
+`reset_variation`, `disturbance` and `solver_warnings`. The worker copies
+named keys into a trace, so no retained artifact and no golden moved. No
+protocol change: `OP_ARG_SPECS`, `docs/INTEGRATION.md` and the shell client
+are unmoved. No new dependency.
+
+**Evidence.** `cadex_tests/test_evaluate_success_model.py` (16 tests: a
+passing and a failing mechanism, the spec's conditions and echoed draws,
+seed independence, termination causes, the reward decomposed and deciding
+nothing, the trace re-measured to the same numbers, void seeds, refusals),
+`test_evaluation_metrics.py` (`measure`, `summarise`, and the `w2-2`
+fixture failing stepping and slip through the one table), and
+`cli/tests/test_evaluate.py` (21 tests, four of them against a live
+engine). On the two known negatives, as `ot11-*` copies under the
+contract's conditions: `w2-2` fails W5 and W7 on all ten seeds, and Robin
+fails B3, B4 and B5 on all ten with B1 and B5 measured
+(`docs/probes/ot11/README.md`).
+
+**Not in this unit.** The rollout video, the filmstrip, the blind judge and
+the review dashboard's view of the report. The spec cannot switch off a
+task's randomisation, so an evaluation of a task that randomises mass runs
+the contract's conditions on a drawn mass. W3, W4's lateral half and Q1–Q4
+wait on a goal (P3).
+
+
+## ADR-458 — A success spec states its own randomisation, and the known negatives are judged on the mechanism as built (2026-09-30)
+
+**Context.** ADR-456 gave a success spec its own horizon, reset variation
+and disturbances, and ADR-457 played them. A task's `randomisation` was not
+among them: an evaluation episode kept whatever the task varied to train.
+ot10's w2 task varies its tray's mass by 0.85 to 1.15. The P1 contract
+(`docs/probes/ot11/README.md`) lists a reset variation and shoves and no
+randomisation, and says a trace whose drawn conditions are not the
+contract's is void. So ADR-457's reading of `w2-2` was the contract's reset,
+shove and horizon on a mass nobody chose — and since the randomisation
+draws come first in a seed's stream, on a start and a shove the contract's
+stream would not have drawn either.
+
+**Decision.** The frozen contract stays as written. The product moves:
+`assembly.success(..., randomisation=...)` is a third condition, on exactly
+the terms of the other two. Omitted, it is the task's own; `[]` is none, the
+mechanism as built; a list is `assembly.randomise` values, which may vary
+what the task does not. The bundle's `success` block carries it resolved
+(`randomisation`, the same records a task's are, by the same function),
+`evaluation_task` hands it to the episode loop, and the evaluation report's
+`spec` block states the randomisation that was played.
+
+**Still not part of what the task is.** The spec is a judgement field
+(`TASK_JUDGEMENT_FIELDS`), so stating or changing its randomisation leaves
+the task's semantic digest alone and orphans no policy. Both negative
+copies were rebuilt with `randomisation=[]` and the engine proved each the
+same task as the one its policy trained on.
+
+**`cadex-success-spec-v1` is not bumped.** The block gained a key one unit
+after it was introduced, and no bundle outside this run's two copies carries
+the schema. A bundle written before this ADR has no `randomisation` in its
+spec and is played as it was when written, on the task's own; a test pins
+that, and the report says which was played.
+
+**The shared check.** `api.task` checked a randomisation list against its
+assembly inline. That check is now `_check_randomisation`, called for the
+task's list and for the spec's, so a list that judges is refused for what a
+list that trains is. No behaviour of `api.task` changed.
+
+**What it measured.** Both copies were re-evaluated and the `p2-*` receipts
+replaced.
+
+- `ot11-robin-negative`: Robin's task never randomised. Its ten seed rows
+  are number for number ADR-457's. 0 of 10; B3, B4 and B5 fail on all ten.
+- `ot11-w2-negative`: different episodes from ADR-457's, as expected. 0 of
+  10. W5 (steps 0 to 3 against ≥ 4; step share 0.00 to 0.08 against ≥ 0.70)
+  and W7 (slip 0.49 to 0.81 against ≤ 0.15) fail on **all ten**, as do W9
+  and W10. W2 fails on eight, `tipped` fires on two (1107 at 6.26 s, 1110
+  at 6.32 s). **W6 now passes on six seeds**, where ADR-457's reading failed
+  it on all ten: the few steps it takes mostly clear the floor, which is
+  what the off-contract P1 reading found. ADR-457's "three seeds sit back
+  and travel under 5 mm/s" does not recur on these draws; the slowest seed
+  moves at 47 mm/s. The seed the reward paid most is now 1109 (836.0), whose
+  least-stepping foot took one step.
+
+The known negative still fails for the reason the owner gave, stepping and
+slip, on every seed. ADR-457's w2 numbers are superseded, not deleted: the
+rows stay in the copy's `PROGRESS.md`, with a correcting row for the one
+measured before the per-seed model fix.
+
+**Consequences.** A spec written for R1–R3 should state its randomisation
+rather than inherit it, or its evaluation conditions change whenever the
+training randomisation is revised. No protocol change: `assembly.*` is the
+xscript surface, and `OP_ARG_SPECS`, `docs/INTEGRATION.md` and the shell
+client are unmoved. No new dependency. Nothing removed.
+
+**Evidence.** `test_success_spec_api.py` (the value, its refusals, absent
+against `[]`), `test_success_spec_model.py` (inherit, switch off, replace,
+digest unmoved, refusal named as the spec's),
+`test_evaluate_success_model.py` (a spec stating `[]` over a randomising
+task draws exactly what a never-randomising task draws; a spec may
+randomise what its task does not; a pre-ADR bundle plays its task's),
+`test_success_spec_live.py` (through a live `cadexd`), and
+`cli/tests/test_ot11_contract.py` (both receipts state and drew none). Six
+of these fail on the source before this change.
+
+**One removal, forced by the API page budget (ADR-360).** The new keyword
+put the `assembly` page of the model's `describe_api` view at 21,532
+characters against `API_VIEW_CHAR_BUDGET`'s 21,500, and
+`cli/tests/test_client.py` failed on it. The budget was not raised. The
+assembly notes' closing sentence ("This is what closes the loop: design a
+mechanism, train a policy for it offboard, and watch the mechanism move
+under it.") states no rule of the surface and was deleted from
+`CadexScriptedRuntime.py`, which puts the page at 21,411. **The page has 89
+characters left**, and the notes do not yet mention `assembly.success` at
+all. P3 and P4 will both add to this surface; the next addition needs the
+notes cut properly or the section split, as a unit of its own.
+
+**Not in this unit.** The rollout video, the filmstrip and the dashboard's
+view of `evaluation.json`, which finish P2 and are next; then the blind
+judge on the two negatives.
+
+## ADR-459 — An evaluation is filmed from its own traces, and the dashboard shows the report (2026-09-30)
+
+**Context.** ADR-457 left P2 two things short: "the video and a filmstrip,
+on the dark floor", and "the review dashboard shows the report". The frozen
+P1 contract also fixes what its blind judge sees — twelve overview frames
+and twelve detail frames of one seed, each carrying its time, on the dark
+prototype floor — and nothing drew them. A run's studio video (ADR-431)
+could not be reused as it stood: it reads a run record, a rollout leg's
+exported STLs and a render summary, and an evaluation has none of the three.
+
+**Decision.**
+
+1. **`cadex evaluate` films what it measured.** `cli/cadex_cli/film.py`
+   draws from the per-seed traces the evaluation kept and the tessellation
+   the accepted attempt retained (`display/*.tess.bin`, read through
+   `CadexStudio.snapshot`, the reader `cadex render` draws from), with the
+   engine's studio renderer on the CPU. No engine op, no rebuild, no
+   browser. For each filmed seed it writes two 4×3 sheets of 256 px frames:
+   an **overview**, evenly spaced over the episode in the hero view in one
+   window on the whole path, and a **detail**, consecutive moments a step
+   apart, side-on to the direction the design travelled, the window
+   following it. Every frame carries its simulation time and nothing else.
+   The first filmed seed also gets the studio **video**, by the code a
+   run's video uses (`video._studio_frames`, `video.encode`, split out of
+   `video._render` unchanged in what they draw).
+2. **Nothing in it names a behaviour.** The detail starts at the seed's
+   first drawn disturbance, or the middle of an episode that has none, 0.2 s
+   apart; `--detail-start` and `--detail-step` say otherwise. The contract's
+   walk window (5.0 s, 0.04 s) is two flags, not a branch. The side-on
+   direction is measured from the trace: from the design's centre at the
+   start to its centre where that was farthest away; under 5 % of its own
+   size it is the front view. `test_film.py` refuses the behaviour words in
+   the module, as `test_evaluate.py` does for the command.
+3. **The floor is the one the evaluation measured against**: the model's
+   collision plane (`rig.floor_mm`), then the top of the world geometry the
+   assembly declares, then the lowest reach. `_studio_frames` takes that
+   height as an argument; a run's video is unchanged.
+4. **The materials are read, not rebuilt.** `inspect scope=inventory` reads
+   the pinned accepted attempt with no restore (0.1 s on `ot11-w2-negative`)
+   and carries each component's declared role, the palette and which
+   sources are printed. Without it the film is drawn all in shell and says
+   so. `evaluate` still never restores, rebuilds or accepts.
+5. **`--film auto` films one seed**: the first that failed, or the first of
+   a pass. `--film` takes seed numbers, `all` or `none`; `--no-video` skips
+   the long half; `--film-only` draws from an evaluation already on disk,
+   and refuses one of another revision or policy.
+6. **The measurement never waits on the film.** `evaluation.json` is
+   written complete, then again with its `film` block
+   (`cadex-evaluation-film-v1`). A film that cannot be drawn records
+   `failed` with the reason and the command exits 1 saying the evaluation
+   was measured; a video that cannot be encoded leaves the sheets. The
+   trace filmed must hash to what the seed's row recorded.
+7. **FFmpeg is found beside the interpreter** when it is not on `PATH`
+   (`video.ffmpeg`). `./cadex` runs the pixi environment's Python without
+   the environment on `PATH`, so the first real `cadex evaluate` drew 150 s
+   of frames and then failed to find the encoder. It now checks before
+   drawing.
+8. **The dashboard shows the report** on a fifth stage tab, **Evaluation**
+   (`docs/REVIEW-DESIGN.md` §17): the verdict line, each predicate's tally
+   and spread, each seed's verdict, ending and per-predicate values, the
+   behaviour metrics, the reward by term, and the film. `/api/project`
+   lists evaluations as bounded summaries parsed once per file identity;
+   `/api/evaluation/<name>` carries one whole; `/evaluation/<name>/<file>`
+   serves the report and the film files it names and nothing else.
+
+**Measured.** Both known negatives were filmed with `--film-only` from the
+traces ADR-458 left, on seeds 1101, 1105 and 1110 (the contract's judged
+seeds), with no new rollout:
+
+| project | detail window | sheets, 3 seeds | video, seed 1101 | largest sheet |
+|---|---|---|---|---|
+| `ot11-w2-negative` (`064d8d7cd34c-7a4e8c233214`) | 5.0 s, 0.04 s (the contract's walk window) | 63.8 s | 101 frames, 179.4 s | 258,086 bytes |
+| `ot11-robin-negative` (`3a42fdec8b94-ef71f370a2f1`) | the first shove's onset, 0.2 s | 54.1 s | 92 frames, 154.8 s | 182,321 bytes |
+
+The two were drawn at the same time on one machine, so each time is an
+upper reading. Two separate draws gave byte-identical sheets and videos of
+the same size with different digests: the sheets are repeatable, the
+encoder's container is not. The film's `style_sha256` is its own identity
+(`film.film_digest`: `CadexStudio.py`, `video.py` and `film.py`), not the
+video's. Both receipts (`docs/probes/ot11/retained/p2-*.json`) gained
+their `film` block and nothing else: every other key is byte for byte
+ADR-458's. Seed 1101's two sheets of each are committed under
+`docs/probes/ot11/`; no video and no trace is.
+
+The frame was 320 px, then 288, then 256: at 288 `ot11-w2-negative`'s
+seed-1101 detail sheet was 304,531 bytes against the charter's 300 KB cap
+on committed images. At 256 every sheet of both projects is under it.
+
+**Not changed.** The frozen contract and its rubric. No protocol op,
+`OP_ARG_SPECS`, `docs/INTEGRATION.md` or shell change: the engine files are
+untouched and no payload moves. No new dependency: FFmpeg is the encoder
+`video.py` already used. Nothing removed.
+
+9. **The film stays out of the project's history.** A project's
+   `.gitignore` (ADR-194) ignores `*.png` and not `*.webm`, and a copied
+   project carries the one it was copied with, so the first filmed
+   evaluation committed its video to the project's repository. `film.py`
+   now writes a `.gitignore` into the evaluation's directory naming the
+   three film patterns: the report is the record, and `--film-only` draws
+   the film again from the traces.
+
+**Limits, stated.** A reach frame does not show its target: no trace
+carries a goal until P3, and the marker arrives with it. Evaluations
+written with `--out` outside `evaluations/` are not on the dashboard.
+Nothing prunes old evaluation directories.
+
+**Evidence.** `cli/tests/test_film.py` (32 tests, no engine),
+`cli/tests/test_review_evaluation.py` (10, with `w2-2` as the failing
+fixture), `cli/tests/test_review_design.py` (heading and reading order),
+`cli/tests/test_ot11_contract.py` (the receipts' film blocks and the
+committed sheets).
+
+## ADR-460 — The film follows the evaluation's base, and the blind video judge is run on both negatives (2026-09-30)
+
+**Context.** The frozen ot11 contract says its judge sees a detail sheet
+"side-on, following the base". ADR-459's film followed the centre of the
+whole design and said so as a stated departure. The contract also froze a
+blind video judge (who, what it sees, which seeds, how many calls, the bar)
+with no runner. P1 stays open until the judge has been run on the two known
+negatives.
+
+**Decision.**
+
+1. **The product changes, not the contract.** `film.detail` takes the base
+   the evaluation measured (`rig.base`, the mechanism's single free-joint
+   body, already in every report). The window is centred on the middle of
+   that component's bounds in every frame and is wide enough to hold the
+   whole design in each. Side-on is still measured from the trace, now on
+   the base: from where it started to where it was farthest away. The
+   window never moves up or down. The block's `follows` names the base.
+2. **A mechanism with no floating base has a fixed window.** Its base is
+   fixed to the world, so following it means not moving: the window is
+   fixed on everything the shown moments cover. Before, the window followed
+   the design's centre, which would have held a moving arm still in frame.
+3. **A base that is not one of the drawn solids is refused** with its name.
+4. **The judge runner is `docs/probes/ot11/runner/judge.py`**, modelled on
+   ot10's. Each call is a fresh `claude -p --model claude-opus-5-5` process
+   with no fallback model, effort `high`, in a new empty directory outside
+   the repository, with one tool (`Read`), no MCP servers, no skills, no
+   user settings and no session kept. Its system prompt is a five-sentence
+   instruction followed by the rubric byte for byte. Its message is the
+   intent paragraph and the paths of the two sheets, copied as
+   `overview.png` and `detail.png`.
+5. **The instructions are pinned.** They say what a sheet is and what to
+   reply with, and name no behaviour. Their SHA-256 is in `contract.json`
+   under a new `judge_procedure` key and in `test_ot11_judge.py`. The frozen
+   `judge` block is untouched, and no frozen item changed, so the
+   contract's `decisions` list still has one entry (ADR-454).
+6. **The sheets are read through the evaluation.** The runner takes an
+   evaluation directory and a seed. It refuses a seed the contract does not
+   judge, a film that is not ready, a sheet with other than twelve frames
+   and a sheet whose digest is not the one the report recorded.
+7. **A refusal is not a verdict.** A reply without four integer scores is
+   retried once. A second failure, a harness error, a `refusal` stop
+   reason, or an answer whose `modelUsage` names any model but the pinned
+   one writes no score, keeps the attempts as `<out>.failed.json` and exits
+   2.
+
+**Measured.** Both negatives were filmed again with `--film-only`, no new
+rollout. Every overview sheet came out byte for byte as before. The detail
+half-width on `ot11-w2-negative` went from 140–148 mm to 161–174 mm; on
+`ot11-robin-negative` it changed by under 1 mm. Then eighteen judge calls,
+three a seed, 162 s of model time and $0.73 at list price. Every call
+scored. None was refused, retried or answered by another model.
+
+| policy | seed | V1 | V2 | V3 | V4 | total | bar |
+|---|---|---|---|---|---|---|---|
+| `w2-2` | 1101 | 1 | 2 | 0 | 1 | 4 | not met |
+| `w2-2` | 1105 | 1 | 1 | 0 | 1 | 3 | not met |
+| `w2-2` | 1110 | 1 | 2 | 0 | 1 | 4 | not met |
+| Robin | 1101 | 0 | 1 | 0 | 1 | 2 | not met |
+| Robin | 1105 | 1 | 1 | 2 | 1 | 5 | not met |
+| Robin | 1110 | 0 | 1 | 0 | 1 | 2 | not met |
+
+Neither negative meets the bar on any judged seed. Two findings, both in
+`docs/probes/ot11/README.md`:
+
+- **The judge fails `w2-2` for falling, not for shuffling.** It scored
+  manner 2 ("real steps") on seeds 1101 and 1110, where W5 measures 8.5 %
+  and 3.6 % of a foot's path made in steps and W7 measures 60 % and 81 %
+  made sliding. Twelve frames 0.04 s apart in a window that follows the
+  base do not show a planted foot moving across the floor. The predicates
+  are the reading of stepping and slip; the judge is the reading of what a
+  person sees. A behaviour needs both, which the frozen pass rule already
+  says. The rubric, the filmstrip and the bar are not changed.
+- **The judge saw two falls no termination reported.** On `w2-2` seeds
+  1101 and 1105 the base goes to 42° and stops moving at about 8 s and
+  6.4 s. The w2 task's `tipped` termination did not fire, so W1 passes;
+  W2 fails on both at 43.6° and 43.7°.
+
+**Not changed.** The frozen contract: its rubric, judge block, seeds,
+predicates and bar. No engine file, protocol op, `OP_ARG_SPECS` or shell
+file, so no payload moves. No new dependency: the judge is the Claude Code
+CLI the product already drives. Nothing removed.
+
+**Evidence.** `cli/tests/test_film.py` (35 tests; the three new ones fail on
+the old module), `cli/tests/test_ot11_judge.py` (16 tests, none calls a
+model: the runner is run end to end against a stand-in executable, and the
+six committed receipts are held to what the runner computes from their own
+calls), `cli/tests/test_ot11_contract.py` (the receipts' film blocks now
+follow the base).
+
+## ADR-461 — Floor marks in the judge's detail sheet: measured, not adopted (2026-09-30)
+
+**Context.** ADR-460 found that the blind video judge fails ot10's `w2-2`
+for falling and not for shuffling: on seeds 1101 and 1110 every call scored
+manner (V2) 2 and saw "real steps", where W5 and W7 measure a shuffle. The
+evaluation outranks the loop, so before any ot11 policy is judged this
+asked whether the detail sheet can show slip.
+
+**The probe, stated before the first call.** One change to the film: the
+floor of each detail frame keeps a light mark wherever a drawn solid has
+touched it since the episode began (within 1.0 mm of the floor plane or
+under it, on a 2 mm grid), fixed to the floor while the window follows the
+base. Two arms on `w2-2` seeds 1101 and 1110, three calls a seed: **A**, the
+marked sheet with the judge procedure untouched; **B**, the same sheet and
+one sentence added to the judge's instructions saying what a mark is.
+Adoption needed a manner median under 2 on both seeds, and would have been
+a contract decision that re-judges all six judged seeds of both negatives.
+No third arm. A floor-fixed window was the other candidate and was not
+drawn: a slide of about 5 pixels between separate tiles is weaker evidence
+than a mark that holds the whole slide inside one frame.
+
+That rule was fixed in the actor's working notes before the first call and
+was **not committed beforehand**: it first reached the repository in the
+same commit as the results, so the order rests on the actor's word. From
+here on, a probe's or a run's rule is committed before its first call.
+
+**Measured.** Twelve calls, 109 s of model time, $0.48 at list price, every
+one scored by `claude-opus-5-5` alone. **All twelve scored manner 2.** Both
+arms' medians on both seeds are 1, 2, 0, 1 (total 4), the scores ADR-460
+recorded. Arm A's reasons do not mention the marks. Arm B's read them as
+"mostly separate prints" with some smearing or short streaks, which is
+rubric level 2. That is a fair reading of what was drawn: each foot leaves
+the floor four to seven times a second and slides between lift-offs, so the
+floor shows short dashes and no long streak.
+
+**Decision.** Nothing is adopted and nothing frozen changes.
+
+1. The film draws no marks. The change to `cli/cadex_cli/film.py` was
+   reverted before commit and is kept only as
+   `docs/probes/ot11/retained/probe-marks.patch`.
+2. The judge's instructions are the pinned ones (`judge_procedure`), and
+   the contract's `decisions` list still has one entry (ADR-454).
+3. **The judge's manner score is not a reading of stepping or slip.** W5
+   and W7 are. The frozen pass rule already requires the predicates and the
+   judge's bar together, so a shuffle that stays upright may meet the bar
+   and still cannot pass the contract.
+4. The rubric and the bar were not touched, in the probe or after it.
+
+**Not shown.** No policy that really steps has been filmed. The judge's
+manner score has been seen on a shuffle and never on a walk, so whether it
+separates the two at all is unmeasured until an ot11 policy passes W5 and
+W7.
+
+**Not changed.** No engine file, protocol op, `OP_ARG_SPECS`, shell file or
+CLI module, so no payload moves. No new dependency. Nothing removed.
+
+**Evidence.** `docs/probes/ot11/README.md` (*A probe: floor marks in the
+detail sheet*), the four receipts `retained/probe-marks-{a,b}-w2-2-seed-*.json`
+as the runner wrote them, the marked sheet
+`probe-marks-w2-2-seed-1101-detail.png`, and
+`cli/tests/test_ot11_judge.py`, which holds the four receipts to what the
+runner computes from their own calls and asserts that the film, the
+instructions and the contract are as they were.
+
+## ADR-462 — A task says where to go: goals drawn per episode, by one algorithm the engine and the trainer both run (2026-09-30)
+
+**Context.** Charter criterion P3. A task could state a reward, a
+termination, a randomisation, a reset variation and a disturbance, and
+nothing about what each episode asks for. So a walk reward paid for
+"forward" with no commanded speed, a reach had no target, and the ot11
+contract's W3, the lateral half of W4 and every reach predicate had nothing
+to be read against: `speed_ratio` and the reach metrics were refused on
+every task, and the probe reader took the command and the targets on its
+command line.
+
+**Decision.**
+
+1. **`assembly.goal(name, kind=...)` is a tenth task intermediate**, passed
+   as `assembly.task(goals=[...])`. Three kinds. `value` is one number in
+   `between=[low, high]`, whose meaning is the reward's. `speed` is the same
+   with a meaning the engine knows: the commanded forward speed in mm/s.
+   `point` is a place in the world, in mm, that a named `tip` can reach. A
+   task states at most one `speed` and one `point`, and four goals in all.
+2. **A goal is a channel.** It expands to named scalars (`name`, or
+   `name_x/_y/_z`), the policy reads every goal after its sensor channels,
+   and reward and termination expressions name a goal exactly as they name
+   an observation. Nothing else was needed to let "the reward and the spec
+   name it": the expression compiler, the policy container and
+   `verify_policy` all work on channel names already. A goal is never
+   privileged and is not counted among ungrounded sensor inputs (ADR-408):
+   it is what the robot is told, not something it measures.
+3. **`resample_seconds` redraws a goal during the episode**, on a whole
+   number of control steps or it is refused. The observation at control
+   step *s* and the reward of the state that step lands on both read segment
+   `min(s // resample_steps, segments - 1)`: a step on which the goal
+   changes is scored against the goal its policy saw.
+4. **A `point` is drawn from the poses the mechanism can take.** Every
+   joint the task drives is drawn uniformly in the middle `joint_fraction`
+   (default 0.8) of its own range, over the reset keyframe; the target is
+   the tip's position there. A draw is taken again, up to 100 times, when
+   the point is under `min_z_mm`, when the pose adds a contact the reset
+   pose does not have, or when the point is within `min_separation_mm` of
+   where the tip starts that segment (the reset pose, then the previous
+   target). That is the ot11 contract's reach sampling, stated once in the
+   product. A declaration no draw can meet is refused when the task is
+   built, by drawing sixteen episodes from a fixed stream.
+5. **The draws have their own stated algorithm, `goal_algorithm`, and
+   continue a seed's stream after the disturbance draws.** The text of
+   `variation_algorithm` was not extended: it is a semantic field of every
+   bundle ever written, and changing it would change the digest of tasks
+   that declare no goal and orphan every policy trained on one. `goal` and
+   `goal_algorithm` are new semantic fields, **absent from a bundle that
+   declares no goal**, so such a bundle is byte for byte what it was. And
+   because the goal draws come last, a seed draws the reset and the shoves
+   it always drew: the ten frozen evaluation seeds mean what they meant.
+6. **The trainer draws goals by the bundle's algorithm, on the host.** This
+   is the opposite of ADR-097, which lets the trainer redraw resets and
+   shoves on device by a different stream, because nobody replays a
+   training episode. A target is different in kind: whether a pose touches
+   something is forward kinematics and a contact check, and a second rule
+   that only resembled the bundle's would train a policy on targets the
+   evaluation never asks for. So `training/cadex_train.py` carries
+   `draw_goals`, a copy of `CadexDynamics.draw_episode_goals` run with stock
+   `mujoco`, draws a pool of `--goal-pool` (4096) episodes from
+   `random.Random(base_seed)` before training, and on device only chooses
+   which pooled episode an environment holds (`jax.random.randint`, on
+   every reset). Every `goaled` branch is taken at trace time, so a task
+   with no goal takes no extra key split and carries no extra scan member.
+7. **The success spec reads the goal by kind.** `METRICS`' one `goal` need
+   became two: `command` (the `speed` goal) for `speed_ratio` and
+   `lateral_ratio`, `target` (the `point` goal) for the reach metrics.
+   `evaluate_success` takes the command and the targets from what each
+   episode drew and is given neither from outside. A changing command is
+   averaged over the same settled frames the measured speed is. A ratio of a
+   command that may be zero is refused when the task is declared.
+8. **A spec may restate the goals it judges on**
+   (`assembly.success(goals=[...])`), like its other conditions (ADR-458):
+   omitted, the task's own, re-resolved over the spec's horizon. Given, it
+   must be the task's goals by name, kind and channel, in order, because the
+   policy reads them by position.
+9. **The trace records it.** A rollout of a task with a goal carries
+   `goal_channels` at the top level, a `goal` row on each `solver_output`
+   frame (the goal in force at that frame's time) and the drawn schedule
+   under `policy.goal`. A task with no goal writes none of the three.
+10. **A training seed may not be an evaluation seed, and the trainer now
+    refuses one itself**, before importing anything. With a goal the rule
+    has teeth: the pool's first episode is the first draws of
+    `random.Random(seed)`, which on a task with nothing drawn before its
+    goals are exactly the targets that evaluation seed is judged on. A test
+    shows the coincidence and the refusal.
+
+**Rejected.**
+
+- *Drawing goals on device in JAX, as resets are.* It would need the
+  rejection rule re-implemented over `mjx` contacts, and "agree exactly"
+  would become "agree in distribution", which no test can hold.
+- *Extending `EPISODE_VARIATION_ALGORITHM`'s text.* See 5.
+- *A `goal` argument on the evaluation.* The command and the targets would
+  then be the evaluator's to choose, and a rollout would be measured against
+  something its policy was never shown.
+- *Drawing a servo's narrower `command_limits` instead of the joint's
+  range.* The contract says the joint's range. A task that narrows a
+  command can therefore be given a target it cannot reach; that is the
+  task's own statement and is documented.
+
+**Agreement, measured.** `test_dynamics_goal_trainer.py`:
+
+- the trainer's `draw_goals` equals the engine's `draw_episode_goals` with
+  `==` on doubles, for five seeds, twenty episodes each, on a bundle with a
+  point, a value and a resampled speed, and leaves the stream in the same
+  place;
+- the pool is the engine's consecutive episodes from the training seed;
+- `goal_segment` (numpy standing in for `jax.numpy`) picks the engine's
+  segment at every step of an episode and forty steps past it;
+- the channel order and the policy's share of it are the engine's;
+- **from the training venv**, a real run with a pool of one, a reward that
+  is the goal and no termination reports, for five iterations of fifteen
+  steps against a twenty-step episode, the curve the engine's draw from the
+  same seed fixes, to 2e-6 relative (float32); the policy it writes is
+  verified by the engine and played with a goal.
+
+Each half was mutated once to see it fail, and the trainer restored:
+`(steps + 1) // period` in `goal_segment` failed the segment test and the
+device curve; dropping the separation rule from `draw_goals` failed seven
+host tests. The stock reference runner (`dynamics_task_episode.py`) is the
+third copy of the draw, and agrees with the engine as text on every goal,
+observation and reward, seeded and unseeded.
+
+**Removed.** The agent's assembly page of `describe_api` is held under a
+measured size budget by a live-engine test (ADR-360: 21,500 characters; it
+stood at 21,411). The `goal` export and one sentence of notes about it took
+it past it, so two rationale sentences were cut from the notes and three
+shortened to make room, and the page is now 21,446. Cut: why bracing beats
+balancing without a reset variation, and why to aim a shove's arc at the
+actuated plane. Shortened: why a reset variation never touches joint
+angles, where a stumble's velocity is written, and how to find a
+mechanism's forward axis from its feet. Each is still in the docstring of
+the function it is about, one `inspect scope=api` away. The long notes passage on goals first written
+for this ADR was cut to that one sentence for the same reason; the full
+text is `assembly.goal`'s docstring.
+
+**Fixed in passing.** `test_dynamics_command_slew.py::
+test_a_limited_policy_still_verifies_against_the_engine` runs only from the
+training venv and called `verify_policy` with a key its fixture never had
+(`KeyError: 'task'`), independent of this change. It now passes the decoded
+container, the bundle and its digest, and asserts the witness.
+
+**Not changed.** No cadexd op and nothing in `OP_ARG_SPECS`; no `shell/`
+file; no new dependency; `requirements.txt` and `pixi.toml` untouched; no
+JAX or MJX import under `src/Mod/cadex` (`test_engine_purity_guardrails`
+still asserts the closure). No frozen item of the ot11 contract: the seeds,
+the predicates, the rubric and the bar are as they were, and the two known
+negatives' tasks declare no goal, so their bundles, digests and retained
+receipts do not move.
+
+**Not done here, and owed before a reach film is judged.** The film does
+not yet draw the target marker the frozen filmstrip text asks for. The
+trace now carries the target in every frame. `cadex train` does not expose
+`--goal-pool`; the trainer's default applies. A warm start across a changed
+goal is refused: `goal` is not among the keys a curriculum step may move
+(ADR-161).
+
+**Evidence.** `cadex_tests/test_dynamics_goal_model.py` (34),
+`test_dynamics_goal_api.py` (19), `test_dynamics_goal_trainer.py` (13 in
+the engine environment with 4 skipped, 17 from the training venv),
+`test_dynamics_goal_live.py` (2, through a live `cadexd`: script to bundle
+to verified policy to a trace whose frames carry the goal).
+`pixi run test-engine`: 2507 passed, 57 skipped (2439 and 53 before).
+`pixi run python -m pytest cli/tests`: 1212 passed, 1 skipped. Packaged
+gate, after `build-engine` and `stage-engine`, with
+`CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.0.0-linux-x64`:
+`test_cadexd_lifecycle.py` and `test_dynamics_goal_live.py`, 25 passed.
+From the training venv on CPU (a scratch venv layered over
+`~/cadex-train-venv` with pytest added; the user's venv was not modified):
+`test_dynamics_goal_trainer.py` 17 passed, and `test_dynamics_policy_trainer`,
+`_action_filter`, `_command_slew`, `_mjx_agreement`, `_mjx_geom_pairs`,
+`_sensor_grounding`, `_policy_live` and `training/test_curriculum_warm_start.py`
+123 passed, none skipped.
+
+## ADR-463 — The judge's blind spot on stepping and slip is a recorded limit, and the film draws the target marker (2026-09-30)
+
+**Context.** Two items stood between the ot11 contract and its first
+criterion (P1). ADR-460 and ADR-461 measured that the blind video judge
+scores a shuffle's manner as "real steps", and left that as a finding with
+no place in the contract. ADR-462 put the target in every frame of a trace
+and left the film not drawing it, though the frozen filmstrip text says "a
+reach frame shows the target as a marker".
+
+On 2026-09-30 the owner ruled on the first in the charter. Where the
+success spec measures a property, the spec is authoritative for it. A judge
+blind spot on a measured property is recorded in the contract as a known
+limit, does not block P1 and calls for no more judge probes. The judge's
+job is what the spec cannot measure. The bar still applies to R1–R3, and
+where the judge contradicts a measured predicate the predicate wins and the
+disagreement is recorded.
+
+**Decision.**
+
+1. **The limit is in the contract.** `contract.json` gains
+   `judge_scope`, beside the frozen `judge` block and not in it:
+   `known_limits` (one entry: the manner score, V2, is not a reading of
+   stepping or of foot slip; W5 and W7 are) and `jobs` (the owner's four
+   sentences). `docs/probes/ot11/README.md` gains *What the
+   judge is for, and what it does not see*. The contract's `decisions` list
+   gets its second entry.
+2. **Nothing frozen changed, so nothing is re-evaluated.** No seed,
+   condition, predicate, threshold, rubric line, judge input, judge
+   instruction or bar moved. The rubric's and the instructions' digests are
+   the pinned ones. Every earlier reading and score stands.
+3. **How a contradiction is handled is the owner's sentence and no more.**
+   A judged seed under the bar is reported as under the bar, with the
+   predicate it contradicts beside it. The contract does not lower the bar
+   for that case. The owner holds the checkboxes and reads both.
+4. **The film marks the target** (`cli/cadex_cli/film.py`). A trace whose
+   `goal_channels` name a point goal is drawn with a ring centred on the
+   target in force at each frame's own time, in the overview, the detail
+   and the video. The ring is cyan `#6FF0F0` (the dashboard's `--info`,
+   which no appearance role uses) inside a rim of the scene's background,
+   9 px in radius on a 256 px frame.
+5. **The ring is an overlay, not a solid.** A depth-tested ball was the
+   other candidate. It would vanish inside the hand exactly when a reach
+   succeeds, and would read as a part of the robot. A hollow ring drawn
+   over the solids stays visible and leaves the tip visible through it.
+6. **Windows.** The overview's fixed window and the video's hold every
+   target beside the path. The detail holds them when there is no floating
+   base. A detail that follows a base stays the design's size (ADR-460) and
+   marks a target only while it is inside; `marked_frames` says how many.
+7. **No silent unmarked film.** The film asks for no behaviour's name and
+   reads the target from the trace alone. If the evaluation's row says the
+   seed drew a point goal and the trace names none, the film is refused
+   with that reason.
+8. `video._studio_frames` takes two optional arguments, `held` and
+   `overlay`. A run's studio video passes neither and is drawn as before.
+
+**Measured.** Seed 1101 of `ot11-w2-negative` (no goal) was drawn from its
+stored trace by the film at `339b8bf1` and by this one, into scratch
+directories, with nothing written to the project. Both sheets came out byte
+for byte the same: overview `0a31b81b…`, detail `911e522d…` (drawn with no
+inventory, so every part as shell). The known limit's numbers are read from
+the receipts by the test: eighteen calls on `w2-2` seeds 1101 and 1110, all
+scoring manner 2, against step shares of 8.5 % and 3.6 % and slip shares of
+60 % and 81 %.
+
+**Not shown.** No arm with a point goal has been evaluated through the
+product yet, so the marker has been drawn on hand-written traces and on no
+real reach. The first ot11 reach evaluation is the first real one. The
+judge has not been shown a marked sheet.
+
+**Not changed.** No engine file, protocol op, `OP_ARG_SPECS` or shell file,
+so no payload moves. No new dependency. Nothing removed. The film's
+identity (`style_sha256`) changes with its source, as it does on any edit;
+the retained receipts keep the digest they were drawn under.
+
+**Evidence.** `cli/tests/test_film.py`, six new tests: the ring read back
+from both sheets' pixels at the projected target of each frame's own time,
+hollow, jumping once where the target does; absent from a trace with no
+point goal; whole when the target is inside a solid; held by a fixed window
+and not by a following one; marked in every video frame; refused for a
+point goal that is not three millimetre channels, for a frame with no goal
+row, and for a seed the report says drew one. Against the film at
+`339b8bf1` all six fail. `cli/tests/test_ot11_contract.py` holds the limit,
+the jobs and both decisions against the receipts and the page.
+`pixi run python -m pytest cli/tests`: 1219 passed, 1 skipped (1212 and 1
+before). `pixi run test-engine`: 2507 passed, 57 skipped, as before. No
+packaged gate: no engine, protocol or payload file changed.
+
+## ADR-464 — The product agent runs the training loop with four bridge tools and a detached supervisor; `cadex walk` stays as one use (2026-09-30)
+
+**Context.** The ot11 charter's P4 asks that the product agent, through the
+ordinary product path, author or revise a task, its reward and its spec,
+start bounded training, read the progress, the evaluation report and the
+filmstrip, and decide the next revision — the same loop for every
+behaviour — and that this run choose the architecture and say what becomes
+of `cadex walk`. Before this, the agent's prompt said "you have no shell
+and cannot train" (ADR-190): every training run and every evaluation in
+ot5 to ot10 was started by the caller, between turns. The pieces the loop
+needs already existed as commands: `cadex train` dispatches the offboard
+trainer (ADR-191), the trainer rewrites `progress.json` every iteration and
+can checkpoint (ADR-101), and `cadex evaluate` holds a policy to its task's
+success spec and films it (ADR-457, ADR-459). What was missing is a way
+for a turn to start training without waiting out the run inside one tool
+call, and a way to come back to it. ot10's hexapod-9 run died with the
+actor session that had started it.
+
+**Decision.**
+
+1. **Four tools on the bridge, no protocol op.** `train_start`,
+   `train_status`, `train_stop` and `evaluate` join `look` in
+   `BRIDGE_TOOLS`: the CLI's bridge answers them, nothing reaches `cadexd`
+   for them, `OP_ARG_SPECS` is unchanged, and no engine file moves. They
+   are added to the turn's `--allowedTools`, which until now listed only
+   the op-named tools and left `look` to the account's permission mode.
+   Authoring and revising the task, the reward and the spec stay
+   `write_script` and `edit_script`; storing and declaring a policy stay
+   `put_asset` and `assembly.policy`, so the engine still verifies every
+   policy the loop evaluates.
+2. **A run is pre-registered, then supervised by a process that outlives
+   the turn.** `cli/cadex_cli/loop.py` writes `runs/<run>/registration.json`
+   — the accepted revision, the task and its digest, the settings and seed,
+   the wall-clock budget, the stop rule, the agent's reason and the exact
+   trainer command — before anything is launched, and refuses a run with no
+   budget. The supervisor is `python -m cadex_cli.loop RUN_DIR` in a session
+   of its own. It stops the trainer at the budget, on a stop request it
+   polls for as a file, or when it is told to terminate, and writes how
+   the run ended to `training-status.json`. It signals no process it did
+   not start.
+3. **An interruption is told from an attempt by a lock.** The supervisor
+   holds an advisory lock on its run for as long as it lives. A status that
+   still says `running` under a lock nobody holds is read as `interrupted`.
+   A second lock, the machine's, is the one training slot the charter asks
+   for: a second run is refused at registration and again by the
+   supervisor.
+4. **The bundle is the accepted one.** A run trains the task bundle and the
+   model the store retained for the accepted attempt, copied by digest and
+   never rebuilt — the same read `cadex evaluate` makes — so the turn's
+   engine is not needed after `train_start` returns and the project lock is
+   not held while a run trains.
+5. **What the loop enforces from the charter**: a budget on every run;
+   `--stop-on-collapse` always; one run at a time; a training seed that is
+   not an evaluation seed; and no training on a channel the robot cannot
+   read (ADR-408), with no override offered.
+6. **A ledger.** `loop-ledger.jsonl` in the project root records each run
+   registered with its reason, each stop, each ending and each evaluation
+   with its verdict, its failing predicates and the run that trained the
+   policy. `train_status` with no run hands it to a new turn.
+7. **The prompt says so.** The CLI overlay's "you cannot train" is replaced
+   by one paragraph: design the task and, separately, its success spec;
+   train; evaluate; revise from that evaluation, naming the measurement in
+   the next run's reason; a reward curve is never evidence.
+8. **`cadex walk` becomes one use, and is not retired.** It stays as the
+   scripted single pass over the same legs for a caller with one command,
+   which ot5 to ot10's receipts and the dashboard's run records are made
+   by. It is not the loop and the loop does not call it. Its `gait` block
+   (ADR-409) is the one behaviour-specific reading left in the CLI — and
+   the one that called `w2-2`'s shuffle a walk — so the walk's review now
+   carries `behaviour`: a task that declares a success spec is judged by
+   the spec through `cadex evaluate` and the gait reading is advisory; a
+   task with no spec has the gait reading only. R1 to R3 go through the
+   loop's tools.
+
+**Alternatives not taken.** *A protocol op for training* would put a
+long-running offboard process behind a service that dispatches serially and
+would move `OP_ARG_SPECS`, the shell client and the payload for something
+the engine must never do (ADR-084). *One blocking `train` tool* is
+`cadex train` inside a tool call: the run dies with the turn, which is the
+hexapod-9 failure. *The child `cadex train` as the supervised process* needs
+the project lock the turn's own engine holds. *Retiring `cadex walk`* would
+break the receipts and tests of five earlier runs to remove a command the
+loop does not depend on.
+
+**Not shown.** No real model has run the loop yet: the rounds in the suite
+are driven by a scripted model over the real bridge socket. P4's three
+rounds of design, train, evaluate and revise on one behaviour, with
+transcripts, are the next unit and are not claimed here. No run longer than
+two iterations has been supervised. How long a harness lets one MCP tool
+call block has not been measured; `train_status` caps its wait at 900 s and
+`evaluate` blocks for the rollouts and the film.
+
+**First real-model use (2026-09-30).**
+- **How long a tool call may block, measured.** One `claude -p` tool call
+  blocked 900 s, `train_status`'s ceiling, and returned without error
+  (`docs/probes/ot11/runner/block_probe.py`).
+- **One round on Robin.** `claude-opus-5-5` ran the loop on
+  `ot11-robin-1` in one turn. It rewrote the task, wrote the frozen
+  balance spec exactly, and trained one 900 s run. That run ended
+  `budget_exhausted` at iteration 400. The agent evaluated the run's
+  iteration-400 checkpoint, which passed 10 of 10 seeds. With nothing
+  failed, nothing was revised, so the three-round requirement is still
+  unmet.
+- **A defect this exposed.** The ledger's `trained_by_run` matches a run's
+  final policy only. A checkpoint of a budget-exhausted run is evaluated
+  unlinked.
+- **Fixed (2026-09-30).** The cause was two-fold: `trained_by_run`
+  matched only the final policy, and the evaluated checkpoint
+  (`balance_task.000400.cxpolicy`, `8919a22d…`) was written after the
+  trainer's last `progress.json` rewrite, so the progress never listed it
+  either. `loop.run_checkpoints` now reads the checkpoint files on disk,
+  each with its own digest, and keeps what the progress knows only where
+  the digests match. `loop.runs_that_trained` matches the final policy, every
+  digest the progress ever named and every file on disk. `train_status`
+  lists checkpoints the same way, so a `best` rewritten in place no longer
+  shows an earlier digest. The historical `bal-1` ledger row stays as
+  written (the ledger is append-only); the same code now names `bal-1` for
+  `8919a22d…`. Test:
+  `test_a_checkpoint_the_progress_never_listed_is_still_the_runs`, which
+  fails on the old code.
+- **The trainer and the rollout observe the same numbers (measured
+  2026-09-30).** Over 200 states of `ot11-robin-1`'s model, MJX's
+  `sensordata` (the trainer) and MuJoCo's (the rollout) agree to float32
+  rounding on every channel: worst 1.3e-7 on the orientation quaternion,
+  0.0003 deg/s on a gyro reaching 826 deg/s, 1.7e-6 deg on the encoders
+  (`docs/probes/ot11/runner/obs_parity.py`,
+  `retained/r3-robin-1-obs-parity.json`). The sensors the policy reads are
+  declared (an IMU on the board component, encoders on the wheel joints)
+  with no IMU or encoder part modelled. ADR-408 grounds a channel by a
+  declaration, and the charter lets only the product agent change a
+  mechanism, so R3 does not require those parts to be modelled. One
+  sim-to-real fact for the long-term rung: `component_angular_velocity`
+  compiles to `frameangvel`, which reads in the **world** frame, while a
+  real gyro reads in its own. That is the same in both evaluators, so it
+  does not change any evaluation.
+
+Receipts: `docs/probes/ot11/README.md`, "The loop, run by the product
+agent".
+
+**Not changed.** No engine file, protocol op, `OP_ARG_SPECS`, payload or
+shell file. No new dependency: `loop.py` is standard library. Nothing
+removed. The trainer is untouched. The loop trains on this machine only;
+remote dispatch stays `cadex train --remote`. The shell's agent has no loop
+tools.
+
+**Evidence.** `cli/tests/test_loop.py`, 27 tests. With a fake trainer and
+a really detached supervisor: a registration written whole before launch;
+ten refusals that leave nothing behind; a run launched from a process that
+exits at once and ending `finished` with a policy that hashes to its
+receipt; a run read while live, refused a sibling, stopped with its reason
+and leaving its checkpoint; the machine's one slot; a budget of one second
+ending `budget_exhausted`; a collapse told from a crash; SIGTERM and
+SIGKILL both read as interruptions that free the slot. Through
+`Bridge.call`: start, wait, stop, the listing and the ledger, and six
+refusals as tool errors. Against a live engine, through `command_prompt`
+and the real socket: a task accepted and a run started in one turn, and in
+the next the run read, its policy stored, declared and evaluated, the
+reply carrying the spec's verdict per predicate and per seed and two PNG
+filmstrips in under 21,500 characters; and the same round with the real
+trainer on CPU for two iterations with a checkpoint, whose policy the live
+engine verifies. Behaviour words are refused in `loop.py`, in the four
+tools and in the prompt paragraph. `cadex walk`'s `behaviour` block is
+held for a task with a spec and one without.
+`pixi run python -m pytest cli/tests`: 1246 passed, 1 skipped (1219 and 1
+before). `pixi run test-engine`: 2507 passed, 57 skipped, as before. No
+packaged gate: no engine, protocol or payload file changed.
+
+**Amendment (2026-09-30): a run names its task bundle.** On `ot11-heron-1`
+the product agent tried to warm-start `reach-r3` from `reach-r2`, guessed
+five paths for `init_from_parent_task`, was refused each time, and trained
+from scratch: `train_status` never named the bundle and neither did the
+refusal. `loop.run_view` now carries `task_bundle` (the path under the run
+and the registration's `task_sha256`, the digest a policy header carries)
+and, once a run has a policy or a checkpoint, a `warm_start` line naming
+the three settings; the listing gives each run's bundle path; and a missing
+`init_from_parent_task` is refused with every run's bundle in the text.
+Regression: `test_a_run_names_its_task_bundle_so_a_warm_start_can_be_registered`,
+which fails on the old source with `KeyError: 'task_bundle'`. No engine,
+protocol, payload, trainer or shell file changed; nothing removed.
+
+## ADR-465 — The trainer integrates a saturated servo the way the engine does (2026-09-30)
+
+**Context.** Walk rounds 1 and 2 on `ot11-quad-1` trained at one reward and
+evaluated at another: r2's policy `1a0f0d28…` reported +2.48 per step in
+training and scored −1.69 to −1.21 on the evaluation seeds, walking
+backwards, and round 1 showed the same gap. `runner/obs_parity.py` compares
+sensors at forced states, so it could not say why. A rollout-level parity
+measurement did. The evaluated policy was driven in the trainer's own
+physics (MJX, `cadex_train.py`'s step, reward and observation code) and in
+the engine's (`CadexDynamics.evaluate_episode`, stock MuJoCo), from the
+same seeded reset, command and shoves, under the training task. On seeds
+1101 to 1104, MJX walked it **forwards**, at +2.70 to +2.82 per step and
+709 to 921 mm of travel in 10 s. The engine walked the same weights
+**backwards**, at −1.57 to −1.95 per step and −833 to −1271 mm. Replaying
+the engine's own actions open-loop, the two parted within one 2 ms substep,
+6.9 rad/s apart with **no contact at all**. float64 gave the same answer as
+float32, so precision was ruled out. Each of three changes to the model
+brought the two to within 1e-5 of each other: the Euler integrator, no
+`forcelimited`, or kv = 0. The cause was in MJX 3.10's `deriv_smooth_vel`.
+Under `implicitfast` it always folds an affine actuator's `-kv` into the
+implicit step. Stock MuJoCo 3.10 leaves the term out for an actuator whose
+force sits at its `forcerange`. Every Cadex servo is exported as exactly
+that actuator (`CadexDynamics` writes `biasprm = [0, -kp, -kv]`,
+`forcelimited`, under `implicitfast`), and a 9 g servo saturates at
+0.18 N m most of the time. So training integrated a saturated servo as
+extra-damped, while the engine integrated it as torque-limited.
+`test_dynamics_mjx_agreement` never saw this: it drives at a quarter of the
+range and never saturates.
+
+**Decision.** `cadex_train.match_engine_actuator_derivative` replaces
+MJX's `deriv_smooth_vel` with a version that subtracts the velocity term
+back out for exactly the actuators clamped at their limit. `train()`
+installs it before it puts a model on the device. It lives in the trainer,
+because the engine is the evaluator and its physics is the reference. The
+exporter keeps `implicitfast`, force limits and kv, which are the servo as
+measured (ADR-085). The shim touches a private MJX module, and the pinned
+`mujoco-mjx==3.10.0` is what makes that tolerable.
+`test_dynamics_mjx_forcelimit` pins both halves in float64 on a
+contact-free, two-servo fixture:
+- raw MJX still differs (measured 10.2 rad/s), and the day it doesn't, that
+  test fails with a message saying to delete this;
+- with the rule installed, the trainer matches stock MuJoCo (measured
+  6.2e-15), and an unlimited servo matches with or without it.
+
+The test fails on the old trainer. After the fix, the same four seeds put
+the r2 policy at −1.18 to −1.87 per step in MJX, backwards, beside the
+engine's −1.57 to −1.95. The open-loop replay now agrees to 1e-6 for the
+first 10 control steps and then parts only as a contacting mechanism does
+under float32.
+
+**Consequences.**
+- Every ot11 training run before this commit, walk rounds 1 and 2 and
+  r3-nochatter (started at 19:01Z on the old trainer), trained on physics
+  the engine does not run. Their **evaluations stand**: `cadex evaluate`
+  runs the engine and was never on the drifted path. What they do not give
+  is honest feedback to the loop. A reward revision chosen against those
+  curves was chosen against a different machine.
+- A policy's header records `trainer_sha256`, so runs from before and after
+  are told apart by their bytes.
+- Earlier runs' passes, including R2's reach, stand as the engine measured
+  them.
+- One function and one call are added to the trainer. No
+  engine, protocol, payload or shell file changed, and nothing enters
+  `pixi.toml` or `requirements.txt`. `test_dynamics_policy_trainer`'s
+  deferred-import list names `mujoco.mjx._src`, which is inside the pinned
+  wheel. Nothing removed.
+
+## ADR-466 — A policy's `trainer_sha256` is the trainer the process loaded, hashed once at import (2026-10-01)
+
+**Context.** `policy_header` wrote `training.trainer_sha256` as
+`hashlib.sha256(Path(__file__).read_bytes())`, computed each time a policy
+or checkpoint was saved. ot11's `r3-nochatter` started at 23:01:31Z on the
+pre-ADR-465 trainer (`8e06e1b0…`). The fix was written to disk at 23:11:26Z,
+while the run was still training. Its checkpoints at iterations 100 and 200
+record `8e06e1b0…`. Every later checkpoint, including the evaluated `best`,
+records `abae5da0…`, the fixed trainer, although the process that wrote them
+never ran it. ADR-465's consequence that "runs from before and after are told
+apart by their bytes" therefore did not hold for any run that straddled an
+edit.
+
+**Decision.** The trainer hashes its own source once, at import, into
+`TRAINER_SHA256`, and `policy_header` writes that constant. Python reads a
+module's source when it imports it, so the digest at import is the digest of
+the code that runs. `test_a_policy_names_the_trainer_that_ran_not_the_file_on_disk_when_it_saved`
+loads a copy of the trainer, rewrites the copy on disk, and requires the
+header to carry the digest from import. It fails on the old code.
+
+**Consequences.**
+- From this commit, `trainer_sha256` is evidence of the code a run executed.
+- Policies saved before it are unchanged. For `r3-nochatter` the digest
+  field is wrong from checkpoint 300 on. Its trainer is established by its
+  process start time, as `docs/probes/ot11/README.md` records. If all of a run's
+  checkpoints record one digest, the file was not edited between its first
+  and last save. The old field cannot show an edit made between the run's
+  start and its first save.
+- The fix is applied only after `r4-anglesonly` ended. A save-time hash
+  would have stamped round 4's final save with the edited file's digest.
+- One constant is added, and one expression is replaced by it. No engine,
+  protocol, payload or shell file changes, and no dependency is added.
+  Nothing removed.
+
+## ADR-467 — W10 reads a foot's depth in the floor after the settle, as W3, W4 and W8 do (2026-10-01)
+
+**Context.** W10, "on the floor, not in it" (ADR-454), held every foot's
+lowest height over **every frame** to at least −0.05 hip heights (−4.84 mm
+on `ot11-quad-1`). The walk spec's reset lifts the robot 5.4–9.9 mm on the
+ten evaluation seeds and drops it. A passive zero-action rollout of the
+evaluated model, every servo holding the solved pose, rests inside W10
+(rear feet −4.31 mm) but fails it from any drop of 0.5 mm or more
+(`docs/probes/ot11/runner/w10_trust.py`, receipt
+`retained/p1-walk-w10-trust.json`). So over every frame, W10 failed a
+pose-holding robot on every evaluation seed in its first 0.4 s, before any
+gait. It measured the reset, not what its name and ADR-454 say it measures.
+Speed (W3), lateral drift (W4) and duty factor (W8) were already read after
+the 1.0 s settle, for the same reason.
+
+**Decision.** `foot_lowest_hip_heights_min` is the worst foot's lowest
+height over the frames at or after `SETTLE_S` (1.0 s). Each foot's report
+row keeps `lowest_height_mm` over every frame, so the landing is still
+shown, and adds `settled_lowest_height_mm`, which is what the predicate
+reads. An episode that ends inside the settle has no settled depth; the
+metric is then `None` and the predicate fails, as speed already does. The
+limit, −0.05 hip heights, is unchanged. This is a change to a frozen
+item, made under the contract's rule: `contract.json` records it in W10's
+row and in `decisions`, and every earlier walk policy was re-evaluated.
+
+**Re-evaluation.** `docs/probes/ot11/runner/w10_reread.py` re-reads each
+stored evaluation's traces (a rollout is deterministic in its seed). Its
+gate is agreement: every stored metric comes back exactly from the trace,
+and the stored W10 equals the every-frame minimum. All seven stored walk
+evaluations agree on all 70 seeds: `w2-2` twice (`ot11-w2-negative`) and
+walk rounds 1–5 on `ot11-quad-1`. **No seed's verdict moved, and W10 still
+fails on every seed of every one.**
+- `w2-2` still fails W5 and W7 (stepping and slip) on every seed, the
+  reason the contract records, and W10 at −0.26 to −0.14 hip heights after
+  the settle.
+- Round 4, which stands still, moves from −0.131..−0.085 to −0.083..−0.072:
+  its front-left foot stands 7 mm in the floor.
+Receipt: `docs/probes/ot11/retained/p1-walk-w10-reread.json`.
+
+**Consequences.**
+- A policy no longer has to cushion its landing from the reset lift to
+  pass W10. It still has to stand and walk on the floor rather than in it.
+- Walk session 2's `cadexd` imports the engine from the source tree, so the
+  new reading went live when the source changed, not at an install.
+  `r5-swing`'s evaluation (`dee2391353b7-6a7c89de9ade`, 01:28Z) ran after
+  the edit and carries `settled_lowest_height_mm`. On all ten of its seeds
+  the deepest frame is after the settle, so both readings give the same
+  numbers (−0.209 to −0.138 hip heights) and the same verdict: it fails
+  W10 on every seed under either.
+- The test `test_a_landing_from_the_reset_lift_is_not_read_as_standing_in_the_floor`
+  fails on the old reading. The `w2-2` fixture test pins each foot's
+  settled depth.
+- One metric's window changes. No protocol op, payload file list, shell
+  file or dependency changes. Nothing removed.
+
+## ADR-468 — A success spec may state the scale it was written for, and the engine refuses it when the mechanism measures otherwise (2026-10-01)
+
+**Context.** A spec written in a mechanism's own scale carries that scale as
+constants in the script: the ot11 walk spec draws its commanded speed from
+0.6–1.0 × `HIP_MM` mm/s and its shoves from `WEIGHT_N`. The engine already
+measures both, as the bundle's `success.scale`, but nothing compared the
+script's constants with them. In walk round 8 the product agent raised the
+base 10.25 mm, set `HIP_MM = 106.9488`, and the rig measured 106.949. The
+evaluation, and the iteration-300 one before it, were void under the
+pre-registered mechanism rule, and that was found by a reader after
+2,008 s of GPU time (record `rough-bell-4381`). The engine could have said
+so when the script was written.
+
+**Decision.** `assembly.success(..., scale={...})` names any of `mass_kg`,
+`weight_n`, `com_height_mm`, `hip_height_mm` and `arm_length_mm`, the keys
+of the `scale` block. When the task is declared, each stated value is
+compared with the measured one. If they differ by more than one part in a
+million, or the mechanism has no measure of the key (`None`), the script is
+refused with `success_scale_mismatch`. The refusal names the stated and
+measured values, so the fix is a copy. One part in a million is a mistyped
+or stale digit, never physics: the MJCF writes the hip anchors to six
+significant figures, and a value copied from the rig agrees with itself. An
+agreeing statement is carried in the spec block as `stated_scale`. With no
+statement, nothing is checked and the block is the one it always was.
+
+It is a declaration, not a derivation. The script cannot read the measured
+scale before the model is built, so the constants stay where they are, and
+the spec says which of them are scale. The check is the same for any
+behaviour: a reach spec in arm lengths or a balance spec in body weights
+states them the same way.
+
+**Where it is checked.** At declaration, not at `cadex evaluate`. An
+evaluation plays the bundle of an accepted revision, and a spec that
+disagreed with its mechanism is now never accepted. A check at evaluation
+time would find the same thing one GPU run later. The evaluation report
+carries the bundle's spec block, so `stated_scale` appears in it.
+
+**Consequences.**
+- Opt-in, so no existing script, bundle or policy changes, and ot11 walk
+  session 3, running when this landed, is unaffected unless its agent
+  states a scale. Its `cadexd` imports the engine from the source tree, so
+  the option became available to it when the source changed (the same
+  route as ADR-467).
+- No protocol op, payload file list, shell file or dependency changes. A
+  spec is not part of what a task is (ADR-134), so no task digest moves.
+- Tests: `test_success_spec_api` (shape and refusals) and
+  `test_success_spec_model` (agreement carried, a 2 ppm hip-height digit
+  refused with the measured values, an unmeasured key refused, the key
+  tuple equal on both sides). All fail on the old source.
+  `test_success_spec_live` covers both outcomes through the worker.
+
+## ADR-469 — Contacts that do not bounce are exported on a 0.004 s spring, and the environment floor says so (2026-10-01)
+
+**Context.** The owner's R1 clause of 2026-10-01: stepping feet that sink
+7–15 mm into the floor on 7.5 mm feet are a defect in the exported contact
+physics, and a contact `margin` or `gap` that holds a foot off the floor does
+not count as fixing it. Every geom `export_mjcf` wrote carried
+`solref = (CONTACT_TIMECONST_S, dampratio)` with `CONTACT_TIMECONST_S =
+0.02`, MuJoCo's default, and the environment floor (ADR-335) carried no
+`solref` at all, so it was on the same default. A MuJoCo contact is a soft
+constraint whose spring is k = 1/(dmax²·τ²). Its depth under load goes with
+the acceleration pressing on it, not with the weight, and a servo driving a
+10 g foot into the floor is a large acceleration. Measured on
+`ot11-quad-1`'s round-11 policy (`r12-convex-sym`) on its own MJCF,
+through the engine's episode loop on CPU MuJoCo, over the ten seeds
+1101–1110: deepest foot point after the settle **−6.18 to −7.62 mm** on the
+0.02 s spring and **−0.66 to −2.50 mm** at 0.004 s, the same file with only
+the spring changed (`docs/probes/ot11/runner/contact_depth.py`, receipt
+`docs/probes/ot11/retained/p4-quad-1-contact-depth.json`; one after-seed,
+1104, tipped inside the settle and has no reading). A scan on two seeds put
+0.01 s at −2.5 to −3.6 mm and a 0.02 s spring with `solimp` (0.99, 0.999)
+at −6.0 to −7.7 mm: the time constant is what matters.
+
+**Decision.**
+- `CONTACT_TIMECONST_S` is 0.004 s, twice `DEFAULT_TIME_STEP_S`. That is the
+  stiffest spring MuJoCo integrates: its `refsafe` clamps a shorter time
+  constant to two solver steps, so a model on a coarser step gets two of its
+  own, not an unstable spring.
+- The environment floor is written with `solref = (CONTACT_TIMECONST_S, 1)`.
+  A pair's `solref` is the average of its two geoms', so a floor left on the
+  default would have halved the stiffening of every foot standing on it.
+- **A shape with a restitution keeps the 0.02 s spring**, as the new
+  `BOUNCE_TIMECONST_S`, and the step rule for a bounce
+  (`RESTITUTION_STEPS_PER_TIMECONST`, ADR M3 phase 2) is read from it.
+  Restitution was measured on that spring. Moving it would make every bounce
+  need a 0.0002 s step, and the lifecycle, environment and determinism
+  suites, which bounce at 0.0005 s, measured that refusal.
+- Nothing about `margin` changes. The owner's clause voids a margin model
+  for R1 when its round is published (REPORT.md, row 25); the product does
+  not refuse one.
+
+**Consequences.**
+- Every model exported from now on has the stiffer spring. A bundle carries
+  the MJCF it was accepted with and `cadex evaluate` plays that file, so no
+  stored evaluation, policy or task moves. A revision rebuilt after this
+  exports a different MJCF, so its task digest moves and a policy trained on
+  the old one does not verify against it. That covers ot11-quad-1's next
+  revision, and it would cover a rebuild of `ot11-robin-1` or
+  `ot11-heron-1`, whose R3 and R2 confirmations ran on the old spring and
+  stay as published. `r14-margin15-lift`, training while this landed, is on
+  its registered (old) MJCF and is void for R1 anyway on its margin.
+- The trainer reads the same MJCF and has no contact parameters of its own,
+  so it follows the export. Checked from the training venv on CPU: the MJX
+  agreement, geom-pair and force-limit suites pass, 17 of 17, on fixtures
+  exported with the new spring.
+  `test_the_exported_box_floor_is_what_costs_the_agreement` now asserts on
+  the worst step: the stiffer spring brought the box floor's median
+  disagreement from 14,000× the plane's to 92×, while its worst step is
+  still ten orders above (1.254e-05 against ~1e-15).
+- Tests: `test_a_foot_under_a_stepping_load_stays_on_the_floor_rather_than_in_it`
+  (`test_dynamics_free_base`) presses a 10 g, 7.5 mm sphere on the
+  environment floor at thirty times its weight. It sinks 2.60 mm on the old
+  source and fails, and 0.46 mm now, against the contract's 1.0 mm stance
+  threshold. `test_dynamics_contact` pins that a bounce keeps
+  `BOUNCE_TIMECONST_S`. `test_a_simulation_that_went_unstable_voids_the_seed`
+  needed a wilder motor (500 N·m, from 200 N·m) to go unstable on the
+  stiffer contact.
+- An engine-source change, so the packaged lifecycle gate is owed again.
+
+## ADR-470 — An evaluation on a model whose contact is held off its geometry is void on every seed (2026-10-01)
+
+**Context.** The owner's R1 clause of 2026-10-01 says a contact `margin`,
+`gap` or any other setting that holds geometry off the floor does not count
+as passing W10, and that a policy evaluated on such a model is void. Until
+now that void was applied by hand when a round was published (REPORT.md,
+rows for `r13-hovercost-margin` and `r14-margin15-lift`): `cadex evaluate`
+scored r13's 3 mm foot margin as a W10 pass, and ADR-469 left the product
+silent about margins. A void that lives only in the actor's publication is
+one a later evaluation can miss.
+
+**Decision.**
+- `CadexDynamics.contact_offsets(model)` lists every contact geom (nonzero
+  `contype` or `conaffinity`) whose compiled `margin` or `gap` is not zero,
+  with both in millimetres, plus `option` when a model-wide `o_margin` is in
+  force under the override flag.
+- `evaluate_success` reads it once from the evaluated MJCF. Any entry voids
+  every seed, with a reason naming the geoms, joined to the
+  unstable-simulation reason when both apply. The report carries the list as
+  `contact_offsets`. Episodes are still played and measured, so the rest of
+  the report is still there to diagnose from.
+- `cadex evaluate`'s progress cell, prose block and agent view lead with
+  the geoms. The agent's next revision sees why its evaluation did not
+  count.
+- The check is task-agnostic. It looks at contact geoms, not "feet" or "the
+  floor", so a reach or a balance on a held-off surface is void the same
+  way. `margin_mm` stays a legal `assembly.collision` argument, because a
+  model with a margin can still be simulated and trained. Only its
+  evaluation is void. This replaces ADR-469's "the product does not refuse
+  one" for evaluation and changes nothing for export.
+
+**Consequences.**
+- Measured on the retained models: r13's four foot geoms (3.0 mm) and
+  r14's (1.5 mm) are listed. Every other ot11-quad-1 run model, the two
+  negatives and all 36 MJCF files under `ot11-robin-1` and `ot11-heron-*`
+  list nothing. No published R2 or R3 evaluation moves.
+- Tests: `test_a_contact_margin_or_gap_voids_every_seed_and_names_the_geom`
+  (`test_evaluate_success_model`) has a block that passes its balance spec
+  without a margin. With a 1.5 mm margin it is void on every seed, and so
+  is the plain block once a margin and gap are written onto its floor.
+  `test_a_contact_margin_voids_the_report_and_names_its_geoms`
+  (`cli/tests/test_evaluate`) pins the cell, the prose and the agent view.
+  Both fail on the source before this.
+- Engine source changed, so the packaged lifecycle gate is rerun on a
+  payload staged from it.
+
+## ADR-471 — `--init-from` continues at the exploration width the source trained to (2026-10-01)
+
+**Context.** `--init-from` restored the actor and the observation normaliser
+and nothing else: `log_std` was rebuilt from `--initial-std` (default 0.30)
+and the critic started fresh. ot11's `r21b-r19-continue` warmed r19 on r19's
+*identical* task and lost r19's gait in its first iterations (+2.19 then
+−1.64 per step against r19's final 4.47; evaluation row 33, 2 of 10), the
+same opening r20 had. r19 ended at σ 0.177; both warm runs restarted at
+0.30. The `.cxpolicy` already carries the width, per action, as the header's
+top-level `exploration.log_std` (ADR-103).
+
+**Decision.**
+- `--initial-std` defaults to unset. Resolved by
+  `training/cadex_train.py::starting_log_std`, in order: the flag when given
+  (warm or cold); else, on `--init-from`, the source's per-action
+  `exploration.log_std`; else 0.3.
+- A warm-start source with no usable width (absent, wrong length, not finite,
+  or not in the pre-activation space) is refused with a message naming
+  `--initial-std`, rather than silently given the default.
+- The run's `init_from` provenance records `log_std_source`
+  (`flag` / `init_from`). A cold run's header still records
+  `initial_std: 0.3`; a carried run's records `null`.
+- The critic is **not** carried, because the container does not hold one;
+  adding it would change the `.cxpolicy` format the engine verifies, and
+  that is not this unit. The Adam moments stay fresh as before.
+
+**Consequences.**
+- A policy continued with no `--initial-std` now opens at the width it
+  ended at. A run that passes `--initial-std` explicitly — including the
+  in-flight `r22-gentle-contact25` (0.12) — is unchanged.
+- The loop (`cli/cadex_cli/loop.py`) only passes `--initial-std` when the
+  agent sets `initial_std`, so the agent gets the carried width by leaving
+  it out.
+- Tests (`cadex_tests/test_dynamics_policy_trainer.py`): the flag is unset
+  unless given; the three-way resolution; four unusable sources refused;
+  and, from the training venv, a cold run at σ 0.7 followed by a warm start
+  with no flag ends within 0.05 of the cold run's width. All six pure cases
+  fail on the source before this. No engine, payload or protocol change.
+
+## ADR-472 — Every stored ot11 evaluation is compared with the frozen contract when its ledger is built (2026-10-01)
+
+**Context.** P1 freezes each behaviour's seeds, conditions, predicates and
+bounds in `docs/probes/ot11/contract.json`, and a change to any of them is a
+recorded decision. The product agent authors the spec it evaluates against,
+so a reworded bound or a dropped shove would be read as a contract
+evaluation. ADR-468 catches a stale scale constant when the task is declared;
+everything else was the actor's eye on the spec block after each round
+(REPORT.md, *Remaining defects*). `cadex evaluate` already stores the spec it
+resolved in `evaluation.json`.
+
+**Decision.** `docs/probes/ot11/runner/conformance.py` compares a resolved
+spec with the contract: seeds, episode length, every predicate's id, metric
+name and bound (the contract's prose metric mapped to the one name the engine
+computes it under), the reset tilt and lift span, each shove's force in body
+weights, window, azimuth, direction and duration, and the goal (a walk's
+command band in hip heights and that it is held; a reach target's segments,
+joint fraction, redraws and its floor and separation rules in arm lengths).
+`runner/eval_ledger.py` writes the differences into each row as
+`contract_deviations`. It reports and never refuses; it is probe tooling, not
+an engine change.
+
+**Consequences.**
+- Rebuilt over the 34 stored evaluations, 30 conform. Rows 1–2 (`w2-2`, no
+  commanded speed, so no W3 or lateral W4) and rows 20–21 (`r8-stance`, the
+  command band 0.599999–0.999998 HH from `HIP_MM = 106.9488`) are named, and
+  both were already recorded and void or explained by hand; the check found
+  nothing new. Every other ledger field is unchanged.
+- `cli/tests/test_ot11_conformance.py` pins that a contract spec conforms for
+  walk, reach and balance, that ten kinds of walk drift and two each of reach
+  and balance are named, and that the receipt's deviations are exactly those
+  four rows with the report explaining them.
+- Not taken: refusing in `cadex evaluate`. The contract is a probe document,
+  and the engine does not read `docs/`.
+
+## ADR-473 — A coupled mechanism's equality row starts from MuJoCo's defaults, so gears, belts and screws export (2026-10-01)
+
+**Context.** ot11's long-term rung asks for a fourth behaviour, a gripper
+closing on a target pose, through the loop with no new code path. Measuring
+before pre-registering anything (`docs/probes/ot11/runner/grip_probe.py`), the
+smallest gripper the vocabulary allows has two jaws on parallel hinges, one
+`gears` coupling between them (1:1, counter-rotating) and one position servo.
+With that, the jaw opening is one number and a `point` goal on one jaw's tip
+states it. The live engine refused the script at `assembly.mjcf`:
+`changed eq_data by 1 relative; the accepted maximum is 1e-05`
+(`mjcf_field_drift`). The same refusal reproduces on the M2 gear-train fixture
+with no engine (0.5 at r1/r2 = 2). It also hits belts and screws. **On the current
+source, no coupled mechanism can be exported, so none can reach a task, a
+policy or a rollout.** The coupling tests built and
+simulated models, but none of them exported one.
+
+**Cause.** `_build_mujoco_model` wrote each coupling's `equality.data` as
+`[0.0] * 11` with the intercept and slope set. MuJoCo's XML parser stores the
+weld's `torquescale` default (1) in `data[10]` for every equality type, so the
+file reloaded with a 1 where the model held a 0. A joint equality never reads
+`data[10]`. The drift had no effect on the dynamics, and the exactness check
+was right to refuse it anyway: the file was not the model.
+
+**Decision.** The row starts from `list(equality.data)`, MuJoCo's own defaults
+(`[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1]`), and sets the intercept and slope. This
+is the same pattern the weld branch already uses for `torquescale`. The
+coupling laws, signs and ratios are unchanged. Only `eq_data[10]` moves, from
+0 to 1, and only on models that could not be exported before. So no retained
+bundle, digest or policy changes.
+
+**Consequences.**
+- `test_dynamics_coupled.py::test_a_coupled_mechanism_exports_as_the_model_it_simulated`,
+  parametrised over gears, belt and screw, fails on the old source (all three)
+  and passes on the new.
+- With the fix, the gripper probe is accepted live, and two more facts are
+  measured (`retained/grip-probe.json`). Both block pre-registering a grip
+  contract, and neither is fixed here:
+  1. **The goal draw ignores couplings.** `draw_episode_goals` sets only the
+     driven joints' `qpos`, so a gear-coupled follower stays at rest while the
+     contact rule and the target are read. On the ten frozen seeds, 3 of 20
+     targets (1102, 1105 and 1110, segment 1) are poses where the coupled jaws
+     overlap by 0.5, 4.2 and 4.3 mm. The draw saw a 13.8–15.8 mm gap at the
+     same driven angle.
+  2. **Gear-coupled jaws never touch each other.** The builder excludes
+     contact between the two components of every joint, couplings included
+     ("we are not simulating tooth contact"). So the coupled jaws pass through
+     each other, and no contact is reported at a 4.3 mm overlap. For a gear
+     train that exclusion is right. For a gripper it removes the one contact
+     that defines closing.
+- Not taken: rewriting the draw or the exclusion in the same unit. Each is a
+  change to what a seed draws or what a model collides with, and each needs
+  its own regression and its own decision.
+
+## ADR-474 — A point goal places coupled followers by their law before it judges a pose (2026-10-01)
+
+**Context.** ADR-473 measured that `draw_episode_goals` sets only the driven
+joints and leaves every gear, belt or screw follower at the reset keyframe.
+The contact rule and the target are then read at a pose the mechanism cannot
+take. On the ot11 grip probe's ten seeds, 3 of 20 targets (1102, 1105 and
+1110, segment 1) are coupled poses with the jaws 0.5–4.3 mm into each other,
+where the draw read a 14–16 mm gap.
+
+**Decision.** A point goal's record carries `followers`: one row per active
+`equality/joint` in the model, with the follower's and driver's `qpos`
+addresses, both `qpos0` references and the five `polycoef` terms. A follower
+that drives another comes first. After the drawn joints are written and
+before `mj_forward`, each follower is written as
+`reference + c0 + c1·x + c2·x² + c3·x³ + c4·x⁴` with
+`x = qpos[driver] − driver_reference`. That is MuJoCo's own joint-equality law,
+so the constraint residual at the drawn pose is zero (tested on the 1:1
+gripper and the 2:1 M2 gear train). No random draw is added. The engine, the
+reference runner (`dynamics_task_episode.draw_goals`) and the trainer
+(`place_goal_followers`) carry the same lines.
+
+The key appears only on a coupled mechanism, and its algorithm text
+`GOAL_FOLLOWER_ALGORITHM` is appended to `goal_algorithm` only there. Every
+uncoupled bundle, its digest and every policy naming one are unchanged. No
+coupled model could be exported before ADR-473, so no retained bundle had one.
+
+**Consequences.**
+- `test_dynamics_goal_coupled.py` rebuilds the probe gripper headless. Its
+  draw test, run against all three implementations, fails on the old source
+  with exactly `{(1102, 1), (1105, 1), (1110, 1)}` and passes on the new.
+  A second test holds the three draws equal on a coupled mechanism.
+- **Not decided here: the coupled jaws still have no contact.** The joint-pair
+  exclusion covers couplings, so the three targets are still accepted. The
+  draw now reads the overlapping pose, but nothing in it reports the overlap.
+  That needs its own unit and its own ADR.
+- Not measured yet: whether MJX 3.10 in the training venv honours
+  `equality/joint`. It must be measured before any gripper training.
+
+## ADR-475 — A coupling excludes contact only where its parts already touch (2026-10-01)
+
+**Context.** The builder excluded contact between the two components of every
+joint, couplings included, on the reasoning that "a coupling exists precisely
+because we are not simulating tooth contact". That holds for meshed wheels and
+a nut on its thread, whose collision shapes overlap by construction. It does
+not hold for two parts a coupling keeps apart. ADR-474 left the ot11 grip
+probe's geared jaws passing through each other: on the frozen seeds, 1102,
+1105 and 1110 segment 1 are targets where the coupled jaws overlap by 0.5–4.3 mm,
+and the draw accepted them because the jaws had no contact to refuse.
+
+**Decision.** A pin-like joint (revolute, slider, ball, fixed, cylindrical)
+still excludes its pair unconditionally. A coupling's pair (`gears`, `belt`,
+`screw`) is excluded only if MuJoCo reports the two bodies in contact at the
+solved pose; otherwise they collide. The test is the model's own contact pass
+at `qpos_solved`, so it uses the declared shapes, margins and contact groups,
+and the exclusions it adds are listed in `contact_exclusions` like any other.
+No new vocabulary: an author who wants meshed wheels excluded gives them
+shapes that touch, and an author who wants jaws to collide keeps them apart.
+
+Rejected: an authored per-coupling switch. It adds a keyword for a fact the
+solved geometry already states, and the fourth-behaviour rung asks for no new
+code path.
+
+**Consequences.**
+- `test_dynamics_goal_coupled.py::test_the_overlapping_grip_targets_are_refused_for_contact`
+  fails on the old builder, with no refused attempt at all, and on the new one
+  every implementation (engine, reference runner, trainer) refuses 1102, 1105
+  and 1110 segment 1 for jaw contact and draws again. The ADR-474 draw test now
+  asserts that no accepted target overlaps. A third test pins both sides of the
+  rule: meshed boxes on a 2:1 gear train stay excluded, the jaws do not.
+- Only coupled models move. Every uncoupled model, export and digest is
+  unchanged. Coupled models could not be exported before ADR-473, so no
+  retained bundle or policy names one. A coupled pair with no collision shapes
+  is no longer listed in `contact_exclusions`, which changes nothing it
+  simulates.
+- A non-touching coupled pair now goes through the MJX collision-kind check
+  at export, where it used to be skipped.
+- **Measured, not fixed here:** with contact live, the probe gripper commanded
+  fully closed (−20°) is unstable. The jaws meet near −11.5°, and over 4 s the
+  joints swing to 244° with up to 10 mm of jaw penetration. The coupling itself
+  is the first cause: with contact disabled the same command overshoots the
+  ±20° limits to 63.8° before settling, and with the coupling disabled the jaw
+  holds −20° cleanly. A soft `equality/joint` row on two 17 g jaws, a
+  22.9 N·m/rad servo and joint limits on both sides do not agree. Excluding
+  the jaws only hid this. It must be diagnosed before any gripper is trained,
+  alongside whether MJX 3.10 honours `equality/joint`.

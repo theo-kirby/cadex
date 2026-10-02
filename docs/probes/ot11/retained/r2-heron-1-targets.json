@@ -1,0 +1,166 @@
+{
+  "schema": "ot11-held-out-targets-v1",
+  "behaviour": "reach",
+  "project": "ot11-heron-1",
+  "copied_from": "ot8-heron-b",
+  "accepted_revision": "957044aec544194e0b3dd605b7e04289301429b8635f355378a76eff1e8d84df",
+  "model_sha256": "183fabff116f9cc6e5c306718c6b97136c53ef179bfb308268bcbf148b69f7c8",
+  "arm_length_mm": 144.0,
+  "tip_start_mm": [
+    64.0,
+    0.0,
+    120.0
+  ],
+  "spec_block": {
+    "source": "prompts/reach.loop.prompt.txt",
+    "sha256": "52c241ef58e39bc02930a2c4be8f32f0dade1a59ec25dfdf4209331968b8e61d"
+  },
+  "goal": [
+    {
+      "label": "target",
+      "kind": "point",
+      "segments": 2,
+      "resample_steps": 200
+    }
+  ],
+  "drawn_by": "runner/goals.py: evaluation_task, random.Random(seed), apply_randomisation, draw_episode_variation, draw_episode_goals",
+  "drawn_at": "2026-09-30, before any ot11 training run on this model",
+  "checks": {
+    "min_z_mm": 29.4457,
+    "min_z_limit_mm": 14.4,
+    "min_separation_mm": 37.9175,
+    "min_separation_limit_mm": 36.0
+  },
+  "targets": [
+    {
+      "seed": 1101,
+      "target_a_mm": [
+        4.6013,
+        0.0,
+        59.8453
+      ],
+      "target_b_mm": [
+        -6.7449,
+        0.0,
+        176.0464
+      ]
+    },
+    {
+      "seed": 1102,
+      "target_a_mm": [
+        101.4545,
+        0.0,
+        134.7152
+      ],
+      "target_b_mm": [
+        37.1703,
+        0.0,
+        47.1057
+      ]
+    },
+    {
+      "seed": 1103,
+      "target_a_mm": [
+        16.3974,
+        0.0,
+        59.9295
+      ],
+      "target_b_mm": [
+        83.3392,
+        0.0,
+        146.1075
+      ]
+    },
+    {
+      "seed": 1104,
+      "target_a_mm": [
+        5.5648,
+        0.0,
+        67.8035
+      ],
+      "target_b_mm": [
+        -18.3726,
+        0.0,
+        174.3379
+      ]
+    },
+    {
+      "seed": 1105,
+      "target_a_mm": [
+        105.8319,
+        0.0,
+        132.9974
+      ],
+      "target_b_mm": [
+        41.0345,
+        0.0,
+        173.2212
+      ]
+    },
+    {
+      "seed": 1106,
+      "target_a_mm": [
+        45.0816,
+        0.0,
+        154.34
+      ],
+      "target_b_mm": [
+        23.1148,
+        0.0,
+        29.4457
+      ]
+    },
+    {
+      "seed": 1107,
+      "target_a_mm": [
+        55.2054,
+        0.0,
+        53.9116
+      ],
+      "target_b_mm": [
+        44.1736,
+        0.0,
+        95.773
+      ]
+    },
+    {
+      "seed": 1108,
+      "target_a_mm": [
+        13.786,
+        0.0,
+        121.2864
+      ],
+      "target_b_mm": [
+        40.8971,
+        0.0,
+        63.0249
+      ]
+    },
+    {
+      "seed": 1109,
+      "target_a_mm": [
+        11.363,
+        0.0,
+        62.383
+      ],
+      "target_b_mm": [
+        78.0762,
+        0.0,
+        80.0219
+      ]
+    },
+    {
+      "seed": 1110,
+      "target_a_mm": [
+        -9.4462,
+        0.0,
+        103.8567
+      ],
+      "target_b_mm": [
+        21.5738,
+        0.0,
+        125.6625
+      ]
+    }
+  ]
+}

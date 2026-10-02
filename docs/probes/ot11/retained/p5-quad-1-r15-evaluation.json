@@ -1,0 +1,200 @@
+{
+ "schema": "ot11-walk-round-receipt-v1",
+ "project": "ot11-quad-1",
+ "round": 14,
+ "run": "r15-stiffspring-clearfoot",
+ "session": 5,
+ "registered": {
+  "settings": {
+   "checkpoint_every": 100,
+   "envs": 2048,
+   "iterations": 760,
+   "seed": 151
+  },
+  "init_from": null,
+  "budget_s": 2400.0,
+  "reason": "r14 (void, 1.5 mm margin, old spring) tracked speed (W3 10/10, ratio 0.98-1.05) but failed W6 clearance 0.020-0.026 HH (min 0.08), W8-low duty_min 0.30-0.33 (min 0.40), W7 slip 0.11-0.16 (max 0.15) and W10 -0.049 to -0.066 (min -0.05). MECHANISM: margin removed (now 0) and the new 0.004 s contact spring; HIP_MM 96.7006 and WEIGHT_N 5.0507 unchanged (geometry and densities unchanged). TASK: the moving-foot (slip) cost fades as a Gaussian of 6 mm width instead of exp(-h/3 mm), weight 1.5->2.0, so a foot travelling at 2-3 mm lift is charged and only a foot lifted 8+ mm moves free. Fresh start (model changed). Expected: swing clearance toward 8 mm (W6), slip below 0.15 (W7), and duty and W10 passing on the stiffer spring without a margin.",
+  "registered_at": 1790848021.0496783,
+  "accepted_revision": "8b7271f263a10a90bf684b641f7128c059c32bec62ae372373414e4e4199e2e8"
+ },
+ "ended": {
+  "state": "finished",
+  "wall_time_s": 1926.4,
+  "trainer_wall_time_s": 1777.3928039548919,
+  "reason": "the trainer ran every iteration and its policy hashes to its receipt.",
+  "policy_sha256": "d430a92243459cee275d0d4b514386be91f69d1611439a464a46ac3366b7ba11",
+  "best_iteration": 737,
+  "training_reward_per_step_final": -1.1340343952178955,
+  "episode_steps_mean_final": 280.5479431152344,
+  "action_std_final": 0.19667580723762512
+ },
+ "evaluated_by": "the agent's own evaluate tool inside walk session 5's turn (the same code as cadex evaluate); the actor ran nothing",
+ "project_change": "agent: policy_on 0 -> 1 and the policy line moved from walk_r14 to walk_r15 with its sha256 (script_history 0080 -> 0081; 0082 is byte-identical to 0081); nothing else moved",
+ "spec_block": {
+  "rule": "byte-identical except the values of HIP_MM and WEIGHT_N, which must equal the evaluated model's rig to the block's printed precision",
+  "frozen_sha256": "487416afd4da672e4af8ed55ed5f2b1464eeec7bf305381833fd26775b4fe900",
+  "HIP_MM": 96.7006,
+  "rig_hip_height_mm": 96.7006,
+  "WEIGHT_N": 5.05069617762,
+  "rig_weight_n": 5.050696177620001,
+  "other_lines_identical": true,
+  "valid": true
+ },
+ "evaluation": {
+  "report": "evaluations/bf664d9bfc69-d430a9224345/evaluation.json",
+  "accepted_revision": "bf664d9bfc69f6bba847fa16654ae0c55d3457b99f6d9cb95a2f1e1924c8ff47",
+  "policy_sha256": "d430a92243459cee275d0d4b514386be91f69d1611439a464a46ac3366b7ba11",
+  "model_sha256": "6cecfa2de126d2d9f4527e28a21bae3babf01df0beadca84a7cb34fa77705914",
+  "trained_model_sha256": "6cecfa2de126d2d9f4527e28a21bae3babf01df0beadca84a7cb34fa77705914",
+  "task_sha256": "7d31a888a7609af8e1bbbbacd2d3f0546c14bfd5155a0d808f4f1eeff1808037",
+  "trained_task_sha256": "7d31a888a7609af8e1bbbbacd2d3f0546c14bfd5155a0d808f4f1eeff1808037",
+  "engine_source": "dev-tree",
+  "verdict": "fail",
+  "contact_offsets": [],
+  "void_seeds": [],
+  "terminations": {
+   "tipped": 5,
+   "horizon": 5
+  },
+  "episodes": {
+   "1101": {
+    "duration_s": 0.9400000000000001,
+    "termination": "tipped"
+   },
+   "1102": {
+    "duration_s": 0.5,
+    "termination": "tipped"
+   },
+   "1103": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   },
+   "1104": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   },
+   "1105": {
+    "duration_s": 0.52,
+    "termination": "tipped"
+   },
+   "1106": {
+    "duration_s": 0.6,
+    "termination": "tipped"
+   },
+   "1107": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   },
+   "1108": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   },
+   "1109": {
+    "duration_s": 0.64,
+    "termination": "tipped"
+   },
+   "1110": {
+    "duration_s": 10.0,
+    "termination": "horizon"
+   }
+  },
+  "failing_predicates": {
+   "W1": 5,
+   "W2": 5,
+   "W3": 10,
+   "W4-lateral": 5,
+   "W5-steps": 10,
+   "W5-share": 10,
+   "W6": 10,
+   "W7": 10,
+   "W8-low": 10,
+   "W8-high": 10,
+   "W9": 10,
+   "W10": 5
+  },
+  "metrics_min_max": {
+   "completed": [
+    0.0,
+    1.0
+   ],
+   "duration_s": [
+    0.5,
+    10.0
+   ],
+   "max_tilt_deg": [
+    23.6555,
+    40.4683
+   ],
+   "max_heading_deg": [
+    1.805,
+    4.0537
+   ],
+   "final_heading_deg": [
+    -2.0217,
+    2.7655
+   ],
+   "max_drift_mm": [
+    67.0949,
+    93.3349
+   ],
+   "final_drift_mm": [
+    67.0949,
+    92.7429
+   ],
+   "mean_speed_mm_s": [
+    12.5679,
+    147.7644
+   ],
+   "max_drift_com_heights": [
+    0.8488,
+    1.1808
+   ],
+   "recovery_s_max": [
+    0.0005,
+    0.0094
+   ],
+   "mean_forward_speed_mm_s": [
+    2.404,
+    4.4065
+   ],
+   "mean_lateral_speed_mm_s": [
+    -2.8069,
+    0.598
+   ],
+   "steps_min": [
+    0,
+    0
+   ],
+   "step_share_min": [
+    0.0,
+    0.0
+   ],
+   "slip_share_max": [
+    0.5418,
+    0.7999
+   ],
+   "duty_factor_min": [
+    0.0,
+    0.0
+   ],
+   "duty_factor_max": [
+    1.0,
+    1.0
+   ],
+   "foot_lowest_hip_heights_min": [
+    -0.015,
+    -0.0034
+   ],
+   "speed_ratio": [
+    0.0258,
+    0.0624
+   ],
+   "lateral_ratio": [
+    0.0064,
+    0.0397
+   ]
+  }
+ },
+ "void_for_R1": false,
+ "void_check": "contact_offsets is empty: no geom in the evaluated model carries a margin or gap (ADR-470), and the model is the rebuilt af05ab62 lineage on ADR-469's 0.004 s spring"
+}

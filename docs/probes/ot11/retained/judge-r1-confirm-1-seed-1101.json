@@ -1,0 +1,208 @@
+{
+  "schema": "ot11-judge-v1",
+  "label": "r1-confirm-1",
+  "behaviour": "walk",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "dc081807c28033ec7c729ff967d078a2dfdd884f088d8fa7cf130255048d83ed",
+  "instructions_sha256": "dfeab7c7624b2a7472baaaf1e6b9d20ebaba0c80f96953ea203d5725ef02b706",
+  "intent_sha256": "7c1f31c789ac7a16aa757dfa72c57344ad45112fd18fcf5a4bb9e8f616adbb38",
+  "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+  },
+  "evaluation": {
+    "schema": "cadex-evaluation-v1",
+    "verdict": "pass",
+    "accepted_revision": "7df101b06548122d39a0d2142bd46d1da0b82fc91d904fe0c7d4dc839dbde17a",
+    "policy_sha256": "5aaf21e70e632c8b281fcb40c1f81ea05619c91330ab8bfd2acbe442d250210c",
+    "task_sha256": "db67070400dbeb3c0cc67b9ad990cf4c9fb745e002bf91e7004d617110595f15",
+    "model_sha256": "6cecfa2de126d2d9f4527e28a21bae3babf01df0beadca84a7cb34fa77705914"
+  },
+  "seed": 1101,
+  "trace_sha256": "7e0962299bfcee829eda1790480dda9911c168841666f75f7550c6c9233904e4",
+  "film_style_sha256": "1329adc73f1cdf726eb548a2f1b26debd7934641ac965c240efc5bf5ffebe29f",
+  "sheets": [
+    {
+      "sheet": "overview",
+      "sha256": "f22eddf0f52b95aa6d417ae6da1f01d56f8b4f647ad79ea5c5d94a03ad5b53a1",
+      "frames": 12,
+      "times_s": [
+        0.0,
+        0.9,
+        1.8,
+        2.72,
+        3.62,
+        4.54,
+        5.44,
+        6.36,
+        7.26,
+        8.18,
+        9.08,
+        10.0
+      ],
+      "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path"
+    },
+    {
+      "sheet": "detail",
+      "sha256": "2adce81886c6d23edeee8c00ee328e9b6a6da6e19b5515483b456680718838f5",
+      "frames": 12,
+      "times_s": [
+        5.0,
+        5.04,
+        5.08,
+        5.12,
+        5.16,
+        5.2,
+        5.24,
+        5.28,
+        5.32,
+        5.36,
+        5.4,
+        5.44
+      ],
+      "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+      "follows": "c_tray"
+    }
+  ],
+  "medians": {
+    "V1": 3,
+    "V2": 3,
+    "V3": 2,
+    "V4": 2
+  },
+  "total": 10,
+  "meets_bar": true,
+  "raw": [
+    {
+      "scores": {
+        "V1": {
+          "score": 3,
+          "reason": "The robot moves steadily forward across the floor from the first frame to the last, covering similar ground in each overview interval, and never stops or falls."
+        },
+        "V2": {
+          "score": 3,
+          "reason": "In the detail frames the feet clearly lift, swing forward and land in turn while the body stays upright, with no sign of sliding, dragging or hopping in place."
+        },
+        "V3": {
+          "score": 2,
+          "reason": "It stays up throughout, but at 4.54 s and 7.26 s the body looks briefly turned and tilted, likely from the shove, before it recovers."
+        },
+        "V4": {
+          "score": 2,
+          "reason": "The gait and pace look regular across the episode, apart from the brief odd postures around 4.54 s and 7.26 s."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 3, \"reason\": \"The robot moves steadily forward across the floor from the first frame to the last, covering similar ground in each overview interval, and never stops or falls.\"}, \"V2\": {\"score\": 3, \"reason\": \"In the detail frames the feet clearly lift, swing forward and land in turn while the body stays upright, with no sign of sliding, dragging or hopping in place.\"}, \"V3\": {\"score\": 2, \"reason\": \"It stays up throughout, but at 4.54 s and 7.26 s the body looks briefly turned and tilted, likely from the shove, before it recovers.\"}, \"V4\": {\"score\": 2, \"reason\": \"The gait and pace look regular across the episode, apart from the brief odd postures around 4.54 s and 7.26 s.\"}}",
+      "session_id": "dc62c0e6-f7b3-4f6b-94a7-72d5c8de65a5",
+      "duration_ms": 6895,
+      "num_turns": 3,
+      "total_cost_usd": 0.050207,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 586,
+          "cacheReadInputTokens": 2435,
+          "cacheCreationInputTokens": 4748,
+          "webSearchRequests": 0,
+          "costUSD": 0.050207,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 176,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 3,
+          "reason": "The robot moves forward at a steady rate from the first overview frame to the last and is still walking at 10.00 s, so it keeps going after any disturbance."
+        },
+        "V2": {
+          "score": 3,
+          "reason": "The detail frames show real steps: feet lift clear of the floor, swing forward and land in turn, and there's no sign of sliding or dragging."
+        },
+        "V3": {
+          "score": 2,
+          "reason": "It stays upright and mostly level, but around 4.54 s and 7.26 s the body looks visibly tilted and twisted before it recovers."
+        },
+        "V4": {
+          "score": 2,
+          "reason": "Progress and gait are regular across most of the filmstrip, apart from a few irregular moments where the posture is disturbed."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 3, \"reason\": \"The robot moves forward at a steady rate from the first overview frame to the last and is still walking at 10.00 s, so it keeps going after any disturbance.\"}, \"V2\": {\"score\": 3, \"reason\": \"The detail frames show real steps: feet lift clear of the floor, swing forward and land in turn, and there's no sign of sliding or dragging.\"}, \"V3\": {\"score\": 2, \"reason\": \"It stays upright and mostly level, but around 4.54 s and 7.26 s the body looks visibly tilted and twisted before it recovers.\"}, \"V4\": {\"score\": 2, \"reason\": \"Progress and gait are regular across most of the filmstrip, apart from a few irregular moments where the posture is disturbed.\"}}",
+      "session_id": "cb4b894f-f592-498a-9562-f69302073c49",
+      "duration_ms": 7248,
+      "num_turns": 3,
+      "total_cost_usd": 0.0358492,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 573,
+          "cacheReadInputTokens": 4226,
+          "cacheCreationInputTokens": 2941,
+          "webSearchRequests": 0,
+          "costUSD": 0.0358492,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 171,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 3,
+          "reason": "The robot keeps moving forward across the floor at a steady rate from 0.00 s to 10.00 s and holds roughly the same direction of travel."
+        },
+        "V2": {
+          "score": 3,
+          "reason": "In the detail frames the feet lift clear, swing forward and land in turn while the stance feet stay planted, so these are real steps rather than sliding or dragging."
+        },
+        "V3": {
+          "score": 2,
+          "reason": "It stays upright throughout, but at 4.54 s and 7.26 s the body visibly pitches and turns before settling again."
+        },
+        "V4": {
+          "score": 2,
+          "reason": "The gait and pace look regular across the episode apart from the two brief posture disturbances around 4.5 s and 7.3 s."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 3, \"reason\": \"The robot keeps moving forward across the floor at a steady rate from 0.00 s to 10.00 s and holds roughly the same direction of travel.\"}, \"V2\": {\"score\": 3, \"reason\": \"In the detail frames the feet lift clear, swing forward and land in turn while the stance feet stay planted, so these are real steps rather than sliding or dragging.\"}, \"V3\": {\"score\": 2, \"reason\": \"It stays upright throughout, but at 4.54 s and 7.26 s the body visibly pitches and turns before settling again.\"}, \"V4\": {\"score\": 2, \"reason\": \"The gait and pace look regular across the episode apart from the two brief posture disturbances around 4.5 s and 7.3 s.\"}}",
+      "session_id": "75feb381-62b9-4046-bcbd-ec10fa768130",
+      "duration_ms": 7380,
+      "num_turns": 3,
+      "total_cost_usd": 0.036630399999999994,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 608,
+          "cacheReadInputTokens": 4232,
+          "cacheCreationInputTokens": 2951,
+          "webSearchRequests": 0,
+          "costUSD": 0.036630399999999994,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 202,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,927 @@
+{
+ "behaviour": "balance",
+ "note": "ot9's r3-ppo-1 policy, the ten stored ot9 evaluation traces (ot9 seeds 0-9, 8 s, reset variation only, no shove), read against the frozen balance spec. Off-contract: the traces predate the contract.",
+ "pass": false,
+ "rig": {
+  "base": "comp_chassis",
+  "base_com_local_mm": [
+   0.458126,
+   0.0,
+   -49.8393
+  ],
+  "com_height_mm": 52.39964209326001,
+  "floor_mm": 0.0,
+  "hip_height_mm": null,
+  "mass_kg": 0.18792635200000005,
+  "reference_xyzw": [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ],
+  "weight_n": 1.8435575131200006
+ },
+ "schema": "ot11-measure-v1",
+ "traces": [
+  {
+   "behaviour": "balance",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "B3",
+    "B4"
+   ],
+   "metrics": {
+    "com_height_mm": 52.39964209326001,
+    "drift_limit_mm": 104.79928418652003,
+    "final_drift_mm": 841.3242110156269,
+    "final_heading_deg": 86.99511503939685,
+    "max_drift_mm": 841.3242110156269,
+    "max_heading_deg": 131.27790794357878,
+    "max_tilt_deg": 5.351710635177104,
+    "mean_speed_mm_s": 110.8344124451837,
+    "recovery_s": []
+   },
+   "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+   "not_measured": [
+    "B1",
+    "B5"
+   ],
+   "pass": false,
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "predicates": [
+    {
+     "id": "B1",
+     "limit": {},
+     "name": "completes",
+     "pass": null,
+     "value": {
+      "duration_s": 8.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": "ran its own task's 8.0 s horizon, not the contract's 10.0 s"
+    },
+    {
+     "id": "B2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": true,
+     "value": 5.351710635177104,
+     "why": ""
+    },
+    {
+     "id": "B3",
+     "limit": {
+      "max": 2.0
+     },
+     "name": "stays_in_place",
+     "pass": false,
+     "value": 16.05591522015078,
+     "why": ""
+    },
+    {
+     "id": "B4",
+     "limit": {
+      "max": 20.0
+     },
+     "name": "keeps_heading",
+     "pass": false,
+     "value": 131.27790794357878,
+     "why": ""
+    },
+    {
+     "id": "B5",
+     "limit": {
+      "max_s": 2.0,
+      "rest": {
+       "hold_s": 1.0,
+       "speed_com_heights_per_s_max": 1.0,
+       "tilt_deg_max": 10.0
+      }
+     },
+     "name": "recovers",
+     "pass": null,
+     "value": [],
+     "why": "the episode applied no shove"
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 0,
+   "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+   "trace": "$PROJECTS/ot9-robin/eval/r3-ppo-1/seed-0/assembly-simulation-trace.json",
+   "void": []
+  },
+  {
+   "behaviour": "balance",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "B3",
+    "B4"
+   ],
+   "metrics": {
+    "com_height_mm": 52.39964209326001,
+    "drift_limit_mm": 104.79928418652003,
+    "final_drift_mm": 848.722679357961,
+    "final_heading_deg": 86.52379694504388,
+    "max_drift_mm": 848.722679357961,
+    "max_heading_deg": 131.41365899828259,
+    "max_tilt_deg": 3.9752951845047657,
+    "mean_speed_mm_s": 112.16595837051294,
+    "recovery_s": []
+   },
+   "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+   "not_measured": [
+    "B1",
+    "B5"
+   ],
+   "pass": false,
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "predicates": [
+    {
+     "id": "B1",
+     "limit": {},
+     "name": "completes",
+     "pass": null,
+     "value": {
+      "duration_s": 8.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": "ran its own task's 8.0 s horizon, not the contract's 10.0 s"
+    },
+    {
+     "id": "B2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": true,
+     "value": 3.9752951845047657,
+     "why": ""
+    },
+    {
+     "id": "B3",
+     "limit": {
+      "max": 2.0
+     },
+     "name": "stays_in_place",
+     "pass": false,
+     "value": 16.1971083284771,
+     "why": ""
+    },
+    {
+     "id": "B4",
+     "limit": {
+      "max": 20.0
+     },
+     "name": "keeps_heading",
+     "pass": false,
+     "value": 131.41365899828259,
+     "why": ""
+    },
+    {
+     "id": "B5",
+     "limit": {
+      "max_s": 2.0,
+      "rest": {
+       "hold_s": 1.0,
+       "speed_com_heights_per_s_max": 1.0,
+       "tilt_deg_max": 10.0
+      }
+     },
+     "name": "recovers",
+     "pass": null,
+     "value": [],
+     "why": "the episode applied no shove"
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 1,
+   "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+   "trace": "$PROJECTS/ot9-robin/eval/r3-ppo-1/seed-1/assembly-simulation-trace.json",
+   "void": []
+  },
+  {
+   "behaviour": "balance",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "B3",
+    "B4"
+   ],
+   "metrics": {
+    "com_height_mm": 52.39964209326001,
+    "drift_limit_mm": 104.79928418652003,
+    "final_drift_mm": 829.4056966069452,
+    "final_heading_deg": 86.33076726155748,
+    "max_drift_mm": 829.4056966069452,
+    "max_heading_deg": 130.8918397186748,
+    "max_tilt_deg": 4.850221501758128,
+    "mean_speed_mm_s": 109.01392250269663,
+    "recovery_s": []
+   },
+   "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+   "not_measured": [
+    "B1",
+    "B5"
+   ],
+   "pass": false,
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "predicates": [
+    {
+     "id": "B1",
+     "limit": {},
+     "name": "completes",
+     "pass": null,
+     "value": {
+      "duration_s": 8.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": "ran its own task's 8.0 s horizon, not the contract's 10.0 s"
+    },
+    {
+     "id": "B2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": true,
+     "value": 4.850221501758128,
+     "why": ""
+    },
+    {
+     "id": "B3",
+     "limit": {
+      "max": 2.0
+     },
+     "name": "stays_in_place",
+     "pass": false,
+     "value": 15.82846110152399,
+     "why": ""
+    },
+    {
+     "id": "B4",
+     "limit": {
+      "max": 20.0
+     },
+     "name": "keeps_heading",
+     "pass": false,
+     "value": 130.8918397186748,
+     "why": ""
+    },
+    {
+     "id": "B5",
+     "limit": {
+      "max_s": 2.0,
+      "rest": {
+       "hold_s": 1.0,
+       "speed_com_heights_per_s_max": 1.0,
+       "tilt_deg_max": 10.0
+      }
+     },
+     "name": "recovers",
+     "pass": null,
+     "value": [],
+     "why": "the episode applied no shove"
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 2,
+   "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+   "trace": "$PROJECTS/ot9-robin/eval/r3-ppo-1/seed-2/assembly-simulation-trace.json",
+   "void": []
+  },
+  {
+   "behaviour": "balance",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "B3",
+    "B4"
+   ],
+   "metrics": {
+    "com_height_mm": 52.39964209326001,
+    "drift_limit_mm": 104.79928418652003,
+    "final_drift_mm": 850.5656198526126,
+    "final_heading_deg": 87.07383107489397,
+    "max_drift_mm": 850.5656198526126,
+    "max_heading_deg": 131.5367889617071,
+    "max_tilt_deg": 3.7929005218018985,
+    "mean_speed_mm_s": 112.3983876305304,
+    "recovery_s": []
+   },
+   "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+   "not_measured": [
+    "B1",
+    "B5"
+   ],
+   "pass": false,
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "predicates": [
+    {
+     "id": "B1",
+     "limit": {},
+     "name": "completes",
+     "pass": null,
+     "value": {
+      "duration_s": 8.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": "ran its own task's 8.0 s horizon, not the contract's 10.0 s"
+    },
+    {
+     "id": "B2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": true,
+     "value": 3.7929005218018985,
+     "why": ""
+    },
+    {
+     "id": "B3",
+     "limit": {
+      "max": 2.0
+     },
+     "name": "stays_in_place",
+     "pass": false,
+     "value": 16.23227918883091,
+     "why": ""
+    },
+    {
+     "id": "B4",
+     "limit": {
+      "max": 20.0
+     },
+     "name": "keeps_heading",
+     "pass": false,
+     "value": 131.5367889617071,
+     "why": ""
+    },
+    {
+     "id": "B5",
+     "limit": {
+      "max_s": 2.0,
+      "rest": {
+       "hold_s": 1.0,
+       "speed_com_heights_per_s_max": 1.0,
+       "tilt_deg_max": 10.0
+      }
+     },
+     "name": "recovers",
+     "pass": null,
+     "value": [],
+     "why": "the episode applied no shove"
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 3,
+   "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+   "trace": "$PROJECTS/ot9-robin/eval/r3-ppo-1/seed-3/assembly-simulation-trace.json",
+   "void": []
+  },
+  {
+   "behaviour": "balance",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "B3",
+    "B4"
+   ],
+   "metrics": {
+    "com_height_mm": 52.39964209326001,
+    "drift_limit_mm": 104.79928418652003,
+    "final_drift_mm": 843.9459502771352,
+    "final_heading_deg": 86.8911361570728,
+    "max_drift_mm": 843.9459502771352,
+    "max_heading_deg": 131.3545124925955,
+    "max_tilt_deg": 3.0482995468317826,
+    "mean_speed_mm_s": 111.35955347300576,
+    "recovery_s": []
+   },
+   "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+   "not_measured": [
+    "B1",
+    "B5"
+   ],
+   "pass": false,
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "predicates": [
+    {
+     "id": "B1",
+     "limit": {},
+     "name": "completes",
+     "pass": null,
+     "value": {
+      "duration_s": 8.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": "ran its own task's 8.0 s horizon, not the contract's 10.0 s"
+    },
+    {
+     "id": "B2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": true,
+     "value": 3.0482995468317826,
+     "why": ""
+    },
+    {
+     "id": "B3",
+     "limit": {
+      "max": 2.0
+     },
+     "name": "stays_in_place",
+     "pass": false,
+     "value": 16.10594875390741,
+     "why": ""
+    },
+    {
+     "id": "B4",
+     "limit": {
+      "max": 20.0
+     },
+     "name": "keeps_heading",
+     "pass": false,
+     "value": 131.3545124925955,
+     "why": ""
+    },
+    {
+     "id": "B5",
+     "limit": {
+      "max_s": 2.0,
+      "rest": {
+       "hold_s": 1.0,
+       "speed_com_heights_per_s_max": 1.0,
+       "tilt_deg_max": 10.0
+      }
+     },
+     "name": "recovers",
+     "pass": null,
+     "value": [],
+     "why": "the episode applied no shove"
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 4,
+   "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+   "trace": "$PROJECTS/ot9-robin/eval/r3-ppo-1/seed-4/assembly-simulation-trace.json",
+   "void": []
+  },
+  {
+   "behaviour": "balance",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "B3",
+    "B4"
+   ],
+   "metrics": {
+    "com_height_mm": 52.39964209326001,
+    "drift_limit_mm": 104.79928418652003,
+    "final_drift_mm": 843.2847206620816,
+    "final_heading_deg": 87.05473893656894,
+    "max_drift_mm": 843.2847206620816,
+    "max_heading_deg": 131.34270998700777,
+    "max_tilt_deg": 5.13039676526465,
+    "mean_speed_mm_s": 111.13404603561871,
+    "recovery_s": []
+   },
+   "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+   "not_measured": [
+    "B1",
+    "B5"
+   ],
+   "pass": false,
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "predicates": [
+    {
+     "id": "B1",
+     "limit": {},
+     "name": "completes",
+     "pass": null,
+     "value": {
+      "duration_s": 8.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": "ran its own task's 8.0 s horizon, not the contract's 10.0 s"
+    },
+    {
+     "id": "B2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": true,
+     "value": 5.13039676526465,
+     "why": ""
+    },
+    {
+     "id": "B3",
+     "limit": {
+      "max": 2.0
+     },
+     "name": "stays_in_place",
+     "pass": false,
+     "value": 16.093329781932812,
+     "why": ""
+    },
+    {
+     "id": "B4",
+     "limit": {
+      "max": 20.0
+     },
+     "name": "keeps_heading",
+     "pass": false,
+     "value": 131.34270998700777,
+     "why": ""
+    },
+    {
+     "id": "B5",
+     "limit": {
+      "max_s": 2.0,
+      "rest": {
+       "hold_s": 1.0,
+       "speed_com_heights_per_s_max": 1.0,
+       "tilt_deg_max": 10.0
+      }
+     },
+     "name": "recovers",
+     "pass": null,
+     "value": [],
+     "why": "the episode applied no shove"
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 5,
+   "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+   "trace": "$PROJECTS/ot9-robin/eval/r3-ppo-1/seed-5/assembly-simulation-trace.json",
+   "void": []
+  },
+  {
+   "behaviour": "balance",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "B3",
+    "B4"
+   ],
+   "metrics": {
+    "com_height_mm": 52.39964209326001,
+    "drift_limit_mm": 104.79928418652003,
+    "final_drift_mm": 836.3205210999457,
+    "final_heading_deg": 86.87124664953974,
+    "max_drift_mm": 836.3205210999457,
+    "max_heading_deg": 131.16509872527195,
+    "max_tilt_deg": 4.877387183465551,
+    "mean_speed_mm_s": 110.04544786691918,
+    "recovery_s": []
+   },
+   "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+   "not_measured": [
+    "B1",
+    "B5"
+   ],
+   "pass": false,
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "predicates": [
+    {
+     "id": "B1",
+     "limit": {},
+     "name": "completes",
+     "pass": null,
+     "value": {
+      "duration_s": 8.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": "ran its own task's 8.0 s horizon, not the contract's 10.0 s"
+    },
+    {
+     "id": "B2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": true,
+     "value": 4.877387183465551,
+     "why": ""
+    },
+    {
+     "id": "B3",
+     "limit": {
+      "max": 2.0
+     },
+     "name": "stays_in_place",
+     "pass": false,
+     "value": 15.960424302354514,
+     "why": ""
+    },
+    {
+     "id": "B4",
+     "limit": {
+      "max": 20.0
+     },
+     "name": "keeps_heading",
+     "pass": false,
+     "value": 131.16509872527195,
+     "why": ""
+    },
+    {
+     "id": "B5",
+     "limit": {
+      "max_s": 2.0,
+      "rest": {
+       "hold_s": 1.0,
+       "speed_com_heights_per_s_max": 1.0,
+       "tilt_deg_max": 10.0
+      }
+     },
+     "name": "recovers",
+     "pass": null,
+     "value": [],
+     "why": "the episode applied no shove"
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 6,
+   "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+   "trace": "$PROJECTS/ot9-robin/eval/r3-ppo-1/seed-6/assembly-simulation-trace.json",
+   "void": []
+  },
+  {
+   "behaviour": "balance",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "B3",
+    "B4"
+   ],
+   "metrics": {
+    "com_height_mm": 52.39964209326001,
+    "drift_limit_mm": 104.79928418652003,
+    "final_drift_mm": 846.4206612419903,
+    "final_heading_deg": 86.69288386185293,
+    "max_drift_mm": 846.4206612419903,
+    "max_heading_deg": 131.4022704212167,
+    "max_tilt_deg": 3.1732235137936464,
+    "mean_speed_mm_s": 111.81337451235295,
+    "recovery_s": []
+   },
+   "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+   "not_measured": [
+    "B1",
+    "B5"
+   ],
+   "pass": false,
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "predicates": [
+    {
+     "id": "B1",
+     "limit": {},
+     "name": "completes",
+     "pass": null,
+     "value": {
+      "duration_s": 8.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": "ran its own task's 8.0 s horizon, not the contract's 10.0 s"
+    },
+    {
+     "id": "B2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": true,
+     "value": 3.1732235137936464,
+     "why": ""
+    },
+    {
+     "id": "B3",
+     "limit": {
+      "max": 2.0
+     },
+     "name": "stays_in_place",
+     "pass": false,
+     "value": 16.153176384975012,
+     "why": ""
+    },
+    {
+     "id": "B4",
+     "limit": {
+      "max": 20.0
+     },
+     "name": "keeps_heading",
+     "pass": false,
+     "value": 131.4022704212167,
+     "why": ""
+    },
+    {
+     "id": "B5",
+     "limit": {
+      "max_s": 2.0,
+      "rest": {
+       "hold_s": 1.0,
+       "speed_com_heights_per_s_max": 1.0,
+       "tilt_deg_max": 10.0
+      }
+     },
+     "name": "recovers",
+     "pass": null,
+     "value": [],
+     "why": "the episode applied no shove"
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 7,
+   "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+   "trace": "$PROJECTS/ot9-robin/eval/r3-ppo-1/seed-7/assembly-simulation-trace.json",
+   "void": []
+  },
+  {
+   "behaviour": "balance",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "B3",
+    "B4"
+   ],
+   "metrics": {
+    "com_height_mm": 52.39964209326001,
+    "drift_limit_mm": 104.79928418652003,
+    "final_drift_mm": 840.5658007821339,
+    "final_heading_deg": 87.04936273231603,
+    "max_drift_mm": 840.5658007821339,
+    "max_heading_deg": 131.28304881827802,
+    "max_tilt_deg": 3.0629204209619814,
+    "mean_speed_mm_s": 110.75667197712148,
+    "recovery_s": []
+   },
+   "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+   "not_measured": [
+    "B1",
+    "B5"
+   ],
+   "pass": false,
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "predicates": [
+    {
+     "id": "B1",
+     "limit": {},
+     "name": "completes",
+     "pass": null,
+     "value": {
+      "duration_s": 8.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": "ran its own task's 8.0 s horizon, not the contract's 10.0 s"
+    },
+    {
+     "id": "B2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": true,
+     "value": 3.0629204209619814,
+     "why": ""
+    },
+    {
+     "id": "B3",
+     "limit": {
+      "max": 2.0
+     },
+     "name": "stays_in_place",
+     "pass": false,
+     "value": 16.041441643553764,
+     "why": ""
+    },
+    {
+     "id": "B4",
+     "limit": {
+      "max": 20.0
+     },
+     "name": "keeps_heading",
+     "pass": false,
+     "value": 131.28304881827802,
+     "why": ""
+    },
+    {
+     "id": "B5",
+     "limit": {
+      "max_s": 2.0,
+      "rest": {
+       "hold_s": 1.0,
+       "speed_com_heights_per_s_max": 1.0,
+       "tilt_deg_max": 10.0
+      }
+     },
+     "name": "recovers",
+     "pass": null,
+     "value": [],
+     "why": "the episode applied no shove"
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 8,
+   "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+   "trace": "$PROJECTS/ot9-robin/eval/r3-ppo-1/seed-8/assembly-simulation-trace.json",
+   "void": []
+  },
+  {
+   "behaviour": "balance",
+   "conditions": "off-contract: a trace that predates the contract, run under its own task's conditions",
+   "failing": [
+    "B3",
+    "B4"
+   ],
+   "metrics": {
+    "com_height_mm": 52.39964209326001,
+    "drift_limit_mm": 104.79928418652003,
+    "final_drift_mm": 850.802807857738,
+    "final_heading_deg": 87.46054214327432,
+    "max_drift_mm": 850.802807857738,
+    "max_heading_deg": 131.62641881508233,
+    "max_tilt_deg": 2.783130117749139,
+    "mean_speed_mm_s": 112.45089877502774,
+    "recovery_s": []
+   },
+   "mjcf_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614",
+   "not_measured": [
+    "B1",
+    "B5"
+   ],
+   "pass": false,
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "predicates": [
+    {
+     "id": "B1",
+     "limit": {},
+     "name": "completes",
+     "pass": null,
+     "value": {
+      "duration_s": 8.0,
+      "termination": "",
+      "truncated": true
+     },
+     "why": "ran its own task's 8.0 s horizon, not the contract's 10.0 s"
+    },
+    {
+     "id": "B2",
+     "limit": {
+      "max": 30.0
+     },
+     "name": "upright",
+     "pass": true,
+     "value": 2.783130117749139,
+     "why": ""
+    },
+    {
+     "id": "B3",
+     "limit": {
+      "max": 2.0
+     },
+     "name": "stays_in_place",
+     "pass": false,
+     "value": 16.236805708395742,
+     "why": ""
+    },
+    {
+     "id": "B4",
+     "limit": {
+      "max": 20.0
+     },
+     "name": "keeps_heading",
+     "pass": false,
+     "value": 131.62641881508233,
+     "why": ""
+    },
+    {
+     "id": "B5",
+     "limit": {
+      "max_s": 2.0,
+      "rest": {
+       "hold_s": 1.0,
+       "speed_com_heights_per_s_max": 1.0,
+       "tilt_deg_max": 10.0
+      }
+     },
+     "name": "recovers",
+     "pass": null,
+     "value": [],
+     "why": "the episode applied no shove"
+    }
+   ],
+   "schema": "ot11-measure-v1",
+   "seed": 9,
+   "task_sha256": "1f8c1040d6668a4f86a0cabb5d41d40a2c03bb5b1830d50d10c731d590269246",
+   "trace": "$PROJECTS/ot9-robin/eval/r3-ppo-1/seed-9/assembly-simulation-trace.json",
+   "void": []
+  }
+ ]
+}

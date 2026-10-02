@@ -4157,6 +4157,15 @@ def _execute_task_bundle(
             for entry in list(properties.get("disturbance") or [])
         ],
     }
+    if properties.get("goals"):
+        declaration["goal"] = [
+            _goal_input(entry, component_outputs)
+            for entry in properties["goals"]
+        ]
+    if properties.get("success") is not None:
+        declaration["success"] = _success_input(
+            properties["success"], component_outputs, joint_outputs
+        )
 
     try:
         reloaded = CadexDynamics.load_model(xml)
@@ -4219,6 +4228,44 @@ def _execute_task_bundle(
             ],
             "episode": dict(bundle["episode"]),
             "mujoco_version": str(bundle["mujoco_version"]),
+            # What each episode asks for, when the task says (ADR-462): the
+            # channels a policy reads after its sensors and a reward names.
+            **(
+                {
+                    "goals": [
+                        {
+                            "name": str(entry["name"]),
+                            "kind": str(entry["kind"]),
+                            "channels": list(entry["channels"]),
+                            "unit": str(entry["unit"]),
+                            "resample_steps": int(entry["resample_steps"]),
+                        }
+                        for entry in bundle["goal"]
+                    ]
+                }
+                if "goal" in bundle
+                else {}
+            ),
+            # What the task is judged by, when it declares it (ADR-456): the
+            # predicates by id, the seeds, and the scale a threshold in hip
+            # heights or centre-of-mass heights has on this mechanism.
+            **(
+                {
+                    "success": {
+                        "predicates": [
+                            str(row["id"])
+                            for row in bundle["success"]["predicates"]
+                        ],
+                        "seeds": list(bundle["success"]["seeds"]),
+                        "episode_seconds": float(
+                            bundle["success"]["episode"]["episode_seconds"]
+                        ),
+                        "scale": dict(bundle["success"]["scale"]),
+                    }
+                }
+                if "success" in bundle
+                else {}
+            ),
         },
         # One episode, run here from the file that was just written. It is
         # not the training run -- it is the receipt that the bundle
@@ -4784,6 +4831,9 @@ def _execute_policy_rollout(
         "truncated": bool(episode["truncated"]),
         "seed": episode["seed"],
         "randomisation": list(episode["randomisation"]),
+        # What the episode asked the policy to do, segment by segment, when
+        # its task states a goal (ADR-462).
+        **({"goal": list(episode["goal"])} if episode.get("goal") else {}),
     }
     clearance_pairs, clearance_gap = _declared_clearance(
         properties, component_outputs
@@ -4816,6 +4866,12 @@ def _execute_policy_rollout(
             # no policy and therefore no commands, and the shell draws the
             # panel only when the key is present.
             "actuator_channels": list(run["actuator_channels"]),
+            # ...and only a rollout of a task with a goal has this: what
+            # each frame's ``goal`` row means.
+            **(
+                {"goal_channels": list(run["goal_channels"])}
+                if "goal_channels" in run else {}
+            ),
             **({"clearance": clearance} if clearance else {}),
         },
         summary_extra={
@@ -4914,6 +4970,96 @@ def _disturbance_input(
         "at_seconds_high": float(properties.get("at_seconds_high")),
         "duration_s": float(properties.get("duration_s")),
     }
+
+
+def _goal_input(
+    entry: DomainValue,
+    component_outputs: Mapping[int, str],
+) -> dict[str, Any]:
+    """One ``api.goal`` value, in the API's own units (ADR-462).
+
+    Millimetres and seconds here; CadexDynamics converts a point goal's
+    lengths once, at bundle-build time, as it does a reset variation's.
+    """
+
+    properties = dict(_properties(entry, "goal"))
+    resolved: dict[str, Any] = {
+        "label": str(properties.get("label") or properties.get("name")),
+        "name": str(properties.get("name")),
+        "kind": str(properties.get("kind")),
+        "resample_seconds": properties.get("resample_seconds"),
+    }
+    if properties.get("tip") is not None:
+        resolved.update(
+            tip=component_outputs[id(properties["tip"])],
+            tip_offset_mm=[float(v) for v in properties.get("tip_offset_mm") or ()],
+            joint_fraction=float(properties.get("joint_fraction")),
+            min_z_mm=properties.get("min_z_mm"),
+            min_separation_mm=float(properties.get("min_separation_mm") or 0.0),
+        )
+    else:
+        resolved.update(
+            low=float(properties.get("low")), high=float(properties.get("high"))
+        )
+    return resolved
+
+
+def _success_input(
+    entry: DomainValue,
+    component_outputs: Mapping[int, str],
+    joint_outputs: Mapping[int, str],
+) -> dict[str, Any]:
+    """One ``api.success`` value, as the spec CadexDynamics resolves.
+
+    Components become the names the model knows them by. The three condition
+    lists stay ``None`` when the script omitted them, which is how the
+    engine tells "the task's own" from "none" (ADR-456, ADR-458).
+    """
+
+    properties = dict(_properties(entry, "success"))
+    resolved: dict[str, Any] = {
+        "label": str(properties.get("label") or ""),
+        "predicates": [dict(row) for row in properties.get("predicates") or ()],
+        "seeds": [int(seed) for seed in properties.get("seeds") or ()],
+        "feet": [
+            component_outputs[id(foot)] for foot in properties.get("feet") or ()
+        ],
+        "tip": None,
+        "episode_seconds": properties.get("episode_seconds"),
+        "randomisation": None,
+        "reset_variation": None,
+        "disturbance": None,
+        "goal": None,
+        "scale": (
+            None if properties.get("scale") is None
+            else {str(k): float(v) for k, v in dict(properties["scale"]).items()}
+        ),
+    }
+    if properties.get("goals") is not None:
+        resolved["goal"] = [
+            _goal_input(item, component_outputs) for item in properties["goals"]
+        ]
+    if properties.get("tip") is not None:
+        resolved["tip"] = {
+            "body": component_outputs[id(properties["tip"])],
+            "local_mm": [float(v) for v in properties.get("tip_offset_mm") or ()],
+        }
+    if properties.get("randomisation") is not None:
+        resolved["randomisation"] = [
+            _randomisation_input(item, component_outputs, joint_outputs)
+            for item in properties["randomisation"]
+        ]
+    if properties.get("reset_variation") is not None:
+        resolved["reset_variation"] = [
+            _reset_variation_input(item, component_outputs)
+            for item in properties["reset_variation"]
+        ]
+    if properties.get("disturbance") is not None:
+        resolved["disturbance"] = [
+            _disturbance_input(item, component_outputs)
+            for item in properties["disturbance"]
+        ]
+    return resolved
 
 
 def _dynamics_failure(

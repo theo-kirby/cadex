@@ -23,6 +23,7 @@ import sys
 from typing import Any, Mapping, TextIO
 
 from . import CLI_SCHEMA
+from .evaluate import human_lines as evaluation_lines
 from .export import ExportedOutput
 
 #: Exit codes, so a pipeline can branch on *why* rather than on stderr.
@@ -84,6 +85,12 @@ class RunReport:
     #: as measured — verdict, the checks and every failing
     #: line — plus ``receipt``, where it landed. Not re-derived here.
     smoke: dict[str, Any] = field(default_factory=dict)
+    #: ``cadex evaluate`` (ADR-457): the verdict, the summary over the
+    #: frozen seeds and ``report``, where the full ``evaluation.json`` with
+    #: every seed's rows landed. The per-seed rows stay in that file.
+    #: ``film`` (ADR-459) is the film's state and where each sheet and
+    #: video drawn from the seeds landed.
+    evaluation: dict[str, Any] = field(default_factory=dict)
     error: str = ""
     #: Free-form notes worth printing but not worth a field of their own.
     notes: list[str] = field(default_factory=list)
@@ -120,6 +127,8 @@ class RunReport:
             payload["inventory"] = dict(self.inventory)
         if self.smoke:
             payload["smoke"] = dict(self.smoke)
+        if self.evaluation:
+            payload["evaluation"] = dict(self.evaluation)
         if self.notes:
             payload["notes"] = list(self.notes)
         if self.error:
@@ -307,6 +316,8 @@ def human_lines(report: RunReport) -> list[str]:
         ))
         for line in report.smoke.get("failing") or []:
             lines.append(f"  {line}")
+    if report.evaluation:
+        lines.extend(evaluation_lines(report.evaluation))
     for leg in report.walk.get("legs") or []:
         lines.append(
             "leg    {:<8s} exit {:d}  {:.1f} s".format(

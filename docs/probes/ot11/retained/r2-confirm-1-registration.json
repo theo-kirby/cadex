@@ -1,0 +1,98 @@
+{
+ "schema": "ot11-confirmation-registration-v1",
+ "criterion": "R2",
+ "behaviour": "reach",
+ "confirmation": 1,
+ "registered_at": "2026-09-30T21:20:00Z",
+ "project": "ot11-heron-1",
+ "project_head": "0bd5452b48ffeb14f68fc34de5f5635a56d382f4",
+ "accepted_revision": "13f9c63c93c9b59145001906062c618884fc31fdc72955846215c44654eb6fc4",
+ "policy_sha256": "6bb5a403c4afd1435dee067debc1dc371af0eabec5e5196add78c8fed9a6f6cc",
+ "policy_source": "run reach-r5, checkpoint heron_reach_task.000400.cxpolicy, declared by the product agent as assets/reach_r5.cxpolicy (policy output heron_reach_policy)",
+ "task_sha256": "e912e0403393b489867cebf3f3be4cc62218e492aae6b89625dba18ad25d55e0",
+ "model_sha256": "183fabff116f9cc6e5c306718c6b97136c53ef179bfb308268bcbf148b69f7c8",
+ "spec_sha256": "61b25b0223b8b7d55654af171cebceda16ac31d61a104815b8c197aec69fb6e3",
+ "spec_sha256_rule": "sha256 of the evaluation report's spec block as canonical JSON (sorted keys, no spaces); the confirmation's spec must hash to this, which is the spec reach-r4's and reach-r5's round evaluations held",
+ "contract_sha256": "55ecb7f735a47c05768843feb47a2d935824a0b5c290c59d8d016ec1e4da3a71",
+ "held_out_targets": {
+  "file": "retained/r2-heron-1-targets.json",
+  "sha256": "8bb702afe9720c813afe9caaf3a96f15a1bd65c35d5943af8886ecf289290f9f",
+  "rule": "drawn from the accepted model before its first training run; every seed's drawn target A and B must equal the receipt's to within 0.001 mm, or that seed is void"
+ },
+ "seeds": [
+  1101,
+  1102,
+  1103,
+  1104,
+  1105,
+  1106,
+  1107,
+  1108,
+  1109,
+  1110
+ ],
+ "conditions": {
+  "reset_variation": "none (grounded base)",
+  "goal": "tip target A from 0.0 s, target B from 4.0 s, the held-out receipt's points",
+  "disturbance": "none"
+ },
+ "episode_seconds": 8.0,
+ "predicates": [
+  {
+   "id": "Q1",
+   "name": "completes",
+   "rule": "runs the full 8.0 s and ends by truncation; no termination fires"
+  },
+  {
+   "id": "Q2",
+   "name": "final_error",
+   "metric": "largest tip-to-target distance over the last 1.0 s of each segment, in arm lengths (144 mm)",
+   "max": 0.05,
+   "scope": "both segments"
+  },
+  {
+   "id": "Q3",
+   "name": "time_to_target",
+   "metric": "time from the segment's start until the tip is within 0.05 arm lengths and stays there to the segment's end",
+   "max_s": 2.0,
+   "scope": "both segments"
+  },
+  {
+   "id": "Q4",
+   "name": "overshoot",
+   "metric": "furthest travel past the target along the segment-start-to-target line, as a ratio of its length",
+   "max": 0.2,
+   "scope": "both segments"
+  }
+ ],
+ "pass_rule": "A policy passes a behaviour only if every one of the ten seeds passes every predicate. No per-seed rate is granted to any behaviour. One failed seed fails the policy; results are never averaged across seeds, and all ten are reported.",
+ "void_rule": "a seed is void, and not a result, if its model digest is not the model read, it carries no policy digest, its drawn targets are not the held-out receipt's for that seed, its frames are not one per control step or the rate is under 50 Hz, or its episode raised a solver warning",
+ "judge": {
+  "runner": "docs/probes/ot11/runner/judge.py",
+  "runner_sha256": "c4613d7494aeeca74ff42fdc49cad149cc96c8f25393390eac0c5fb3d4470691",
+  "instructions_sha256": "dfeab7c7624b2a7472baaaf1e6b9d20ebaba0c80f96953ea203d5725ef02b706",
+  "rubric_sha256": "dc081807c28033ec7c729ff967d078a2dfdd884f088d8fa7cf130255048d83ed",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "judged_seeds": [
+   1101,
+   1105,
+   1110
+  ],
+  "calls_per_seed": 3,
+  "bar": {
+   "total_min": 9,
+   "total_max": 12,
+   "trait_min": 2,
+   "scope": "each judged seed"
+  }
+ },
+ "verdict_rule": "R2's confirmation passes only if the evaluation verdict is pass with every one of the ten seeds passing Q1-Q4 and none void, AND every judged seed (1101, 1105, 1110) meets the bar (median total >= 9 of 12, no trait median below 2). A judge call that is not a score (refusal, harness error, wrong model) is not a verdict: it is retried as a harness failure, not counted. Where the judge contradicts a measured predicate the predicate wins and the disagreement is recorded (ADR-463); a judged seed that misses the bar still fails the confirmation, and is diagnosed before any retraining.",
+ "commands": [
+  "./cadex evaluate --project ot11-heron-1 --out ot11-heron-1/evaluations/r2-confirm-1 --film 1101,1105,1110 --detail-start 4.0 --detail-step 0.2 --json",
+  "pixi run python docs/probes/ot11/runner/judge.py reach --evaluation ot11-heron-1/evaluations/r2-confirm-1 --seed S --label r2-confirm-1 --out docs/probes/ot11/retained/judge-r2-confirm-1-seed-S.json   (S = 1101, 1105, 1110)"
+ ],
+ "film": "detail sheet from 4.0 s (target B's onset), 0.2 s apart, which is the contract's reach detail; each frame shows the target marker",
+ "no_fishing": "This confirmation is run once, and recorded in the iteration that runs it. A second R2 confirmation needs a recorded product change between the two.",
+ "earlier_evaluation": "evaluations/13f9c63c93c9-6bb5a403c4af (reach-r5's training-round evaluation, a loop round, not a confirmation)"
+}

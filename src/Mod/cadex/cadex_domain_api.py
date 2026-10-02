@@ -140,6 +140,12 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # runs -- arguments to a task, like a randomisation range (M9).
         "reset_variation": "reset_variation",
         "disturbance": "disturbance",
+        # What an episode asks the policy to do -- an argument to a task
+        # and to a success spec (ADR-462).
+        "goal": "goal",
+        # What a policy is judged by -- an argument to a task, kept apart
+        # from the reward it must never read (ADR-456).
+        "success": "success",
         "exploded_view": "exploded_view",
     },
     "material": {

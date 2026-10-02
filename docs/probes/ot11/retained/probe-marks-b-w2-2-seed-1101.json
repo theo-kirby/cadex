@@ -1,0 +1,208 @@
+{
+  "schema": "ot11-judge-v1",
+  "label": "w2-2",
+  "behaviour": "walk",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "dc081807c28033ec7c729ff967d078a2dfdd884f088d8fa7cf130255048d83ed",
+  "instructions_sha256": "e1b324d862b88361c86e0bd0d5dcbd5340e0551fe82d7dc7873f83926c090edd",
+  "intent_sha256": "7c1f31c789ac7a16aa757dfa72c57344ad45112fd18fcf5a4bb9e8f616adbb38",
+  "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+  },
+  "evaluation": {
+    "schema": "cadex-evaluation-v1",
+    "verdict": "fail",
+    "accepted_revision": "064d8d7cd34c66d99b874282729b2a7017ad8cab873c3a79aea209c9d9dfd548",
+    "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+    "task_sha256": "7f36b6d3ae1991b827ef70ee8da14375ec102ba9149ddb3cfc50d51184539afd",
+    "model_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2"
+  },
+  "seed": 1101,
+  "trace_sha256": "183ccfad5c69910ee4602ee3d5fff70ba2f619f482f2dbbb1d1dcdeca4c2131e",
+  "film_style_sha256": "a68cad35963bbf46eceb16db37f96b48bf1277b0024e69e77f5ef1b1ea35e1a1",
+  "sheets": [
+    {
+      "sheet": "overview",
+      "sha256": "1db0f6532bded122aa23f3f328122aa85dc66e6f7d6786274f73dd3acd7f25e8",
+      "frames": 12,
+      "times_s": [
+        0.0,
+        0.9,
+        1.8,
+        2.72,
+        3.62,
+        4.54,
+        5.44,
+        6.36,
+        7.26,
+        8.18,
+        9.08,
+        10.0
+      ],
+      "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path"
+    },
+    {
+      "sheet": "detail",
+      "sha256": "f0bb21e0dda7aa2f0f71c4a4fc713691830a3289cbe99af10cf97132fb5aef2a",
+      "frames": 12,
+      "times_s": [
+        5.0,
+        5.04,
+        5.08,
+        5.12,
+        5.16,
+        5.2,
+        5.24,
+        5.28,
+        5.32,
+        5.36,
+        5.4,
+        5.44
+      ],
+      "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+      "follows": "c_tray"
+    }
+  ],
+  "medians": {
+    "V1": 1,
+    "V2": 2,
+    "V3": 0,
+    "V4": 1
+  },
+  "total": 4,
+  "meets_bar": false,
+  "raw": [
+    {
+      "scores": {
+        "V1": {
+          "score": 1,
+          "reason": "It walks forward for roughly the first seven seconds, but from about 8.2 s it is collapsed and stays in the same place to the end."
+        },
+        "V2": {
+          "score": 2,
+          "reason": "While it walks, the feet visibly lift and swing and leave mostly separate prints, though the prints are clumped and smeared in places, suggesting short shuffling steps with some slip."
+        },
+        "V3": {
+          "score": 0,
+          "reason": "The body pitches noticeably during the gait, and by 8.18 s the robot has gone down onto the floor in a tilted heap and does not recover."
+        },
+        "V4": {
+          "score": 1,
+          "reason": "The gait is regular up to about 7.3 s, then the motion breaks down and the robot lies still for the rest of the episode."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 1, \"reason\": \"It walks forward for roughly the first seven seconds, but from about 8.2 s it is collapsed and stays in the same place to the end.\"}, \"V2\": {\"score\": 2, \"reason\": \"While it walks, the feet visibly lift and swing and leave mostly separate prints, though the prints are clumped and smeared in places, suggesting short shuffling steps with some slip.\"}, \"V3\": {\"score\": 0, \"reason\": \"The body pitches noticeably during the gait, and by 8.18 s the robot has gone down onto the floor in a tilted heap and does not recover.\"}, \"V4\": {\"score\": 1, \"reason\": \"The gait is regular up to about 7.3 s, then the motion breaks down and the robot lies still for the rest of the episode.\"}}",
+      "session_id": "678b6279-d006-4134-bdb4-6c21821d2def",
+      "duration_ms": 10499,
+      "num_turns": 3,
+      "total_cost_usd": 0.051138,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 965,
+          "cacheReadInputTokens": 3470,
+          "cacheCreationInputTokens": 3891,
+          "webSearchRequests": 0,
+          "costUSD": 0.051138,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 549,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 1,
+          "reason": "It walks forward steadily until about 7.3 s, then after the disturbance it ends up tipped over and stops progressing for the last ~2 s."
+        },
+        "V2": {
+          "score": 2,
+          "reason": "While walking, the feet visibly lift and land in turn and leave mostly separate blotchy prints, though some smearing and body pitching show in the detail frames."
+        },
+        "V3": {
+          "score": 0,
+          "reason": "The robot topples around 8 s and stays collapsed on the floor in a tilted pose through the final frames."
+        },
+        "V4": {
+          "score": 1,
+          "reason": "The gait is regular for the first three quarters of the episode, then breaks down entirely after the fall."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 1, \"reason\": \"It walks forward steadily until about 7.3 s, then after the disturbance it ends up tipped over and stops progressing for the last ~2 s.\"}, \"V2\": {\"score\": 2, \"reason\": \"While walking, the feet visibly lift and land in turn and leave mostly separate blotchy prints, though some smearing and body pitching show in the detail frames.\"}, \"V3\": {\"score\": 0, \"reason\": \"The robot topples around 8 s and stays collapsed on the floor in a tilted pose through the final frames.\"}, \"V4\": {\"score\": 1, \"reason\": \"The gait is regular for the first three quarters of the episode, then breaks down entirely after the fall.\"}}",
+      "session_id": "f558017f-daf9-4e05-86b6-d85a3c437076",
+      "duration_ms": 9931,
+      "num_turns": 3,
+      "total_cost_usd": 0.0406626,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 814,
+          "cacheReadInputTokens": 4393,
+          "cacheCreationInputTokens": 2936,
+          "webSearchRequests": 0,
+          "costUSD": 0.0406626,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 432,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 1,
+          "reason": "It walks forward steadily for about the first seven seconds, then collapses around 8 s and lies in the same spot to the end."
+        },
+        "V2": {
+          "score": 2,
+          "reason": "While it is walking, the feet lift and swing and leave mostly separate prints, though the prints are somewhat smeared and no stepping remains after the collapse."
+        },
+        "V3": {
+          "score": 0,
+          "reason": "The robot falls late in the episode and ends lying tilted on the floor with its legs splayed, and the body pitches noticeably even during the walk."
+        },
+        "V4": {
+          "score": 1,
+          "reason": "A regular gait holds for roughly the first seven seconds, then the motion degrades into a fall and a motionless heap."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 1, \"reason\": \"It walks forward steadily for about the first seven seconds, then collapses around 8 s and lies in the same spot to the end.\"}, \"V2\": {\"score\": 2, \"reason\": \"While it is walking, the feet lift and swing and leave mostly separate prints, though the prints are somewhat smeared and no stepping remains after the collapse.\"}, \"V3\": {\"score\": 0, \"reason\": \"The robot falls late in the episode and ends lying tilted on the floor with its legs splayed, and the body pitches noticeably even during the walk.\"}, \"V4\": {\"score\": 1, \"reason\": \"A regular gait holds for roughly the first seven seconds, then the motion degrades into a fall and a motionless heap.\"}}",
+      "session_id": "3441717c-dfc6-4c92-b7ef-6216f0b1e7a4",
+      "duration_ms": 10983,
+      "num_turns": 3,
+      "total_cost_usd": 0.042925,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 919,
+          "cacheReadInputTokens": 4405,
+          "cacheCreationInputTokens": 2956,
+          "webSearchRequests": 0,
+          "costUSD": 0.042925,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 518,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

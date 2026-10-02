@@ -1,0 +1,208 @@
+{
+  "schema": "ot11-judge-v1",
+  "label": "w2-2-marks",
+  "behaviour": "walk",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "dc081807c28033ec7c729ff967d078a2dfdd884f088d8fa7cf130255048d83ed",
+  "instructions_sha256": "dfeab7c7624b2a7472baaaf1e6b9d20ebaba0c80f96953ea203d5725ef02b706",
+  "intent_sha256": "7c1f31c789ac7a16aa757dfa72c57344ad45112fd18fcf5a4bb9e8f616adbb38",
+  "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+  },
+  "evaluation": {
+    "schema": "cadex-evaluation-v1",
+    "verdict": "fail",
+    "accepted_revision": "064d8d7cd34c66d99b874282729b2a7017ad8cab873c3a79aea209c9d9dfd548",
+    "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+    "task_sha256": "7f36b6d3ae1991b827ef70ee8da14375ec102ba9149ddb3cfc50d51184539afd",
+    "model_sha256": "49d11013c0fcc752152ab69ee4bd754c8dfb1e886e5a5d79b12a99660d6f60d2"
+  },
+  "seed": 1110,
+  "trace_sha256": "36b2dbd3cc3505b5350a3af78ff1281120ccac69196124a43d06469d7df11662",
+  "film_style_sha256": "a68cad35963bbf46eceb16db37f96b48bf1277b0024e69e77f5ef1b1ea35e1a1",
+  "sheets": [
+    {
+      "sheet": "overview",
+      "sha256": "090b83d0beb7acbd7aee3b0b7da84e5907c132833d31ab270e85d815ed873b83",
+      "frames": 12,
+      "times_s": [
+        0.0,
+        0.56,
+        1.1400000000000001,
+        1.72,
+        2.2800000000000002,
+        2.86,
+        3.44,
+        4.0200000000000005,
+        4.58,
+        5.16,
+        5.74,
+        6.32
+      ],
+      "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path"
+    },
+    {
+      "sheet": "detail",
+      "sha256": "1916a12dcaba650df94e1fa9248501576e5094934aaa3f1b29fb7ad59ca93a18",
+      "frames": 12,
+      "times_s": [
+        5.0,
+        5.04,
+        5.08,
+        5.12,
+        5.16,
+        5.2,
+        5.24,
+        5.28,
+        5.32,
+        5.36,
+        5.4,
+        5.44
+      ],
+      "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+      "follows": "c_tray"
+    }
+  ],
+  "medians": {
+    "V1": 1,
+    "V2": 2,
+    "V3": 0,
+    "V4": 1
+  },
+  "total": 4,
+  "meets_bar": false,
+  "raw": [
+    {
+      "scores": {
+        "V1": {
+          "score": 1,
+          "reason": "The robot advances steadily across the floor for most of the episode, but in the final frame at 6.32 s it appears tipped over with its legs up, so it does not keep walking to the end."
+        },
+        "V2": {
+          "score": 2,
+          "reason": "The detail frames show legs alternating and swinging forward in real steps, though foot clearance is low and the feet stay close to the floor."
+        },
+        "V3": {
+          "score": 0,
+          "reason": "The body pitches noticeably at about 5.12 s and the robot ends rolled over in the last overview frame, which is a fall."
+        },
+        "V4": {
+          "score": 1,
+          "reason": "The gait looks regular and similar from 0 s to about 5.7 s, then breaks down into a topple at the end."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 1, \"reason\": \"The robot advances steadily across the floor for most of the episode, but in the final frame at 6.32 s it appears tipped over with its legs up, so it does not keep walking to the end.\"}, \"V2\": {\"score\": 2, \"reason\": \"The detail frames show legs alternating and swinging forward in real steps, though foot clearance is low and the feet stay close to the floor.\"}, \"V3\": {\"score\": 0, \"reason\": \"The body pitches noticeably at about 5.12 s and the robot ends rolled over in the last overview frame, which is a fall.\"}, \"V4\": {\"score\": 1, \"reason\": \"The gait looks regular and similar from 0 s to about 5.7 s, then breaks down into a topple at the end.\"}}",
+      "session_id": "dd3b4392-8a15-4fd8-9914-31d3558511d2",
+      "duration_ms": 7898,
+      "num_turns": 3,
+      "total_cost_usd": 0.038051,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 677,
+          "cacheReadInputTokens": 4235,
+          "cacheCreationInputTokens": 2956,
+          "webSearchRequests": 0,
+          "costUSD": 0.038051,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 272,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 1,
+          "reason": "The robot walks forward for most of the episode, though it barely advances in the first two seconds, and in the last frame (6.32 s) it appears tipped over rather than still walking."
+        },
+        "V2": {
+          "score": 2,
+          "reason": "The detail frames show legs alternating and swinging in real steps, but foot clearance is low and the feet look to shuffle in places."
+        },
+        "V3": {
+          "score": 0,
+          "reason": "The body pitches visibly during the gait, and the final frame shows the robot rolled over with its legs off the ground, which reads as a fall."
+        },
+        "V4": {
+          "score": 1,
+          "reason": "Progress is slow at first, becomes a regular walk through the middle, then breaks down into the toppled pose at the end."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 1, \"reason\": \"The robot walks forward for most of the episode, though it barely advances in the first two seconds, and in the last frame (6.32 s) it appears tipped over rather than still walking.\"}, \"V2\": {\"score\": 2, \"reason\": \"The detail frames show legs alternating and swinging in real steps, but foot clearance is low and the feet look to shuffle in places.\"}, \"V3\": {\"score\": 0, \"reason\": \"The body pitches visibly during the gait, and the final frame shows the robot rolled over with its legs off the ground, which reads as a fall.\"}, \"V4\": {\"score\": 1, \"reason\": \"Progress is slow at first, becomes a regular walk through the middle, then breaks down into the toppled pose at the end.\"}}",
+      "session_id": "e5f2da18-f56f-4043-adf1-0f135325cdab",
+      "duration_ms": 14854,
+      "num_turns": 3,
+      "total_cost_usd": 0.04570980000000001,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 1064,
+          "cacheReadInputTokens": 4229,
+          "cacheCreationInputTokens": 2946,
+          "webSearchRequests": 0,
+          "costUSD": 0.04570980000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 662,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 2,
+          "reason": "The robot travels steadily forward across the floor for nearly the whole episode, but in the last frame (6.32 s) it appears twisted and tipped rather than still walking cleanly."
+        },
+        "V2": {
+          "score": 2,
+          "reason": "The detail frames show legs alternating with swing and stance phases, though foot clearance is low and some steps look like shuffling close to the floor."
+        },
+        "V3": {
+          "score": 1,
+          "reason": "The body is mostly upright but pitches nose-down at about 5.12 s, and the final frame shows a strongly rolled, skewed posture that looks close to or at a topple."
+        },
+        "V4": {
+          "score": 2,
+          "reason": "The gait and progress look regular from 0 to about 5.7 s, with the quality breaking down only in the final frame."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 2, \"reason\": \"The robot travels steadily forward across the floor for nearly the whole episode, but in the last frame (6.32 s) it appears twisted and tipped rather than still walking cleanly.\"}, \"V2\": {\"score\": 2, \"reason\": \"The detail frames show legs alternating with swing and stance phases, though foot clearance is low and some steps look like shuffling close to the floor.\"}, \"V3\": {\"score\": 1, \"reason\": \"The body is mostly upright but pitches nose-down at about 5.12 s, and the final frame shows a strongly rolled, skewed posture that looks close to or at a topple.\"}, \"V4\": {\"score\": 2, \"reason\": \"The gait and progress look regular from 0 to about 5.7 s, with the quality breaking down only in the final frame.\"}}",
+      "session_id": "127e00d6-9caa-446a-8e82-981c92cc8e18",
+      "duration_ms": 9175,
+      "num_turns": 3,
+      "total_cost_usd": 0.0399498,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 776,
+          "cacheReadInputTokens": 4229,
+          "cacheCreationInputTokens": 2946,
+          "webSearchRequests": 0,
+          "costUSD": 0.0399498,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 357,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,1505 @@
+{
+ "schema": "ot11-evaluation-ledger-v1",
+ "source": "each project's evaluations/<key>/evaluation.json, and retained/judge-*.json",
+ "evaluations": [
+  {
+   "project": "ot11-w2-negative",
+   "key": "60f655537c0b-7a4e8c233214",
+   "written_at": 1790759885.2757514,
+   "label": "ot11 walk contract, without the goal predicates",
+   "weights": "walk_task.cxpolicy",
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "trained_by": null,
+   "run_started_at": 0.0,
+   "accepted_revision": "60f655537c0b240ba295c5f1293b4a3ffd006f03f81b3dd7c718ab1b20cadb21",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W1": 2,
+    "W2": 9,
+    "W4-heading": 1,
+    "W5-steps": 7,
+    "W5-share": 10,
+    "W6": 10,
+    "W7": 10,
+    "W8-low": 7,
+    "W8-high": 4,
+    "W9": 10,
+    "W10": 10
+   },
+   "terminations": {
+    "horizon": 8,
+    "tipped": 2
+   },
+   "film": null,
+   "contract_deviations": [
+    "W3: missing",
+    "W4-lateral: missing",
+    "goal: 0 declared, frozen one speed command"
+   ]
+  },
+  {
+   "project": "ot11-w2-negative",
+   "key": "064d8d7cd34c-7a4e8c233214",
+   "written_at": 1790772732.2138896,
+   "label": "ot11 walk contract, without the goal predicates",
+   "weights": "walk_task.cxpolicy",
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "trained_by": null,
+   "run_started_at": 0.0,
+   "accepted_revision": "064d8d7cd34c66d99b874282729b2a7017ad8cab873c3a79aea209c9d9dfd548",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W1": 2,
+    "W2": 8,
+    "W4-heading": 1,
+    "W5-steps": 10,
+    "W5-share": 10,
+    "W6": 4,
+    "W7": 10,
+    "W8-low": 1,
+    "W8-high": 1,
+    "W9": 10,
+    "W10": 10
+   },
+   "terminations": {
+    "horizon": 8,
+    "tipped": 2
+   },
+   "film": "ready",
+   "contract_deviations": [
+    "W3: missing",
+    "W4-lateral: missing",
+    "goal: 0 declared, frozen one speed command"
+   ]
+  },
+  {
+   "project": "ot11-robin-negative",
+   "key": "b2302f600801-ef71f370a2f1",
+   "written_at": 1790759886.7050464,
+   "label": "ot11 balance contract",
+   "weights": "r3-ppo-1.cxpolicy",
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "trained_by": null,
+   "run_started_at": 0.0,
+   "accepted_revision": "b2302f600801a03a17687199617a42c74ef4c1ff82350db50907380492a7460b",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "B1": 6,
+    "B2": 6,
+    "B3": 10,
+    "B4": 10,
+    "B5": 10
+   },
+   "terminations": {
+    "fallen": 6,
+    "horizon": 4
+   },
+   "film": null,
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-robin-negative",
+   "key": "3a42fdec8b94-ef71f370a2f1",
+   "written_at": 1790770470.060588,
+   "label": "ot11 balance contract",
+   "weights": "r3-ppo-1.cxpolicy",
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "trained_by": null,
+   "run_started_at": 0.0,
+   "accepted_revision": "3a42fdec8b943b8b19897df247bbfd274bee330b229bdad84fbcf899ac890062",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "B1": 6,
+    "B2": 6,
+    "B3": 10,
+    "B4": 10,
+    "B5": 10
+   },
+   "terminations": {
+    "fallen": 6,
+    "horizon": 4
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-robin-1",
+   "key": "cbf14e3c6865-8919a22dae1f",
+   "written_at": 1790788172.332076,
+   "label": "ot11 balance contract",
+   "weights": "robin-balance-1.cxpolicy",
+   "policy_sha256": "8919a22dae1f43bf947e66b3f8718bdf3290959a6b9a81786c569b474e901614",
+   "trained_by": "bal-1 it 400",
+   "run_started_at": 1790787045.3068664,
+   "accepted_revision": "cbf14e3c6865fd354c5dfae1404be985a696ae65f370b66864c4143af2a909a9",
+   "verdict": "pass",
+   "seeds": 10,
+   "passed": 10,
+   "failed": 0,
+   "void": 0,
+   "failing_predicates": {},
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-robin-1",
+   "key": "r3-confirm-1",
+   "written_at": 1790792509.5205913,
+   "label": "ot11 balance contract",
+   "weights": "robin-balance-1.cxpolicy",
+   "policy_sha256": "8919a22dae1f43bf947e66b3f8718bdf3290959a6b9a81786c569b474e901614",
+   "trained_by": "bal-1 it 400",
+   "run_started_at": 1790787045.3068664,
+   "accepted_revision": "cbf14e3c6865fd354c5dfae1404be985a696ae65f370b66864c4143af2a909a9",
+   "verdict": "pass",
+   "seeds": 10,
+   "passed": 10,
+   "failed": 0,
+   "void": 0,
+   "failing_predicates": {},
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-heron-1",
+   "key": "42ff7b8e1099-c5a01908a054",
+   "written_at": 1790795218.9580429,
+   "label": "ot11 reach contract",
+   "weights": "reach_r1.cxpolicy",
+   "policy_sha256": "c5a01908a054d033c016273ab6049dc810d3f695b9b16c3fa621d4ea94aea43b",
+   "trained_by": "reach-r1 best",
+   "run_started_at": 1790794216.2851589,
+   "accepted_revision": "42ff7b8e1099c2669fcd347afa8185d547b2c90fad5f462bd500a817242a3c17",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "Q2": 10,
+    "Q3": 10,
+    "Q4": 7
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-heron-1",
+   "key": "0ce61b45859b-e1b0277de9db",
+   "written_at": 1790796311.8406358,
+   "label": "ot11 reach contract",
+   "weights": "reach_r2.cxpolicy",
+   "policy_sha256": "e1b0277de9db7d4b003fa973b111eb56d8d5ad182fb7b8d2cea177357e4dc355",
+   "trained_by": "reach-r2 best",
+   "run_started_at": 1790795296.3866785,
+   "accepted_revision": "0ce61b45859b9a02a3502b0ddfc8f474a6f5ac1d665336f3db3dbadc588be349",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 1,
+   "failed": 9,
+   "void": 0,
+   "failing_predicates": {
+    "Q2": 9,
+    "Q3": 9,
+    "Q4": 1
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-heron-1",
+   "key": "a9d8520c81c9-2036f471cc3b",
+   "written_at": 1790797431.2604008,
+   "label": "ot11 reach contract",
+   "weights": "reach_r3.cxpolicy",
+   "policy_sha256": "2036f471cc3b675141836db4df30513391ef141c3f8b3b6d8e0dba3ae150f983",
+   "trained_by": "reach-r3 best",
+   "run_started_at": 1790796414.8450606,
+   "accepted_revision": "a9d8520c81c97345f69265c8595441122e96289308ac60b9c843ed7233614831",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "Q2": 10,
+    "Q3": 10,
+    "Q4": 2
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-heron-1",
+   "key": "6418a337500a-3270ce260233",
+   "written_at": 1790800714.628962,
+   "label": "ot11 reach contract",
+   "weights": "reach_r4.cxpolicy",
+   "policy_sha256": "3270ce2602335829fa885d93b372f7afa7a53cf5aaf4133bb6aa5d23c94da606",
+   "trained_by": "reach-r4 it 475",
+   "run_started_at": 1790797510.7592866,
+   "accepted_revision": "6418a337500a9a2aed8a0dc3593839164e7aeb63dbee519defa43f2ff5cd4a86",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 9,
+   "failed": 1,
+   "void": 0,
+   "failing_predicates": {
+    "Q2": 1,
+    "Q3": 1
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-heron-1",
+   "key": "13f9c63c93c9-6bb5a403c4af",
+   "written_at": 1790801907.2673738,
+   "label": "ot11 reach contract",
+   "weights": "reach_r5.cxpolicy",
+   "policy_sha256": "6bb5a403c4afd1435dee067debc1dc371af0eabec5e5196add78c8fed9a6f6cc",
+   "trained_by": "reach-r5 it 400",
+   "run_started_at": 1790800852.020716,
+   "accepted_revision": "13f9c63c93c9b59145001906062c618884fc31fdc72955846215c44654eb6fc4",
+   "verdict": "pass",
+   "seeds": 10,
+   "passed": 10,
+   "failed": 0,
+   "void": 0,
+   "failing_predicates": {},
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-heron-1",
+   "key": "r2-confirm-1",
+   "written_at": 1790802358.752334,
+   "label": "ot11 reach contract",
+   "weights": "reach_r5.cxpolicy",
+   "policy_sha256": "6bb5a403c4afd1435dee067debc1dc371af0eabec5e5196add78c8fed9a6f6cc",
+   "trained_by": "reach-r5 it 400",
+   "run_started_at": 1790800852.020716,
+   "accepted_revision": "13f9c63c93c9b59145001906062c618884fc31fdc72955846215c44654eb6fc4",
+   "verdict": "pass",
+   "seeds": 10,
+   "passed": 10,
+   "failed": 0,
+   "void": 0,
+   "failing_predicates": {},
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "8498db6e1ff5-8db0cb619fc4",
+   "written_at": 1790806025.6296973,
+   "label": "ot11 walk contract",
+   "weights": "walk_goal.cxpolicy",
+   "policy_sha256": "8db0cb619fc4d07abf14bfec6e3d5131fe18a029b51bfbb1f7084efb4df343e1",
+   "trained_by": "r1-clearance best",
+   "run_started_at": 1790804125.6175013,
+   "accepted_revision": "8498db6e1ff5b6c30b47d18d4d1d1a001ac6043a5cb56731d9280a7cbc1c942e",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W1": 4,
+    "W2": 4,
+    "W3": 10,
+    "W4-lateral": 5,
+    "W4-heading": 8,
+    "W5-steps": 5,
+    "W5-share": 10,
+    "W6": 10,
+    "W7": 10,
+    "W8-low": 3,
+    "W8-high": 2,
+    "W9": 8,
+    "W10": 10
+   },
+   "terminations": {
+    "horizon": 6,
+    "tipped": 4
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "80ba9fb9905e-1a0f0d28a2aa",
+   "written_at": 1790808928.8927207,
+   "label": "ot11 walk contract",
+   "weights": "walk_goal.cxpolicy",
+   "policy_sha256": "1a0f0d28a2aabfcb06d1f033b1867b479ea1d2cafaa0b11bcc99409480a2ba36",
+   "trained_by": "r2-bounded final",
+   "run_started_at": 1790806319.3676314,
+   "accepted_revision": "80ba9fb9905e6e5527e8c5fc3bbe1bc6e82a8168215db140c089a98bd88d7028",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W3": 10,
+    "W4-lateral": 1,
+    "W4-heading": 5,
+    "W5-steps": 10,
+    "W5-share": 10,
+    "W6": 10,
+    "W7": 10,
+    "W8-low": 10,
+    "W9": 10,
+    "W10": 10
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "9f711fcaa419-102133e9310b",
+   "written_at": 1790812055.9735525,
+   "label": "ot11 walk contract",
+   "weights": "walk_goal.cxpolicy",
+   "policy_sha256": "102133e9310b05c3569a5b9354007dbd540cd47a4e8d8f9aebdd96861048d302",
+   "trained_by": "r3-nochatter best",
+   "run_started_at": 1790809291.170144,
+   "accepted_revision": "9f711fcaa4192ab3ff0d02c03dfdfead04a714c95d63fd3d0c3ee9ed4ec78d11",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W1": 1,
+    "W3": 10,
+    "W4-lateral": 1,
+    "W4-heading": 5,
+    "W5-steps": 7,
+    "W5-share": 10,
+    "W6": 9,
+    "W7": 10,
+    "W8-low": 10,
+    "W9": 10,
+    "W10": 10
+   },
+   "terminations": {
+    "collapsed": 1,
+    "horizon": 9
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "ce8d19639f13-d2dcaf39ba21",
+   "written_at": 1790815481.3838143,
+   "label": "ot11 walk contract",
+   "weights": "walk_goal.cxpolicy",
+   "policy_sha256": "d2dcaf39ba21023227801317e95766e19172179bb9d1c18522a1535918a136df",
+   "trained_by": "r4-anglesonly final",
+   "run_started_at": 1790812298.6162105,
+   "accepted_revision": "ce8d19639f13e556e201de42ed933ff2ff11e247302b44b4c69600c7c9317300",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W1": 1,
+    "W2": 1,
+    "W3": 10,
+    "W5-steps": 10,
+    "W5-share": 10,
+    "W6": 10,
+    "W7": 10,
+    "W8-high": 10,
+    "W9": 10,
+    "W10": 10
+   },
+   "terminations": {
+    "horizon": 9,
+    "tipped": 1
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "dee2391353b7-6a7c89de9ade",
+   "written_at": 1790818314.7817187,
+   "label": "ot11 walk contract",
+   "weights": "walk_r5.cxpolicy",
+   "policy_sha256": "6a7c89de9ade139024ea7964306eeceaf159bea2655cd40cf4cb08a9829cf70e",
+   "trained_by": "r5-swing final",
+   "run_started_at": 1790815849.5245953,
+   "accepted_revision": "dee2391353b7c38dc7860cc1c40b47e339e1bc5d5a0d8b05da6b948f86c1f8b0",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W3": 1,
+    "W4-lateral": 1,
+    "W5-steps": 9,
+    "W5-share": 10,
+    "W6": 2,
+    "W7": 10,
+    "W8-low": 10,
+    "W9": 10,
+    "W10": 10
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "abebe8381134-0eaef24f7f32",
+   "written_at": 1790825417.9661396,
+   "label": "ot11 walk contract",
+   "weights": "walk_r6.cxpolicy",
+   "policy_sha256": "0eaef24f7f325f50116fcf5c59a3716c82f7545b0c07cd591cf1d08c2953dc04",
+   "trained_by": "r6-trot final",
+   "run_started_at": 1790818509.5004082,
+   "accepted_revision": "abebe83811342fe7aa1d91f503d94d598ba24ba903877a4105765272f8341fd1",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W3": 1,
+    "W5-steps": 8,
+    "W5-share": 10,
+    "W6": 2,
+    "W7": 10,
+    "W8-low": 10,
+    "W9": 10,
+    "W10": 10
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "d35b9080ec77-71128e61c033",
+   "written_at": 1790823279.3958576,
+   "label": "ot11 walk contract",
+   "weights": "walk_r7_200.cxpolicy",
+   "policy_sha256": "71128e61c033adfea3bc031321bf5cbd3b7c25b8ab396557216f5cfe91664991",
+   "trained_by": "r7-relswing it 200",
+   "run_started_at": 1790821227.9996092,
+   "accepted_revision": "d35b9080ec77dd0c90cc297e48698dc8256e2d39496682474665331d901192f4",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W1": 6,
+    "W3": 3,
+    "W4-lateral": 2,
+    "W5-steps": 4,
+    "W5-share": 10,
+    "W6": 2,
+    "W7": 9,
+    "W8-low": 10,
+    "W8-high": 2,
+    "W9": 10,
+    "W10": 10
+   },
+   "terminations": {
+    "collapsed": 6,
+    "horizon": 4
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "2029ad2130b6-96ff3b792f7a",
+   "written_at": 1790827256.8382263,
+   "label": "ot11 walk contract",
+   "weights": "walk_r8_300.cxpolicy",
+   "policy_sha256": "96ff3b792f7a6f7252ba491ffe8dadc9fa8458a300a640d9861b6e4f2f4bd515",
+   "trained_by": "r8-stance it 300",
+   "run_started_at": 1790826064.7048388,
+   "accepted_revision": "2029ad2130b698e0cfd012ee17ceacd5502c59e8d57f826d241209babe67ba05",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W1": 4,
+    "W2": 7,
+    "W3": 10,
+    "W4-lateral": 8,
+    "W4-heading": 7,
+    "W5-steps": 10,
+    "W5-share": 10,
+    "W6": 10,
+    "W7": 10,
+    "W8-low": 10,
+    "W8-high": 8,
+    "W9": 10,
+    "W10": 10
+   },
+   "terminations": {
+    "horizon": 6,
+    "tipped": 4
+   },
+   "film": "ready",
+   "contract_deviations": [
+    "goal hip_heights_per_s [0.599999, 0.999998] != frozen [0.6, 1]"
+   ]
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "a0460e13b112-749e0bcedb8e",
+   "written_at": 1790828355.9611926,
+   "label": "ot11 walk contract",
+   "weights": "walk_r8.cxpolicy",
+   "policy_sha256": "749e0bcedb8e5a0283c924c96d14c11851ea1e3228b043d394c24d890424cda2",
+   "trained_by": "r8-stance final",
+   "run_started_at": 1790826064.7048388,
+   "accepted_revision": "a0460e13b112e69722669fbae312fd3a44655999e669c055be446723ae8d2ad4",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W1": 2,
+    "W2": 6,
+    "W3": 10,
+    "W4-lateral": 8,
+    "W4-heading": 7,
+    "W5-steps": 10,
+    "W5-share": 10,
+    "W6": 10,
+    "W7": 10,
+    "W8-low": 10,
+    "W8-high": 10,
+    "W9": 10,
+    "W10": 10
+   },
+   "terminations": {
+    "horizon": 8,
+    "tipped": 2
+   },
+   "film": "ready",
+   "contract_deviations": [
+    "goal hip_heights_per_s [0.599999, 0.999998] != frozen [0.6, 1]"
+   ]
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "2cb0f0e5d80e-34f47b033235",
+   "written_at": 1790831284.2654414,
+   "label": "ot11 walk contract",
+   "weights": "walk_r10.cxpolicy",
+   "policy_sha256": "34f47b0332353ca8409ffc11cfbe9ef78537722c8f3a2c98c44ab35a5cde633a",
+   "trained_by": "r10-steelfoot-fresh final",
+   "run_started_at": 1790828718.9352334,
+   "accepted_revision": "2cb0f0e5d80e2db71226a07c72dff41571dec4ac99d9b5f79c00793e3762af4c",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W3": 10,
+    "W5-steps": 10,
+    "W5-share": 10,
+    "W6": 10,
+    "W7": 10,
+    "W8-low": 10,
+    "W8-high": 10,
+    "W9": 10
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "bfb59bb5d902-f35fefd6a569",
+   "written_at": 1790835531.6771832,
+   "label": "ot11 walk contract",
+   "weights": "walk_r11.cxpolicy",
+   "policy_sha256": "f35fefd6a569f98048d632a36617b526fe8ad45a4ee607471e48377bb9915e60",
+   "trained_by": "r11-speedpay final",
+   "run_started_at": 1790831521.552196,
+   "accepted_revision": "bfb59bb5d902fccf3f25c0718e0e5aada017e2bd93753c689bae14dce85058ff",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W3": 10,
+    "W5-steps": 10,
+    "W5-share": 10,
+    "W6": 10,
+    "W7": 10,
+    "W8-low": 10,
+    "W8-high": 10,
+    "W9": 10
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "ca8310e9d841-3179aa38a75d",
+   "written_at": 1790838290.8173885,
+   "label": "ot11 walk contract",
+   "weights": "walk_r12.cxpolicy",
+   "policy_sha256": "3179aa38a75d3ace0d890d47ef19ee1f718c3862ad320135f859ba7f0488f9f9",
+   "trained_by": "r12-convex-sym final",
+   "run_started_at": 1790835838.2779074,
+   "accepted_revision": "ca8310e9d8411a4360e43e2f612cb91f716f720cee53cf2f6ebb957592aaf021",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W3": 5,
+    "W5-steps": 10,
+    "W5-share": 10,
+    "W6": 10,
+    "W7": 10,
+    "W8-low": 10,
+    "W8-high": 10,
+    "W9": 10,
+    "W10": 10
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "0bbe95889512-70b9ac55c145",
+   "written_at": 1790841182.5719624,
+   "label": "ot11 walk contract",
+   "weights": "walk_r13.cxpolicy",
+   "policy_sha256": "70b9ac55c145a3b1eacf812659b5b85c25416b761438f9defec307ecbf3283b7",
+   "trained_by": "r13-hovercost-margin final",
+   "run_started_at": 1790838588.6185846,
+   "accepted_revision": "0bbe958895127283af6eeb1de843cf0f8006ed69989c73498718d399d73b072b",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W3": 10,
+    "W5-share": 1,
+    "W6": 10,
+    "W7": 9,
+    "W8-low": 10,
+    "W9": 3
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "6688a28a61d8-5f97b60219ba",
+   "written_at": 1790847212.1391332,
+   "label": "ot11 walk contract",
+   "weights": "walk_r14.cxpolicy",
+   "policy_sha256": "5f97b60219ba3e0f49f64016551101a7beca6a368d371b8489c4d276753b64f0",
+   "trained_by": "r14-margin15-lift final",
+   "run_started_at": 1790841387.8564334,
+   "accepted_revision": "6688a28a61d83092cdfd323fb2cb673953a1263380542fd143108fe2863ccc93",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 10,
+   "failing_predicates": {
+    "W5-share": 7,
+    "W6": 10,
+    "W7": 2,
+    "W8-low": 10,
+    "W10": 9
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "bf664d9bfc69-d430a9224345",
+   "written_at": 1790850136.1291351,
+   "label": "ot11 walk contract",
+   "weights": "walk_r15.cxpolicy",
+   "policy_sha256": "d430a92243459cee275d0d4b514386be91f69d1611439a464a46ac3366b7ba11",
+   "trained_by": "r15-stiffspring-clearfoot final",
+   "run_started_at": 1790848021.071135,
+   "accepted_revision": "bf664d9bfc69f6bba847fa16654ae0c55d3457b99f6d9cb95a2f1e1924c8ff47",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W1": 5,
+    "W2": 5,
+    "W3": 10,
+    "W4-lateral": 5,
+    "W5-steps": 10,
+    "W5-share": 10,
+    "W6": 10,
+    "W7": 10,
+    "W8-low": 10,
+    "W8-high": 10,
+    "W9": 10,
+    "W10": 5
+   },
+   "terminations": {
+    "horizon": 5,
+    "tipped": 5
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "e84b045a4528-dd0f9dc053a7",
+   "written_at": 1790852686.2814646,
+   "label": "ot11 walk contract",
+   "weights": "walk_r16.cxpolicy",
+   "policy_sha256": "dd0f9dc053a70155badf7b8022a0da13841f988ccabca7f6769a7d8cb641b7dd",
+   "trained_by": "r16-alive10 final",
+   "run_started_at": 1790850372.5400975,
+   "accepted_revision": "e84b045a45282a618c77621f85aa7dd73cd1ac361cc93786e18dccc1ee5cecdc",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W1": 8,
+    "W2": 8,
+    "W3": 6,
+    "W4-lateral": 3,
+    "W5-steps": 10,
+    "W5-share": 10,
+    "W6": 9,
+    "W7": 10,
+    "W8-low": 10,
+    "W8-high": 10,
+    "W9": 8
+   },
+   "terminations": {
+    "horizon": 2,
+    "tipped": 8
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "50b2a42caf1c-63cbf22407c0",
+   "written_at": 1790857495.7851431,
+   "label": "ot11 walk contract",
+   "weights": "walk_r17.cxpolicy",
+   "policy_sha256": "63cbf22407c09f98f438cb59202c9dd99d040275093136bba07a582a6982e385",
+   "trained_by": "r17-discount-bodyrate final",
+   "run_started_at": 1790852893.7601511,
+   "accepted_revision": "50b2a42caf1ca278b4beed501491c4e493a8f6394d29594f08d29378fa0bcf1d",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 1,
+   "failed": 9,
+   "void": 0,
+   "failing_predicates": {
+    "W5-share": 2,
+    "W7": 8,
+    "W9": 8
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "f0851df103a5-0ef672db5077",
+   "written_at": 1790859654.4702122,
+   "label": "ot11 walk contract",
+   "weights": "walk_r18.cxpolicy",
+   "policy_sha256": "0ef672db5077ac7da135301ca456515de10dc81e12b089e3ba6ce8dc1f68c50c",
+   "trained_by": "r18-sync-slip final",
+   "run_started_at": 1790857724.0186172,
+   "accepted_revision": "f0851df103a5b0cccbb74917c4e542b853c0f465677a4f3f87d167a44b781885",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 2,
+   "failed": 8,
+   "void": 0,
+   "failing_predicates": {
+    "W1": 1,
+    "W2": 1,
+    "W5-steps": 1,
+    "W5-share": 1,
+    "W9": 8
+   },
+   "terminations": {
+    "horizon": 9,
+    "tipped": 1
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "35122157a90f-de546ddd91e1",
+   "written_at": 1790864604.2044115,
+   "label": "ot11 walk contract",
+   "weights": "walk_r19.cxpolicy",
+   "policy_sha256": "de546ddd91e184e6a2c424b143c548876f5d59cbcb8a2be2c26992b0f7afb3af",
+   "trained_by": "r19-contact-sync final",
+   "run_started_at": 1790859991.1949656,
+   "accepted_revision": "35122157a90f84e5b81ab9c016c67ce8583b703b86620ed97dee78c915e40442",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 9,
+   "failed": 1,
+   "void": 0,
+   "failing_predicates": {
+    "W9": 1
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "f924ce70604e-4a341e7b3047",
+   "written_at": 1790866955.491105,
+   "label": "ot11 walk contract",
+   "weights": "walk_r20.cxpolicy",
+   "policy_sha256": "4a341e7b3047cc855dd6de52782fcf8e52ca40d0fcf870ebc12445e218680853",
+   "trained_by": "r20-contact35 final",
+   "run_started_at": 1790864695.6588075,
+   "accepted_revision": "f924ce70604ee43bd6378d7b601d207d61d585c2a8142ee146b365602739db5d",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 0,
+   "failed": 10,
+   "void": 0,
+   "failing_predicates": {
+    "W5-share": 3,
+    "W7": 10,
+    "W8-low": 1,
+    "W9": 1
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "a11861cc1e14-8c94fcd21f0e",
+   "written_at": 1790869613.2107205,
+   "label": "ot11 walk contract",
+   "weights": "walk_r21b.cxpolicy",
+   "policy_sha256": "8c94fcd21f0e28ef8a19be690e4dfbfbcd6a459834ae906cbfe4aa2b2820c2fa",
+   "trained_by": "r21b-r19-continue final",
+   "run_started_at": 1790867253.5064435,
+   "accepted_revision": "a11861cc1e14590061d3a3c00314eadcd3d5b5c2c124175934226a15aece36bd",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 2,
+   "failed": 8,
+   "void": 0,
+   "failing_predicates": {
+    "W5-share": 2,
+    "W7": 8,
+    "W8-low": 1,
+    "W9": 1
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "da95bfa94936-e91a397134ac",
+   "written_at": 1790871826.194954,
+   "label": "ot11 walk contract",
+   "weights": "walk_r22.cxpolicy",
+   "policy_sha256": "e91a397134ac50034740cf6810351be7c29b481660330c767e8ae90ac78f59d5",
+   "trained_by": "r22-gentle-contact25 final",
+   "run_started_at": 1790869712.7114565,
+   "accepted_revision": "da95bfa949368c971ba9a7184e9d001e4ea296a92b69bd3e59a8b4babe8b907d",
+   "verdict": "fail",
+   "seeds": 10,
+   "passed": 6,
+   "failed": 4,
+   "void": 0,
+   "failing_predicates": {
+    "W2": 1,
+    "W7": 2,
+    "W8-low": 2,
+    "W9": 1
+   },
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "7df101b06548-5aaf21e70e63",
+   "written_at": 1790879033.8770015,
+   "label": "ot11 walk contract",
+   "weights": "walk_r24.cxpolicy",
+   "policy_sha256": "5aaf21e70e632c8b281fcb40c1f81ea05619c91330ab8bfd2acbe442d250210c",
+   "trained_by": "r24-r19-vw005 it 900",
+   "run_started_at": 1790875249.383855,
+   "accepted_revision": "7df101b06548122d39a0d2142bd46d1da0b82fc91d904fe0c7d4dc839dbde17a",
+   "verdict": "pass",
+   "seeds": 10,
+   "passed": 10,
+   "failed": 0,
+   "void": 0,
+   "failing_predicates": {},
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  },
+  {
+   "project": "ot11-quad-1",
+   "key": "r1-confirm-1",
+   "written_at": 1790880858.2198548,
+   "label": "ot11 walk contract",
+   "weights": "walk_r24.cxpolicy",
+   "policy_sha256": "5aaf21e70e632c8b281fcb40c1f81ea05619c91330ab8bfd2acbe442d250210c",
+   "trained_by": "r24-r19-vw005 it 900",
+   "run_started_at": 1790875249.383855,
+   "accepted_revision": "7df101b06548122d39a0d2142bd46d1da0b82fc91d904fe0c7d4dc839dbde17a",
+   "verdict": "pass",
+   "seeds": 10,
+   "passed": 10,
+   "failed": 0,
+   "void": 0,
+   "failing_predicates": {},
+   "terminations": {
+    "horizon": 10
+   },
+   "film": "ready",
+   "contract_deviations": []
+  }
+ ],
+ "judges": [
+  {
+   "receipt": "judge-r1-confirm-1-seed-1101.json",
+   "label": "r1-confirm-1",
+   "behaviour": "walk",
+   "model": "claude-opus-5-5",
+   "seed": 1101,
+   "calls": 3,
+   "medians": {
+    "V1": 3,
+    "V2": 3,
+    "V3": 2,
+    "V4": 2
+   },
+   "total": 10,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": true,
+   "verdict": "pass",
+   "accepted_revision": "7df101b06548122d39a0d2142bd46d1da0b82fc91d904fe0c7d4dc839dbde17a",
+   "policy_sha256": "5aaf21e70e632c8b281fcb40c1f81ea05619c91330ab8bfd2acbe442d250210c",
+   "evaluations": [
+    "ot11-quad-1/7df101b06548-5aaf21e70e63",
+    "ot11-quad-1/r1-confirm-1"
+   ]
+  },
+  {
+   "receipt": "judge-r1-confirm-1-seed-1105.json",
+   "label": "r1-confirm-1",
+   "behaviour": "walk",
+   "model": "claude-opus-5-5",
+   "seed": 1105,
+   "calls": 3,
+   "medians": {
+    "V1": 3,
+    "V2": 3,
+    "V3": 2,
+    "V4": 3
+   },
+   "total": 11,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": true,
+   "verdict": "pass",
+   "accepted_revision": "7df101b06548122d39a0d2142bd46d1da0b82fc91d904fe0c7d4dc839dbde17a",
+   "policy_sha256": "5aaf21e70e632c8b281fcb40c1f81ea05619c91330ab8bfd2acbe442d250210c",
+   "evaluations": [
+    "ot11-quad-1/7df101b06548-5aaf21e70e63",
+    "ot11-quad-1/r1-confirm-1"
+   ]
+  },
+  {
+   "receipt": "judge-r1-confirm-1-seed-1110.json",
+   "label": "r1-confirm-1",
+   "behaviour": "walk",
+   "model": "claude-opus-5-5",
+   "seed": 1110,
+   "calls": 3,
+   "medians": {
+    "V1": 3,
+    "V2": 3,
+    "V3": 3,
+    "V4": 3
+   },
+   "total": 12,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": true,
+   "verdict": "pass",
+   "accepted_revision": "7df101b06548122d39a0d2142bd46d1da0b82fc91d904fe0c7d4dc839dbde17a",
+   "policy_sha256": "5aaf21e70e632c8b281fcb40c1f81ea05619c91330ab8bfd2acbe442d250210c",
+   "evaluations": [
+    "ot11-quad-1/7df101b06548-5aaf21e70e63",
+    "ot11-quad-1/r1-confirm-1"
+   ]
+  },
+  {
+   "receipt": "judge-r2-confirm-1-seed-1101.json",
+   "label": "r2-confirm-1",
+   "behaviour": "reach",
+   "model": "claude-opus-5-5",
+   "seed": 1101,
+   "calls": 3,
+   "medians": {
+    "V1": 3,
+    "V2": 3,
+    "V3": 3,
+    "V4": 3
+   },
+   "total": 12,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": true,
+   "verdict": "pass",
+   "accepted_revision": "13f9c63c93c9b59145001906062c618884fc31fdc72955846215c44654eb6fc4",
+   "policy_sha256": "6bb5a403c4afd1435dee067debc1dc371af0eabec5e5196add78c8fed9a6f6cc",
+   "evaluations": [
+    "ot11-heron-1/13f9c63c93c9-6bb5a403c4af",
+    "ot11-heron-1/r2-confirm-1"
+   ]
+  },
+  {
+   "receipt": "judge-r2-confirm-1-seed-1105.json",
+   "label": "r2-confirm-1",
+   "behaviour": "reach",
+   "model": "claude-opus-5-5",
+   "seed": 1105,
+   "calls": 3,
+   "medians": {
+    "V1": 3,
+    "V2": 3,
+    "V3": 3,
+    "V4": 3
+   },
+   "total": 12,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": true,
+   "verdict": "pass",
+   "accepted_revision": "13f9c63c93c9b59145001906062c618884fc31fdc72955846215c44654eb6fc4",
+   "policy_sha256": "6bb5a403c4afd1435dee067debc1dc371af0eabec5e5196add78c8fed9a6f6cc",
+   "evaluations": [
+    "ot11-heron-1/13f9c63c93c9-6bb5a403c4af",
+    "ot11-heron-1/r2-confirm-1"
+   ]
+  },
+  {
+   "receipt": "judge-r2-confirm-1-seed-1110.json",
+   "label": "r2-confirm-1",
+   "behaviour": "reach",
+   "model": "claude-opus-5-5",
+   "seed": 1110,
+   "calls": 3,
+   "medians": {
+    "V1": 3,
+    "V2": 3,
+    "V3": 3,
+    "V4": 3
+   },
+   "total": 12,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": true,
+   "verdict": "pass",
+   "accepted_revision": "13f9c63c93c9b59145001906062c618884fc31fdc72955846215c44654eb6fc4",
+   "policy_sha256": "6bb5a403c4afd1435dee067debc1dc371af0eabec5e5196add78c8fed9a6f6cc",
+   "evaluations": [
+    "ot11-heron-1/13f9c63c93c9-6bb5a403c4af",
+    "ot11-heron-1/r2-confirm-1"
+   ]
+  },
+  {
+   "receipt": "judge-r3-confirm-1-seed-1101.json",
+   "label": "r3-confirm-1",
+   "behaviour": "balance",
+   "model": "claude-opus-5-5",
+   "seed": 1101,
+   "calls": 3,
+   "medians": {
+    "V1": 3,
+    "V2": 3,
+    "V3": 3,
+    "V4": 3
+   },
+   "total": 12,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": true,
+   "verdict": "pass",
+   "accepted_revision": "cbf14e3c6865fd354c5dfae1404be985a696ae65f370b66864c4143af2a909a9",
+   "policy_sha256": "8919a22dae1f43bf947e66b3f8718bdf3290959a6b9a81786c569b474e901614",
+   "evaluations": [
+    "ot11-robin-1/cbf14e3c6865-8919a22dae1f",
+    "ot11-robin-1/r3-confirm-1"
+   ]
+  },
+  {
+   "receipt": "judge-r3-confirm-1-seed-1105.json",
+   "label": "r3-confirm-1",
+   "behaviour": "balance",
+   "model": "claude-opus-5-5",
+   "seed": 1105,
+   "calls": 3,
+   "medians": {
+    "V1": 3,
+    "V2": 3,
+    "V3": 3,
+    "V4": 3
+   },
+   "total": 12,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": true,
+   "verdict": "pass",
+   "accepted_revision": "cbf14e3c6865fd354c5dfae1404be985a696ae65f370b66864c4143af2a909a9",
+   "policy_sha256": "8919a22dae1f43bf947e66b3f8718bdf3290959a6b9a81786c569b474e901614",
+   "evaluations": [
+    "ot11-robin-1/cbf14e3c6865-8919a22dae1f",
+    "ot11-robin-1/r3-confirm-1"
+   ]
+  },
+  {
+   "receipt": "judge-r3-confirm-1-seed-1110.json",
+   "label": "r3-confirm-1",
+   "behaviour": "balance",
+   "model": "claude-opus-5-5",
+   "seed": 1110,
+   "calls": 3,
+   "medians": {
+    "V1": 2,
+    "V2": 3,
+    "V3": 3,
+    "V4": 3
+   },
+   "total": 11,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": true,
+   "verdict": "pass",
+   "accepted_revision": "cbf14e3c6865fd354c5dfae1404be985a696ae65f370b66864c4143af2a909a9",
+   "policy_sha256": "8919a22dae1f43bf947e66b3f8718bdf3290959a6b9a81786c569b474e901614",
+   "evaluations": [
+    "ot11-robin-1/cbf14e3c6865-8919a22dae1f",
+    "ot11-robin-1/r3-confirm-1"
+   ]
+  },
+  {
+   "receipt": "judge-robin-seed-1101.json",
+   "label": "robin",
+   "behaviour": "balance",
+   "model": "claude-opus-5-5",
+   "seed": 1101,
+   "calls": 3,
+   "medians": {
+    "V1": 0,
+    "V2": 1,
+    "V3": 0,
+    "V4": 1
+   },
+   "total": 2,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": false,
+   "verdict": "fail",
+   "accepted_revision": "3a42fdec8b943b8b19897df247bbfd274bee330b229bdad84fbcf899ac890062",
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "evaluations": [
+    "ot11-robin-negative/3a42fdec8b94-ef71f370a2f1"
+   ]
+  },
+  {
+   "receipt": "judge-robin-seed-1105.json",
+   "label": "robin",
+   "behaviour": "balance",
+   "model": "claude-opus-5-5",
+   "seed": 1105,
+   "calls": 3,
+   "medians": {
+    "V1": 1,
+    "V2": 1,
+    "V3": 2,
+    "V4": 1
+   },
+   "total": 5,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": false,
+   "verdict": "fail",
+   "accepted_revision": "3a42fdec8b943b8b19897df247bbfd274bee330b229bdad84fbcf899ac890062",
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "evaluations": [
+    "ot11-robin-negative/3a42fdec8b94-ef71f370a2f1"
+   ]
+  },
+  {
+   "receipt": "judge-robin-seed-1110.json",
+   "label": "robin",
+   "behaviour": "balance",
+   "model": "claude-opus-5-5",
+   "seed": 1110,
+   "calls": 3,
+   "medians": {
+    "V1": 0,
+    "V2": 1,
+    "V3": 0,
+    "V4": 1
+   },
+   "total": 2,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": false,
+   "verdict": "fail",
+   "accepted_revision": "3a42fdec8b943b8b19897df247bbfd274bee330b229bdad84fbcf899ac890062",
+   "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+   "evaluations": [
+    "ot11-robin-negative/3a42fdec8b94-ef71f370a2f1"
+   ]
+  },
+  {
+   "receipt": "judge-w2-2-seed-1101.json",
+   "label": "w2-2",
+   "behaviour": "walk",
+   "model": "claude-opus-5-5",
+   "seed": 1101,
+   "calls": 3,
+   "medians": {
+    "V1": 1,
+    "V2": 2,
+    "V3": 0,
+    "V4": 1
+   },
+   "total": 4,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": false,
+   "verdict": "fail",
+   "accepted_revision": "064d8d7cd34c66d99b874282729b2a7017ad8cab873c3a79aea209c9d9dfd548",
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "evaluations": [
+    "ot11-w2-negative/064d8d7cd34c-7a4e8c233214"
+   ]
+  },
+  {
+   "receipt": "judge-w2-2-seed-1105.json",
+   "label": "w2-2",
+   "behaviour": "walk",
+   "model": "claude-opus-5-5",
+   "seed": 1105,
+   "calls": 3,
+   "medians": {
+    "V1": 1,
+    "V2": 1,
+    "V3": 0,
+    "V4": 1
+   },
+   "total": 3,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": false,
+   "verdict": "fail",
+   "accepted_revision": "064d8d7cd34c66d99b874282729b2a7017ad8cab873c3a79aea209c9d9dfd548",
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "evaluations": [
+    "ot11-w2-negative/064d8d7cd34c-7a4e8c233214"
+   ]
+  },
+  {
+   "receipt": "judge-w2-2-seed-1110.json",
+   "label": "w2-2",
+   "behaviour": "walk",
+   "model": "claude-opus-5-5",
+   "seed": 1110,
+   "calls": 3,
+   "medians": {
+    "V1": 1,
+    "V2": 2,
+    "V3": 0,
+    "V4": 1
+   },
+   "total": 4,
+   "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+   },
+   "meets_bar": false,
+   "verdict": "fail",
+   "accepted_revision": "064d8d7cd34c66d99b874282729b2a7017ad8cab873c3a79aea209c9d9dfd548",
+   "policy_sha256": "7a4e8c233214341efc432f656a30d350a9ba6cab6003cf95885107557c0250fb",
+   "evaluations": [
+    "ot11-w2-negative/064d8d7cd34c-7a4e8c233214"
+   ]
+  }
+ ]
+}

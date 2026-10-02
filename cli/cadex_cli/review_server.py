@@ -9,7 +9,9 @@ run as recorded (ADR-285), the parameters and specs each run was made
 under, the retained artifacts, and the model itself — the per-output
 meshes a run's rollout leg exported, placed where the rollout trace's
 first frame put them, or the accepted attempt's own tessellation for the
-project as it stands now. It is a review client: it opens no engine,
+project as it stands now — and each evaluation of a policy against its
+task's success spec, with the film drawn from it (ADR-459). It is a review
+client: it opens no engine,
 rebuilds nothing, accepts nothing, and holds no state of its own, so a
 browser that goes away changes nothing about the project.
 
@@ -1004,6 +1006,168 @@ def _checkpoint_source(root: Path, record: Mapping[str, Any]) -> dict[str, Any]:
             "reason": f"checkpoints resolved through recorded training run {name}"}
 
 
+# -- evaluations: a policy held to its task's success spec (ADR-457, ADR-459) --
+
+#: How many evaluations the project list names, newest kept.
+EVALUATIONS_LISTED = 64
+_EVALUATION_NAME = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
+_evaluation_cache: dict[str, tuple[tuple[int, ...], dict[str, Any]]] = {}
+
+
+def _evaluation_constants() -> tuple[str, str, str, Callable[[Mapping[str, Any]], list[str]]]:
+    # Imported where it is used: ``evaluate`` draws with ``video``, which
+    # serves its capture page from this module.
+    from .evaluate import EVALUATIONS_DIR, REPORT_NAME, REPORT_SCHEMA, failing_predicates
+    return EVALUATIONS_DIR, REPORT_NAME, REPORT_SCHEMA, failing_predicates
+
+
+def _evaluation_dir(root: Path, name: str) -> Path | None:
+    """``evaluations/<name>`` when it is a directory of the project, by name only."""
+
+    directory_name = _evaluation_constants()[0]
+    if not name or name in (".", "..") or not set(name) <= _EVALUATION_NAME:
+        return None
+    item = resolve_reference(root, f"{directory_name}/{name}")
+    path = root / directory_name / name
+    if item["error"] or not item["exists"] or not path.is_dir():
+        return None
+    return path
+
+
+def _evaluation_report(directory: Path) -> tuple[dict[str, Any], tuple[int, ...]] | None:
+    _dirname, report_name, schema, _failing = _evaluation_constants()
+    path = directory / report_name
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        stat = path.stat()
+    except OSError:
+        return None
+    report = _load_json(path)
+    if not report or report.get("schema") != schema or not isinstance(report.get("summary"), dict):
+        return None
+    return report, (stat.st_ino, stat.st_size, stat.st_mtime_ns)
+
+
+def _film_files(directory: Path, report: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Every file the report's film block names, resolved inside the evaluation."""
+
+    files: dict[str, dict[str, Any]] = {}
+    film = report.get("film") if isinstance(report.get("film"), dict) else {}
+    for row in film.get("seeds") or []:
+        for key in ("overview", "detail", "video"):
+            item = row.get(key) if isinstance(row, dict) else None
+            name = item.get("file") if isinstance(item, dict) else None
+            if not isinstance(name, str) or not name or not set(name) <= _EVALUATION_NAME:
+                continue
+            resolved = resolve_reference(directory, name)
+            path = directory / name
+            present = bool(resolved["exists"] and not resolved["error"]
+                           and path.is_file() and not path.is_symlink())
+            files[name] = {"exists": present, "error": resolved["error"],
+                           "bytes": path.stat().st_size if present else None}
+    return files
+
+
+def _evaluation_relation(report: Mapping[str, Any], accepted: Mapping[str, Any]) -> str:
+    if not accepted.get("available") or not report.get("accepted_revision"):
+        return "unknown"
+    return "current" if report["accepted_revision"] == accepted["revision"] else "historical"
+
+
+def evaluations(project_root: Path | str, accepted: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The project's evaluations as a bounded summary each, oldest first.
+
+    One row per ``evaluations/<name>/evaluation.json``: the verdict, the
+    seed tally, what failed, whose policy and task it was, its relation to
+    the accepted revision now, and which seeds were filmed. The per-seed
+    rows travel only in ``/api/evaluation/<name>``. A report is parsed once
+    per file identity, so an idle poll reads no report twice.
+    """
+
+    root = Path(project_root).expanduser().resolve()
+    directory_name, report_name, _schema, failing = _evaluation_constants()
+    base = root / directory_name
+    if not base.is_dir() or base.is_symlink():
+        return []
+    rows = []
+    for entry in sorted(base.iterdir()):
+        directory = _evaluation_dir(root, entry.name)
+        if directory is None:
+            continue
+        try:
+            stat = (directory / report_name).stat()
+        except OSError:
+            continue
+        stamp = (stat.st_ino, stat.st_size, stat.st_mtime_ns)
+        cached = _evaluation_cache.get(str(directory))
+        if cached is None or cached[0] != stamp:
+            found = _evaluation_report(directory)
+            if found is None:
+                continue
+            report, stamp = found
+            summary = report["summary"]
+            film = report.get("film") if isinstance(report.get("film"), dict) else {}
+            if len(_evaluation_cache) >= 4 * EVALUATIONS_LISTED:
+                _evaluation_cache.clear()
+            cached = _evaluation_cache[str(directory)] = (stamp, {
+                "name": entry.name,
+                "verdict": report.get("verdict"),
+                "seeds": int(summary.get("seeds") or 0),
+                "passed": len(summary.get("passed") or []),
+                "void": list(summary.get("void") or []),
+                "failing": failing(report),
+                "terminations": dict(summary.get("terminations") or {}),
+                "accepted_revision": report.get("accepted_revision"),
+                "policy_output": report.get("policy_output"),
+                "policy_sha256": report.get("policy_sha256"),
+                "task_output": report.get("task_output"),
+                "task_label": report.get("task_label"),
+                "film": {"state": film.get("state") or "none",
+                         "seeds": [row.get("seed") for row in film.get("seeds") or []
+                                   if isinstance(row, dict)]},
+                "stamp": "-".join(str(part) for part in stamp[1:]),
+                "evaluated_at": _datetime.datetime.fromtimestamp(
+                    stamp[2] / 1e9, _datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "_order": stamp[2],
+            })
+        rows.append({**cached[1], "relation": _evaluation_relation(cached[1], accepted)})
+    rows.sort(key=lambda row: (row["_order"], row["name"]))
+    for row in rows:
+        del row["_order"]
+    return rows[-EVALUATIONS_LISTED:]
+
+
+def evaluation_detail(project_root: Path | str, name: str,
+                      accepted: Mapping[str, Any]) -> dict[str, Any] | None:
+    """``/api/evaluation/<name>``: the report as written, and what of its film is on disk."""
+
+    root = Path(project_root).expanduser().resolve()
+    directory = _evaluation_dir(root, name)
+    found = _evaluation_report(directory) if directory is not None else None
+    if found is None:
+        return None
+    report, stamp = found
+    return {"name": name, "relation": _evaluation_relation(report, accepted),
+            "stamp": "-".join(str(part) for part in stamp[1:]),
+            "files": _film_files(directory, report), "report": report}
+
+
+def evaluation_file(project_root: Path | str, name: str, filename: str) -> Path | None:
+    """The report itself or a film file it names; nothing else in the directory."""
+
+    root = Path(project_root).expanduser().resolve()
+    directory = _evaluation_dir(root, name)
+    found = _evaluation_report(directory) if directory is not None else None
+    if found is None:
+        return None
+    report_name = _evaluation_constants()[1]
+    if filename != report_name and not _film_files(directory, found[0]).get(filename, {}).get("exists"):
+        return None
+    path = directory / filename
+    return path if path.is_file() and not path.is_symlink() else None
+
+
 def default_run(review: Mapping[str, Any]) -> str:
     """The view a fresh visit opens, as ``review.js``'s ``currentView`` does.
 
@@ -1045,6 +1209,7 @@ class ReviewProject:
         for record in review["runs"]:
             record["telemetry"] = training_telemetry(self.root, record, detail=False)
         review["presentation"] = presentation(self.root, review["accepted"])
+        review["evaluations"] = evaluations(self.root, review["accepted"])
         review["served_at"] = _now()
         return review
 
@@ -1356,6 +1521,13 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     return
                 self._send_json(policy_lineage(project.root, rest[1]))
                 return
+            if rest[:1] == ["evaluation"] and len(rest) == 2:
+                detail = evaluation_detail(project.root, rest[1], read_accepted_identity(project.root))
+                if detail is None:
+                    self._not_found(f"evaluation {rest[1]!r}")
+                    return
+                self._send_json(detail)
+                return
             if rest == ["model", "accepted"]:
                 self._send_json(accepted_model(project.root))
                 return
@@ -1386,6 +1558,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
             path = project.presentation_image(rest[0])
         elif head == "video" and rest[:1] == ["run"] and len(rest) == 3 and rest[2].isdigit():
             path = project.run_video(rest[1], int(rest[2]))
+        elif head == "evaluation" and len(rest) == 2:
+            path = evaluation_file(project.root, rest[0], rest[1])
         elif head == "doc" and rest[:1] == ["run"] and len(rest) >= 3:
             path = project.run_document(rest[1], "/".join(rest[2:]))
         elif head == "doc" and rest[:1] == ["current"] and len(rest) >= 2:

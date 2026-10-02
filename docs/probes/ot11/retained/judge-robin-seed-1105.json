@@ -1,0 +1,208 @@
+{
+  "schema": "ot11-judge-v1",
+  "label": "robin",
+  "behaviour": "balance",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "dc081807c28033ec7c729ff967d078a2dfdd884f088d8fa7cf130255048d83ed",
+  "instructions_sha256": "dfeab7c7624b2a7472baaaf1e6b9d20ebaba0c80f96953ea203d5725ef02b706",
+  "intent_sha256": "0acb4539649fa813431e691ccb7f3519570bdfb76d5530225cc3a0ea8ac216e7",
+  "bar": {
+    "total_min": 9,
+    "total_max": 12,
+    "trait_min": 2,
+    "scope": "each judged seed"
+  },
+  "evaluation": {
+    "schema": "cadex-evaluation-v1",
+    "verdict": "fail",
+    "accepted_revision": "3a42fdec8b943b8b19897df247bbfd274bee330b229bdad84fbcf899ac890062",
+    "policy_sha256": "ef71f370a2f189665f81f96026ba7281d73de332f0927cff7cf7a56944b0a94e",
+    "task_sha256": "12ee8a3e60a976bb4e5d2ed8173ebd74a81f414e8b879ad23d8717afae5c7cad",
+    "model_sha256": "933b1ac6288d61904d8b7245076b96a5e02f13f7e0538ba0b5f49a322b869614"
+  },
+  "seed": 1105,
+  "trace_sha256": "0f80d108b5df1be71991b800325d10971cb61669a92e50b6cc21faf056b9c0ef",
+  "film_style_sha256": "ec44312c216e3f1ce31ea9fe52e8bb8b2b2defc005f60dd8f7b70def52582a7a",
+  "sheets": [
+    {
+      "sheet": "overview",
+      "sha256": "0efca8482dbc484f3f86621eacb832279d54b7fe920948c690dcd04e1bc37cb4",
+      "frames": 12,
+      "times_s": [
+        0.0,
+        0.9,
+        1.8,
+        2.72,
+        3.62,
+        4.54,
+        5.44,
+        6.36,
+        7.26,
+        8.18,
+        9.08,
+        10.0
+      ],
+      "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path"
+    },
+    {
+      "sheet": "detail",
+      "sha256": "0d8651e098396d3b61f971b38a025cede4e857ee27e07d1ec0ee9e7a4b34db6b",
+      "frames": 12,
+      "times_s": [
+        2.38,
+        2.58,
+        2.7800000000000002,
+        2.98,
+        3.18,
+        3.38,
+        3.58,
+        3.7800000000000002,
+        3.98,
+        4.18,
+        4.38,
+        4.58
+      ],
+      "view": "side-on to the direction the base travelled, 12 degrees above the floor; the window follows the base",
+      "follows": "comp_chassis"
+    }
+  ],
+  "medians": {
+    "V1": 1,
+    "V2": 1,
+    "V3": 2,
+    "V4": 1
+  },
+  "total": 5,
+  "meets_bar": false,
+  "raw": [
+    {
+      "scores": {
+        "V1": {
+          "score": 1,
+          "reason": "It stays upright throughout, but it turns roughly a quarter turn in the first second and from about 6 s rolls steadily away from its start spot, turning again by 10 s."
+        },
+        "V2": {
+          "score": 1,
+          "reason": "It holds a balanced upright posture in the middle stretch, but the heading change and the late roll-away mean it is drifting rather than balancing on the spot."
+        },
+        "V3": {
+          "score": 2,
+          "reason": "The body stays vertical with no visible lurching or near-fall, but position and heading are not held."
+        },
+        "V4": {
+          "score": 1,
+          "reason": "After an early turn it is steady from about 1 s to 6 s, then degrades into continuous drift and a further turn by the end."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 1, \"reason\": \"It stays upright throughout, but it turns roughly a quarter turn in the first second and from about 6 s rolls steadily away from its start spot, turning again by 10 s.\"}, \"V2\": {\"score\": 1, \"reason\": \"It holds a balanced upright posture in the middle stretch, but the heading change and the late roll-away mean it is drifting rather than balancing on the spot.\"}, \"V3\": {\"score\": 2, \"reason\": \"The body stays vertical with no visible lurching or near-fall, but position and heading are not held.\"}, \"V4\": {\"score\": 1, \"reason\": \"After an early turn it is steady from about 1 s to 6 s, then degrades into continuous drift and a further turn by the end.\"}}",
+      "session_id": "8ad16778-c348-415c-9afd-e3b9148161cc",
+      "duration_ms": 13115,
+      "num_turns": 3,
+      "total_cost_usd": 0.045883400000000005,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 1085,
+          "cacheReadInputTokens": 4197,
+          "cacheCreationInputTokens": 2916,
+          "webSearchRequests": 0,
+          "costUSD": 0.045883400000000005,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 686,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 1,
+          "reason": "It stays upright for the whole episode, but it turns about a quarter-turn in the first second and then drifts away and yaws again from about 7 s onward instead of holding its spot and heading."
+        },
+        "V2": {
+          "score": 2,
+          "reason": "It balances on its two wheels with an upright body for most of the episode, but slow wheel rolling and late drifting and turning show in place of a true stationary hold."
+        },
+        "V3": {
+          "score": 2,
+          "reason": "The body stays vertical with no visible lurching or near-fall, but the unwanted heading change and the late wandering show imperfect control."
+        },
+        "V4": {
+          "score": 1,
+          "reason": "After an early turn it holds steady from roughly 1 s to 6 s, then degrades into drift and rotation over the last few seconds."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 1, \"reason\": \"It stays upright for the whole episode, but it turns about a quarter-turn in the first second and then drifts away and yaws again from about 7 s onward instead of holding its spot and heading.\"}, \"V2\": {\"score\": 2, \"reason\": \"It balances on its two wheels with an upright body for most of the episode, but slow wheel rolling and late drifting and turning show in place of a true stationary hold.\"}, \"V3\": {\"score\": 2, \"reason\": \"The body stays vertical with no visible lurching or near-fall, but the unwanted heading change and the late wandering show imperfect control.\"}, \"V4\": {\"score\": 1, \"reason\": \"After an early turn it holds steady from roughly 1 s to 6 s, then degrades into drift and rotation over the last few seconds.\"}}",
+      "session_id": "2f822155-924f-4611-97a7-808a956e783c",
+      "duration_ms": 13104,
+      "num_turns": 3,
+      "total_cost_usd": 0.047104,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 1144,
+          "cacheReadInputTokens": 4200,
+          "cacheCreationInputTokens": 2921,
+          "webSearchRequests": 0,
+          "costUSD": 0.047104,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 722,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "V1": {
+          "score": 1,
+          "reason": "It stays upright the whole time, but it yaws about a quarter turn in the first second and from about 7 s onward rolls away across the floor and turns again, so it neither holds its spot nor its heading."
+        },
+        "V2": {
+          "score": 1,
+          "reason": "Upright balancing is present, but only the middle stretch (about 1\u20136 s) is on the spot; the rest is drifting and turning, and the wheels rotate steadily in the detail frames."
+        },
+        "V3": {
+          "score": 2,
+          "reason": "The body stays near vertical with no fall or wild lurch, but the unwanted turning and late drift show the position and heading are not well controlled."
+        },
+        "V4": {
+          "score": 1,
+          "reason": "It turns early, holds fairly steady through the middle, then degrades into a progressive roll-away and turn over the last three seconds."
+        }
+      },
+      "reply": "{\"V1\": {\"score\": 1, \"reason\": \"It stays upright the whole time, but it yaws about a quarter turn in the first second and from about 7 s onward rolls away across the floor and turns again, so it neither holds its spot nor its heading.\"}, \"V2\": {\"score\": 1, \"reason\": \"Upright balancing is present, but only the middle stretch (about 1\u20136 s) is on the spot; the rest is drifting and turning, and the wheels rotate steadily in the detail frames.\"}, \"V3\": {\"score\": 2, \"reason\": \"The body stays near vertical with no fall or wild lurch, but the unwanted turning and late drift show the position and heading are not well controlled.\"}, \"V4\": {\"score\": 1, \"reason\": \"It turns early, holds fairly steady through the middle, then degrades into a progressive roll-away and turn over the last three seconds.\"}}",
+      "session_id": "7ded4a81-aae8-4366-9a72-9810447f08bc",
+      "duration_ms": 13696,
+      "num_turns": 3,
+      "total_cost_usd": 0.047764,
+      "stop_reason": "end_turn",
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 1177,
+          "cacheReadInputTokens": 4200,
+          "cacheCreationInputTokens": 2921,
+          "webSearchRequests": 0,
+          "costUSD": 0.047764,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 740,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}

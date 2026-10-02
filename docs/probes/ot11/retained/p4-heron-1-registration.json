@@ -1,0 +1,18 @@
+{
+  "schema": "ot11-rounds-registration-v1",
+  "project": "ot11-heron-1",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "first_prompt": {
+    "file": "reach.loop.prompt.txt",
+    "sha256": "791a15d70cfb05416abe6a1a18f4c6f553822e2cfcae8be7e814c692bbd73296"
+  },
+  "continue_prompt": {
+    "file": "continue.loop.prompt.txt",
+    "sha256": "970d16e7cb055cd481ba3c814f4c33bc4cf5854ef2b8adb755ec42b9799f6e3a"
+  },
+  "max_runs": 4,
+  "max_turns": 4,
+  "stop_rule": "an evaluation passes on every seed, or max_runs runs have been trained and evaluated, or max_turns turns have ended",
+  "registered_at": "2026-09-30T18:48:11Z"
+}

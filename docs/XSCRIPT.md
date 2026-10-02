@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-09-29
+Verified against source: 2026-10-01
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -325,6 +325,150 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   at a knee is a foot through it, and the engine measures whether the
   declared tilt clears at the declared lift and refuses the pairing that
   does not.
+  **`assembly.goal(name, kind=...)` says where to go** (ADR-462), and goes
+  to `assembly.task(..., goals=[...])`. A task without one asks the same
+  thing every episode. A goal is drawn afresh per episode, **the policy
+  observes it** after its sensor channels, a reward or a termination names
+  its channels exactly as it names an observation's, and a rollout's trace
+  records it frame by frame.
+
+  ```python
+  command = assembly.goal("command", kind="speed", between=[60, 96])
+  target = assembly.goal("target", kind="point", tip=hand,
+                         tip_offset_mm=[0, 0, 40], min_z_mm=25,
+                         min_separation_mm=60, resample_seconds=4.0)
+  task = assembly.task(model, actions=[...], goals=[target],
+                       reward=[assembly.reward(
+                           "-sqrt((tip_x - target_x)^2 + (tip_y - target_y)^2"
+                           " + (tip_z - target_z)^2)", weight=0.01)], ...)
+  ```
+
+  | kind | channels | drawn from | a success spec reads |
+  |---|---|---|---|
+  | `value` | `name` | `between=[low, high]`, in the reward's own unit | nothing; it is the reward's to give a meaning |
+  | `speed` | `name`, mm/s | `between=[low, high]`: the commanded forward speed | `speed_ratio`, `lateral_ratio` |
+  | `point` | `name_x`, `name_y`, `name_z`, mm, world | a pose `tip` can reach | the reach metrics |
+
+  A `point` is a place the tip **can be**: the engine draws a pose with
+  every joint the task drives in the middle `joint_fraction` (0.8) of its
+  own range, and the target is where the point `tip_offset_mm` on `tip` is
+  at that pose. It draws again, up to a hundred times, when the point is
+  under `min_z_mm` (world Z), when the pose puts the mechanism in a contact
+  it is not in at rest, or when the point is within `min_separation_mm` of
+  where the tip starts that segment. A point no pose can reach is refused
+  when the task is declared, with what rejected the tries. Every driven
+  joint needs both limits. The range drawn is the joint's, not a servo's
+  narrower `command_limits_degrees`. On a mechanism with gear, belt or
+  screw couplings, each coupled follower is placed by its coupling law
+  before the pose is read, so a target is never judged at a pose the
+  coupling forbids (ADR-474). The bundle carries these as the goal's
+  `followers`, and only on a coupled mechanism.
+  `resample_seconds=...` draws the goal again that often during the
+  episode, on a whole number of control steps; omitted, it is held. The
+  step a goal changes on is scored against the goal its action was taken
+  under. A task states at most one `speed` and one `point`, up to four
+  goals in all, and a goal may not share a channel name with an
+  observation. An episode played without a seed holds the middle of a
+  range, or the point the tip already occupies.
+  The goals are written into the bundle as `goal`, resolved to addresses
+  and SI, beside `goal_algorithm`, which states the draw. **They continue a
+  seed's stream after its shoves**, so a goal moves no reset and no shove a
+  seed drew before. A task with no goal writes neither key and keeps the
+  digest it had. **The trainer draws its goals by the same algorithm**, on
+  the host, as a pool of episodes from its own seed (`training/README.md`);
+  a test holds the two to the same numbers.
+  **`assembly.success(predicates, seeds=...)` says what the behaviour must
+  measurably be, apart from the reward** (ADR-456), and goes to
+  `assembly.task(..., success=spec)`. A reward is what a policy is paid for;
+  a policy that was paid and shuffled is the failure this catches. A
+  predicate is `{"id": ..., "metric": ..., "min": ..., "max": ...}` with at
+  least one bound, where `metric` names one **behaviour metric** measured
+  from the rollout's poses (`CadexEvaluation`, ADR-455) — never an
+  expression. A seed passes when every predicate holds, and a metric that
+  could not be measured fails rather than passing on nothing.
+
+  ```python
+  spec = assembly.success(
+      [
+          {"id": "completes", "metric": "completed", "min": 1},
+          {"id": "upright", "metric": "max_tilt_deg", "max": 30},
+          {"id": "in_place", "metric": "max_drift_com_heights", "max": 2.0},
+          {"id": "recovers", "metric": "recovery_s_max", "max": 2.0},
+      ],
+      seeds=[1101, 1102, 1103, 1104, 1105, 1106, 1107, 1108, 1109, 1110],
+      episode_seconds=10.0,
+      disturbance=[assembly.disturbance(base, newtons=[1.0, 2.5],
+                                        at_seconds=[2.0, 3.0], duration_s=0.1)],
+  )
+  task = assembly.task(model, actions=[...], reward=[...], success=spec, ...)
+  ```
+
+  | metric | what it is | needs |
+  |---|---|---|
+  | `completed`, `duration_s` | 1 when the episode ran to its horizon with no termination; how long it ran | — |
+  | `max_tilt_deg`, `max_heading_deg`, `final_heading_deg` | tilt and yaw of the base from its solved attitude and first frame | a floating base |
+  | `max_drift_mm`, `final_drift_mm`, `mean_speed_mm_s` | plan travel of the base's centre of mass from the first frame; its mean speed | a floating base |
+  | `max_drift_com_heights` | the same drift, in centre-of-mass heights | a floating base on the floor plane |
+  | `recovery_s_max` | the longest time from a shove's end to the start of 1 s of rest (tilt ≤ 10°, speed ≤ 1 COM height/s) | a timed `disturbance` in the spec's conditions |
+  | `steps_min`, `step_share_min`, `step_count_ratio` | real steps by the foot that took fewest (airborne ≥ 0.10 s, landing ≥ 0.15 hip heights away); the share of a foot's travel made in steps; most steps over fewest | `feet` |
+  | `step_clearance_hip_heights_min`, `foot_lowest_hip_heights_min` | median peak height of a foot's steps; how far below the floor a foot went after 1 s, so the landing from the reset lift is not read as stance (ADR-467) | `feet` |
+  | `slip_share_max`, `duty_factor_min`, `duty_factor_max` | the share of a foot's travel made while on the floor; the share of frames in stance | `feet` |
+  | `mean_forward_speed_mm_s`, `mean_lateral_speed_mm_s` | speed along and across the base's heading, after 1 s | `feet` |
+  | `speed_ratio`, `lateral_ratio` | those speeds over the commanded one: the mean of the `speed` goal over the same settled frames | `feet` and a `speed` goal |
+  | `final_error_mm_max`, `final_error_arm_lengths_max`, `time_to_target_s_max`, `overshoot_ratio_max` | a tip's worst error, arrival time and overshoot over the targets the episode held | `tip` and a `point` goal |
+
+  "Every foot" is the worst foot, which is what the `_min` and `_max`
+  suffixes say. **That table is the whole vocabulary.** A predicate that
+  names the task's reward, one of its reward terms (by label) or an
+  observation channel is refused: *the reward never judges itself*, because
+  a policy that maximised a reward has met any threshold on it whatever the
+  mechanism did. A metric the spec or the mechanism cannot measure is
+  refused when the task is declared rather than found as a failed seed —
+  gait with no `feet`, recovery with no shove, tilt on an arm bolted to the
+  bench. **The last two rows are read against the task's goal** (ADR-462)
+  and are refused on a task that states none of that kind; bound
+  `mean_forward_speed_mm_s` for a speed nobody commanded. A ratio is also
+  refused when the speed it divides by may be zero.
+  `feet=[component, ...]` names the feet, each of which needs a primitive
+  collision shape, because a foot's height is its lowest collision point
+  above the floor. `tip=component, tip_offset_mm=[x, y, z]` names the point
+  a reach is measured at. `seeds` are the evaluation seeds, 1 through 64
+  distinct integers fixed in the script so two evaluations of one policy are
+  the same episodes; **they are never training seeds**.
+  `randomisation=[...]`, `reset_variation=[...]`, `disturbance=[...]` and
+  `episode_seconds=...` are the conditions an evaluation episode runs under
+  — the same values `assembly.task` takes, checked the same way against the
+  spec's own horizon. Omitted, each is the task's own; `[]` is none. They
+  are separate because a test is not a lesson: a policy trained against 1 N
+  shoves may be asked to survive 2 N, and a policy trained on a varied mass
+  may be judged on the mechanism as built with `randomisation=[]`
+  (ADR-458). The randomisation draws come first in a seed's stream, so
+  stating it also fixes which start and which shove each seed draws.
+  `goals=[...]` is the same kind of condition (ADR-462): omitted, an
+  evaluation draws the task's own goals over the spec's horizon. Given, it
+  must restate **the task's goals by name and kind, in order** — the policy
+  reads them by position — and may change what each is drawn from: a wider
+  range of speeds, a target further from the start, another period. The
+  goal draws come last in a seed's stream, so stating them moves nothing
+  else.
+  The spec is written into the task bundle as a `success` block
+  (`cadex-success-spec-v1`) with its conditions resolved and a `scale` —
+  mass, weight, COM height, hip height, arm length — so a threshold in hip
+  heights can be read in millimetres. `scale={"hip_height_mm": HIP_MM,
+  "weight_n": WEIGHT_N}` says which of the script's own constants are that
+  scale (ADR-468). A spec that draws a command in hip heights per second,
+  or a shove in body weights, is only itself on the body it was measured
+  from. Stated, each value must agree with the one the engine measures to
+  one part in a million, or the script is refused
+  (`success_scale_mismatch`) with the measured values to copy. An agreeing
+  statement is kept as `stated_scale`; with none, nothing is checked. **It is not part of what the task
+  is**: a task with no spec writes the bundle it always did, and a spec can
+  be revised without orphaning a policy, because
+  `assembly.policy(trained_task=...)` proves two bundles that differ only in
+  their spec to be the same task (ADR-134).
+  **`cadex evaluate` holds the accepted policy to the spec** (ADR-457,
+  `docs/CLI.md`): one rollout per seed under these conditions, every
+  predicate per seed, and a report in the project. Every seed must pass.
   **Action ranges are derived from the mechanism or refused, never
   defaulted.** A `motor` is bounded by its `torque_limit_nmm`/`force_limit_n`
   and a `position` servo by its joint's own limits with *both* endpoints
@@ -401,13 +545,19 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   in its own text that the hull was read and accepted. A mesh too coarse to
   be the part is refused separately, and that refusal is not waived by
   `hull`. Contact takes `friction`, `condim`, `margin_mm`, `restitution` and
-  a `contact_group`/`collides_with` pair. Restitution is 0 or between 0.3
+  a `contact_group`/`collides_with` pair. A `margin_mm` above 0 is exported
+  and simulated, and `cadex evaluate` voids every seed of a policy played on
+  it (ADR-470): the margin moves the surface contact acts at, so no contact
+  predicate measures the geometry. Restitution is 0 or between 0.3
   and 0.9 — MuJoCo has no restitution coefficient, bounce comes out of the
   contact spring's damping, and outside that band the translation is not
   honest — and above 0 it needs a `solver_step_s` of 0.001 or finer, which
   is refused rather than silently under-delivered. Components that a joint
   connects never collide with each other: they overlap at the joint by
-  construction.
+  construction. A coupling (`gears`, `belt`, `screw`) is not a pin, so its
+  two components are excluded only if their collision shapes already touch
+  at the solved pose — meshed wheels, a nut on its thread — and otherwise
+  collide, as a gripper's geared jaws must (ADR-475).
 - `assembly.exploded_view(assembly, moves)` declares one **exploded view** of
   a solved assembly (ADR-149): an ordered list of 1 through 64 moves, at
   most 256 component references across all of them. Each move names

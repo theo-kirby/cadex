@@ -1,0 +1,82 @@
+{
+    "schema": "ot11-rounds-preregistration-v1",
+    "behaviour": "walk",
+    "session": 6,
+    "criteria": [
+        "P4",
+        "R1"
+    ],
+    "counts_for": "R1 rounds only; R1 is judged on a later pre-registered confirmation evaluation, registered only if a round passes on all ten seeds",
+    "project": "ot11-quad-1",
+    "project_head": "eb411aadd44f20faa47fdab249765195ac071b6e",
+    "accepted_revision_before": "50b2a42caf1ca278b4beed501491c4e493a8f6394d29594f08d29378fa0bcf1d",
+    "accepted_digest_before": "daa40ebf03a3e48b5ec5c7dfd3a7b1584999378ace53e624dda34700c26e99ce",
+    "model_sha256_before": "6cecfa2de126d2d9f4527e28a21bae3babf01df0beadca84a7cb34fa77705914",
+    "task_sha256_before": "c1a3ad338dcc5000b1c35a40de67731e52aa04842e2e343bca392313b0ee1fa6",
+    "declared_policy_before": {
+        "run": "r17-discount-bodyrate",
+        "sha256": "63cbf22407c09f98f438cb59202c9dd99d040275093136bba07a582a6982e385"
+    },
+    "scale": {
+        "hip_height_mm": 96.7006,
+        "weight_n": 5.050696177620001,
+        "script_HIP_MM": 96.7006,
+        "script_WEIGHT_N": 5.05069617762
+    },
+    "motivation": "session 5 closed at its three-run limit (rows 27-29); r17-discount-bodyrate (row 29) is valid and passes 1 of 10 (seed 1108): no tips, every foot steps 5-14 times, W3/W6/W8/W10 pass 10/10; nine seeds fail W7 slip (0.154-0.208 vs 0.15, 8 seeds), W9 rear-heavy stepping (1.4-2.4 vs 1.5, 8 seeds) and W5-share (2 seeds)",
+    "model": "claude-opus-5-5",
+    "fallback": null,
+    "driver": {
+        "file": "runner/rounds.py",
+        "sha256": "86a96079cd213658f9a0f67411152b230834410594c5756282998cbcf999f48b",
+        "change": "none since session 3"
+    },
+    "first_prompt": {
+        "file": "walk.s6.loop.prompt.txt",
+        "sha256": "28409d4cd49ba40c2fc07e423e050885c232f0f381282079cf68c75db304b559"
+    },
+    "continue_prompt": {
+        "file": "walk.s6.continue.prompt.txt",
+        "sha256": "34201b2de18c0f286b52010b068b8da9b83f1fe052821d50e06b2afa10dd233d"
+    },
+    "spec_block": {
+        "file": "retained/walk-spec-block.txt",
+        "sha256": "487416afd4da672e4af8ed55ed5f2b1464eeec7bf305381833fd26775b4fe900",
+        "mechanism_rule": "byte-identical except the values of HIP_MM and WEIGHT_N, which must equal the evaluated model's rig.hip_height_mm and rig.weight_n as the evaluation report states them (to the block's printed precision); SPEC_LIFT keeps its formula"
+    },
+    "mechanism": {
+        "fixed": false,
+        "agent_may_change": "geometry, bodies, collision shapes and per-body contact settings, joints and limits, actuators, and the parameters that set them, through the ordinary edit and accept path",
+        "bounds": [
+            "four legs on one free base; the spec's feet stay c_foot_fl, c_foot_fr, c_foot_rl, c_foot_rr",
+            "the floor body and its plane, and every global physics setting (timestep, gravity, solver), unchanged",
+            "actuators stay catalog parts at catalog limits",
+            "no contact margin or gap on any shape; cadex evaluate voids every seed of a model that has one (ADR-470)"
+        ],
+        "actor_changes": "none: the project is as the agent's session-5 turn left it; the prompt states r17's measurements and no product change"
+    },
+    "warm_start": "allowed by the trainer only from a policy on the same model and the same observation/action layout (r17 qualifies while the model and task layout are unchanged); the agent chooses",
+    "trainer": {
+        "file": "training/cadex_train.py",
+        "sha256": "97bc1d9aa068fa0a41ce19180ea7b3bb0c67659e63f2c769d00c08e56d890259",
+        "rule": "ADR-465 and ADR-466, unchanged since session 2"
+    },
+    "engine": {
+        "source": "the dev tree at 220bfb49 (src/Mod/cadex, cli/cadex_cli and training/ unchanged since 570a49e7)",
+        "rule": "nothing under src/Mod/cadex, cli/cadex_cli, training/ or build/ changes while the session runs"
+    },
+    "max_runs_this_session": 3,
+    "max_turns": 2,
+    "driver_args": "--max-runs 22 --max-turns 2: the project's loop ledger holds 19 evaluated rows before this session, so 22 is three more",
+    "per_run": {
+        "budget_s_max": 2400,
+        "stop_on_collapse": true,
+        "seed_rule": "the product agent chooses it at train_start; train_start refuses any of 1101-1110",
+        "registered_by": "train_start writes runs/<run>/registration.json and a train_registered ledger row before launch"
+    },
+    "wall_clock_bound": "2 turns; at most 3 runs of at most 2400 s each (7,200 s GPU at most); one GPU job at a time (machine training lock)",
+    "stop_rule": "an evaluation passes on every seed, or the session has trained and evaluated 3 runs, or 2 turns have ended",
+    "supervision": "rounds.py under setsid, outliving the actor's session; each training run under its own cadex_cli.loop supervisor",
+    "after": "after each evaluation: the spec block is compared under mechanism_rule, contact_offsets must be empty, and the model digest, hip height and weight are recorded; a difference voids that evaluation. If an evaluation passes all ten seeds, a confirmation evaluation is pre-registered and committed before it is run",
+    "registered_at": "2026-10-01T12:20:22Z"
+}

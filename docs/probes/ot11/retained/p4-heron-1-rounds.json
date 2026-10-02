@@ -1,0 +1,2514 @@
+{
+  "schema": "ot11-p4-rounds-receipt-v1",
+  "project": "ot11-heron-1",
+  "session": {
+    "model": "claude-opus-5-5",
+    "turns": 1,
+    "turn_seconds": [
+      4472.7
+    ],
+    "result": {
+      "duration_ms": 4464271,
+      "num_turns": 51,
+      "total_cost_usd": 3.2030461999999997,
+      "is_error": false
+    },
+    "tool_calls": {
+      "inspect": {
+        "calls": 11,
+        "errors": 0,
+        "longest_s": 0.1
+      },
+      "train_status": {
+        "calls": 8,
+        "errors": 0,
+        "longest_s": 892.8
+      },
+      "describe_api": {
+        "calls": 2,
+        "errors": 0,
+        "longest_s": 0.1
+      },
+      "edit_script": {
+        "calls": 10,
+        "errors": 1,
+        "longest_s": 8.4
+      },
+      "train_start": {
+        "calls": 11,
+        "errors": 7,
+        "longest_s": 0.4
+      },
+      "put_asset": {
+        "calls": 4,
+        "errors": 0,
+        "longest_s": 0.1
+      },
+      "evaluate": {
+        "calls": 4,
+        "errors": 0,
+        "longest_s": 111.3
+      }
+    }
+  },
+  "standing": {
+    "runs_registered": 4,
+    "runs_ended": 4,
+    "evaluations": 4,
+    "passed": false
+  },
+  "ledger": [
+    {
+      "accepted_revision": "c98fc310259ee5a5785e11362502c26279b082a990c7663952127e9913dd7a26",
+      "at": 1790794216.2603846,
+      "budget_s": 880.0,
+      "kind": "train_registered",
+      "reason": "First run on the new random-target task (goal \"target\" redrawn every 2 s, policy reads joint encoders + goal, reward = alive + coarse/fine exp distance - near-target speed cost). No policy exists yet; the old fixed-point task could not pass the ot11 spec, so this establishes a baseline against Q1-Q4.",
+      "run": "reach-r1",
+      "schema": "cadex-loop-ledger-v1",
+      "settings": {
+        "checkpoint_every": 50,
+        "envs": 1024,
+        "hidden": [
+          128,
+          128
+        ],
+        "iterations": 700,
+        "seed": 7
+      },
+      "task": "heron_reach_task"
+    },
+    {
+      "at": 1790795096.7363179,
+      "kind": "train_ended",
+      "policy_sha256": null,
+      "reason": "the wall-clock budget of 880 s ran out before the last iteration.",
+      "run": "reach-r1",
+      "schema": "cadex-loop-ledger-v1",
+      "state": "budget_exhausted",
+      "wall_time_s": 880.45
+    },
+    {
+      "accepted_revision": "42ff7b8e1099c2669fcd347afa8185d547b2c90fad5f462bd500a817242a3c17",
+      "at": 1790795218.9597006,
+      "failing": [
+        "Q2 (10 of 10)",
+        "Q3 (10 of 10)",
+        "Q4 (7 of 10)"
+      ],
+      "kind": "evaluated",
+      "passed": 0,
+      "policy_sha256": "c5a01908a054d033c016273ab6049dc810d3f695b9b16c3fa621d4ea94aea43b",
+      "report": "evaluations/42ff7b8e1099-c5a01908a054/evaluation.json",
+      "schema": "cadex-loop-ledger-v1",
+      "seeds": 10,
+      "task": "heron_reach_task",
+      "trained_by_run": [
+        "reach-r1"
+      ],
+      "verdict": "fail"
+    },
+    {
+      "accepted_revision": "40622611f6f4fd30999ddfc63985408cdedfb7e6a795dcea6038bf3137ea738c",
+      "at": 1790795296.3616543,
+      "budget_s": 890.0,
+      "kind": "train_registered",
+      "reason": "reach-r1 failed Q2 on 10/10 seeds (final_error_arm_lengths_max median 0.82, min 0.43, limit 0.05) and Q3 on 10/10 (never within 7.2 mm, limit 2.0 s); the film shows one fixed pose regardless of target, i.e. the exp(-d/40) reward was flat for the 60-180 mm errors. This run adds a linear distance cost (d/144), sharpens coarse exp to 20 mm, drops the global tip-speed cost and raises the alive bonus to 1.5; expected: the policy conditions on the goal and final errors fall toward the fine-reward scale.",
+      "run": "reach-r2",
+      "schema": "cadex-loop-ledger-v1",
+      "settings": {
+        "checkpoint_every": 50,
+        "envs": 1024,
+        "hidden": [
+          128,
+          128
+        ],
+        "iterations": 800,
+        "seed": 11
+      },
+      "task": "heron_reach_task"
+    },
+    {
+      "at": 1790796186.8948593,
+      "kind": "train_ended",
+      "policy_sha256": null,
+      "reason": "the wall-clock budget of 890 s ran out before the last iteration.",
+      "run": "reach-r2",
+      "schema": "cadex-loop-ledger-v1",
+      "state": "budget_exhausted",
+      "wall_time_s": 890.51
+    },
+    {
+      "accepted_revision": "0ce61b45859b9a02a3502b0ddfc8f474a6f5ac1d665336f3db3dbadc588be349",
+      "at": 1790796311.8435824,
+      "failing": [
+        "Q2 (9 of 10)",
+        "Q3 (9 of 10)",
+        "Q4 (1 of 10)"
+      ],
+      "kind": "evaluated",
+      "passed": 1,
+      "policy_sha256": "e1b0277de9db7d4b003fa973b111eb56d8d5ad182fb7b8d2cea177357e4dc355",
+      "report": "evaluations/0ce61b45859b-e1b0277de9db/evaluation.json",
+      "schema": "cadex-loop-ledger-v1",
+      "seeds": 10,
+      "task": "heron_reach_task",
+      "trained_by_run": [
+        "reach-r2"
+      ],
+      "verdict": "fail"
+    },
+    {
+      "accepted_revision": "44e9d86c56e8a32aa6044b74c8382399f8724c4cb401d052d3b3a5a734b6b88e",
+      "at": 1790796414.8204546,
+      "budget_s": 890.0,
+      "kind": "train_registered",
+      "reason": "reach-r2 failed Q2 on 9/10 seeds (final_error_arm_lengths_max median 0.099, max 0.26 on 1106, limit 0.05) and hence Q3 on 9/10, with a steady offset short of targets in the film; Q4 failed only on 1107 (0.223 vs 0.20). This run replaces the distance-gated settle cost (which paid to stand off) with an ungated tanh(v/200) cost, raises the fine term to 2*exp(-d/5) and sets entropy 0 so exploration noise shrinks faster than r2's sigma 0.13; expected: final errors fall under 7.2 mm. (Warm start from r2 was not possible: its parent task bundle could not be located.)",
+      "run": "reach-r3",
+      "schema": "cadex-loop-ledger-v1",
+      "settings": {
+        "checkpoint_every": 50,
+        "entropy": 0.0,
+        "envs": 1024,
+        "hidden": [
+          128,
+          128
+        ],
+        "iterations": 800,
+        "seed": 23
+      },
+      "task": "heron_reach_task"
+    },
+    {
+      "at": 1790797305.309122,
+      "kind": "train_ended",
+      "policy_sha256": null,
+      "reason": "the wall-clock budget of 890 s ran out before the last iteration.",
+      "run": "reach-r3",
+      "schema": "cadex-loop-ledger-v1",
+      "state": "budget_exhausted",
+      "wall_time_s": 890.46
+    },
+    {
+      "accepted_revision": "a9d8520c81c97345f69265c8595441122e96289308ac60b9c843ed7233614831",
+      "at": 1790797431.2645783,
+      "failing": [
+        "Q2 (10 of 10)",
+        "Q3 (10 of 10)",
+        "Q4 (2 of 10)"
+      ],
+      "kind": "evaluated",
+      "passed": 0,
+      "policy_sha256": "2036f471cc3b675141836db4df30513391ef141c3f8b3b6d8e0dba3ae150f983",
+      "report": "evaluations/a9d8520c81c9-2036f471cc3b/evaluation.json",
+      "schema": "cadex-loop-ledger-v1",
+      "seeds": 10,
+      "task": "heron_reach_task",
+      "trained_by_run": [
+        "reach-r3"
+      ],
+      "verdict": "fail"
+    },
+    {
+      "accepted_revision": "9872abc238381b2cb8bc9ad5b3e19f39fe31f6c218651a85acd1d3008d213e30",
+      "at": 1790797510.734122,
+      "budget_s": 895.0,
+      "kind": "train_registered",
+      "reason": "reach-r3 failed Q2 on 10/10 seeds (final_error_arm_lengths_max median 0.139, max 0.307 on 1106, limit 0.05), Q3 on 10/10 and Q4 on 1107 (0.301) and 1109 (0.238); its settle_cost sat at its 0.3/step ceiling and control cost implied ~120 N*mm RMS force vs ~35 N*mm gravity hold, i.e. the policy chatters. This run makes the tip-speed cost linear (v/500), raises the force-squared cost to 1e-5 and moves joint rates to privileged so the policy cannot learn chattering rate feedback; expected: a quiet hold and final errors under 7.2 mm.",
+      "run": "reach-r4",
+      "schema": "cadex-loop-ledger-v1",
+      "settings": {
+        "checkpoint_every": 25,
+        "entropy": 0.0,
+        "envs": 1024,
+        "hidden": [
+          128,
+          128
+        ],
+        "iterations": 800,
+        "seed": 31
+      },
+      "task": "heron_reach_task"
+    },
+    {
+      "at": 1790798406.2500477,
+      "kind": "train_ended",
+      "policy_sha256": null,
+      "reason": "the wall-clock budget of 895 s ran out before the last iteration.",
+      "run": "reach-r4",
+      "schema": "cadex-loop-ledger-v1",
+      "state": "budget_exhausted",
+      "wall_time_s": 895.49
+    },
+    {
+      "accepted_revision": "6418a337500a9a2aed8a0dc3593839164e7aeb63dbee519defa43f2ff5cd4a86",
+      "at": 1790798535.1596305,
+      "failing": [
+        "Q2 (1 of 10)",
+        "Q3 (1 of 10)"
+      ],
+      "kind": "evaluated",
+      "passed": 9,
+      "policy_sha256": "3270ce2602335829fa885d93b372f7afa7a53cf5aaf4133bb6aa5d23c94da606",
+      "report": "evaluations/6418a337500a-3270ce260233/evaluation.json",
+      "schema": "cadex-loop-ledger-v1",
+      "seeds": 10,
+      "task": "heron_reach_task",
+      "trained_by_run": [
+        "reach-r4"
+      ],
+      "verdict": "fail"
+    }
+  ],
+  "runs": [
+    {
+      "registration": {
+        "run": "reach-r1",
+        "settings": {
+          "checkpoint_every": 50,
+          "envs": 1024,
+          "hidden": [
+            128,
+            128
+          ],
+          "iterations": 700,
+          "seed": 7
+        },
+        "budget_s": 880.0,
+        "stop_rule": "stops at the last iteration, at the wall-clock budget, when the mean episode collapses (--stop-on-collapse), or when a stop is requested",
+        "reason": "First run on the new random-target task (goal \"target\" redrawn every 2 s, policy reads joint encoders + goal, reward = alive + coarse/fine exp distance - near-target speed cost). No policy exists yet; the old fixed-point task could not pass the ot11 spec, so this establishes a baseline against Q1-Q4.",
+        "task_sha256": "6581a401024d1318471473fe3daf02e6b922027e78370445f44cea847b835f04",
+        "accepted_revision": "c98fc310259ee5a5785e11362502c26279b082a990c7663952127e9913dd7a26"
+      },
+      "status": {
+        "ended_at": 1790795096.7352595,
+        "exit": -15,
+        "iterations_run": 685,
+        "reason": "the wall-clock budget of 880 s ran out before the last iteration.",
+        "run": "reach-r1",
+        "schema": "cadex-training-status-v1",
+        "started_at": 1790794216.2851589,
+        "state": "budget_exhausted",
+        "wall_time_s": 880.45
+      }
+    },
+    {
+      "registration": {
+        "run": "reach-r2",
+        "settings": {
+          "checkpoint_every": 50,
+          "envs": 1024,
+          "hidden": [
+            128,
+            128
+          ],
+          "iterations": 800,
+          "seed": 11
+        },
+        "budget_s": 890.0,
+        "stop_rule": "stops at the last iteration, at the wall-clock budget, when the mean episode collapses (--stop-on-collapse), or when a stop is requested",
+        "reason": "reach-r1 failed Q2 on 10/10 seeds (final_error_arm_lengths_max median 0.82, min 0.43, limit 0.05) and Q3 on 10/10 (never within 7.2 mm, limit 2.0 s); the film shows one fixed pose regardless of target, i.e. the exp(-d/40) reward was flat for the 60-180 mm errors. This run adds a linear distance cost (d/144), sharpens coarse exp to 20 mm, drops the global tip-speed cost and raises the alive bonus to 1.5; expected: the policy conditions on the goal and final errors fall toward the fine-reward scale.",
+        "task_sha256": "22f36d40f0dfb39a8fdcc676573f4f1c0bf185e57b76242cdd101c472540f6ef",
+        "accepted_revision": "40622611f6f4fd30999ddfc63985408cdedfb7e6a795dcea6038bf3137ea738c"
+      },
+      "status": {
+        "ended_at": 1790796186.8936646,
+        "exit": -15,
+        "iterations_run": 649,
+        "reason": "the wall-clock budget of 890 s ran out before the last iteration.",
+        "run": "reach-r2",
+        "schema": "cadex-training-status-v1",
+        "started_at": 1790795296.3866785,
+        "state": "budget_exhausted",
+        "wall_time_s": 890.51
+      }
+    },
+    {
+      "registration": {
+        "run": "reach-r3",
+        "settings": {
+          "checkpoint_every": 50,
+          "entropy": 0.0,
+          "envs": 1024,
+          "hidden": [
+            128,
+            128
+          ],
+          "iterations": 800,
+          "seed": 23
+        },
+        "budget_s": 890.0,
+        "stop_rule": "stops at the last iteration, at the wall-clock budget, when the mean episode collapses (--stop-on-collapse), or when a stop is requested",
+        "reason": "reach-r2 failed Q2 on 9/10 seeds (final_error_arm_lengths_max median 0.099, max 0.26 on 1106, limit 0.05) and hence Q3 on 9/10, with a steady offset short of targets in the film; Q4 failed only on 1107 (0.223 vs 0.20). This run replaces the distance-gated settle cost (which paid to stand off) with an ungated tanh(v/200) cost, raises the fine term to 2*exp(-d/5) and sets entropy 0 so exploration noise shrinks faster than r2's sigma 0.13; expected: final errors fall under 7.2 mm. (Warm start from r2 was not possible: its parent task bundle could not be located.)",
+        "task_sha256": "403569ef4c531bc7c64f8f1b70ee52a51b8ac658370ad6219c3d819484198d51",
+        "accepted_revision": "44e9d86c56e8a32aa6044b74c8382399f8724c4cb401d052d3b3a5a734b6b88e"
+      },
+      "status": {
+        "ended_at": 1790797305.307239,
+        "exit": -15,
+        "iterations_run": 649,
+        "reason": "the wall-clock budget of 890 s ran out before the last iteration.",
+        "run": "reach-r3",
+        "schema": "cadex-training-status-v1",
+        "started_at": 1790796414.8450606,
+        "state": "budget_exhausted",
+        "wall_time_s": 890.46
+      }
+    },
+    {
+      "registration": {
+        "run": "reach-r4",
+        "settings": {
+          "checkpoint_every": 25,
+          "entropy": 0.0,
+          "envs": 1024,
+          "hidden": [
+            128,
+            128
+          ],
+          "iterations": 800,
+          "seed": 31
+        },
+        "budget_s": 895.0,
+        "stop_rule": "stops at the last iteration, at the wall-clock budget, when the mean episode collapses (--stop-on-collapse), or when a stop is requested",
+        "reason": "reach-r3 failed Q2 on 10/10 seeds (final_error_arm_lengths_max median 0.139, max 0.307 on 1106, limit 0.05), Q3 on 10/10 and Q4 on 1107 (0.301) and 1109 (0.238); its settle_cost sat at its 0.3/step ceiling and control cost implied ~120 N*mm RMS force vs ~35 N*mm gravity hold, i.e. the policy chatters. This run makes the tip-speed cost linear (v/500), raises the force-squared cost to 1e-5 and moves joint rates to privileged so the policy cannot learn chattering rate feedback; expected: a quiet hold and final errors under 7.2 mm.",
+        "task_sha256": "8c0190314d79da101728f079ba87cf2ba063b8cd99f6f61eec83735aab74558b",
+        "accepted_revision": "9872abc238381b2cb8bc9ad5b3e19f39fe31f6c218651a85acd1d3008d213e30"
+      },
+      "status": {
+        "ended_at": 1790798406.248504,
+        "exit": -15,
+        "iterations_run": 474,
+        "reason": "the wall-clock budget of 895 s ran out before the last iteration.",
+        "run": "reach-r4",
+        "schema": "cadex-training-status-v1",
+        "started_at": 1790797510.7592866,
+        "state": "budget_exhausted",
+        "wall_time_s": 895.49
+      }
+    }
+  ],
+  "evaluations": [
+    {
+      "report": "evaluations/42ff7b8e1099-c5a01908a054/evaluation.json",
+      "verdict": "fail",
+      "policy_sha256": "c5a01908a054d033c016273ab6049dc810d3f695b9b16c3fa621d4ea94aea43b",
+      "trained_by_run": [
+        "reach-r1"
+      ],
+      "model_sha256": "183fabff116f9cc6e5c306718c6b97136c53ef179bfb308268bcbf148b69f7c8",
+      "held_out_targets_worst_mismatch_mm": 5.3e-05,
+      "summary_predicates": [
+        {
+          "id": "Q1",
+          "metric": "completed",
+          "min": 1.0,
+          "max": null,
+          "passed": 10,
+          "failed_seeds": [],
+          "value": {
+            "min": 1.0,
+            "median": 1.0,
+            "max": 1.0
+          }
+        },
+        {
+          "id": "Q2",
+          "metric": "final_error_arm_lengths_max",
+          "min": null,
+          "max": 0.05,
+          "passed": 0,
+          "failed_seeds": [
+            1101,
+            1102,
+            1103,
+            1104,
+            1105,
+            1106,
+            1107,
+            1108,
+            1109,
+            1110
+          ],
+          "value": {
+            "min": 0.4321713039448668,
+            "median": 0.8234075911859697,
+            "max": 1.2819350257260163
+          }
+        },
+        {
+          "id": "Q3",
+          "metric": "time_to_target_s_max",
+          "min": null,
+          "max": 2.0,
+          "passed": 0,
+          "failed_seeds": [
+            1101,
+            1102,
+            1103,
+            1104,
+            1105,
+            1106,
+            1107,
+            1108,
+            1109,
+            1110
+          ],
+          "value": null
+        },
+        {
+          "id": "Q4",
+          "metric": "overshoot_ratio_max",
+          "min": null,
+          "max": 0.2,
+          "passed": 3,
+          "failed_seeds": [
+            1101,
+            1103,
+            1104,
+            1106,
+            1108,
+            1109,
+            1110
+          ],
+          "value": {
+            "min": 0.0,
+            "median": 0.5429473802661691,
+            "max": 2.7822079691479007
+          }
+        }
+      ],
+      "seeds": [
+        {
+          "seed": 1101,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3",
+            "Q4"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 119.81435309113766,
+            "final_error_arm_lengths_max": 0.832044118688456,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.5249029490021095
+          },
+          "segments": [
+            {
+              "target_mm": [
+                4.601273286481098,
+                0.0,
+                59.84531853447987
+              ],
+              "start_distance_mm": 84.53871561246655,
+              "final_error_mm": 6.881216487186685,
+              "closest_mm": 0.4662342498924944,
+              "time_to_target_s": 0.78,
+              "overshoot_ratio": 0.5249029490021095
+            },
+            {
+              "target_mm": [
+                -6.744853882043947,
+                0.0,
+                176.0463865399091
+              ],
+              "start_distance_mm": 120.97284820805947,
+              "final_error_mm": 119.81435309113766,
+              "closest_mm": 119.81435280055345,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 418.62841040554844
+        },
+        {
+          "seed": 1102,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 122.76231303365415,
+            "final_error_arm_lengths_max": 0.8525160627337094,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.0
+          },
+          "segments": [
+            {
+              "target_mm": [
+                101.4545304455971,
+                0.0,
+                134.71524132426345
+              ],
+              "start_distance_mm": 40.24152305929127,
+              "final_error_mm": 122.76231303365415,
+              "closest_mm": 40.24152305929127,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            },
+            {
+              "target_mm": [
+                37.170349014066616,
+                0.0,
+                47.1056813664458
+              ],
+              "start_distance_mm": 35.284199106009154,
+              "final_error_mm": 22.54473724649195,
+              "closest_mm": 22.544737180278027,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 318.4970187615639
+        },
+        {
+          "seed": 1103,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3",
+            "Q4"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 117.32703317042164,
+            "final_error_arm_lengths_max": 0.8147710636834836,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.4408204142587394
+          },
+          "segments": [
+            {
+              "target_mm": [
+                16.397396218347517,
+                0.0,
+                59.92952585263863
+              ],
+              "start_distance_mm": 76.64508954317822,
+              "final_error_mm": 7.05174991402426,
+              "closest_mm": 6.1467932609029825,
+              "time_to_target_s": 0.86,
+              "overshoot_ratio": 0.4408204142587394
+            },
+            {
+              "target_mm": [
+                83.33923239462804,
+                0.0,
+                146.10748410689953
+              ],
+              "start_distance_mm": 115.92298280165149,
+              "final_error_mm": 117.32703317042164,
+              "closest_mm": 115.3575515333856,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 396.57886270059566
+        },
+        {
+          "seed": 1104,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3",
+            "Q4"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 120.68498524149099,
+            "final_error_arm_lengths_max": 0.8380901752881319,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.7473063827030738
+          },
+          "segments": [
+            {
+              "target_mm": [
+                5.5647751058339745,
+                0.0,
+                67.80348995885352
+              ],
+              "start_distance_mm": 78.35273555471606,
+              "final_error_mm": 9.26882810858609,
+              "closest_mm": 4.395200279267957,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.7473063827030738
+            },
+            {
+              "target_mm": [
+                -18.37256982405795,
+                0.0,
+                174.33789318526044
+              ],
+              "start_distance_mm": 118.43757902144866,
+              "final_error_mm": 120.68498524149099,
+              "closest_mm": 118.43757902144864,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 377.8331422561745
+        },
+        {
+          "seed": 1105,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 125.22380935969332,
+            "final_error_arm_lengths_max": 0.8696097872200925,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.0
+          },
+          "segments": [
+            {
+              "target_mm": [
+                105.83192555341864,
+                0.0,
+                132.9974233643466
+              ],
+              "start_distance_mm": 43.80460032483828,
+              "final_error_mm": 125.22380935969332,
+              "closest_mm": 43.80460032483828,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            },
+            {
+              "target_mm": [
+                41.0345198406404,
+                0.0,
+                173.22117772048406
+              ],
+              "start_distance_mm": 119.27986146045535,
+              "final_error_mm": 119.25263906935243,
+              "closest_mm": 119.16763253790455,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 208.80613959901132
+        },
+        {
+          "seed": 1106,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3",
+            "Q4"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 102.79503170930627,
+            "final_error_arm_lengths_max": 0.7138543868701824,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 1.498235644440247
+          },
+          "segments": [
+            {
+              "target_mm": [
+                45.081584144823445,
+                0.0,
+                154.3399931855022
+              ],
+              "start_distance_mm": 39.20639731535829,
+              "final_error_mm": 102.79503170930627,
+              "closest_mm": 9.505256097578659,
+              "time_to_target_s": null,
+              "overshoot_ratio": 1.498235644440247
+            },
+            {
+              "target_mm": [
+                23.114764544959755,
+                0.0,
+                29.44572157815088
+              ],
+              "start_distance_mm": 34.65967627629678,
+              "final_error_mm": 21.48612184167831,
+              "closest_mm": 21.48612160118871,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 323.9675982090231
+        },
+        {
+          "seed": 1107,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 184.59864370454633,
+            "final_error_arm_lengths_max": 1.2819350257260163,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.0
+          },
+          "segments": [
+            {
+              "target_mm": [
+                55.20535505290414,
+                0.0,
+                53.91162581572421
+              ],
+              "start_distance_mm": 66.67097555958162,
+              "final_error_mm": 184.59864370454633,
+              "closest_mm": 66.67097555958162,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            },
+            {
+              "target_mm": [
+                44.17360777506824,
+                0.0,
+                95.77297530283465
+              ],
+              "start_distance_mm": 162.03326003829582,
+              "final_error_mm": 52.89107227246344,
+              "closest_mm": 42.542478593266885,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 176.81552505991667
+        },
+        {
+          "seed": 1108,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3",
+            "Q4"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 62.23266776806082,
+            "final_error_arm_lengths_max": 0.4321713039448668,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 2.7822079691479007
+          },
+          "segments": [
+            {
+              "target_mm": [
+                13.785951285510272,
+                0.0,
+                121.28638957212542
+              ],
+              "start_distance_mm": 50.23052345369716,
+              "final_error_mm": 62.23266776806082,
+              "closest_mm": 35.74326439036807,
+              "time_to_target_s": null,
+              "overshoot_ratio": 2.7822079691479007
+            },
+            {
+              "target_mm": [
+                40.89709892511785,
+                0.0,
+                63.024891859652016
+              ],
+              "start_distance_mm": 37.8984653221036,
+              "final_error_mm": 28.22900931628652,
+              "closest_mm": 28.229009255783808,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 328.39462393100735
+        },
+        {
+          "seed": 1109,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3",
+            "Q4"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 72.19468694556771,
+            "final_error_arm_lengths_max": 0.5013519926775536,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.5609918115302287
+          },
+          "segments": [
+            {
+              "target_mm": [
+                11.363009536792104,
+                0.0,
+                62.38302006032792
+              ],
+              "start_distance_mm": 78.04081715610373,
+              "final_error_mm": 7.831086339156006,
+              "closest_mm": 5.221260290906589,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.5609918115302287
+            },
+            {
+              "target_mm": [
+                78.0762331769473,
+                0.0,
+                80.02191806211631
+              ],
+              "start_distance_mm": 70.19146999093674,
+              "final_error_mm": 72.19468694556771,
+              "closest_mm": 70.19146999093674,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 413.69121676375755
+        },
+        {
+          "seed": 1110,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3",
+            "Q4"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 68.24988914328513,
+            "final_error_arm_lengths_max": 0.47395756349503565,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 1.4830558128531723
+          },
+          "segments": [
+            {
+              "target_mm": [
+                -9.446176149248593,
+                0.0,
+                103.85674711541765
+              ],
+              "start_distance_mm": 75.1993710388726,
+              "final_error_mm": 44.97126140363521,
+              "closest_mm": 8.0395161572803,
+              "time_to_target_s": null,
+              "overshoot_ratio": 1.4830558128531723
+            },
+            {
+              "target_mm": [
+                21.573780541403146,
+                0.0,
+                125.66245726622621
+              ],
+              "start_distance_mm": 68.6344335547454,
+              "final_error_mm": 68.24988914328513,
+              "closest_mm": 68.24988869403364,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 287.2183775011094
+        }
+      ]
+    },
+    {
+      "report": "evaluations/0ce61b45859b-e1b0277de9db/evaluation.json",
+      "verdict": "fail",
+      "policy_sha256": "e1b0277de9db7d4b003fa973b111eb56d8d5ad182fb7b8d2cea177357e4dc355",
+      "trained_by_run": [
+        "reach-r2"
+      ],
+      "model_sha256": "183fabff116f9cc6e5c306718c6b97136c53ef179bfb308268bcbf148b69f7c8",
+      "held_out_targets_worst_mismatch_mm": 5.3e-05,
+      "summary_predicates": [
+        {
+          "id": "Q1",
+          "metric": "completed",
+          "min": 1.0,
+          "max": null,
+          "passed": 10,
+          "failed_seeds": [],
+          "value": {
+            "min": 1.0,
+            "median": 1.0,
+            "max": 1.0
+          }
+        },
+        {
+          "id": "Q2",
+          "metric": "final_error_arm_lengths_max",
+          "min": null,
+          "max": 0.05,
+          "passed": 1,
+          "failed_seeds": [
+            1101,
+            1102,
+            1103,
+            1104,
+            1106,
+            1107,
+            1108,
+            1109,
+            1110
+          ],
+          "value": {
+            "min": 0.04262131162238025,
+            "median": 0.09887070614147733,
+            "max": 0.2599507013783294
+          }
+        },
+        {
+          "id": "Q3",
+          "metric": "time_to_target_s_max",
+          "min": null,
+          "max": 2.0,
+          "passed": 1,
+          "failed_seeds": [
+            1101,
+            1102,
+            1103,
+            1104,
+            1106,
+            1107,
+            1108,
+            1109,
+            1110
+          ],
+          "value": {
+            "min": 0.2,
+            "median": 2.1,
+            "max": 4.0
+          }
+        },
+        {
+          "id": "Q4",
+          "metric": "overshoot_ratio_max",
+          "min": null,
+          "max": 0.2,
+          "passed": 9,
+          "failed_seeds": [
+            1107
+          ],
+          "value": {
+            "min": 0.0,
+            "median": 0.07829376667060386,
+            "max": 0.22282349247891303
+          }
+        }
+      ],
+      "seeds": [
+        {
+          "seed": 1101,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 16.150370899455258,
+            "final_error_arm_lengths_max": 0.11215535346843929,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.12302936813603552
+          },
+          "segments": [
+            {
+              "target_mm": [
+                4.601273286481098,
+                0.0,
+                59.84531853447987
+              ],
+              "start_distance_mm": 84.53871561246655,
+              "final_error_mm": 8.388938867918373,
+              "closest_mm": 5.388309188667321,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.12302936813603552
+            },
+            {
+              "target_mm": [
+                -6.744853882043947,
+                0.0,
+                176.0463865399091
+              ],
+              "start_distance_mm": 115.06669296213475,
+              "final_error_mm": 16.150370899455258,
+              "closest_mm": 16.076528117483516,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 773.515655336131
+        },
+        {
+          "seed": 1102,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 21.97951516958953,
+            "final_error_arm_lengths_max": 0.1526355220110384,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.05793567494686343
+          },
+          "segments": [
+            {
+              "target_mm": [
+                101.4545304455971,
+                0.0,
+                134.71524132426345
+              ],
+              "start_distance_mm": 40.24152305929127,
+              "final_error_mm": 5.682855799037626,
+              "closest_mm": 0.3146472116900162,
+              "time_to_target_s": 0.18,
+              "overshoot_ratio": 0.05793567494686343
+            },
+            {
+              "target_mm": [
+                37.170349014066616,
+                0.0,
+                47.1056813664458
+              ],
+              "start_distance_mm": 109.84484662767869,
+              "final_error_mm": 21.97951516958953,
+              "closest_mm": 13.124507009281304,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 827.3395197891906
+        },
+        {
+          "seed": 1103,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 11.512866902947016,
+            "final_error_arm_lengths_max": 0.07995046460379872,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.08464105445709477
+          },
+          "segments": [
+            {
+              "target_mm": [
+                16.397396218347517,
+                0.0,
+                59.92952585263863
+              ],
+              "start_distance_mm": 76.64508954317822,
+              "final_error_mm": 11.512866902947016,
+              "closest_mm": 8.390097729514737,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.08464105445709477
+            },
+            {
+              "target_mm": [
+                83.33923239462804,
+                0.0,
+                146.10748410689953
+              ],
+              "start_distance_mm": 111.77874480640848,
+              "final_error_mm": 6.555592357341175,
+              "closest_mm": 0.5781223867101711,
+              "time_to_target_s": 0.3799999999999999,
+              "overshoot_ratio": 0.03186772829640962
+            }
+          ],
+          "termination": "",
+          "reward_total": 848.7214809491736
+        },
+        {
+          "seed": 1104,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 16.814121205992784,
+            "final_error_arm_lengths_max": 0.11676473059717211,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.0
+          },
+          "segments": [
+            {
+              "target_mm": [
+                5.5647751058339745,
+                0.0,
+                67.80348995885352
+              ],
+              "start_distance_mm": 78.35273555471606,
+              "final_error_mm": 8.882415572224614,
+              "closest_mm": 4.2116209006157606,
+              "time_to_target_s": 3.7,
+              "overshoot_ratio": 0.0
+            },
+            {
+              "target_mm": [
+                -18.37256982405795,
+                0.0,
+                174.33789318526044
+              ],
+              "start_distance_mm": 105.8678250211886,
+              "final_error_mm": 16.814121205992784,
+              "closest_mm": 16.562889498310707,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 760.6203997346576
+        },
+        {
+          "seed": 1105,
+          "pass": true,
+          "void": "",
+          "failing": [],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 6.137468873622756,
+            "final_error_arm_lengths_max": 0.04262131162238025,
+            "time_to_target_s_max": 0.2,
+            "overshoot_ratio_max": 0.07194647888411296
+          },
+          "segments": [
+            {
+              "target_mm": [
+                105.83192555341864,
+                0.0,
+                132.9974233643466
+              ],
+              "start_distance_mm": 43.80460032483828,
+              "final_error_mm": 5.619039327742384,
+              "closest_mm": 0.9881798303535522,
+              "time_to_target_s": 0.2,
+              "overshoot_ratio": 0.019310411025456328
+            },
+            {
+              "target_mm": [
+                41.0345198406404,
+                0.0,
+                173.22117772048406
+              ],
+              "start_distance_mm": 79.10406797221678,
+              "final_error_mm": 6.137468873622756,
+              "closest_mm": 0.24269122780432956,
+              "time_to_target_s": 0.08000000000000007,
+              "overshoot_ratio": 0.07194647888411296
+            }
+          ],
+          "termination": "",
+          "reward_total": 973.3692668596897
+        },
+        {
+          "seed": 1106,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 37.43290099847943,
+            "final_error_arm_lengths_max": 0.2599507013783294,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.08721094756891938
+          },
+          "segments": [
+            {
+              "target_mm": [
+                45.081584144823445,
+                0.0,
+                154.3399931855022
+              ],
+              "start_distance_mm": 39.20639731535829,
+              "final_error_mm": 14.64059371474406,
+              "closest_mm": 3.4683181423349514,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.08721094756891938
+            },
+            {
+              "target_mm": [
+                23.114764544959755,
+                0.0,
+                29.44572157815088
+              ],
+              "start_distance_mm": 112.98802071193593,
+              "final_error_mm": 37.43290099847943,
+              "closest_mm": 33.17394772159019,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 627.7051024500847
+        },
+        {
+          "seed": 1107,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3",
+            "Q4"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 9.724827739297071,
+            "final_error_arm_lengths_max": 0.06753352596734077,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.22282349247891303
+          },
+          "segments": [
+            {
+              "target_mm": [
+                55.20535505290414,
+                0.0,
+                53.91162581572421
+              ],
+              "start_distance_mm": 66.67097555958162,
+              "final_error_mm": 8.128692693337983,
+              "closest_mm": 1.7344458930373607,
+              "time_to_target_s": 3.94,
+              "overshoot_ratio": 0.04550658991676194
+            },
+            {
+              "target_mm": [
+                44.17360777506824,
+                0.0,
+                95.77297530283465
+              ],
+              "start_distance_mm": 39.825576732023144,
+              "final_error_mm": 9.724827739297071,
+              "closest_mm": 3.4312436808869484,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.22282349247891303
+            }
+          ],
+          "termination": "",
+          "reward_total": 857.1113092909293
+        },
+        {
+          "seed": 1108,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 12.324392469290215,
+            "final_error_arm_lengths_max": 0.08558605881451538,
+            "time_to_target_s_max": 4.0,
+            "overshoot_ratio_max": 0.0453823903569008
+          },
+          "segments": [
+            {
+              "target_mm": [
+                13.785951285510272,
+                0.0,
+                121.28638957212542
+              ],
+              "start_distance_mm": 50.23052345369716,
+              "final_error_mm": 10.607969101834183,
+              "closest_mm": 0.30283574081297443,
+              "time_to_target_s": 3.98,
+              "overshoot_ratio": 0.0453823903569008
+            },
+            {
+              "target_mm": [
+                40.89709892511785,
+                0.0,
+                63.024891859652016
+              ],
+              "start_distance_mm": 53.82667471972157,
+              "final_error_mm": 12.324392469290215,
+              "closest_mm": 2.0045917785025043,
+              "time_to_target_s": 4.0,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 902.7686562959863
+        },
+        {
+          "seed": 1109,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 18.565750947955237,
+            "final_error_arm_lengths_max": 0.12892882602746691,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.1028021311632724
+          },
+          "segments": [
+            {
+              "target_mm": [
+                11.363009536792104,
+                0.0,
+                62.38302006032792
+              ],
+              "start_distance_mm": 78.04081715610373,
+              "final_error_mm": 9.305096033846283,
+              "closest_mm": 5.690270326222135,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.1028021311632724
+            },
+            {
+              "target_mm": [
+                78.0762331769473,
+                0.0,
+                80.02191806211631
+              ],
+              "start_distance_mm": 78.48353833793027,
+              "final_error_mm": 18.565750947955237,
+              "closest_mm": 0.17552179220057607,
+              "time_to_target_s": 3.96,
+              "overshoot_ratio": 0.08584395128128058
+            }
+          ],
+          "termination": "",
+          "reward_total": 830.8251028176314
+        },
+        {
+          "seed": 1110,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 12.278341425876288,
+            "final_error_arm_lengths_max": 0.08526625990191866,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.02827720637857209
+          },
+          "segments": [
+            {
+              "target_mm": [
+                -9.446176149248593,
+                0.0,
+                103.85674711541765
+              ],
+              "start_distance_mm": 75.1993710388726,
+              "final_error_mm": 5.4856196500920555,
+              "closest_mm": 0.18909089869308163,
+              "time_to_target_s": 0.2,
+              "overshoot_ratio": 0.02827720637857209
+            },
+            {
+              "target_mm": [
+                21.573780541403146,
+                0.0,
+                125.66245726622621
+              ],
+              "start_distance_mm": 38.48453387412608,
+              "final_error_mm": 12.278341425876288,
+              "closest_mm": 7.361888923392528,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 879.2714812937958
+        }
+      ]
+    },
+    {
+      "report": "evaluations/a9d8520c81c9-2036f471cc3b/evaluation.json",
+      "verdict": "fail",
+      "policy_sha256": "2036f471cc3b675141836db4df30513391ef141c3f8b3b6d8e0dba3ae150f983",
+      "trained_by_run": [
+        "reach-r3"
+      ],
+      "model_sha256": "183fabff116f9cc6e5c306718c6b97136c53ef179bfb308268bcbf148b69f7c8",
+      "held_out_targets_worst_mismatch_mm": 5.3e-05,
+      "summary_predicates": [
+        {
+          "id": "Q1",
+          "metric": "completed",
+          "min": 1.0,
+          "max": null,
+          "passed": 10,
+          "failed_seeds": [],
+          "value": {
+            "min": 1.0,
+            "median": 1.0,
+            "max": 1.0
+          }
+        },
+        {
+          "id": "Q2",
+          "metric": "final_error_arm_lengths_max",
+          "min": null,
+          "max": 0.05,
+          "passed": 0,
+          "failed_seeds": [
+            1101,
+            1102,
+            1103,
+            1104,
+            1105,
+            1106,
+            1107,
+            1108,
+            1109,
+            1110
+          ],
+          "value": {
+            "min": 0.06574600005000229,
+            "median": 0.1384981421233275,
+            "max": 0.3065740841824277
+          }
+        },
+        {
+          "id": "Q3",
+          "metric": "time_to_target_s_max",
+          "min": null,
+          "max": 2.0,
+          "passed": 0,
+          "failed_seeds": [
+            1101,
+            1102,
+            1103,
+            1104,
+            1105,
+            1106,
+            1107,
+            1108,
+            1109,
+            1110
+          ],
+          "value": {
+            "min": 4.0,
+            "median": 4.0,
+            "max": 4.0
+          }
+        },
+        {
+          "id": "Q4",
+          "metric": "overshoot_ratio_max",
+          "min": null,
+          "max": 0.2,
+          "passed": 8,
+          "failed_seeds": [
+            1107,
+            1109
+          ],
+          "value": {
+            "min": 0.01555292786672341,
+            "median": 0.06777196069354736,
+            "max": 0.30079114911962157
+          }
+        }
+      ],
+      "seeds": [
+        {
+          "seed": 1101,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 18.287192141826193,
+            "final_error_arm_lengths_max": 0.126994389873793,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.18281369103418074
+          },
+          "segments": [
+            {
+              "target_mm": [
+                4.601273286481098,
+                0.0,
+                59.84531853447987
+              ],
+              "start_distance_mm": 84.53871561246655,
+              "final_error_mm": 18.287192141826193,
+              "closest_mm": 7.279037763380944,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.18281369103418074
+            },
+            {
+              "target_mm": [
+                -6.744853882043947,
+                0.0,
+                176.0463865399091
+              ],
+              "start_distance_mm": 120.50312717715416,
+              "final_error_mm": 13.172056573943632,
+              "closest_mm": 10.112081848333117,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 731.8082419667679
+        },
+        {
+          "seed": 1102,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 27.858423317837378,
+            "final_error_arm_lengths_max": 0.19346127304053734,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.05436070193470764
+          },
+          "segments": [
+            {
+              "target_mm": [
+                101.4545304455971,
+                0.0,
+                134.71524132426345
+              ],
+              "start_distance_mm": 40.24152305929127,
+              "final_error_mm": 8.811990056426442,
+              "closest_mm": 1.0186460252266378,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.05436070193470764
+            },
+            {
+              "target_mm": [
+                37.170349014066616,
+                0.0,
+                47.1056813664458
+              ],
+              "start_distance_mm": 109.17625470053704,
+              "final_error_mm": 27.858423317837378,
+              "closest_mm": 15.437886507103945,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 823.1381640392783
+        },
+        {
+          "seed": 1103,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 18.046921520671752,
+            "final_error_arm_lengths_max": 0.12532584389355383,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.06575144575856086
+          },
+          "segments": [
+            {
+              "target_mm": [
+                16.397396218347517,
+                0.0,
+                59.92952585263863
+              ],
+              "start_distance_mm": 76.64508954317822,
+              "final_error_mm": 18.046921520671752,
+              "closest_mm": 15.663896011984937,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.06575144575856086
+            },
+            {
+              "target_mm": [
+                83.33923239462804,
+                0.0,
+                146.10748410689953
+              ],
+              "start_distance_mm": 112.85930047627274,
+              "final_error_mm": 7.876188502586326,
+              "closest_mm": 0.2776309525861699,
+              "time_to_target_s": 3.9800000000000004,
+              "overshoot_ratio": 0.007148107353048266
+            }
+          ],
+          "termination": "",
+          "reward_total": 868.7704119641845
+        },
+        {
+          "seed": 1104,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 13.86202153711799,
+            "final_error_arm_lengths_max": 0.09626403845220827,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.06979247562853387
+          },
+          "segments": [
+            {
+              "target_mm": [
+                5.5647751058339745,
+                0.0,
+                67.80348995885352
+              ],
+              "start_distance_mm": 78.35273555471606,
+              "final_error_mm": 9.438093390117688,
+              "closest_mm": 0.9038730612661504,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.06979247562853387
+            },
+            {
+              "target_mm": [
+                -18.37256982405795,
+                0.0,
+                174.33789318526044
+              ],
+              "start_distance_mm": 106.57763574204147,
+              "final_error_mm": 13.86202153711799,
+              "closest_mm": 11.82304971086341,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 820.6818950275581
+        },
+        {
+          "seed": 1105,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 9.46742400720033,
+            "final_error_arm_lengths_max": 0.06574600005000229,
+            "time_to_target_s_max": 4.0,
+            "overshoot_ratio_max": 0.04749629347849616
+          },
+          "segments": [
+            {
+              "target_mm": [
+                105.83192555341864,
+                0.0,
+                132.9974233643466
+              ],
+              "start_distance_mm": 43.80460032483828,
+              "final_error_mm": 9.46742400720033,
+              "closest_mm": 2.5628128116875195,
+              "time_to_target_s": 3.98,
+              "overshoot_ratio": 0.04749629347849616
+            },
+            {
+              "target_mm": [
+                41.0345198406404,
+                0.0,
+                173.22117772048406
+              ],
+              "start_distance_mm": 84.72785416081267,
+              "final_error_mm": 8.157007323352394,
+              "closest_mm": 0.4437673621408988,
+              "time_to_target_s": 4.0,
+              "overshoot_ratio": 0.0066112426870141095
+            }
+          ],
+          "termination": "",
+          "reward_total": 989.4227422201623
+        },
+        {
+          "seed": 1106,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 44.14666812226959,
+            "final_error_arm_lengths_max": 0.3065740841824277,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.07208042756413591
+          },
+          "segments": [
+            {
+              "target_mm": [
+                45.081584144823445,
+                0.0,
+                154.3399931855022
+              ],
+              "start_distance_mm": 39.20639731535829,
+              "final_error_mm": 10.744118915678204,
+              "closest_mm": 0.8449904595529631,
+              "time_to_target_s": 3.98,
+              "overshoot_ratio": 0.07208042756413591
+            },
+            {
+              "target_mm": [
+                23.114764544959755,
+                0.0,
+                29.44572157815088
+              ],
+              "start_distance_mm": 116.22457565368133,
+              "final_error_mm": 44.14666812226959,
+              "closest_mm": 37.82599814454137,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0070575934093985975
+            }
+          ],
+          "termination": "",
+          "reward_total": 690.1146345960832
+        },
+        {
+          "seed": 1107,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3",
+            "Q4"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 22.717695180180606,
+            "final_error_arm_lengths_max": 0.15776177208458753,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.30079114911962157
+          },
+          "segments": [
+            {
+              "target_mm": [
+                55.20535505290414,
+                0.0,
+                53.91162581572421
+              ],
+              "start_distance_mm": 66.67097555958162,
+              "final_error_mm": 22.717695180180606,
+              "closest_mm": 3.5878277132331102,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            },
+            {
+              "target_mm": [
+                44.17360777506824,
+                0.0,
+                95.77297530283465
+              ],
+              "start_distance_mm": 39.04238856846903,
+              "final_error_mm": 7.438381954971218,
+              "closest_mm": 1.0062126352238554,
+              "time_to_target_s": 4.0,
+              "overshoot_ratio": 0.30079114911962157
+            }
+          ],
+          "termination": "",
+          "reward_total": 889.0249450842679
+        },
+        {
+          "seed": 1108,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 21.60027278969213,
+            "final_error_arm_lengths_max": 0.15000189437286202,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.01555292786672341
+          },
+          "segments": [
+            {
+              "target_mm": [
+                13.785951285510272,
+                0.0,
+                121.28638957212542
+              ],
+              "start_distance_mm": 50.23052345369716,
+              "final_error_mm": 9.04064825914096,
+              "closest_mm": 2.971819543043098,
+              "time_to_target_s": 3.98,
+              "overshoot_ratio": 0.01555292786672341
+            },
+            {
+              "target_mm": [
+                40.89709892511785,
+                0.0,
+                63.024891859652016
+              ],
+              "start_distance_mm": 55.34782736971572,
+              "final_error_mm": 21.60027278969213,
+              "closest_mm": 5.7013575290121725,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 878.01119296332
+        },
+        {
+          "seed": 1109,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3",
+            "Q4"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 23.371170784435687,
+            "final_error_arm_lengths_max": 0.16229979711413672,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.23809145901322168
+          },
+          "segments": [
+            {
+              "target_mm": [
+                11.363009536792104,
+                0.0,
+                62.38302006032792
+              ],
+              "start_distance_mm": 78.04081715610373,
+              "final_error_mm": 23.371170784435687,
+              "closest_mm": 6.377764107265517,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.23809145901322168
+            },
+            {
+              "target_mm": [
+                78.0762331769473,
+                0.0,
+                80.02191806211631
+              ],
+              "start_distance_mm": 92.3214472796687,
+              "final_error_mm": 12.039209444579607,
+              "closest_mm": 1.4948083344192693,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 866.3447070165346
+        },
+        {
+          "seed": 1110,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 9.85756590144012,
+            "final_error_arm_lengths_max": 0.06845531876000083,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.030711465093646837
+          },
+          "segments": [
+            {
+              "target_mm": [
+                -9.446176149248593,
+                0.0,
+                103.85674711541765
+              ],
+              "start_distance_mm": 75.1993710388726,
+              "final_error_mm": 2.797633774909701,
+              "closest_mm": 0.5827545175612798,
+              "time_to_target_s": 0.3,
+              "overshoot_ratio": 0.0017538667337946505
+            },
+            {
+              "target_mm": [
+                21.573780541403146,
+                0.0,
+                125.66245726622621
+              ],
+              "start_distance_mm": 37.22958690085044,
+              "final_error_mm": 9.85756590144012,
+              "closest_mm": 1.0262369854556368,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.030711465093646837
+            }
+          ],
+          "termination": "",
+          "reward_total": 1232.8266808866608
+        }
+      ]
+    },
+    {
+      "report": "evaluations/6418a337500a-3270ce260233/evaluation.json",
+      "verdict": "fail",
+      "policy_sha256": "3270ce2602335829fa885d93b372f7afa7a53cf5aaf4133bb6aa5d23c94da606",
+      "trained_by_run": [
+        "reach-r4"
+      ],
+      "model_sha256": "183fabff116f9cc6e5c306718c6b97136c53ef179bfb308268bcbf148b69f7c8",
+      "held_out_targets_worst_mismatch_mm": 5.3e-05,
+      "summary_predicates": [
+        {
+          "id": "Q1",
+          "metric": "completed",
+          "min": 1.0,
+          "max": null,
+          "passed": 10,
+          "failed_seeds": [],
+          "value": {
+            "min": 1.0,
+            "median": 1.0,
+            "max": 1.0
+          }
+        },
+        {
+          "id": "Q2",
+          "metric": "final_error_arm_lengths_max",
+          "min": null,
+          "max": 0.05,
+          "passed": 9,
+          "failed_seeds": [
+            1106
+          ],
+          "value": {
+            "min": 0.007568502692356939,
+            "median": 0.022510484635245145,
+            "max": 0.05502736880586361
+          }
+        },
+        {
+          "id": "Q3",
+          "metric": "time_to_target_s_max",
+          "min": null,
+          "max": 2.0,
+          "passed": 9,
+          "failed_seeds": [
+            1106
+          ],
+          "value": {
+            "min": 0.08000000000000007,
+            "median": 0.1200000000000001,
+            "max": 0.2400000000000002
+          }
+        },
+        {
+          "id": "Q4",
+          "metric": "overshoot_ratio_max",
+          "min": null,
+          "max": 0.2,
+          "passed": 10,
+          "failed_seeds": [],
+          "value": {
+            "min": 0.007964430795575213,
+            "median": 0.0339483281961205,
+            "max": 0.13054076885698307
+          }
+        }
+      ],
+      "seeds": [
+        {
+          "seed": 1101,
+          "pass": true,
+          "void": "",
+          "failing": [],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 1.3610008978340522,
+            "final_error_arm_lengths_max": 0.009451395123847585,
+            "time_to_target_s_max": 0.2400000000000002,
+            "overshoot_ratio_max": 0.007964430795575213
+          },
+          "segments": [
+            {
+              "target_mm": [
+                4.601273286481098,
+                0.0,
+                59.84531853447987
+              ],
+              "start_distance_mm": 84.53871561246655,
+              "final_error_mm": 0.11251221299780641,
+              "closest_mm": 0.11251162514319964,
+              "time_to_target_s": 0.14,
+              "overshoot_ratio": 0.00512427828742655
+            },
+            {
+              "target_mm": [
+                -6.744853882043947,
+                0.0,
+                176.0463865399091
+              ],
+              "start_distance_mm": 116.72927627370987,
+              "final_error_mm": 1.3610008978340522,
+              "closest_mm": 1.2490999974675077,
+              "time_to_target_s": 0.2400000000000002,
+              "overshoot_ratio": 0.007964430795575213
+            }
+          ],
+          "termination": "",
+          "reward_total": 1611.6999979202444
+        },
+        {
+          "seed": 1102,
+          "pass": true,
+          "void": "",
+          "failing": [],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 3.1628775134221034,
+            "final_error_arm_lengths_max": 0.021964427176542387,
+            "time_to_target_s_max": 0.21999999999999975,
+            "overshoot_ratio_max": 0.016843264237632445
+          },
+          "segments": [
+            {
+              "target_mm": [
+                101.4545304455971,
+                0.0,
+                134.71524132426345
+              ],
+              "start_distance_mm": 40.24152305929127,
+              "final_error_mm": 2.1135066818048474,
+              "closest_mm": 1.4418954971537234,
+              "time_to_target_s": 0.08,
+              "overshoot_ratio": 0.008762738773470353
+            },
+            {
+              "target_mm": [
+                37.170349014066616,
+                0.0,
+                47.1056813664458
+              ],
+              "start_distance_mm": 110.07364577094994,
+              "final_error_mm": 3.1628775134221034,
+              "closest_mm": 2.928594586763728,
+              "time_to_target_s": 0.21999999999999975,
+              "overshoot_ratio": 0.016843264237632445
+            }
+          ],
+          "termination": "",
+          "reward_total": 1379.1790504454618
+        },
+        {
+          "seed": 1103,
+          "pass": true,
+          "void": "",
+          "failing": [],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 2.213300657062902,
+            "final_error_arm_lengths_max": 0.01537014345182571,
+            "time_to_target_s_max": 0.20000000000000018,
+            "overshoot_ratio_max": 0.01525235957270767
+          },
+          "segments": [
+            {
+              "target_mm": [
+                16.397396218347517,
+                0.0,
+                59.92952585263863
+              ],
+              "start_distance_mm": 76.64508954317822,
+              "final_error_mm": 0.8700567287017332,
+              "closest_mm": 0.8604489390330429,
+              "time_to_target_s": 0.12,
+              "overshoot_ratio": 0.011651767078151971
+            },
+            {
+              "target_mm": [
+                83.33923239462804,
+                0.0,
+                146.10748410689953
+              ],
+              "start_distance_mm": 109.9663287204116,
+              "final_error_mm": 2.213300657062902,
+              "closest_mm": 1.2307842591689848,
+              "time_to_target_s": 0.20000000000000018,
+              "overshoot_ratio": 0.01525235957270767
+            }
+          ],
+          "termination": "",
+          "reward_total": 1511.7393561574713
+        },
+        {
+          "seed": 1104,
+          "pass": true,
+          "void": "",
+          "failing": [],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 1.0898643876993992,
+            "final_error_arm_lengths_max": 0.007568502692356939,
+            "time_to_target_s_max": 0.2400000000000002,
+            "overshoot_ratio_max": 0.07001114220583846
+          },
+          "segments": [
+            {
+              "target_mm": [
+                5.5647751058339745,
+                0.0,
+                67.80348995885352
+              ],
+              "start_distance_mm": 78.35273555471606,
+              "final_error_mm": 0.8108202228642488,
+              "closest_mm": 0.5605935045504871,
+              "time_to_target_s": 0.12,
+              "overshoot_ratio": 0.07001114220583846
+            },
+            {
+              "target_mm": [
+                -18.37256982405795,
+                0.0,
+                174.33789318526044
+              ],
+              "start_distance_mm": 109.98714980064511,
+              "final_error_mm": 1.0898643876993992,
+              "closest_mm": 0.5603915174690343,
+              "time_to_target_s": 0.2400000000000002,
+              "overshoot_ratio": 0.00988451653637493
+            }
+          ],
+          "termination": "",
+          "reward_total": 1499.8297625700739
+        },
+        {
+          "seed": 1105,
+          "pass": true,
+          "void": "",
+          "failing": [],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 4.55260435695135,
+            "final_error_arm_lengths_max": 0.03161530803438437,
+            "time_to_target_s_max": 0.1200000000000001,
+            "overshoot_ratio_max": 0.11617826955342046
+          },
+          "segments": [
+            {
+              "target_mm": [
+                105.83192555341864,
+                0.0,
+                132.9974233643466
+              ],
+              "start_distance_mm": 43.80460032483828,
+              "final_error_mm": 1.8189847075527767,
+              "closest_mm": 1.6101750218209971,
+              "time_to_target_s": 0.1,
+              "overshoot_ratio": 0.0
+            },
+            {
+              "target_mm": [
+                41.0345198406404,
+                0.0,
+                173.22117772048406
+              ],
+              "start_distance_mm": 74.59731685837657,
+              "final_error_mm": 4.55260435695135,
+              "closest_mm": 0.30572273707632514,
+              "time_to_target_s": 0.1200000000000001,
+              "overshoot_ratio": 0.11617826955342046
+            }
+          ],
+          "termination": "",
+          "reward_total": 1409.599337838429
+        },
+        {
+          "seed": 1106,
+          "pass": false,
+          "void": "",
+          "failing": [
+            "Q2",
+            "Q3"
+          ],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 7.92394110804436,
+            "final_error_arm_lengths_max": 0.05502736880586361,
+            "time_to_target_s_max": null,
+            "overshoot_ratio_max": 0.05229720990457832
+          },
+          "segments": [
+            {
+              "target_mm": [
+                45.081584144823445,
+                0.0,
+                154.3399931855022
+              ],
+              "start_distance_mm": 39.20639731535829,
+              "final_error_mm": 1.8951755593948556,
+              "closest_mm": 0.022255003251714867,
+              "time_to_target_s": 0.04,
+              "overshoot_ratio": 0.05229720990457832
+            },
+            {
+              "target_mm": [
+                23.114764544959755,
+                0.0,
+                29.44572157815088
+              ],
+              "start_distance_mm": 128.68327201484527,
+              "final_error_mm": 7.92394110804436,
+              "closest_mm": 7.923941108044358,
+              "time_to_target_s": null,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 1208.3855189734936
+        },
+        {
+          "seed": 1107,
+          "pass": true,
+          "void": "",
+          "failing": [],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 3.320142061528499,
+            "final_error_arm_lengths_max": 0.023056542093947908,
+            "time_to_target_s_max": 0.08000000000000007,
+            "overshoot_ratio_max": 0.13054076885698307
+          },
+          "segments": [
+            {
+              "target_mm": [
+                55.20535505290414,
+                0.0,
+                53.91162581572421
+              ],
+              "start_distance_mm": 66.67097555958162,
+              "final_error_mm": 1.6197893504807495,
+              "closest_mm": 1.5902764886682361,
+              "time_to_target_s": 0.08,
+              "overshoot_ratio": 0.05732308919334866
+            },
+            {
+              "target_mm": [
+                44.17360777506824,
+                0.0,
+                95.77297530283465
+              ],
+              "start_distance_mm": 44.84615345007654,
+              "final_error_mm": 3.320142061528499,
+              "closest_mm": 0.7526160642082741,
+              "time_to_target_s": 0.08000000000000007,
+              "overshoot_ratio": 0.13054076885698307
+            }
+          ],
+          "termination": "",
+          "reward_total": 1305.8303919201194
+        },
+        {
+          "seed": 1108,
+          "pass": true,
+          "void": "",
+          "failing": [],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 1.2510883013504872,
+            "final_error_arm_lengths_max": 0.008688113203822827,
+            "time_to_target_s_max": 0.08000000000000007,
+            "overshoot_ratio_max": 0.01928826852753
+          },
+          "segments": [
+            {
+              "target_mm": [
+                13.785951285510272,
+                0.0,
+                121.28638957212542
+              ],
+              "start_distance_mm": 50.23052345369716,
+              "final_error_mm": 1.1763937215396374,
+              "closest_mm": 0.8084830123819955,
+              "time_to_target_s": 0.08,
+              "overshoot_ratio": 0.015388099779317896
+            },
+            {
+              "target_mm": [
+                40.89709892511785,
+                0.0,
+                63.024891859652016
+              ],
+              "start_distance_mm": 63.42978435483931,
+              "final_error_mm": 1.2510883013504872,
+              "closest_mm": 1.0592950033749255,
+              "time_to_target_s": 0.08000000000000007,
+              "overshoot_ratio": 0.01928826852753
+            }
+          ],
+          "termination": "",
+          "reward_total": 1498.8536979748974
+        },
+        {
+          "seed": 1109,
+          "pass": true,
+          "void": "",
+          "failing": [],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 4.977698947834736,
+            "final_error_arm_lengths_max": 0.03456735380440789,
+            "time_to_target_s_max": 0.12,
+            "overshoot_ratio_max": 0.009743938040393255
+          },
+          "segments": [
+            {
+              "target_mm": [
+                11.363009536792104,
+                0.0,
+                62.38302006032792
+              ],
+              "start_distance_mm": 78.04081715610373,
+              "final_error_mm": 0.7932837591573233,
+              "closest_mm": 0.7411469308030694,
+              "time_to_target_s": 0.12,
+              "overshoot_ratio": 0.009743938040393255
+            },
+            {
+              "target_mm": [
+                78.0762331769473,
+                0.0,
+                80.02191806211631
+              ],
+              "start_distance_mm": 69.34225880216715,
+              "final_error_mm": 4.977698947834736,
+              "closest_mm": 1.6908047804157655,
+              "time_to_target_s": 0.09999999999999964,
+              "overshoot_ratio": 0.0
+            }
+          ],
+          "termination": "",
+          "reward_total": 1375.8516209362294
+        },
+        {
+          "seed": 1110,
+          "pass": true,
+          "void": "",
+          "failing": [],
+          "metrics": {
+            "completed": 1.0,
+            "duration_s": 8.0,
+            "final_error_mm_max": 4.558865634776839,
+            "final_error_arm_lengths_max": 0.031658789130394716,
+            "time_to_target_s_max": 0.12,
+            "overshoot_ratio_max": 0.048608387864711
+          },
+          "segments": [
+            {
+              "target_mm": [
+                -9.446176149248593,
+                0.0,
+                103.85674711541765
+              ],
+              "start_distance_mm": 75.1993710388726,
+              "final_error_mm": 0.41511561115631307,
+              "closest_mm": 0.3602101810146027,
+              "time_to_target_s": 0.12,
+              "overshoot_ratio": 0.008692021984393011
+            },
+            {
+              "target_mm": [
+                21.573780541403146,
+                0.0,
+                125.66245726622621
+              ],
+              "start_distance_mm": 38.330098556292405,
+              "final_error_mm": 4.558865634776839,
+              "closest_mm": 0.2709531805161272,
+              "time_to_target_s": 0.08000000000000007,
+              "overshoot_ratio": 0.048608387864711
+            }
+          ],
+          "termination": "",
+          "reward_total": 1374.2147454646695
+        }
+      ]
+    }
+  ]
+}

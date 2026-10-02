@@ -137,6 +137,9 @@ _ALLOWED_TOP_LEVEL = {
 _ALLOWED_DEFERRED = _ALLOWED_TOP_LEVEL | {
     "jax", "jax.numpy", "numpy", "mujoco", "mujoco.mjx", "struct",
     "CadexDynamics",
+    # Inside the pinned mujoco-mjx wheel, not a dependency of its own: the
+    # one private module ADR-465's derivative rule replaces a function in.
+    "mujoco.mjx._src",
 }
 
 
@@ -1307,3 +1310,94 @@ def test_the_collapse_stop_is_a_flag_and_the_warning_is_additive() -> None:
     assert '"--stop-on-collapse", action="store_true"' in source
     assert 'getattr(options, "stop_on_collapse", False)' in source
     assert '"warning": str(fields.get("warning", ""))' in source
+
+
+# ---------------------------------------------------------------------------
+# ADR-471: a warm start continues at the exploration width it trained to.
+# ---------------------------------------------------------------------------
+
+
+def test_initial_std_is_unset_unless_given() -> None:
+    """The flag's absence has to be visible, or a warm start cannot tell
+    "carry the source's width" from "the user asked for 0.3"."""
+
+    trainer = _trainer_module()
+    assert trainer.arguments(["b.json", "--out", "p"]).initial_std is None
+    assert trainer.arguments(
+        ["b.json", "--out", "p", "--initial-std", "0.3"]).initial_std == 0.3
+
+
+def test_a_warm_start_carries_the_sources_exploration_width() -> None:
+    trainer = _trainer_module()
+    header = {"exploration": {"distribution": "gaussian",
+                              "log_std": [-0.5, -0.4, -0.6],
+                              "space": "pre_activation"}}
+    values, source = trainer.starting_log_std(
+        trainer.arguments(["b.json", "--out", "p"]), header, 3)
+    assert (values, source) == ([-0.5, -0.4, -0.6], "init_from")
+
+    explicit = trainer.arguments(["b.json", "--out", "p", "--initial-std", "0.3"])
+    values, source = trainer.starting_log_std(explicit, header, 3)
+    assert source == "flag"
+    assert values == pytest.approx([math.log(0.3)] * 3)
+
+    values, source = trainer.starting_log_std(
+        trainer.arguments(["b.json", "--out", "p"]), None, 2)
+    assert source == "default"
+    assert values == pytest.approx([math.log(trainer.DEFAULT_INITIAL_STD)] * 2)
+
+
+@pytest.mark.parametrize("exploration", [
+    None,
+    {"log_std": [-0.5, -0.5]},
+    {"log_std": [-0.5, -0.5, float("nan")]},
+    {"log_std": [-0.5, -0.5, -0.5], "space": "surface"},
+])
+def test_a_source_without_a_usable_width_is_refused_not_defaulted(
+        exploration) -> None:
+    trainer = _trainer_module()
+    header = {} if exploration is None else {"exploration": exploration}
+    with pytest.raises(SystemExit, match="--initial-std"):
+        trainer.starting_log_std(
+            trainer.arguments(["b.json", "--out", "p"]), header, 3)
+    # ...and the explicit flag is the way through.
+    values, source = trainer.starting_log_std(
+        trainer.arguments(["b.json", "--out", "p", "--initial-std", "0.5"]),
+        header, 3)
+    assert source == "flag"
+
+
+def test_a_warm_start_continues_at_the_width_it_trained_to(tmp_path) -> None:
+    """End to end: a cold run at σ=0.7, then a warm start with no
+    --initial-std. Before ADR-471 the warm run restarted at 0.3."""
+
+    python = _venv_python()
+    if python is None:
+        pytest.skip("needs the training venv (ADR-084); see the test above.")
+
+    prepared = pf.swing_up_bundle()
+    root = tmp_path / "project"
+    (root / "outputs").mkdir(parents=True)
+    (root / "outputs" / "job-model.xml").write_bytes(prepared["model_xml"])
+    (root / "outputs" / "job-task.json").write_bytes(prepared["task_bytes"])
+    bundle = str(root / "outputs" / "job-task.json")
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    common = ["--iterations", "2", "--envs", "8", "--unroll", "10", "--quiet"]
+
+    def run(out: Path, *extra: str) -> dict:
+        result = subprocess.run(
+            [python, "-P", str(TRAINER), bundle, "--out", str(out), *common,
+             *extra],
+            capture_output=True, text=True, env=environment, check=False)
+        assert result.returncode == 0, result.stderr[-4000:]
+        return dyn.decode_policy(out.read_bytes())["header"]
+
+    cold = run(tmp_path / "cold.cxpolicy", "--initial-std", "0.7")
+    warm = run(tmp_path / "warm.cxpolicy", "--init-from",
+               str(tmp_path / "cold.cxpolicy"))
+    cold_std = [math.exp(v) for v in cold["exploration"]["log_std"]]
+    warm_std = [math.exp(v) for v in warm["exploration"]["log_std"]]
+    assert cold_std == pytest.approx([0.7] * len(cold_std), abs=0.05)
+    assert warm_std == pytest.approx(cold_std, abs=0.05)
+    assert warm["training"]["init_from"]["log_std_source"] == "init_from"

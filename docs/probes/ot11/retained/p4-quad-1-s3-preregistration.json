@@ -1,0 +1,65 @@
+{
+  "schema": "ot11-rounds-preregistration-v1",
+  "behaviour": "walk",
+  "session": 3,
+  "criteria": [
+    "P4",
+    "R1"
+  ],
+  "counts_for": "R1 rounds only (P4's three motivated walk rounds are rounds 5-7); R1 is judged on a later pre-registered confirmation evaluation, registered only if a round passes on all ten seeds",
+  "project": "ot11-quad-1",
+  "project_head": "58f8a4a154ee531783bbedeb5eb0a0dc79a81af1",
+  "accepted_revision_before": "abebe83811342fe7aa1d91f503d94d598ba24ba903877a4105765272f8341fd1",
+  "model_sha256_before": "ade106a6b7d636a972ae90909f6344096c46446022e87a9357d94f88f2cc31a5",
+  "motivation": "rounds 5-7 (README 'Walk session 3: the diagnosis it starts from'): reward revisions moved which feet step but no round moved W8-low above 0.29 (limit 0.40) or W10 above -0.092 hip heights (limit -0.05); at rest a passive stance already sinks the rear feet -4.31 mm of the -4.84 mm limit; r7 collapsed at iteration 537 starting from -2.11 per step; the agent's own session-2 diagnosis named a mechanism change it was not allowed to make. This session lifts that limit and changes nothing else",
+  "model": "claude-opus-5-5",
+  "fallback": null,
+  "driver": {
+    "file": "runner/rounds.py",
+    "sha256": "86a96079cd213658f9a0f67411152b230834410594c5756282998cbcf999f48b",
+    "change": "adds --continue-prompt (default unchanged) so this session's continuation can state its own limits; test_a_session_may_name_its_own_continuation"
+  },
+  "first_prompt": {
+    "file": "walk.s3.loop.prompt.txt",
+    "sha256": "1a5c10c53f73489cc05c540c9dfa0b04d42b3c3b770bfa9d1e798643f8cfc33b"
+  },
+  "continue_prompt": {
+    "file": "walk.s3.continue.prompt.txt",
+    "sha256": "019f5160ea82b601e610d9e3e88a21878d31e28dd0e0fd44f9eb6ede145c7ea4"
+  },
+  "spec_block": {
+    "file": "retained/walk-spec-block.txt",
+    "sha256": "487416afd4da672e4af8ed55ed5f2b1464eeec7bf305381833fd26775b4fe900",
+    "mechanism_rule": "byte-identical except the values of HIP_MM and WEIGHT_N, which must equal the evaluated model's rig.hip_height_mm and rig.weight_n as the evaluation report states them (to the block's printed precision); SPEC_LIFT keeps its formula"
+  },
+  "mechanism": {
+    "fixed": false,
+    "agent_may_change": "geometry, bodies, collision shapes and per-body contact settings, joints and limits, actuators, and the parameters that set them, through the ordinary edit and accept path",
+    "bounds": [
+      "four legs on one free base; the spec's feet stay c_foot_fl, c_foot_fr, c_foot_rl, c_foot_rr",
+      "the floor body and its plane, and every global physics setting (timestep, gravity, solver), unchanged",
+      "actuators stay catalog parts at catalog limits"
+    ],
+    "actor_changes": "none: the actor does not tune the reward or the mechanism"
+  },
+  "trainer": {
+    "file": "training/cadex_train.py",
+    "sha256": "97bc1d9aa068fa0a41ce19180ea7b3bb0c67659e63f2c769d00c08e56d890259",
+    "rule": "ADR-465 and ADR-466, unchanged since session 2"
+  },
+  "max_runs_total": 10,
+  "max_runs_this_session": 3,
+  "max_turns": 2,
+  "driver_args": "--max-runs 11 --max-turns 2: the driver counts stored evaluations, and the ledger holds 8 before this session (one per run, plus round 4's policy evaluated twice), so 11 is three more; the prompts' own stop rule is three runs",
+  "per_run": {
+    "budget_s_max": 2400,
+    "stop_on_collapse": true,
+    "seed_rule": "the product agent chooses it at train_start; train_start refuses any of 1101-1110",
+    "registered_by": "train_start writes runs/<run>/registration.json and a train_registered ledger row before launch"
+  },
+  "wall_clock_bound": "2 turns; at most 3 runs of at most 2400 s each (7,200 s GPU at most); one GPU job at a time (machine training lock)",
+  "stop_rule": "an evaluation passes on every seed, or the session has trained and evaluated 3 runs, or 2 turns have ended",
+  "supervision": "rounds.py under setsid, outliving the actor's session; each training run under its own cadex_cli.loop supervisor",
+  "after": "after each evaluation: the spec block is compared under mechanism_rule; the model digest, hip height and weight are recorded; a difference voids that evaluation",
+  "registered_at": "2026-10-01T03:23:05Z"
+}
