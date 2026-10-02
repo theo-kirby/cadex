@@ -145,6 +145,41 @@ the first held-out call. It is not a candidate for D1's frozen judge.
 - **Machinery.** `runner/render_set.py` draws one design's inputs from its
   copy. Per-design scores go to `baseline/<id>-score.json` and the summary
   to `baseline/summary.json`.
-- **Status.** Not yet run. The first attempt to draw inputs found that ADR-476
-  had stopped six held-out designs reopening and changed the fillets on eleven
-  more. ADR-477 reverts that. Nothing has been sent to the judge.
+- **Status.** Run once, complete: 26 of 26 held-out designs scored, no
+  harness failure, no design re-judged (commits `97ca4c14`, `c432146d` and
+  this one). The first attempt to draw inputs had found that ADR-476
+  stopped six held-out designs reopening; ADR-477 reverted that before any
+  judge call.
+
+### D1 baseline result
+
+ot10's frozen judge **fails every part of D1's bar**, and on the pairs that
+matter it is worse than chance: it prefers the design the owner rated lower.
+
+| metric | ot10 judge (baseline) | D1 bar |
+|---|---|---|
+| pairwise agreement, owner gap ≥ 2 | **13.5%** (5 of 37; 3 ties, 29 reversed) | ≥ 80% |
+| every Love above every No | **fails, 0 of 2** | holds |
+| Kendall's τ-b, all held-out pairs | **−0.079** over 325 pairs (79 concordant, 98 discordant, 148 tied) | reported |
+
+Totals (0–21) by owner verdict:
+
+| owner | n | ot10 totals | mean |
+|---|---|---|---|
+| Love | 2 | 12, 14 | 13.0 |
+| Like | 11 | 14, 14, 14, 16, 16, 16, 16, 17, 17, 18, 18 | 16.0 |
+| Meh | 12 | 11, 12, 13, 13, 15, 15, 16, 16, 16, 17, 18, 18 | 15.0 |
+| No | 1 | 18 | 18.0 |
+
+- The held-out No (`biped-h-free`, the soft rounded box with a visor and
+  dot eyes) gets 18, tied for the highest total; the two held-out Loves
+  (`biped-c-exposed-mechanism` 12, `quadruped-e-hard-surface` 14) are in the
+  bottom third. By kind of gap pair: Love × Meh 5 agree, 18 reversed,
+  1 tied (of 24); Love × No 0 of 2; Like × No 0 of 11 (9 reversed, 2 tied).
+- Reading, not measurement: ot10's rubric was written to score the finish
+  ot10 prescribed (one soft body, a face, hidden hardware), which is the
+  archetype the owner rejected. A judge built from it is aligned to the old
+  design language, not to the owner.
+- Per-design scores, trait medians and render receipts:
+  `baseline/<id>-score.json`; the metric output with every reversed and
+  tied pair named: `baseline/summary.json`.

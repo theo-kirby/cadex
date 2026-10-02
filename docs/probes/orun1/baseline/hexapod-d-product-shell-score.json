@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "15c024eb406602b029aeb5e180c7d1f9e3d571b657d91bea855d0e0a0c3e4f36"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "4528bdc215b20ce26632def0566939ff1d4138067d5bc6d8c00e388fb0ce007e"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "91ecc8cae9f3d444f2d759fb2b97d47f55d98d862d2d25afb2d750d6695a3620"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "17f63b4afb39edd51a9fcfee3bf598d3361ef2cd19090c9793ff1bf1b1237fdb"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "a1c62a5bfb30846790dcc12dd554d38ef5845e8db105211852b8c46ce56a6110"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "5db46a5076cf8ab67710875f02d2889ced91666dacfefdca7617030a37f8dc9c"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 3,
+    "T3": 2,
+    "T4": 2,
+    "T5": 2,
+    "T6": 3,
+    "T7": 2
+  },
+  "total": 16,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded shell covers the body, but the dark servo cases still show at every hip below the shell's edge."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The shell is white and the mechanism dark, each used by role, with one orange accent placed deliberately on the eyes and the hip caps."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Most hip axes have round bosses or discs, some with orange caps, but the joints are not all alike and the boxy servo bodies around them still read as hardware."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one soft rounded box with generous radii, and the legs are smooth curved shapes, but the hip servo blocks stay boxy and the parts don't merge."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor with two orange eyes gives the robot a front, but the face is a generic strip on a flat slab body, and the silhouette is not very distinctive."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The compact body sits on curved legs that taper to distinct black ball feet, and the six-legged stance looks balanced and intentional."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The lighting shows the curvature well and the angles are good, but it sits on a grid floor with no seamless backdrop and no soft contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded shell covers the body, but the dark servo cases still show at every hip below the shell's edge.\"}, \"T2\": {\"score\": 3, \"reason\": \"The shell is white and the mechanism dark, each used by role, with one orange accent placed deliberately on the eyes and the hip caps.\"}, \"T3\": {\"score\": 2, \"reason\": \"Most hip axes have round bosses or discs, some with orange caps, but the joints are not all alike and the boxy servo bodies around them still read as hardware.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one soft rounded box with generous radii, and the legs are smooth curved shapes, but the hip servo blocks stay boxy and the parts don't merge.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark visor with two orange eyes gives the robot a front, but the face is a generic strip on a flat slab body, and the silhouette is not very distinctive.\"}, \"T6\": {\"score\": 3, \"reason\": \"The compact body sits on curved legs that taper to distinct black ball feet, and the six-legged stance looks balanced and intentional.\"}, \"T7\": {\"score\": 2, \"reason\": \"The lighting shows the curvature well and the angles are good, but it sits on a grid floor with no seamless backdrop and no soft contact shadow.\"}}",
+      "session_id": "1fa2dc43-70ab-42ae-9083-c5616c93778a",
+      "duration_ms": 22037,
+      "num_turns": 17,
+      "total_cost_usd": 0.124764,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2514,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.124764,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 774,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded white shell covers the body hardware, but dark servo-shaped blocks with flat output discs are still exposed under the shell at every hip."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The robot uses a warm white shell and a dark grey mechanism colour by role, with one saturated orange accent placed only on the eyes and the leg joint caps."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Most leg joints show as round caps concentric with their axes, some with orange centres, but the hip discs still look like bare servo horns and the joint treatment is not consistent."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one soft rounded box with large radii and the legs are shaped curves, but the exposed servo blocks are hard-edged boxes that do not merge into the form."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor with two orange eyes gives the robot a clear front, but it is small on a flat, table-like body and the silhouette is generic."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The legs end in distinct dark ball feet, but they keep a nearly uniform section rather than tapering, and the low, wide body sprawls slightly."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The lighting shows the curvature well and the views are good three-quarter angles, but the dark grid floor is not a seamless studio backdrop and there is no soft contact shadow."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded white shell covers the body hardware, but dark servo-shaped blocks with flat output discs are still exposed under the shell at every hip.\"},\n\"T2\": {\"score\": 3, \"reason\": \"The robot uses a warm white shell and a dark grey mechanism colour by role, with one saturated orange accent placed only on the eyes and the leg joint caps.\"},\n\"T3\": {\"score\": 2, \"reason\": \"Most leg joints show as round caps concentric with their axes, some with orange centres, but the hip discs still look like bare servo horns and the joint treatment is not consistent.\"},\n\"T4\": {\"score\": 2, \"reason\": \"The body reads as one soft rounded box with large radii and the legs are shaped curves, but the exposed servo blocks are hard-edged boxes that do not merge into the form.\"},\n\"T5\": {\"score\": 2, \"reason\": \"A dark visor with two orange eyes gives the robot a clear front, but it is small on a flat, table-like body and the silhouette is generic.\"},\n\"T6\": {\"score\": 2, \"reason\": \"The legs end in distinct dark ball feet, but they keep a nearly uniform section rather than tapering, and the low, wide body sprawls slightly.\"},\n\"T7\": {\"score\": 2, \"reason\": \"The lighting shows the curvature well and the views are good three-quarter angles, but the dark grid floor is not a seamless studio backdrop and there is no soft contact shadow.\"}}\n```",
+      "session_id": "942d48e0-a0c0-4cf6-bf09-f4140ce6f605",
+      "duration_ms": 23570,
+      "num_turns": 17,
+      "total_cost_usd": 0.1261294,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2577,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1261294,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 789,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous white rounded shell encloses the body, but dark servo cases are plainly visible at each hip under the shell edge."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Off-white shell and dark charcoal mechanism are applied consistently by role, with a single orange accent placed on the eyes and on some joint caps."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Most rotation axes show as round discs or bosses with orange-capped centres, but they are not uniform, and some read as bare servo horns beside boxy servo cases."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one generously filleted soft rounded box and the legs are curved, shaped forms, but the exposed servo blocks stay boxy and the parts do not merge."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor with two orange eyes gives a front, but it is a fairly generic slot on a flat table-like silhouette and hard to see from most angles."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "A compact body sits on curved legs that thin towards distinct black ball feet, giving a balanced, intentional six-legged stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Antialiased and lit so the curvature reads from a good three-quarter angle, but it sits on a dark CAD grid floor with no seamless backdrop or soft contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous white rounded shell encloses the body, but dark servo cases are plainly visible at each hip under the shell edge.\"}, \"T2\": {\"score\": 3, \"reason\": \"Off-white shell and dark charcoal mechanism are applied consistently by role, with a single orange accent placed on the eyes and on some joint caps.\"}, \"T3\": {\"score\": 2, \"reason\": \"Most rotation axes show as round discs or bosses with orange-capped centres, but they are not uniform, and some read as bare servo horns beside boxy servo cases.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one generously filleted soft rounded box and the legs are curved, shaped forms, but the exposed servo blocks stay boxy and the parts do not merge.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark visor with two orange eyes gives a front, but it is a fairly generic slot on a flat table-like silhouette and hard to see from most angles.\"}, \"T6\": {\"score\": 3, \"reason\": \"A compact body sits on curved legs that thin towards distinct black ball feet, giving a balanced, intentional six-legged stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"Antialiased and lit so the curvature reads from a good three-quarter angle, but it sits on a dark CAD grid floor with no seamless backdrop or soft contact shadow.\"}}",
+      "session_id": "1c56e94e-33ed-4ff4-9b28-39bca603af77",
+      "duration_ms": 23920,
+      "num_turns": 17,
+      "total_cost_usd": 0.127864,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2669,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.127864,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 907,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "hexapod-d-product-shell",
+  "receipt": {
+    "project": "orun1-ho-hexapod-d-product-shell",
+    "accepted_revision": "80ec4ce5060ad19e210320bfb2e608208ff8121ee213e2deedd70f6f289ecf69",
+    "look_revision": "80ec4ce5060ad19e210320bfb2e608208ff8121ee213e2deedd70f6f289ecf69",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

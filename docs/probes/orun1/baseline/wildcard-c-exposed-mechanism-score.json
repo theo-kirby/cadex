@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "4480eb2b737ee83e4a9bf3c025e6eefdb002ce50d03dc86a8e98c0a3d9be5abe"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "37484870664e9e0e547e75ae7b20c9e9d45248cbf8c6bb87fbe7c5313cc3ff67"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "e0458f5d91bd80ee5aa42e706c2f1b734f154e5eee773439e043ed0b9b2e2bf2"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "96119fd258f600407ac85189ff82e4fbdc9df9257e521d239a6f06e92ec18c45"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "9243898afe59bc4b5ac37e230fbd89fdca5a15487d8fe69e70696a2eca846051"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "272f9a6e25ad2f66b64b2ad982d41fb7e033bbb99121f7477ec531701d1bc8ea"
+    }
+  ],
+  "medians": {
+    "T1": 1,
+    "T2": 3,
+    "T3": 2,
+    "T4": 1,
+    "T5": 2,
+    "T6": 1,
+    "T7": 1
+  },
+  "total": 11,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 1,
+          "reason": "The arm links and head are covered, but the base plate shows bare boards, a battery, wiring and a servo body, and dark servo cases show between the arm links."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Off-white shell and dark mechanism are used by role, and one saturated orange accent sits only on the joint caps and the head's lens ring."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The pitch joints have matching round orange caps on their axes, but the base yaw joint shows as a plain disc over an exposed servo, so not every axis is styled the same."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The head is a rounded box and the links have rounded ends, but the overall form reads as a flat filleted plate with bar-like links and bracket plates rather than one soft primitive."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark-and-orange lens ring on the head acts as a face, but it sits on one small side face and is hard to find in most views."
+        },
+        "T6": {
+          "score": 1,
+          "reason": "A sprawling flat base carries a stack of fairly uniform links with no distinct foot or end piece, and only the lower link tapers slightly."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The shading is clean and antialiased from a decent three-quarter angle, but it sits on a dark CAD grid with flat lighting and no contact shadow or studio backdrop."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 1, \"reason\": \"The arm links and head are covered, but the base plate shows bare boards, a battery, wiring and a servo body, and dark servo cases show between the arm links.\"},\n\"T2\": {\"score\": 3, \"reason\": \"Off-white shell and dark mechanism are used by role, and one saturated orange accent sits only on the joint caps and the head's lens ring.\"},\n\"T3\": {\"score\": 2, \"reason\": \"The pitch joints have matching round orange caps on their axes, but the base yaw joint shows as a plain disc over an exposed servo, so not every axis is styled the same.\"},\n\"T4\": {\"score\": 1, \"reason\": \"The head is a rounded box and the links have rounded ends, but the overall form reads as a flat filleted plate with bar-like links and bracket plates rather than one soft primitive.\"},\n\"T5\": {\"score\": 2, \"reason\": \"A dark-and-orange lens ring on the head acts as a face, but it sits on one small side face and is hard to find in most views.\"},\n\"T6\": {\"score\": 1, \"reason\": \"A sprawling flat base carries a stack of fairly uniform links with no distinct foot or end piece, and only the lower link tapers slightly.\"},\n\"T7\": {\"score\": 1, \"reason\": \"The shading is clean and antialiased from a decent three-quarter angle, but it sits on a dark CAD grid with flat lighting and no contact shadow or studio backdrop.\"}}",
+      "session_id": "14fce98b-3b9e-432c-8704-10d84432bd4a",
+      "duration_ms": 22950,
+      "num_turns": 17,
+      "total_cost_usd": 0.1260694,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2574,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1260694,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 805,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 1,
+          "reason": "The arm links have white shells, but the boards, battery, wiring and base servo all sit exposed on a flat plate, and the arm servos show through gaps in the front view."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "White is used for the shells, dark grey for the mechanism, and a single orange accent appears only on the joint caps and the head lens, consistently by role."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The pitch joints have matching round orange caps on their axes, but the base yaw joint is a plain disc over an exposed servo, so not every axis is treated the same way."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "Apart from the rounded-box head, the arm reads as flat constant-thickness plates and brackets standing on a rounded rectangular slab, with no parts merging into one another."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark lens with an orange ring on the head acts as an eye and gives the robot a front, but it is a single generic element and the overall silhouette is a plain column."
+        },
+        "T6": {
+          "score": 1,
+          "reason": "The upright arm is compact, but it stands on a wide, sprawling base plate, the links barely taper, and there is no distinct foot."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The render is shaded with smooth edges, but it sits on a dark grid with no seamless backdrop or contact shadow, and several views are flat orthographic or top-down."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 1, \"reason\": \"The arm links have white shells, but the boards, battery, wiring and base servo all sit exposed on a flat plate, and the arm servos show through gaps in the front view.\"},\n\"T2\": {\"score\": 3, \"reason\": \"White is used for the shells, dark grey for the mechanism, and a single orange accent appears only on the joint caps and the head lens, consistently by role.\"},\n\"T3\": {\"score\": 2, \"reason\": \"The pitch joints have matching round orange caps on their axes, but the base yaw joint is a plain disc over an exposed servo, so not every axis is treated the same way.\"},\n\"T4\": {\"score\": 1, \"reason\": \"Apart from the rounded-box head, the arm reads as flat constant-thickness plates and brackets standing on a rounded rectangular slab, with no parts merging into one another.\"},\n\"T5\": {\"score\": 2, \"reason\": \"A dark lens with an orange ring on the head acts as an eye and gives the robot a front, but it is a single generic element and the overall silhouette is a plain column.\"},\n\"T6\": {\"score\": 1, \"reason\": \"The upright arm is compact, but it stands on a wide, sprawling base plate, the links barely taper, and there is no distinct foot.\"},\n\"T7\": {\"score\": 1, \"reason\": \"The render is shaded with smooth edges, but it sits on a dark grid with no seamless backdrop or contact shadow, and several views are flat orthographic or top-down.\"}}\n```",
+      "session_id": "177f9dc1-d1f9-477b-bb7a-98e62fee9419",
+      "duration_ms": 20698,
+      "num_turns": 17,
+      "total_cost_usd": 0.12291860000000002,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2427,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.12291860000000002,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 655,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 1,
+          "reason": "The head and arm links have covers, but the boards, battery, wiring and base servo sit exposed on a flat base plate, and the arm servo cases show through gaps in the links."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The white shell and dark mechanism are applied consistently by role, with one saturated orange accent placed deliberately on the joint caps and the head lens."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Most rotation axes are marked by matching orange round caps, but the base yaw joint is a plain disc and the head joint is a dark ring, so the style is not the same everywhere."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The head is a rounded box and the base has generous radii, but the arm still reads as flat plates, U-brackets and bars with small fillets, and nothing merges into one continuous form."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "The dark ring lens on the head works as an eye and gives the robot a front, but it is a generic camera-lens element, and the cluttered base pulls attention away from it."
+        },
+        "T6": {
+          "score": 1,
+          "reason": "The lower link tapers a little, but the base is a flat, sprawling plate with components scattered across it rather than a compact body on a distinct foot."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Clean shading and good three-quarter angles let the curvature read on a dark background, but there is a visible grid floor, no contact shadow and no studio backdrop."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 1, \"reason\": \"The head and arm links have covers, but the boards, battery, wiring and base servo sit exposed on a flat base plate, and the arm servo cases show through gaps in the links.\"}, \"T2\": {\"score\": 3, \"reason\": \"The white shell and dark mechanism are applied consistently by role, with one saturated orange accent placed deliberately on the joint caps and the head lens.\"}, \"T3\": {\"score\": 2, \"reason\": \"Most rotation axes are marked by matching orange round caps, but the base yaw joint is a plain disc and the head joint is a dark ring, so the style is not the same everywhere.\"}, \"T4\": {\"score\": 1, \"reason\": \"The head is a rounded box and the base has generous radii, but the arm still reads as flat plates, U-brackets and bars with small fillets, and nothing merges into one continuous form.\"}, \"T5\": {\"score\": 2, \"reason\": \"The dark ring lens on the head works as an eye and gives the robot a front, but it is a generic camera-lens element, and the cluttered base pulls attention away from it.\"}, \"T6\": {\"score\": 1, \"reason\": \"The lower link tapers a little, but the base is a flat, sprawling plate with components scattered across it rather than a compact body on a distinct foot.\"}, \"T7\": {\"score\": 2, \"reason\": \"Clean shading and good three-quarter angles let the curvature read on a dark background, but there is a visible grid floor, no contact shadow and no studio backdrop.\"}}",
+      "session_id": "c83decff-5f98-4b13-91d7-df62a98c92cf",
+      "duration_ms": 22524,
+      "num_turns": 17,
+      "total_cost_usd": 0.1260694,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2574,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1260694,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 785,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "wildcard-c-exposed-mechanism",
+  "receipt": {
+    "project": "orun1-ho-wildcard-c-exposed-mechanism",
+    "accepted_revision": "3cfbc97b71dc6593ca54aeec4d7e00ffdf95e72002e88dd1834e259ed46b5733",
+    "look_revision": "3cfbc97b71dc6593ca54aeec4d7e00ffdf95e72002e88dd1834e259ed46b5733",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

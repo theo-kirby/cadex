@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "8c6bc14070c5d8f60008bac682a02552170f570ec7badea660e15471fb357b99"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "dbd4373cf5d1a5b97ed9b8f554c792899518aaf6b38db9367dffdd6c65781f63"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "52d41997619a74f451381c662328e4b80d31f0f2a1e7dfb9b618b0f44f9f62a4"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "82a8f2fed75c0b9f65c3c0a4f26cd9701bebef1ab7ec8a21bb37ecf4d9f0664d"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "7c8aaddbbad0e0bcd021da1468e6cf0a3f0a31db9ed22a9fde5cd2abf1d964ce"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "be0315b4deba70e46ff4867cca31d35aa7fa9795d1ca679dc00005787e0f3976"
+    }
+  ],
+  "medians": {
+    "T1": 3,
+    "T2": 3,
+    "T3": 3,
+    "T4": 2,
+    "T5": 3,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 18,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "The cream dome base and rounded head shell hide every servo and board, and the mechanism shows only as the dark yoke, pan ring and tilt caps."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The cream shell and dark grey mechanism are used consistently by role, and the one saturated orange accent is placed only on the eyes."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Both rotation axes are deliberate dark round features: disc caps centred on the tilt axis and a ring at the pan base, styled the same way."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The base is a soft dome and the head is a generously rounded box, but the yoke is a constant-section bracket and the head sits apart from it rather than merging."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The dark visor with two orange eyes is a clear focal face that sets the front and gives character at a glance, and the head-on-dome silhouette is easy to recognise."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and balanced, and the dark base band reads as a distinct foot, but the uniform-section yoke has no taper."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The lighting shows the curvature from a good three-quarter angle, but the background is a CAD grid with no contact shadow and the dome has blotchy shading artefacts."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"The cream dome base and rounded head shell hide every servo and board, and the mechanism shows only as the dark yoke, pan ring and tilt caps.\"}, \"T2\": {\"score\": 3, \"reason\": \"The cream shell and dark grey mechanism are used consistently by role, and the one saturated orange accent is placed only on the eyes.\"}, \"T3\": {\"score\": 3, \"reason\": \"Both rotation axes are deliberate dark round features: disc caps centred on the tilt axis and a ring at the pan base, styled the same way.\"}, \"T4\": {\"score\": 2, \"reason\": \"The base is a soft dome and the head is a generously rounded box, but the yoke is a constant-section bracket and the head sits apart from it rather than merging.\"}, \"T5\": {\"score\": 3, \"reason\": \"The dark visor with two orange eyes is a clear focal face that sets the front and gives character at a glance, and the head-on-dome silhouette is easy to recognise.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and balanced, and the dark base band reads as a distinct foot, but the uniform-section yoke has no taper.\"}, \"T7\": {\"score\": 2, \"reason\": \"The lighting shows the curvature from a good three-quarter angle, but the background is a CAD grid with no contact shadow and the dome has blotchy shading artefacts.\"}}",
+      "session_id": "9e54da26-64fe-42ef-998d-bbd6e4e76c9b",
+      "duration_ms": 20910,
+      "num_turns": 17,
+      "total_cost_usd": 0.1232294,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2432,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1232294,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 676,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous cream dome and a rounded head shell hide all the servos and electronics, and the mechanism shows only as dark discs, a collar and a base band."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Cream is used for the shell and dark charcoal for the mechanism, and the one saturated orange accent appears only on the eyes in the face visor."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The tilt axis has large round dark caps and the pan axis has a concentric dark collar, but the two joints are styled differently and the tilt caps sit on a plain bracket yoke."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one soft dome and the head as a generously rounded box, but the yoke is a constant-section bent bar and the parts sit separately rather than merging."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A dark visor with two orange eyes gives a clear focal face and a front at a glance, and the dome-and-head silhouette is easy to recognise."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact, balanced and sits on a distinct dark base band that acts as a foot, but there are no tapering limbs and the yoke has a uniform section."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The render is antialiased and lit so curvature reads, with good three-quarter views, but it sits on a dark CAD grid with no contact shadow and there are blotchy shading artefacts on the dome."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A continuous cream dome and a rounded head shell hide all the servos and electronics, and the mechanism shows only as dark discs, a collar and a base band.\"}, \"T2\": {\"score\": 3, \"reason\": \"Cream is used for the shell and dark charcoal for the mechanism, and the one saturated orange accent appears only on the eyes in the face visor.\"}, \"T3\": {\"score\": 2, \"reason\": \"The tilt axis has large round dark caps and the pan axis has a concentric dark collar, but the two joints are styled differently and the tilt caps sit on a plain bracket yoke.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one soft dome and the head as a generously rounded box, but the yoke is a constant-section bent bar and the parts sit separately rather than merging.\"}, \"T5\": {\"score\": 3, \"reason\": \"A dark visor with two orange eyes gives a clear focal face and a front at a glance, and the dome-and-head silhouette is easy to recognise.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact, balanced and sits on a distinct dark base band that acts as a foot, but there are no tapering limbs and the yoke has a uniform section.\"}, \"T7\": {\"score\": 2, \"reason\": \"The render is antialiased and lit so curvature reads, with good three-quarter views, but it sits on a dark CAD grid with no contact shadow and there are blotchy shading artefacts on the dome.\"}}",
+      "session_id": "2b86908e-dbbb-46e7-8ff9-d80b3589763b",
+      "duration_ms": 22759,
+      "num_turns": 17,
+      "total_cost_usd": 0.1263186,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2597,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1263186,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 817,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A soft dome base and a rounded-box head hide all the hardware, and the mechanism shows only as a dark yoke, side caps and a pan ring."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Warm white is used for the shells and dark grey for the mechanism, and the one saturated orange accent appears only on the eyes."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "The tilt axis has matching dark round caps on both sides and the pan axis has a dark ring at the base, so every rotation axis is a deliberate round feature."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The base is one soft dome and the head is a generously rounded box, but the yoke is a constant-section bent bar and the parts stay separate rather than merging."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The dark visor with two orange eyes is a clear focal face, and the head-on-dome silhouette is recognisable at a glance."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and balanced and the base ends in a distinct dark foot band, but there are no limbs to taper."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The shading lets the curvature read, but the background is a CAD viewport grid, there is no contact shadow, the base shows blotchy shading artifacts and the camera looks down from a high angle."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 3, \"reason\": \"A soft dome base and a rounded-box head hide all the hardware, and the mechanism shows only as a dark yoke, side caps and a pan ring.\"}, \"T2\": {\"score\": 3, \"reason\": \"Warm white is used for the shells and dark grey for the mechanism, and the one saturated orange accent appears only on the eyes.\"}, \"T3\": {\"score\": 3, \"reason\": \"The tilt axis has matching dark round caps on both sides and the pan axis has a dark ring at the base, so every rotation axis is a deliberate round feature.\"}, \"T4\": {\"score\": 2, \"reason\": \"The base is one soft dome and the head is a generously rounded box, but the yoke is a constant-section bent bar and the parts stay separate rather than merging.\"}, \"T5\": {\"score\": 3, \"reason\": \"The dark visor with two orange eyes is a clear focal face, and the head-on-dome silhouette is recognisable at a glance.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and balanced and the base ends in a distinct dark foot band, but there are no limbs to taper.\"}, \"T7\": {\"score\": 1, \"reason\": \"The shading lets the curvature read, but the background is a CAD viewport grid, there is no contact shadow, the base shows blotchy shading artifacts and the camera looks down from a high angle.\"}}\n```",
+      "session_id": "2de5ece0-7af6-4b91-8884-e1c11c91509c",
+      "duration_ms": 21613,
+      "num_turns": 17,
+      "total_cost_usd": 0.1255094,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2546,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1255094,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 790,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "wildcard-h-free",
+  "receipt": {
+    "project": "orun1-ho-wildcard-h-free",
+    "accepted_revision": "25e06d05ae8912b58ed1c46744982ef5f2812c7a718804e41533a559474b3715",
+    "look_revision": "25e06d05ae8912b58ed1c46744982ef5f2812c7a718804e41533a559474b3715",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

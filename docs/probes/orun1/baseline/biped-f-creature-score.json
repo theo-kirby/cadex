@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "a081759a1de0ff10952fad7700019e669b7a70c8967df5bca286af624e9c6fdd"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "13293d138b3fe04cc7716b41f3553a6454f369d7c4960f2ec998b60f33fcc5d3"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "2aef3a0dc503dc7c94d5328362a3c0a839a0f7f219a05832f9b9a2e569c3dc03"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "aadd01ac7d53ecec05464242c604d54fda8e1489a5eed83c1582b2f2e2944e15"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "2e652f692bcc495cdcbcb42bfa2d628b4b3c49cb754d2858aca20f675a353ecd"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "5900d5a7b50a3b1f8408fae3b0f6bfb37ad3d4be23ae2edd71e03879071d6266"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 2,
+    "T3": 1,
+    "T4": 1,
+    "T5": 3,
+    "T6": 2,
+    "T7": 1
+  },
+  "total": 12,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous white hood covers the body's hardware, but the legs show rounded box servo housings and plate brackets in the open."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "White shell, dark mechanism parts (visor, belly band, ankles, feet) and orange eyes work well, but the hip and knee joints are shell-white, so the dark colour isn't applied fully by role."
+        },
+        "T3": {
+          "score": 1,
+          "reason": "Joints are recognisable, but they read as plain rounded link ends with screw holes rather than matching round bosses or rings on each axis."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one soft egg-shaped hood, but the legs are still flat plate links and rounded boxes rather than continuous merged forms."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The dark visor with two orange eyes gives a clear front and a likeable character at a glance, and the hood with its tail spike makes a recognisable silhouette."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the dark three-toed feet are distinct, but the legs keep the same blocky section all the way down and do not taper."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The render is shaded, but it sits on a dark CAD grid with no contact shadow, the shell has visible faceting artefacts, and several views are flat orthographic angles."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous white hood covers the body's hardware, but the legs show rounded box servo housings and plate brackets in the open.\"}, \"T2\": {\"score\": 2, \"reason\": \"White shell, dark mechanism parts (visor, belly band, ankles, feet) and orange eyes work well, but the hip and knee joints are shell-white, so the dark colour isn't applied fully by role.\"}, \"T3\": {\"score\": 1, \"reason\": \"Joints are recognisable, but they read as plain rounded link ends with screw holes rather than matching round bosses or rings on each axis.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one soft egg-shaped hood, but the legs are still flat plate links and rounded boxes rather than continuous merged forms.\"}, \"T5\": {\"score\": 3, \"reason\": \"The dark visor with two orange eyes gives a clear front and a likeable character at a glance, and the hood with its tail spike makes a recognisable silhouette.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the dark three-toed feet are distinct, but the legs keep the same blocky section all the way down and do not taper.\"}, \"T7\": {\"score\": 1, \"reason\": \"The render is shaded, but it sits on a dark CAD grid with no contact shadow, the shell has visible faceting artefacts, and several views are flat orthographic angles.\"}}",
+      "session_id": "3db84895-213b-4d43-8101-737601079cd6",
+      "duration_ms": 23175,
+      "num_turns": 17,
+      "total_cost_usd": 0.1244786,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2505,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1244786,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 752,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "The egg-shaped hood fully encloses the body, but the legs show servo-shaped boxes and bare brackets."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "Off-white shell, dark grey mechanism and a deliberate orange accent on the eyes, but the leg servos are shell-coloured, so the colours only partly follow their roles."
+        },
+        "T3": {
+          "score": 1,
+          "reason": "The joints read as rounded bracket ends with exposed screw holes and plain dark ankle caps, not consistent styled bosses or rings."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a generous soft egg primitive, but the limbs are still filleted boxes and flat plates."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The dark visor with two orange eyes gives a clear focal face, and the domed hood and tail spike make a recognisable silhouette."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "Compact body with distinct dark toed feet, but the leg sections stay boxy and do not taper toward the foot."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "Shaded three-quarter view on a dark grid floor with no contact shadow, and visible faceting artifacts on the shell surface."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"The egg-shaped hood fully encloses the body, but the legs show servo-shaped boxes and bare brackets.\"}, \"T2\": {\"score\": 2, \"reason\": \"Off-white shell, dark grey mechanism and a deliberate orange accent on the eyes, but the leg servos are shell-coloured, so the colours only partly follow their roles.\"}, \"T3\": {\"score\": 1, \"reason\": \"The joints read as rounded bracket ends with exposed screw holes and plain dark ankle caps, not consistent styled bosses or rings.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a generous soft egg primitive, but the limbs are still filleted boxes and flat plates.\"}, \"T5\": {\"score\": 3, \"reason\": \"The dark visor with two orange eyes gives a clear focal face, and the domed hood and tail spike make a recognisable silhouette.\"}, \"T6\": {\"score\": 2, \"reason\": \"Compact body with distinct dark toed feet, but the leg sections stay boxy and do not taper toward the foot.\"}, \"T7\": {\"score\": 1, \"reason\": \"Shaded three-quarter view on a dark grid floor with no contact shadow, and visible faceting artifacts on the shell surface.\"}}",
+      "session_id": "500e2e5b-cd73-4002-bb22-2f5387e50e5e",
+      "duration_ms": 25446,
+      "num_turns": 17,
+      "total_cost_usd": 0.1282894,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2685,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1282894,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 966,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous egg-shaped hood hides the body's hardware, but the legs still show boxy servo-like cases and flat brackets with exposed screw holes."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "The robot uses an off-white shell and dark grey for the visor, belly band, ankles and feet, with orange only on the eyes, but the hip and knee mechanisms are white rather than dark, so the colours don't consistently follow their roles."
+        },
+        "T3": {
+          "score": 1,
+          "reason": "The joints show up as rounded-end flat bracket plates with small screw holes and pins, not round bosses or rings centred on each axis."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a soft egg shape with large radii, but the legs are flat plates and rectangular boxes with small fillets, and the shell shows faceting artefacts."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A dark visor with two orange eyes gives the robot an obvious front and character at a glance, and the egg-and-tail silhouette is recognisable."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the toed feet are clearly distinct, but the legs are uniform plates and boxes that don't taper towards the feet."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The renders are shaded but sit on a dark viewport grid with no contact shadow, several views are flat orthographic shots, and the shell shows visible tessellation artefacts."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous egg-shaped hood hides the body's hardware, but the legs still show boxy servo-like cases and flat brackets with exposed screw holes.\"}, \"T2\": {\"score\": 2, \"reason\": \"The robot uses an off-white shell and dark grey for the visor, belly band, ankles and feet, with orange only on the eyes, but the hip and knee mechanisms are white rather than dark, so the colours don't consistently follow their roles.\"}, \"T3\": {\"score\": 1, \"reason\": \"The joints show up as rounded-end flat bracket plates with small screw holes and pins, not round bosses or rings centred on each axis.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a soft egg shape with large radii, but the legs are flat plates and rectangular boxes with small fillets, and the shell shows faceting artefacts.\"}, \"T5\": {\"score\": 3, \"reason\": \"A dark visor with two orange eyes gives the robot an obvious front and character at a glance, and the egg-and-tail silhouette is recognisable.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the toed feet are clearly distinct, but the legs are uniform plates and boxes that don't taper towards the feet.\"}, \"T7\": {\"score\": 1, \"reason\": \"The renders are shaded but sit on a dark viewport grid with no contact shadow, several views are flat orthographic shots, and the shell shows visible tessellation artefacts.\"}}",
+      "session_id": "36f273df-7249-4b3a-b790-ef69dda9e6d2",
+      "duration_ms": 20932,
+      "num_turns": 17,
+      "total_cost_usd": 0.1230986,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2436,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1230986,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 655,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "biped-f-creature",
+  "receipt": {
+    "project": "orun1-ho-biped-f-creature",
+    "accepted_revision": "4047532f84c4b850f1f5303a2a901d594d67a13dc5f229404867646da74d699f",
+    "look_revision": "4047532f84c4b850f1f5303a2a901d594d67a13dc5f229404867646da74d699f",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}
