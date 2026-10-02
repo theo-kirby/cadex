@@ -31390,3 +31390,34 @@ load-dependent. This ADR does not change the clock.
   is unchanged and passes.
 - No protocol change. The fast path and every built blend's edge order are as
   before ADR-476.
+
+## ADR-478 — orun1's D1 judge is pairwise on the hero alone, and v2 is frozen before any held-out call (2026-10-02)
+
+**Context.** D1 asks for a frozen judge that agrees with the owner on
+designs it never saw. The baseline (ot10's T1–T7 rubric) scored 13.5% on the
+held-out gap pairs and ranked the No above both Loves
+(`docs/probes/orun1/README.md`, "D1 baseline result"): it scores the finish
+ot10 prescribed, not what the owner rated.
+
+**Decision.** The judge compares two designs per call and is asked which one
+the owner would rate higher. A design's score is its fraction of comparisons
+won. The form matches both bars, D1's pairwise agreement and D4's wins
+against same-type sweep designs. It sees only the studio hero, the one
+picture per design the owner rated from, rendered by the product from an
+`orun1-*` copy at the accepted revision. Two versions were built on the 29
+dev designs: v1 at 81.5% (44 of 54 gap pairs), and v2 at 90.7% (49 of 54),
+reproduced exactly by a replicate with every pair's sides swapped. v2 is
+frozen in the README with its prompt verbatim and its sha256 pinned in
+`runner/pairwise.py` (`FROZEN`). The runner refuses `--split heldout` for
+any other version, for a mirror, and into a directory that already holds a
+held-out result.
+
+**Consequences.**
+- Nothing about the judge was chosen from a held-out design. v2's dev
+  figure is optimistic, because v2 was written after reading v1's dev misses.
+  The held-out measurement is the one D1 counts, and it is published
+  whatever it is.
+- The ot10 rubric is not retired by this ADR. D2 decides that.
+- New probe machinery only (`runner/draw_set.py`, `runner/pairwise.py`,
+  `metrics.split_verdicts`). No product, engine or protocol change. No new
+  dependency.

@@ -183,3 +183,147 @@ Totals (0–21) by owner verdict:
 - Per-design scores, trait medians and render receipts:
   `baseline/<id>-score.json`; the metric output with every reversed and
   tied pair named: `baseline/summary.json`.
+
+## D1 judge, built on dev
+
+The judge is built on the 29 `dev` designs only. Nothing below was chosen
+by looking at a held-out design, render or score. The dev split has 406
+pairs, **54** of them two levels apart (Love × Meh 26, Love × No 4,
+Like × No 24).
+
+**Form: pairwise.** The bar is pairwise, and D4's bar is a pairwise
+comparison against sweep designs, so the judge answers the question the
+bars ask: of these two robots, which would the owner rate higher. One call
+compares one unordered pair. A design's score is the fraction of its
+comparisons it won, and the D1 metrics are computed on that score with
+`runner/metrics.py` unchanged.
+
+**Inputs: the hero only.** The owner rated from one picture per design,
+the studio hero on the dark floor (above, "The ratings"), so the judge sees
+the same one: the 1024 px hero that `cadex render` writes from an
+`orun1-dev-<id>` copy at its accepted revision (`runner/draw_set.py`, which
+copies the sweep project and calls `runner/render_set.py`; the originals
+stay read-only). The images reach the judge as `A-1.png` and `B-1.png`. No
+design id, thesis, note, project name or verdict is in any call. The
+renders are not committed; each summary records each design's accepted
+revision and the hero's sha256.
+
+**Isolation** is ot10's: a fresh `claude -p` process in an empty temporary
+directory, `Read` as its only tool, no MCP, no user settings, hooks,
+memory or `CLAUDE.md`, model `claude-opus-5-5` with no fallback.
+**Position** is balanced: which design is shown as `A` is fixed per pair by
+a hash of the version name and the two ids. A reply that does not parse is
+retried once. A second failure leaves the pair unjudged and is reported.
+
+The machinery is `runner/pairwise.py`, and `runner/test_pairwise.py` pins it.
+Results are in `judge/<version>-dev/` (`pairs.jsonl` holds every verdict
+with its one-sentence reason; `summary.json` holds the scores and metrics).
+
+### Judge v1 on dev
+
+v1's instructions describe the owner's taste from the charter and the
+operator's reading above: engineered machines, hardware laid out with
+order, hard-surface enclosures allowed, the mascot archetype disliked, and
+no credit for finish alone.
+
+| metric (dev) | v1 |
+|---|---|
+| pairwise agreement, owner gap ≥ 2 | **81.5%** (44 of 54; 0 ties, 10 reversed) |
+| every Love above every No | holds (4 of 4) |
+| Kendall's τ-b | 0.261 over 406 pairs |
+| A picked | 48.5% |
+
+v1 clears the bar by one pair (43 of 54 would be 79.6%), which is not a
+margin. Its ten misses fall into two patterns:
+- **The loved plain arm lost to detail.** `arm5-g-minimal` (Love: a clean
+  arm of simple white volumes, no hardware visible) lost to four Mehs that
+  show servo housings, horn rings or fastened panels. The judge's reasons
+  are each some form of "B shows no actuators, fasteners or structural
+  detail". v1 rewarded the *amount* of visible hardware.
+- **A committed character lost to the generic box.** The two dev Nos
+  (`biped-a-servo-joint`, `hexapod-g-minimal`) are the soft visor box. They
+  beat three Likes that also have a face (`balancer-h-free`,
+  `biped-g-minimal`, `wildcard-f-creature`, the last a fully committed frog).
+  The judge's reasons say "both have faces", and v1 then preferred the one
+  with more visible servos.
+
+### Judge v2 on dev
+
+v2 changes exactly those two things (`runner/pairwise.py`, `V2_INSTRUCTIONS`):
+a resolved, intentional whole is the first criterion, and it can be reached
+by an exposed mechanism, a crisp hard-surface enclosure *or* a clean minimal
+form, with an explicit "do not prefer a design because more of its parts
+are visible". The archetype is now named narrowly (the generic soft box
+with a visor over thin or short limbs, with blocks hanging off it). A face
+still counts against any design, but a committed character beats that box.
+Inputs, form, model, effort and aggregation are v1's.
+
+A **mirror replicate** ran v2 again with every pair shown the other way
+round, to measure position and call noise before trusting the margin.
+
+| metric (dev) | v2 | v2 mirrored |
+|---|---|---|
+| pairwise agreement, owner gap ≥ 2 | **90.7%** (49 of 54; 1 tie, 4 reversed) | **90.7%** (49 of 54; 1 tie, 4 reversed) |
+| every Love above every No | holds (4 of 4) | holds (4 of 4) |
+| Kendall's τ-b | 0.307 over 406 pairs | 0.298 over 406 pairs |
+| A picked | 49.5% | 48.0% |
+
+The two replicates pick the same winner on 94.6% of all 406 pairs and on
+the same 49 gap pairs. The misses that remain are `arm5-g-minimal`
+against three detailed Meh arms, and `biped-g-minimal` (Like) against
+`biped-a-servo-joint` (No). The tie is `biped-b-motors-in-body` (Like)
+against `biped-a-servo-joint`.
+
+Caution, read before the held-out result: v2 was written after reading
+v1's dev misses, so its dev figure is optimistic by construction. The
+held-out measurement is the one that counts. τ-b stays near 0.3: the
+judge separates the extremes better than it orders Likes and Mehs, and on
+dev it rates arms higher than other types (the top seven dev scores
+include five of the eleven dev arms).
+
+Dev cost: v1 $14.36, v2 $14.66, mirror $14.62 (406 calls each, about four
+seconds a call).
+
+## D1 frozen judge: v2 (frozen before any held-out call)
+
+**This is the judge version D1 measures, frozen 2026-10-02 before any
+held-out call by it.** It is measured on the held-out set once, and the
+result is published whatever it is. Any change to what follows is a new
+version, needs a change motivated by dev results, and is measured once in
+its own right.
+
+- **Model:** `claude-opus-5-5`, effort `high`, no fallback model.
+- **Prompt:** the system prompt is `V2_INSTRUCTIONS` in
+  `runner/pairwise.py`, sha256 `0ebb596584eb1203a5706ab40c9e4799b24a0dbbf7d1d5a644eb1215d68708ab`
+  (`pairwise.FROZEN`, pinned by `test_pairwise.py`). The user turn lists
+  the two images under "Robot A:" and "Robot B:" and asks for the JSON
+  object only. The prompt, verbatim:
+
+> You are judging the design of two small robots, A and B, from renders. Each was designed to be 3D-printed around hobby servos, controller boards, batteries and sensors. They may be different kinds of robot (an arm, a walker, a balancer, something else). Decide which one a particular owner would rate higher. This owner's taste:
+>
+> - Above all they reward a resolved, intentional whole: a form where every part looks designed for its place and the robot reads as one considered object. That can be reached several ways, and each is good: an exposed, ordered mechanism (real actuators, boards, batteries and cables laid out on purpose, horns, fasteners and seams as detail); a crisp hard-surface enclosure (flat panels, chamfers, visible fastening, a sensor as a real part); or a clean, minimal form with simple, well-proportioned volumes and nothing decorative. Do not prefer a design because more of its parts, fasteners or detail are visible; a plain design loses only when it is also vague or badly proportioned.
+> - Their strongest dislike is one specific archetype: a generic soft, rounded, pillow-like box as the body, with a visor slot, a face or dot eyes, over short or thin limbs, with blocks hanging off or under it. It looks neither engineered nor characterful. A face or eyes count against any design, but a fully committed character whose whole form follows one idea is better than that generic box.
+> - They dislike parts that look stuck on, unsupported or arbitrary, and prefer structure and limbs whose shape looks load-carrying and purposeful.
+> - Finish alone earns nothing: smooth shading, colour and a clean render do not make a design good.
+>
+> Judge the design, not the kind of robot, the camera or the background. Read every image with the Read tool first. Then reply with one JSON object and nothing else: {"winner": "A" or "B", "reason": "one sentence"}.
+
+- **Inputs:** one image per design, the 1024 px studio hero `cadex render`
+  writes on the dark prototype floor, drawn from an `orun1-ho-<id>` copy at
+  its accepted revision by `runner/draw_set.py --split heldout`. No `look`
+  view.
+- **Comparison:** pairwise, one call per unordered held-out pair (325
+  calls), the side shown as `A` fixed by
+  `sha256("v2|<a>|<b>")[0] & 1` over the sorted ids. No mirror.
+- **Aggregation:** a design's score is its fraction of judged comparisons
+  won. The three D1 metrics are `runner/metrics.py`'s, on that score: a tie
+  is a disagreement.
+- **Harness:** a reply that does not parse is retried once; a second
+  failure leaves the pair unjudged. Unjudged pairs, a usage limit or a
+  refusal are not verdicts. The run resumes on exactly the missing pairs,
+  and anything still unjudged is reported with the pairs it drops.
+- **Guard:** `pairwise.py` refuses `--split heldout` for any version not in
+  `FROZEN` with its exact hash, for a mirror, and into a directory that
+  already holds a held-out result.
+- **Command:**
+  `pixi run python docs/probes/orun1/runner/pairwise.py --version v2 --split heldout --inputs <drawn heroes> --out docs/probes/orun1/judge/v2-heldout --jobs 8`.

@@ -15,7 +15,8 @@ orun1 README pre-registers them:
   held-out pairs, with its concordant, discordant and tied counts.
 
 A design with no score is missing: it is dropped, and every metric names
-the pairs it drops. Nothing here reads a split other than ``heldout``.
+the pairs it drops. ``split_verdicts`` reads either split, so a judge can
+be built on ``dev``; the command line below scores ``heldout`` only.
 
     pixi run python docs/probes/orun1/runner/metrics.py SCORES_DIR --out summary.json
 """
@@ -35,11 +36,17 @@ BAR = 0.80
 GAP = 2
 
 
+def split_verdicts(split: str, ratings_path: Path = RATINGS) -> dict[str, int]:
+    """Design id -> owner verdict on the 0-3 scale, for one split."""
+
+    ratings = json.loads(ratings_path.read_text(encoding='utf-8'))
+    return {d['id']: SCALE[d['owner_verdict']] for d in ratings['designs'] if d['split'] == split}
+
+
 def heldout(ratings_path: Path = RATINGS) -> dict[str, int]:
     """Held-out design id -> owner verdict on the 0-3 scale."""
 
-    ratings = json.loads(ratings_path.read_text(encoding='utf-8'))
-    return {d['id']: SCALE[d['owner_verdict']] for d in ratings['designs'] if d['split'] == 'heldout'}
+    return split_verdicts('heldout', ratings_path)
 
 
 def pairwise(owner: dict[str, int], score: dict[str, float], gap: int = GAP) -> dict:
