@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "d97c446a73bd24f412ef9dfce5ea2e535181a0557137bd2c4f91bda5a8aed7e2"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "25cfe524208811022ee6200cbd3626de4dcb0747a5f7a9545e15e9fa90a7a3f5"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "f820dbbeed81f8ecf3b8db878d34985bd91bcef3b8cac55307df46cfcd306f48"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "b11605f1496a5335aac2fc4c56be9ac92ecf5b14c7b21f18b274c475ca14bb3e"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "9af3261afbab0b2371383ea83f67db5f27517da26dd881ca2e6e759f9524862e"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "98140dac64bb15c6c3cff1c35c7e056761c205dafe38d800cb82775c5b8d942b"
+    }
+  ],
+  "medians": {
+    "T1": 3,
+    "T2": 3,
+    "T3": 2,
+    "T4": 2,
+    "T5": 2,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 16,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "Nothing is left exposed: the cream base and pill tower are continuous shells, and the arm's mechanism shows only as deliberate dark drums and links."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Cream is used for the shell and charcoal for the mechanism, both consistently by role, plus one saturated orange accent placed on the tool tip."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The shoulder drum and elbow disc are round features centred on their axes, but they differ from each other and the base yaw joint shows only as a thin gap."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The base is a soft rounded box with generous radii and the tower is a pill, but the arm links are constant-section bars that do not merge into the other forms."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "The only face element is a generic dark rectangular slot on the base, which gives a front but little character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The arm ends in a distinct tapered tip, but the links are uniform bars and the slim arm looks out of proportion with the large base."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "It is antialiased, lit so curvature reads, and seen from a good three-quarter angle, but it sits on a dark grid with no seamless backdrop or contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"Nothing is left exposed: the cream base and pill tower are continuous shells, and the arm's mechanism shows only as deliberate dark drums and links.\"}, \"T2\": {\"score\": 3, \"reason\": \"Cream is used for the shell and charcoal for the mechanism, both consistently by role, plus one saturated orange accent placed on the tool tip.\"}, \"T3\": {\"score\": 2, \"reason\": \"The shoulder drum and elbow disc are round features centred on their axes, but they differ from each other and the base yaw joint shows only as a thin gap.\"}, \"T4\": {\"score\": 2, \"reason\": \"The base is a soft rounded box with generous radii and the tower is a pill, but the arm links are constant-section bars that do not merge into the other forms.\"}, \"T5\": {\"score\": 2, \"reason\": \"The only face element is a generic dark rectangular slot on the base, which gives a front but little character.\"}, \"T6\": {\"score\": 2, \"reason\": \"The arm ends in a distinct tapered tip, but the links are uniform bars and the slim arm looks out of proportion with the large base.\"}, \"T7\": {\"score\": 2, \"reason\": \"It is antialiased, lit so curvature reads, and seen from a good three-quarter angle, but it sits on a dark grid with no seamless backdrop or contact shadow.\"}}",
+      "session_id": "9287344b-e3b7-4b43-a525-0c6fbc50bc49",
+      "duration_ms": 20039,
+      "num_turns": 17,
+      "total_cost_usd": 0.1399378,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2387,
+          "cacheReadInputTokens": 3389,
+          "cacheCreationInputTokens": 11438,
+          "webSearchRequests": 0,
+          "costUSD": 0.1399378,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 651,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "The rounded base and turret are continuous shells with no servos or boards in sight, but the arm links are bare dark bars rather than shelled forms, which falls short of the full-shell anchor."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Cream shell and dark grey mechanism are applied consistently by role, and a single saturated orange accent sits deliberately on the tool tip."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The shoulder and elbow are round discs and drums concentric with their axes, but they differ in style and the base yaw axis is only implied by the plain turret, so the joints are not uniform."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The base is a generously radiused rounded box and the turret is a pill, but the arm links are constant-section bars and the parts do not merge into one another."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "The dark rectangular window on the base reads as a face or display panel, but it is generic and gives the robot little character at a glance."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The base is compact and the arm ends in a distinct tapered orange tip, but the links are uniform-section bars with no taper."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Smooth antialiased shading makes the curvature read, but the backdrop is a dark grid rather than a seamless studio sweep, there is no soft contact shadow, and the views are high isometric angles rather than a low three-quarter hero shot."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"The rounded base and turret are continuous shells with no servos or boards in sight, but the arm links are bare dark bars rather than shelled forms, which falls short of the full-shell anchor.\"}, \"T2\": {\"score\": 3, \"reason\": \"Cream shell and dark grey mechanism are applied consistently by role, and a single saturated orange accent sits deliberately on the tool tip.\"}, \"T3\": {\"score\": 2, \"reason\": \"The shoulder and elbow are round discs and drums concentric with their axes, but they differ in style and the base yaw axis is only implied by the plain turret, so the joints are not uniform.\"}, \"T4\": {\"score\": 2, \"reason\": \"The base is a generously radiused rounded box and the turret is a pill, but the arm links are constant-section bars and the parts do not merge into one another.\"}, \"T5\": {\"score\": 2, \"reason\": \"The dark rectangular window on the base reads as a face or display panel, but it is generic and gives the robot little character at a glance.\"}, \"T6\": {\"score\": 2, \"reason\": \"The base is compact and the arm ends in a distinct tapered orange tip, but the links are uniform-section bars with no taper.\"}, \"T7\": {\"score\": 2, \"reason\": \"Smooth antialiased shading makes the curvature read, but the backdrop is a dark grid rather than a seamless studio sweep, there is no soft contact shadow, and the views are high isometric angles rather than a low three-quarter hero shot.\"}}",
+      "session_id": "7aba4aac-247d-4231-97e5-724dc3b1e515",
+      "duration_ms": 21984,
+      "num_turns": 17,
+      "total_cost_usd": 0.12466400000000001,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2509,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.12466400000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 724,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A rounded white base and tower fully enclose the hardware, no servo cases or boards show anywhere, and the mechanism appears only as deliberate dark drums and links."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "A warm white shell and a dark grey mechanism are applied consistently by role, and a single orange accent sits deliberately on the tool tip."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The rotation axes read as round features (a dark disc at the shoulder, a banded drum at the elbow and a pill-topped tower for base yaw), but they differ in style rather than sharing one consistent treatment."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The base is a generously rounded box and the tower is a soft pill, but the forearm is a thin constant-section bar and the parts sit stacked rather than merging."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "The dark rectangular display slot on the base gives the robot a front, but it is a small, generic panel rather than a focal face with character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The base is compact and the end effector ends in a distinct tapered orange tip, but the forearm is a uniform bar with no taper, so it meets only one of the two conditions."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The lighting is clean and antialiased so the curvature reads from a three-quarter view, but the dark grid backdrop is not a seamless studio sweep and there is no real soft contact shadow."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 3, \"reason\": \"A rounded white base and tower fully enclose the hardware, no servo cases or boards show anywhere, and the mechanism appears only as deliberate dark drums and links.\"},\n\"T2\": {\"score\": 3, \"reason\": \"A warm white shell and a dark grey mechanism are applied consistently by role, and a single orange accent sits deliberately on the tool tip.\"},\n\"T3\": {\"score\": 2, \"reason\": \"The rotation axes read as round features (a dark disc at the shoulder, a banded drum at the elbow and a pill-topped tower for base yaw), but they differ in style rather than sharing one consistent treatment.\"},\n\"T4\": {\"score\": 2, \"reason\": \"The base is a generously rounded box and the tower is a soft pill, but the forearm is a thin constant-section bar and the parts sit stacked rather than merging.\"},\n\"T5\": {\"score\": 2, \"reason\": \"The dark rectangular display slot on the base gives the robot a front, but it is a small, generic panel rather than a focal face with character.\"},\n\"T6\": {\"score\": 2, \"reason\": \"The base is compact and the end effector ends in a distinct tapered orange tip, but the forearm is a uniform bar with no taper, so it meets only one of the two conditions.\"},\n\"T7\": {\"score\": 2, \"reason\": \"The lighting is clean and antialiased so the curvature reads from a three-quarter view, but the dark grid backdrop is not a seamless studio sweep and there is no real soft contact shadow.\"}}\n```",
+      "session_id": "1cb6e73a-d71c-449e-9ff3-0d661af19590",
+      "duration_ms": 21369,
+      "num_turns": 17,
+      "total_cost_usd": 0.1246186,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2512,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1246186,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 721,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "arm3-a-servo-joint",
+  "receipt": {
+    "project": "orun1-ho-arm3-a-servo-joint",
+    "accepted_revision": "2e8125054f93502a8ec86c1b8494542b71e4f6ca031ee0d6ce1a695e15d56f00",
+    "look_revision": "2e8125054f93502a8ec86c1b8494542b71e4f6ca031ee0d6ce1a695e15d56f00",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}
