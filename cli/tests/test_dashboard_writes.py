@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""The dashboard's writes: a parameter slider (ADR-503) and a design turn (ADR-504), orun2 D2.
+"""The dashboard's writes: slider (ADR-503), design turn (ADR-504), comment (ADR-505) and revision verdicts (ADR-506), orun2 D2.
 
 Two halves. Every POST, under ``cadex review``'s ``/`` and ``cadex app``'s
 ``/p/<name>/``, is refused without the per-launch token the server writes
@@ -492,3 +492,111 @@ def test_browser_comments_on_a_picked_part_and_the_next_turn_receives_it(
     finally:
         server.shutdown()
         server.server_close()
+
+
+# -- the fourth write: accept, reject and restore a revision (ADR-506) ------
+
+
+def test_a_revision_write_needs_the_token_and_is_the_cli_revision_command(app, monkeypatch) -> None:
+    calls = []
+
+    def fake_leg(name, argv, *, capture=True, timeout=0.0):
+        calls.append((name, list(argv)))
+        return Leg(name=name, argv=list(argv), code=EXIT_OK, seconds=0.5,
+                   envelope={"ok": True, "accepted_revision": "f" * 64, "digest": "e" * 64,
+                             "revisions": {"action": "reject", "exact": True}})
+
+    monkeypatch.setattr(review_server, "run_leg", fake_leg)
+    projects, server = app
+    url = server.url + "p/biped/api/revision"
+    assert _post(url, {"action": "accept"})[0] == 403
+    assert _post(url, {"action": "accept"}, {"X-Cadex-Token": "x" * 43})[0] == 403
+    token = _token(server.url + "p/biped/")
+    assert _post(url, {"action": "accept"}, {"X-Cadex-Token": token, "Origin": "http://evil.example"})[0] == 403
+    assert calls == []
+    for body in ({"action": "undo"}, {"action": "restore"}, {"action": "restore", "revision": "--help"},
+                 {"action": "accept", "note": 5}, {"action": "accept", "revision": 3}):
+        assert _post(url, body, {"X-Cadex-Token": token})[0] == 400, body
+    assert calls == []
+    status, reply = _post(url, {"action": "reject", "note": " too thick "}, {"X-Cadex-Token": token})
+    assert status == 200 and reply["revisions"]["exact"] is True
+    root = str(projects / "biped")
+    assert calls[-1] == ("revision", ["revision", "--project", root, "--json", "--note=too thick", "reject"])
+    assert _post(url, {"action": "restore", "revision": "3"}, {"X-Cadex-Token": token})[0] == 200
+    assert calls[-1] == ("revision", ["revision", "--project", root, "--json", "restore", "3"])
+
+
+THICK_PLATE = PLATE.replace("num(6.0,", "num(12.0,")
+
+
+def _extent(page, axis: int) -> float:
+    return page.evaluate("window.cadexReview.viewer().stats().bounds.max[%d]"
+                         " - window.cadexReview.viewer().stats().bounds.min[%d]" % (axis, axis))
+
+
+@needs_browser
+def test_browser_accepts_rejects_and_restores_a_revision(plate_app, fake_claude, browser, capsys) -> None:
+    root, server = plate_app
+    # Three accepted revisions: the plate, the plate at 50 mm, then thicker.
+    assert main(["params", "--project", str(root), "--set", "width=50", "--json"]) == EXIT_OK
+    wide = json.loads(capsys.readouterr().out)
+    thick_file = root.parent.parent / "thick.py"
+    thick_file.write_text(THICK_PLATE, encoding="utf-8")
+    assert main(["script", "--project", str(root), "--set", str(thick_file), "--json"]) == EXIT_OK
+    thick = json.loads(capsys.readouterr().out)
+    first = json.loads((root / "script_history" / "history.json").read_text())["entries"][0]
+
+    page = _open(browser, server.url + "p/plate/")
+    assert _model_state(page) == "loaded"
+    page.wait_for("document.querySelectorAll('#revision-list li').length === 3", timeout=30)
+    assert page.attribute("#revision-list li", "data-current") == "true"  # newest first
+    assert _extent(page, 2) == pytest.approx(12.0, abs=0.01)
+
+    # Accept: a verdict on the revision on screen; nothing rebuilt.
+    page.click("#revision-accept")
+    page.wait_for("document.getElementById('revision-status').dataset.state === 'done'", timeout=60)
+    page.wait_for("document.querySelector('#revision-list li').dataset.verdict === 'accepted'", timeout=30)
+    assert page.evaluate("window.cadexReview.state().revision") == thick["accepted_revision"]
+
+    # Reject, with a reason: the one before comes back and is drawn.
+    page.evaluate("document.getElementById('revision-note').value = 'too thick'")
+    page.click("#revision-reject")
+    page.wait_for("window.cadexReview.lastRevision() && window.cadexReview.lastRevision().revisions.action === 'reject'",
+                  timeout=120)
+    reply = page.evaluate("window.cadexReview.lastRevision()")
+    assert reply["ok"] and reply["revisions"]["exact"] is True
+    assert reply["accepted_revision"] == wide["accepted_revision"]
+    page.wait_for("window.cadexReview.state().model && window.cadexReview.state().model.revision === %s"
+                  % json.dumps(wide["accepted_revision"]), timeout=30)
+    assert _extent(page, 0) == pytest.approx(50.0, abs=0.01)
+    assert _extent(page, 2) == pytest.approx(6.0, abs=0.01)
+
+    # Restore the first from its row's button: the same model as #1.
+    page.wait_for("document.querySelector('#revision-list li[data-ordinal=\"1\"] .revision-restore') !== null", timeout=30)
+    page.click('#revision-list li[data-ordinal="1"] .revision-restore')
+    page.wait_for("window.cadexReview.lastRevision().revisions.action === 'restore'", timeout=120)
+    reply = page.evaluate("window.cadexReview.lastRevision()")
+    assert reply["ok"] and reply["revisions"]["target"] == first["revision"]
+    assert reply["revisions"]["same_geometry"] is True and reply["digest"] == first["digest"]
+    page.wait_for("window.cadexReview.state().model && window.cadexReview.state().model.revision === %s"
+                  % json.dumps(reply["accepted_revision"]), timeout=30)
+    assert _extent(page, 0) == pytest.approx(30.0, abs=0.01)
+    # The CLI's rows: reject and restore are runs; accept is not.
+    progress = (root / "PROGRESS.md").read_text()
+    assert "revision reject" in progress and "revision restore" in progress and "revision accept" not in progress
+
+    # The next turn is told all three verdicts, ahead of its prompt.
+    script, seen, _gate = fake_claude
+    script.write_text(json.dumps([["text", "Noted.\n"], ["tool", "write_script", {"source": PLATE}],
+                                  ["done", "Back to the plate."]]), encoding="utf-8")
+    page.evaluate("document.getElementById('turn-prompt').value = 'go on'")
+    page.click("#turn-start")
+    page.wait_for("window.cadexReview.turn().state === 'done' || window.cadexReview.turn().state === 'failed'",
+                  timeout=120)
+    assert page.evaluate("window.cadexReview.turn().state") == "done"
+    given = seen.read_text(encoding="utf-8")
+    assert "The owner accepted revision " + thick["accepted_revision"][:12] in given
+    assert "rejected revision %s and put back revision %s (#2). too thick" % (
+        thick["accepted_revision"][:12], wide["accepted_revision"][:12]) in given
+    assert "restored revision %s (#1)" % first["revision"][:12] in given
+    assert given.endswith("\n\ngo on")

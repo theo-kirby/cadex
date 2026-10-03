@@ -61,6 +61,7 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 from xml.etree import ElementTree
 
 from .comments import read_comments
+from .revisions import read_history as read_revision_history
 from .walk import run_leg
 from .review_record import (
     policy_lineage,
@@ -1234,6 +1235,7 @@ class ReviewProject:
         review["presentation"] = presentation(self.root, review["accepted"])
         review["evaluations"] = evaluations(self.root, review["accepted"])
         review["comments"] = read_comments(self.root)[-COMMENTS_SHOWN:]
+        review["revisions"] = revision_trail(self.root)
         review["served_at"] = _now()
         return review
 
@@ -1463,6 +1465,53 @@ def write_comment(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict
     if reply["ok"]:
         return HTTPStatus.OK, reply
     return (HTTPStatus.BAD_REQUEST if leg.code == EXIT_USAGE else HTTPStatus.CONFLICT), reply
+
+
+REVISION_ACTIONS = ("accept", "reject", "restore")
+REVISION_SELECTOR = re.compile(r"^[0-9a-fA-F]{1,64}$|^[0-9]{1,6}$")
+
+
+def write_revision(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
+    """``cadex revision ACTION --project ROOT [--note=TEXT] [SELECTOR]``, as a child (ADR-506).
+
+    Accept, Reject and Restore on the page and the command line are one
+    write path (A3). A reject or restore rebuilds, under the project lock
+    and without ``--wait``, so a project a turn holds is refused (409).
+    """
+
+    from .comments import COMMENT_LIMIT
+    from .report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE  # report imports this module
+
+    action, selector, note = body.get("action"), body.get("revision", ""), body.get("note", "")
+    if action not in REVISION_ACTIONS:
+        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"action must be one of {', '.join(REVISION_ACTIONS)}."}
+    if not isinstance(selector, str) or (selector and not REVISION_SELECTOR.match(selector)):
+        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "revision must be an ordinal or a revision prefix."}
+    if action == "restore" and not selector:
+        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "restore needs the revision to put back."}
+    if not isinstance(note, str) or len(note) > COMMENT_LIMIT or "\x00" in note:
+        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"note must be at most {COMMENT_LIMIT} characters of text."}
+    argv = ["revision", "--project", str(root), "--json"] + (["--note=" + note.strip()] if note.strip() else [])
+    argv += [action] + ([selector] if selector else [])
+    leg = run_leg("revision", argv, timeout=WRITE_TIMEOUT_S)
+    envelope = leg.envelope
+    reply: dict[str, Any] = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
+                             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv]}
+    for key in ("accepted_revision", "digest", "revisions", "error"):
+        if key in envelope:
+            reply[key] = envelope[key]
+    if reply["ok"]:
+        return HTTPStatus.OK, reply
+    if leg.code == EXIT_USAGE:
+        return HTTPStatus.BAD_REQUEST, reply
+    return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
+
+
+def revision_trail(root: Path) -> list[dict[str, Any]]:
+    """The stored trail for the page, newest first, without sources or values."""
+
+    keep = ("ordinal", "revision", "saved_at", "outputs")
+    return [{key: entry.get(key) for key in keep} for entry in reversed(read_revision_history(root))]
 
 
 #: How many comments ``/api/project`` carries, newest kept.
@@ -1751,7 +1800,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
             project: ReviewProject | None = self.project if projects is None else None
             if projects is not None and segments[:1] == ["p"] and len(segments) > 1:
                 project, segments = projects.project(segments[1]), segments[2:]
-            if project is None or segments not in (["api", "params"], ["api", "turn"], ["api", "comment"]) \
+            if project is None or segments not in (["api", "params"], ["api", "turn"], ["api", "comment"],
+                                                    ["api", "revision"]) \
                     or not isinstance(body, dict):
                 self._not_found(parts.path)
                 return
@@ -1759,6 +1809,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 status, reply = self.server.turns.start(project.root, body)  # type: ignore[attr-defined]
             elif segments == ["api", "comment"]:
                 status, reply = write_comment(project.root, body)
+            elif segments == ["api", "revision"]:
+                status, reply = write_revision(project.root, body)
             else:
                 status, reply = write_params(project.root, body.get("values"))
             self._send_json(reply, status)

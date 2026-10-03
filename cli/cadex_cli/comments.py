@@ -18,7 +18,10 @@ object per line, of two kinds::
      "revision": "<accepted revision when it was left>"}
     {"kind": "delivered", "ids": ["c-…"], "at": "…Z", "session_id": "…"}
 
-``part`` is empty for a comment on the whole design. Appending rather than
+``part`` is empty for a comment on the whole design. A comment that is the
+owner's verdict on a revision (``cadex revision``, ADR-506) also carries
+``verdict`` — ``accepted``, ``rejected`` or ``restored`` — and is delivered
+like any other. Appending rather than
 rewriting keeps a dashboard write and a turn's delivery from racing each
 other into a lost line, and the file is the history: the project commit
 after an accepted turn carries it, like the project's other documents. A
@@ -63,7 +66,8 @@ def _append(root: Path | str, entry: Mapping[str, Any]) -> None:
         os.close(fd)
 
 
-def add_comment(root: Path | str, text: str, *, part: str = "", revision: str = "") -> dict[str, Any]:
+def add_comment(root: Path | str, text: str, *, part: str = "", revision: str = "",
+                verdict: str = "") -> dict[str, Any]:
     """Append one comment and return it; ``ValueError`` when it is not one."""
 
     if not isinstance(text, str) or not text.strip():
@@ -76,6 +80,8 @@ def add_comment(root: Path | str, text: str, *, part: str = "", revision: str = 
         raise ValueError(f"a part name is one line of at most {PART_LIMIT} characters.")
     entry = {"kind": "comment", "id": "c-" + secrets.token_hex(6), "at": _now(),
              "text": text, "part": part, "revision": revision or ""}
+    if verdict:
+        entry["verdict"] = verdict
     _append(root, entry)
     return {key: value for key, value in entry.items() if key != "kind"} | {"delivered": ""}
 
@@ -106,6 +112,8 @@ def read_comments(root: Path | str) -> list[dict[str, Any]]:
             comments[entry["id"]] = {"id": entry["id"], "at": str(entry.get("at") or ""),
                                      "text": entry["text"], "part": str(entry.get("part") or ""),
                                      "revision": str(entry.get("revision") or ""), "delivered": ""}
+            if entry.get("verdict"):
+                comments[entry["id"]]["verdict"] = str(entry["verdict"])
         elif entry.get("kind") == "delivered" and isinstance(entry.get("ids"), list):
             for comment_id in entry["ids"]:
                 if comment_id in comments and not comments[comment_id]["delivered"]:
@@ -135,7 +143,8 @@ def with_comments(prompt: str, comments: Iterable[Mapping[str, Any]]) -> str:
 
     lines = []
     for comment in comments:
-        where = f"on part {comment['part']}" if comment.get("part") else "on the whole design"
+        where = ("a verdict on a revision" if comment.get("verdict") else
+                 f"on part {comment['part']}" if comment.get("part") else "on the whole design")
         lines.append(f"- ({where}) {comment['text']}")
     if not lines:
         return prompt

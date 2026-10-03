@@ -56,6 +56,18 @@
       <div id="comment-status" data-state="idle"></div>
       <ul id="comment-list"></ul>
     </section>
+    <section id="revision-panel" class="card panel">
+      <h2>Revisions</h2>
+      <!-- Runs `cadex revision accept|reject|restore … --project …` (ADR-506); the next design turn reads the verdict. -->
+      <div id="revision-current" class="muted small">no accepted revision yet</div>
+      <textarea id="revision-note" rows="1" placeholder="Why, optionally; the next turn reads it." aria-label="Verdict note"></textarea>
+      <div class="controls">
+        <button id="revision-accept" type="button" disabled>Accept</button>
+        <button id="revision-reject" type="button" disabled>Reject</button>
+      </div>
+      <div id="revision-status" data-state="idle"></div>
+      <ol id="revision-list"></ol>
+    </section>
     <nav id="sidebar" class="card panel">
       <h2>Runs</h2>
       <details id="runs" open>

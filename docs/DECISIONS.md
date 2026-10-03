@@ -32720,3 +32720,76 @@ on a two-part project, a whole-design comment, real mouse clicks that pick
 turn from the page: `fake_claude` received both comments ahead of `go on`,
 the list shows them received, none are pending, and the pick survives the
 rebuilt model.
+
+## ADR-506 — The dashboard's fourth write: accept, reject or restore a revision, through `cadex revision` (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. A new CLI subcommand, `cadex revision
+list|accept|reject|restore [SELECTOR] [--note TEXT]`; a `verdict` field on
+`comments.jsonl` lines; the engine's history entries keep the values and
+the geometry digest each revision was accepted with; one HTTP route (`POST
+api/revision`) and a `revisions` list on `/api/project`. No cadexd
+protocol, `OP_ARG_SPECS` or agent tool-surface change.
+
+**Context.** D2's fourth item is that a person accept, reject and restore a
+revision from the browser. A3 forbids a second write path, and the CLI had
+none: the engine has kept every accepted source in `script_history/` since
+ADR-045, and reverting was "read `inspect` history, then `write_script`",
+two steps the shell's `restore_version` tool did. Measured on a scratch
+project before the engine change: rejecting a script edit that followed a
+slider move put the old *source* back with today's slider value, because a
+revision is its source **and** its stored values, and the trail kept only
+the source.
+
+**Decision.** `record_history` takes `values` (parameters and the nets,
+boards, mounts and cages rows) and `digest`, and
+`accept_project_candidate` passes both, so every new entry says what it
+was accepted with. `cadex revision` reads the trail from the project
+directory, selecting by ordinal or unique revision prefix as the engine
+does. `accept` writes a verdict line — `{"kind": "comment", …, "verdict":
+"accepted"}` — and touches no engine, row or commit. `reject` (of the
+accepted revision only) puts back the entry accepted before it; `restore
+SELECTOR` puts back the one named. Both, under the project lock, write the
+stored source through `write_script` with `replace` (going back may drop
+outputs on purpose — the ADR-045 guard is for an agent's accident), then,
+if the revision did not come back, `set_params` with its recorded values;
+a parameter the entry did not store was at its default, so it is set to
+the default. Then a `rejected` or `restored` verdict line; each is a run
+with its `PROGRESS.md` row and commit. The envelope's `revisions` names
+the target, where it came from, what was accepted, `exact` (the same
+revision id) and `same_geometry` (the same digest). The next `cadex -p`
+receives verdicts the way it receives comments, as `(a verdict on a
+revision) The owner rejected revision … and put back revision … (#2).
+<note>`. The page's `#revision-panel` holds Accept, Reject, a note and the
+trail with Restore on each row (`docs/DASHBOARD.md` §21); `POST
+api/revision` runs `cadex revision --project <root> --json [--note=<text>]
+<action> [<selector>]` behind the ADR-503 token and `Origin` check, the
+selector an ordinal or hex prefix so it is never a flag.
+
+**Cost.** A stored parameter value cannot be unset (`set_params` merges),
+so restoring a revision that left a parameter at its default lands on the
+same geometry under a different revision id, and the reply says so
+(`exact: false`, `same_geometry: true`) rather than pretending. Entries
+accepted before this ADR carry no values: restoring one keeps today's
+values and says that too. A reject or restore records the intermediate
+state between its two writes as a revision of its own in the trail. An
+accept is advisory: the agent hears it, nothing is locked.
+
+**What would reverse it.** An unset in `set_params` (a `null` value meaning
+"back to the default") would make every restore exact and would be a
+protocol change with its own ADR. If verdicts should block an agent from
+building on a rejected revision, that is policy in the turn, not this
+store.
+
+**Test.** `src/Mod/cadex/cadex_tests/test_project_store_recovery.py`: an
+accepted candidate's history entry keeps its values and digest.
+`cli/tests/test_revisions.py`: trail selection (ordinal, prefix, ambiguity,
+repeats), a verdict reaches `with_comments`, and against a real engine
+accept (no row, no commit, refused for another revision), reject (exact,
+same digest, a row), restore #1 (`same_geometry`, width back to 30), a
+repeat restore that rebuilds nothing, and every verdict in the next turn's
+prompt. `cli/tests/test_dashboard_writes.py`: the route is 403 without the
+token, with another or cross-origin, 400 on a bad action or a flag-shaped
+selector, and the argv is pinned; in headless Chromium against a real
+engine, Accept, then Reject with a note (the model redrawn 50 mm wide, 6 mm
+thick), then Restore on row #1 (redrawn 30 mm wide), then a turn from the
+page whose prompt carried all three verdicts.

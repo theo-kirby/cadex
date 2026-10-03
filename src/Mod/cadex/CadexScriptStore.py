@@ -20,7 +20,7 @@ import json
 from pathlib import Path
 import re
 import time
-from typing import Any
+from typing import Any, Mapping
 
 SCRIPT_STATE_SCHEMA = "cadex-project-script-v1"
 SCRIPT_FILE_NAME = "script.py"
@@ -276,7 +276,8 @@ class CadexProjectScriptStore:
             return ""
 
     def record_history(
-        self, revision: str, source: str, contract: Any = None
+        self, revision: str, source: str, contract: Any = None,
+        values: Mapping[str, Any] | None = None, digest: str = "",
     ) -> dict[str, Any] | None:
         """Append one accepted revision to the history; prune to the limit.
 
@@ -285,6 +286,14 @@ class CadexProjectScriptStore:
         safe. A repeat of the revision already at the tip is not recorded:
         re-opening a project re-runs its accepted script, and an undo trail
         that fills with identical entries is not one.
+
+        ``values`` are the stored values the revision was accepted with
+        (parameters, and the nets, boards, mounts and cages rows), since a
+        revision is the source *and* its values: without them, writing an old
+        source back keeps today's slider positions and lands on a different
+        revision (ADR-506). ``digest`` is its geometry digest, which is what
+        says a restore rebuilt the same model when the revision cannot match
+        (a value left at its default cannot be unset once it is stored).
         """
 
         revision = str(revision or "")
@@ -310,6 +319,10 @@ class CadexProjectScriptStore:
                 if isinstance(item, dict) and item.get("name")
             ),
         }
+        if values is not None:
+            entry["values"] = json.loads(json.dumps(dict(values)))
+        if digest:
+            entry["digest"] = str(digest)
         entries.append(entry)
 
         for stale in entries[:-HISTORY_LIMIT]:

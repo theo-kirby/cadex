@@ -95,6 +95,8 @@ class RunReport:
     #: comments the turn received (ADR-505).
     comments: list[dict[str, Any]] = field(default_factory=list)
     error: str = ""
+    #: ``cadex revision``: the trail it listed, or the revision it put back (ADR-506).
+    revisions: dict[str, Any] = field(default_factory=dict)
     #: Free-form notes worth printing but not worth a field of their own.
     notes: list[str] = field(default_factory=list)
 
@@ -134,6 +136,8 @@ class RunReport:
             payload["evaluation"] = dict(self.evaluation)
         if self.comments:
             payload["comments"] = [dict(item) for item in self.comments]
+        if self.revisions:
+            payload["revisions"] = dict(self.revisions)
         if self.notes:
             payload["notes"] = list(self.notes)
         if self.error:

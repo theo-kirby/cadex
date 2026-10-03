@@ -311,6 +311,33 @@ def test_every_accepted_revision_is_kept_as_recoverable_text(
     assert store.read_history_source("nope") == ""
 
 
+def test_history_keeps_the_values_each_revision_was_accepted_with(
+    tmp_path: Path, freecad_home: Path
+) -> None:
+    """A revision is its source and its values (ADR-506).
+
+    Restoring an old source alone keeps today's parameter values, so the
+    entry has to say what they were for a restore to land on the revision
+    it names.
+    """
+
+    root = tmp_path / "project.cadex"
+    store = CadexProjectScriptStore(root)
+    prepared = _prepare(root, freecad_home, GOOD_SOURCE)
+    prepared["param_values"] = {"width": 30.0}
+    prepared["net_values"] = [{"name": "vbat"}]
+    accept_project_candidate(
+        prepared, {"live_outputs": {}, "removed": []},
+        {"digest": "d", "contract": [], "stdout": ""})
+
+    (entry,) = store.read_history()
+    assert entry["values"] == {"params": {"width": 30.0}, "nets": [{"name": "vbat"}],
+                               "boards": [], "mounts": [], "cages": []}
+    assert entry["digest"] == "d"
+    # Older entries carry no values, and a direct call may still omit them.
+    assert "values" not in store.record_history("r-2", "result = {}\n")
+
+
 def test_history_does_not_fill_with_repeats_of_the_same_revision(
     tmp_path: Path, freecad_home: Path
 ) -> None:

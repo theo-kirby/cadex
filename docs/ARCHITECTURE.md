@@ -273,7 +273,9 @@ macOS). Layout:
 <root>/projects/<slug>-<hash8>/
   project.cadex.json            project manifest
   script.py                     THE project script (sole source of truth)
-  script_history/               last 25 accepted sources + history.json (ADR-045)
+  script_history/               last 25 accepted sources + history.json (ADR-045);
+                                each entry also keeps the values and the
+                                geometry digest it was accepted with (ADR-506)
   script.json                   schema cadex-project-script-v1: param specs
                                 cache + values, net specs cache + stored
                                 connection rows (ADR-065),
@@ -349,7 +351,11 @@ through the CLI, as any other (ADR-503, ADR-504); a turn's stderr is
 streamed back to the page as its live transcript. A comment on the design
 or a part clicked in the model runs `cadex comment`, which appends to the
 project's `comments.jsonl`; the next `cadex -p` receives the undelivered
-ones ahead of its prompt (ADR-505). Until ADR-498 the Blender shell also read
+ones ahead of its prompt (ADR-505). Accept, Reject and Restore on a
+revision run `cadex revision`: a verdict is a `comments.jsonl` line the next
+turn receives, and a reject or restore writes a stored version from
+`script_history/` back through `write_script`, then its recorded values
+through `set_params` (ADR-506). Until ADR-498 the Blender shell also read
 `assets/` on Save-As to carry them into a new root through `put_asset`
 (ADR-046); a project is now copied as a directory.
 

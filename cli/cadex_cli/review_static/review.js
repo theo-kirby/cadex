@@ -8,7 +8,7 @@
 // one evaluation of a policy against its success spec), and shows exactly what the
 // record says: a historical run is labelled as such and drawn from its own
 // retained mesh, never from today's script. Its writes — a parameter slider
-// a design turn and a comment — are `cadex` commands the server runs (ADR-503, ADR-504, ADR-505). Poll work is bounded: the run list is rebuilt only when it
+// a design turn, a comment and a revision verdict — are `cadex` commands the server runs (ADR-503 to ADR-506). Poll work is bounded: the run list is rebuilt only when it
 // changes, and the telemetry panel only when the selected run's telemetry
 // does, so an idle poll over a long history touches a constant number of
 // nodes.
@@ -439,6 +439,82 @@
       status.textContent = 'not left: ' + error.message;
       return null;
     }).finally(function () { $('comment-send').disabled = false; });
+  }
+
+  // Revisions (ADR-506): the owner's verdict on the accepted revision, and
+  // any stored one put back. Each is `cadex revision` run by the server; a
+  // reject or restore rebuilds, and the next poll draws what it accepted.
+  var revisionsKey = null, lastRevision = null, revisionWriting = false;
+
+  function verdicts() {
+    var latest = {};
+    ((state.review && state.review.comments) || []).forEach(function (comment) {
+      if (comment.verdict) latest[comment.revision] = comment.verdict;
+    });
+    return latest;
+  }
+
+  function renderRevisions() {
+    var trail = (state.review && state.review.revisions) || [];
+    var current = state.review && state.review.accepted && state.review.accepted.revision;
+    var marks = verdicts();
+    var key = JSON.stringify([trail, current, marks, revisionWriting]);
+    if (key === revisionsKey) return;
+    revisionsKey = key;
+    $('revision-current').textContent = current
+      ? 'accepted ' + short(current) + (marks[current] ? ' · ' + marks[current] + ' by the owner' : ' · not yet reviewed')
+      : 'no accepted revision yet';
+    $('revision-accept').disabled = revisionWriting || !current;
+    $('revision-reject').disabled = revisionWriting || !current || trail.length < 2;
+    var list = $('revision-list');
+    clearChildren(list);
+    trail.forEach(function (entry) {
+      var here = entry.revision === current;
+      var item = el('li', { 'data-revision': entry.revision, 'data-ordinal': String(entry.ordinal),
+                            'data-current': String(here), 'data-verdict': marks[entry.revision] || '' }, [
+        el('span', { text: '#' + entry.ordinal + ' ' + short(entry.revision) }),
+        el('span', { className: 'muted small', text: ' · ' + (here ? 'accepted now' : (entry.saved_at || '')) +
+                     (marks[entry.revision] ? ' · ' + marks[entry.revision] : '') })
+      ]);
+      if (!here) {
+        var restore = el('button', { type: 'button', className: 'revision-restore', text: 'Restore' });
+        restore.disabled = revisionWriting;
+        restore.addEventListener('click', function () { writeRevision('restore', String(entry.ordinal)); });
+        item.appendChild(restore);
+      }
+      list.appendChild(item);
+    });
+  }
+
+  function writeRevision(action, revision) {
+    var status = $('revision-status'), note = $('revision-note').value.trim();
+    revisionWriting = true; revisionsKey = null; renderRevisions();
+    status.dataset.state = 'pending';
+    status.textContent = 'cadex revision ' + action + (revision ? ' ' + revision : '') + ' …';
+    return fetch(BASE + '/api/revision', {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'X-Cadex-Token': WRITE_TOKEN },
+      body: JSON.stringify({ action: action, revision: revision || '', note: note })
+    }).then(function (response) {
+      return response.json();
+    }).then(function (reply) {
+      if (!reply.ok) throw new Error(reply.error || 'exit ' + reply.exit);
+      lastRevision = reply;
+      var change = reply.revisions || {};
+      status.dataset.state = 'done';
+      status.textContent = action === 'accept' ? 'accepted ' + short(change.target) + '; the next turn is told'
+        : (action === 'reject' ? 'rejected ' + short(change.from) + '; ' : '') + 'put back #' + change.ordinal + ' as ' +
+          short(reply.accepted_revision) + (change.exact ? '' : change.same_geometry ? ' (same geometry)' : ' (not the same revision)');
+      $('revision-note').value = '';
+      revisionWriting = false;
+      return (pendingPoll || Promise.resolve()).catch(function () {}).then(poll).then(function () { return reply; });
+    }).catch(function (error) {
+      revisionWriting = false; revisionsKey = null;
+      status.dataset.state = 'error';
+      status.textContent = action + ' refused: ' + error.message;
+      if (state.review) renderRevisions();
+      return null;
+    });
   }
 
   function telemetryFor(run) {
@@ -1000,6 +1076,7 @@
     if (state.selected !== 'accepted' && !selectedRun()) state.selected = 'accepted';
     renderHeader(); renderSidebar(); renderIdentity(); renderPolicyOrigin(); renderParams(); renderTraining(); renderArtifacts(); renderDocs();
     renderComments();
+    renderRevisions();
     renderPresentation();
     renderEvaluation();
   }
@@ -1086,6 +1163,8 @@
       var text = $('comment-text').value.trim();
       if (text) sendComment(text, commentPart);
     });
+    $('revision-accept').addEventListener('click', function () { writeRevision('accept', ''); });
+    $('revision-reject').addEventListener('click', function () { writeRevision('reject', ''); });
     poll().then(function () { readyResolve(true); });
     setInterval(poll, POLL_MS);
     pollTurn();
@@ -1103,6 +1182,8 @@
     comment: sendComment,
     lastComment: function () { return lastComment; },
     commentPart: function () { return commentPart; },
+    revision: writeRevision,
+    lastRevision: function () { return lastRevision; },
     viewer: function () { return state.viewer; },
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, detail_bytes: lastPoll.detail_bytes, ms: lastPoll.ms }; },
     state: function () {

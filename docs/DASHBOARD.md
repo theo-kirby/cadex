@@ -76,6 +76,7 @@ where (§12) — and the element ids do not change with the width.
 | 0 | **Masthead** | `#top`, `#project-name`, `#accepted-line`, `#freshness` | The project's name, the accepted identity now (revision, digest, updated, run count), and whether the page is live or stale. One row on desk, two on phone. | top bar |
 | 0a | **Design turn** | `#turn-panel`, `#turn-prompt`, `#turn-resume`, `#turn-start`, `#turn-status[data-state]`, `#turn-transcript` | Start a `cadex -p` turn on the project from a prompt and watch its transcript stream; the status says what ran and how it ended (§19). Under the run list on phone. | left sidebar, first |
 | 0b | **Comments** | `#comment-panel`, `#comment-target[data-part]`, `#comment-whole`, `#comment-text`, `#comment-send`, `#comment-status[data-state]`, `#comment-list li[data-part][data-delivered]` | Leave a comment on the whole design or on a part clicked in the model, for the next turn; the list says which a turn has received (§20). Under the turn panel on phone. | left sidebar, second |
+| 0c | **Revisions** | `#revision-panel`, `#revision-current`, `#revision-note`, `#revision-accept`, `#revision-reject`, `#revision-status[data-state]`, `#revision-list li[data-revision][data-ordinal][data-current][data-verdict]`, `.revision-restore` | The owner's verdict on the accepted revision, and the stored trail with a way back to any of it (§21). Under the comments on phone. | left sidebar, third |
 | 1 | **Run selection** | `#sidebar`, `#runs`, `#runs-summary`, `#current-run`, `#views li[data-run]` | Which view is shown: *Accepted now*, then every recorded run with its relation (current/historical) and status. The current run is marked. A sidebar at desk width; a collapsible run list under the masthead on phone (§6). | left sidebar |
 | 2 | **Identity** | `#identity`, `#view-kind`, `#view-relation`, `#view-status`, `#view-revision`, `#view-digest`, `#view-identity-source`, `#view-recorded`, `#policy-origin`, `#view-note`, `#view-policy-store` | What the rest of the page is about. Kind and relation as chips, then the key/value block. | right sidebar |
 | 2a | **Concept** | `#concept`, `#concept-status[data-state]`, `#concept-figure`, `#concept-sheet`, `#concept-caption`, `#concept-hero` | The design as presented: the concept sheet the last render drew (§14) — studio hero, name, key numbers, palette and line views — with the revision it was drawn from and its relation to the accepted one. Leads the page when there is one. | stage, *Concept* tab, first; the stage opens on it |
@@ -853,6 +854,36 @@ each, `(on part post) …` or `(on the whole design) …`. Once the turn has
 run, the CLI appends a delivery line naming them, and the turn after does
 not see them again; a turn that fails delivers nothing. Its envelope
 carries them under `comments`, and its notes say how many arrived.
+
+## 21. Steering: accept, reject or restore a revision (ADR-506)
+
+The page's fourth write. `#revision-panel` sits under the comments: a line
+naming the accepted revision and the owner's verdict on it (or **not yet
+reviewed**), an optional note, **Accept** and **Reject**, and
+`#revision-list`, the stored trail newest first — `#<ordinal> <revision>`,
+when it was accepted and any verdict — with **Restore** on every row but the
+accepted one. Each row carries `data-revision`, `data-ordinal`,
+`data-current` and `data-verdict`. While a write runs, every button is
+disabled.
+
+Each button is `POST api/revision` with `{"action": "accept" | "reject" |
+"restore", "revision": selector, "note": text}`, behind the token and
+`Origin` check of §18; the server runs `cadex revision --project <root>
+--json [--note=<text>] <action> [<selector>]` as a child, and a selector is
+an ordinal or a hex revision prefix, never a flag. **Accept** writes the
+owner's verdict and rebuilds nothing. **Reject** puts back the revision
+accepted before this one; **Restore** puts back the one on its row. Both
+rebuild through the engine (the CLI's `write_script`, then `set_params` for
+the values that revision was accepted with) under the project lock, so a
+project a turn holds is refused, and the next poll draws the model they
+accepted. The status line says which revision came back and whether it is
+the same revision or, when a parameter that revision left at its default
+must now be stated, the **same geometry**.
+
+Every verdict is a line in `comments.jsonl` and is listed with the
+comments; the next turn is given it ahead of its prompt as `(a verdict on a
+revision) The owner rejected revision … and put back revision … (#2). <note>`,
+like any comment (§20).
 
 ## Operator run status (ADR-387)
 

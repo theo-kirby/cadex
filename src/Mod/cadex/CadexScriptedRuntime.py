@@ -2272,7 +2272,13 @@ def accept_project_candidate(
         # (prepare wrote it before the run), so it is the fallback rather
         # than a guess.
         source = str(prepared.get("source") or "") or store.read_source()
-        store.record_history(revision, source, contract)
+        store.record_history(revision, source, contract, values={
+            "params": dict(prepared.get("param_values") or {}),
+            "nets": list(prepared.get("net_values") or []),
+            "boards": list(prepared.get("board_values") or []),
+            "mounts": list(prepared.get("mount_values") or []),
+            "cages": list(prepared.get("cage_values") or []),
+        }, digest=digest)
     except OSError:
         pass
     if prune_artifacts:

@@ -59,6 +59,12 @@ from .inventory import InventoryError, read_inventory, write_inventory
 from .render import acquire_snapshot, describe_proxies, write_render
 from .section import write_section
 from .comments import add_comment, mark_delivered, pending_comments, with_comments
+from .revisions import (
+    previous as previous_revision,
+    read_history as read_revision_history,
+    read_source as read_revision_source,
+    select as select_revision,
+)
 from .clearance import (
     MAXIMUM_COMMON_VOLUME_MM3,
     MINIMUM_CLEARANCE_MM,
@@ -717,6 +723,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     comment_parser.add_argument("text", help="The comment, in words.")
 
+    revision_parser = subparsers.add_parser(
+        "revision",
+        help="Review the accepted revisions (ADR-506): list the trail, accept "
+        "the current one, reject it (put back the one before), or restore "
+        "any stored one. A verdict reaches the next turn like a comment.",
+    )
+    _common(revision_parser, inherit=True)
+    revision_parser.add_argument(
+        "action", choices=("list", "accept", "reject", "restore"),
+        help="list: the stored trail. accept: record the owner's approval of "
+        "the accepted revision (no engine). reject: put back the revision "
+        "accepted before it. restore: put back the named one.",
+    )
+    revision_parser.add_argument(
+        "selector", nargs="?", default="",
+        help="An ordinal or a revision prefix. restore needs one; accept and "
+        "reject take one only to check it is the accepted revision.",
+    )
+    revision_parser.add_argument(
+        "--note", default="",
+        help="Why, in words; the next turn reads it with the verdict.",
+    )
+
     app_parser = subparsers.add_parser(
         "app",
         help="Serve the dashboard over a directory of projects, read-only: "
@@ -1191,6 +1220,153 @@ def command_comment(args: argparse.Namespace, report: RunReport) -> int:
     report.accepted_revision = comment["revision"]
     report.ok = True
     return EXIT_OK
+
+
+def _verdict_text(verdict: str, revision: str, note: str, *, entry: Mapping[str, Any] | None = None,
+                  other: str = "") -> str:
+    short = revision[:12]
+    if verdict == "accepted":
+        said = f"The owner accepted revision {short}."
+    elif verdict == "rejected":
+        said = (f"The owner rejected revision {short} and put back revision "
+                f"{other[:12]} (#{(entry or {}).get('ordinal')}).")
+    else:
+        said = (f"The owner restored revision {short} (#{(entry or {}).get('ordinal')}) "
+                f"over revision {other[:12]}.")
+    return said + (" " + note.strip() if note.strip() else "")
+
+
+def command_revision(args: argparse.Namespace, report: RunReport) -> int:
+    """``cadex revision list|accept|reject|restore``: the owner's review of a revision.
+
+    The dashboard's Accept, Reject and Restore buttons run this command
+    (A3, ADR-506). ``list`` and ``accept`` touch no engine: the trail is a
+    file the engine keeps, and an approval is a verdict line in
+    ``comments.jsonl`` for the next turn. ``reject`` and ``restore`` put a
+    stored version back through the engine's ordinary ``write_script`` —
+    with ``replace``, since going back may drop outputs on purpose — and
+    then its recorded values through ``set_params``, so the project lands
+    on the revision named, and say so in ``exact`` when it cannot.
+    """
+
+    root = Path(args.project).expanduser()
+    if not root.is_dir():
+        raise ValueError(f"no project at {root}.")
+    action = args.action
+    if action == "list":
+        report.revisions = {"history": read_revision_history(root)}
+        identity = read_accepted_identity(root)
+        report.accepted_revision = identity.get("revision", "") if identity.get("available") else ""
+        report.ok = True
+        return EXIT_OK
+    want = str(args.selector or "").strip().lower()
+    if action == "accept":
+        identity = read_accepted_identity(root)
+        current = identity.get("revision", "") if identity.get("available") else ""
+        if not current:
+            raise ValueError("there is no accepted revision to accept.")
+        if want and not current.startswith(want):
+            raise ValueError(f"only the accepted revision ({current[:12]}) can be accepted.")
+        report.comments = [add_comment(root, _verdict_text("accepted", current, args.note),
+                                       revision=current, verdict="accepted")]
+        report.accepted_revision = current
+        report.revisions = {"action": "accept", "target": current, "accepted": current, "exact": True}
+        report.ok = True
+        return EXIT_OK
+
+    with _engine_session(args, report, restore=False) as (engine, client):
+        identity = read_accepted_identity(root)
+        current = identity.get("revision", "") if identity.get("available") else ""
+        entries = read_revision_history(root)
+        if action == "reject":
+            if not current:
+                raise ValueError("there is no accepted revision to reject.")
+            if want and not current.startswith(want):
+                raise ValueError(f"only the accepted revision ({current[:12]}) can be rejected; "
+                                 "restore an older one instead.")
+            target = previous_revision(entries, current)
+        else:
+            target = select_revision(entries, want)
+        goal = str(target.get("revision") or "")
+        report.revisions = {"action": action, "target": goal, "ordinal": target.get("ordinal"),
+                            "from": current}
+        if goal == current or (target.get("digest") and identity.get("available")
+                               and target.get("digest") == identity.get("digest")
+                               and action == "restore"):
+            report.accepted_revision = current
+            report.revisions.update(accepted=current, exact=True)
+            report.notes.append(f"nothing to {action}: revision {goal[:12]}"
+                                + (" is already accepted." if goal == current else
+                                   "'s geometry is already accepted."))
+            report.ok = True
+            return EXIT_OK
+        source = read_revision_source(root, target)
+
+        def write(op: str, request: dict[str, Any]) -> dict[str, Any] | None:
+            _progress(f" · {op}")
+            request.update(expected_revision=read_working_revision(client),
+                           display=dict(STANDARD_DISPLAY))
+            reply = client.request(op, request)
+            apply_modeling_reply(report, reply)
+            if reply.get("ok") is not True:
+                report.error = str(reply.get("error") or reply.get("failure_code") or f"{op} failed")
+                _refresh_script_state(client, report)
+                return None
+            return reply
+
+        reply = write("write_script", {"source": source, "replace": True})
+        if reply is None:
+            return EXIT_REJECTED
+        values = target.get("values")
+        if report.accepted_revision != goal and isinstance(values, dict):
+            # The source came back with today's values; put the revision's own
+            # back too. A parameter it did not store was at its default, and a
+            # stored value cannot be unset, so it is set to the default: the
+            # same model, under a revision that says the value explicitly.
+            # Rows are sent only when it had some, since an empty list is a
+            # table to clear, not a value to keep.
+            state = read_script_state(client)["params"]
+            recorded = dict(values.get("params") or {})
+            patch: dict[str, Any] = {}
+            for spec in state.get("specs") or []:
+                name = str(spec.get("name") or "") if isinstance(spec, dict) else ""
+                if not name:
+                    continue
+                want_value = recorded.get(name, spec.get("default"))
+                if want_value is not None and \
+                        (state.get("values") or {}).get(name, spec.get("default")) != want_value:
+                    patch[name] = want_value
+            request: dict[str, Any] = {"values": patch}
+            for key in ("nets", "boards", "mounts", "cages"):
+                if values.get(key):
+                    request[key] = list(values[key])
+            if patch or len(request) > 1:
+                reply = write("set_params", request)
+                if reply is None:
+                    return EXIT_REJECTED
+        _refresh_script_state(client, report)
+        exact = report.accepted_revision == goal
+        same = bool(target.get("digest")) and report.digest == target.get("digest")
+        report.revisions.update(accepted=report.accepted_revision, exact=exact,
+                                same_geometry=exact or same,
+                                values_recorded=isinstance(values, dict))
+        if not exact:
+            report.notes.append(
+                f"restored revision {goal[:12]} as {report.accepted_revision[:12]}: "
+                + ("the same geometry, with a value it left at its default now set explicitly."
+                   if same else
+                   "its values were not recorded (accepted before ADR-506), so today's are kept."
+                   if not isinstance(values, dict) else
+                   "its recorded values did not reproduce it.")
+            )
+        verdict = "rejected" if action == "reject" else "restored"
+        report.comments = [add_comment(
+            root, _verdict_text(verdict, current if action == "reject" else goal, args.note,
+                                entry=target, other=goal if action == "reject" else current),
+            revision=current if action == "reject" else goal, verdict=verdict)]
+        _finish(args, report, engine, reply.get("display"))
+        report.ok = True
+        return EXIT_OK
 
 
 def command_params(args: argparse.Namespace, report: RunReport) -> int:
@@ -2626,6 +2802,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_app(args, report)
         elif command == "comment":
             code = command_comment(args, report)
+        elif command == "revision":
+            code = command_revision(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
     except (ValueError, ExportError, InventoryError, TrainError, SmokeError, EvaluateError,
@@ -2679,6 +2857,11 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
         )
     if command == "script":
         return f"script --set {Path(args.source_file).name}"
+    if command == "revision":
+        change = report.revisions
+        return "revision {:s} → {:s} (#{}) from {:s}".format(
+            args.action, str(change.get("target") or "")[:12], change.get("ordinal"),
+            str(change.get("from") or "")[:12])
     if command == "export":
         return f"export → {args.out}"
     if command == "section":
@@ -2838,6 +3021,8 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
         return
     if command in ("review", "app", "comment"):  # no run: no row, no commit (ADR-286, ADR-505)
         return
+    if command == "revision" and args.action in ("list", "accept"):  # a read, a verdict (ADR-506)
+        return
     # Read once, before the row is appended: both branches compare against
     # the last row that carried each number, and the walk branch is why
     # travel figures are comparable at all (ADR-260).
@@ -2883,6 +3068,8 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
     if command == "asset" and not getattr(args, "put_files", None):
         return
     if command in ("review", "app", "comment"):
+        return
+    if command == "revision" and args.action in ("list", "accept"):
         return
     # A walk's legs each committed; what is left is its review.json, when
     # --out lies under the project, plus generated project review artifacts.
