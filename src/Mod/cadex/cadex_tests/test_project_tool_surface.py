@@ -262,6 +262,12 @@ def test_clearance_is_a_served_inspect_scope_the_cli_offers(tmp_path) -> None:
     assert "inventory" in offered
     captured = capture_inspection(_service(tmp_path), {"scope": "inventory"})
     assert captured["kind"] == "inventory"
+    # ...and `contacts` (ADR-508): which parts' collision shapes touch at
+    # the t=0 pose, the agent half of the shell's `collision_view`, read
+    # with no person looking (owner note, orun2).
+    assert "contacts" in offered
+    captured = capture_inspection(_service(tmp_path), {"scope": "contacts"})
+    assert captured["kind"] == "contacts"
     assert "image" not in offered
     for scope in offered:
         # Every scope the CLI offers is one the engine knows: an offered

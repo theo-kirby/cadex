@@ -116,7 +116,7 @@ button:focus-visible { border-color: var(--rule-strong); }
 canvas#viewer { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; max-height: 620px; background: var(--bg);
                 border: var(--bw) solid var(--rule); border-radius: var(--radius); touch-action: none; }
 .controls .hint { margin-right: auto; }
-ul#model-components { margin: var(--s2) 0 0; padding-left: var(--s4); font-size: var(--fs-0); color: var(--ink-2); }
+ul#collision-contacts, ul#model-components { margin: var(--s2) 0 0; padding-left: var(--s4); font-size: var(--fs-0); color: var(--ink-2); }
 ul#model-components li .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: var(--s2); vertical-align: middle; }
 
 /* Curves: a stat row, then the three histories. */

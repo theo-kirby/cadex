@@ -847,6 +847,34 @@
     return parts.length ? parts.join(', ') : 'none declared';
   }
 
+  // Which parts' collision shapes touch at rest (ADR-508): the export's t=0 contacts, one
+  // line per pair, interpenetrating pairs first. The agent reads the same block through
+  // `inspect scope=contacts`.
+  function renderContacts(manifest) {
+    var list = $('collision-contacts'), contacts = (manifest && manifest.contacts) || {};
+    clearChildren(list);
+    if (!manifest || !manifest.available) { list.dataset.state = 'none'; return; }
+    if (!contacts.available) {
+      list.dataset.state = 'unavailable';
+      list.appendChild(el('li', { className: 'muted', text: 'touching at rest (t=0): not measured \u2014 ' + contacts.reason }));
+      return;
+    }
+    var pairs = contacts.pairs || [];
+    list.dataset.state = pairs.some(function (pair) { return pair.penetrating; }) ? 'penetrating' : (pairs.length ? 'touching' : 'clear');
+    list.appendChild(el('li', { className: 'muted', title: contacts.source, text: pairs.length
+      ? 'touching at rest (t=0): ' + pairs.length + ' pair(s), ' + contacts.count + ' contact point(s) between collision shapes' +
+        (contacts.omitted ? ' (' + contacts.omitted + ' points past the listing; pairs may be incomplete)' : '')
+      : 'touching at rest (t=0): nothing \u2014 no collision shapes touch at the starting pose' }));
+    pairs.forEach(function (pair) {
+      var depth = pair.deepest_mm === null ? '?' : Math.abs(pair.deepest_mm).toFixed(1);
+      list.appendChild(el('li', {
+        'data-pair': pair.components.join('|'), 'data-penetrating': String(pair.penetrating),
+        className: pair.penetrating ? 'status-missing' : '',
+        text: pair.components.join(' \u00b7 ') + ' \u2014 ' + (pair.penetrating ? 'interpenetrating ' + depth + ' mm' : 'resting (' + depth + ' mm)') +
+          ', ' + pair.points + ' point(s)' }));
+    });
+  }
+
   function renderShowing() {
     var status = $('model-status'), toggle = $('show-collision'), note = $('collision-note');
     var manifest = state.model, collision = (manifest && manifest.collision) || {};
@@ -854,6 +882,7 @@
     var drawable = !!(manifest && manifest.available && collision.available && stats && stats.proxies.drawn > 0);
     toggle.disabled = !drawable;
     toggle.checked = state.showProxies;
+    renderContacts(manifest);
     if (!manifest || !manifest.available) { note.textContent = ''; status.removeAttribute('data-showing'); return; }
     if (!collision.available) note.textContent = '(none retained: ' + collision.reason + ')';
     else if (!drawable) note.textContent = '(' + collision.geoms.length + ' listed, none drawable)';

@@ -412,13 +412,17 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
         "pair's minimum distance (mm) and common volume (mm³), measured by "
         "the engine from the exact solids at the solved pose, with each "
         "pair's label and catalog identity — the evidence that parts fit, "
-        "where a script's printout is only a claim; `api` is the tool "
-        "surface."
+        "where a script's printout is only a claim; `contacts` is which "
+        "parts' COLLISION SHAPES already touch at rest, at the pose every "
+        "simulation starts from, per assembly.mjcf export — a pair you did "
+        "not mean to rest together, or any `penetrating` pair, is a "
+        "collision shape in the wrong place; `api` is the tool surface."
     ),
     ("inspect", "target"): (
         "The exact name the scope keys on — an output name for `output`, an "
         "internal object name for `object`, a revision for `history`, an "
-        "assembly output name for `inventory`."
+        "assembly output name for `inventory`, an assembly.mjcf output "
+        "name for `contacts`."
     ),
     ("inspect", "path"): (
         'A JSON-pointer-ish path into the scope\'s value, e.g. "/facts" or '
@@ -456,6 +460,10 @@ INSPECT_SCOPES = (
     # `cadex clearance` reports, offered to the model whole because the
     # `fit` block on a build reply is a summary of them.
     "clearance",
+    # Which parts' collision shapes touch at rest (ADR-508): the MJCF
+    # export's t=0 contacts, so the agent reads what the dashboard's
+    # collision view shows without a person looking.
+    "contacts",
     "blueprint",
     "api",
 )

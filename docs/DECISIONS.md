@@ -32869,3 +32869,64 @@ picked into `#turn-image` reaches `claude` as an image block with the
 same SHA-256. The turn lands a 48 mm plate the page redraws, and the
 attachment clears. §22's `tailscale serve` note and the loopback defaults
 it relies on are pinned there too.
+
+## ADR-508 — Touching at rest: `inspect scope=contacts` and the collision view's t=0 readout (2026-10-03, owner charter orun2 D2/A1)
+
+**Status:** accepted. A new `core.inspect` scope value, `contacts`, served
+by the engine (`CadexInspection._complete_contacts`) and offered to the
+agent (`INSPECT_SCOPES` in `cli/cadex_cli/tools.py`); a `contacts` block
+on the dashboard's model manifest (`review_server.initial_contacts`); and
+`#collision-contacts` under the collision toggle. No `OP_ARG_SPECS` change:
+`inspect` already takes `{"scope": str}`. No new dependency.
+
+**Context.** The shell's `collision_view` did two things: it drew the
+MuJoCo collision shapes over the solids, and it reported which shapes
+already touched at t=0. The dashboard drew the shapes (ADR-333) but had no
+readout. The owner's note of 2026-10-03 keeps the agent half too: the agent
+should get the t=0 contact report without a person looking, folded into
+`inspect` or a tool, under the tool-surface rule. The measurement already
+existed. Every `assembly.mjcf` export runs MuJoCo's collision pass at the
+solved pose and stores it on the export's `assembly_data.dynamics`
+(ADR-087). Nothing could read it: `scope=output` serves an output's
+facts, not its `assembly_data`.
+
+**Decision.** `scope=contacts` reads the stored block from the pinned
+accepted attempt and measures nothing. For each MJCF export it returns the
+count, how many contacts were past the 64-row listing, the raw contacts,
+the contact exclusions, and the contacts grouped by the two components
+they join: points, whether any interpenetrates, and the deepest signed
+distance. Penetrating pairs come first. The value says what it measures:
+`pose` (the keyframe every simulation starts from) and `measures` (collision
+shapes, not the exact solids, which `scope=clearance` measures). If an
+export predates the evidence, or there is no export, the scope says so
+instead of returning an empty list that looks like "nothing touches". The
+dashboard reads the same stored block from the project directory (A3: the
+project is the truth, and reads need no engine), and lists one line per
+pair under the toggle. The guidance gains one bullet: read the scope after
+an export, because a pair you did not mean to rest together, or any
+penetrating pair, is a collision shape in the wrong frame.
+
+**Cost.** The grouping exists twice, about fifteen lines in the engine and
+fifteen in `review_server.py`, because `cli/` may not import the engine.
+The browser test pins that the two agree on a real build. The readout
+covers the accepted model only: a run's retained artifacts carry the MJCF
+but not the export's evidence, so a historical run whose identity differs
+says the contacts are read from the accepted export only. Pairs are grouped
+from the listed contacts. Past 64 points a pair could be missing, and
+`pairs_complete: false` (and the page's head line) says so.
+
+**What would reverse it.** If the evidence moved off `assembly_data` (for
+example into its own artifact), both readers would follow it. If the
+owner wants the contacts on every build reply, as `fit` is, they would move
+there and the scope would stay as the full listing.
+
+**Test.** `src/Mod/cadex/cadex_tests/test_contacts_scope.py`: grouping
+and order; nothing touching; a listing cut at the cap; no export and an
+export without evidence; `target` and an unknown target; malformed rows.
+`test_project_tool_surface.py`: the CLI offers `contacts` and the engine
+serves it. `cli/tests/test_dashboard_inspect.py`: the server's reader, and
+in headless Chromium against a real engine a post sunk 2 mm into a floor
+is named as one interpenetrating pair of four points at −2.0 mm; the
+agent's `inspect scope=contacts` through cadexd returns exactly the
+page's pairs; the page's own slider (`cadex params`, ADR-503) lifts the
+post to 0 mm and both the readout and the scope empty.

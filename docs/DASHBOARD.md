@@ -485,6 +485,32 @@ the proxies hidden and not with them shown. The real biped's screenshot with
 the toggle on waits for D5's project, whose proxies will differ from its
 printable parts; Lark's are boxes the size of its box parts.
 
+### 11a. Touching at rest: the t=0 contact readout (ADR-508)
+
+Under the toggle, `#collision-contacts` says which parts' collision shapes
+already touch at the solved starting pose, the MJCF keyframe every
+simulation and rollout begins from. The engine measured it when it exported
+the model (`CadexDynamics._initial_contacts`, ADR-087); the manifest's
+`contacts` block (`review_server.initial_contacts`) reads it from the
+accepted attempt's `result.json` and groups it by the two components each
+contact joins. One line heads the list: `touching at rest (t=0): n pair(s),
+m contact point(s) between collision shapes`, or `nothing — no collision
+shapes touch at the starting pose`. Then one line per pair, interpenetrating
+pairs first and in `--bad` (`data-penetrating="true"`): `floor · post —
+interpenetrating 2.0 mm, 4 point(s)`, or `resting (0.0 mm)` for a pair that
+only meets. The list's `data-state` is `penetrating`, `touching`, `clear` or
+`unavailable`; when the attempt exported no MJCF, or exported one before the
+evidence existed, the head line says why. It measures the collision shapes,
+not the solids: the fit of the exact solids is `inspect scope=clearance`.
+
+The agent reads the same block, with no page open, through `inspect
+scope=contacts` (ADR-508), and the browser test pins that the two agree.
+Measured against a real engine
+(`cli/tests/test_dashboard_inspect.py::test_browser_names_the_parts_touching_at_rest_and_the_agent_reads_the_same`):
+a post sunk 2 mm into a floor is named as one interpenetrating pair of four
+points; the page's own slider lifts it to 0 mm, and both the readout and the
+agent's scope empty.
+
 ## 12. The desk frame: two sidebars and a stage
 
 At the owner's direction on 2026-09-14 (ADR-342) the desk layout stopped

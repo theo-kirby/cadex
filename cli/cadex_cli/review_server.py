@@ -433,12 +433,59 @@ def _run_collision(run_dir: Path, record: Mapping[str, Any], *, expected_sha256:
     return collision_proxies(run_dir / item["path"], source=source, expected_sha256=expected_sha256)
 
 
+def _no_contacts(reason: str) -> dict[str, Any]:
+    return {"available": False, "reason": reason, "source": None, "count": 0,
+            "omitted": 0, "pairs": []}
+
+
+def initial_contacts(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Which parts' collision shapes touch at rest, from the accepted MJCF export.
+
+    The assembly worker measured it when it exported the model: MuJoCo's
+    collision pass at the solved pose every rollout starts from, kept on the
+    export's ``assembly_data.dynamics`` (ADR-087). The agent reads the same
+    block through ``inspect scope=contacts`` (ADR-508); here it is grouped by
+    the two components each contact joins, penetrating pairs first, for the
+    collision view. Nothing is measured here.
+    """
+
+    exports = [item for item in result.get("outputs") or []
+               if isinstance(item, Mapping) and item.get("type") == "mjcf"]
+    if not exports:
+        return _no_contacts("the accepted attempt exported no MJCF (no assembly.mjcf output)")
+    item = exports[0]
+    data = item.get("assembly_data") if isinstance(item.get("assembly_data"), Mapping) else {}
+    dynamics = data.get("dynamics") if isinstance(data.get("dynamics"), Mapping) else {}
+    if "initial_contact_count" not in dynamics:
+        return _no_contacts(f"the export {item.get('name')} recorded no t=0 contacts; rebuild to measure them")
+    pairs: dict[tuple[str, ...], dict[str, Any]] = {}
+    for contact in dynamics.get("initial_contacts") or []:
+        names = sorted(str(n) for n in (contact.get("component_outputs") or [])) if isinstance(contact, Mapping) else []
+        if len(names) != 2:
+            continue
+        row = pairs.setdefault(tuple(names), {"components": names, "points": 0, "penetrating": False, "deepest_mm": None})
+        row["points"] += 1
+        row["penetrating"] = row["penetrating"] or bool(contact.get("penetrating"))
+        distance = contact.get("distance_mm")
+        if isinstance(distance, (int, float)) and (row["deepest_mm"] is None or distance < row["deepest_mm"]):
+            row["deepest_mm"] = float(distance)
+    return {
+        "available": True, "reason": None,
+        "source": f"the accepted attempt's {item.get('name')} (assembly.mjcf export): MuJoCo contacts between "
+                  "collision shapes at the solved starting pose (t=0), not the exact solids",
+        "count": int(dynamics.get("initial_contact_count") or 0),
+        "omitted": int(dynamics.get("initial_contacts_omitted") or 0),
+        "pairs": sorted(pairs.values(), key=lambda row: (not row["penetrating"], row["components"])),
+    }
+
+
 def _identity_model(**fields: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "schema": REVIEW_MODEL_SCHEMA, "view": None, "run": None, "relation": None,
         "revision": None, "digest": None, "available": False, "reason": None,
         "source": None, "placement_source": None, "components": [],
         "collision": _no_collision("no model to show"),
+        "contacts": _no_contacts("t=0 contacts are read from the accepted attempt's MJCF export only"),
     }
     base.update(fields)
     return base
@@ -656,6 +703,7 @@ def _model_before_rollout(root: Path, model: dict[str, Any]) -> dict[str, Any]:
         "components": accepted["components"],
         "meshes": accepted.get("meshes") or {},
         "collision": accepted["collision"],
+        "contacts": accepted["contacts"],
     })
     return model
 
@@ -824,6 +872,7 @@ def accepted_model(project_root: Path | str) -> dict[str, Any]:
     model.update({
         "available": True,
         "collision": collision,
+        "contacts": initial_contacts(result),
         "source": "the accepted attempt's tessellation (display/*.tess), linked to each output by sha256",
         "placement_source": ("accepted attempt's simulation trace, first frame" if placements
                              else "declared component placements"),
