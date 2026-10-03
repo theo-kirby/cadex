@@ -440,7 +440,7 @@ def _obstacles(operation: str, parameter: str, values: Any) -> list[DomainValue]
                 raise _error(
                     operation,
                     name,
-                    "the obstacle depends on decimate or a Blender recipe, "
+                    "the obstacle depends on decimate, "
                     "which does not promise reproducible geometry; use exact "
                     "CAD or a fixed imported mesh for routing obstacles",
                 )
@@ -2542,7 +2542,7 @@ class PartDomainAPI:
             raise _error(
                 operation,
                 "mesh",
-                "the mesh depends on decimate or a Blender recipe, which does "
+                "the mesh depends on decimate, which does "
                 "not promise reproducible BREP bytes for the project digest; publish it as a mesh "
                 "beside exact CAD parts, or import a fixed mesh asset",
             )

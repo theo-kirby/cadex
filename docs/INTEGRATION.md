@@ -2,14 +2,8 @@
 
 Verified against source: 2026-10-03
 
-**Optional Blender recipe runtime (ADR-185).** A shell-owned cadexd child
-receives `CADEX_BLENDER_EXECUTABLE` naming the shell's own binary. The engine
-forwards only that explicit runtime setting into its project worker. Native
-`mesh.blender` recipes execute in an OS-sandboxed subprocess and return
-ordinary mesh artifacts through the existing protocol. Headless callers can
-set the same environment variable; projects without recipes need no Blender.
-This adds no request/response field or op. See `docs/BLENDER-RECIPES.md` for
-the recipe contract, resource limits and platform support. [Cadex-new]
+**Retired: the optional Blender recipe runtime.** `mesh.blender` (ADR-185) is retired (ADR-496): no project used it, and its runtime was the shell's own binary. No engine path forwards
+`CADEX_BLENDER_EXECUTABLE` any more; the change removed no op or field.
 
 **This document is the contract between the two halves of the product.**
 They live in one repository (ADR-030) and in two processes, under two

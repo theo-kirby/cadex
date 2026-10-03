@@ -4,11 +4,7 @@ Verified against source: 2026-10-03. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
-Ordinary projects need no Blender. A project declaring `mesh.blender` uses
-an optional external geometry runtime: set `CADEX_BLENDER_EXECUTABLE` to an
-absolute Blender/Cadex executable path before running the CLI, including
-parameter sweeps and reopen. The recipe stays in xscript and follows the
-same engine protocol; see `docs/BLENDER-RECIPES.md` (ADR-185).
+No project needs Blender: `mesh.blender` is retired (ADR-496).
 It is the front end for people at a terminal and for pipelines.
 
 ```bash

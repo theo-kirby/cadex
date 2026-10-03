@@ -1,17 +1,13 @@
 # ORGANIC.md — Organic Modelling, and the CAD/Mesh Interface
 
-Verified against source: 2026-09-05
+Verified against source: 2026-10-03
 Status: **O0 closed (ADR-124), O1 closed (ADR-125), O2 closed (ADR-126),
 O3 closed (ADR-127).** The phase's four slices are done; O2b and O4 are
 parked by decision.
 
-**Native Blender recipe bridge (ADR-185, 2026-09-05).** The owner approved
-using models' native Blender Python capability through xscript. This adds
-`mesh.blender`, with declared mesh inputs, values and one mesh output, under
-an OS-sandboxed worker. It does not implement O4's NURBS fitting or revive
-live scene editing. The new bounded hybrid enclosure benchmark and its
-contract are in `docs/BLENDER-RECIPES.md`; the historic wolf measurements below
-remain historical measurements, not evidence for this new path. [Cadex-new]
+**Native Blender recipe bridge (ADR-185, 2026-09-05) — retired (ADR-496).**
+`mesh.blender` went with the shell; its contract is in
+`docs/history/BLENDER-RECIPES.md`. No project used it. [Cadex-new]
 
 This is Phase 15's arc doc, and it stands to Phase 15 as `docs/MUJOCO.md`
 stands to Phase 14: the measurement the phase is sized from, the slices, the

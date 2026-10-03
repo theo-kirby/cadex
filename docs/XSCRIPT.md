@@ -116,20 +116,12 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   did: a 50% and a 90% reduction request on the same mesh both returned 7248
   facets, tolerance-bound, silently. It never repairs — the script owns the
   geometry, so the script decides what to do about the answer.
-  `mesh.blender(source, version=..., inputs={...}, values={...}, seed=0)`
-  evaluates native Blender Python in an OS-sandboxed subprocess (ADR-185).
-  The recipe assigns one mesh Object to `result`; named mesh inputs become
-  Blender objects, and finite JSON values carry dimensions and attachment
-  frames. One Blender coordinate unit is one millimetre. Modifiers and object
-  transforms are evaluated into triangles. See `docs/BLENDER-RECIPES.md` and
-  `examples/blender_enclosure.py`. Recipe source stays in this project script;
-  the live Blender scene does not author the result.
   Going the other way, `part.shape_from_mesh()` converts a mesh value
   into BREP topology (`makeShapeFromMesh`, then promoted to a solid unless
   `solid=False`) so an imported component can be cut against, assembled and
-  padded around — see ADR-043 for what that costs. Blender-derived and
-  decimated trees are refused on that path; publish them as meshes, or import
-  a fixed mesh asset when a faceted BREP is specifically needed (ADR-185).
+  padded around — see ADR-043 for what that costs. Decimated trees are
+  refused on that path; publish them as meshes, or import a fixed mesh asset
+  when a faceted BREP is specifically needed.
   `part.import_part("sensor.cxpart")` is the **lossless** counterpart of that
   last one (ADR-138): it reads a `.cxpart` container out of the same flat
   `assets/` directory and yields the exact OCCT solid another project

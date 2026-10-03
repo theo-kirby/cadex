@@ -279,9 +279,6 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",
         "cadex_mesh_worker.py",
-        # ADR-185: isolated native Blender recipes and their bounded runner.
-        "cadex_blender_runner.py",
-        "cadex_blender_worker.py",
         "CadexScriptedProcess.py",
         "cadex_assembly_api.py",
         "cadex_assembly_worker.py",

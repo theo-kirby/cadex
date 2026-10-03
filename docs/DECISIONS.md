@@ -32158,3 +32158,47 @@ A1 item: whether the CLI turn needs it is not yet measured.
 **What it costs.** No pixi task produces a desktop application. macOS loses
 its only GUI until a dashboard-copying desktop app is built (not this run).
 CI no longer proves the shell builds, which is the point.
+
+## ADR-496 — `mesh.blender` is retired with the shell (2026-10-03)
+
+**Status:** accepted. orun2 S1. Supersedes ADR-185. [Cadex-new]
+
+**Why.** `mesh.blender` evaluated native bpy recipes in a sandboxed Blender
+subprocess. That subprocess's only supplier was the shell's own binary,
+passed in as `CADEX_BLENDER_EXECUTABLE`. With the shell disabled (ADR-495)
+and about to be deleted, the op has no runtime on any machine the product
+installs. Keeping it would keep a Blender dependency in a product that no
+longer ships Blender.
+
+**Who used it.** Only the example `examples/blender_enclosure.py`. A grep of
+every script and stored definition under the projects directory (284
+projects, including hex, ot5–ot11, orun1-*, sweep-* and digestbug-*) and the
+jobs directory found **no** `mesh.blender` call and no stored
+`"operation": "blender"` definition. No accepted attempt depends on it, so
+no project loses its restore path.
+
+**What is removed.**
+- the `blender` method on the mesh namespace (`cadex_mesh_api.py`), its
+  `exported_names` entry and the mesh pack's tool listing
+  (`CadexScriptedDomains.py`);
+- `contains_blender_recipe` and the recipe digest branch in
+  `cadex_mesh_worker.py`; `APPROXIMATING_OPERATIONS` is `{"decimate"}`;
+- `cadex_blender_runner.py` and `cadex_blender_worker.py`, their CMake
+  install lines, their staging by filename (`CadexScriptedRuntime.py`) and
+  the architecture test's list;
+- `CADEX_BLENDER_EXECUTABLE` from the worker's preserved environment;
+- `examples/blender_enclosure.py`, `cadex_tests/test_blender_recipe.py`
+  (10 tests, the real-worker half of which always skipped without a shell);
+- `docs/BLENDER-RECIPES.md` moves to `docs/history/`. VISION, AGENTS,
+  ARCHITECTURE, INTEGRATION, XSCRIPT, CLI and ORGANIC drop the exception.
+
+**Protocol.** `mesh.blender` was never an op: ADR-185 added "no request or
+response field or op", and `OP_ARG_SPECS` has no entry to change.
+`docs/INTEGRATION.md` drops its runtime paragraph in the same commit. The
+packaged lifecycle gate ran against a restaged payload, because the payload's
+file list changed.
+
+**What it costs.** An agent can no longer write organic geometry in bpy. The
+organic path is the `part`/`mesh` surface of `docs/ORGANIC.md`. Reversing
+this means reviving the runner from `v1-blender-shell` and naming a Blender
+runtime the product installs on its own, without a shell.

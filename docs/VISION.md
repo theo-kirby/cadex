@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-09-08
+Verified against source: 2026-10-03
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -10,7 +10,7 @@ in `docs/ARCHITECTURE.md`; the path from here to there is `docs/ROADMAP.md`.
 ## The product
 
 One ultimate agentic CAD app — **one application we own**, a derivative of
-but not dependent on FreeCAD or the Blender UI (ADR-025, ADR-185), combining:
+but not dependent on FreeCAD or the Blender UI (ADR-025), combining:
 
 - **FreeCAD-class capability** — real parametric BREP modeling **on OCCT**.
   OCCT is the kernel and it stays; FreeCAD is the application layer around
@@ -18,8 +18,6 @@ but not dependent on FreeCAD or the Blender UI (ADR-025, ADR-185), combining:
 - **Blender-class UX** — the look, feel, viewport and interaction quality of
   the shell under `shell/`, in the long run rebuilt as our own Rust + wgpu +
   egui shell. Blender is the UI reference, not the permanent UI host.
-  Native Blender geometry recipes are an opt-in runtime dependency retained
-  independently of that UI replacement (ADR-185).
 - **The xscript methodology** — the AI authors a declarative Python program;
   the program is the model.
 - **Robotics-class dynamics and control on MuJoCo** — the mechanism you
@@ -129,17 +127,8 @@ geometry. The prediction in the paragraph above held exactly: engine ops, on
 a declared table. `docs/ORGANIC.md` is the arc, and O4 (subD) is the part
 that is still unscheduled.
 
-**Native Blender geometry is now another script-owned operation** (ADR-185).
-The owner explicitly approved revisiting the retired local bpy direction:
-`mesh.blender` declares a native Python recipe, named mesh inputs and finite
-JSON values in the project script. An OS-sandboxed Blender subprocess evaluates
-it; only its validated mesh enters the existing acceptance transaction. The
-live scene remains a cache and never executes recipe code. This supersedes
-the earlier restriction to FreeCAD mesh ops, not the single-script rule.
-Exact CAD parts and mesh-native skins compose through declared dimensions,
-frames and tessellated cutting shapes. Blender recipes do not promise analytic
-BREP recovery. Their geometry, recipe and runtime identity enter the digest;
-a rebuild that changes the accepted result is refused on restore.
+**Native Blender geometry was a script-owned operation** (ADR-185) and is
+retired with the shell (ADR-496); no project used it.
 
 Everything else FreeCAD offers (FEM, CAM, TechDraw, BIM, Draft, Points,
 Robot, Spreadsheet, …) is out of scope. Deleted in the VibeCAD teardown at
@@ -220,10 +209,8 @@ returning it.
   keep their attribution obligation in the NOTICE file, as does MuJoCo's
   Apache-2.0 (`docs/PROVENANCE.md` §4); "references to
   neither" applies to dependencies, API names and runtime, and never to
-  attribution (ADR-025). ADR-185 makes one explicit exception: a project
-  declaring native `bpy` recipes depends on a matching Blender geometry
-  runtime, including after a future UI replacement. Projects without those
-  recipes need no Blender runtime on a headless engine machine.
+  attribution (ADR-025). ADR-185's one exception, native `bpy` recipes,
+  is retired (ADR-496): no project depends on a Blender runtime.
 
 ## Guiding principles
 

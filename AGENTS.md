@@ -77,14 +77,8 @@ available. What *is* live is Phase 13b — deleting from both inherited trees,
 in place, under the normal removal protocol. **Do not start writing a
 replacement engine or shell in this tree ahead of its phase.**
 
-**Native Blender geometry recipes are an explicit runtime exception
-(ADR-185).** `mesh.blender` keeps native bpy source inside the authoritative
-xscript and evaluates it in an OS-sandboxed subprocess. The live scene remains
-a cache. Projects using recipes retain a Blender geometry-runtime dependency
-even after a future UI replacement; ordinary headless projects do not.
-`docs/BLENDER-RECIPES.md` is the contract. The engine stages its independently
-authored adapters by filename, and only the Blender child imports bpy. Do not
-move recipe execution into the visible shell or enable an unsandboxed fallback.
+**`mesh.blender` is retired (ADR-496).** ADR-185's native Blender recipes
+went with the shell; no project depends on a Blender runtime.
 
 Read `docs/VISION.md` before designing anything.
 

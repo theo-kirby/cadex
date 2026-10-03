@@ -1,3 +1,5 @@
+> **SUPERSEDED (2026-10-03, ADR-496).** `mesh.blender` is retired with the Blender shell: the op, its runner and worker, the example and its tests are deleted. No project used it. Kept for history only.
+
 # Native Blender recipes in xscript
 
 Verified against source: 2026-09-05
