@@ -222,6 +222,41 @@ def test_agents_md_describes_the_three_part_product() -> None:
         assert "Blender-class UX" not in text
 
 
+def test_readme_architecture_and_integration_describe_the_three_parts() -> None:
+    """ADR-500 (charter R1): the README, the architecture and the process
+    contract frame Cadex as the engine, the dashboard and the agent, and the
+    ROADMAP closes the phases the shell's deletion settled: Phase 12 is
+    superseded by a desktop app that copies the dashboard, Phase 13b's shell
+    half is closed, and Phase 6 is historical."""
+
+    root = Path(__file__).resolve().parents[2]
+
+    def flat(relative: str) -> str:
+        return " ".join((root / relative).read_text(encoding="utf-8").split())
+
+    readme = flat("README.md")
+    for part in ("1. **The engine**", "2. **The dashboard**", "3. **The agent**"):
+        assert part in readme, part
+    architecture = flat("docs/ARCHITECTURE.md")
+    assert "Cadex is **three things** in **one repository** (ADR-030, ADR-500)" in architecture
+    assert "### The shell" not in architecture
+    integration = flat("docs/INTEGRATION.md")
+    assert "the contract between the engine and its client" in integration
+    assert "Shell-side resolution order" not in integration
+    for text in (readme, architecture, integration):
+        assert "ADR-500" in text
+        assert "the product shell" not in text.split("## Options considered")[0]
+
+    roadmap = (root / "docs" / "ROADMAP.md").read_text(encoding="utf-8")
+    headings = [line for line in roadmap.splitlines() if line.startswith("## Phase ")]
+    phase = {line.split(" — ")[0].removeprefix("## Phase "): line for line in headings}
+    assert "superseded by ADR-500" in phase["12"]
+    assert "historical since ADR-498" in phase["6"]
+    assert "- [ ] Shell side" not in roadmap
+    assert "- [x] Shell side — **closed by deletion (ADR-498, ADR-500)" in roadmap
+    assert "**Superseded: a desktop app that copies the dashboard.**" in roadmap
+
+
 def test_claude_code_is_the_only_harness() -> None:
     """ADR-497 (charter A4): the Codex and pi backends went with the shell.
     No CLI module names either harness, and the agent contract says Claude

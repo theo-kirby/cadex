@@ -32456,3 +32456,18 @@ holds the bar and the three names. `docs/VISION.md`'s product statement,
 interface section and non-goals no longer name a Rust shell or a Blender
 UX; the hands-on modelling UI becomes an explicit non-goal. ROADMAP's
 Phase 12, `docs/DASHBOARD.md` and the rest of R1 are later units.
+
+**Applied to README, ARCHITECTURE, INTEGRATION and ROADMAP (2026-10-03,
+orun2 R1 part 2).** `README.md` and `docs/ARCHITECTURE.md` §1 name the three
+parts. `docs/INTEGRATION.md` is now the contract between the engine and its
+one client (`cli/`). It says how that client resolves an engine
+(`--engine`, `CADEX_ENGINE_ROOT`, the build tree) and how the dashboard's
+trace reader plays a rollout, and its options and decision-gate sections are
+marked historical. ARCHITECTURE's store section says the dashboard reads the
+accepted attempt and never writes. ROADMAP has exactly the three changes the
+charter's R1 names: Phase 12 superseded by a desktop app that copies the
+dashboard, Phase 13b's shell box closed by deletion, and Phase 6 marked
+historical. The charter forbids hand-editing ROADMAP.md and asks for these
+three changes; its specific request is followed, as ADR-499 assumed.
+`test_readme_architecture_and_integration_describe_the_three_parts` pins
+all of this. `docs/DASHBOARD.md` and the frontier pruning remain.

@@ -2,8 +2,6 @@
 
 Verified against source: 2026-10-03
 
-**Retired: native Blender geometry.** `mesh.blender` (ADR-185) is retired (ADR-496): no project used it, and its runtime was the shell's own binary.
-
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
 `docs/INTEGRATION.md`, and `docs/ROADMAP.md`.
@@ -14,8 +12,8 @@ Provenance tags: `[FreeCAD-inherited]` upstream FreeCAD code we build on;
 
 ## 1. The one-paragraph picture
 
-Cadex is one application built from two forks in **one repository**
-(ADR-030). The **engine** is a FreeCAD fork at the repo root, stripped to a
+Cadex is **three things** in **one repository** (ADR-030, ADR-500): the
+engine, the dashboard and the agent. The **engine** is a FreeCAD fork at the repo root, stripped to a
 single AI-native modeling engine and building `FreeCADCmd` and
 `CadexGeometryWorker` and no application of its own (ADR-021/022). It runs
 as **cadexd** — a persistent headless `FreeCADCmd` service, one child per
@@ -35,12 +33,19 @@ proven on every open rather than once per audit — and where the kernel
 re-serializes one model to different bytes (`part.offset`), the two retained
 attempts are re-measured instead of refused (`CadexGeometryDigest.py`,
 ADR-389). On the other side of the
-protocol is **the CLI and its dashboard** (`cli/`, ADR-061): the only front
-end, which spawns `cadexd` per project, runs Claude Code as the agent, and
-serves the review dashboard to a browser. It finds the engine as a payload
-by manifest (`docs/INTEGRATION.md`, ADR-023) or in the build tree. The
-Blender shell that used to sit there is deleted (ADR-498); the tag
-`v1-blender-shell` is the last tree that has it.
+protocol is `cli/` (ADR-061), which carries the other two. **The
+dashboard** (`review_server.py` and `review_static/`, served by `./cadex
+review`) is the only UI: a standard-library server and vanilla JS over the
+project directory, where a person watches results and steps in; its spec is
+`docs/DASHBOARD.md`. **The agent** is the Claude Code CLI, which the CLI
+runs over one tool surface (`tools.py`, through an MCP stdio shim) and one
+guidance source (`CadexAgentGuidance.md` plus `agent.system_prompt`);
+Cadex has no model loop of its own (ADR-497). The CLI spawns `cadexd` per
+project and finds the engine as a payload by manifest
+(`docs/INTEGRATION.md`, ADR-023) or in the build tree. The Blender shell
+that used to sit on this side is deleted (ADR-498), and with it
+`mesh.blender` (ADR-496); the tag `v1-blender-shell` is the last tree that
+has either.
 
 The boundary between them is a **process boundary, not a repository
 boundary**, and it did not move when the repositories merged. Nothing links
@@ -51,7 +56,7 @@ a desktop app that copies the dashboard) and it is what the tests pin.
 ## 2. The xscript pipeline `[Cadex-new]`
 
 ```
- cli/  (the front end)                   cadexd child (per project)
+ cli/  (the dashboard and the agent)     cadexd child (per project)
  ────────────────────────────           ─────────────────────────────────────────────
  ./cadex -p / params / review           cadexd.py → CadexScriptedRuntime
  cadex_cli/agent.py (Claude Code) ═NDJSON═▶ (serial dispatch; persist source, spawn ONE
@@ -153,17 +158,17 @@ from `src/` (ADR-061).
   accepted revision (ADR-434). Failed candidates stay inspectable
   without replacing the accepted revision. Since Phase 5 publication runs
   **only inside cadexd's ephemeral document** (and `cadex_rebuild`) — the
-  split is process-level, so the pipeline modules stay in-tree, but shell
-  modules must not import them (ADR-018).
-- **Display, not hydration.** The engine's side of the shell boundary ends
-  at the response: each accepted output carries a `display` block with
+  split is process-level, so the pipeline modules stay in-tree, but no
+  client may import them (ADR-018).
+- **Display, not hydration.** The engine's side of the process boundary
+  ends at the response: each accepted output carries a `display` block with
   absolute artifact paths and, on request, `cadex-tessellation-v1` buffers
   plus face/edge ID maps (`cadex_tessellation.py`, digest-neutral, quality
-  presets `draft`/`coarse`/`standard`/`fine`). What a shell does with them
-  is its own business — the Blender shell hydrates them into its scene with
-  per-triangle `cadex_face` attributes so picking round-trips through
-  `resolve_pin`. The Qt hydration that used to live here died with the Qt
-  shell (ADR-021).
+  presets `draft`/`coarse`/`standard`/`fine`). What a client does with them
+  is its own business: the dashboard's viewer draws the accepted attempt's
+  sidecars in three.js. The Qt hydration that used to live here died with
+  the Qt shell (ADR-021), and the Blender scene hydration with the Blender
+  shell (ADR-498).
 - **Geometry checks**: `src/Mod/cadex/CadexGeometryWorker.cpp` — an
   isolated C++ helper (built to `build/release/bin/CadexGeometryWorker`)
   for BREP validation (`BOPAlgo_ArgumentAnalyzer`) and exact
@@ -211,9 +216,9 @@ Ownership closure, lint, and orphan queries live in
 | `cadex_domain_api.py` / `cadex_domain_worker.py` | Shared domain API/worker plumbing (`_execute_source` is the composition substrate). `_serialize_output` is where an output type decides what it *is*: a BREP type exports an artifact, `mesh` writes a PLY, and `points`, `solver_diagnostics`, `measurement` (ADR-139) and `stress` (ADR-145) attach a dict and **no `artifact_kind` at all**; `mesh_check` (ADR-144) does the same from the mesh domain's own serializer, which is where that branch belongs. That branch is the whole cost of a non-geometric output: `compute_project_digest` keys on *having* an artifact, so an artifact-less output falls through to `payload_sha256`, the hash of its own declaration. A measurement's identity is therefore which selectors it names, not what today's parameters make it read — and a stress check's is which faces it holds and what material it declares. `[VibeCAD-era]` |
 | `CadexGeometryWorker.cpp` | Isolated C++ BREP validation / distance worker. `[VibeCAD-era]` |
 
-### The shell
+### No UI in the engine
 
-There is no shell under `src/`. `CadexGui`, `CadexSession`,
+There is no UI under `src/`. `CadexGui`, `CadexSession`,
 `CadexProvider`, `CadexCore`, `CadexAuth`, `CadexCodex`, `CadexPreferences`,
 `CadexTransactions`, `CadexEditState`, `CadexGrid`, `CadexParametersPanel`,
 `CadexScriptView`, the `tool_impl` package, `CadexdClient` and
@@ -319,7 +324,7 @@ macOS). Layout:
                                 output the CALLER named (ADR-158 -- the
                                 engine stores no marks), written off the
                                 ACCEPTED brep/mesh artifact rather than the
-                                shell's display tessellation, each at its own
+                                display tessellation, each at its own
                                 origin. Written only by the export_printable
                                 op. NOT pruned and not indexed — unlike every
                                 other directory here this one is a
@@ -329,26 +334,21 @@ macOS). Layout:
 ```
 
 **cadexd is the sole writer.** Every byte that lands in the store goes
-through an op; the shell asks the engine what is in there (`inspect`), which
-is why the store's layout is not part of the contract in
-`docs/INTEGRATION.md` — and why it must not become one now that both halves
-are in one tree.
+through an op; the agent asks the engine what is in there (`inspect`) and
+hands it files through `put_asset` (a mesh, a trained policy), which is why
+the store's layout is not part of the contract in `docs/INTEGRATION.md` —
+and why it must not become one now that both halves are in one tree.
 
-The shell reads exactly one directory of it, and only ever to hand the paths
-straight back: on Save-As it lists `assets/` in the root it is *leaving*, so
-that `put_asset` can carry the user's imported geometry — and, since ADR-138,
-the linked parts, and since ADR-188 the trained policies with their task
-bundles and MJCF — into the new project (ADR-046). The shell's carry list is
-now the engine's whole stored union, so nothing the origin holds is dropped
-on the way across. Assets are the one thing
-in the store the shell supplied in the
-first place, and the shell already chooses where the store lives (below).
-Nothing else in the store is read by the shell, and nothing at all is
-written by it.
+The dashboard reads the store and never writes it: the manifest's accepted
+attempt, that attempt's `result.json` and its `display/*.tess.json`
+sidecars, which is how the viewer shows the accepted model without asking
+an engine (`review_server.py`). Until ADR-498 the Blender shell also read
+`assets/` on Save-As to carry them into a new root through `put_asset`
+(ADR-046); a project is now copied as a directory.
 
-In practice the root is chosen by the shell, not by `$CADEX_HOME`: the
-Blender shell passes `<blend-dir>/<stem>.cadex` as `project_root`, so a
-model lives beside the file that displays it.
+In practice the root is chosen by the caller, not by `$CADEX_HOME`: the CLI
+passes its `--project` directory as `project_root`, so the store lives in
+the project directory the dashboard serves.
 
 `CadexProjectScriptStore` (`CadexScriptStore.py`, split out of
 `CadexProject.py` in C1) owns `script.py`/`script.json` with atomic,
@@ -451,7 +451,7 @@ The ones needing a binary skip themselves when no FreeCADCmd is available.
 ctest overall has ~160 pre-existing environmental failures — diff against
 `build/ctest_baseline_failures.txt`, never expect 100%.
 
-The front end's suite lives on the other side of the boundary:
+The dashboard's and the agent's suite lives on the other side of the boundary:
 `pixi run python -m pytest cli/tests`, whose engine-needing half skips
 without a built engine.
 
@@ -508,8 +508,8 @@ vertical rather than `main` plus a feature.
 
 `pixi run setup-engine && pixi run build-engine` builds everything there
 is: the engine, in the pixi/conda-forge environment (OCCT 7.8.1, conda
-compilers, a conda sysroot). The front end is pure Python under `cli/` and
-needs no build step. No step needs git-lfs or Xcode (ADR-498).
+compilers, a conda sysroot). The dashboard and the CLI that runs the agent
+are pure Python and vanilla JS under `cli/`, and need no build step. No step needs git-lfs or Xcode (ADR-498).
 
 | Task | Builds | With |
 |---|---|---|
