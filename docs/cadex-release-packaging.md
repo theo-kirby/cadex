@@ -1,20 +1,24 @@
-# Packaging — One Bundle
+# Packaging — The Engine Payload
 
-Verified against source: 2026-08-29
+Verified against source: 2026-10-03
 
-**One repository builds one application** (ADR-030). `pixi run app` produces
-the bundle, and the *engine payload* — a relocatable directory the shell
-carries inside that bundle and finds by manifest — is now an intermediate
-artifact of the same build rather than a release the shell downloads.
+**One repository builds one engine payload** (ADR-030, ADR-498). The
+*engine payload* is a relocatable directory the CLI finds by manifest
+(`cli/cadex_cli/engine.py`: `--engine`, `CADEX_ENGINE_ROOT`, or the build
+tree). The CLI and its dashboard are pure Python under `cli/` and are not
+packaged separately. There is no application bundle any more: the Blender
+shell that carried the payload inside `Cadex.app` was deleted (ADR-498), and
+`v1-blender-shell` is the last tree that builds it.
 
-Two rounds of deletion got here. The Qt app packaging (`.app`/DMG, AppImage,
-`.deb`, the portable 7z, the NSIS installer, `cadex-macos.yml`,
+Three rounds of deletion got here. The Qt app packaging (`.app`/DMG,
+AppImage, `.deb`, the portable 7z, the NSIS installer, `cadex-macos.yml`,
 `cadex-windows-installer.yml`) went with the application it packaged
 (ADR-021/023). The payload's *distribution* machinery — release-tag
 publication here, SHA256 pinning and fetching in the shell — went with the
-repository boundary it existed to cross (ADR-030). What is left is the part
-that was always about the product: one bundle, discovery by manifest, and a
-gate that runs against the packaged tree.
+repository boundary it existed to cross (ADR-030). The shell's bundle build,
+local install and bundle gate went with the shell (ADR-495, ADR-498). What
+is left is the part that was always about the product: one payload,
+discovery by manifest, and a gate that runs against the packaged tree.
 
 ## What ships
 
@@ -38,7 +42,7 @@ cadex-engine-<version>-<os>-<arch>/
                         package/engine/collect_licenses.py
 ```
 
-The manifest is the contract (schema in ADR-020; consumed by the shell):
+The manifest is the contract (schema in ADR-020; consumed by the CLI, `cli/cadex_cli/engine.py`):
 
 ```json
 {
@@ -52,7 +56,7 @@ The manifest is the contract (schema in ADR-020; consumed by the shell):
 
 `freecadcmd` and `module_dir` are **relative to the manifest**, with forward
 slashes on every platform. Finding the file is the whole of discovery: no
-shell guesses at `<prefix>/Mod/cadex` versus `<dir>/../Mod/cadex` versus a
+client guesses at `<prefix>/Mod/cadex` versus `<dir>/../Mod/cadex` versus a
 macOS `.app` interior ever again.
 
 ## Building it
@@ -75,12 +79,9 @@ own files are package-managed — see "Staged, or relocated" below.
 
 **The product version** (ADR-166): `VERSION` at the repo root is the single
 source of truth, bumped deliberately with `package/app/bump_version.sh`.
-Every shell build stamps it into the bundle — `Contents/Resources/
-cadex_version.txt` (which the window title reads), `CFBundleShortVersionString`
-and a commit-count `CFBundleVersion` in `Info.plist` — and re-signs the
-bundle ad-hoc, since editing `Info.plist` breaks any existing seal. The
-build number therefore increments with every commit, in CI and locally,
-with no state kept anywhere.
+The engine payload is named from `CMakeLists.txt`'s `PACKAGE_VERSION`
+instead; the shell bundle that used to stamp `VERSION` into its window title
+is gone (ADR-495), so committing a changed `VERSION` is the release act.
 
 ## What is deliberately in the payload
 
@@ -199,7 +200,7 @@ CADEX_ENGINE_ROOT=<payload> pixi run python -m pytest -q \
 
 Registered as a ctest when `CADEX_ENGINE_ROOT` is set. It runs the **full
 cadexd lifecycle** against the packaged tree, discovered through the
-manifest exactly as the shell discovers it: open, `describe_api`,
+manifest exactly as the CLI discovers it: open, `describe_api`,
 `write_script` with display, `set_params`, `inspect`, `resolve_pin`,
 `kill -9`, respawn, restore-digest equality, `rebuild`, mid-run `cancel`,
 `shutdown`.
@@ -233,60 +234,17 @@ not a quality setting.
 - **Staged** (`pixi run stage-engine`, `CADEX_ENGINE_STAGE_ONLY=1`) copies
   the environment without relocating. The build prefix stays baked into load
   commands, so the result is correct **on the machine that built it and
-  nowhere else**. That is exactly what `pixi run app` needs and exactly what
-  a release must not contain.
-
-`pixi run app` uses the staged path deliberately: a developer bundle that
-runs here is the goal, and the honest alternative — requiring a rattler
-build before you can launch the app you just edited — is not a build loop
-anyone would use.
-
-## Installing it locally
-
-```bash
-pixi run install-app      # build, then copy the bundle to /Applications
-pixi run uninstall-app    # remove it
-```
-
-`install-app` rsyncs `shell/build_darwin/bin/Cadex.app` to
-`/Applications/Cadex.app` (override with `CADEX_INSTALL_DIR`) and pokes
-Launch Services so Spotlight, Launchpad and the Dock see it immediately. It
-refuses to `--delete` into a destination that is not an application bundle.
-Re-running it after a rebuild is incremental.
-
-**This is a local install of a staged payload, and that is a real
-limitation.** Every Mach-O under `Contents/Resources/cadex` carries exactly
-two rpaths, both absolute into the repository:
-
-```
-/Users/<you>/cadex/.pixi/envs/default/lib
-/Users/<you>/cadex/build/release/lib
-```
-
-The bundle *carries* its own `lib/` and never looks at it. So the installed
-app reads its libraries out of the source tree: move or delete the repo and
-Cadex launches and then fails to model. The command prints this every time.
-Making the installed bundle standalone is the relocation + notarization work
-under "Open" below, not a flag on this command.
-
-A double-clicked bundle starts in the Cadex layout because
-`UserDef::app_template` defaults to `"Mesh"` (ADR-024) and `read_userdef`
-resets to that default rather than to the empty string (ADR-058). Finder
-cannot pass `--app-template`, so this is what makes an installed app the
-product rather than stock Blender.
+  nowhere else**. That is exactly what local verification and the packaged
+  gate need, and exactly what a release must not contain.
 
 ## Building and releasing
 
 `.github/workflows/cadex-app.yml` runs on a nightly schedule, on manual
-dispatch, on `main`, and on tags matching `v*` or `cadex-*`. Its `app` job
-builds the engine, stages the payload, gates it through
-`test_cadexd_lifecycle` against the *packaged* tree, builds the shell with
-the payload installed, checks that `cadex-engine.json` really is inside the
-bundle, and runs the agent suites and `CADEX-BLENDER-GATE` out of it with
-every `MESH_*` variable unset. The artifact is the application.
-
-The `engine` job builds and gates the engine on Linux. We do not build a
-Linux shell yet; keeping that job is a decision, not an oversight.
+dispatch, on `main`, and on tags matching `v*` or `cadex-*`. It has two
+engine-only jobs, macOS arm64 and Linux x64. Each sets up and builds the
+engine, runs the engine and CLI suites, stages the payload, and gates it
+through `test_cadexd_lifecycle` against the *packaged* tree; the Linux job
+also drives the packaged engine through the CLI.
 
 **Both jobs have been red since at least 2026-07-25, and neither has ever
 reached its gate** (ADR-060). They fail at `Engine unit suite` — `pixi run
@@ -307,8 +265,7 @@ known.
   run before its gate. Nothing downstream of that step has ever executed on
   either platform, so the next run is the first real report either job has
   made — treat its output as new information, not as a regression.
-- **Linux and Windows.** The payload builds for both; only macOS arm64
-  builds a shell bundle, in CI or anywhere else.
+- **Windows.** The payload builds for it; no CI job gates it.
 - **A relocated payload has never been built on this machine.** The
   relocating path needs a rattler build, so every payload verified during
   the merge (ADR-030) was a staged one. The relocation code is unchanged and
@@ -316,18 +273,12 @@ known.
 
 ## What license material ships where
 
-Two self-contained sets, one per half of the bundle (ADR-171;
-`docs/PROVENANCE.md` §7):
+One set, the engine payload's (ADR-171; `docs/PROVENANCE.md` §7). Blender's
+license manifest shipped inside the shell's bundle and went with it
+(ADR-498).
 
-- **`Contents/Resources/text/license/`** — Blender's own license manifest,
-  verbatim: the GPL texts, `licenses.json`, SPDX identifiers, and the
-  third-party licenses for everything the shell binary links. This is the
-  same material every Blender release ships, and it correctly covers the
-  GPL shell binary; it is deliberately not edited.
-- **`Contents/Resources/cadex/`** — the engine payload's set, staged by
-  `package/engine/collect_licenses.py` at payload-build time and carried
-  into the bundle by the existing verbatim `install(DIRECTORY …)` rule
-  (no CMake edit): the root `LICENSE` (LGPL-2.1, FreeCAD's), `NOTICE`
+- **The payload's root** — staged by
+  `package/engine/collect_licenses.py` at payload-build time: the root `LICENSE` (LGPL-2.1, FreeCAD's), `NOTICE`
   (MuJoCo, OCCT, OpenTheme, lineage), `THIRD_PARTY_LICENSES.md`, and
   `licenses/` — per-conda-package license texts harvested from the source
   environment (OCCT's LGPL + exception, FreeCAD's own LICENSE.html, the

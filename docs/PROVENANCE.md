@@ -90,10 +90,10 @@ for where to report what.
 
 ## 3. Blender — the shell, deleted
 
-**What it was.** From 2026-07-25 to 2026-10-03, `shell/` was a Blender fork
+**What it was.** From 2026-07-25 to 2026-10-03, the shell was a Blender fork
 (Blender 5.3 alpha, by way of our own `mesh` fork) and the product's user
-interface: the viewport, the editors, the `.blend` file format, and the
-`mesh_agent` assistant package. It was GPL-2.0-or-later, and it spoke to
+interface: the viewport, the editors, the Blender file format, and the
+assistant package. It was GPL-2.0-or-later, and it spoke to
 the engine only over the cadexd protocol, through a client that imported no
 engine code.
 
@@ -102,7 +102,7 @@ its vendored `extern/`, its four `lib/<platform>` library submodules, its
 Git LFS assets and its half of `docs/inherited-modifications.json`. The
 dashboard (`cli/cadex_cli/review_server.py`) is the only user interface now,
 and [`SHELL-PARITY.md`](SHELL-PARITY.md) records, module by module, what
-became of each part of `mesh_agent`. The tag `v1-blender-shell` is the last
+became of each part of the assistant package. The tag `v1-blender-shell` is the last
 tree that carries the shell, and its ledger is
 [`history/BLENDER-TREE.md`](history/BLENDER-TREE.md).
 
@@ -260,7 +260,7 @@ Everything this repository carries of its own, and the FreeCAD tree it
 descends from, is LGPL-2.1-or-later. Since ADR-498 there is **no GPL code
 in the repository**: `test_licensing_compliance.py` fails if a tracked
 source file declares a GPL SPDX identifier in its header or if anything is
-tracked under `shell/` again. Until then the engine was LGPL and the shell
+tracked where the shell tree was again. Until then the engine was LGPL and the shell
 GPL, kept apart as separate programs across the cadexd protocol, and that
 rule is why the deletion took no code with it.
 

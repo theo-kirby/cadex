@@ -32335,3 +32335,60 @@ a path fix, and R1 owns that rewrite.
 `v1-blender-shell`. Reversing this means restoring the tree from that tag,
 its `blender` manifest half and its licensing tests, and accepting a GPL
 half again.
+
+## ADR-499 — No live doc names the deleted shell, and a test holds it (2026-10-03)
+
+**Status:** accepted. Closes the live-doc half of charter S1 that ADR-498
+left for later.
+
+**What changed.** ADR-498 deleted `shell/` and named the live docs that
+still described it as present. Those are now rewritten for the engine,
+dashboard and agent:
+
+- `SECURITY.md`: scope is `src/Mod/cadex/**` and `cli/cadex_cli/**`; the
+  inherited-Blender scope row, the `.blend` script and transcript bullets
+  and the `shell/lib` dependency paragraph are gone. The trust boundaries
+  are restated from the CLI's code: `--tools ""` and `--strict-mcp-config`
+  (`agent.py`), a unix-socket bridge in a `0700` directory with a per-run
+  token (`bridge.py`, `mcp.py`), and a dashboard bound to `127.0.0.1` by
+  default.
+- `PRIVACY_POLICY.md`: what leaves the machine is the CLI's tool surface
+  (`tools.py`: the op tools plus `look`, `train_*` and `evaluate`), what is
+  stored is the project directory and `agent.json`, and the one tool that
+  moves data off the machine is `training/remote_train.sh`, run by hand.
+  Blender's online features and `WITH_PYTHON_SECURITY` are gone with it.
+- `docs/ARCHITECTURE.md`: §1 and §2's pipeline diagram name `cli/` as the
+  front end; §5's build table is `setup-engine`, `build-engine` and
+  `stage-engine` (no `pixi run setup`, `app`, `build-shell` or `gate`, none
+  of which exists in `pixi.toml`), and the two-toolchain section is
+  deleted; the conversation-history note points at `agent.json`; §6's
+  shell-only file-open item is deleted.
+- `docs/cadex-release-packaging.md`: retitled "The Engine Payload". The
+  bundle install section (`install-app`, no longer a task), the
+  `pixi run app` staged-path rationale and Blender's license manifest are
+  deleted; CI is described as the two engine-only jobs it is.
+- `docs/MUJOCO.md` and `docs/INTEGRATION.md` keep every historical "no
+  shell diff" claim, in words rather than as a path.
+- One-line fixes in `AGENTS.md`, `docs/VISION.md`, `docs/ORGANIC.md`,
+  `docs/IDEAS.md`, `docs/FREECAD.md`, `docs/CLI.md`, `docs/PROVENANCE.md`,
+  `training/README.md`, `analysis/README.md` and three removal audits.
+- `docs/ASSEMBLY-VISIBILITY-AUDIT.md`, a procedure run against the shell's
+  binary, moves to `docs/history/`.
+
+**The test.** `cli/tests/test_project_docs.py::
+test_no_live_doc_names_the_deleted_shell` fails if any tracked Markdown
+file names `shell/`, `mesh_agent`, a `.blend` or `CADEX_BLENDER_EXECUTABLE`,
+outside a declared history set: this log, `docs/history/`, `docs/probes/`
+(frozen run evidence), `docs/SHELL-PARITY.md` (the ledger of the shell
+itself), `docs/ROADMAP.md`, `STATE.md`, `.hypergraph/` and `.ouroboros/`.
+Run against the previous tree it names 19 files.
+
+**`docs/ROADMAP.md` is exempt, and that is an assumption.** The orun2
+charter forbids hand-editing it and also asks R1 to rewrite it. Until the
+owner resolves that, the roadmap keeps its 48 shell mentions as phase
+history and R1 decides.
+
+**Not done here.** VISION's interface section and AGENTS.md's "Where this
+is going" still describe a Rust shell as the target, and ARCHITECTURE.md's
+project-store section still describes the shell choosing the store root.
+Those are prose, not paths, and R1's rewrite owns them.

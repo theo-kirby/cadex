@@ -34,45 +34,43 @@ accepted script and asserts digest equality, so restart determinism is
 proven on every open rather than once per audit — and where the kernel
 re-serializes one model to different bytes (`part.offset`), the two retained
 attempts are re-measured instead of refused (`CadexGeometryDigest.py`,
-ADR-389). The **shell is a Blender
-fork under `shell/`**: a protocol client that hydrates the tessellated
-results into its scene, and the thing a user actually launches. It carries
-the engine inside its own bundle as a payload it finds by manifest
-(`docs/INTEGRATION.md`, ADR-023) — a payload now built two directories away
-rather than downloaded (ADR-030).
+ADR-389). On the other side of the
+protocol is **the CLI and its dashboard** (`cli/`, ADR-061): the only front
+end, which spawns `cadexd` per project, runs Claude Code as the agent, and
+serves the review dashboard to a browser. It finds the engine as a payload
+by manifest (`docs/INTEGRATION.md`, ADR-023) or in the build tree. The
+Blender shell that used to sit there is deleted (ADR-498); the tag
+`v1-blender-shell` is the last tree that has it.
 
 The boundary between them is a **process boundary, not a repository
 boundary**, and it did not move when the repositories merged. Nothing links
 across it; nothing shares memory; the only thing that crosses is the
-protocol. That is what keeps either half replaceable (ROADMAP Phases 11 and
-12) and it is what the tests pin.
+protocol. That is what keeps either half replaceable (ROADMAP Phase 11, and
+a desktop app that copies the dashboard) and it is what the tests pin.
 
 ## 2. The xscript pipeline `[Cadex-new]`
 
 ```
- shell/  (the application)              cadexd child (per project)
+ cli/  (the front end)                   cadexd child (per project)
  ────────────────────────────           ─────────────────────────────────────────────
- chat / sliders / picking               cadexd.py → CadexScriptedRuntime
- mesh_agent/cadex_backend.py  ══NDJSON══▶ (serial dispatch; persist source, spawn ONE
- mesh_agent/cadexd_client.py             --safe-mode worker, validate, publish into the
- mesh_agent/cadex_hydrate.py  ◀═════════ ephemeral App::Document, accept, tessellate)
- (hydrates tessellation +
-  face/edge ID maps into the scene)
+ ./cadex -p / params / review           cadexd.py → CadexScriptedRuntime
+ cadex_cli/agent.py (Claude Code) ═NDJSON═▶ (serial dispatch; persist source, spawn ONE
+ cadex_cli/client.py                     --safe-mode worker, validate, publish into the
+ cadex_cli/review_server.py  ◀══════════ ephemeral App::Document, accept, tessellate)
+ (dashboard: viewer, renders,
+  reports, in a browser)
 ```
 
-The whole left-hand column lives under `shell/scripts/startup/mesh_agent/`. What
-crosses the boundary is the protocol in `docs/INTEGRATION.md` and nothing
-else: no shared code, no shared process, no shared licence obligation — the
-shipped bundle is an aggregate of separate programs, each under its own
-licence (`docs/PROVENANCE.md` §7). Being
-in one repository does not relax that — the left column may not `import`
-anything from `src/`, and `cadexd_client.py` is deliberately a plain GPL
-NDJSON client with no cadex imports.
+The whole left-hand column lives under `cli/cadex_cli/`. What crosses the
+boundary is the protocol in `docs/INTEGRATION.md` and nothing else: no
+shared code and no shared process (`docs/PROVENANCE.md` §7). Being in one
+repository does not relax that — the left column may not `import` anything
+from `src/` (ADR-061).
 
 - **cadexd** (`src/Mod/cadex/cadexd.py`, protocol
   `src/Mod/cadex/CadexdProtocol.py`): one `FreeCADCmd` child per open
   project (no `--safe-mode` — trusted engine code), spawned/owned by the
-  shell (the Blender add-on's `cadexd_client.py`, under `shell/`);
+  CLI (`cli/cadex_cli/client.py`);
   `pixi run cadexd` for a standalone instance. Serial dispatch, `CADEXD_BUSY` refusal for a second
   modeling request, mid-run `cancel`, stdin-EOF lifetime, fd-1 hijack so
   only protocol frames reach the parent. Hosts the persistent ephemeral
@@ -219,9 +217,9 @@ There is no shell under `src/`. `CadexGui`, `CadexSession`,
 `CadexProvider`, `CadexCore`, `CadexAuth`, `CadexCodex`, `CadexPreferences`,
 `CadexTransactions`, `CadexEditState`, `CadexGrid`, `CadexParametersPanel`,
 `CadexScriptView`, the `tool_impl` package, `CadexdClient` and
-`CadexShellHydration` were all deleted in Phase 7 (ADR-021). The shell is
-`shell/scripts/startup/mesh_agent/`, and it speaks the protocol in
-`docs/INTEGRATION.md` — a different process, not a different import path.
+`CadexShellHydration` were all deleted in Phase 7 (ADR-021). The front end
+is `cli/`, and it speaks the protocol in `docs/INTEGRATION.md` — a different
+process, not a different import path.
 
 `test_engine_purity_guardrails.py` keeps it that way: nothing under
 `src/Mod/cadex/**` may import `PySide*`, `FreeCADGui`, `tool_impl` or
@@ -230,13 +228,12 @@ list. Phase 14 added two more invariants to the same file — **`mujoco` never
 enters that closure** (it is reachable only from the sandboxed worker), and
 **no `jax` or `mjx` appears anywhere under `src/Mod/cadex` or in a staged
 payload** (ADR-084: training is offboard, and the engine verifies a policy
-but never produces one). A third asserts that nothing in `shell/` learns
-about mujoco at all.
+but never produces one).
 
 ### The CLI `[Cadex-new — ADR-061]`
 
-`cli/` is a second front end and a third client of the same protocol: no
-Blender, no display, no shell code (`docs/CLI.md`). It is on the engine's
+`cli/` is the only front end and the client of the protocol: no display
+needed, and no code from the deleted shell (`docs/CLI.md`). It is on the engine's
 side of the licence line (LGPL) and lives outside `src/` because it is a
 *client*, not part of the engine — it spawns `cadexd` and imports nothing
 from it except `CadexdProtocol`, loaded by path out of whichever engine it
@@ -359,9 +356,10 @@ schema-checked writes. A candidate is written before it runs and rolled back
 if it fails, so `script.py` only ever holds a source that executed; the
 accepted revision's own source stays pinned in its staging directory and is
 readable with `read_accepted_source()`, which is what the restore pass falls
-back to when the working script will not run at all (ADR-044). **Conversation history is no longer here**: it lives
-in the `.blend` with the Claude Code session id (ADR-020, decision 4), and
-the engine's conversation store died with the Qt shell. VibeCAD-era
+back to when the working script will not run at all (ADR-044). **Conversation history is no longer here**: the
+CLI keeps the Claude Code session id in the project's `agent.json`
+(`cli/cadex_cli/session.py`), Claude Code keeps the transcript, and the
+engine's conversation store died with the Qt shell (ADR-020). VibeCAD-era
 per-domain program stores are not migrated (ADR-011).
 
 ### Support
@@ -453,9 +451,9 @@ The ones needing a binary skip themselves when no FreeCADCmd is available.
 ctest overall has ~160 pre-existing environmental failures — diff against
 `build/ctest_baseline_failures.txt`, never expect 100%.
 
-The product gate lives on the other side of the boundary:
-`pixi run gate` runs `shell/tests/python/bl_mesh_agent_cadex.py` against the
-built bundle and prints one `CADEX-BLENDER-GATE` line.
+The front end's suite lives on the other side of the boundary:
+`pixi run python -m pytest cli/tests`, whose engine-needing half skips
+without a built engine.
 
 ## 4. The substrate
 
@@ -508,38 +506,16 @@ vertical rather than `main` plus a feature.
 
 ## 5. Build & run
 
-`pixi run setup && pixi run app` builds everything and launches it. What
-that runs, and why it is not one CMake project:
-
-**Two toolchains, deliberately isolated.** The engine builds inside the
-pixi/conda-forge environment — OCCT 7.8.1, Qt6, conda compilers, a conda
-sysroot. The shell builds against `shell/lib/<platform>`, Blender's own
-prebuilt library set, with Xcode and a homebrew `cmake`/`ninja`. The two
-overlap on names: zlib, libpng, OpenSSL, Python all exist in both, at
-different versions. Put `.pixi/envs/default/bin` on `PATH` during a shell
-configure and CMake silently resolves the conda ones, which fails at link
-time or, worse, produces a binary that misbehaves at runtime.
-
-`package/app/build_app.sh` is what keeps them apart. It filters the pixi and
-conda entries out of `PATH` and unsets the ~50 variables conda activation
-exports (`CONDA_PREFIX`, `CMAKE_PREFIX_PATH`, `CFLAGS`, `SDKROOT`, `CC`,
-`PKG_CONFIG_PATH`, …) before invoking `cmake` on `shell/`. That is why
-`pixi run build-shell` shells out to a script instead of being a
-`cmd = ["cmake", ...]` task: pixi would otherwise hand cmake the exact
-environment being removed. *Verified by construction:* the resulting
-`shell/build_darwin/CMakeCache.txt` is identical to a configure run from the
-old standalone shell repository apart from the source path — zero references
-to `.pixi`, Python resolved out of `shell/lib/macos_arm64`, compilers
-`/usr/bin/cc` and `/usr/bin/c++`.
-
-The steps:
+`pixi run setup-engine && pixi run build-engine` builds everything there
+is: the engine, in the pixi/conda-forge environment (OCCT 7.8.1, conda
+compilers, a conda sysroot). The front end is pure Python under `cli/` and
+needs no build step. No step needs git-lfs or Xcode (ADR-498).
 
 | Task | Builds | With |
 |---|---|---|
-| `pixi run setup` | — | `git submodule update` for `shell/lib/<platform>` (1.3 GB, git-lfs) |
+| `pixi run setup-engine` | — | `git submodule update` for `src/3rdParty/OndselSolver` |
 | `pixi run build-engine` | `build/release/bin/{FreeCADCmd,CadexGeometryWorker}` | pixi env, `BUILD_GUI=OFF` |
 | `pixi run stage-engine` | `build/engine/cadex-engine-<v>-<os>-<arch>/` + its manifest | pixi env |
-| `pixi run build-shell` | `shell/build_darwin/bin/Cadex.app`, engine inside it | **scrubbed** env, `shell/lib` |
 
 - Artifacts, engine: `build/release/bin/FreeCADCmd` and
   `build/release/bin/CadexGeometryWorker`. **There is no `FreeCAD` binary
@@ -550,8 +526,7 @@ The steps:
   FreeCAD is stubbed). Note that `pixi run test` is the *inherited FreeCAD
   ctest*, which is a different and much noisier thing.
   `pixi run python src/Mod/cadex/cadex_tests/cadexd_latency_integration.py`
-  is the slider-drag latency bar, driven over raw NDJSON. `pixi run gate`
-  is the product gate against the built bundle.
+  is the slider-drag latency bar, driven over raw NDJSON.
 - **`training/` is built by nothing and installed by nothing.** It is not a
   step in this table and never will be; it is copied to a GPU box and run
   there with its own venv (ADR-084). `test_dynamics_policy_trainer` asserts
@@ -582,20 +557,7 @@ The steps:
   where every determinism guarantee gets hard and would be its own ADR.
 - **`display` on `open_project`** (A1). Would fold the restore pass and the
   hydration rebuild into one script run; the measured cost of not having it
-  is 0.49 s, paid on the first engine request against a project rather than
-  on the file open. The shell's `ensure_open` is where both runs happen.
-- **The file-open path hydrates since ADR-186** (ADR-073 measured the gap:
-  `model_objects_on_open = 0`). `load_post` reaches
-  `cadex_backend.on_file_changed`, which drops the previous file's sessions,
-  and then `queue_open`, which — for a saved file beside an existing
-  `.cadex` — queues the open. A timer-driven pump runs `open_project`
-  (restore pass included) and the display `rebuild` on a worker thread and
-  hydrates on the main thread; `ensure_open` drains a queued open rather
-  than racing it. The read-only panel state still does not open the
-  project. A restore failure at that open caches its code on the per-root
-  state and the chat draws the re-accept box from it (ADR-187), so a
-  digest-moving engine change no longer needs a manual recovery. A1 would
-  shorten that open to one script run; it is unchanged.
+  is 0.49 s, paid on the first engine request against a project.
 - Whether `CadexModelingSurface.py`'s surface resolution collapses further
   now that one global project surface exists and no provider consumes it.
 - What remains of `CadexProject.py` once the conversation store is gone —

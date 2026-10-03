@@ -521,7 +521,7 @@ nothing re-derived:
   readable after the design moves on. `PROGRESS.md` is copied before this
   run's own row lands.
 
-The app's Training editor has a second, smaller reader of the same files (`mesh_agent/cadex_runs.py`, ADR-450): status, identity, parameters and live progress, with no digest checks.
+The deleted shell's Training editor had a second, smaller reader of the same files (ADR-450); it went with the shell (ADR-498), and this reader is the only one.
 
 **The reader** is `cadex_cli.review_record.read_project_review(root)`: the
 project's accepted identity now (read-only, from the manifest, and

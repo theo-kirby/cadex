@@ -5,7 +5,7 @@ Verified against source: 2026-10-03
 Cadex's **engine** is a FreeCAD fork. This is the ledger of what we keep,
 what is slated for removal, and what is already gone. It is the only
 inherited-tree ledger: its peer for the Blender shell,
-`docs/history/BLENDER-TREE.md`, is history since `shell/` was deleted
+`docs/history/BLENDER-TREE.md`, is history since the shell was deleted
 (ADR-498).
 The change policy for inherited code is in `AGENTS.md`; removals execute
 under the two-commit protocol in §3 and are logged in `docs/DECISIONS.md`.
@@ -151,7 +151,7 @@ The broader reduction remains open; the audit records verification.
 compiled consumer. After Start disable/delete, the GSL gitlink, submodule
 entry and three checkout references are removed. No retained CMake consumer
 exists; the Import DXF `gsl::owner` mention is only a TODO comment.
-OndselSolver remains; the shell library submodules went with `shell/`
+OndselSolver remains; the shell library submodules went with the shell
 (ADR-498).
 
 ### `src/Gui` (+ every `src/Mod/*/Gui`, `tests/src/Gui`) — Phase 8

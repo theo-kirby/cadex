@@ -16,8 +16,8 @@ but not dependent on FreeCAD or the Blender UI (ADR-025), combining:
   OCCT is the kernel and it stays; FreeCAD is the application layer around
   it, and that layer is being removed.
 - **Blender-class UX** — the look, feel, viewport and interaction quality of
-  the shell under `shell/`, in the long run rebuilt as our own Rust + wgpu +
-  egui shell. Blender is the UI reference, not the permanent UI host.
+  the deleted Blender shell (ADR-498; tag `v1-blender-shell`), in the long
+  run rebuilt as our own Rust + wgpu + egui shell. Blender is the UI reference, not the permanent UI host.
 - **The xscript methodology** — the AI authors a declarative Python program;
   the program is the model.
 - **Robotics-class dynamics and control on MuJoCo** — the mechanism you
@@ -27,8 +27,8 @@ but not dependent on FreeCAD or the Blender UI (ADR-025), combining:
   2026-08-01 and is now simply part of the product (ADR-102).
 
 Until the replacements land, both forks remain the working substrate, and
-since ADR-030 both live **in this repository**: the engine at the root, the
-shell under `shell/`. Replacing either is unscheduled and unblocked; what is
+since ADR-030 both lived **in this repository**: the engine at the root, the
+shell beside it until ADR-498 deleted it. Replacing either is unscheduled and unblocked; what is
 live is deleting from both, in place. The staging is in `docs/ROADMAP.md`;
 every resting place in it is shippable.
 
@@ -66,7 +66,7 @@ and a gait video — and 0.1.0 roughly means that sentence works.
 
 - **Left half: viewport. Right half: chat, parameter sliders, model tree,
   script view.** That's the whole app. The UX north star is the working
-  shell: `shell/scripts/startup/mesh_agent/` plus the
+  shell's assistant package (deleted in ADR-498, tag `v1-blender-shell`) plus the
   `Mesh` app template (50/50 split, chat input docked at the bottom right) —
   detailed in `docs/history/BLENDER.md`. That prototype is the **specification** for
   the Rust shell, not its permanent home (ADR-025).
@@ -100,7 +100,7 @@ two that make a mechanism move (ADR-075, ADR-086):
 
 Areas 6 and 7 add **no sixth domain**: they are operations on the `assembly`
 domain, which is why they cost no protocol op, no new output type and no
-`shell/` diff. Seven capability areas, still five domain APIs.
+shell diff. Seven capability areas, still five domain APIs.
 
 **Areas 6 and 7 shipped on a separate branch until 2026-08-01** and are now
 part of the one product (ADR-102). The split existed to keep a bracket
@@ -149,7 +149,7 @@ facts make that honest rather than a walk-back:
   the same physics.
 - **There is no sixth domain.** It is one operation on `part`, so by the test
   the line above sets for scope it costs no protocol op, no new
-  `artifact_kind` and no `shell/` diff. The count of domains is still five.
+  `artifact_kind` and no shell diff. The count of domains is still five.
 - **The expensive half stays offboard.** Topology optimisation, refinement
   sweeps, CalculiX as a second opinion and load cases measured off a MuJoCo
   rollout all live in `analysis/`, which is not the engine and never will be
@@ -181,7 +181,7 @@ returning it.
   and was deleted in Phase 7 (ADR-021). One repository since ADR-030. The
   Blender shell is the working substrate until the Rust shell replaces it
   (ADR-025) — the Rust shell is not a second shell, it is the first one we
-  own, and `shell/` is deleted when it lands.
+  own. (The Blender shell was deleted first, in ADR-498.)
 
   **The headless CLI is the one exception, and it is deliberate** (ADR-061).
   `cli/` is a second *front end*: no shell, no window, and no second engine,

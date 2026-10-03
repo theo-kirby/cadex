@@ -347,12 +347,12 @@ stops being needed.
   on the wolf; report the number; if it costs more than a few seconds, cap
   the probe depth and **say so in the result** rather than silently doing
   less work.
-- **`shell/` diff creep.** O0 and O3 both add UI. Every line must stay inside
-  `mesh_agent/` and `shell/tests/python/`; `docs/history/BLENDER-TREE.md` §2a stays
+- **Shell diff creep** (while the shell existed). O0 and O3 both added UI. Every line had to stay inside
+  the shell's assistant package and its tests; `docs/history/BLENDER-TREE.md` §2a stays
   eight files, §2b and §2c unmoved (ADR-091). If a slice seems to need a
   space type, that is a decision to bring back, not a fix to slip in.
-- **Phase 12 deletes `shell/`.** O0's compositor and O3's overlay get
-  rewritten in Rust then. Keeping the pure halves `bpy`-free is what makes
+- **The shell is deleted (ADR-498).** O0's compositor and O3's overlay went
+  with it; a desktop app would rewrite them. Keeping the pure halves `bpy`-free is what makes
   that a re-binding rather than a re-design.
 - **A selector contract that cannot be satisfied is worse than a missing
   op.** §1's second failure is the case: the refusal was correct, actionable

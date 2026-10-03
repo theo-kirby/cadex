@@ -123,7 +123,7 @@ on and publishes a receipt.
 > One rough edge, stated rather than papered over: the tool the shell offers
 > is called **`import_geometry`**, and on success it advises
 > `mesh.import_file(...)`, which is wrong for a policy. Fixing that wording
-> is a `shell/` diff, and every line of one is a future merge conflict
+> was a shell diff, and every line of one is a future merge conflict
 > against upstream Blender (ADR-091), so it wants to be a change somebody
 > makes on purpose rather than one that rides along. ADR-086 §4 named it
 > available-and-not-taken and ADR-102 §4 left it that way; the engine-side

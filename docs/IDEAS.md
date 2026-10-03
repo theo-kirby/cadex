@@ -13,7 +13,7 @@ roadmap item. Add freely, prune ruthlessly.
   geometry-nodes UI is right there in the shell.
 
 - **RNA-like reflection for params.** Blender's DNA/RNA
-  (`shell/source/blender/makesrna/`) generates UI, animation, and
+  (`source/blender/makesrna/` upstream) generates UI, animation, and
   Python access from one property definition. Cadex params could get the
   same treatment: one declaration in the script drives slider, protocol
   schema, and inspection output. (The two vocabularies this idea wanted to
@@ -29,7 +29,7 @@ roadmap item. Add freely, prune ruthlessly.
   param values instant, and slider scrubbing across a cached range would be
   free.
 
-- **Blender scene as a second cache tier.** Post-Phase 6, the .blend file
+- **Blender scene as a second cache tier.** Post-Phase 6, the Blender file
   could persist the last tessellation so a project opens instantly and
   reconciles against a background `rebuild` digest — open fast, verify
   lazily.
@@ -52,7 +52,7 @@ roadmap item. Add freely, prune ruthlessly.
   now hides instanced raw solids and edge companions from camera renders,
   with independent ownership that preserves pre-hidden render sources.
   Actual hydration and EEVEE regression cover repeat hydration, component
-  removal and unrelated explicit hides; see `ASSEMBLY-VISIBILITY-AUDIT.md`.
+  removal and unrelated explicit hides; see `history/ASSEMBLY-VISIBILITY-AUDIT.md`.
   This does not deliver general headless review tools or rollout video.
 
 - **The CLI agent's two missing legs for the North Star** (ADR-170

@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -159,6 +160,49 @@ def test_no_cli_module_reaches_into_the_shell_tree() -> None:
         if re.search(r"""["'/]shell/|/\s*["']shell["']|\bmesh_agent\b|CADEX_BLENDER_EXECUTABLE""", text):
             reaching.append(source.name)
     assert reaching == [], reaching
+
+
+#: Markdown that may name the deleted shell's paths, and why (ADR-498).
+#: Everything else tracked is a live doc and describes the product as it is.
+SHELL_HISTORY_DOCS = (
+    "docs/DECISIONS.md",       # the ADR log: decisions keep their own words
+    "docs/history/",           # superseded docs, by definition
+    "docs/probes/",            # frozen run evidence, measured when it was true
+    "docs/SHELL-PARITY.md",    # the ledger of the shell, module by module
+    "docs/ROADMAP.md",         # phase history; the charter forbids hand edits
+    "STATE.md",                # generated from the state graph
+    ".hypergraph/",            # the append-only record
+    ".ouroboros/",             # run logs
+)
+SHELL_TOKEN = re.compile(
+    r"(?<![\w.-])shell/|\bmesh_agent\b|(?<![\w-])\.blend\b|CADEX_BLENDER_EXECUTABLE")
+
+
+def test_no_live_doc_names_the_deleted_shell() -> None:
+    """Charter S1 (ADR-498): no live doc refers to ``shell/``,
+    ``mesh_agent``, a ``.blend`` or ``CADEX_BLENDER_EXECUTABLE``. A doc that
+    must tell the shell's history says "the shell" in words; only the
+    history kept in :data:`SHELL_HISTORY_DOCS` may name its paths."""
+
+    root = Path(__file__).resolve().parents[2]
+    listing = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.md"], cwd=root,
+        capture_output=True, text=True, check=False)
+    if listing.returncode != 0:
+        pytest.skip("not a git checkout")
+    docs = [name for name in listing.stdout.split("\0") if name]
+    assert "SECURITY.md" in docs and "docs/ARCHITECTURE.md" in docs
+    naming = []
+    for name in docs:
+        if name.startswith(SHELL_HISTORY_DOCS):
+            continue
+        path = root / name
+        if not path.is_file():
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if SHELL_TOKEN.search(line):
+                naming.append(f"{name}:{number}")
+    assert naming == [], naming
 
 
 def test_claude_code_is_the_only_harness() -> None:

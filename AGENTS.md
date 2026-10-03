@@ -85,7 +85,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/ROADMAP.md` | Phases 0–17, status checkboxes, exit criteria. Living status lives here. |
 | `docs/MUJOCO.md` | **This branch's vertical**: dynamics and control, slices M0–M9 (all closed), the hazards, and the measured facts. §7 is the **end-to-end walkthrough** — how to take a drawing to a trained policy, in the order that costs least. ROADMAP Phase 14 is its status line. |
 | `docs/ORGANIC.md` | **Phase 15's vertical**: organic modelling and the CAD/mesh interface, slices O0–O3. §1 is the measurement it is sized from — a robot wolf built entirely in `part`, and the three ways it failed to weld its own seams. §4 is the benchmark log. |
-| `docs/STRUCTURAL.md` | **Phase 16's vertical**: stress, topology optimisation and shape search, slices **S0–S4, all closed**. §3 is S0's measurements; §4 is the search loop and why it drives the CLI rather than importing it; §5 is SIMP and the marching-tetrahedra extraction; §6 is the in-engine half and what it deliberately did *not* build; §7 is the loop closed; **§8 is S4 — the fit that ends in a script rather than a mesh**, its spike-zero blend measurements, its coverage gate and the one premise that did not survive contact. S0–S2 and S4 are outside the engine by construction; S3 is one op on `mesh` and one on `part`, and costs no protocol op and no `shell/` diff. |
+| `docs/STRUCTURAL.md` | **Phase 16's vertical**: stress, topology optimisation and shape search, slices **S0–S4, all closed**. §3 is S0's measurements; §4 is the search loop and why it drives the CLI rather than importing it; §5 is SIMP and the marching-tetrahedra extraction; §6 is the in-engine half and what it deliberately did *not* build; §7 is the loop closed; **§8 is S4 — the fit that ends in a script rather than a mesh**, its spike-zero blend measurements, its coverage gate and the one premise that did not survive contact. S0–S2 and S4 are outside the engine by construction; S3 is one op on `mesh` and one on `part`, and costs no protocol op. |
 | `docs/DECISIONS.md` | ADR log. Append an entry for every removal or direction change. |
 | `docs/PROVENANCE.md` | Which code came from FreeCAD and from VibeCAD, what the deleted Blender shell left behind (nothing), licences and credit. |
 | `docs/FREECAD.md` | Inherited-tree ledger for the **engine**: kept / disabled / already-deleted. |
@@ -291,7 +291,7 @@ and `CARRIED_PYPI_PACKAGES` in
 
 This was a separate branch, `MJC`, from 2026-07-30 to 2026-08-01. The rules
 that governed the split — one-way syncs, branch-marked doc blocks, an empty
-`shell/` diff — are **retired with it** (ADR-102), and if you find a doc
+shell diff — are **retired with it** (ADR-102), and if you find a doc
 still saying otherwise, the doc is stale. The `MJC` ref still exists,
 pointing at the merge; nothing should be committed to it.
 
