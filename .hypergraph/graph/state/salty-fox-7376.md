@@ -19,13 +19,20 @@ Declared target: `gap-d4-plain-prompts-produce-designs`. The human owns the char
 
 **Trial 1 (not a confirmation; counts for nothing toward D4)** — `orun1-t1-balancer`, accepted revision `8dd43825…`, faceless: mounting `pass` 9/9 held, all parts from the catalog, static fit 861 pairs 0 failing; **swept fit `incomplete`** (4.26 mm³ between the turning wheel bore and the catalog gearmotor's static D-shaft at ±180°); frozen v2 **3 of 5** (beat d, f, h Likes; lost to c Love and e Like, both citing plain solid-disc wheels with no hub). Published in `docs/probes/orun1/d4/t1-balancer/` [rec: spring-ivy-9833].
 
-Next units named by the trial, both product changes rather than prompt changes: (1) the motor shaft must turn with the wheel, or the sweep must exclude the wheel–shaft pair; (2) model the 1430 wheel's rim, hub and tyre rather than a slab [rec: spring-ivy-9833]. Reconcile judgement: status moved open → working because generation has started.
+**ADR-487 (commit `9eac2291`): `lib.wheel`'s bore is round** (the D flat stays in the spec as `bore_flat_to_opposite_mm`, flagged approximate), and the overlay tells the agent to place the wheel clear of the boss and to declare `angle_limits_degrees=(-180, 180)` on the wheel revolute, since an unlimited joint is never swept. A real-kernel regression sweeps a catalog wheel round its catalog motor clean; `test_library.py` 140 passed. The fail-before figure (6.97 mm³) is ADR-487's own, not re-run. The wheel is still a solid disc [rec: calm-quill-0693].
+
+**Trial 2 (not a confirmation)** — `orun1-t2-balancer`, accepted revision `496a506e…` at product `9eac2291`: windowed side plates, battery tray, sensor shelf, top deck, no face, all 9 purchased parts from the catalog. Static fit 210 pairs 0 failing; **swept fit `pass`**, 2 of 2 joints at ±180° (ADR-487 worked). **Mounting `reported`, 5 of 9 held — the trial fails D4**: both N20 motors are contact-only in split pockets, so both wheels are held by nothing, because the catalog had no M1.6 bolt and the gearmotor has no `.bay()`. Frozen v2 **3 of 5**, the same split as trial 1 (beat d, f, h; lost to c Love and e Like on plain disc wheels, plus "no visible drive motors" and a board that "looks stuck onto its shelf"). `pixi run test-engine` 2574 passed / 61 skipped. Published in `docs/probes/orun1/d4/t2-balancer/`, commit `75d831bb` [rec: first-eagle-0836].
+
+The M1.6 gap is now closed by ADR-488 (catalog M1.6 fasteners and a mounting check that requires a bolt to fit its hole; see brave-stone-9609) [rec: honest-ledge-9020]. Remaining named units before balancer trial 3: model the 1430 wheel's rim, hub and tyre rather than a slab [rec: first-eagle-0836] [rec: honest-ledge-9020]. Reconcile judgement: trial 1's "9 of 9 held" counted two M2 bolts in M1.6 holes; under ADR-488 it would rebuild to 7 of 9 [rec: honest-ledge-9020].
 
 ## Negative knowledge
 
-- [scope: wheeled designs using the `pololu-1430` wheel on the catalog gearmotor, as of commit dbc0c544 | confidence: high | evidence: spring-ivy-9833] No catalog wheel on its catalog gearmotor can pass a swept fit: the gearmotor's D-shaft is static while the wheel joint turns, so the sweep always finds the bore–shaft overlap (4.26 mm³ at ±180° in trial 1). Measured once with the mechanism understood; a product fix is the named next unit.
+- [scope: wheeled designs using the `pololu-1430` wheel on the catalog gearmotor, product revisions before 9eac2291 | confidence: high | evidence: spring-ivy-9833, calm-quill-0693] A D-bore wheel turning on the catalog gearmotor's static D-shaft cannot pass a swept fit (4.26 mm³ at ±180° in trial 1). Superseded from `9eac2291` by ADR-487's round bore; trial 2's sweep passed [rec: first-eagle-0836].
 
 ## Provenance
 
 - sweet-brook-2725 — orun1 operator-declared charter gap
 - spring-ivy-9833 — prompts frozen and hash-pinned; balancer trial 1 (9/9 held, static clean, sweep incomplete on catalog shaft, v2 3 of 5)
+- calm-quill-0693 — ADR-487: round wheel bore, boss clearance and ±180° limits in the overlay; real-kernel sweep regression
+- first-eagle-0836 — balancer trial 2: static and swept pass, mounting 5/9 (N20s contact-only), frozen v2 3 of 5; does not clear D4
+- honest-ledge-9020 — ADR-488 closes the M1.6 fastener gap trial 2 named; trial 1's 9/9 would rebuild to 7/9
