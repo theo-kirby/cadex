@@ -3,7 +3,8 @@
 //
 // One Ouroboros run (ADR-513): reads api/run and draws its iterations,
 // newest first, with the critic's verdict, reason and what it saw done; the
-// critic's message to the next iteration folds under each row. Polls, so a
+// critic's message to the next iteration folds under each row; above them,
+// the charter's done criteria, each folding open to its text. Polls, so a
 // live run's next iteration appears. Writes nothing.
 (function () {
   'use strict';
@@ -27,7 +28,54 @@
     return td;
   }
 
+  var lastCharter = null;
+
+  function renderCharter(charter) {
+    // Redrawn only when it changed, so a criterion the reader opened stays open.
+    var key = JSON.stringify(charter || null);
+    if (key === lastCharter) return;
+    lastCharter = key;
+    var list = document.getElementById('charter');
+    var empty = document.getElementById('charter-empty');
+    list.textContent = '';
+    charter = charter || { available: false, criteria: [], reason: 'this server reports no charter' };
+    document.getElementById('charter-count').textContent = charter.total
+      ? '· ' + charter.checked + ' of ' + charter.total + ' ticked' : '';
+    document.getElementById('charter-source').textContent = charter.available
+      ? charter.goal + ' from ' + (charter.source === 'working tree' ? 'the working tree' : charter.source)
+      : '';
+    charter.criteria.forEach(function (item) {
+      var li = document.createElement('li');
+      li.dataset.criterion = item.id || '';
+      li.dataset.checked = item.checked ? 'true' : 'false';
+      var fold = document.createElement('details');
+      var summary = document.createElement('summary');
+      summary.appendChild(badge(item.checked ? 'ticked' : 'open', item.checked ? 'ok' : 'historical'));
+      if (item.id) {
+        var id = document.createElement('strong');
+        id.className = 'criterion-id';
+        id.textContent = ' ' + item.id + ' ';
+        summary.appendChild(id);
+      }
+      var title = document.createElement('span');
+      title.className = 'criterion-title';
+      title.textContent = ' ' + item.title;
+      summary.appendChild(title);
+      var text = document.createElement('p');
+      text.className = 'small criterion-text';
+      text.style.whiteSpace = 'pre-wrap';
+      text.textContent = item.markdown;
+      fold.appendChild(summary);
+      fold.appendChild(text);
+      li.appendChild(fold);
+      list.appendChild(li);
+    });
+    empty.hidden = charter.criteria.length > 0;
+    empty.textContent = charter.reason ? 'No charter criteria: ' + charter.reason + '.' : '';
+  }
+
   function render(run) {
+    renderCharter(run.charter);
     document.title = 'Cadex run ' + run.name;
     document.getElementById('run-name').textContent = run.name + ' — run';
     var parts = [run.state, run.branch, run.iteration_count + ' iteration(s)'];

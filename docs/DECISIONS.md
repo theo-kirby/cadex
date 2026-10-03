@@ -33204,3 +33204,61 @@ a run (a decoy transcript included) answering 404, the redirect, nothing
 written into the run directory, an absent directory as an empty list, the
 `--runs`/`CADEX_RUNS` defaults, and, in headless Chromium, the index's Runs
 card leading to the run page's rows, badges, reasons and folded message.
+
+## ADR-514 — A run's page shows the charter it ran to, from the run's branch (2026-10-03, owner charter orun2 D3)
+
+**Decision.** `/r/<run>/` gains a **Charter** card above its iterations:
+the checkboxes under the `## Done criteria` heading of the run's goal file
+(`run.yml`'s `goal`, default `.ouroboros/goal.md`), each with its id
+(`S1`), title, ticked or open, and its text folded under it. `GET
+/r/<run>/api/run` carries them as `charter` (`available`, `goal`,
+`source`, `reason`, `checked`, `total`, `criteria`); the listing does not.
+The text is read **from the run's branch** with `git show
+refs/heads/<branch>:<goal>`, then `origin/<branch>`, and from the working
+tree only when the run's branch is the one checked out — the live run, whose
+actor reads that file, uncommitted owner notes included. A run with no
+reachable branch says so (`reason`) rather than showing another run's
+charter.
+
+**Why.** D3 asks each run to show "the charter criteria". `.ouroboros/goal.md`
+in the working tree is always the *current* charter: orun1's six criteria
+(F1, D1–D4, C1) live only on `ouroboros/orun1`, and reading the working-tree
+file for it would show orun2's eight. The branch is the record of what that
+run ran to, as the charter's "read-only from `.ouroboros/runs/<run>/` and
+the run branch" says.
+
+**Read-only and bounded.** Only when the runs directory is a checkout's
+`.ouroboros/runs` (its grandparent is the checkout); otherwise the card says
+it is not one. The goal path must be relative with no `..`; the branch must
+be a plain ref name (no leading `-`, no `..`), and `git` is run with an
+argument list, never a shell, with a 10 s timeout. Two `git` calls per poll
+of an open run page; the result is not cached, so a tick the owner commits
+appears on the next poll. The page redraws the card only when it changed, so
+a criterion the reader opened stays open across polls. Prose and checkboxes
+outside `## Done criteria` (a mission's example, a horizon ladder's
+"later" list) are not criteria; ot4's "Later criteria" section is excluded
+for that reason.
+
+**Rejected.** Parsing the whole goal file for checkboxes (ot4 and the
+mission prose both carry ones that are not criteria). Showing the
+working-tree goal for every run with a "may be newer" warning (it is wrong
+for every finished run). A markdown renderer for the criterion text (A2:
+it is shown as written, pre-wrapped).
+
+**Cost.** About 90 lines in `review_server.py`, 45 in `run.js`, a card in
+`run.html`, three CSS selectors. No dependency: `git` is already the
+checkout's own tool and `subprocess` the standard library's.
+
+**What would reverse it.** Ouroboros snapshotting the goal into the run
+directory: then the server reads that file instead of the branch.
+
+**Test.** `cli/tests/test_app.py`: in a git checkout fixture, `fx1`'s
+charter comes from its branch and not the later one checked out beside it
+(ticked and open criteria, a criterion wrapped across lines, one with no
+bold title, prose between items and checkboxes outside the section
+excluded); the checked-out `fx2` reads the working tree's uncommitted
+edit; a deleted branch gives `available: false` and its reason; nothing is
+written and no branch moves; a non-checkout runs directory, an escaping
+goal path and an option-shaped or `..` branch are refused with reasons;
+and, in headless Chromium, the card's count, source, badges and folding,
+with an opened criterion surviving a poll's redraw.

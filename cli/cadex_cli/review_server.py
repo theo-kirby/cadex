@@ -58,6 +58,7 @@ import secrets
 from pathlib import Path
 import shutil
 import struct
+import subprocess
 import sys
 import tempfile
 import threading
@@ -114,6 +115,10 @@ RUNS_SCHEMA = "cadex-ouroboros-runs-v1"
 RUN_SCHEMA = "cadex-ouroboros-run-v1"
 #: A run directory's name: what ``ouroboros run`` mints, and nothing a path could hide in.
 OUROBOROS_RUN_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+#: A run's branch, as ``git`` is given it: a plain ref name, never an option.
+OUROBOROS_BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
+#: One charter criterion: a checkbox at the start of a line under ``## Done criteria``.
+CHARTER_ITEM = re.compile(r"^- \[([ xX])\] ?(.*)$")
 #: Content types for the retained artifacts; anything else downloads as bytes.
 CONTENT_TYPES = {
     ".json": "application/json; charset=utf-8",
@@ -2526,10 +2531,19 @@ class OuroborosRuns:
     transcripts, logs and patches beside them never reach a page. Every read
     is fresh, so a live run's next iteration appears on the next poll; a
     line that is not a JSON object is counted, not fatal.
+
+    A run's charter is the one more read: when the directory is a checkout's
+    ``.ouroboros/runs``, ``run.yml``'s ``goal`` file is read from the run's
+    branch (``git show``, the checkout's working tree when that branch is the
+    one checked out), so a finished run shows the charter it ran to and not
+    the one that replaced it, and its ``## Done criteria`` checkboxes are
+    listed.
     """
 
     def __init__(self, root: Path | str | None) -> None:
         self.root = Path(root).expanduser().resolve() if root is not None else None
+        self.checkout = (self.root.parent.parent if self.root is not None
+                         and self.root.parent.name == ".ouroboros" else None)
 
     def _names(self) -> list[str]:
         if self.root is None or not self.root.is_dir():
@@ -2577,6 +2591,83 @@ class OuroborosRuns:
             if sep and key and not key[0].isspace() and key.strip() == key and value.strip():
                 values[key] = value.strip().strip("'\"")
         return values
+
+    def _git(self, *args: str) -> str | None:
+        assert self.checkout is not None
+        try:
+            done = subprocess.run(["git", "-C", str(self.checkout), *args], capture_output=True,
+                                  timeout=10, check=False)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return done.stdout.decode("utf-8", errors="replace") if done.returncode == 0 else None
+
+    def _goal(self, goal: str, branch: str) -> tuple[str | None, str | None, str | None]:
+        """The goal file's text as the run's branch holds it: ``(text, source, reason)``."""
+
+        if self.checkout is None:
+            return None, None, "the runs directory is not a checkout's .ouroboros/runs"
+        relative = Path(goal)
+        if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+            return None, None, f"goal {goal!r} is not a path inside the checkout"
+        if not OUROBOROS_BRANCH.match(branch) or ".." in branch:
+            return None, None, f"branch {branch!r} is not a plain ref name"
+        head = self._git("symbolic-ref", "--quiet", "--short", "HEAD")
+        if head is not None and head.strip() == branch:
+            try:
+                return (self.checkout / relative).read_text(encoding="utf-8", errors="replace"), \
+                    "working tree", None
+            except OSError:
+                return None, None, f"{goal} is missing from the working tree"
+        for ref, source in ((f"refs/heads/{branch}", branch), (f"refs/remotes/origin/{branch}", f"origin/{branch}")):
+            text = self._git("show", f"{ref}:{relative.as_posix()}")
+            if text is not None:
+                return text, source, None
+        return None, None, f"neither {branch} nor origin/{branch} holds {goal}"
+
+    @staticmethod
+    def criteria(text: str) -> list[dict[str, Any]]:
+        """The checkboxes under ``## Done criteria``: each one's id, title,
+        whether it is ticked, and its markdown as written."""
+
+        lines = text.splitlines()
+        start = next((i for i, line in enumerate(lines)
+                      if re.match(r"^##\s+done criteria\s*$", line, re.IGNORECASE)), None)
+        if start is None:
+            return []
+        items: list[dict[str, Any]] = []
+        body: list[str] = []
+        for line in lines[start + 1:]:
+            if line.startswith("## "):
+                break
+            match = CHARTER_ITEM.match(line)
+            if match:
+                body = [match.group(2)]
+                items.append({"checked": match.group(1) != " ", "lines": body})
+            elif items and (not line.strip() or line[:1].isspace()):
+                body.append(line[2:] if line.startswith("  ") else line.strip())
+            elif items:
+                body = []  # prose between the checkboxes belongs to none of them
+        out: list[dict[str, Any]] = []
+        for item in items:
+            markdown = "\n".join(item["lines"]).strip()
+            flat = " ".join(markdown.split())
+            bold = re.match(r"^\*\*(.+?)\*\*", flat)
+            title = bold.group(1).strip() if bold else flat.split(". ")[0]
+            ident = re.match(r"^([A-Z]+[0-9]+[a-z]?)\.\s+", title)
+            out.append({"id": ident.group(1) if ident else None,
+                        "title": title[ident.end():] if ident else title,
+                        "checked": item["checked"], "markdown": markdown})
+        return out
+
+    def _charter(self, config: Mapping[str, str], branch: str) -> dict[str, Any]:
+        goal = config.get("goal") or ".ouroboros/goal.md"
+        text, source, reason = self._goal(goal, branch)
+        criteria = self.criteria(text) if text is not None else []
+        if text is not None and not criteria:
+            reason = f"{goal} has no checkboxes under '## Done criteria'"
+        return {"available": text is not None, "goal": goal, "source": source, "reason": reason,
+                "checked": sum(1 for item in criteria if item["checked"]), "total": len(criteria),
+                "criteria": criteria}
 
     def _read(self, name: str) -> dict[str, Any] | None:
         if name not in self._names():
@@ -2655,7 +2746,11 @@ class OuroborosRuns:
 
     def run(self, name: str) -> dict[str, Any] | None:
         run = self._read(name)
-        return None if run is None else {"schema": RUN_SCHEMA, **run, "served_at": _now()}
+        if run is None:
+            return None
+        assert self.root is not None
+        charter = self._charter(self._config(self.root / name / "run.yml"), run["branch"])
+        return {"schema": RUN_SCHEMA, **run, "charter": charter, "served_at": _now()}
 
 
 class ProjectsServer(ThreadingHTTPServer):

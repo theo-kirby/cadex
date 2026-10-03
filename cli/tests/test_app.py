@@ -291,9 +291,115 @@ def test_the_runs_directory_defaults(monkeypatch, tmp_path) -> None:
     assert cli.runs_directory(parse(["app", "--runs", str(tmp_path / "flag")])) == tmp_path / "flag"
 
 
+FX1_CHARTER = """# Goal: fixture
+
+## Mission
+
+Prose with a checkbox that is not a criterion:
+- [ ] not a criterion
+
+## Done criteria
+
+Each criterion needs a record.
+
+- [x] **S1. The shell is gone.**
+  - `git ls-files shell` is 0.
+- [ ] **D3. Runs are first-class
+  in the dashboard.** The charter shows here.
+  - Read-only.
+
+A paragraph between criteria belongs to neither.
+
+- [ ] A criterion with no bold title. It still counts.
+
+## Horizon ladder
+
+- [ ] not a criterion either
+"""
+
+
+def _git(checkout: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(checkout), "-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid",
+                    "-c", "commit.gpgsign=false", *args], check=True, capture_output=True)
+
+
+def _checkout_with_runs(tmp_path: Path) -> Path:
+    """A git checkout whose ``.ouroboros/runs`` holds the fixture runs:
+    ``fx1``'s branch carries :data:`FX1_CHARTER`, ``fx2``'s branch is the one
+    checked out with its goal edited in the working tree, and ``main``'s goal
+    is a later charter neither run ran to."""
+
+    import shutil
+
+    checkout = tmp_path / "checkout"
+    runs = checkout / ".ouroboros" / "runs"
+    (tmp_path / "runs-source").mkdir()
+    shutil.copytree(_runs(tmp_path / "runs-source"), runs)
+    goal = checkout / ".ouroboros" / "goal.md"
+    _git(tmp_path, "init", "--quiet", "--initial-branch=main", str(checkout))
+    goal.write_text("# Goal: later\n\n## Done criteria\n\n- [ ] **Z9. A later run's criterion.**\n")
+    _git(checkout, "add", ".ouroboros/goal.md")
+    _git(checkout, "commit", "--quiet", "-m", "later charter")
+    _git(checkout, "checkout", "--quiet", "-b", "ouroboros/fx1")
+    goal.write_text(FX1_CHARTER)
+    _git(checkout, "commit", "--quiet", "-am", "fx1 charter")
+    _git(checkout, "checkout", "--quiet", "main")
+    _git(checkout, "checkout", "--quiet", "-b", "ouroboros/fx2")
+    goal.write_text("# Goal: fx2\n\n## Done criteria\n\n- [ ] **A1. Edited, not committed.**\n")
+    return runs
+
+
+def test_a_run_shows_the_charter_criteria_its_branch_holds(tmp_path) -> None:
+    runs = _checkout_with_runs(tmp_path)
+    server, _thread = serve_projects(_projects(tmp_path), "127.0.0.1", 0, runs_root=runs)
+    try:
+        charter = _json(server.url + "r/fx1/api/run")["charter"]
+        # From fx1's branch, not the later charter checked out beside it.
+        assert charter["available"] is True and charter["source"] == "ouroboros/fx1"
+        assert charter["goal"] == ".ouroboros/goal.md" and charter["reason"] is None
+        assert (charter["checked"], charter["total"]) == (1, 3)
+        s1, d3, bare = charter["criteria"]
+        assert s1 == {"id": "S1", "title": "The shell is gone.", "checked": True,
+                      "markdown": "**S1. The shell is gone.**\n- `git ls-files shell` is 0."}
+        assert d3["id"] == "D3" and d3["title"] == "Runs are first-class in the dashboard." and not d3["checked"]
+        assert d3["markdown"].endswith("- Read-only.") and "neither" not in d3["markdown"]
+        assert bare["id"] is None and bare["title"] == "A criterion with no bold title"
+        # The checked-out run's charter is the working tree's, uncommitted edits and all.
+        fx2 = _json(server.url + "r/fx2/api/run")["charter"]
+        assert fx2["source"] == "working tree" and [c["title"] for c in fx2["criteria"]] == ["Edited, not committed."]
+        # A run whose branch is gone says so instead of showing another run's charter.
+        _git(runs.parent.parent, "branch", "-D", "ouroboros/fx1")
+        gone = _json(server.url + "r/fx1/api/run")["charter"]
+        assert gone["available"] is False and gone["criteria"] == []
+        assert gone["reason"] == "neither ouroboros/fx1 nor origin/ouroboros/fx1 holds .ouroboros/goal.md"
+        # The listing stays the light one.
+        assert "charter" not in _json(server.url + "api/runs")["runs"][0]
+        # Reading the charter wrote nothing and moved no branch.
+        assert subprocess.run(["git", "-C", str(runs.parent.parent), "status", "--porcelain"], capture_output=True,
+                              text=True, check=True).stdout.split() == ["M", ".ouroboros/goal.md", "??", ".ouroboros/runs/"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_charter_outside_a_checkout_or_the_checkout_is_refused(app_with_runs, tmp_path) -> None:
+    from cadex_cli.review_server import OuroborosRuns
+
+    _runs_dir, server = app_with_runs
+    charter = _json(server.url + "r/fx1/api/run")["charter"]
+    assert charter["available"] is False and charter["reason"] == (
+        "the runs directory is not a checkout's .ouroboros/runs")
+    runs = OuroborosRuns(_checkout_with_runs(tmp_path))
+    for goal, branch, reason in (("../secret.md", "ouroboros/fx1", "goal '../secret.md' is not a path inside the checkout"),
+                                 ("/etc/passwd", "ouroboros/fx1", "goal '/etc/passwd' is not a path inside the checkout"),
+                                 (".ouroboros/goal.md", "--output=x", "branch '--output=x' is not a plain ref name"),
+                                 (".ouroboros/goal.md", "a/../b", "branch 'a/../b' is not a plain ref name")):
+        assert runs._charter({"goal": goal}, branch)["reason"] == reason
+
+
 @needs_browser
 def test_browser_goes_from_the_index_to_a_runs_iterations_and_verdicts(tmp_path, browser) -> None:
-    projects, runs = _projects(tmp_path), _runs(tmp_path)
+    projects, runs = _projects(tmp_path), _checkout_with_runs(tmp_path)
     server, _thread = serve_projects(projects, "127.0.0.1", 0, runs_root=runs)
     try:
         page = browser.page(server.url)
@@ -318,6 +424,24 @@ def test_browser_goes_from_the_index_to_a_runs_iterations_and_verdicts(tmp_path,
         assert "housekeeping" in run.text("#iterations tr[data-iteration='1']")
         assert run.evaluate("[...document.querySelectorAll('#run-tally .badge')].map(b => b.textContent)") == [
             "1 continue", "1 reject"]
+        # The charter's criteria, from the run's branch, each folding open to its text.
+        run.wait_for("document.querySelectorAll('#charter li').length === 3")
+        assert run.text("#charter-count") == "· 1 of 3 ticked"
+        assert run.text("#charter-source") == ".ouroboros/goal.md from ouroboros/fx1"
+        assert run.evaluate("[...document.querySelectorAll('#charter li')].map(l => l.dataset.criterion + ':' + l.dataset.checked)") == [
+            "S1:true", "D3:false", ":false"]
+        assert run.attribute("#charter li[data-criterion='S1'] .badge", "data-tone") == "ok"
+        assert "Runs are first-class in the dashboard." in run.text("#charter li[data-criterion='D3'] summary")
+        assert run.evaluate("document.querySelector(\"#charter li[data-criterion='D3'] details\").open") is False
+        run.evaluate("document.querySelector(\"#charter li[data-criterion='D3'] summary\").click()")
+        assert "Read-only." in run.text("#charter li[data-criterion='D3'] .criterion-text")
+        # A poll does not fold back a criterion the reader opened.
+        run.evaluate("window.probe = document.querySelector(\"#charter li[data-criterion='D3'] details\");"
+                     "document.querySelector('#iterations tr').dataset.probe = '1'; true")
+        run.wait_for("!document.querySelector('#iterations tr[data-probe]')", timeout=20)  # a poll redrew
+        assert run.evaluate("document.querySelector(\"#charter li[data-criterion='D3'] details\") === window.probe") is True
+        assert run.evaluate("document.querySelector(\"#charter li[data-criterion='D3'] details\").open") is True
+        assert run.evaluate("document.getElementById('charter-empty').hidden") is True
     finally:
         server.shutdown()
         server.server_close()

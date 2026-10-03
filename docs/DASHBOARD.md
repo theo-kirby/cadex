@@ -37,16 +37,17 @@ The page answers one question for one person: **what is the state of this
 project's design and training right now, and what did the runs before it look
 like?** The reader is the operator of an unattended loop, on a desk browser
 between iterations or on a phone away from the desk. They watch, and step in
-only lightly; they never model by hand (VISION's non-goals). Today every
-control on the page is a *view* control (select a run, orbit the model, play
-a video, open a document): the server answers `GET` and `HEAD` only. It is served for one project
+only lightly; they never model by hand (VISION's non-goals). Every
+control the page started with was a *view* control (select a run, orbit the
+model, play a video, open a document), answered by `GET` and `HEAD`; the
+steering controls D2 added write with `POST` behind a per-launch token and a
+same-origin check (§18), on a server bound to 127.0.0.1 (§22). It is served for one project
 (`cadex review`, at `/`) or for a directory of them (`cadex app` and a bare
 `cadex`, ADR-502): an index of the projects at `/`, sharing this page's
-tokens, and each project's page under `/p/<name>/`. The
-steering controls the orun2 charter's D2 adds — a prompt, a slider, a
-comment, accept and restore — will each write through the CLI's own code
-path, and in every case the page holds no project state of its own: it polls
-the server and redraws.
+tokens, and each project's page under `/p/<name>/`. Each
+steering control — a prompt, a slider, a comment, accept and restore —
+writes through the CLI's own code path, and the page holds no project state
+of its own: it polls the server and redraws.
 
 Three consequences shape everything below:
 
@@ -1093,6 +1094,18 @@ every request, and serves nothing else from the directory: transcripts,
 logs and patches never reach a page. A run is a directory whose name is a
 plain token holding `iterations.jsonl` or `status.json`. There is no write
 route under `/r/`.
+
+Above the iterations, the **Charter** card (ADR-514) lists the run's done
+criteria: the checkboxes under `## Done criteria` in `run.yml`'s `goal`
+file, as the **run's branch** holds it (`git show`, then `origin/<branch>`;
+the working tree only for the branch checked out, which is the live run).
+Its heading counts them (`· 1 of 3 ticked`), a muted line names the file and
+where it came from, and each row is a `<details>`: an `ok` **ticked** or a
+muted **open** badge, the id in bold, the title, and the criterion's text
+pre-wrapped as written when opened. The card redraws only when the charter
+changed, so an opened criterion stays open across polls. Outside a
+checkout's `.ouroboros/runs`, or with the branch gone, the card shows its
+reason instead of another run's charter.
 
 ## Operator run status (ADR-387)
 
