@@ -56,12 +56,10 @@ with no model in the loop at all. It is peer to the shell, not part of it,
 and shares no code with it.
 
 There is no Qt shell, no provider stack, and no API-key model loop — the AI
-runs as an agent CLI the user is already logged into: the Claude Code CLI
-(the default, and the only one `cli/` drives), the OpenAI Codex CLI
-(ADR-174), or pi (ADR-175), as a shell preference. All three drive the same
-Mesh tools over the same TCP bridge — Claude and Codex through an MCP shim,
-pi through a native extension, so MCP is a transport rather than the
-architecture — and none brings an API key or a model loop of ours.
+runs as the Claude Code CLI the user is already logged into, which drives the
+Mesh tools over an MCP stdio shim and brings no API key or model loop of
+ours. **Claude Code is the only harness** (ADR-497): the Codex and pi
+backends (ADR-174, ADR-175) went with the shell.
 `pixi run build-engine` produces `FreeCADCmd` and `CadexGeometryWorker` and
 no application; since ADR-495 no pixi task builds the shell either.
 

@@ -191,12 +191,10 @@ returning it.
   and a cheap loop then sweeps it under an external simulator with no model
   in the loop at all. Interactive design and batch design are different
   jobs, and one program that did both would serve neither.
-- **A second provider stack.** The shell delegates the model loop and
-  authentication to the user's installed agent CLI: Claude Code, Codex, or pi
-  (ADR-174/175). Cadex has no API-key entry or provider SDK stack. Its harness
-  and model selectors expose those CLIs' own account state and model catalogs;
-  sign-in runs through the chosen CLI (ADR-184). The headless `cli/` client
-  remains Claude-only.
+- **A second provider stack.** Cadex delegates the model loop and
+  authentication to the user's installed Claude Code CLI, the only harness
+  (ADR-497; the shell's Codex and pi backends, ADR-174/175, are retired).
+  Cadex has no API-key entry, provider SDK stack or harness selector.
 
   The shell and the headless CLI each orchestrate their own turns (ADR-061).
   Neither states the xscript API: both ask the engine through `describe_api`,

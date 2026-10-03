@@ -161,6 +161,31 @@ def test_no_cli_module_reaches_into_the_shell_tree() -> None:
     assert reaching == [], reaching
 
 
+def test_claude_code_is_the_only_harness() -> None:
+    """ADR-497 (charter A4): the Codex and pi backends went with the shell.
+    No CLI module names either harness, and the agent contract says Claude
+    Code is the only one rather than offering the other two as a preference."""
+
+    root = Path(__file__).resolve().parents[2]
+    package = root / "cli" / "cadex_cli"
+    naming = []
+    for source in sorted(package.rglob("*")):
+        if source.suffix not in {".py", ".js", ".html"}:
+            continue
+        text = source.read_text(encoding="utf-8")
+        if re.search(r"\bcodex\b|\bpi_tools\b|\bPiBackend\b|registerTool", text, re.IGNORECASE):
+            naming.append(source.name)
+    assert naming == [], naming
+
+    agents = " ".join((root / "AGENTS.md").read_text(encoding="utf-8").split())
+    vision = " ".join((root / "docs" / "VISION.md").read_text(encoding="utf-8").split())
+    assert "**Claude Code is the only harness** (ADR-497)" in agents
+    assert "the only harness (ADR-497" in vision
+    for text in (agents, vision):
+        assert "OpenAI Codex CLI" not in text
+        assert "Claude Code, Codex, or pi" not in text
+
+
 def test_a_train_row_names_the_mode_it_ran_in() -> None:
     """`PROGRESS.md`'s What column says `(remote)` for a run on the box and
     nothing extra for the venv, so the rows the scaffold promises are

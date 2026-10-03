@@ -64,14 +64,13 @@ roadmap item. Add freely, prune ruthlessly.
   Re-measured and ordered, with the iterate step and the project-as-codebase
   gaps beside them, in `docs/MUJOCO.md` §7c (2026-09-06).
 
-- **A bridge CLI as a third tool transport, for bash-first agents.** The
-  Mesh tool seam is the TCP bridge, and it now has two transports: MCP
-  (`mcp_shim.py`) and a native pi extension (`pi_tools.js`, ADR-175). The
-  owner's instinct behind ADR-175 goes one step further: a tiny
+- **A bridge CLI as a second tool transport, for bash-first agents.** The
+  Mesh tool seam is the TCP bridge, and its one transport is MCP. (A native
+  pi extension was a second until ADR-497 retired pi with the shell.) A tiny
   `mesh-tool` CLI (stdlib-only, like the shim — `mesh-tool list`,
   `mesh-tool call write_script --json '…'`) would let *any* agent with a
   shell drive the product with no protocol integration at all, README
-  style, which is pi's own philosophy for tools. It would also be the
+  style. It would also be the
   cheapest possible harness for scripting the bridge in tests. Costs a
   hard look at authentication (the token would have to reach the shell)
   and at losing per-tool argv validation.

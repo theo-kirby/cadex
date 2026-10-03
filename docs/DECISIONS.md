@@ -32202,3 +32202,57 @@ file list changed.
 organic path is the `part`/`mesh` surface of `docs/ORGANIC.md`. Reversing
 this means reviving the runner from `v1-blender-shell` and naming a Blender
 runtime the product installs on its own, without a shell.
+
+## ADR-497 — Claude Code is the only harness: Codex and pi are retired (2026-10-03)
+
+**Status:** accepted. orun2 S1, charter A4. Supersedes ADR-174 and ADR-175,
+and ADR-184's harness and account selectors. [Cadex-new]
+
+**Why.** The Codex and pi backends were a shell preference (ADR-174,
+ADR-175). The headless CLI never drove either, and it is now the only agent
+front end. Keeping a second and third harness alive means keeping their event
+translators, their sandboxing rules and their sign-in flows tested against a
+UI that no longer exists. The owner runs Claude Code. The charter's
+assumption A4 makes it the only harness.
+
+**What is removed now, outside `shell/`.**
+- `AGENTS.md` no longer offers Codex and pi as a preference. It says Claude
+  Code is the only harness.
+- `docs/VISION.md`'s "second provider stack" non-goal names Claude Code
+  alone and drops the harness selector.
+- `docs/IDEAS.md`'s bridge-CLI idea no longer counts a pi extension as a
+  live transport.
+- `docs/SHELL-PARITY.md`: the `backend.py` (Codex and pi half), `harness.py`
+  and `pi_tools.js` rows, and the sandboxing note, move from *drop (proposed)*
+  to *dropped*, citing this ADR.
+- `package/rattler-build/scripts/validate_cadex_macos_runtime.py` is deleted.
+  Nothing called it. Its checks imported `CadexProvider` and `CadexCodex`,
+  the VibeCAD-era provider and Codex app-server modules that ADR-021
+  deleted, so every check that reached for a harness could only fail.
+- `cli/tests/test_project_docs.py` gains
+  `test_claude_code_is_the_only_harness`. No CLI module may name `codex`,
+  `pi_tools`, `PiBackend` or `registerTool`, and AGENTS.md and VISION must
+  state the one harness. It fails on the previous AGENTS.md.
+
+**What goes with the delete commit.** The backend code itself
+(`mesh_agent/backend.py`'s `CodexBackend` and `PiBackend`, `harness.py`,
+`pi_tools.js`, the Codex half of `mcp_shim.py`'s launch, the harness rows of
+`prefs.py`) and its shell suites. They are under `shell/`, which is already
+disabled (ADR-495), so nothing builds or runs them in the meantime.
+
+**Left for R1.** `docs/ROADMAP.md` still ticks "harness/account settings …
+for Claude Code, Codex, and pi" under Phase 6. ROADMAP is not hand-edited
+in a work unit. The R1 rewrite marks Phase 6 historical.
+`docs/BLENDER.md` still describes the three backends. It moves to
+`docs/history/` under R1, where it is a true account of the old shell.
+
+**Engine and CLI.** No change was needed. Neither ever had a harness
+switch: `cli/cadex_cli/agent.py` finds and launches `claude` only, and the
+engine guidance (`CadexAgentGuidance.md`, `agent.system_prompt`) names no
+harness.
+
+**What it costs.** A user without a Claude Code subscription cannot drive
+Cadex with another agent CLI. Reversing this means writing a backend in
+`cli/` from scratch. The shell's code is GPL and cannot be copied into
+`cli/`, but `v1-blender-shell` records how ADR-174 and ADR-175 translated
+each stream into Claude-shaped frames.

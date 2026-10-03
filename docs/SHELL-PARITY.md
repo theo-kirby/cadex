@@ -45,7 +45,7 @@ Owner's defaults (charter A1):
 |---|---|---|---|---|
 | `__init__.py` | 281 | Registered the package, its save/load/frame-change handlers, keymaps and teardown order | drop (proposed) | Blender registration. Nothing to port |
 | `agent.py` | 819 | The chat turn inside Blender: tool pump on the main thread, one undo step per turn, cancel, provider/model switch, per-turn time/tokens/cost, a warning when the model writes a tool call as text | to port (D2.1, A1) | The turn is `cli/cadex_cli/agent.py` `ClaudeTurn` + `loop.py`. Still missing: a streamed transcript, image attachments, per-turn cost and the text-tool-call warning. Undo becomes revision restore (D2.4) |
-| `backend.py` | 779 | One subprocess per turn for Claude Code, Codex or pi, normalising their event streams. Built-in tools off | drop (proposed): Codex and pi (charter A4); already covered: Claude | `cli/cadex_cli/agent.py` `find_claude`, `ClaudeTurn._command`. **Open A1 check:** the shell set `ENABLE_TOOL_SEARCH=false` (ADR-163) so that MCP tools are not deferred out of reach when built-ins are off. The CLI's `_environment` sets only the output cap. It is unconfirmed whether the CLI turn is affected. A1 must decide this and record it |
+| `backend.py` | 779 | One subprocess per turn for Claude Code, Codex or pi, normalising their event streams. Built-in tools off | dropped: Codex and pi (charter A4, ADR-497); already covered: Claude | `cli/cadex_cli/agent.py` `find_claude`, `ClaudeTurn._command`. **Open A1 check:** the shell set `ENABLE_TOOL_SEARCH=false` (ADR-163) so that MCP tools are not deferred out of reach when built-ins are off. The CLI's `_environment` sets only the output cap. It is unconfirmed whether the CLI turn is affected. A1 must decide this and record it |
 | `bridge.py` | 115 | Token-guarded localhost TCP bridge that queued tool calls onto Blender's main thread | already covered | `cli/cadex_cli/bridge.py` `Bridge` |
 | `cadex_animate.py` | 460 | Baked a simulation or rollout trace into Blender F-curves, plus per-frame actuator commands | to port (D2.5) as browser playback; the baking itself drop (proposed) | Baking is on the drop list. Playback is on the port list: `review_scene.js` `setPoses` shows only the first pose today. Re-derive the frame rules: time-based frames, xyzw→wxyz, quaternion sign continuity, zero-order-hold commands |
 | `cadex_backend.py` | 3,262 | Shell↔engine glue: session per project, revision guard, off-main-thread modelling, slider drag preview, restore lockout and re-accept, apply-sliders-as-defaults, Save-As asset carry, link/refresh parts, blueprint store, printable export, pins, live mode | to port (D2.2, D2.4, D2.6); already covered (rest) | Covered: `cli/cadex_cli/session.py`, `bridge.py`, `client.py` `open_project`, `export.py`, and the `link` / `asset` / `script` / `params` subcommands. To port: sliders with rebuild (D2.2), and restore / re-accept (D2.4). Drop (proposed): drag preview (`params` rebuilds per set), apply-as-defaults (`script --set`), and Save-As carry (no `.blend`). Pins → pick-to-comment (D2.3). Live mode → see `cadex_live.py` |
@@ -73,7 +73,7 @@ Owner's defaults (charter A1):
 | `cadex_views.py` | 195 | Ordering registry for viewport overlays | drop (proposed) | Blender-specific plumbing |
 | `cadex_wire_path.py` | 462 | Edit a cable route as a curve, then send its waypoints to the agent | drop (proposed) | Wiring editor (drop list). The engine keeps `CadexRouting.route_path` |
 | `capture.py` | 915 | Viewport screenshot, four fitted views, image loading for attachments, blueprint sheet rendering | to port (D2.1) image attach; already covered: looking | Agent looking is `CadexStudio.look` (the bridge's `look`). Attaching an image to a prompt has no headless path yet |
-| `harness.py` | 256 | Account and model discovery per harness; sign-in | drop (proposed) | Charter A4: Claude Code is the only harness. The CLI takes `--model` / `CADEX_MODEL` |
+| `harness.py` | 256 | Account and model discovery per harness; sign-in | dropped | Charter A4, ADR-497: Claude Code is the only harness. The CLI takes `--model` / `CADEX_MODEL` |
 | `history.py` | 116 | Transcript and session id stored in a `.blend` text block | drop (proposed); the transcript itself to port (D2.1) | On the drop list (Blender-side transcript store). The session id is already in `session.py` `agent.json`. The dashboard needs a transcript from the project directory |
 | `mcp_shim.py` | 139 | MCP stdio server forwarding to the bridge | already covered | `cli/cadex_cli/mcp.py` |
 | `mock_backend.py` | 112 | Scripted fake backend for the shell suites | drop (proposed) | Test harness for deleted code |
@@ -87,7 +87,7 @@ Owner's defaults (charter A1):
 | `ui.py` | 1,593 | Panels and operators for Chat, Params, Env, Policy and Training | to port (D2.1–D2.5); already covered (training panel); drop (proposed) (cage/terminal/wire buttons, chrome) | Transcript, image attach, sliders, rebuild/re-accept, the section/explode/collision toggles, sim playback, actuator bars |
 | `wiring.py` | 1,135 | Wiring node tree, Apply to nets/boards | drop (proposed) | Wiring editor (drop list). The engine keeps `CadexNets` and `CadexBoards` |
 | `wiring_ui.py` | 482 | Wiring editor header, panels and operators | drop (proposed) | Wiring editor (drop list) |
-| `pi_tools.js` | 91 | pi extension registering the bridge tools | drop (proposed) | Charter A4 |
+| `pi_tools.js` | 91 | pi extension registering the bridge tools | dropped | Charter A4, ADR-497 |
 | `landing_logo.png` | LFS | Landing-page logo | drop (proposed) | Goes with `cadex_landing.py` |
 | `demo/` (`biped.blend`, `card.png`, `biped.cadex/`) | — | The landing page's demo project (MG90S biped: script, history, one `.cxpolicy`) | drop (proposed), **owner to confirm** | The `.blend` and card go with the landing page. The `biped.cadex` project could be kept as a sample fixture, but a policy binary may not be committed outside it (charter) |
 
@@ -162,6 +162,6 @@ overlay, and are absent from both `cli/cadex_cli/agent.py` `CLI_OVERLAY` and
 
 Tool-gating rules that do not carry over:
 - the undo step per turn (replaced by revisions);
-- Codex and pi sandboxing (A4);
+- Codex and pi sandboxing (A4, ADR-497);
 - held-back slider drags while a turn runs. The dashboard's write paths
   must serialise against a running turn (charter A3) — D2 must keep this.
