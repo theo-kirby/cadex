@@ -118,8 +118,13 @@ def write_clearance(
         )
         return _cell(f"{row[side]} ({row.get(side + '_label', row[side])}; {identity})")
 
+    allowances = FIT_REPORT.thread_allowances(value)
     for row in value["pairs"]:
         row["status"] = pair_status(row, minimum, maximum_volume)
+        if row["status"] == "intersection" and FIT_REPORT._threaded(
+                row, allowances, row.get("common_volume_mm3")):
+            # A bolt's thread in a printed part, no deeper than it reaches (ADR-492).
+            row["status"] = "threaded"
         distance = row.get("distance_mm")
         volume = row.get("common_volume_mm3")
         intent = row.get("intent") or {}

@@ -2980,6 +2980,24 @@ bolt no larger than itself. A bolt that does not fit is listed in the part's
 A row with no size fact, from a revision accepted before ADR-488, is judged
 by its axis alone until it is rebuilt.
 
+A bolt that fits counts only if its shank threads into something (ADR-492):
+a printed part it shares at least 0.1 mm³ with (its tap-drill hole), or —
+clamping the printed part under its head — the held part's own tapped hole
+(a hole with `thread_dia_mm`, modelled as an open bore, so reaching it is
+enough), the held part itself, a nut or a heat-set insert it shares that
+volume with. A head resting within 0.5 mm of a printed part while the
+shank hangs in a cavity is listed in the part's `unthreaded` and holds
+nothing. `thresholds.thread_engagement_mm3` publishes the volume.
+
+The static fit allows that thread (ADR-492). A pair of a `lib.bolt` and a
+printed part whose common volume is no more than the ring the thread can
+cut, `π/4 (d² − minor²) L` from the bolt's part number and the ISO minor
+diameter, is counted `clear` and in `fit.threaded_count`, not as an
+intersection; more than that (a bolt through solid, or a pilot finer than
+the minor diameter) still fails. The sweep keeps the allowance only for a
+pair already threaded at the solved pose, and `cadex clearance` writes such
+a row as `threaded`.
+
 
 ### Published joint sweeps (ADR-350, ADR-351, 2026-09-14)
 

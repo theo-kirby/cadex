@@ -124,6 +124,92 @@ def _n20(bolt_size, bolt_dia):
     return {"components": rows, "pairs": pairs}
 
 
+def _board_with_one_bolt(*bite, tapped=False):
+    """A board with one bolt on its hole axis, head on the plate (ADR-492)."""
+    value = {"components": [
+        _row("plate"),
+        _row("board", "board", "b", axes=[((2.0, 2.0, 0.0), (0, 0, 1))]),
+        _row("bolt0", "bolt", "m2.5x6-socket", axes=[((2.0, 2.0, 1.6), (0, 0, 1))]),
+        _row("nut0", "nut", "m2.5-hex"),
+    ], "pairs": [
+        _pair("plate", "board", 0.0), _pair("bolt0", "board", 0.0),
+        _pair("bolt0", "plate", 0.0), _pair("bolt0", "nut0", 0.0),
+        _pair("nut0", "plate", 0.0),
+    ]}
+    for pair in value["pairs"]:
+        if pair["first"] == "bolt0" and pair["second"] in bite:
+            pair["common_volume_mm3"] = 1.5
+    if tapped:
+        value["components"][1]["mount_axes"][0]["thread_dia_mm"] = 2.5
+    return _by_component(mounting_summary(value))["board"]
+
+
+def test_a_bolt_holds_only_if_its_shank_threads_into_something():
+    # ADR-491's no-ledge servo: the head sat within 0.5 mm of the printed
+    # pocket while the shank hung in the bay's lead room, and it counted.
+    loose = _board_with_one_bolt()
+    assert loose["status"] == "contact only"
+    assert loose["unthreaded"] == ["bolt0"]
+    assert "threads into nothing" in loose["detail"]
+    # A printed thread, the part's own tapped hole, or a nut each hold it.
+    for bite in ("plate", "board", "nut0"):
+        held = _board_with_one_bolt(bite)
+        assert (held["status"], held["by"], held["holders"]) == (
+            "held", "screws", ["plate"]), bite
+        assert "unthreaded" not in held
+    # A tapped hole is modelled as an open bore: reaching it is its thread.
+    tapped = _board_with_one_bolt(tapped=True)
+    assert (tapped["status"], tapped["by"]) == ("held", "screws")
+
+
+def _bolt_in_a_plate(volume, *, sweep_volume=None, moving=False):
+    """An M2x6 bolt sharing ``volume`` with a printed plate (ADR-492)."""
+    value = {"available": True, "components": [
+        _row("plate"), _row("arm"),
+        _row("bolt0", "bolt", "m2x6-socket", axes=[((0.0, 0.0, 0.0), (0, 0, 1))]),
+    ], "pairs": [
+        _pair("bolt0", "plate", 0.0, volume), _pair("arm", "plate", 5.0),
+        _pair("arm", "bolt0", 3.0),
+    ]}
+    if sweep_volume is not None:
+        first = "arm" if moving else "plate"
+        value["clearance_sweep"] = {"status": "complete", "joints": [{
+            "joint": "hinge", "status": "complete", "unit": "degrees", "pairs": [{
+                "first": first, "second": "bolt0", "minimum_distance_mm": 0.0,
+                "maximum_common_volume_mm3": sweep_volume, "relative_motion": moving}]}]}
+    return fit_summary(value)
+
+
+def test_a_bolts_thread_in_a_printed_part_is_engagement_not_an_intersection():
+    # An M2x6 in a 1.6 mm tap drill shares pi/4 (4 - 2.56) 6 = 6.79 mm^3;
+    # its thread may reach the 1.567 mm minor diameter, 7.28 mm^3.
+    ring = math.pi / 4.0 * (2.0 ** 2 - 1.567 ** 2) * 6.0
+    fit = _bolt_in_a_plate(math.pi / 4.0 * (4.0 - 1.6 ** 2) * 6.0)
+    assert fit["verdict"] == "pass" and fit["threaded_count"] == 1, fit
+    assert _bolt_in_a_plate(ring)["verdict"] == "pass"
+    # Through solid, or a pilot finer than the minor diameter, is a collision.
+    solid = _bolt_in_a_plate(math.pi / 4.0 * 4.0 * 6.0)
+    assert solid["verdict"] == "fail" and solid["threaded_count"] == 0
+    assert solid["failing"][0]["status"] == "intersection"
+    assert _bolt_in_a_plate(ring * 1.01)["verdict"] == "fail"
+
+
+def test_a_threaded_bolt_keeps_its_allowance_only_in_its_own_part_through_motion():
+    held = _bolt_in_a_plate(6.0, sweep_volume=6.0)
+    assert held["sweep"]["failing"] == [], held["sweep"]
+    # A link swinging into the bolt is a collision whatever the volume.
+    swung = _bolt_in_a_plate(6.0, sweep_volume=1.0, moving=True)
+    assert [row["status"] for row in swung["sweep"]["failing"]] == ["intersection"]
+
+
+def test_the_thread_depths_are_the_catalogs():
+    import CadexCatalog
+
+    assert CadexFitReport.THREAD_MINOR_DIAMETER_MM == {
+        row["nominal_dia_mm"]: row["minor_dia_mm"]
+        for row in CadexCatalog.METRIC_THREADS.values()}
+
+
 def test_a_bolt_must_match_a_tapped_holes_thread_to_hold():
     # Trial 1 of orun1's balancer counted M2 bolts in the N20's M1.6 face
     # holes as screws (ADR-488): on the axis, but the wrong thread.
@@ -608,8 +694,13 @@ def _servo_block_bites(tmp_path, ledge):
         value = _read_all(client, {"scope": "clearance", "target": ""}, "")
     finally:
         _stop(client)
-    servo = next(row for row in fit_view(fit_summary(value))["mounting"]["held"]
+    fit = fit_summary(value)
+    servo = next(row for row in fit_view(fit)["mounting"]["held"]
                  if row["part"] == "servo/mg90s")
+    # ADR-492: a bolt's thread in its tap drill is engagement, never an
+    # intersection, so no bolt/block pair fails the static fit.
+    assert not [row for row in fit["failing"] if row["status"] == "intersection"
+                and "component_0" in (row["first"], row["second"])], fit["failing"]
     bites = {}
     for pair in value["pairs"]:
         names = {pair["first"], pair["second"]}
@@ -621,11 +712,16 @@ def _servo_block_bites(tmp_path, ledge):
 
 @_NEEDS_KERNEL
 def test_a_ledged_servo_bay_gives_the_lead_side_screw_its_thread_on_the_real_kernel(tmp_path):
-    """ADR-491. The mounting check credits both bolts either way (the lead-side
-    head comes within 0.5 mm of the tab pocket's end wall), so the bite is the
-    measurement: without a ledge the lead-side shank hangs in the lead room."""
+    """ADR-491, ADR-492. Without a ledge the lead-side shank hangs in the lead
+    room: its head comes within 0.5 mm of the tab pocket's end wall, which
+    once counted it, but it threads nothing and so holds nothing."""
     servo, (lead, free) = _servo_block_bites(tmp_path / "ledged", 4)
     assert servo["by"] == "screws" and servo["detail"].startswith("2 of 2"), servo
+    assert "unthreaded" not in servo
     assert lead > 0.5 and free > 0.5 and lead == pytest.approx(free, rel=0.05)
-    _servo, (lead, free) = _servo_block_bites(tmp_path / "plain", 0)
+    servo, (lead, free) = _servo_block_bites(tmp_path / "plain", 0)
     assert free > 0.5 and lead < 0.01
+    # ADR-492: the lead-side head still comes within 0.5 mm of the pocket,
+    # but a shank in the lead room threads nothing, so one hole holds.
+    assert servo["by"] == "screws" and servo["detail"].startswith("1 of 2"), servo
+    assert servo["unthreaded"] == ["component_2"]

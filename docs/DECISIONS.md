@@ -31926,3 +31926,71 @@ is left for its own unit.
 **Consequences.** No protocol or response-shape change, and no accepted
 recipe moves. New designs get the ledge only if they pass it. The overlay
 tells them to.
+
+## ADR-492 — A bolt holds only by its thread, and the fit allows the thread (2026-10-03)
+
+**Status:** accepted. orun1 D3. [Cadex-new]
+
+**The defect.** ADR-491 found that the mounting check credited a bolt that
+bites nothing. With a plain `servo.bay()` the MG90S lead-side shank hangs in
+the lead room, yet its head comes within `MOUNT_CONTACT_MM` (0.5 mm) of the
+tab pocket, and that counted as "into a printed part". The check read 2 of 2.
+
+**The rule.** A bolt on a hole's axis that fits the hole now holds only if
+its shank threads into something. That means it shares at least
+`THREAD_ENGAGEMENT_MM3` (0.1 mm³) with a printed part, which is then the
+holder, or the head clamps the printed part while the thread is in one of
+these:
+- the held part's own tapped hole (a `thread_dia_mm` hole; the catalog
+  models it as an open bore, so reaching it is the only evidence there is);
+- the held part itself;
+- a nut or a heat-set insert (their bores are modelled at the minor
+  diameter).
+
+A bolt that fails this is listed in the row's `unthreaded` and holds
+nothing. `thresholds.thread_engagement_mm3` publishes the volume.
+
+**Why the fit had to move with it.** The static fit failed *any* bolt/print
+common volume above 1e-6 mm³ as an `intersection`. So a screw in a
+`lib.tap_drill` hole could never pass fit, although the overlay said to cut
+one. Measured on both D4 trials: **no bolt in either shares any volume with a
+printed part**. `orun1-t1-hexapod` cut its tap at radius 1.0 mm (it defined
+`TAP = lib.tap_drill("m2")` and never used it). `orun1-t3-balancer` wrote
+"self-tapping holes in the print: modelled at the thread's major diameter".
+A bore at the major diameter leaves the thread nothing to cut. With the
+mounting rule alone, the product would fail every screw one way or the
+other. So `CadexFitReport.thread_allowances` gives each `lib.bolt` × printed
+pair an allowance of `π/4 (d² − minor²) L`: the ring the thread can cut,
+from the bolt's part number and the ISO 261 minor diameter (copied into the
+module, which is loaded by path; a test holds the copy equal to
+`CadexCatalog`). An overlap within that allowance is `clear` and counted in
+`fit.threaded_count`. A bolt through solid, or into a pilot finer than the
+minor diameter, overlaps more and still fails. The sweep keeps the allowance
+only for a pair already threaded at the solved pose, so a link swinging into
+a bolt is still a collision. `cadex clearance` writes such a row as
+`threaded`. The worker's own `fit_failures` field is unchanged. The reader
+was already the verdict, so no protocol op, response key or digest moves.
+
+**Measured.**
+- `test_mounting_check.py::test_a_ledged_servo_bay_…_on_the_real_kernel`
+  now reads **1 of 2** for the plain bay (`unthreaded: [lead-side bolt]`)
+  and **2 of 2** with `ledge=4`. In both, no bolt/block pair fails fit. On
+  the old source it read 2 of 2 for both.
+- Unit fixtures cover four cases: a head over a cavity (unthreaded), and a
+  printed thread, the part's tapped hole and a nut (each held). For the
+  allowance: the tap drill passes, solid and a too-small pilot fail, and a
+  swept pair is allowed only if it was threaded at rest.
+- Re-measured from each trial's published clearance value. Fit is unchanged
+  in both: hexapod 0/3655 failing, balancer t3 0/561, sweeps pass.
+  - Hexapod trial 1 (`35193b3e`): mounting still **49/49**. But every one of
+    its 18 bolts (one per MG90S) is now `unthreaded`, and the servos are held
+    by their bays, not by screws.
+  - Balancer trial 3: mounting goes from **pass 11/11 to reported 8/11**.
+    The BNO085, the D36V50F6 regulator and the VL53L1X become
+    `contact only` (9 unthreaded bolts). The two N20s stay held by their own
+    M1.6 tapped faces.
+
+**Consequences.** Earlier mounting numbers overstate screws, and a
+re-measure reads differently from the receipts published before this ADR.
+The overlay tells the agent to cut `lib.tap_drill` holes into solid
+material and explains what `unthreaded` and `threaded_count` mean.
