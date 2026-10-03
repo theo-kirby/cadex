@@ -1107,6 +1107,20 @@ changed, so an opened criterion stays open across polls. Outside a
 checkout's `.ouroboros/runs`, or with the branch gone, the card shows its
 reason instead of another run's charter.
 
+Between them, the **Probes** card (ADR-515) shows the run's review material:
+`docs/probes/<run>/` in the checkout, served read-only under
+`/r/<run>/probes/<path>`. Its heading counts files and images, a muted line
+names the directory, then the directory's `README.md` drawn as a document
+(`markdown.js`: headings one level under the card's own, paragraphs, lists,
+tables in the `grid` style, code, quotes; every string set as text, HTML
+comments dropped), then every image as a square-cropped gallery tile on
+`--surface-2` linking to the full file, then every file listed in a folded
+**every file**. Only image, text, data and video suffixes are served, never
+an HTML page; names are plain tokens with no dot-file and no `..`; no
+symlink on the path is followed, so nothing outside that directory is
+reachable; each response carries `Content-Security-Policy: sandbox` and
+`nosniff`. Outside a checkout, or with no such directory, the card says so.
+
 ## Operator run status (ADR-387)
 
 The operator deployment adds a compact bottom-right status strip with run name,

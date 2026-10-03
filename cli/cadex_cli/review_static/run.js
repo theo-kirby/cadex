@@ -4,8 +4,9 @@
 // One Ouroboros run (ADR-513): reads api/run and draws its iterations,
 // newest first, with the critic's verdict, reason and what it saw done; the
 // critic's message to the next iteration folds under each row; above them,
-// the charter's done criteria, each folding open to its text. Polls, so a
-// live run's next iteration appears. Writes nothing.
+// the charter's done criteria, each folding open to its text, and the run's
+// probe material (ADR-515): its README drawn, its images as a gallery, every
+// file linked. Polls, so a live run's next iteration appears. Writes nothing.
 (function () {
   'use strict';
 
@@ -74,8 +75,78 @@
     empty.textContent = charter.reason ? 'No charter criteria: ' + charter.reason + '.' : '';
   }
 
+  var lastProbes = null;
+
+  function probeUrl(path) {
+    return 'probes/' + path.split('/').map(encodeURIComponent).join('/');
+  }
+
+  function renderProbes(probes) {
+    // Redrawn only when the listing changed, so the reader's scroll and folds hold.
+    var key = JSON.stringify(probes || null);
+    if (key === lastProbes) return;
+    lastProbes = key;
+    probes = probes || { available: false, files: [], reason: 'this server reports no probes' };
+    var readme = document.getElementById('probe-readme');
+    var gallery = document.getElementById('probe-images');
+    var list = document.getElementById('probe-files');
+    readme.textContent = '';
+    gallery.textContent = '';
+    list.textContent = '';
+    var images = probes.files.filter(function (file) { return file.kind === 'image'; });
+    document.getElementById('probes-count').textContent = probes.files.length
+      ? '· ' + probes.files.length + ' file(s), ' + images.length + ' image(s)'
+        + (probes.truncated ? ', ' + probes.truncated + ' more not listed' : '') : '';
+    document.getElementById('probes-source').textContent = probes.available ? probes.root + ' in the checkout' : '';
+    if (probes.readme) {
+      var base = probeUrl(probes.readme).replace(/[^/]*$/, '');
+      fetch(probeUrl(probes.readme), { cache: 'no-store' }).then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.text();
+      }).then(function (text) {
+        window.CadexMarkdown.render(readme, text, base);
+        readme.dataset.path = probes.readme;
+      }).catch(function (error) {
+        readme.textContent = probes.readme + ' is unavailable: ' + error.message;
+      });
+    }
+    images.forEach(function (file) {
+      var li = document.createElement('li');
+      li.dataset.path = file.path;
+      var link = document.createElement('a');
+      link.href = probeUrl(file.path);
+      var img = document.createElement('img');
+      img.src = link.href;
+      img.alt = file.path;
+      img.loading = 'lazy';
+      link.appendChild(img);
+      var caption = document.createElement('div');
+      caption.className = 'small muted';
+      caption.textContent = file.path;
+      li.appendChild(link);
+      li.appendChild(caption);
+      gallery.appendChild(li);
+    });
+    probes.files.forEach(function (file) {
+      var li = document.createElement('li');
+      li.dataset.path = file.path;
+      var link = document.createElement('a');
+      link.href = probeUrl(file.path);
+      link.textContent = file.path;
+      li.appendChild(link);
+      li.appendChild(document.createTextNode(' · ' + file.kind + ' · ' + file.bytes + ' B'));
+      list.appendChild(li);
+    });
+    document.getElementById('probe-files-fold').hidden = probes.files.length === 0;
+    var empty = document.getElementById('probes-empty');
+    empty.hidden = probes.files.length > 0;
+    empty.textContent = probes.reason ? 'No probe material: ' + probes.reason + '.'
+      : 'No probe material in ' + probes.root + '.';
+  }
+
   function render(run) {
     renderCharter(run.charter);
+    renderProbes(run.probes);
     document.title = 'Cadex run ' + run.name;
     document.getElementById('run-name').textContent = run.name + ' — run';
     var parts = [run.state, run.branch, run.iteration_count + ' iteration(s)'];

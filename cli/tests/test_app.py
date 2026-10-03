@@ -445,3 +445,118 @@ def test_browser_goes_from_the_index_to_a_runs_iterations_and_verdicts(tmp_path,
     finally:
         server.shutdown()
         server.server_close()
+
+
+def _checkout_with_probes(tmp_path: Path) -> tuple[Path, Path]:
+    """:func:`_checkout_with_runs` with ``docs/probes/fx1/`` beside it:
+    a README, an image one directory down, and what must never be served --
+    a dot-file, an HTML page, a ``.pyc``, a symlink out of the checkout and a
+    symlinked directory."""
+
+    runs = _checkout_with_runs(tmp_path)
+    checkout = runs.parent.parent
+    probes = checkout / "docs" / "probes" / "fx1"
+    (probes / "sweep").mkdir(parents=True)
+    (probes / "README.md").write_text("# fx1\n\n![hero](sweep/hero.png)\n\n| a | b |\n|---|---|\n| 1 | **2** |\n")
+    (probes / "sweep" / "hero.png").write_bytes(PNG_1PX)
+    (probes / "ratings.json").write_text('{"love": 1}\n')
+    (probes / ".secret.md").write_text("dot-file\n")
+    (probes / "page.html").write_text("<script>alert(1)</script>\n")
+    (probes / "__pycache__").mkdir()
+    (probes / "__pycache__" / "judge.cpython-312.pyc").write_bytes(b"\0")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.md").write_text("outside the checkout\n")
+    (probes / "escape.md").symlink_to(outside / "secret.md")
+    (probes / "linked").symlink_to(outside, target_is_directory=True)
+    return runs, probes
+
+
+PNG_1PX = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+    "1f15c4890000000d49444154789c6360606060000000050001a5f645400000000049454e44ae426082")
+
+
+def test_a_runs_probe_material_is_listed_and_served_read_only(tmp_path) -> None:
+    runs, probes = _checkout_with_probes(tmp_path)
+    server, _thread = serve_projects(_projects(tmp_path), "127.0.0.1", 0, runs_root=runs)
+    try:
+        listing = _json(server.url + "r/fx1/api/run")["probes"]
+        assert listing == {"available": True, "root": "docs/probes/fx1", "reason": None, "readme": "README.md",
+                           "truncated": 0, "files": [
+                               {"path": "README.md", "kind": "text", "bytes": (probes / "README.md").stat().st_size},
+                               {"path": "ratings.json", "kind": "data", "bytes": 12},
+                               {"path": "sweep/hero.png", "kind": "image", "bytes": len(PNG_1PX)}]}
+        status, headers, body = _get(server.url + "r/fx1/probes/sweep/hero.png")
+        assert status == 200 and body == PNG_1PX and headers["content-type"] == "image/png"
+        assert headers["content-security-policy"] == "sandbox" and headers["x-content-type-options"] == "nosniff"
+        status, headers, body = _get(server.url + "r/fx1/probes/README.md")
+        assert status == 200 and body.startswith(b"# fx1") and headers["content-type"].startswith("text/markdown")
+        for path in ("r/fx1/probes/.secret.md", "r/fx1/probes/page.html", "r/fx1/probes/escape.md",
+                     "r/fx1/probes/linked/secret.md", "r/fx1/probes/__pycache__/judge.cpython-312.pyc",
+                     "r/fx1/probes/../../.ouroboros/goal.md", "r/fx1/probes/%2E%2E/%2E%2E/.ouroboros/goal.md",
+                     "r/fx1/probes/sweep%2F..%2F..%2Ffx2/x.md", "r/fx1/probes/missing.png", "r/fx1/probes/",
+                     "r/fx1/probes/sweep", "r/fx2/probes/README.md", "r/missing/probes/README.md"):
+            assert _get(server.url + path)[0] == 404, path
+        # A run with no probe directory says so; one whose directory is a symlink is not followed.
+        assert _json(server.url + "r/fx2/api/run")["probes"]["reason"] == "docs/probes/fx2 is not a directory of the checkout"
+        (probes.parent / "fx2").symlink_to(probes, target_is_directory=True)
+        assert _json(server.url + "r/fx2/api/run")["probes"]["available"] is False
+        assert _get(server.url + "r/fx2/probes/README.md")[0] == 404
+        # Nothing is listed with the light runs listing, and serving wrote nothing.
+        assert "probes" not in _json(server.url + "api/runs")["runs"][0]
+        assert sorted(p.name for p in probes.iterdir()) == [
+            ".secret.md", "README.md", "__pycache__", "escape.md", "linked", "page.html", "ratings.json", "sweep"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_probes_outside_a_checkout_are_refused(app_with_runs) -> None:
+    _runs_dir, server = app_with_runs
+    probes = _json(server.url + "r/fx1/api/run")["probes"]
+    assert probes["available"] is False and probes["files"] == []
+    assert probes["reason"] == "the runs directory is not a checkout's .ouroboros/runs"
+
+
+@needs_browser
+def test_browser_reads_orun1s_probe_readme_and_an_image_from_the_repo(tmp_path, browser) -> None:
+    """orun1's committed review material, copied whole from this repo into a
+    checkout beside a run directory, renders on ``/r/orun1/``: what
+    ``~/orun1-review/build.py`` built by hand, from the repo alone."""
+
+    import shutil
+
+    checkout = tmp_path / "checkout"
+    shutil.copytree(REPO / "docs" / "probes" / "orun1", checkout / "docs" / "probes" / "orun1",
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    runs = checkout / ".ouroboros" / "runs"
+    (runs / "orun1").mkdir(parents=True)
+    (runs / "orun1" / "status.json").write_text(json.dumps({"state": "done", "branch": "ouroboros/orun1"}))
+    server, _thread = serve_projects(_projects(tmp_path), "127.0.0.1", 0, runs_root=runs)
+    try:
+        run = browser.page(server.url + "r/orun1/")
+        run.wait_for("document.querySelector('#probe-readme h3') !== null")
+        # Its headings sit one level under the card's own.
+        assert run.text("#probe-readme h2") == "orun1 — the owner's design preferences, measured"
+        headings = run.evaluate("[...document.querySelectorAll('#probe-readme h3')].map(h => h.textContent)")
+        assert headings[:3] == ["The sweep", "The ratings", "What the ratings say"]
+        # The ratings table is a table, with its bold cells bold; no comment leaks through as text.
+        assert run.evaluate("[...document.querySelectorAll('#probe-readme table thead th')].map(t => t.textContent)")[:3] == [
+            "thesis", "arm3", "arm5"]
+        assert run.evaluate("document.querySelectorAll('#probe-readme table')[0].querySelectorAll('tbody tr').length") == 9
+        assert run.evaluate("document.querySelector('#probe-readme table tbody tr:last-child strong').textContent") == "type mean"
+        assert "<!--" not in run.text("#probe-readme")
+        assert run.text("#probes-source") == "docs/probes/orun1 in the checkout"
+        # One of the owner-rated heroes, loaded through /r/orun1/probes/.
+        hero = "#probe-images li[data-path='sweep/balancer-c-exposed-mechanism.png'] img"
+        run.evaluate("document.querySelector(\"" + hero + "\").scrollIntoView(); true")
+        run.wait_for("document.querySelector(\"" + hero + "\").complete && "
+                     "document.querySelector(\"" + hero + "\").naturalWidth > 0")
+        assert run.attribute(hero, "src").endswith("/r/orun1/probes/sweep/balancer-c-exposed-mechanism.png")
+        assert run.evaluate("document.querySelectorAll('#probe-images li').length") == len(
+            list((REPO / "docs" / "probes" / "orun1").rglob("*.png")))
+        assert run.evaluate("document.getElementById('probes-empty').hidden") is True
+    finally:
+        server.shutdown()
+        server.server_close()

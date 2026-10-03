@@ -53,6 +53,7 @@ import json
 import hmac
 import math
 import mimetypes
+import os
 import re
 import secrets
 from pathlib import Path
@@ -109,6 +110,7 @@ PROJECTS_SCHEMA = "cadex-projects-v1"
 RUN_STATIC_FILES = {
     "run.html": ("text/html; charset=utf-8", STATIC_DIR / "run.html"),
     "run.js": ("text/javascript; charset=utf-8", STATIC_DIR / "run.js"),
+    "markdown.js": ("text/javascript; charset=utf-8", STATIC_DIR / "markdown.js"),
     "review.css": STATIC_FILES["review.css"],
 }
 RUNS_SCHEMA = "cadex-ouroboros-runs-v1"
@@ -119,6 +121,19 @@ OUROBOROS_RUN_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 OUROBOROS_BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
 #: One charter criterion: a checkbox at the start of a line under ``## Done criteria``.
 CHARTER_ITEM = re.compile(r"^- \[([ xX])\] ?(.*)$")
+#: A run's probe material is ``docs/probes/<run>/`` in the checkout, served
+#: read-only under ``/r/<run>/probes/`` (ADR-515): only these suffixes, so no
+#: page the dashboard's origin would run is ever served from the repo.
+PROBE_KINDS = {".png": "image", ".jpg": "image", ".jpeg": "image", ".svg": "image",
+               ".md": "text", ".txt": "text", ".py": "text",
+               ".json": "data", ".jsonl": "data", ".csv": "data",
+               ".mp4": "video", ".webm": "video"}
+#: One path segment of a probe file: no dot-file, no separator, no ``..``.
+PROBE_SEGMENT = re.compile(r"^[A-Za-z0-9_+-][A-Za-z0-9._+-]{0,127}$")
+#: The most files one run's probe listing names; the rest are counted.
+PROBE_LISTING_LIMIT = 2000
+#: Served probe files run nothing and are never sniffed into something that does.
+PROBE_HEADERS = {"Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff"}
 #: Content types for the retained artifacts; anything else downloads as bytes.
 CONTENT_TYPES = {
     ".json": "application/json; charset=utf-8",
@@ -133,6 +148,8 @@ CONTENT_TYPES = {
     ".mp4": "video/mp4",
     ".webm": "video/webm",
     ".txt": "text/plain; charset=utf-8",
+    ".jsonl": "text/plain; charset=utf-8",
+    ".csv": "text/plain; charset=utf-8",
 }
 TESSELLATION_SCHEMA = "cadex-tessellation-v1"
 TRACE_SCHEMA = "cadex-assembly-simulation-trace-v1"
@@ -2163,7 +2180,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
     def _not_found(self, what: str) -> None:
         self._send_json({"error": "not found", "what": what}, HTTPStatus.NOT_FOUND)
 
-    def _send_file(self, path: Path, *, download: bool) -> None:
+    def _send_file(self, path: Path, *, download: bool, headers: Mapping[str, str] | None = None) -> None:
         """A permitted file, whole or as one byte range (video seeking)."""
 
         content_type = CONTENT_TYPES.get(path.suffix.lower()) or (
@@ -2174,7 +2191,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
         except OSError:
             self._not_found(path.name)
             return
-        extra = {"Accept-Ranges": "bytes"}
+        extra = {"Accept-Ranges": "bytes", **(headers or {})}
         if download:
             # HTTP headers must stay ASCII; retain Unicode in the encoded name.
             fallback = "".join(c if 32 <= ord(c) < 127 and c not in '\\"%'
@@ -2346,6 +2363,11 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 content_type, file = RUN_STATIC_FILES[page[0]]
                 self._send_bytes(file.read_bytes(), content_type)
                 return
+            if page[0] == "probes" and len(page) > 1:
+                probe = runs.probe_file(rest[0], page[1:])
+                if probe is not None:
+                    self._send_file(probe, download=False, headers=PROBE_HEADERS)
+                    return
             run = runs.run(rest[0]) if page == ["api", "run"] else None
             if run is not None:
                 self._send_json(run)
@@ -2538,6 +2560,12 @@ class OuroborosRuns:
     one checked out), so a finished run shows the charter it ran to and not
     the one that replaced it, and its ``## Done criteria`` checkboxes are
     listed.
+
+    A run's probe material is ``docs/probes/<run>/`` in the checkout's working
+    tree (ADR-515): listed with the run, and each file served read-only under
+    ``/r/<run>/probes/``. Only :data:`PROBE_KINDS` suffixes, only
+    :data:`PROBE_SEGMENT` names, and no symlink anywhere on the path, so
+    nothing outside that directory is reachable through it.
     """
 
     def __init__(self, root: Path | str | None) -> None:
@@ -2669,6 +2697,66 @@ class OuroborosRuns:
                 "checked": sum(1 for item in criteria if item["checked"]), "total": len(criteria),
                 "criteria": criteria}
 
+    def _probe_base(self, name: str) -> Path | None:
+        """``docs/probes/<run>/``, when it is a real directory of the checkout."""
+
+        if self.checkout is None or not self.has(name):
+            return None
+        base = self.checkout / "docs" / "probes" / name
+        try:
+            resolved = base.resolve(strict=True)
+        except OSError:
+            return None
+        return base if resolved == base and resolved.is_dir() else None
+
+    def probe_file(self, name: str, segments: list[str]) -> Path | None:
+        """One file under the run's probe directory, or ``None`` for anything
+        that is not plainly one: a bad name, a suffix off the list, a symlink."""
+
+        base = self._probe_base(name)
+        if base is None or not segments or not all(PROBE_SEGMENT.match(part) and ".." not in part
+                                                   for part in segments):
+            return None
+        path = base.joinpath(*segments)
+        if path.suffix.lower() not in PROBE_KINDS:
+            return None
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError:
+            return None
+        return path if resolved == path and path.is_file() else None
+
+    def probes(self, name: str) -> dict[str, Any]:
+        """What :meth:`probe_file` would serve for this run, by path."""
+
+        base = self._probe_base(name)
+        root = f"docs/probes/{name}"
+        if base is None:
+            reason = ("the runs directory is not a checkout's .ouroboros/runs" if self.checkout is None
+                      else f"{root} is not a directory of the checkout")
+            return {"available": False, "root": root, "reason": reason, "readme": None,
+                    "files": [], "truncated": 0}
+        files: list[dict[str, Any]] = []
+        truncated = 0
+        for directory, dirs, names in os.walk(base):
+            here = Path(directory)
+            dirs[:] = sorted(d for d in dirs if PROBE_SEGMENT.match(d) and d != "__pycache__"
+                             and not (here / d).is_symlink())
+            for file in sorted(names):
+                path = here / file
+                kind = PROBE_KINDS.get(path.suffix.lower())
+                if kind is None or not PROBE_SEGMENT.match(file) or path.is_symlink() or not path.is_file():
+                    continue
+                if len(files) >= PROBE_LISTING_LIMIT:
+                    truncated += 1
+                    continue
+                files.append({"path": path.relative_to(base).as_posix(), "kind": kind,
+                              "bytes": path.stat().st_size})
+        files.sort(key=lambda entry: (entry["path"].count("/"), entry["path"]))
+        readme = next((entry["path"] for entry in files if entry["path"].lower() == "readme.md"), None)
+        return {"available": True, "root": root, "reason": None, "readme": readme, "files": files,
+                "truncated": truncated}
+
     def _read(self, name: str) -> dict[str, Any] | None:
         if name not in self._names():
             return None
@@ -2750,7 +2838,8 @@ class OuroborosRuns:
             return None
         assert self.root is not None
         charter = self._charter(self._config(self.root / name / "run.yml"), run["branch"])
-        return {"schema": RUN_SCHEMA, **run, "charter": charter, "served_at": _now()}
+        return {"schema": RUN_SCHEMA, **run, "charter": charter, "probes": self.probes(name),
+                "served_at": _now()}
 
 
 class ProjectsServer(ThreadingHTTPServer):

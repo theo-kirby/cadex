@@ -33262,3 +33262,61 @@ written and no branch moves; a non-checkout runs directory, an escaping
 goal path and an option-shaped or `..` branch are refused with reasons;
 and, in headless Chromium, the card's count, source, badges and folding,
 with an opened criterion surviving a poll's redraw.
+
+## ADR-515 — A run's probe material on its page: `docs/probes/<run>/` served read-only (2026-10-03, owner charter orun2 D3)
+
+**Decision.** `/r/<run>/` gains a **Probes** card between the charter and
+the iterations. `GET /r/<run>/api/run` carries `probes` (`available`,
+`root`, `reason`, `readme`, `files` — each `path`, `kind`, `bytes` — and
+`truncated` past 2,000 files); the listing does not. Each listed file is
+served at `/r/<run>/probes/<path>`. The page draws the directory's
+`README.md` with a new `review_static/markdown.js` (a DOM-only markdown
+subset), its images as a gallery, and every file as a link.
+
+**Guards.** The directory is `docs/probes/<run>/` of the checkout that
+holds the runs directory, and is used only when it resolves to itself (a
+symlinked probe directory is refused). A served path is plain segments
+(`[A-Za-z0-9_+-][A-Za-z0-9._+-]*`, no `..`), a suffix on an allow-list
+(`png jpg jpeg svg md txt py json jsonl csv mp4 webm` — never HTML), and
+must resolve to itself with no symlink anywhere on it. Responses carry
+`Content-Security-Policy: sandbox` and `X-Content-Type-Options: nosniff`,
+so even an SVG opened directly runs nothing with the dashboard's origin
+(whose project pages carry the write token). No write route is added.
+
+**Why.** D3 asks that orun1's review material render in the dashboard from
+the repo alone, replacing what `~/orun1-review/build.py` built by hand
+(its own small markdown subset over `git show`, written into a static
+site). The README and its 60 rated heroes are committed under
+`docs/probes/orun1/`; serving them where the run already has a page
+retires the per-run site.
+
+**Scope, stated.** Read from the checkout's **working tree**, not the run's
+branch: probe material is committed and merged, and a merged run's branch
+may be gone. The critic's message also named "the paths the run's records
+link to"; this unit serves `docs/probes/<run>/` only, and record-linked
+artifacts outside it are not yet reachable from the run page.
+
+**Rejected.** A Python markdown package (A2: no new dependency); rendering
+markdown server-side into HTML (the page would trust repo text as markup);
+`innerHTML` anywhere in the renderer. ADR-514 kept criterion text
+pre-wrapped rather than add a renderer for a few lines; a 640-line README
+with tables is the case that earns one, and it is ~170 lines of vanilla JS
+with no build step.
+
+**Cost.** ~70 lines in `review_server.py`, `markdown.js` (~170), ~70 in
+`run.js`, a card in `run.html`, ~15 CSS lines.
+
+**What would reverse it.** Probe material moving out of the repo (into the
+project store, say): then the run page reads it there and this route goes.
+
+**Test.** `cli/tests/test_app.py`: the listing names exactly the README, a
+JSON file and a nested PNG; the PNG and README are served byte-exact with
+the sandbox and nosniff headers; a dot-file, an HTML page, a `.pyc`, a
+symlinked file and directory pointing outside the checkout, literal and
+percent-encoded `..`, an encoded `/` in a segment, a directory and another
+run's probes are all 404; a symlinked probe directory is refused; nothing is
+written; a non-checkout runs directory gives its reason. In headless
+Chromium, orun1's committed `docs/probes/orun1/` copied into a checkout
+renders on `/r/orun1/`: title and section headings, the ratings table's
+header, nine rows and bold `type mean`, no comment text, and the
+`balancer-c-exposed-mechanism` hero loaded through `/r/orun1/probes/`.

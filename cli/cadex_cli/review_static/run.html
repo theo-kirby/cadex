@@ -3,8 +3,9 @@
      SPDX-License-Identifier: LGPL-2.1-or-later
      One Ouroboros run (ADR-513), served at /r/<run>/: its iterations, newest
      first, each with the critic's verdict and what it said was done, under
-     the charter's done criteria as the run's branch holds them. Read
-     from the run directory; writes nothing. Tokens are the review page's
+     the charter's done criteria as the run's branch holds them, and the
+     run's probe material from docs/probes/<run>/ (ADR-515). Read from the
+     run directory and the checkout; writes nothing. Tokens are the review page's
      (docs/DASHBOARD.md). -->
 <html lang="en">
 <head>
@@ -28,6 +29,17 @@
     <ol id="charter" class="criteria"></ol>
     <p id="charter-empty" class="muted" hidden></p>
   </section>
+  <section class="card" id="probes-card">
+    <h2>Probes <span id="probes-count" class="muted small"></span></h2>
+    <div id="probes-source" class="muted small"></div>
+    <article id="probe-readme" class="markdown"></article>
+    <ul id="probe-images" class="probe-gallery"></ul>
+    <details id="probe-files-fold" hidden>
+      <summary class="small">every file</summary>
+      <ul id="probe-files"></ul>
+    </details>
+    <p id="probes-empty" class="muted" hidden></p>
+  </section>
   <section class="card">
     <h2>Iterations</h2>
     <div id="run-tally" class="badges"></div>
@@ -38,6 +50,7 @@
     <p id="iterations-empty" class="muted" hidden>No iterations yet.</p>
   </section>
 </main>
+<script src="markdown.js"></script>
 <script src="run.js"></script>
 </body>
 </html>
