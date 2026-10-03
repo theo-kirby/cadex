@@ -23,16 +23,22 @@ export const FOLLOW = {fraction:.22, subject_y:-.06, max_drift:.26, smooth_frame
 // the page's `--warn` through the solids, and only while the labelled toggle is on. Never in a
 // recording, never by default: what the viewer shows is the tessellated solid.
 const PROXY = {color:0xffe08a, opacity:.9};
+// Section and explode (DASHBOARD.md §24). A section clips the solids at the plane and offset of
+// the `cadex section` cut it shows, keeping the side below the offset; the leader lines are the
+// engine's exploded-view segments, in the page's `--muted`.
+const SECTION_NORMALS = {XY:[0,0,1], XZ:[0,1,0], YZ:[1,0,0]};
+const LEADER = {color:0x9aa3ad, opacity:.85};
 
 export function create(canvas) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.95;
+  renderer.localClippingEnabled = true;
   const scene = new THREE.Scene(), world = new THREE.Group(), model = new THREE.Group();
   world.rotation.x = -Math.PI/2; scene.add(world); world.add(model);
   const camera = new THREE.PerspectiveCamera(55, 1, .0001, 800);
@@ -75,6 +81,32 @@ export function create(canvas) {
       owner.add(line); proxyLines.push(line); proxiesDrawn++;
     });
   }
+  // The section: one clipping plane shared by every solid's material, in scene coordinates.
+  const clipPlane=new THREE.Plane(); let section=null;
+  function applySection() {
+    if (section) {
+      model.updateMatrixWorld(true);
+      clipPlane.set(new THREE.Vector3(...SECTION_NORMALS[section.plane]).negate(), section.offset_mm*.001).applyMatrix4(model.matrixWorld);
+    }
+    meshes.forEach(m=>{m.material.clippingPlanes=section?[clipPlane]:null; m.material.clipShadows=true; m.material.needsUpdate=true;});
+  }
+  function setSection(plane, offset) {
+    section=(plane in SECTION_NORMALS&&Number.isFinite(offset))?{plane,offset_mm:offset}:null;
+    applySection(); draw(); return section&&{...section};
+  }
+  // The leader lines: model-frame segments, hidden until showLines(true).
+  let leaders=null;
+  function setLines(segments) {
+    if (leaders) {model.remove(leaders); leaders.geometry.dispose(); leaders.material.dispose(); leaders=null;}
+    const flat=(segments||[]).flatMap(l=>[...l.start_mm,...l.end_mm]).map(v=>v*.001);
+    if (flat.length) {
+      const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(flat,3));
+      leaders=new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:LEADER.color,transparent:true,opacity:LEADER.opacity,toneMapped:false}));
+      leaders.visible=false; model.add(leaders);
+    }
+    draw(); return flat.length/6;
+  }
+  function showLines(flag) {if (leaders) leaders.visible=!!flag; draw(); return !!(leaders&&leaders.visible);}
   // The timer: one textured quad in an orthographic overlay scene, painted after the stage.
   const hud=new THREE.Scene(), hudCamera=new THREE.OrthographicCamera(0,1,1,0,-1,1);
   const clockCanvas=document.createElement('canvas'), clockTexture=new THREE.CanvasTexture(clockCanvas);
@@ -152,7 +184,7 @@ export function create(canvas) {
     draw();
   }
   function clear() {
-    disposeProxies(); proxyGeoms=[];
+    disposeProxies(); proxyGeoms=[]; setLines([]);
     meshes.forEach(m=> {model.remove(m); m.geometry.dispose();m.material.dispose();});
     meshes.clear(); bounds=null;triangleCount=0;picked=null;draw();
   }
@@ -172,7 +204,7 @@ export function create(canvas) {
       m.castShadow=true;m.receiveShadow=true;pose(m,entry.placement);
       meshes.set(entry.name,m);model.add(m);triangleCount+=entry.positions.length/9;
     });
-    updateBounds();if(bounds)frameBounds(bounds);fit();
+    updateBounds();if(bounds)frameBounds(bounds);applySection();fit();
     return entries.map((e,i)=>({name:e.name,triangles:e.positions.length/9,color:[16,8,0].map(shift=>(PALETTE[i%PALETTE.length]>>shift)&255)}));
   }
   async function load(manifest,fetchImpl=window.fetch.bind(window)) {
@@ -301,8 +333,11 @@ export function create(canvas) {
   canvas.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(e.deltaY*.0015));draw();},{passive:false});
   window.addEventListener('resize',draw);
   return {available:true,load,install,clear,fit,draw,setPoses,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
+    setSection,setLines,showLines,
     pick,screenPoint,highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,style:STYLE,stage,showing:showing(),
-      proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length}}),
+      proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length},
+      section:section&&{...section}, leaders:{drawn:leaders?leaders.geometry.attributes.position.count/2:0,shown:!!(leaders&&leaders.visible)},
+      poses:Object.fromEntries([...meshes].map(([n,m])=>[n,{position_mm:m.position.toArray().map(v=>v*1000),rotation_xyzw:m.quaternion.toArray()}]))}),
     png:()=>{draw();return canvas.toDataURL('image/png').split(',')[1];}};
 }

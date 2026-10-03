@@ -236,6 +236,74 @@ def _placement(entry: Any) -> dict[str, list[float]] | None:
     return {"position_mm": position, "rotation_xyzw": rotation}
 
 
+def _matrix_placement(matrix: Any) -> dict[str, list[float]] | None:
+    """A row-major 4x4 ``solved_placement_matrix`` as ``{position_mm, rotation_xyzw}``, or None."""
+
+    try:
+        m = [float(x) for x in matrix]
+    except (TypeError, ValueError):
+        return None
+    if len(m) != 16 or not all(math.isfinite(x) for x in m):
+        return None
+    r = [[m[0], m[1], m[2]], [m[4], m[5], m[6]], [m[8], m[9], m[10]]]
+    trace = r[0][0] + r[1][1] + r[2][2]
+    if trace > 0:
+        s = 2.0 * math.sqrt(trace + 1.0)
+        q = [(r[2][1] - r[1][2]) / s, (r[0][2] - r[2][0]) / s, (r[1][0] - r[0][1]) / s, s / 4]
+    elif r[0][0] > r[1][1] and r[0][0] > r[2][2]:
+        s = 2.0 * math.sqrt(1.0 + r[0][0] - r[1][1] - r[2][2])
+        q = [s / 4, (r[0][1] + r[1][0]) / s, (r[0][2] + r[2][0]) / s, (r[2][1] - r[1][2]) / s]
+    elif r[1][1] > r[2][2]:
+        s = 2.0 * math.sqrt(1.0 + r[1][1] - r[0][0] - r[2][2])
+        q = [(r[0][1] + r[1][0]) / s, s / 4, (r[1][2] + r[2][1]) / s, (r[0][2] - r[2][0]) / s]
+    else:
+        s = 2.0 * math.sqrt(1.0 + r[2][2] - r[0][0] - r[1][1])
+        q = [(r[0][2] + r[2][0]) / s, (r[1][2] + r[2][1]) / s, s / 4, (r[1][0] - r[0][1]) / s]
+    norm = math.sqrt(sum(x * x for x in q)) or 1.0
+    return {"position_mm": [m[3], m[7], m[11]], "rotation_xyzw": [x / norm for x in q]}
+
+
+def exploded_views(result: Mapping[str, Any], assembled: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Each ``assembly.exploded_view`` output as pose frames for the viewer (orun2 D2.5).
+
+    The engine computed the explosion: every staged move's cumulative poses
+    and the leader lines, published on the output as ``exploded_view``
+    (``_exploded_display_record``). Frame 0 is the model as the viewer
+    places it (``assembled``, component name to placement); frame *k* is
+    frame *k-1* with stage *k*'s poses applied, so a component a stage does
+    not move keeps where it was. The last frame is the engine's
+    ``final_poses``, which the page's test checks. Nothing is computed here
+    but that bookkeeping; the page interpolates between frames.
+    """
+
+    views: list[dict[str, Any]] = []
+    for item in result.get("outputs") or []:
+        record = item.get("exploded_view") if isinstance(item, Mapping) else None
+        if not isinstance(record, Mapping) or not isinstance(record.get("stages"), list):
+            continue
+        frame = {name: placement for name, placement in assembled.items() if placement is not None}
+        frames = [dict(frame)]
+        for stage in record["stages"]:
+            for name, pose in ((stage or {}).get("poses") or {}).items():
+                placement = _placement({"position_mm": (pose or {}).get("position_mm"),
+                                        "rotation_xyzw": (pose or {}).get("quaternion_xyzw")})
+                if placement is not None:
+                    frame[str(name)] = placement
+            frames.append(dict(frame))
+        lines = [{"component": str(line.get("component_output")),
+                  "start_mm": [float(x) for x in line.get("start_mm") or []],
+                  "end_mm": [float(x) for x in line.get("end_mm") or []]}
+                 for line in record.get("lines") or [] if isinstance(line, Mapping)]
+        views.append({
+            "output": str(item.get("name")), "assembly_output": record.get("assembly_output"),
+            "stages": len(record["stages"]), "frames": frames,
+            "lines": [line for line in lines if len(line["start_mm"]) == 3 and len(line["end_mm"]) == 3],
+            "source": f"the accepted attempt's {item.get('name')} (assembly.exploded_view): the engine's "
+                      "staged moves from the solved pose, with its leader lines",
+        })
+    return views
+
+
 def _first_frame_placements(trace: Mapping[str, Any] | None) -> tuple[dict[str, dict[str, list[float]]], list[str]]:
     """Component placements at a trace's first frame, and its component list."""
 
@@ -489,6 +557,7 @@ def _identity_model(**fields: Any) -> dict[str, Any]:
         "source": None, "placement_source": None, "components": [],
         "collision": _no_collision("no model to show"),
         "contacts": _no_contacts("t=0 contacts are read from the accepted attempt's MJCF export only"),
+        "exploded": [],
     }
     base.update(fields)
     return base
@@ -707,6 +776,7 @@ def _model_before_rollout(root: Path, model: dict[str, Any]) -> dict[str, Any]:
         "meshes": accepted.get("meshes") or {},
         "collision": accepted["collision"],
         "contacts": accepted["contacts"],
+        "exploded": accepted["exploded"],
     })
     return model
 
@@ -838,8 +908,11 @@ def accepted_model(project_root: Path | str) -> dict[str, Any]:
         object_name = (arguments[0] or {}).get("object_name") if isinstance(arguments[0], Mapping) else None
         source = component_sources.get(str(object_name))
         declared = _placement((definition.get("properties") or {}).get("placement"))
+        solved = _matrix_placement(output.get("solved_placement_matrix"))
         if name in placements:
             placement, placement_source = placements[name], "accepted attempt's simulation trace, first frame"
+        elif solved is not None:
+            placement, placement_source = solved, "solved component placement (no simulation trace)"
         elif declared is not None:
             placement, placement_source = declared, "declared component placement (no solved trace)"
         else:
@@ -878,8 +951,11 @@ def accepted_model(project_root: Path | str) -> dict[str, Any]:
         "contacts": initial_contacts(result),
         "source": "the accepted attempt's tessellation (display/*.tess), linked to each output by sha256",
         "placement_source": ("accepted attempt's simulation trace, first frame" if placements
+                             else "solved component placements" if any(
+                                 entry["placement_source"].startswith("solved") for entry in entries)
                              else "declared component placements"),
         "components": entries,
+        "exploded": exploded_views(result, {entry["name"]: entry["placement"] for entry in entries}),
         "meshes": {output: entry["artifact"] for output, entry in tess_by_output.items()},
     })
     return model
@@ -1294,6 +1370,7 @@ class ReviewProject:
         review["comments"] = read_comments(self.root)[-COMMENTS_SHOWN:]
         review["revisions"] = revision_trail(self.root)
         review["exports"] = export_listing(self.root)
+        review["sections"] = section_listing(self.root)
         review["served_at"] = _now()
         return review
 
@@ -1372,6 +1449,14 @@ class ReviewProject:
         if offered.get("revision") != revision or name not in {f["name"] for f in offered.get("files", [])}:
             return None
         return self.root / EXPORT_DIR / revision / name
+
+    def section_file(self, revision: str, name: str) -> Path | None:
+        """A cut's SVG that ``section_listing`` offers for the accepted revision, and nothing else."""
+
+        offered = section_listing(self.root)
+        if offered.get("revision") != revision or name not in {cut["name"] for cut in offered["cuts"]}:
+            return None
+        return self.root / SECTION_DIR / revision / name / "section.svg"
 
     def run_video(self, name: str, index: int) -> Path | None:
         record = self.run(name)
@@ -1653,6 +1738,100 @@ def export_listing(root: Path) -> dict[str, Any]:
         return {"available": False, "revision": revision,
                 "reason": "not exported yet: Export runs cadex export for this revision"}
     return {"available": True, "revision": revision, "files": files}
+
+
+SECTION_DIR = "review/section"
+SECTION_PLANES = ("XY", "XZ", "YZ")
+#: ``<plane>-<offset>`` as ``write_section`` names a cut's directory.
+SECTION_NAME = re.compile(r"^(XY|XZ|YZ)-[0-9eE.+-]{1,32}$")
+
+
+def section_listing(root: Path) -> dict[str, Any]:
+    """The accepted revision's section cuts, as ``cadex section`` left them, newest first.
+
+    Read from ``review/section/<revision>/<plane>-<offset>/summary.json``;
+    only the accepted revision's cuts are offered, and a cut is served at
+    ``section/<revision>/<name>/section.svg`` only when this lists it.
+    """
+
+    accepted = read_accepted_identity(root)
+    revision = accepted.get("revision") if accepted.get("available") else None
+    if not isinstance(revision, str) or not REVISION_HASH.match(revision):
+        return {"available": False, "reason": "no accepted revision to cut", "cuts": []}
+    directory = root / SECTION_DIR / revision
+    cuts = []
+    if directory.is_dir() and not directory.is_symlink():
+        for path in directory.iterdir():
+            summary_path, svg_path = path / "summary.json", path / "section.svg"
+            if (not SECTION_NAME.match(path.name) or path.is_symlink() or not summary_path.is_file()
+                    or summary_path.is_symlink() or not svg_path.is_file() or svg_path.is_symlink()):
+                continue
+            summary = _load_json(summary_path)
+            if not summary or summary.get("revision") != revision or summary.get("plane") not in SECTION_PLANES:
+                continue
+            objects = summary.get("objects") or {}
+            cuts.append({
+                "name": path.name, "plane": summary["plane"], "offset_mm": summary.get("offset_mm"),
+                "offset_source": summary.get("offset_source") or "explicit",
+                "status": summary.get("status"), "objects_cut": summary.get("objects_cut"),
+                "objects": len(objects), "missed": sorted(name for name, obj in objects.items()
+                                                          if (obj or {}).get("status") != "ok"),
+                "approximation": summary.get("approximation"),
+                "svg": f"section/{revision}/{quote(path.name, safe='')}/section.svg",
+                "mtime": summary_path.stat().st_mtime,
+            })
+    cuts.sort(key=lambda cut: -cut.pop("mtime"))
+    if not cuts:
+        return {"available": False, "revision": revision, "cuts": [],
+                "reason": "no section cut yet: Cut runs cadex section for this revision"}
+    return {"available": True, "revision": revision, "cuts": cuts}
+
+
+def write_section_cut(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
+    """``cadex section --project ROOT --plane P [--offset-mm=N] --json``, as a child (orun2 D2.5).
+
+    The Cut button and the command line are one path (A3): the CLI acquires
+    the accepted tessellation from the engine and writes the SVG and summary
+    under ``review/section/<revision>/``. With no ``offset_mm`` the offset is
+    derived the way the walk derives it (ADR-273). The reply names the cut
+    the child wrote, read back from the listing.
+    """
+
+    from .report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE  # report imports this module
+
+    plane, offset = body.get("plane"), body.get("offset_mm")
+    if plane not in SECTION_PLANES:
+        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"plane must be one of {', '.join(SECTION_PLANES)}."}
+    if offset is not None and (isinstance(offset, bool) or not isinstance(offset, (int, float))
+                               or not math.isfinite(offset) or abs(offset) > 1e6):
+        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "offset_mm must be a finite number of mm, or absent."}
+    accepted = read_accepted_identity(root)
+    revision = accepted.get("revision") if accepted.get("available") else None
+    if not isinstance(revision, str) or not REVISION_HASH.match(revision):
+        return HTTPStatus.CONFLICT, {"ok": False, "error": "nothing to cut: the project has no accepted revision."}
+    argv = ["section", "--project", str(root), "--plane", plane, "--json"]
+    if offset is not None:
+        argv[5:5] = [f"--offset-mm={float(offset)!r}"]
+    leg = run_leg("section", argv, timeout=WRITE_TIMEOUT_S)
+    envelope = leg.envelope
+    reply: dict[str, Any] = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
+                             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv], "revision": revision}
+    for key in ("accepted_revision", "digest", "error", "notes"):
+        if key in envelope:
+            reply[key] = envelope[key]
+    if reply["ok"]:
+        listing = section_listing(root)
+        reply["sections"] = listing
+        cuts = [cut for cut in listing["cuts"] if cut["plane"] == plane
+                and (offset is None or cut["offset_mm"] == float(offset))]
+        if envelope.get("accepted_revision") != revision or not cuts:
+            reply.update(ok=False, error="the accepted revision changed while cutting; cut again.")
+            return HTTPStatus.CONFLICT, reply
+        reply["cut"] = cuts[0]
+        return HTTPStatus.OK, reply
+    if leg.code == EXIT_USAGE:
+        return HTTPStatus.BAD_REQUEST, reply
+    return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
 
 
 def revision_trail(root: Path) -> list[dict[str, Any]]:
@@ -1989,7 +2168,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             if projects is not None and segments[:1] == ["p"] and len(segments) > 1:
                 project, segments = projects.project(segments[1]), segments[2:]
             if project is None or segments not in (["api", "params"], ["api", "turn"], ["api", "comment"],
-                                                    ["api", "revision"], ["api", "export"]) \
+                                                    ["api", "revision"], ["api", "export"], ["api", "section"]) \
                     or not isinstance(body, dict):
                 self._not_found(parts.path)
                 return
@@ -2001,6 +2180,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 status, reply = write_revision(project.root, body)
             elif segments == ["api", "export"]:
                 status, reply = write_export(project.root, body)
+            elif segments == ["api", "section"]:
+                status, reply = write_section_cut(project.root, body)
             else:
                 status, reply = write_params(project.root, body.get("values"))
             self._send_json(reply, status)
@@ -2106,6 +2287,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
             path = project.presentation_image(rest[0])
         elif head == "export" and len(rest) == 2:
             path = project.exported_file(rest[0], rest[1])
+        elif head == "section" and len(rest) == 3 and rest[2] == "section.svg":
+            path = project.section_file(rest[0], rest[1])
         elif head == "video" and rest[:1] == ["run"] and len(rest) == 3 and rest[2].isdigit():
             path = project.run_video(rest[1], int(rest[2]))
         elif head == "evaluation" and len(rest) == 2:

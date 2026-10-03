@@ -181,6 +181,24 @@
         <span id="collision-note" class="muted"></span>
       </div>
       <ul id="collision-contacts"></ul>
+      <!-- Explode: the engine's assembly.exploded_view stages, played 0..N with setPoses (§24). -->
+      <div class="controls">
+        <label for="explode-amount">explode</label>
+        <input type="range" id="explode-amount" min="0" max="1" step="0.01" value="0" disabled>
+        <select id="explode-view" hidden></select>
+        <span id="explode-note" class="muted small"></span>
+      </div>
+      <!-- Section: runs `cadex section --plane P [--offset-mm=N]` and clips the viewer at the cut (§24). -->
+      <div class="controls">
+        <label for="section-plane">section</label>
+        <select id="section-plane"><option>XY</option><option selected>XZ</option><option>YZ</option></select>
+        <input type="number" id="section-offset" step="any" placeholder="derived" aria-label="section offset, mm">
+        <button id="section-cut" type="button" disabled>Cut</button>
+        <button id="section-clear" type="button" disabled>Clear</button>
+      </div>
+      <div id="section-status" data-state="idle"></div>
+      <ul id="section-list"></ul>
+      <figure id="section-figure" hidden><img id="section-svg" alt="Section cut drawn by cadex section"><figcaption id="section-caption" class="muted small"></figcaption></figure>
       <ul id="model-components"></ul>
     </section>
     <section id="record" class="card panel">

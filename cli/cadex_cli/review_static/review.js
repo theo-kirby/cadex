@@ -602,6 +602,137 @@
     });
   }
 
+  // Explode (DASHBOARD.md §24): the engine's exploded-view frames, frame 0 the
+  // assembled model. A slider value t in [0, stages] sits between frame floor(t)
+  // and the next: positions are lerped, rotations slerped, as the stages move.
+  var explodeT = 0;
+
+  function slerp(a, b, f) {
+    var d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3], s = d < 0 ? -1 : 1;
+    d = Math.abs(d);
+    if (d > 0.9995) {
+      var q = a.map(function (v, i) { return v + f * (s * b[i] - v); }), n = Math.hypot.apply(null, q);
+      return q.map(function (v) { return v / n; });
+    }
+    var th = Math.acos(d), w0 = Math.sin((1 - f) * th) / Math.sin(th), w1 = s * Math.sin(f * th) / Math.sin(th);
+    return a.map(function (v, i) { return w0 * v + w1 * b[i]; });
+  }
+
+  function explodedView() {
+    var views = (state.model && state.model.available && state.model.exploded) || [];
+    return views[Number($('explode-view').value) || 0] || null;
+  }
+
+  function explodePoses(view, t) {
+    var i = Math.min(Math.floor(t), view.stages - 1), f = t - i, a = view.frames[Math.max(0, i)], b = view.frames[Math.max(0, i) + 1] || a;
+    if (t >= view.stages) return view.frames[view.stages];
+    var poses = {};
+    Object.keys(a).forEach(function (name) {
+      var p = a[name], q = b[name] || p;
+      poses[name] = { position_mm: p.position_mm.map(function (v, k) { return v + f * (q.position_mm[k] - v); }),
+                      rotation_xyzw: slerp(p.rotation_xyzw, q.rotation_xyzw, f) };
+    });
+    return poses;
+  }
+
+  function setExplode(t) {
+    var view = explodedView(), slider = $('explode-amount');
+    if (!view || !state.viewer.available) return null;
+    explodeT = Math.max(0, Math.min(view.stages, Number(t) || 0));
+    slider.value = String(explodeT);
+    state.viewer.setPoses(explodePoses(view, explodeT));
+    state.viewer.showLines(explodeT > 0);
+    $('explode-note').textContent = explodeT > 0 ? 'stage ' + explodeT.toFixed(2) + ' of ' + view.stages + ' · ' + view.output : 'assembled';
+    return explodeT;
+  }
+
+  function renderExplode(manifest, index) {
+    var views = (manifest && manifest.available && manifest.exploded) || [], slider = $('explode-amount'), pick = $('explode-view');
+    explodeT = 0;
+    clearChildren(pick);
+    views.forEach(function (view, index) { pick.appendChild(el('option', { value: String(index), text: view.output })); });
+    index = Math.max(0, Math.min(views.length - 1, Number(index) || 0));
+    pick.value = String(index);
+    pick.hidden = views.length < 2;
+    slider.disabled = !views.length || !state.viewer.available;
+    slider.value = '0';
+    var view = views[index];
+    slider.max = view ? String(view.stages) : '1';
+    if (view && state.viewer.available) state.viewer.setLines(view.lines);
+    $('explode-note').textContent = view ? 'assembled · ' + views.length + ' exploded view(s) from the engine' :
+      'no exploded view: the script declares no assembly.exploded_view';
+  }
+
+  // Section (DASHBOARD.md §24): Cut is `cadex section` run by the server; the
+  // page shows the SVG it drew and clips the viewer's solids at the same plane
+  // and offset. The listing is the accepted revision's cuts, newest first.
+  var sectionsKey = null, lastSection = null, sectionWriting = false, activeCut = null;
+
+  function showCut(cut) {
+    activeCut = cut || null;
+    var figure = $('section-figure');
+    if (state.viewer.available) state.viewer.setSection(cut ? cut.plane : null, cut ? cut.offset_mm : NaN);
+    $('section-clear').disabled = !cut;
+    Array.prototype.forEach.call(document.querySelectorAll('#section-list li[data-cut]'), function (li) {
+      li.dataset.active = String(!!cut && li.dataset.cut === cut.name);
+    });
+    figure.hidden = !cut;
+    if (!cut) { $('section-svg').removeAttribute('src'); return; }
+    $('section-svg').src = BASE + '/' + cut.svg;
+    $('section-caption').textContent = cut.plane + ' ' + cut.offset_mm + ' mm (' + cut.offset_source + ') · ' + cut.status + ' · ' +
+      cut.objects_cut + '/' + cut.objects + ' objects cut' + (cut.missed.length ? ' · missed: ' + cut.missed.join(', ') : '') +
+      ' · viewer clipped at the same plane · ' + cut.approximation;
+  }
+
+  function renderSections() {
+    var shown = (state.review && state.review.sections) || { available: false, reason: 'no section block', cuts: [] };
+    var current = state.review && state.review.accepted && state.review.accepted.revision;
+    var key = JSON.stringify([shown, current, sectionWriting, state.selected]);
+    if (key === sectionsKey) return;
+    sectionsKey = key;
+    $('section-cut').disabled = sectionWriting || !current || state.selected !== 'accepted';
+    var list = $('section-list');
+    clearChildren(list);
+    if (activeCut && !shown.cuts.some(function (cut) { return cut.name === activeCut.name; })) showCut(null);
+    if (!shown.available) { list.appendChild(el('li', { className: 'muted small', text: shown.reason || 'no cut' })); return; }
+    shown.cuts.forEach(function (cut) {
+      list.appendChild(el('li', { 'data-cut': cut.name, 'data-active': String(!!activeCut && activeCut.name === cut.name) }, [
+        el('a', { href: '#', text: cut.plane + ' ' + cut.offset_mm + ' mm', onclick: function (event) { event.preventDefault(); showCut(cut); } }),
+        el('span', { className: 'muted small', text: ' · ' + cut.offset_source + ' · ' + cut.objects_cut + '/' + cut.objects + ' cut' })
+      ]));
+    });
+  }
+
+  function writeSection(plane, offset) {
+    var status = $('section-status'), body = { plane: plane };
+    if (offset !== null && offset !== undefined && offset !== '') body.offset_mm = Number(offset);
+    sectionWriting = true; sectionsKey = null; renderSections();
+    status.dataset.state = 'pending';
+    status.textContent = 'cadex section --plane ' + plane + (body.offset_mm === undefined ? ' (derived offset)' : ' --offset-mm=' + body.offset_mm) + ' …';
+    return fetch(BASE + '/api/section', {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'X-Cadex-Token': WRITE_TOKEN },
+      body: JSON.stringify(body)
+    }).then(function (response) {
+      return response.json();
+    }).then(function (reply) {
+      if (!reply.ok) throw new Error(reply.error || 'exit ' + reply.exit);
+      lastSection = reply;
+      sectionWriting = false;
+      status.dataset.state = 'done';
+      status.textContent = 'cut ' + reply.cut.plane + ' ' + reply.cut.offset_mm + ' mm in ' + reply.seconds.toFixed(1) + ' s';
+      if (state.review) state.review.sections = reply.sections;
+      sectionsKey = null; renderSections(); showCut(reply.cut);
+      return reply;
+    }).catch(function (error) {
+      sectionWriting = false; sectionsKey = null;
+      status.dataset.state = 'error';
+      status.textContent = 'section refused: ' + error.message;
+      if (state.review) renderSections();
+      return null;
+    });
+  }
+
   function telemetryFor(run) {
     // The selected run's detail (histories, verified checkpoints) when it has
     // arrived for this run; otherwise the list's summary, which carries the
@@ -963,6 +1094,7 @@
         status.textContent = 'no model to show: ' + manifest.reason + ' (revision ' + short(manifest.revision) + ')';
         renderModelComponents(manifest, []);
         renderShowing();
+        renderExplode(manifest);
         return;
       }
       if (!state.viewer.available) {
@@ -986,6 +1118,7 @@
           ' · placements: ' + manifest.placement_source;
         renderModelComponents(manifest, loaded);
         renderShowing();
+        renderExplode(manifest);
       });
     }).catch(function (error) {
       status.dataset.state = 'error';
@@ -1192,6 +1325,7 @@
     renderComments();
     renderRevisions();
     renderExports();
+    renderSections();
     renderPresentation();
     renderEvaluation();
   }
@@ -1286,6 +1420,10 @@
     $('revision-accept').addEventListener('click', function () { writeRevision('accept', ''); });
     $('revision-reject').addEventListener('click', function () { writeRevision('reject', ''); });
     $('export-run').addEventListener('click', function () { writeExport(); });
+    $('explode-amount').addEventListener('input', function (event) { setExplode(event.target.value); });
+    $('explode-view').addEventListener('change', function () { renderExplode(state.model, this.value); });
+    $('section-cut').addEventListener('click', function () { writeSection($('section-plane').value, $('section-offset').value.trim()); });
+    $('section-clear').addEventListener('click', function () { showCut(null); });
     poll().then(function () { readyResolve(true); });
     setInterval(poll, POLL_MS);
     pollTurn();
@@ -1309,6 +1447,10 @@
     lastRevision: function () { return lastRevision; },
     exportModel: writeExport,
     lastExport: function () { return lastExport; },
+    explode: setExplode,
+    section: writeSection,
+    showCut: showCut,
+    lastSection: function () { return lastSection; },
     viewer: function () { return state.viewer; },
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, detail_bytes: lastPoll.detail_bytes, ms: lastPoll.ms }; },
     state: function () {

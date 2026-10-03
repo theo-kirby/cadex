@@ -32980,3 +32980,67 @@ against a real engine, the page exports a 30×20×6 mm plate, and the
 browser downloads `plate.step` (an ISO-10303-21 file with a B-rep) and
 `plate.stl` (12 facets, extents 30×20×6 mm) through the listed links, and
 the concept sheet `cadex render` drew downloads as the very PNG on disk.
+
+## ADR-510 — Inspect from the dashboard: the engine's exploded view and `cadex section` behind Cut (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. A sixth dashboard write, `POST api/section`
+(`review_server.write_section_cut`), a `sections` block on `api/project`
+(`review_server.section_listing`), an SVG route
+`section/<revision>/<name>/section.svg`, an `exploded` block on the model
+manifest (`review_server.exploded_views`), and viewer calls `setSection`,
+`setLines` and `showLines` (`review_scene.js`). No `OP_ARG_SPECS` change,
+no tool-surface change, no new dependency.
+
+**Decision.** Neither view adds a geometry path. The explode slider plays
+the engine's own `assembly.exploded_view` record (`_exploded_display_record`:
+cumulative poses per staged move, and leader lines). The server turns it
+into whole pose frames from the assembled model, and the page interpolates
+between frames, lerping positions and slerping rotations, through the
+viewer's existing `setPoses`. The last frame is the engine's
+`final_poses`. **Cut** runs `cadex section --project <root> --plane <P>
+[--offset-mm=<N>] --json` as a child behind the per-launch token and
+`Origin` check, the way Export runs `cadex export` (ADR-509). With no
+offset, the CLI derives one (ADR-273). The page shows the CLI's SVG and
+clips the viewer's solids at the same plane and offset. The clip is a
+three.js material clipping plane on the same tessellation the CLI cut. The
+offset travels as one `--offset-mm=<N>` token, so a negative offset is
+never parsed as a flag.
+
+**Fixed on the way.** With no simulation trace, `accepted_model` placed
+each component link at its *declared* placement. A jointed assembly showed
+its parts where the script declared them, not where the solver put them.
+The engine's explosion starts from the solved pose, so it would have
+started from a pose the viewer did not show. The accepted attempt's
+`solved_placement_matrix` (row-major 4×4) now comes between the trace and
+the declaration. On the test assembly, `swing` was declared at
+[0, 0, 40] and now shows at the solved [12, 0, 4].
+
+**Dropped.** The shell's section *flip*. The clip keeps the side below
+the offset, and the other side is another offset. Recorded in
+`docs/SHELL-PARITY.md`.
+
+**Cost.** Cuts for earlier revisions stay on disk under `review/section/`
+and are not served. About 150 lines in `review_server.py`, 150 in
+`review.js` and 30 in `review_scene.js`. The SVG keeps the CLI's light
+drawing sheet on the dark page.
+
+**What would reverse it.** If a cut needs exact BREP, `section.py` changes
+and the button does not. If the owner wants the explosion in renders, the
+engine's `look` would take the frames, and the slider would stay.
+
+**Test.** `cli/tests/test_dashboard_inspect.py`. Without an engine: the
+matrix-to-quaternion branches, cumulative frames, the section token,
+`Origin` and body checks, the exact argv including a negative offset, the
+listing, and 404s for unlisted, other-revision and traversal names. In
+headless Chromium against a real engine, on a jointed assembly with two
+staged moves:
+- the assembled pose is the solved one;
+- the slider's end is the engine's `final_poses` for every component;
+- 1.5 stages is the first move plus half the second;
+- the leader lines show only while exploded;
+- a derived XZ cut matches its summary, cuts 2/2 objects and shows the
+  512 px SVG;
+- the clip removes some model pixels, keeps all of them when the cut is
+  above the model, and leaves none when it is below;
+- an explicit XY 7 mm cut typed into the page misses only the plate;
+- Clear restores every pixel.

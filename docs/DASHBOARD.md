@@ -81,7 +81,7 @@ where (§12) — and the element ids do not change with the width.
 | 1 | **Run selection** | `#sidebar`, `#runs`, `#runs-summary`, `#current-run`, `#views li[data-run]` | Which view is shown: *Accepted now*, then every recorded run with its relation (current/historical) and status. The current run is marked. A sidebar at desk width; a collapsible run list under the masthead on phone (§6). | left sidebar |
 | 2 | **Identity** | `#identity`, `#view-kind`, `#view-relation`, `#view-status`, `#view-revision`, `#view-digest`, `#view-identity-source`, `#view-recorded`, `#policy-origin`, `#view-note`, `#view-policy-store` | What the rest of the page is about. Kind and relation as chips, then the key/value block. | right sidebar |
 | 2a | **Concept** | `#concept`, `#concept-status[data-state]`, `#concept-figure`, `#concept-sheet`, `#concept-caption`, `#concept-hero` | The design as presented: the concept sheet the last render drew (§14) — studio hero, name, key numbers, palette and line views — with the revision it was drawn from and its relation to the accepted one. Leads the page when there is one. | stage, *Concept* tab, first; the stage opens on it |
-| 3 | **Model** | `#model`, `#model-status[data-showing]`, `#viewer`, `#model-fit`, `#show-collision`, `#collision-note`, `#model-components` | The accepted revision's tessellated solids in the shared environment (§4), orbit by pointer or touch, fit control, and the labelled **show collision geometry** toggle, off by default (§11). The status line ends with what is showing. | stage, *Model* tab; toggle and component list in the right sidebar's *Model settings* (`#model-settings`) |
+| 3 | **Model** | `#model`, `#model-status[data-showing]`, `#viewer`, `#model-fit`, `#show-collision`, `#collision-note`, `#model-components`, `#explode-amount`, `#explode-view`, `#explode-note`, `#section-plane`, `#section-offset`, `#section-cut`, `#section-clear`, `#section-status[data-state]`, `#section-list li[data-cut][data-active]`, `#section-figure`, `#section-svg` | The accepted revision's tessellated solids in the shared environment (§4), orbit by pointer or touch, fit control, and the labelled **show collision geometry** toggle, off by default (§11). The explode slider and the section cut (§24). The status line ends with what is showing. | stage, *Model* tab; toggle and component list in the right sidebar's *Model settings* (`#model-settings`) |
 | 4 | **Curves** | `#curves`, `#telemetry`, `[data-metric]`, `[data-history]`, `#checkpoint-source`, `#checkpoints` | Training telemetry: the five metrics as a stat row, the three histories (reward per step, loss, episode length) as curves side by side on desk and stacked on phone, then checkpoint provenance. | stage, *Curves* tab |
 | 5 | **Videos** | `#videos-region`, `#videos`, `#videos li[data-video][data-showing]` | The run's recorded clips, playable inline and downloadable, each captioned with its identity strip (revision, style, policy, seed, and what it shows — recordings made before that was recorded say so). | stage, *Videos* tab |
 | 5a | **Evaluation** | `#evaluation`, `#evaluation-status[data-state]`, `#evaluation-dot`, `#evaluation-list button[data-evaluation]`, `#evaluation-predicates tr[data-predicate]`, `#evaluation-seeds tr[data-seed][data-filmed]`, `#evaluation-metrics tr[data-metric-row]`, `#evaluation-reward tr[data-term]`, `#evaluation-film li[data-film-seed] [data-film]`, `#evaluation-download` | A policy held to its task's success spec on every frozen seed (§17): the verdict, each predicate's tally, each seed's verdict, ending and values, the behaviour metrics, the reward by term, and the film drawn from the seeds. | stage, *Evaluation* tab |
@@ -973,6 +973,45 @@ Directories for earlier revisions stay on disk and are not offered.
 
 The concept sheet is a download already: `#concept-download` is
 `presentation/sheet.png?download=1`, the sheet `cadex render` drew (§14).
+
+## 24. Inspect: the exploded view and the section cut (ADR-510)
+
+Both sit in *Model settings* under the collision readout, and both use
+what the engine and the CLI already produce. Neither adds a geometry path.
+
+**Explode.** `api/model/accepted` carries `exploded`, one entry per
+`assembly.exploded_view` output. Each entry is the engine's display record
+(`_exploded_display_record`) turned into pose frames. Frame 0 is the model
+as the viewer places it. Frame *k* is frame *k-1* with stage *k*'s poses
+applied. `lines` are the engine's leader segments. `#explode-amount` runs
+from 0 to the stage count. A value between two frames lerps positions and
+slerps rotations, and `setPoses` places the solids. The leader lines show
+while the value is above 0. With more than one exploded view,
+`#explode-view` chooses which one. The last frame is the engine's
+`final_poses` exactly.
+
+Assembled placements now come from the accepted attempt's simulation
+trace, then from each link's `solved_placement_matrix`, and only then from
+the declared placement. Before this, a jointed assembly with no
+simulation showed every part where the script declared it, not where the
+solver put it.
+
+**Section.** **Cut** is `POST api/section` with `{"plane": "XY"|"XZ"|"YZ"}`
+and an optional `offset_mm`, behind the token and `Origin` check of §18.
+The server runs `cadex section --project <root> --plane <P>
+[--offset-mm=<N>] --json` as a child. With no offset, the CLI derives one
+the way the walk does (ADR-273). `api/project` carries a `sections` block
+listing the accepted revision's cuts, newest first, from
+`review/section/<revision>/<plane>-<offset>/summary.json`. Each cut gives
+its plane, offset, how the offset was chosen, status, objects cut and
+missed, and its SVG at `section/<revision>/<name>/section.svg`. The server
+serves that SVG only when the listing names the cut. Showing a cut puts
+the CLI's SVG in `#section-figure` and clips the viewer's solids, and
+their shadows, at the same plane and offset. The clip keeps the side below
+the offset. **Clear** removes the clip. A cut is a tessellation cut at the
+solved pose, as its `approximation` line says. The SVG keeps the CLI's
+light drawing sheet. It is a drawing, not a render, so the dark floor rule
+does not apply to it.
 
 ## Operator run status (ADR-387)
 
