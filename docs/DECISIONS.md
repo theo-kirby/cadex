@@ -31664,3 +31664,52 @@ printed bracket that is itself loose is not chased. Projects accepted
 before this ADR show `unavailable` until a new revision is accepted: on
 the balancer copy, whose restore pass drifted and rolled back (F1's path),
 a plain `rebuild` left the old attempt pinned and the stamps unpublished.
+
+## ADR-487 — The catalog wheel's bore is round, so a wheel joint sweeps clean round its motor's D shaft (2026-10-03)
+
+**Context.** orun1's first D4 trial (`orun1-t1-balancer`) put two
+`lib.wheel("pololu-1430")` on two `lib.gearmotor("pololu-2367")`, as the
+overlay tells the agent to. Its swept fit could not pass: a limited wheel
+joint measured 4.26 mm³ between the turning wheel's D bore and the motor's
+static D shaft, so the agent declared the wheels continuous and the sweep
+came back `incomplete`. In a real drive the shaft turns with the wheel.
+The engine has no notion of a part that belongs to two components: the
+shaft is in the motor's body, which does not move with the wheel joint.
+
+**Decision.** `lib.wheel` cuts its bore round at `bore_dia_mm` and drops
+the D flat from the geometry. A round bore turned about the shaft axis looks
+the same at every angle, so the sweep measures the static shaft exactly as it
+would measure a turning one. That holds only when the joint is on the shaft
+axis, which is also the only case where a real shaft turns with the wheel. A
+misaligned wheel joint still reports its intersection. The motor keeps its D
+shaft: it is a sourced dimension (PROVENANCE §8b), pinned on the real kernel.
+The flat stays in the wheel's spec as `bore_flat_to_opposite_mm`, and a new
+`approximate` entry says it is not modelled. This follows the servo spline,
+whose teeth are not modelled either.
+
+I chose this over the critic's two options for these reasons. A shaft
+returned as a separate solid for the agent to fuse into the wheel would
+change `gearmotor.body` under every accepted design and depend on the agent
+doing the fuse. A sweep exemption for a drive and output pair would also
+excuse a rim that really hits the motor case.
+
+The docstring's placement was wrong too: "at the motor's shaft datum" puts
+the hub through the motor's 0.7 mm boss (8.57 mm³ at the solved pose). The
+docstring now says to place the wheel at least `boss_height_mm` out. The
+overlay's wheel line says the same, and adds that the wheel revolute declares
+`angle_limits_degrees=(-180, 180)`, because a joint with no limits is never
+swept.
+
+**Measured.**
+`test_library.py::test_a_catalog_wheel_sweeps_clean_round_its_catalog_motor`
+drives the engine's own `_measure_joint_sweeps` on the real kernel. It takes
+the two library bodies, with the wheel 1 mm out on the shaft axis, and turns a
+hinge from −180° to 180° in 15° steps (25 samples). On the old source the
+pair's maximum swept common volume is 6.97 mm³, which fails. With the fix it
+is under `MAXIMUM_COMMON_VOLUME_MM3`, at the solved pose and through the
+whole turn.
+
+**Consequences.** Every accepted design with a 1430 wheel rebuilds that
+output differently once and reopens by the recipe path with it named
+(ADR-476). The wheel is still a solid disc. Modelling its rim, hub and tyre is
+the critic's second unit and is not part of this one.

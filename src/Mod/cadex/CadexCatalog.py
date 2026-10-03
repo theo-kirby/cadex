@@ -815,6 +815,7 @@ WHEELS = {
             "Solid disc of the tyre's diameter and width: spokes, tread and shoulder rounding are not modelled; the density is the stated mass over that envelope, not a measured inertia.",
             "bore_flat_to_opposite_mm is the STEP model's 2.5; the drawing's callout near the bore is ambiguous.",
             "The six 3.1 mm hub-mounting holes on a 19.1 mm circle are not modelled: their clocking is not dimensioned.",
+            "The bore is modelled round at bore_dia_mm, its D flat left out (ADR-487): the shaft turns with the wheel, and only a bore round about the axis lets a sweep of the wheel joint measure the motor's static shaft as if it turned.",
         ],
     },
 }

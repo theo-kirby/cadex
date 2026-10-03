@@ -1203,27 +1203,29 @@ class LibraryAPI:
         """A catalogued wheel and tyre, placed by its hub on the axle.
 
         Datum: the axle at the hub tip, +Z along the axle away from the
-        motor; place it at the motor's shaft datum with the motor's
-        direction and the D bore seats on the shaft. The body is the
-        tyre's stated disc plus the hub, with the bore cut; spokes and
-        tread are not modelled. ``spec['density_kg_m3']`` is the stated
+        motor; place it on the motor's shaft axis with the motor's
+        direction, at least the motor's ``spec['boss_height_mm']`` out from
+        its shaft datum so the hub clears the boss, and the bore seats on
+        the shaft. The body is the
+        tyre's stated disc plus the hub, with the bore cut round: its D
+        flat is not modelled, so a wheel joint sweeps clean round the
+        motor's D shaft. Spokes and tread are not modelled either.
+        ``spec['density_kg_m3']`` is the stated
         mass over that envelope. Cut ``.bay()`` from anything near it.
         """
         spec = catalog.wheel_spec(sku)
         part = self._part
         hub = spec["hub_protrusion_mm"]
-        radius = spec["bore_dia_mm"] / 2.0
-        depth = spec["bore_depth_mm"]
-        flat = spec["bore_flat_to_opposite_mm"]
         disc = part.fuse([
             part.cylinder(spec["hub_dia_mm"] / 2.0, hub),
             part.cylinder(spec["tyre_dia_mm"] / 2.0, spec["width_mm"], origin=(0.0, 0.0, hub)),
         ])
-        # The D: the bore's circle less the segment beyond the flat, which
-        # stays wheel material, so the shaft's own flat keys into it.
-        bore = part.cut(part.cylinder(radius, depth + 1.0, origin=(0.0, 0.0, -1.0)), [
-            part.box(2.0 * radius + 2.0, radius + 1.0, depth + 3.0,
-                     origin=(-radius - 1.0, flat - radius, -2.0))])
+        # The bore is round, not D (ADR-487): the shaft turns with the wheel,
+        # and a round bore about the axis reads the same at every angle, so
+        # a sweep of the wheel joint measures the static shaft as if it
+        # turned. The flat is a torque key, not a fit; it stays in the spec.
+        bore = part.cylinder(spec["bore_dia_mm"] / 2.0, spec["bore_depth_mm"] + 1.0,
+                             origin=(0.0, 0.0, -1.0))
         body = part.cut(disc, [bore], label=label)
         frame = self._frame("wheel", origin, direction, roll_degrees)
         return WheelPart(self, sku.strip().lower(),

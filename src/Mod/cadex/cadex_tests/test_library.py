@@ -700,8 +700,10 @@ def test_wheel_spec_recipe_and_bay():
     assert radii == [1.5, 3.3, 40.0]
     tyre = next(c for c in _ops(wheel.body, "cylinder") if c.arguments[0] == 40.0)
     assert tyre.arguments[1] == 10.0 and tuple(tyre.properties["origin"]) == (0.0, 0.0, 1.75)
-    (flat,) = _ops(wheel.body, "box")
-    assert flat.properties["origin"][1] == pytest.approx(1.0)  # 2.5 flat-to-opposite
+    # ADR-487: the bore is round, so the wheel turns clean round the D shaft.
+    assert _ops(wheel.body, "box") == []
+    bore = next(c for c in _ops(wheel.body, "cylinder") if c.arguments[0] == 1.5)
+    assert bore.arguments[1] == spec["bore_depth_mm"] + 1.0
     bay = wheel.bay()
     well = sorted(c.arguments for c in _ops(bay, "cylinder"))
     assert well == [(6.3, 4.75), (43.0, 16.0)]
@@ -1922,3 +1924,75 @@ for module, teeth, width, height in ((2, 10, 10, 8), (1.5, 4, 6, 5)):
     print("RACK " + json.dumps({"module": module, "teeth": teeth, "volume_mm3": round(shape.Volume, 3)}))
 print("GEARS-OK")
 """
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle").FREECADCMD is None,
+    reason="No FreeCADCmd binary available for a wheel sweep.",
+)
+def test_a_catalog_wheel_sweeps_clean_round_its_catalog_motor(tmp_path):
+    """ADR-487: a full turn of the wheel joint leaves the shaft and bore apart.
+
+    orun1's balancer trial measured 4.26 mm³ between the turning 1430's D
+    bore and the N20's static D shaft, so no catalog wheel on its catalog
+    motor could pass a sweep. The shaft really turns with the wheel; the
+    round bore is what lets the sweep measure it so. This drives the
+    engine's own sweep over the two library bodies as documented: the
+    wheel on the shaft clear of the boss, the hinge on the shaft axis, -180..180.
+    """
+    import json
+    import subprocess
+    from test_cadexd_lifecycle import CADEX_ROOT, FREECADCMD
+    from CadexFitReport import MAXIMUM_COMMON_VOLUME_MM3
+
+    driver = tmp_path / "wheel_sweep.py"
+    driver.write_text(WHEEL_SWEEP_DRIVER)
+    completed = subprocess.run(
+        [str(FREECADCMD), "-c",
+         f"import sys; sys.path.insert(0, {str(CADEX_ROOT)!r}); exec(open({str(driver)!r}).read())"],
+        capture_output=True, text=True, timeout=300,
+    )
+    line = next((l for l in completed.stdout.splitlines() if l.startswith("WHEEL-SWEEP ")), None)
+    assert line, completed.stdout + completed.stderr
+    result = json.loads(line[len("WHEEL-SWEEP "):])
+    (solved,) = result["baseline"]
+    assert solved["common_volume_mm3"] <= MAXIMUM_COMMON_VOLUME_MM3
+    (joint,) = result["report"]["joints"]
+    assert joint["status"] == "complete" and joint["sample_count"] == 25, json.dumps(joint)[:900]
+    (pair,) = joint["pairs"]
+    assert pair["relative_motion"] is True
+    assert pair["maximum_common_volume_mm3"] <= MAXIMUM_COMMON_VOLUME_MM3, pair
+
+
+WHEEL_SWEEP_DRIVER = r'''
+import json
+import FreeCAD as App
+from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
+from cadex_domain_api import create_domain_api
+from cadex_library_api import create_library_api
+from cadex_part_worker import build_part_shape
+from cadex_assembly_worker import _measure_clearance, _measure_joint_sweeps
+pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+lib = create_library_api(create_domain_api(pack.domain, pack.api_exports, pack.output_types))
+D = App.newDocument("WheelSweep")
+motor = D.addObject("Part::Feature", "motor")
+motor.Shape = build_part_shape(lib.gearmotor("pololu-2367").body.to_payload())
+wheel = D.addObject("Part::Feature", "wheel")
+# On the shaft axis, its hub 0.3 mm clear of the 0.7 mm boss.
+wheel.Shape = build_part_shape(lib.wheel("pololu-1430", origin=(0, 0, 1.0)).body.to_payload())
+D.recompute()
+components = {"motor": motor, "wheel": wheel}
+data = {"motor": {"grounded": True}, "wheel": {"grounded": False}}
+# Both connectors at the world origin on the shaft axis, each in its own
+# component's frame: the shape's placement becomes the object's.
+def axis(obj):
+    return {"matrix": list(obj.Placement.inverse().toMatrix().A)}
+joints = {"wheel": {"kind": "revolute", "suppressed": False, "parameters": {},
+    "angle_limits_degrees": [-180, 180], "length_limits_mm": None,
+    "connectors": [{"component_output": "motor", "local_frame": axis(motor)},
+                   {"component_output": "wheel", "local_frame": axis(wheel)}]}}
+baseline = _measure_clearance(components)
+report = _measure_joint_sweeps(components, data, joints, baseline,
+                               {"sweep_step_degrees": 15}, True)
+print("WHEEL-SWEEP " + json.dumps(dict(baseline=baseline, report=report)))
+'''
