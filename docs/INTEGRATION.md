@@ -38,9 +38,9 @@ The two halves:
 - **the engine** (repo root) — FreeCAD fork; the xscript engine, headless.
   Builds `FreeCADCmd` and `CadexGeometryWorker` and **no application**
   (ADR-021/022). LGPL-2.1+.
-- **the shell** (`shell/`) — Blender fork; the product UI
-  (`docs/BLENDER.md`). Carries the engine payload inside its bundle.
-  GPL-2.0+.
+- **the CLI and dashboard** (`cli/`) — the front end since the Blender
+  shell was deleted (ADR-498; its account is `docs/history/BLENDER.md`).
+  LGPL-2.1+.
 
 - **vibecad** — parent fork; historical reference only (teardown history on
   its `cadex-teardown` branch, at `github.com/theo-kirby/vibecad`).
@@ -82,28 +82,19 @@ A and D's interim state are now history, not plan.
 
 ## License reasoning
 
-- The engine is LGPL-2.1+ (FreeCAD lineage); OCCT is LGPL-2.1. The shell is
-  GPL-2+ (Blender lineage).
-- Direction of flow is LGPL engine → GPL shell, across a **process boundary**
-  (cadexd subprocess speaking a JSON protocol; no linking). This is clean:
-  the GPL shell may talk to an LGPL service; neither codebase's license
-  contaminates the other.
-- **One repository does not change this.** What matters for the GPL is
-  linking and derivation, not directory layout: the two halves are separate
-  programs communicating over a documented protocol, exactly as before. The
-  concrete rules that keep it that way — nothing under
-  `shell/scripts/startup/mesh_agent/` imports from `src/`,
-  `cadexd_client.py` stays a plain NDJSON client with no cadex imports, and
-  the payload is carried as data — are unchanged and are why they are worth
-  keeping.
-- The inverse (embedding GPL Blender code inside the LGPL engine) would not
-  be clean. The engine must never gain a `shell/` import.
-- The shipped bundle is an **aggregate** distribution: each component stays
-  under its own license, because putting separate programs in one archive
-  does not relicense any of them. The Blender-derived binary is distributed
-  under GPL-3.0-or-later terms (as Blender's own binaries are — Apache-2.0
-  components require it); the engine payload beside it stays
-  LGPL-2.1-or-later. The full argument is `docs/PROVENANCE.md` §7.
+- The engine is LGPL-2.1+ (FreeCAD lineage); OCCT is LGPL-2.1. The CLI and
+  dashboard are LGPL-2.1+ as well, and since the Blender shell was deleted
+  (ADR-498) the repository carries no GPL code. The licensing suite holds
+  that: a tracked source file with a GPL SPDX header, or anything tracked
+  under `shell/`, fails it.
+- While the shell existed it was GPL-2+, and the protocol was what kept the
+  two licences apart: separate programs over a documented NDJSON protocol,
+  no linking, and a shell client that imported no engine code. That is why
+  the deletion took no code with it. A future front end under another
+  licence would sit behind the same boundary.
+- The shipped artifact is the staged engine payload, LGPL-2.1-or-later with
+  each bundled component under its own licence. The full argument is
+  `docs/PROVENANCE.md` §7.
 
 ## cadexd protocol `cadex-cadexd-v1` `[Cadex-new — implemented, ADR-017]`
 

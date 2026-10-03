@@ -6,9 +6,9 @@
 What a release-readiness audit found broken once, held mechanically so it
 cannot silently break again: every file of ours declares its license, every
 modified inherited file carries (or is ledgered as) its modification
-notice, the modification manifest stays equal to git reality — which is
-"§2a stays eight files" mechanized, for both forks — the attribution and
-component-map documents keep naming what the binaries require, and a staged
+notice, the modification manifest stays equal to git reality, the tree
+carries no GPL source now that the Blender shell is gone (ADR-498), the
+attribution and component-map documents keep naming what the binaries require, and a staged
 payload actually carries its license material.
 
 Headless and stdlib-only, in the house patterns: AST walks like
@@ -19,10 +19,8 @@ gates on ``CADEX_ENGINE_ROOT`` like the packaged lifecycle gate.
 
 from __future__ import annotations
 
-import ast
 import json
 import os
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -50,8 +48,6 @@ SPDX_SCOPES = {
     "package": ("LGPL-2.1-or-later", {".py", ".sh"}),
     # tools/ is deliberately absent: it mixes our helpers with inherited
     # FreeCAD lint scripts (tools/lint/*) that carry no headers upstream.
-    "shell/scripts/startup/mesh_agent": ("GPL-2.0-or-later", {".py"}),
-    "shell/tests/eval/mesh_agent_cad": ("GPL-2.0-or-later", {".py"}),
 }
 
 # Exemptions carry their reason; test_the_exemption_list_is_not_stale keeps
@@ -76,11 +72,6 @@ def test_every_source_file_declares_the_right_license():
             head = _head(path)
             if f"SPDX-License-Identifier: {identifier}" not in head:
                 wrong.append(f"{rel}: wants {identifier}")
-    # The GPL side of shell/tests/python is only our suites; the rest of the
-    # directory is inherited Blender test scaffolding.
-    for path in sorted((REPO / "shell/tests/python").glob("bl_mesh_agent*.py")):
-        if "SPDX-License-Identifier: GPL-2.0-or-later" not in _head(path):
-            wrong.append(f"{path.relative_to(REPO)}: wants GPL-2.0-or-later")
     if "SPDX-License-Identifier: LGPL-2.1-or-later" not in _head(REPO / "cadex"):
         wrong.append("cadex: the CLI shim wants LGPL-2.1-or-later")
     assert not wrong, "files missing or mis-declaring their license:\n" + "\n".join(wrong)
@@ -124,9 +115,9 @@ def _git(*args: str) -> str:
 
 
 def test_the_manifest_matches_git_reality():
-    """docs/inherited-modifications.json == git diff against each import
-    commit. This is "the eight files stay eight" mechanized, for BOTH forks:
-    a new edit to an inherited file fails here until it is manifested,
+    """docs/inherited-modifications.json == git diff against the import
+    commit of each fork the repository still carries (FreeCAD alone since
+    ADR-498): a new edit to an inherited file fails here until it is manifested,
     noticed and ledgered."""
     if not (REPO / ".git").exists():
         pytest.skip("not a git checkout (exported tree)")
@@ -167,24 +158,17 @@ def test_the_manifest_matches_git_reality():
         )
 
 
-def test_blender_product_identity_stays_eight_files():
-    """BLENDER-TREE.md §2a's table is eight files and stays eight, and every
-    one of them is in the manifest."""
-    text = (REPO / "docs" / "BLENDER-TREE.md").read_text()
-    section = text.split("### 2a.")[1].split("###")[0]
-    rows = [
-        line for line in section.splitlines() if line.startswith("| `") and "|" in line[2:]
-    ]
-    files = []
-    for row in rows:
-        first_cell = row.split("|")[1]
-        files.extend(re.findall(r"`([^`]+)`", first_cell))
-    assert len(files) == 8, f"§2a lists {len(files)} files, must stay eight: {files}"
-
+def test_the_manifest_names_only_the_fork_still_in_the_tree():
+    """The Blender half of the manifest left with shell/ (ADR-498). Every
+    tree the manifest still names must exist on disk, and its ledger must be
+    a live doc rather than one moved to docs/history/."""
     manifest = json.loads(MANIFEST.read_text())
-    manifested = {entry["path"] for entry in manifest["trees"]["blender"]["files"]}
-    missing = [f for f in files if f"shell/{f}" not in manifested]
-    assert not missing, f"§2a files absent from the manifest: {missing}"
+    assert set(manifest["trees"]) == {"freecad"}, sorted(manifest["trees"])
+    for name, tree in manifest["trees"].items():
+        assert not tree["ledger"].startswith("docs/history/"), (name, tree["ledger"])
+        assert (REPO / tree["ledger"]).is_file(), (name, tree["ledger"])
+        for scope in tree["scopes"]:
+            assert (REPO / scope).exists(), f"{name}: scope {scope} is not on disk"
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +178,7 @@ def test_blender_product_identity_stays_eight_files():
 
 def test_the_notice_file_names_the_binary_grants():
     notice = (REPO / "NOTICE").read_text()
-    for required in ("MuJoCo", "Open CASCADE", "OpenTheme", "FreeCAD", "Blender"):
+    for required in ("MuJoCo", "Open CASCADE", "OpenTheme", "FreeCAD"):
         assert required in notice, f"NOTICE no longer names {required}"
 
 
@@ -301,22 +285,27 @@ def test_the_staged_payload_carries_its_license_material():
 # ---------------------------------------------------------------------------
 
 
-def test_the_shell_client_never_imports_engine_code():
-    """cadexd_client.py is the GPL shell's protocol client and the LGPL/GPL
-    seam: it must stay a dependency-free NDJSON client with no cadex,
-    FreeCAD or bpy import (docs/PROVENANCE.md §7)."""
-    source = (
-        REPO / "shell" / "scripts" / "startup" / "mesh_agent" / "cadexd_client.py"
-    ).read_text()
-    forbidden = []
-    for node in ast.walk(ast.parse(source)):
-        names = []
-        if isinstance(node, ast.Import):
-            names = [alias.name for alias in node.names]
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            names = [node.module]
-        for name in names:
-            top = name.split(".")[0]
-            if top.lower().startswith(("cadex", "freecad")) or top == "bpy":
-                forbidden.append(name)
-    assert not forbidden, f"cadexd_client.py imports across the seam: {forbidden}"
+def test_the_repository_carries_no_gpl_source():
+    """Cadex was LGPL beside a GPL shell; with shell/ deleted it is LGPL and
+    the permissive licences it redistributes, and nothing else (ADR-498).
+    The seam the old shell-client test guarded is gone, so what is held now
+    is the whole tree: nothing is tracked under shell/, no tracked source
+    file declares a GPL (as opposed to LGPL) SPDX identifier in its header,
+    and the attribution documents no longer point a reader at shell/."""
+    if not (REPO / ".git").exists():
+        pytest.skip("not a git checkout (exported tree)")
+    assert not _git("ls-files", "--", "shell").strip(), "shell/ is tracked again"
+    try:
+        hits = _git("grep", "-n", "-I", "-E", r"SPDX-License-Identifier: *A?GPL", "--", ".")
+    except subprocess.CalledProcessError:  # git grep exits 1 on no match
+        hits = ""
+    gpl = []
+    for line in hits.splitlines():
+        path, number, _ = line.split(":", 2)
+        # A header, not prose: Markdown that tells the old shell's story
+        # quotes the identifier in running text.
+        if int(number) <= 12 and not path.endswith(".md"):
+            gpl.append(path)
+    assert not gpl, f"GPL-declared source is back in the tree: {gpl}"
+    for doc in ("NOTICE", "THIRD_PARTY_LICENSES.md"):
+        assert "shell/" not in (REPO / doc).read_text(), f"{doc} still points at shell/"

@@ -15,8 +15,8 @@ ordinary simulation trace. So the chain this file drives now ends where the
 arc was always going -- design a mechanism, train a policy for it offboard,
 and watch the mechanism move under it.
 
-**No protocol change and no ``shell/`` diff.** That is the invariant ADR-078
-says the whole branch rests on, and M7 is designed so it stays true: a
+**No protocol change and no front-end change.** That is the invariant
+ADR-078 says the whole branch rests on, and M7 is designed so it stays true: a
 policy needed no new op because ``put_asset`` performs no suffix check of
 its own, and widening the store's accepted set is entirely engine-side.
 
@@ -297,9 +297,9 @@ def test_the_engine_plays_the_policy_it_verified_and_the_trace_is_a_trace() -> N
     the training gate at the bottom of this file, which needs jax; this
     asserts the path, which needs nothing.
 
-    **No protocol change and no ``shell/`` diff**, which is what the artifact
-    kind below is really testing: a rollout is not a new kind of thing to the
-    shell, it is a trace.
+    **No protocol change and no front-end change**, which is what the
+    artifact kind below is really testing: a rollout is not a new kind of
+    thing to a viewer, it is a trace.
     """
 
     root = Path(tempfile.mkdtemp(prefix="m8-live-"))

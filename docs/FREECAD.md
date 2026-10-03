@@ -1,10 +1,12 @@
 # FREECAD.md — Inherited Substrate Inventory
 
-Verified against source: 2026-09-07
+Verified against source: 2026-10-03
 
 Cadex's **engine** is a FreeCAD fork. This is the ledger of what we keep,
-what is slated for removal, and what is already gone. Its peer for the shell
-half is `docs/BLENDER-TREE.md`, in the same format and under the same rules.
+what is slated for removal, and what is already gone. It is the only
+inherited-tree ledger: its peer for the Blender shell,
+`docs/history/BLENDER-TREE.md`, is history since `shell/` was deleted
+(ADR-498).
 The change policy for inherited code is in `AGENTS.md`; removals execute
 under the two-commit protocol in §3 and are logged in `docs/DECISIONS.md`.
 
@@ -67,7 +69,7 @@ the product installs contains them:
 
 ## 2a. Our delta against upstream — additions inside the inherited tree
 
-The peer of `docs/BLENDER-TREE.md` §2, and it stayed empty far longer:
+The peer of the shell ledger's §2 (`docs/history/BLENDER-TREE.md`), and it stayed empty far longer:
 until 2026-08-05 every Cadex engine feature lived under `src/Mod/cadex/`
 and reached OCCT through bindings FreeCAD already had. Two do not, and both
 exist because a Python-side workaround would have been an *approximation of
@@ -121,8 +123,8 @@ comment there triggers whole-file formatting; this listing is their notice.
 a squashed snapshot of VibeCAD's `cadex-teardown` branch, itself a FreeCAD
 fork with edits. Modifications made *before* the import cannot be
 enumerated from this repository; the notices are dated 2026 and cover this
-repository's own edits. The same bound holds on the Blender side
-(`docs/BLENDER-TREE.md` §2).
+repository's own edits. The same bound held on the Blender side until it
+was deleted (`docs/history/BLENDER-TREE.md` §2).
 
 ## 2c. Licence
 
@@ -149,7 +151,8 @@ The broader reduction remains open; the audit records verification.
 compiled consumer. After Start disable/delete, the GSL gitlink, submodule
 entry and three checkout references are removed. No retained CMake consumer
 exists; the Import DXF `gsl::owner` mention is only a TODO comment.
-OndselSolver and the shell library submodules remain.
+OndselSolver remains; the shell library submodules went with `shell/`
+(ADR-498).
 
 ### `src/Gui` (+ every `src/Mod/*/Gui`, `tests/src/Gui`) — Phase 8
 

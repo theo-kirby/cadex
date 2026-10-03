@@ -560,7 +560,7 @@ def test_two_tasks_may_share_one_model_through_a_live_engine() -> None:
 def test_the_protocol_did_not_change() -> None:
     """A task arrives as an ordinary output with a kind the shell ignores.
 
-    M6 promised no protocol change and no ``shell/`` diff. This is the half
+    M6 promised no protocol change and no front-end change. This is the half
     that can be asserted from here: the bundle reaches the shell through the
     same ``display`` entry every other artifact uses, with no tessellation,
     so ``cadex_hydrate`` skips it for want of geometry and ``cadex_animate``

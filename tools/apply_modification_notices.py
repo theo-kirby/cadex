@@ -2,15 +2,15 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""Per-file modification notices for inherited FreeCAD and Blender files.
+"""Per-file modification notices for inherited FreeCAD files.
 
-LGPL-2.1 §2(a) and GPL-2 §2(a) ask a modified file to carry a prominent
-notice of the change. This tool holds that rule mechanically: it reads
+LGPL-2.1 §2(a) asks a modified file to carry a prominent notice of the
+change. (The Blender half of the manifest left with ``shell/``, ADR-498.) This tool holds that rule mechanically: it reads
 ``docs/inherited-modifications.json`` (itself pinned equal to the git diff
 against each import commit by ``test_licensing_compliance.py``) and inserts
 one comment line after each file's existing license header:
 
-    /* Modified by the Cadex project, 2026. See docs/BLENDER-TREE.md. */
+    /* Modified by the Cadex project, 2026. See docs/FREECAD.md. */
 
 in the file's own comment style. The date is a fixed ``2026`` rather than a
 per-file git date: the imports are squashed snapshots, so per-file dates

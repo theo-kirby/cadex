@@ -276,7 +276,7 @@ large interaction payoff, and it needs **no new kernel math**.
   `all_objects` and would sweep a child). Grab a ring, move or scale it,
   press **Apply**, which goes through `wiring.py`'s single-slot pump
   (ADR-122). Panel in the existing parameters editor. **Adding a space type
-  would spend `docs/BLENDER-TREE.md` §2b budget; this slice must not.**
+  would spend `docs/history/BLENDER-TREE.md` §2b budget; this slice must not.**
 
 **Landed with two gestures deliberately ignored.** Dragging a ring *across*
 the spine is dropped rather than honoured — a cage is a straight spine by
@@ -348,7 +348,7 @@ stops being needed.
   the probe depth and **say so in the result** rather than silently doing
   less work.
 - **`shell/` diff creep.** O0 and O3 both add UI. Every line must stay inside
-  `mesh_agent/` and `shell/tests/python/`; `docs/BLENDER-TREE.md` §2a stays
+  `mesh_agent/` and `shell/tests/python/`; `docs/history/BLENDER-TREE.md` §2a stays
   eight files, §2b and §2c unmoved (ADR-091). If a slice seems to need a
   space type, that is a decision to bring back, not a fix to slip in.
 - **Phase 12 deletes `shell/`.** O0's compositor and O3's overlay get

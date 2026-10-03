@@ -68,7 +68,7 @@ and a gait video — and 0.1.0 roughly means that sentence works.
   script view.** That's the whole app. The UX north star is the working
   shell: `shell/scripts/startup/mesh_agent/` plus the
   `Mesh` app template (50/50 split, chat input docked at the bottom right) —
-  detailed in `docs/BLENDER.md`. That prototype is the **specification** for
+  detailed in `docs/history/BLENDER.md`. That prototype is the **specification** for
   the Rust shell, not its permanent home (ADR-025).
 - **No user-accessible modeling tools.** No fillet button, no extrude button,
   no sketch editor toolbar. The user talks; the AI writes script; sliders

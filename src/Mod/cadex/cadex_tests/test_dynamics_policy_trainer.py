@@ -89,7 +89,7 @@ def test_no_cmake_rule_installs_the_trainer() -> None:
     root = TRAINER.parents[1]
     hits = []
     for path in root.rglob("CMakeLists.txt"):
-        if any(part in {"build", "build_darwin", ".pixi", "shell"}
+        if any(part in {"build", "build_darwin", ".pixi"}
                for part in path.parts):
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")

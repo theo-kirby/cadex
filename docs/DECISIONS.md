@@ -32256,3 +32256,82 @@ Cadex with another agent CLI. Reversing this means writing a backend in
 `cli/` from scratch. The shell's code is GPL and cannot be copied into
 `cli/`, but `v1-blender-shell` records how ADR-174 and ADR-175 translated
 each stream into Claude-shaped frames.
+
+## ADR-498 — `shell/` is deleted, and the repository carries no GPL code (2026-10-03)
+
+**Status:** accepted. orun2 S1, the delete commit after ADR-495's disable
+commit. Supersedes ADR-030's two-fork layout, ADR-091's `shell/` diff rule,
+ADR-171's Blender half, and ADR-183. [Cadex-new]
+
+**What is deleted.** All of `shell/`: 19,446 tracked files, about 9.3
+million lines, including the `mesh_agent` package, Blender's vendored
+`extern/`, its 111-line `.gitattributes` of LFS rules and the 6,716 LFS
+pointers they governed, and the four `shell/lib/<platform>` submodule
+gitlinks with their `.gitmodules` entries. Also:
+- the six `/shell/build_*` rules in `.gitignore`;
+- `docs/probes/named-angle/background_probe.py`, the one GPL file outside
+  `shell/`. It ran the shell's renderer through `bpy` and `mesh_agent`, so
+  it could not run any more; its README says so and names the tag;
+- `*.blend1` and `*.blend@` from the `.gitignore` the CLI writes into a new
+  project, since no front end writes a `.blend` now.
+
+Every `mesh_agent` module, tool and editor was read and described in
+`docs/SHELL-PARITY.md` before this commit (ADR-495's ledger rule). Its 29
+*drop (proposed)* rows become **dropped**, citing this ADR, for the reasons
+each row gives. Rows still marked *to port* are D2 and A1 work, not losses:
+the code they describe is at `v1-blender-shell`, read but never copied.
+
+**The licensing restatement.** An audit of every tracked file's header
+after the delete found no GPL or AGPL SPDX identifier outside Markdown
+prose. The Bison-generated parsers in `src/App` and `src/Base` carry the
+Bison exception and are LGPL. So the repository is LGPL-2.1-or-later, plus
+the permissive and LGPL third-party trees `THIRD_PARTY_LICENSES.md` maps.
+The payload's one GPL binary, conda's `readline`, is unchanged and stays
+ADR-171's counsel item: it is a dependency of the staged payload, not code
+in this repository.
+- `docs/inherited-modifications.json` drops its `blender` tree (44
+  entries). FreeCAD is the one fork it describes.
+- `test_licensing_compliance.py` drops the GPL SPDX scopes, the
+  `bl_mesh_agent*` header check, the "§2a stays eight files" test and the
+  shell-client seam test. It gains
+  `test_the_manifest_names_only_the_fork_still_in_the_tree` and
+  `test_the_repository_carries_no_gpl_source`. The second fails if anything
+  is tracked under `shell/`, if a tracked non-Markdown file declares a GPL
+  SPDX identifier in its first twelve lines, or if `NOTICE` or
+  `THIRD_PARTY_LICENSES.md` names `shell/`. `NOTICE` no longer has to name
+  Blender. Run against the unchanged `NOTICE` it fails.
+- `NOTICE` drops the Blender entry and says the shell is gone.
+  `THIRD_PARTY_LICENSES.md` has one fork row and no shell sections, and
+  maps each obligation to the staged payload's root, not to `Cadex.app`.
+- `docs/PROVENANCE.md`: §1's tables (the line counts re-measured for the
+  trees that remain), §3 as history, §7 as one licence, §8 and §9.
+  `README.md`'s Credits and License, `CONTRIBUTING.md`'s licensing rules,
+  `docs/INTEGRATION.md`'s licence reasoning, `cli/README.md` and the
+  `cli/cadex_cli` docstring say the same.
+- `tools/apply_modification_notices.py` describes the FreeCAD tree only.
+
+**Docs moved and repointed.** `docs/BLENDER.md` and `docs/BLENDER-TREE.md`
+move to `docs/history/`, each with a superseded banner, joining
+`BLENDER-RECIPES.md` (ADR-496). `AGENTS.md` loses its shell repo-map rows,
+the GPL boundary and Blender-tree change-policy bullets, the `shell/` diff
+rule in the dynamics vertical and both doc-index rows, and gains a
+`SHELL-PARITY.md` row (404 → 353 lines). `docs/FREECAD.md`, `VISION.md` and
+`ORGANIC.md` point at the history copies. Comments in four engine files and
+three dynamics suites that cited "no `shell/` diff" now say "no front-end
+change", and `_ASSET_SUFFIXES`'s "must stay exactly three" note, whose only
+reason was the shell's mirror of it, is restated without that reason.
+
+**Left for R1, named so it is not lost.** These live docs still describe
+the shell as present: `docs/ARCHITECTURE.md` (its pipeline diagram and a
+build table listing `pixi run setup` and `build-shell`), `docs/MUJOCO.md`,
+`SECURITY.md` and `PRIVACY_POLICY.md` (both describe `mesh_agent`'s data
+flows and the `.blend` transcript), `docs/VISION.md`'s interface section,
+`AGENTS.md`'s "Where this is going" paragraph, and `docs/ROADMAP.md`, which
+a work unit does not hand-edit. Each needs a rewrite for the dashboard, not
+a path fix, and R1 owns that rewrite.
+
+**What it costs.** Nothing that runs. Nothing built, gated or imported
+`shell/` since ADR-495. The old application is one checkout away at
+`v1-blender-shell`. Reversing this means restoring the tree from that tag,
+its `blender` manifest half and its licensing tests, and accepting a GPL
+half again.

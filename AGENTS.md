@@ -1,14 +1,14 @@
 # AGENTS.md — Agent Entry Point
 
-Verified against source: 2026-09-08. **This is the single agent contract.**
+Verified against source: 2026-10-03. **This is the single agent contract.**
 `CLAUDE.md` exists only to import it (`@AGENTS.md`) and holds nothing of its
 own, so there is one file to read and one file to edit — which is what ADR-005
 asked for, reached from the other direction (ADR-137).
 
 Cadex is an AI-native CAD app. **This repository is the whole product**
 (Phase 13a, ADR-030): clone it, `pixi run setup-engine && pixi run build-engine`, and you
-have a running engine and CLI. The Blender shell is disabled (ADR-495) and
-is being deleted (orun2).
+have a running engine and CLI. The Blender shell is deleted (ADR-498); the
+tag `v1-blender-shell` is the last tree that has it.
 
 **Dynamics and control are built in** (ADR-102): Cadex simulates mechanisms
 on MuJoCo, exports them as MJCF, and plays back policies trained on them.
@@ -27,12 +27,11 @@ repository boundary:
   ephemeral document, and stream tessellation back. Five domains:
   partdesign, sketcher, part, mesh, assembly — the assembly one also
   carrying dynamics, MJCF export, tasks, policies and rollouts.
-- **the shell**, under `shell/` — a Blender fork carrying the
-  `mesh_agent` package as application code (`scripts/startup`, ADR-183 —
-  not an add-on). It is the product UI, it speaks the protocol in
-  `docs/INTEGRATION.md`, and it ships the engine inside its own bundle. It
-  knows nothing about dynamics and never will: a policy rollout reaches it
-  as the simulation trace it already played.
+- **the CLI and the dashboard**, under `cli/` — the only front end, a
+  client of the protocol in `docs/INTEGRATION.md` (ADR-061). `./cadex -p
+  "…"` runs one AI turn against a project; `./cadex params --set k=v`
+  sweeps its parameters with no model in the loop at all; `./cadex review`
+  serves the dashboard (`cli/cadex_cli/review_server.py`).
 - **`training/`**, at the repo root — the offboard PPO trainer. Not part of
   the engine, in no payload, copied to a machine with a GPU (ADR-084).
 - **`analysis/`**, beside it — the offboard structural analysis: stress,
@@ -49,19 +48,13 @@ repository boundary:
   which is `docs/VISION.md` principle 3 made literal, and the one thing no
   other generative-design tool does.
 
-Plus a **second front end**, under `cli/` — a third client of the same
-protocol, with no Blender and no display (ADR-061). `./cadex -p "…"` runs one
-AI turn against a project; `./cadex params --set k=v` sweeps its parameters
-with no model in the loop at all. It is peer to the shell, not part of it,
-and shares no code with it.
-
 There is no Qt shell, no provider stack, and no API-key model loop — the AI
 runs as the Claude Code CLI the user is already logged into, which drives the
 Mesh tools over an MCP stdio shim and brings no API key or model loop of
 ours. **Claude Code is the only harness** (ADR-497): the Codex and pi
 backends (ADR-174, ADR-175) went with the shell.
 `pixi run build-engine` produces `FreeCADCmd` and `CadexGeometryWorker` and
-no application; since ADR-495 no pixi task builds the shell either.
+no application.
 
 **Where this is going (ADR-025, ADR-030).** The product becomes **one
 application we own** — a derivative of but not dependent on either FreeCAD
@@ -94,11 +87,10 @@ Read `docs/VISION.md` before designing anything.
 | `docs/ORGANIC.md` | **Phase 15's vertical**: organic modelling and the CAD/mesh interface, slices O0–O3. §1 is the measurement it is sized from — a robot wolf built entirely in `part`, and the three ways it failed to weld its own seams. §4 is the benchmark log. |
 | `docs/STRUCTURAL.md` | **Phase 16's vertical**: stress, topology optimisation and shape search, slices **S0–S4, all closed**. §3 is S0's measurements; §4 is the search loop and why it drives the CLI rather than importing it; §5 is SIMP and the marching-tetrahedra extraction; §6 is the in-engine half and what it deliberately did *not* build; §7 is the loop closed; **§8 is S4 — the fit that ends in a script rather than a mesh**, its spike-zero blend measurements, its coverage gate and the one premise that did not survive contact. S0–S2 and S4 are outside the engine by construction; S3 is one op on `mesh` and one on `part`, and costs no protocol op and no `shell/` diff. |
 | `docs/DECISIONS.md` | ADR log. Append an entry for every removal or direction change. |
-| `docs/PROVENANCE.md` | Which code came from FreeCAD, from Blender, and from VibeCAD; licences, credit, and how two licences share one repo. |
+| `docs/PROVENANCE.md` | Which code came from FreeCAD and from VibeCAD, what the deleted Blender shell left behind (nothing), licences and credit. |
 | `docs/FREECAD.md` | Inherited-tree ledger for the **engine**: kept / disabled / already-deleted. |
-| `docs/BLENDER-TREE.md` | The same ledger for **`shell/`**, plus the four-group inherited diff against upstream Blender (§2a is still eight files, and stays eight). |
 | `docs/INTEGRATION.md` | **The process contract**: the cadexd protocol (test-enforced on both requests and responses) and the engine payload. |
-| `docs/BLENDER.md` | The shell: `mesh_agent`'s file map, its tools, and how to run its suites. |
+| `docs/SHELL-PARITY.md` | Where each part of the deleted Blender shell went: ported, already covered, or dropped, with its test or ADR. |
 | `docs/CLI.md` | The headless CLI: subcommands, exit codes, the `--json` envelope, and how it reaches the engine. |
 | `docs/DESIGN-LANGUAGE.md` | **How a Cadex robot should look** (ADR-479): an engineered machine designed inside out, in an exposed-mechanism or panelled hard-surface finish, with no face, the `shell`/`mechanism`/`accent` roles and palette, joints, structure and feet, printability, presentation. Each rule cites the owner's blind ratings. `docs/probes/orun1/README.md` freezes judge v2, which it is scored with; ot10's rubric is retired (ADR-484). |
 | `docs/REVIEW-DESIGN.md` | **The review dashboard's design spec** (ADR-328): purpose, hierarchy, type scale, the dark palette shared by chrome and viewport, spacing, breakpoints, and the measured "before" it is held against. Change the page and this doc together. |
@@ -119,9 +111,9 @@ PR.
 
 ```
 cadex                     the CLI shim: ./cadex -p "..."  (docs/CLI.md)
-cli/cadex_cli/            the headless CLI -- a third protocol client, no
-                          Blender and no display (ADR-061). LGPL, so nothing
-                          may be copied here from shell/.
+cli/cadex_cli/            the CLI and the dashboard -- the protocol client
+                          (ADR-061). LGPL; nothing may be copied here from
+                          the deleted GPL shell (v1-blender-shell).
 cli/tests/                its suite; engine-needing tests skip without one
 src/Mod/cadex/            the engine (start here; file map in docs/ARCHITECTURE.md)
 src/Mod/cadex/cadex_tests/  pytest suite (headless; FreeCAD stubbed in conftest.py)
@@ -130,14 +122,6 @@ src/Mod/{Mesh,MeshPart}   the mesh domain substrate
 src/{App,Base,Main}       inherited FreeCAD core (conservative zone)
 src/Gui                   deleted in Phase 8 (ADR-214); residual GUI lineage
                           outside that boundary — docs/FREECAD.md §3
-shell/                    the shell — a Blender fork (conservative zone;
-                          ledger and upstream diff in docs/BLENDER-TREE.md)
-shell/scripts/startup/mesh_agent/   the assistant, as application code
-                          (ADR-183, not an add-on): ours, subtractive
-                          changes encouraged (docs/BLENDER.md)
-shell/lib/<platform>      submodules, NEVER content (1.3 GB prebuilt each)
-                          NOTE: shell/ also carries ~790 MB in git-LFS
-                          (binary assets, per shell/.gitattributes)
 training/                 the offboard PPO trainer (ADR-084). NOT the engine:
                           CMake never installs it, no payload carries it,
                           nothing in it enters pixi.toml. Read its README
@@ -164,20 +148,19 @@ package/rattler-build/scripts/relocate_conda_environment.py
 docs/                     the documentation set above
 build/release/bin/        FreeCADCmd, CadexGeometryWorker  (no FreeCAD binary)
 build/engine/             the staged engine payload
-shell/build_darwin/       the shell build tree and the installed bundle
 ```
 
 ## Commands
 
 ```bash
-# The whole setup (ADR-060). The Blender shell is disabled (ADR-495): no
-# pixi task builds, launches or gates it, and no step needs git-lfs.
+# The whole setup (ADR-060). No step needs git-lfs or Xcode: the Blender
+# shell is deleted (ADR-498).
 pixi run setup-engine         # just src/3rdParty/OndselSolver
 pixi run build-engine
 ./cadex review --project <dir>   # the review dashboard
 
 # The headless CLI (docs/CLI.md, ADR-061). Needs a built engine and nothing
-# else -- no shell, no display. `params` spends no tokens.
+# else -- no display. `params` spends no tokens.
 ./cadex -p "a 40x25x15 mm bracket with a 6 mm bore" \
         --project ./b --out ./b/out --json
 ./cadex params --project ./b --set bore=8 --out ./b/v2
@@ -220,8 +203,8 @@ before the staged payload does.
 
 The philosophy is **remove more than we add** (`docs/VISION.md`). Zones:
 
-- **`src/Mod/cadex/**`, `cli/**`, `shell/scripts/startup/mesh_agent/**`,
-  `training/**`, `analysis/**` and `docs/**` — subtractive changes
+- **`src/Mod/cadex/**`, `cli/**`, `training/**`, `analysis/**` and
+  `docs/**` — subtractive changes
   encouraged.** These are ours. Dead code, unreachable branches, stale docs:
   delete them. Every removal gets a `docs/DECISIONS.md` entry (one line in an
   existing ADR or a new one) and is verified by build + tests in the same PR.
@@ -239,34 +222,20 @@ The philosophy is **remove more than we add** (`docs/VISION.md`). Zones:
   reason. Its `requirements.txt` is **three pins and stays three**: S2's
   geometry extraction is sixty hand-written lines of marching tetrahedra
   rather than a fourth dependency, which is what kept it there (ADR-143).
-- **`cli/**` is LGPL and `shell/**` is GPL — the boundary is one-way and
-  hard.** `cli/` is engine-side (`docs/PROVENANCE.md` §1). Read the shell's
-  `cadexd_client.py`, `backend.py`, `mcp_shim.py` and `modes.py` as
-  reference; copying a line of them into `cli/` relicenses the engine side
-  and is not a judgement call (ADR-061). Derive from the LGPL engine-side
+- **The repository is LGPL and carries no GPL code** (ADR-498,
+  `docs/PROVENANCE.md` §7), and `test_licensing_compliance.py` fails if a
+  GPL-declared file comes back. The deleted shell's `cadexd_client.py`,
+  `backend.py`, `mcp_shim.py` and `modes.py` (at `v1-blender-shell`) may be
+  read as reference; copying a line of them into `cli/` relicenses it and
+  is not a judgement call (ADR-061). Derive from the LGPL engine-side
   precedents in `cadex_tests/` instead.
 - **Inherited FreeCAD core (`src/App`, `src/Gui`, `src/Base`) —
   conservative.** Prefer not touching it; when you must, smallest possible
   diff, no drive-by cleanup, call it out in the PR. A change that *reduces*
   the fork's delta against upstream is the exception worth making (ADR-022).
-- **The rest of `shell/**` — inherited Blender, same conservative rules.**
-  The delta against upstream Blender is listed in full in
-  `docs/BLENDER-TREE.md` §2, in four groups that age differently: **§2a**
-  product identity (eight files of string literals and guarded CMake blocks —
-  *this one must stay eight*), **§2b** the Cadex editors (ADR-035, ADR-036 —
-  additive rows in enums, exhaustive switches and CMake lists, plus the
-  registration list that *is* the editor menu), **§2c** the message box
-  (ADR-034), and **§2d** the window chrome (ADR-166 — the native menu bar
-  and the removed window bars). Every line added there is a future merge conflict; what differs
-  is whether it conflicts as an insertion the compiler finds or as rewritten
-  logic. Prefer the former, and say which you are adding. Removals go through
-  the two-commit protocol in `docs/FREECAD.md` §3 — and on this side the
-  disable commit is often a `WITH_*` CMake option or simply not registering a
-  space type, so it is nearly free.
 - **`src/Gui` is deleted (ADR-214).** Do not resurrect it. Remaining GUI-lineage
   source outside that boundary needs its own dependency audit and removal protocol.
-- **`shell/lib/<platform>` are submodules, not content.** Never commit their
-  contents; never vendor a prebuilt library into the tree.
+- **Never vendor a prebuilt library into the tree.**
 - **`src/Mod/<unused trees>`** — removed only via the Phase 1 protocol
   (`docs/FREECAD.md` §3): dependency audit, disable-commit, delete-commit,
   DECISIONS entry.
@@ -289,9 +258,8 @@ tests and logging the decision; don't commit secrets or machine paths.
    expecting 100%. Anything touching the protocol or the payload: run the
    packaged gate (`CADEX_ENGINE_ROOT=<payload> pytest
    src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py`) — a source tree that
-   passes proves nothing about a payload, as ADR-023 records. `shell/` is
-   disabled (ADR-495) and has no gate; do not edit it. Report failures
-   honestly, with output.
+   passes proves nothing about a payload, as ADR-023 records. Report
+   failures honestly, with output.
 3. **Small, coherent, owner-mergeable PRs.** One logical change; state the
    user-visible outcome, risk, and test evidence. No mixed refactors.
 4. **Removals are normal work** — log them (ADR) and prove them (build +
@@ -299,13 +267,13 @@ tests and logging the decision; don't commit secrets or machine paths.
    change: needs an ADR and owner sign-off.
 5. **Don't build UI in the engine.** No Coin3D rendering, no Qt, no
    workbench concepts under `src/`. If it has a widget in it, it belongs in
-   `shell/scripts/startup/mesh_agent/`.
+   the dashboard (`cli/cadex_cli/review_static/`).
 6. **The protocol is a contract between two halves that must stay
    swappable.** It is no longer a contract across repositories, and it is
    more valuable for it: pinning requests (`OP_ARG_SPECS`) and responses
    (the ADR-027 goldens) is what keeps Phases 11 and 12 available. Changing
    `CadexdProtocol.OP_ARG_SPECS` means changing `docs/INTEGRATION.md`'s op
-   table in the same commit (a test enforces it) and updating the shell's
+   table in the same commit (a test enforces it) and updating the CLI's
    client in the same PR. Being in one repo is not a licence to reach across
    the boundary in any other way.
 7. **Update `docs/ROADMAP.md` checkboxes** when a work item lands.
@@ -317,8 +285,7 @@ ADR-097/098/099 for M9, ADR-100 for M9b, ADR-101 for M9c);
 `CadexDynamics.py` and the
 `assembly.{body,dynamics,collision,actuator,joint_dynamics,mjcf,task,policy,
 rollout,reset_variation,disturbance}` surface; the `test_dynamics_*` suites;
-`training/`; `mesh_agent/cadex_collision.py` and
-`mesh_agent/cadex_training.py`; the mujoco lines in `pixi.toml`/`pixi.lock`;
+`training/`; the mujoco lines in `pixi.toml`/`pixi.lock`;
 and `CARRIED_PYPI_PACKAGES` in
 `package/rattler-build/scripts/relocate_conda_environment.py`.
 
@@ -330,26 +297,8 @@ pointing at the merge; nothing should be committed to it.
 
 Working rules on top of the change policy above:
 
-- **The `shell/` diff is spent, and only where it is ours** (ADR-091). The
-  collision overlay is `mesh_agent/cadex_collision.py` plus edits to four
-  `mesh_agent` files and the gate suite. What holds — and is what the old
-  empty-diff rule was always a proxy for — is that **every line of our
-  `shell/` diff is under `shell/scripts/startup/mesh_agent/` or
-  `shell/tests/python/`, and the inherited Blender tree is untouched.**
-  `docs/BLENDER-TREE.md` §2a is still eight files and **must stay eight**;
-  §2b, §2c and §2d are unmoved. Adding to *those* is a decision, not a fix
-  you slip in, because every line there is a future merge conflict against
-  upstream Blender — and since ADR-171 the mechanical guard is
-  `cadex_tests/test_licensing_compliance.py`, which holds
-  `docs/inherited-modifications.json` equal to the git diff against each
-  import commit and requires the per-file modification notice on every
-  entry. The two rough edges ADR-086 §4 parked
-  (`import_geometry`'s success wording, `_ASSET_SUFFIXES` staying at three
-  members) are deliberately **still not taken**: one authorised feature does
-  not license unrelated edits.
-- **Three invariants that are cheap to break by accident**, all test-pinned
-  and none of them about a branch:
-  nothing in `shell/` imports mujoco; `CadexDynamics.py` is reachable
+- **Two invariants that are cheap to break by accident**, both test-pinned
+  and neither about a branch: `CadexDynamics.py` is reachable
   from the sandboxed worker but never from `cadexd`
   (`test_engine_purity_guardrails` asserts the import closure exactly); and
   **no `jax` or `mjx` anywhere under `src/Mod/cadex` or in a staged payload**

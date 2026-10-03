@@ -102,7 +102,7 @@ def test_no_cmake_rule_installs_the_analysis_tree() -> None:
 
     hits = []
     for path in ROOT.rglob("CMakeLists.txt"):
-        if any(part in {"build", "build_darwin", ".pixi", "shell", ".git"}
+        if any(part in {"build", "build_darwin", ".pixi", ".git"}
                for part in path.parts):
             continue
         text = path.read_text(encoding="utf-8", errors="ignore")
@@ -179,9 +179,9 @@ def test_nothing_under_analysis_imports_a_gpl_package() -> None:
     """The one prohibition this tree has that ``training/`` did not need.
 
     ``analysis/`` is engine-side, and ``docs/PROVENANCE.md`` 1 puts the
-    engine side at LGPL. ``AGENTS.md`` calls the GPL boundary "one-way and
-    hard" about ``shell/``, and the reasoning transfers exactly: a GPL
-    import in a repository-resident file is not a judgement call.
+    engine side at LGPL. The repository carries no GPL source at all since
+    the Blender shell was deleted (ADR-498), and a GPL import in a
+    repository-resident file is not a judgement call.
 
     The named packages are the ones a reasonable person reaches for while
     doing this work and that a survey found are GPL: the meshers, the mesh

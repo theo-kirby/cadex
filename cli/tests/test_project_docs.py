@@ -147,8 +147,8 @@ def test_the_gui_attached_mode_is_retired_in_the_scaffold_and_the_walk_doc(tmp_p
 def test_no_cli_module_reaches_into_the_shell_tree() -> None:
     """The disable commit's contract on this side (ADR-495): nothing the CLI
     or the dashboard runs reads a path under ``shell/`` or imports
-    ``mesh_agent``. The shell tree may still be on disk until its delete
-    commit; nothing here may notice."""
+    ``mesh_agent``. The tree is deleted (ADR-498); this keeps a revival
+    from being wired back in through the front end."""
 
     package = Path(__file__).resolve().parents[1] / "cadex_cli"
     reaching = []

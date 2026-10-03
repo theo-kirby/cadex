@@ -81,10 +81,9 @@ person can edit ([docs/STRUCTURAL.md](docs/STRUCTURAL.md)).
 
 ## Build and run
 
-Requires [pixi](https://pixi.sh). The Blender shell is disabled (ADR-495):
-no pixi task builds or launches it, so git-lfs, Xcode and the 1.3 GB
-`shell/lib` checkout are no longer needed. The old application is tagged
-`v1-blender-shell`.
+Requires [pixi](https://pixi.sh). The Blender shell is deleted (ADR-498),
+so git-lfs, Xcode and its 1.3 GB library checkout are not needed. The old
+application is tagged `v1-blender-shell`.
 
 ```bash
 git clone <this repo> && cd cadex
@@ -104,10 +103,9 @@ Two halves in one repository, separated by a process boundary:
   headless service speaking newline-delimited JSON over stdio. It runs
   xscript programs in sandboxed workers, produces BREP, and streams
   tessellation with face and edge ID maps back.
-- **the shell** (`shell/`, a Blender fork) — the application. It carries
-  the engine inside its own bundle and finds it by reading a
-  `cadex-engine.json` manifest, so a built application needs no
-  configuration at all.
+- **the CLI and the dashboard** (`cli/`) — the front end. It finds an
+  engine in the build tree or, staged, by reading its `cadex-engine.json`
+  manifest.
 
 And two directories that are deliberately neither:
 
@@ -178,8 +176,7 @@ the doc set under [`docs/`](docs/):
 [XSCRIPT](docs/XSCRIPT.md) · [MUJOCO](docs/MUJOCO.md) ·
 [ORGANIC](docs/ORGANIC.md) · [STRUCTURAL](docs/STRUCTURAL.md) ·
 [INTEGRATION](docs/INTEGRATION.md) ·
-[BLENDER](docs/BLENDER.md) · [CLI](docs/CLI.md) ·
-[FREECAD](docs/FREECAD.md) · [BLENDER-TREE](docs/BLENDER-TREE.md) ·
+[CLI](docs/CLI.md) · [FREECAD](docs/FREECAD.md) ·
 [PROVENANCE](docs/PROVENANCE.md) ·
 [ROADMAP](docs/ROADMAP.md) · [DECISIONS](docs/DECISIONS.md).
 The trainer: [training/README.md](training/README.md).
@@ -188,8 +185,8 @@ Policies: [PRIVACY_POLICY](PRIVACY_POLICY.md) · [SECURITY](SECURITY.md).
 
 ## Credits
 
-Cadex is a derivative work of two projects, and keeps importing from
-neither's release stream — we delete from these trees rather than track them.
+Cadex is a derivative work of FreeCAD, and does not track its release
+stream — we delete from the tree rather than merge into it.
 It also depends on two kernels it does *not* fork, because we intend to keep
 them.
 
@@ -197,8 +194,9 @@ them.
   reached through a fork of the [FreeCAD
   project](https://github.com/FreeCAD/FreeCAD) and built on the work of the
   wider [FreeCAD community](https://forum.freecad.org/).
-- The application shell is a fork of
-  [Blender](https://projects.blender.org/blender/blender) (GPL-2.0+).
+- Until 2026-10-03 the application shell was a fork of
+  [Blender](https://projects.blender.org/blender/blender) (GPL-2.0+). It is
+  deleted (ADR-498), and no Blender code remains.
 - The dynamics kernel is
   [MuJoCo](https://github.com/google-deepmind/mujoco) (Apache-2.0), kept
   upstream and unmodified and redistributed inside the engine payload.
@@ -206,27 +204,20 @@ them.
 - The CadexLight, CadexDark and CadexMono themes are based on [OpenTheme by
   Obelisk79](https://github.com/obelisk79/OpenTheme) (LGPL-2.1).
 
-Cadex is not affiliated with or endorsed by either project. Which code came
+Cadex is not affiliated with or endorsed by FreeCAD or Blender. Which code came
 from where, under which licence, and what we changed is spelled out in
 [docs/PROVENANCE.md](docs/PROVENANCE.md).
 
 ## License
 
-Two licenses share this repository, one per fork, separated by the same
-process boundary that separates the halves ([docs/PROVENANCE.md
-§7](docs/PROVENANCE.md)):
-
-- **The engine** — everything outside `shell/` — is
-  **LGPL-2.1-or-later**; the root [`LICENSE`](LICENSE) is FreeCAD's,
-  unchanged.
-- **The shell** — `shell/` — is **GPL-2.0-or-later** in source form
-  ([`shell/COPYING`](shell/COPYING)); the shipped binary is distributed
-  under GPL version 3 or later terms, as Blender's own binaries are,
-  because Apache-2.0 components in the bundle require it.
+**LGPL-2.1-or-later.** The root [`LICENSE`](LICENSE) is FreeCAD's,
+unchanged. Since the Blender shell was deleted (ADR-498) the repository
+carries no GPL code, and the licensing suite holds it that way
+([docs/PROVENANCE.md §7](docs/PROVENANCE.md)).
 
 Third-party attribution lives in [`NOTICE`](NOTICE); the component-level
 license map — vendored trees, the conda-forge payload, the one
 redistributed pypi wheel — is
-[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). A shipped bundle
-carries all of that plus a per-package `licenses/` directory with a
-machine-readable `MANIFEST.json`, under `Cadex.app/Contents/Resources/cadex/`.
+[`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md). A staged engine
+payload carries all of that at its root, plus a per-package `licenses/`
+directory with a machine-readable `MANIFEST.json`.

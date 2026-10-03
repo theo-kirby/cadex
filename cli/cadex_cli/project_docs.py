@@ -870,8 +870,6 @@ frames/
 *-trace.json
 # What is transient:
 .cadex-cli.lock
-*.blend1
-*.blend@
 __pycache__/
 """
 

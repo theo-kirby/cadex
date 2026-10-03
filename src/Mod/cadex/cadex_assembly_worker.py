@@ -4733,9 +4733,9 @@ def _execute_policy_rollout(
 
     What leaves is a ``cadex-assembly-simulation-trace-v1`` through
     ``_retain_simulation_trace`` **unchanged** -- the same path the
-    kinematics solver and the dynamics solver reach the shell by. That is
-    the whole design: the viewport plays a learned gait without a protocol
-    change, without a ``shell/`` diff, and without a fourth dialect of the
+    kinematics solver and the dynamics solver reach a viewer by. That is
+    the whole design: a viewer plays a learned gait without a protocol
+    change, without a front-end change, and without a fourth dialect of the
     frame schema.
     """
 

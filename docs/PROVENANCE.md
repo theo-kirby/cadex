@@ -2,16 +2,17 @@
 
 Verified against source: 2026-10-03
 
-Cadex is not written from scratch. It is a **derivative work of two large
-free-software projects**, carrying the design lessons of a third that we
-built and then tore down. This document says exactly which code came from
-where, under which licence, and what we changed — because a fork that cannot
+Cadex is not written from scratch. It is a **derivative work of a large
+free-software project, FreeCAD**, carrying the design lessons of two more
+it no longer contains: VibeCAD, which we built and then tore down, and
+Blender, whose fork was Cadex's user interface until 2026-10-03 (§3). This
+document says exactly which code came from where, under which licence, and what we changed — because a fork that cannot
 answer that question honestly is not a project, it is a pile.
 
-It is the outward-facing companion to the two inherited-tree ledgers,
-which carry the same story in operational detail:
-[`FREECAD.md`](FREECAD.md) for the engine, [`BLENDER-TREE.md`](BLENDER-TREE.md)
-for the shell.
+It is the outward-facing companion to the inherited-tree ledger,
+[`FREECAD.md`](FREECAD.md), which carries the same story in operational
+detail. The shell's ledger is history now:
+[`history/BLENDER-TREE.md`](history/BLENDER-TREE.md).
 
 ## 1. The short version
 
@@ -20,32 +21,31 @@ for the shell.
 | [OCCT](https://dev.opencascade.org/) | the geometry kernel — every solid, boolean, and fillet | LGPL-2.1 with an exception |
 | [MuJoCo](https://github.com/google-deepmind/mujoco) | the **dynamics** kernel — every simulation, MJCF export and policy rollout | Apache-2.0 |
 | [FreeCAD](https://github.com/FreeCAD/FreeCAD) | **the engine** — the repository root | LGPL-2.1-or-later |
-| [Blender](https://projects.blender.org/blender/blender) | **the shell** — `shell/` | GPL-2.0-or-later |
+| [Blender](https://projects.blender.org/blender/blender) | the shell, until it was deleted (ADR-498) — nothing of it remains | GPL-2.0-or-later |
 | VibeCAD (ours, predecessor) | the scripted-modeling engine inside `src/Mod/cadex/` | LGPL-2.1-or-later |
 
-Cadex adds roughly **161,000 lines** of its own across both halves, or about
-**100,000** if you do not count tests:
+Cadex adds roughly **200,000 lines** of its own, or about **104,000** if
+you do not count its suites:
 
 | Ours | Lines | Where |
 |---|---|---|
-| the engine, Python | 59,981 | `src/Mod/cadex/*.py` |
-| the engine's suites | 51,248 | `src/Mod/cadex/cadex_tests/` |
-| the engine, C++ | 1,031 | `CadexGeometryWorker.cpp` |
-| the shell assistant package | 24,061 | `shell/scripts/startup/mesh_agent/` |
-| the shell's Cadex suites | 10,321 | `shell/tests/python/bl_mesh_agent*.py` |
-| the headless CLI | 5,065 | `cli/` — a second front end, not a second engine (ADR-061) |
-| the offboard trainer | 2,643 | `training/` — **not part of the product** (§5) |
-| the offboard analysis | 6,980 | `analysis/` — **not part of the product** (§5) |
-| the app template | 99 | `shell/scripts/startup/bl_app_templates_system/Mesh/` |
+| the engine, Python | 73,048 | `src/Mod/cadex/**/*.py`, suites excluded |
+| the engine's suites | 66,311 | `src/Mod/cadex/cadex_tests/*.py` |
+| the engine, C++ | 1,032 | `CadexGeometryWorker.cpp` |
+| the CLI and dashboard server | 16,831 | `cli/cadex_cli/*.py` (ADR-061) |
+| the CLI's suites | 29,464 | `cli/tests/*.py` |
+| the dashboard pages | 2,298 | `cli/cadex_cli/review_static/` JS, CSS and HTML, vendored three.js excluded |
+| the offboard trainer | 4,234 | `training/` — **not part of the product** (§5) |
+| the offboard analysis | 6,986 | `analysis/` — **not part of the product** (§5) |
 
 Everything else in this repository, which is the overwhelming majority of
-it, belongs to FreeCAD or Blender. Measured 2026-08-29 (`wc -l` over the
-listed globs); these numbers drift as the trees grow, so treat the date as
-part of the claim.
+it, belongs to FreeCAD. Measured 2026-10-03 with `wc -l` over the tracked
+files `git ls-files` lists for each row; these numbers drift as the trees
+grow, so treat the date as part of the claim.
 
-We do not track either upstream. Both were imported as squashed snapshots,
-and the direction of travel is **subtractive**: we delete from these trees
-rather than merge from them. That is a deliberate trade — we give up
+We do not track upstream. FreeCAD was imported as a squashed snapshot, as
+Blender was, and the direction of travel is **subtractive**: we delete from
+the inherited tree rather than merge into it. That is a deliberate trade — we give up
 upstream fixes to gain a tree we can actually finish removing.
 
 ## 2. FreeCAD — the engine
@@ -88,63 +88,34 @@ not affiliated with or endorsed by the FreeCAD project, and problems in
 Cadex are not FreeCAD's to answer for — see [`SECURITY.md`](../SECURITY.md)
 for where to report what.
 
-## 3. Blender — the shell
+## 3. Blender — the shell, deleted
 
-**Optional geometry runtime (ADR-185).** The same Blender binary can now
-evaluate native xscript mesh recipes in a separate OS-sandboxed process.
-`src/Mod/cadex/cadex_blender_runner.py` and `cadex_blender_worker.py` are newly,
-independently authored LGPL adapters; no shell implementation was copied into
-them. The latter imports bpy only when executed by Blender. No Blender
-library is imported into cadexd, the FreeCAD worker, or the headless CLI.
-The Blender binary retains its existing GPL attribution and licensing.
+**What it was.** From 2026-07-25 to 2026-10-03, `shell/` was a Blender fork
+(Blender 5.3 alpha, by way of our own `mesh` fork) and the product's user
+interface: the viewport, the editors, the `.blend` file format, and the
+`mesh_agent` assistant package. It was GPL-2.0-or-later, and it spoke to
+the engine only over the cadexd protocol, through a client that imported no
+engine code.
 
-**What it is here.** `shell/` is a Blender fork, and it is the product's
-user interface: the window manager, the editors, the GPU layer, DNA/RNA,
-BMesh, and the `.blend` file format. When you run Cadex you are running this
-tree.
+**What happened to it.** ADR-495 disabled it and ADR-498 deleted it, with
+its vendored `extern/`, its four `lib/<platform>` library submodules, its
+Git LFS assets and its half of `docs/inherited-modifications.json`. The
+dashboard (`cli/cadex_cli/review_server.py`) is the only user interface now,
+and [`SHELL-PARITY.md`](SHELL-PARITY.md) records, module by module, what
+became of each part of `mesh_agent`. The tag `v1-blender-shell` is the last
+tree that carries the shell, and its ledger is
+[`history/BLENDER-TREE.md`](history/BLENDER-TREE.md).
 
-**Provenance.** Imported 2026-07-25 as a squashed snapshot of our own `mesh`
-repository at `ac5af55948d`, which was itself a Blender fork — Blender 5.3
-alpha. Blender's 163,789-commit history stayed behind, deliberately.
+**What it left behind.** No code. The shell's code was GPL and the rest of
+the repository is LGPL, so nothing of it was ever copied out; what the
+dashboard and the CLI do in its place is re-derived (ADR-061). Ideas
+survive — the review dashboard's dark palette, the appearance roles, the
+turn transcript — and they are ours to carry because ideas are not code.
 
-**What we changed — four groups, about forty-three files.** The delta
-against stock Blender is listed in full, file by file, in
-[`BLENDER-TREE.md`](BLENDER-TREE.md) §2, in four groups that age
-differently: **§2a**, product identity — the default app template, the
-engine-bundling CMake, the rename, the bundle's `Info.plist` — which is
-eight files of string literals and guarded blocks *and must stay eight*;
-**§2b**, the price of owning six Cadex editors and unregistering the ones
-we do not ship (ADR-035, ADR-036, ADR-108) — additive rows in enums,
-exhaustive switches and CMake lists across ~25 files; **§2c**, the
-message-box widget behavior (ADR-034); and **§2d**, the native menu bar and
-window chrome (ADR-166). Every file carries a conflict-resolution note in
-the ledger and a per-file modification notice in its header, and the full
-list is pinned machine-readably by `docs/inherited-modifications.json` and
-the licensing compliance suite. An earlier revision of this section claimed
-eight files were the *entire* delta; that was §2a's true claim, mis-scoped
-to the whole tree.
-
-**What we added.** Three things that exist in no upstream Blender and so can
-never conflict with one: the `mesh_agent` package (chat, the parameter panel,
-the cadexd protocol client, hydration, picking), the `Mesh` app template
-that suppresses Blender's default UI, and the Cadex test suites.
-
-**What we remove.** Phase 13b: subsystems a CAD shell does not need, each
-behind a `WITH_*` option that makes the disable half of the removal
-protocol nearly free. Cycles was the first through both halves
-(ADR-196, 2026-09-06): `shell/intern/cycles` is gone from the tree, and
-its licence material with it — nothing of ours derived from it.
-
-**Licence.** GPL-2.0-or-later. Blender's own `shell/COPYING` is present and
-unchanged; every file we wrote under `mesh_agent/` carries
-`SPDX-License-Identifier: GPL-2.0-or-later`, as the GPL requires of work
-that links into the tree.
-
-**Credit.** The interface Cadex presents — viewport, navigation, tools,
-theming, file format — is Blender's, built by the Blender Foundation and its
-contributors. Cadex is not affiliated with or endorsed by the Blender
-project, is not a Blender add-on distribution, and should not be mistaken
-for either.
+**Credit.** For two and a half months the interface Cadex presented —
+viewport, navigation, tools, theming — was Blender's, built by the Blender
+Foundation and its contributors. Cadex was never affiliated with or
+endorsed by the Blender project.
 
 ## 4. MuJoCo — the dynamics kernel
 
@@ -153,7 +124,7 @@ we keep, upstream and unmodified, rather than a tree we fork. `CadexDynamics.py`
 translates a Cadex assembly into an `mjSpec`, steps it, and reads the result
 back; `assembly.mjcf` writes MJCF by calling **MuJoCo's own writer**
 (`MjSpec.to_xml()`) rather than serialising the format ourselves. We fork
-FreeCAD and Blender because we intend to replace them. MuJoCo we keep.
+FreeCAD because we intend to replace it. MuJoCo we keep.
 
 **How it reaches a user, and this is the part that matters.** MuJoCo is not
 a build dependency that stays behind on the build machine. `mujoco == 3.10.0`
@@ -162,7 +133,7 @@ there by name through `CARRIED_PYPI_PACKAGES` in
 `package/rattler-build/scripts/relocate_conda_environment.py` (ADR-076),
 because the pixi manifest has not been re-solvable as conda since
 conda-forge moved past our `occt == 7.8.1` pin. It is 53.5 MB of the payload,
-it ships inside `Cadex.app`, and the payload build hard-fails if it cannot
+it ships inside the payload, and the payload build hard-fails if it cannot
 import exactly that version out of the payload's own interpreter.
 
 That makes it a third category this document did not previously have.
@@ -173,11 +144,8 @@ that carries a redistribution obligation.
 **Licence flow.** Apache-2.0 → the engine's LGPL-2.1-**or-later**. The "or
 later" is doing the work: Apache-2.0 is incompatible with LGPL-2.1-*only* and
 compatible with the v3 family, so the "or later" clause is what makes the
-combination clean. On the shell side the same clause does the same work:
-the Blender-derived **binary** is distributed under GPL version 3 or later
-terms (§7 below) — exactly as Blender's own binaries are, and for the same
-reason, Apache-2.0 components in the bundle — while the source stays
-GPL-2.0-or-later. **The root `NOTICE` file carries the entry**, and
+combination clean. (The Blender shell, while it existed, made the same
+election for its binary under GPL version 3 or later terms.) **The root `NOTICE` file carries the entry**, and
 Apache-2.0 §4(d) means the attribution requirement is real rather than
 courteous — see the vendored-LGPL note in `docs/VISION.md`'s non-goals,
 which names MuJoCo alongside OCCT. The wheel's own LICENSE ships in the
@@ -286,65 +254,49 @@ six-phase history. Nothing deleted there returns without an ADR — that rule
 is in `AGENTS.md`, and [`FREECAD.md`](FREECAD.md) §4 is the do-not-resurrect
 list.
 
-## 7. How two licences live in one repository
+## 7. One licence for everything we ship
 
-The engine is LGPL-2.1-or-later; the shell is GPL-2.0-or-later. They are
-**separate programs communicating over a documented protocol**, not one
-program linked together:
+Everything this repository carries of its own, and the FreeCAD tree it
+descends from, is LGPL-2.1-or-later. Since ADR-498 there is **no GPL code
+in the repository**: `test_licensing_compliance.py` fails if a tracked
+source file declares a GPL SPDX identifier in its header or if anything is
+tracked under `shell/` again. Until then the engine was LGPL and the shell
+GPL, kept apart as separate programs across the cadexd protocol, and that
+rule is why the deletion took no code with it.
 
 - The engine is a set of processes (`cadexd`, and `FreeCADCmd` workers
   beneath it) that speak NDJSON over stdin/stdout.
-- The shell assistant package speaks that protocol through a dependency-free client
-  (`cadexd_client.py`) which imports **no cadex code whatsoever**. That rule
-  is enforced as a licence boundary, not as a style preference, and merging
-  the two repositories into one did not relax it (see
-  [`BLENDER.md`](BLENDER.md)).
+- `cli/` is a client of that protocol (ADR-061, [`CLI.md`](CLI.md)) and the
+  dashboard is served from it. Both are LGPL-2.1-or-later. Nothing in them
+  was copied from the shell: its protocol client, backend, MCP shim and
+  modes were read as reference only, and every equivalent derives from the
+  LGPL engine-side precedents in `src/Mod/cadex/cadex_tests/`.
 - The protocol is pinned by tests on both the request and the response side
-  (`docs/INTEGRATION.md`, ADR-027), which is also what keeps either half
+  (`docs/INTEGRATION.md`, ADR-027), which is what keeps a future front end
   replaceable.
-- `cli/` is a **third** client of that protocol (ADR-061,
-  [`CLI.md`](CLI.md)) and is on the engine's side of the line:
-  LGPL-2.1-or-later, like everything else we wrote outside `shell/`. The
-  boundary runs one way and is not a judgement call — the shell's
-  `cadexd_client.py`, `backend.py`, `mcp_shim.py` and `modes.py` solve four
-  of the same problems and **not one line of them is copied there**. They
-  were read as reference; every equivalent derives from the LGPL
-  engine-side precedents in `src/Mod/cadex/cadex_tests/`, and the system
-  prompt is written fresh.
 
-The shipped bundle distributes both halves side by side, and the right
-frame for it is **aggregation**: each component stays under its own
-licence, because putting separate programs in one archive does not
-relicense any of them. The Blender-derived binary in the bundle is
-distributed under GPL version 3 or later terms (the GPL-2.0-or-later
-source's "or later", elected the same way Blender's own releases elect it,
-because Apache-2.0 components require it); the engine payload beside it
-stays LGPL-2.1-or-later; the MuJoCo wheel inside that stays Apache-2.0.
-The complete corresponding source for all of it is this public repository,
-plus Blender's public library repositories for the prebuilt
-`shell/lib/<platform>` submodules. The licence material itself ships in
-two places: Blender's own `Resources/text/license/` for the shell binary,
-and `Resources/cadex/` — `LICENSE`, `NOTICE`, `THIRD_PARTY_LICENSES.md`
-and a per-package `licenses/` directory with `MANIFEST.json` — for the
-engine payload. This is a description of how the repository is structured,
-not legal advice; if you are redistributing Cadex, read the licences.
+What is shipped is the staged engine payload. It is LGPL-2.1-or-later, with
+the MuJoCo wheel inside it Apache-2.0 and its conda packages each under
+their own licence. One of those, `readline`, is GPL-3.0 and comes with the
+standard conda Python runtime; that is a binary dependency of the payload,
+not code in this repository, and it stays the counsel item ADR-171 flagged.
+The payload carries its licence material at its root — `LICENSE`, `NOTICE`,
+`THIRD_PARTY_LICENSES.md` and a per-package `licenses/` directory with
+`MANIFEST.json` — and the complete corresponding source is this public
+repository. This is a description of how the repository is structured, not
+legal advice; if you are redistributing Cadex, read the licences.
 
 ## 8. Everything else
 
 - **Bundled third-party code** lives in `src/3rdParty/` (Clipper2, PyCXX,
-  salomesmesh, libE57Format, OndselSolver and others) and in Blender's
-  `shell/extern/`. Most keep their own licence file in-tree; the ones that
-  do not are named, with their licences, in
-  [`THIRD_PARTY_LICENSES.md`](../THIRD_PARTY_LICENSES.md) §2. The licence
-  texts Blender ships are in `shell/doc/license/`.
-- **Prebuilt libraries** for the shell come from Blender's own
-  `projects.blender.org` library repositories, consumed as submodules under
-  `shell/lib/<platform>`. They are never vendored into this tree.
+  salomesmesh, libE57Format, OndselSolver and others). Most keep their own
+  licence file in-tree; the ones that do not are named, with their
+  licences, in [`THIRD_PARTY_LICENSES.md`](../THIRD_PARTY_LICENSES.md) §2.
 - **Runtime dependencies from conda-forge** (OCCT, Python, numpy/scipy and
   ~330 more, pinned in `pixi.lock`) **do not stay on the build machine —
   they are the payload.** The engine payload is a relocated copy of the
   pixi environment, so every conda package that survives the prune ships
-  inside `Cadex.app`. An earlier revision of this bullet claimed the
+  inside it. An earlier revision of this bullet claimed the
   opposite. What each shipped package's licence is, and where its text
   landed, is recorded per-package in the payload's
   `licenses/MANIFEST.json`, written by `package/engine/collect_licenses.py`
@@ -478,15 +430,16 @@ drawing is redistributed. A STEP model was only measured, never copied in.
 ## 9. Where this goes
 
 ADR-025 and ADR-030 record the intended endpoint: **one application we
-own** — a derivative of, but not dependent on, either FreeCAD or Blender.
-OCCT stays as the geometry kernel. The FreeCAD application layer would be
-replaced by our own binding (Phase 11) and the Blender shell by our own
-renderer (Phase 12), both behind the unchanged cadexd protocol.
+own**, a derivative of but not dependent on FreeCAD. OCCT stays as the
+geometry kernel. The FreeCAD application layer would be replaced by our own
+binding (Phase 11). The Blender half of that endpoint arrived by subtraction
+rather than replacement: the shell is deleted and the dashboard is the
+interface (ADR-498). A desktop app, if one comes, copies the dashboard,
+behind the unchanged cadexd protocol.
 
-Neither is scheduled, and neither blocks anything. Until then this document
-describes the truth: Cadex is two forks, an assistant package, and about forty thousand
-lines of our own, and the parts that are not ours are the parts that make it
-work.
+Phase 11 is not scheduled and blocks nothing. Until then this document
+describes the truth: Cadex is one fork and about two hundred thousand lines
+of our own, and the parts that are not ours are the parts that make it work.
 
 
 ## 8b. Catalog N20 gearmotor data `[Cadex-new, ADR-205]`

@@ -1,9 +1,10 @@
 # `cli/` — Cadex as a headless CLI
 
-`LGPL-2.1-or-later`, the engine side of the repository
-(`docs/PROVENANCE.md` §1). **No file here may be copied from `shell/`**,
-which is `GPL-2.0-or-later`; the shell's `cadexd_client.py`, `backend.py`,
-`mcp_shim.py` and `modes.py` are reference and nothing more. Every
+`LGPL-2.1-or-later`, like the rest of the repository
+(`docs/PROVENANCE.md` §7). The Blender shell it replaced was
+`GPL-2.0-or-later` and is deleted (ADR-498); **no file here may be copied
+from it**, including from the `v1-blender-shell` tag. Its protocol client,
+backend, MCP shim and modes were reference and nothing more. Every
 equivalent in this package derives from the LGPL engine-side precedents —
 `cadex_tests/cadexd_latency_integration.py` and
 `cadex_tests/test_cadexd_lifecycle.py` — and the prompt text is written

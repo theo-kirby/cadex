@@ -1,18 +1,21 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""Cadex as a headless CLI — a third client of the cadexd protocol.
+"""Cadex as a headless CLI, and the dashboard it serves — a client of the
+cadexd protocol.
 
-The Blender shell (``shell/``) is one client of ``cadex-cadexd-v1``; the
-engine's own test harnesses are another. This package is the third: no
-Blender, no display, no shell code, and no second copy of the protocol —
+The engine's own test harnesses are one client of ``cadex-cadexd-v1``. This
+package is the other, and since the Blender shell was deleted (ADR-498) it
+is the only front end: no display of its own, and no second copy of the
+protocol —
 :mod:`cadex_cli.protocol` loads ``CadexdProtocol`` out of whichever engine
 was resolved, so requests and responses are validated against the engine
 under the CLI rather than against a restatement of it.
 
 Licence boundary (``docs/PROVENANCE.md`` §1): everything here is engine-side
-and therefore ``LGPL-2.1-or-later``. ``shell/**`` is ``GPL-2.0-or-later``,
-so no line of the add-on may be copied into this tree. The precedents this
+and therefore ``LGPL-2.1-or-later``. The deleted shell was
+``GPL-2.0-or-later``, and no line of it was ever copied into this tree,
+including from the ``v1-blender-shell`` tag. The precedents this
 package derives from are all LGPL: ``cadexd_latency_integration.py`` (the
 raw-NDJSON client and ``CADEX_ENGINE_ROOT`` resolution) and
 ``test_cadexd_lifecycle.py`` (ready banner, events vs responses, response

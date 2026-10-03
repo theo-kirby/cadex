@@ -6,8 +6,8 @@
 Split out of ``CadexProject`` in Phase 7 (ADR-021). ``CadexProject`` is two
 stores wearing one module: this one — the script, its parameters and its
 acceptance state, which every engine path touches — and the conversation
-store, which is Qt shell state and dies with the shell (conversation
-history moves into the ``.blend``, ADR-020). Separating them lets the
+store, which was Qt shell state and died with the shell (ADR-020 moved
+conversation history to the Blender shell, itself deleted by ADR-498). Separating them lets the
 engine's transitive closure stop at the script store.
 
 Nothing here imports FreeCAD, so the store is exercised by the stubbed

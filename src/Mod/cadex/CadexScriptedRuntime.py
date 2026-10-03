@@ -136,12 +136,11 @@ _DOMAIN_WORKER_BUNDLES: dict[str, tuple[str, ...]] = {
 
 #: Mesh assets stageable into the isolated worker (mesh.import_file).
 #:
-#: **These three members are load-bearing and must stay exactly three.** The
-#: shell mirrors this set at ``cadex_backend.py:53`` in a comment that names
-#: this constant, and every line of our ``shell/`` diff is a future merge
-#: conflict against upstream Blender (ADR-091). Widening *this* name would
-#: make that comment false; widening the union below costs no shell
-#: diff at all, which is why M7 needed no new op (ADR-084).
+#: These are the mesh formats ``mesh.import_file`` reads. Other stageable
+#: kinds (a policy, its provenance, a linked part) are added in the union
+#: below rather than here, which is why M7 needed no new op (ADR-084). The
+#: Blender shell once mirrored this set, so it was held at three; that
+#: reason left with the shell (ADR-498).
 _ASSET_SUFFIXES = frozenset({".stl", ".obj", ".ply"})
 
 #: Trained control policies (ADR-084). A separate constant rather than three
@@ -539,7 +538,7 @@ def store_project_asset(
     policy arrives in. Both travel the same ``put_asset`` path because that
     path performs **no suffix check of its own** — it passes the path through
     and lets the engine refuse — so a policy needed no new op and no
-    ``shell/`` diff to come home. ADR-135 added the ``.json``/``.xml`` a
+    front-end change to come home. ADR-135 added the ``.json``/``.xml`` a
     policy's provenance travels as, and ADR-138 the ``.cxpart`` a part built
     in another project arrives in — the last of those written by
     ``link_part`` rather than picked by a user, which is the only way the
