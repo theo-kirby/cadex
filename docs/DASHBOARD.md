@@ -75,6 +75,7 @@ where (§12) — and the element ids do not change with the width.
 |---|---|---|---|---|
 | 0 | **Masthead** | `#top`, `#project-name`, `#accepted-line`, `#freshness` | The project's name, the accepted identity now (revision, digest, updated, run count), and whether the page is live or stale. One row on desk, two on phone. | top bar |
 | 0a | **Design turn** | `#turn-panel`, `#turn-prompt`, `#turn-resume`, `#turn-start`, `#turn-status[data-state]`, `#turn-transcript` | Start a `cadex -p` turn on the project from a prompt and watch its transcript stream; the status says what ran and how it ended (§19). Under the run list on phone. | left sidebar, first |
+| 0b | **Comments** | `#comment-panel`, `#comment-target[data-part]`, `#comment-whole`, `#comment-text`, `#comment-send`, `#comment-status[data-state]`, `#comment-list li[data-part][data-delivered]` | Leave a comment on the whole design or on a part clicked in the model, for the next turn; the list says which a turn has received (§20). Under the turn panel on phone. | left sidebar, second |
 | 1 | **Run selection** | `#sidebar`, `#runs`, `#runs-summary`, `#current-run`, `#views li[data-run]` | Which view is shown: *Accepted now*, then every recorded run with its relation (current/historical) and status. The current run is marked. A sidebar at desk width; a collapsible run list under the masthead on phone (§6). | left sidebar |
 | 2 | **Identity** | `#identity`, `#view-kind`, `#view-relation`, `#view-status`, `#view-revision`, `#view-digest`, `#view-identity-source`, `#view-recorded`, `#policy-origin`, `#view-note`, `#view-policy-store` | What the rest of the page is about. Kind and relation as chips, then the key/value block. | right sidebar |
 | 2a | **Concept** | `#concept`, `#concept-status[data-state]`, `#concept-figure`, `#concept-sheet`, `#concept-caption`, `#concept-hero` | The design as presented: the concept sheet the last render drew (§14) — studio hero, name, key numbers, palette and line views — with the revision it was drawn from and its relation to the accepted one. Leads the page when there is one. | stage, *Concept* tab, first; the stage opens on it |
@@ -823,6 +824,35 @@ and a server restart forgets the transcript, not the turn's result.
 
 Not yet here: attaching an image to the prompt, which needs the CLI to
 carry one into the turn first.
+
+## 20. Steering: a comment on the design or a picked part (ADR-505)
+
+The page's third write. `#comment-panel` sits under the turn panel: a line
+naming what the comment is on, a text box and **Comment**. It is on the
+whole design until a part is clicked in the model: a press and release on
+the canvas that moves under 5 px is a click, not an orbit, and the viewer
+casts a ray from it and names the solid it hits (`viewer.pick`); the page
+then reads **on part `<name>`** in the accent colour, the solid glows
+faintly (`viewer.highlight`, never set in a capture) and **Whole design**
+clears the pick. A click on empty floor picks nothing and leaves the pick
+as it was. A reload of the model keeps the pick while the part is still
+there.
+
+Sending is `POST api/comment` with `{"text": text, "part": name}`, behind
+the token and `Origin` check of §18; the server runs `cadex comment
+--project <root> --json [--part=<name>] -- <text>` as a child, so the part
+and the text are never read as flags. The CLI appends one line to the
+project's `comments.jsonl`, tagged with the accepted revision. `/api/project`
+carries the last 100 comments, and `#comment-list` lists them newest first,
+each **waiting for the next turn** or, in the muted ink, **received by a
+turn**.
+
+The next `cadex -p` on the project — started from §19, a terminal or a walk
+— is given every comment not yet delivered ahead of its prompt, one line
+each, `(on part post) …` or `(on the whole design) …`. Once the turn has
+run, the CLI appends a delivery line naming them, and the turn after does
+not see them again; a turn that fails delivers nothing. Its envelope
+carries them under `comments`, and its notes say how many arrived.
 
 ## Operator run status (ADR-387)
 

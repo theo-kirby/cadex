@@ -58,6 +58,7 @@ from .export import ExportedOutput, ExportError, export_blueprints, export_outpu
 from .inventory import InventoryError, read_inventory, write_inventory
 from .render import acquire_snapshot, describe_proxies, write_render
 from .section import write_section
+from .comments import add_comment, mark_delivered, pending_comments, with_comments
 from .clearance import (
     MAXIMUM_COMMON_VOLUME_MM3,
     MINIMUM_CLEARANCE_MM,
@@ -125,7 +126,7 @@ from .evaluate import (
     retained_inputs,
     run_evaluation,
 )
-from .review_record import manifest_identity, write_run_record
+from .review_record import manifest_identity, read_accepted_identity, write_run_record
 from .review_server import serve as serve_review, serve_projects
 from .smoke import (
     DEFAULT_FPS,
@@ -702,6 +703,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="TCP port. Default 8765; 0 takes a free port and reports it.",
     )
 
+    comment_parser = subparsers.add_parser(
+        "comment",
+        help="Leave a comment on the design, or on one part, for the next "
+        "turn to receive (ADR-505). No engine, no tokens.",
+    )
+    _common(comment_parser, inherit=True)
+    comment_parser.add_argument(
+        "--part",
+        default="",
+        help="The part the comment is about, by its output name. Default: "
+        "the whole design.",
+    )
+    comment_parser.add_argument("text", help="The comment, in words.")
+
     app_parser = subparsers.add_parser(
         "app",
         help="Serve the dashboard over a directory of projects, read-only: "
@@ -1059,8 +1074,11 @@ def command_prompt(
                 on_text=on_text,
                 cwd=report.project_root,
             )
+            # The owner's comments since the last turn travel ahead of the
+            # prompt (ADR-505); they are delivered once a turn has run on them.
+            comments = pending_comments(report.project_root)
             try:
-                result = turn.run(args.prompt)
+                result = turn.run(with_comments(args.prompt, comments))
                 if _spent_nothing(result, bridge.state):
                     _progress(
                         " · the turn reached the engine not once; asking "
@@ -1085,6 +1103,10 @@ def command_prompt(
                 model=model,
             )
         report.session_id = result.session_id
+        if result.ok and comments:
+            at = mark_delivered(report.project_root, comments, session_id=result.session_id)
+            report.comments = [dict(comment, delivered=at) for comment in comments]
+            report.notes.append(f"delivered {len(comments)} comment(s) from the owner.")
         if result.resume_failed:
             report.notes.append(
                 "the stored session id could not be resumed; ran a fresh "
@@ -1149,6 +1171,26 @@ def _parse_assignments(raw: Sequence[str]) -> dict[str, Any]:
     if not values:
         raise ValueError("params needs at least one --set NAME=VALUE.")
     return values
+
+
+def command_comment(args: argparse.Namespace, report: RunReport) -> int:
+    """``cadex comment [--part NAME] TEXT``: one comment for the next turn.
+
+    The dashboard's comment box runs this command (A3). It touches no
+    engine: the comment is a line in ``comments.jsonl`` (ADR-505), tagged
+    with the revision accepted when it was left.
+    """
+
+    root = Path(args.project).expanduser()
+    if not root.is_dir():
+        raise ValueError(f"no project at {root}.")
+    identity = read_accepted_identity(root)
+    comment = add_comment(root, args.text, part=args.part,
+                          revision=identity.get("revision", "") if identity.get("available") else "")
+    report.comments = [comment]
+    report.accepted_revision = comment["revision"]
+    report.ok = True
+    return EXIT_OK
 
 
 def command_params(args: argparse.Namespace, report: RunReport) -> int:
@@ -2582,6 +2624,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_review(args, report)
         elif command == "app":
             code = command_app(args, report)
+        elif command == "comment":
+            code = command_comment(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
     except (ValueError, ExportError, InventoryError, TrainError, SmokeError, EvaluateError,
@@ -2792,7 +2836,7 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command in ("review", "app"):  # inspection only: no row, no commit (ADR-286)
+    if command in ("review", "app", "comment"):  # no run: no row, no commit (ADR-286, ADR-505)
         return
     # Read once, before the row is appended: both branches compare against
     # the last row that carried each number, and the walk branch is why
@@ -2838,7 +2882,7 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command in ("review", "app"):
+    if command in ("review", "app", "comment"):
         return
     # A walk's legs each committed; what is left is its review.json, when
     # --out lies under the project, plus generated project review artifacts.

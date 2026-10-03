@@ -392,3 +392,103 @@ def test_browser_starts_a_turn_and_watches_it_land(plate_app, fake_claude, brows
     after = int(subprocess.run(["git", "-C", str(root), "rev-list", "--count", "HEAD"],
                                capture_output=True, text=True, check=True).stdout)
     assert after == commits + 1
+
+
+# -- the third write: a comment on the design or a picked part (ADR-505) ---
+
+PLATE_AND_POST = """
+p = params(width=num(30.0, unit="mm", min=10.0, max=90.0, step=1.0))
+plate = part.box(p.width, 20.0, 6.0)
+post = part.transform(part.box(8.0, 8.0, 30.0), translation=[40.0, 6.0, 0.0])
+result = {"plate": plate, "post": post}
+"""
+
+
+def test_a_comment_needs_the_token(app, monkeypatch) -> None:
+    calls = []
+    monkeypatch.setattr(review_server, "run_leg", lambda *a, **k: calls.append(a))
+    _projects_root, server = app
+    url = server.url + "p/biped/api/comment"
+    assert _post(url, {"text": "thin"})[0] == 403
+    assert _post(url, {"text": "thin"}, {"X-Cadex-Token": "x" * 43})[0] == 403
+    token = _token(server.url + "p/biped/")
+    assert _post(url, {"text": "thin"}, {"X-Cadex-Token": token, "Origin": "http://evil.example"})[0] == 403
+    assert _post(url, {"text": ""}, {"X-Cadex-Token": token})[0] == 400
+    assert calls == []
+
+
+@needs_browser
+def test_browser_comments_on_a_picked_part_and_the_next_turn_receives_it(
+        engine, tmp_path, capsys, fake_claude, browser) -> None:
+    projects = tmp_path / "projects"
+    source = tmp_path / "post.py"
+    source.write_text(PLATE_AND_POST, encoding="utf-8")
+    assert main(["script", "--set", str(source), "--project", str(projects / "post"), "--json"]) == EXIT_OK
+    capsys.readouterr()
+    root = projects / "post"
+    script, seen, _gate = fake_claude
+    script.write_text(json.dumps([
+        ["text", "Making the post taller.\n"],
+        ["tool", "write_script", {"source": PLATE_AND_POST.replace("8.0, 30.0)", "8.0, 45.0)")}],
+        ["done", "Done: the post is 45 mm tall."],
+    ]), encoding="utf-8")
+    server, _thread = serve_projects(projects, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url + "p/post/")
+        assert _model_state(page) == "loaded"
+        assert page.evaluate("window.cadexReview.viewer().stats().components") == 2
+        # A comment on the whole design, before anything is picked.
+        assert page.attribute("#comment-target", "data-part") == ""
+        page.evaluate("document.getElementById('comment-text').value = 'keep the plate as it is'")
+        page.click("#comment-send")
+        page.wait_for("document.getElementById('comment-status').dataset.state === 'done'", timeout=60)
+        page.wait_for("document.querySelectorAll('#comment-list li').length === 1", timeout=30)
+        assert page.attribute("#comment-list li", "data-part") == ""
+        assert page.attribute("#comment-list li", "data-delivered") == "false"
+        page.scroll_into_view("#viewer")
+        # A real click — press and release, no drag — on each part names it.
+        for name in ("plate", "post"):
+            x, y = page.evaluate("window.cadexReview.viewer().screenPoint(%s)" % json.dumps(name))
+            page.mouse("mousePressed", x, y, clickCount=1)
+            page.mouse("mouseReleased", x, y, clickCount=1)
+            page.wait_for("window.cadexReview.commentPart() === %s" % json.dumps(name))
+            assert page.evaluate("window.cadexReview.viewer().picked()") == name
+            assert page.attribute("#comment-target", "data-part") == name
+        # A drag orbits and picks nothing new.
+        x, y = page.evaluate("window.cadexReview.viewer().screenPoint('plate')")
+        page.drag(x, y, x + 60, y + 20)
+        assert page.evaluate("window.cadexReview.commentPart()") == "post"
+        page.evaluate("document.getElementById('comment-text').value = 'make the post taller'")
+        page.click("#comment-send")
+        page.wait_for("document.querySelectorAll('#comment-list li').length === 2", timeout=60)
+        # Newest first on the page; the CLI wrote both, tagged with the revision on screen.
+        assert page.attribute("#comment-list li", "data-part") == "post"
+        revision = page.evaluate("window.cadexReview.state().revision")
+        lines = [json.loads(line) for line in (root / "comments.jsonl").read_text().splitlines()]
+        assert [(line["part"], line["text"], line["revision"]) for line in lines] == [
+            ("", "keep the plate as it is", revision), ("post", "make the post taller", revision)]
+
+        page.evaluate("document.getElementById('turn-prompt').value = 'go on'")
+        page.click("#turn-start")
+        page.wait_for("window.cadexReview.turn().state === 'done' || window.cadexReview.turn().state === 'failed'",
+                      timeout=120)
+        turn = page.evaluate("window.cadexReview.turn()")
+        assert turn["state"] == "done", turn
+        given = seen.read_text(encoding="utf-8")
+        assert given.endswith("\n\ngo on")
+        assert "- (on part post) make the post taller" in given
+        assert "- (on the whole design) keep the plate as it is" in given
+        assert "delivered 2 comment(s) from the owner." in turn["reply"]["notes"]
+        # Delivered: the page says so, and the next turn would not see them again.
+        page.wait_for("Array.from(document.querySelectorAll('#comment-list li'))"
+                      ".every(function (li) { return li.dataset.delivered === 'true'; })", timeout=30)
+        from cadex_cli.comments import pending_comments
+        assert pending_comments(root) == []
+        # The pick survives the reload of the rebuilt model.
+        page.wait_for("window.cadexReview.state().model && window.cadexReview.state().model.revision === %s"
+                      % json.dumps(turn["reply"]["accepted_revision"]), timeout=30)
+        assert page.evaluate("window.cadexReview.viewer().picked()") == "post"
+        assert page.attribute("#comment-target", "data-part") == "post"
+    finally:
+        server.shutdown()
+        server.server_close()

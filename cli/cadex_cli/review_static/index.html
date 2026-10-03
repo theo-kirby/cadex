@@ -44,6 +44,18 @@
       <div id="turn-status" data-state="idle"></div>
       <pre id="turn-transcript" hidden></pre>
     </section>
+    <section id="comment-panel" class="card panel">
+      <h2>Comments</h2>
+      <!-- Runs `cadex comment [--part NAME] TEXT --project …` (ADR-505); the next design turn receives them. -->
+      <div class="controls">
+        <span id="comment-target" data-part="">on the whole design · click a part in the model to pick it</span>
+        <button id="comment-whole" type="button" hidden>Whole design</button>
+      </div>
+      <textarea id="comment-text" rows="2" placeholder="A note for the next turn." aria-label="Comment"></textarea>
+      <div class="controls"><button id="comment-send" type="button">Comment</button></div>
+      <div id="comment-status" data-state="idle"></div>
+      <ul id="comment-list"></ul>
+    </section>
     <nav id="sidebar" class="card panel">
       <h2>Runs</h2>
       <details id="runs" open>

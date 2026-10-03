@@ -8,7 +8,7 @@
 // one evaluation of a policy against its success spec), and shows exactly what the
 // record says: a historical run is labelled as such and drawn from its own
 // retained mesh, never from today's script. Its writes — a parameter slider
-// and a design turn — are `cadex` commands the server runs (ADR-503, ADR-504). Poll work is bounded: the run list is rebuilt only when it
+// a design turn and a comment — are `cadex` commands the server runs (ADR-503, ADR-504, ADR-505). Poll work is bounded: the run list is rebuilt only when it
 // changes, and the telemetry panel only when the selected run's telemetry
 // does, so an idle poll over a long history touches a constant number of
 // nodes.
@@ -383,6 +383,64 @@
     });
   }
 
+  // Comments (ADR-505): on the whole design, or on the part last clicked in
+  // the model. Each is `cadex comment` run by the server; the next design
+  // turn receives every one not yet delivered.
+  var commentPart = '', commentsKey = null, lastComment = null;
+
+  function renderCommentTarget() {
+    var target = $('comment-target');
+    target.dataset.part = commentPart;
+    target.textContent = commentPart ? 'on part ' + commentPart : 'on the whole design · click a part in the model to pick it';
+    $('comment-whole').hidden = !commentPart;
+  }
+
+  function pickPart(name) {
+    commentPart = name || '';
+    if (state.viewer && state.viewer.highlight) state.viewer.highlight(commentPart || null);
+    renderCommentTarget();
+  }
+
+  function renderComments() {
+    var comments = (state.review && state.review.comments) || [];
+    var key = JSON.stringify(comments);
+    if (key === commentsKey) return;
+    commentsKey = key;
+    var list = $('comment-list');
+    clearChildren(list);
+    comments.slice().reverse().forEach(function (comment) {
+      list.appendChild(el('li', { 'data-comment': comment.id, 'data-part': comment.part, 'data-delivered': String(!!comment.delivered) }, [
+        el('span', { text: (comment.part ? comment.part + ': ' : '') + comment.text }),
+        el('span', { className: 'muted small', text: ' · ' + (comment.delivered ? 'received by a turn' : 'waiting for the next turn') })
+      ]));
+    });
+  }
+
+  function sendComment(text, part) {
+    var status = $('comment-status');
+    status.dataset.state = 'pending';
+    status.textContent = 'running cadex comment …';
+    $('comment-send').disabled = true;
+    return fetch(BASE + '/api/comment', {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'X-Cadex-Token': WRITE_TOKEN },
+      body: JSON.stringify({ text: text, part: part || '' })
+    }).then(function (response) {
+      return response.json();
+    }).then(function (reply) {
+      if (!reply.ok) throw new Error(reply.error || 'refused');
+      lastComment = reply.comment;
+      status.dataset.state = 'done';
+      status.textContent = 'left ' + (reply.comment.part ? 'on part ' + reply.comment.part : 'on the whole design') + '; the next turn receives it';
+      $('comment-text').value = '';
+      return (pendingPoll || Promise.resolve()).catch(function () {}).then(poll).then(function () { return reply.comment; });
+    }).catch(function (error) {
+      status.dataset.state = 'error';
+      status.textContent = 'not left: ' + error.message;
+      return null;
+    }).finally(function () { $('comment-send').disabled = false; });
+  }
+
   function telemetryFor(run) {
     // The selected run's detail (histories, verified checkpoints) when it has
     // arrived for this run; otherwise the list's summary, which carries the
@@ -729,6 +787,8 @@
         // The proxies ride along, hidden unless the toggle is on: the solids are what is shown.
         state.viewer.setProxies(manifest.collision && manifest.collision.available ? manifest.collision.geoms : []);
         state.viewer.showProxies(state.showProxies);
+        // A reload keeps the pick when the part is still there, and drops it when it is not.
+        if (commentPart) pickPart(state.viewer.highlight(commentPart));
         var stats = state.viewer.stats();
         status.dataset.state = 'loaded';
         status.textContent = (run ? (run.relation === 'historical' ? 'HISTORICAL model ' : 'model ') + 'of run ' + run.run : 'accepted model') +
@@ -939,6 +999,7 @@
     if (!state.review) return;
     if (state.selected !== 'accepted' && !selectedRun()) state.selected = 'accepted';
     renderHeader(); renderSidebar(); renderIdentity(); renderPolicyOrigin(); renderParams(); renderTraining(); renderArtifacts(); renderDocs();
+    renderComments();
     renderPresentation();
     renderEvaluation();
   }
@@ -1019,6 +1080,12 @@
       var prompt = $('turn-prompt').value.trim();
       if (prompt) startTurn(prompt, $('turn-resume').checked);
     });
+    if (state.viewer.setOnPick) state.viewer.setOnPick(pickPart);
+    $('comment-whole').addEventListener('click', function () { pickPart(''); });
+    $('comment-send').addEventListener('click', function () {
+      var text = $('comment-text').value.trim();
+      if (text) sendComment(text, commentPart);
+    });
     poll().then(function () { readyResolve(true); });
     setInterval(poll, POLL_MS);
     pollTurn();
@@ -1033,6 +1100,9 @@
     lastWrite: function () { return lastWrite; },
     startTurn: startTurn,
     turn: function () { return { id: turn.id, state: turn.state, text: turn.text, reply: turn.reply }; },
+    comment: sendComment,
+    lastComment: function () { return lastComment; },
+    commentPart: function () { return commentPart; },
     viewer: function () { return state.viewer; },
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, detail_bytes: lastPoll.detail_bytes, ms: lastPoll.ms }; },
     state: function () {

@@ -91,6 +91,9 @@ class RunReport:
     #: ``film`` (ADR-459) is the film's state and where each sheet and
     #: video drawn from the seeds landed.
     evaluation: dict[str, Any] = field(default_factory=dict)
+    #: ``cadex comment``: the comment it left; ``cadex -p``: the owner's
+    #: comments the turn received (ADR-505).
+    comments: list[dict[str, Any]] = field(default_factory=list)
     error: str = ""
     #: Free-form notes worth printing but not worth a field of their own.
     notes: list[str] = field(default_factory=list)
@@ -129,6 +132,8 @@ class RunReport:
             payload["smoke"] = dict(self.smoke)
         if self.evaluation:
             payload["evaluation"] = dict(self.evaluation)
+        if self.comments:
+            payload["comments"] = [dict(item) for item in self.comments]
         if self.notes:
             payload["notes"] = list(self.notes)
         if self.error:

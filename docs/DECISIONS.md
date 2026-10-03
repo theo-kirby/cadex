@@ -32661,3 +32661,62 @@ over the real bridge): the page shows the agent's first words while the
 turn is still running and before it has touched the engine, then the
 accepted revision drawn at the new width, with the CLI's `PROGRESS.md` row
 and one project commit.
+
+## ADR-505 — The dashboard's third write: a comment on the design or a picked part, received by the next turn (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. A new CLI subcommand, `cadex comment [--part NAME]
+TEXT`; a project file, `comments.jsonl`; `cadex -p` reads it; one HTTP
+route (`POST api/comment`) and a `comments` list on `/api/project`; click
+picking in the viewer. No cadexd protocol or agent tool-surface change.
+
+**Context.** D2's third item is that a person comment on the whole design
+or on a part picked in the viewer, and that the next agent turn receive
+it. The charter's A1 keeps picking "in a review form: click a part in the
+viewer to attach a comment to it". A3 forbids a second write path, and
+before this unit the CLI had no way to carry a person's note into a turn
+except by typing it into the prompt.
+
+**Decision.** `cadex comment` appends one JSON line to the project's
+`comments.jsonl` — id, time, text (at most 4,000 characters), part (empty
+for the whole design) and the accepted revision when it was left — and
+needs no engine; it writes no `PROGRESS.md` row and makes no commit, since
+a comment is input to the next run rather than a run, and the next
+accepted run's commit carries the file. `command_prompt` reads the
+undelivered comments, gives the turn its prompt with them ahead of it
+(`The owner left these comments on the design since the last turn…`, one
+line each, `(on part post)` or `(on the whole design)`), and once the turn
+has run appends a `delivered` line naming them with the session id. A
+failed turn delivers nothing. The envelope carries the delivered comments
+under `comments`. Appending, not rewriting, keeps the dashboard's write and
+a turn's delivery from losing each other's line, and the file is the
+history. The dashboard's `POST api/comment` runs `cadex comment --project
+<root> --json [--part=<name>] -- <text>` through `run_leg`, behind the
+ADR-503 token and `Origin` check. The viewer names the solid under a click
+(a press and release that moves under 5 px) by ray cast, and the page shows
+the pick and lists the comments with their delivery (`docs/DASHBOARD.md`
+§20).
+
+**Cost.** Comments travel in the user prompt, not the system prompt, so a
+resumed conversation keeps them in its history as said once. A part is
+named by the viewer's output name, which is the script's output name for
+the accepted model and a run's own output name for a historical run; a
+comment does not pin geometry, only the revision it was left at.
+
+**What would reverse it.** A1's non-blocking channel may want the agent to
+answer a comment, which would add a reply kind to the same file, not a
+second store. If comments should reach the agent mid-turn, that is a tool,
+and the tool-surface rule applies.
+
+**Test.** `cli/tests/test_comments.py`: the file round-trips, skips a torn
+line and refuses bad input; `cadex comment` writes one line and no row or
+commit; with a real engine and the mock turn, a failed turn is given the
+comments and leaves them pending, the next is given them ahead of its
+prompt and delivers them, and the one after sees only its prompt; the
+server's argv is pinned and the real CLI accepts it as a child.
+`cli/tests/test_dashboard_writes.py`: the route is 403 without the token,
+with another or cross-origin; in headless Chromium against a real engine
+on a two-part project, a whole-design comment, real mouse clicks that pick
+`plate` then `post`, a drag that picks nothing, a comment on `post`, then a
+turn from the page: `fake_claude` received both comments ahead of `go on`,
+the list shows them received, none are pending, and the pick survives the
+rebuilt model.

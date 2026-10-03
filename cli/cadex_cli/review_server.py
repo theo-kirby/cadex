@@ -14,10 +14,11 @@ task's success spec, with the film drawn from it (ADR-459). Reading
 opens no engine, rebuilds nothing and holds no state of its own, so a
 browser that goes away changes nothing about the project.
 
-Writing is the dashboard's light steering (orun2 D2, ADR-503, ADR-504),
+Writing is the dashboard's light steering (orun2 D2, ADR-503 to ADR-505),
 and it has no write path of its own: each POST runs the very ``cadex``
-command a person would type (``params --set``, or ``-p PROMPT`` for a
-design turn whose stderr is the live transcript), as a child process the
+command a person would type (``params --set``, ``-p PROMPT`` for a
+design turn whose stderr is the live transcript, or ``comment`` for a
+note on the design or a picked part, ADR-505), as a child process the
 way ``cadex walk`` runs its legs, so the project lock, the ``PROGRESS.md``
 row and the project commit are the CLI's. Every POST needs the per-launch token the
 server writes into the page it serves, and a browser's ``Origin``, when
@@ -59,6 +60,7 @@ from typing import Any, Callable, Mapping
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 from xml.etree import ElementTree
 
+from .comments import read_comments
 from .walk import run_leg
 from .review_record import (
     policy_lineage,
@@ -1231,6 +1233,7 @@ class ReviewProject:
             record["telemetry"] = training_telemetry(self.root, record, detail=False)
         review["presentation"] = presentation(self.root, review["accepted"])
         review["evaluations"] = evaluations(self.root, review["accepted"])
+        review["comments"] = read_comments(self.root)[-COMMENTS_SHOWN:]
         review["served_at"] = _now()
         return review
 
@@ -1427,6 +1430,43 @@ def write_params(root: Path, values: Any) -> tuple[HTTPStatus, dict[str, Any]]:
     if leg.code == EXIT_USAGE:
         return HTTPStatus.BAD_REQUEST, reply
     return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
+
+
+def write_comment(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
+    """``cadex comment --project ROOT [--part NAME] -- TEXT``, as a child (ADR-505).
+
+    The comment box and the command line are one write path (A3). The text
+    travels after ``--`` and the part as one ``--part=`` token, so neither
+    is read as a flag; the bounds are the CLI's own, checked here only so a
+    bad body spawns nothing.
+    """
+
+    from .comments import COMMENT_LIMIT, PART_LIMIT
+    from .report import EXIT_OK, EXIT_USAGE  # report imports this module
+
+    text, part = body.get("text"), body.get("part", "")
+    if not isinstance(text, str) or not text.strip():
+        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "text must be non-empty text."}
+    if len(text) > COMMENT_LIMIT or "\x00" in text:
+        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"a comment is at most {COMMENT_LIMIT} characters of text."}
+    if not isinstance(part, str) or len(part) > PART_LIMIT or "\x00" in part or "\n" in part:
+        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"part must be one line of at most {PART_LIMIT} characters."}
+    argv = ["comment", "--project", str(root), "--json"] + (["--part=" + part.strip()] if part.strip() else [])
+    leg = run_leg("comment", argv + ["--", text.strip()], timeout=WRITE_TIMEOUT_S)
+    envelope = leg.envelope
+    reply: dict[str, Any] = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
+                             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv]}
+    if envelope.get("comments"):
+        reply["comment"] = envelope["comments"][0]
+    if "error" in envelope:
+        reply["error"] = envelope["error"]
+    if reply["ok"]:
+        return HTTPStatus.OK, reply
+    return (HTTPStatus.BAD_REQUEST if leg.code == EXIT_USAGE else HTTPStatus.CONFLICT), reply
+
+
+#: How many comments ``/api/project`` carries, newest kept.
+COMMENTS_SHOWN = 100
 
 
 #: How long one dashboard prompt turn may run before it is stopped, in seconds.
@@ -1711,12 +1751,14 @@ class ReviewHandler(BaseHTTPRequestHandler):
             project: ReviewProject | None = self.project if projects is None else None
             if projects is not None and segments[:1] == ["p"] and len(segments) > 1:
                 project, segments = projects.project(segments[1]), segments[2:]
-            if project is None or segments not in (["api", "params"], ["api", "turn"]) \
+            if project is None or segments not in (["api", "params"], ["api", "turn"], ["api", "comment"]) \
                     or not isinstance(body, dict):
                 self._not_found(parts.path)
                 return
             if segments == ["api", "turn"]:
                 status, reply = self.server.turns.start(project.root, body)  # type: ignore[attr-defined]
+            elif segments == ["api", "comment"]:
+                status, reply = write_comment(project.root, body)
             else:
                 status, reply = write_params(project.root, body.get("values"))
             self._send_json(reply, status)

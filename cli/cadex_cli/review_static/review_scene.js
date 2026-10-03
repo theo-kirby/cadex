@@ -154,7 +154,7 @@ export function create(canvas) {
   function clear() {
     disposeProxies(); proxyGeoms=[];
     meshes.forEach(m=> {model.remove(m); m.geometry.dispose();m.material.dispose();});
-    meshes.clear(); bounds=null;triangleCount=0;draw();
+    meshes.clear(); bounds=null;triangleCount=0;picked=null;draw();
   }
   // The proxies to offer: the manifest's `collision.geoms`, each in its component's frame.
   // They are built against the installed solids and stay hidden until showProxies(true).
@@ -263,19 +263,45 @@ export function create(canvas) {
   const pointers=new Map(); let pinch=0;
   const zoom=f=>{c.distance=Math.max((bounds?.radius||1)*.2,c.distance*f);};
   const span=()=>{const [a,b]=[...pointers.values()];return Math.hypot(a[0]-b[0],a[1]-b[1]);};
-  canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);if(pointers.size===2)pinch=span();e.preventDefault();});
+  // Picking (orun2 A1, ADR-505): a press and release that barely moved is a click, not an
+  // orbit; it names the solid under it, or null, to the page's onPick.
+  const raycaster=new THREE.Raycaster(), ndc=new THREE.Vector2(); let onPick=null, press=null, picked=null;
+  function pick(x,y) {
+    const r=canvas.getBoundingClientRect(); if(!r.width||!r.height) return null;
+    draw(); model.updateMatrixWorld(true);
+    raycaster.setFromCamera(ndc.set((x-r.left)/r.width*2-1,-((y-r.top)/r.height)*2+1),camera);
+    const hit=raycaster.intersectObjects([...meshes.values()],false)[0];
+    if (!hit) return null;
+    for (const [n,m] of meshes) if (m===hit.object) return n;
+    return null;
+  }
+  // Where a solid's box centre lands on the page, in client pixels; null when it is not drawn.
+  function screenPoint(name) {
+    const m=meshes.get(name); if(!m) return null;
+    draw(); model.updateMatrixWorld(true);
+    const p=m.geometry.boundingBox.getCenter(new THREE.Vector3()).applyMatrix4(m.matrixWorld).project(camera), r=canvas.getBoundingClientRect();
+    return [r.left+(p.x+1)/2*r.width, r.top+(1-p.y)/2*r.height];
+  }
+  // The picked solid glows faintly; null clears it. Never set by a capture.
+  function highlight(name) {picked=meshes.has(name)?name:null; meshes.forEach((m,n)=>m.material.emissive.setHex(n===picked?0x3a3a3a:0)); draw(); return picked;}
+  canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);press=pointers.size===1?[e.clientX,e.clientY]:null;if(pointers.size===2)pinch=span();e.preventDefault();});
   canvas.addEventListener('pointermove',e=>{
     const p=pointers.get(e.pointerId);if(!p)return;
+    if(press&&Math.hypot(e.clientX-press[0],e.clientY-press[1])>=5)press=null;
     if(pointers.size===1){c.yaw-=(e.clientX-p[0])*.01;c.pitch=Math.max(-1.5,Math.min(1.5,c.pitch+(e.clientY-p[1])*.01));}
     pointers.set(e.pointerId,[e.clientX,e.clientY]);
     if(pointers.size===2){const s=span();if(s>0&&pinch>0)zoom(pinch/s);pinch=s;}
     draw();
   });
-  const lift=e=>{pointers.delete(e.pointerId);pinch=0;};
+  const lift=e=>{
+    if (e.type==='pointerup'&&press&&pointers.size===1&&Math.hypot(e.clientX-press[0],e.clientY-press[1])<5&&onPick) onPick(pick(e.clientX,e.clientY));
+    press=null; pointers.delete(e.pointerId);pinch=0;
+  };
   canvas.addEventListener('pointerup',lift);canvas.addEventListener('pointercancel',lift);
   canvas.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(e.deltaY*.0015));draw();},{passive:false});
   window.addEventListener('resize',draw);
   return {available:true,load,install,clear,fit,draw,setPoses,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
+    pick,screenPoint,highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,style:STYLE,stage,showing:showing(),
       proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length}}),
     png:()=>{draw();return canvas.toDataURL('image/png').split(',')[1];}};

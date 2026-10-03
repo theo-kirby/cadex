@@ -346,7 +346,10 @@ an engine (`review_server.py`). When a person steers from the page — a
 parameter slider, or a design turn from a prompt — the server runs the
 `cadex params` or `cadex -p` command as a child, so the write is cadexd's,
 through the CLI, as any other (ADR-503, ADR-504); a turn's stderr is
-streamed back to the page as its live transcript. Until ADR-498 the Blender shell also read
+streamed back to the page as its live transcript. A comment on the design
+or a part clicked in the model runs `cadex comment`, which appends to the
+project's `comments.jsonl`; the next `cadex -p` receives the undelivered
+ones ahead of its prompt (ADR-505). Until ADR-498 the Blender shell also read
 `assets/` on Save-As to carry them into a new root through `put_asset`
 (ADR-046); a project is now copied as a directory.
 
