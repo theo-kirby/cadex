@@ -205,6 +205,23 @@ def test_no_live_doc_names_the_deleted_shell() -> None:
     assert naming == [], naming
 
 
+def test_agents_md_describes_the_three_part_product() -> None:
+    """ADR-500 (charter R1): the agent contract describes the engine, the
+    dashboard and the agent, at no more than half the 432 lines it had when
+    orun2 began, and no longer offers a Rust shell as the target."""
+
+    root = Path(__file__).resolve().parents[2]
+    text = (root / "AGENTS.md").read_text(encoding="utf-8")
+    assert len(text.splitlines()) <= 216, len(text.splitlines())
+    flat = " ".join(text.split())
+    for part in ("1. **The engine**", "2. **The dashboard**", "3. **The agent**"):
+        assert part in flat, part
+    vision = " ".join((root / "docs" / "VISION.md").read_text(encoding="utf-8").split())
+    for text in (flat, vision):
+        assert "wgpu" not in text and "egui" not in text
+        assert "Blender-class UX" not in text
+
+
 def test_claude_code_is_the_only_harness() -> None:
     """ADR-497 (charter A4): the Codex and pi backends went with the shell.
     No CLI module names either harness, and the agent contract says Claude

@@ -32392,3 +32392,67 @@ history and R1 decides.
 is going" still describe a Rust shell as the target, and ARCHITECTURE.md's
 project-store section still describes the shell choosing the store root.
 Those are prose, not paths, and R1's rewrite owns them.
+
+## ADR-500 — Cadex is three things: the engine, the dashboard, the agent (2026-10-03, owner charter orun2)
+
+**Status:** accepted. A direction change. Supersedes ADR-025's second
+replacement (our own Rust + wgpu + egui shell, ROADMAP Phase 12) and the
+"Blender-class UX" pillar of `docs/VISION.md`. ADR-025's first replacement
+(a pybind11 binding on OCCT, Phase 11) and "OCCT stays" are untouched.
+
+**The bet.** The owner uses Cadex almost entirely through autonomous CLI
+runs. The product is therefore three things and nothing else:
+
+1. **the engine** — builds, verifies, measures, renders, simulates and
+   exports a design from its script, unchanged in role;
+2. **the dashboard** — `./cadex review`, grown from the review page into the
+   only UI, built for *looking, reviewing and light steering*: a
+   standard-library server, vanilla JS and vendored three.js, writing only
+   through the code paths the CLI uses;
+3. **the agent** — Claude Code (ADR-497) with one tool surface
+   (`cli/cadex_cli/tools.py`), one guidance source, and a non-blocking
+   channel to the owner.
+
+A desktop app may later be built from scratch to copy the dashboard. That
+is a different plan from Phase 12: it copies a page that already works
+rather than specifying a shell from a Blender prototype.
+
+**What it costs.** Measured in `docs/probes/orun2/D1-BEFORE.md` and
+ADR-495…499:
+
+- **Hands-on modelling UI is gone**, not deferred: the cage ring-drag
+  (ADR-127's gesture; the `cage(...)` and `part.loft_cage` ops stay), the
+  wiring editor, the interactive blueprint editor, Blender playback baking,
+  and the landing page, top bar and window chrome. `docs/SHELL-PARITY.md`
+  names each with its reason.
+- **A native viewport is gone.** The viewer is three.js in a browser; it
+  will not match Blender's interaction quality, and the bet is that a
+  person reviewing an autonomous result does not need it to.
+- **Other harnesses are gone** (ADR-497), and with them the option of
+  running a turn without a Claude Code login.
+- **What was bought**: 19,446 of 25,633 tracked files (75.9%), a second
+  toolchain, a GPL half (ADR-498), 6,716 LFS objects and a ~1.3 GB library
+  checkout; and a product that builds on linux, where before the documented
+  application was macOS-only.
+
+**What would make the owner reverse it.** Any one of:
+
+- the owner finds themselves wanting to model by hand — dragging a cage
+  ring, routing a wire, editing a drawing — more than occasionally, and a
+  comment or a prompt is not an adequate substitute;
+- the dashboard cannot carry review: a design the owner needs to judge
+  cannot be judged from the browser (viewer fidelity, latency, or a missing
+  view), and fixing that would need a framework, a build step or a native
+  renderer, which the light-dashboard rule (charter A2) forbids;
+- the autonomous loop stops being the main way the product is used.
+
+Reversal is a checkout away: `v1-blender-shell` holds the shell, and the
+cadexd protocol it spoke is unchanged and test-pinned.
+
+**Changed in this commit.** `AGENTS.md` is rewritten for the three-part
+product at 215 lines (from 353; the charter's bar is half of 432), and
+`cli/tests/test_project_docs.py::test_agents_md_describes_the_three_part_product`
+holds the bar and the three names. `docs/VISION.md`'s product statement,
+interface section and non-goals no longer name a Rust shell or a Blender
+UX; the hands-on modelling UI becomes an explicit non-goal. ROADMAP's
+Phase 12, `docs/DASHBOARD.md` and the rest of R1 are later units.
