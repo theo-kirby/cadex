@@ -503,7 +503,8 @@ def test_servo_joint_dynamics_is_the_datasheet_torque_speed_line() -> None:
                                        ("pololu-d36v50f6", 12),
                                        ("pi-5", 40),
                                        ("rpi-camera-module-3", 0),
-                                       ("pololu-vl53l1x-3415", 7)])
+                                       ("pololu-vl53l1x-3415", 7),
+                                       ("tb6612-adafruit-2448", 18)])
 def test_board_interfaces_and_terminal_rows(sku, count):
     board = _lib().board(sku)
     spec = board.spec
@@ -593,6 +594,30 @@ def test_orun1_board_manufacturer_pins():
     assert "mount_holes" in tof["approximate"]
     for spec in (pi, cam, tof):
         assert spec["sources"] and all(u.startswith("https://") for u in spec["sources"])
+
+
+def test_motor_driver_manufacturer_pins():
+    """ADR-490: the H-bridge two N20s need, from Adafruit's published board."""
+    drv = catalog.board_spec("tb6612-adafruit-2448")
+    assert (drv["width_mm"], drv["length_mm"], drv["mount_hole_dia_mm"]) == (19.05, 26.67, 2.5)
+    assert drv["mount_holes"] == [[16.51, 2.54], [16.51, 24.13]]
+    rows = {r["name"]: r for r in drv["terminals"]}
+    assert rows["jp1_1"]["origin"] == [2.54, 24.765, 1.6] and rows["jp1_1"]["signal"] == "VM"
+    assert rows["jp1_10"]["origin"] == [2.54, 1.905, 1.6] and rows["jp1_10"]["signal"] == "PWMA"
+    assert [rows[f"jp1_{i}"]["signal"] for i in (4, 5, 6, 7, 8, 9)] == \
+        "PWMB BIN2 BIN1 STBY AIN1 AIN2".split()
+    assert [rows[f"jp3_{i}"]["signal"] for i in range(1, 7)] == "MA1 MA2 GND GND MB2 MB1".split()
+    assert rows["jp3_1"]["origin"] == [17.78, 6.985, 1.6] and rows["jp3_1"]["hole_dia"] == 1.016
+    assert (rows["j1_1"]["signal"], rows["j1_2"]["origin"]) == ("VM", [11.098, 23.114, 1.6])
+    # The TB6612's SSOP24 body, rotated 90 degrees, stands to the stated 3 mm.
+    (mx, my, mz), (sx, sy, sz) = drv["cosmetic_origin"], drv["cosmetic_size"]
+    assert (mx + sx / 2, my + sy / 2) == (pytest.approx(9.906), pytest.approx(14.986))
+    assert mz + sz == pytest.approx(3.0)
+    # Drives a 2S pack's motors directly, and two N20s at stall.
+    assert drv["motor_voltage_range_v"][0] <= 7.4 <= drv["motor_voltage_range_v"][1]
+    n20 = catalog.gearmotor_spec("pololu-2367")
+    assert drv["channels"] == 2 and drv["continuous_current_a"] >= n20["stall_current_a"]
+    assert "514d5ded" in drv["source"] and drv["mass_g"] == 1.8
 
 
 def test_camera_bay_reaches_the_block_on_its_back_face():
@@ -755,7 +780,8 @@ def test_orun1_families_are_browsable():
     families = catalog.catalog_families()
     assert families["wheels"]["skus"] == ["pololu-1430"]
     assert families["foot_pads"]["skus"] == ["essentra-462178"]
-    assert {"pi-5", "rpi-camera-module-3", "pololu-vl53l1x-3415"} <= set(families["boards"]["skus"])
+    assert {"pi-5", "rpi-camera-module-3", "pololu-vl53l1x-3415",
+            "tb6612-adafruit-2448"} <= set(families["boards"]["skus"])
     assert "sts3215" in families["servos"]["skus"]
     assert "mount_points" in families["servos"]["notes"]
     names = {entry["name"] for entry in library_listing()["exports"]}
@@ -801,7 +827,8 @@ def test_battery_bay_houses_the_pack_with_room_for_its_leads():
 
 @pytest.mark.parametrize("sku", ["esp32-devkitc-v4", "pi-zero-2-w",
                                  "pca9685-adafruit-rev-c", "bno085-adafruit-4754",
-                                 "pololu-d36v50f6", "pi-5", "pololu-vl53l1x-3415"])
+                                 "pololu-d36v50f6", "pi-5", "pololu-vl53l1x-3415",
+                                 "tb6612-adafruit-2448"])
 def test_board_bay_contains_the_board_and_its_overhang(sku):
     board = _lib().board(sku)
     spec = board.spec
@@ -1201,6 +1228,7 @@ result = {
     "pi5_board": lib.board("pi-5", origin=(0, 80, 0)).body,
     "camera": lib.board("rpi-camera-module-3", direction=(1, 0, 0)).body,
     "tof": lib.board("pololu-vl53l1x-3415", origin=(0, -40, 0)).body,
+    "motor_driver": lib.board("tb6612-adafruit-2448", origin=(40, -40, 0)).body,
     "bus_servo": lib.servo("sts3215", origin=(0, -80, 0), direction=(0, 1, 0)).body,
     "bus_servo_bay": lib.servo("sts3215", origin=(0, -80, 0), direction=(0, 1, 0)).bay(),
     "wheel": lib.wheel("pololu-1430", origin=(100, 30, 20), direction=(1, 0, 0)).body,
@@ -1259,7 +1287,7 @@ def test_the_library_builds_on_the_real_kernel() -> None:
             "joint", "joint_placed", "bldc", "bldc_placed", "linear_actuator", "linear_actuator_placed",
             "gearmotor", "gearmotor_placed",
             "esp_board", "pi_board", "pwm_board",
-            "pi5_board", "camera", "tof", "bus_servo", "bus_servo_bay",
+            "pi5_board", "camera", "tof", "motor_driver", "bus_servo", "bus_servo_bay",
             "wheel", "wheel_bay", "tyre", "foot_pad", "foot_pad_bay",
             "servo",
             "horn",

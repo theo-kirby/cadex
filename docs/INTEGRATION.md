@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-10-02
+Verified against source: 2026-10-03
 
 **Optional Blender recipe runtime (ADR-185).** A shell-owned cadexd child
 receives `CADEX_BLENDER_EXECUTABLE` naming the shell's own binary. The engine
@@ -177,7 +177,8 @@ The `describe_api.library.catalog.wheels` and `.foot_pads` families
 discovered through the existing library exports. The new `pi-5`,
 `rpi-camera-module-3`, `pololu-vl53l1x-3415` and `sts3215` rows fit the
 existing `boards` and `servos` shapes. No request op or client dispatch
-changes.
+changes. `tb6612-adafruit-2448` (ADR-490) is one more `boards` row on the same
+terms.
 
 The `describe_api.library.catalog.bldc_motors` family (ADR-206) adds
 `skus` and `notes`; `lib.bldc` uses existing library exports. No request

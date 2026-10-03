@@ -458,6 +458,14 @@ drawing is redistributed. A STEP model was only measured, never copied in.
   [pinout](https://a.pololu-files.com/picture/0J8679.1200.jpg) photos, and
   ST's [VL53L1X datasheet](https://www.pololu.com/file/0J1506/vl53l1x.pdf).
   The hole x and sensor position are measured from the photo.
+- **Adafruit 2448 TB6612 motor driver** (ADR-490): outline, both 2.5 mm
+  holes, the JP1/JP3/J1 pads with their nets, and the chip's body, parsed
+  from the published
+  [EAGLE board](https://github.com/adafruit/Adafruit-TB6612-Motor-Driver-Breakout-PCB/blob/514d5ded1aade108d0698d0e718a92c22ff5496f/Adafruit%20TB6612.brd)
+  (CC BY-SA; dimensions transcribed, no file copied). Ratings, the 3 mm
+  overall height and the 1.8 g mass come from the
+  [product page](https://www.adafruit.com/product/2448). The PCB thickness
+  and the chip's height are inferred from that height.
 - **Pololu 1430 wheel 80×10 mm:** the
   [wheel drawings](https://www.pololu.com/file/0J1708/pololu-wheel-dimensions.pdf)
   (page 5), plus Pololu's STEP model, measured in this repo's kernel for the

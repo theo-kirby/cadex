@@ -441,6 +441,29 @@ result["diag"] = assembly.solve(asm)
 """
 
 
+# ADR-490: the motor driver has two holes, both on one edge; two screws
+# through them are its whole hold.
+_DRIVER_ON_A_PLATE = """
+drv = lib.board("tb6612-adafruit-2448", origin=(0.0, 0.0, 0.0))
+t = drv.spec["thickness_mm"]
+taps = [part.cylinder(radius=lib.tap_drill("m2") / 2.0, height=6.0,
+                      origin=(x, y, -5.0)) for x, y in drv.spec["mount_holes"][:COUNT]]
+plate = part.box(30.0, 36.0, 4.0, origin=(-5.0, -5.0, -4.0))
+plate = part.cut(plate, taps) if taps else plate
+bolts = [lib.bolt("m2", 6.0, origin=(x, y, t)) for x, y in drv.spec["mount_holes"][:COUNT]]
+result = {"plate": plate, "driver": drv.body}
+comps = [assembly.component(plate, grounded=True), assembly.component(drv.body)]
+for i, bolt in enumerate(bolts):
+    result["bolt%d" % i] = bolt.body
+    comps.append(assembly.component(bolt.body))
+for i, comp in enumerate(comps):
+    result["component_%d" % i] = comp
+asm = assembly.assembly(comps)
+result["asm"] = asm
+result["diag"] = assembly.solve(asm)
+"""
+
+
 def _built_mounting(tmp_path, source):
     from test_cadexd_lifecycle import _spawn_cadexd, _stop
 
@@ -530,3 +553,14 @@ def test_an_n20_is_held_only_by_its_own_m1_6_screws_on_the_real_kernel(tmp_path,
     else:
         assert len(motor["misfits"]) == 2
         assert all(m.endswith("an M2 bolt in an M1.6 tapped hole") for m in motor["misfits"])
+
+
+@_NEEDS_KERNEL
+@pytest.mark.parametrize("count, status", [(2, "held"), (0, "contact only")])
+def test_the_motor_driver_is_held_by_its_two_screws_on_the_real_kernel(tmp_path, count, status):
+    block = _built_mounting(tmp_path, _DRIVER_ON_A_PLATE.replace("COUNT", str(count)))
+    drv = next(row for row in block["reported"] + block["held"]
+               if row["part"] == "board/tb6612-adafruit-2448")
+    assert drv["status"] == status, drv
+    if status == "held":
+        assert drv["by"] == "screws" and drv["detail"].startswith("2 of 2 mounting holes")

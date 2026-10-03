@@ -768,6 +768,33 @@ BOARDS = {
             for i, signal in enumerate("VDD VIN GND SDA SCL XSHUT GPIO1".split())
         ],
     },
+    # Adafruit 2448, TB6612 dual H-bridge motor driver breakout (ADR-490).
+    # Outline, both holes, pads and the chip's body are parsed from the
+    # published EAGLE board; ratings and the 3 mm overall height from the
+    # product page. The 3.5 mm terminal block ships loose and is not modelled.
+    "tb6612-adafruit-2448": {
+        "manufacturer": "Adafruit", "variant": "2448 TB6612 1.2 A DC/stepper motor driver breakout",
+        "width_mm": 19.05, "length_mm": 26.67, "thickness_mm": 1.6,
+        "mount_holes": [[16.51, 2.54], [16.51, 24.13]],
+        "mount_hole_dia_mm": 2.5,
+        "cosmetic_origin": [7.37, 10.858, 1.6], "cosmetic_size": [5.072, 8.256, 1.4],
+        "density_kg_m3": 1850.0, "mass_g": 1.8,
+        "motor_voltage_range_v": [4.5, 13.5], "logic_voltage_range_v": [2.7, 5.0],
+        "continuous_current_a": 1.2, "peak_current_a": 3.0, "channels": 2,
+        "approximate": ["thickness_mm", "cosmetic_size", "density_kg_m3", "outline_corner_radius"],
+        "source": "https://github.com/adafruit/Adafruit-TB6612-Motor-Driver-Breakout-PCB/blob/514d5ded1aade108d0698d0e718a92c22ff5496f/Adafruit%20TB6612.brd",
+        "sources": ["https://github.com/adafruit/Adafruit-TB6612-Motor-Driver-Breakout-PCB/blob/514d5ded1aade108d0698d0e718a92c22ff5496f/Adafruit%20TB6612.brd",
+                    "https://www.adafruit.com/product/2448"],
+        "notes": "Two brushed DC motors, 1.2 A each continuous (3 A for about 20 ms), 4.5-13.5 V on VM straight from a 2S pack, 2.7-5 V logic on VCC. Per motor: two direction inputs (AIN1/AIN2, BIN1/BIN2) and one PWM input (PWMA, PWMB); STBY is pulled up. Motor leads go to JP3 (MA1/MA2, MB1/MB2); VM also comes in on J1, the pads for the loose 3.5 mm terminal block, which stands well proud of the chip if fitted. Both M2 holes are on the JP3 edge, so the JP1 edge needs a ledge or a slot in its bay to rest on.",
+        "terminals": [
+            _board_pin(f"JP1_{i+1}", signal, 2.54, round(24.765 - i*2.54, 4), 1.0)
+            for i, signal in enumerate("VM VCC GND PWMB BIN2 BIN1 STBY AIN1 AIN2 PWMA".split())
+        ] + [
+            _board_pin(f"JP3_{i+1}", signal, 17.78, round(6.985 + i*2.54, 4), 1.016)
+            for i, signal in enumerate("MA1 MA2 GND GND MB2 MB1".split())
+        ] + [_board_pin("J1_1", "VM", 7.598, 23.114, 1.0),
+             _board_pin("J1_2", "GND", 11.098, 23.114, 1.0)],
+    },
 }
 
 

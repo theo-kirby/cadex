@@ -31821,3 +31821,51 @@ output differently once and reopens by the recipe path with it named
 (ADR-476). Until it places `wheel.tyre()`, such a design shows a bare rim,
 which is the truthful picture of a wheel with no tyre. The tread is still
 not modelled.
+
+## ADR-490 — A motor driver board: the TB6612 the balancer's N20s need (2026-10-03)
+
+**Context.** The third balancer trial (`orun1-t3-balancer`) drives its wheels
+with two Pololu 2367 N20 gearmotors, and its transcript (`t3-balancer.err`)
+says what it could not place: "the N20 gearmotors need a dual H-bridge driver
+to run, and the catalog doesn't have one. I left room for one rather than
+invent it", naming the TB6612FNG. A brushed DC motor cannot run from a
+microcontroller pin, so every catalog design with an N20 was a machine with
+no way to drive its motors. D3 asks for anything the D4 transcripts show the
+agent reaching for and not finding.
+
+**Decision.**
+- `lib.board("tb6612-adafruit-2448")`: Adafruit's TB6612 breakout, the part
+  the agent named. Outline (19.05 × 26.67 mm), both Ø2.5 holes, the 18 pads
+  with their nets (JP1 inputs and supply, JP3 motor outputs, J1 the terminal
+  block pads) and the chip's body are parsed from Adafruit's published EAGLE
+  board at a pinned commit, as the BNO085's were (ADR-407). The ratings
+  (4.5–13.5 V motor supply, 2.7–5 V logic, 1.2 A per channel, 3 A peak), the
+  3 mm overall height and 1.8 g come from the product page. It is a `boards`
+  row, so `.bay()`, terminals, harness wiring and the mounting check
+  (screws through its own holes, ADR-486/488) all apply unchanged.
+- The overlay's complete-machine list names it for brushed DC motors such as
+  the N20, one board per two motors, its motor supply straight from the 2S
+  pack.
+- Both holes sit on the JP3 edge. That is the board; the catalog note says
+  the far edge needs a ledge or a slot in its bay, rather than inventing
+  holes.
+
+I chose the Adafruit breakout over Pololu's DRV8833 and TB6612 carriers
+because their product pages (713, 2130) show no mounting holes, so the
+mounting check could only ever report them as held by a bay. A published
+board file is also a better source than a dimension photo. The encoder N20 variant the same transcript
+asks for is a separate gap and is not taken here.
+
+**Measured.** `test_library.py::test_motor_driver_manufacturer_pins` pins the
+outline, holes, every signal, the chip's centre at the board file's
+(9.906, 14.986) and the stated 3 mm height, and checks that 1.2 A covers the
+N20's 0.67 A stall and that a 2S pack is inside its motor range. The board
+joins the terminal-row, bay and real-kernel build tests.
+`test_mounting_check.py::test_the_motor_driver_is_held_by_its_two_screws_on_the_real_kernel`
+builds it on a plate: two M2 bolts into tapped holes is `held` by `screws`
+("2 of 2 mounting holes"), and with no bolts it is `contact only`. On the old
+source the kernel build fails with `Unknown board 'tb6612-adafruit-2448'`.
+
+**Consequences.** No protocol or response-shape change: `describe_api`
+lists one more board SKU in an existing family. The terminal block is not
+modelled, because it ships loose.
