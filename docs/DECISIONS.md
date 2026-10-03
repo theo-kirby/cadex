@@ -31869,3 +31869,60 @@ source the kernel build fails with `Unknown board 'tb6612-adafruit-2448'`.
 **Consequences.** No protocol or response-shape change: `describe_api`
 lists one more board SKU in an existing family. The terminal block is not
 modelled, because it ships loose.
+
+## ADR-491 — A servo bay can leave a ledge under the lead-side tab (2026-10-03)
+
+**Context.** orun1's hexapod trial 1 (`orun1-t1-hexapod`) held each of its 18
+MG90S servos with one screw, "1 of 2 mounting holes". The agent's note said
+the catalog MG90S "models a lead block under the lead-side tab". It does not.
+`lib.servo` builds the case, a tab plate drilled at both holes and the
+spline, and the two tabs are identical. No MG90S or SG90 source shows a
+block there either, and stock brackets screw both tabs. The block was the
+bay. ADR-443's `servo.bay()` cut its 6 mm (6.5 mm with clearance) lead room
+from the case bottom **right up to the tab underside**, and every tabbed
+servo's lead-side hole lies inside that room: 3.15 mm past the end face on
+the SG90, 3.1 on the MG90S, 4.4 on the MG996R and 4.75 on the DS3218. So the
+cut removed the material the lead-side screw would bite into.
+
+**Decision.** `servo.bay()` takes `ledge` (mm, default 0). With `ledge=4`
+the lead room stops 4 mm under the tab-pocket floor, which is two diameters
+of M2 thread, so both tabs' screws bite. The room keeps its 6 mm reach and
+the full case width. A tabbed servo's lead leaves near the case bottom, so
+the room is still 11.9 mm tall on the SG90, the shortest case. A ledge that
+leaves no room is refused by name. A bus servo has no tabs, so `ledge` does
+not change its bay. The overlay and `docs/XSCRIPT.md` tell the agent to cut
+tabbed servos with `servo.bay(ledge=4)`. The ledge depth is a convention, not
+a datasheet dimension.
+
+**Why opt-in rather than a new default.** The first version changed the
+default. With it installed, a copy of the accepted hexapod
+(`orun1-ledge-reopen`) **refused to open**: "The restore pass digest does
+not match the accepted digest." Its `recipe_comparison` said "the rebuild
+did not run the accepted recipe". A bay is never catalogued, so its boxes
+are expanded into the printed part's own `definition`. A changed default is
+therefore a changed recipe for every accepted design that cut a servo bay,
+and ADR-476's recipe path cannot reopen it. That is F1's failure. With the
+opt-in shape installed, the same copy reopens byte-identical
+(`2c9fe271…`, `matches_accepted: true`). Note that `pixi run build-engine`
+is what the worker imports. The dev-tree CLI's first open ran the installed
+copy and proved nothing.
+
+**Measured.** `test_library.py::test_servo_bay_leaves_a_ledge_under_the_lead_side_screw`
+covers the SG90, MG90S, MG996R and DS3218. It probes 0.5, 2.0 and 3.5 mm
+under each lead-side hole for no cut, checks that the room still exists
+below the ledge, checks that the default bay still cuts there, and covers
+the refusal and the bus servo. On the old source all four cases fail.
+`test_mounting_check.py::test_a_ledged_servo_bay_gives_the_lead_side_screw_its_thread_on_the_real_kernel`
+puts an MG90S in a block cut with its bay, with an M2 bolt in a tapped hole
+at each tab. The lead-side bolt's common volume with the block (its thread)
+is **3.51 mm³ with `ledge=4`, equal to the free side, and 0.0 without**.
+
+**Not taken.** The mounting check counts both bolts as holding in *both*
+cases. The lead-side head comes within `MOUNT_CONTACT_MM` (0.5 mm) of the
+tab pocket's end wall, so a bolt whose shank bites nothing still reads
+"into a printed part". That leniency is a separate defect in the check and
+is left for its own unit.
+
+**Consequences.** No protocol or response-shape change, and no accepted
+recipe moves. New designs get the ledge only if they pass it. The overlay
+tells them to.

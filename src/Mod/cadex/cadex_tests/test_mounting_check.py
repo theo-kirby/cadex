@@ -464,6 +464,33 @@ result["diag"] = assembly.solve(asm)
 """
 
 
+# ADR-491: a micro servo screwed down by both tabs into the block its own
+# bay is cut from. Without a ledge the lead room is under the lead-side hole.
+_SERVO_IN_A_BLOCK = """
+sv = lib.servo("mg90s")
+spec = sv.spec
+z = spec["mount_hole_z_mm"]
+top = z + spec["tab_thickness_mm"]
+back = spec["shaft_offset_from_front_mm"] - spec["body_length_mm"]
+block = part.box(40.0, 18.0, top + spec["case_height_mm"] + 3.0,
+                 origin=(back - 10.0, -9.0, -spec["case_height_mm"] - 3.0))
+taps = [part.cylinder(radius=lib.tap_drill("m2") / 2.0, height=6.0,
+                      origin=(x, y, z - 6.0)) for x, y in spec["mount_holes"]]
+block = part.cut(block, [sv.bay(ledge=LEDGE)] + taps)
+bolts = [lib.bolt("m2", 6.0, origin=(x, y, top)) for x, y in spec["mount_holes"]]
+result = {"block": block, "servo": sv.body}
+comps = [assembly.component(block, grounded=True), assembly.component(sv.body)]
+for i, bolt in enumerate(bolts):
+    result["bolt%d" % i] = bolt.body
+    comps.append(assembly.component(bolt.body))
+for i, comp in enumerate(comps):
+    result["component_%d" % i] = comp
+asm = assembly.assembly(comps)
+result["asm"] = asm
+result["diag"] = assembly.solve(asm)
+"""
+
+
 def _built_mounting(tmp_path, source):
     from test_cadexd_lifecycle import _spawn_cadexd, _stop
 
@@ -564,3 +591,41 @@ def test_the_motor_driver_is_held_by_its_two_screws_on_the_real_kernel(tmp_path,
     assert drv["status"] == status, drv
     if status == "held":
         assert drv["by"] == "screws" and drv["detail"].startswith("2 of 2 mounting holes")
+
+
+
+def _servo_block_bites(tmp_path, ledge):
+    """The thread each tab bolt cuts into the block, lead side first (mm^3)."""
+    from test_cadexd_lifecycle import _spawn_cadexd, _stop
+
+    client = None
+    try:
+        client = _spawn_cadexd()
+        assert client.request("open_project", {"project_root": str(tmp_path)})["ok"]
+        source = _SERVO_IN_A_BLOCK.replace("LEDGE", str(ledge))
+        written = client.request("write_script", {"source": source, "expected_revision": ""})
+        assert written["ok"], written
+        value = _read_all(client, {"scope": "clearance", "target": ""}, "")
+    finally:
+        _stop(client)
+    servo = next(row for row in fit_view(fit_summary(value))["mounting"]["held"]
+                 if row["part"] == "servo/mg90s")
+    bites = {}
+    for pair in value["pairs"]:
+        names = {pair["first"], pair["second"]}
+        for bolt in ("component_2", "component_3"):
+            if names == {"component_0", bolt}:
+                bites[bolt] = pair["common_volume_mm3"]
+    return servo, [bites["component_2"], bites["component_3"]]
+
+
+@_NEEDS_KERNEL
+def test_a_ledged_servo_bay_gives_the_lead_side_screw_its_thread_on_the_real_kernel(tmp_path):
+    """ADR-491. The mounting check credits both bolts either way (the lead-side
+    head comes within 0.5 mm of the tab pocket's end wall), so the bite is the
+    measurement: without a ledge the lead-side shank hangs in the lead room."""
+    servo, (lead, free) = _servo_block_bites(tmp_path / "ledged", 4)
+    assert servo["by"] == "screws" and servo["detail"].startswith("2 of 2"), servo
+    assert lead > 0.5 and free > 0.5 and lead == pytest.approx(free, rel=0.05)
+    _servo, (lead, free) = _servo_block_bites(tmp_path / "plain", 0)
+    assert free > 0.5 and lead < 0.01

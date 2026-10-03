@@ -349,7 +349,7 @@ class ServoPart(_BayPart):
         super().__init__(lib, "servo", part_number, body, spec, frame_placement, rows)
 
     def bay(self, *, clearance: float = 0.5, lead_room: float = 6.0,
-            label: str = "") -> Any:
+            ledge: float = 0.0, label: str = "") -> Any:
         """The servo's keep-out solid: grow a limb around it, then cut it.
 
         The case and the mounting-tab plate each grown by ``clearance`` on
@@ -359,13 +359,20 @@ class ServoPart(_BayPart):
         leave. The tabs land on the ledge the cut leaves under them; drill
         the screws at ``spec['mount_holes']``. Defaults: 0.5 mm, a printed
         servo pocket; 6 mm, room for the lead to turn. The lead exit is a
-        convention, not a datasheet dimension. A tab-less bus servo's bay
+        convention, not a datasheet dimension. The lead-side holes sit 3-5
+        mm past the end face, inside that room, so with the default
+        ``ledge`` of 0 the lead-side screw has nothing to bite. ``ledge=4``
+        stops the room 4 mm under the tabs (two diameters of M2 thread),
+        so both tabs' screws bite (ADR-491); 0 keeps ADR-443's bay, which
+        accepted recipes were built with. A tab-less bus servo's bay
         is its case grown by ``clearance``, the spline and rear-boss
-        columns, and the lead room beyond the back end at full height.
+        columns, and the lead room beyond the back end at full height;
+        it has no tabs, so ``ledge`` does not change it.
         """
         operation = "servo.bay"
         c = _bay_allowance(operation, "clearance", clearance)
         room = _bay_allowance(operation, "lead_room", lead_room)
+        shelf = _bay_allowance(operation, "ledge", ledge)
         spec = self.spec
         if spec.get("mount_style") == "case_holes":
             return self._case_held_bay(operation, c, room, label)
@@ -388,7 +395,12 @@ class ServoPart(_BayPart):
             part.cylinder(spec["spline_dia_mm"] / 2.0 + c, spec["spline_height_mm"]),
         ]
         if room > 0.0:
-            pieces.append(box((back - c - room, -half, bottom), (back - c, half, plate_z - c)))
+            top = plate_z - c - shelf
+            if top <= bottom:
+                raise LibraryError(
+                    f"{operation}: ledge {shelf:g} mm leaves no lead room under "
+                    f"the tabs; the most is {plate_z - c - bottom:g} mm.")
+            pieces.append(box((back - c - room, -half, bottom), (back - c, half, top)))
         cavity = part.fuse(pieces, label=label)
         return self._housing(self._lib._place_frame(operation, cavity, self._frame_placement))
 

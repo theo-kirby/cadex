@@ -891,6 +891,42 @@ def test_servo_bay_houses_the_case_tabs_and_lead(sku):
     assert catalog_identity_of(servo.bay()) is None
 
 
+@pytest.mark.parametrize("sku", ["sg90", "mg90s", "mg996r", "ds3218"])
+def test_servo_bay_leaves_a_ledge_under_the_lead_side_screw(sku):
+    """ADR-491: the lead room must not take the lead-side tab screw's bite.
+
+    Every tabbed servo's lead-side hole sits 3.1-4.75 mm past the back end
+    face, inside the 6 mm lead room. Run to the tab underside, the room cut
+    away the material that screw goes into, so designs dropped it and held
+    each servo by one tab (orun1-t1-hexapod). ``ledge`` is opt-in because
+    the bay's boxes are part of every accepted recipe that cut one.
+    """
+    servo = _servo_lib().servo(sku)
+    spec = servo.spec
+    ledge_top = spec["mount_hole_z_mm"] - 0.5
+    lead_side = [(x, y) for x, y in spec["mount_holes"]
+                 if x < spec["shaft_offset_from_front_mm"] - spec["body_length_mm"]]
+    assert lead_side
+
+    def cut(boxes, point):
+        return any(all(lo[i] < point[i] < hi[i] for i in range(3)) for lo, hi in boxes)
+
+    ledged, plain = _boxes(servo.bay(ledge=4)), _boxes(servo.bay())
+    for x, y in lead_side:
+        for depth in (0.5, 2.0, 3.5):
+            assert not cut(ledged, (x, y, ledge_top - depth)), (sku, depth)
+        # ...the room itself is still there below the ledge, and the
+        # default bay is ADR-443's, so accepted recipes do not move.
+        assert cut(ledged, (x, y, ledge_top - 4.5))
+        assert cut(plain, (x, y, ledge_top - 0.5))
+    with pytest.raises(LibraryError, match="servo.bay: ledge 40 mm leaves no lead room"):
+        servo.bay(ledge=40)
+    with pytest.raises(LibraryError, match="servo.bay: ledge must be"):
+        servo.bay(ledge=-1)
+    bus = _servo_lib().servo("sts3215")
+    assert _boxes(bus.bay(ledge=4)) == _boxes(bus.bay())
+
+
 def test_servo_bay_contains_the_servo_body():
     servo = _servo_lib().servo("mg90s")
     low, high = _servo_bay_bounds(servo, clearance=0, lead_room=0)
