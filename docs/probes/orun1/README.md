@@ -461,3 +461,45 @@ re-accepts) at that revision: `d4/t1-balancer/hero.png` (640 px).
   frame with every part held. The two gaps it exposed are both product
   changes: the wheel's visible form, and a swept check that the wheel's own
   motor shaft blocks.
+
+### D4 trial 2: balancer (a trial, not a confirmation)
+
+`orun1-t2-balancer`, the frozen balancer prompt, one turn at product
+revision `9eac2291` (ADR-487 in: round wheel bore, the overlay's limits and
+boss clearance), `claude-opus-5-5`, effort `medium`. The turn ended on its
+own. Accepted revision `496a506e…`. The hero was drawn from a copy
+(`orun1-t2-balancer-render`), which re-accepted at the same revision:
+`d4/t2-balancer/hero.png` (640 px).
+
+- **Design.** Two tall side plates with rounded lightening windows, joined
+  by a battery tray, a sensor shelf and a top deck. The ESP32 sits in a bay
+  on the top deck. The BNO085 and the regulator are screwed down. A VL53L1X
+  is on an orange bracket on the front shelf. Two N20 gearmotors are
+  press-fitted in split pockets, driving 1430 wheels. No face.
+- **Catalog.** All 9 purchased parts and 9 bolts are catalog parts.
+- **Static fit.** 210 pairs, 0 failing. **Swept fit: `pass`**, 2 of 2
+  joints complete at ±180°, 0 failing. ADR-487 unblocked it: trial 1 could
+  not get this result.
+- **Mounting (D3): `reported`, 5 of 9 held, so it does not pass D4.** Both
+  gearmotors are `contact only`. Both wheels are `held by nothing`, because
+  they sit on motors that are not held. The agent's own note says why:
+  "Screwing the N20 motors with M2 bolts into their M1.6 face holes was
+  rejected (wrong thread, intersecting solids). Catalog bolts start at M2
+  and the gearmotor has no .bay()". This is a catalog gap, of the kind D3's
+  last bullet names: the agent reached for an M1.6 screw, or a motor bay,
+  and found neither.
+- **What it shows about trial 1.** Trial 1 did screw its motors, with
+  `lib.bolt("m2", …)` on the 2367's M1.6 hole axes, and the mounting check
+  counted them as `screws`. So the check matches a bolt to a hole by axis
+  and not by thread size. Trial 1's 9 of 9 is therefore weaker than it
+  read: two of those holds used the wrong screw.
+- **Judge (frozen v2, `runner/versus.py`): 3 of 5, a majority.** It beat
+  the same three Likes as trial 1 (d, f, h) and lost to the same two
+  (c Love, e Like). Both losing reasons name "blank" or "plain disc wheels"
+  again. They also name "no visible drive motors" and "a small board that
+  looks stuck onto its shelf". Cost $0.18. Every reason is in
+  `d4/t2-balancer/pairs.jsonl`.
+- **What it says.** The swept check now passes. Three product defects
+  remain, and none of them is in the prompt: the catalog has no M1.6
+  fastener and no gearmotor bay; the mounting check does not compare thread
+  sizes; and the catalog wheel is a solid disc.
