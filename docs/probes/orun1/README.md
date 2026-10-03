@@ -540,3 +540,57 @@ an attempt.
   also reached for parts the catalog lacks: "the H-bridge part that is still
   missing", and an encoder variant of the N20 ("the N20 2367 has no
   encoder"). Both are D3 catalog gaps, cited from `t3-balancer.err`.
+
+### D4 trial 1: hexapod (a trial, not a confirmation)
+
+`orun1-t1-hexapod`: the frozen hexapod prompt, one turn at product revision
+`ef2b0f86`, which has the same product code as `64026754` (trial 3's).
+Model `claude-opus-5-5`, effort `medium`. The turn ended on its own after
+about an hour. Accepted revision `35193b3e…`. The hero was drawn from the
+copy `orun1-t1-hexapod-render`, which re-accepted at the same revision:
+`d4/t1-hexapod/hero.png` (640 px). The current product adds only ADR-490,
+a motor-driver row and its overlay line for brushed DC motors, which this
+design does not use.
+
+The turn ran in iteration 24. That session ended before the design was
+judged or published, so this publication comes one iteration late. Two
+other starts are kept and count as interruptions, not attempts:
+- `orun1-t1-hexapod-notools`: its session gave the agent no product tools,
+  so it made no tool call and accepted nothing (a harness fault).
+- `orun1-t1-quadruped-interrupted`: a quadruped start killed when its
+  session ended, with an empty reply.
+
+- **Design.** A flat hexagonal deck with six hanging coxa pods. A 2S pack
+  sits in a centreline channel under the deck. Two PCA9685 drivers, the
+  ESP32, the BNO085 and the 6 V regulator are in recessed bays on top. A
+  VL53L1X is on a front tab, and there is no face. Each leg runs coxa →
+  femur → tibia on 18 MG90S servos, the agent's choice "to keep the robot
+  near 600 g". A 35 mm hub cap closes every joint. The graphite tibias
+  taper into flared feet with screwed rubber pads. The finish is exposed
+  mechanism.
+- **Catalog.** 49 purchased parts (18 servos, 18 horns, 6 foot pads, 6
+  boards and a battery) and 18 bolts, all from the catalog. The 19
+  uncatalogued components are the printed frame and links.
+- **Static fit.** 3655 pairs, 0 failing. **Swept fit: `pass`**, 18 of 18
+  joints complete at 15° steps.
+- **Mounting (D3): `pass`, 49 of 49 held.** Servos: `screws`. Horns:
+  `output`. Pads, boards and battery: `bay`. Each servo carries **one**
+  screw, though ("1 of 2 mounting holes carry a bolt"). The agent's note
+  says the catalog MG90S models a lead block under the lead-side tab, so
+  that tab gets no screw. The check counts one screw as held. Whether the
+  modelled lead block matches the real servo is unverified.
+- **Judge (frozen v2, `runner/versus.py`): 1 of 2, not a majority.** Only
+  two sweep hexapods are rated Like or Love (b and c, both Like), so the
+  bar is 2 of 2. The design beat b ("ordered, exposed … tapered,
+  load-bearing legs"). It lost to c, which the judge called "an ordered
+  two-deck chassis, a clear servo-bracket at each hip". Against that, it
+  read this design's "crowded clusters of joints, oddly angled links and
+  upturned segments" as "cluttered and arbitrary". Cost $0.08. Every reason
+  is in `d4/t1-hexapod/pairs.jsonl`.
+- **What it says.** The hexapod's first plain-prompt design is faceless,
+  exposed, fully held and fits. The judge still holds its proportions
+  against it. Seen beside c, the 35 mm hub caps and the femur servo pods
+  dominate legs that are short for them (coxa 34, femur 48, tibia 70 mm).
+  c has long tapered legs and compact hips. The agent's transcript asks
+  for no missing part. Its only hardware compromise is the one-screw servo
+  above.
