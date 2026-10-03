@@ -384,3 +384,42 @@ text, and `cli/tests/test_turn_loop.py` holds that against every id and image
 name in `ratings.json`. The language cites held-out designs as evidence only
 after D1's judge was frozen and measured: nothing D1 counts was chosen from
 them.
+
+## D4: the plain prompts (frozen before any D4 generation)
+
+**Frozen 2026-10-02, before any D4 design turn.** These seven prompts are
+the only words a D4 design turn is given. Each names the type, its joint
+count and "design only", and nothing about style: the style must come from
+the product's guidance. They live in `runner/prompts.py`
+(`prompts.FROZEN_SHA256` =
+`f69ab5c825da46bfb2cca46a35fe695a3fab4255bf10d723ce9ad70206360884`), and
+`runner/test_prompts.py` holds that hash and this table to each other.
+Changing a word is a change to a frozen artefact and earns its own record.
+
+| type | prompt |
+|---|---|
+| quadruped | Design a quadruped walking robot with 12 joints, three per leg. Design only: no training task, policy or rollout. |
+| hexapod | Design a hexapod walking robot with 18 joints, three per leg. Design only: no training task, policy or rollout. |
+| biped | Design a biped walking robot with 6 joints, three per leg (hip, knee, ankle). Design only: no training task, policy or rollout. |
+| arm5 | Design a desktop robot arm with 5 joints and a gripper. Design only: no training task, policy or rollout. |
+| arm3 | Design a desktop robot arm with 3 joints and a simple end effector. Design only: no training task, policy or rollout. |
+| balancer | Design a two-wheeled self-balancing robot with 2 joints, one driven wheel each side. Design only: no training task, policy or rollout. |
+| wildcard | Design a snake robot with 8 joints. Design only: no training task, policy or rollout. |
+
+- **The turn.** One fresh `orun1-*` project per design, one
+  `./cadex -p "<prompt>" --project <p> --json` turn at `claude-opus-5-5`,
+  effort `medium` (the sweep's, so the comparison is like for like), no
+  fallback model. The wildcard is the run's choice of body plan, fixed here:
+  a snake, which no sweep design was. It is judged against the sweep's
+  wildcard designs rated Like or Love, as the charter's bar says.
+- **The checks.** The accepted reply's static and swept fit, its purchased
+  parts all from the catalog, and every one held by D3's mounting check.
+- **The judge.** Frozen v2 exactly as D1 measured it, through
+  `runner/versus.py`: the hero only, one call per pair against each sweep
+  design of the same type the owner rated Like or Love, whose heroes must
+  hash to the ones D1 judged. A design clears the bar when it wins a strict
+  majority of those comparisons.
+- **Trials and confirmations.** Every turn before a type's pre-registered
+  confirmation is a **trial**, published here with its fit, mounting and
+  judge results, and counts for nothing. A confirmation is declared in this
+  file before its turn runs.
