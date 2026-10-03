@@ -320,6 +320,91 @@ def _first_frame_placements(trace: Mapping[str, Any] | None) -> tuple[dict[str, 
     return placements, components
 
 
+def trace_playback(trace: Mapping[str, Any] | None) -> dict[str, Any]:
+    """A rollout or simulation trace as the viewer's playback (orun2 D2.5).
+
+    Frames are the trace's timed ones (``nominal_time_s``), in time order:
+    the untimed input frame in front of t=0 is the reset pose again and is
+    left out, so the page plays seconds and not frame numbers. Each
+    component's quaternion keeps its sign from the frame before (``q`` and
+    ``-q`` are one rotation, and a flip between them would make the page's
+    interpolation take the long way round). A frame's ``actuator_commands``
+    is the command that produced it and holds until the next frame's (zero
+    order hold); the reset frame has none and says so with ``None``.
+    Nothing here is simulated: every placement is the trace's own.
+    """
+
+    if not trace or trace.get("schema") != TRACE_SCHEMA:
+        return {"available": False, "reason": "the trace is unreadable, past the read bound, or not a " + TRACE_SCHEMA}
+    timed: list[tuple[float, Mapping[str, Any]]] = []
+    for frame in trace.get("frames") or []:
+        if not isinstance(frame, Mapping):
+            continue
+        try:
+            time_s = float(frame.get("nominal_time_s"))
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(time_s):
+            timed.append((time_s, frame))
+    timed.sort(key=lambda item: item[0])
+    times: list[float] = []
+    frames: list[dict[str, dict[str, list[float]]]] = []
+    commands: list[list[float] | None] = []
+    previous: dict[str, list[float]] = {}
+    for time_s, frame in timed:
+        poses: dict[str, dict[str, list[float]]] = {}
+        for name, entry in (frame.get("component_placements") or {}).items():
+            block = _placement(entry)
+            if block is None:
+                continue
+            q, before = block["rotation_xyzw"], previous.get(str(name))
+            if before is not None and sum(a * b for a, b in zip(q, before)) < 0:
+                block["rotation_xyzw"] = [-x for x in q]
+            previous[str(name)] = block["rotation_xyzw"]
+            poses[str(name)] = block
+        if not poses:
+            continue
+        times.append(time_s)
+        frames.append(poses)
+        raw = frame.get("actuator_commands")
+        commands.append([float(x) for x in raw] if isinstance(raw, list) else None)
+    if not frames:
+        return {"available": False, "reason": "the trace has no timed frames with placements"}
+    channels = [{"actuator": str(c.get("actuator")), "unit": str(c.get("unit")),
+                 "low": c.get("low"), "high": c.get("high")}
+                for c in trace.get("actuator_channels") or [] if isinstance(c, Mapping)]
+    return {"available": True, "times_s": times, "frames": frames, "commands": commands,
+            "channels": channels, "duration_s": times[-1] - times[0],
+            "frames_per_second": (trace.get("parameters") or {}).get("frames_per_second")}
+
+
+def _run_trace(root: Path, record: Mapping[str, Any]) -> tuple[Path | None, str | None]:
+    """The run's own rollout trace on disk, or why there is none."""
+
+    run_ref = resolve_reference(root, f"{RUNS_DIRNAME}/{record.get('run')}")
+    if run_ref["error"] or not run_ref["exists"]:
+        return None, "run directory escapes the project directory" if run_ref["error"] else "run directory missing"
+    item = ((record.get("resolved") or {}).get("artifacts") or {}).get("trace") or {}
+    if item.get("path") is None:
+        return None, "this run retained no rollout trace"
+    if item.get("error"):
+        return None, f"trace reference not honoured: {item['error']}"
+    if not item.get("exists"):
+        return None, f"rollout trace missing: {item['path']}"
+    return root / RUNS_DIRNAME / str(record.get("run")) / item["path"], None
+
+
+def run_playback(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, Any]:
+    """``/api/playback/run/<name>``: the run's rollout trace as playback frames."""
+
+    root = Path(project_root).expanduser()
+    path, reason = _run_trace(root, record)
+    playback = trace_playback(_load_json(path)) if path is not None else {"available": False, "reason": reason}
+    playback.update(run=str(record.get("run")),
+                    source=path.relative_to(root).as_posix() if path is not None else None)
+    return playback
+
+
 def _render_sources(root: Path, record: Mapping[str, Any]) -> dict[str, str]:
     """``component -> output`` from the run's render summary, when it resolves."""
 
@@ -737,6 +822,13 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
         "collision": _run_collision(run_dir, record, expected_sha256=(
             ((trace or {}).get("policy") or {}).get("model_sha256"))),
     })
+    # The frames themselves travel in ``/api/playback/run/<name>``; the
+    # manifest says only whether there is something to play.
+    playback = trace_playback(trace)
+    model["playback"] = ({"available": True, "frames": len(playback["frames"]),
+                          "duration_s": playback["duration_s"],
+                          "url": f"/api/playback/run/{run_name}"}
+                         if playback["available"] else {"available": False, "reason": playback["reason"]})
     return model
 
 
@@ -2266,6 +2358,13 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     self._not_found(f"run {rest[2]!r}")
                     return
                 self._send_json(run_model(project.root, record))
+                return
+            if rest[:2] == ["playback", "run"] and len(rest) == 3:
+                record = project.run(rest[2])
+                if record is None:
+                    self._not_found(f"run {rest[2]!r}")
+                    return
+                self._send_json(run_playback(project.root, record))
                 return
             self._not_found("/".join(segments))
             return

@@ -188,6 +188,12 @@
         <select id="explode-view" hidden></select>
         <span id="explode-note" class="muted small"></span>
       </div>
+      <!-- Playback: a run's rollout trace, played in simulation seconds through setPoses (§25). -->
+      <div class="controls">
+        <button id="play-toggle" type="button" disabled>Play</button>
+        <input type="range" id="play-time" min="0" max="1" step="any" value="0" disabled aria-label="rollout time, s">
+        <span id="play-note" class="muted small"></span>
+      </div>
       <!-- Section: runs `cadex section --plane P [--offset-mm=N]` and clips the viewer at the cut (§24). -->
       <div class="controls">
         <label for="section-plane">section</label>

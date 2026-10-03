@@ -29,9 +29,11 @@ from cadex_cli.report import EXIT_OK
 from pathlib import Path
 
 import cadex_cli.review_server as review_server
-from cadex_cli.review_server import _matrix_placement, exploded_views, initial_contacts, serve_projects
+from cadex_cli.review_server import (_matrix_placement, exploded_views, initial_contacts, serve_projects,
+                                     trace_playback)
 from cadex_cli.walk import Leg
 from test_dashboard_writes import _post, _token, app  # noqa: F401
+from test_train import REAL_TRAINER_PYTHON
 from test_review_server import _get, _json, _model_state, _open, browser, needs_browser  # noqa: F401
 
 #: A floor, a block that slides on it and a post that slides on the block.
@@ -368,3 +370,110 @@ def test_browser_explodes_the_engine_stages_and_cuts_a_section(engine, boom_app,
     page.click("#section-clear")
     assert page.evaluate("window.cadexReview.viewer().stats().section") is None
     assert page.evaluate("window.cadexReview.viewer().modelPixels().count") == whole
+
+
+# -- rollout playback (ADR-511) --------------------------------------------
+
+def _frame(index, time_s, z, q, command=None):
+    frame = {"frame_index": index, "frame_kind": "input" if time_s is None else "solver_output",
+             "nominal_time_s": time_s,
+             "component_placements": {"arm": {"position_mm": [0.0, 0.0, z], "rotation_xyzw": q}}}
+    if command is not None:
+        frame["actuator_commands"] = [command]
+    return frame
+
+
+def test_playback_is_timed_frames_with_a_continuous_quaternion_sign() -> None:
+    half = 0.5 ** 0.5
+    trace = {"schema": review_server.TRACE_SCHEMA, "actuator_channels": [
+        {"actuator": "j/motor", "unit": "n", "low": -4.0, "high": 4.0}],
+        "frames": [_frame(0, None, 0.0, [0, 0, 0, 1]),
+                   _frame(1, 0.0, 0.0, [0, 0, 0, 1]),
+                   # The same rotation as -q: the sign flips back so it stays continuous.
+                   _frame(3, 0.08, 2.0, [0, 0, -half, -half], 0.5),
+                   _frame(2, 0.04, 1.0, [0, 0, 0.1, 0.99], 0.25)]}
+    playback = trace_playback(trace)
+    assert playback["available"] is True
+    # The untimed input frame is dropped; the rest are in time order.
+    assert playback["times_s"] == [0.0, 0.04, 0.08] and playback["duration_s"] == 0.08
+    assert [f["arm"]["position_mm"][2] for f in playback["frames"]] == [0.0, 1.0, 2.0]
+    assert playback["frames"][2]["arm"]["rotation_xyzw"] == pytest.approx([0, 0, half, half])
+    # The reset frame was produced by no command.
+    assert playback["commands"] == [None, [0.25], [0.5]]
+    assert playback["channels"] == [{"actuator": "j/motor", "unit": "n", "low": -4.0, "high": 4.0}]
+    assert trace_playback({"schema": "other"})["available"] is False
+    untimed = trace_playback({"schema": review_server.TRACE_SCHEMA, "frames": [_frame(0, None, 0.0, [0, 0, 0, 1])]})
+    assert untimed == {"available": False, "reason": "the trace has no timed frames with placements"}
+
+
+@pytest.fixture
+def carriage_run(engine, tmp_path, capsys, cpu_training):
+    """A real walk of the linear carriage: one training iteration, then a rollout."""
+
+    projects = tmp_path / "projects"
+    root = projects / "carriage"
+    source = Path(__file__).resolve().parents[2] / "examples/lifecycle/linear-carriage/script.py"
+    assert main(["script", "--set", str(source), "--project", str(root), "--json"]) == EXIT_OK
+    assert main(["walk", "--project", str(root), "--out", str(root / "runs" / "baseline"),
+                 "--iterations", "1", "--envs", "4", "--seed", "0", "--timeout", "600", "--json"]) == EXIT_OK
+    capsys.readouterr()
+    server, _thread = serve_projects(projects, "127.0.0.1", 0)
+    try:
+        yield root, server
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
+@pytest.mark.skipif(REAL_TRAINER_PYTHON is None, reason="No training venv with jax and mujoco (training/SETUP.md).")
+def test_browser_plays_a_real_rollout_with_the_trace_s_placements(carriage_run, browser) -> None:
+    root, server = carriage_run
+    trace = json.loads((root / "runs" / "baseline" / "rollout" / "assembly-simulation-trace.json").read_text())
+    timed = [f for f in trace["frames"] if f["nominal_time_s"] is not None]
+    model = _json(server.url + "p/carriage/api/model/run/baseline")
+    assert model["playback"] == {"available": True, "frames": len(timed),
+                                 "duration_s": timed[-1]["nominal_time_s"],
+                                 "url": "/api/playback/run/baseline"}
+    served = _json(server.url + "p/carriage/api/playback/run/baseline")
+    assert served["source"] == "runs/baseline/rollout/assembly-simulation-trace.json"
+    assert served["times_s"] == [f["nominal_time_s"] for f in timed]
+    assert _get(server.url + "p/carriage/api/playback/run/nope")[0] == 404
+
+    page = _open(browser, server.url + "p/carriage/")
+    page.evaluate("window.cadexReview.select('baseline')")
+    page.wait_for("(window.cadexReview.playback() || {}).times_s !== undefined", timeout=60)
+    assert _model_state(page) == "loaded"
+    assert page.evaluate("document.getElementById('play-toggle').disabled") is False
+    assert "no command yet" in page.text("#play-note")
+
+    # A mid-trace frame, at its own time, is the trace's placements exactly.
+    k = len(timed) // 2
+    frame = timed[k]
+    shown = page.evaluate("window.cadexReview.play(%r)" % frame["nominal_time_s"])
+    assert shown["frame"] == k and shown["command"] == pytest.approx(frame["actuator_commands"])
+    poses = _poses(page)
+    for name, placement in frame["component_placements"].items():
+        assert poses[name]["position_mm"] == pytest.approx(placement["position_mm"], abs=1e-3), name
+        assert poses[name]["rotation_xyzw"] == pytest.approx(placement["rotation_xyzw"], abs=1e-6), name
+    # The slide moved between the first frame and this one, so this is not the rest pose.
+    first = timed[0]["component_placements"]["slide"]["position_mm"]
+    assert poses["slide"]["position_mm"][2] != pytest.approx(first[2], abs=1.0)
+    assert ("frame %d of %d" % (k + 1, len(timed))) in page.text("#play-note")
+    assert "j/motor" in page.text("#play-note")
+
+    # Halfway between two frames, positions are blended; the command in force is the next frame's.
+    a, b = timed[k], timed[k + 1]
+    mid = page.evaluate("window.cadexReview.play(%r)" % ((a["nominal_time_s"] + b["nominal_time_s"]) / 2))
+    assert mid["frame"] == k and mid["command"] == pytest.approx(b["actuator_commands"])
+    za, zb = (f["component_placements"]["slide"]["position_mm"][2] for f in (a, b))
+    assert _poses(page)["slide"]["position_mm"][2] == pytest.approx((za + zb) / 2, abs=1e-3)
+
+    # Play runs in simulation seconds to the end and stops on the last frame.
+    page.evaluate("window.cadexReview.play(0)")
+    page.click("#play-toggle")
+    page.wait_for("!window.cadexReview.playing() && window.cadexReview.playback().t === %r" % timed[-1]["nominal_time_s"],
+                  timeout=30)
+    last = timed[-1]["component_placements"]["slide"]["position_mm"]
+    assert _poses(page)["slide"]["position_mm"] == pytest.approx(last, abs=1e-3)
+    assert page.text("#play-toggle") == "Play"

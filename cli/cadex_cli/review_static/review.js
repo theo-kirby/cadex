@@ -623,9 +623,8 @@
     return views[Number($('explode-view').value) || 0] || null;
   }
 
-  function explodePoses(view, t) {
-    var i = Math.min(Math.floor(t), view.stages - 1), f = t - i, a = view.frames[Math.max(0, i)], b = view.frames[Math.max(0, i) + 1] || a;
-    if (t >= view.stages) return view.frames[view.stages];
+  // Two pose sets blended a fraction f of the way: positions lerped, rotations slerped.
+  function blendPoses(a, b, f) {
     var poses = {};
     Object.keys(a).forEach(function (name) {
       var p = a[name], q = b[name] || p;
@@ -633,6 +632,12 @@
                       rotation_xyzw: slerp(p.rotation_xyzw, q.rotation_xyzw, f) };
     });
     return poses;
+  }
+
+  function explodePoses(view, t) {
+    var i = Math.min(Math.floor(t), view.stages - 1), a = view.frames[Math.max(0, i)], b = view.frames[Math.max(0, i) + 1] || a;
+    if (t >= view.stages) return view.frames[view.stages];
+    return blendPoses(a, b, t - i);
   }
 
   function setExplode(t) {
@@ -661,6 +666,82 @@
     if (view && state.viewer.available) state.viewer.setLines(view.lines);
     $('explode-note').textContent = view ? 'assembled · ' + views.length + ' exploded view(s) from the engine' :
       'no exploded view: the script declares no assembly.exploded_view';
+  }
+
+  // Playback (DASHBOARD.md §25): a run's rollout trace, served as its timed
+  // frames. The slider is simulation seconds, not frame numbers; between two
+  // frames the poses are blended, and at a frame's own time they are the
+  // trace's. A command holds over the interval it was applied (zero order
+  // hold): in (t[i-1], t[i]] it is frame i's, and the reset frame has none.
+  var playback = null, playT = 0, playing = null, playbackKey = null;
+
+  function playFrame(t) {
+    var times = playback.times_s, i = 0;
+    while (i + 1 < times.length && times[i + 1] <= t) i++;
+    return i;
+  }
+
+  function setPlay(t) {
+    if (!playback || !state.viewer.available) return null;
+    var times = playback.times_s, last = times.length - 1;
+    playT = Math.max(times[0], Math.min(times[last], Number(t) || 0));
+    var i = playFrame(playT), j = i, poses = playback.frames[i];
+    if (i < last && playT > times[i]) {
+      j = i + 1;
+      poses = blendPoses(playback.frames[i], playback.frames[j], (playT - times[i]) / (times[j] - times[i]));
+    }
+    $('play-time').value = String(playT);
+    state.viewer.setPoses(poses);
+    state.viewer.setClock(playT);
+    var command = playback.commands[j], channels = playback.channels || [];
+    $('play-note').textContent = 't = ' + playT.toFixed(3) + ' s of ' + num(times[last]) + ' · frame ' + (i + 1) + ' of ' + times.length +
+      ' · ' + (command ? channels.map(function (c, k) { return c.actuator + ' ' + num(command[k]) + ' ' + c.unit + ' (' + num(c.low) + '..' + num(c.high) + ')'; }).join(', ') || 'command ' + command.join(', ')
+                       : 'no command yet (reset pose)');
+    return { t: playT, frame: i, command: command };
+  }
+
+  function stopPlay() {
+    if (playing) window.cancelAnimationFrame(playing);
+    playing = null;
+    $('play-toggle').textContent = 'Play';
+  }
+
+  function togglePlay() {
+    if (playing) { stopPlay(); return false; }
+    if (!playback) return false;
+    var times = playback.times_s, start = playT >= times[times.length - 1] ? times[0] : playT, origin = null;
+    $('play-toggle').textContent = 'Pause';
+    function step(now) {
+      if (origin === null) origin = now - (start - times[0]) * 1000;
+      setPlay(times[0] + (now - origin) / 1000);
+      if (playT >= times[times.length - 1]) { stopPlay(); return; }
+      playing = window.requestAnimationFrame(step);
+    }
+    playing = window.requestAnimationFrame(step);
+    return true;
+  }
+
+  function renderPlayback(manifest) {
+    var info = (manifest && manifest.available && manifest.playback) || null, slider = $('play-time'), button = $('play-toggle');
+    var key = info && info.available ? info.url : null;
+    stopPlay();
+    if (state.viewer.available) state.viewer.setClock(null);
+    if (key !== playbackKey) playback = null;
+    playbackKey = key;
+    slider.disabled = button.disabled = true;
+    if (!key) {
+      $('play-note').textContent = info ? 'no rollout to play: ' + info.reason : 'no rollout to play: select a run that rolled out';
+      return Promise.resolve(null);
+    }
+    $('play-note').textContent = 'loading ' + info.frames + ' frame(s)…';
+    return fetchJson(BASE + key).then(function (served) {
+      if (key !== playbackKey) return null;
+      if (!served.available) { $('play-note').textContent = 'no rollout to play: ' + served.reason; return null; }
+      playback = served;
+      slider.min = String(served.times_s[0]); slider.max = String(served.times_s[served.times_s.length - 1]);
+      slider.disabled = button.disabled = !state.viewer.available;
+      return setPlay(served.times_s[0]);
+    }).catch(function (error) { $('play-note').textContent = 'rollout failed to load: ' + error.message; return null; });
   }
 
   // Section (DASHBOARD.md §24): Cut is `cadex section` run by the server; the
@@ -1095,6 +1176,7 @@
         renderModelComponents(manifest, []);
         renderShowing();
         renderExplode(manifest);
+        renderPlayback(manifest);
         return;
       }
       if (!state.viewer.available) {
@@ -1119,6 +1201,7 @@
         renderModelComponents(manifest, loaded);
         renderShowing();
         renderExplode(manifest);
+        renderPlayback(manifest);
       });
     }).catch(function (error) {
       status.dataset.state = 'error';
@@ -1422,6 +1505,8 @@
     $('export-run').addEventListener('click', function () { writeExport(); });
     $('explode-amount').addEventListener('input', function (event) { setExplode(event.target.value); });
     $('explode-view').addEventListener('change', function () { renderExplode(state.model, this.value); });
+    $('play-toggle').addEventListener('click', togglePlay);
+    $('play-time').addEventListener('input', function (event) { stopPlay(); setPlay(event.target.value); });
     $('section-cut').addEventListener('click', function () { writeSection($('section-plane').value, $('section-offset').value.trim()); });
     $('section-clear').addEventListener('click', function () { showCut(null); });
     poll().then(function () { readyResolve(true); });
@@ -1448,6 +1533,10 @@
     exportModel: writeExport,
     lastExport: function () { return lastExport; },
     explode: setExplode,
+    play: setPlay,
+    togglePlay: togglePlay,
+    playing: function () { return !!playing; },
+    playback: function () { return playback && { times_s: playback.times_s, source: playback.source, t: playT }; },
     section: writeSection,
     showCut: showCut,
     lastSection: function () { return lastSection; },

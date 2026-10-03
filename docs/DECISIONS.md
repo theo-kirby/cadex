@@ -33044,3 +33044,51 @@ staged moves:
   above the model, and leaves none when it is below;
 - an explicit XY 7 mm cut typed into the page misses only the plate;
 - Clear restores every pixel.
+
+## ADR-511 — Rollout playback in the dashboard's viewer (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. A read route `api/playback/run/<name>`
+(`review_server.run_playback`, `trace_playback`), a `playback` summary on
+the run model manifest, and Play and a time slider in *Model settings*.
+There is no write, no `OP_ARG_SPECS` change, no tool-surface change and no
+new dependency.
+
+**Decision.** The viewer plays a run's own rollout trace, the
+`assembly-simulation-trace.json` the rollout leg wrote beside its meshes,
+through the existing `setPoses`. The frame rules are re-derived from the
+shell's ledger row (`cadex_animate.py`), with nothing copied:
+- frames are timed. Only frames with `nominal_time_s` play, and the untimed
+  input frame is dropped;
+- each quaternion keeps the sign of the frame before;
+- a command holds over the interval it was applied (zero-order hold).
+
+The slider is in simulation seconds. At a frame's time the poses are the
+trace's. Between frames they are blended as Explode blends its stages.
+Play runs in real time and stops on the last frame. The frames travel on
+their own route so that the manifest, which is fetched on every identity
+change, stays small.
+
+**Dropped.** The shell's per-actuator *bars*. The command in force is
+shown as a number against its declared range in `#play-note`. Blender's
+xyzw→wxyz reorder is not needed, because three.js takes xyzw. The
+accepted attempt's own `assembly.simulation` trace is not offered for
+playback yet. Only runs are offered, which is the D2 item.
+
+**Cost.** About 90 lines in `review.js` and 80 in `review_server.py`.
+
+**What would reverse it.** If traces grow past `JSON_READ_LIMIT` (64 MB),
+the route would need to stream or decimate. Today it refuses and says why.
+
+**Test.** `cli/tests/test_dashboard_inspect.py`. Without an engine: input
+frame dropped, out-of-order frames sorted, a −q frame flipped back,
+commands `[None, …]`, and unknown schema or no timed frames are
+unavailable. In headless Chromium against a real engine and a real CPU
+walk of `examples/lifecycle/linear-carriage` (one iteration, then a
+rollout):
+- the manifest's summary matches the trace;
+- the mid-trace frame's placements are the trace's own, exactly, and the
+  command is that frame's;
+- halfway between two frames the slide sits at the mean and the command is
+  the next frame's;
+- Play runs to the last frame and stops there;
+- an unknown run is a 404.

@@ -1013,6 +1013,31 @@ solved pose, as its `approximation` line says. The SVG keeps the CLI's
 light drawing sheet. It is a drawing, not a render, so the dark floor rule
 does not apply to it.
 
+## 25. Inspect: rollout playback (ADR-511)
+
+A run that rolled out has `playback` on `api/model/run/<name>`: whether
+there is something to play, its frame count and duration, and the URL of
+the frames, `api/playback/run/<name>`. The frames travel separately, so the
+manifest stays small and is fetched only when the run is selected. They are
+the run's own rollout trace (`review_server.trace_playback`):
+- **time-based**: only frames with a `nominal_time_s`, in time order. The
+  untimed input frame in front of t=0 is the reset pose again and is left
+  out;
+- **sign-continuous**: each component's quaternion keeps the sign of the
+  frame before, so interpolation never takes the long way round;
+- **zero-order hold**: a frame's `actuator_commands` produced it, and holds
+  over the interval before it. The reset frame has none.
+
+**Play** and `#play-time` sit in *Model settings* under Explode. The slider
+is simulation seconds, not frame numbers. At a frame's own time the viewer
+shows that frame's placements exactly. Between two frames it lerps
+positions and slerps rotations, as Explode does. Play runs in real time
+from where the slider is and stops on the last frame. The viewport's clock
+overlay shows the simulation time. `#play-note` gives the time, the frame,
+and each actuator's command in force against its range. Nothing is
+simulated in the page. A run with no trace says why there is nothing to
+play.
+
 ## Operator run status (ADR-387)
 
 The operator deployment adds a compact bottom-right status strip with run name,
