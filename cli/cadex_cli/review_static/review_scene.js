@@ -8,7 +8,7 @@ import {parseStl} from './stl.js';
 export const STYLE = 'cadex-prototype-dark-v1';
 const PALETTE = [0x5b9dcd, 0xde8f47, 0x6ab270, 0xc468b4, 0xdcc85a, 0x7878c8, 0xc86e6e, 0x6ebebe];
 const FOV = 55;
-// The timer overlay (REVIEW-DESIGN.md §10): the reference's caption pill, bottom left, drawn
+// The timer overlay (DASHBOARD.md §10): the reference's caption pill, bottom left, drawn
 // INSIDE the WebGL frame so a capture's png() and the viewport bake the same pixels. Panel and
 // line are the reference's caption chip; the ink is the page's `--ink`; the type is the page's
 // `--font` at 3.2 % of the frame height (16 px in a 512 px video), never below `--fs-0`.
@@ -19,7 +19,7 @@ const CLOCK = {panel:'rgba(20,22,26,0.72)', line:'rgba(244,245,247,0.22)', ink:'
 // is a Hann-smoothed track with half-window `smooth_frames`; the subject may lead the anchor by at
 // most `max_drift` of the half-frame before the soft limiter pulls the anchor after it.
 export const FOLLOW = {fraction:.22, subject_y:-.06, max_drift:.26, smooth_frames:4};
-// Collision proxies (REVIEW-DESIGN.md §11): the simulation's contact shapes, drawn as outlines in
+// Collision proxies (DASHBOARD.md §11): the simulation's contact shapes, drawn as outlines in
 // the page's `--warn` through the solids, and only while the labelled toggle is on. Never in a
 // recording, never by default: what the viewer shows is the tessellated solid.
 const PROXY = {color:0xffe08a, opacity:.9};
@@ -204,7 +204,7 @@ export function create(canvas) {
   function setCamera(value) {c=JSON.parse(JSON.stringify(value));draw();}
   // Simulation seconds on the timer overlay; null hides it (the viewport's resting state).
   function setClock(seconds) {clock=(seconds===null||seconds===undefined)?null:Number(seconds);}
-  // The follow rig (REVIEW-DESIGN.md §10; the reference's `--shot follow`). `track` is the
+  // The follow rig (DASHBOARD.md §10; the reference's `--shot follow`). `track` is the
   // subject's centre per output frame, mm, sim coordinates. The camera keeps the viewer's yaw and
   // pitch and ONE standoff — the distance at which `subject_height_mm` fills `fraction` of the frame
   // height — so orientation and apparent size are fixed by construction and only the ground
@@ -257,7 +257,7 @@ export function create(canvas) {
   }
   function nonBackgroundPixels() {return modelPixels().count;}
   // Orbit and zoom by pointer events, so a mouse and a finger drive the same
-  // camera (REVIEW-DESIGN.md §5): one pointer orbits, two pinch, the wheel
+  // camera (DASHBOARD.md §5): one pointer orbits, two pinch, the wheel
   // zooms. The canvas captures the pointer, so a drag that leaves it still
   // orbits, and its `touch-action: none` keeps the page from scrolling.
   const pointers=new Map(); let pinch=0;

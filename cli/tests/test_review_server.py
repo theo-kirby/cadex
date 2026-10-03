@@ -755,7 +755,7 @@ def test_browser_shows_solids_by_default_and_proxies_only_under_the_labelled_tog
     page = _open(browser, server.url)
     # This fixture's proxies are three to five times its solids, so they need
     # a stage wider than the one left between both sidebars at 1280 px to
-    # show their box growing on every side (REVIEW-DESIGN.md §12).
+    # show their box growing on every side (DASHBOARD.md §12).
     page.evaluate("window.cadexFrame.toggle('left', false); window.cadexFrame.toggle('right', false)")
     page.evaluate("new Promise(r => setTimeout(r, 400))", await_promise=True)
     page.click("#views li[data-run='second']")

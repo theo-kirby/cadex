@@ -76,7 +76,7 @@ and a gait video — and 0.1.0 roughly means that sentence works.
   turn transcript, renders and `look` views, section, exploded and collision
   views, rollout playback, training curves and evaluation films, drawings
   and concept sheets as outputs, exports, and accept, reject and restore of
-  a revision. Its design spec is `docs/REVIEW-DESIGN.md`.
+  a revision. Its design spec is `docs/DASHBOARD.md`.
 - **A person steers lightly.** Start a turn from a prompt (optionally with
   an image), move a slider, leave a comment on the design or on a part
   picked in the viewer, accept or restore a revision. Every write goes

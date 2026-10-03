@@ -1,34 +1,49 @@
-# REVIEW-DESIGN.md — The review dashboard as one designed page
+# DASHBOARD.md — The dashboard, Cadex's only UI
 
-Verified against source: 2026-09-30. [Cadex-new]
+Verified against source: 2026-10-03. [Cadex-new]
 
-This is the design specification for the page `cadex review` serves
-(`cli/cadex_cli/review_static/`, ADR-286) and for the operator dashboard that
-runs it on port 8765 between iterations (ot5 D10). It is the contract the page
-is held to by `cli/tests/test_review_design.py`: the page follows the spec, and
-when the page has to change, the spec changes in the same commit. What the
-page *shows* — the reader, the routes, the permitted-paths rule — is
-`docs/CLI.md`; this document is only about how it is laid out, typed and
+This is the design specification for the dashboard: the page `cadex review`
+serves (`cli/cadex_cli/review_server.py` and `review_static/`, ADR-286), the
+second of Cadex's three parts (ADR-500) and its only UI since the Blender
+shell was deleted (ADR-498). It replaces `docs/REVIEW-DESIGN.md`, the ot6 review-page spec (ADR-501),
+whose rules it carries unchanged: the hierarchy (§2), the one type scale
+(§3), the one dark palette shared by chrome and viewport (§4), and the dark
+prototype floor every image is drawn on (§10, §16). It is the contract the
+page is held to by `cli/tests/test_review_design.py`: the page follows the
+spec, and when the page has to change, the spec changes in the same commit.
+What the page *shows* — the reader, the routes, the permitted-paths rule —
+is `docs/CLI.md`; this document is about how it is laid out, typed and
 coloured, and why.
 
-Written under the ot6 charter (ADR-328), whose first criterion is that the
-dashboard becomes one designed page: academic but modern, one type scale and
-one palette across chrome and viewport, a clear hierarchy, readable on a phone
-and orbitable by touch. §7 records what the page looked like before the spec,
-measured, and §8 what it looks like following it (ADR-329), measured the same
-way on the same operator URL. §12 is the desk frame that replaced the
-two-column desk layout at the owner's direction (ADR-342): a thin top bar,
-two resizable sidebars and a stage that holds the model.
+The dashboard stays light (charter A2): a standard-library Python server,
+vanilla JS and the vendored three.js — no npm, no bundler, no build step,
+no front-end framework. The project directory is the truth (A3): the page
+reads it, and any write it gains goes through the code paths the CLI uses,
+never a second one.
+
+The spec was first written under the ot6 charter (ADR-328), whose first
+criterion was that the review page become one designed page: academic but
+modern, one type scale and one palette across chrome and viewport, a clear
+hierarchy, readable on a phone and orbitable by touch. §7 records what the
+page looked like before the spec, measured, and §8 what it looked like
+following it (ADR-329), measured the same way; both are kept as the
+measured baseline the tests still check. §12 is the desk frame that
+replaced the two-column desk layout at the owner's direction (ADR-342): a
+thin top bar, two resizable sidebars and a stage that holds the model.
 
 ## 1. Purpose
 
 The page answers one question for one person: **what is the state of this
 project's design and training right now, and what did the runs before it look
 like?** The reader is the operator of an unattended loop, on a desk browser
-between iterations or on a phone away from the desk. They inspect; they never
-author. Every control on the page is therefore a *view* control (select a run,
-orbit the model, play a video, open a document), and the page holds no project
-state of its own — it polls the server and redraws.
+between iterations or on a phone away from the desk. They watch, and step in
+only lightly; they never model by hand (VISION's non-goals). Today every
+control on the page is a *view* control (select a run, orbit the model, play
+a video, open a document): the server answers `GET` and `HEAD` only. The
+steering controls the orun2 charter's D2 adds — a prompt, a slider, a
+comment, accept and restore — will each write through the CLI's own code
+path, and in every case the page holds no project state of its own: it polls
+the server and redraws.
 
 Three consequences shape everything below:
 

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """The review dashboard's design spec, and the ot6 evidence caps (ADR-328).
 
-``docs/REVIEW-DESIGN.md`` is the contract the page is held to (ADR-329).
+``docs/DASHBOARD.md`` is the contract the page is held to (ADR-329).
 Without a browser this suite pins the spec's required sections, its
 page-background token to the environment module's dark scene background
 (one palette across chrome and viewport), its "before" and "after"
@@ -33,7 +33,7 @@ import pytest
 from test_review_server import _model_state, _telemetry, browser, needs_browser, served  # noqa: F401
 
 REPO = Path(__file__).resolve().parents[2]
-SPEC = REPO / "docs" / "REVIEW-DESIGN.md"
+SPEC = REPO / "docs" / "DASHBOARD.md"
 STATIC = REPO / "cli" / "cadex_cli" / "review_static"
 EVIDENCE_DIRS = (REPO / "docs" / "probes" / "ot6", REPO / "docs" / "review-design")
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}

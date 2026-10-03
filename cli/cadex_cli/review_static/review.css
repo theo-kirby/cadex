@@ -1,6 +1,6 @@
 /* SPDX-FileCopyrightText: 2026 Cadex Authors
    SPDX-License-Identifier: LGPL-2.1-or-later */
-/* The page follows docs/REVIEW-DESIGN.md (ADR-329, ADR-342): its tokens are
+/* The page follows docs/DASHBOARD.md (ADR-329, ADR-342): its tokens are
    §3–§5, its breakpoints §6, the desk frame §12, and
    cli/tests/test_review_design.py reads them back from the rendered page.
    Change the spec and this file together.

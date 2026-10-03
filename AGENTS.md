@@ -59,7 +59,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/ROADMAP.md` | Phases, status checkboxes, exit criteria. |
 | `docs/INTEGRATION.md` | **The process contract**: the cadexd protocol (test-enforced both ways) and the engine payload. |
 | `docs/CLI.md` | The CLI: subcommands, exit codes, the `--json` envelope. |
-| `docs/REVIEW-DESIGN.md` | The dashboard's design spec (ADR-328): hierarchy, type scale, the dark palette shared by chrome and viewport. Change the page and this doc together. |
+| `docs/DASHBOARD.md` | The dashboard's design spec (ADR-501): hierarchy, type scale, the dark palette and floor shared by chrome, viewport and renders. Change the page and this doc together. |
 | `docs/MUJOCO.md`, `docs/ORGANIC.md`, `docs/STRUCTURAL.md` | The verticals: dynamics and control (§7 is the drawing-to-trained-policy walkthrough), organic modelling, structural analysis. |
 | `docs/DESIGN-LANGUAGE.md` | How a Cadex robot should look (ADR-479), scored with the judge frozen in `docs/probes/orun1/README.md`. |
 | `docs/DECISIONS.md` | ADR log. Append an entry for every removal or direction change. |

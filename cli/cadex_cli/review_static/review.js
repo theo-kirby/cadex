@@ -101,7 +101,7 @@
   function renderSidebar() {
     var current = currentView();
     text('current-run', 'Current run: ' + current);
-    // The phone's disclosure line (REVIEW-DESIGN.md §6): what is current and
+    // The phone's disclosure line (DASHBOARD.md §6): what is current and
     // how many runs there are, readable while the list is closed.
     text('runs-summary', 'Runs · current: ' + current + ' · ' + state.review.runs.length + ' recorded');
     var accepted = state.review.accepted;
@@ -455,7 +455,7 @@
       if (item.exists && !item.error) {
         var url = '/video/run/' + encodeURIComponent(run.run) + '/' + index;
         var player = el('video', { controls: true, preload: 'metadata', src: url });
-        // A play control of the page's own, sized for a finger (REVIEW-DESIGN.md
+        // A play control of the page's own, sized for a finger (DASHBOARD.md
         // §5): the native controls' tap targets are not the same on every phone.
         var play = el('button', { type: 'button', className: 'video-play', 'data-video-play': String(index), text: 'Play' });
         play.addEventListener('click', function () { if (player.paused) player.play(); else player.pause(); });
@@ -604,7 +604,7 @@
     });
   }
 
-  // The concept sheet (REVIEW-DESIGN.md §14, ADR-430): the project's studio
+  // The concept sheet (DASHBOARD.md §14, ADR-430): the project's studio
   // hero and sheet as the last `cadex render` drew them, named by the
   // revision they were drawn from and its relation to the accepted one now.
   // The stage leads with it once, on the first poll that finds one.
@@ -637,7 +637,7 @@
     if (!conceptLed && window.cadexFrame) { conceptLed = true; window.cadexFrame.show('concept'); }
   }
 
-  // The evaluation (REVIEW-DESIGN.md §17, ADR-459): a policy held to its
+  // The evaluation (DASHBOARD.md §17, ADR-459): a policy held to its
   // task's success spec on every frozen seed, as `cadex evaluate` wrote it.
   // /api/project lists each evaluation as a summary; the one on screen is
   // fetched whole from /api/evaluation/<name>, once per file identity. The
@@ -870,7 +870,7 @@
       renderShowing();
     });
     // The run list is a sidebar at desk and a closed disclosure on a phone
-    // (REVIEW-DESIGN.md §6); crossing the breakpoint resets it, a tap on the
+    // (DASHBOARD.md §6); crossing the breakpoint resets it, a tap on the
     // summary toggles it. Only the media query decides, never the run count.
     var phone = window.matchMedia('(max-width: 599px)');
     function foldRuns() { $('runs').open = !phone.matches; }
@@ -902,7 +902,7 @@
   else initialize();
 })();
 
-// The desk frame (REVIEW-DESIGN.md §12): two sidebars whose inner edges drag
+// The desk frame (DASHBOARD.md §12): two sidebars whose inner edges drag
 // to resize or fold them away, sections that fold under their headings, and
 // the stage's tabs. It is presentation only — it reads nothing from the
 // server, and remembers the reader's widths, folds and nothing else in this

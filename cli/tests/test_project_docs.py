@@ -992,3 +992,31 @@ def test_failed_document_write_preserves_history_and_retry(
     assert path.read_text().count("new result") == (2 if kind == "decision" else 1)
     assert path.stat().st_mode & 0o777 == 0o640
     assert set(tmp_path.rglob("*")) == files
+
+
+def test_dashboard_md_replaces_review_design_as_the_ui_spec() -> None:
+    """ADR-501 (charter R1): `docs/DASHBOARD.md` is the dashboard's spec and
+    carries REVIEW-DESIGN.md's type scale, palette and dark floor; the old
+    name is gone from `docs/` and nothing live points at it; the Blender
+    docs live only under `docs/history/`."""
+
+    root = Path(__file__).resolve().parents[2]
+    docs = root / "docs"
+    spec = (docs / "DASHBOARD.md").read_text(encoding="utf-8")
+    for heading in ("## 2. Hierarchy", "## 3. Type scale", "## 4. Palette",
+                    "## 10. The viewport: dark only, shared with the capture",
+                    "## 16. One scene for every image (ADR-444)"):
+        assert heading in spec, heading
+    assert "ADR-500" in spec and "ADR-501" in spec
+    assert not (docs / "REVIEW-DESIGN.md").exists()
+    for name in ("BLENDER.md", "BLENDER-TREE.md", "BLENDER-RECIPES.md"):
+        assert not (docs / name).exists() and (docs / "history" / name).exists(), name
+
+    live = [root / "AGENTS.md", root / "README.md"]
+    live += [path for path in docs.glob("*.md") if path.name not in ("DECISIONS.md", "DASHBOARD.md")]
+    live += [path for path in (root / "cli").rglob("*")
+             if path.suffix in (".py", ".js", ".html", ".css", ".md") and path.name != "test_project_docs.py"]
+    stale = [str(path.relative_to(root)) for path in live if "REVIEW-DESIGN" in path.read_text(encoding="utf-8")]
+    assert stale == []
+    for text in (root / "README.md", docs / "ARCHITECTURE.md", root / "AGENTS.md", docs / "VISION.md"):
+        assert "DASHBOARD.md" in text.read_text(encoding="utf-8"), text.name

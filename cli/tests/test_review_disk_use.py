@@ -364,7 +364,7 @@ def test_arriving_disk_detail_adds_video_size_without_replacing_playback(tmp_pat
     server, _thread = serve(root, "127.0.0.1", 0)
     try:
         page = browser.page(server.url)
-        # Watched where a reader watches it: on the stage's Videos tab (REVIEW-DESIGN.md §12).
+        # Watched where a reader watches it: on the stage's Videos tab (DASHBOARD.md §12).
         page.wait_for("!!window.cadexFrame")
         page.evaluate("window.cadexFrame.show('videos')")
         # The page first draws once the held detail request gives up (the 15 s

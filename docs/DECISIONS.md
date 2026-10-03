@@ -32471,3 +32471,41 @@ historical. The charter forbids hand-editing ROADMAP.md and asks for these
 three changes; its specific request is followed, as ADR-499 assumed.
 `test_readme_architecture_and_integration_describe_the_three_parts` pins
 all of this. `docs/DASHBOARD.md` and the frontier pruning remain.
+
+## ADR-501 — `docs/DASHBOARD.md` replaces `docs/REVIEW-DESIGN.md` as the UI spec (2026-10-03, owner charter orun2 R1)
+
+**Status:** accepted. A rename with a rewritten preamble; no rule changes.
+
+**Context.** ADR-500 made the dashboard Cadex's only UI, and the orun2
+charter's R1 asks for a `docs/DASHBOARD.md` that replaces
+`docs/REVIEW-DESIGN.md` and keeps its palette, type scale and dark-floor
+rules. `docs/ARCHITECTURE.md` already linked the new name, and README's
+DASHBOARD link pointed at the old file.
+
+**Decision.** `docs/REVIEW-DESIGN.md` is moved with `git mv` to
+`docs/DASHBOARD.md`, so its history follows it. The preamble names the
+dashboard as the second of the three parts, restates charter A2 (no npm,
+no build step, no framework) and A3 (the project directory is the truth;
+writes go through the CLI's paths only), and §1 says what is true today:
+the server answers `GET` and `HEAD` only, and D2's steering controls are
+still to come. §2–§17 — hierarchy, the 12/14/17/22 px type scale, the
+dark palette whose `--bg` is the viewport's scene background, the dark
+prototype floor of §10 and §16 — are unchanged, as are the §7/§8 ot6
+measurements, which `cli/tests/test_review_design.py` still checks.
+Every live pointer (AGENTS.md, README, VISION, CLI.md, the dashboard's
+static files, `video.py` and the tests) now names `DASHBOARD.md`.
+`docs/review-design/` keeps its name: it is the ot6 evidence directory
+those measurements cite.
+
+**Deviation recorded.** The critic suggested moving REVIEW-DESIGN.md to
+`docs/history/`. It is not kept there as well: every rule in it is live,
+so a copy in `docs/history/` would be a second, stale version of the
+current spec, and `git log --follow docs/DASHBOARD.md` reaches the old
+file. `docs/BLENDER.md`, `BLENDER-TREE.md` and `BLENDER-RECIPES.md` were
+already in `docs/history/`.
+
+**Test.** `test_dashboard_md_replaces_review_design_as_the_ui_spec`
+(`cli/tests/test_project_docs.py`) pins that the spec exists with its
+type, palette and dark-floor sections, that no `docs/REVIEW-DESIGN.md`
+exists, that no live doc or `cli/` file names it, and that the Blender
+docs exist only under `docs/history/`.

@@ -102,7 +102,7 @@ by a process boundary:
   `review_static/`) — a standard-library Python server, vanilla JS and the
   vendored three.js; no npm, no bundler, no framework. It reads the project
   directory, which is the truth. Its design spec is
-  [docs/REVIEW-DESIGN.md](docs/REVIEW-DESIGN.md).
+  [docs/DASHBOARD.md](docs/DASHBOARD.md).
 - **the agent** — Claude Code, run by the CLI (`cli/`) over one tool
   surface (`cli/cadex_cli/tools.py`) and one guidance source. The CLI
   finds an engine in the build tree or, staged, by reading its
@@ -162,7 +162,7 @@ the doc set under [`docs/`](docs/):
 [XSCRIPT](docs/XSCRIPT.md) · [MUJOCO](docs/MUJOCO.md) ·
 [ORGANIC](docs/ORGANIC.md) · [STRUCTURAL](docs/STRUCTURAL.md) ·
 [INTEGRATION](docs/INTEGRATION.md) ·
-[DASHBOARD](docs/REVIEW-DESIGN.md) · [CLI](docs/CLI.md) · [FREECAD](docs/FREECAD.md) ·
+[DASHBOARD](docs/DASHBOARD.md) · [CLI](docs/CLI.md) · [FREECAD](docs/FREECAD.md) ·
 [PROVENANCE](docs/PROVENANCE.md) ·
 [ROADMAP](docs/ROADMAP.md) · [DECISIONS](docs/DECISIONS.md).
 The trainer: [training/README.md](training/README.md).

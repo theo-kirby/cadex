@@ -58,7 +58,7 @@ The first and last lines cost tokens. The loop between them does not.
 | `cadex smoke --out DIR` | Simulate retained accepted artifacts with zero action or held position actuators, check finite state, exact component overlaps and floor support, and write `smoke.json` (ADR-352; details below). No rebuild or acceptance. | no |
 | `cadex evaluate` | Hold the accepted policy against its task's success spec (`assembly.success`, ADR-456): one rollout per frozen seed under the spec's conditions, then pass or fail per seed and per predicate, the behaviour metrics, the reward by term and how each episode ended, written to `evaluations/<revision>-<policy>/evaluation.json` in the project, with a filmstrip and a rollout video drawn from the seeds' traces on the dark prototype floor (ADR-457, ADR-459; details below). No rebuild or acceptance, and no trainer. | no |
 | `cadex walk --out DIR` | The lifecycle walk as one command: optional design turns (`--prompt`, repeatable), an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command, each bounded by `--leg-timeout` (default 3600 s); `review.json` lands in `--out`. Spends tokens only for `--prompt`. | only with `--prompt` |
-| `cadex review --host ADDR --port N` | Serve **this one project's** review dashboard to a browser, read-only (ADR-286): the accepted identity now, every recorded run labelled current/historical, its parameters and specs as recorded, training and rollout figures, retained artifacts, document snapshots, and the model in an orbit/zoom WebGL view — a run's own rollout meshes at its own revision, or the accepted attempt's tessellation. Opens no engine, rebuilds nothing, writes nothing, adds no `PROGRESS.md` row. Default `127.0.0.1:8765`; `--host` the machine's Tailscale address to reach it from another device. Ctrl-C stops it. How the page is laid out, typed and coloured is `docs/REVIEW-DESIGN.md`. | no |
+| `cadex review --host ADDR --port N` | Serve **this one project's** review dashboard to a browser, read-only (ADR-286): the accepted identity now, every recorded run labelled current/historical, its parameters and specs as recorded, training and rollout figures, retained artifacts, document snapshots, and the model in an orbit/zoom WebGL view — a run's own rollout meshes at its own revision, or the accepted attempt's tessellation. Opens no engine, rebuilds nothing, writes nothing, adds no `PROGRESS.md` row. Default `127.0.0.1:8765`; `--host` the machine's Tailscale address to reach it from another device. Ctrl-C stops it. How the page is laid out, typed and coloured is `docs/DASHBOARD.md`. | no |
 
 Flags, valid on either side of the subcommand:
 
@@ -1382,7 +1382,7 @@ other command keeps the restore.
 # review: serving biped at http://100.x.y.z:8765/ (read-only; Ctrl-C to stop)
 ```
 
-The page's layout, type and colour follow `docs/REVIEW-DESIGN.md`
+The page's layout, type and colour follow `docs/DASHBOARD.md`
 (ADR-329, ADR-342): one dark palette, one type scale, and the same regions
 — masthead, run selection, identity, model, curves, videos, record — laid
 out two ways. At desk width they form a frame: a thin top bar, a left and a
@@ -1790,7 +1790,7 @@ filter down to the image size antialiases edges. Shading is a key, a fill
 and a rim light with a Blinn highlight per role finish, on normals smoothed
 across each object's shared vertices except over a 40° crease, so a fillet
 reads as a curve and a box keeps its edges. The design stands on the review
-viewport's **dark prototype mat** (ADR-444, `docs/REVIEW-DESIGN.md` §16):
+viewport's **dark prototype mat** (ADR-444, `docs/DASHBOARD.md` §16):
 the colours are the engine's `CadexStudio.PALETTE` (ADR-445), which the
 viewport's own `environment.js` and `review.css` are test-held equal to, the grid pitch is the viewport's for the
 framed span, anchored at the world origin and antialiased, and the mat fades
@@ -2655,7 +2655,7 @@ Fast, and honest about what it did not run.
 | `test_evaluate.py` | `cadex evaluate` (ADR-457) in three layers: what it reads from a hand-built retained attempt (no engine); the child run for real on the engine suite's own fixtures, which needs `mujoco` here and **skips** without it; and the command against a script a live engine accepted with a policy it verified — **skips** without a built engine. |
 | `test_loop.py` | The training loop (ADR-464) in three layers: the registry and the supervisor against a hand-built retained attempt and a fake trainer, with the supervisor really detached — registration whole before launch and each refusal, a run outliving the process that started it, stop, budget, collapse against crash, SIGTERM and SIGKILL as interruptions, one run at a time per project and per machine; the four tools through `Bridge.call`; and whole rounds through `command_prompt` and the real bridge socket with a scripted model against a live engine — a run started in one turn, its policy declared and evaluated in the next — which **skip** without a built engine, the real-trainer round also without the training venv. It also refuses behaviour words in the loop, its tools and its prompt paragraph. |
 | `test_film.py` | The evaluation's film (ADR-459) on a hand-built retained attempt and hand-written traces, with no engine: which seeds `--film` picks; the solids read from the attempt's own tessellation and refused outside it; materials from the inventory; both sheets' frame times, views, floor and dark backdrop read back from the PNGs; the detail window centred on the evaluation's base while a part is left behind, fixed for a mechanism with no floating base, and refused for a base that is not drawn (ADR-460); the early-ending and no-disturbance windows; the target marker (ADR-463): a ring read back from both sheets' pixels at the projected target of each frame's own time, hollow, drawn over the solids, jumping where the target does, held in a fixed window and in the video's, absent from a trace with no point goal, and refused for a point goal the trace cannot place; the trace digest check; the report rewritten with its film; `--film-only`'s refusals. The video tests need FFmpeg and **skip** without it. |
-| `test_review_evaluation.py` | The dashboard's view of an evaluation (ADR-459, REVIEW-DESIGN.md §17). The failing fixture is ot10's `w2-2` shuffle, from the receipt under `docs/probes/ot11/retained/`; a passing one is written in the test. Over HTTP: the bounded summary list, the whole report, the file allowlist and its refusals, one parse per file identity. In headless Chromium at 1400×900 and 400×850: every predicate's tally, every seed's verdict, ending and per-predicate values, the metrics and reward tables, the film, the reader's pick. The page half **skips** without a Chromium. |
+| `test_review_evaluation.py` | The dashboard's view of an evaluation (ADR-459, DASHBOARD.md §17). The failing fixture is ot10's `w2-2` shuffle, from the receipt under `docs/probes/ot11/retained/`; a passing one is written in the test. Over HTTP: the bounded summary list, the whole report, the file allowlist and its refusals, one parse per file identity. In headless Chromium at 1400×900 and 400×850: every predicate's tally, every seed's verdict, ending and per-predicate values, the metrics and reward tables, the film, the reader's pick. The page half **skips** without a Chromium. |
 | `test_video.py` | Rollout video rendering (D4) on synthetic fixtures: decoded frames and timing, retained identity, the failed-rerender record, and in the same headless Chromium inline playback across polls and a download the browser wrote, checked byte for byte. **Skips** rendering/playback without both Chromium and FFmpeg. Fixture coverage, not fresh-biped evidence. |
 
 `tests/fake_cadexd.py` is a scripted engine, not a loose mock: its replies
@@ -2745,7 +2745,7 @@ subject's centre track are computed in the scene, exactly, over every vertex
 at every solved pose (`boundsOver`), not in Python — which is what the
 earlier 20 000-triangle cap had paid for. Python sends exact solved samples
 at 10 fps plus the final pose to the common scene, which frames each one
-with the **follow rig** (ADR-332, `docs/REVIEW-DESIGN.md` §10): the subject's standing height fills a declared 0.22 of the frame
+with the **follow rig** (ADR-332, `docs/DASHBOARD.md` §10): the subject's standing height fills a declared 0.22 of the frame
 height at one standoff, the orientation is fixed, the anchor is a
 Hann-smoothed copy of the track with a soft drift limit, and a **timer** pill
 bottom-left shows simulation seconds. It encodes
@@ -3154,5 +3154,5 @@ whole, with `files` saying which of its film is on disk.
 `GET /evaluation/<name>/<file>` serves `evaluation.json` and the film files
 that report names, and nothing else in the directory: a trace, an unnamed
 file or a link out of the evaluation is a 404. The page's **Evaluation**
-tab is `docs/REVIEW-DESIGN.md` §17. Only evaluations under `evaluations/`
+tab is `docs/DASHBOARD.md` §17. Only evaluations under `evaluations/`
 are listed; one written elsewhere with `--out` is not.
