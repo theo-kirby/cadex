@@ -32096,3 +32096,65 @@ torque on a tripod. `docs/DESIGN-LANGUAGE.md` §3 and §5 carry it marked so.
 `test_the_cross_horn_the_overlay_names_is_shorter_than_the_default`
 (`cli/tests/test_turn_loop.py`) both fail on the previous overlay. ADR-440's
 test no longer asks for "both sides of the joint".
+
+## ADR-495 — The Blender shell is disabled: nothing builds, gates or reads `shell/` (2026-10-03)
+
+**Status:** accepted. orun2 S1, the **disable commit** of the two-commit
+removal protocol (`docs/FREECAD.md` §3). The delete commit is separate and
+later. Retires ADR-201's GUI-attached mode. `main` is tagged
+`v1-blender-shell`, so the old application is one checkout away. [Cadex-new]
+
+**Why.** The orun2 charter's bet: Cadex is the engine, the dashboard and the
+agent, and the owner works almost entirely through autonomous CLI runs. The
+shell is 19,446 of 25,633 tracked files, a second toolchain, the GPL half and
+a 1.3 GB library checkout per platform (`docs/probes/orun2/D1-BEFORE.md`).
+Every `mesh_agent` module, tool and editor was read and given a row in
+`docs/SHELL-PARITY.md` before this commit, so nothing is disabled unread.
+
+**What stops reaching `shell/`.**
+- `pixi.toml`: the tasks `setup`, `build-shell`, `app`, `install-app`,
+  `uninstall-app` and `gate` are removed. The setup is `setup-engine` then
+  `build-engine` (ADR-060's route, now the only one). D1 will define the
+  dashboard's one-command entry; until then there is no `app` task.
+- `package/app/build_app.sh` (the scrubbed-environment shell build, bundle
+  install and gate runner) and `package/app/make_app_icon.py` (wrote the
+  bundle's `.icns` into `shell/release/`) are deleted. The second was GPL in
+  an LGPL tree, the one `SPDX_EXEMPT` row ADR-171 flagged; the row goes with
+  it. `bump_version.sh` stays, with its comment corrected.
+- CI (`.github/workflows/cadex-app.yml`): the macOS `app` job loses the shell
+  libraries cache, the homebrew toolchain, the LFS pull, the shell build, the
+  bundle gates and the bundle upload, and becomes `engine-macos`. Both jobs
+  run `setup-engine` first. `.gitmodules` says nothing checks out `shell/lib`.
+- Tests that read `shell/` are rewritten, not weakened:
+  - `test_the_shell_never_learns_about_mujoco` becomes
+    `test_the_dashboard_never_learns_about_mujoco`: the M2 invariant
+    (ADR-075, ADR-077) moves with the UI role, over `review_server`'s whole
+    relative-import closure and `review_static/*.js`, and fails if the
+    closure shrinks to nothing.
+  - `rollout_bake_integration.py` becomes `rollout_review_integration.py`:
+    it still writes a rollout trace from a live `cadexd`, and now reads it
+    through the dashboard's own `_first_frame_placements` and `_placement`
+    on every frame instead of baking it in the bundle. Measured on sb1x: 52
+    frames, 2 components, the swing arm moved and the base did not.
+  - `cli/tests/test_project_docs.py`'s three tests that pinned facts read out
+    of `mesh_agent` (its model default, its four handlers, that it takes no
+    lock) and the GUI leg table are replaced by two: the scaffold and
+    `docs/CLI.md` say the GUI-attached mode is retired, and no file under
+    `cli/cadex_cli` names a `shell/` path, `mesh_agent` or
+    `CADEX_BLENDER_EXECUTABLE`.
+- **ADR-201's GUI-attached mode is retired.** The project scaffold no longer
+  tells a new project to Rebuild Model or reopen before a GUI edit, and
+  `docs/CLI.md` §2's GUI section and leg table become one paragraph naming
+  the dashboard. `walk.py` and `agent.py` comments follow.
+
+**Deliberately left for later units.** `test_licensing_compliance.py` still
+checks headers and the inherited-modification manifest of the shell files
+that remain on disk; that restatement is the delete commit's.
+`test_blender_recipe.py` and the `mesh.blender` op, and the Codex and pi
+backends, are S1's next unit. The ~190 live docs that still describe the
+shell are R1's. The shell's `ENABLE_TOOL_SEARCH=false` (ADR-163) is an open
+A1 item: whether the CLI turn needs it is not yet measured.
+
+**What it costs.** No pixi task produces a desktop application. macOS loses
+its only GUI until a dashboard-copying desktop app is built (not this run).
+CI no longer proves the shell builds, which is the point.

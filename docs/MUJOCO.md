@@ -1345,7 +1345,10 @@ gate is **12 tests**. The bake is real evidence rather than a formality:
 `rollout_bake_integration.py` writes a trace from a live `cadexd` and bakes
 it inside the shipped bundle through `mesh_agent.cadex_animate`'s own
 functions — **357 keyframes per component**, the grounded base stationary,
-the swing arm translated and rotated.
+the swing arm translated and rotated. *(Since ADR-495 the shell is disabled
+and the file is `rollout_review_integration.py`: the same live trace — 52
+solver frames, base stationary, swing arm moved — is read through the review
+dashboard's own trace reader instead of baked.)*
 
 At which point the agent can be asked for a robot, and answer with one that
 walks.

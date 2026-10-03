@@ -442,12 +442,13 @@ a declared list, and `docs/INTEGRATION.md`'s op table must equal
 `project_xscript_api_integration.py` (the full lifecycle),
 `tessellation_id_map_integration.py`, `pin_resolution_integration.py`,
 `cadexd_latency_integration.py` (the slider-drag bar over raw NDJSON),
-`dynamics_inertia_integration.py`, and `rollout_bake_integration.py` — the
-last one writes a rollout trace from a live `cadexd` and then bakes it
-*inside the shipped bundle*, through `mesh_agent.cadex_animate`'s own
-functions on real Blender objects. That is the evidence ADR-077's shared
-output type exists to demand: a trace the engine is happy with and the shell
-declines to bake is exactly the failure the decision prevents.
+`dynamics_inertia_integration.py`, and `rollout_review_integration.py` — the
+last one writes a rollout trace from a live `cadexd` and then reads it
+through the review dashboard's own trace reader (`review_server`'s
+`_first_frame_placements` and `_placement`, every frame). That is the
+evidence ADR-077's shared output type exists to demand: a trace the engine is
+happy with and the UI declines to read is exactly the failure the decision
+prevents. Until ADR-495 the reader was the Blender shell's bake.
 
 **The five ctests**, in `tests/CMakeLists.txt`:
 

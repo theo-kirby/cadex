@@ -81,38 +81,20 @@ person can edit ([docs/STRUCTURAL.md](docs/STRUCTURAL.md)).
 
 ## Build and run
 
-Requires [pixi](https://pixi.sh) and **git-lfs**, plus a host toolchain for
-the shell — on macOS that is the Xcode command line tools and
-`brew install cmake ninja git-lfs`.
-
-Install git-lfs *before* cloning. The shell tree keeps binary assets in LFS
-(~790 MB, mostly `shell/tests/files/`, but also
-`shell/release/datafiles/icons/` which the build installs and the
-application reads). Clone without it and you get pointer text files where
-those should be.
+Requires [pixi](https://pixi.sh). The Blender shell is disabled (ADR-495):
+no pixi task builds or launches it, so git-lfs, Xcode and the 1.3 GB
+`shell/lib` checkout are no longer needed. The old application is tagged
+`v1-blender-shell`.
 
 ```bash
-git lfs install
 git clone <this repo> && cd cadex
-pixi run setup      # check out the shell's prebuilt libraries (~1.3 GB)
-pixi run app        # build the engine, the payload and the shell, then launch
-```
-
-The first build compiles two large C++ projects. On a machine with a cold
-compiler cache that takes hours; measured end to end on an M-series Mac with
-a warm `ccache` it is about 21 minutes (clone 9 s, setup 43 s, engine
-5 min 27 s, payload 42 s, shell 14 min). After that it is incremental.
-`pixi run app` re-runs each step, so it is also the everyday "build what
-changed and launch it" command.
-
-If you want the steps separately:
-
-```bash
+pixi run setup-engine   # the one submodule the engine compiles
 pixi run build-engine   # the headless engine (BUILD_GUI=OFF)
-pixi run stage-engine   # -> build/engine/cadex-engine-<version>-<os>-<arch>/
-pixi run build-shell    # the shell, with that engine installed into the bundle
-pixi run gate           # the product gate against the built bundle
+./cadex review --project <dir>   # the review dashboard over one project
 ```
+
+`pixi run stage-engine` stages the engine payload into
+`build/engine/cadex-engine-<version>-<os>-<arch>/`.
 
 ## How it fits together
 
@@ -186,7 +168,6 @@ pixi run test-engine                                  # engine suite, no build n
 pixi run python -m pytest cli/tests                   # the CLI suite
 pixi run test-release                                 # ctest (diff against
                                                       # build/ctest_baseline_failures.txt)
-pixi run gate                                         # CADEX-BLENDER-GATE, the product gate
 ```
 
 ## Documentation

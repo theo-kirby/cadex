@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from cadex_cli.__main__ import _progress_what, command_prompt, main
-from cadex_cli.agent import CLI_OVERLAY, MODEL_ENV, system_prompt
+from cadex_cli.agent import CLI_OVERLAY, system_prompt
 from cadex_cli.export import ExportedOutput
 from cadex_cli.project_docs import (
     ARCHITECTURE_NAME,
@@ -121,156 +121,44 @@ def test_the_scaffold_states_the_training_mode_and_the_walk_doc_agrees(tmp_path)
             "A leg that fails", 1)[0]
 
 
-def test_the_scaffold_states_the_gui_mode_and_the_walk_doc_agrees(tmp_path) -> None:
-    """ADR-201: the GUI-attached walk is the same commands from a terminal
-    beside the open file. The scaffold says so in one sentence, and the
-    walk's doc says which sentence, so neither can move alone -- and
-    neither may claim the shell's agent has a file tool, which it has not
-    (``--tools ""`` in the shell's ``backend.py``)."""
+def test_the_gui_attached_mode_is_retired_in_the_scaffold_and_the_walk_doc(tmp_path) -> None:
+    """ADR-201's GUI-attached walk -- the same commands from a terminal
+    beside an open Blender file -- retired with the shell (ADR-495). The
+    scaffold a new project receives must not tell it to Rebuild Model or
+    reopen a window that no longer exists, and the walk's doc says the mode
+    is gone and what replaced it, so neither can drift back alone."""
 
     scaffold_project_docs(tmp_path)
     architecture = (tmp_path / ARCHITECTURE_NAME).read_text()
-    assert "With the GUI attached the same commands" in architecture
-    assert "beside the open file" in architecture
-    assert "next Rebuild Model or reopen" in architecture
-    assert "file tools of its own" not in architecture
-    assert "before the next GUI edit" in architecture
-    assert "stale mutations are refused without replay or revision adoption" in architecture
+    for stale in ("With the GUI attached", "beside the open file",
+                  "Rebuild Model", "GUI edit", "the shell's own agent"):
+        assert stale not in architecture, stale
+    assert "so an iterate has the same shape in either mode." in architecture
 
     walk_doc = (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text()
     flat = " ".join(walk_doc.split())  # the doc wraps; the sentences do not
-    assert "**With the GUI attached, it is the same walk from a terminal" in flat
-    assert "with the GUI attached the same commands run from a terminal beside the open file" in flat
-    assert "**The shell takes no lock.**" in flat
-    assert "file tools of its own" not in flat
-    assert "without adopting its revision or replaying" in flat
-    assert "before the next GUI edit" in flat
-    assert "concurrent rebuilds are not guarded" in flat
-
-    # ADR-249 gave the machine one name for its turn model; the shell does
-    # not read it, so the GUI-attached mode's doc has to say which window
-    # resolves what. The code wins here too: `shell/.../agent.py`'s
-    # `DEFAULT_MODEL` is "" and nothing under `shell/` names `CADEX_MODEL`.
-    assert "The two windows resolve the turn model separately" in flat
-    assert "the shell reads no environment variable" in flat
-    assert "the divergence is in what is spent, not in the artifacts" in flat
-    assert "$CADEX_MODEL" in flat.split(
-        "**With the GUI attached", 1)[1].split("**The project is a codebase**", 1)[0]
+    assert "**There is no GUI-attached mode any more** (ADR-495)." in flat
+    assert "The review dashboard (`cadex review`, below) is the UI" in flat
+    for stale in ("**With the GUI attached", "| Leg | The child command |",
+                  "**The shell takes no lock.**", "Rebuild Model or reopen"):
+        assert stale not in flat, stale
 
 
+def test_no_cli_module_reaches_into_the_shell_tree() -> None:
+    """The disable commit's contract on this side (ADR-495): nothing the CLI
+    or the dashboard runs reads a path under ``shell/`` or imports
+    ``mesh_agent``. The shell tree may still be on disk until its delete
+    commit; nothing here may notice."""
 
-def test_the_gui_mode_doc_is_still_true_about_which_window_names_the_model() -> None:
-    """The claim above is a fact about the other front end, so pin the fact
-    rather than only the sentence: `mesh_agent` resolves its model from a
-    preference whose default is empty and names no environment variable.
-    If the shell ever learns `$CADEX_MODEL`, this fails and `docs/CLI.md`
-    §2's GUI paragraph is the thing to fix -- not this assertion."""
-
-    mesh_agent = (Path(__file__).resolve().parents[2]
-                  / "shell" / "scripts" / "startup" / "mesh_agent")
-    if not mesh_agent.is_dir():  # a checkout without the shell tree
-        pytest.skip("no shell/ tree in this checkout")
-
-    assert 'DEFAULT_MODEL = ""' in (mesh_agent / "agent.py").read_text()
-    named = [source.name for source in mesh_agent.rglob("*.py")
-             if MODEL_ENV in source.read_text()]
-    assert named == [], named
-
-
-# -- the GUI-attached mode, leg by leg -----------------------------------
-#
-# The doc's table is the criterion "three modes, one shape" made checkable:
-# it names every leg of the walk and what a GUI-attached run does
-# differently. These two tests hold it to the code on both sides -- the
-# CLI's `run_leg` calls, and the `mesh_agent` facts the difference column
-# rests on -- so a new leg, or a shell that learns to watch the project,
-# fails the doc rather than quietly outdating it.
-
-GUI_TABLE_HEADER = "| Leg | The child command |"
-
-
-def _gui_leg_table_rows() -> list[list[str]]:
-    """The GUI-attached leg table in `docs/CLI.md` §2, as cell lists."""
-
-    doc = (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text()
-    assert GUI_TABLE_HEADER in doc, "the GUI-attached leg table is gone"
-    body = doc.split(GUI_TABLE_HEADER, 1)[1].split("\n\n", 1)[0]
-    cells = [[cell.strip() for cell in line.strip().strip("|").split("|")]
-             for line in body.splitlines() if line.startswith("|")]
-    return [row for row in cells if set("".join(row)) != {"-"}]
-
-
-def test_the_gui_leg_table_names_the_walks_legs_in_order() -> None:
-    """Every leg the walk spawns has a row, in the order it runs, and the
-    in-process review is last. Read off `run_leg("...")` in `__main__.py`
-    rather than a list kept beside it: adding a leg without saying what an
-    open window does about it fails here."""
-
-    source = (Path(__file__).resolve().parents[1]
-              / "cadex_cli" / "__main__.py").read_text()
-    spawned = re.findall(r'run_leg\(\s*"([a-z]+)"', source)
-    assert spawned, "no run_leg calls found -- has the walk moved?"
-
-    rows = _gui_leg_table_rows()
-    documented = [row[0] for row in rows]
-    assert documented[:-1] == [f"`{name}`" for name in spawned], documented
-    assert documented[-1].startswith("review"), documented[-1]
-    assert "_engine_session" in documented[-1]
-    assert all(len(row) == 4 for row in rows), rows
-
-    # The one leg with a real difference is the digest edit, and it is the
-    # only row that asks for a refresh.
-    difference = {row[0]: row[3] for row in rows}
-    assert "STALE_PROGRAM_REVISION" in difference["`declare`"]
-    assert "Rebuild Model or reopen" in difference["`declare`"]
-    refreshing = [name for name, cell in difference.items()
-                  if "Rebuild Model" in cell and "keeps the values" not in cell]
-    assert refreshing == ["`declare`"], refreshing
-
-
-def test_the_gui_leg_tables_difference_column_rests_on_shell_facts() -> None:
-    """Pin the four `mesh_agent` facts the table's difference column
-    claims, not only its sentences: the shell takes no lock, watches no
-    file, writes none of the project's documents, and runs no trainer. If
-    any of them stops being true, `docs/CLI.md` §2's leg table is the thing
-    to fix -- not this assertion."""
-
-    mesh_agent = (Path(__file__).resolve().parents[2]
-                  / "shell" / "scripts" / "startup" / "mesh_agent")
-    if not mesh_agent.is_dir():  # a checkout without the shell tree
-        pytest.skip("no shell/ tree in this checkout")
-    sources = {source.name: source.read_text()
-               for source in mesh_agent.rglob("*.py")}
-
-    # 1. The lock is the CLI's alone: the shell never takes it.
-    holding = [name for name, text in sources.items()
-               if "flock" in text or ".cadex-cli.lock" in text]
-    assert holding == [], holding
-
-    # 2. It watches nothing in the project. These four are the whole set:
-    #    three about the open file and one that tags editors for redraw. A
-    #    fifth handler has to be read against the table's claim before this
-    #    line is widened -- a watcher on the project directory would make a
-    #    GUI-attached run a different shape.
-    handlers = set(re.findall(r"bpy\.app\.handlers\.(\w+)\.append",
-                              sources["__init__.py"]))
-    assert handlers == {"save_pre", "save_post", "load_post",
-                        "frame_change_post"}, handlers
-
-    # 3. The three project documents are the CLI's and a person's.
-    writing = [name for name, text in sources.items()
-               if "PROGRESS.md" in text or "DECISIONS.md" in text]
-    assert writing == [], writing
-
-    # 4. No trainer on this side, in any mode.
-    importing = [name for name, text in sources.items()
-                 if re.search(r"^\s*(?:import|from)\s+mujoco", text, re.M)]
-    assert importing == [], importing
-
-    # ...and the project root the terminal's --project names is derived
-    # from the open file every time, which is why one store has one meaning
-    # for both windows.
-    assert "never cached" in sources["cadex_backend.py"]
+    package = Path(__file__).resolve().parents[1] / "cadex_cli"
+    reaching = []
+    for source in sorted(package.rglob("*")):
+        if source.suffix not in {".py", ".js", ".html"}:
+            continue
+        text = source.read_text(encoding="utf-8")
+        if re.search(r"""["'/]shell/|/\s*["']shell["']|\bmesh_agent\b|CADEX_BLENDER_EXECUTABLE""", text):
+            reaching.append(source.name)
+    assert reaching == [], reaching
 
 
 def test_a_train_row_names_the_mode_it_ran_in() -> None:

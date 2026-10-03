@@ -224,22 +224,14 @@ freecad-release = { cmd = [ ".pixi/envs/default/Library/bin/FreeCAD.exe" ], depe
 initialize = { cmd = ["git", "submodule", "update", "--init", "--recursive"]}
 
 # ---------------------------------------------------------------------------
-# The application.  One repo, one build (ADR-030).
+# The engine.  One repo, one build (ADR-030); the Blender shell is disabled
+# (ADR-495), so there is no application bundle to build or launch.
 #
-#   pixi run setup && pixi run app
+#   pixi run setup-engine && pixi run build-engine
 #
-# Four steps, each runnable on its own:
-#
-#   setup         check out the shell's prebuilt libraries for this platform
+#   setup-engine  the one submodule the engine compiles
 #   build-engine  the headless engine, BUILD_GUI=OFF
 #   stage-engine  stage it into build/engine/cadex-engine-<v>-<os>-<arch>/
-#   build-shell   build the shell, installing that payload into the bundle
-#
-# `build-shell` goes through package/app/build_app.sh rather than calling
-# cmake here, and that is not a stylistic choice: the shell must be
-# configured with the conda environment *off* PATH, or CMake resolves zlib,
-# png, OpenSSL and Python out of .pixi instead of shell/lib. The script
-# scrubs the environment pixi hands it. See its header comment.
 #
 # `stage-engine` stages; `stage-engine-release` relocates. The difference is
 # not a quality setting -- relocation rewrites Mach-O load commands using
@@ -247,31 +239,13 @@ initialize = { cmd = ["git", "submodule", "update", "--init", "--recursive"]}
 # package-managed, i.e. in a rattler build. Against a `cmake --install`ed
 # development environment it fails outright ("the package-managed environment
 # is incomplete"). The staged payload is correct on the machine that built it
-# and nowhere else, which is exactly what `pixi run app` needs and exactly
-# what a release must not ship.
+# and nowhere else.
 # ---------------------------------------------------------------------------
-setup = { cmd = ["bash", "package/app/build_app.sh", "setup"]}
-# Setup for an engine-only checkout: the two submodules the engine actually
-# compiles, and nothing else. `setup` above also checks out
-# shell/lib/<platform> -- 1.3 GB over git-lfs -- which a headless box never
-# uses and which hard-fails when git-lfs is not installed. Use this when you
-# want cadexd and no application (ADR-060).
 setup-engine = { cmd = ["git", "submodule", "update", "--init", "--recursive",
                         "src/3rdParty/OndselSolver"]}
 build-engine = { depends-on = ["configure-release", "build-release", "install-release"]}
 stage-engine = { cmd = ["bash", "package/engine/build_engine_payload.sh"], env = { CADEX_ENGINE_STAGE_ONLY = "1" }}
 stage-engine-release = { cmd = ["bash", "package/engine/build_engine_payload.sh"]}
-build-shell = { cmd = ["bash", "package/app/build_app.sh", "shell"], depends-on = ["stage-engine"]}
-app = { cmd = ["bash", "package/app/build_app.sh", "launch"], depends-on = ["build-engine", "build-shell"]}
-# Build, then install into /Applications so Cadex opens from Spotlight and the
-# Dock. A *local* install: the staged payload inside the bundle still resolves
-# its libraries out of this repository, so the repo has to stay put. See the
-# comment above cmd_install in package/app/build_app.sh, and "Installing it
-# locally" in docs/cadex-release-packaging.md.
-install-app = { cmd = ["bash", "package/app/build_app.sh", "install"], depends-on = ["build-engine", "build-shell"]}
-uninstall-app = { cmd = ["bash", "package/app/build_app.sh", "uninstall"]}
-# The product gate, against the built bundle, with no MESH_* set.
-gate = { cmd = ["bash", "package/app/build_app.sh", "gate"]}
 # redirect to debug by default
 configure = [{ task = "configure-debug" }]
 build = [{ task = "build-debug" }]
@@ -303,7 +277,7 @@ test-release = { cmd = ["ctest", "--test-dir", "build/release"]}
 rebuild = { cmd = [".pixi/envs/default/bin/FreeCADCmd", "-c", "import sys; sys.path.insert(0, 'src/Mod/cadex'); import cadex_rebuild; raise SystemExit(cadex_rebuild.main(['{{ root }}']))"], args = [{ "arg" = "root" }]}
 # cadexd: the headless xscript engine service speaking cadex-cadexd-v1
 # NDJSON over stdio (docs/INTEGRATION.md, ADR-017). One process per project;
-# the shell (or a test harness) owns stdin/stdout.
+# the client (the CLI, or a test harness) owns stdin/stdout.
 cadexd = { cmd = [".pixi/envs/default/bin/FreeCADCmd", "-c", "import sys; sys.path.insert(0, 'src/Mod/cadex'); import cadexd; raise SystemExit(cadexd.main())"]}
 # NOTE: there are deliberately no platform-neutral `freecad-debug` /
 # `freecad-release` definitions here. They used to point at
@@ -313,5 +287,4 @@ cadexd = { cmd = [".pixi/envs/default/bin/FreeCADCmd", "-c", "import sys; sys.pa
 # documents then fail to restore. macOS and Windows shadowed them with the
 # installed binary; Linux did not, so `pixi run freecad` there hit the
 # forbidden path. Vestigial upstream definitions, removed rather than fixed:
-# a release build has no FreeCAD binary at all (ADR-022), and the
-# application you launch is the shell.
+# a release build has no FreeCAD binary at all (ADR-022).

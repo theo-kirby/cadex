@@ -36,14 +36,8 @@ from typing import Any
 from .studio import ENGINE_MODULE_DIR
 from .tools import BRIDGE_TOOLS, CLI_TOOL_OPS
 
-#: The model a turn spends when nobody has said otherwise. This is the
-#: **CLI's** answer, not one answer for both front ends: the shell resolves
-#: its own, from a Blender preference whose default is the empty string --
-#: whichever model the agent CLI itself defaults to
-#: (``shell/scripts/startup/mesh_agent/agent.py``) -- and it reads no
-#: environment variable. Override here with ``--model``, or with
-#: ``$CADEX_MODEL`` for a whole machine; ``docs/CLI.md`` §2 says what that
-#: means with the GUI attached.
+#: The model a turn spends when nobody has said otherwise. Override with
+#: ``--model``, or with ``$CADEX_MODEL`` for a whole machine.
 DEFAULT_MODEL = "claude-fable-5"
 
 #: Name the model once for a machine, the way ``$CADEX_PROJECT`` and

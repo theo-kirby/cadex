@@ -443,8 +443,8 @@ and matching Python does not certify binary or loaded-module provenance.
 The report does not refuse, rebuild, or change engine selection.
 
 **Shared mode artifacts** (paths relative to the project, with
-`DIR = runs/<name>`). This table applies to headless local training,
-GUI-attached terminal use, and `--remote`; only the training location changes.
+`DIR = runs/<name>`). This table applies to headless local training
+and `--remote`; only the training location changes.
 The scaffold's `## Training` section carries this same path convention.
 
 | Leg | Artifact in every mode |
@@ -1218,130 +1218,11 @@ local walk's line for line. What the flag changes and what it refuses:
   trainer is handed, and the three refusals above exit before the trainer
   is reached. No network, no box, no `.remote.env`.
 
-**With the GUI attached, it is the same walk from a terminal beside the
-open file** (ADR-201). The shell is a client of the same store: a saved
-`.blend` names `<dir>/<stem>.cadex/` as its engine project — derived from
-the file name on every call, never cached (`cadex_backend.project_root`)
-— and that directory is the `--project` every command above takes. No
-GUI was launched to write this; every sentence is the client code, and
-the doc yields to the code where they differ. What the two clients own,
-and when:
-
-- **Ownership is by time, and the lock is the CLI's.** A headless run
-  takes the advisory `flock` on `.cadex-cli.lock` for **one command**
-  (`_engine_session`: lock, spawn, open, unwind) and releases it when the
-  engine session ends — *before* the `PROGRESS.md` row and the project
-  commit, which guard nothing and need no engine. `cadex walk` takes no
-  lock of its own: each leg is a child `cadex` command that takes and
-  releases it, so between legs the project is nobody's. **The shell takes
-  no lock.** Its `cadexd` child is spawned on the first engine request
-  after a file opens and lives until a different file becomes current
-  (`on_file_changed` → `close_all`, on open and on Save-As) or the
-  application quits. So a person with the file open and a walk in a
-  terminal are two engines on one store, and nothing today refuses
-  that; `session.py`'s own docstring says what two engines do to a store
-  (each restores, each rebuilds, each writes `script.json`). The
-  contract is therefore **sequential by convention**: do the design
-  turns in the GUI, then run the walk while no rebuild is in flight —
-  the shell's engine is idle between operations. Shared session locking
-  remains unimplemented; concurrent rebuilds are not guarded.
-- **Stale mutations require an explicit refresh (ADR-204).** The engine
-  reads `script.json` on guarded writes and refuses a stale
-  `expected_revision` as `STALE_PROGRAM_REVISION`. The shell returns that
-  refusal without adopting its revision or replaying the source or values.
-  Repeating the edit remains refused. Run **Rebuild Model or reopen before
-  the next GUI edit**, review the refreshed script and values, then retry.
-  Current engine stale precondition failures omit `model_state`, so the
-  old shell retry did not activate in the two-engine regression. ADR-201's
-  claimed silent overwrite was not reproduced and is corrected here.
-  The dormant branch would replay if a stale response carried a newer
-  `model_state`; ADR-204 removes it and tests that response synthetically.
-  This guards stale mutations, not simultaneous acceptance by two engines.
-- **How the shell observes an accepted run.** Three ways, all existing:
-  **Rebuild Model** re-runs the script the store holds, read from disk,
-  and adopts its source, specs and values into the scene
-  (`begin_rebuild_model` → `_refresh_script_state`), so the sliders and
-  the script mirror follow the walk's digest edit without reopening.
-  **Reopening the file** (File > Open, or Revert) runs `load_post` →
-  `queue_open`: the restore-verified `open_project` and the display
-  `rebuild`, hydrating the viewport from the engine (ADR-186); a walk's
-  accepted revisions restore cleanly, because the CLI accepted them
-  through the same ops. The **re-accept box** (ADR-187) appears only
-  when the stored script no longer reproduces the accepted digest —
-  a hand-edited `script.py`, or a different engine build — and its one
-  button sends the store's own source back through `write_script`. A
-  completed walk never leaves a project there, but a walk *interrupted
-  between its train and declare legs* does: the trained policy has
-  already replaced the asset the accepted script names, so the stored
-  script will not re-run until the digest edit lands (ADR-272). Running
-  the walk again repairs it. Until one of the three happens, the
-  viewport shows what the `.blend` baked at its last save.
-- **The in-app agent cannot run the walk, and cannot edit the project's
-  docs.** The shell starts its CLI with every built-in tool off
-  (`--tools ""`) and `--allowedTools` limited to the Mesh tools, from a
-  temporary working directory, so it has no shell and no file tool — on
-  purpose, so every mutation runs on Blender's main thread. The legs are
-  the person's or a pipeline's, at the terminal; `cadex -p` turns run
-  their own conversation (`agent.json`, a sibling of the shell's
-  transcript in the `.blend`, which carries the shell's own session id)
-  and are the one leg that can be done in either window.
-- **The two windows resolve the turn model separately**, and this is the
-  one place *one shape* is a convention rather than a mechanism. The
-  terminal's `cadex -p` takes `--model`, then `$CADEX_MODEL`, then
-  `claude-fable-5` (ADR-249). The shell's turn takes its own Blender
-  preference, whose default is the **empty string** — meaning whichever
-  model the agent CLI itself defaults to — and **the shell reads no
-  environment variable**: nothing under `shell/` names `CADEX_MODEL`. So a
-  machine that names its model once names it for the terminal legs only,
-  and a box whose agent-CLI default is out of usage credit still refuses
-  the in-app turn while the walk beside it runs; set the preference to
-  match if both windows must spend the same model. Nothing a walk writes
-  changes either way — the divergence is in what is spent, not in the
-  artifacts — so the `PROGRESS.md` rows still compare line for line.
-- **Same steps, same docs, same artifacts.** The legs, their order and
-  their refusals are the list above unchanged; `ARCHITECTURE.md`,
-  `DECISIONS.md` and `PROGRESS.md` are scaffolded by the first CLI
-  visit whichever window came first and written only by the CLI and a
-  person; the domain docs are the same `docs/<subject>.md`; and
-  `runs/<name>/train/`, `runs/<name>/rollout/`, `review.json` and the
-  `PROGRESS.md` row are the same project-relative paths. Nothing a
-  walk writes says whether a window was open — which is the point, and
-  what makes a GUI walk's `PROGRESS.md` comparable with a headless
-  one's line for line. The `ARCHITECTURE.md` scaffold says so in one
-  sentence under `## Training` — *with the GUI attached the same
-  commands run from a terminal beside the open file* — and
-  `cli/tests/test_project_docs.py` holds that sentence and this
-  paragraph together.
-
-**Leg by leg, and where the GUI-attached run differs.** The list is read
-off `cli/cadex_cli/__main__.py`'s `run_leg` calls and the shell's own
-`cadex_backend.py`, `cadexd_client.py` and `__init__.py`, in that order, so
-it is the code's list rather than an intended one. The shell **watches
-nothing in the project**: it registers four handlers and no more —
-`save_pre` and `save_post` (which file this model belongs to, and dropping
-the old file's engine child), `load_post` (the open path above), and
-`frame_change_post`, which tags the Cadex editors for redraw and writes no
-property — and none of them, and no timer, reads the project directory. So
-an open window neither sees nor blocks what a leg writes, and the
-difference column is empty for every leg but one.
-
-| Leg | The child command | What it lands in the project | With the GUI attached |
-|---|---|---|---|
-| `design` | `cadex -p PROMPT --project P` (skipped without `--prompt`) | an accepted `script.py` revision, `agent.json`, the turn's `DECISION:` and `NOTE <subject>:` lines, a `PROGRESS.md` row | Artifacts identical. This is the one leg either window can run, and the windows are **not** interchangeable for it: the in-app turn is the shell's transcript in the `.blend` (`history.py`), spends its own model (bullet above), and writes none of the three project documents — `PROGRESS.md` and `DECISIONS.md` are named nowhere under `mesh_agent`. |
-| `sweep` | `cadex params --set K=V --out DIR` (only with `--set`) | a new accepted revision, `DIR/` outputs, a `PROGRESS.md` row | No difference. The open scene keeps the values it last read until Rebuild Model or reopen. |
-| `train` | `cadex train --out DIR/train`; `--remote` swaps the venv interpreter for `remote_train.sh` and nothing else | `DIR/train/` (bundle, model, returned policy), `assets/<name>.cxpolicy`, a `PROGRESS.md` row marked `(remote)` when the box trained | No difference. The shell runs no trainer — no `mesh_agent` source imports mujoco, and `test_the_shell_never_learns_about_mujoco` pins that for `shell/` as a whole — and it takes no part in this leg in any of the three modes. |
-| `collect` | `cadex asset --put POLICY --json` (only with `--complete`, the detached mode's second half) | `assets/<name>.cxpolicy` and a `PROGRESS.md` row — the store write the blocking `train --put` does inside its own leg | No difference. The shell reads no run destination and takes no part in the collection; the policy arrives in the store the same way a mesh does. |
-| `script` | `cadex script` | Nothing: the source is read and printed, no revision, no row. | No difference. |
-| `declare` | `cadex script --set script.py --json` | the digest edit — the same source accepted at a new revision behind the trained policy | **The one leg whose aftermath a window must be refreshed for.** A GUI edit issued against the pre-walk revision is refused `STALE_PROGRAM_REVISION`, without replay or revision adoption; Rebuild Model or reopen, then edit. |
-| `rollout` | `cadex params --set policy_on=1 --out DIR/rollout` | `DIR/rollout/` — the verified policy's simulation trace and outputs — and a `PROGRESS.md` row | No difference. |
-| review (no child leg: the walk's own `_engine_session`) | — | `review/render/<accepted-revision>/`, `review/section/<accepted-revision>/`, `docs/inventory.md`, `docs/clearance.md`, `DIR/review.json`, the walk's own `PROGRESS.md` row, and the project commit | No difference. The four eyes render, section, inventory and clearance-check the **accepted revision** through an engine of their own; they never read the viewport, so an open window cannot change what the review says. |
-
-So the honest answer to *where a GUI-attached run differs* is: nowhere in
-what the walk writes, once in what the window may do next (`declare`), and
-once in what a turn costs (the model bullet). `cli/tests/test_project_docs.py`
-holds this table's leg column equal to the walk's `run_leg` names in order —
-a new leg fails the doc rather than quietly outdating it — and pins the
-four shell facts the difference column rests on.
+**There is no GUI-attached mode any more** (ADR-495). ADR-201's third
+mode — the same walk from a terminal beside an open Blender file — retired
+with the shell it attached to. The review dashboard (`cadex review`, below)
+is the UI, and it reads the project directory the walk writes; it holds no
+second copy of the model that a command could make stale.
 
 **The project is a codebase** (ADR-193). Every project root carries the
 documents an engineer keeps beside a model, created by the CLI on the
@@ -1995,8 +1876,7 @@ solids), each with its source. A number that cannot be read is `null` with
 estimated. The sheet adds about 1 s to a render (1.2 s on `ot10-biped-1`).
 
 The CLI snapshots buffers while holding its project lock, before any further
-engine request can invalidate attempt paths. The shell does not share this
-lock: follow the documented GUI-attached coordination rules. Read failures
+engine request can invalidate attempt paths. Read failures
 are refusals, never a fallback to guessed poses. `cadex walk` reuses this renderer in its review session, checks the rollout
 revision and commits views under a revision directory. The same snapshot supplies the named-plane section described above.
 
@@ -2735,10 +2615,7 @@ one process per project and a sweep will run several of these at once. The
 kernel releases it on process death, so there is no stale-lock heuristic to
 get wrong. A second run is refused with a readable message; `--wait` blocks
 instead. It is held for one command and released before the `PROGRESS.md` row
-and the commit. The shell does not take it. Stale shell mutations are
-refused without automatic replay (ADR-204); run Rebuild Model or reopen
-before the next GUI edit and review the refreshed state. Concurrent
-rebuilds and simultaneous acceptance still require sequential use (§2).
+and the commit.
 
 ## 6. Which engine
 

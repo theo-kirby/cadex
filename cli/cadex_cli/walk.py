@@ -18,8 +18,8 @@ It runs each leg as a **child ``cadex`` command** rather than calling the
 engine itself, on purpose: every leg then lands the ``PROGRESS.md`` row and
 the project commit it always lands (ADR-193, ADR-194), the artifacts are
 the ones the documented commands write, and the walk adds no second way of
-doing any of them. The GUI-attached and remote-training modes share the
-shape because they share the legs, not because they share this file.
+doing any of them. The local and remote-training modes share the shape
+because they share the legs, not because they share this file.
 """
 
 from __future__ import annotations

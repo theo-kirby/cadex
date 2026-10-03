@@ -455,34 +455,64 @@ def test_the_offboard_trainer_is_not_an_engine_module() -> None:
     assert "mujoco.mjx" in trainer.read_text(encoding="utf-8")
 
 
-def test_the_shell_never_learns_about_mujoco() -> None:
+def _dashboard_closure() -> dict[str, Path]:
+    """The review dashboard's modules: ``review_server`` and everything it
+    reaches by relative import inside ``cli/cadex_cli``."""
+
+    package = MODULE_DIR.parents[2] / "cli" / "cadex_cli"
+    seen: dict[str, Path] = {}
+    pending = ["review_server"]
+    while pending:
+        name = pending.pop()
+        path = package / f"{name}.py"
+        if name in seen or not path.is_file():
+            continue
+        seen[name] = path
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.ImportFrom) and node.level == 1:
+                if node.module:
+                    pending.append(node.module.split(".")[0])
+                else:
+                    pending.extend(alias.name for alias in node.names)
+    return seen
+
+
+def test_the_dashboard_never_learns_about_mujoco() -> None:
     """Dynamics is engine-side, permanently (ADR-075 decision 4, ADR-077).
 
-    Slice M2 shipped with an empty ``shell/`` diff, which was its central
-    claim: the shell already knows how to play a simulation trace and does
-    not know what produced it. A physics authoring path in the add-on would
-    be a second source of truth the way the deleted bpy modes were, so the
-    invariant outlives the diff -- nothing under ``shell/`` may import
-    mujoco or reach for the translator.
+    Slice M2's central claim was that the UI already knew how to play a
+    simulation trace and did not know what produced it. The Blender shell
+    held that until it was disabled (ADR-495); the review dashboard is the
+    UI now, and the invariant moves with the role: nothing the dashboard
+    imports may reach mujoco or the translator. A physics path in the UI
+    would be a second source of truth the way the deleted bpy modes were.
+    (``evaluate_runner`` does import ``CadexDynamics``, but it runs inside
+    the engine's interpreter as a child process and is not in this closure.)
     """
 
-    shell = MODULE_DIR.parents[2] / "shell"
-    if not shell.is_dir():  # pragma: no cover - a source checkout always has it
-        return
+    closure = _dashboard_closure()
+    assert {"review_server", "review_record", "evaluate"} <= set(closure), (
+        f"the dashboard closure looks wrong ({sorted(closure)}); this "
+        "guardrail would now pass vacuously"
+    )
     offenders: list[str] = []
-    for path in sorted((shell / "scripts" / "startup" / "mesh_agent").rglob("*.py")):
+    for name, path in sorted(closure.items()):
         roots = _import_roots(path)
         for forbidden in ("mujoco", "CadexDynamics"):
             if forbidden in roots:
-                offenders.append(f"{path.relative_to(shell)} -> {forbidden}")
+                offenders.append(f"{name} -> {forbidden}")
+    static = MODULE_DIR.parents[2] / "cli" / "cadex_cli" / "review_static"
+    for path in sorted(static.glob("*.js")):
+        if re.search(r"from\s+['\"][^'\"]*mujoco", path.read_text(encoding="utf-8")):
+            offenders.append(f"review_static/{path.name} -> mujoco")
     assert not offenders, (
-        f"The shell reached for the dynamics engine: {offenders}. Physics "
-        "belongs in the script, engine-side; the shell only plays the trace."
+        f"The dashboard reached for the dynamics engine: {offenders}. Physics "
+        "belongs in the script, engine-side; the dashboard only plays the trace."
     )
 
 
 def test_the_conversation_store_left_the_engine() -> None:
-    """History lives in the .blend now (ADR-020, decision 4)."""
+    """The conversation store left the engine (ADR-020, decision 4)."""
 
     assert "CadexProject" not in _engine_closure(), (
         "CadexProject carries the conversation store; the engine reaches "

@@ -6,8 +6,9 @@ own, so there is one file to read and one file to edit — which is what ADR-005
 asked for, reached from the other direction (ADR-137).
 
 Cadex is an AI-native CAD app. **This repository is the whole product**
-(Phase 13a, ADR-030): clone it, `pixi run setup && pixi run app`, and you
-have a running application.
+(Phase 13a, ADR-030): clone it, `pixi run setup-engine && pixi run build-engine`, and you
+have a running engine and CLI. The Blender shell is disabled (ADR-495) and
+is being deleted (orun2).
 
 **Dynamics and control are built in** (ADR-102): Cadex simulates mechanisms
 on MuJoCo, exports them as MJCF, and plays back policies trained on them.
@@ -62,8 +63,7 @@ Mesh tools over the same TCP bridge — Claude and Codex through an MCP shim,
 pi through a native extension, so MCP is a transport rather than the
 architecture — and none brings an API key or a model loop of ours.
 `pixi run build-engine` produces `FreeCADCmd` and `CadexGeometryWorker` and
-no application; the application is what `pixi run build-shell` installs, with
-the engine inside it.
+no application; since ADR-495 no pixi task builds the shell either.
 
 **Where this is going (ADR-025, ADR-030).** The product becomes **one
 application we own** — a derivative of but not dependent on either FreeCAD
@@ -164,8 +164,8 @@ analysis/                 the offboard structural analysis (ADR-141,
                           pins and stays three. Nothing here may import a
                           GPL package — that one is test-enforced
 package/engine/           the engine payload build (ADR-023)
-package/app/build_app.sh  the shell build, with the conda env scrubbed off
-                          PATH — read its header before touching the build
+package/app/bump_version.sh  bumps VERSION; the shell build that sat beside
+                          it is gone (ADR-495)
 package/rattler-build/scripts/relocate_conda_environment.py
                           CARRIED_PYPI_PACKAGES — how the mujoco wheel
                           reaches the payload (ADR-076)
@@ -178,15 +178,11 @@ shell/build_darwin/       the shell build tree and the installed bundle
 ## Commands
 
 ```bash
-git lfs install               # once per machine, BEFORE cloning
-pixi run setup                # first time: check out shell/lib/<platform>
-pixi run app                  # build engine + payload + shell, then launch
-
-# Engine only -- no shell, no git-lfs, no 1.3 GB of prebuilt libraries. This
-# is the whole setup on a headless box (ADR-060); the shell is macOS-only so
-# far, but the engine is not.
+# The whole setup (ADR-060). The Blender shell is disabled (ADR-495): no
+# pixi task builds, launches or gates it, and no step needs git-lfs.
 pixi run setup-engine         # just src/3rdParty/OndselSolver
 pixi run build-engine
+./cadex review --project <dir>   # the review dashboard
 
 # The headless CLI (docs/CLI.md, ADR-061). Needs a built engine and nothing
 # else -- no shell, no display. `params` spends no tokens.
@@ -195,10 +191,6 @@ pixi run build-engine
 ./cadex params --project ./b --set bore=8 --out ./b/v2
 ./cadex -p "add a 2 mm fillet" --project ./b --resume
 pixi run python -m pytest cli/tests            # its suite
-
-pixi run install-app          # ...and copy it to /Applications so it opens like
-                              # an app. Local install: the staged payload keeps
-                              # resolving its libs out of this repo (ADR-058).
 
 # The offboard structural analysis (docs/STRUCTURAL.md, ADR-141). Needs no
 # engine and no build; its numeric tests really run under pixi, because
@@ -220,29 +212,17 @@ pixi run test                 # inherited FreeCAD ctest, NOT the above
                               #                    | pixi run test-release
 pixi run build-engine         # configure + build + install the engine (release)
 pixi run stage-engine         # the payload -> build/engine/cadex-engine-<v>-<os>-<arch>/
-pixi run build-shell          # the shell, with that payload installed into the bundle
-pixi run gate                 # CADEX-BLENDER-GATE against the built bundle
 pixi run cadexd               # a standalone engine service on stdio
 pixi run python src/Mod/cadex/cadex_tests/cadexd_latency_integration.py
                               # the slider-drag latency bar, over raw NDJSON
 ```
 
-**Two toolchains that must not see each other.** The engine builds inside
-the pixi/conda-forge environment; the shell builds against
-`shell/lib/<platform>` with Xcode and a homebrew `cmake`/`ninja`. Conda on
-`PATH` during a shell configure resolves the wrong zlib/png/OpenSSL/Python
-and fails late or misbehaves at runtime. `package/app/build_app.sh` scrubs
-the environment before it touches `shell/`; that is why `build-shell` is a
-script and not a `cmd = ["cmake", ...]` task. Don't route the shell build
-around it.
-
 **Engine builds have no GUI** (ADR-022, ADR-213): debug and release both
 configure headlessly; explicit `BUILD_GUI=ON` requests are rejected.
-`pixi run freecad-release` does not launch an application. The application
-you launch is the shell.
+`pixi run freecad-release` does not launch an application.
 Python-only changes under `src/Mod/cadex/` need `pixi run build-engine`
-before the shell's suites see them, and `pixi run stage-engine` before the
-*bundled* engine does.
+before the CLI's engine-needing tests see them, and `pixi run stage-engine`
+before the staged payload does.
 
 ## Change policy
 
@@ -317,9 +297,9 @@ tests and logging the decision; don't commit secrets or machine paths.
    expecting 100%. Anything touching the protocol or the payload: run the
    packaged gate (`CADEX_ENGINE_ROOT=<payload> pytest
    src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py`) — a source tree that
-   passes proves nothing about a payload, as ADR-023 records. Anything
-   touching `shell/`: `pixi run gate`. Report failures honestly, with
-   output.
+   passes proves nothing about a payload, as ADR-023 records. `shell/` is
+   disabled (ADR-495) and has no gate; do not edit it. Report failures
+   honestly, with output.
 3. **Small, coherent, owner-mergeable PRs.** One logical change; state the
    user-visible outcome, risk, and test evidence. No mixed refactors.
 4. **Removals are normal work** — log them (ADR) and prove them (build +

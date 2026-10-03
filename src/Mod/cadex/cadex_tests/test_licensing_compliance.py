@@ -56,14 +56,10 @@ SPDX_SCOPES = {
 
 # Exemptions carry their reason; test_the_exemption_list_is_not_stale keeps
 # this from accumulating dead entries. Generated project scripts and binary
-# assets are excluded by scope/extension, so nothing needs a row today.
-SPDX_EXEMPT: dict[str, str] = {
-    "package/app/make_app_icon.py": (
-        "declares GPL-2.0-or-later in an LGPL tree: authored fresh here "
-        "(ADR-059) with a shell-side header template. Harmonizing it is a "
-        "relicensing decision flagged in ADR-171, not a header fix."
-    ),
-}
+# assets are excluded by scope/extension, so nothing needs a row today. The
+# one row there was, package/app/make_app_icon.py (GPL in an LGPL tree),
+# left with the shell's bundle build (ADR-495).
+SPDX_EXEMPT: dict[str, str] = {}
 
 
 def _head(path: Path, lines: int = 12) -> str:
