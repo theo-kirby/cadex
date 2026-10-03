@@ -818,15 +818,30 @@ WHEELS = {
         "centre_plane_z_mm": 6.75,
         "bore": "3 mm D, press fit", "bore_dia_mm": 3.0, "bore_flat_to_opposite_mm": 2.5,
         "bore_depth_mm": 9.25,
+        # The wheel as Pololu's STEP model measures (ADR-489): a hub tube,
+        # a flange carrying six 3.1 mm holes on a 19.1 mm circle at the
+        # spoke roots, six spokes each a pair of ribs, a rim and the tyre.
+        # Local frame: spoke 0 along +X.
+        "hub_tube_length_mm": 9.35, "hub_flange_dia_mm": 17.0,
+        "hub_flange_thickness_mm": 5.2,
+        "hub_hole_dia_mm": 3.1, "hub_hole_circle_dia_mm": 19.1,
+        "spoke_count": 6, "spoke_rib_width_mm": 1.1, "spoke_rib_pitch_mm": 3.6,
+        "spoke_depth_mm": 4.6, "rim_inner_dia_mm": 67.0,
+        "tyre_shoulder_radius_mm": 1.0,
+        # Kernel volumes of the two modelled bodies, test-pinned; the tyre's
+        # share of the stated mass is its volume at silicone's density.
+        "wheel_volume_mm3": 14715.5, "tyre_volume_mm3": 4194.8,
+        "tyre_density_kg_m3": 1100.0,
         "mass_g": 19.8, "tyre_material": "silicone", "wheel_material": "ABS",
         "fits": ["pololu-2367"],
         "sources": ["https://www.pololu.com/product/1430/specs",
                     "https://www.pololu.com/file/0J1708/pololu-wheel-dimensions.pdf",
                     "https://www.pololu.com/file/0J1294/pololu-wheel-80%C3%9710mm.zip"],
         "approximate": [
-            "Solid disc of the tyre's diameter and width: spokes, tread and shoulder rounding are not modelled; the density is the stated mass over that envelope, not a measured inertia.",
+            "Rim, spokes and hub follow Pololu's STEP model at its measured radii and depths, simplified: each spoke is a root block, two straight ribs and a block where it meets the rim, the hub shoulder is a cone, and the tread is not modelled. The tyre's shoulders are 1 mm rounds.",
+            "The tyre's mass is its volume at tyre_density_kg_m3, a nominal silicone density Pololu does not state; the wheel takes the rest of the stated mass. Neither is a measured inertia.",
             "bore_flat_to_opposite_mm is the STEP model's 2.5; the drawing's callout near the bore is ambiguous.",
-            "The six 3.1 mm hub-mounting holes on a 19.1 mm circle are not modelled: their clocking is not dimensioned.",
+            "The six 3.1 mm hub holes are clocked on the spokes, as the STEP model places them; the drawing does not dimension their clocking.",
             "The bore is modelled round at bore_dia_mm, its D flat left out (ADR-487): the shaft turns with the wheel, and only a bore round about the axis lets a sweep of the wheel joint measure the motor's static shaft as if it turned.",
         ],
     },
@@ -834,15 +849,20 @@ WHEELS = {
 
 
 def wheel_spec(sku: Any) -> dict[str, Any]:
-    """One manufacturer wheel; the density is its stated mass over its envelope."""
+    """One manufacturer wheel and its tyre, each with the density its body needs.
+
+    ``tyre_mass_g`` is the tyre's volume at silicone's density;
+    ``density_kg_m3`` is the rest of the stated mass over the wheel's
+    modelled volume (ADR-489).
+    """
     if not isinstance(sku, str) or sku.strip().lower() not in WHEELS:
         raise CatalogError(f"Unknown wheel {sku!r}; catalogued wheels: "
                            + ", ".join(sorted(WHEELS)) + ".")
     spec = deepcopy(WHEELS[sku.strip().lower()])
-    radius = spec["tyre_dia_mm"] / 2.0
-    volume_m3 = (math.pi * radius ** 2 * spec["width_mm"]
-                 + math.pi * (spec["hub_dia_mm"] / 2.0) ** 2 * spec["hub_protrusion_mm"]) * 1e-9
-    spec["density_kg_m3"] = round(spec["mass_g"] * 1e-3 / volume_m3, 1)
+    tyre_g = spec["tyre_volume_mm3"] * 1e-9 * spec["tyre_density_kg_m3"] * 1e3
+    spec["tyre_mass_g"] = round(tyre_g, 2)
+    spec["density_kg_m3"] = round((spec["mass_g"] - tyre_g) * 1e-3
+                                  / (spec["wheel_volume_mm3"] * 1e-9), 1)
     return spec
 
 
@@ -1306,7 +1326,7 @@ def catalog_families() -> dict[str, Any]:
         },
         "wheels": {
             "skus": sorted(WHEELS),
-            "notes": "lib.wheel(sku): the tyre's stated diameter and width as one disc plus the hub, with the D bore cut; datum on the axle at the hub tip, +Z away from the motor. spec carries the bore, the shaft it fits, the stated mass and the density that implies. Cut .bay() -- the wheel's swept disc plus clearance -- from anything near it.",
+            "notes": "lib.wheel(sku): the wheel as its STEP model measures -- hub, flange, six ribbed spokes and rim, the bore cut round -- and wheel.tyre(), the silicone tyre as its own body to place as its own component; datum on the axle at the hub tip, +Z away from the motor. spec carries the bore, the shaft it fits, the stated mass split between wheel and tyre, and each body's density. Cut .bay() -- the swept disc plus clearance -- from anything near it.",
         },
         "foot_pads": {
             "skus": sorted(FOOT_PADS),

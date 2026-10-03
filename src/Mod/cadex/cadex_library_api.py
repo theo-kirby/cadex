@@ -621,6 +621,34 @@ class WheelPart(_BayPart):
         ], label=label)
         return self._housing(self._lib._place_frame(operation, cavity, self._frame_placement))
 
+    def tyre(self, *, label: str = "") -> LibraryPart:
+        """This wheel's silicone tyre, seated on its rim, as its own body.
+
+        Place it as its own component in the ``mechanism`` role and join it
+        to the wheel with a fixed joint: a wheel and its tyre are two
+        materials, so they are two parts (ADR-489). The mounting check
+        counts the tyre held when it touches a wheel that is itself held.
+        ``spec['density_kg_m3']`` is silicone's.
+        """
+        spec = self.spec
+        part = self._lib._part
+        hub, width = spec["hub_protrusion_mm"], spec["width_mm"]
+        outer, rim = spec["tyre_dia_mm"] / 2.0, spec["rim_dia_mm"] / 2.0
+        round_ = spec["tyre_shoulder_radius_mm"]
+        ring = part.cut(part.fuse([
+            part.cylinder(outer - round_, width, origin=(0.0, 0.0, hub)),
+            part.cylinder(outer, width - 2.0 * round_, origin=(0.0, 0.0, hub + round_)),
+            part.torus(outer - round_, round_, center=(0.0, 0.0, hub + round_)),
+            part.torus(outer - round_, round_, center=(0.0, 0.0, hub + width - round_)),
+        ]), [part.cylinder(rim, width + 2.0, origin=(0.0, 0.0, hub - 1.0))], label=label)
+        tyre_spec = {key: spec[key] for key in (
+            "manufacturer", "manufacturer_part_number", "tyre_dia_mm", "rim_dia_mm",
+            "width_mm", "tyre_material", "tyre_mass_g", "sources")}
+        tyre_spec["density_kg_m3"] = spec["tyre_density_kg_m3"]
+        return LibraryPart("tyre", self.part_number,
+                           self._lib._place_frame("wheel.tyre", ring, self._frame_placement),
+                           tyre_spec)
+
 
 class FootPadPart(_BayPart):
     """A placed rubber foot whose ``.bay()`` also drills its screw's hole."""
@@ -1223,33 +1251,62 @@ class LibraryAPI:
         direction: Sequence[float] = _DEFAULT_DIRECTION,
         roll_degrees: float = 0.0, label: str = "",
     ) -> WheelPart:
-        """A catalogued wheel and tyre, placed by its hub on the axle.
+        """A catalogued wheel, placed by its hub on the axle; its tyre is ``.tyre()``.
 
         Datum: the axle at the hub tip, +Z along the axle away from the
         motor; place it on the motor's shaft axis with the motor's
         direction, at least the motor's ``spec['boss_height_mm']`` out from
         its shaft datum so the hub clears the boss, and the bore seats on
-        the shaft. The body is the
-        tyre's stated disc plus the hub, with the bore cut round: its D
-        flat is not modelled, so a wheel joint sweeps clean round the
-        motor's D shaft. Spokes and tread are not modelled either.
-        ``spec['density_kg_m3']`` is the stated
-        mass over that envelope. Cut ``.bay()`` from anything near it.
+        the shaft. The body is the wheel as Pololu's STEP model measures it
+        (ADR-489): hub tube, flange with its six holes, six spokes each a
+        pair of ribs, and the rim the tyre sits on, spoke 0 along local +X
+        before ``roll_degrees``. The bore is cut round: its D flat is not
+        modelled, so a wheel joint sweeps clean round the motor's D shaft.
+        ``.tyre()`` is the silicone tyre, a second body and a second
+        component. ``spec['density_kg_m3']`` is the wheel's share of the
+        stated mass over its body. Cut ``.bay()`` from anything near it.
         """
         spec = catalog.wheel_spec(sku)
         part = self._part
-        hub = spec["hub_protrusion_mm"]
-        disc = part.fuse([
-            part.cylinder(spec["hub_dia_mm"] / 2.0, hub),
-            part.cylinder(spec["tyre_dia_mm"] / 2.0, spec["width_mm"], origin=(0.0, 0.0, hub)),
-        ])
+        hub, width = spec["hub_protrusion_mm"], spec["width_mm"]
+        centre = hub + width / 2.0
+        flange_t = spec["hub_flange_thickness_mm"]
+        depth, rib, pitch = (spec[k] for k in (
+            "spoke_depth_mm", "spoke_rib_width_mm", "spoke_rib_pitch_mm"))
+        rim_in, rim = spec["rim_inner_dia_mm"] / 2.0, spec["rim_dia_mm"] / 2.0
+        hole_r = spec["hub_hole_circle_dia_mm"] / 2.0
+        hub_r = spec["hub_dia_mm"] / 2.0
+        # One spoke along +X: a root block over the hub holes, two ribs, and
+        # a block that widens into the rim, as the STEP model's sections read.
+        spoke = [
+            part.box(15.0 - 7.0, 6.6, flange_t - 0.2, origin=(7.0, -3.3, centre - (flange_t - 0.2) / 2.0)),
+            part.box(31.0 - 14.0, rib, depth, origin=(14.0, pitch / 2.0 - rib / 2.0, centre - depth / 2.0)),
+            part.box(31.0 - 14.0, rib, depth, origin=(14.0, -pitch / 2.0 - rib / 2.0, centre - depth / 2.0)),
+            part.box(rim_in + 0.5 - 30.5, 4.6, width - 2.0, origin=(30.5, -2.3, hub + 1.0)),
+        ]
+        solids = [
+            part.cylinder(hub_r, spec["hub_tube_length_mm"]),
+            part.cone(hub_r, 5.0, centre - flange_t / 2.0 - hub, origin=(0.0, 0.0, hub)),
+            part.cylinder(spec["hub_flange_dia_mm"] / 2.0, flange_t,
+                          origin=(0.0, 0.0, centre - flange_t / 2.0)),
+            part.cut(part.cylinder(rim, width, origin=(0.0, 0.0, hub)),
+                     [part.cylinder(rim_in, width + 2.0, origin=(0.0, 0.0, hub - 1.0))]),
+        ]
+        step = 360.0 / spec["spoke_count"]
+        holes = []
+        for index in range(spec["spoke_count"]):
+            angle = index * step
+            solids.extend(part.transform(block, rotation_degrees=angle) for block in spoke)
+            theta = math.radians(angle)
+            holes.append(part.cylinder(spec["hub_hole_dia_mm"] / 2.0, width + 4.0,
+                                       origin=(hole_r * math.cos(theta), hole_r * math.sin(theta), -1.0)))
         # The bore is round, not D (ADR-487): the shaft turns with the wheel,
         # and a round bore about the axis reads the same at every angle, so
         # a sweep of the wheel joint measures the static shaft as if it
         # turned. The flat is a torque key, not a fit; it stays in the spec.
-        bore = part.cylinder(spec["bore_dia_mm"] / 2.0, spec["bore_depth_mm"] + 1.0,
-                             origin=(0.0, 0.0, -1.0))
-        body = part.cut(disc, [bore], label=label)
+        holes.append(part.cylinder(spec["bore_dia_mm"] / 2.0, spec["bore_depth_mm"] + 1.0,
+                                   origin=(0.0, 0.0, -1.0)))
+        body = part.cut(part.fuse(solids), holes, label=label)
         frame = self._frame("wheel", origin, direction, roll_degrees)
         return WheelPart(self, sku.strip().lower(),
                          self._place_frame("wheel", body, frame), spec, frame)

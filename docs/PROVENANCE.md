@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-10-02
+Verified against source: 2026-10-03
 
 Cadex is not written from scratch. It is a **derivative work of two large
 free-software projects**, carrying the design lessons of a third that we
@@ -461,7 +461,9 @@ drawing is redistributed. A STEP model was only measured, never copied in.
 - **Pololu 1430 wheel 80×10 mm:** the
   [wheel drawings](https://www.pololu.com/file/0J1708/pololu-wheel-dimensions.pdf)
   (page 5), plus Pololu's STEP model, measured in this repo's kernel for the
-  hub offset and bore.
+  hub offset and bore, and since ADR-489 for the radii and depths of the
+  hub, flange, spokes, rim and tyre. The STEP model itself is not in the
+  repository: the geometry is rebuilt from those numbers.
 - **Essentra 462178 screw-on foot:** Essentra's feet catalogue p.691, as
   [hosted by Farnell](https://www.farnell.com/datasheets/3110954.pdf).
 

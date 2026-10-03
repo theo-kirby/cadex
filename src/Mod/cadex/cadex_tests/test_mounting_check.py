@@ -203,6 +203,42 @@ def test_a_wheel_well_is_not_a_seat_and_a_wheel_rides_its_motors_output():
     assert "motor" in rows["wheel"]["detail"]
 
 
+def test_a_tyre_is_held_on_the_rim_of_a_held_wheel_and_freed_with_it():
+    """ADR-489: a tyre is its own part, held by the wheel it sits on."""
+    def value(motor_screwed):
+        components = [
+            _row("plate"),
+            _row("motor", "gearmotor", "pololu-2367", axes=[((4.5, 0.0, 0.0), (0, 0, 1))]),
+            _row("wheel", "wheel", "pololu-1430"),
+            _row("tyre", "tyre", "pololu-1430"),
+        ]
+        pairs = [_pair("plate", "motor", 0.0), _pair("motor", "wheel", 0.0, 4.0),
+                 _pair("wheel", "tyre", 0.0), _pair("plate", "tyre", 20.0)]
+        if motor_screwed:
+            components.append(_row("screw", "bolt", "m1.6x4-socket",
+                                   axes=[((4.5, 0.0, 1.0), (0, 0, 1))]))
+            pairs += [_pair("screw", "motor", 0.0, 1.0), _pair("screw", "plate", 0.0, 1.0)]
+            components[1]["mount_axes"][0]["thread_dia_mm"] = 1.6
+            components[-1]["mount_axes"][0]["bolt_dia_mm"] = 1.6
+        return {"components": components, "pairs": pairs}
+
+    rows = _by_component(mounting_summary(value(True)))
+    assert rows["wheel"]["status"] == "held", rows["wheel"]
+    assert (rows["tyre"]["status"], rows["tyre"]["by"], rows["tyre"]["holders"]) == (
+        "held", "rim", ["wheel"])
+    # A loose motor frees its wheel, and the wheel its tyre.
+    rows = _by_component(mounting_summary(value(False)))
+    assert rows["wheel"]["status"] == "held by nothing"
+    assert rows["tyre"]["status"] == "held by nothing"
+    assert "wheel" in rows["tyre"]["detail"]
+
+
+def test_a_tyre_off_its_wheel_is_held_by_nothing():
+    value = {"components": [_row("tyre", "tyre", "pololu-1430"), _row("plate")],
+             "pairs": [_pair("plate", "tyre", 12.0)]}
+    assert _by_component(mounting_summary(value))["tyre"]["status"] == "held by nothing"
+
+
 def test_a_horn_on_a_held_servo_is_held_on_its_output():
     value = {"components": [
         _row("bracket"),

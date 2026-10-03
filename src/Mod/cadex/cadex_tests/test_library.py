@@ -692,23 +692,32 @@ def test_wheel_spec_recipe_and_bay():
     assert spec["bore_dia_mm"] == gearmotor["shaft_dia_mm"]
     assert spec["bore_flat_to_opposite_mm"] == gearmotor["shaft_flat_to_opposite_mm"]
     assert "pololu-2367" in spec["fits"]
-    volume = math.pi * 40.0 ** 2 * 10.0 + math.pi * 3.3 ** 2 * 1.75
-    assert spec["density_kg_m3"] == pytest.approx(19.8e-3 / (volume * 1e-9), abs=0.05)
+    # ADR-489: the stated mass split between the wheel and its tyre.
+    tyre_g = 4194.8e-9 * 1100.0 * 1e3
+    assert spec["tyre_mass_g"] == pytest.approx(tyre_g, abs=0.01)
+    assert spec["density_kg_m3"] == pytest.approx(
+        (19.8 - tyre_g) * 1e-3 / (14715.5e-9), abs=0.05)
     wheel = _lib().wheel("pololu-1430")
     assert (wheel.family, wheel.part_number) == ("wheel", "pololu-1430")
-    radii = sorted(c.arguments[0] for c in _ops(wheel.body, "cylinder"))
-    assert radii == [1.5, 3.3, 40.0]
-    tyre = next(c for c in _ops(wheel.body, "cylinder") if c.arguments[0] == 40.0)
-    assert tyre.arguments[1] == 10.0 and tuple(tyre.properties["origin"]) == (0.0, 0.0, 1.75)
-    # ADR-487: the bore is round, so the wheel turns clean round the D shaft.
-    assert _ops(wheel.body, "box") == []
+    radii = {c.arguments[0] for c in _ops(wheel.body, "cylinder")}
+    # Hub, flange, rim and its inside, the hub holes and the bore: no tyre.
+    assert radii == {3.3, 8.5, 38.25, 33.5, 1.55, 1.5}
+    # Six spokes, each a root block, two ribs and a rim block.
+    assert len(_ops(wheel.body, "box")) == 24
     bore = next(c for c in _ops(wheel.body, "cylinder") if c.arguments[0] == 1.5)
     assert bore.arguments[1] == spec["bore_depth_mm"] + 1.0
+    tyre = wheel.tyre()
+    assert (tyre.family, tyre.part_number) == ("tyre", "pololu-1430")
+    assert tyre.spec["density_kg_m3"] == 1100.0
+    assert {c.arguments[0] for c in _ops(tyre.body, "cylinder")} == {39.0, 40.0, 38.25}
+    assert len(_ops(tyre.body, "torus")) == 2
+    assert catalog_identity_of(tyre.body) == {"family": "tyre", "part_number": "pololu-1430"}
     bay = wheel.bay()
     well = sorted(c.arguments for c in _ops(bay, "cylinder"))
     assert well == [(6.3, 4.75), (43.0, 16.0)]
     placed = _lib().wheel("pololu-1430", origin=(0, 50, 0), direction=(0, 1, 0))
     assert placed.bay().properties == placed.body.properties
+    assert placed.tyre().body.properties == placed.body.properties
     assert catalog_identity_of(bay) is None
     with pytest.raises(CatalogError, match="Unknown wheel"):
         _lib().wheel("generic-80mm")
@@ -1196,6 +1205,7 @@ result = {
     "bus_servo_bay": lib.servo("sts3215", origin=(0, -80, 0), direction=(0, 1, 0)).bay(),
     "wheel": lib.wheel("pololu-1430", origin=(100, 30, 20), direction=(1, 0, 0)).body,
     "wheel_bay": lib.wheel("pololu-1430").bay(),
+    "tyre": lib.wheel("pololu-1430", origin=(100, 30, 20), direction=(1, 0, 0)).tyre().body,
     "foot_pad": lib.foot_pad("essentra-462178", direction=(0, 0, -1)).body,
     "foot_pad_bay": lib.foot_pad("essentra-462178").bay(),
     "pwm_board": pwm.body,
@@ -1250,7 +1260,7 @@ def test_the_library_builds_on_the_real_kernel() -> None:
             "gearmotor", "gearmotor_placed",
             "esp_board", "pi_board", "pwm_board",
             "pi5_board", "camera", "tof", "bus_servo", "bus_servo_bay",
-            "wheel", "wheel_bay", "foot_pad", "foot_pad_bay",
+            "wheel", "wheel_bay", "tyre", "foot_pad", "foot_pad_bay",
             "servo",
             "horn",
             "big_servo",
@@ -1962,6 +1972,76 @@ def test_a_catalog_wheel_sweeps_clean_round_its_catalog_motor(tmp_path):
     (pair,) = joint["pairs"]
     assert pair["relative_motion"] is True
     assert pair["maximum_common_volume_mm3"] <= MAXIMUM_COMMON_VOLUME_MM3, pair
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle").FREECADCMD is None,
+    reason="No FreeCADCmd binary available for a wheel build.",
+)
+def test_the_catalog_wheel_is_a_spoked_rim_and_a_separate_tyre(tmp_path):
+    """ADR-489: the 1430 is built as its STEP model reads, not as a slab.
+
+    orun1's balancer lost twice to designs whose wheels read as wheels;
+    both losses cited the catalog wheel being a plain disc. On the real
+    kernel: the wheel's volume is the pinned spoked body's, well under the
+    disc it replaced; a point between two spokes is open air; and the tyre
+    is a second solid, seated on the rim, touching and not overlapping it,
+    whose volume and the wheel's together are within 3% of Pololu's STEP.
+    """
+    import json
+    import subprocess
+    from test_cadexd_lifecycle import CADEX_ROOT, FREECADCMD
+
+    driver = tmp_path / "wheel_build.py"
+    driver.write_text(WHEEL_BUILD_DRIVER)
+    completed = subprocess.run(
+        [str(FREECADCMD), "-c",
+         f"import sys; sys.path.insert(0, {str(CADEX_ROOT)!r}); exec(open({str(driver)!r}).read())"],
+        capture_output=True, text=True, timeout=300,
+    )
+    line = next((l for l in completed.stdout.splitlines() if l.startswith("WHEEL-BUILD ")), None)
+    assert line, completed.stdout + completed.stderr
+    result = json.loads(line[len("WHEEL-BUILD "):])
+    spec = catalog.wheel_spec("pololu-1430")
+    disc = math.pi * 40.0 ** 2 * 10.0
+    assert result["wheel"]["valid"] and result["wheel"]["solids"] == 1
+    assert result["wheel"]["volume"] == pytest.approx(spec["wheel_volume_mm3"], abs=1.0)
+    assert result["wheel"]["volume"] < 0.3 * disc
+    assert result["between_spokes_inside"] is False
+    assert result["on_spoke_inside"] is True
+    assert result["tyre"]["valid"] and result["tyre"]["solids"] == 1
+    assert result["tyre"]["volume"] == pytest.approx(spec["tyre_volume_mm3"], abs=1.0)
+    assert result["common_volume"] < 1e-6 and result["distance"] < 1e-6
+    step_volume = 19220.1  # Pololu's STEP model, measured in this kernel (ADR-489)
+    total = result["wheel"]["volume"] + result["tyre"]["volume"]
+    assert abs(total - step_volume) / step_volume < 0.03
+    assert result["outer_dia"] == pytest.approx(80.0, abs=0.01)
+
+
+WHEEL_BUILD_DRIVER = r'''
+import json, math
+import FreeCAD as App
+from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
+from cadex_domain_api import create_domain_api
+from cadex_library_api import create_library_api
+from cadex_part_worker import build_part_shape
+pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+lib = create_library_api(create_domain_api(pack.domain, pack.api_exports, pack.output_types))
+wheel = lib.wheel("pololu-1430")
+w = build_part_shape(wheel.body.to_payload())
+t = build_part_shape(wheel.tyre().body.to_payload())
+def facts(shape):
+    return {"volume": shape.Volume, "solids": len(shape.Solids), "valid": shape.isValid()}
+mid = 6.75  # the wheel's centre plane, from the hub tip
+probe = lambda r, deg: App.Vector(r * math.cos(math.radians(deg)), r * math.sin(math.radians(deg)), mid)
+print("WHEEL-BUILD " + json.dumps({
+    "wheel": facts(w), "tyre": facts(t),
+    "between_spokes_inside": w.isInside(probe(22.0, 30.0), 1e-6, True),
+    "on_spoke_inside": w.isInside(probe(22.0, 0.0) + App.Vector(0, 1.8, 0), 1e-6, True),
+    "common_volume": w.common(t).Volume, "distance": w.distToShape(t)[0],
+    "outer_dia": t.optimalBoundingBox().XLength,
+}))
+'''
 
 
 WHEEL_SWEEP_DRIVER = r'''

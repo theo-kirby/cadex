@@ -2960,8 +2960,9 @@ with a part's `.bay()` carrying `houses`. Build replies carry
 printed gear/rack generators), `held` by `screws` (a placed `lib.bolt` whose
 axis lies within 0.5 mm and 5° of one of the part's hole axes, touching the
 part and a printed part, contact being 0.5 mm), `bay`, `press fit` (bearings,
-bushings, spherical joints touching a printed part) or `output` (a horn or
-wheel touching a held servo or motor), or reported as `contact only`,
+bushings, spherical joints touching a printed part), `output` (a horn or
+wheel touching a held servo or motor) or `rim` (a tyre touching a held
+wheel, ADR-489), or reported as `contact only`,
 `inside shell` (touching nothing, its centre within a printed part's bounds)
 or `held by nothing`. Its verdict is `pass`, `reported`, `unknown`, `none`
 or `unavailable` — the last for a revision accepted before ADR-486, which

@@ -31764,3 +31764,60 @@ all 19 tests in the file pass.
 Any accepted design that put an oversized or wrong-thread bolt on a hole axis
 reports that part on its next acceptance. The check is still not a strength
 check, and still does not ask whether a bolt is long enough to engage.
+
+## ADR-489 — The catalog wheel is a spoked rim, and its tyre is a part of its own (2026-10-03)
+
+**Context.** `lib.wheel("pololu-1430")` was a solid disc the size of the tyre,
+plus the hub (ADR-485). Both orun1 balancer trials (`orun1-t1-balancer`,
+`orun1-t2-balancer`) lost their two frozen-v2 comparisons against the sweep's
+c (Love) and e (Like), and both judge transcripts cite plain disc wheels. A
+wheel is the most visible purchased part on a balancer, so a slab there makes
+the whole design read as a placeholder. The rule this run follows is that
+hardware is drawn as the real part (ADR-482, ADR-483).
+
+**Decision.**
+- The wheel body follows Pololu's STEP model, measured in this repo's kernel
+  by radial and angular probes: a hub tube (Ø6.6, 9.35 long), a cone shoulder
+  into a Ø17 × 5.2 flange, six spokes, and a rim from Ø67 to Ø76.5 across the
+  full 10 mm. Each spoke is a root block over the hub holes, two 1.1 mm ribs
+  on a 3.6 mm pitch, 4.6 deep, and a block that widens into the rim. The six
+  Ø3.1 holes on the Ø19.1 circle are now modelled, clocked on the spokes as
+  the STEP places them. The bore stays round (ADR-487).
+- `wheel.tyre()` is the silicone tyre as its own body: Ø76.5 to Ø80, 10 wide,
+  with 1 mm shoulder rounds. It is a catalog part (`tyre/pololu-1430`), so
+  the agent places it as its own component and gives it its own role. This
+  follows the `servo.horn()` precedent, a second part drawn from the first.
+  The overlay says to place it in `mechanism`, fixed to its wheel, so that
+  the rim can take another role.
+- The stated 19.8 g is split between the two bodies. The tyre is its kernel
+  volume (4194.8 mm³) at a nominal silicone density of 1100 kg/m³ (4.61 g).
+  The wheel takes the rest over its kernel volume (14715.5 mm³), which works
+  out to 1032 kg/m³, consistent with the ABS Pololu names. Both volumes are
+  in the catalog row and pinned by a test. Together they come within 1.6% of
+  the STEP model's 19220.1 mm³.
+- The mounting check gains `rim`: a `tyre` touching a `wheel` is held on its
+  rim, and is freed with the wheel, just as a wheel is freed with a loose
+  motor.
+
+I did not add a fourth appearance role ("rubber"). Roles are per component,
+the overlay already gives tyres `mechanism`, and a new role would move
+`APPEARANCE_ROLES`, the studio and every palette contract for one dark colour.
+A separate tyre component is what lets the design show it.
+
+**Measured.** `test_library.py::test_the_catalog_wheel_is_a_spoked_rim_and_a_separate_tyre`
+runs on the real kernel. It checks: the wheel's volume equals the pinned
+volume and is under 30% of the disc it replaced; a point between two spokes
+is open air while a point on a rib is solid; the tyre is one valid solid,
+80.00 mm across, touching the rim and not overlapping it; and wheel plus tyre
+come within 3% of the STEP model. On the old source the recipe test fails
+(`tyre_mass_g`), the kernel test fails (`WheelPart` has no `tyre`), and the
+mounting fixture comes back `held by nothing` instead of `rim`.
+`test_mounting_check.py` adds a tyre on a held wheel (held, `rim`), on a
+wheel whose motor is loose (held by nothing, naming the wheel), and off any
+wheel (held by nothing).
+
+**Consequences.** Every accepted design with a 1430 wheel rebuilds that
+output differently once and reopens by the recipe path with it named
+(ADR-476). Until it places `wheel.tyre()`, such a design shows a bare rim,
+which is the truthful picture of a wheel with no tyre. The tread is still
+not modelled.

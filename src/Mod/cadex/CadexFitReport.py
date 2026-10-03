@@ -527,7 +527,8 @@ MOUNTING_NOTE = (
     "part), by a bay (a printed part cut with this part's own .bay() at its "
     "placement), by press fit (a bearing or bushing touching a printed "
     "part) or on a drive's output (a horn or wheel touching its servo or "
-    "motor, which is held). A bolt counts only if it fits the hole: its "
+    "motor, which is held), and a tyre on the rim of a wheel that is held. "
+    "A bolt counts only if it fits the hole: its "
     "thread where the hole is tapped (spec mount_thread), no larger than the "
     "hole where it is a clearance hole. Contact alone, or sitting inside a printed "
     "part's envelope, holds nothing: place the screws as lib.bolt "
@@ -545,6 +546,9 @@ PRESS_FIT_FAMILIES = frozenset({"bearing", "bushing", "joint"})
 #: Held on the output of a drive, which must itself be held.
 OUTPUT_FAMILIES = frozenset({"servo_horn", "wheel"})
 DRIVE_FAMILIES = frozenset({"servo", "gearmotor", "bldc"})
+#: Held on the rim of a wheel, which must itself be held (ADR-489).
+RIM_FAMILIES = frozenset({"tyre"})
+RIM_HOLDERS = frozenset({"wheel"})
 #: A bay that is a swept well rather than a seat: it holds nothing.
 WELL_FAMILIES = frozenset({"wheel"})
 
@@ -643,8 +647,8 @@ def mounting_summary(value: Any) -> dict[str, Any]:
     ``value`` is the same ``inspect scope=clearance`` value :func:`fit_summary`
     reads. Every placed catalog part that is bought (not a fastener, not a
     printed generator's gear or rack) gets one row naming the printed parts
-    that hold it and by what: ``screws``, ``bay``, ``press fit`` or
-    ``output``. A part held by none of those is reported as ``contact
+    that hold it and by what: ``screws``, ``bay``, ``press fit``,
+    ``output`` or ``rim`` (a tyre on its wheel). A part held by none of those is reported as ``contact
     only``, ``inside shell`` (no contact, but within a printed part's
     envelope) or ``held by nothing``; ``unknown`` when it has no solved
     placement or no measurement. ``verdict`` is ``pass`` when every
@@ -780,6 +784,12 @@ def mounting_summary(value: Any) -> dict[str, Any]:
                             and family(by_name[c]) in DRIVE_FAMILIES)
             item.update(status="held", by="output", holders=drives,
                         detail="On the output of " + ", ".join(drives) + ".")
+        elif kind in RIM_FAMILIES and any(family(by_name[c]) in RIM_HOLDERS
+                                          for c in contacts if c in by_name):
+            wheels = sorted(c for c in contacts if c in by_name
+                            and family(by_name[c]) in RIM_HOLDERS)
+            item.update(status="held", by="rim", holders=wheels,
+                        detail="On the rim of " + ", ".join(wheels) + ".")
         elif held_by_printed:
             item.update(status="contact only", by=None, holders=held_by_printed, detail=(
                 "Touches a printed part, but no bolt runs through its mounting "
@@ -814,14 +824,16 @@ def mounting_summary(value: Any) -> dict[str, Any]:
             item["detail"] += (" Bolts on its hole axes that do not fit, so hold "
                                "nothing: " + "; ".join(misfits) + ".")
         results[name] = item
-    # A horn or wheel is held only if the drive it rides on is.
-    for item in results.values():
-        if item.get("by") == "output":
-            loose = [d for d in item["holders"]
-                     if (results.get(d) or {}).get("status") != "held"]
-            if loose:
-                item.update(status="held by nothing", by=None, detail=(
-                    "On the output of " + ", ".join(loose) + ", which is not itself held."))
+    # A horn or wheel is held only if the drive it rides on is, and a tyre
+    # only if its wheel is: wheels first, so a loose motor frees its tyre.
+    for riding, where in (("output", "On the output of "), ("rim", "On the rim of ")):
+        for item in results.values():
+            if item.get("by") == riding:
+                loose = [d for d in item["holders"]
+                         if (results.get(d) or {}).get("status") != "held"]
+                if loose:
+                    item.update(status="held by nothing", by=None, detail=(
+                        where + ", ".join(loose) + ", which is not itself held."))
     ordered = [results[str(r["component"])] for r in purchased]
     reported = [i for i in ordered if i["status"] not in {"held", "unknown"}]
     unknown = [i for i in ordered if i["status"] == "unknown"]
