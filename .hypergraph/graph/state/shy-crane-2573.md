@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**Disabled (ADR-495, orun2, commit `324b0411`).** No pixi task, `package/` script or CI job builds, launches or gates the shell (`build_app.sh`, `make_app_icon.py` and the macOS `app` job are gone); the tree is still on disk pending its delete commit, and `test_licensing_compliance.py` is the only test that still reads it. Its `mesh.blender` path is retired (ADR-496). Everything below describes the application as it stood before the disable and is history once the delete commit lands [rec: lucky-haven-1081] [rec: clear-heron-4371].
+
 **The app reached parity with the CLI and the review dashboard (GUI parity slices 3b–8, ADR-448 to ADR-453).** Its agent has look (the engine's studio render, via a child process), fit and inventory blocks on every accepted build reply, `inspect_model` clearance/inventory scopes, and the engine's design guidance in its prompt; measurement runs on a worker thread and slider latency is unmoved (ADR-448) [rec: crimson-trail-6068]. The viewport paints each part in its appearance role and palette (shell/mechanism/accent) from `CadexStudio.role_colours`, with object-linked materials, user materials kept and settled accepts only (ADR-449) [rec: rough-water-0848]. The Training editor has a Runs panel over `runs/*/run.json` (or legacy `review.json`), `train/progress.json` and `video.json`, as the dashboard reads them but without digest checks (ADR-450) [rec: restless-fjord-9059]; its numbers and reward curve follow the selected run, else the live mirror (ADR-451) [rec: staid-nest-0170]; and it has a Renders panel with Render Now through the engine studio into `review/render/`, plus Play Video on runs that have one (ADR-452) [rec: peaceful-sail-5197]. The chat shows the running turn's clock and tool count, and each turn's and the session's tokens and cost as the harness reports them, normalised across Claude Code, Codex and pi (ADR-453) [rec: eager-basin-6116]. Every slice's gate showed only the 8 restore-lockout failures clean `main` already has [rec: rough-water-0848] [rec: eager-basin-6116].
 
 The shell is a Blender fork under `shell/` carrying `mesh_agent` as application code under `shell/scripts/startup/` [rec: curious-sail-8332]. It is the application a user launches, and it ships the engine inside its own bundle, discovered through a `cadex-engine.json` manifest so a built application needs no configuration [rec: simple-hollow-8675] [rec: merry-eagle-4093].
@@ -45,7 +47,6 @@ The shell is a Blender fork under `shell/` carrying `mesh_agent` as application 
 - Chat messages have clipboard buttons, consecutive tool calls collapse before transcript trimming, and normal turns have no per-turn tool-call cap. `tool_cap_override` remains for tests/evaluation [rec: honest-harvest-7271] [rec: damp-fountain-8719].
 - Component instances and their wire children hydrate into an **Assembly child collection of Model**, migrating old root links and removing the collection with its last component [rec: cool-jasper-0086].
 - The assistant sees `lib` in `api_overview` and can request its catalog through `describe_cad_api domain=lib` [rec: twilight-lake-8164].
-- For `mesh.blender`, the shell supplies an absolute runtime executable path to cadexd; execution stays in the sandboxed child and the visible scene only hydrates accepted output [rec: simple-bramble-8616].
 
 - **Instanced assembly sources are hidden from camera renders** (ADR-228): source solids and edge companions acquire independent render ownership only on false-to-true changes, preserving pre-hidden sources and unrelated explicit visibility. Actual hydration/EEVEE regression fails on old source and passes with the fix, including repeat hydration and component removal/restoration; posed components stay renderable [rec: sunny-canyon-1138] [rec: civic-moss-7263].
 
@@ -148,3 +149,5 @@ The shell is a Blender fork under `shell/` carrying `mesh_agent` as application 
 - staid-nest-0170 — ADR-451: selected run's curve drawn in the Training editor
 - peaceful-sail-5197 — ADR-452: Renders panel with Render Now; Play Video on runs
 - eager-basin-6116 — ADR-453: chat shows running turn and session tokens/cost
+- lucky-haven-1081 — ADR-495: shell disabled; nothing builds, launches or gates it; tree on disk pending delete
+- clear-heron-4371 — ADR-496: mesh.blender retired, so the shell's runtime-path bullet is dropped
