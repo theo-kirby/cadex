@@ -527,7 +527,9 @@ MOUNTING_NOTE = (
     "part), by a bay (a printed part cut with this part's own .bay() at its "
     "placement), by press fit (a bearing or bushing touching a printed "
     "part) or on a drive's output (a horn or wheel touching its servo or "
-    "motor, which is held). Contact alone, or sitting inside a printed "
+    "motor, which is held). A bolt counts only if it fits the hole: its "
+    "thread where the hole is tapped (spec mount_thread), no larger than the "
+    "hole where it is a clearance hole. Contact alone, or sitting inside a printed "
     "part's envelope, holds nothing: place the screws as lib.bolt "
     "components through its spec mount holes, or cut its .bay() from the "
     "part that carries it."
@@ -565,7 +567,12 @@ def _apply(matrix: Sequence[float], point: Sequence[float], *, vector: bool = Fa
             + matrix[4 * i + 2] * point[2] + matrix[4 * i + 3] * w for i in range(3)]
 
 
-def _world_axes(row: Mapping[str, Any], matrix: Sequence[float]) -> list[tuple[list[float], list[float]]]:
+#: The size facts a published axis may carry (ADR-488): a tapped hole's
+#: thread, a clearance hole's diameter, a bolt's nominal diameter.
+SIZE_FACTS = ("thread_dia_mm", "hole_dia_mm", "bolt_dia_mm")
+
+
+def _world_axes(row: Mapping[str, Any], matrix: Sequence[float]) -> list[tuple]:
     axes = []
     for axis in row.get("mount_axes") or []:
         try:
@@ -574,15 +581,36 @@ def _world_axes(row: Mapping[str, Any], matrix: Sequence[float]) -> list[tuple[l
         except (KeyError, TypeError, ValueError):
             continue
         length = math.sqrt(sum(v * v for v in direction))
+        sizes = {key: float(axis[key]) for key in SIZE_FACTS
+                 if _finite(axis.get(key)) and axis[key] > 0}
         if len(origin) == 3 and length > 1e-12:
-            axes.append((_apply(matrix, origin), [v / length for v in direction]))
+            axes.append((_apply(matrix, origin), [v / length for v in direction], sizes))
     return axes
+
+
+def _misfit(hole: Mapping[str, float], bolt: Mapping[str, float]) -> str | None:
+    """Why a bolt on a hole's axis cannot be in it, or None if it can.
+
+    A tapped hole takes only its own thread; a clearance hole takes any
+    bolt no larger than itself. A side with no size facts (a revision
+    accepted before ADR-488) is judged by its axis alone.
+    """
+
+    size = bolt.get("bolt_dia_mm")
+    if size is None:
+        return None
+    if "thread_dia_mm" in hole:
+        if abs(size - hole["thread_dia_mm"]) > 1e-6:
+            return f"an M{size:g} bolt in an M{hole['thread_dia_mm']:g} tapped hole"
+    elif "hole_dia_mm" in hole and size > hole["hole_dia_mm"] + 1e-6:
+        return f"an M{size:g} bolt through a {hole['hole_dia_mm']:g} mm hole"
+    return None
 
 
 def _on_axis(hole: tuple, bolt: tuple) -> bool:
     """A bolt's axis line runs through a mounting hole, both ways round."""
 
-    (p, a), (o, d) = hole, bolt
+    (p, a), (o, d) = hole[:2], bolt[:2]
     cross = [a[1] * d[2] - a[2] * d[1], a[2] * d[0] - a[0] * d[2], a[0] * d[1] - a[1] * d[0]]
     if math.sqrt(sum(v * v for v in cross)) > math.sin(math.radians(MOUNT_AXIS_ANGLE_DEGREES)):
         return False
@@ -703,6 +731,7 @@ def mounting_summary(value: Any) -> dict[str, Any]:
         # Screws: a bolt on one of its hole axes, touching it and a printed part.
         holes = _world_axes(row, matrix)
         screwed: dict[str, list[str]] = {}
+        misfits: list[str] = []
         holes_used = 0
         for hole in holes:
             used = False
@@ -712,7 +741,13 @@ def mounting_summary(value: Any) -> dict[str, Any]:
                 if bolt_matrix is None:
                     continue
                 into = sorted(touching.get(bolt_name, set()) & printed)
-                if into and any(_on_axis(hole, axis) for axis in _world_axes(bolt, bolt_matrix)):
+                on = [axis for axis in _world_axes(bolt, bolt_matrix) if _on_axis(hole, axis)]
+                if not into or not on:
+                    continue
+                reason = _misfit(hole[2], on[0][2])
+                if reason:
+                    misfits.append(f"{bolt_name}: {reason}")
+                else:
                     used = True
                     for holder in into:
                         screwed.setdefault(holder, [])
@@ -726,6 +761,8 @@ def mounting_summary(value: Any) -> dict[str, Any]:
             and source in (other.get("houses") or [])
             and _matrix(other) is not None and _same_pose(_matrix(other), matrix)
         ) if kind not in WELL_FAMILIES else []
+        if misfits:
+            item["misfits"] = misfits
         if screwed:
             bolts_used = sorted({b for names in screwed.values() for b in names})
             item.update(status="held", by="screws", holders=sorted(screwed), detail=(
@@ -773,6 +810,9 @@ def mounting_summary(value: Any) -> dict[str, Any]:
             else:
                 item.update(status="held by nothing", by=None, holders=[],
                             detail="Touches no printed part, and no printed part encloses it.")
+        if misfits and item["status"] != "held":
+            item["detail"] += (" Bolts on its hole axes that do not fit, so hold "
+                               "nothing: " + "; ".join(misfits) + ".")
         results[name] = item
     # A horn or wheel is held only if the drive it rides on is.
     for item in results.values():

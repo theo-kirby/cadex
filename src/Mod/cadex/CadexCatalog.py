@@ -91,6 +91,15 @@ BRASS_DENSITY_KG_M3 = 8500.0
 # clearance holes: ISO 273 close (H12) and medium fit.
 # --------------------------------------------------------------------------
 METRIC_THREADS: Mapping[str, Mapping[str, float]] = {
+    # M1.6 is the N20 gearmotor's face thread (pololu-2367, ADR-488).
+    "m1.6": {
+        "nominal_dia_mm": 1.6,
+        "pitch_mm": 0.35,
+        "minor_dia_mm": 1.221,
+        "tap_drill_mm": 1.25,
+        "clearance_close_mm": 1.7,
+        "clearance_normal_mm": 1.8,
+    },
     "m2": {
         "nominal_dia_mm": 2.0,
         "pitch_mm": 0.4,
@@ -156,6 +165,7 @@ METRIC_THREADS: Mapping[str, Mapping[str, float]] = {
 # flats — data only; the recess is not modelled).
 # --------------------------------------------------------------------------
 SOCKET_HEAD_SCREWS: Mapping[str, Mapping[str, float]] = {
+    "m1.6": {"head_dia_mm": 3.0, "head_height_mm": 1.6, "socket_mm": 1.5},
     "m2": {"head_dia_mm": 3.8, "head_height_mm": 2.0, "socket_mm": 1.5},
     "m2.5": {"head_dia_mm": 4.5, "head_height_mm": 2.5, "socket_mm": 2.0},
     "m3": {"head_dia_mm": 5.5, "head_height_mm": 3.0, "socket_mm": 2.5},
@@ -185,6 +195,7 @@ COUNTERSUNK_SCREWS: Mapping[str, Mapping[str, float]] = {
 # ISO 4032 style 1 hex nuts. across_flats_mm = s, height_mm = m.
 # --------------------------------------------------------------------------
 HEX_NUTS: Mapping[str, Mapping[str, float]] = {
+    "m1.6": {"across_flats_mm": 3.2, "height_mm": 1.3},
     "m2": {"across_flats_mm": 4.0, "height_mm": 1.6},
     "m2.5": {"across_flats_mm": 5.0, "height_mm": 2.0},
     "m3": {"across_flats_mm": 5.5, "height_mm": 2.4},
@@ -214,6 +225,7 @@ NYLOC_NUTS: Mapping[str, Mapping[str, float]] = {
 # ISO 7089 flat washers, normal series.
 # --------------------------------------------------------------------------
 FLAT_WASHERS: Mapping[str, Mapping[str, float]] = {
+    "m1.6": {"bore_mm": 1.7, "od_mm": 4.0, "thickness_mm": 0.3},
     "m2": {"bore_mm": 2.2, "od_mm": 5.0, "thickness_mm": 0.3},
     "m2.5": {"bore_mm": 2.7, "od_mm": 6.0, "thickness_mm": 0.5},
     "m3": {"bore_mm": 3.2, "od_mm": 7.0, "thickness_mm": 0.5},

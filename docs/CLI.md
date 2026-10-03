@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-02. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-03. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -2968,6 +2968,16 @@ or `unavailable` — the last for a revision accepted before ADR-486, which
 has no facts to judge. Like `attachments` it refuses nothing and counts
 among no fit failure. It is not a strength check: one bolt on one hole
 counts the part as screwed.
+
+A bolt on a hole's axis counts only if it fits the hole (ADR-488). Each
+`mount_axes` row carries one size fact: a bolt's `bolt_dia_mm`, a tapped
+hole's `thread_dia_mm` (a part whose spec names a `mount_thread`, such as the
+N20's M1.6 face or the STS3215's M2 self-tapping holes) or a clearance hole's
+`hole_dia_mm`. A tapped hole takes only its own thread; a clearance hole any
+bolt no larger than itself. A bolt that does not fit is listed in the part's
+`misfits` (`"bolt0: an M2 bolt in an M1.6 tapped hole"`) and holds nothing.
+A row with no size fact, from a revision accepted before ADR-488, is judged
+by its axis alone until it is rebuilt.
 
 
 ### Published joint sweeps (ADR-350, ADR-351, 2026-09-14)

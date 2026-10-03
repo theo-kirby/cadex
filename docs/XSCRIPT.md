@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-01
+Verified against source: 2026-10-03
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -674,8 +674,8 @@ Three rules the library holds itself to:
 Browse before modelling standard hardware by hand: `describe_api`'s
 `library` section lists the families, part numbers and deciding specs
 (`lib.catalog()` serves the same thing inside a script). Catalogued today:
-metric fasteners m2–m8 (socket/countersunk bolts, hex/nyloc nuts, flat
-washers), heat-set inserts m2–m5, the common ball bearings plus a
+metric fasteners m2–m8 and m1.6 (socket/countersunk bolts, hex/nyloc nuts,
+flat washers; m1.6 is socket bolts, hex nuts and washers only, ADR-488), heat-set inserts m2–m5, the common ball bearings plus a
 parametric `lib.bushing`, and the four servo classes — SG90, MG90S,
 MG996R, DS3218 — with measured micro horns; and the three board variants
 below. The 25T horns and the servo

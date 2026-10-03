@@ -31713,3 +31713,54 @@ whole turn.
 output differently once and reopens by the recipe path with it named
 (ADR-476). The wheel is still a solid disc. Modelling its rim, hub and tyre is
 the critic's second unit and is not part of this one.
+
+## ADR-488 — A bolt holds a part only if it fits the hole; the catalog carries M1.6 (2026-10-03)
+
+**Context.** ADR-486's mounting check counted a part as screwed when a
+`lib.bolt` lay on one of its hole axes, touching it and a printed part. It
+never asked whether that bolt could be in that hole. orun1's balancer trial 1
+put `lib.bolt("m2", …)` on the axes of the N20 gearmotor's (`pololu-2367`)
+M1.6 tapped face holes, and both motors were reported `held` by `screws`.
+Trial 2's agent saw the mismatch itself and gave up: "Screwing the N20 motors
+with M2 bolts into their M1.6 face holes was rejected (wrong thread,
+intersecting solids). Catalog bolts start at M2 and the gearmotor has no
+.bay()" (`orun1-t2-balancer`, record `first-eagle-0836`). The check was too
+lenient, and the catalog had no screw that fits the only motor it carries.
+
+**Decision.**
+- Each published mount axis carries one size fact, stamped by the library
+  beside the axis (never inside a definition, so no digest moves): a bolt's
+  `bolt_dia_mm`; a part whose spec names a `mount_thread` publishes
+  `thread_dia_mm` (N20 M1.6, STS3215 M2 self-tapping, the BLDC's M3);
+  any other part publishes its hole diameter as `hole_dia_mm`.
+- `CadexFitReport.mounting_summary` counts a bolt on a hole's axis only if it
+  fits: equal to a tapped hole's thread, no larger than a clearance hole. A
+  bolt that does not fit holds nothing and is named in the row's `misfits`
+  and its detail. A side with no size fact (a revision accepted before this)
+  is judged by its axis alone, as before, until rebuilt.
+- The catalog gains M1.6 in the four tables that have a standard for it:
+  thread (ISO 261 pitch 0.35, basic minor 1.221; tap drill 1.25; ISO 273
+  fine/medium clearance 1.7/1.8), ISO 4762 socket head (dk 3.0, k 1.6,
+  s 1.5), ISO 4032 hex nut (s 3.2, m 1.3) and ISO 7089 washer (1.7 × 4.0 ×
+  0.3). Countersunk (ISO 10642 starts at M3), nyloc and heat-set insert
+  tables do not gain it, and refuse it loudly as before.
+- The overlay's HOLD EVERY PART paragraph says a bolt must fit its hole and
+  names the N20's M1.6 screws.
+
+A gearmotor `.bay()` was the critic's alternative. I did not build it in this
+unit: with an M1.6 screw the N20 is held the way its datasheet means it to be
+held, by its face, and a bay would be a second way to the same verdict.
+
+**Measured.** `cadex_tests/test_mounting_check.py`: three fixtures on
+published values (M2 in M1.6 tapped holes reported `contact only` with two
+`misfits`, M1.6 held; M3 through a 2.5 mm clearance hole reported, M2 and
+M2.5 held; no size facts judged by axis alone) and a real-kernel pair, an
+N20 under a plate bolted with `m1.6` (held, 2 of 2 holes) and with `m2`
+(`contact only`, two misfits). On the old source five of these fail (the
+M2 cases came back `held`; `m1.6` was an unknown thread); with the change
+all 19 tests in the file pass.
+
+**Consequences.** Trial 1's "9 of 9 held" would now be 7 of 9 on a rebuild.
+Any accepted design that put an oversized or wrong-thread bolt on a hole axis
+reports that part on its next acceptance. The check is still not a strength
+check, and still does not ask whether a bolt is long enough to engage.

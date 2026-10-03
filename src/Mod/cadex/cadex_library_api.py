@@ -35,6 +35,7 @@ from __future__ import annotations
 import difflib
 import json
 import math
+import re
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
@@ -115,6 +116,27 @@ def library_mount_facts() -> dict[str, dict[str, Any]]:
     }
 
 
+def _size_facts(family: str, spec: Mapping[str, Any]) -> dict[str, float]:
+    """What fits a part's mounting holes, for the mounting check (ADR-488).
+
+    A bolt publishes its nominal diameter; a part whose spec names a
+    ``mount_thread`` publishes that thread (its holes are tapped or take a
+    self-tapping screw of that size); any other part publishes its hole
+    diameter, which a bolt may not exceed.
+    """
+
+    if family == "bolt":
+        return {"bolt_dia_mm": float(spec["nominal_dia_mm"])}
+    thread = re.match(r"\s*M(\d+(?:\.\d+)?)", str(spec.get("mount_thread") or ""), re.I)
+    if thread:
+        return {"thread_dia_mm": float(thread.group(1))}
+    for key in ("mount_hole_dia_mm", "hole_dia_mm", "mount_bore_dia_mm"):
+        value = spec.get(key)
+        if isinstance(value, (int, float)) and value > 0:
+            return {"hole_dia_mm": float(value)}
+    return {}
+
+
 def _frame_axes(frame: tuple, rows: Sequence[tuple]) -> list[dict[str, list[float]]]:
     """Local ``(origin, axis)`` rows carried into a placed body's coordinates."""
 
@@ -161,9 +183,10 @@ class LibraryPart:
                 "part_number": str(part_number),
             }
             if mount_axes:
+                sizes = _size_facts(family, spec)
                 _MOUNT_AXES[key] = [
                     {"origin": [float(v) for v in row["origin"]],
-                     "axis": [float(v) for v in row["axis"]]}
+                     "axis": [float(v) for v in row["axis"]], **sizes}
                     for row in mount_axes
                 ]
 

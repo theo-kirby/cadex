@@ -106,6 +106,72 @@ def test_the_hole_axis_is_carried_through_the_solved_placement():
     assert _by_component(mounting_summary(value))["board"]["by"] == "screws"
 
 
+def _n20(bolt_size, bolt_dia):
+    """An N20 face (two M1.6 tapped holes) under a plate, both holes bolted."""
+
+    hole = {"thread_dia_mm": 1.6}
+    motor = _row("motor", "gearmotor", "pololu-2367")
+    motor["mount_axes"] = [{"origin": [x, 0.0, 0.0], "axis": [0, 0, 1], **hole}
+                           for x in (-4.5, 4.5)]
+    rows = [_row("plate"), motor]
+    pairs = [_pair("plate", "motor", 0.0)]
+    for i, x in enumerate((-4.5, 4.5)):
+        bolt = _row(f"bolt{i}", "bolt", f"{bolt_size}x3-socket")
+        bolt["mount_axes"] = [{"origin": [x, 0.0, 2.0], "axis": [0, 0, 1],
+                               "bolt_dia_mm": bolt_dia}]
+        rows.append(bolt)
+        pairs += [_pair(f"bolt{i}", "motor", 0.0, 0.2), _pair(f"bolt{i}", "plate", 0.0)]
+    return {"components": rows, "pairs": pairs}
+
+
+def test_a_bolt_must_match_a_tapped_holes_thread_to_hold():
+    # Trial 1 of orun1's balancer counted M2 bolts in the N20's M1.6 face
+    # holes as screws (ADR-488): on the axis, but the wrong thread.
+    block = mounting_summary(_n20("m2", 2.0))
+    motor = _by_component(block)["motor"]
+    assert block["verdict"] == "reported"
+    assert motor["status"] == "contact only"
+    assert motor["misfits"] == [
+        "bolt0: an M2 bolt in an M1.6 tapped hole",
+        "bolt1: an M2 bolt in an M1.6 tapped hole",
+    ]
+    assert "do not fit" in motor["detail"]
+    motor = _by_component(mounting_summary(_n20("m1.6", 1.6)))["motor"]
+    assert (motor["status"], motor["by"]) == ("held", "screws")
+    assert "misfits" not in motor
+
+
+def test_a_bolt_may_not_be_larger_than_a_clearance_hole():
+    def board(bolt_dia):
+        value = {"components": [
+            _row("plate"),
+            _row("board", "board", "b", axes=[((2.0, 2.0, 0.0), (0, 0, 1))]),
+            _row("bolt0", "bolt", "x", axes=[((2.0, 2.0, 1.6), (0, 0, 1))]),
+        ], "pairs": [
+            _pair("plate", "board", 0.0), _pair("bolt0", "board", 0.0),
+            _pair("bolt0", "plate", 0.0, 2.1),
+        ]}
+        value["components"][1]["mount_axes"][0]["hole_dia_mm"] = 2.5
+        value["components"][2]["mount_axes"][0]["bolt_dia_mm"] = bolt_dia
+        return _by_component(mounting_summary(value))["board"]
+
+    assert board(2.5)["by"] == "screws"
+    assert board(2.0)["by"] == "screws"
+    loose = board(3.0)
+    assert loose["status"] == "contact only"
+    assert loose["misfits"] == ["bolt0: an M3 bolt through a 2.5 mm hole"]
+
+
+def test_a_hole_or_bolt_with_no_size_facts_is_judged_by_axis_alone():
+    # Revisions accepted before ADR-488 published no sizes: still judged.
+    value = _n20("m2", 2.0)
+    for row in value["components"]:
+        for axis in row.get("mount_axes") or []:
+            axis.pop("thread_dia_mm", None)
+            axis.pop("bolt_dia_mm", None)
+    assert _by_component(mounting_summary(value))["motor"]["by"] == "screws"
+
+
 def test_a_bay_holds_only_at_the_parts_own_placement():
     value = {"components": [
         _row("cradle", houses=["battery"]),
@@ -235,7 +301,17 @@ def test_the_library_remembers_hole_axes_and_what_each_bay_houses():
     assert holes[0]["origin"] == pytest.approx([12.54, -2.54, 5.0])
     assert holes[0]["axis"] == pytest.approx([0.0, 0.0, -1.0])
     assert facts["axes"][_definition_key(bolt.body)] == [
-        {"origin": pytest.approx([1.0, 2.0, 3.0]), "axis": pytest.approx([1.0, 0.0, 0.0])}]
+        {"origin": pytest.approx([1.0, 2.0, 3.0]), "axis": pytest.approx([1.0, 0.0, 0.0]),
+         "bolt_dia_mm": 2.5}]
+    # What fits each hole travels with it (ADR-488): the board's are
+    # clearance holes, the N20's and the bus servo's are tapped.
+    assert holes[0]["hole_dia_mm"] == 2.5 and "thread_dia_mm" not in holes[0]
+    motor = lib.gearmotor("pololu-2367")
+    assert {row["thread_dia_mm"] for row in
+            library_mount_facts()["axes"][_definition_key(motor.body)]} == {1.6}
+    servo = lib.servo("sts3215")
+    assert {row["thread_dia_mm"] for row in
+            library_mount_facts()["axes"][_definition_key(servo.body)]} == {2.0}
     assert facts["bays"] == {_definition_key(bay): _definition_key(pack.body)}
     # A pack has no holes: it is housed, not screwed.
     assert _definition_key(pack.body) not in facts["axes"]
@@ -301,6 +377,26 @@ result = {"plate": plate, "shell": shell, "imu": imu.body, "pack": pack.body,
 comps = [assembly.component(plate, grounded=True), assembly.component(shell),
          assembly.component(imu.body), assembly.component(pack.body),
          assembly.component(imu_far.body)]
+for i, comp in enumerate(comps):
+    result["component_%d" % i] = comp
+asm = assembly.assembly(comps)
+result["asm"] = asm
+result["diag"] = assembly.solve(asm)
+"""
+
+
+_N20_ON_A_PLATE = """
+motor = lib.gearmotor("pololu-2367", origin=(0.0, 0.0, 0.0))
+holes = [part.cylinder(radius=lib.clearance_hole(SIZE) / 2.0, height=4.0,
+                       origin=(x, y, -1.0)) for x, y in motor.spec["mount_holes"]]
+shaft = part.cylinder(radius=2.5, height=4.0, origin=(0.0, 0.0, -1.0))
+plate = part.cut(part.box(30.0, 14.0, 2.0, origin=(-15.0, -7.0, 0.0)), holes + [shaft])
+bolts = [lib.bolt(SIZE, 3.0, origin=(x, y, 2.0)) for x, y in motor.spec["mount_holes"]]
+result = {"plate": plate, "motor": motor.body}
+comps = [assembly.component(plate, grounded=True), assembly.component(motor.body)]
+for i, bolt in enumerate(bolts):
+    result["bolt%d" % i] = bolt.body
+    comps.append(assembly.component(bolt.body))
 for i, comp in enumerate(comps):
     result["component_%d" % i] = comp
 asm = assembly.assembly(comps)
@@ -384,3 +480,17 @@ def test_a_resting_board_a_shelled_pack_and_a_loose_board_fail_on_the_real_kerne
     assert statuses == ["contact only", "held by nothing", "inside shell"]
     assert block["held"] == [] and block["note"] == CadexFitReport.MOUNTING_NOTE
     assert not math.isnan(block["thresholds"]["contact_mm"])
+
+
+@_NEEDS_KERNEL
+@pytest.mark.parametrize("size, status", [("m1.6", "held"), ("m2", "contact only")])
+def test_an_n20_is_held_only_by_its_own_m1_6_screws_on_the_real_kernel(tmp_path, size, status):
+    block = _built_mounting(tmp_path, _N20_ON_A_PLATE.replace("SIZE", repr(size)))
+    motor = next(row for row in block["reported"] + block["held"]
+                 if row["part"] == "gearmotor/pololu-2367")
+    assert motor["status"] == status, motor
+    if status == "held":
+        assert motor["by"] == "screws" and motor["detail"].startswith("2 of 2 mounting holes")
+    else:
+        assert len(motor["misfits"]) == 2
+        assert all(m.endswith("an M2 bolt in an M1.6 tapped hole") for m in motor["misfits"])
