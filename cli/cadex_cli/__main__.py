@@ -46,9 +46,12 @@ from .agent import (
     ClaudeTurn,
     ClaudeUnavailable,
     DEFAULT_MODEL,
+    IMAGES_PER_TURN,
+    ImageRefused,
     TurnResult,
     default_model,
     find_claude,
+    read_image,
     system_prompt,
 )
 from .bridge import Bridge, BridgeState, ToolCall
@@ -208,6 +211,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--prompt",
         default=None,
         help="What to build or change, in words. Spends tokens.",
+    )
+    parser.add_argument(
+        "--image",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="Attach an image (PNG, JPEG, GIF or WebP) to the prompt; "
+        f"repeatable, at most {IMAGES_PER_TURN}. The agent sees it.",
     )
     parser.add_argument(
         "--resume",
@@ -1063,6 +1074,16 @@ def command_prompt(
     without spending a token. See ``cli/tests/mock_backend.py``.
     """
 
+    paths = list(getattr(args, "image", None) or [])
+    if len(paths) > IMAGES_PER_TURN:
+        report.error = f"a prompt carries at most {IMAGES_PER_TURN} images; {len(paths)} were given."
+        return EXIT_USAGE
+    try:
+        images = [read_image(path) for path in paths]
+    except ImageRefused as exc:
+        report.error = str(exc)
+        return EXIT_USAGE
+    report.attachments = [image.summary() for image in images]
     claude_path = find_claude(args.claude) if turn_factory is ClaudeTurn else ""
     stored = read_agent_state(Path(args.project).expanduser())
     session_id = stored.session_id if args.resume else ""
@@ -1106,8 +1127,11 @@ def command_prompt(
             # The owner's comments since the last turn travel ahead of the
             # prompt (ADR-505); they are delivered once a turn has run on them.
             comments = pending_comments(report.project_root)
+            for image in images:
+                _progress(f" · attached {image.name}  {image.media_type}, {len(image.data)} bytes")
             try:
-                result = turn.run(with_comments(args.prompt, comments))
+                prompt = with_comments(args.prompt, comments)
+                result = turn.run(prompt, images) if images else turn.run(prompt)
                 if _spent_nothing(result, bridge.state):
                     _progress(
                         " · the turn reached the engine not once; asking "
@@ -2764,6 +2788,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if command == "prompt" and not args.prompt:
         # A bare `cadex` opens the dashboard; `cadex -h` is the help.
         command = "app"
+    if args.image and command != "prompt":
+        parser.error("--image attaches to a prompt: give it with -p PROMPT.")
 
     report = RunReport(project_root=str(Path(args.project).expanduser()))
     quiet = command == "script" and not getattr(args, "source_file", "")

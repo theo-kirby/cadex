@@ -94,6 +94,9 @@ class RunReport:
     #: ``cadex comment``: the comment it left; ``cadex -p``: the owner's
     #: comments the turn received (ADR-505).
     comments: list[dict[str, Any]] = field(default_factory=list)
+    #: ``cadex -p --image``: each image the turn carried, by name, type,
+    #: size and SHA-256 — never the bytes (ADR-507).
+    attachments: list[dict[str, Any]] = field(default_factory=list)
     error: str = ""
     #: ``cadex revision``: the trail it listed, or the revision it put back (ADR-506).
     revisions: dict[str, Any] = field(default_factory=dict)
@@ -136,6 +139,8 @@ class RunReport:
             payload["evaluation"] = dict(self.evaluation)
         if self.comments:
             payload["comments"] = [dict(item) for item in self.comments]
+        if self.attachments:
+            payload["attachments"] = [dict(item) for item in self.attachments]
         if self.revisions:
             payload["revisions"] = dict(self.revisions)
         if self.notes:

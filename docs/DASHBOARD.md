@@ -823,8 +823,20 @@ what a turn leaves there — the revision, the `PROGRESS.md` row, the
 project commit, the agent's decisions and notes — is the CLI's (charter A3),
 and a server restart forgets the transcript, not the turn's result.
 
-Not yet here: attaching an image to the prompt, which needs the CLI to
-carry one into the turn first.
+**Attach image** (ADR-507) opens a file picker for up to four PNG, JPEG,
+GIF or WebP images; `#turn-images` names them in the accent ink and the
+button becomes **Remove image**. They travel in the same POST as
+`"images": [{"name", "data"}]`, base64, which is why a turn's body may be
+up to `TURN_BODY_LIMIT` (about 20 MB) where every other write keeps 64 KiB. The
+server checks each one by its bytes as the CLI does, writes it to a scratch
+directory outside the project that goes when the turn ends, and adds
+`--image=<file>` to the same `cadex -p` child. The CLI hands the images to
+Claude Code as image blocks in one stream-json user message on stdin,
+behind the prompt's text, since the agent has no file tool to open a path
+with. The transcript's first lines say `· attached <name>  <type>, <n>
+bytes`. The envelope, and so the finished turn's status, records each image's name,
+type, size and SHA-256, never its bytes. A started turn clears the
+attachment, so an image goes with one prompt only.
 
 ## 20. Steering: a comment on the design or a picked part (ADR-505)
 
@@ -884,6 +896,32 @@ Every verdict is a line in `comments.jsonl` and is listed with the
 comments; the next turn is given it ahead of its prompt as `(a verdict on a
 revision) The owner rejected revision … and put back revision … (#2). <note>`,
 like any comment (§20).
+
+## 22. Remote viewing: `tailscale serve` in front of 127.0.0.1
+
+The dashboard binds `127.0.0.1` by default (`cadex app`, `cadex review`,
+`serve_projects` and `serve` all default to it), so nothing off the machine
+reaches it. To watch and steer from a phone or another computer on your
+tailnet, leave it on loopback and put Tailscale's HTTPS proxy in front of
+it, on the same machine:
+
+```bash
+pixi run app                     # 127.0.0.1:8765
+tailscale serve --bg 8765        # https://<machine>.<tailnet>.ts.net/ -> 127.0.0.1:8765
+tailscale serve status           # what is being served
+```
+
+Only devices on your tailnet can open that URL, and Tailscale terminates TLS.
+Mount it at the root as shown: the page's URLs are relative to the project page, but
+a sub-path mount is not tested. The write guards of §18 still apply behind the proxy:
+every write needs the per-launch token from the page the server served, and a
+browser's `Origin` must match the `Host` the server sees. A proxy that
+rewrites `Host` will have writes refused as cross-origin, which fails safe.
+Do not use `tailscale funnel`, which publishes to the internet, and do not
+pass `--host 0.0.0.0`.
+`--host <tailscale address>` (`docs/CLI.md`) binds the tailnet address
+directly without TLS, and is the older path. Cadex's own runs never start
+`tailscale serve`. It is a step the owner takes.
 
 ## Operator run status (ADR-387)
 

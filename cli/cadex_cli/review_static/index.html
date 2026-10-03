@@ -37,8 +37,12 @@
       <h2>Design turn</h2>
       <!-- Runs `cadex -p PROMPT --project …` (ADR-504); its stderr streams below. -->
       <textarea id="turn-prompt" rows="3" placeholder="What to build or change, in words. Spends tokens." aria-label="Prompt"></textarea>
+      <!-- An attached image travels as `cadex -p … --image FILE` (ADR-507). -->
+      <input type="file" id="turn-image" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+      <div id="turn-images" hidden></div>
       <div class="controls">
         <label class="toggle" for="turn-resume"><input type="checkbox" id="turn-resume" checked> <span>continue the conversation</span></label>
+        <button id="turn-attach" type="button">Attach image</button>
         <button id="turn-start" type="button">Start turn</button>
       </div>
       <div id="turn-status" data-state="idle"></div>

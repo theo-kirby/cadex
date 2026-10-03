@@ -14,6 +14,8 @@ and the page draws the rebuilt model.
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -600,3 +602,131 @@ def test_browser_accepts_rejects_and_restores_a_revision(plate_app, fake_claude,
         thick["accepted_revision"][:12], wide["accepted_revision"][:12]) in given
     assert "restored revision %s (#1)" % first["revision"][:12] in given
     assert given.endswith("\n\ngo on")
+
+
+# -- an image attached to a design turn (ADR-507) --------------------------
+
+
+def test_a_turn_carries_its_images_as_cli_image_files(app, monkeypatch) -> None:
+    """The upload becomes ``--image FILE`` on the same ``cadex -p``, in scratch the turn removes."""
+
+    from test_prompt_images import png
+
+    calls = []
+
+    def fake_leg(name, argv, *, capture=True, timeout=0.0, on_stderr=None):
+        files = [Path(arg.split("=", 1)[1]) for arg in argv if arg.startswith("--image=")]
+        calls.append((list(argv), [(path.name, path.read_bytes()) for path in files], files))
+        return Leg(name=name, argv=list(argv), code=EXIT_OK, seconds=0.5,
+                   envelope={"ok": True, "accepted_revision": "a" * 64, "attachments": [{"name": "sketch.png"}]})
+
+    monkeypatch.setattr(review_server, "run_leg", fake_leg)
+    projects, server = app
+    url = server.url + "p/biped/api/turn"
+    token = {"X-Cadex-Token": _token(server.url + "p/biped/")}
+    image = base64.b64encode(png()).decode("ascii")
+    pdf = base64.b64encode(b"%PDF-1.7 not a picture").decode("ascii")
+    for bad in ({"prompt": "x", "images": "sketch.png"}, {"prompt": "x", "images": [image]},
+                {"prompt": "x", "images": [{"name": "a.png", "data": "!!not base64!!"}]},
+                {"prompt": "x", "images": [{"name": "a.png", "data": pdf}]},
+                {"prompt": "x", "images": [{"name": "a.png", "data": image}] * 5}):
+        status, reply = _post(url, bad, token)
+        assert status == 400 and reply["ok"] is False, bad
+    assert calls == []
+    # Over the slider's 64 KiB body limit is still a turn's to carry.
+    big = {"prompt": "x", "images": [{"name": "a.png", "data": image}], "pad": "x" * 100_000}
+    status, reply = _post(url, big, token)
+    assert status == 202, reply
+    _wait_turn(url)
+    calls.clear()
+    status, reply = _post(url, {"prompt": "match it", "images": [{"name": "../../My Sketch.png", "data": image}]}, token)
+    assert status == 202 and reply["turn"]["images"] == [{
+        "name": "My_Sketch.png", "media_type": "image/png", "bytes": len(png()),
+        "sha256": hashlib.sha256(png()).hexdigest()}]
+    snapshot = _wait_turn(url)
+    ((argv, received, files),) = calls
+    root = str((projects / "biped").resolve())
+    assert argv[:3] == ["--project", root, "--prompt=match it"] and argv[-1] == "--json"
+    assert received == [("My_Sketch.png", png())]
+    assert not files[0].exists() and not files[0].parent.parent.exists()
+    assert snapshot["reply"]["attachments"] == [{"name": "sketch.png"}]
+    # The slider's route keeps its own small limit.
+    assert _post(server.url + "p/biped/api/params", {"values": {"width": 40}, "pad": "x" * 70_000},
+                 token)[0] == 400
+
+
+@needs_browser
+def test_browser_attaches_an_image_to_a_turn_and_the_turn_receives_it(plate_app, fake_claude, browser) -> None:
+    from test_prompt_images import png
+
+    root, server = plate_app
+    script, seen, _gate = fake_claude
+    wider = PLATE.replace("num(30.0,", "num(48.0,")
+    script.write_text(json.dumps([
+        ["text", "Reading the sketch.\n"],
+        ["tool", "write_script", {"source": wider}],
+        ["done", "Matched the sketch: 48 mm."],
+    ]), encoding="utf-8")
+    sketch = png(16, 8, (220, 40, 40))
+    page = _open(browser, server.url + "p/plate/")
+    assert _model_state(page) == "loaded"
+    # What a file picker hands the page: a File in the hidden input, then `change`.
+    page.evaluate("""(function () {
+      var bytes = Uint8Array.from(atob(%s), function (c) { return c.charCodeAt(0); });
+      var files = new DataTransfer();
+      files.items.add(new File([bytes], 'sketch.png', { type: 'image/png' }));
+      var input = document.getElementById('turn-image');
+      input.files = files.files;
+      input.dispatchEvent(new Event('change'));
+    })()""" % json.dumps(base64.b64encode(sketch).decode("ascii")))
+    page.wait_for("window.cadexReview.attached().length === 1", timeout=30)
+    assert "sketch.png" in page.text("#turn-images")
+    assert page.text("#turn-attach") == "Remove image"
+    page.evaluate("document.getElementById('turn-prompt').value = 'match the attached sketch'")
+    page.evaluate("document.getElementById('turn-resume').checked = false")
+    page.click("#turn-start")
+    page.wait_for("window.cadexReview.turn().state === 'done' || window.cadexReview.turn().state === 'failed'",
+                  timeout=120)
+    turn = page.evaluate("window.cadexReview.turn()")
+    assert turn["state"] == "done", turn
+    digest = hashlib.sha256(sketch).hexdigest()
+    # The claude the child ran was handed the very bytes the page picked, as an image block.
+    assert json.loads(Path(str(seen) + ".images.json").read_text()) == [
+        {"media_type": "image/png", "sha256": digest}]
+    assert seen.read_text(encoding="utf-8") == "match the attached sketch"
+    record = {"name": "sketch.png", "media_type": "image/png", "bytes": len(sketch), "sha256": digest}
+    assert turn["images"] == [record] and turn["reply"]["attachments"] == [record]
+    assert "attached sketch.png  image/png" in turn["text"]
+    # Sent once: the next prompt starts with nothing attached.
+    assert page.evaluate("window.cadexReview.attached()") == []
+    assert page.evaluate("document.getElementById('turn-images').hidden") is True
+    assert page.text("#turn-attach") == "Attach image"
+    revision = turn["reply"]["accepted_revision"]
+    page.wait_for("window.cadexReview.state().model && window.cadexReview.state().model.revision === %s"
+                  % json.dumps(revision), timeout=30)
+    assert page.evaluate("window.cadexReview.viewer().stats().bounds.max[0]"
+                         " - window.cadexReview.viewer().stats().bounds.min[0]") == pytest.approx(48.0, abs=0.01)
+    assert "prompt: match the attached sketch" in (root / "PROGRESS.md").read_text()
+
+
+def test_remote_viewing_is_tailscale_serve_in_front_of_loopback() -> None:
+    """DASHBOARD.md §22 says how another device reaches the page, and the defaults it relies on hold."""
+
+    import inspect
+
+    from cadex_cli.__main__ import build_parser
+
+    spec = (Path(__file__).resolve().parents[2] / "docs" / "DASHBOARD.md").read_text(encoding="utf-8")
+    section = spec.split("## 22. Remote viewing", 1)[1].split("\n## ", 1)[0]
+    for needed in ("`127.0.0.1`", "tailscale serve --bg 8765", "per-launch token", "`Origin`",
+                   "tailscale funnel", "0.0.0.0"):
+        assert needed in section, needed
+    # §18, where the write guards are, points at the same remedy.
+    assert "`tailscale serve`" in spec.split("## 18.", 1)[1].split("\n## ", 1)[0]
+    # The loopback default it relies on, in each way of starting the server.
+    for function in (serve, serve_projects):
+        assert inspect.signature(function).parameters["host"].default == "127.0.0.1"
+    parser = build_parser()
+    for command in ("app", "review"):
+        argv = [command] + (["--project", "p"] if command == "review" else [])
+        assert parser.parse_args(argv).host == "127.0.0.1", command

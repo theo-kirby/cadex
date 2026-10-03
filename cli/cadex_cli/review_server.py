@@ -42,6 +42,8 @@ module and an attributed prototype environment (ADR-301), with no CDN.
 from __future__ import annotations
 
 from array import array
+import base64
+import binascii
 import datetime as _datetime
 import hashlib
 from http import HTTPStatus
@@ -53,13 +55,16 @@ import mimetypes
 import re
 import secrets
 from pathlib import Path
+import shutil
 import struct
 import sys
+import tempfile
 import threading
 from typing import Any, Callable, Mapping
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 from xml.etree import ElementTree
 
+from .agent import IMAGE_LIMIT, IMAGES_PER_TURN, ImageAttachment, ImageRefused, image_attachment
 from .comments import read_comments
 from .revisions import read_history as read_revision_history
 from .walk import run_leg
@@ -1395,6 +1400,9 @@ WRITE_TOKEN_META = b'<meta name="cadex-write-token" content="">'
 WRITE_TOKEN_HEADER = "X-Cadex-Token"
 #: Bound on a POST body; a parameter change is a few dozen bytes.
 WRITE_BODY_LIMIT = 64 * 1024
+#: Bound on a design turn's body, which may carry its images as base64
+#: (ADR-507): every one at the CLI's limit, plus the prompt.
+TURN_BODY_LIMIT = IMAGES_PER_TURN * (IMAGE_LIMIT * 4 // 3 + 4) + WRITE_BODY_LIMIT
 #: How long one dashboard write may run before it is stopped, in seconds.
 WRITE_TIMEOUT_S = 300.0
 PARAM_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -1538,11 +1546,13 @@ class PromptTurn:
     notes) is the CLI's, as for a turn typed at a terminal (A3).
     """
 
-    def __init__(self, root: Path, prompt: str, resume: bool) -> None:
+    def __init__(self, root: Path, prompt: str, resume: bool,
+                 images: tuple[ImageAttachment, ...] = ()) -> None:
         self.id = secrets.token_hex(6)
         self.root = root
         self.prompt = prompt
         self.resume = resume
+        self.images = [image.summary() for image in images]
         self.started = _now()
         self.state = "running"
         self.reply: dict[str, Any] | None = None
@@ -1551,6 +1561,17 @@ class PromptTurn:
         self._truncated = False
         self._lock = threading.Lock()
         self.argv = ["--project", str(root), "--prompt=" + prompt] + (["--resume"] if resume else [])
+        # An attached image reaches the child as a file only it reads, in a
+        # scratch directory outside the project that goes when the turn
+        # ends; what the turn keeps of it is the CLI's (ADR-507).
+        self._scratch: Path | None = None
+        if images:
+            self._scratch = Path(tempfile.mkdtemp(prefix="cadex-turn-images-"))
+            for index, image in enumerate(images):
+                path = self._scratch / str(index) / image.name
+                path.parent.mkdir()
+                path.write_bytes(image.data)
+                self.argv.append("--image=" + str(path))
 
     def _append(self, text: str) -> None:
         with self._lock:
@@ -1573,11 +1594,14 @@ class PromptTurn:
             envelope = leg.envelope
             reply = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
                      "seconds": round(leg.seconds, 3)}
-            for key in ("accepted_revision", "digest", "params", "error", "notes", "session_id"):
+            for key in ("accepted_revision", "digest", "params", "error", "notes", "session_id", "attachments"):
                 if key in envelope:
                     reply[key] = envelope[key]
         except Exception as exc:  # noqa: BLE001 - the page must hear how it ended
             reply = {"ok": False, "exit": None, "error": f"the turn could not run: {exc}"}
+        finally:
+            if self._scratch is not None:
+                shutil.rmtree(self._scratch, ignore_errors=True)
         with self._lock:
             self.reply = reply
             self.state = "done" if reply["ok"] else "failed"
@@ -1586,8 +1610,27 @@ class PromptTurn:
         with self._lock:
             text = "".join(self._text)
             return {"id": self.id, "state": self.state, "prompt": self.prompt, "resume": self.resume,
-                    "started": self.started, "command": ["cadex", *self.argv],
+                    "images": list(self.images), "started": self.started, "command": ["cadex", *self.argv],
                     "text": text[max(0, min(since, len(text))):], "next": len(text), "reply": self.reply}
+
+
+def _turn_images(value: Any) -> tuple[ImageAttachment, ...]:
+    """A turn body's ``images``, ``[{"name", "data" (base64)}]``, checked as the CLI checks a file."""
+
+    if not isinstance(value, list) or len(value) > IMAGES_PER_TURN:
+        raise ImageRefused(f"images must be a list of at most {IMAGES_PER_TURN}.")
+    images = []
+    for item in value:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str) \
+                or not isinstance(item.get("data"), str):
+            raise ImageRefused('each image is {"name": text, "data": base64 text}.')
+        try:
+            data = base64.b64decode(item["data"], validate=True)
+        except (binascii.Error, ValueError):
+            raise ImageRefused(f"{item['name']!r} is not base64.") from None
+        name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(item["name"]).name).strip("._") or "image"
+        images.append(image_attachment(data, name[:80]))
+    return tuple(images)
 
 
 class Turns:
@@ -1611,13 +1654,17 @@ class Turns:
             return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"a prompt is at most {PROMPT_LIMIT} characters of text."}
         if not isinstance(resume, bool):
             return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "resume must be true or false."}
+        try:
+            images = _turn_images(body.get("images", []))
+        except ImageRefused as exc:
+            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)}
         key = root.resolve()
         with self._lock:
             running = self._turns.get(key)
             if running is not None and running.state == "running":
                 return HTTPStatus.CONFLICT, {"ok": False, "error": "a turn is already running on this project.",
                                              "turn": {"id": running.id, "state": running.state}}
-            turn = self._turns[key] = PromptTurn(key, prompt.strip(), resume)
+            turn = self._turns[key] = PromptTurn(key, prompt.strip(), resume, images)
         turn.start()
         return HTTPStatus.ACCEPTED, {"ok": True, "turn": turn.snapshot()}
 
@@ -1787,9 +1834,10 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
                 length = -1
-            if not 0 < length <= WRITE_BODY_LIMIT:
+            limit = TURN_BODY_LIMIT if segments[-2:] == ["api", "turn"] else WRITE_BODY_LIMIT
+            if not 0 < length <= limit:
                 self._send_json({"ok": False, "error": "a write needs a JSON body of at most "
-                                 f"{WRITE_BODY_LIMIT} bytes."}, HTTPStatus.BAD_REQUEST)
+                                 f"{limit} bytes."}, HTTPStatus.BAD_REQUEST)
                 return
             try:
                 body = json.loads(self.rfile.read(length))

@@ -325,8 +325,10 @@
     status.dataset.state = turn.state;
     $('turn-start').disabled = running;
     $('turn-prompt').disabled = running;
+    $('turn-attach').disabled = running;
     if (turn.state === 'idle') status.textContent = '';
-    else if (running) status.textContent = 'running: ' + turn.prompt;
+    else if (running) status.textContent = 'running: ' + turn.prompt +
+      (turn.images && turn.images.length ? ' (with ' + turn.images.map(function (image) { return image.name; }).join(', ') + ')' : '');
     else if (turn.reply && turn.reply.ok) status.textContent = 'accepted at ' + short(turn.reply.accepted_revision) +
       ' in ' + Number(turn.reply.seconds || 0).toFixed(1) + ' s';
     else status.textContent = (turn.reply && turn.reply.error) || 'the turn failed';
@@ -348,7 +350,8 @@
       var wasRunning = turn.state === 'running' && turn.id === reply.id;
       if (reply.id !== turn.id) {
         // Another turn: its transcript starts over, so read it from the top.
-        turn = { id: reply.id, state: reply.state, text: '', next: 0, reply: null, prompt: reply.prompt };
+        turn = { id: reply.id, state: reply.state, text: '', next: 0, reply: null, prompt: reply.prompt,
+                 images: reply.images || [] };
         turnRequest = null;
         return pollTurn();
       }
@@ -360,6 +363,31 @@
     return turnRequest;
   }
 
+  // Images attached to the next prompt (ADR-507), as {name, data: base64}.
+  var turnImages = [];
+
+  function renderTurnImages() {
+    var line = $('turn-images');
+    line.hidden = !turnImages.length;
+    line.textContent = turnImages.length ? 'attached: ' + turnImages.map(function (image) { return image.name; }).join(', ') : '';
+    $('turn-attach').textContent = turnImages.length ? 'Remove image' + (turnImages.length > 1 ? 's' : '') : 'Attach image';
+  }
+
+  function attachImages(files) {
+    return Promise.all(Array.prototype.map.call(files, function (file) {
+      return new Promise(function (resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function () { resolve({ name: file.name, data: String(reader.result).split(',')[1] || '' }); };
+        reader.onerror = function () { reject(reader.error); };
+        reader.readAsDataURL(file);
+      });
+    })).then(function (images) {
+      turnImages = images;
+      renderTurnImages();
+      return images.length;
+    });
+  }
+
   function startTurn(prompt, resume) {
     var status = $('turn-status');
     status.dataset.state = 'pending';
@@ -367,13 +395,16 @@
     return fetch(BASE + '/api/turn', {
       method: 'POST', cache: 'no-store',
       headers: { 'Content-Type': 'application/json', 'X-Cadex-Token': WRITE_TOKEN },
-      body: JSON.stringify({ prompt: prompt, resume: !!resume })
+      body: JSON.stringify({ prompt: prompt, resume: !!resume, images: turnImages })
     }).then(function (response) {
       return response.json();
     }).then(function (reply) {
       if (!reply.ok) throw new Error(reply.error || 'refused');
+      turnImages = [];
+      $('turn-image').value = '';
+      renderTurnImages();
       turn = { id: reply.turn.id, state: reply.turn.state, text: reply.turn.text, next: reply.turn.next,
-               reply: reply.turn.reply, prompt: reply.turn.prompt };
+               reply: reply.turn.reply, prompt: reply.turn.prompt, images: reply.turn.images || [] };
       renderTurn();
       return reply.turn;
     }).catch(function (error) {
@@ -1157,6 +1188,11 @@
       var prompt = $('turn-prompt').value.trim();
       if (prompt) startTurn(prompt, $('turn-resume').checked);
     });
+    $('turn-attach').addEventListener('click', function () {
+      if (turnImages.length) { turnImages = []; $('turn-image').value = ''; renderTurnImages(); }
+      else $('turn-image').click();
+    });
+    $('turn-image').addEventListener('change', function () { attachImages($('turn-image').files); });
     if (state.viewer.setOnPick) state.viewer.setOnPick(pickPart);
     $('comment-whole').addEventListener('click', function () { pickPart(''); });
     $('comment-send').addEventListener('click', function () {
@@ -1178,7 +1214,9 @@
     setParam: writeParams,
     lastWrite: function () { return lastWrite; },
     startTurn: startTurn,
-    turn: function () { return { id: turn.id, state: turn.state, text: turn.text, reply: turn.reply }; },
+    turn: function () { return { id: turn.id, state: turn.state, text: turn.text, reply: turn.reply, images: turn.images || [] }; },
+    attachImages: attachImages,
+    attached: function () { return turnImages.map(function (image) { return image.name; }); },
     comment: sendComment,
     lastComment: function () { return lastComment; },
     commentPart: function () { return commentPart; },

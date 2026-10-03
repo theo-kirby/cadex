@@ -19,10 +19,15 @@ handed, as :mod:`mock_backend`'s do; only the model is faked.
     ["done", "final words"]           the turn's result
 
 and ``CADEX_FAKE_CLAUDE_SEEN``, when set, receives the prompt it was given.
+A prompt with images arrives as ``--input-format stream-json`` on stdin
+(ADR-507); its text goes to ``SEEN`` the same way, and each image block's
+media type and the SHA-256 of its decoded bytes to ``SEEN.images.json``.
 """
 
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -44,8 +49,19 @@ def main(argv: list[str]) -> int:
     shim = next(iter(config["mcpServers"].values()))["args"]
     socket_path, token = shim[shim.index("--socket") + 1], shim[shim.index("--token") + 1]
     seen = os.environ.get("CADEX_FAKE_CLAUDE_SEEN")
+    if "--input-format" in argv:
+        message = json.loads(sys.stdin.readline())["message"]
+        blocks = message["content"]
+        prompt = "".join(block["text"] for block in blocks if block["type"] == "text")
+        images = [{"media_type": block["source"]["media_type"],
+                   "sha256": hashlib.sha256(base64.b64decode(block["source"]["data"])).hexdigest()}
+                  for block in blocks if block["type"] == "image"]
+    else:
+        prompt, images = argv[argv.index("-p") + 1], None
     if seen:
-        Path(seen).write_text(argv[argv.index("-p") + 1], encoding="utf-8")
+        Path(seen).write_text(prompt, encoding="utf-8")
+        if images is not None:
+            Path(seen + ".images.json").write_text(json.dumps(images), encoding="utf-8")
     steps = json.loads(Path(os.environ["CADEX_FAKE_CLAUDE_SCRIPT"]).read_text(encoding="utf-8"))
     for step in steps:
         kind = step[0]

@@ -22,8 +22,10 @@ a pipeline step that dies for nothing.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import base64
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+import hashlib
 import json
 import os
 import re
@@ -332,6 +334,74 @@ def system_prompt(api: dict[str, Any], *, project_docs: str = "") -> str:
     return "\n\n".join(section for section in sections if section is not None)
 
 
+#: What an attached image may be, by its leading bytes rather than its name:
+#: the four formats the Messages API reads.
+IMAGE_SIGNATURES = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+)
+#: Bound on one attached image, in bytes: base64 grows it by a third, and
+#: the API refuses an image over 5 MB as sent.
+IMAGE_LIMIT = 3_750_000
+#: Bound on how many images one prompt carries.
+IMAGES_PER_TURN = 4
+
+
+class ImageRefused(ValueError):
+    """An attachment that is not an image a turn can carry."""
+
+
+@dataclass(frozen=True)
+class ImageAttachment:
+    """One image the owner attached to a prompt (ADR-507)."""
+
+    name: str
+    media_type: str
+    data: bytes = field(repr=False)
+
+    @property
+    def sha256(self) -> str:
+        return hashlib.sha256(self.data).hexdigest()
+
+    def summary(self) -> dict[str, Any]:
+        """What the envelope records: never the bytes."""
+
+        return {"name": self.name, "media_type": self.media_type,
+                "bytes": len(self.data), "sha256": self.sha256}
+
+    def content_block(self) -> dict[str, Any]:
+        return {"type": "image", "source": {"type": "base64", "media_type": self.media_type,
+                                            "data": base64.b64encode(self.data).decode("ascii")}}
+
+
+def image_attachment(data: bytes, name: str) -> ImageAttachment:
+    """Check ``data`` is a PNG, JPEG, GIF or WebP under the limit; raise :class:`ImageRefused`."""
+
+    label = Path(str(name)).name or "image"
+    if not data:
+        raise ImageRefused(f"{label} is empty.")
+    if len(data) > IMAGE_LIMIT:
+        raise ImageRefused(f"{label} is {len(data)} bytes; an attached image is at most {IMAGE_LIMIT}.")
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ImageAttachment(label, "image/webp", bytes(data))
+    for signature, media_type in IMAGE_SIGNATURES:
+        if data.startswith(signature):
+            return ImageAttachment(label, media_type, bytes(data))
+    raise ImageRefused(f"{label} is not a PNG, JPEG, GIF or WebP image.")
+
+
+def read_image(path: str | Path) -> ImageAttachment:
+    """:func:`image_attachment` over a file; an unreadable one is refused too."""
+
+    try:
+        data = Path(path).expanduser().read_bytes()
+    except OSError as exc:
+        raise ImageRefused(f"cannot read {path}: {exc.strerror or exc}") from exc
+    return image_attachment(data, str(path))
+
+
 @dataclass
 class TurnResult:
     """What one ``claude -p`` turn produced, as the CLI needs to report it."""
@@ -410,11 +480,13 @@ class ClaudeTurn:
         path.write_text(json.dumps(config, indent=2), encoding="utf-8")
         return path
 
-    def _command(self, prompt: str, *, resume: bool) -> list[str]:
-        command = [
-            self.claude_path,
-            "-p",
-            prompt,
+    def _command(self, prompt: str, *, resume: bool, stream_input: bool = False) -> list[str]:
+        # A prompt with images cannot be an argument: it goes in on stdin as
+        # one stream-json user message, text block then image blocks
+        # (ADR-507). The agent has no file tool to open a path with.
+        command = [self.claude_path, "-p"]
+        command.extend(["--input-format", "stream-json"] if stream_input else [prompt])
+        command += [
             "--output-format",
             "stream-json",
             "--verbose",
@@ -450,11 +522,11 @@ class ClaudeTurn:
 
         return {**os.environ, HARNESS_MAX_OUTPUT_TOKENS_ENV: str(self.max_output_tokens)}
 
-    def run(self, prompt: str) -> TurnResult:
+    def run(self, prompt: str, images: Sequence[ImageAttachment] = ()) -> TurnResult:
         """Run the turn, falling back to a fresh conversation if resume fails."""
 
         resuming = bool(self.session_id)
-        result = self._run_once(prompt, resume=resuming)
+        result = self._run_once(prompt, resume=resuming, images=images)
         if not resuming or result.ok or _model_spoke(result.frames):
             return result
         # The turn failed and the model never said a word, so it never
@@ -464,7 +536,7 @@ class ClaudeTurn:
         # is output.) Start over rather than report failure.
         stale = self.session_id
         self.session_id = ""
-        fresh = self._run_once(prompt, resume=False)
+        fresh = self._run_once(prompt, resume=False, images=images)
         fresh.resume_failed = True
         if not fresh.error and result.error:
             fresh.error = (
@@ -473,12 +545,13 @@ class ClaudeTurn:
             )
         return fresh
 
-    def _run_once(self, prompt: str, *, resume: bool) -> TurnResult:
+    def _run_once(self, prompt: str, *, resume: bool,
+                  images: Sequence[ImageAttachment] = ()) -> TurnResult:
         result = TurnResult()
         try:
             process = subprocess.Popen(
-                self._command(prompt, resume=resume),
-                stdin=subprocess.DEVNULL,
+                self._command(prompt, resume=resume, stream_input=bool(images)),
+                stdin=subprocess.PIPE if images else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=self._cwd,
@@ -492,6 +565,15 @@ class ClaudeTurn:
             result.exit_code = 1
             return result
 
+        if images:
+            assert process.stdin is not None
+            message = {"type": "user", "message": {"role": "user", "content": [
+                {"type": "text", "text": prompt}, *(image.content_block() for image in images)]}}
+            try:
+                process.stdin.write(json.dumps(message) + "\n")
+                process.stdin.close()
+            except BrokenPipeError:
+                pass  # the child is gone; its exit status says why
         assert process.stdout is not None
         for line in process.stdout:
             line = line.strip()

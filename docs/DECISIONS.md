@@ -32793,3 +32793,79 @@ selector, and the argv is pinned; in headless Chromium against a real
 engine, Accept, then Reject with a note (the model redrawn 50 mm wide, 6 mm
 thick), then Restore on row #1 (redrawn 30 mm wide), then a turn from the
 page whose prompt carried all three verdicts.
+
+## ADR-507 — An image attached to a prompt: `cadex -p --image`, and the dashboard's Attach image (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. A new prompt flag, `--image PATH` (repeatable, at
+most four); an `attachments` field on the `cadex -p` envelope; an
+`images` field on the dashboard's `POST api/turn` body and its turn
+snapshot; and a remote-viewing section in `docs/DASHBOARD.md` (§22). No
+cadexd protocol, `OP_ARG_SPECS` or agent tool-surface change. No new
+dependency.
+
+**Context.** D2's first item is to start a design turn from a prompt,
+*optionally with an attached image*. The shell let a person attach one in
+its chat panel, and its `get_attached_image` tool returned it to the
+model. ADR-504 brought the turn to the browser without images, because
+the CLI had no way to carry one: the product agent runs with `--tools ""`
+(its whole world is the engine), so a file path in the prompt is a path
+it cannot open. A3 also rules out a second write path, so the browser
+cannot hand the image to the agent by any route other than the CLI's.
+
+**Decision.** The CLI checks each `--image` file by its leading bytes
+(PNG, JPEG, GIF, WebP) and size (3.75 MB, so base64 stays under the API's
+5 MB), before any engine starts. A refusal exits 2. When a turn carries
+images, `ClaudeTurn` runs `claude -p --input-format stream-json` and
+writes one user message on stdin: the prompt's text block, then one
+base64 image block for each image. A turn without images keeps the
+`-p PROMPT` argument it had. The stale-session retry resends the
+images. The "asked once more" nudge does not, because it continues the
+same conversation. The progress stream, which is the dashboard's
+transcript, gets one `· attached <name>` line per image. The envelope's
+`attachments` records each image's name, type, size and SHA-256, never
+its bytes. The image is not copied into the project.
+
+The page's **Attach image** reads the picked files as base64 and sends
+them in the turn POST, behind the ADR-503 token and `Origin` check. A
+turn's body may be up to `TURN_BODY_LIMIT` (four images at the limit,
+plus 64 KiB). Every other route keeps 64 KiB. The server checks each
+image the same way the CLI does. It writes the images to a scratch
+directory outside the project and adds `--image=<file>` to the same
+`cadex -p` child. It removes the directory when the turn ends.
+`get_attached_image` is not re-derived: the image is already in the
+model's own message.
+
+Measured once before building on it: Claude Code 2.1.288 on this machine
+took a stream-json user message with a 32×32 blue PNG on stdin, under
+`--tools ""`. Asked what colour filled it, Haiku 4.5 answered "Blue".
+
+**Cost.** An image is not kept with the project, so a later reader of a
+turn knows only its name and digest, not what it showed. A turn with
+images feeds its prompt on stdin and not as an argument. That is a
+second shape of the `claude` command line, used only when images are
+attached. A turn POST can now hold about 20 MB in server memory while it
+is checked. The token check runs before the body is read, so only a page
+the server served can send one.
+
+**What would reverse it.** If the owner wants attached images kept, the
+CLI would copy each into the project (for example `attachments/<sha>.png`)
+and the project commit would carry it. If Claude Code drops stream-json
+input, the fallback is a bridge tool that returns the image, and that
+would be a tool-surface change with its own ADR.
+
+**Test.** `cli/tests/test_prompt_images.py`: images are recognised by
+signature, and a name-only PNG, an empty image and an oversized one are
+refused. A real child process standing in for `claude` receives the
+message on stdin as text block then image block, with the exact bytes.
+A prompt without images stays an argument. A refused, unreadable or
+fifth image exits 2 with no turn made. `--image` without `-p` is a
+usage error. Against a real engine, the turn receives the image and the
+envelope records it. `cli/tests/test_dashboard_writes.py`: the route
+refuses bad image bodies with 400. A turn may exceed 64 KiB while the
+slider may not. The upload becomes `--image=<file>` with a sanitised
+name, the file holds the exact bytes, and the scratch directory is gone
+when the turn ends. In headless Chromium against a real engine, a file
+picked into `#turn-image` reaches `claude` as an image block with the
+same SHA-256. The turn lands a 48 mm plate the page redraws, and the
+attachment clears. §22's `tailscale serve` note and the loopback defaults
+it relies on are pinned there too.

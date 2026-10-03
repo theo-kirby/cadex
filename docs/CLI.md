@@ -84,7 +84,13 @@ Flags, valid on either side of the subcommand:
 | `--wait` | Block for the project lock instead of failing. |
 
 Prompt-only flags: `--resume` (continue this project's conversation),
-`--model`, `--claude` (path to the CLI). Model resolution for prompts and
+`--model`, `--claude` (path to the CLI), and `--image PATH`, repeatable up
+to four, which attaches a PNG, JPEG, GIF or WebP image to the prompt
+(ADR-507). The file is checked by its bytes and must be at most 3.75 MB; a refused one exits 2 before
+any engine starts. The turn then sends the prompt to `claude` as one
+stream-json user message on stdin, text then images, instead of as the
+`-p` argument. The envelope's `attachments` lists each image's name, type,
+size and SHA-256. `--image` with anything but `-p` is a usage error. Model resolution for prompts and
 walk design turns is: explicit `--model`, nonblank `$CADEX_MODEL`, the
 project's `agent.json.model`, then `claude-fable-5` (ADR-249, ADR-276).
 The recorded model applies with or without `--resume`; that flag controls

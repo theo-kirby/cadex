@@ -58,9 +58,12 @@ class MockTurn:
         #: Every ``(tool, reply)`` the "model" saw, for assertions.
         self.tool_results: list[tuple[str, dict[str, Any]]] = []
         self.prompts: list[str] = []
+        #: The images each turn carried, in turn order (ADR-507).
+        self.images: list[list[Any]] = []
 
-    def run(self, prompt: str) -> TurnResult:
+    def run(self, prompt: str, images: Any = ()) -> TurnResult:
         self.prompts.append(prompt)
+        self.images.append(list(images))
         steps = self.script[self.turns] if self.turns < len(self.script) else []
         self.turns += 1
         result = TurnResult(ok=True, session_id=self.session_id)
