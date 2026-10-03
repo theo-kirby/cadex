@@ -332,3 +332,9 @@ pre#doc-view { white-space: pre-wrap; overflow-wrap: anywhere; background: var(-
   ul#videos { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
   ul#videos video { max-height: calc(100dvh - var(--bar) - 120px); }
 }
+
+/* The projects index (`cadex app`): one card, one row per project. */
+main#projects-frame { padding: var(--gutter); max-width: 960px; }
+#projects { list-style: none; margin: 0; padding: 0; }
+#projects li { padding: var(--s2) 0; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
+#projects li:last-child { border-bottom: 0; }

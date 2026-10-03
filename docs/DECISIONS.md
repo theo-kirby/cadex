@@ -32509,3 +32509,43 @@ already in `docs/history/`.
 type, palette and dark-floor sections, that no `docs/REVIEW-DESIGN.md`
 exists, that no live doc or `cli/` file names it, and that the Blender
 docs exist only under `docs/history/`.
+
+## ADR-502 — `cadex app`: a bare `cadex` serves the dashboard over a projects directory (2026-10-03, owner charter orun2 D1)
+
+**Status:** accepted. A new subcommand and a changed bare invocation; no
+protocol or tool-surface change.
+
+**Context.** D1 asks for one command from a clone to a running dashboard,
+with `./cadex` and no project opening or serving it. `cadex review`
+served exactly one project, and a bare `./cadex` printed help and exited
+2. The review page asked for every resource by an absolute path, so it
+could only live at a server's root.
+
+**Decision.** `cadex app [--projects DIR]` serves `ProjectsServer`
+(`review_server.py`): `/` is a small index page (`projects.html`,
+`projects.js`, sharing `review.css`) over `/api/projects`
+(`cadex-projects-v1`), which lists every non-hidden subdirectory holding a
+`script.json`, re-read per request, with its accepted identity and run
+count. Each project's unchanged review page is mounted at `/p/<name>/`;
+`index.html` now links its files relatively, and `review.js` prefixes its
+requests — and the server-absolute mesh URLs it hands the viewer — with
+the `/p/<name>` the page was loaded under, which is empty at `/`, so
+`cadex review` is byte-for-byte the same in what it requests. A bare
+`cadex` (no prompt, no subcommand) runs `cadex app`; help moved to the
+`-h` it always had. `pixi run app` is `./cadex app`. The directory is
+`--projects`, `CADEX_PROJECTS`, then `~/cadex-projects` — the convention
+every doc example already used — created if absent so a fresh clone
+reaches a first page. It binds 127.0.0.1 by default, writes nothing and
+records no `PROGRESS.md` row or commit, as `cadex review` does not.
+
+**Cost.** `review_scene.js` is untouched, so the scene-video style digest
+(`video.py`) does not move. A script that relied on bare `cadex` exiting 2
+now starts a server; `cadex -h` is the replacement.
+
+**Test.** `cli/tests/test_app.py`: the listing (projects only, live), the
+prefix mount and its 404s, the bare-invocation routing, the directory
+defaults, the shim served over loopback and stopped by SIGTERM without
+writing to a project, `pixi run app`'s task, and a headless-Chromium walk
+from the index to a project whose accepted and run models draw under the
+prefix.
+

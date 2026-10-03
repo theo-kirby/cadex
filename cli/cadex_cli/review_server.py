@@ -74,6 +74,14 @@ STATIC_FILES = {
     "capture.html": ("text/html; charset=utf-8", STATIC_DIR / "capture.html"),
     "viewer.js": ("text/javascript; charset=utf-8", STATIC_DIR / "viewer.js"),
 }
+#: The projects index's own files (``cadex app``); the review page's files
+#: are served too, so the index shares its stylesheet.
+PROJECTS_STATIC_FILES = {
+    **STATIC_FILES,
+    "projects.html": ("text/html; charset=utf-8", STATIC_DIR / "projects.html"),
+    "projects.js": ("text/javascript; charset=utf-8", STATIC_DIR / "projects.js"),
+}
+PROJECTS_SCHEMA = "cadex-projects-v1"
 #: Content types for the retained artifacts; anything else downloads as bytes.
 CONTENT_TYPES = {
     ".json": "application/json; charset=utf-8",
@@ -1491,12 +1499,43 @@ class ReviewHandler(BaseHTTPRequestHandler):
             self._not_found(parts.path)
             return
         try:
-            self._route(segments, download)
+            projects = getattr(self.server, "projects", None)
+            if projects is None:
+                self._route(self.project, segments, download)
+            else:
+                self._route_projects(projects, parts.path, segments, download)
         except CLIENT_GONE:
             pass
 
-    def _route(self, segments: list[str], download: bool) -> None:
-        project = self.project
+    def _route_projects(self, projects: "ProjectsDirectory", path: str, segments: list[str],
+                        download: bool) -> None:
+        """The projects index at ``/``; each project's page under ``/p/<name>/``."""
+
+        if not segments:
+            segments = ["projects.html"]
+        head, rest = segments[0], segments[1:]
+        if len(segments) == 1 and head in PROJECTS_STATIC_FILES:
+            content_type, file = PROJECTS_STATIC_FILES[head]
+            self._send_bytes(file.read_bytes(), content_type)
+            return
+        if segments == ["api", "projects"]:
+            self._send_json(projects.listing())
+            return
+        if head == "p" and rest:
+            project = projects.project(rest[0])
+            if project is None:
+                self._not_found(f"project {rest[0]!r}")
+                return
+            if len(rest) == 1 and not path.endswith("/"):
+                # The page's URLs are relative to its own directory.
+                self._send_bytes(b"", "text/plain; charset=utf-8", HTTPStatus.MOVED_PERMANENTLY,
+                                 {"Location": "/p/" + quote(rest[0], safe="") + "/"})
+                return
+            self._route(project, rest[1:], download)
+            return
+        self._not_found("/".join(segments))
+
+    def _route(self, project: ReviewProject, segments: list[str], download: bool) -> None:
         if not segments:
             segments = ["index.html"]
         head, rest = segments[0], segments[1:]
@@ -1587,6 +1626,71 @@ class ReviewServer(ThreadingHTTPServer):
         host, port = self.server_address[:2]
         shown = f"[{host}]" if ":" in str(host) else str(host)
         return f"http://{shown}:{port}/"
+
+
+class ProjectsDirectory:
+    """Every project directly under one directory, found anew per request.
+
+    A project is a subdirectory holding the project manifest
+    (``script.json``); a project created while the page is open appears on
+    its next poll. Listing reads each manifest and counts ``runs/`` entries,
+    and nothing else, so a directory of many projects stays cheap to list.
+    """
+
+    def __init__(self, root: Path | str) -> None:
+        self.root = Path(root).expanduser().resolve()
+
+    def _names(self) -> list[str]:
+        if not self.root.is_dir():
+            return []
+        return sorted(child.name for child in self.root.iterdir()
+                      if child.is_dir() and not child.name.startswith(".")
+                      and (child / PROJECT_SCRIPT_FILENAME).is_file())
+
+    def project(self, name: str) -> ReviewProject | None:
+        if name not in self._names():
+            return None
+        return ReviewProject(self.root / name)
+
+    def listing(self) -> dict[str, Any]:
+        projects = []
+        for name in self._names():
+            root = self.root / name
+            runs = root / RUNS_DIRNAME
+            projects.append({
+                "name": name,
+                "url": "/p/" + quote(name, safe="") + "/",
+                "accepted": read_accepted_identity(root),
+                "runs": sum(1 for child in runs.iterdir() if child.is_dir()) if runs.is_dir() else 0,
+            })
+        return {"schema": PROJECTS_SCHEMA, "root": self.root.name, "projects": projects,
+                "served_at": _now()}
+
+
+class ProjectsServer(ThreadingHTTPServer):
+    """A directory of projects, one address: the index lists them, and each
+    project's review page is served under ``/p/<name>/``."""
+
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def __init__(self, projects_root: Path | str, host: str, port: int,
+                 log: Callable[[str], None] | None = None) -> None:
+        self.projects = ProjectsDirectory(projects_root)
+        self.log = log
+        super().__init__((host, port), ReviewHandler)
+
+    url = ReviewServer.url
+
+
+def serve_projects(projects_root: Path | str, host: str = "127.0.0.1", port: int = 0,
+                   log: Callable[[str], None] | None = None) -> tuple[ProjectsServer, threading.Thread]:
+    """As :func:`serve`, over a directory of projects (``cadex app``)."""
+
+    server = ProjectsServer(projects_root, host, port, log=log)
+    thread = threading.Thread(target=server.serve_forever, name="cadex-app", daemon=True)
+    thread.start()
+    return server, thread
 
 
 def serve(project_root: Path | str, host: str = "127.0.0.1", port: int = 0,

@@ -15,6 +15,10 @@
 (function () {
   'use strict';
 
+  // Served alone (`cadex review`) the page is at `/`; served from a projects
+  // directory (`cadex app`) it is at `/p/<name>/`, and every request it makes
+  // carries that prefix.
+  var BASE = (location.pathname.match(/^\/p\/[^/]+(?=\/)/) || [''])[0];
   var POLL_MS = 2000;
   var state = { review: null, selected: 'accepted', lastOk: null, stale: false, model: null, viewer: null,
                 error: null, following: true, docKey: null, docRequest: 0, detail: null, showProxies: false };
@@ -148,7 +152,7 @@
     $('check-policy-origin').hidden = !run;
     if (!run) { line.dataset.state = 'unselected'; line.textContent = 'select a run'; return; }
     line.dataset.state = 'pending'; line.textContent = 'checking retained policy bytes…';
-    fetchJson('/api/policy-origin/' + encodeURIComponent(run.run)).then(function (data) {
+    fetchJson(BASE + '/api/policy-origin/' + encodeURIComponent(run.run)).then(function (data) {
       if (request !== originRequest) return;
       var origin = data.origin;
       line.dataset.state = origin ? 'resolved' : 'unresolved';
@@ -421,8 +425,8 @@
         body.appendChild(el('tr', { 'data-group': group, 'data-key': key }, [el('td', { text: group + '.' + key }), el('td', { className: 'mono', text: item.path == null ? '—' : item.path }), cell, sizeCell(sized)]));
       });
     }
-    rows('artifacts', '/artifact/run/');
-    rows('project_artifacts', '/artifact/project/');
+    rows('artifacts', BASE + '/artifact/run/');
+    rows('project_artifacts', BASE + '/artifact/project/');
     var videoSizes = sizes ? sizes.videos || [] : [];
     function updateVideoSizes() {
       videos.querySelectorAll('[data-video-size]').forEach(function (node) {
@@ -453,7 +457,7 @@
       var label = 'video ' + index + ' · ' + (video.path || '?') + ' · revision ' + short(video.accepted_revision || (run.model || {}).accepted_revision) + ' · policy ' + short(video.policy_sha256) + ' · seed ' + fmt(video.seed) + ' · ' + fmt(video.sim_seconds) + ' s · ' + (video.style || 'historical legacy style') + ' · showing ' + (video.showing || 'not recorded (recorded before videos named what they show)');
       line.setAttribute('data-showing', video.showing ? 'solids' : 'unrecorded');
       if (item.exists && !item.error) {
-        var url = '/video/run/' + encodeURIComponent(run.run) + '/' + index;
+        var url = BASE + '/video/run/' + encodeURIComponent(run.run) + '/' + index;
         var player = el('video', { controls: true, preload: 'metadata', src: url });
         // A play control of the page's own, sized for a finger (DASHBOARD.md
         // §5): the native controls' tap targets are not the same on every phone.
@@ -503,7 +507,7 @@
       var names = ['ARCHITECTURE.md', 'DECISIONS.md', 'PROGRESS.md'].filter(function (name) { return review.docs[name]; }).concat(review.docs.domain || []);
       text('docs-note', names.length ? 'project documents now (current, not a snapshot)' : 'no project documents');
       names.forEach(function (name) {
-        docs.appendChild(el('li', { 'data-doc': name }, [el('a', { href: '#', text: name, onclick: function (event) { event.preventDefault(); showDoc('/doc/current/' + name, name); } })]));
+        docs.appendChild(el('li', { 'data-doc': name }, [el('a', { href: '#', text: name, onclick: function (event) { event.preventDefault(); showDoc(BASE + '/doc/current/' + name, name); } })]));
       });
       (review.decisions || []).forEach(function (heading) { decisions.appendChild(el('li', { 'data-decision': heading, text: heading })); });
       if (!(review.decisions || []).length) decisions.appendChild(el('li', { className: 'muted', text: 'no decisions recorded' }));
@@ -513,7 +517,7 @@
     var files = Object.keys(snapshot.files || {}).sort();
     text('docs-note', files.length ? 'snapshot taken when this run was recorded — ' + (snapshot.note || '') : 'no document snapshot for this run (' + (snapshot.note || 'none') + ')');
     files.forEach(function (name) {
-      docs.appendChild(el('li', { 'data-doc': name }, [el('a', { href: '#', text: name, onclick: function (event) { event.preventDefault(); showDoc('/doc/run/' + encodeURIComponent(run.run) + '/' + name, name + ' (snapshot)'); } })]));
+      docs.appendChild(el('li', { 'data-doc': name }, [el('a', { href: '#', text: name, onclick: function (event) { event.preventDefault(); showDoc(BASE + '/doc/run/' + encodeURIComponent(run.run) + '/' + name, name + ' (snapshot)'); } })]));
     });
     (snapshot.skipped || []).forEach(function (item) { docs.appendChild(el('li', { className: 'status-missing', text: item.path + ': skipped (' + item.reason + ')' })); });
     decisions.appendChild(el('li', { className: 'muted', text: 'decisions as of this run are in the DECISIONS.md snapshot above' }));
@@ -563,7 +567,7 @@
 
   function loadModel() {
     var run = selectedRun();
-    var url = run ? '/api/model/run/' + encodeURIComponent(run.run) : '/api/model/accepted';
+    var url = run ? BASE + '/api/model/run/' + encodeURIComponent(run.run) : BASE + '/api/model/accepted';
     var status = $('model-status');
     status.dataset.state = 'loading'; status.textContent = 'loading model…';
     clearChildren($('model-components'));
@@ -585,7 +589,8 @@
         renderModelComponents(manifest, []);
         return;
       }
-      return state.viewer.load(manifest).then(function (loaded) {
+      // Mesh URLs in the manifest are server-absolute; BASE mounts them.
+      return state.viewer.load(manifest, function (url, options) { return window.fetch(BASE + url, options); }).then(function (loaded) {
         if (token !== state.selected) return;
         // The proxies ride along, hidden unless the toggle is on: the solids are what is shown.
         state.viewer.setProxies(manifest.collision && manifest.collision.available ? manifest.collision.geoms : []);
@@ -626,8 +631,8 @@
     status.textContent = shown.relation === 'current'
       ? 'the accepted design, drawn from revision ' + short(shown.revision)
       : shown.relation + ': drawn from revision ' + short(shown.revision) + ', not the accepted one';
-    $('concept-sheet').src = '/presentation/sheet.png' + stamp;
-    $('concept-open').href = '/presentation/sheet.png' + stamp;
+    $('concept-sheet').src = BASE + '/presentation/sheet.png' + stamp;
+    $('concept-open').href = BASE + '/presentation/sheet.png' + stamp;
     $('concept-hero').hidden = !shown.files.hero;
     text('concept-caption', [numbers.name,
       numbers.mass_kg == null ? 'mass —' : numbers.mass_kg.toFixed(2) + ' kg',
@@ -683,7 +688,7 @@
     var film = report.film || { state: 'none', seeds: [] };
     var filmed = {};
     (film.seeds || []).forEach(function (row) { filmed[row.seed] = row; });
-    var base = '/evaluation/' + encodeURIComponent(detail.name) + '/';
+    var base = BASE + '/evaluation/' + encodeURIComponent(detail.name) + '/';
     fillTable('evaluation-predicates', null, (summary.predicates || []).map(function (row) {
       var value = row.value || {}, passing = !(row.failed_seeds || []).length;
       return el('tr', { 'data-predicate': row.id }, [cell(row.id), cell(row.metric), cell(bound(row)),
@@ -784,7 +789,7 @@
       'revision ' + short(shown.accepted_revision) + (shown.relation === 'current' ? ', the accepted design' : ', ' + shown.relation + ': not the accepted design'),
       'evaluated ' + shown.evaluated_at].concat(shown.failing.length ? ['failing ' + shown.failing.join(', ')] : []).join(' · ');
     var request = ++evaluationRequest;
-    fetchJson('/api/evaluation/' + encodeURIComponent(shown.name)).then(function (detail) {
+    fetchJson(BASE + '/api/evaluation/' + encodeURIComponent(shown.name)).then(function (detail) {
       if (request === evaluationRequest) drawEvaluation(shown, detail);
     }).catch(function (error) {
       if (request !== evaluationRequest) return;
@@ -808,7 +813,7 @@
     // One run's histories and verified checkpoints, for the selected run only.
     var run = selectedRun(), request = ++detailRequest;
     if (!run) { state.detail = null; lastPoll.detail_bytes = 0; return Promise.resolve(); }
-    return fetchJson('/api/run/' + encodeURIComponent(run.run), 'detail_bytes').then(function (detail) {
+    return fetchJson(BASE + '/api/run/' + encodeURIComponent(run.run), 'detail_bytes').then(function (detail) {
       if (request !== detailRequest) return;
       state.detail = detail;
     }).catch(function () {
@@ -835,7 +840,7 @@
   function poll() {
     if (pendingPoll) return pendingPoll;
     var started = performance.now();
-    pendingPoll = fetchJson('/api/project', 'project_bytes').then(function (review) {
+    pendingPoll = fetchJson(BASE + '/api/project', 'project_bytes').then(function (review) {
       var previousModel = modelIdentity();
       if (Array.from($('videos').querySelectorAll('video')).some(function (video) {
         return !video.paused && !video.ended;

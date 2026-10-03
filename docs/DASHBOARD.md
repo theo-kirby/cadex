@@ -39,7 +39,10 @@ like?** The reader is the operator of an unattended loop, on a desk browser
 between iterations or on a phone away from the desk. They watch, and step in
 only lightly; they never model by hand (VISION's non-goals). Today every
 control on the page is a *view* control (select a run, orbit the model, play
-a video, open a document): the server answers `GET` and `HEAD` only. The
+a video, open a document): the server answers `GET` and `HEAD` only. It is served for one project
+(`cadex review`, at `/`) or for a directory of them (`cadex app` and a bare
+`cadex`, ADR-502): an index of the projects at `/`, sharing this page's
+tokens, and each project's page under `/p/<name>/`. The
 steering controls the orun2 charter's D2 adds — a prompt, a slider, a
 comment, accept and restore — will each write through the CLI's own code
 path, and in every case the page holds no project state of its own: it polls

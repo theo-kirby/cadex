@@ -83,8 +83,15 @@ application is tagged `v1-blender-shell`.
 git clone <this repo> && cd cadex
 pixi run setup-engine   # the one submodule the engine compiles
 pixi run build-engine   # the headless engine (BUILD_GUI=OFF)
-./cadex review --project <dir>   # the review dashboard over one project
+pixi run app            # the dashboard at http://127.0.0.1:8765/
 ```
+
+`pixi run app` (or a bare `./cadex`) serves the dashboard over a projects
+directory — `~/cadex-projects`, created if absent, unless `--projects` or
+`CADEX_PROJECTS` names another — bound to 127.0.0.1. Its first page lists
+every project there; each opens its review page. To watch from another
+device, put `tailscale serve` in front of it rather than binding a public
+address. `./cadex review --project <dir>` serves one project alone.
 
 `pixi run stage-engine` stages the engine payload into
 `build/engine/cadex-engine-<version>-<os>-<arch>/`.
@@ -136,7 +143,7 @@ Everything runs headless; the dashboard is where you look
 ./cadex -p "a mounting bracket for a NEMA17, 4 mm wall" --project ./b --out ./b/out
 ./cadex params --project ./b --set wall=6 --out ./b/wall6   # no AI, no tokens
 ./cadex -p "make the fins 20% thinner" --project ./b --resume
-./cadex review --project ./b    # watch it in a browser
+./cadex app --projects .        # watch it, and every project beside it, in a browser
 ```
 
 One expensive turn writes a *parametric* script; after that a loop sweeps

@@ -94,7 +94,7 @@ build/release/bin/        FreeCADCmd, CadexGeometryWorker (no application)
 
 ```bash
 pixi run setup-engine && pixi run build-engine   # the whole setup (ADR-060)
-./cadex review --project <dir>                   # the dashboard
+pixi run app                                     # the dashboard over ~/cadex-projects
 ./cadex -p "a 40x25x15 mm bracket with a 6 mm bore" --project ./b --out ./b/out --json
 ./cadex params --project ./b --set bore=8 --out ./b/v2   # spends no tokens
 ./cadex -p "add a 2 mm fillet" --project ./b --resume

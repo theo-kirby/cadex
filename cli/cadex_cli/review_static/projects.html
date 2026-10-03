@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<!-- SPDX-FileCopyrightText: 2026 Cadex Authors
+     SPDX-License-Identifier: LGPL-2.1-or-later
+     The projects index (`cadex app`): every project under one directory,
+     each linking to its review page at /p/<name>/. Tokens are the review
+     page's (docs/DASHBOARD.md). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cadex</title>
+<link rel="stylesheet" href="review.css">
+</head>
+<body>
+<header id="top">
+  <div class="title">
+    <h1>Cadex</h1>
+    <div id="projects-root" class="muted">loading…</div>
+  </div>
+</header>
+<main id="projects-frame">
+  <section class="card">
+    <h2>Projects</h2>
+    <ul id="projects"></ul>
+    <p id="projects-empty" class="muted" hidden>No projects here yet. Start one with
+      <code>./cadex -p "a 40x25x15 mm bracket" --project &lt;this directory&gt;/bracket</code>.</p>
+  </section>
+</main>
+<script src="projects.js"></script>
+</body>
+</html>

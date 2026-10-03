@@ -126,7 +126,7 @@ from .evaluate import (
     run_evaluation,
 )
 from .review_record import manifest_identity, write_run_record
-from .review_server import serve as serve_review
+from .review_server import serve as serve_review, serve_projects
 from .smoke import (
     DEFAULT_FPS,
     DEFAULT_MAX_TILT_DEGREES,
@@ -177,6 +177,9 @@ from .walk import (
 #: whatever the caller is doing, so `cadex -p ... --out ./out` in an empty
 #: directory is a complete command.
 DEFAULT_PROJECT_DIRNAME = ".cadex"
+#: Where `cadex app` (and a bare `cadex`) looks for projects when neither
+#: ``--projects`` nor ``CADEX_PROJECTS`` names a directory: under home.
+DEFAULT_PROJECTS_DIRNAME = "cadex-projects"
 
 
 def _progress(message: str) -> None:
@@ -693,6 +696,32 @@ def build_parser() -> argparse.ArgumentParser:
         "device, or 0.0.0.0 for every interface.",
     )
     review_parser.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="TCP port. Default 8765; 0 takes a free port and reports it.",
+    )
+
+    app_parser = subparsers.add_parser(
+        "app",
+        help="Serve the dashboard over a directory of projects, read-only: "
+        "an index of every project in it, each project's review page under "
+        "/p/<name>/. What a bare `cadex` does. No engine, no tokens.",
+    )
+    _common(app_parser, inherit=True)
+    app_parser.add_argument(
+        "--projects",
+        default=None,
+        help=f"The projects directory (created if absent). Default: "
+        f"CADEX_PROJECTS, then ~/{DEFAULT_PROJECTS_DIRNAME}.",
+    )
+    app_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Address to bind. Default 127.0.0.1 (this machine only); put "
+        "`tailscale serve` in front of it to view it from another device.",
+    )
+    app_parser.add_argument(
         "--port",
         type=int,
         default=8765,
@@ -1908,13 +1937,22 @@ def command_review(args: argparse.Namespace, report: RunReport) -> int:
         server, thread = serve_review(root, str(args.host), port)
     except OSError as exc:
         raise ValueError(f"review: cannot bind {args.host}:{port}: {exc}") from exc
+    _progress(f"review: serving {root.name} at {server.url} (read-only; Ctrl-C to stop)")
+    _serve_until_stopped(server, thread)
+    report.ok = True
+    report.notes.append(f"review: served {server.url}; stopped")
+    return EXIT_OK
+
+
+def _serve_until_stopped(server: Any, thread: threading.Thread) -> None:
+    """Block until Ctrl-C or SIGTERM, then stop and close ``server``."""
+
     stop = threading.Event()
 
     def _stop(_signum: int, _frame: Any) -> None:
         stop.set()
 
     previous = {sig: signal.signal(sig, _stop) for sig in (signal.SIGINT, signal.SIGTERM)}
-    _progress(f"review: serving {root.name} at {server.url} (read-only; Ctrl-C to stop)")
     try:
         while not stop.is_set() and thread.is_alive():
             stop.wait(0.5)
@@ -1923,8 +1961,41 @@ def command_review(args: argparse.Namespace, report: RunReport) -> int:
             signal.signal(sig, handler)
         server.shutdown()
         server.server_close()
+
+
+def projects_directory(args: argparse.Namespace) -> Path:
+    """``--projects``, then ``CADEX_PROJECTS``, then ``~/cadex-projects``."""
+
+    chosen = getattr(args, "projects", None) or os.environ.get("CADEX_PROJECTS", "")
+    return Path(chosen or Path.home() / DEFAULT_PROJECTS_DIRNAME).expanduser()
+
+
+def command_app(args: argparse.Namespace, report: RunReport) -> int:
+    """Serve the dashboard over a directory of projects until interrupted.
+
+    The same read-only review pages as ``cadex review``, one per project
+    under ``/p/<name>/``, behind an index that lists every project in the
+    directory anew on each request. The directory is created if absent, so
+    a fresh clone reaches a first page without having made a project. The
+    URL is printed on stderr as soon as the socket is bound.
+    """
+
+    root = projects_directory(args)
+    if root.exists() and not root.is_dir():
+        raise ValueError(f"app: not a directory: {root}")
+    root.mkdir(parents=True, exist_ok=True)
+    host = str(getattr(args, "host", "127.0.0.1"))
+    port = int(getattr(args, "port", 8765))
+    if port < 0 or port > 65535:
+        raise ValueError(f"app: --port must be 0..65535, not {port}")
+    try:
+        server, thread = serve_projects(root, host, port)
+    except OSError as exc:
+        raise ValueError(f"app: cannot bind {host}:{port}: {exc}") from exc
+    _progress(f"app: serving {root} at {server.url} (read-only; Ctrl-C to stop)")
+    _serve_until_stopped(server, thread)
     report.ok = True
-    report.notes.append(f"review: served {server.url}; stopped")
+    report.notes.append(f"app: served {server.url}; stopped")
     return EXIT_OK
 
 
@@ -2471,8 +2542,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     command = args.command or "prompt"
     if command == "prompt" and not args.prompt:
-        parser.print_help(sys.stderr)
-        return EXIT_USAGE
+        # A bare `cadex` opens the dashboard; `cadex -h` is the help.
+        command = "app"
 
     report = RunReport(project_root=str(Path(args.project).expanduser()))
     quiet = command == "script" and not getattr(args, "source_file", "")
@@ -2507,6 +2578,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_walk(args, report)
         elif command == "review":
             code = command_review(args, report)
+        elif command == "app":
+            code = command_app(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
     except (ValueError, ExportError, InventoryError, TrainError, SmokeError, EvaluateError,
@@ -2717,7 +2790,7 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command == "review":  # inspection only: no row, no commit (ADR-286)
+    if command in ("review", "app"):  # inspection only: no row, no commit (ADR-286)
         return
     # Read once, before the row is appended: both branches compare against
     # the last row that carried each number, and the walk branch is why
@@ -2763,7 +2836,7 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command == "review":
+    if command in ("review", "app"):
         return
     # A walk's legs each committed; what is left is its review.json, when
     # --out lies under the project, plus generated project review artifacts.
