@@ -423,3 +423,41 @@ Changing a word is a change to a frozen artefact and earns its own record.
   confirmation is a **trial**, published here with its fit, mounting and
   judge results, and counts for nothing. A confirmation is declared in this
   file before its turn runs.
+
+### D4 trial 1: balancer (a trial, not a confirmation)
+
+`orun1-t1-balancer`, the frozen balancer prompt, one turn at product
+revision `bd3bbb0d` (`claude-opus-5-5`, effort `medium`). The turn took six
+minutes and ended on its own. Accepted revision `8dd43825…`. The hero was
+drawn from a copy (`orun1-t1-balancer-render`, since `cadex render`
+re-accepts) at that revision: `d4/t1-balancer/hero.png` (640 px).
+
+- **Design.** Two chamfered side plates with lightening slots, joined by a
+  battery tray and two decks. ESP32 in a bay on the top deck. BNO085 and
+  the 6 V regulator screwed to the middle deck. A VL53L1X range sensor on an
+  orange bracket where a face would be. Two Pololu 2367 N20 gearmotors
+  screwed to the plates, driving Pololu 1430 wheels. No face.
+- **Catalog.** All 9 purchased parts and 27 bolts are catalog parts. No
+  purchased part lost its identity.
+- **Mounting (D3).** `pass`, **9 of 9 held**: both motors, the IMU, the
+  regulator and the range sensor by screws on every hole. The battery and
+  the ESP32 sit in bays. Both wheels are held on their motor's output.
+- **Static fit.** 861 pairs, 0 failing.
+- **Swept fit: `incomplete`, so it does not pass D4.** The wheel joints are
+  continuous, so there is no range to sweep. The agent tried ±180° limits
+  and measured 4.26 mm³ where the turning wheel bore meets the catalog
+  motor's *static* D-shaft, so it went back to continuous joints. This is a
+  product defect, not a design one. A catalog wheel on its catalog motor
+  cannot pass a sweep.
+- **Judge (frozen v2, `runner/versus.py`): 3 of 5, a majority.** Beat
+  `balancer-d-product-shell`, `balancer-f-creature` and `balancer-h-free`
+  (Likes). Lost to `balancer-c-exposed-mechanism` (Love) and
+  `balancer-e-hard-surface` (Like). Both losing reasons name the same
+  thing: "plain, featureless disc wheels with no visible hub". The catalog
+  wheel is drawn as a solid disc (`CadexCatalog.WHEELS["pololu-1430"]`,
+  `approximate`). So the weakness this judge found is in the catalog, not in
+  the guidance. Cost $0.19. Every reason is in `d4/t1-balancer/pairs.jsonl`.
+- **What it says.** A plain prompt now gives a faceless, fastened, exposed
+  frame with every part held. The two gaps it exposed are both product
+  changes: the wheel's visible form, and a swept check that the wheel's own
+  motor shaft blocks.
