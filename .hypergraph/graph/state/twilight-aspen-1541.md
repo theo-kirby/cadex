@@ -21,12 +21,12 @@ Open charter criterion for run orun2: **D2. From a browser alone, a person can w
 | 2. Slider | evidenced | POST `api/params` runs `cadex params`; release-to-drawn p50 582 ms / p95 636 ms (n=5) beside raw `set_params` 0.381 s (0.482 s with display; bar 0.65 s) [rec: morning-peak-8268] |
 | 3. Comment | evidenced | `cadex comment` writes `comments.jsonl`; the next `cadex -p` receives pending comments ahead of its prompt; POST `api/comment`; Chromium test picks parts by click and a page-started turn receives both comments (ADR-505) [rec: noble-glade-0483] |
 | 4. Revisions | evidenced | `cadex revision accept/reject/restore` behind POST `api/revision`; Chromium test accepts, rejects (exact revision back), restores (same geometry), and a page turn receives the verdicts (ADR-506) [rec: stormy-grove-7025] |
-| 5. Inspect | **partial** — collision evidenced; section, exploded, rollout playback open | `core.inspect scope=contacts` (t=0 MJCF contacts grouped by pair; pinned in the tool surface) and `#collision-contacts` on the page; Chromium test against a real engine: page and agent report the same pairs, and the page slider clears a 2 mm interpenetration (ADR-508) [rec: calm-falcon-6751] |
+| 5. Inspect | evidenced | Collision: `core.inspect scope=contacts` and `#collision-contacts`; page and agent report the same t=0 pairs and the slider clears a 2 mm interpenetration (ADR-508) [rec: calm-falcon-6751]. Section and exploded: the exploded view plays the engine's stages and Cut runs an interactive section, Chromium-tested against a real engine (`test_dashboard_inspect.py`, ADR-510); accepted placements now prefer `solved_placement_matrix` [rec: narrow-crest-4950]. Rollout playback: the viewer plays a run's own trace in simulation seconds through `setPoses`, browser-tested on a real walk (ADR-511) [rec: staid-wave-3739] |
 | 6. Export | evidenced | POST `api/export` runs `cadex export` into the ignored `review/export/<revision>/` behind the token; Chromium test downloads a valid STEP, a 12-facet 30×20×6 mm STL and the concept-sheet PNG (`test_dashboard_export.py`, ADR-509) [rec: polished-lodge-7956] |
 
-**Remaining:** item 5's section view (interactive cut), exploded view (the engine's `exploded_view` moves) and rollout playback (frames through `setPoses`) [rec: calm-falcon-6751] [rec: polished-lodge-7956].
+**Remaining:** none at the item level — every item, and every item-5 view, carries a real-engine Chromium test [rec: staid-wave-3739].
 
-Declared target: `gap-d2-from-browser-alone-person`. The human owns the charter checkbox; roles report results and do not tick it. Reconcile judgement: stays `working` — five of six items carry real-engine Chromium evidence; item 5 has three of four views open [rec: polished-lodge-7956].
+Declared target: `gap-d2-from-browser-alone-person`. The human owns the charter checkbox; roles report results and do not tick it. Reconcile judgement: stays `working` rather than `done` — all six items are evidenced, but the charter checkbox is the owner's to tick, and orun2 gaps stay `working` until then [rec: staid-wave-3739].
 
 ## Negative knowledge
 
@@ -42,3 +42,5 @@ None yet.
 - sweet-mist-9111 — item 1 image attach through cadex -p --image (ADR-507); tailscale serve note pinned (backfilled record)
 - calm-falcon-6751 — item 5 collision view: page and agent report t=0 contacts (ADR-508)
 - polished-lodge-7956 — item 6 STEP/STL export and concept sheet download (ADR-509)
+- narrow-crest-4950 — item 5 section and exploded views browser-proved (ADR-510)
+- staid-wave-3739 — item 5 rollout playback through setPoses (ADR-511); item 5 complete
