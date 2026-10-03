@@ -23,9 +23,13 @@ Both D3 halves have evidence. Still open: the transcript-driven catalog clause (
 
 **Transcript-driven catalog clause, in progress.** The wheel-and-tyre set is now two real parts — a spoked rim and a separate tyre, with the tyre covered by the mounting check through its wheel's rim (ADR-489) [rec: eager-bluff-0757]. Balancer trial 3's transcript named two gaps: an H-bridge/motor-driver board and an encoder N20 variant [rec: first-dew-3629]. The first is closed by `tb6612-adafruit-2448` (ADR-490, held by two screws, contact-only fixture pinned) [rec: young-orchard-8393]; **the encoder N20 is still missing** [rec: young-orchard-8393].
 
+**The one-screw MG90S was the bay, not the catalog.** Hexapod trial 1 held every servo by 1 of 2 tab screws, and the agent blamed a lead block on the catalog MG90S [rec: deep-cove-1130]. The catalog part has none; ADR-443's bay lead room sat over every tabbed servo's lead-side hole. ADR-491 (`00fea49b`) adds opt-in `servo.bay(ledge=4)`: the lead-side screw gets 3.51 mm³ of thread (0 without) on the real kernel, and the overlay tells the agent to use it. It is opt-in because changing a default bay changed the recipe of an accepted design and made it refuse to reopen (F1-class: an uncatalogued library helper's default expansion must stay byte-stable) [rec: hidden-grove-0337].
+
+**The mounting check now requires thread engagement** (ADR-492, `ec6782ad`): a screw holds only if its shank shares ≥0.1 mm³ with a printed part, or the head clamps a printed part while the shank reaches the held part's tapped hole, a nut or an insert; otherwise it is listed `unthreaded`. Static and swept fit allow a `lib.bolt`/print overlap up to the thread ring π/4(d²−minor²)L, counted in `fit.threaded_count`, so a screw in a tap-drill hole passes fit while a bolt through solid still fails. Fixture: plain-bay MG90S 1 of 2, `ledge=4` 2 of 2. Engine 2596 passed / 61 skipped; CLI 1290 passed, 1 load flake [rec: icy-willow-3129]. Open candidate tightening: a tabbed servo seated by its bay with no threaded screw still counts as held [rec: icy-willow-3129]. Reconcile judgement: the 0.5 mm contact leniency named in hidden-grove-0337 is the defect ADR-492 closed.
+
 ## Negative knowledge
 
-None yet.
+- [scope: library helpers that expand inline into printed parts (bays, `lib.*` geometry) | confidence: high | evidence: hidden-grove-0337] Changing a helper's default expansion changes accepted recipes, and those projects refuse to reopen; changes must be opt-in or default-byte-stable.
 
 ## Provenance
 
@@ -35,3 +39,6 @@ None yet.
 - eager-bluff-0757 — ADR-489: wheel-and-tyre set is two real parts, tyre held via the rim
 - first-dew-3629 — D4 trial 3 transcript names motor driver and encoder N20 as catalog gaps
 - young-orchard-8393 — ADR-490: TB6612 motor driver closes one transcript gap; encoder N20 open
+- deep-cove-1130 — hexapod trial 1: no missing-part asks; MG90S servos held by one screw each (suspected catalog lead block)
+- hidden-grove-0337 — ADR-491: the block was the bay's lead room; opt-in servo.bay(ledge=4); default expansion must stay byte-stable
+- icy-willow-3129 — ADR-492: mounting check requires thread engagement; fit allows the thread ring
