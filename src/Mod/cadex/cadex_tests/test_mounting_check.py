@@ -725,3 +725,74 @@ def test_a_ledged_servo_bay_gives_the_lead_side_screw_its_thread_on_the_real_ker
     # but a shank in the lead room threads nothing, so one hole holds.
     assert servo["by"] == "screws" and servo["detail"].startswith("1 of 2"), servo
     assert servo["unthreaded"] == ["component_2"]
+
+
+# ADR-493: the regulator on a vertical web, rolled as orun1-t3-balancer
+# carries it. BORED is that design's own hold: M2 screws in bores drilled at
+# the thread's major diameter, which leaves the thread nothing to cut.
+# MOUNTED is the same board on .mounting()'s standoffs, holes and screws.
+_REGULATOR_ON_A_WEB = """
+web = part.box(11.0, 40.0, 40.0, origin=(-4.0, -20.0, 40.0))
+if MOUNTED:
+    reg = lib.board("pololu-d36v50f6", origin=(10.0, -12.7, 52.0),
+                    direction=(1, 0, 0), roll_degrees=90.0)
+    hold = reg.mounting(standoff=3.0)
+    web = part.cut(part.fuse([web, *hold.standoffs]), hold.holes)
+    bolts = list(hold.screws)
+else:
+    reg = lib.board("pololu-d36v50f6", origin=(7.0, -12.7, 52.0),
+                    direction=(1, 0, 0), roll_degrees=90.0)
+    pts = [(-12.7 + u, 52.0 + v) for (u, v) in reg.spec["mount_holes"]]
+    web = part.cut(web, [part.cylinder(1.0005, 7.5, origin=(0.5, y, z), direction=(1, 0, 0))
+                         for (y, z) in pts])
+    bolts = [lib.bolt("m2", 6.0, origin=(7.0 + 1.57, y, z), direction=(1, 0, 0))
+             for (y, z) in pts]
+result = {"web": web, "regulator": reg.body}
+comps = [assembly.component(web, grounded=True), assembly.component(reg.body)]
+for i, bolt in enumerate(bolts):
+    result["bolt%d" % i] = bolt.body
+    comps.append(assembly.component(bolt.body))
+for i, comp in enumerate(comps):
+    result["component_%d" % i] = comp
+asm = assembly.assembly(comps)
+result["asm"] = asm
+result["diag"] = assembly.solve(asm)
+"""
+
+
+def _regulator_on_a_web(tmp_path, mounted):
+    from test_cadexd_lifecycle import _spawn_cadexd, _stop
+
+    client = None
+    try:
+        client = _spawn_cadexd()
+        assert client.request("open_project", {"project_root": str(tmp_path)})["ok"]
+        source = _REGULATOR_ON_A_WEB.replace("MOUNTED", str(mounted))
+        written = client.request("write_script", {"source": source, "expected_revision": ""})
+        assert written["ok"], written
+        value = _read_all(client, {"scope": "clearance", "target": ""}, "")
+    finally:
+        _stop(client)
+    fit = fit_summary(value)
+    mounting = fit_view(fit)["mounting"]
+    reg = next(row for row in mounting["reported"] + mounting["held"]
+               if row["part"] == "board/pololu-d36v50f6")
+    return fit, reg
+
+
+@_NEEDS_KERNEL
+def test_a_board_on_its_own_mounting_threads_every_screw_on_the_real_kernel(tmp_path):
+    """ADR-493. Balancer trial 3's board hold threads 0 of 3; the same board
+    on .mounting()'s standoffs and tapping holes threads 3 of 3, and the
+    static fit reads that thread as engagement, never an intersection."""
+    fit, reg = _regulator_on_a_web(tmp_path / "bored", False)
+    assert reg["status"] == "contact only", reg
+    assert len(reg["unthreaded"]) == 3
+    fit, reg = _regulator_on_a_web(tmp_path / "mounted", True)
+    assert reg["status"] == "held" and reg["by"] == "screws", reg
+    assert reg["detail"].startswith("3 of 3 mounting holes"), reg
+    assert "unthreaded" not in reg and "misfits" not in reg
+    # The fixture declares no welds, so its touching pairs read "below
+    # clearance"; what matters is that no screw's thread is an intersection.
+    assert not [row for row in fit["failing"] if row["status"] == "intersection"], fit["failing"]
+    assert fit["threaded_count"] == 3

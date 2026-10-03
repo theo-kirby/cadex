@@ -756,6 +756,25 @@ esp = lib.board("esp32-devkitc-v4", origin=(-14, -24, 20))
 body = part.cut(hull, [pack.bay(), esp.bay()])
 ```
 
+A board with mounting holes is screwed down with `board.mounting(standoff=3.0,
+*, screw=None, diameter=None, length=None)` (ADR-493). It returns
+`standoffs`, one boss per hole (`diameter` across, default 2.5 screw
+diameters, from the PCB's bottom face down `standoff` plus 1 mm so it fuses);
+`holes`, the screw's tapping drill from the PCB down 1 mm past the screw's
+tip; and `screws`, `lib.bolt` parts seated on the PCB's top face on each
+hole's axis. `screw` defaults to the largest metric size the hole passes,
+and `length` to the PCB plus 2.5 diameters, rounded up to a millimetre. The
+3 mm default is the gap `board.bay()`'s defaults leave under the PCB. The
+thread then cuts printed material, which is what the mounting check counts
+(ADR-492). A board with no mounting holes refuses.
+
+```python
+imu = lib.board("bno085-adafruit-4754", origin=(-12, -11, 33))
+hold = imu.mounting()
+deck = part.cut(part.fuse([part.cut(deck, [imu.bay()]), *hold.standoffs]), hold.holes)
+screws = [assembly.component(s.body) for s in hold.screws]
+```
+
 #### N20 gearmotor `[ADR-205]`
 
 `lib.gearmotor("pololu-2367", origin=..., direction=..., roll_degrees=...)`

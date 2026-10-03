@@ -842,6 +842,42 @@ def test_board_bay_contains_the_board_and_its_overhang(sku):
     assert catalog_identity_of(board.bay()) is None
 
 
+def test_board_mounting_sizes_standoffs_taps_and_screws_from_the_board():
+    """ADR-493: a board's screws thread printed material by construction."""
+    reg = _lib().board("pololu-d36v50f6", origin=(7.0, -12.7, 52.0),
+                       direction=(1, 0, 0), roll_degrees=90.0)
+    hold = reg.mounting()
+    t = reg.spec["thickness_mm"]
+    assert (hold.screw, hold.length_mm) == ("m2", 7.0)  # ceil(1.57 + 5)
+    assert len(hold.standoffs) == len(hold.holes) == len(hold.screws) == 3
+    tap = catalog.thread_spec("m2")["tap_drill_mm"]
+    for boss, hole, (x, y) in zip(hold.standoffs, hold.holes, reg.spec["mount_holes"]):
+        assert boss.properties == hole.properties == reg.body.properties
+        (cyl,) = _ops(boss, "cylinder")
+        assert cyl.arguments == (2.5, 4.0)
+        assert tuple(cyl.properties["origin"]) == (x, y, -4.0)
+        (cyl,) = _ops(hole, "cylinder")
+        assert cyl.arguments == pytest.approx((tap / 2.0, 7.0 - t + 1.5))
+        assert tuple(cyl.properties["origin"]) == pytest.approx((x, y, -(7.0 - t + 1.0)))
+    # Each screw seats on the PCB's top face, on its hole's axis.
+    seat = hold.screws[0].body.properties["translation"]
+    assert seat == pytest.approx((7.0 + t, -12.7 + 2.159, 52.0 + 2.159))
+    assert {s.part_number for s in hold.screws} == {hold.screws[0].part_number}
+    assert _lib().board("pi-5").mounting().screw == "m2.5"
+    assert _lib().board("bno085-adafruit-4754").mounting(screw="m2").screw == "m2"
+    assert _lib().board("bno085-adafruit-4754").mounting(standoff=5).length_mm == 8.0
+    with pytest.raises(LibraryError, match="has no mounting holes"):
+        _lib().board("esp32-devkitc-v4").mounting()
+    with pytest.raises(LibraryError, match="does not pass the board's 2.18 mm holes"):
+        reg.mounting(screw="m2.5")
+    with pytest.raises(LibraryError, match="less than 0.8 mm of wall"):
+        reg.mounting(diameter=3.0)
+    with pytest.raises(LibraryError, match="does not pass the 1.57 mm PCB"):
+        reg.mounting(length=1.0)
+    with pytest.raises(LibraryError, match="standoff must be positive"):
+        reg.mounting(standoff=0)
+
+
 def test_esp32_bay_covers_the_module_overhanging_its_pcb():
     esp = _lib().board("esp32-devkitc-v4")
     _low, high = _box_extents(esp.bay(clearance=0, lead_room=0))

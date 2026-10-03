@@ -31994,3 +31994,61 @@ was already the verdict, so no protocol op, response key or digest moves.
 re-measure reads differently from the receipts published before this ADR.
 The overlay tells the agent to cut `lib.tap_drill` holes into solid
 material and explains what `unthreaded` and `threaded_count` mean.
+
+## ADR-493 — A board is screwed down by its own `.mounting()` (2026-10-03)
+
+**Status:** accepted. orun1 D3. [Cadex-new]
+
+**The defect.** Under ADR-492, balancer trial 3 (`orun1-t3-balancer`)
+reads 8 of 11. Its BNO085, D36V50F6 and VL53L1X are `contact only`, and all
+nine of their bolts are `unthreaded`. The cause is in the script, and the
+product made it the obvious script:
+- Every board screw hole is bored at the thread's **major** diameter
+  (`m2t = 1.0005`). The script says why: "modelled at the thread's major
+  diameter so the unmodelled thread is what bites". Before ADR-492 the
+  static fit failed any bolt/print overlap, so a bore at the bolt's own
+  diameter was the only hole that passed fit. That bore leaves the thread
+  nothing to cut.
+- The product offered no way to screw a board down. `board.bay()`'s
+  docstring said "standoffs through the mounting holes go in after the cut"
+  and stopped there. The agent had to work out the screw size, the
+  standoff, the pilot and each bolt's seat by hand, in the board's rotated
+  frame, for every board. Servos and foot pads already had a helper, but
+  boards did not.
+
+**The change.** `BoardPart.mounting(standoff=3.0, *, screw=None,
+diameter=None, length=None)` returns a `BoardMounting`. It has three lists,
+one solid per mounting hole, each placed in the board's frame:
+- `standoffs`: bosses `diameter` across (default 2.5 screw diameters), from
+  the PCB's bottom face down `standoff` plus 1 mm, so they fuse into the
+  carrier. With `board.bay()`'s defaults the gap under the PCB is 3 mm,
+  which is the default standoff.
+- `holes`: the screw's tapping drill (`lib.tap_drill`), from the PCB down
+  1 mm past the screw's tip.
+- `screws`: `lib.bolt` parts seated on the PCB's top face, on each hole's
+  axis. `screw` defaults to the largest metric size the hole passes.
+  `length` defaults to the PCB plus 2.5 thread diameters, rounded up to a
+  millimetre.
+
+It refuses in these cases: a board with no mounting holes (the ESP32
+DevKitC), a screw larger than the hole, a boss with less than 0.8 mm of
+wall round the tap, and a screw too short to pass the PCB. The overlay
+names `.mounting()` and says never to drill a board's screw hole at the
+screw's own diameter. Nothing moves in the protocol, the digest or the fit
+reader; it is one library method and its data class.
+
+**Measured.** `test_mounting_check.py::test_a_board_on_its_own_mounting_threads_every_screw_on_the_real_kernel`
+puts the D36V50F6 on a vertical web, rolled exactly as trial 3 carries it:
+- trial 3's own hold (major-diameter bores, M2 × 6): `contact only`,
+  **0 of 3** threaded (3 `unthreaded`);
+- `.mounting(standoff=3)`: `held` by `screws`, **3 of 3**, nothing
+  unthreaded, no intersection, `fit.threaded_count` 3.
+
+The mounted half failed on the installed engine before the change, with
+`'BoardPart' object has no attribute 'mounting'`. A headless test pins the
+geometry: bosses, taps, each screw's seat in a rotated frame, the
+screw-size choice (D36V50F6 M2, Pi 5 and BNO085 M2.5), and each refusal.
+
+**Not done here.** Trial 3 is an accepted product-agent design, and the
+actor never hand-edits a counted design, so it is not re-authored. Its
+8 of 11 stands until a new balancer turn is run on this revision.

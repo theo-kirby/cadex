@@ -548,6 +548,27 @@ class BatteryPart(_BayPart):
                              label)
 
 
+class BoardMounting:
+    """What ``BoardPart.mounting()`` returns: one board's screwed hold.
+
+    ``standoffs`` (solids to fuse into the carrier), ``holes`` (solids to cut
+    from it after),
+    ``screws`` (``lib.bolt`` parts, one component each), and the ``screw``
+    size and ``length_mm`` they were sized with.
+    """
+
+    __slots__ = ("screw", "length_mm", "standoffs", "holes", "screws")
+
+    def __init__(self, *, screw, length_mm, standoffs, holes, screws):
+        for name, value in (("screw", screw), ("length_mm", length_mm),
+                            ("standoffs", standoffs), ("holes", holes),
+                            ("screws", tuple(screws))):
+            object.__setattr__(self, name, value)
+
+    def __setattr__(self, _name: str, _value: Any) -> None:
+        raise TypeError("A board mounting is immutable inside the script.")
+
+
 class BoardPart(_BayPart):
     """A board whose solder-pad rows can enter the existing wiring table."""
 
@@ -567,7 +588,8 @@ class BoardPart(_BayPart):
         bottom-side parts, 1.8 mm on the D36V50F6; raise it to the pin
         length if headers are fitted -- to ``lead_room`` above the tallest
         component, where the wires soldered to the pads rise and turn.
-        Standoffs through the mounting holes go in after the cut. Fitted
+        Standoffs through the mounting holes go in after the cut: fuse
+        ``.mounting()``'s ``standoffs``, then cut its ``holes``. Fitted
         connectors (USB, HDMI) are not modelled: add room for the plug.
         """
         operation = "board.bay"
@@ -586,6 +608,78 @@ class BoardPart(_BayPart):
                               max(spec["length_mm"], my + sy) + c,
                               top + c + room),
                              label)
+
+    def mounting(self, standoff: float = 3.0, *, screw: str | None = None,
+                 diameter: float | None = None, length: float | None = None,
+                 label: str = "") -> "BoardMounting":
+        """Standoffs, tapping holes and screws for every mounting hole (ADR-493).
+
+        ``standoff`` is the gap from the PCB's bottom face to the face of the
+        printed part that carries it: 3 mm with ``.bay()``'s defaults
+        (``underside`` plus ``clearance``). ``standoffs`` is one boss per
+        hole, ``diameter`` across (default 2.5 screw diameters), from the
+        PCB down past that face by 1 mm so it fuses; ``holes`` is the
+        tapping drill for ``screw`` (default the largest metric size the
+        hole passes) from the PCB down 1 mm past the screw's tip, one solid
+        per hole in each list;
+        ``screws`` are ``lib.bolt`` parts seated on the PCB's top face,
+        ``length`` long (default the PCB plus 2.5 diameters of thread,
+        rounded up to a millimetre). Fuse the standoffs into the carrier,
+        cut the holes from the result, and place each screw as its own
+        component: ``part.cut(part.fuse([carrier, *m.standoffs]), m.holes)``.
+        The thread then cuts printed material, which is what the mounting
+        check counts as a screw that holds.
+        """
+        operation = "board.mounting"
+        spec = self.spec
+        if not spec["mount_holes"]:
+            raise LibraryError(f"{operation}: {self.part_number} has no mounting "
+                               "holes; hold it with its .bay().")
+        hole = spec["mount_hole_dia_mm"]
+        if screw is None:
+            fitting = [size for size in ("m3", "m2.5", "m2", "m1.6")
+                       if catalog.thread_spec(size)["nominal_dia_mm"] <= hole + 1e-6]
+            if not fitting:
+                raise LibraryError(f"{operation}: no metric screw passes a "
+                                   f"{hole:g} mm hole.")
+            screw = fitting[0]
+        thread = catalog.thread_spec(screw)
+        d = thread["nominal_dia_mm"]
+        if d > hole + 1e-6:
+            raise LibraryError(f"{operation}: an M{d:g} screw does not pass the "
+                               f"board's {hole:g} mm holes.")
+        height = _positive(operation, "standoff", standoff)
+        tap = thread["tap_drill_mm"]
+        boss = (2.5 * d if diameter is None
+                else _positive(operation, "diameter", diameter))
+        if boss < tap + 1.6:
+            raise LibraryError(f"{operation}: a {boss:g} mm standoff leaves less "
+                               f"than 0.8 mm of wall round a {tap:g} mm tapping hole.")
+        t = spec["thickness_mm"]
+        long = (float(math.ceil(t + 2.5 * d - 1e-9)) if length is None
+                else _positive(operation, "length", length))
+        if long <= t:
+            raise LibraryError(f"{operation}: a {long:g} mm screw does not pass "
+                               f"the {t:g} mm PCB.")
+        depth = long - t + 1.0
+        part = self._lib._part
+
+        def placed(pieces):
+            return [self._lib._place_frame(operation, piece, self._frame_placement)
+                    for piece in pieces]
+
+        origin, _unit, rotation = self._frame_placement
+        up = _rotate(rotation, (0.0, 0.0, 1.0))
+        return BoardMounting(
+            screw=catalog.normalise_thread_size(screw), length_mm=long,
+            standoffs=placed([part.cylinder(boss / 2.0, height + 1.0,
+                                            origin=(x, y, -height - 1.0), label=label)
+                              for x, y in spec["mount_holes"]]),
+            holes=placed([part.cylinder(tap / 2.0, depth + 0.5, origin=(x, y, -depth))
+                          for x, y in spec["mount_holes"]]),
+            screws=[self._lib.bolt(screw, long, direction=up, origin=tuple(
+                        a + b for a, b in zip(origin, _rotate(rotation, (x, y, t)))))
+                    for x, y in spec["mount_holes"]])
 
     def terminals(self) -> list[dict]:
         """Fresh term() rows in the generated body's frame, for board().
