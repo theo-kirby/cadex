@@ -7,8 +7,8 @@
 // pick the accepted project or one recorded run (and, on the Evaluation tab,
 // one evaluation of a policy against its success spec), and shows exactly what the
 // record says: a historical run is labelled as such and drawn from its own
-// retained mesh, never from today's script. Nothing here writes anything
-// anywhere. Poll work is bounded: the run list is rebuilt only when it
+// retained mesh, never from today's script. Its writes — a parameter slider
+// and a design turn — are `cadex` commands the server runs (ADR-503, ADR-504). Poll work is bounded: the run list is rebuilt only when it
 // changes, and the telemetry panel only when the selected run's telemetry
 // does, so an idle poll over a long history touches a constant number of
 // nodes.
@@ -20,6 +20,8 @@
   // carries that prefix.
   var BASE = (location.pathname.match(/^\/p\/[^/]+(?=\/)/) || [''])[0];
   var POLL_MS = 2000;
+  // A running turn's transcript is read this often; an idle read is a few bytes.
+  var TURN_POLL_MS = 1000;
   var state = { review: null, selected: 'accepted', lastOk: null, stale: false, model: null, viewer: null,
                 error: null, following: true, docKey: null, docRequest: 0, detail: null, showProxies: false };
   var pendingPoll = null;
@@ -310,6 +312,74 @@
       status.dataset.state = 'error';
       status.textContent = name + ' = ' + fmt(value) + ' refused: ' + error.message;
       if (state.review) renderParams();
+    });
+  }
+
+  // The design turn (ADR-504): one `cadex -p` child per project, started
+  // here or by another page on this server; its transcript is read from an
+  // offset, so each read carries only what arrived since the last.
+  var turn = { id: null, state: 'idle', text: '', next: 0, reply: null, prompt: '' }, turnRequest = null;
+
+  function renderTurn() {
+    var status = $('turn-status'), transcript = $('turn-transcript'), running = turn.state === 'running';
+    status.dataset.state = turn.state;
+    $('turn-start').disabled = running;
+    $('turn-prompt').disabled = running;
+    if (turn.state === 'idle') status.textContent = '';
+    else if (running) status.textContent = 'running: ' + turn.prompt;
+    else if (turn.reply && turn.reply.ok) status.textContent = 'accepted at ' + short(turn.reply.accepted_revision) +
+      ' in ' + Number(turn.reply.seconds || 0).toFixed(1) + ' s';
+    else status.textContent = (turn.reply && turn.reply.error) || 'the turn failed';
+    transcript.hidden = !turn.text;
+    if (transcript.textContent !== turn.text) {
+      var pinned = transcript.scrollTop + transcript.clientHeight >= transcript.scrollHeight - 4;
+      transcript.textContent = turn.text;
+      if (pinned) transcript.scrollTop = transcript.scrollHeight;
+    }
+  }
+
+  function pollTurn() {
+    if (turnRequest) return turnRequest;
+    turnRequest = fetch(BASE + '/api/turn?since=' + turn.next, { cache: 'no-store' }).then(function (response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    }).then(function (reply) {
+      if (reply.state === 'idle') return;
+      var wasRunning = turn.state === 'running' && turn.id === reply.id;
+      if (reply.id !== turn.id) {
+        // Another turn: its transcript starts over, so read it from the top.
+        turn = { id: reply.id, state: reply.state, text: '', next: 0, reply: null, prompt: reply.prompt };
+        turnRequest = null;
+        return pollTurn();
+      }
+      turn.text += reply.text; turn.next = reply.next; turn.state = reply.state; turn.reply = reply.reply;
+      renderTurn();
+      // The turn ended: the accepted revision may have moved under the model.
+      if (wasRunning && reply.state !== 'running') return (pendingPoll || Promise.resolve()).catch(function () {}).then(poll);
+    }).catch(function () {}).finally(function () { turnRequest = null; });
+    return turnRequest;
+  }
+
+  function startTurn(prompt, resume) {
+    var status = $('turn-status');
+    status.dataset.state = 'pending';
+    status.textContent = 'starting cadex -p …';
+    return fetch(BASE + '/api/turn', {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'X-Cadex-Token': WRITE_TOKEN },
+      body: JSON.stringify({ prompt: prompt, resume: !!resume })
+    }).then(function (response) {
+      return response.json();
+    }).then(function (reply) {
+      if (!reply.ok) throw new Error(reply.error || 'refused');
+      turn = { id: reply.turn.id, state: reply.turn.state, text: reply.turn.text, next: reply.turn.next,
+               reply: reply.turn.reply, prompt: reply.turn.prompt };
+      renderTurn();
+      return reply.turn;
+    }).catch(function (error) {
+      status.dataset.state = 'error';
+      status.textContent = 'not started: ' + error.message;
+      return null;
     });
   }
 
@@ -945,8 +1015,14 @@
     function foldRuns() { $('runs').open = !phone.matches; }
     foldRuns();
     phone.addEventListener('change', foldRuns);
+    $('turn-start').addEventListener('click', function () {
+      var prompt = $('turn-prompt').value.trim();
+      if (prompt) startTurn(prompt, $('turn-resume').checked);
+    });
     poll().then(function () { readyResolve(true); });
     setInterval(poll, POLL_MS);
+    pollTurn();
+    setInterval(pollTurn, TURN_POLL_MS);
   }
 
   window.cadexReview = {
@@ -955,6 +1031,8 @@
     refresh: poll,
     setParam: writeParams,
     lastWrite: function () { return lastWrite; },
+    startTurn: startTurn,
+    turn: function () { return { id: turn.id, state: turn.state, text: turn.text, reply: turn.reply }; },
     viewer: function () { return state.viewer; },
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, detail_bytes: lastPoll.detail_bytes, ms: lastPoll.ms }; },
     state: function () {

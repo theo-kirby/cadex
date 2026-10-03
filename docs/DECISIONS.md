@@ -32608,3 +32608,56 @@ accepted revision shown in `#model-status`, a drawn model whose x extent
 equals the width set, a `PROGRESS.md` row and a project commit, and the
 measured release-to-drawn latency (n=20 on 2026-10-03: p50 548 ms, p95
 556 ms).
+
+## ADR-504 — The dashboard's second write: a design turn through `cadex -p`, its stderr the live transcript (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. Two HTTP routes on the dashboard server (`POST
+api/turn`, `GET api/turn?since=N`) and an optional `on_stderr` relay on
+`walk.run_leg`; no cadexd protocol, tool-surface or CLI-flag change.
+
+**Context.** D2's first item is that a person start a design turn from a
+prompt in the browser and watch it live as the transcript streams and the
+model updates when a revision is accepted. A3 forbids a second write path,
+so the turn must be the CLI's `cadex -p`, which already prints every tool
+call (`· op  summary`) and the model's prose to stderr as they happen.
+`run_leg` passed a leg's stderr straight through to the server's own.
+
+**Decision.** `POST api/turn` (token and `Origin` checked as in ADR-503)
+takes `{"prompt": text, "resume": bool}` — non-empty, at most 16 000
+characters, no NUL — and runs `cadex --project <root> --prompt=<text>
+[--resume] --json` through `run_leg` in a thread, bounded at 3600 s,
+answering 202 at once. `run_leg(on_stderr=…)` gives the child a pipe for
+stderr and hands what arrives, decoded, to the callback; with no callback
+it behaves as before. The server keeps each project's last turn in memory
+— transcript capped at 4 MiB — and `GET api/turn?since=N` returns the text
+after character `N`, the state (`running`/`done`/`failed`) and, at the end,
+the child's envelope; `{"state": "idle"}` when there has been none. One
+turn per project at a time per server (409 otherwise); across servers and
+the CLI, the project lock decides. The page's `#turn-panel` starts turns,
+reads the transcript every second, and refreshes the project when a turn
+ends (`docs/DASHBOARD.md` §19).
+
+**Cost.** The transcript lives only as long as the server: it is what a
+terminal would have shown, and the project keeps what the CLI keeps (the
+`PROGRESS.md` row, the commit, decisions and notes), not the stream. A
+turn the server started is not stopped by closing the page; it ends on its
+own or at the bound, like a CLI turn left running. Attaching an image is
+not in this unit: `cadex -p` has no way to carry one into the turn yet, so
+that is the CLI's change first, then the page's.
+
+**What would reverse it.** An owner wish to keep transcripts would make the
+CLI write one into the project (then the page reads that file, and the
+memory buffer goes); a need to cancel from the page would add a stop route
+that signals the leg's process group, as `run_leg`'s timeout already does.
+
+**Test.** `cli/tests/test_dashboard_writes.py`: with no engine, `api/turn`
+without the token or with another is 403 and spawns nothing; malformed
+bodies are 400; a tokened start spawns exactly the argv above, the
+transcript reads back whole and from an offset, and a second start while
+one runs is 409 and is accepted once it ends. With a real engine in
+headless Chromium and a stand-in `claude` on `PATH`
+(`cli/tests/fake_claude.py`, which speaks `stream-json` and calls tools
+over the real bridge): the page shows the agent's first words while the
+turn is still running and before it has touched the engine, then the
+accepted revision drawn at the new width, with the CLI's `PROGRESS.md` row
+and one project commit.

@@ -33,13 +33,24 @@
 <main id="frame">
   <!-- Left sidebar: what to look at — the runs, and the project's documents. -->
   <div id="left" class="rail" data-side="left">
+    <section id="turn-panel" class="card panel">
+      <h2>Design turn</h2>
+      <!-- Runs `cadex -p PROMPT --project …` (ADR-504); its stderr streams below. -->
+      <textarea id="turn-prompt" rows="3" placeholder="What to build or change, in words. Spends tokens." aria-label="Prompt"></textarea>
+      <div class="controls">
+        <label class="toggle" for="turn-resume"><input type="checkbox" id="turn-resume" checked> <span>continue the conversation</span></label>
+        <button id="turn-start" type="button">Start turn</button>
+      </div>
+      <div id="turn-status" data-state="idle"></div>
+      <pre id="turn-transcript" hidden></pre>
+    </section>
     <nav id="sidebar" class="card panel">
       <h2>Runs</h2>
       <details id="runs" open>
         <summary id="runs-summary">Runs</summary>
         <button id="current-run" type="button">Current run</button>
         <ul id="views"></ul>
-        <p class="muted small">Inspection only. Authoring and training stay on the CLI; this page holds no project state.</p>
+        <p class="muted small">Every write here is a <code>cadex</code> command; training stays on the CLI, and this page holds no project state.</p>
       </details>
     </nav>
     <section id="docs-panel" class="card panel">

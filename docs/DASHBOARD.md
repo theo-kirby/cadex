@@ -74,6 +74,7 @@ where (§12) — and the element ids do not change with the width.
 | # | Region | Element hooks (stable) | What it is for | Desk frame |
 |---|---|---|---|---|
 | 0 | **Masthead** | `#top`, `#project-name`, `#accepted-line`, `#freshness` | The project's name, the accepted identity now (revision, digest, updated, run count), and whether the page is live or stale. One row on desk, two on phone. | top bar |
+| 0a | **Design turn** | `#turn-panel`, `#turn-prompt`, `#turn-resume`, `#turn-start`, `#turn-status[data-state]`, `#turn-transcript` | Start a `cadex -p` turn on the project from a prompt and watch its transcript stream; the status says what ran and how it ended (§19). Under the run list on phone. | left sidebar, first |
 | 1 | **Run selection** | `#sidebar`, `#runs`, `#runs-summary`, `#current-run`, `#views li[data-run]` | Which view is shown: *Accepted now*, then every recorded run with its relation (current/historical) and status. The current run is marked. A sidebar at desk width; a collapsible run list under the masthead on phone (§6). | left sidebar |
 | 2 | **Identity** | `#identity`, `#view-kind`, `#view-relation`, `#view-status`, `#view-revision`, `#view-digest`, `#view-identity-source`, `#view-recorded`, `#policy-origin`, `#view-note`, `#view-policy-store` | What the rest of the page is about. Kind and relation as chips, then the key/value block. | right sidebar |
 | 2a | **Concept** | `#concept`, `#concept-status[data-state]`, `#concept-figure`, `#concept-sheet`, `#concept-caption`, `#concept-hero` | The design as presented: the concept sheet the last render drew (§14) — studio hero, name, key numbers, palette and line views — with the revision it was drawn from and its relation to the accepted one. Leads the page when there is one. | stage, *Concept* tab, first; the stage opens on it |
@@ -789,6 +790,39 @@ Beside it, `cadexd_latency_integration.py` on the same machine: warm
 The cold child costs about 50 ms over a warm engine on this model, which
 is why the server keeps none; a heavier project is where that would be
 measured again.
+
+## 19. Steering: a design turn (ADR-504)
+
+The page's second write. `#turn-panel` leads the left sidebar (on phone it
+sits under the run list): a prompt, a **continue the conversation** toggle
+(on by default — the CLI's `--resume`) and **Start turn**. Starting is
+`POST api/turn` with `{"prompt": text, "resume": bool}`, behind the same
+token and `Origin` check as the slider (§18); the server answers 202 and
+runs `cadex --project <root> --prompt=<text> [--resume] --json` as a child
+through the walk's `run_leg`, bounded at an hour. The prompt travels as one
+`--prompt=` argument, so text that begins with a dash stays text. One turn
+runs per project at a time on a server; a second start is 409 until it
+ends, and a slider or turn from elsewhere meets the CLI's own project lock.
+
+The transcript is the child's stderr — the `· tool  summary` progress
+lines and the model's prose — which is exactly what a terminal running the
+same command shows. The server holds it in memory and `GET api/turn?since=N`
+returns what arrived after character `N`, with the turn's id, state
+(`running`, `done`, `failed`) and, once it ends, the child's envelope
+(`accepted_revision`, `digest`, `notes`, `error`, exit and seconds); with no
+turn it is `{"state": "idle"}`. The page reads it every second, so a page
+opened mid-turn, or on another device, picks the running turn up from the
+start. While it runs the prompt and button are disabled and
+`#turn-status[data-state=running]` names the prompt; when it ends the
+status gives the accepted revision in the ok colour or the CLI's refusal in
+the bad colour, and the next project poll reloads the model because the
+accepted revision moved. The transcript is never written into the project:
+what a turn leaves there — the revision, the `PROGRESS.md` row, the
+project commit, the agent's decisions and notes — is the CLI's (charter A3),
+and a server restart forgets the transcript, not the turn's result.
+
+Not yet here: attaching an image to the prompt, which needs the CLI to
+carry one into the turn first.
 
 ## Operator run status (ADR-387)
 

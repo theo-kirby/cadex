@@ -24,6 +24,7 @@ because they share the legs, not because they share this file.
 
 from __future__ import annotations
 
+import codecs
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 import hashlib
@@ -37,7 +38,7 @@ import subprocess
 import sys
 import threading
 import time
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 import xml.etree.ElementTree as ElementTree
 
 from .project_docs import DECLARED_NOTE_SUBJECTS
@@ -296,13 +297,30 @@ def _drain(process: "subprocess.Popen[str]") -> str:
     return stdout or ""
 
 
+def _relay_stderr(read_fd: int, on_stderr: Callable[[str], None]) -> None:
+    """Hand a leg's stderr to ``on_stderr`` as it arrives, decoded."""
+
+    decoder = codecs.getincrementaldecoder("utf-8")("replace")
+    with os.fdopen(read_fd, "rb", buffering=0) as stream:
+        while True:
+            chunk = stream.read(4096)
+            text = decoder.decode(chunk or b"", final=not chunk)
+            if text:
+                on_stderr(text)
+            if not chunk:
+                return
+
+
 def run_leg(
-    name: str, argv: Sequence[str], *, capture: bool = True, timeout: float = 0.0
+    name: str, argv: Sequence[str], *, capture: bool = True, timeout: float = 0.0,
+    on_stderr: Callable[[str], None] | None = None,
 ) -> Leg:
     """Run one leg and return it with its envelope (or its printed text).
 
     Stderr passes straight through — the legs' progress lines and the
-    trainer's reward curve belong there. Stdout is the leg's ``--json``
+    trainer's reward curve belong there — unless ``on_stderr`` is given,
+    when it is handed there as it arrives instead (the dashboard's live
+    turn transcript, ADR-504). Stdout is the leg's ``--json``
     envelope, or with ``capture`` false the raw text (``cadex script``
     prints the source and nothing else), kept under ``"text"``.
 
@@ -321,13 +339,23 @@ def run_leg(
         os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
     )
     started = time.monotonic()
+    read_fd, write_fd = os.pipe() if on_stderr is not None else (-1, None)
     try:
         process = subprocess.Popen(
-            command, stdout=subprocess.PIPE, stderr=None, text=True, env=env,
+            command, stdout=subprocess.PIPE, stderr=write_fd, text=True, env=env,
             start_new_session=True,
         )
     except OSError as exc:
+        if write_fd is not None:
+            os.close(read_fd)
+            os.close(write_fd)
         raise WalkError(f"{name}: could not run {command[0]}: {exc}") from exc
+    relay = None
+    if on_stderr is not None and write_fd is not None:
+        os.close(write_fd)
+        relay = threading.Thread(target=_relay_stderr, args=(read_fd, on_stderr),
+                                 name=f"cadex-{name}-stderr", daemon=True)
+        relay.start()
     pgid = leg_pgid(process)
     stopped = False
     with _relaying_signals(process, pgid):
@@ -337,6 +365,9 @@ def run_leg(
             stopped = True
             _stop_leg(process, pgid)
             stdout = _drain(process)
+    if relay is not None:
+        # A grandchild that kept the pipe open past the leg is not waited for.
+        relay.join(timeout=LEG_DRAIN_S)
     leg = Leg(name=name, argv=list(argv), code=process.returncode,
               seconds=time.monotonic() - started)
     if stopped:

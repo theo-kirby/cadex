@@ -14,11 +14,12 @@ task's success spec, with the film drawn from it (ADR-459). Reading
 opens no engine, rebuilds nothing and holds no state of its own, so a
 browser that goes away changes nothing about the project.
 
-Writing is the dashboard's light steering (orun2 D2, ADR-503), and it has
-no write path of its own: each POST runs the very ``cadex`` command a
-person would type (``params --set``), as a child process the way ``cadex
-walk`` runs its legs, so the project lock, the ``PROGRESS.md`` row and the
-project commit are the CLI's. Every POST needs the per-launch token the
+Writing is the dashboard's light steering (orun2 D2, ADR-503, ADR-504),
+and it has no write path of its own: each POST runs the very ``cadex``
+command a person would type (``params --set``, or ``-p PROMPT`` for a
+design turn whose stderr is the live transcript), as a child process the
+way ``cadex walk`` runs its legs, so the project lock, the ``PROGRESS.md``
+row and the project commit are the CLI's. Every POST needs the per-launch token the
 server writes into the page it serves, and a browser's ``Origin``, when
 sent, must be this server's own; anything else is refused before it is
 routed.
@@ -55,7 +56,7 @@ import struct
 import sys
 import threading
 from typing import Any, Callable, Mapping
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 from xml.etree import ElementTree
 
 from .walk import run_leg
@@ -1428,6 +1429,110 @@ def write_params(root: Path, values: Any) -> tuple[HTTPStatus, dict[str, Any]]:
     return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
 
 
+#: How long one dashboard prompt turn may run before it is stopped, in seconds.
+TURN_TIMEOUT_S = 3600.0
+#: Bound on a prompt, in characters; a design brief, not a document.
+PROMPT_LIMIT = 16_000
+#: Bound on the transcript kept for one turn, in characters; past it the
+#: tail is dropped and the transcript says so.
+TRANSCRIPT_LIMIT = 4 * 1024 * 1024
+
+
+class PromptTurn:
+    """One ``cadex -p PROMPT --project ROOT`` child and its live transcript.
+
+    The transcript is the child's stderr — the tool-call progress lines and
+    the model's prose, exactly what a terminal shows — held in memory for
+    the page to read from any offset while the turn runs. It is never
+    written into the project: what the turn leaves there (the revision, the
+    ``PROGRESS.md`` row, the project commit, the agent's decisions and
+    notes) is the CLI's, as for a turn typed at a terminal (A3).
+    """
+
+    def __init__(self, root: Path, prompt: str, resume: bool) -> None:
+        self.id = secrets.token_hex(6)
+        self.root = root
+        self.prompt = prompt
+        self.resume = resume
+        self.started = _now()
+        self.state = "running"
+        self.reply: dict[str, Any] | None = None
+        self._text: list[str] = []
+        self._length = 0
+        self._truncated = False
+        self._lock = threading.Lock()
+        self.argv = ["--project", str(root), "--prompt=" + prompt] + (["--resume"] if resume else [])
+
+    def _append(self, text: str) -> None:
+        with self._lock:
+            if self._truncated:
+                return
+            if self._length + len(text) > TRANSCRIPT_LIMIT:
+                text = "\n[transcript truncated at %d characters]\n" % TRANSCRIPT_LIMIT
+                self._truncated = True
+            self._text.append(text)
+            self._length += len(text)
+
+    def start(self) -> None:
+        threading.Thread(target=self._run, name="cadex-turn-" + self.id, daemon=True).start()
+
+    def _run(self) -> None:
+        from .report import EXIT_OK  # report imports this module
+
+        try:
+            leg = run_leg("prompt", self.argv + ["--json"], timeout=TURN_TIMEOUT_S, on_stderr=self._append)
+            envelope = leg.envelope
+            reply = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
+                     "seconds": round(leg.seconds, 3)}
+            for key in ("accepted_revision", "digest", "params", "error", "notes", "session_id"):
+                if key in envelope:
+                    reply[key] = envelope[key]
+        except Exception as exc:  # noqa: BLE001 - the page must hear how it ended
+            reply = {"ok": False, "exit": None, "error": f"the turn could not run: {exc}"}
+        with self._lock:
+            self.reply = reply
+            self.state = "done" if reply["ok"] else "failed"
+
+    def snapshot(self, since: int = 0) -> dict[str, Any]:
+        with self._lock:
+            text = "".join(self._text)
+            return {"id": self.id, "state": self.state, "prompt": self.prompt, "resume": self.resume,
+                    "started": self.started, "command": ["cadex", *self.argv],
+                    "text": text[max(0, min(since, len(text))):], "next": len(text), "reply": self.reply}
+
+
+class Turns:
+    """At most one dashboard turn per project, and the last one each ran."""
+
+    def __init__(self) -> None:
+        self._turns: dict[Path, PromptTurn] = {}
+        self._lock = threading.Lock()
+
+    def current(self, root: Path) -> PromptTurn | None:
+        with self._lock:
+            return self._turns.get(root.resolve())
+
+    def start(self, root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
+        """Start ``cadex -p`` on ``root``, unless the body is wrong or one runs."""
+
+        prompt, resume = body.get("prompt"), body.get("resume", False)
+        if not isinstance(prompt, str) or not prompt.strip():
+            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "prompt must be non-empty text."}
+        if len(prompt) > PROMPT_LIMIT or "\x00" in prompt:
+            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"a prompt is at most {PROMPT_LIMIT} characters of text."}
+        if not isinstance(resume, bool):
+            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "resume must be true or false."}
+        key = root.resolve()
+        with self._lock:
+            running = self._turns.get(key)
+            if running is not None and running.state == "running":
+                return HTTPStatus.CONFLICT, {"ok": False, "error": "a turn is already running on this project.",
+                                             "turn": {"id": running.id, "state": running.state}}
+            turn = self._turns[key] = PromptTurn(key, prompt.strip(), resume)
+        turn.start()
+        return HTTPStatus.ACCEPTED, {"ok": True, "turn": turn.snapshot()}
+
+
 # The two ways Linux reports a peer that went away mid-write: EPIPE, or
 # ECONNRESET when the peer closed with bytes still unread (ADR-324).
 CLIENT_GONE = (BrokenPipeError, ConnectionResetError)
@@ -1552,6 +1657,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
         parts = urlsplit(self.path)
         segments = [unquote(segment) for segment in parts.path.split("/") if segment]
         download = "download=1" in parts.query.split("&")
+        self.query = parts.query
         if any(segment in (".", "..") or "\\" in segment for segment in segments):
             self._not_found(parts.path)
             return
@@ -1605,10 +1711,14 @@ class ReviewHandler(BaseHTTPRequestHandler):
             project: ReviewProject | None = self.project if projects is None else None
             if projects is not None and segments[:1] == ["p"] and len(segments) > 1:
                 project, segments = projects.project(segments[1]), segments[2:]
-            if project is None or segments != ["api", "params"] or not isinstance(body, dict):
+            if project is None or segments not in (["api", "params"], ["api", "turn"]) \
+                    or not isinstance(body, dict):
                 self._not_found(parts.path)
                 return
-            status, reply = write_params(project.root, body.get("values"))
+            if segments == ["api", "turn"]:
+                status, reply = self.server.turns.start(project.root, body)  # type: ignore[attr-defined]
+            else:
+                status, reply = write_params(project.root, body.get("values"))
             self._send_json(reply, status)
         except CLIENT_GONE:
             pass
@@ -1680,6 +1790,11 @@ class ReviewHandler(BaseHTTPRequestHandler):
             if rest == ["model", "accepted"]:
                 self._send_json(accepted_model(project.root))
                 return
+            if rest == ["turn"]:
+                turn = self.server.turns.current(project.root)  # type: ignore[attr-defined]
+                since = parse_qs(self.query).get("since", ["0"])[0]
+                self._send_json(turn.snapshot(int(since) if since.isdigit() else 0) if turn is not None else {"state": "idle"})
+                return
             if rest[:2] == ["model", "run"] and len(rest) == 3:
                 record = project.run(rest[2])
                 if record is None:
@@ -1728,6 +1843,7 @@ class ReviewServer(ThreadingHTTPServer):
     def __init__(self, project_root: Path | str, host: str, port: int,
                  log: Callable[[str], None] | None = None) -> None:
         self.project = ReviewProject(project_root)
+        self.turns = Turns()
         self.log = log
         self.write_token = secrets.token_urlsafe(32)
         super().__init__((host, port), ReviewHandler)
@@ -1788,6 +1904,7 @@ class ProjectsServer(ThreadingHTTPServer):
     def __init__(self, projects_root: Path | str, host: str, port: int,
                  log: Callable[[str], None] | None = None) -> None:
         self.projects = ProjectsDirectory(projects_root)
+        self.turns = Turns()
         self.log = log
         self.write_token = secrets.token_urlsafe(32)
         super().__init__((host, port), ReviewHandler)
