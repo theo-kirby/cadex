@@ -111,12 +111,16 @@ def test_aggregate_takes_the_median_per_trait():
     assert judge.aggregate(calls) == {"medians": {t: 1 for t in TRAITS}, "total": 7}
 
 
-def test_language_cites_core_references_by_filename_only():
-    cited = {name for name in CORE if name in LANGUAGE}
-    assert cited == set(CORE)
-    # Filenames only: no path into the gitignored folder, no embedded image.
-    assert "reference/images" not in LANGUAGE and "](" not in LANGUAGE.split("## 1.")[1].split("## 9.")[0]
+def test_the_language_embeds_no_reference_image():
+    """ADR-484: the language no longer cites ot10's references, and never embeds one.
+
+    orun1 rewrote it from the owner's ratings (ADR-479), so the ten core
+    references are no longer its evidence. A reference may still be named by
+    filename; no path into the gitignored folder and no image may appear.
+    """
+    assert "reference/images" not in LANGUAGE and "reference/" not in LANGUAGE
     assert "![" not in LANGUAGE and "![" not in README
+    assert "ADR-484" in LANGUAGE
 
 
 def test_baseline_is_scored_and_committed():

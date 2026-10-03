@@ -31426,3 +31426,129 @@ held-out result.
   No (2 of 2), and τ-b 0.436 over 325 pairs. ot10's judge scored 13.5%, failed
   Love over No and had τ-b −0.079 on the same pairs. v2 meets D1's bar and is the
   judge D4 is scored with (`docs/probes/orun1/judge/v2-heldout/`).
+
+## ADR-479 — The design language is rewritten from the owner's ratings, and inside out is the procedure (2026-10-02)
+
+**Context.** orun1 D2. ot10 wrote `docs/DESIGN-LANGUAGE.md` from ten
+reference images (ADR-411), and the overlay taught it. The owner rated 55
+sweep designs blind (`docs/probes/orun1/sweep/ratings.json`). The three Nos
+are the archetype the old language prescribed. The best-rated thesis is the
+one the old language forbade. D1's frozen judge v2 agrees with the owner on
+designs it never saw, and the ot10 rubric does not (ADR-478).
+
+**Decision.** The language is rewritten on the charter's A1–A3, and each
+rule cites sweep ids with their verdicts and split, or the charter, or is
+marked **[judgement]**. A robot is an engineered machine in one of two
+finishes, exposed mechanism or panelled hard surface, which the agent
+chooses and justifies. There is no face, no pillow body, and the accent is
+small and functional. The overlay's design section (`CadexAgentGuidance.md`)
+is now six steps: concept, parts, place them, structure that carries them,
+finish, refine with `look`. Each step is taught as a rule with no rating, id,
+render or judge text. A test holds that last property against every sweep id
+and image name.
+
+**Consequences.**
+- The contradicted rules are removed by ADR-480 to ADR-483, and the rubric
+  by ADR-484.
+- Kept, with their sources: the role palette (all four Loves use it), joint
+  caps over the horn (ADR-440), tapered limbs (ADR-428's depth half), `.bay()`
+  bays (ADR-442/443), printability, the dark floor (ADR-444).
+- `look`'s `hardware_silhouette_share` still carries ot10's 0.20 bar and its
+  `meets` flag. The overlay now tells the agent to read it as how much shows,
+  not as a failure, in the exposed finish. Removing the bar from the engine is
+  a separate change.
+- Text only: no engine code, protocol or payload change beyond the shipped
+  guidance file. Tests: `cli/tests/test_turn_loop.py` (inside-out order, old
+  archetype gone, no ratings quoted), `cadex_tests/test_agent_guidance.py`.
+
+## ADR-480 — The mandated face is removed; a real sensor may sit where it was (2026-10-02)
+
+**Context.** ot10 §4 and ADR-422 required a face of checked size and
+contrast on every robot. In the orun1 sweep the 47 designs whose notes
+mention a face, eyes or a visor average 1.43. The 8 without average 2.00.
+Every No (`biped-a-servo-joint`, `hexapod-g-minimal`, `biped-h-free`) is a
+visor with two dot eyes. Charter A1: the face is out, and a focal sensor may
+take its place as a real part.
+
+**Decision.** The face rule, its size bar and its +X contrast check are
+removed from the language and the overlay. The overlay says: no eyes, no
+visor, no mouth. The front may carry a camera, a range sensor or a slot for
+one, as a held part, or the controller can be the focal point
+(`balancer-c-exposed-mechanism`, Love). ADR-422's tests are replaced by one
+that fails if a face rule comes back.
+
+**Consequences.** Two Loves carry a forward sensor-like element that their
+own notes called an "eye-bar" and "two lenses". The rule therefore separates
+a sensor on a hard front from a mascot face, and it advises one part over a
+pair of round lenses **[judgement]**. A1 is the owner's to revise.
+
+## ADR-481 — The single soft body primitive is removed (2026-10-02)
+
+**Context.** ot10 §0 and §1: "one soft body primitive with a face", "a
+hood, a pill, a sphere or a heavily rounded box", radii 10–20% of the body.
+All three Nos are that body, and the product-shell thesis it led to scored
+1.43. The owner's words in the charter: "a rounded box with four legs".
+Charter A1: the soft pillow-box body is out.
+
+**Decision.** The language names the mascot box as the archetype to avoid.
+Edges are finished with a fillet or a 45° chamfer sized to the part (the
+engine's sharp-edge measure already counts a 45° chamfer as finished), and
+one large uniform radius over a whole box is called the pillow. The body is
+whatever structure carries the parts: frames, a spine, a deck, a column, a
+hull.
+
+**Consequences.** `quadruped-e-hard-surface` (Love) is chamfered, and a
+chamfered body now passes the language as well as the sharp-edge bar.
+
+## ADR-482 — "Never an exposed case or a bare board" is removed; hardware that shows is ordered (2026-10-02)
+
+**Context.** ot10 §1 said shells hide the purchased hardware, and ADR-428
+added that a cradle following a servo case must be covered or rounded away.
+The exposed-mechanism thesis is the best rated in the sweep (2.14), with two
+of the four Loves (`balancer-c-exposed-mechanism`,
+`biped-c-exposed-mechanism`).
+
+**Decision.** Hardware may show. Where it shows it is square to the frame, on
+a centreline or grid, held by its own screws or bay, with its cable on a
+deliberate path. Exposed mechanism is one of the two finishes (A2). ADR-428's
+cradle rule and the overlay's SHELLS HIDE THE HARDWARE rule are removed.
+ADR-428's depth-taper rule stays.
+
+**Consequences.** A part held only by being inside a cover is now named as
+not held. D3's mounting check is what will measure that.
+
+## ADR-483 — "Split lines are the only surface detail" is replaced by "detail is real" (2026-10-02)
+
+**Context.** ot10 §1 allowed only shell seams as detail. The Loves use
+fasteners, a bolted hatch, routed cables and seams where parts really
+separate (`quadruped-e-hard-surface`: "every seam, groove and socket-head bolt
+is a real joint"; `arm5-g-minimal`: "seams only where parts actually
+separate").
+
+**Decision.** Surface detail is a part boundary: a real seam, a fastener
+that fastens, a hatch, a panel, a cable that carries something. A greeble, a
+fake vent or a stripe is still not allowed.
+
+**Consequences.** Visible fasteners are now a deliberate pattern, not
+something to hide (§6).
+
+## ADR-484 — ot10's T1–T7 rubric is retired as the authority; judge v2 replaces it (2026-10-02)
+
+**Context.** ot10's rubric (`docs/probes/ot10/README.md`, sha256
+`1c81caa2…`) scored the finish ot10 prescribed. On orun1's held-out set it
+agreed with the owner on 13.5% of the gap pairs, ranked the No above both
+Loves, and had τ-b −0.079. Frozen judge v2 scored 97.3%, held Love over No
+and had τ-b 0.436 (ADR-478).
+
+**Decision.** Retired, not rewritten. The rubric stops being the measure of
+Cadex design quality, and D1's frozen judge v2 (`docs/probes/orun1/README.md`)
+is orun1's authority. The rubric's files, its frozen test and ot10's scores
+stay unchanged as ot10's record and as orun1's baseline. They are not
+deleted, because the baseline result cites them. The language no longer
+cites the ten core references, and the test that required every one to be
+cited now requires only that no reference image or path appears.
+
+**Consequences.** `look`'s three measures (P1–P3) were defined by that
+contract. P2 (sharp edges) and P3 (materials) still agree with the new
+language. P1's hardware bar does not (ADR-479), and it is still in
+`CadexStudio.PROXY_BARS`.

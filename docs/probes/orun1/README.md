@@ -369,3 +369,18 @@ Scores (fraction of 25 comparisons won) by owner verdict:
 - **v2 is the judge D4 uses.** It was measured on the held-out set once. No
   later version is needed for D1, and the held-out set has now been used
   for its one purpose: nothing may be tuned on it.
+
+## D2: the design language, rewritten from these ratings
+
+`docs/DESIGN-LANGUAGE.md` is rewritten on A1–A3 (ADR-479). Each rule cites
+sweep ids with their verdicts here, or the charter, or is marked as
+judgement. The four contradicted rules are removed by ADR-480 (the face),
+ADR-481 (the single soft primitive), ADR-482 ("never an exposed case or a
+bare board") and ADR-483 ("split lines only"). ot10's rubric is retired as the
+authority by ADR-484. The overlay the product agent reads
+(`src/Mod/cadex/CadexAgentGuidance.md`) teaches the same rules as an
+inside-out procedure in six steps. It quotes no rating, id, render or judge
+text, and `cli/tests/test_turn_loop.py` holds that against every id and image
+name in `ratings.json`. The language cites held-out designs as evidence only
+after D1's judge was frozen and measured: nothing D1 counts was chosen from
+them.

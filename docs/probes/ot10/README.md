@@ -2,6 +2,11 @@
 
 Verified against source: 2026-09-29. [Cadex-new]
 
+**Retired as the authority (ADR-484, 2026-10-02).** orun1 measured this
+rubric on the owner's held-out ratings (13.5% gap-pair agreement) and
+replaced it with judge v2 (`docs/probes/orun1/README.md`). Everything below
+is kept unchanged as ot10's frozen record and as orun1's baseline.
+
 **This is A1's frozen instrument.** Every ot10 design, including hex3's
 baseline, is measured with it: the rubric, the measurable proxies, the A5
 bar and the judging procedure. It was written before any A5 probe, and

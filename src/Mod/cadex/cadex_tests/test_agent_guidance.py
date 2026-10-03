@@ -32,7 +32,8 @@ def test_the_guidance_uses_only_the_declared_placeholders():
 def test_the_guidance_carries_the_design_language_and_the_proof_rules():
     body = _body()
     for heading in ('YOU SEE YOUR WORK WITH `{{look}}`', 'FIT IS MEASURED, NOT PRINTED',
-                    'DESIGN IT; DO NOT ONLY MAKE IT FIT', 'CONCEPT FIRST', 'SHELL OVER SKELETON',
+                    'DESIGN IT; DO NOT ONLY MAKE IT FIT', 'CONCEPT FIRST', 'PARTS FIRST',
+                    'PLACE THEM', 'STRUCTURE THAT CARRIES THEM', '5. FINISH',
                     'REFINE WITH `{{look}}`', 'A ROBOT IS A COMPLETE MACHINE',
                     'GROUND WHAT THE POLICY READS', 'A WALKING TASK PAYS FOR WALKING',
                     'WHEN A CALL IS REFUSED'):

@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-01. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-02. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -2655,19 +2655,23 @@ The overlay says:
   Until ADR-406 this said the agent could not see; it now renders the
   accepted design for itself, and `inspect scope=output` and the fit block
   remain the evidence for numbers.
-- **Design it; do not only make it fit** (ADR-406, ADR-417). The
-  design language of `docs/DESIGN-LANGUAGE.md`, taught as four steps in
-  order: a **concept** before any geometry (silhouette, character, palette
-  and proportions, stated before the first `write_script` and landed as
-  `DECISION:` lines); the **skeleton** that fits and moves (enclose rather
-  than bolt on, one continuous form per part, mirror what has sides,
-  proportion and clearance, printable); the **shell over the skeleton**
-  (shells hide the hardware, large radii, one joint cap on every axis, a
-  face on +X, limbs that taper to a foot, two materials and one accent by
-  appearance role); and **refinement with `look`** — the `hero` view and
-  its `measures` first, then name the crudest thing, fix it and look
-  again. A test holds the order, and another that every paragraph and
-  bullet of the overlay is a finished sentence.
+- **Design it; do not only make it fit** (ADR-406, ADR-479). The
+  design language of `docs/DESIGN-LANGUAGE.md`, taught from the inside out
+  as six steps in order: a **concept** before any geometry (what the
+  machine is, its palette, and its finish, an exposed mechanism or a
+  panelled hard surface, landed as `DECISION:` lines); the **parts**, each
+  purchased part and the cable path chosen from the catalog; **placing**
+  them and checking their fit alone; the **structure that carries them**
+  (hold every part by something named, nothing stuck on, mirror what has
+  sides, one joint cap per axis, load-carrying limbs with designed feet,
+  printable); the **finish** (not the mascot box, no face, hardware that
+  shows is ordered, detail is real, finished edges, two materials and one
+  small functional accent by appearance role); and **refinement with
+  `look`**, which reads the `measures` first, then names the crudest
+  thing, fixes it and looks again. Tests hold the order, hold that no face
+  or hidden-hardware rule comes back (ADR-480 to ADR-483), hold that the
+  overlay quotes no owner rating, sweep id or judge text, and hold that
+  every paragraph and bullet is a finished sentence.
 - **Fit is measured, not printed** (ADR-346). The `fit` block on every
   build reply is the evidence that parts fit; the script's `stdout` is a
   claim the script makes about itself, and a `fit` naming a failing pair

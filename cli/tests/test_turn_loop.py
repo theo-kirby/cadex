@@ -626,9 +626,8 @@ def test_the_prompt_holds_printed_parts_to_a_design_language() -> None:
     """ADR-406: passing fit is the floor; the agent is told what designed means."""
 
     assert "DESIGN IT; DO NOT ONLY MAKE IT FIT" in CLI_OVERLAY
-    for rule in ("NO SHARP OUTSIDE CORNERS", "ENCLOSE, DO NOT BOLT ON",
-                 "ONE CONTINUOUS FORM PER PART", "MIRROR WHAT HAS SIDES",
-                 "PRINTABLE"):
+    for rule in ("FINISHED EDGES, NO PILLOW", "HOLD EVERY PART", "NOTHING STUCK ON",
+                 "MIRROR WHAT HAS SIDES", "PRINTABLE"):
         assert rule in CLI_OVERLAY
     assert "BE DONE WHEN IT IS BUILT AND YOU HAVE LOOKED AT IT" in CLI_OVERLAY
 
@@ -637,7 +636,7 @@ def test_the_overlay_cuts_electronics_bays_with_bay() -> None:
     """ADR-442: a bay is the part's `.bay()`, not a pocket cut to its `.body`."""
 
     enclose = next(i for i in _overlay_items(CLI_OVERLAY)
-                   if i.startswith("- ENCLOSE, DO NOT BOLT ON."))
+                   if i.startswith("- HOLD EVERY PART."))
     assert "`part.cut(body, pack.bay())`" in enclose
     assert "never cut to the part's `.body`" in enclose
     complete = CLI_OVERLAY[CLI_OVERLAY.index("A ROBOT IS A COMPLETE MACHINE"):]
@@ -648,7 +647,7 @@ def test_the_overlay_grows_a_limb_around_the_servo_bay() -> None:
     """ADR-443: a servo is housed inside its limb, not hung beside it."""
 
     enclose = next(i for i in _overlay_items(CLI_OVERLAY)
-                   if i.startswith("- ENCLOSE, DO NOT BOLT ON."))
+                   if i.startswith("- HOLD EVERY PART."))
     assert "Cut a servo's, board's or battery's bay with its own `.bay()`" in enclose
     assert "wraps the servo's `.bay()`" in enclose
     assert "never a case hanging beside the limb it drives" in enclose
@@ -678,48 +677,83 @@ def test_the_overlay_is_well_formed() -> None:
     assert "no unsupported overhang past 45 degrees" in printable
 
 
-def test_the_design_section_runs_concept_skeleton_shell_then_look() -> None:
-    """ADR-417 (ot10 A4): concept before geometry, shell over skeleton, refine with `look`."""
+def _design_section() -> str:
+    return CLI_OVERLAY[CLI_OVERLAY.index("DESIGN IT; DO NOT ONLY MAKE IT FIT"):
+                       CLI_OVERLAY.index("A ROBOT IS A COMPLETE MACHINE.")]
 
-    design = CLI_OVERLAY[CLI_OVERLAY.index("DESIGN IT; DO NOT ONLY MAKE IT FIT"):
-                         CLI_OVERLAY.index("A ROBOT IS A COMPLETE MACHINE")]
-    steps = ["1. CONCEPT FIRST, BEFORE ANY GEOMETRY", "2. SKELETON", "3. SHELL OVER SKELETON",
-             "4. REFINE WITH `look`"]
+
+def test_the_design_section_runs_inside_out() -> None:
+    """ADR-479 (orun1 D2): parts, then placement, then structure, then finish.
+
+    The charter makes inside out the procedure: choose the purchased parts
+    and the cable path, place them, design the structure that carries them,
+    and only then any panels or covers.
+    """
+
+    design = _design_section()
+    steps = ["1. CONCEPT FIRST, BEFORE ANY GEOMETRY", "2. PARTS FIRST", "3. PLACE THEM",
+             "4. STRUCTURE THAT CARRIES THEM", "5. FINISH", "6. REFINE WITH `look`"]
     at = [design.index(step) for step in steps]
     assert at == sorted(at)
-    concept, skeleton, shell, refine = (design[a:b] for a, b in zip(at, at[1:] + [len(design)]))
-    for word in ("silhouette", "character", "face", "palette", "DECISION:"):
+    concept, parts, place, structure, finish, refine = (
+        design[a:b] for a, b in zip(at, at[1:] + [len(design)]))
+    for word in ("EXPOSED MECHANISM", "PANELLED HARD SURFACE", "palette", "DECISION:"):
         assert word in concept
-    for rule in ("ENCLOSE, DO NOT BOLT ON", "MIRROR WHAT HAS SIDES", "PRINTABLE"):
-        assert rule in skeleton
-    for rule in ("SHELLS HIDE THE HARDWARE", "NO SHARP OUTSIDE CORNERS", "JOINTS ARE FEATURES",
-                 "A FACE", "TAPER TO A FOOT", "TWO MATERIALS AND ONE ACCENT"):
-        assert rule in shell
+    for word in ("actuators", "controller", "battery", "sensors", "cable path"):
+        assert word in parts
+    for word in ("battery low and central", "sensors at the front", "`fit` with the parts alone"):
+        assert word in place
+    for rule in ("HOLD EVERY PART", "NOTHING STUCK ON", "MIRROR WHAT HAS SIDES",
+                 "JOINTS ARE FEATURES", "LIMBS CARRY LOAD, AND FEET ARE PARTS", "PRINTABLE"):
+        assert rule in structure
+    for rule in ("NOT THE MASCOT BOX", "NO FACE", "HARDWARE THAT SHOWS IS ORDERED",
+                 "DETAIL IS REAL", "FINISHED EDGES, NO PILLOW", "TWO MATERIALS AND ONE SMALL ACCENT"):
+        assert rule in finish
     for role in ("`shell`", "`mechanism`", "`accent`"):
-        assert role in shell
-    # `look` reports the three A1 proxies as `measures`; the agent is told to read them.
+        assert role in finish
+    # `look` reports the three proxies as `measures`; the agent is told how to read them.
     for word in ("`hero`", "`focus`", "`measures`", "purchased hardware", "left sharp",
                  "number of materials"):
         assert word in refine
 
 
-def test_the_face_is_sized_contrasted_and_checked_from_its_own_side() -> None:
-    """ADR-422 (ot10 A4): hexapod attempt 3's face was a graphite slot on graphite.
+def test_the_old_archetype_is_gone_from_the_overlay() -> None:
+    """ADR-480 to ADR-483: no mandated face, no soft single primitive, hardware may show.
 
-    The overlay gives the face a size the agent can check, a colour rule for
-    either surround, and a `look` from +X before accepting.
+    Each of these rules is one the owner's ratings contradicted, and each was
+    removed by its own ADR. A face may not come back as a rule by accident.
     """
 
-    design = CLI_OVERLAY[CLI_OVERLAY.index("DESIGN IT; DO NOT ONLY MAKE IT FIT"):
-                         CLI_OVERLAY.index("A ROBOT IS A COMPLETE MACHINE")]
-    face = next(i for i in _overlay_items(design) if i.startswith("- A FACE."))
-    for phrase in ("at least half the body's width", "at least a quarter of its height",
-                   "`shell`-coloured front", "an `accent` face"):
-        assert phrase in face
-    refine = design[design.index("4. REFINE WITH `look`"):]
-    assert "`right`, which looks from +X" in refine
-    assert refine.index("`right`") < refine.index("before you accept")
-    assert "A FACE" in refine
+    design = _design_section()
+    for gone in ("- A FACE.", "SHELLS HIDE THE HARDWARE", "Servo cases, boards and the battery do not show",
+                 "one body primitive", "the only surface detail", "at least half the body's width"):
+        assert gone not in design, gone
+    no_face = next(i for i in _overlay_items(design) if i.startswith("- NO FACE."))
+    for phrase in ("eyes, a visor, a mouth", "a real sensor", "held part"):
+        assert phrase in no_face
+    held = next(i for i in _overlay_items(design) if i.startswith("- HOLD EVERY PART."))
+    assert "A part held only by being inside a cover is not held." in held
+    accent = next(i for i in _overlay_items(design)
+                  if i.startswith("- TWO MATERIALS AND ONE SMALL ACCENT."))
+    for phrase in ("horn caps", "the feet", "a status light", "never a stripe"):
+        assert phrase in accent
+
+
+def test_the_overlay_quotes_no_rating_render_or_judge() -> None:
+    """orun1 D2: the agent learns the direction only as written rules."""
+
+    import json
+
+    ratings = json.loads((Path(__file__).resolve().parents[2]
+                          / "docs/probes/orun1/sweep/ratings.json").read_text(encoding="utf-8"))
+    guidance = (Path(__file__).resolve().parents[2]
+                / "src/Mod/cadex/CadexAgentGuidance.md").read_text(encoding="utf-8")
+    for text in (CLI_OVERLAY, guidance):
+        for design in ratings["designs"]:
+            assert design["id"] not in text and design["image"] not in text
+        for leak in ("sweep-", "orun1", "owner", "Love", "held-out", "heldout", "judge v2",
+                     "V2_INSTRUCTIONS", "pillow-like box", ".png"):
+            assert leak not in text, leak
 
 
 def test_the_joint_cap_goes_over_the_horn_and_is_sized_from_its_spec() -> None:
@@ -739,7 +773,7 @@ def test_the_joint_cap_goes_over_the_horn_and_is_sized_from_its_spec() -> None:
                    "cut with `horn.body`", "within 1 mm of the case top",
                    "both sides of the joint"):
         assert phrase in joints
-    refine = design[design.index("4. REFINE WITH `look`"):]
+    refine = design[design.index("6. REFINE WITH `look`"):]
     assert "a horn you can see" in refine
 
 
@@ -799,22 +833,16 @@ def test_the_prompt_says_a_walking_task_pays_for_walking() -> None:
         assert phrase in CLI_OVERLAY
 
 
-def test_limbs_taper_in_depth_and_cradles_do_not_show_as_servos() -> None:
+def test_limbs_taper_in_depth_and_end_in_a_designed_foot() -> None:
     """ADR-428 (ot10 A5): hexapod attempt 7 tapered its legs in plan only.
 
-    Its legs kept one 4.0 mm thickness from hip to foot, and its graphite
-    knee cradles followed the servo case face for face. The overlay names
-    both: taper the depth as well as the width, and cover or round a cradle
-    that would show.
+    Its legs kept one 4.0 mm thickness from hip to foot. The overlay says to
+    taper the depth as well as the width. ADR-428's other half, covering a
+    cradle that follows a servo case, went with ADR-482: a case may show.
     """
 
-    design = CLI_OVERLAY[CLI_OVERLAY.index("DESIGN IT; DO NOT ONLY MAKE IT FIT"):
-                         CLI_OVERLAY.index("A ROBOT IS A COMPLETE MACHINE")]
-    taper = next(i for i in _overlay_items(design) if i.startswith("- TAPER TO A FOOT."))
+    taper = next(i for i in _overlay_items(_design_section())
+                 if i.startswith("- LIMBS CARRY LOAD, AND FEET ARE PARTS."))
     for phrase in ("its depth as well as its width", "seen from the side",
-                   "a plate of one thickness"):
+                   "a plate of one thickness", "never a thin stick", "a wheel with a tyre"):
         assert phrase in taper
-    shells = next(i for i in _overlay_items(design) if i.startswith("- SHELLS HIDE THE HARDWARE."))
-    for phrase in ("follows a servo case face for face", "whatever its colour",
-                   "cover it with the limb's `shell` part", "round its outside"):
-        assert phrase in shells
