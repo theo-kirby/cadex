@@ -45,6 +45,10 @@ __all__ = [
     "board_spec",
     "BATTERIES",
     "battery_spec",
+    "WHEELS",
+    "wheel_spec",
+    "FOOT_PADS",
+    "foot_pad_spec",
     "BLDC_MOTORS",
     "bldc_spec",
     "linear_actuator_spec",
@@ -450,6 +454,61 @@ SERVOS: Mapping[str, Mapping[str, Any]] = {
             "case_height_mm",
         ],
     },
+    # Feetech STS3215 C001, 7.4 V serial bus servo (ADR-485). Feetech's C001
+    # spec PDF (rev A/0, 2020-04-10: 45.2 x 24.7, 29 mm at the shaft-end
+    # section, 35 envelope, 25T spline 5.9 OD 3.4 high, rear boss 6 dia 4.1
+    # high, ratings p.3) and Waveshare's ST3215 DXF (same body; hole centres
+    # and the 10.11 axis offset read from its entities). No mounting tabs: it
+    # is held by M2 self-tapping screws into four holes on the output face and
+    # four on the rear face, so `mount_faces` replaces the tab-plate fields.
+    "sts3215": {
+        "family": "bus",
+        "mount_style": "case_holes",
+        "manufacturer": "Feetech", "variant": "STS3215 C001, 7.4 V, 1:345, 12-bit magnetic encoder",
+        "body_length_mm": 45.22,
+        "body_width_mm": 24.72,
+        "case_height_mm": 29.0,
+        "envelope_height_mm": 35.0,
+        "shaft_offset_from_front_mm": 10.11,
+        "spline_dia_mm": 5.9,
+        "spline_height_mm": 3.4,
+        "spline_teeth": 25,
+        "rear_boss_dia_mm": 6.0,
+        "rear_boss_height_mm": 4.1,
+        "hole_dia_mm": 2.0,
+        "hole_depth_mm": 3.0,
+        "mount_thread": "M2 self-tapping (B-PA2.0)",
+        "mount_faces": [
+            {"face": "output", "x_from_axis_mm": [8.30, -29.00], "y_mm": [-10.25, 10.25]},
+            {"face": "rear", "x_from_axis_mm": [8.30, -32.75], "y_mm": [-10.25, 10.25]},
+        ],
+        "horn_screw": "M3x6",
+        "mass_g": 55.0,
+        "travel_degrees": 360.0,
+        "encoder_steps": 4096,
+        "voltage_min_v": 4.0,
+        "voltage_max_v": 7.4,
+        "stall_torque": [
+            {"volts": 6.0, "kg_cm": 16.5},
+            {"volts": 7.4, "kg_cm": 19.5},
+        ],
+        "speed": [
+            {"volts": 6.0, "s_per_60_deg": 0.238},
+            {"volts": 7.4, "s_per_60_deg": 0.192},
+        ],
+        "bus": "half-duplex TTL serial, 1 Mbps default, IDs 0-253; position, speed, load, voltage and temperature read back",
+        "connector": "two 5264-3P (GND, V, S) on the rear end for daisy-chaining",
+        "sources": [
+            "https://www.feetechrc.com/Data/feetechrc/upload/file/20260622/6391772523943436695270694.pdf",
+            "https://www.feetechrc.com/74v-19-kgcm-plastic-case-metal-tooth-magnetic-code-double-axis-ttl-series-steering-gear.html",
+            "https://files.waveshare.com/upload/0/08/ST3215-2D.zip",
+        ],
+        "approximate": [
+            "hole_depth_mm",
+            "envelope_height_mm: the raised cover (about 2.7 mm over the output face) and the rear bump (about 3.4 mm under the rear face) at the far end are scaled from the drawing, not dimensioned, and are not modelled; leave relief there.",
+            "mount_faces: the output/rear assignment of the 20.7 and 24.45 mm hole pairs is read from the drawings' bosses, not labelled; the rear-face thread is unconfirmed.",
+        ],
+    },
 }
 
 
@@ -483,12 +542,7 @@ def servo_spec(sku: Any) -> dict[str, Any]:
             f"Unknown servo {sku!r}; catalogued servos: "
             + ", ".join(sorted(SERVOS)) + "."
         )
-    row = SERVOS[sku.strip().lower()]
-    copied = dict(row)
-    copied["stall_torque"] = [dict(entry) for entry in row["stall_torque"]]
-    copied["speed"] = [dict(entry) for entry in row["speed"]]
-    copied["approximate"] = list(row["approximate"])
-    return copied
+    return deepcopy(dict(SERVOS[sku.strip().lower()]))
 
 
 def normalise_servo_sku(sku: Any) -> str:
@@ -622,6 +676,86 @@ BOARDS = {
         ] + [_board_pin("EN", "EN", 19.05, 1.27, 1.02, 1.57),
              _board_pin("PG", "PG", 19.05, 3.81, 1.02, 1.57)],
     },
+    # Raspberry Pi 5 (ADR-485). Outline, holes, drill and port positions from
+    # the Pi 5 mechanical drawing; port heights from the Pi 4 drawing, which
+    # prints them (13.5 Ethernet, 16.0 USB) where the Pi 5's does not. The
+    # marker is one box over both port stacks, which overhang the +X edge by
+    # 3 mm. Header pin 1 sits on the hole line's centre per the Pi 4 drawing.
+    "pi-5": {
+        "manufacturer": "Raspberry Pi", "variant": "Raspberry Pi 5 Model B, unpopulated-equivalent GPIO pads",
+        "width_mm": 85.0, "length_mm": 56.0, "thickness_mm": 1.45,
+        "mount_holes": [[x, y] for x in (3.5, 61.5) for y in (3.5, 52.5)],
+        "mount_hole_dia_mm": 2.7,
+        "cosmetic_origin": [66.7, 2.2, 1.45], "cosmetic_size": [21.3, 52.0, 16.0],
+        "density_kg_m3": 1850.0, "mass_g": 46.0,
+        "approximate": ["thickness_mm", "cosmetic_origin", "density_kg_m3", "mass_g",
+                        "terminal_origins", "terminal_hole_dia_mm"],
+        "source": "https://datasheets.raspberrypi.com/rpi5/raspberry-pi-5-mechanical-drawing.pdf",
+        "sources": ["https://datasheets.raspberrypi.com/rpi5/raspberry-pi-5-mechanical-drawing.pdf",
+                    "https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-mechanical-drawing.pdf",
+                    "https://datasheets.raspberrypi.com/rpi5/raspberry-pi-5-product-brief.pdf"],
+        "notes": "Thickness is measured from the drawing's side view (1.45), not dimensioned; mass is a retailer figure. A fan header sits at (61.5, 9.5) and a 3 mm fan-mount hole at (61.5, 46.5). Leave room past the +X edge for the USB and Ethernet plugs, and for the CSI/DSI ribbons. 5 V 5 A over USB-C.",
+        "terminals": [
+            _board_pin(f"J8_{i+1}", signal, round(8.37+(i//2)*2.54, 4),
+                       round(51.23+(i%2)*2.54, 4), 1.0, 1.45)
+            for i, signal in enumerate((
+                "3V3 5V GPIO2 5V GPIO3 GND GPIO4 GPIO14 GND GPIO15 "
+                "GPIO17 GPIO18 GPIO27 GND GPIO22 GPIO23 3V3 GPIO24 GPIO10 GND "
+                "GPIO9 GPIO25 GPIO11 GPIO8 GND GPIO7 ID_SD ID_SC GPIO5 GND "
+                "GPIO6 GPIO12 GPIO13 GND GPIO19 GPIO16 GPIO26 GPIO20 GND GPIO21"
+            ).split())
+        ],
+    },
+    # Raspberry Pi Camera Module 3, standard lens (ADR-485). PCB, holes, lens
+    # centre, housing and barrel from the mechanical drawing; optics from the
+    # product brief. Lens faces +Z. The marker is the housing-plus-barrel
+    # envelope; a 2.75 mm block (taken to be the FPC receptacle) sits on the
+    # back face along the top edge, which `underside_components_mm` carries
+    # so the bay always reaches it.
+    "rpi-camera-module-3": {
+        "manufacturer": "Raspberry Pi", "variant": "Camera Module 3, standard lens (IMX708)",
+        "width_mm": 25.0, "length_mm": 23.862, "thickness_mm": 1.12,
+        "mount_holes": [[x, y] for x in (2.0, 23.0) for y in (2.0, 14.5)],
+        "mount_hole_dia_mm": 2.2,
+        "cosmetic_origin": [7.1, 9.0, 1.12], "cosmetic_size": [10.8, 10.8, 7.43],
+        "underside_components_mm": 2.75,
+        "lens_centre": [12.5, 14.4], "lens_axis": [0.0, 0.0, 1.0],
+        "fov_degrees": {"horizontal": 66.0, "vertical": 41.0, "diagonal": 75.0},
+        "focus_range_mm": [100.0, None],
+        "density_kg_m3": 1850.0, "mass_g": 4.0,
+        "approximate": ["cosmetic_size", "density_kg_m3", "mass_g", "fpc_connector_position"],
+        "source": "https://datasheets.raspberrypi.com/camera/camera-module-3-standard-mechanical-drawing.pdf",
+        "sources": ["https://datasheets.raspberrypi.com/camera/camera-module-3-standard-mechanical-drawing.pdf",
+                    "https://datasheets.raspberrypi.com/camera/camera-module-3-product-brief.pdf"],
+        "notes": "15-way 1 mm FPC to the Pi's CSI port, 200 mm cable; the receptacle's edge is read from the drawing's rear block, not labelled. Mount through the four M2 holes; keep the lens on the body's forward axis with nothing in its 66 x 41 degree view. Mass is a retailer figure.",
+        "terminals": [],
+    },
+    # Pololu 3415, VL53L1X time-of-flight distance sensor carrier (ADR-485).
+    # Board, holes, drill and pin order from Pololu's annotated dimension and
+    # pinout photos (no dimensioned PDF exists); range and field of view from
+    # ST's VL53L1X datasheet. The emitter/receiver faces +Z.
+    "pololu-vl53l1x-3415": {
+        "manufacturer": "Pololu", "variant": "3415 VL53L1X time-of-flight distance sensor carrier, 400 cm max",
+        "width_mm": 12.7, "length_mm": 17.78, "thickness_mm": 0.6,
+        "mount_holes": [[10.16, 2.54], [10.16, 15.24]],
+        "mount_hole_dia_mm": 2.18,
+        "cosmetic_origin": [4.45, 7.75, 0.6], "cosmetic_size": [4.9, 2.5, 1.56],
+        "sensor_axis": [0.0, 0.0, 1.0],
+        "range_mm": [40.0, 4000.0], "fov_degrees": {"full": 27.0},
+        "density_kg_m3": 1850.0, "mass_g": 0.5,
+        "approximate": ["thickness_mm", "mount_holes", "cosmetic_origin", "density_kg_m3",
+                        "terminal_origins"],
+        "source": "https://a.pololu-files.com/picture/0J7225.1200.jpg",
+        "sources": ["https://www.pololu.com/product/3415",
+                    "https://a.pololu-files.com/picture/0J7225.1200.jpg",
+                    "https://a.pololu-files.com/picture/0J8679.1200.jpg",
+                    "https://www.pololu.com/file/0J1506/vl53l1x.pdf"],
+        "notes": "I2C (SDA, SCL), 2.6-5.5 V on VIN with an onboard 2.8 V regulator (VDD is its output). 400 cm in long mode in the dark, about 130 cm in short mode; 27 degree cone. Hole x and the sensor's centre are measured from Pololu's photo (about 0.3 mm); the overall 2.16 mm height is stated, the 0.6 mm PCB is that less the sensor.",
+        "terminals": [
+            _board_pin(f"J1_{i+1}", signal, 1.27, round(16.51 - i*2.54, 4), 1.0, 0.6)
+            for i, signal in enumerate("VDD VIN GND SDA SCL XSHUT GPIO1".split())
+        ],
+    },
 }
 
 
@@ -656,6 +790,79 @@ def battery_spec(sku: Any) -> dict[str, Any]:
     spec = deepcopy(BATTERIES[sku.strip().lower()])
     volume_m3 = spec["length_mm"] * spec["width_mm"] * spec["height_mm"] * 1e-9
     spec["density_kg_m3"] = round(spec["mass_g"] * 1e-3 / volume_m3, 1)
+    return spec
+
+
+# Pololu 1430, 80 x 10 mm wheel with silicone tyre (ADR-485). Drawing w3d05a
+# (page 5 of 0J1708) and Pololu's STEP model, measured in this repo's kernel;
+# 3 mm D press-fit bore for a micro metal gearmotor's shaft. Frame: datum on
+# the axle at the hub tip, +Z along the axle away from the motor.
+WHEELS = {
+    "pololu-1430": {
+        "manufacturer": "Pololu", "manufacturer_part_number": "1430",
+        "variant": "Wheel 80x10mm, black, for 3 mm D shafts",
+        "tyre_dia_mm": 80.0, "rim_dia_mm": 76.5, "width_mm": 10.0,
+        "hub_dia_mm": 6.6, "hub_protrusion_mm": 1.75, "overall_length_mm": 11.75,
+        "centre_plane_z_mm": 6.75,
+        "bore": "3 mm D, press fit", "bore_dia_mm": 3.0, "bore_flat_to_opposite_mm": 2.5,
+        "bore_depth_mm": 9.25,
+        "mass_g": 19.8, "tyre_material": "silicone", "wheel_material": "ABS",
+        "fits": ["pololu-2367"],
+        "sources": ["https://www.pololu.com/product/1430/specs",
+                    "https://www.pololu.com/file/0J1708/pololu-wheel-dimensions.pdf",
+                    "https://www.pololu.com/file/0J1294/pololu-wheel-80%C3%9710mm.zip"],
+        "approximate": [
+            "Solid disc of the tyre's diameter and width: spokes, tread and shoulder rounding are not modelled; the density is the stated mass over that envelope, not a measured inertia.",
+            "bore_flat_to_opposite_mm is the STEP model's 2.5; the drawing's callout near the bore is ambiguous.",
+            "The six 3.1 mm hub-mounting holes on a 19.1 mm circle are not modelled: their clocking is not dimensioned.",
+        ],
+    },
+}
+
+
+def wheel_spec(sku: Any) -> dict[str, Any]:
+    """One manufacturer wheel; the density is its stated mass over its envelope."""
+    if not isinstance(sku, str) or sku.strip().lower() not in WHEELS:
+        raise CatalogError(f"Unknown wheel {sku!r}; catalogued wheels: "
+                           + ", ".join(sorted(WHEELS)) + ".")
+    spec = deepcopy(WHEELS[sku.strip().lower()])
+    radius = spec["tyre_dia_mm"] / 2.0
+    volume_m3 = (math.pi * radius ** 2 * spec["width_mm"]
+                 + math.pi * (spec["hub_dia_mm"] / 2.0) ** 2 * spec["hub_protrusion_mm"]) * 1e-9
+    spec["density_kg_m3"] = round(spec["mass_g"] * 1e-3 / volume_m3, 1)
+    return spec
+
+
+# Essentra 462178, SR 1590 screw-on foot, natural rubber, type 2 (ADR-485).
+# Essentra's feet catalogue p.691 (the Farnell-hosted PDF): D 19 at the
+# mounting face, 16 at the floor, H 8, a 3.0 screw hole and a 7.0 counterbore
+# 6.0 deep from the floor face. Frame: datum at the mounting face's centre,
+# +Z towards the floor. The M3 screw goes in from the floor side.
+FOOT_PADS = {
+    "essentra-462178": {
+        "manufacturer": "Essentra", "manufacturer_part_number": "462178",
+        "variant": "SR 1590 screw-on foot, natural rubber, 19 mm",
+        "top_dia_mm": 19.0, "base_dia_mm": 16.0, "height_mm": 8.0,
+        "screw": "m3", "screw_hole_dia_mm": 3.0,
+        "counterbore_dia_mm": 7.0, "counterbore_depth_mm": 6.0,
+        "material": "natural rubber", "density_kg_m3": 930.0,
+        "sources": ["https://www.farnell.com/datasheets/3110954.pdf",
+                    "https://www.essentracomponents.com/en-gb/p/screw-on-bumper-feet"],
+        "approximate": [
+            "Modelled solid: the type 2 foot is a hollow cup round a central screw boss, so the body over-states its mass.",
+            "density_kg_m3 is the nominal density of natural rubber; Essentra states neither mass nor durometer.",
+        ],
+    },
+}
+
+
+def foot_pad_spec(sku: Any) -> dict[str, Any]:
+    """One manufacturer foot pad, with the screw that holds it."""
+    if not isinstance(sku, str) or sku.strip().lower() not in FOOT_PADS:
+        raise CatalogError(f"Unknown foot pad {sku!r}; catalogued foot pads: "
+                           + ", ".join(sorted(FOOT_PADS)) + ".")
+    spec = deepcopy(FOOT_PADS[sku.strip().lower()])
+    spec["screw_length_min_mm"] = spec["height_mm"] - spec["counterbore_depth_mm"]
     return spec
 
 
@@ -1084,6 +1291,14 @@ def catalog_families() -> dict[str, Any]:
             "skus": sorted(BATTERIES),
             "notes": "lib.battery(sku): the pack's stated rectangular envelope, base face on the datum, length along local X; spec carries voltage, capacity, C ratings, leads, stated mass and the density that mass implies. Leads and connectors are not modelled.",
         },
+        "wheels": {
+            "skus": sorted(WHEELS),
+            "notes": "lib.wheel(sku): the tyre's stated diameter and width as one disc plus the hub, with the D bore cut; datum on the axle at the hub tip, +Z away from the motor. spec carries the bore, the shaft it fits, the stated mass and the density that implies. Cut .bay() -- the wheel's swept disc plus clearance -- from anything near it.",
+        },
+        "foot_pads": {
+            "skus": sorted(FOOT_PADS),
+            "notes": "lib.foot_pad(sku): a screw-on rubber foot; datum at the mounting face's centre, +Z towards the floor. Its .bay() cuts the pad's keep-out and the tapping hole its screw takes into the printed foot. spec names the screw.",
+        },
         "boards": {
             "skus": sorted(BOARDS),
             "notes": "lib.board(sku): PCB and simple component marker; spec carries mounting holes, solder-pad pinout, sources and explicit approximations. No connector clearance envelope or measured assembly mass.",
@@ -1114,7 +1329,13 @@ def catalog_families() -> dict[str, Any]:
                 "bounded by the real stall torque; .spec the numbers, with "
                 "spec['approximate'] naming any field no datasheet "
                 "dimensions. Full dimension rows live in lib.servo(sku).spec "
-                "rather than here."
+                "rather than here. The bus servo (family 'bus', sts3215) has "
+                "no tabs: it is held by M2 self-tapping screws into four holes "
+                "on its output face and four on its rear face, listed in "
+                "spec['mount_points'] with the axis each screw enters along; "
+                "its bay keeps those faces reachable. It reads its position, "
+                "load and temperature back over a daisy-chained TTL bus, so "
+                "it needs no PWM driver and grounds a joint encoder."
             ),
         },
     }

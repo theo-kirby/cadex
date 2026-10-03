@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-09-13
+Verified against source: 2026-10-02
 
 Cadex is not written from scratch. It is a **derivative work of two large
 free-software projects**, carrying the design lessons of a third that we
@@ -429,6 +429,41 @@ paragraph records the geometric omissions.
   rectangular envelope only; the density is that mass over that envelope,
   and the 8.4 V full charge is the LiPo per-cell convention, not a
   sourced figure.
+
+## 8h. orun1 catalog additions `[Cadex-new, ADR-485]`
+
+The recipes are independently authored LGPL Cadex code. Interface numbers
+come from the sources below, checked 2026-10-02. No vendor CAD, artwork or
+drawing is redistributed. A STEP model was only measured, never copied in.
+
+- **Feetech STS3215 C001:** the manufacturer's
+  [C001 spec PDF](https://www.feetechrc.com/Data/feetechrc/upload/file/20260622/6391772523943436695270694.pdf)
+  gives the case, spline, rear boss, ratings, bus and connector. Waveshare's
+  [ST3215 2D drawing (DXF)](https://files.waveshare.com/upload/0/08/ST3215-2D.zip)
+  gives the hole centres and the 10.11 mm axis offset, read from its
+  entities. Which face carries which hole pair, the hole depth, and the
+  cover and bump heights are inferred, and are listed in `approximate`.
+- **Raspberry Pi 5:** the
+  [Pi 5 mechanical drawing](https://datasheets.raspberrypi.com/rpi5/raspberry-pi-5-mechanical-drawing.pdf)
+  gives the outline, holes and port positions. Port heights come from the
+  [Pi 4 drawing](https://datasheets.raspberrypi.com/rpi4/raspberry-pi-4-mechanical-drawing.pdf).
+  The thickness is measured off the drawing, and the mass is a retailer
+  figure.
+- **Raspberry Pi Camera Module 3:** the
+  [mechanical drawing](https://datasheets.raspberrypi.com/camera/camera-module-3-standard-mechanical-drawing.pdf)
+  and the [product brief](https://datasheets.raspberrypi.com/camera/camera-module-3-product-brief.pdf).
+  The FPC receptacle's edge is inferred.
+- **Pololu 3415 VL53L1X carrier:** Pololu's annotated
+  [dimension](https://a.pololu-files.com/picture/0J7225.1200.jpg) and
+  [pinout](https://a.pololu-files.com/picture/0J8679.1200.jpg) photos, and
+  ST's [VL53L1X datasheet](https://www.pololu.com/file/0J1506/vl53l1x.pdf).
+  The hole x and sensor position are measured from the photo.
+- **Pololu 1430 wheel 80×10 mm:** the
+  [wheel drawings](https://www.pololu.com/file/0J1708/pololu-wheel-dimensions.pdf)
+  (page 5), plus Pololu's STEP model, measured in this repo's kernel for the
+  hub offset and bore.
+- **Essentra 462178 screw-on foot:** Essentra's feet catalogue p.691, as
+  [hosted by Farnell](https://www.farnell.com/datasheets/3110954.pdf).
 
 ## 9. Where this goes
 

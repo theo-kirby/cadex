@@ -31552,3 +31552,57 @@ cited now requires only that no reference image or path appears.
 contract. P2 (sharp edges) and P3 (materials) still agree with the new
 language. P1's hardware bar does not (ADR-479), and it is still in
 `CadexStudio.PROXY_BARS`.
+
+## ADR-485 — The catalog gains the parts an engineered robot is built round: a bus servo, a Pi 5, a camera, a range sensor, a wheel and a foot pad (2026-10-02)
+
+**Context.** orun1's D3 asks for the parts the owner's Loves are built
+from, and D2's rewritten language (ADR-479, ADR-480) tells the agent to put
+a real sensor where a face was and to design feet and wheels as parts. The
+catalog had hobby PWM servos, a Pi Zero, no camera, no range sensor, no
+wheel and no foot, so the agent could follow neither rule with a catalogued
+part.
+
+**Decision.** Six rows, each with datasheet sources, true dimensions,
+mounting features, a bay, and an `approximate` list naming every number no
+drawing dimensions:
+- **`servo("sts3215")`**, Feetech STS3215 C001 (7.4 V, 1:345, 12-bit
+  encoder). Feetech's C001 PDF and Waveshare's ST3215 DXF. A new servo
+  family, `bus`, with `mount_style: "case_holes"`: no tabs, eight M2
+  self-tapping holes on the output and rear faces, published as
+  `spec['mount_points']` (origin, screw axis, hole, thread). Its bay keeps
+  both faces reachable and reserves the spline, the rear idler boss and the
+  lead room. Its actuator and joint dynamics come from Feetech's 6 V and
+  7.4 V ratings. The tab servos' recipe is unchanged, so no existing digest
+  moves.
+- **`board("pi-5")`**: the Pi 5 drawing for the outline, holes and ports,
+  and the Pi 4 drawing for the port heights. The marker is the port stacks,
+  which overhang the +X edge by 3 mm. GPIO pads are J8_1–40.
+- **`board("rpi-camera-module-3")`**: the drawing and product brief, with
+  lens centre and field of view in the spec. The back-face FPC block is
+  carried as `underside_components_mm`, and `board.bay` never stops short
+  of it. That is a behaviour change for boards that carry the field, and
+  no earlier board does.
+- **`board("pololu-vl53l1x-3415")`**: Pololu's annotated photos (no
+  dimensioned PDF exists) and ST's datasheet, with range and FOV in the
+  spec.
+- **`wheel("pololu-1430")`**: a new `wheels` family, 80 × 10 mm with a
+  silicone tyre and a 3 mm D press-fit bore. Pololu's drawing, plus its
+  STEP model measured in this repo's kernel. The bore matches
+  `gearmotor("pololu-2367")`'s shaft, and a test pins that. Its bay is the
+  swept disc.
+- **`foot_pad("essentra-462178")`**: a new `foot_pads` family, a natural
+  rubber screw-on foot (Essentra's feet catalogue). Its bay is the pad's
+  keep-out plus the M3 tapping hole its screw takes into the printed foot.
+
+`describe_api.library.catalog` gains `wheels` and `foot_pads`, with the same
+`skus` + `notes` shape as every other family. The golden and
+`docs/INTEGRATION.md` move with it. No request op changes. The overlay
+names each part where the machine needs it. Provenance: `docs/PROVENANCE.md`
+§8h.
+
+**Consequences.** The STS3215's raised cover and rear bump (the 35 mm
+envelope against the 29 mm modelled case) are scaled from a drawing, not
+dimensioned, so they are not modelled and the spec says so. Neither the
+foot pad's durometer nor its mass is stated, so its density is rubber's
+nominal value. The mounting check D3 also asks for is the next unit; it
+reads `mount_points` and `mount_holes`.

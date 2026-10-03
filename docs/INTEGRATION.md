@@ -172,6 +172,13 @@ prose. Every response also carries `id` and `ok`.
 | `cancel` | `cancelled` |
 | `shutdown` | `shutting_down` |
 
+The `describe_api.library.catalog.wheels` and `.foot_pads` families
+(ADR-485) each add `skus` and `notes`. `lib.wheel` and `lib.foot_pad` are
+discovered through the existing library exports. The new `pi-5`,
+`rpi-camera-module-3`, `pololu-vl53l1x-3415` and `sts3215` rows fit the
+existing `boards` and `servos` shapes. No request op or client dispatch
+changes.
+
 The `describe_api.library.catalog.bldc_motors` family (ADR-206) adds
 `skus` and `notes`; `lib.bldc` uses existing library exports. No request
 op or client dispatch change is required.
