@@ -1,0 +1,36 @@
+{
+  "schema": "orun1-versus-v1",
+  "version": "v2",
+  "model": "claude-opus-5-5",
+  "instructions_sha256": "0ebb596584eb1203a5706ab40c9e4799b24a0dbbf7d1d5a644eb1215d68708ab",
+  "category": "balancer",
+  "design": "orun1-t3-balancer-render",
+  "accepted_revision": "e2b1b506150c984ced023eed8a16f62c2b7307d2dae54e2cfefe19b812164a1a",
+  "hero_sha256": "f08e6947fbe091e00e3b3e705a1ce150f06586d3b89678225f734bdf7de285d9",
+  "opponents": {
+    "balancer-c-exposed-mechanism": "love",
+    "balancer-d-product-shell": "like",
+    "balancer-e-hard-surface": "like",
+    "balancer-f-creature": "like",
+    "balancer-h-free": "like"
+  },
+  "won": [
+    "balancer-d-product-shell",
+    "balancer-e-hard-surface",
+    "balancer-f-creature",
+    "balancer-h-free"
+  ],
+  "lost": [
+    "balancer-c-exposed-mechanism"
+  ],
+  "unjudged": [],
+  "majority": true,
+  "reasons": {
+    "balancer-c-exposed-mechanism": "B's rounded, slotted side plates, bolted orange board carrier and solid hubbed wheels read as one ordered, load-bearing mechanism, while A's chamfered box frame is fine but its odd cross-barred spoke wheels look arbitrary and its internals feel less clearly resolved.",
+    "balancer-d-product-shell": "B is a deliberate exposed-mechanism balancer: chamfered side plates, a board in a framed bay, a top-mounted IMU, visible fasteners and spoked wheels all look designed for their places, while A is the disliked soft, rounded pillow box with a visor face and dot eyes.",
+    "balancer-e-hard-surface": "A is a coherent, open balancing robot: two chamfered side plates hold the boards and the IMU in an ordered stack, and the wheels sit where a load-carrying axle would go, whereas B's chamfered enclosure has panels that look stuck on and a front panel whose orange slot reads like a visor, so it looks less purposeful.",
+    "balancer-f-creature": "A is a clean, deliberate balancer: chamfered side plates with visible fasteners hold the boards and the top sensor in an ordered stack, with the wheels mounted where they bear the load. B commits fully to its owl character, but it has a face and eyes and a stuck-on flipper, and it doesn't read as engineered.",
+    "balancer-h-free": "A is a clear balancer built from chamfered side plates, with its boards, sensor, fasteners and wheel mounts laid out on purpose, while B is the disliked archetype: a soft, rounded pillow-box body with a visor and dot eyes that looks neither engineered nor fully committed as a character."
+  },
+  "cost_usd": 0.18
+}

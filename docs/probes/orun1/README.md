@@ -503,3 +503,40 @@ own. Accepted revision `496a506e…`. The hero was drawn from a copy
   remain, and none of them is in the prompt: the catalog has no M1.6
   fastener and no gearmotor bay; the mounting check does not compare thread
   sizes; and the catalog wheel is a solid disc.
+
+### D4 trial 3: balancer (a trial, not a confirmation)
+
+`orun1-t3-balancer`: the frozen balancer prompt, one turn at product
+revision `64026754`, which is ADR-488 and ADR-489 plus a one-comma guidance
+fix. Model `claude-opus-5-5`, effort `medium`. The turn ended on its own.
+Accepted revision `e2b1b506…`. The hero was drawn from the copy
+`orun1-t3-balancer-render`, which re-accepted at the same revision:
+`d4/t3-balancer/hero.png` (640 px). An earlier start of this trial at
+`3b301c57` was interrupted when its session ended (lock holder dead, empty
+reply). It is kept as `orun1-t3-balancer-interrupted` and does not count as
+an attempt.
+
+- **Design.** Two tall chamfered side plates with slotted windows, joined by
+  a core. The ESP32 is in a framed bay, and the BNO085 is on an orange top
+  deck. The regulator and the VL53L1X are screwed down. Two N20 gearmotors
+  are screwed by their faces with M1.6×3 into counterbored plates. The 1430
+  spoked wheels carry separate tyres. No face.
+- **Catalog.** All 11 purchased parts, and all 19 bolts, are catalog parts.
+- **Static fit.** 561 pairs, 0 failing. **Swept fit: `pass`.** Both joints
+  are complete at ±180°.
+- **Mounting (D3): `pass`, 11 of 11 held.** Motors: `screws`, M1.6 into
+  M1.6, which ADR-488's thread rule now checks. Wheels: `output`. Tyres:
+  `rim`. Boards: `screws` or `bay`. Battery: `bay`. This is the first
+  balancer trial in which every hold is real.
+- **Judge (frozen v2, `runner/versus.py`): 4 of 5, a majority**, up from 3
+  in trials 1 and 2. It now beats e (Like) as well as d, f and h. It still
+  loses to c (Love). The judge's reason: "odd cross-barred spoke wheels look
+  arbitrary and its internals feel less clearly resolved", against c's
+  "solid hubbed wheels" and "bolted orange board carrier". Cost $0.18. Every
+  reason is in `d4/t3-balancer/pairs.jsonl`.
+- **What it says.** The disc-wheel complaint is gone, and the wheel is now
+  what the judge holds against the design. The ADR-489 spokes render as twin
+  ribs with cross-blocks, and the judge reads that as arbitrary. The agent
+  also reached for parts the catalog lacks: "the H-bridge part that is still
+  missing", and an encoder variant of the N20 ("the N20 2367 has no
+  encoder"). Both are D3 catalog gaps, cited from `t3-balancer.err`.
