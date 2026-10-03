@@ -7,7 +7,7 @@ parents:
 - mild-ledge-7157
 summary: ''
 ---
-Status: open
+Status: superseded
 
 ## Current
 
@@ -93,3 +93,8 @@ Charter criterion: **F10. A closing report exists and the critic accepted done.*
 - fresh-dawn-0892 — REPORT.md's iteration-170 section: F7's smoke pass on the re-exported model, stated as a measurement off the accepted pin rather than a `run.py smoke` receipt, with its control
 - frosty-sea-6051 — REPORT.md's iteration-172 section: ADR-396 reopens `ot7-plover-e` and closes F9's one measured exception; no done claim moved by it
 - old-dew-1568 — ADR-397: the report rewritten forward to one row per design, a fourteen-row non-attempt list, a current F1–F9 table, named open items and a done claim, pinned by `cli/tests/test_ot7_report.py` (5 of 6 red on the prior report); `cli/tests` 861 passed, 1 skipped
+- light-path-5130 — superseded in orun2's R1 frontier pruning
+
+## Superseded
+
+ot7 ended and is archived (merged fa75c531). F10's report `docs/probes/ot7/REPORT.md` exists and claimed done; the owner did not tick it and no later run carries it. The measured results above stand as the final record; nothing about the criterion's evidence changed. Superseded through orun2 R1's frontier pruning so the frontier lists only live work [rec: light-path-5130].
