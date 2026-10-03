@@ -4,7 +4,8 @@
 
 Pure functions from published ``inspect`` values to the blocks an agent reads
 after each build: ``fit_summary`` (the static fit, ADR-346, with the swept fit,
-ADR-366, and what fixed joints hold, ADR-370) from ``inspect scope=clearance``,
+ADR-366, what fixed joints hold, ADR-370, and what holds each purchased
+part, ADR-486) from ``inspect scope=clearance``,
 and ``inventory_summary`` (catalog identity, ADR-362, appearance, ADR-413, and
 printed edges, ADR-415) from ``inspect scope=inventory``; and ``fit_view`` and
 ``inventory_view``, the two blocks bounded the way a build reply shows them to
@@ -509,6 +510,311 @@ def attachment_summary(value: Any) -> dict[str, Any]:
     return summary
 
 
+#: Where the mounting block's facts come from, said in the block itself
+#: (ADR-486).
+MOUNTING_SOURCE = (
+    "engine facts of the accepted revision (inspect scope=clearance): the "
+    "pair distances at the solved pose, each catalog part's mounting-hole "
+    "axes and each bolt's axis carried through its solved placement, and "
+    "which printed parts were cut with a part's own .bay(). Not the "
+    "script's stdout, and not a load or strength check."
+)
+
+#: Said whenever a purchased part is not held.
+MOUNTING_NOTE = (
+    "Every purchased part is held by a printed part: by screws (a lib.bolt "
+    "component on one of its mounting-hole axes, touching it and a printed "
+    "part), by a bay (a printed part cut with this part's own .bay() at its "
+    "placement), by press fit (a bearing or bushing touching a printed "
+    "part) or on a drive's output (a horn or wheel touching its servo or "
+    "motor, which is held). Contact alone, or sitting inside a printed "
+    "part's envelope, holds nothing: place the screws as lib.bolt "
+    "components through its spec mount holes, or cut its .bay() from the "
+    "part that carries it."
+)
+
+#: Placed but never checked: what holds a part rather than what is held.
+FASTENER_FAMILIES = frozenset({"bolt", "nut", "washer", "heat_insert"})
+#: Catalogued shapes that are printed, not bought: they hold, like any
+#: printed part.
+PRINTED_FAMILIES = frozenset({"gear", "rack", "rack_and_pinion"})
+#: Held by being pressed into a printed bore.
+PRESS_FIT_FAMILIES = frozenset({"bearing", "bushing", "joint"})
+#: Held on the output of a drive, which must itself be held.
+OUTPUT_FAMILIES = frozenset({"servo_horn", "wheel"})
+DRIVE_FAMILIES = frozenset({"servo", "gearmotor", "bldc"})
+#: A bay that is a swept well rather than a seat: it holds nothing.
+WELL_FAMILIES = frozenset({"wheel"})
+
+MOUNT_CONTACT_MM = 0.5
+MOUNT_AXIS_RADIUS_MM = 0.5
+MOUNT_AXIS_ANGLE_DEGREES = 5.0
+
+
+def _matrix(row: Mapping[str, Any]) -> list[float] | None:
+    matrix = (row.get("placement") or {}).get("matrix")
+    if isinstance(matrix, (list, tuple)) and len(matrix) >= 12 and all(
+            _finite(v) for v in matrix[:12]):
+        return [float(v) for v in matrix[:12]]
+    return None
+
+
+def _apply(matrix: Sequence[float], point: Sequence[float], *, vector: bool = False) -> list[float]:
+    w = 0.0 if vector else 1.0
+    return [matrix[4 * i] * point[0] + matrix[4 * i + 1] * point[1]
+            + matrix[4 * i + 2] * point[2] + matrix[4 * i + 3] * w for i in range(3)]
+
+
+def _world_axes(row: Mapping[str, Any], matrix: Sequence[float]) -> list[tuple[list[float], list[float]]]:
+    axes = []
+    for axis in row.get("mount_axes") or []:
+        try:
+            origin = [float(v) for v in axis["origin"]][:3]
+            direction = _apply(matrix, [float(v) for v in axis["axis"]][:3], vector=True)
+        except (KeyError, TypeError, ValueError):
+            continue
+        length = math.sqrt(sum(v * v for v in direction))
+        if len(origin) == 3 and length > 1e-12:
+            axes.append((_apply(matrix, origin), [v / length for v in direction]))
+    return axes
+
+
+def _on_axis(hole: tuple, bolt: tuple) -> bool:
+    """A bolt's axis line runs through a mounting hole, both ways round."""
+
+    (p, a), (o, d) = hole, bolt
+    cross = [a[1] * d[2] - a[2] * d[1], a[2] * d[0] - a[0] * d[2], a[0] * d[1] - a[1] * d[0]]
+    if math.sqrt(sum(v * v for v in cross)) > math.sin(math.radians(MOUNT_AXIS_ANGLE_DEGREES)):
+        return False
+    offset = [p[i] - o[i] for i in range(3)]
+    along = sum(offset[i] * d[i] for i in range(3))
+    radial = math.sqrt(max(sum(v * v for v in offset) - along * along, 0.0))
+    return radial <= MOUNT_AXIS_RADIUS_MM
+
+
+def _same_pose(first: Sequence[float], second: Sequence[float]) -> bool:
+    return all(abs(first[i] - second[i]) <= (1e-3 if i % 4 == 3 else 1e-6) for i in range(12))
+
+
+def _world_box(row: Mapping[str, Any], matrix: Sequence[float]) -> tuple | None:
+    bounds = (row.get("source_facts") or {}).get("bounds_mm")
+    if not isinstance(bounds, Mapping):
+        return None
+    try:
+        low, high = [float(v) for v in bounds["min"]], [float(v) for v in bounds["max"]]
+    except (KeyError, TypeError, ValueError):
+        return None
+    corners = [_apply(matrix, [(low, high)[(k >> i) & 1][i] for i in range(3)]) for k in range(8)]
+    return ([min(c[i] for c in corners) for i in range(3)],
+            [max(c[i] for c in corners) for i in range(3)])
+
+
+def mounting_summary(value: Any) -> dict[str, Any]:
+    """What holds each purchased part of an accepted design (ADR-486).
+
+    ``value`` is the same ``inspect scope=clearance`` value :func:`fit_summary`
+    reads. Every placed catalog part that is bought (not a fastener, not a
+    printed generator's gear or rack) gets one row naming the printed parts
+    that hold it and by what: ``screws``, ``bay``, ``press fit`` or
+    ``output``. A part held by none of those is reported as ``contact
+    only``, ``inside shell`` (no contact, but within a printed part's
+    envelope) or ``held by nothing``; ``unknown`` when it has no solved
+    placement or no measurement. ``verdict`` is ``pass`` when every
+    purchased part is held, ``reported`` when one is not, ``none`` when the
+    design places no purchased part, and ``unavailable`` when the revision
+    published no components. Like the attachment block it refuses nothing
+    and is counted among no fit failure.
+    """
+
+    if not isinstance(value, Mapping):
+        value = {}
+    published = value.get("components")
+    if not isinstance(published, list):
+        return {
+            "verdict": "unavailable", "source": MOUNTING_SOURCE,
+            "purchased_count": 0, "held_count": 0, "reported_count": 0,
+            "reported": [], "held": [],
+            "reason": (
+                "No published components for the mounting check: the revision "
+                "was accepted by an engine that published none, or places no "
+                "assembly. Rebuild to acquire them."
+            ),
+        }
+    rows = [row for row in published if isinstance(row, Mapping) and row.get("component")]
+    # Every catalog row an ADR-486 engine published carries mount_axes, an
+    # empty list where the part has no holes: without it there are no facts
+    # to judge, and judging anyway would call every screwed part loose.
+    if any(row.get("catalog") and "mount_axes" not in row for row in rows):
+        return {
+            "verdict": "unavailable", "source": MOUNTING_SOURCE,
+            "purchased_count": 0, "held_count": 0, "reported_count": 0,
+            "reported": [], "held": [],
+            "reason": (
+                "The accepted revision was built by an engine that published "
+                "no mounting facts. Accept a new revision to acquire them."
+            ),
+        }
+
+    def family(row: Mapping[str, Any]) -> str:
+        catalog = row.get("catalog") or row.get("catalog_derived_from") or {}
+        return str(catalog.get("family") or "") if isinstance(catalog, Mapping) else ""
+
+    printed = {str(r["component"]) for r in rows
+               if not r.get("catalog") and not r.get("catalog_derived_from")
+               or family(r) in PRINTED_FAMILIES}
+    bolts = {str(r["component"]): r for r in rows if family(r) == "bolt"}
+    purchased = [r for r in rows if str(r["component"]) not in printed
+                 and family(r) not in FASTENER_FAMILIES]
+    by_name = {str(r["component"]): r for r in rows}
+    touching: dict[str, set[str]] = {}
+    unmeasured: set[str] = set()
+    for pair in value.get("pairs") or []:
+        if not isinstance(pair, Mapping):
+            continue
+        first, second = str(pair.get("first") or ""), str(pair.get("second") or "")
+        distance, volume = pair.get("distance_mm"), pair.get("common_volume_mm3")
+        if pair.get("error") or not _finite(distance) or not _finite(volume):
+            unmeasured.update((first, second))
+            continue
+        if volume > MAXIMUM_COMMON_VOLUME_MM3 or (
+                distance <= MOUNT_CONTACT_MM and not pair.get("culled")):
+            touching.setdefault(first, set()).add(second)
+            touching.setdefault(second, set()).add(first)
+
+    def label(row: Mapping[str, Any]) -> str:
+        catalog = row.get("catalog") or row.get("catalog_derived_from") or {}
+        return "{}/{}".format(catalog.get("family") or "", catalog.get("part_number") or "")
+
+    results: dict[str, dict[str, Any]] = {}
+    for row in purchased:
+        name = str(row["component"])
+        kind = family(row)
+        item: dict[str, Any] = {"component": name, "part": label(row)}
+        if row.get("catalog_derived_from"):
+            item["modified"] = True
+        matrix = _matrix(row)
+        contacts = touching.get(name, set())
+        held_by_printed = sorted(contacts & printed)
+        if matrix is None:
+            item.update(status="unknown", by=None, holders=[],
+                        detail="No solved placement was published for this component.")
+            results[name] = item
+            continue
+        # Screws: a bolt on one of its hole axes, touching it and a printed part.
+        holes = _world_axes(row, matrix)
+        screwed: dict[str, list[str]] = {}
+        holes_used = 0
+        for hole in holes:
+            used = False
+            for bolt_name in sorted(contacts & set(bolts)):
+                bolt = bolts[bolt_name]
+                bolt_matrix = _matrix(bolt)
+                if bolt_matrix is None:
+                    continue
+                into = sorted(touching.get(bolt_name, set()) & printed)
+                if into and any(_on_axis(hole, axis) for axis in _world_axes(bolt, bolt_matrix)):
+                    used = True
+                    for holder in into:
+                        screwed.setdefault(holder, [])
+                        if bolt_name not in screwed[holder]:
+                            screwed[holder].append(bolt_name)
+            holes_used += used
+        source = str(row.get("source_output") or "")
+        bays = sorted(
+            str(other["component"]) for other in rows
+            if str(other["component"]) in printed and source
+            and source in (other.get("houses") or [])
+            and _matrix(other) is not None and _same_pose(_matrix(other), matrix)
+        ) if kind not in WELL_FAMILIES else []
+        if screwed:
+            bolts_used = sorted({b for names in screwed.values() for b in names})
+            item.update(status="held", by="screws", holders=sorted(screwed), detail=(
+                f"{holes_used} of {len(holes)} mounting holes carry a bolt "
+                f"({', '.join(bolts_used)}) into a printed part."))
+        elif bays:
+            item.update(status="held", by="bay", holders=bays, detail=(
+                "Seated in its own .bay(), cut from the holder at this part's placement."))
+        elif kind in PRESS_FIT_FAMILIES and held_by_printed:
+            item.update(status="held", by="press fit", holders=held_by_printed,
+                        detail="Pressed into a printed part it touches.")
+        elif kind in OUTPUT_FAMILIES and any(family(by_name[c]) in DRIVE_FAMILIES
+                                             for c in contacts if c in by_name):
+            drives = sorted(c for c in contacts if c in by_name
+                            and family(by_name[c]) in DRIVE_FAMILIES)
+            item.update(status="held", by="output", holders=drives,
+                        detail="On the output of " + ", ".join(drives) + ".")
+        elif held_by_printed:
+            item.update(status="contact only", by=None, holders=held_by_printed, detail=(
+                "Touches a printed part, but no bolt runs through its mounting "
+                "holes and no printed part was cut with its .bay() at its placement."
+                if holes else
+                "Touches a printed part, but no printed part was cut with its "
+                ".bay() at its placement, and nothing else fastens it there."))
+        elif name in unmeasured and not contacts:
+            item.update(status="unknown", by=None, holders=[],
+                        detail="A pair with this component was not measured.")
+        else:
+            inside: list[str] = []
+            box = _world_box(row, matrix)
+            if box is not None:
+                centre = [(box[0][i] + box[1][i]) / 2.0 for i in range(3)]
+                for other in rows:
+                    other_name = str(other["component"])
+                    other_matrix = _matrix(other)
+                    if other_name not in printed or other_matrix is None:
+                        continue
+                    shell = _world_box(other, other_matrix)
+                    if shell and all(shell[0][i] <= centre[i] <= shell[1][i] for i in range(3)):
+                        inside.append(other_name)
+            if inside:
+                item.update(status="inside shell", by=None, holders=sorted(inside), detail=(
+                    "Touches no printed part; it only sits within the envelope "
+                    "of " + ", ".join(sorted(inside)) + "."))
+            else:
+                item.update(status="held by nothing", by=None, holders=[],
+                            detail="Touches no printed part, and no printed part encloses it.")
+        results[name] = item
+    # A horn or wheel is held only if the drive it rides on is.
+    for item in results.values():
+        if item.get("by") == "output":
+            loose = [d for d in item["holders"]
+                     if (results.get(d) or {}).get("status") != "held"]
+            if loose:
+                item.update(status="held by nothing", by=None, detail=(
+                    "On the output of " + ", ".join(loose) + ", which is not itself held."))
+    ordered = [results[str(r["component"])] for r in purchased]
+    reported = [i for i in ordered if i["status"] not in {"held", "unknown"}]
+    unknown = [i for i in ordered if i["status"] == "unknown"]
+    held = [i for i in ordered if i["status"] == "held"]
+    if reported:
+        verdict = "reported"
+    elif unknown:
+        verdict = "unknown"
+    elif held:
+        verdict = "pass"
+    else:
+        verdict = "none"
+    summary: dict[str, Any] = {
+        "verdict": verdict,
+        "source": MOUNTING_SOURCE,
+        "thresholds": {
+            "contact_mm": MOUNT_CONTACT_MM,
+            "axis_radius_mm": MOUNT_AXIS_RADIUS_MM,
+            "axis_angle_degrees": MOUNT_AXIS_ANGLE_DEGREES,
+        },
+        "purchased_count": len(ordered),
+        "held_count": len(held),
+        "reported_count": len(reported) + len(unknown),
+        "reported": reported + unknown,
+        "held": held,
+    }
+    if reported or unknown:
+        summary["note"] = MOUNTING_NOTE
+    if verdict == "none":
+        summary["reason"] = "The accepted assembly places no purchased part."
+    return summary
+
+
 def _finite(number: Any) -> bool:
     """A measurement the block can compare, rather than a hole in the report."""
 
@@ -632,6 +938,9 @@ def fit_summary(
         # Its own verdict too: a gap under a weld is a measured fact about
         # the design, not one of the four checks `verdict` above counts.
         "attachments": attachment_summary(value),
+        # ...and what holds each purchased part (ADR-486): its own verdict,
+        # counted among no fit failure, like the attachment block.
+        "mounting": mounting_summary(value),
     }
     if resting:
         summary["world_geometry_note"] = FIT_WORLD_NOTE
@@ -892,6 +1201,14 @@ def fit_view(fit: dict[str, Any]) -> dict[str, Any]:
         _cut(held, "reported", _worst_first(attachments.get("reported")),
              "inspect scope=clearance path=/attachments")
         view["attachments"] = held
+    mounting = fit.get("mounting")
+    if isinstance(mounting, dict) and "reported" in mounting:
+        block = dict(mounting)
+        _cut(block, "reported", list(mounting.get("reported") or []),
+             "inspect scope=clearance path=/components")
+        _cut(block, "held", list(mounting.get("held") or []),
+             "inspect scope=clearance path=/components")
+        view["mounting"] = block
     return view
 
 

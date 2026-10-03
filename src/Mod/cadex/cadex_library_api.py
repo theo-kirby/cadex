@@ -50,6 +50,7 @@ __all__ = [
     "create_library_api",
     "library_catalog_identity",
     "library_listing",
+    "library_mount_facts",
 ]
 
 
@@ -68,6 +69,15 @@ __all__ = [
 #: *join key*, exactly as
 #: ``artifact_by_definition`` already joins a component source to its output.
 _CATALOG_IDENTITY: dict[str, dict[str, str]] = {}
+
+#: What the mounting check reads, kept beside :data:`_CATALOG_IDENTITY` and
+#: off the digest for the same reason (ADR-486). ``_MOUNT_AXES`` is the
+#: line every screw that holds a body must lie on -- a mounting hole's
+#: centre and axis, or a bolt's own axis -- in the body's own placed
+#: coordinates; ``_BAY_OF`` is the body each ``.bay()`` cavity was cut for,
+#: both keyed by canonical definition.
+_MOUNT_AXES: dict[str, list[dict[str, list[float]]]] = {}
+_BAY_OF: dict[str, str] = {}
 
 
 def _definition_key(body: Any) -> str:
@@ -92,6 +102,32 @@ def library_catalog_identity() -> dict[str, dict[str, str]]:
     return {key: dict(value) for key, value in _CATALOG_IDENTITY.items()}
 
 
+def library_mount_facts() -> dict[str, dict[str, Any]]:
+    """Mount axes by body and bay cavities by body, for the run just executed.
+
+    ``{"axes": {body key: [{"origin", "axis"}]}, "bays": {bay key: body
+    key}}``, every key a canonical definition (ADR-486).
+    """
+
+    return {
+        "axes": {key: [dict(row) for row in rows] for key, rows in _MOUNT_AXES.items()},
+        "bays": dict(_BAY_OF),
+    }
+
+
+def _frame_axes(frame: tuple, rows: Sequence[tuple]) -> list[dict[str, list[float]]]:
+    """Local ``(origin, axis)`` rows carried into a placed body's coordinates."""
+
+    origin, _unit, rotation = frame
+    return [
+        {
+            "origin": [o + v for o, v in zip(origin, _rotate(rotation, local))],
+            "axis": list(_rotate(rotation, axis)),
+        }
+        for local, axis in rows
+    ]
+
+
 class LibraryError(ValueError):
     """A library call violates the generator contract."""
 
@@ -112,6 +148,7 @@ class LibraryPart:
         part_number: str,
         body: Any,
         spec: Mapping[str, Any],
+        mount_axes: Sequence[Mapping[str, Any]] = (),
     ) -> None:
         object.__setattr__(self, "family", family)
         object.__setattr__(self, "part_number", part_number)
@@ -123,6 +160,12 @@ class LibraryPart:
                 "family": str(family),
                 "part_number": str(part_number),
             }
+            if mount_axes:
+                _MOUNT_AXES[key] = [
+                    {"origin": [float(v) for v in row["origin"]],
+                     "axis": [float(v) for v in row["axis"]]}
+                    for row in mount_axes
+                ]
 
     def __setattr__(self, _name: str, _value: Any) -> None:
         raise TypeError("A library part is immutable; build another instead.")
@@ -234,15 +277,25 @@ class _BayPart(LibraryPart):
 
     __slots__ = ("_lib", "_frame_placement")
 
-    def __init__(self, lib, family, part_number, body, spec, frame_placement):
-        super().__init__(family, part_number, body, spec)
+    def __init__(self, lib, family, part_number, body, spec, frame_placement,
+                 mount_rows=()):
+        super().__init__(family, part_number, body, spec,
+                         _frame_axes(frame_placement, mount_rows))
         object.__setattr__(self, "_lib", lib)
         object.__setattr__(self, "_frame_placement", frame_placement)
+
+    def _housing(self, cavity):
+        """Remember which body a placed bay cavity houses (ADR-486)."""
+
+        bay_key, body_key = _definition_key(cavity), _definition_key(self.body)
+        if bay_key and body_key:
+            _BAY_OF[bay_key] = body_key
+        return cavity
 
     def _bay_box(self, operation, low, high, label):
         size = [b - a for a, b in zip(low, high)]
         cavity = self._lib._part.box(*size, origin=tuple(low), label=label)
-        return self._lib._place_frame(operation, cavity, self._frame_placement)
+        return self._housing(self._lib._place_frame(operation, cavity, self._frame_placement))
 
 
 class ServoPart(_BayPart):
@@ -265,7 +318,12 @@ class ServoPart(_BayPart):
         spec: Mapping[str, Any],
         frame_placement: tuple,
     ) -> None:
-        super().__init__(lib, "servo", part_number, body, spec, frame_placement)
+        if spec.get("mount_points"):
+            rows = [(p["origin"], p["axis"]) for p in spec["mount_points"]]
+        else:
+            z = spec["mount_hole_z_mm"]
+            rows = [((x, y, z), (0.0, 0.0, 1.0)) for x, y in spec["mount_holes"]]
+        super().__init__(lib, "servo", part_number, body, spec, frame_placement, rows)
 
     def bay(self, *, clearance: float = 0.5, lead_room: float = 6.0,
             label: str = "") -> Any:
@@ -309,7 +367,7 @@ class ServoPart(_BayPart):
         if room > 0.0:
             pieces.append(box((back - c - room, -half, bottom), (back - c, half, plate_z - c)))
         cavity = part.fuse(pieces, label=label)
-        return self._lib._place_frame(operation, cavity, self._frame_placement)
+        return self._housing(self._lib._place_frame(operation, cavity, self._frame_placement))
 
     def _case_held_bay(self, operation, c, room, label):
         # A bus servo has no tabs: the case grown by the clearance, the
@@ -337,7 +395,7 @@ class ServoPart(_BayPart):
         if room > 0.0:
             pieces.append(box((back - c - room, -half, -height - c), (back - c, half, c)))
         cavity = part.fuse(pieces, label=label)
-        return self._lib._place_frame(operation, cavity, self._frame_placement)
+        return self._housing(self._lib._place_frame(operation, cavity, self._frame_placement))
 
     def horn(
         self,
@@ -461,7 +519,8 @@ class BoardPart(_BayPart):
     __slots__ = ()
 
     def __init__(self, lib, part_number, body, spec, frame_placement):
-        super().__init__(lib, "board", part_number, body, spec, frame_placement)
+        super().__init__(lib, "board", part_number, body, spec, frame_placement,
+                         [((x, y, 0.0), (0.0, 0.0, 1.0)) for x, y in spec["mount_holes"]])
 
     def bay(self, *, clearance: float = 1.0, underside: float = 2.0,
             lead_room: float = 8.0, label: str = "") -> Any:
@@ -537,7 +596,7 @@ class WheelPart(_BayPart):
                           origin=(0.0, 0.0, hub - c)),
             part.cylinder(spec["hub_dia_mm"] / 2.0 + c, hub + c, origin=(0.0, 0.0, -c)),
         ], label=label)
-        return self._lib._place_frame(operation, cavity, self._frame_placement)
+        return self._housing(self._lib._place_frame(operation, cavity, self._frame_placement))
 
 
 class FootPadPart(_BayPart):
@@ -546,7 +605,9 @@ class FootPadPart(_BayPart):
     __slots__ = ()
 
     def __init__(self, lib, part_number, body, spec, frame_placement):
-        super().__init__(lib, "foot_pad", part_number, body, spec, frame_placement)
+        # One screw, on the pad's own axis.
+        super().__init__(lib, "foot_pad", part_number, body, spec, frame_placement,
+                         [((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))])
 
     def bay(self, *, clearance: float = 0.5, screw_depth: float = 8.0,
             label: str = "") -> Any:
@@ -573,7 +634,7 @@ class FootPadPart(_BayPart):
                                label=label)
         else:
             cavity = part.cylinder(radius, height, label=label)
-        return self._lib._place_frame(operation, cavity, self._frame_placement)
+        return self._housing(self._lib._place_frame(operation, cavity, self._frame_placement))
 
 
 # -- involute gearing ----------------------------------------------------------
@@ -823,11 +884,13 @@ class LibraryAPI:
             }
         )
         part_number = f"{catalog.normalise_thread_size(size)}x{clean_length:g}-{head}"
+        frame = self._frame(operation, origin, direction)
         return LibraryPart(
             "bolt",
             part_number,
-            self._place(operation, body, origin, direction),
+            self._place_frame(operation, body, frame),
             spec,
+            _frame_axes(frame, [((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))]),
         )
 
     def nut(
@@ -1104,9 +1167,11 @@ class LibraryAPI:
                                      origin=(x, y, -depth))
                  for x, y in spec["mount_holes"]]
         body = self._part.cut(self._part.fuse([case, shaft, boss]), holes, label=label)
+        frame = self._frame("gearmotor", origin, direction, roll_degrees)
         return LibraryPart("gearmotor", sku.strip().lower(),
-                           self._place("gearmotor", body, origin, direction, roll_degrees),
-                           spec)
+                           self._place_frame("gearmotor", body, frame), spec,
+                           _frame_axes(frame, [((x, y, 0.0), (0.0, 0.0, 1.0))
+                                               for x, y in spec["mount_holes"]]))
 
     def battery(
         self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
@@ -1295,9 +1360,11 @@ class LibraryAPI:
                                      origin=(x, y, -1))
                  for x, y in spec["mount_holes"]]
         body = self._part.cut(body, holes, label=label)
+        frame = self._frame("bldc", origin, direction, roll_degrees)
         return LibraryPart("bldc", sku.strip().lower(),
-                           self._place("bldc", body, origin, direction, roll_degrees),
-                           spec)
+                           self._place_frame("bldc", body, frame), spec,
+                           _frame_axes(frame, [((x, y, 0.0), (0.0, 0.0, 1.0))
+                                               for x, y in spec["mount_holes"]]))
 
     # -- boards ------------------------------------------------------------
 
@@ -1840,6 +1907,8 @@ def create_library_api(part_api: Any, assembly_api: Any = None) -> LibraryAPI:
     # One staging per run, so the side table is emptied here rather than
     # carried across scripts by a module that outlives one of them.
     _CATALOG_IDENTITY.clear()
+    _MOUNT_AXES.clear()
+    _BAY_OF.clear()
     return LibraryAPI(part_api, assembly_api)
 
 

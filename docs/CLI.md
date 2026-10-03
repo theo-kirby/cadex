@@ -2949,6 +2949,26 @@ a weld is a measured fact and a question for the design, since a standoff or a
 shim between two welded parts is legitimate. What it removes is the design
 whose every declared check passes while nothing holds two parts together.
 
+### What holds each purchased part (ADR-486)
+
+The clearance scope also publishes `components`, the inventory rows of the
+accepted assembly, each catalog row carrying `mount_axes` (its mounting-hole
+centres and axes, or a bolt's own axis, in its source output's coordinates;
+an empty list for a part with no holes) and each printed row that was cut
+with a part's `.bay()` carrying `houses`. Build replies carry
+`fit.mounting`: one row per purchased part (catalog parts less fasteners and
+printed gear/rack generators), `held` by `screws` (a placed `lib.bolt` whose
+axis lies within 0.5 mm and 5° of one of the part's hole axes, touching the
+part and a printed part, contact being 0.5 mm), `bay`, `press fit` (bearings,
+bushings, spherical joints touching a printed part) or `output` (a horn or
+wheel touching a held servo or motor), or reported as `contact only`,
+`inside shell` (touching nothing, its centre within a printed part's bounds)
+or `held by nothing`. Its verdict is `pass`, `reported`, `unknown`, `none`
+or `unavailable` — the last for a revision accepted before ADR-486, which
+has no facts to judge. Like `attachments` it refuses nothing and counts
+among no fit failure. It is not a strength check: one bolt on one hole
+counts the part as screwed.
+
 
 ### Published joint sweeps (ADR-350, ADR-351, 2026-09-14)
 

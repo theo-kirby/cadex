@@ -1184,6 +1184,13 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
             row["source_facts"] = {
                 key: facts[key] for key in _INVENTORY_FACT_KEYS if key in facts
             }
+        # What the mounting check reads (ADR-486), in the source output's own
+        # coordinates: the lines its screws lie on, and the outputs whose
+        # bay was cut into it. Absent when there is nothing to say.
+        if isinstance(source.get("catalog_mount_axes"), list):
+            row["mount_axes"] = [dict(axis) for axis in source["catalog_mount_axes"]]
+        if isinstance(source.get("houses"), list):
+            row["houses"] = [str(name) for name in source["houses"]]
         components.append(row)
     if captured.get("kind") == "clearance":
         measurements = by_name.get(assembly, {}).get("clearance")
@@ -1221,6 +1228,10 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
             # ADR-370: no fixed-joint pair and no published report are
             # different facts, and a reader must not read one as the other.
             "attachments": by_name.get(assembly, {}).get("attachments"),
+            # The placed components, for the mounting check (ADR-486): it
+            # reads catalog identity, placement, bounds, mount axes and
+            # housed outputs beside the pair distances above.
+            "components": components,
         }
     return {
         "revision": revision,

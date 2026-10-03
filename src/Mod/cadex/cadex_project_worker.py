@@ -276,6 +276,62 @@ def _stamp_catalog_identity(outputs: list[dict[str, Any]]) -> None:
             item["catalog_derived_from"] = dict(derived)
 
 
+def _stamp_mounting(outputs: list[dict[str, Any]]) -> None:
+    """Stamp what the mounting check reads, beside the definition (ADR-486).
+
+    ``catalog_mount_axes`` on every output a generator built: each
+    mounting hole's centre and axis (or a bolt's own axis) in the output's
+    own coordinates, an empty list for a part with none -- present on every
+    catalog output, so its absence marks a revision accepted before it. ``houses`` on an output whose definition
+    contains a ``.bay()`` cavity anywhere in it: the outputs that are the
+    body the bay was cut for. A cavity is matched by canonical definition,
+    so the bay is the one cut at that body's own placement, never another
+    of the same part number. Neither key feeds the digest, and each is
+    absent rather than empty when there is nothing to say.
+    """
+
+    from cadex_library_api import library_mount_facts
+
+    facts = library_mount_facts()
+    axes, bays = facts["axes"], facts["bays"]
+    names_by_key: dict[str, list[str]] = {}
+    for item in outputs:
+        definition = item.get("definition")
+        if isinstance(definition, Mapping) and item.get("name"):
+            key = _canonical_json(dict(definition))
+            names_by_key.setdefault(key, []).append(str(item["name"]))
+            if item.get("catalog") is not None:
+                item["catalog_mount_axes"] = [dict(row) for row in axes.get(key, [])]
+    if not bays:
+        return
+    # Only nodes with a bay's own operation are serialised for comparison.
+    operations = {
+        str(json.loads(key).get("operation") or "") for key in bays
+    }
+    for item in outputs:
+        definition = item.get("definition")
+        # A component or assembly definition embeds the parts it places;
+        # only the part itself is what a bay was cut into.
+        if not isinstance(definition, Mapping) or definition.get("domain") == "assembly":
+            continue
+        housed: set[str] = set()
+        stack: list[Any] = [definition]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, Mapping):
+                if node is not definition and str(node.get("operation") or "") in operations:
+                    body = bays.get(_canonical_json(dict(node)))
+                    if body is not None:
+                        housed.update(names_by_key.get(body, ()))
+                        continue
+                stack.extend(node.values())
+            elif isinstance(node, (list, tuple)):
+                stack.extend(node)
+        housed.discard(str(item.get("name") or ""))
+        if housed:
+            item["houses"] = sorted(housed)
+
+
 #: How far ``_catalog_the_base_came_off`` follows the base operand down.
 #: A modelling chain is a handful of operations deep; this only bounds a
 #: definition that is deeper than any real one.
@@ -833,6 +889,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         # so is the catalog stamp (ADR-236) — which is why it is applied here,
         # after every domain has appended, and reads nothing the digest hashes.
         _stamp_catalog_identity(outputs)
+        _stamp_mounting(outputs)
         digest = compute_project_digest(root, outputs)
         _attach_routes(outputs)
         display_request = validate_display_request(request.get("display"))

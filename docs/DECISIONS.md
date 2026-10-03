@@ -31606,3 +31606,61 @@ dimensioned, so they are not modelled and the spec says so. Neither the
 foot pad's durometer nor its mass is stated, so its density is rubber's
 nominal value. The mounting check D3 also asks for is the next unit; it
 reads `mount_points` and `mount_holes`.
+
+## ADR-486 — Every build reply says what holds each purchased part (2026-10-02)
+
+**Context.** orun1's D3 asks the product to report, for every purchased
+part, which printed part holds it and by what, and to name a part held by
+nothing or held only by being inside a shell. The fit block measured gaps
+and welds (ADR-346, ADR-370), but a board resting on a deck, a servo
+floating in a shell and a servo screwed through its tabs all read the same
+there: a welded pair with no failing gap. The owner's Loves fasten every
+part visibly; ADR-480's HOLD EVERY PART rule said so in words that nothing
+measured.
+
+**Decision.** `fit.mounting`, a block beside `fit.attachments`, from the
+same `inspect scope=clearance` value, built by
+`CadexFitReport.mounting_summary` so the CLI and the shell show the same
+rows:
+- **The library remembers two facts per run**, in side tables beside
+  `_CATALOG_IDENTITY` and for its reason (ADR-236): each body's mounting-hole
+  lines in its placed coordinates (servo tabs and bus-servo case holes,
+  board holes, gearmotor and BLDC bores, a foot pad's screw, and a bolt's
+  own axis), and the body each `.bay()` cavity was cut for.
+- **The project worker stamps them beside the definition**:
+  `catalog_mount_axes` on every catalog output (empty where a part has no
+  holes, so absence marks an older revision), and `houses` on a part output
+  whose definition contains a bay cavity anywhere. No digest moves.
+- **The clearance scope publishes `components`** (the inventory rows, with
+  `mount_axes` and `houses`), so the block costs no second engine call.
+- **The judgement:** `screws` when a placed bolt's axis is within 0.5 mm
+  and 5° of a hole axis and the bolt touches both the part and a printed
+  part (contact 0.5 mm, or any common volume); `bay` when a printed part
+  houses it at the same solved placement (a wheel's well never counts);
+  `press fit` for a bearing, bushing or spherical joint touching a printed
+  part; `output` for a horn or wheel touching a servo or motor that is
+  itself held. Otherwise `contact only`, `inside shell` or `held by
+  nothing`. Fasteners are what holds, never what is checked; the printed
+  gear and rack generators hold like any printed part.
+- **Older revisions are `unavailable`**, never judged: without the stamps
+  every screwed part would read as loose.
+- The overlay's HOLD EVERY PART rule names the block and tells the agent a
+  screw it only drilled a hole for is not there: place it as a `lib.bolt`
+  component on the hole's axis.
+
+**Measured.** On fresh revisions of copies of three sweep designs
+(`orun1-mount-*`, the script plus one trailing comment): the biped-c Love
+passes 11 of 11 (servos and boards by screws, pack and ESP32 by bay); the
+balancer-c Love holds 4 of 6 and reports both gearmotors `contact only` —
+its cheeks are drilled at the motor holes but no screw is placed; the
+quadruped-e Love holds 17 of 21 (servos by screws, horns on their outputs,
+pack by bay) and reports its four boards `contact only` on printed bosses
+with no screws placed. Each report matches its script.
+
+**Consequences.** It is a holding check, not a strength check: one bolt on
+one hole counts the part as screwed, and a clip is not recognised (there is
+no catalog clip), so a clipped part reads `contact only`. A part held by a
+printed bracket that is itself loose is not chased. Projects accepted
+before this ADR show `unavailable` until a new revision is accepted: on
+the balancer copy, whose restore pass drifted and rolled back (F1's path),
+a plain `rebuild` left the old attempt pinned and the stamps unpublished.
