@@ -1,6 +1,6 @@
 # The Cadex design language — small printed robots that look engineered
 
-Verified against source: 2026-10-02. Provenance: `[Cadex-new]`.
+Verified against source: 2026-10-03. Provenance: `[Cadex-new]`.
 
 This is how a robot that Cadex designs should look: a small legged,
 wheeled or fixed machine, 3D-printed around hobby servos, gearmotors,
@@ -166,6 +166,13 @@ it declares one.
 - **The cap goes over the horn.** The cap is the driven part's hub, cut
   around the horn and its screw, so that no bare horn arm shows (ADR-440)
   **[judgement]**: this is a fit rule from ot10, and no rating isolates it.
+- **One small cap per axis.** The cap is as small as covers its horn: the
+  shortest horn that carries the link (the cross horn on a micro servo), at
+  reach plus wall and no larger, and no second disc on the servo's far face
+  (ADR-494, which removes that half of ADR-440). Evidence: hexapod trial 1
+  (`orun1-t1-hexapod`, rev `35193b3e`) built a 35 mm disc on both faces of
+  every servo and lost under frozen judge v2 on "crowded clusters of
+  joints". **[judgement]** on the size: no rating isolates cap diameter.
 
 ## 4. No face; a sensor where a face was
 
@@ -202,6 +209,13 @@ it declares one.
   `quadruped-e-hard-surface` (Love, held-out) are the pattern. The thin
   stick legs of `hexapod-g-minimal` (No, dev) and `hexapod-f-creature` (Meh,
   held-out) are the failure.
+- **Legs are long against their joints.** Thigh and shin each at least
+  2.5 joint-cap diameters between axes, the shin the longest segment, the
+  hip link no longer than its servos need, the thigh level or a little above
+  at the standing pose (ADR-494). Evidence: hexapod trial 1's 48 mm thigh
+  and 70 mm shin under 35 mm caps (1.4 and 2.0 diameters, knee raised)
+  drew "upturned segments … cluttered" from frozen judge v2. **[judgement]**
+  on the 2.5 figure: it is the run's own ratio, not a rated measurement.
 - **Feet are designed parts.** A foot is a pad, a cap or a plate, or a
   wheel with a tyre, never the cut end of a bar. Examples: the orange foot
   pads of `quadruped-e-hard-surface` (Love), the flat foot plates of
