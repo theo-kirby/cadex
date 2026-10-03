@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "59bdc4888decc7c9515a0cadfae002d5d4344eb9ad0b4ecc360d0c2be18d9039"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "4dfaa65c85b74df165b74dc3cf1113b481449fe51e3325582451f79c3681729b"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "eaabdea119bdeb20924f4006e888fefa3c8ae641da47d1d473e0d156c18617af"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "7d3b25a53f7b4d934f7c65de52d6af754d504462db2f506e3e028c335ac71f9a"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "0afe313adfe5619275a93fd4431b9ccfca32528067fe4b75ea988d3dddb85c0d"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "a6fe7f6e976da3c955ac7bdb216aa4a26f045384bb2c951616351ae8ba7d562a"
+    }
+  ],
+  "medians": {
+    "T1": 1,
+    "T2": 2,
+    "T3": 3,
+    "T4": 1,
+    "T5": 2,
+    "T6": 3,
+    "T7": 2
+  },
+  "total": 14,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 1,
+          "reason": "Rounded pods hide the servos, but every board, module and wire sits exposed on a flat top plate with no body shell over it."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "Off-white shell and dark mechanism parts are applied by role and the orange accent sits deliberately on the joint caps, but orange also shows up on a loose wire across the boards."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every rotation axis is marked by the same concentric orange disc cap set into a rounded boss."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The legs are shaped, with rounded pods and tapered shanks, but the body is still a thin flat plate with small edge fillets rather than a soft primitive."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "The only face element is a small dark slot on the end of the body, which reads as a generic vent and is hard to spot."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "A compact body on legs that taper clearly to distinct black ball feet gives a balanced, intentional stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "It is well lit with clean antialiased edges and a good three-quarter view on a dark grid floor, but there is no soft contact shadow or seamless studio backdrop."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 1, \"reason\": \"Rounded pods hide the servos, but every board, module and wire sits exposed on a flat top plate with no body shell over it.\"}, \"T2\": {\"score\": 2, \"reason\": \"Off-white shell and dark mechanism parts are applied by role and the orange accent sits deliberately on the joint caps, but orange also shows up on a loose wire across the boards.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every rotation axis is marked by the same concentric orange disc cap set into a rounded boss.\"}, \"T4\": {\"score\": 1, \"reason\": \"The legs are shaped, with rounded pods and tapered shanks, but the body is still a thin flat plate with small edge fillets rather than a soft primitive.\"}, \"T5\": {\"score\": 2, \"reason\": \"The only face element is a small dark slot on the end of the body, which reads as a generic vent and is hard to spot.\"}, \"T6\": {\"score\": 3, \"reason\": \"A compact body on legs that taper clearly to distinct black ball feet gives a balanced, intentional stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"It is well lit with clean antialiased edges and a good three-quarter view on a dark grid floor, but there is no soft contact shadow or seamless studio backdrop.\"}}",
+      "session_id": "b8eb8cfd-cc55-496e-b97f-9caff19bba7c",
+      "duration_ms": 29217,
+      "num_turns": 17,
+      "total_cost_usd": 0.12058400000000001,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2305,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.12058400000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 586,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 1,
+          "reason": "The servos are hidden inside rounded leg housings, but the body is an open tray with the boards, headers and wiring fully exposed on top, so most of the electronics are visible."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "Off-white shell and dark mechanism are applied consistently by role, and orange works as a single accent on the joint caps, but the orange wire running across the exposed board uses the accent at random."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every rotation axis has the same round orange cap with a centre dot, concentric with its joint, used the same way on all legs."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The leg pods are soft rounded forms, but the body reads as a flat slab with filleted corners and boards stacked on it, and the lower legs are plain bars."
+        },
+        "T5": {
+          "score": 1,
+          "reason": "A front can only be guessed from the leg layout; the dark pill-shaped slot on the end is repeated on the sides, so there is no face."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The body is compact and the lower legs taper to distinct black ball feet, giving a balanced, deliberate four-legged stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Shading shows the curves well and the three-quarter angle is good, but the dark grid floor is a viewport backdrop with no visible contact shadow, and the two side-on views are flat."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 1, \"reason\": \"The servos are hidden inside rounded leg housings, but the body is an open tray with the boards, headers and wiring fully exposed on top, so most of the electronics are visible.\"}, \"T2\": {\"score\": 2, \"reason\": \"Off-white shell and dark mechanism are applied consistently by role, and orange works as a single accent on the joint caps, but the orange wire running across the exposed board uses the accent at random.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every rotation axis has the same round orange cap with a centre dot, concentric with its joint, used the same way on all legs.\"}, \"T4\": {\"score\": 1, \"reason\": \"The leg pods are soft rounded forms, but the body reads as a flat slab with filleted corners and boards stacked on it, and the lower legs are plain bars.\"}, \"T5\": {\"score\": 1, \"reason\": \"A front can only be guessed from the leg layout; the dark pill-shaped slot on the end is repeated on the sides, so there is no face.\"}, \"T6\": {\"score\": 3, \"reason\": \"The body is compact and the lower legs taper to distinct black ball feet, giving a balanced, deliberate four-legged stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"Shading shows the curves well and the three-quarter angle is good, but the dark grid floor is a viewport backdrop with no visible contact shadow, and the two side-on views are flat.\"}}\n```",
+      "session_id": "811965b2-b105-47b0-9e07-6c594e78fcf8",
+      "duration_ms": 24314,
+      "num_turns": 17,
+      "total_cost_usd": 0.1289186,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2727,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1289186,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 963,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 1,
+          "reason": "The hip and thigh servos sit inside rounded housings, but the body is an open deck with every board, header and wire exposed on top, so there is no continuous body shell."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "The white shell and dark mechanism (boards, slots, ball feet) follow their roles consistently, and the orange accent marks the joints well, but it also shows up on a wire run, so it isn't fully disciplined."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every rotation axis is shown by the same large round orange cap, concentric with its axis and identical across all joints."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The limbs are softly shaped and tapered, but the body is a thin rounded-corner slab with small edge radii, so it reads as a plate rather than a soft primitive."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark pill-shaped slot on the end face acts as a face element, but it is small and generic and doesn't give the robot a clear character at a glance."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The body is compact and the limbs taper from hip housings down to distinct black ball feet, giving a balanced, intentional stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The shaded, antialiased three-quarter views let the curvature read, but the backdrop is a dark grid rather than a seamless studio sweep, and there is no soft contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 1, \"reason\": \"The hip and thigh servos sit inside rounded housings, but the body is an open deck with every board, header and wire exposed on top, so there is no continuous body shell.\"}, \"T2\": {\"score\": 2, \"reason\": \"The white shell and dark mechanism (boards, slots, ball feet) follow their roles consistently, and the orange accent marks the joints well, but it also shows up on a wire run, so it isn't fully disciplined.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every rotation axis is shown by the same large round orange cap, concentric with its axis and identical across all joints.\"}, \"T4\": {\"score\": 1, \"reason\": \"The limbs are softly shaped and tapered, but the body is a thin rounded-corner slab with small edge radii, so it reads as a plate rather than a soft primitive.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark pill-shaped slot on the end face acts as a face element, but it is small and generic and doesn't give the robot a clear character at a glance.\"}, \"T6\": {\"score\": 3, \"reason\": \"The body is compact and the limbs taper from hip housings down to distinct black ball feet, giving a balanced, intentional stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"The shaded, antialiased three-quarter views let the curvature read, but the backdrop is a dark grid rather than a seamless studio sweep, and there is no soft contact shadow.\"}}",
+      "session_id": "9f4f9189-b6fa-4d0b-986b-576dea30e662",
+      "duration_ms": 25495,
+      "num_turns": 17,
+      "total_cost_usd": 0.12441859999999999,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2502,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.12441859999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 734,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "quadruped-c-exposed-mechanism",
+  "receipt": {
+    "project": "orun1-ho-quadruped-c-exposed-mechanism",
+    "accepted_revision": "16f4397b23c7923862b6b4bffbe769836d27520698332aed6bb235930f621cef",
+    "look_revision": "16f4397b23c7923862b6b4bffbe769836d27520698332aed6bb235930f621cef",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

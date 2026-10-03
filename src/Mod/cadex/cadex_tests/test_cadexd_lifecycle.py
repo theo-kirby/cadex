@@ -2370,6 +2370,75 @@ def test_an_offset_project_reopens_although_its_bytes_never_repeat(tmp_path):
 
 
 @pytest.mark.skipif(FREECADCMD is None, reason="No FreeCADCmd binary available.")
+def test_the_accepted_recipe_reopens_when_the_kernel_rebuilds_it_differently(tmp_path):
+    """Same source, same settings, a different kernel answer (ADR-476).
+
+    ``digestbug-balancer-b`` and ``digestbug-hexapod-h-free`` refused every
+    open: a partial ``skip`` fillet kept a different marginal edge on
+    rebuild, and an offset moved a vertex by 5 um. Their scripts and every
+    definition were the accepted ones. The kernel's different answer is
+    simulated here exactly where it lands -- the accepted attempt's retained
+    BREP -- and the open must succeed, name the output, and pin nothing new.
+    """
+
+    root = tmp_path / "drift.cadex"
+    other = tmp_path / "other.cadex"
+    client = None
+    try:
+        client = _spawn_cadexd()
+        assert client.request("open_project", {"project_root": str(other)})["ok"]
+        assert client.request("write_script", {
+            "source": 'result = {"plate": part.box(20.005, 10, 3)}',
+            "expected_revision": "",
+        })["ok"]
+        assert client.request("open_project", {"project_root": str(root)})["ok"]
+        assert client.request("write_script", {
+            "source": 'result = {"plate": part.box(20, 10, 3), "pin": part.cylinder(2, 6)}',
+            "expected_revision": "",
+        })["ok"]
+        state = json.loads((root / "script.json").read_text())
+        retained = root / state["accepted_attempt"]["staging"]
+        moved = json.loads(
+            (other / json.loads((other / "script.json").read_text())
+             ["accepted_attempt"]["staging"] / "result.json").read_text()
+        )["outputs"][0]["artifact_path"]
+        plate = next(item for item in json.loads(
+            (retained / "result.json").read_text())["outputs"] if item["name"] == "plate")
+        other_staging = other / json.loads(
+            (other / "script.json").read_text())["accepted_attempt"]["staging"]
+        (retained / plate["artifact_path"]).write_bytes(
+            (other_staging / moved).read_bytes())
+        # The accepted bytes are now not what this kernel rebuilds, as on
+        # the sweep projects.
+        state["accepted_digest"] = "0" * 64
+        (root / "script.json").write_text(json.dumps(state), encoding="utf-8")
+        for _ in range(2):
+            _stop(client)
+            client = _spawn_cadexd()
+            reopened = client.request("open_project", {"project_root": str(root)})
+            assert reopened["ok"], reopened
+            restore = reopened["restore"]
+            assert restore["matched_by"] == "recipe", restore
+            assert restore["drifted_outputs"] == ["plate"], restore
+            assert "geometry_digest" not in restore, restore
+            assert _validate_response("open_project", reopened) == []
+            after = json.loads((root / "script.json").read_text())
+            for key in ("accepted_revision", "accepted_digest", "accepted_attempt",
+                        "latest_candidate"):
+                assert after[key] == state[key], key
+            assert retained.is_dir()
+        # Without the accepted request the recipe cannot be read: refused.
+        (retained / "request.json").unlink()
+        _stop(client)
+        client = _spawn_cadexd()
+        refused = client.request("open_project", {"project_root": str(root)})
+        assert refused["ok"] is False, refused
+        assert "kept no request" in refused["observed"]["recipe_comparison"]
+    finally:
+        _stop(client)
+
+
+@pytest.mark.skipif(FREECADCMD is None, reason="No FreeCADCmd binary available.")
 def test_a_changed_script_is_still_refused_at_the_restore_pass(tmp_path):
     """The fallback measures; it does not forgive. ADR-044's guard stands."""
 
@@ -2397,6 +2466,9 @@ def test_a_changed_script_is_still_refused_at_the_restore_pass(tmp_path):
             assert observed["accepted_digest"] == state["accepted_digest"]
             assert observed["geometry_comparison"] == (
                 "the rebuilt model is not the accepted one"
+            )
+            assert observed["recipe_comparison"] == (
+                "the rebuild did not run the accepted recipe"
             )
             after = json.loads((root / "script.json").read_text())
             assert after["accepted_digest"] == state["accepted_digest"]

@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-01
+Verified against source: 2026-10-03
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -674,8 +674,8 @@ Three rules the library holds itself to:
 Browse before modelling standard hardware by hand: `describe_api`'s
 `library` section lists the families, part numbers and deciding specs
 (`lib.catalog()` serves the same thing inside a script). Catalogued today:
-metric fasteners m2–m8 (socket/countersunk bolts, hex/nyloc nuts, flat
-washers), heat-set inserts m2–m5, the common ball bearings plus a
+metric fasteners m2–m8 and m1.6 (socket/countersunk bolts, hex/nyloc nuts,
+flat washers; m1.6 is socket bolts, hex nuts and washers only, ADR-488), heat-set inserts m2–m5, the common ball bearings plus a
 parametric `lib.bushing`, and the four servo classes — SG90, MG90S,
 MG996R, DS3218 — with measured micro horns; and the three board variants
 below. The 25T horns and the servo
@@ -741,7 +741,7 @@ catalogued hardware, so it never counts as purchased in `look`'s measures.
 
 | call | extents, in the part's own frame |
 |---|---|
-| `servo.bay(clearance=0.5, lead_room=6.0)` | the case and the mounting-tab plate, each plus `clearance` on every side; the spline's column (its radius plus `clearance`) from the case top to the spline top, so the horn seats outside the wall; and `lead_room` beyond the back (**−X**) end face, below the tabs, where the lead is taken to leave (ADR-443). The tabs land on the ledge the cut leaves under them; drill their screws at `spec["mount_holes"]`. Grow the limb around it — a 1.6–2.4 mm wall on every side but the spline's — then cut it, so the case sits inside the limb. |
+| `servo.bay(clearance=0.5, lead_room=6.0, ledge=0.0)` | the case and the mounting-tab plate, each plus `clearance` on every side; the spline's column (its radius plus `clearance`) from the case top to the spline top, so the horn seats outside the wall; and `lead_room` beyond the back (**−X**) end face, below the tabs, where the lead is taken to leave (ADR-443). The tabs land on the ledge the cut leaves under them; drill their screws at `spec["mount_holes"]`. The lead-side holes lie inside the lead room, so pass `ledge=4`: the room then stops 4 mm under the tabs and both tabs' screws bite (ADR-491). The default `ledge=0` is ADR-443's bay, kept so accepted recipes do not move. A bus servo has no tabs, and `ledge` leaves its bay unchanged. Grow the limb around it — a 1.6–2.4 mm wall on every side but the spline's — then cut it, so the case sits inside the limb. |
 | `pack.bay(clearance=1.0, lead_room=15.0)` | the envelope plus `clearance` on the four sides and the top, plus `lead_room` beyond the **+X** end face, where the leads are taken to leave (roll the pack 180° to lead out of −X). Nothing below the base face: that is the seat. |
 | `board.bay(clearance=1.0, underside=2.0, lead_room=8.0)` | the PCB and component-marker footprint (the ESP32 module overhangs its PCB) plus `clearance`; from `underside + clearance` below the PCB to `lead_room + clearance` above its tallest component. Raise `underside` to the pin length when headers are fitted; fitted connectors (USB, HDMI) are not modelled. |
 
@@ -754,6 +754,25 @@ datasheet dimensions.
 pack = lib.battery("gensace-gea2s100045d", origin=(0, 0, 4))
 esp = lib.board("esp32-devkitc-v4", origin=(-14, -24, 20))
 body = part.cut(hull, [pack.bay(), esp.bay()])
+```
+
+A board with mounting holes is screwed down with `board.mounting(standoff=3.0,
+*, screw=None, diameter=None, length=None)` (ADR-493). It returns
+`standoffs`, one boss per hole (`diameter` across, default 2.5 screw
+diameters, from the PCB's bottom face down `standoff` plus 1 mm so it fuses);
+`holes`, the screw's tapping drill from the PCB down 1 mm past the screw's
+tip; and `screws`, `lib.bolt` parts seated on the PCB's top face on each
+hole's axis. `screw` defaults to the largest metric size the hole passes,
+and `length` to the PCB plus 2.5 diameters, rounded up to a millimetre. The
+3 mm default is the gap `board.bay()`'s defaults leave under the PCB. The
+thread then cuts printed material, which is what the mounting check counts
+(ADR-492). A board with no mounting holes refuses.
+
+```python
+imu = lib.board("bno085-adafruit-4754", origin=(-12, -11, 33))
+hold = imu.mounting()
+deck = part.cut(part.fuse([part.cut(deck, [imu.bay()]), *hold.standoffs]), hold.holes)
+screws = [assembly.component(s.body) for s in hold.screws]
 ```
 
 #### N20 gearmotor `[ADR-205]`

@@ -1,251 +1,333 @@
-# The Cadex design language — small printed servo robots
+# The Cadex design language — small printed robots that look engineered
 
-Verified against source: 2026-09-29. Provenance: `[Cadex-new]`.
+Verified against source: 2026-10-03. Provenance: `[Cadex-new]`.
 
-This is how a robot that Cadex designs should look: a small legged or
-wheeled machine, 3D-printed around hobby servos (MG90S class), carrying its
-own electronics. It is the language the product agent is taught (ot10 A4),
-the thing the renderer presents (A2), the thing `look` and review measure
-(A3), and what the ot10 rubric scores (`docs/probes/ot10/README.md`).
+This is how a robot that Cadex designs should look: a small legged,
+wheeled or fixed machine, 3D-printed around hobby servos, gearmotors,
+boards, a battery and sensors. It is what the product agent is taught,
+through the engine's overlay `Mod/cadex/CadexAgentGuidance.md`, and what
+the renderer presents.
 
-It was distilled from the owner's core reference set, which is local and
-gitignored (`reference/`). Each rule names the references it comes from by
-filename only; no reference image is copied, described in a prompt, or
-shown to the product agent. The agent learns only what is written here.
+**Where it comes from (orun1, ADR-479).** ot10 wrote this language from a
+set of reference images (ADR-411). The owner's verdict on what it produced
+was that the robots look finished but are not well designed. So orun1
+replaced it with a language written from the owner's own blind ratings of 55
+sweep designs, 7 robot types by 8 design theses
+(`docs/probes/orun1/README.md`, `docs/probes/orun1/sweep/ratings.json`),
+and from three readings in the charter that the owner has not yet confirmed:
 
-**Exists today versus target.** Since ADR-412 to ADR-415 the renderer
-draws a lit studio hero, xscript declares appearance roles and a palette,
-and `look` and review report the three proxies. Since ADR-417 the CLI
-overlay teaches §8's order — concept, skeleton, shell, refine with `look` —
-and the rules of §1–§6 in it; since ADR-446 that text is the engine's
-`Mod/cadex/CadexAgentGuidance.md`, which every front end pastes in. Whether an unassisted design follows them is
-A5's measurement, not a claim this doc makes. The baseline is hex3, which
-scores 2 of 21 on the rubric (`docs/probes/ot10/README.md`, *Baseline*).
+- **A1.** Both the face and the soft pillow-box body are out. A focal
+  sensor may sit where a face was, as a real part.
+- **A2.** One family, two finishes: an exposed, ordered mechanism, or an
+  enclosed but panelled hard-surface body. The agent picks one per robot and
+  says why.
+- **A3.** The accent stays small and functional.
+
+**How a rule cites its evidence.** Every rule names sweep designs by id with
+the owner's verdict (Love 3, Like 2, Meh 1, No 0) and the set the design is
+in (`dev` or `held-out`). Alternatively, it quotes the charter or is marked
+**[judgement]**: the run's or the operator's own call, with no rating behind
+it. Thesis means are from the README's table. The evidence is thin: there are
+55 ratings, 4 Loves and 3 Nos, and a thesis is confounded with how well one
+agent turn carried it out. Read a rule's citations as direction, not as
+proof. Citing a held-out design here tunes nothing D1 measures: D1's judge
+was frozen and measured before this was written (ADR-478), and the
+held-out set has had its one use.
+
+**What reaches the agent.** Only the rules reach the agent, as plain
+instructions in the overlay. The overlay quotes no rating and no design id,
+shows no sweep render, and contains nothing of the judge's prompt. This
+document is the evidence for the rules, and it is not in any prompt.
+
+**Exists today versus target.** The overlay teaches §1–§6 and the procedure
+in §8 (ADR-479). Whether an unassisted design follows them, and whether the
+frozen judge v2 rates the result above the sweep's Likes and Loves, is D4's
+measurement and not a claim this document makes.
 
 ## 0. The one-sentence version
 
-**A light shell over a dark mechanism, one accent, every joint a round
-feature, one soft body primitive with a face, limbs that taper to distinct
-feet, presented in a studio.**
+**An engineered machine built from the inside out: real parts chosen and
+placed first, a structure that visibly carries them, then either an
+ordered, exposed mechanism or a panelled hard-surface enclosure. No face, no
+pillow body, and one small functional accent.**
 
-Of the core set, `07-white-hood-quadruped-yellow-studio.jpg` shows the
-whole language in one image. The others each show one part of it.
+## 1. Form: an engineered machine, in one of two finishes
 
-## 1. Form: shell over skeleton
+- **Not the mascot box.** The robot is never a large, soft, rounded box
+  with a visor slot or dot eyes, over short or thin limbs, with blocks
+  hanging under it. All three Nos are this design:
+  `biped-a-servo-joint` (No, dev), `hexapod-g-minimal` (No, dev) and
+  `biped-h-free` (No, held-out). The same body with better limbs is still
+  only Meh: `quadruped-d-product-shell` (Meh, dev),
+  `hexapod-f-creature` (Meh, held-out). The owner's own description, in the
+  charter, was "a rounded box with four legs". (ADR-481 removes the
+  rule that prescribed it.)
+- **Pick a finish, and say why.** Per A2 there are two finishes, and the
+  agent names its choice in a `DECISION:` line before any geometry:
+  - **Exposed mechanism.** This finish has the highest thesis mean in the
+    sweep (2.14). The actuators, boards, battery and cable run are visible
+    and laid out with order. Examples: `balancer-c-exposed-mechanism`
+    (Love, dev): two slotted side frames, an orange cradle holding the
+    electronics, a visible power lead. `biped-c-exposed-mechanism` (Love,
+    held-out): a stacked servo column with horn caps and a board deck with
+    routed wires. Also `quadruped-c-exposed-mechanism` (Like, held-out) and
+    `hexapod-c-exposed-mechanism` (Like, held-out).
+  - **Panelled hard surface.** Thesis mean 1.71. The body is enclosed, but
+    by flat panels, chamfers, a real seam between tub and lid, a bolted
+    hatch and visible fasteners, never by one soft skin. Examples:
+    `quadruped-e-hard-surface` (Love, held-out), `biped-e-hard-surface`
+    (Like, held-out) and `balancer-e-hard-surface` (Like, held-out). At its
+    plainest the enclosure is a few well-proportioned volumes with nothing
+    decorative: `arm5-g-minimal` (Love, dev). Plain is not enough on its
+    own, though, because `hexapod-g-minimal` (No, dev) is also plain.
+  - The consumer product shell, the old default, has a thesis mean of 1.43.
+    The creature thesis scores 1.29, and the agent's free choice 1.00. None
+    of them is a finish this language offers.
+- **Hardware may show, and where it shows it is ordered.** A servo case, a
+  board or the battery is not something to hide. It sits square to the
+  frame, on a centreline or a symmetric grid, held by its own screws or its
+  own bay, and it is placed rather than left where it fell. The evidence is
+  `balancer-c-exposed-mechanism` (Love, dev): its notes say every part
+  "sits on a centreline, is held by its own screws". Also
+  `biped-c-exposed-mechanism` (Love, held-out) and
+  `quadruped-c-exposed-mechanism` (Like, held-out), whose board deck is
+  open on top. (ADR-482 removes "never an exposed case or a bare
+  board".)
+- **Nothing looks stuck on.** Every visible part is held by something
+  visible or obvious, and no block hangs under the body without a
+  structural reason. The charter quotes the owner: the motor pods "look
+  stuck on". The dark boxes hanging under `hexapod-g-minimal` (No, dev) and
+  the loose blocks under `hexapod-f-creature` (Meh, held-out) are the
+  failure.
+- **Detail is real.** Surface detail is a part boundary: a seam where two
+  printed parts actually separate, a fastener that actually fastens, a
+  hatch, a panel, a cable that actually carries power or signal. Detail that
+  stands for nothing is not allowed: no greeble, no fake vent and no stripe.
+  The evidence is `quadruped-e-hard-surface` (Love, held-out): its notes
+  say "every seam, groove and socket-head bolt is a real joint". Also
+  `arm5-g-minimal` (Love, dev), with "seams only where parts actually
+  separate", and the routed wiring of `biped-c-exposed-mechanism` (Love,
+  held-out). (ADR-483 replaces "split lines are the only surface
+  detail".)
+- **Edges are finished, and the body is not a pillow.** Every printed
+  outside edge is filleted or chamfered to suit its part: a chamfer at 45°
+  counts as finished, and so does a tangent fillet. One large, uniform
+  radius over a whole box is what makes the pillow. The Love among the
+  quadrupeds is chamfered (`quadruped-e-hard-surface`, Love, held-out). The
+  Nos are heavily rounded boxes (`biped-a-servo-joint`, `biped-h-free`,
+  `hexapod-g-minimal`). (ADR-481.)
 
-- **The body is one readable primitive**: a hood, a pill, a sphere or a
-  heavily rounded box. It is not a deck of plates. (`07-white-hood-quadruped-yellow-studio.jpg`,
-  `43-yellow-sphere-quadruped-dark-legs.jpg`, `39-grey-wheel-leg-hexapod-product.jpg`,
-  `14-ibots-crab-white-shell-dark-visor.jpg`)
-- **Shells hide the purchased hardware.** Servo cases, boards and the
-  battery sit inside printed shells shaped around them. What shows of the
-  mechanism is deliberate: a dark band, a ring, a joint. It is never an
-  exposed case or a bare board. A printed cradle that follows a servo case
-  face for face is an exposed case by another name, whatever colour it is
-  printed in: where it would show, a `shell` cover goes over it, or its
-  outside is rounded into the limb and the joint cap. (ADR-428)
-  (`07-white-hood-quadruped-yellow-studio.jpg`,
-  `14-ibots-crab-white-shell-dark-visor.jpg`, `26-white-frog-shell-dark-joints.jpg`,
-  `01-desktop-arm-product-finish.jpg`)
-- **Skeleton first, shell second.** The mechanism (servos, horns,
-  brackets and links) is designed to fit and move. The shell is a separate
-  printed part over it, with a clearance gap, fastened to the skeleton.
-  It is never fused into the mechanism, so the gap never becomes a fit
-  failure. (`39-grey-wheel-leg-hexapod-product.jpg`, `46-orange-spider-concept-sheet.jpg`)
-- **Split lines are the only surface detail.** Where two shell pieces meet,
-  the seam is a clean groove or step that follows the form. There are no
-  greebles, vents or stuck-on panels. (`39-grey-wheel-leg-hexapod-product.jpg`,
-  `01-desktop-arm-product-finish.jpg`, `43-yellow-sphere-quadruped-dark-legs.jpg`)
-- **Soft primitives, large radii.** Outside radii are about 10–20% of the
-  part's smallest overall dimension: 4–8 mm on a 40 mm body, not a 1 mm
-  break. Parts blend into one another at bosses and roots, and are not
-  butted together. (`08-grey-cad-render-filleted-joints.jpg`,
-  `12-tan-folded-quadruped-chunky.jpg`, `01-desktop-arm-product-finish.jpg`)
-
-## 2. Materials and palette: two materials, one accent
+## 2. Materials and palette: two materials, one small accent
 
 Three **appearance roles**, and every part has exactly one:
 
 | role | what it is | default colour | alternates |
 |---|---|---|---|
-| `shell` | the printed outer forms: body, hood, limb covers | bone `#E9E6DF` | cool grey `#B9BDC2`, tan `#C9AE86` |
-| `mechanism` | joints, links a shell does not cover, face panel, feet, all purchased hardware that shows | graphite `#2F3237` | — |
-| `accent` | one saturated colour on a few deliberate features: joint rings, the eye, foot tips | signal orange `#F26A1B` | yellow `#F2B40A`, teal `#179C98` |
+| `shell` | printed structure and panels: frames, decks, limbs, covers | bone `#E9E6DF` | cool grey `#B9BDC2`, tan `#C9AE86` |
+| `mechanism` | purchased hardware that shows, dark panels, links, tyres, jaws | graphite `#2F3237` | — |
+| `accent` | a few functional features: horn caps, a cradle, feet, a power cable, a status light, a sensor bezel | signal orange `#F26A1B` | yellow `#F2B40A`, teal `#179C98` |
 
-- **At most three materials on the whole robot**: one shell colour, the
-  graphite mechanism and at most one accent. A robot without an accent is
-  fine; a rainbow is not. The accent covers a small share of the surface,
-  roughly under 10%. (`07-white-hood-quadruped-yellow-studio.jpg`,
-  `04-jerboa-poster-orange-accent.jpg`, `43-yellow-sphere-quadruped-dark-legs.jpg`,
-  `26-white-frog-shell-dark-joints.jpg`)
-- **One material is also a valid language** when the proportions and
-  bosses carry the design: a single tan or grey. In that case the joints
-  and face are made by geometry, not by colour. (`12-tan-folded-quadruped-chunky.jpg`,
-  `08-grey-cad-render-filleted-joints.jpg`, `39-grey-wheel-leg-hexapod-product.jpg`)
-- **Colour follows role, not supplier.** Being purchased is not a colour.
-  A servo that shows is `mechanism` because it is mechanism. hex3's
-  printed-orange / purchased-grey split is the thing this replaces.
-- **The body can take the accent instead.** When the shell itself is
-  saturated (yellow, orange), the mechanism stays graphite and there is no
-  third colour. (`43-yellow-sphere-quadruped-dark-legs.jpg`,
-  `46-orange-spider-concept-sheet.jpg`)
+- **Bone, graphite and one orange.** All four Loves are this palette:
+  `balancer-c-exposed-mechanism`, `biped-c-exposed-mechanism`,
+  `quadruped-e-hard-surface` and `arm5-g-minimal` (their `palette` fields in
+  `ratings.json`). The colour values are ot10's, kept unchanged.
+- **The accent marks a function (A3).** It goes on horn caps
+  (`biped-c-exposed-mechanism`, Love; `arm5-g-minimal`, Love), on a cradle
+  (`balancer-c-exposed-mechanism`, Love), on feet or a sensor slot
+  (`quadruped-e-hard-surface`, Love), on a power cable or on a status light.
+  It never forms a stripe, a pattern or a face. It covers well under a tenth
+  of the surface **[judgement]**.
+- **One shell colour, with graphite only where it means something, is
+  also valid.** In `arm5-g-minimal` (Love, dev) the body is all white and
+  graphite marks only the gripper jaws, so the jaws "read as the tool".
+- **Colour follows role, not supplier.** A servo that shows is
+  `mechanism` because it is mechanism **[judgement]**, carried over from
+  ot10.
 
 xscript declares the role per part and the palette per assembly
 (`assembly.component(..., appearance=)`, `assembly.assembly(..., palette=)`,
-`docs/XSCRIPT.md`, ADR-413), and inventory, `render`, `look` and review
-carry them, and the app's viewport paints them (ADR-449) by the same rule
-the studio draws with. An undeclared part is drawn by supplier until it
-declares one.
+`docs/XSCRIPT.md`, ADR-413). Inventory, `render`, `look` and review carry
+them, and the app's viewport paints them (ADR-449) by the same rule the
+studio draws with. A part with no declared role is drawn by supplier until
+it declares one.
 
 ## 3. Joints are features
 
-- **Every rotation axis is a round feature**: a boss, ring or cap
-  concentric with the axis, at least as wide as the servo horn it covers.
-  The joint is not hidden and it is not a bare horn.
-  (`26-white-frog-shell-dark-joints.jpg`, `12-tan-folded-quadruped-chunky.jpg`,
-  `08-grey-cad-render-filleted-joints.jpg`, `01-desktop-arm-product-finish.jpg`)
-- **The servo horn becomes a disc.** A printed cap covers the horn and its
-  screw. It reads as a hub, not as an arm. (`04-jerboa-poster-orange-accent.jpg`)
-- **All joints look the same.** One cap design and one diameter step
-  serve the whole robot. (`46-orange-spider-concept-sheet.jpg`,
-  `26-white-frog-shell-dark-joints.jpg`)
-- **The Cadex joint cap** is the proposed signature: a graphite disc cap
-  on every actuated axis, carrying a thin accent ring around its rim. It
-  holds across body plans because every Cadex robot has servos. It is
-  the orange ring of `04-jerboa-poster-orange-accent.jpg` and the dark
-  joint ring of `26-white-frog-shell-dark-joints.jpg`, made into one rule.
+- **Every rotation axis reads as a round feature.** That means a horn cap,
+  a hub, a drum or a bearing boss, concentric with the axis. Examples: the
+  repeated sleeve, hub and orange cap at all six joints of
+  `biped-c-exposed-mechanism` (Love, held-out); the flush cap at every tilt
+  axis of `arm5-g-minimal` (Love, dev); the hip drums of
+  `quadruped-e-hard-surface` (Love, held-out); the hip caps of
+  `quadruped-c-exposed-mechanism` (Like, held-out).
+- **One joint design for the whole robot.** "One repeated joint module …
+  gives the legs a rhythm" (`biped-c-exposed-mechanism` notes, Love).
+  `arm5-g-minimal` (Love) uses one joint radius per servo size.
+- **The cap goes over the horn.** The cap is the driven part's hub, cut
+  around the horn and its screw, so that no bare horn arm shows (ADR-440)
+  **[judgement]**: this is a fit rule from ot10, and no rating isolates it.
+- **One small cap per axis.** The cap is as small as covers its horn: the
+  shortest horn that carries the link (the cross horn on a micro servo), at
+  reach plus wall and no larger, and no second disc on the servo's far face
+  (ADR-494, which removes that half of ADR-440). Evidence: hexapod trial 1
+  (`orun1-t1-hexapod`, rev `35193b3e`) built a 35 mm disc on both faces of
+  every servo and lost under frozen judge v2 on "crowded clusters of
+  joints". **[judgement]** on the size: no rating isolates cap diameter.
 
-## 4. A face
+## 4. No face; a sensor where a face was
 
-- **One focal element on the forward face** turns a mechanism into a
-  character. It can be a dark visor slot, a lens cluster, one or two
-  round eyes, or a dark face panel. It sits in `mechanism` graphite and
-  may carry the accent. (`07-white-hood-quadruped-yellow-studio.jpg`,
-  `14-ibots-crab-white-shell-dark-visor.jpg`, `43-yellow-sphere-quadruped-dark-legs.jpg`,
-  `26-white-frog-shell-dark-joints.jpg`)
-- **The face defines the front.** It sits on the body's forward axis, the
-  same +X the IMU is mounted along, so the face is where the robot walks.
-- **The face can be functional.** A recess for a sensor, or the window
-  over the controller's LED, is better than an ornament.
-  (`43-yellow-sphere-quadruped-dark-legs.jpg`)
-- **It is a proportion, not a sticker.** The face occupies about 25–50%
-  of the body's front face and is recessed into the shell or split from
-  it. It is not a thin plate on the surface. (`07-white-hood-quadruped-yellow-studio.jpg`,
-  `14-ibots-crab-white-shell-dark-visor.jpg`)
-- **Its size is checked, not guessed.** Measured on the view from +X
-  (`look`'s `right`), the face spans at least half of the body's width
-  there and at least a quarter of its height. A wide, short visor meets
-  it (`14-ibots-crab-white-shell-dark-visor.jpg`), and so does a squarer
-  panel (`07-white-hood-quadruped-yellow-studio.jpg`,
-  `43-yellow-sphere-quadruped-dark-legs.jpg`). A slot a tenth of the body
-  wide does not, however carefully it is placed. (ADR-422)
-- **It contrasts with what surrounds it.** On a `shell`-coloured surround
-  the face is `mechanism` graphite: a dark face in a light or saturated
-  shell (`07-white-hood-quadruped-yellow-studio.jpg`,
-  `14-ibots-crab-white-shell-dark-visor.jpg`,
-  `43-yellow-sphere-quadruped-dark-legs.jpg`). When the face sits on a
-  graphite surface — a body with no shell over the front, say — a
-  graphite face vanishes into it, so the face, or the eyes within it,
-  takes the `accent` (`07-white-hood-quadruped-yellow-studio.jpg` puts its
-  accent lights inside the dark panel). The accent budget of §2 still
-  holds. (ADR-422)
-- **It is checked from its own side.** Before a design is accepted, the
-  face is looked at from +X, the side it faces, and both rules above are
-  checked there. A face that is only ever seen edge-on, from the hero's
-  three-quarter view, is not checked. (ADR-422)
+- **No face, no eyes, no mouth.** Of the 55 sweep designs, the 47 whose
+  notes mention a face, eyes or a visor average 1.43. The 8 whose notes do
+  not average 2.00 (README, "What the ratings say", point 2). Every No is a
+  visor with two dot eyes. (ADR-480 removes the mandated face.)
+- **The front may carry a real sensor (A1).** A camera, a range sensor or
+  a slot cut for one goes at the front as a held part, on the body's forward
+  axis. The forward elements of two Loves are of this kind: the accent slot
+  across the front of `quadruped-e-hard-surface` (Love, held-out) and the
+  dark lens bar of `biped-c-exposed-mechanism` (Love, held-out). Both sit on
+  a hard front, not in a soft box. Their own notes called them an
+  "eye-bar" and "a visor with two lenses", and the owner rated them Love
+  anyway. So the line this rule draws is between a sensor that is part of
+  the machine and a mascot face, not between a front with something on it
+  and a bare one. Whether two round lenses side by side read as a sensor or
+  as eyes is not settled by 55 ratings **[judgement]**. Prefer one sensor
+  part or one slot.
+- **The controller can be the focal point.** In
+  `balancer-c-exposed-mechanism` (Love, dev), "the controller is the face":
+  an orange bezel around the board, "instead of a decorative visor".
 
-## 5. Proportion and taper
+## 5. Structure, limbs and feet
 
-- **A compact body.** Mass is gathered into one volume, with the battery
-  low and central (the overlay's existing rule). A flat, sprawling deck is
-  what hex3 was. (`43-yellow-sphere-quadruped-dark-legs.jpg`, `12-tan-folded-quadruped-chunky.jpg`,
-  `07-white-hood-quadruped-yellow-studio.jpg`)
-- **Limbs taper towards the foot.** Near the foot, a limb's section is
-  clearly smaller than at the hip: about 60% or less. It is not a
-  constant bar. The section tapers in depth as well as width, so the limb
-  narrows in the side view as well as the plan: a plate of one thickness
-  cut to a tapering outline is still a bar edge-on. (ADR-428)
-  (`07-white-hood-quadruped-yellow-studio.jpg`,
-  `14-ibots-crab-white-shell-dark-visor.jpg`, `46-orange-spider-concept-sheet.jpg`)
-- **Feet are distinct.** Each foot is a cap, pad, point or wheel, in
-  `mechanism` or `accent`. It is not the end of a bar. (`07-white-hood-quadruped-yellow-studio.jpg`,
-  `39-grey-wheel-leg-hexapod-product.jpg`, `26-white-frog-shell-dark-joints.jpg`)
-- **Segmented legs read as a rhythm.** Repeated segments alternate shell
-  and mechanism: a light cover, a dark joint, a light cover.
-  (`46-orange-spider-concept-sheet.jpg`, `14-ibots-crab-white-shell-dark-visor.jpg`)
+- **Structure carries the parts, visibly.** The structure is side frames,
+  a spine, a deck, a servo column or a hull, each placed where the load
+  goes. Examples: the two slotted side cheeks of
+  `balancer-c-exposed-mechanism` (Love, dev) and the stacked servo column of
+  `biped-c-exposed-mechanism` (Love, held-out).
+- **Limbs look load-carrying.** A walking leg tapers from a deep hip to the
+  foot, in depth as well as in width (ADR-428). The tapered legs of
+  `hexapod-c-exposed-mechanism` (Like, held-out) and the shins of
+  `quadruped-e-hard-surface` (Love, held-out) are the pattern. The thin
+  stick legs of `hexapod-g-minimal` (No, dev) and `hexapod-f-creature` (Meh,
+  held-out) are the failure.
+- **Legs are long against their joints.** Thigh and shin each at least
+  2.5 joint-cap diameters between axes, the shin the longest segment, the
+  hip link no longer than its servos need, the thigh level or a little above
+  at the standing pose (ADR-494). Evidence: hexapod trial 1's 48 mm thigh
+  and 70 mm shin under 35 mm caps (1.4 and 2.0 diameters, knee raised)
+  drew "upturned segments … cluttered" from frozen judge v2. **[judgement]**
+  on the 2.5 figure: it is the run's own ratio, not a rated measurement.
+- **Feet are designed parts.** A foot is a pad, a cap or a plate, or a
+  wheel with a tyre, never the cut end of a bar. Examples: the orange foot
+  pads of `quadruped-e-hard-surface` (Love), the flat foot plates of
+  `biped-c-exposed-mechanism` (Love) and the spoked wheel with a dark tyre
+  of `balancer-c-exposed-mechanism` (Love). The charter names feet as
+  designed parts, not leftovers. A ball on the end of a stick is mixed
+  evidence: it appears on `hexapod-g-minimal` (No) and also on
+  `quadruped-c-exposed-mechanism` (Like).
+- **Mass low and central.** The battery is the heaviest part and goes
+  low and between the hips or axles **[judgement]**: this is an engineering
+  rule, not a rated one. The Loves follow it
+  (`biped-c-exposed-mechanism` notes: "the battery sits between the
+  hips").
+- **Hexapods are the hardest type** (type mean 1.14, the lowest). Their
+  best two show a frame with the servos laid out at the hips
+  (`hexapod-b-motors-in-body`, Like, dev; `hexapod-c-exposed-mechanism`,
+  Like, held-out). Their worst is the soft box on sticks
+  (`hexapod-g-minimal`, No, dev).
 
-## 6. Printability
+## 6. Printability **[judgement]**
 
-The overlay's existing rules stay: a flat face to print on, no overhang
-past 45°, walls of at least 1.6 mm, holes sized to their fastener. The
-language adds:
+None of the ratings tested these rules. They are manufacturing rules,
+carried over from the overlay and ot10:
 
-- **Shells print as shells**: 1.6–2.4 mm walls, opening downwards, with
-  the rim as the print face. A hood is one print. (`07-white-hood-quadruped-yellow-studio.jpg`,
-  `43-yellow-sphere-quadruped-dark-legs.jpg`)
-- **Split where the printer needs a face.** A form too round to print in
-  one piece is split along a line that is also the design's split line
-  (§1). (`39-grey-wheel-leg-hexapod-product.jpg`, `01-desktop-arm-product-finish.jpg`)
-- **Colour is a part boundary.** Each role is a separate printed part,
-  printed in its own filament. There is no painting and no multi-material
-  print. The accent ring of a joint cap is its own small part.
-  (`12-tan-folded-quadruped-chunky.jpg` shows that one material also prints.)
-- **Fasteners are hidden or deliberate.** Screws go in from inside the
-  shell or under a cap. Where they show, they are an even pattern.
-  (`01-desktop-arm-product-finish.jpg`)
+- every printed part has a flat face to print on, no unsupported overhang
+  past 45°, walls of at least 1.6 mm and holes sized to their fastener;
+- a colour change is a part boundary: each role is its own printed part in
+  its own filament, never paint and never a multi-material print;
+- covers and panels are 1.6–2.4 mm thick, screwed to the structure that
+  carries them, with clearance from what they cover through every joint's
+  range;
+- fasteners are deliberate: where they show, they form an even pattern
+  (`balancer-c-exposed-mechanism`, Love: "three evenly spaced M3 screws per
+  cheek").
 
 ## 7. Presentation
 
-A design is judged the way it is shown. (`07-white-hood-quadruped-yellow-studio.jpg`,
-`04-jerboa-poster-orange-accent.jpg`, `46-orange-spider-concept-sheet.jpg`,
-`08-grey-cad-render-filleted-joints.jpg`)
+A design is judged the way it is shown. The owner rated each sweep design
+from one studio hero on the dark floor (README, "The ratings"), and judge
+v2 sees exactly that picture.
 
 - **The hero shot** is taken from a low three-quarter view: the camera
-  15–25° above the floor, 30–45° off the front, looking at the face.
-- **Studio light, so that curvature reads.** A key light, a soft fill and
-  a rim light give smooth shading across large radii. Flat shading, which
-  is what `look` drew before ADR-412, hides the only thing radii are for.
+  15–25° above the floor and 30–45° off the front.
+- **Studio light, so that form reads.** A key light, a soft fill and a
+  rim light. Flat shading hides chamfers and radii alike.
 - **The dark prototype floor** (owner's decision, ot10 A8, ADR-444): every
-  presented image stands on the review viewport's mat — the scene
+  presented image stands on the review viewport's mat. That is the scene
   background `#141414`, a `#1c1c1c` / `#232323` checker and a `#3a3a3a`
-  major line on every grid pitch, fading into the background with
-  distance, so there is no horizon line. A mostly white robot reads on it
-  by its form, and the grid makes stride and foot slip legible in a video.
-  The colours are one table, `CadexStudio.PALETTE` in the engine (ADR-445);
-  the viewport's copies are test-held equal to it.
-  This rule replaced a light seamless backdrop taken from the references
-  above; A1's frozen rubric and judge are unchanged by it.
-- **A soft contact shadow** under the robot, so it stands on something. On
-  the dark floor it is deeper than a light backdrop needs.
-- **Antialiased edges.**
+  major line on every grid pitch, fading into the background with distance,
+  so there is no horizon line. The colours are one table,
+  `CadexStudio.PALETTE` in the engine (ADR-445). The viewport's copies are
+  held equal to it by a test.
+- **A soft contact shadow** under the robot, and **antialiased edges**.
 - **A concept sheet** presents a design: the hero, orthographic line
-  views, the palette swatches, the name and the key numbers (mass, servo
-  count, size). (`46-orange-spider-concept-sheet.jpg`, `04-jerboa-poster-orange-accent.jpg`)
+  views, the palette swatches, the name and the key numbers (mass,
+  actuator count, size). An exploded or cutaway view of where each part
+  sits is the long-term direction (charter, long-term rung 2).
 
-Built by ot10 A2 (hero render: `render`'s `hero.png` and `look`'s `hero` view, ADR-412) and A6 (concept sheet).
+Built by ot10 A2 (hero render: `render`'s `hero.png` and `look`'s `hero`
+view, ADR-412) and A6 (concept sheet).
 
-## 8. The order of design
+## 8. The order of design: inside out
 
-The language is applied in this order, which is the order the product
-agent is taught (A4):
+The charter makes this the procedure, not a hint ("choose the actuators,
+controller, power, battery, sensors and the cable path; place them; then
+design the structure that carries them, and only then any panels or
+covers"). Every Love's notes describe this order: `balancer-c` ("the
+inner width … was set by motor length and battery width before the frame
+was drawn"), `biped-c` ("I fixed the servo, battery and board positions
+first and grew the frame around them"), `quadruped-e` ("the battery's bay …
+set where the hips go") and `arm5-g` ("I placed the six servos and five
+electronics parts first"). The overlay teaches it as six steps:
 
-1. **Concept**: name the silhouette, the character (what the face is),
-   the palette (shell colour and accent) and the body primitive before
-   any geometry.
-2. **Skeleton**: the mechanism, electronics and fit, as the overlay
-   already teaches. This is where the fit checks pass.
-3. **Shell**: the body primitive, limb covers, joint caps, face and feet,
-   each with a role, clear of the skeleton.
-4. **Refine with `look`**: judge the render against §1–§6, fix the worst
-   thing, and look again.
+1. **Concept.** Name the machine, its finish (§1, with the reason), its
+   palette and its proportions, before any geometry.
+2. **Parts.** Choose every purchased part from the catalog: the actuators,
+   the controller, a servo driver if one is needed, the regulator and
+   battery, the sensors, the fasteners. Choose the cable path too.
+3. **Place them.** Battery low and central, the controller and driver
+   where the cables are short, sensors at the front, servos at the axes
+   they drive, mirrored about the centre plane. Check the fit with the parts
+   alone.
+4. **Structure.** Design the printed structure that carries them. Each
+   part is held by something named, such as screws through its own tabs, a
+   bay cut with its `.bay()`, a clip or a horn, and never only by being
+   inside a cover. Add limbs, joints and feet.
+5. **Finish.** For the exposed finish, order and fasten what shows. For
+   the hard-surface finish, add panels and covers over the structure, with
+   real seams and fasteners. Then the joint caps and the accent, each part
+   with its role.
+6. **Refine with `look`.** Read the measures and the pictures, name what
+   reads as crude, fix the worst thing, and look again.
 
-## 9. What this is not
+## 9. What was removed, and why
 
-- **Not a copy.** No reference is reproduced. §3's joint cap is where
-  Cadex's own signature starts. The long-term rung of ot10 is making it
-  hold across body plans.
-- **Not ornament over function.** A shell never changes the joint axes,
-  the mass budget beyond its own weight, or the fit. A design that looks
-  right and fails its fit checks is not accepted.
-- **Not a mood board.** The tier-2 and tier-3 references are not cited
-  here. Where they disagree with the core set, the core set wins.
+| removed rule (ot10) | why | ADR |
+|---|---|---|
+| "one soft body primitive with a face" (§0, §1 "the body is one readable primitive", "soft primitives, large radii") | all three Nos are that body (§1) | ADR-481 |
+| a mandated face of a set size and contrast (§4, ADR-422) | face 1.43 against no face 2.00; every No has one (§4) | ADR-480 |
+| "never an exposed case or a bare board"; shells hide the hardware (§1, ADR-428's cradle rule) | the exposed-mechanism thesis is the best rated (2.14) (§1) | ADR-482 |
+| "split lines are the only surface detail" | the Loves use real fasteners, hatches and cables as detail (§1) | ADR-483 |
+| the ten-reference citations | the language is now cited from the owner's ratings; ot10's rubric is retired as the authority | ADR-484 |
+
+## 10. What this is not
+
+- **Not a copy.** No sweep render or reference image reaches the product,
+  and no rule describes one. The agent learns the direction only as written
+  rules.
+- **Not ornament over function.** A design that looks right and fails its
+  fit checks is not accepted. A visible part that nothing holds is a
+  defect, whichever finish it is in.
+- **Not the judge.** Judge v2 (`docs/probes/orun1/README.md`) is the
+  authority on whether a design clears the owner's bar, and this document
+  does not override it. If they disagree, the judge wins, and this
+  document is what changes.

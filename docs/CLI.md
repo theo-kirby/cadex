@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-01. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-03. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -2655,19 +2655,23 @@ The overlay says:
   Until ADR-406 this said the agent could not see; it now renders the
   accepted design for itself, and `inspect scope=output` and the fit block
   remain the evidence for numbers.
-- **Design it; do not only make it fit** (ADR-406, ADR-417). The
-  design language of `docs/DESIGN-LANGUAGE.md`, taught as four steps in
-  order: a **concept** before any geometry (silhouette, character, palette
-  and proportions, stated before the first `write_script` and landed as
-  `DECISION:` lines); the **skeleton** that fits and moves (enclose rather
-  than bolt on, one continuous form per part, mirror what has sides,
-  proportion and clearance, printable); the **shell over the skeleton**
-  (shells hide the hardware, large radii, one joint cap on every axis, a
-  face on +X, limbs that taper to a foot, two materials and one accent by
-  appearance role); and **refinement with `look`** — the `hero` view and
-  its `measures` first, then name the crudest thing, fix it and look
-  again. A test holds the order, and another that every paragraph and
-  bullet of the overlay is a finished sentence.
+- **Design it; do not only make it fit** (ADR-406, ADR-479). The
+  design language of `docs/DESIGN-LANGUAGE.md`, taught from the inside out
+  as six steps in order: a **concept** before any geometry (what the
+  machine is, its palette, and its finish, an exposed mechanism or a
+  panelled hard surface, landed as `DECISION:` lines); the **parts**, each
+  purchased part and the cable path chosen from the catalog; **placing**
+  them and checking their fit alone; the **structure that carries them**
+  (hold every part by something named, nothing stuck on, mirror what has
+  sides, one joint cap per axis, load-carrying limbs with designed feet,
+  printable); the **finish** (not the mascot box, no face, hardware that
+  shows is ordered, detail is real, finished edges, two materials and one
+  small functional accent by appearance role); and **refinement with
+  `look`**, which reads the `measures` first, then names the crudest
+  thing, fixes it and looks again. Tests hold the order, hold that no face
+  or hidden-hardware rule comes back (ADR-480 to ADR-483), hold that the
+  overlay quotes no owner rating, sweep id or judge text, and hold that
+  every paragraph and bullet is a finished sentence.
 - **Fit is measured, not printed** (ADR-346). The `fit` block on every
   build reply is the evidence that parts fit; the script's `stdout` is a
   claim the script makes about itself, and a `fit` naming a failing pair
@@ -2944,6 +2948,55 @@ is counted among the fit failures and none of it refuses anything: a gap under
 a weld is a measured fact and a question for the design, since a standoff or a
 shim between two welded parts is legitimate. What it removes is the design
 whose every declared check passes while nothing holds two parts together.
+
+### What holds each purchased part (ADR-486)
+
+The clearance scope also publishes `components`, the inventory rows of the
+accepted assembly, each catalog row carrying `mount_axes` (its mounting-hole
+centres and axes, or a bolt's own axis, in its source output's coordinates;
+an empty list for a part with no holes) and each printed row that was cut
+with a part's `.bay()` carrying `houses`. Build replies carry
+`fit.mounting`: one row per purchased part (catalog parts less fasteners and
+printed gear/rack generators), `held` by `screws` (a placed `lib.bolt` whose
+axis lies within 0.5 mm and 5° of one of the part's hole axes, touching the
+part and a printed part, contact being 0.5 mm), `bay`, `press fit` (bearings,
+bushings, spherical joints touching a printed part), `output` (a horn or
+wheel touching a held servo or motor) or `rim` (a tyre touching a held
+wheel, ADR-489), or reported as `contact only`,
+`inside shell` (touching nothing, its centre within a printed part's bounds)
+or `held by nothing`. Its verdict is `pass`, `reported`, `unknown`, `none`
+or `unavailable` — the last for a revision accepted before ADR-486, which
+has no facts to judge. Like `attachments` it refuses nothing and counts
+among no fit failure. It is not a strength check: one bolt on one hole
+counts the part as screwed.
+
+A bolt on a hole's axis counts only if it fits the hole (ADR-488). Each
+`mount_axes` row carries one size fact: a bolt's `bolt_dia_mm`, a tapped
+hole's `thread_dia_mm` (a part whose spec names a `mount_thread`, such as the
+N20's M1.6 face or the STS3215's M2 self-tapping holes) or a clearance hole's
+`hole_dia_mm`. A tapped hole takes only its own thread; a clearance hole any
+bolt no larger than itself. A bolt that does not fit is listed in the part's
+`misfits` (`"bolt0: an M2 bolt in an M1.6 tapped hole"`) and holds nothing.
+A row with no size fact, from a revision accepted before ADR-488, is judged
+by its axis alone until it is rebuilt.
+
+A bolt that fits counts only if its shank threads into something (ADR-492):
+a printed part it shares at least 0.1 mm³ with (its tap-drill hole), or —
+clamping the printed part under its head — the held part's own tapped hole
+(a hole with `thread_dia_mm`, modelled as an open bore, so reaching it is
+enough), the held part itself, a nut or a heat-set insert it shares that
+volume with. A head resting within 0.5 mm of a printed part while the
+shank hangs in a cavity is listed in the part's `unthreaded` and holds
+nothing. `thresholds.thread_engagement_mm3` publishes the volume.
+
+The static fit allows that thread (ADR-492). A pair of a `lib.bolt` and a
+printed part whose common volume is no more than the ring the thread can
+cut, `π/4 (d² − minor²) L` from the bolt's part number and the ISO minor
+diameter, is counted `clear` and in `fit.threaded_count`, not as an
+intersection; more than that (a bolt through solid, or a pilot finer than
+the minor diameter) still fails. The sweep keeps the allowance only for a
+pair already threaded at the solved pose, and `cadex clearance` writes such
+a row as `threaded`.
 
 
 ### Published joint sweeps (ADR-350, ADR-351, 2026-09-14)

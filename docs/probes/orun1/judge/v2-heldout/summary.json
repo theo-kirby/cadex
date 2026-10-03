@@ -1,0 +1,268 @@
+{
+  "schema": "orun1-pairwise-v1",
+  "version": "v2",
+  "split": "heldout",
+  "mirror": false,
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "views": [
+    "hero.png"
+  ],
+  "instructions_sha256": "0ebb596584eb1203a5706ab40c9e4799b24a0dbbf7d1d5a644eb1215d68708ab",
+  "pairs": 325,
+  "judged": 325,
+  "unjudged": [],
+  "position_a_rate": 0.5046153846153846,
+  "cost_usd": 11.88,
+  "inputs": {
+    "arm3-a-servo-joint": {
+      "accepted_revision": "2e8125054f93502a8ec86c1b8494542b71e4f6ca031ee0d6ce1a695e15d56f00",
+      "sha256": {
+        "hero.png": "d97c446a73bd24f412ef9dfce5ea2e535181a0557137bd2c4f91bda5a8aed7e2"
+      }
+    },
+    "arm3-d-product-shell": {
+      "accepted_revision": "2e0b6b037e54a99149f243f69ff145e088ef855aedf8b16780e520f8ddd38a36",
+      "sha256": {
+        "hero.png": "1f57355c9f29c8816da75fb82eac0b23b29df696d5257a31cc444b0ac4ff8886"
+      }
+    },
+    "arm3-h-free": {
+      "accepted_revision": "7c582d4e057a05c3a100185f39a20fabe58490d818c3bd872c4c16502175d79b",
+      "sha256": {
+        "hero.png": "994475bd1f77f175b3833e55f063f67716d167b589255e7e6eab9fd4740a5029"
+      }
+    },
+    "arm5-d-product-shell": {
+      "accepted_revision": "f48bfec6e5e9690b49ed9cafd1bb0e6e15b33fe49e86b9e7b61ccb1c1da2e766",
+      "sha256": {
+        "hero.png": "bada38f32367a5e7b211ad1782964118b60f51363572ced329129984392c6e3f"
+      }
+    },
+    "arm5-h-free": {
+      "accepted_revision": "68fb29675d6b2022abb820dd8717d2ac496b3dc3cbe83611292acc97fb04cd37",
+      "sha256": {
+        "hero.png": "a32a204bf1c7bc834ef7cbc912c461f4686ea8625e4b1c06618192771fafd0f5"
+      }
+    },
+    "balancer-d-product-shell": {
+      "accepted_revision": "021a46c07a738614e8d34115953df805ffa99dd9e82102e32a6923693d60e4dd",
+      "sha256": {
+        "hero.png": "c486dfd5834ecbe576384e55feca6678ffcff11fd334485514d33d4052b33a90"
+      }
+    },
+    "balancer-e-hard-surface": {
+      "accepted_revision": "78bed7669c5ba9a08bc0b28a6bcd8ead726735ce343e6cb297793624c85abee5",
+      "sha256": {
+        "hero.png": "a500b8af372fe9b8e1f205b4b677334cc8f93674e9f62ff212ac1bb8ed1f1c4d"
+      }
+    },
+    "balancer-f-creature": {
+      "accepted_revision": "a6252e6486042482793ab85d55e7a95fce8a381ff82e81559662111f44fc883a",
+      "sha256": {
+        "hero.png": "c5961b2da39114dac6bc023baf0baf86817004fa0ed607357d6b89f090e24b7d"
+      }
+    },
+    "biped-c-exposed-mechanism": {
+      "accepted_revision": "24e169dfb63c27ea1f57f886b2e09f8899bb8de51cb9956d370d90ce2f71e8b6",
+      "sha256": {
+        "hero.png": "eec2c7531db69580e9e04e5697ed60056c16844aff4adf577354e6e02cf50350"
+      }
+    },
+    "biped-d-product-shell": {
+      "accepted_revision": "350aaa9069abc116815fe5b04c3011931b229233fc5313c8fd6832ae3583d39a",
+      "sha256": {
+        "hero.png": "78bda0ced98ba4dff11a3613933e7afa191a71493ea9c1eb91848e4ca7f7be65"
+      }
+    },
+    "biped-e-hard-surface": {
+      "accepted_revision": "5f18bb42dccda2c0ce0446aec722aefe4c883ce7dc09c1e32230a337ffac05a0",
+      "sha256": {
+        "hero.png": "833be912f312fde5692e4b850337addc75ee906bb9dbcf5263085ff396ca80df"
+      }
+    },
+    "biped-f-creature": {
+      "accepted_revision": "4047532f84c4b850f1f5303a2a901d594d67a13dc5f229404867646da74d699f",
+      "sha256": {
+        "hero.png": "a081759a1de0ff10952fad7700019e669b7a70c8967df5bca286af624e9c6fdd"
+      }
+    },
+    "biped-h-free": {
+      "accepted_revision": "24142ed53596e1b397f6f328d6f5ef7a6bca5e7cad2f3d469709bb91514420cd",
+      "sha256": {
+        "hero.png": "c550626c654b2a60603e9b8a0093c25321cb870c770a84453c98598cdeddeb75"
+      }
+    },
+    "hexapod-c-exposed-mechanism": {
+      "accepted_revision": "414f5ede14ff34c1c45fdeecd75bf7a29112b8b5066b3b421075408325aa7e46",
+      "sha256": {
+        "hero.png": "d24d09887dc14b54d15cefb1db271fdd61856ba9b0bc965de3ecfa2019b4af64"
+      }
+    },
+    "hexapod-d-product-shell": {
+      "accepted_revision": "80ec4ce5060ad19e210320bfb2e608208ff8121ee213e2deedd70f6f289ecf69",
+      "sha256": {
+        "hero.png": "15c024eb406602b029aeb5e180c7d1f9e3d571b657d91bea855d0e0a0c3e4f36"
+      }
+    },
+    "hexapod-e-hard-surface": {
+      "accepted_revision": "380f52c178dfd618abb9247f5b412d87e3c9eaf81b64ce58f45a616f8a1a98b1",
+      "sha256": {
+        "hero.png": "8442240a980d9e8d2cface85eec8b6d84bbb15403c8442ad6d3193fa9df684fe"
+      }
+    },
+    "hexapod-f-creature": {
+      "accepted_revision": "ccb89429bbde2cf04c494ea197c621236029fe49ae0e9718a7794c230241df68",
+      "sha256": {
+        "hero.png": "e8280edb688db837ae44207d12345e987795fd51ac636c3f8785b43d371a54e0"
+      }
+    },
+    "quadruped-b-motors-in-body": {
+      "accepted_revision": "bde154d147f9e1e415c5e1efa66aef0bd37a801815229baba446197e2ed2c63d",
+      "sha256": {
+        "hero.png": "4da9e355b49354bad4761954ee3d75e01589a0d8e59f82bc887c4ccf6af6aeb4"
+      }
+    },
+    "quadruped-c-exposed-mechanism": {
+      "accepted_revision": "16f4397b23c7923862b6b4bffbe769836d27520698332aed6bb235930f621cef",
+      "sha256": {
+        "hero.png": "59bdc4888decc7c9515a0cadfae002d5d4344eb9ad0b4ecc360d0c2be18d9039"
+      }
+    },
+    "quadruped-e-hard-surface": {
+      "accepted_revision": "c54352d795cd26cba955c30d65dfdb6aa9eed729c270babad21078c72db27693",
+      "sha256": {
+        "hero.png": "5735e8a22726e22d99902d91d731a2e6c20dca799a1de37f53079d4936850fe1"
+      }
+    },
+    "quadruped-g-minimal": {
+      "accepted_revision": "12ace4b9306ba672b27395df24e9219a419cae3c6aa54730d4e879957c229dfc",
+      "sha256": {
+        "hero.png": "c47fb29f3de82120cf2d32fadea42d2b92fd65db2c041a64be5b95e3ebd7cac7"
+      }
+    },
+    "wildcard-b-motors-in-body": {
+      "accepted_revision": "cc9c824bd19945abdf44d6363421db3cdbd242d3fd06e4de7d02642d13aa6732",
+      "sha256": {
+        "hero.png": "a45e542466d310330069f402698d8c269029b2b98eea33a9ed6c1bcaef2cb3eb"
+      }
+    },
+    "wildcard-c-exposed-mechanism": {
+      "accepted_revision": "3cfbc97b71dc6593ca54aeec4d7e00ffdf95e72002e88dd1834e259ed46b5733",
+      "sha256": {
+        "hero.png": "4480eb2b737ee83e4a9bf3c025e6eefdb002ce50d03dc86a8e98c0a3d9be5abe"
+      }
+    },
+    "wildcard-d-product-shell": {
+      "accepted_revision": "a65606e1a1efe847cd66ed4fca8974a1a624ac30a16d30628aa470b9c1eff655",
+      "sha256": {
+        "hero.png": "7966658d7990ca0e492527eac9cf0a38852c33e98f6b0a6e9843ac0480cb012d"
+      }
+    },
+    "wildcard-g-minimal": {
+      "accepted_revision": "a01bf5aa5f5fe405baf1a142e11f5423bf6949ce5f548021550210a8f5890395",
+      "sha256": {
+        "hero.png": "021c5cf7be416267c6dfe76f5953405fe167db7c58c0c9bbd897eb3d2f72137d"
+      }
+    },
+    "wildcard-h-free": {
+      "accepted_revision": "25e06d05ae8912b58ed1c46744982ef5f2812c7a718804e41533a559474b3715",
+      "sha256": {
+        "hero.png": "8c6bc14070c5d8f60008bac682a02552170f570ec7badea660e15471fb357b99"
+      }
+    }
+  },
+  "owner_verdicts": {
+    "arm3-a-servo-joint": 1,
+    "arm3-d-product-shell": 2,
+    "arm3-h-free": 1,
+    "arm5-d-product-shell": 2,
+    "arm5-h-free": 1,
+    "balancer-d-product-shell": 2,
+    "balancer-e-hard-surface": 2,
+    "balancer-f-creature": 2,
+    "biped-c-exposed-mechanism": 3,
+    "biped-d-product-shell": 1,
+    "biped-e-hard-surface": 2,
+    "biped-f-creature": 1,
+    "biped-h-free": 0,
+    "hexapod-c-exposed-mechanism": 2,
+    "hexapod-d-product-shell": 1,
+    "hexapod-e-hard-surface": 1,
+    "hexapod-f-creature": 1,
+    "quadruped-b-motors-in-body": 2,
+    "quadruped-c-exposed-mechanism": 2,
+    "quadruped-e-hard-surface": 3,
+    "quadruped-g-minimal": 1,
+    "wildcard-b-motors-in-body": 2,
+    "wildcard-c-exposed-mechanism": 1,
+    "wildcard-d-product-shell": 1,
+    "wildcard-g-minimal": 2,
+    "wildcard-h-free": 1
+  },
+  "scores": {
+    "arm3-a-servo-joint": 0.48,
+    "arm3-d-product-shell": 0.52,
+    "arm3-h-free": 0.88,
+    "arm5-d-product-shell": 0.68,
+    "arm5-h-free": 0.64,
+    "balancer-d-product-shell": 0.32,
+    "balancer-e-hard-surface": 0.76,
+    "balancer-f-creature": 0.44,
+    "biped-c-exposed-mechanism": 0.8,
+    "biped-d-product-shell": 0.12,
+    "biped-e-hard-surface": 0.64,
+    "biped-f-creature": 0.36,
+    "biped-h-free": 0.12,
+    "hexapod-c-exposed-mechanism": 0.88,
+    "hexapod-d-product-shell": 0.0,
+    "hexapod-e-hard-surface": 0.72,
+    "hexapod-f-creature": 0.04,
+    "quadruped-b-motors-in-body": 0.24,
+    "quadruped-c-exposed-mechanism": 0.96,
+    "quadruped-e-hard-surface": 1.0,
+    "quadruped-g-minimal": 0.28,
+    "wildcard-b-motors-in-body": 0.16,
+    "wildcard-c-exposed-mechanism": 0.6,
+    "wildcard-d-product-shell": 0.24,
+    "wildcard-g-minimal": 0.8,
+    "wildcard-h-free": 0.32
+  },
+  "designs": 26,
+  "scored": 26,
+  "missing": [],
+  "pairwise_2plus": {
+    "pairs": 37,
+    "counted": 37,
+    "agree": 36,
+    "ties": 0,
+    "disagree": 1,
+    "agreement": 0.972972972972973,
+    "meets_bar": true,
+    "tied_pairs": [],
+    "disagreeing_pairs": [
+      [
+        "biped-c-exposed-mechanism",
+        "arm3-h-free"
+      ]
+    ],
+    "dropped_pairs": []
+  },
+  "love_over_no": {
+    "pairs": 2,
+    "failed_pairs": [],
+    "dropped_pairs": [],
+    "holds": true
+  },
+  "kendall": {
+    "pairs": 325,
+    "counted": 325,
+    "concordant": 154,
+    "discordant": 43,
+    "tied_owner_only": 122,
+    "tied_judge_only": 6,
+    "tied_both": 0,
+    "tau_b": 0.4361939305868901,
+    "dropped_pairs": []
+  }
+}

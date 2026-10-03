@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "c47fb29f3de82120cf2d32fadea42d2b92fd65db2c041a64be5b95e3ebd7cac7"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "4d0eda55b1c4c51827592ea0a5c46de86868db78b810e3d7a409711112bb0b31"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "564e2a16d48d7bc43f8214d3a0b0ad7faa041b51f74bf4619df5a1bf3cf18fe3"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "f8d9c9fd74f34227a5e54b83a04ead50c32a8c0e0787dadbed2cd47ed59886ba"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "9a048f17196b7a3058b1b85f4b8dd79a71df4a961134e524f9610ec2f6c9786a"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "63c392a11b3c9b300a978f917b88bbe4196a2e240a5e26e8f5c7c76da41e10a3"
+    }
+  ],
+  "medians": {
+    "T1": 3,
+    "T2": 3,
+    "T3": 3,
+    "T4": 2,
+    "T5": 2,
+    "T6": 3,
+    "T7": 2
+  },
+  "total": 18,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous white rounded shell covers the body, but box-shaped servo pods hang below it as separate blocks that look like wrapped servo cases rather than parts of one enclosure."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The palette sticks to roles: an off-white shell, dark grey for the joint caps, feet and face panel, and one orange accent placed on the face."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every hip and knee axis has the same dark round cap centred on it, so the joints read as deliberate, consistent features."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one rounded box with moderate radii and the limbs are shaped and tapered, but the pods are boxes with small fillets and the parts sit separately instead of merging."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "There is a dark face panel with an orange eye, but it is small for the body and the overall silhouette reads more like a stool than a character."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The body is compact and the legs taper clearly down to distinct dark ball feet, giving a balanced and intentional stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The render is antialiased and lit so curvature reads, from a reasonable three-quarter view, but it sits on a dark CAD grid with no contact shadow and the camera is high rather than low."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous white rounded shell covers the body, but box-shaped servo pods hang below it as separate blocks that look like wrapped servo cases rather than parts of one enclosure.\"}, \"T2\": {\"score\": 3, \"reason\": \"The palette sticks to roles: an off-white shell, dark grey for the joint caps, feet and face panel, and one orange accent placed on the face.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every hip and knee axis has the same dark round cap centred on it, so the joints read as deliberate, consistent features.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one rounded box with moderate radii and the limbs are shaped and tapered, but the pods are boxes with small fillets and the parts sit separately instead of merging.\"}, \"T5\": {\"score\": 2, \"reason\": \"There is a dark face panel with an orange eye, but it is small for the body and the overall silhouette reads more like a stool than a character.\"}, \"T6\": {\"score\": 3, \"reason\": \"The body is compact and the legs taper clearly down to distinct dark ball feet, giving a balanced and intentional stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"The render is antialiased and lit so curvature reads, from a reasonable three-quarter view, but it sits on a dark CAD grid with no contact shadow and the camera is high rather than low.\"}}",
+      "session_id": "ed9501e8-0bd0-4074-a0e5-1da0fa5b1b76",
+      "duration_ms": 23513,
+      "num_turns": 17,
+      "total_cost_usd": 0.1279494,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2668,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1279494,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 905,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous white shell and rounded white pods enclose all the hardware, so no servo cases or boards are visible and the mechanism shows only as dark joint caps and ball feet."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The design uses an off-white shell and dark charcoal for the joints, feet and face panel, with a single saturated orange accent placed on the face."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every hip and knee axis has the same dark round cap concentric with the joint, and the feet repeat this as dark balls."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The legs are tapered, but the body and the pods hanging under it read as boxes with only small edge fillets, and the parts do not merge, so the robot looks like a bench rather than a soft primitive."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor slot with an orange dot gives the robot a front, but it is small for the end of a long box and the table-like silhouette has little character."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The legs clearly taper down to distinct dark ball feet, and the four-legged stance under the body looks balanced and intentional."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The views are shaded and antialiased, but they sit on a dark CAD grid with no contact shadow, and the main view is a high isometric angle rather than a studio hero shot."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A continuous white shell and rounded white pods enclose all the hardware, so no servo cases or boards are visible and the mechanism shows only as dark joint caps and ball feet.\"}, \"T2\": {\"score\": 3, \"reason\": \"The design uses an off-white shell and dark charcoal for the joints, feet and face panel, with a single saturated orange accent placed on the face.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every hip and knee axis has the same dark round cap concentric with the joint, and the feet repeat this as dark balls.\"}, \"T4\": {\"score\": 1, \"reason\": \"The legs are tapered, but the body and the pods hanging under it read as boxes with only small edge fillets, and the parts do not merge, so the robot looks like a bench rather than a soft primitive.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark visor slot with an orange dot gives the robot a front, but it is small for the end of a long box and the table-like silhouette has little character.\"}, \"T6\": {\"score\": 3, \"reason\": \"The legs clearly taper down to distinct dark ball feet, and the four-legged stance under the body looks balanced and intentional.\"}, \"T7\": {\"score\": 1, \"reason\": \"The views are shaded and antialiased, but they sit on a dark CAD grid with no contact shadow, and the main view is a high isometric angle rather than a studio hero shot.\"}}",
+      "session_id": "39827e69-9841-4dca-8d2e-cf5f5c3a91cc",
+      "duration_ms": 23862,
+      "num_turns": 17,
+      "total_cost_usd": 0.1273494,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2638,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1273494,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 870,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "No servos or boards are visible anywhere: the body is one continuous white shell, the servo pods under it are wrapped in white housings, and the mechanism only shows as the dark joint caps and feet."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The colours follow their roles: off-white for the shell and dark charcoal for the joints, feet and face panel, plus one saturated orange accent placed on the face."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every hip and knee axis has the same dark round cap centred on it, so the joints read as one consistent, deliberate feature."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body is one rounded box with fairly generous radii and the legs are shaped and tapered, but the servo pods are plain boxes with small fillets and the parts sit side by side rather than merging into one form."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "The dark face panel with its orange eye gives the robot a front, but it is a small, generic slot on the end of a bench-like body, so the character and silhouette do not come across at a glance."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The body is a single block, and the legs taper clearly down to distinct dark ball feet, giving a balanced and deliberate four-legged stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The renders are shaded so the curvature reads, the edges are antialiased and the three-quarter views work, but the backdrop is a dark grid floor with no contact shadow or studio polish, and the orthographic views look flat."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"No servos or boards are visible anywhere: the body is one continuous white shell, the servo pods under it are wrapped in white housings, and the mechanism only shows as the dark joint caps and feet.\"}, \"T2\": {\"score\": 3, \"reason\": \"The colours follow their roles: off-white for the shell and dark charcoal for the joints, feet and face panel, plus one saturated orange accent placed on the face.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every hip and knee axis has the same dark round cap centred on it, so the joints read as one consistent, deliberate feature.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body is one rounded box with fairly generous radii and the legs are shaped and tapered, but the servo pods are plain boxes with small fillets and the parts sit side by side rather than merging into one form.\"}, \"T5\": {\"score\": 2, \"reason\": \"The dark face panel with its orange eye gives the robot a front, but it is a small, generic slot on the end of a bench-like body, so the character and silhouette do not come across at a glance.\"}, \"T6\": {\"score\": 3, \"reason\": \"The body is a single block, and the legs taper clearly down to distinct dark ball feet, giving a balanced and deliberate four-legged stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"The renders are shaded so the curvature reads, the edges are antialiased and the three-quarter views work, but the backdrop is a dark grid floor with no contact shadow or studio polish, and the orthographic views look flat.\"}}",
+      "session_id": "bc96c572-0ac4-47c4-88c0-42c10c86aca1",
+      "duration_ms": 24231,
+      "num_turns": 17,
+      "total_cost_usd": 0.1270894,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2625,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1270894,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 810,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "quadruped-g-minimal",
+  "receipt": {
+    "project": "orun1-ho-quadruped-g-minimal",
+    "accepted_revision": "12ace4b9306ba672b27395df24e9219a419cae3c6aa54730d4e879957c229dfc",
+    "look_revision": "12ace4b9306ba672b27395df24e9219a419cae3c6aa54730d4e879957c229dfc",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "eec2c7531db69580e9e04e5697ed60056c16844aff4adf577354e6e02cf50350"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "fe656a16e8a92612a62ae02c5663d083c8c1f55f8c85042cfd9d91bacf3c5cfd"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "04d0bec3fc462a74ce3aef1d953407c90e92b1f8914fed5e6e61e711b1582a26"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "cd17144acb01994b942abc0aa98ffebf72596655470b6ac4afe27582e1224d78"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "339a984e6f3f2cf50e47a51103b37e315e4c1c5bf69bb0372d52f420dc5d939a"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "6ee64388bc435dc39b24db8b7957e97a41b9d96985daa8ece795156c7160133a"
+    }
+  ],
+  "medians": {
+    "T1": 1,
+    "T2": 3,
+    "T3": 2,
+    "T4": 1,
+    "T5": 2,
+    "T6": 2,
+    "T7": 1
+  },
+  "total": 12,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 1,
+          "reason": "The boards sit exposed on a flat top plate and the servo cases and brackets show along the legs, with only some servos partly covered by rounded caps."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The off-white shell and dark mechanism are applied by role, and the single orange accent goes on the joint caps and eyes, apart from a minor orange wire."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Most rotation axes have matching round orange caps, but bare brackets with screw holes still show next to them."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The robot reads as a flat plate on stacked box brackets with modest fillets, not as soft, merged primitives."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "There is a visor face with orange eyes and a smile slot, but it is tucked under the top plate and hard to find in the three-quarter views."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The feet are distinct rounded pads, but the legs keep a uniform section with no taper and the body is a broad flat plate."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "It is a shaded render on a dark CAD grid from a high isometric angle, with no seamless backdrop and no soft contact shadow."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 1, \"reason\": \"The boards sit exposed on a flat top plate and the servo cases and brackets show along the legs, with only some servos partly covered by rounded caps.\"},\n\"T2\": {\"score\": 3, \"reason\": \"The off-white shell and dark mechanism are applied by role, and the single orange accent goes on the joint caps and eyes, apart from a minor orange wire.\"},\n\"T3\": {\"score\": 2, \"reason\": \"Most rotation axes have matching round orange caps, but bare brackets with screw holes still show next to them.\"},\n\"T4\": {\"score\": 1, \"reason\": \"The robot reads as a flat plate on stacked box brackets with modest fillets, not as soft, merged primitives.\"},\n\"T5\": {\"score\": 2, \"reason\": \"There is a visor face with orange eyes and a smile slot, but it is tucked under the top plate and hard to find in the three-quarter views.\"},\n\"T6\": {\"score\": 2, \"reason\": \"The feet are distinct rounded pads, but the legs keep a uniform section with no taper and the body is a broad flat plate.\"},\n\"T7\": {\"score\": 1, \"reason\": \"It is a shaded render on a dark CAD grid from a high isometric angle, with no seamless backdrop and no soft contact shadow.\"}}\n```",
+      "session_id": "05fb32aa-0b25-4761-88a9-91bb03e2d14d",
+      "duration_ms": 23060,
+      "num_turns": 17,
+      "total_cost_usd": 0.1258694,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2564,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1258694,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 842,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 1,
+          "reason": "Rounded covers wrap a few leg servos, but the control boards and wiring sit exposed on a flat top plate, and servo cases show through open brackets on the legs."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Off-white structure and dark mechanism are used by role, and one saturated orange accent is placed deliberately on the joint caps and eyes; only the orange wire strays from that logic."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Every joint has a matching orange round cap on its axis, but they read as flat discs laid on boxy brackets that still show horn screw holes."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The robot is built from a flat rectangular top plate and boxy constant-section brackets with only small fillets, so it reads as plates and bars."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor band with orange eyes and a smile gives it a face in the front view, but it is small and tucked under the plate, so it is hard to find in the three-quarter views."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The feet are distinct rounded pads, but the legs are uniform stacked bracket columns with no taper, and a flat table-top plate stands in for a compact body."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The render is shaded and antialiased, but it sits on a dark grid with no contact shadow or studio backdrop and is seen from a high isometric angle."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 1, \"reason\": \"Rounded covers wrap a few leg servos, but the control boards and wiring sit exposed on a flat top plate, and servo cases show through open brackets on the legs.\"}, \"T2\": {\"score\": 3, \"reason\": \"Off-white structure and dark mechanism are used by role, and one saturated orange accent is placed deliberately on the joint caps and eyes; only the orange wire strays from that logic.\"}, \"T3\": {\"score\": 2, \"reason\": \"Every joint has a matching orange round cap on its axis, but they read as flat discs laid on boxy brackets that still show horn screw holes.\"}, \"T4\": {\"score\": 1, \"reason\": \"The robot is built from a flat rectangular top plate and boxy constant-section brackets with only small fillets, so it reads as plates and bars.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark visor band with orange eyes and a smile gives it a face in the front view, but it is small and tucked under the plate, so it is hard to find in the three-quarter views.\"}, \"T6\": {\"score\": 2, \"reason\": \"The feet are distinct rounded pads, but the legs are uniform stacked bracket columns with no taper, and a flat table-top plate stands in for a compact body.\"}, \"T7\": {\"score\": 1, \"reason\": \"The render is shaded and antialiased, but it sits on a dark grid with no contact shadow or studio backdrop and is seen from a high isometric angle.\"}}",
+      "session_id": "957ca0a1-933f-4668-aee2-a4af738f40bf",
+      "duration_ms": 27473,
+      "num_turns": 17,
+      "total_cost_usd": 0.134584,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 3005,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.134584,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 1231,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 1,
+          "reason": "The servos sit partly inside brackets, but the dark servo cases, the bare boards and the loose wires are all exposed on a flat top plate, with no continuous shell."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The shell is cream, the mechanism and visor are dark, and orange is used deliberately on the joint caps and the eyes; the orange wire is a minor slip."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every visible rotation axis has the same round orange cap, centred on the axis."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "It is built from boxes, bars and a flat slab with small fillets, so it still reads as plates and brackets."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "There is a clear visor face with orange eyes and a smile, but you only see it from straight ahead; the hero views show the back, and the outline reads as a table on legs."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The feet are distinct rounded pads, but the legs keep the same width all the way down, and the wide flat top makes it look like a table."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "It is shaded and antialiased, but it sits on a CAD grid with no contact shadow, and it is seen from a high angle from behind."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 1, \"reason\": \"The servos sit partly inside brackets, but the dark servo cases, the bare boards and the loose wires are all exposed on a flat top plate, with no continuous shell.\"},\n\"T2\": {\"score\": 3, \"reason\": \"The shell is cream, the mechanism and visor are dark, and orange is used deliberately on the joint caps and the eyes; the orange wire is a minor slip.\"},\n\"T3\": {\"score\": 3, \"reason\": \"Every visible rotation axis has the same round orange cap, centred on the axis.\"},\n\"T4\": {\"score\": 1, \"reason\": \"It is built from boxes, bars and a flat slab with small fillets, so it still reads as plates and brackets.\"},\n\"T5\": {\"score\": 2, \"reason\": \"There is a clear visor face with orange eyes and a smile, but you only see it from straight ahead; the hero views show the back, and the outline reads as a table on legs.\"},\n\"T6\": {\"score\": 2, \"reason\": \"The feet are distinct rounded pads, but the legs keep the same width all the way down, and the wide flat top makes it look like a table.\"},\n\"T7\": {\"score\": 1, \"reason\": \"It is shaded and antialiased, but it sits on a CAD grid with no contact shadow, and it is seen from a high angle from behind.\"}}\n```",
+      "session_id": "347f62ae-15f4-460b-a1b4-41070edba4be",
+      "duration_ms": 22157,
+      "num_turns": 17,
+      "total_cost_usd": 0.121824,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2367,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.121824,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 642,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "biped-c-exposed-mechanism",
+  "receipt": {
+    "project": "orun1-ho-biped-c-exposed-mechanism",
+    "accepted_revision": "24e169dfb63c27ea1f57f886b2e09f8899bb8de51cb9956d370d90ce2f71e8b6",
+    "look_revision": "24e169dfb63c27ea1f57f886b2e09f8899bb8de51cb9956d370d90ce2f71e8b6",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

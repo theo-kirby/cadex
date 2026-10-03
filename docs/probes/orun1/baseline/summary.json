@@ -1,0 +1,229 @@
+{
+  "owner_verdicts": {
+    "arm3-a-servo-joint": 1,
+    "arm3-d-product-shell": 2,
+    "arm3-h-free": 1,
+    "arm5-d-product-shell": 2,
+    "arm5-h-free": 1,
+    "balancer-d-product-shell": 2,
+    "balancer-e-hard-surface": 2,
+    "balancer-f-creature": 2,
+    "biped-c-exposed-mechanism": 3,
+    "biped-d-product-shell": 1,
+    "biped-e-hard-surface": 2,
+    "biped-f-creature": 1,
+    "biped-h-free": 0,
+    "hexapod-c-exposed-mechanism": 2,
+    "hexapod-d-product-shell": 1,
+    "hexapod-e-hard-surface": 1,
+    "hexapod-f-creature": 1,
+    "quadruped-b-motors-in-body": 2,
+    "quadruped-c-exposed-mechanism": 2,
+    "quadruped-e-hard-surface": 3,
+    "quadruped-g-minimal": 1,
+    "wildcard-b-motors-in-body": 2,
+    "wildcard-c-exposed-mechanism": 1,
+    "wildcard-d-product-shell": 1,
+    "wildcard-g-minimal": 2,
+    "wildcard-h-free": 1
+  },
+  "scores": {
+    "arm3-a-servo-joint": 16,
+    "arm3-d-product-shell": 16,
+    "arm3-h-free": 17,
+    "arm5-d-product-shell": 16,
+    "arm5-h-free": 13,
+    "balancer-d-product-shell": 18,
+    "balancer-e-hard-surface": 16,
+    "balancer-f-creature": 17,
+    "biped-c-exposed-mechanism": 12,
+    "biped-d-product-shell": 15,
+    "biped-e-hard-surface": 14,
+    "biped-f-creature": 12,
+    "biped-h-free": 18,
+    "hexapod-c-exposed-mechanism": 14,
+    "hexapod-d-product-shell": 16,
+    "hexapod-e-hard-surface": 13,
+    "hexapod-f-creature": 15,
+    "quadruped-b-motors-in-body": 16,
+    "quadruped-c-exposed-mechanism": 14,
+    "quadruped-e-hard-surface": 14,
+    "quadruped-g-minimal": 18,
+    "wildcard-b-motors-in-body": 18,
+    "wildcard-c-exposed-mechanism": 11,
+    "wildcard-d-product-shell": 16,
+    "wildcard-g-minimal": 17,
+    "wildcard-h-free": 18
+  },
+  "designs": 26,
+  "scored": 26,
+  "missing": [],
+  "pairwise_2plus": {
+    "pairs": 37,
+    "counted": 37,
+    "agree": 5,
+    "ties": 3,
+    "disagree": 29,
+    "agreement": 0.13513513513513514,
+    "meets_bar": false,
+    "tied_pairs": [
+      [
+        "balancer-d-product-shell",
+        "biped-h-free"
+      ],
+      [
+        "biped-c-exposed-mechanism",
+        "biped-f-creature"
+      ],
+      [
+        "wildcard-b-motors-in-body",
+        "biped-h-free"
+      ]
+    ],
+    "disagreeing_pairs": [
+      [
+        "biped-c-exposed-mechanism",
+        "arm3-a-servo-joint"
+      ],
+      [
+        "quadruped-e-hard-surface",
+        "arm3-a-servo-joint"
+      ],
+      [
+        "arm3-d-product-shell",
+        "biped-h-free"
+      ],
+      [
+        "biped-c-exposed-mechanism",
+        "arm3-h-free"
+      ],
+      [
+        "quadruped-e-hard-surface",
+        "arm3-h-free"
+      ],
+      [
+        "arm5-d-product-shell",
+        "biped-h-free"
+      ],
+      [
+        "biped-c-exposed-mechanism",
+        "arm5-h-free"
+      ],
+      [
+        "balancer-e-hard-surface",
+        "biped-h-free"
+      ],
+      [
+        "balancer-f-creature",
+        "biped-h-free"
+      ],
+      [
+        "biped-c-exposed-mechanism",
+        "biped-d-product-shell"
+      ],
+      [
+        "biped-c-exposed-mechanism",
+        "biped-h-free"
+      ],
+      [
+        "biped-c-exposed-mechanism",
+        "hexapod-d-product-shell"
+      ],
+      [
+        "biped-c-exposed-mechanism",
+        "hexapod-e-hard-surface"
+      ],
+      [
+        "biped-c-exposed-mechanism",
+        "hexapod-f-creature"
+      ],
+      [
+        "biped-c-exposed-mechanism",
+        "quadruped-g-minimal"
+      ],
+      [
+        "biped-c-exposed-mechanism",
+        "wildcard-d-product-shell"
+      ],
+      [
+        "biped-c-exposed-mechanism",
+        "wildcard-h-free"
+      ],
+      [
+        "quadruped-e-hard-surface",
+        "biped-d-product-shell"
+      ],
+      [
+        "biped-e-hard-surface",
+        "biped-h-free"
+      ],
+      [
+        "hexapod-c-exposed-mechanism",
+        "biped-h-free"
+      ],
+      [
+        "quadruped-b-motors-in-body",
+        "biped-h-free"
+      ],
+      [
+        "quadruped-c-exposed-mechanism",
+        "biped-h-free"
+      ],
+      [
+        "quadruped-e-hard-surface",
+        "biped-h-free"
+      ],
+      [
+        "wildcard-g-minimal",
+        "biped-h-free"
+      ],
+      [
+        "quadruped-e-hard-surface",
+        "hexapod-d-product-shell"
+      ],
+      [
+        "quadruped-e-hard-surface",
+        "hexapod-f-creature"
+      ],
+      [
+        "quadruped-e-hard-surface",
+        "quadruped-g-minimal"
+      ],
+      [
+        "quadruped-e-hard-surface",
+        "wildcard-d-product-shell"
+      ],
+      [
+        "quadruped-e-hard-surface",
+        "wildcard-h-free"
+      ]
+    ],
+    "dropped_pairs": []
+  },
+  "love_over_no": {
+    "pairs": 2,
+    "failed_pairs": [
+      [
+        "biped-c-exposed-mechanism",
+        "biped-h-free"
+      ],
+      [
+        "quadruped-e-hard-surface",
+        "biped-h-free"
+      ]
+    ],
+    "dropped_pairs": [],
+    "holds": false
+  },
+  "kendall": {
+    "pairs": 325,
+    "counted": 325,
+    "concordant": 79,
+    "discordant": 98,
+    "tied_owner_only": 105,
+    "tied_judge_only": 26,
+    "tied_both": 17,
+    "tau_b": -0.07941106634461177,
+    "dropped_pairs": []
+  }
+}

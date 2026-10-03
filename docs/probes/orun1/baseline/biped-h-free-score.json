@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "c550626c654b2a60603e9b8a0093c25321cb870c770a84453c98598cdeddeb75"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "7382bd28602ff76fc3c3e9abc74b2b86dfc941efd05df242af99a1a59fd179f6"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "d9826acdaa034c7f3b322389fc4036cd471709188a14b15a9bca0559972a39e3"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "f3083d8370404ba29a54da68e4a77a87062fbf206d4f28d8a306b0d7e713c60a"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "249fa051e74af480e9618c3d6c4d64de094f3fab6234b8206ea26038fba57904"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "de320452adfde52beef3e583dfe708033c12ff93c0ee51b09450907992af7f10"
+    }
+  ],
+  "medians": {
+    "T1": 3,
+    "T2": 3,
+    "T3": 3,
+    "T4": 2,
+    "T5": 3,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 18,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A rounded hood encloses the body and shaped covers wrap each leg segment, so no servo or board is visible; the mechanism shows only as dark round caps and narrow seams."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Off-white is used for the shells and charcoal for the joints and feet, with one saturated orange accent placed deliberately on the eyes."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every hip, knee and ankle axis is the same large dark round cap, concentric with its joint."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body is one soft rounded box with generous radii and the leg covers are shaped, but the legs and flat foot plates are still blocky and separate rather than merging into one another."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A dark visor with two orange eyes gives a clear front and character at a glance, and the boxy-head biped silhouette is easy to recognise."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the feet are distinct rounded pads, but the legs keep a uniform section and do not taper towards the feet."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The renders are smoothly lit so curvature reads, from a good three-quarter angle, but they sit on a dark grid floor with no seamless backdrop or soft contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A rounded hood encloses the body and shaped covers wrap each leg segment, so no servo or board is visible; the mechanism shows only as dark round caps and narrow seams.\"}, \"T2\": {\"score\": 3, \"reason\": \"Off-white is used for the shells and charcoal for the joints and feet, with one saturated orange accent placed deliberately on the eyes.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every hip, knee and ankle axis is the same large dark round cap, concentric with its joint.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body is one soft rounded box with generous radii and the leg covers are shaped, but the legs and flat foot plates are still blocky and separate rather than merging into one another.\"}, \"T5\": {\"score\": 3, \"reason\": \"A dark visor with two orange eyes gives a clear front and character at a glance, and the boxy-head biped silhouette is easy to recognise.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the feet are distinct rounded pads, but the legs keep a uniform section and do not taper towards the feet.\"}, \"T7\": {\"score\": 2, \"reason\": \"The renders are smoothly lit so curvature reads, from a good three-quarter angle, but they sit on a dark grid floor with no seamless backdrop or soft contact shadow.\"}}",
+      "session_id": "8694b1ef-ad1e-4a00-9c99-b382039a8bd6",
+      "duration_ms": 18613,
+      "num_turns": 17,
+      "total_cost_usd": 0.1182494,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2183,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1182494,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 430,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous rounded hood and leg shells hide every servo and board, so the mechanism only shows as dark round joint caps and dark feet."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The shell is off-white and the joints and feet are dark grey, with a single saturated orange accent used only on the eyes."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every rotation axis has the same dark round cap concentric with it, at the hip, knee and ankle on both legs."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body is one generously rounded box and the leg shells are shaped with a slight waist, but the parts sit side by side instead of merging, and the feet are flat rounded plates."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A dark visor slot with two orange eyes makes a clear face, and the big-headed biped silhouette is easy to recognise."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the dark foot pads are distinct, but the legs stay about the same width all the way down instead of tapering towards the feet."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The lighting shows the curvature well against a clean dark grid floor, but there is no contact shadow or studio polish, and several views are flat orthographic shots or a high angle."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 3, \"reason\": \"A continuous rounded hood and leg shells hide every servo and board, so the mechanism only shows as dark round joint caps and dark feet.\"}, \"T2\": {\"score\": 3, \"reason\": \"The shell is off-white and the joints and feet are dark grey, with a single saturated orange accent used only on the eyes.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every rotation axis has the same dark round cap concentric with it, at the hip, knee and ankle on both legs.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body is one generously rounded box and the leg shells are shaped with a slight waist, but the parts sit side by side instead of merging, and the feet are flat rounded plates.\"}, \"T5\": {\"score\": 3, \"reason\": \"A dark visor slot with two orange eyes makes a clear face, and the big-headed biped silhouette is easy to recognise.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the dark foot pads are distinct, but the legs stay about the same width all the way down instead of tapering towards the feet.\"}, \"T7\": {\"score\": 2, \"reason\": \"The lighting shows the curvature well against a clean dark grid floor, but there is no contact shadow or studio polish, and several views are flat orthographic shots or a high angle.\"}}\n```",
+      "session_id": "7084439f-784b-47ff-92c8-aa24c08e7eaa",
+      "duration_ms": 19442,
+      "num_turns": 17,
+      "total_cost_usd": 0.1202386,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2293,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1202386,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 563,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded hood and leg shells cover most of the hardware, but small light-grey servo-ear tabs and bracket posts still show at the knees and ankles."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The shell is warm white and the joint caps and feet are dark grey, with one saturated orange accent used only for the eyes."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Every rotation axis has a large dark round cap, and the caps are the same at hip, knee and ankle."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one generously rounded box and the leg shells have shaped concave sides, but the legs are stacked blocks that don't merge, and the feet are flat rounded plates."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A dark visor slot with two orange eyes gives the robot a clear front and a friendly character, and the boxy-head biped silhouette is easy to recognise."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the dark foot pads are distinct, but the legs keep the same section all the way down instead of tapering."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The shading lets the curvature read and the edges are antialiased, from a good three-quarter angle, but the dark grid floor is not a seamless studio backdrop and there is no contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded hood and leg shells cover most of the hardware, but small light-grey servo-ear tabs and bracket posts still show at the knees and ankles.\"}, \"T2\": {\"score\": 3, \"reason\": \"The shell is warm white and the joint caps and feet are dark grey, with one saturated orange accent used only for the eyes.\"}, \"T3\": {\"score\": 3, \"reason\": \"Every rotation axis has a large dark round cap, and the caps are the same at hip, knee and ankle.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one generously rounded box and the leg shells have shaped concave sides, but the legs are stacked blocks that don't merge, and the feet are flat rounded plates.\"}, \"T5\": {\"score\": 3, \"reason\": \"A dark visor slot with two orange eyes gives the robot a clear front and a friendly character, and the boxy-head biped silhouette is easy to recognise.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the dark foot pads are distinct, but the legs keep the same section all the way down instead of tapering.\"}, \"T7\": {\"score\": 2, \"reason\": \"The shading lets the curvature read and the edges are antialiased, from a good three-quarter angle, but the dark grid floor is not a seamless studio backdrop and there is no contact shadow.\"}}",
+      "session_id": "67fb35da-3d68-4f3d-bd84-8c873f5c2d12",
+      "duration_ms": 19598,
+      "num_turns": 17,
+      "total_cost_usd": 0.1199494,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2268,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1199494,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 512,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "biped-h-free",
+  "receipt": {
+    "project": "orun1-ho-biped-h-free",
+    "accepted_revision": "24142ed53596e1b397f6f328d6f5ef7a6bca5e7cad2f3d469709bb91514420cd",
+    "look_revision": "24142ed53596e1b397f6f328d6f5ef7a6bca5e7cad2f3d469709bb91514420cd",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

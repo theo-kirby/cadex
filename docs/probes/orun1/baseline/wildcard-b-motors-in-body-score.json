@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "a45e542466d310330069f402698d8c269029b2b98eea33a9ed6c1bcaef2cb3eb"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "f6c85081aa63f2124a96157c6fb27bbc12324322d46b18449329cf6caa0140dc"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "6e5a2fa2606d27ca0a57299e7de70701d61b51898cf8c043759e5bee2c24f6da"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "961a242f83de492b501454bcfa37c5c81391f65e734cc22d8f4d3b9ba01ff4d0"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "fbab85dd9b8884f86ddbdd180300142fd1377d68cd0e4b34c820088ca3c954ee"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "45bb3f19a0798bfaf9bc7956dcd230350e911f761bbf123b9f87b128a3faeb4b"
+    }
+  ],
+  "medians": {
+    "T1": 3,
+    "T2": 3,
+    "T3": 2,
+    "T4": 2,
+    "T5": 3,
+    "T6": 3,
+    "T7": 2
+  },
+  "total": 18,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous rounded shell hides every servo and board, and the mechanism shows only as dark pushrods, feet and round joint discs."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Off-white shell and charcoal mechanism are applied by role, with a single saturated orange accent placed on the hip joint caps."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Hip and knee axes are round concentric discs, but they are not the same: the hips have orange-capped rings, the knees are plain flat discs with a pinhole, and the rod-end pivots are small dark pins."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one soft rounded pill with generous radii, but the limbs are flat tapered bars and flat discs that do not merge into the body, and the shell shading looks blotchy."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A large dark oval visor gives a clear focal face and an obvious front, and the two-legged walker silhouette is easy to recognise."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The body is compact, the shins taper down to distinct dark rounded foot pads, and the stance reads as balanced and intentional."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Lit from a good three-quarter angle on a clean dark grid backdrop so the curvature reads, but there is no soft contact shadow and the shell has blotchy shading artifacts."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A continuous rounded shell hides every servo and board, and the mechanism shows only as dark pushrods, feet and round joint discs.\"}, \"T2\": {\"score\": 3, \"reason\": \"Off-white shell and charcoal mechanism are applied by role, with a single saturated orange accent placed on the hip joint caps.\"}, \"T3\": {\"score\": 2, \"reason\": \"Hip and knee axes are round concentric discs, but they are not the same: the hips have orange-capped rings, the knees are plain flat discs with a pinhole, and the rod-end pivots are small dark pins.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one soft rounded pill with generous radii, but the limbs are flat tapered bars and flat discs that do not merge into the body, and the shell shading looks blotchy.\"}, \"T5\": {\"score\": 3, \"reason\": \"A large dark oval visor gives a clear focal face and an obvious front, and the two-legged walker silhouette is easy to recognise.\"}, \"T6\": {\"score\": 3, \"reason\": \"The body is compact, the shins taper down to distinct dark rounded foot pads, and the stance reads as balanced and intentional.\"}, \"T7\": {\"score\": 2, \"reason\": \"Lit from a good three-quarter angle on a clean dark grid backdrop so the curvature reads, but there is no soft contact shadow and the shell has blotchy shading artifacts.\"}}",
+      "session_id": "c650f90b-3624-4669-8db3-1bb62adeb39f",
+      "duration_ms": 21051,
+      "num_turns": 17,
+      "total_cost_usd": 0.12191859999999999,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2377,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.12191859999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 611,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous rounded white shell hides every servo and board, and the only visible mechanism is dark push rods and capped joint discs."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "White shell parts, dark grey mechanism parts (rods, visor and feet) and one orange accent used only on the hip joint caps."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Every joint is a round disc on its axis, but the hips have recessed orange caps while the knees are plain discs with a pin hole and the rod ends are small pins, so they do not match."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body is a single soft rounded-box pill with generous radii, but the joint discs and flat shin blades are separate parts that do not blend into each other."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A large dark oval visor clearly marks the front and gives the robot a characterful bipedal-walker silhouette."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The body is compact, the shins taper from the knee discs to the foot, and they end in distinct dark rounded foot pads, giving a balanced, deliberate stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The render is lit so the curvature reads and is shown from a good three-quarter angle, but it sits on a dark grid floor with no contact shadow, and the shell shading is blotchy, so it lacks studio polish."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A continuous rounded white shell hides every servo and board, and the only visible mechanism is dark push rods and capped joint discs.\"}, \"T2\": {\"score\": 3, \"reason\": \"White shell parts, dark grey mechanism parts (rods, visor and feet) and one orange accent used only on the hip joint caps.\"}, \"T3\": {\"score\": 2, \"reason\": \"Every joint is a round disc on its axis, but the hips have recessed orange caps while the knees are plain discs with a pin hole and the rod ends are small pins, so they do not match.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body is a single soft rounded-box pill with generous radii, but the joint discs and flat shin blades are separate parts that do not blend into each other.\"}, \"T5\": {\"score\": 3, \"reason\": \"A large dark oval visor clearly marks the front and gives the robot a characterful bipedal-walker silhouette.\"}, \"T6\": {\"score\": 3, \"reason\": \"The body is compact, the shins taper from the knee discs to the foot, and they end in distinct dark rounded foot pads, giving a balanced, deliberate stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"The render is lit so the curvature reads and is shown from a good three-quarter angle, but it sits on a dark grid floor with no contact shadow, and the shell shading is blotchy, so it lacks studio polish.\"}}",
+      "session_id": "7f59afed-7bbc-4c84-bcce-a0106712e5a0",
+      "duration_ms": 24152,
+      "num_turns": 17,
+      "total_cost_usd": 0.127864,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2669,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.127864,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 905,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous rounded shell hides every servo and board, and the only visible mechanism is the deliberate dark pushrods and pin bosses."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Off-white shell and dark charcoal mechanism (rods, visor, feet) are applied by role, with a single saturated orange accent placed only on the hip joint caps."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Every joint is a round disc or boss concentric with its axis, but the hip discs have orange caps while the knee discs are plain with a pinhole, so they are not uniform."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one soft rounded box with generous radii, but the limbs are flat tapered bars and flat cylindrical discs that don't merge into the body, and the shell surface looks blotchy."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A large dark oval visor gives a clear front and an endearing character, and the boxy-head walker silhouette is easy to recognise."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "A compact body sits on legs that taper toward distinct dark rounded foot pads, so the stance reads as intentional, though the legs are spindly."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "It is shaded, but sits on a dark CAD-viewport grid with no contact shadow, blotchy shading artifacts on the shell and a high viewing angle rather than a studio hero shot."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A continuous rounded shell hides every servo and board, and the only visible mechanism is the deliberate dark pushrods and pin bosses.\"}, \"T2\": {\"score\": 3, \"reason\": \"Off-white shell and dark charcoal mechanism (rods, visor, feet) are applied by role, with a single saturated orange accent placed only on the hip joint caps.\"}, \"T3\": {\"score\": 2, \"reason\": \"Every joint is a round disc or boss concentric with its axis, but the hip discs have orange caps while the knee discs are plain with a pinhole, so they are not uniform.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one soft rounded box with generous radii, but the limbs are flat tapered bars and flat cylindrical discs that don't merge into the body, and the shell surface looks blotchy.\"}, \"T5\": {\"score\": 3, \"reason\": \"A large dark oval visor gives a clear front and an endearing character, and the boxy-head walker silhouette is easy to recognise.\"}, \"T6\": {\"score\": 3, \"reason\": \"A compact body sits on legs that taper toward distinct dark rounded foot pads, so the stance reads as intentional, though the legs are spindly.\"}, \"T7\": {\"score\": 1, \"reason\": \"It is shaded, but sits on a dark CAD-viewport grid with no contact shadow, blotchy shading artifacts on the shell and a high viewing angle rather than a studio hero shot.\"}}",
+      "session_id": "552218d7-421d-41aa-b786-1265bf9c94fc",
+      "duration_ms": 24645,
+      "num_turns": 17,
+      "total_cost_usd": 0.129084,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2730,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.129084,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 944,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "wildcard-b-motors-in-body",
+  "receipt": {
+    "project": "orun1-ho-wildcard-b-motors-in-body",
+    "accepted_revision": "cc9c824bd19945abdf44d6363421db3cdbd242d3fd06e4de7d02642d13aa6732",
+    "look_revision": "cc9c824bd19945abdf44d6363421db3cdbd242d3fd06e4de7d02642d13aa6732",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+---
+node_id: 545132fc-9826-5329-a325-301574ba8635
+slug: salty-fox-7376
+title: D4. Plain prompts produce designs that clear the owner's bar (orun1)
+created_at: '2026-10-02T17:02:00+00:00'
+parents:
+- nimble-pine-0740
+summary: ''
+---
+Status: working
+
+## Current
+
+Open charter criterion for run orun1: **D4. Plain prompts produce designs that clear the owner's bar.** - **Plain prompts, frozen before generation** in the README: one per type (quadruped, hexapod, biped, 5-axis arm, 3-axis arm, two-wheeled balancer, and one wildcard of the agent's choosing). Each names the type, its joint count, "design only" and nothing about style. The style must come from the product's guidance, not the prompt. - Each design is a fresh `orun1-*` project at the final product revision. It is accepted, its static and swept fit pass, its purchased parts are all from the catalog, and every one of them passes D3's mounting check. - **The bar, judged by D1's frozen version** that met the held-out bar: - each new design wins the majority of its pairwise comparisons against the sweep designs of the same type that the owner rated Like or Love; - the new hexapod is held to the same bar, with no exemption. - **Confirmation, not fishing.** One pre-registered confirmation turn per type at the final revision counts. Every earlier attempt is published. A second confirmation of a type needs a recorded product change between the two. - The final set (hero, concept sheet and the judge's result for each) is committed under `docs/probes/orun1/final/` for the owner to review. [rec: sweet-brook-2725]
+
+Declared target: `gap-d4-plain-prompts-produce-designs`. The human owns the charter checkbox; roles report results and do not tick it. Reconcile judgement: earlier runs have criteria with the same letters, so every orun1 gap title carries the run.
+
+**Prompts frozen before any generation** (commit `bd3bbb0d`): seven plain prompts in `docs/probes/orun1/runner/prompts.py` (sha256 `f69ab5c8…`), quoted in the README and held equal by `runner/test_prompts.py`; no style words (test-checked); wildcard fixed as an 8-joint snake; turn settings frozen as `claude-opus-5-5`, effort `medium`. `runner/versus.py` is the frozen-v2 bar: it judges a new design against the same-type sweep Likes/Loves and refuses to run unless opponent heroes hash to the ones D1 judged [rec: spring-ivy-9833].
+
+**Trial 1 (not a confirmation; counts for nothing toward D4)** — `orun1-t1-balancer`, accepted revision `8dd43825…`, faceless: mounting `pass` 9/9 held, all parts from the catalog, static fit 861 pairs 0 failing; **swept fit `incomplete`** (4.26 mm³ between the turning wheel bore and the catalog gearmotor's static D-shaft at ±180°); frozen v2 **3 of 5** (beat d, f, h Likes; lost to c Love and e Like, both citing plain solid-disc wheels with no hub). Published in `docs/probes/orun1/d4/t1-balancer/` [rec: spring-ivy-9833].
+
+**ADR-487 (commit `9eac2291`): `lib.wheel`'s bore is round** (the D flat stays in the spec as `bore_flat_to_opposite_mm`, flagged approximate), and the overlay tells the agent to place the wheel clear of the boss and to declare `angle_limits_degrees=(-180, 180)` on the wheel revolute, since an unlimited joint is never swept. A real-kernel regression sweeps a catalog wheel round its catalog motor clean; `test_library.py` 140 passed. The fail-before figure (6.97 mm³) is ADR-487's own, not re-run. The wheel is still a solid disc [rec: calm-quill-0693].
+
+**Trial 2 (not a confirmation)** — `orun1-t2-balancer`, accepted revision `496a506e…` at product `9eac2291`: windowed side plates, battery tray, sensor shelf, top deck, no face, all 9 purchased parts from the catalog. Static fit 210 pairs 0 failing; **swept fit `pass`**, 2 of 2 joints at ±180° (ADR-487 worked). **Mounting `reported`, 5 of 9 held — the trial fails D4**: both N20 motors are contact-only in split pockets, so both wheels are held by nothing, because the catalog had no M1.6 bolt and the gearmotor has no `.bay()`. Frozen v2 **3 of 5**, the same split as trial 1 (beat d, f, h; lost to c Love and e Like on plain disc wheels, plus "no visible drive motors" and a board that "looks stuck onto its shelf"). `pixi run test-engine` 2574 passed / 61 skipped. Published in `docs/probes/orun1/d4/t2-balancer/`, commit `75d831bb` [rec: first-eagle-0836].
+
+Between trials 2 and 3 the M1.6 gap was closed by ADR-488 [rec: honest-ledge-9020] and the wheel became a spoked rim with a separate tyre by ADR-489 [rec: eager-bluff-0757] (both on brave-stone-9609). Reconcile judgement: trial 1's "9 of 9 held" counted two M2 bolts in M1.6 holes; under ADR-488 it would rebuild to 7 of 9 [rec: honest-ledge-9020].
+
+**Trial 3 (not a confirmation)** — `orun1-t3-balancer`, accepted revision `e2b1b506…` at product `64026754`: chamfered side plates with slotted windows, ESP32 in a framed bay, BNO085 on an orange top deck, N20s face-screwed with M1.6×3, spoked wheels with separate tyres, no face; all 11 purchased parts and 19 bolts from the catalog. **Static fit 561 pairs 0 failing; swept fit `pass` 2/2; mounting `pass` 11 of 11** (motors by `screws`, wheels by `output`, tyres by `rim`) — the first balancer trial where every hold is real. **Frozen v2 4 of 5**, a majority (beat d, e, f, h; lost to c Love, whose judge reason cites "odd cross-barred spoke wheels look arbitrary" against c's solid hubbed wheels and bolted board carrier). The disc-wheel complaint is gone; the ADR-489 spoke geometry is now what the judge holds against it, and in the hero the rim and tyre do not separate in colour. By the D4 bar trial 3 would pass, but it is a trial and does not count. An earlier `orun1-t3-balancer` killed mid-turn was renamed `-interrupted` and not counted, per the charter. Published in `docs/probes/orun1/d4/t3-balancer/`, commit `1cf0d3dd`; no suite re-run [rec: first-dew-3629]. Named next: hexapod trials (the worst-rated type); candidate balancer product changes before its confirmation are checking the spoke geometry against the STEP model and the catalog's motor driver (since landed, ADR-490) and encoder N20 [rec: first-dew-3629] [rec: young-orchard-8393].
+
+**Hexapod trial 1 (not a confirmation)** — `orun1-t1-hexapod`, accepted revision `35193b3e…` at product `ef2b0f86` (published as trial 1 rather than re-run: iteration 24 completed it but lost its session before judging): flat hexagonal deck, six hanging coxa pods, 18 MG90S, 2× PCA9685, ESP32, BNO085, VL53L1X on a front tab, no face; 49 purchased parts and 18 bolts all from the catalog. Static fit 0 of 3655 failing; swept fit pass 18/18; mounting pass 49/49. **Frozen v2 1 of 2, no majority** — beat b, lost to c ("crowded clusters of joints … cluttered and arbitrary" against c's two-deck chassis); the 35 mm hub caps and femur pods dominate short legs. No missing-part asks. Named next for the hexapod: a product change aimed at leg proportion and joint clutter, then trial 2. Published in `docs/probes/orun1/d4/t1-hexapod/`, commit `c14ed83a` [rec: deep-cove-1130].
+
+**Re-measured under ADR-492** (a screw holds only by thread engagement): hexapod trial 1 still mounting 49/49, but all 18 servo bolts are `unthreaded` — the servos are now held by their bays, not screws; balancer trial 3 goes mounting pass 11/11 → **reported 8/11** (BNO085, D36V50F6 and VL53L1X contact only, 9 unthreaded bolts; the N20s stay held by screws in their tapped faces). Fits unchanged for both. Every D4 mounting receipt published before `ec6782ad` overstates screws, so trial 3's "pass" is now "reported" [rec: icy-willow-3129].
+
+## Negative knowledge
+
+- [scope: wheeled designs using the `pololu-1430` wheel on the catalog gearmotor, product revisions before 9eac2291 | confidence: high | evidence: spring-ivy-9833, calm-quill-0693] A D-bore wheel turning on the catalog gearmotor's static D-shaft cannot pass a swept fit (4.26 mm³ at ±180° in trial 1). Superseded from `9eac2291` by ADR-487's round bore; trial 2's sweep passed [rec: first-eagle-0836].
+
+## Provenance
+
+- sweet-brook-2725 — orun1 operator-declared charter gap
+- spring-ivy-9833 — prompts frozen and hash-pinned; balancer trial 1 (9/9 held, static clean, sweep incomplete on catalog shaft, v2 3 of 5)
+- calm-quill-0693 — ADR-487: round wheel bore, boss clearance and ±180° limits in the overlay; real-kernel sweep regression
+- first-eagle-0836 — balancer trial 2: static and swept pass, mounting 5/9 (N20s contact-only), frozen v2 3 of 5; does not clear D4
+- honest-ledge-9020 — ADR-488 closes the M1.6 fastener gap trial 2 named; trial 1's 9/9 would rebuild to 7/9
+- eager-bluff-0757 — ADR-489 spoked rim and tyre, the wheel change trial 3 tested
+- first-dew-3629 — balancer trial 3: static 0 failing, sweep pass, mounting 11/11, frozen v2 4 of 5 (loses to Love c on spoke look); a trial, not the confirmation
+- deep-cove-1130 — hexapod trial 1: static 0/3655, sweep 18/18, mounting 49/49, frozen v2 1 of 2 (loses to c on proportion/joint clutter)
+- icy-willow-3129 — re-measure under ADR-492: hexapod t1 servo bolts all unthreaded (held by bay); balancer t3 11/11 → 8/11

@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "7966658d7990ca0e492527eac9cf0a38852c33e98f6b0a6e9843ac0480cb012d"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "aa241b568e1571ef848732d44157b66aa7ded73fc32d8241a009dab152afae67"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "4393022098804e798914061119e69fd084cfc0196111c77c2f5d86cada281e0d"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "8e72481d4044c89299a61c9329c5de688a3fc9f15e7e04f62d90e70acdf61914"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "ad5ebed8d74142f86d209287d395748db8ae35baa0dfe34844cdbe8b756bb281"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "91e1568279f4e65c234ed703d5b1da862488d3652c4c89f88a7aa51660f2e860"
+    }
+  ],
+  "medians": {
+    "T1": 3,
+    "T2": 3,
+    "T3": 2,
+    "T4": 2,
+    "T5": 3,
+    "T6": 2,
+    "T7": 1
+  },
+  "total": 16,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous white shell covers the head and dome base, so no servo or board shows anywhere, and the mechanism appears only as the dark neck collar and base ring."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Every view uses the same scheme: a white shell, dark grey for the mechanism parts (neck, visor, base ring) and one orange accent kept to the eyes and the side joint discs."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Both rotation axes are round features that share the axis, but the pan joint is a dark neck cylinder and the tilt joint is an orange side disc, so the joints are not treated the same way."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The rounded-box head and the dome base are soft forms with generous radii, but they are separate parts joined by a visible neck rather than merging, and the dome shows faceted tessellation."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The dark visor with two orange pill-shaped eyes is a clear face that gives the robot a front and a friendly character at a glance."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The head-on-dome layout is compact and balanced, and the dark base ring reads as a distinct foot, but there are no limbs that taper towards it."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The lighting makes the curvature read on a clean dark grid backdrop from a decent three-quarter angle, but there is no contact shadow, the camera sits fairly high and the dome is visibly faceted."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 3, \"reason\": \"A continuous white shell covers the head and dome base, so no servo or board shows anywhere, and the mechanism appears only as the dark neck collar and base ring.\"}, \"T2\": {\"score\": 3, \"reason\": \"Every view uses the same scheme: a white shell, dark grey for the mechanism parts (neck, visor, base ring) and one orange accent kept to the eyes and the side joint discs.\"}, \"T3\": {\"score\": 2, \"reason\": \"Both rotation axes are round features that share the axis, but the pan joint is a dark neck cylinder and the tilt joint is an orange side disc, so the joints are not treated the same way.\"}, \"T4\": {\"score\": 2, \"reason\": \"The rounded-box head and the dome base are soft forms with generous radii, but they are separate parts joined by a visible neck rather than merging, and the dome shows faceted tessellation.\"}, \"T5\": {\"score\": 3, \"reason\": \"The dark visor with two orange pill-shaped eyes is a clear face that gives the robot a front and a friendly character at a glance.\"}, \"T6\": {\"score\": 2, \"reason\": \"The head-on-dome layout is compact and balanced, and the dark base ring reads as a distinct foot, but there are no limbs that taper towards it.\"}, \"T7\": {\"score\": 2, \"reason\": \"The lighting makes the curvature read on a clean dark grid backdrop from a decent three-quarter angle, but there is no contact shadow, the camera sits fairly high and the dome is visibly faceted.\"}}\n```",
+      "session_id": "fd6f32f2-a2d9-4d60-b6af-24f7a1dfa7d1",
+      "duration_ms": 20540,
+      "num_turns": 17,
+      "total_cost_usd": 0.122144,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2383,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.122144,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 578,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous white shell hides all the hardware, and the mechanism shows only as the dark neck collar and the dark base ring."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Off-white shell and dark charcoal for the mechanism and visor, with one orange accent placed on the eyes and the tilt-axis caps."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Both axes are round features (a dark cylinder for the neck pan and orange discs for the head tilt), but the two joints are styled differently."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "A rounded-box head with generous radii sits on a dome base, but the head floats on the neck instead of merging into the body, and the dome shows faceting."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The dark visor with two orange eyes gives the robot a clear front and a friendly character at a glance, with a recognisable desk-bot silhouette."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and balanced with a distinct dark foot ring, but there are no limbs, so taper to a foot is not shown."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The shading reads, but the backdrop is a dark CAD grid, there is no contact shadow, the dome shows tessellation and the three-quarter views are high."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 3, \"reason\": \"A continuous white shell hides all the hardware, and the mechanism shows only as the dark neck collar and the dark base ring.\"},\n \"T2\": {\"score\": 3, \"reason\": \"Off-white shell and dark charcoal for the mechanism and visor, with one orange accent placed on the eyes and the tilt-axis caps.\"},\n \"T3\": {\"score\": 2, \"reason\": \"Both axes are round features (a dark cylinder for the neck pan and orange discs for the head tilt), but the two joints are styled differently.\"},\n \"T4\": {\"score\": 2, \"reason\": \"A rounded-box head with generous radii sits on a dome base, but the head floats on the neck instead of merging into the body, and the dome shows faceting.\"},\n \"T5\": {\"score\": 3, \"reason\": \"The dark visor with two orange eyes gives the robot a clear front and a friendly character at a glance, with a recognisable desk-bot silhouette.\"},\n \"T6\": {\"score\": 2, \"reason\": \"The body is compact and balanced with a distinct dark foot ring, but there are no limbs, so taper to a foot is not shown.\"},\n \"T7\": {\"score\": 1, \"reason\": \"The shading reads, but the backdrop is a dark CAD grid, there is no contact shadow, the dome shows tessellation and the three-quarter views are high.\"}}\n```",
+      "session_id": "5b836cdd-c7b2-42d5-abf5-d41b3f4886e6",
+      "duration_ms": 24269,
+      "num_turns": 17,
+      "total_cost_usd": 0.1260494,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2573,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1260494,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 821,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous dome base and a rounded head shell hide all the hardware, and the mechanism shows only as the dark neck collar and the dark base ring."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Warm white shell and dark charcoal mechanism are applied by role, with one saturated orange accent used only on the eyes and the side joint discs."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Both rotation axes are round features concentric with their axes (a dark neck collar for pan, orange side discs for tilt), but the two joints are styled differently, not as one consistent language."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The base reads as a soft dome and the head as a generously rounded box, but the head sits as a separate block on a neck instead of merging, and the dome shows faceted tessellation."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The dark visor with two orange pill eyes gives a clear focal face and a friendly, recognisable desk-companion silhouette at a glance."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and balanced, and the dark base ring works as a distinct foot, but there are no limbs to show any taper."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "Shading shows the curvature, but the robot sits on a CAD viewport grid with no contact shadow, the dome shading is faceted and several views are flat orthographic or top-down."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A continuous dome base and a rounded head shell hide all the hardware, and the mechanism shows only as the dark neck collar and the dark base ring.\"}, \"T2\": {\"score\": 3, \"reason\": \"Warm white shell and dark charcoal mechanism are applied by role, with one saturated orange accent used only on the eyes and the side joint discs.\"}, \"T3\": {\"score\": 2, \"reason\": \"Both rotation axes are round features concentric with their axes (a dark neck collar for pan, orange side discs for tilt), but the two joints are styled differently, not as one consistent language.\"}, \"T4\": {\"score\": 2, \"reason\": \"The base reads as a soft dome and the head as a generously rounded box, but the head sits as a separate block on a neck instead of merging, and the dome shows faceted tessellation.\"}, \"T5\": {\"score\": 3, \"reason\": \"The dark visor with two orange pill eyes gives a clear focal face and a friendly, recognisable desk-companion silhouette at a glance.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and balanced, and the dark base ring works as a distinct foot, but there are no limbs to show any taper.\"}, \"T7\": {\"score\": 1, \"reason\": \"Shading shows the curvature, but the robot sits on a CAD viewport grid with no contact shadow, the dome shading is faceted and several views are flat orthographic or top-down.\"}}",
+      "session_id": "3a20d87b-db00-41cc-8d97-d7f2ed3e1764",
+      "duration_ms": 21925,
+      "num_turns": 17,
+      "total_cost_usd": 0.125444,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2548,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.125444,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 780,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "wildcard-d-product-shell",
+  "receipt": {
+    "project": "orun1-ho-wildcard-d-product-shell",
+    "accepted_revision": "a65606e1a1efe847cd66ed4fca8974a1a624ac30a16d30628aa470b9c1eff655",
+    "look_revision": "a65606e1a1efe847cd66ed4fca8974a1a624ac30a16d30628aa470b9c1eff655",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

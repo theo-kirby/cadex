@@ -35,6 +35,7 @@ from __future__ import annotations
 import difflib
 import json
 import math
+import re
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
@@ -50,6 +51,7 @@ __all__ = [
     "create_library_api",
     "library_catalog_identity",
     "library_listing",
+    "library_mount_facts",
 ]
 
 
@@ -68,6 +70,15 @@ __all__ = [
 #: *join key*, exactly as
 #: ``artifact_by_definition`` already joins a component source to its output.
 _CATALOG_IDENTITY: dict[str, dict[str, str]] = {}
+
+#: What the mounting check reads, kept beside :data:`_CATALOG_IDENTITY` and
+#: off the digest for the same reason (ADR-486). ``_MOUNT_AXES`` is the
+#: line every screw that holds a body must lie on -- a mounting hole's
+#: centre and axis, or a bolt's own axis -- in the body's own placed
+#: coordinates; ``_BAY_OF`` is the body each ``.bay()`` cavity was cut for,
+#: both keyed by canonical definition.
+_MOUNT_AXES: dict[str, list[dict[str, list[float]]]] = {}
+_BAY_OF: dict[str, str] = {}
 
 
 def _definition_key(body: Any) -> str:
@@ -92,6 +103,53 @@ def library_catalog_identity() -> dict[str, dict[str, str]]:
     return {key: dict(value) for key, value in _CATALOG_IDENTITY.items()}
 
 
+def library_mount_facts() -> dict[str, dict[str, Any]]:
+    """Mount axes by body and bay cavities by body, for the run just executed.
+
+    ``{"axes": {body key: [{"origin", "axis"}]}, "bays": {bay key: body
+    key}}``, every key a canonical definition (ADR-486).
+    """
+
+    return {
+        "axes": {key: [dict(row) for row in rows] for key, rows in _MOUNT_AXES.items()},
+        "bays": dict(_BAY_OF),
+    }
+
+
+def _size_facts(family: str, spec: Mapping[str, Any]) -> dict[str, float]:
+    """What fits a part's mounting holes, for the mounting check (ADR-488).
+
+    A bolt publishes its nominal diameter; a part whose spec names a
+    ``mount_thread`` publishes that thread (its holes are tapped or take a
+    self-tapping screw of that size); any other part publishes its hole
+    diameter, which a bolt may not exceed.
+    """
+
+    if family == "bolt":
+        return {"bolt_dia_mm": float(spec["nominal_dia_mm"])}
+    thread = re.match(r"\s*M(\d+(?:\.\d+)?)", str(spec.get("mount_thread") or ""), re.I)
+    if thread:
+        return {"thread_dia_mm": float(thread.group(1))}
+    for key in ("mount_hole_dia_mm", "hole_dia_mm", "mount_bore_dia_mm"):
+        value = spec.get(key)
+        if isinstance(value, (int, float)) and value > 0:
+            return {"hole_dia_mm": float(value)}
+    return {}
+
+
+def _frame_axes(frame: tuple, rows: Sequence[tuple]) -> list[dict[str, list[float]]]:
+    """Local ``(origin, axis)`` rows carried into a placed body's coordinates."""
+
+    origin, _unit, rotation = frame
+    return [
+        {
+            "origin": [o + v for o, v in zip(origin, _rotate(rotation, local))],
+            "axis": list(_rotate(rotation, axis)),
+        }
+        for local, axis in rows
+    ]
+
+
 class LibraryError(ValueError):
     """A library call violates the generator contract."""
 
@@ -112,6 +170,7 @@ class LibraryPart:
         part_number: str,
         body: Any,
         spec: Mapping[str, Any],
+        mount_axes: Sequence[Mapping[str, Any]] = (),
     ) -> None:
         object.__setattr__(self, "family", family)
         object.__setattr__(self, "part_number", part_number)
@@ -123,6 +182,13 @@ class LibraryPart:
                 "family": str(family),
                 "part_number": str(part_number),
             }
+            if mount_axes:
+                sizes = _size_facts(family, spec)
+                _MOUNT_AXES[key] = [
+                    {"origin": [float(v) for v in row["origin"]],
+                     "axis": [float(v) for v in row["axis"]], **sizes}
+                    for row in mount_axes
+                ]
 
     def __setattr__(self, _name: str, _value: Any) -> None:
         raise TypeError("A library part is immutable; build another instead.")
@@ -234,15 +300,25 @@ class _BayPart(LibraryPart):
 
     __slots__ = ("_lib", "_frame_placement")
 
-    def __init__(self, lib, family, part_number, body, spec, frame_placement):
-        super().__init__(family, part_number, body, spec)
+    def __init__(self, lib, family, part_number, body, spec, frame_placement,
+                 mount_rows=()):
+        super().__init__(family, part_number, body, spec,
+                         _frame_axes(frame_placement, mount_rows))
         object.__setattr__(self, "_lib", lib)
         object.__setattr__(self, "_frame_placement", frame_placement)
+
+    def _housing(self, cavity):
+        """Remember which body a placed bay cavity houses (ADR-486)."""
+
+        bay_key, body_key = _definition_key(cavity), _definition_key(self.body)
+        if bay_key and body_key:
+            _BAY_OF[bay_key] = body_key
+        return cavity
 
     def _bay_box(self, operation, low, high, label):
         size = [b - a for a, b in zip(low, high)]
         cavity = self._lib._part.box(*size, origin=tuple(low), label=label)
-        return self._lib._place_frame(operation, cavity, self._frame_placement)
+        return self._housing(self._lib._place_frame(operation, cavity, self._frame_placement))
 
 
 class ServoPart(_BayPart):
@@ -265,10 +341,15 @@ class ServoPart(_BayPart):
         spec: Mapping[str, Any],
         frame_placement: tuple,
     ) -> None:
-        super().__init__(lib, "servo", part_number, body, spec, frame_placement)
+        if spec.get("mount_points"):
+            rows = [(p["origin"], p["axis"]) for p in spec["mount_points"]]
+        else:
+            z = spec["mount_hole_z_mm"]
+            rows = [((x, y, z), (0.0, 0.0, 1.0)) for x, y in spec["mount_holes"]]
+        super().__init__(lib, "servo", part_number, body, spec, frame_placement, rows)
 
     def bay(self, *, clearance: float = 0.5, lead_room: float = 6.0,
-            label: str = "") -> Any:
+            ledge: float = 0.0, label: str = "") -> Any:
         """The servo's keep-out solid: grow a limb around it, then cut it.
 
         The case and the mounting-tab plate each grown by ``clearance`` on
@@ -278,12 +359,23 @@ class ServoPart(_BayPart):
         leave. The tabs land on the ledge the cut leaves under them; drill
         the screws at ``spec['mount_holes']``. Defaults: 0.5 mm, a printed
         servo pocket; 6 mm, room for the lead to turn. The lead exit is a
-        convention, not a datasheet dimension.
+        convention, not a datasheet dimension. The lead-side holes sit 3-5
+        mm past the end face, inside that room, so with the default
+        ``ledge`` of 0 the lead-side screw has nothing to bite. ``ledge=4``
+        stops the room 4 mm under the tabs (two diameters of M2 thread),
+        so both tabs' screws bite (ADR-491); 0 keeps ADR-443's bay, which
+        accepted recipes were built with. A tab-less bus servo's bay
+        is its case grown by ``clearance``, the spline and rear-boss
+        columns, and the lead room beyond the back end at full height;
+        it has no tabs, so ``ledge`` does not change it.
         """
         operation = "servo.bay"
         c = _bay_allowance(operation, "clearance", clearance)
         room = _bay_allowance(operation, "lead_room", lead_room)
+        shelf = _bay_allowance(operation, "ledge", ledge)
         spec = self.spec
+        if spec.get("mount_style") == "case_holes":
+            return self._case_held_bay(operation, c, room, label)
         front = spec["shaft_offset_from_front_mm"]
         back = front - spec["body_length_mm"]
         half = spec["body_width_mm"] / 2.0 + c
@@ -303,9 +395,42 @@ class ServoPart(_BayPart):
             part.cylinder(spec["spline_dia_mm"] / 2.0 + c, spec["spline_height_mm"]),
         ]
         if room > 0.0:
-            pieces.append(box((back - c - room, -half, bottom), (back - c, half, plate_z - c)))
+            top = plate_z - c - shelf
+            if top <= bottom:
+                raise LibraryError(
+                    f"{operation}: ledge {shelf:g} mm leaves no lead room under "
+                    f"the tabs; the most is {plate_z - c - bottom:g} mm.")
+            pieces.append(box((back - c - room, -half, bottom), (back - c, half, top)))
         cavity = part.fuse(pieces, label=label)
-        return self._lib._place_frame(operation, cavity, self._frame_placement)
+        return self._housing(self._lib._place_frame(operation, cavity, self._frame_placement))
+
+    def _case_held_bay(self, operation, c, room, label):
+        # A bus servo has no tabs: the case grown by the clearance, the
+        # spline's column up through the output face and the idler boss's
+        # down through the rear one, and the lead room beyond the back end,
+        # where both daisy-chain connectors sit. Screws enter the faces at
+        # spec['mount_points'], so the faces themselves stay reachable.
+        spec = self.spec
+        front = spec["shaft_offset_from_front_mm"]
+        back = front - spec["body_length_mm"]
+        half = spec["body_width_mm"] / 2.0 + c
+        height = spec["case_height_mm"]
+        boss = spec["rear_boss_height_mm"]
+        part = self._lib._part
+
+        def box(low, high):
+            return part.box(*(b - a for a, b in zip(low, high)), origin=low)
+
+        pieces = [
+            box((back - c, -half, -height - c), (front + c, half, c)),
+            part.cylinder(spec["spline_dia_mm"] / 2.0 + c, spec["spline_height_mm"]),
+            part.cylinder(spec["rear_boss_dia_mm"] / 2.0 + c, boss,
+                          origin=(0.0, 0.0, -height - boss)),
+        ]
+        if room > 0.0:
+            pieces.append(box((back - c - room, -half, -height - c), (back - c, half, c)))
+        cavity = part.fuse(pieces, label=label)
+        return self._housing(self._lib._place_frame(operation, cavity, self._frame_placement))
 
     def horn(
         self,
@@ -423,13 +548,35 @@ class BatteryPart(_BayPart):
                              label)
 
 
+class BoardMounting:
+    """What ``BoardPart.mounting()`` returns: one board's screwed hold.
+
+    ``standoffs`` (solids to fuse into the carrier), ``holes`` (solids to cut
+    from it after),
+    ``screws`` (``lib.bolt`` parts, one component each), and the ``screw``
+    size and ``length_mm`` they were sized with.
+    """
+
+    __slots__ = ("screw", "length_mm", "standoffs", "holes", "screws")
+
+    def __init__(self, *, screw, length_mm, standoffs, holes, screws):
+        for name, value in (("screw", screw), ("length_mm", length_mm),
+                            ("standoffs", standoffs), ("holes", holes),
+                            ("screws", tuple(screws))):
+            object.__setattr__(self, name, value)
+
+    def __setattr__(self, _name: str, _value: Any) -> None:
+        raise TypeError("A board mounting is immutable inside the script.")
+
+
 class BoardPart(_BayPart):
     """A board whose solder-pad rows can enter the existing wiring table."""
 
     __slots__ = ()
 
     def __init__(self, lib, part_number, body, spec, frame_placement):
-        super().__init__(lib, "board", part_number, body, spec, frame_placement)
+        super().__init__(lib, "board", part_number, body, spec, frame_placement,
+                         [((x, y, 0.0), (0.0, 0.0, 1.0)) for x, y in spec["mount_holes"]])
 
     def bay(self, *, clearance: float = 1.0, underside: float = 2.0,
             lead_room: float = 8.0, label: str = "") -> Any:
@@ -441,7 +588,8 @@ class BoardPart(_BayPart):
         bottom-side parts, 1.8 mm on the D36V50F6; raise it to the pin
         length if headers are fitted -- to ``lead_room`` above the tallest
         component, where the wires soldered to the pads rise and turn.
-        Standoffs through the mounting holes go in after the cut. Fitted
+        Standoffs through the mounting holes go in after the cut: fuse
+        ``.mounting()``'s ``standoffs``, then cut its ``holes``. Fitted
         connectors (USB, HDMI) are not modelled: add room for the plug.
         """
         operation = "board.bay"
@@ -449,6 +597,9 @@ class BoardPart(_BayPart):
         under = _bay_allowance(operation, "underside", underside)
         room = _bay_allowance(operation, "lead_room", lead_room)
         spec = self.spec
+        # A part on the back face (the camera's FPC receptacle) is part of
+        # the board: the keep-out never stops short of it.
+        under = max(under, spec.get("underside_components_mm", 0.0))
         (mx, my, mz), (sx, sy, sz) = spec["cosmetic_origin"], spec["cosmetic_size"]
         top = max(spec["thickness_mm"], mz + sz)
         return self._bay_box(operation,
@@ -457,6 +608,78 @@ class BoardPart(_BayPart):
                               max(spec["length_mm"], my + sy) + c,
                               top + c + room),
                              label)
+
+    def mounting(self, standoff: float = 3.0, *, screw: str | None = None,
+                 diameter: float | None = None, length: float | None = None,
+                 label: str = "") -> "BoardMounting":
+        """Standoffs, tapping holes and screws for every mounting hole (ADR-493).
+
+        ``standoff`` is the gap from the PCB's bottom face to the face of the
+        printed part that carries it: 3 mm with ``.bay()``'s defaults
+        (``underside`` plus ``clearance``). ``standoffs`` is one boss per
+        hole, ``diameter`` across (default 2.5 screw diameters), from the
+        PCB down past that face by 1 mm so it fuses; ``holes`` is the
+        tapping drill for ``screw`` (default the largest metric size the
+        hole passes) from the PCB down 1 mm past the screw's tip, one solid
+        per hole in each list;
+        ``screws`` are ``lib.bolt`` parts seated on the PCB's top face,
+        ``length`` long (default the PCB plus 2.5 diameters of thread,
+        rounded up to a millimetre). Fuse the standoffs into the carrier,
+        cut the holes from the result, and place each screw as its own
+        component: ``part.cut(part.fuse([carrier, *m.standoffs]), m.holes)``.
+        The thread then cuts printed material, which is what the mounting
+        check counts as a screw that holds.
+        """
+        operation = "board.mounting"
+        spec = self.spec
+        if not spec["mount_holes"]:
+            raise LibraryError(f"{operation}: {self.part_number} has no mounting "
+                               "holes; hold it with its .bay().")
+        hole = spec["mount_hole_dia_mm"]
+        if screw is None:
+            fitting = [size for size in ("m3", "m2.5", "m2", "m1.6")
+                       if catalog.thread_spec(size)["nominal_dia_mm"] <= hole + 1e-6]
+            if not fitting:
+                raise LibraryError(f"{operation}: no metric screw passes a "
+                                   f"{hole:g} mm hole.")
+            screw = fitting[0]
+        thread = catalog.thread_spec(screw)
+        d = thread["nominal_dia_mm"]
+        if d > hole + 1e-6:
+            raise LibraryError(f"{operation}: an M{d:g} screw does not pass the "
+                               f"board's {hole:g} mm holes.")
+        height = _positive(operation, "standoff", standoff)
+        tap = thread["tap_drill_mm"]
+        boss = (2.5 * d if diameter is None
+                else _positive(operation, "diameter", diameter))
+        if boss < tap + 1.6:
+            raise LibraryError(f"{operation}: a {boss:g} mm standoff leaves less "
+                               f"than 0.8 mm of wall round a {tap:g} mm tapping hole.")
+        t = spec["thickness_mm"]
+        long = (float(math.ceil(t + 2.5 * d - 1e-9)) if length is None
+                else _positive(operation, "length", length))
+        if long <= t:
+            raise LibraryError(f"{operation}: a {long:g} mm screw does not pass "
+                               f"the {t:g} mm PCB.")
+        depth = long - t + 1.0
+        part = self._lib._part
+
+        def placed(pieces):
+            return [self._lib._place_frame(operation, piece, self._frame_placement)
+                    for piece in pieces]
+
+        origin, _unit, rotation = self._frame_placement
+        up = _rotate(rotation, (0.0, 0.0, 1.0))
+        return BoardMounting(
+            screw=catalog.normalise_thread_size(screw), length_mm=long,
+            standoffs=placed([part.cylinder(boss / 2.0, height + 1.0,
+                                            origin=(x, y, -height - 1.0), label=label)
+                              for x, y in spec["mount_holes"]]),
+            holes=placed([part.cylinder(tap / 2.0, depth + 0.5, origin=(x, y, -depth))
+                          for x, y in spec["mount_holes"]]),
+            screws=[self._lib.bolt(screw, long, direction=up, origin=tuple(
+                        a + b for a, b in zip(origin, _rotate(rotation, (x, y, t)))))
+                    for x, y in spec["mount_holes"]])
 
     def terminals(self) -> list[dict]:
         """Fresh term() rows in the generated body's frame, for board().
@@ -473,6 +696,102 @@ class BoardPart(_BayPart):
                      axis=_rotate(rotation, row["axis"]), hole_dia=row["hole_dia"])
                 for row in self.spec["terminals"]]
 
+
+
+class WheelPart(_BayPart):
+    """A placed wheel whose ``.bay()`` is the disc it sweeps, plus clearance."""
+
+    __slots__ = ()
+
+    def __init__(self, lib, part_number, body, spec, frame_placement):
+        super().__init__(lib, "wheel", part_number, body, spec, frame_placement)
+
+    def bay(self, *, clearance: float = 3.0, label: str = "") -> Any:
+        """The wheel's keep-out solid: cut it from a body, fork or fender.
+
+        The tyre's disc grown by ``clearance`` radially and on both faces,
+        and the hub's column grown the same, from ``clearance`` behind the
+        hub tip. A wheel turns, so its whole disc is swept: this is the
+        well, not a seat. Default 3 mm, room for tread and a tyre that
+        bulges under load.
+        """
+        operation = "wheel.bay"
+        c = _bay_allowance(operation, "clearance", clearance)
+        spec = self.spec
+        part = self._lib._part
+        hub = spec["hub_protrusion_mm"]
+        cavity = part.fuse([
+            part.cylinder(spec["tyre_dia_mm"] / 2.0 + c, spec["width_mm"] + 2.0 * c,
+                          origin=(0.0, 0.0, hub - c)),
+            part.cylinder(spec["hub_dia_mm"] / 2.0 + c, hub + c, origin=(0.0, 0.0, -c)),
+        ], label=label)
+        return self._housing(self._lib._place_frame(operation, cavity, self._frame_placement))
+
+    def tyre(self, *, label: str = "") -> LibraryPart:
+        """This wheel's silicone tyre, seated on its rim, as its own body.
+
+        Place it as its own component in the ``mechanism`` role and join it
+        to the wheel with a fixed joint: a wheel and its tyre are two
+        materials, so they are two parts (ADR-489). The mounting check
+        counts the tyre held when it touches a wheel that is itself held.
+        ``spec['density_kg_m3']`` is silicone's.
+        """
+        spec = self.spec
+        part = self._lib._part
+        hub, width = spec["hub_protrusion_mm"], spec["width_mm"]
+        outer, rim = spec["tyre_dia_mm"] / 2.0, spec["rim_dia_mm"] / 2.0
+        round_ = spec["tyre_shoulder_radius_mm"]
+        ring = part.cut(part.fuse([
+            part.cylinder(outer - round_, width, origin=(0.0, 0.0, hub)),
+            part.cylinder(outer, width - 2.0 * round_, origin=(0.0, 0.0, hub + round_)),
+            part.torus(outer - round_, round_, center=(0.0, 0.0, hub + round_)),
+            part.torus(outer - round_, round_, center=(0.0, 0.0, hub + width - round_)),
+        ]), [part.cylinder(rim, width + 2.0, origin=(0.0, 0.0, hub - 1.0))], label=label)
+        tyre_spec = {key: spec[key] for key in (
+            "manufacturer", "manufacturer_part_number", "tyre_dia_mm", "rim_dia_mm",
+            "width_mm", "tyre_material", "tyre_mass_g", "sources")}
+        tyre_spec["density_kg_m3"] = spec["tyre_density_kg_m3"]
+        return LibraryPart("tyre", self.part_number,
+                           self._lib._place_frame("wheel.tyre", ring, self._frame_placement),
+                           tyre_spec)
+
+
+class FootPadPart(_BayPart):
+    """A placed rubber foot whose ``.bay()`` also drills its screw's hole."""
+
+    __slots__ = ()
+
+    def __init__(self, lib, part_number, body, spec, frame_placement):
+        # One screw, on the pad's own axis.
+        super().__init__(lib, "foot_pad", part_number, body, spec, frame_placement,
+                         [((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))])
+
+    def bay(self, *, clearance: float = 0.5, screw_depth: float = 8.0,
+            label: str = "") -> Any:
+        """The foot's keep-out and its screw's hole: cut it from the printed foot.
+
+        The pad's envelope (its mounting-face diameter, full height) grown
+        by ``clearance``, and the screw's tapping hole ``screw_depth`` into
+        the part behind the mounting face, on the pad's axis. Place the pad
+        below the sole by a millimetre or two and the same cut leaves a
+        locating recess. The screw goes in from the floor side through the
+        pad's counterbore; it is at least ``spec['screw_length_min_mm']``
+        plus ``screw_depth`` long.
+        """
+        operation = "foot_pad.bay"
+        c = _bay_allowance(operation, "clearance", clearance)
+        depth = _bay_allowance(operation, "screw_depth", screw_depth)
+        spec = self.spec
+        part = self._lib._part
+        radius, height = spec["top_dia_mm"] / 2.0 + c, spec["height_mm"] + c
+        if depth > 0.0:
+            tap = catalog.thread_spec(spec["screw"])["tap_drill_mm"]
+            cavity = part.fuse([part.cylinder(radius, height),
+                                part.cylinder(tap / 2.0, depth, origin=(0.0, 0.0, -depth))],
+                               label=label)
+        else:
+            cavity = part.cylinder(radius, height, label=label)
+        return self._housing(self._lib._place_frame(operation, cavity, self._frame_placement))
 
 
 # -- involute gearing ----------------------------------------------------------
@@ -722,11 +1041,13 @@ class LibraryAPI:
             }
         )
         part_number = f"{catalog.normalise_thread_size(size)}x{clean_length:g}-{head}"
+        frame = self._frame(operation, origin, direction)
         return LibraryPart(
             "bolt",
             part_number,
-            self._place(operation, body, origin, direction),
+            self._place_frame(operation, body, frame),
             spec,
+            _frame_axes(frame, [((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))]),
         )
 
     def nut(
@@ -1003,9 +1324,11 @@ class LibraryAPI:
                                      origin=(x, y, -depth))
                  for x, y in spec["mount_holes"]]
         body = self._part.cut(self._part.fuse([case, shaft, boss]), holes, label=label)
+        frame = self._frame("gearmotor", origin, direction, roll_degrees)
         return LibraryPart("gearmotor", sku.strip().lower(),
-                           self._place("gearmotor", body, origin, direction, roll_degrees),
-                           spec)
+                           self._place_frame("gearmotor", body, frame), spec,
+                           _frame_axes(frame, [((x, y, 0.0), (0.0, 0.0, 1.0))
+                                               for x, y in spec["mount_holes"]]))
 
     def battery(
         self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
@@ -1028,6 +1351,99 @@ class LibraryAPI:
         frame = self._frame("battery", origin, direction, roll_degrees)
         return BatteryPart(self, sku.strip().lower(),
                            self._place_frame("battery", body, frame), spec, frame)
+
+    def wheel(
+        self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> WheelPart:
+        """A catalogued wheel, placed by its hub on the axle; its tyre is ``.tyre()``.
+
+        Datum: the axle at the hub tip, +Z along the axle away from the
+        motor; place it on the motor's shaft axis with the motor's
+        direction, at least the motor's ``spec['boss_height_mm']`` out from
+        its shaft datum so the hub clears the boss, and the bore seats on
+        the shaft. The body is the wheel as Pololu's STEP model measures it
+        (ADR-489): hub tube, flange with its six holes, six spokes each a
+        pair of ribs, and the rim the tyre sits on, spoke 0 along local +X
+        before ``roll_degrees``. The bore is cut round: its D flat is not
+        modelled, so a wheel joint sweeps clean round the motor's D shaft.
+        ``.tyre()`` is the silicone tyre, a second body and a second
+        component. ``spec['density_kg_m3']`` is the wheel's share of the
+        stated mass over its body. Cut ``.bay()`` from anything near it.
+        """
+        spec = catalog.wheel_spec(sku)
+        part = self._part
+        hub, width = spec["hub_protrusion_mm"], spec["width_mm"]
+        centre = hub + width / 2.0
+        flange_t = spec["hub_flange_thickness_mm"]
+        depth, rib, pitch = (spec[k] for k in (
+            "spoke_depth_mm", "spoke_rib_width_mm", "spoke_rib_pitch_mm"))
+        rim_in, rim = spec["rim_inner_dia_mm"] / 2.0, spec["rim_dia_mm"] / 2.0
+        hole_r = spec["hub_hole_circle_dia_mm"] / 2.0
+        hub_r = spec["hub_dia_mm"] / 2.0
+        # One spoke along +X: a root block over the hub holes, two ribs, and
+        # a block that widens into the rim, as the STEP model's sections read.
+        spoke = [
+            part.box(15.0 - 7.0, 6.6, flange_t - 0.2, origin=(7.0, -3.3, centre - (flange_t - 0.2) / 2.0)),
+            part.box(31.0 - 14.0, rib, depth, origin=(14.0, pitch / 2.0 - rib / 2.0, centre - depth / 2.0)),
+            part.box(31.0 - 14.0, rib, depth, origin=(14.0, -pitch / 2.0 - rib / 2.0, centre - depth / 2.0)),
+            part.box(rim_in + 0.5 - 30.5, 4.6, width - 2.0, origin=(30.5, -2.3, hub + 1.0)),
+        ]
+        solids = [
+            part.cylinder(hub_r, spec["hub_tube_length_mm"]),
+            part.cone(hub_r, 5.0, centre - flange_t / 2.0 - hub, origin=(0.0, 0.0, hub)),
+            part.cylinder(spec["hub_flange_dia_mm"] / 2.0, flange_t,
+                          origin=(0.0, 0.0, centre - flange_t / 2.0)),
+            part.cut(part.cylinder(rim, width, origin=(0.0, 0.0, hub)),
+                     [part.cylinder(rim_in, width + 2.0, origin=(0.0, 0.0, hub - 1.0))]),
+        ]
+        step = 360.0 / spec["spoke_count"]
+        holes = []
+        for index in range(spec["spoke_count"]):
+            angle = index * step
+            solids.extend(part.transform(block, rotation_degrees=angle) for block in spoke)
+            theta = math.radians(angle)
+            holes.append(part.cylinder(spec["hub_hole_dia_mm"] / 2.0, width + 4.0,
+                                       origin=(hole_r * math.cos(theta), hole_r * math.sin(theta), -1.0)))
+        # The bore is round, not D (ADR-487): the shaft turns with the wheel,
+        # and a round bore about the axis reads the same at every angle, so
+        # a sweep of the wheel joint measures the static shaft as if it
+        # turned. The flat is a torque key, not a fit; it stays in the spec.
+        holes.append(part.cylinder(spec["bore_dia_mm"] / 2.0, spec["bore_depth_mm"] + 1.0,
+                                   origin=(0.0, 0.0, -1.0)))
+        body = part.cut(part.fuse(solids), holes, label=label)
+        frame = self._frame("wheel", origin, direction, roll_degrees)
+        return WheelPart(self, sku.strip().lower(),
+                         self._place_frame("wheel", body, frame), spec, frame)
+
+    def foot_pad(
+        self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> FootPadPart:
+        """A catalogued screw-on rubber foot, standing on its mounting face.
+
+        Datum: the centre of the mounting face, +Z towards the floor (aim
+        ``direction`` at the ground). The body is the tapered pad with its
+        screw hole and the floor-side counterbore the screw head sits in.
+        Cut ``.bay()`` from the printed foot: it adds the clearance and the
+        tapping hole the screw takes. ``spec['screw']`` names the screw.
+        """
+        spec = catalog.foot_pad_spec(sku)
+        part = self._part
+        height = spec["height_mm"]
+        cbore = spec["counterbore_depth_mm"]
+        pad = part.cone(spec["top_dia_mm"] / 2.0, spec["base_dia_mm"] / 2.0, height)
+        holes = [
+            part.cylinder(spec["screw_hole_dia_mm"] / 2.0, height + 2.0, origin=(0.0, 0.0, -1.0)),
+            part.cylinder(spec["counterbore_dia_mm"] / 2.0, cbore + 1.0,
+                          origin=(0.0, 0.0, height - cbore)),
+        ]
+        body = part.cut(pad, holes, label=label)
+        frame = self._frame("foot_pad", origin, direction, roll_degrees)
+        return FootPadPart(self, sku.strip().lower(),
+                           self._place_frame("foot_pad", body, frame), spec, frame)
 
     def joint(
         self, sku: str, *, tilt_degrees: float = 0.0,
@@ -1132,9 +1548,11 @@ class LibraryAPI:
                                      origin=(x, y, -1))
                  for x, y in spec["mount_holes"]]
         body = self._part.cut(body, holes, label=label)
+        frame = self._frame("bldc", origin, direction, roll_degrees)
         return LibraryPart("bldc", sku.strip().lower(),
-                           self._place("bldc", body, origin, direction, roll_degrees),
-                           spec)
+                           self._place_frame("bldc", body, frame), spec,
+                           _frame_axes(frame, [((x, y, 0.0), (0.0, 0.0, 1.0))
+                                               for x, y in spec["mount_holes"]]))
 
     # -- boards ------------------------------------------------------------
 
@@ -1196,6 +1614,9 @@ class LibraryAPI:
 
         operation = "servo"
         spec = catalog.servo_spec(sku)
+        if spec.get("mount_style") == "case_holes":
+            return self._case_held_servo(sku, spec, origin, direction,
+                                         roll_degrees, label)
         length = spec["body_length_mm"]
         width = spec["body_width_mm"]
         height = spec["case_height_mm"]
@@ -1261,6 +1682,58 @@ class LibraryAPI:
             spec,
             frame_placement,
         )
+
+    def _case_held_servo(self, sku, spec, origin, direction, roll_degrees,
+                         label) -> ServoPart:
+        """A tab-less bus servo: the same frame, held by holes in its case.
+
+        Case top is the output face (z = 0) and the rear face is at
+        ``-case_height_mm``; the rear idler boss stands below it on the
+        shaft axis. Each face's holes are blind bores of the stated
+        diameter, and ``spec['mount_points']`` lists every one with the
+        axis a screw enters it along.
+        """
+        operation = "servo"
+        length, width, height = (spec[k] for k in
+                                 ("body_length_mm", "body_width_mm", "case_height_mm"))
+        front = spec["shaft_offset_from_front_mm"]
+        spline_radius = spec["spline_dia_mm"] / 2.0
+        boss_radius = spec["rear_boss_dia_mm"] / 2.0
+        boss_height = spec["rear_boss_height_mm"]
+        radius, depth = spec["hole_dia_mm"] / 2.0, spec["hole_depth_mm"]
+        part = self._part
+        case = part.box(length, width, height, origin=(front - length, -width / 2.0, -height))
+        spline = part.cylinder(spline_radius, spec["spline_height_mm"])
+        boss = part.cylinder(boss_radius, boss_height, origin=(0.0, 0.0, -height - boss_height))
+        points, drills = [], []
+        for row in spec["mount_faces"]:
+            output = row["face"] == "output"
+            face_z = 0.0 if output else -height
+            for x in row["x_from_axis_mm"]:
+                for y in row["y_mm"]:
+                    points.append({"face": row["face"], "origin": [x, y, face_z],
+                                   "axis": [0.0, 0.0, -1.0 if output else 1.0],
+                                   "hole_dia": spec["hole_dia_mm"],
+                                   "thread": spec["mount_thread"]})
+                    drills.append(part.cylinder(
+                        radius, depth + 1.0,
+                        origin=(x, y, -depth if output else -height - 1.0)))
+        body = part.cut(part.fuse([case, spline, boss]), drills, label=label)
+        volume_mm3 = (length * width * height
+                      + math.pi * spline_radius ** 2 * spec["spline_height_mm"]
+                      + math.pi * boss_radius ** 2 * boss_height
+                      - len(drills) * math.pi * radius ** 2 * depth)
+        spec["mount_points"] = points
+        spec["mount_holes"] = [p["origin"][:2] for p in points if p["face"] == "output"]
+        spec["mount_hole_z_mm"] = 0.0
+        spec["stall_torque_nmm"] = [
+            {"volts": entry["volts"], "nmm": entry["kg_cm"] * catalog.KG_CM_TO_NMM}
+            for entry in spec["stall_torque"]
+        ]
+        spec["effective_density_kg_m3"] = spec["mass_g"] * 1.0e6 / volume_mm3
+        frame = self._frame(operation, origin, direction, roll_degrees)
+        return ServoPart(self, catalog.normalise_servo_sku(sku),
+                         self._place_frame(operation, body, frame), spec, frame)
 
     def _servo_horn(
         self, servo: ServoPart, style: str, roll_degrees: float, label: str
@@ -1622,6 +2095,8 @@ def create_library_api(part_api: Any, assembly_api: Any = None) -> LibraryAPI:
     # One staging per run, so the side table is emptied here rather than
     # carried across scripts by a module that outlives one of them.
     _CATALOG_IDENTITY.clear()
+    _MOUNT_AXES.clear()
+    _BAY_OF.clear()
     return LibraryAPI(part_api, assembly_api)
 
 
@@ -1666,6 +2141,7 @@ def library_listing() -> dict[str, Any]:
             "rather than measuring the shank. A servo, battery or board is "
             "housed, not bolted on: cut its .bay() -- its extents plus "
             "clearance and lead room, placed with it -- from the part that "
-            "carries it."
+            "carries it. A wheel's .bay() is the disc it sweeps; a foot "
+            "pad's also drills its screw's hole."
         ),
     }

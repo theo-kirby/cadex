@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "e8280edb688db837ae44207d12345e987795fd51ac636c3f8785b43d371a54e0"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "cb64f8295c593ffd4b3677780dcd251fb099a684556bef2e2230fb282ef5235b"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "a366e16cdb4cb53640f6fab10a394822016113841695c641f275f77fbeddac9c"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "9c283e9e06cf7ef7e205d13d1117b041f5d2ae06e9b227b88058e8ac957439e0"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "6ba929a31d9fad5d8706e604d38ff1c806479800e8d925e23b00ed92db59710b"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "5c23c6b6d4c4c95bc932fa318e190f74a624f5065996d54dfb5bd2d8f823a753"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 2,
+    "T3": 2,
+    "T4": 2,
+    "T5": 3,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 15,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "Cream rounded shells cover the body and hip pods with no servo cases showing, but the hip pods sit as separate floating blocks with visible gaps rather than one continuous enclosure."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "A cream shell colour and a dark colour are applied consistently, and the single orange accent is used deliberately on the eyes, but the joints and legs are also cream, so the dark colour does not mark the mechanism."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The hip pitch axes are round cylindrical bosses and the knees are small rounded knuckles, so most joints read as round features, but the hips and knees are styled differently and the hip yaw axes are hidden under boxy pods."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as soft rounded boxes with a spherical head and generous radii, and the legs taper, but the segments and pods stay separate stacked primitives rather than merging into one form."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A spherical head with a dark visor and two orange eyes gives a clear focal face and front, and the hexapod bug silhouette is recognisable at a glance."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The legs taper cleanly down to distinct black ball feet, and the six-legged stance looks balanced and intentional around a reasonably compact body."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The renders are smoothly shaded and antialiased with good three-quarter angles, but they sit on a dark CAD grid floor with no seamless studio backdrop or soft contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"Cream rounded shells cover the body and hip pods with no servo cases showing, but the hip pods sit as separate floating blocks with visible gaps rather than one continuous enclosure.\"}, \"T2\": {\"score\": 2, \"reason\": \"A cream shell colour and a dark colour are applied consistently, and the single orange accent is used deliberately on the eyes, but the joints and legs are also cream, so the dark colour does not mark the mechanism.\"}, \"T3\": {\"score\": 2, \"reason\": \"The hip pitch axes are round cylindrical bosses and the knees are small rounded knuckles, so most joints read as round features, but the hips and knees are styled differently and the hip yaw axes are hidden under boxy pods.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as soft rounded boxes with a spherical head and generous radii, and the legs taper, but the segments and pods stay separate stacked primitives rather than merging into one form.\"}, \"T5\": {\"score\": 3, \"reason\": \"A spherical head with a dark visor and two orange eyes gives a clear focal face and front, and the hexapod bug silhouette is recognisable at a glance.\"}, \"T6\": {\"score\": 3, \"reason\": \"The legs taper cleanly down to distinct black ball feet, and the six-legged stance looks balanced and intentional around a reasonably compact body.\"}, \"T7\": {\"score\": 2, \"reason\": \"The renders are smoothly shaded and antialiased with good three-quarter angles, but they sit on a dark CAD grid floor with no seamless studio backdrop or soft contact shadow.\"}}",
+      "session_id": "a19cc2af-6911-42fb-a2f9-85c56e301dab",
+      "duration_ms": 25303,
+      "num_turns": 17,
+      "total_cost_usd": 0.13126939999999998,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2834,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.13126939999999998,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 995,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "The body is a continuous cream shell, but the hip servos sit in separate box-like pods that hang below the body and read as covered servo blocks rather than merging into the shell."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "Cream shell, dark grey-black and an orange accent are used with clear intent, and the accent is on the eyes, but the joints and legs are also cream, so the dark colour doesn't consistently mark the mechanism."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The knees are small round knobs and most hip pods end in cylindrical caps on their axes, but the joints don't share one style and some pods are plain boxes."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The radii are generous, but the robot reads as two joined rounded boxes and a sphere, with thin rod legs and separate floating pods that don't merge into one form."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The dark visor with two orange eyes gives a clear focal face and front, and the insect silhouette is easy to recognise."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The legs taper to distinct dark ball feet, but the body is a long two-segment shape rather than compact, and the spindly legs and hanging pods make the stance look less intentional."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The images are lit and antialiased and curvature reads, but they sit on a dark grid floor with no seamless backdrop or contact shadow, and the hero view is a high rather than low three-quarter angle."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"The body is a continuous cream shell, but the hip servos sit in separate box-like pods that hang below the body and read as covered servo blocks rather than merging into the shell.\"}, \"T2\": {\"score\": 2, \"reason\": \"Cream shell, dark grey-black and an orange accent are used with clear intent, and the accent is on the eyes, but the joints and legs are also cream, so the dark colour doesn't consistently mark the mechanism.\"}, \"T3\": {\"score\": 2, \"reason\": \"The knees are small round knobs and most hip pods end in cylindrical caps on their axes, but the joints don't share one style and some pods are plain boxes.\"}, \"T4\": {\"score\": 1, \"reason\": \"The radii are generous, but the robot reads as two joined rounded boxes and a sphere, with thin rod legs and separate floating pods that don't merge into one form.\"}, \"T5\": {\"score\": 3, \"reason\": \"The dark visor with two orange eyes gives a clear focal face and front, and the insect silhouette is easy to recognise.\"}, \"T6\": {\"score\": 2, \"reason\": \"The legs taper to distinct dark ball feet, but the body is a long two-segment shape rather than compact, and the spindly legs and hanging pods make the stance look less intentional.\"}, \"T7\": {\"score\": 2, \"reason\": \"The images are lit and antialiased and curvature reads, but they sit on a dark grid floor with no seamless backdrop or contact shadow, and the hero view is a high rather than low three-quarter angle.\"}}",
+      "session_id": "abdfeacb-6f38-4277-8836-7df7255b8381",
+      "duration_ms": 27953,
+      "num_turns": 17,
+      "total_cost_usd": 0.136384,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 3095,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.136384,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 1293,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous shell made of two rounded body segments and a head encloses the body hardware, but the hip servos sit in separate cream pods that hang below the body with visible gaps, so the mechanism does not show only as deliberate dark bands or rings."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "The cream shell, dark feet and visor, and orange eyes on the face are disciplined, but the joints and hip pods are cream rather than a dark mechanism colour, so the dark is not consistently applied by role."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Most axes read as round features (cylindrical end caps on the hip pods and small spherical knee knobs), but these are not one consistent treatment across all joints."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body is soft rounded boxes with generous radii and the legs are tapered, but the body splits into two blocks plus a head and the hip pods are separate rounded boxes, so the parts do not merge into one continuous form."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A dark visor with two orange eyes on a spherical head gives an unmistakable front and character, and the beetle-like silhouette reads at a glance."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The legs taper to distinct black ball feet, but the long body, spindly sprawling legs and dangling hip pods keep the stance from reading as compact and balanced."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The render is cleanly lit with antialiased edges from a good three-quarter angle, but it sits on a dark CAD grid with no seamless backdrop and no soft contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous shell made of two rounded body segments and a head encloses the body hardware, but the hip servos sit in separate cream pods that hang below the body with visible gaps, so the mechanism does not show only as deliberate dark bands or rings.\"}, \"T2\": {\"score\": 2, \"reason\": \"The cream shell, dark feet and visor, and orange eyes on the face are disciplined, but the joints and hip pods are cream rather than a dark mechanism colour, so the dark is not consistently applied by role.\"}, \"T3\": {\"score\": 2, \"reason\": \"Most axes read as round features (cylindrical end caps on the hip pods and small spherical knee knobs), but these are not one consistent treatment across all joints.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body is soft rounded boxes with generous radii and the legs are tapered, but the body splits into two blocks plus a head and the hip pods are separate rounded boxes, so the parts do not merge into one continuous form.\"}, \"T5\": {\"score\": 3, \"reason\": \"A dark visor with two orange eyes on a spherical head gives an unmistakable front and character, and the beetle-like silhouette reads at a glance.\"}, \"T6\": {\"score\": 2, \"reason\": \"The legs taper to distinct black ball feet, but the long body, spindly sprawling legs and dangling hip pods keep the stance from reading as compact and balanced.\"}, \"T7\": {\"score\": 2, \"reason\": \"The render is cleanly lit with antialiased edges from a good three-quarter angle, but it sits on a dark CAD grid with no seamless backdrop and no soft contact shadow.\"}}",
+      "session_id": "6e3cd9d5-9279-4ac3-acf8-c830c2cc37fe",
+      "duration_ms": 28080,
+      "num_turns": 17,
+      "total_cost_usd": 0.135504,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 3051,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.135504,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 1209,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "hexapod-f-creature",
+  "receipt": {
+    "project": "orun1-ho-hexapod-f-creature",
+    "accepted_revision": "ccb89429bbde2cf04c494ea197c621236029fe49ae0e9718a7794c230241df68",
+    "look_revision": "ccb89429bbde2cf04c494ea197c621236029fe49ae0e9718a7794c230241df68",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "021c5cf7be416267c6dfe76f5953405fe167db7c58c0c9bbd897eb3d2f72137d"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "a0a0de747e89cb1a0cc457e5d58adaf00f7fbf456391d8ac0140e14b654977ac"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "818def42950b5e40937a71b65134fcbfb8daf04b735a54940ededca3dbb03f70"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "be70f6bef385e076d520240978a8edeb7d2cc6e04fbb7c56a18b030ad8a7acdd"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "d02b7c6ba252cca0e9a0f4a83e9483b0f970e76752670e91362fddad07d70e2a"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "f801d3f3f05475420db11d94543d35c7eb58d5cfafb32376a76fc99f693a4475"
+    }
+  ],
+  "medians": {
+    "T1": 3,
+    "T2": 3,
+    "T3": 2,
+    "T4": 2,
+    "T5": 3,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 17,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous white sphere and cylinder hide every servo and board, and the mechanism shows only as the dark yoke and turntable ring."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The white shell and dark charcoal mechanism are applied by role, and the only saturated accent is the orange pupil on the face."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The pan axis is a deliberate concentric dark ring, but the tilt axis shows only as a small screw-like hole on the rounded yoke cheek, so the joints are not the same feature."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The sphere head and filleted cylinder base are soft primitives with generous radii, but the yoke is a constant-section plate and the parts sit separately instead of merging."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The large dark eye disc with its orange pupil gives a clear front and character at a glance, in a recognisable camera-bot silhouette."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and balanced, and the base has a distinct dark foot band, but there are no tapering limbs."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The lighting reads the curvature, and the three-quarter views are good, but the backdrop is a dark CAD grid with no contact shadow or studio polish."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 3, \"reason\": \"A continuous white sphere and cylinder hide every servo and board, and the mechanism shows only as the dark yoke and turntable ring.\"},\n \"T2\": {\"score\": 3, \"reason\": \"The white shell and dark charcoal mechanism are applied by role, and the only saturated accent is the orange pupil on the face.\"},\n \"T3\": {\"score\": 2, \"reason\": \"The pan axis is a deliberate concentric dark ring, but the tilt axis shows only as a small screw-like hole on the rounded yoke cheek, so the joints are not the same feature.\"},\n \"T4\": {\"score\": 2, \"reason\": \"The sphere head and filleted cylinder base are soft primitives with generous radii, but the yoke is a constant-section plate and the parts sit separately instead of merging.\"},\n \"T5\": {\"score\": 3, \"reason\": \"The large dark eye disc with its orange pupil gives a clear front and character at a glance, in a recognisable camera-bot silhouette.\"},\n \"T6\": {\"score\": 2, \"reason\": \"The body is compact and balanced, and the base has a distinct dark foot band, but there are no tapering limbs.\"},\n \"T7\": {\"score\": 2, \"reason\": \"The lighting reads the curvature, and the three-quarter views are good, but the backdrop is a dark CAD grid with no contact shadow or studio polish.\"}}\n```",
+      "session_id": "b439c532-1aba-4704-8caf-ef480fcd5d6e",
+      "duration_ms": 22851,
+      "num_turns": 17,
+      "total_cost_usd": 0.1265386,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2608,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1265386,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 860,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous white spherical head and cylindrical base hide every servo and board, and the only visible mechanism is the deliberate dark yoke, turntable ring and base band."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Off-white shell and charcoal mechanism are applied consistently by role, and the only saturated accent is the orange pupil on the face."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The pan axis is a clean concentric dark ring and the tilt axis sits in the round-topped yoke ends, but the tilt pivot shows only as a small screw hole instead of a matching cap."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The head is a soft sphere and the base a generously filleted cylinder, but the yoke arms are filleted flat plates and the parts sit stacked rather than merging into one form."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The large dark eye disc with its orange pupil gives a clear front and character at a glance, with a recognisable one-eyed silhouette."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and balanced and ends in a distinct dark foot band, but the base is a uniform cylinder with no taper towards the ground."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Smooth lighting shows the curvature with clean antialiased edges and a good three-quarter view, but the dark grid floor is not a seamless studio backdrop and there is no contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A continuous white spherical head and cylindrical base hide every servo and board, and the only visible mechanism is the deliberate dark yoke, turntable ring and base band.\"}, \"T2\": {\"score\": 3, \"reason\": \"Off-white shell and charcoal mechanism are applied consistently by role, and the only saturated accent is the orange pupil on the face.\"}, \"T3\": {\"score\": 2, \"reason\": \"The pan axis is a clean concentric dark ring and the tilt axis sits in the round-topped yoke ends, but the tilt pivot shows only as a small screw hole instead of a matching cap.\"}, \"T4\": {\"score\": 2, \"reason\": \"The head is a soft sphere and the base a generously filleted cylinder, but the yoke arms are filleted flat plates and the parts sit stacked rather than merging into one form.\"}, \"T5\": {\"score\": 3, \"reason\": \"The large dark eye disc with its orange pupil gives a clear front and character at a glance, with a recognisable one-eyed silhouette.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and balanced and ends in a distinct dark foot band, but the base is a uniform cylinder with no taper towards the ground.\"}, \"T7\": {\"score\": 2, \"reason\": \"Smooth lighting shows the curvature with clean antialiased edges and a good three-quarter view, but the dark grid floor is not a seamless studio backdrop and there is no contact shadow.\"}}",
+      "session_id": "c8dadc95-6d04-4ac5-99b4-6d3c5a33d317",
+      "duration_ms": 22493,
+      "num_turns": 17,
+      "total_cost_usd": 0.1262386,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2593,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1262386,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 815,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous white sphere and a cylindrical base hide every servo and board, and the mechanism shows only as the dark yoke, the dark turntable ring and the dark base band."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "White shell and dark grey mechanism are applied consistently by role, with one saturated orange accent placed on the face."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The pan axis is a clean dark ring concentric with the base, but the tilt axis shows only as a small screw hole in the arched yoke, so the two joints are not styled the same way."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The head and base are soft primitives with generous radii, but the yoke is a flat plate of constant thickness, the sphere has a flat-cut side, and the parts sit stacked rather than merging."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The large dark eye disc with an orange pupil gives a clear focal face and a front at a glance, and the silhouette is easy to recognise."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and balanced, and the dark band gives the base a distinct foot, but there are no limbs and the yoke uprights are a uniform section with no taper."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Lighting brings out the curvature and the three-quarter angles are good, but the backdrop is a dark CAD grid with no contact shadow or studio polish."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A continuous white sphere and a cylindrical base hide every servo and board, and the mechanism shows only as the dark yoke, the dark turntable ring and the dark base band.\"}, \"T2\": {\"score\": 3, \"reason\": \"White shell and dark grey mechanism are applied consistently by role, with one saturated orange accent placed on the face.\"}, \"T3\": {\"score\": 2, \"reason\": \"The pan axis is a clean dark ring concentric with the base, but the tilt axis shows only as a small screw hole in the arched yoke, so the two joints are not styled the same way.\"}, \"T4\": {\"score\": 2, \"reason\": \"The head and base are soft primitives with generous radii, but the yoke is a flat plate of constant thickness, the sphere has a flat-cut side, and the parts sit stacked rather than merging.\"}, \"T5\": {\"score\": 3, \"reason\": \"The large dark eye disc with an orange pupil gives a clear focal face and a front at a glance, and the silhouette is easy to recognise.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and balanced, and the dark band gives the base a distinct foot, but there are no limbs and the yoke uprights are a uniform section with no taper.\"}, \"T7\": {\"score\": 2, \"reason\": \"Lighting brings out the curvature and the three-quarter angles are good, but the backdrop is a dark CAD grid with no contact shadow or studio polish.\"}}",
+      "session_id": "3e3d2287-5383-4844-a8be-811d2d18fc2d",
+      "duration_ms": 26177,
+      "num_turns": 17,
+      "total_cost_usd": 0.12326400000000001,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2439,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.12326400000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 663,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "wildcard-g-minimal",
+  "receipt": {
+    "project": "orun1-ho-wildcard-g-minimal",
+    "accepted_revision": "a01bf5aa5f5fe405baf1a142e11f5423bf6949ce5f548021550210a8f5890395",
+    "look_revision": "a01bf5aa5f5fe405baf1a142e11f5423bf6949ce5f548021550210a8f5890395",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

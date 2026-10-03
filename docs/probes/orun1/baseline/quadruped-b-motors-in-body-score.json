@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "4da9e355b49354bad4761954ee3d75e01589a0d8e59f82bc887c4ccf6af6aeb4"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "fc2ae005fdaa52a511ca0013212bee5e3eea99806b2cdf40553da57df1ad5fe7"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "a67c6e181dfdd4ac4a059f4f297edbdfefd354af2f0a9522d7e2e389426fcb68"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "863a91828076d3e6f69b949b187e7b2142be2e965bd5f311d41e274455bcba35"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "0612eaf33b59ee8c7b3c4fb5847d4f139e0d902444f49afdeeb2a74437bb4971"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "c8dd4f94e231baf848ac170264516f8a127425f0a503b7e4f1b0a598c1824946"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 3,
+    "T3": 2,
+    "T4": 2,
+    "T5": 2,
+    "T6": 3,
+    "T7": 2
+  },
+  "total": 16,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded shell encloses the body and the hip servos are hidden behind dark caps, but servo-horn tabs, clevis pins and push-rods are exposed on the legs."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The palette is cream for the shell and charcoal for the mechanism, with one saturated orange accent used only on the feet and eyes."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The hip axes are large round dark bosses, but the knees and rod ends are small pinned clevises with visible horn arms, so the joints are not the same throughout."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one generously rounded box, but the limbs are thin bars and links, and the joint discs sit on the shell rather than merging into it."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "There is a dark visor with two orange eyes, but it sits on a short end of a plain box and is hard to see from the hero angle, so the silhouette has little character."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The body is compact, and the legs taper to distinct orange ball feet in a balanced, intentional four-legged stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The lighting shows the curvature well from a good three-quarter angle with clean edges, but the grid floor is not a seamless studio backdrop and there is no soft contact shadow."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded shell encloses the body and the hip servos are hidden behind dark caps, but servo-horn tabs, clevis pins and push-rods are exposed on the legs.\"},\n\"T2\": {\"score\": 3, \"reason\": \"The palette is cream for the shell and charcoal for the mechanism, with one saturated orange accent used only on the feet and eyes.\"},\n\"T3\": {\"score\": 2, \"reason\": \"The hip axes are large round dark bosses, but the knees and rod ends are small pinned clevises with visible horn arms, so the joints are not the same throughout.\"},\n\"T4\": {\"score\": 2, \"reason\": \"The body reads as one generously rounded box, but the limbs are thin bars and links, and the joint discs sit on the shell rather than merging into it.\"},\n\"T5\": {\"score\": 2, \"reason\": \"There is a dark visor with two orange eyes, but it sits on a short end of a plain box and is hard to see from the hero angle, so the silhouette has little character.\"},\n\"T6\": {\"score\": 3, \"reason\": \"The body is compact, and the legs taper to distinct orange ball feet in a balanced, intentional four-legged stance.\"},\n\"T7\": {\"score\": 2, \"reason\": \"The lighting shows the curvature well from a good three-quarter angle with clean edges, but the grid floor is not a seamless studio backdrop and there is no soft contact shadow.\"}}\n```",
+      "session_id": "d03640d5-9b91-4306-ac7a-f786887b38e0",
+      "duration_ms": 21887,
+      "num_turns": 17,
+      "total_cost_usd": 0.12299860000000001,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2431,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.12299860000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 671,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous rounded white shell hides the body's servos and boards, but the exposed horn arms and pushrod linkages on the sides are more than just deliberate joint bands."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "White shell and dark grey mechanism are applied consistently by role, and a single orange accent is placed deliberately on the feet and the eyes."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The hip axes are large round dark bosses concentric with their axes, but the knee and pushrod pivots are small pins and the crank horns are rectangular arms, so the joints are not uniform."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one generously radiused rounded box and the legs are tapered, but the pushrods are constant-section bars and the parts are assembled rather than merged."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor with two orange eyes gives a clear face in the front view, but on the hero angle it is a small panel on the end of a long generic box."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "A compact body stands on legs that taper to distinct orange ball feet, giving a balanced, intentional four-legged stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The render is shaded so curvature reads, with clean antialiased edges and a good three-quarter view, but it sits on a dark grid floor with no seamless backdrop or soft contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous rounded white shell hides the body's servos and boards, but the exposed horn arms and pushrod linkages on the sides are more than just deliberate joint bands.\"}, \"T2\": {\"score\": 3, \"reason\": \"White shell and dark grey mechanism are applied consistently by role, and a single orange accent is placed deliberately on the feet and the eyes.\"}, \"T3\": {\"score\": 2, \"reason\": \"The hip axes are large round dark bosses concentric with their axes, but the knee and pushrod pivots are small pins and the crank horns are rectangular arms, so the joints are not uniform.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one generously radiused rounded box and the legs are tapered, but the pushrods are constant-section bars and the parts are assembled rather than merged.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark visor with two orange eyes gives a clear face in the front view, but on the hero angle it is a small panel on the end of a long generic box.\"}, \"T6\": {\"score\": 3, \"reason\": \"A compact body stands on legs that taper to distinct orange ball feet, giving a balanced, intentional four-legged stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"The render is shaded so curvature reads, with clean antialiased edges and a good three-quarter view, but it sits on a dark grid floor with no seamless backdrop or soft contact shadow.\"}}",
+      "session_id": "3212914a-6744-4dda-99f4-9f67331c8902",
+      "duration_ms": 25846,
+      "num_turns": 17,
+      "total_cost_usd": 0.12210939999999999,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2376,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.12210939999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 594,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous white rounded shell hides all the servos and boards, and the only visible mechanism is dark hip discs, linkage bars and pin joints."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The robot uses a warm white shell and a dark charcoal mechanism by role, plus one saturated orange accent placed only on the eyes and the ball feet."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The hip axes are large round dark bosses, but the small crank arms on the discs read like servo horns and the knee and linkage pins are smaller and styled differently."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as one generously filleted rounded box, but the limbs are thin separate bars and links that do not merge into the body."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A dark visor with two orange eyes on the front end gives a clear focal face and an obvious front, especially in the head-on view."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The lower legs taper to distinct orange ball feet under a compact body, and the four-legged stance reads as balanced and intentional."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Smooth antialiased shading shows the curvature from a good three-quarter angle, but it sits on a dark grid floor rather than a seamless studio backdrop and has no soft contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A continuous white rounded shell hides all the servos and boards, and the only visible mechanism is dark hip discs, linkage bars and pin joints.\"}, \"T2\": {\"score\": 3, \"reason\": \"The robot uses a warm white shell and a dark charcoal mechanism by role, plus one saturated orange accent placed only on the eyes and the ball feet.\"}, \"T3\": {\"score\": 2, \"reason\": \"The hip axes are large round dark bosses, but the small crank arms on the discs read like servo horns and the knee and linkage pins are smaller and styled differently.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as one generously filleted rounded box, but the limbs are thin separate bars and links that do not merge into the body.\"}, \"T5\": {\"score\": 3, \"reason\": \"A dark visor with two orange eyes on the front end gives a clear focal face and an obvious front, especially in the head-on view.\"}, \"T6\": {\"score\": 3, \"reason\": \"The lower legs taper to distinct orange ball feet under a compact body, and the four-legged stance reads as balanced and intentional.\"}, \"T7\": {\"score\": 2, \"reason\": \"Smooth antialiased shading shows the curvature from a good three-quarter angle, but it sits on a dark grid floor rather than a seamless studio backdrop and has no soft contact shadow.\"}}",
+      "session_id": "4edbe9f9-ea9e-46af-abb4-7353b81d9149",
+      "duration_ms": 35712,
+      "num_turns": 17,
+      "total_cost_usd": 0.1258386,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2573,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1258386,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 829,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "quadruped-b-motors-in-body",
+  "receipt": {
+    "project": "orun1-ho-quadruped-b-motors-in-body",
+    "accepted_revision": "bde154d147f9e1e415c5e1efa66aef0bd37a801815229baba446197e2ed2c63d",
+    "look_revision": "bde154d147f9e1e415c5e1efa66aef0bd37a801815229baba446197e2ed2c63d",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

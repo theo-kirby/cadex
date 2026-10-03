@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "a500b8af372fe9b8e1f205b4b677334cc8f93674e9f62ff212ac1bb8ed1f1c4d"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "bde5d34c3939cde46663838bb2d8c414d8a80022054c52c337c89c08871407f1"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "89c794adbee1989c11bd3e4920944a46b0fcbc3723c22667b396b89f0f26a6e7"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "6e12b24049809ec348d9d96a09b23f05238059d663195b672eb58c9bda924054"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "da141dfdf4fc2a903e60d2593972aa45f7a125f1c696122e6c260ef466e0832c"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "7abb94b30c4fe9f258507279bced42c34440f54ad5bff013874fad55a9363c38"
+    }
+  ],
+  "medians": {
+    "T1": 3,
+    "T2": 3,
+    "T3": 3,
+    "T4": 1,
+    "T5": 2,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 16,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous cream shell hides every servo and board, and the mechanism shows only as the dark base band, side panels and tyres."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The cream shell and dark grey mechanism are applied by role, with one saturated orange accent used only on the wheel hub caps and the face slot."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "Both rotation axes (the wheel axles) end in matching round orange hub caps concentric with the axle, so every joint is a deliberate, consistent feature."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a rectangular box with flat chamfered edges instead of large radii, so it reads as plates and a box rather than a soft primitive."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor panel with an orange slot gives the robot a front, but it reads as a generic panel, and the boxy silhouette has little character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The column body is compact, and the tyred wheels act as distinct ground contacts, but nothing tapers and the tall narrow stance looks utilitarian."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Shading is clean and antialiased in a three-quarter view, but the dark CAD grid backdrop, high camera angle, faint shadow and flat orthographic views fall short of a studio hero shot."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A continuous cream shell hides every servo and board, and the mechanism shows only as the dark base band, side panels and tyres.\"}, \"T2\": {\"score\": 3, \"reason\": \"The cream shell and dark grey mechanism are applied by role, with one saturated orange accent used only on the wheel hub caps and the face slot.\"}, \"T3\": {\"score\": 3, \"reason\": \"Both rotation axes (the wheel axles) end in matching round orange hub caps concentric with the axle, so every joint is a deliberate, consistent feature.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a rectangular box with flat chamfered edges instead of large radii, so it reads as plates and a box rather than a soft primitive.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark visor panel with an orange slot gives the robot a front, but it reads as a generic panel, and the boxy silhouette has little character.\"}, \"T6\": {\"score\": 2, \"reason\": \"The column body is compact, and the tyred wheels act as distinct ground contacts, but nothing tapers and the tall narrow stance looks utilitarian.\"}, \"T7\": {\"score\": 2, \"reason\": \"Shading is clean and antialiased in a three-quarter view, but the dark CAD grid backdrop, high camera angle, faint shadow and flat orthographic views fall short of a studio hero shot.\"}}",
+      "session_id": "2678e621-4f51-4409-a0f4-5e05267bf000",
+      "duration_ms": 22329,
+      "num_turns": 17,
+      "total_cost_usd": 0.1268986,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2626,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1268986,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 874,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous cream shell encloses the whole body, and the mechanism shows only as the dark base band, dark side plates and the wheel hubs, with no servo or board visible."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Cream is the shell colour and charcoal is used for the mechanism and tyres, with a single orange accent placed on the wheel hub caps and the face slot."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "The only rotation axes, the two wheel axles, are shown as matching round orange hub caps centred on the axles, though the visible screw heads make them look slightly like hardware."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a tall rectangular box with chamfered rather than rounded edges and flat bolted-on plates, so it reads as a box, not a soft primitive."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "There is a front face panel with an orange visor slot, but it is a small, generic plate on a plain box, and the box-on-wheels silhouette has little character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the wheels are clearly separate ground contacts, but there are no limbs and nothing tapers, so the robot looks like a stack rather than a deliberate stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The renders are cleanly shaded and antialiased on a dark grid, but the views are high isometric or flat orthographic, with almost no contact shadow and no seamless studio backdrop."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 3, \"reason\": \"A continuous cream shell encloses the whole body, and the mechanism shows only as the dark base band, dark side plates and the wheel hubs, with no servo or board visible.\"}, \"T2\": {\"score\": 3, \"reason\": \"Cream is the shell colour and charcoal is used for the mechanism and tyres, with a single orange accent placed on the wheel hub caps and the face slot.\"}, \"T3\": {\"score\": 3, \"reason\": \"The only rotation axes, the two wheel axles, are shown as matching round orange hub caps centred on the axles, though the visible screw heads make them look slightly like hardware.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a tall rectangular box with chamfered rather than rounded edges and flat bolted-on plates, so it reads as a box, not a soft primitive.\"}, \"T5\": {\"score\": 2, \"reason\": \"There is a front face panel with an orange visor slot, but it is a small, generic plate on a plain box, and the box-on-wheels silhouette has little character.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the wheels are clearly separate ground contacts, but there are no limbs and nothing tapers, so the robot looks like a stack rather than a deliberate stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"The renders are cleanly shaded and antialiased on a dark grid, but the views are high isometric or flat orthographic, with almost no contact shadow and no seamless studio backdrop.\"}}\n```",
+      "session_id": "f3537f9b-0cd0-43ce-824d-a0357b3d4bfd",
+      "duration_ms": 21223,
+      "num_turns": 17,
+      "total_cost_usd": 0.12312400000000001,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2432,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.12312400000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 632,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous cream shell hides all the electronics and drive hardware, and the mechanism shows only as a dark lower band, dark side panels and the wheel hubs."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Cream shell and dark charcoal mechanism are used consistently by role, with one saturated orange accent placed on the face slot and the wheel hub caps."
+        },
+        "T3": {
+          "score": 3,
+          "reason": "The only rotation axes, the wheel axles, are both marked by matching round orange hub caps concentric with the axle."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a tall rectangular box with flat chamfered edges instead of large radii, so it reads as faceted plates, not a soft primitive."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark front panel with an orange visor slot works as a face, but it is generic and competes with the similar dark side panels, so the front is hard to read in the three-quarter view."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the wheels are distinct ground contacts, but there are no tapering limbs, and the tall upright box looks a little top-heavy."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Antialiased and shaded so the faces separate, on a clean dark grid from a three-quarter angle, but the view is high, there is no soft contact shadow and there is no studio backdrop."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A continuous cream shell hides all the electronics and drive hardware, and the mechanism shows only as a dark lower band, dark side panels and the wheel hubs.\"}, \"T2\": {\"score\": 3, \"reason\": \"Cream shell and dark charcoal mechanism are used consistently by role, with one saturated orange accent placed on the face slot and the wheel hub caps.\"}, \"T3\": {\"score\": 3, \"reason\": \"The only rotation axes, the wheel axles, are both marked by matching round orange hub caps concentric with the axle.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a tall rectangular box with flat chamfered edges instead of large radii, so it reads as faceted plates, not a soft primitive.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark front panel with an orange visor slot works as a face, but it is generic and competes with the similar dark side panels, so the front is hard to read in the three-quarter view.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the wheels are distinct ground contacts, but there are no tapering limbs, and the tall upright box looks a little top-heavy.\"}, \"T7\": {\"score\": 2, \"reason\": \"Antialiased and shaded so the faces separate, on a clean dark grid from a three-quarter angle, but the view is high, there is no soft contact shadow and there is no studio backdrop.\"}}",
+      "session_id": "c453baac-b3ef-4041-9ef6-8750b3008461",
+      "duration_ms": 20633,
+      "num_turns": 17,
+      "total_cost_usd": 0.12257320000000001,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2415,
+          "cacheReadInputTokens": 5646,
+          "cacheCreationInputTokens": 9141,
+          "webSearchRequests": 0,
+          "costUSD": 0.12257320000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 662,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "balancer-e-hard-surface",
+  "receipt": {
+    "project": "orun1-ho-balancer-e-hard-surface",
+    "accepted_revision": "78bed7669c5ba9a08bc0b28a6bcd8ead726735ce343e6cb297793624c85abee5",
+    "look_revision": "78bed7669c5ba9a08bc0b28a6bcd8ead726735ce343e6cb297793624c85abee5",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

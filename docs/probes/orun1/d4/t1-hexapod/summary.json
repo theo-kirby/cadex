@@ -1,0 +1,27 @@
+{
+  "schema": "orun1-versus-v1",
+  "version": "v2",
+  "model": "claude-opus-5-5",
+  "instructions_sha256": "0ebb596584eb1203a5706ab40c9e4799b24a0dbbf7d1d5a644eb1215d68708ab",
+  "category": "hexapod",
+  "design": "orun1-t1-hexapod-render",
+  "accepted_revision": "35193b3e8aaacf3537f2231e336505379ef20185fa940cd4e75fc75876b06112",
+  "hero_sha256": "84ec132967df3e4be2c027dff511cc72c1c18f9b2a38c54bb4737064924afbea",
+  "opponents": {
+    "hexapod-b-motors-in-body": "like",
+    "hexapod-c-exposed-mechanism": "like"
+  },
+  "won": [
+    "hexapod-b-motors-in-body"
+  ],
+  "lost": [
+    "hexapod-c-exposed-mechanism"
+  ],
+  "unjudged": [],
+  "majority": false,
+  "reasons": {
+    "hexapod-b-motors-in-body": "A is an ordered, exposed hexapod in which the servo joints, boards on the flat plate and tapered, load-bearing legs all look built for their job, while B pairs a soft, pillow-like lid that has a dark visor patch with thin wire legs and servos hanging loosely off a tray, which is close to the owner's most disliked archetype.",
+    "hexapod-c-exposed-mechanism": "A is the more resolved hexapod: it has an ordered two-deck chassis, a clear servo-bracket at each hip and tapered legs that look built to carry load, while B's crowded clusters of joints, oddly angled links and upturned segments make it look cluttered and arbitrary."
+  },
+  "cost_usd": 0.08
+}

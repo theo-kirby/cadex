@@ -37,6 +37,7 @@ reference/
 *.output
 *.pch
 *.pyc
+__pycache__/
 *.vcproj
 # Ignore .db files created by Qt Designer when editing .ui files
 *.db

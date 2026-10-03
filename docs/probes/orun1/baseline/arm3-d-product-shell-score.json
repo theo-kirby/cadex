@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "1f57355c9f29c8816da75fb82eac0b23b29df696d5257a31cc444b0ac4ff8886"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "ae5794ce0daa6c947170ec3390d9b9820eaef015eb60adc5441ea2eb0b4ebd97"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "642e417ff997fc16a1f4f125057c7b979be05da49bcde81f717079c38884cb9a"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "952d9ac303438a321af04b9ec3de72c52eea59f3a48f82c7a0a788b5637ce06c"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "5660a44d5e16a563ab6cdd5094a5d69833ab17111c494caa615e458c638f1ce3"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "914e5cc7046f190b4a5f91db9760cb158a242b4e11bcbbb3c8a95fcaae3b8158"
+    }
+  ],
+  "medians": {
+    "T1": 3,
+    "T2": 3,
+    "T3": 2,
+    "T4": 2,
+    "T5": 2,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 16,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "Continuous white shells (a domed base, a pill-shaped link and a tapered forearm) hide all servos and boards, and the only dark parts are the face visor and a ring at the base."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The palette is white shell plus dark charcoal for the visor and base ring, with one saturated orange accent placed only on the joint caps, the eyes and the tool tip."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The shoulder and elbow axes carry matching round orange caps, but the base yaw axis is shown only by the sphere sitting in the dome, so not every axis gets the same feature."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The dome base, sphere, pill link and cone forearm are soft forms with generous radii, but the link reads as two parallel plates joined by a sharp-edged block, and the forearm surface shows tessellation artefacts."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "There is a face (a dark visor with two orange eyes), but it sits low on the base and is small compared with the arm, so it does not give the robot an obvious front at a glance."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The base is compact and the forearm tapers to a distinct orange point, but the main link has a uniform section, so the limbs do not taper consistently."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The renders are well lit, antialiased and taken from good three-quarter angles, but they sit on a dark CAD grid backdrop with no contact shadow or studio polish."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 3, \"reason\": \"Continuous white shells (a domed base, a pill-shaped link and a tapered forearm) hide all servos and boards, and the only dark parts are the face visor and a ring at the base.\"},\n \"T2\": {\"score\": 3, \"reason\": \"The palette is white shell plus dark charcoal for the visor and base ring, with one saturated orange accent placed only on the joint caps, the eyes and the tool tip.\"},\n \"T3\": {\"score\": 2, \"reason\": \"The shoulder and elbow axes carry matching round orange caps, but the base yaw axis is shown only by the sphere sitting in the dome, so not every axis gets the same feature.\"},\n \"T4\": {\"score\": 2, \"reason\": \"The dome base, sphere, pill link and cone forearm are soft forms with generous radii, but the link reads as two parallel plates joined by a sharp-edged block, and the forearm surface shows tessellation artefacts.\"},\n \"T5\": {\"score\": 2, \"reason\": \"There is a face (a dark visor with two orange eyes), but it sits low on the base and is small compared with the arm, so it does not give the robot an obvious front at a glance.\"},\n \"T6\": {\"score\": 2, \"reason\": \"The base is compact and the forearm tapers to a distinct orange point, but the main link has a uniform section, so the limbs do not taper consistently.\"},\n \"T7\": {\"score\": 2, \"reason\": \"The renders are well lit, antialiased and taken from good three-quarter angles, but they sit on a dark CAD grid backdrop with no contact shadow or studio polish.\"}}\n```",
+      "session_id": "802d89c1-12a7-4325-8683-ef9fc8e6b7c8",
+      "duration_ms": 27158,
+      "num_turns": 17,
+      "total_cost_usd": 0.1367186,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 3117,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1367186,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 1299,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "Continuous white shells (a domed base, a capsule upper arm and a tapered forearm) hide all servos and boards, and the only dark parts are the deliberate base ring and face slot."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The white shell and dark charcoal mechanism are used by role, and a single saturated orange accent appears only on the joint caps, the face eyes and the tool tip."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The shoulder and elbow have matching orange round caps on their axes, but the base yaw is a plain sphere sitting in the dome and the top wrist pivot is a different style, so not every axis gets the same feature."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The domed base and capsule link are soft, generous primitives, but the link reads as a flat-sided plate, the parts sit next to each other rather than merging, and the forearm surface looks faceted in the top view."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A dark visor slot with two orange eyes on the base gives it a face, but the face is small, low down and separate from the arm's silhouette, so it doesn't give the robot character at a glance."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The base is compact and the forearm tapers to a distinct orange tip, but the upper link has a uniform section."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Smooth antialiased shading shows the curvature from a good three-quarter view, but the dark grid background isn't a seamless studio backdrop and there is no soft contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"Continuous white shells (a domed base, a capsule upper arm and a tapered forearm) hide all servos and boards, and the only dark parts are the deliberate base ring and face slot.\"}, \"T2\": {\"score\": 3, \"reason\": \"The white shell and dark charcoal mechanism are used by role, and a single saturated orange accent appears only on the joint caps, the face eyes and the tool tip.\"}, \"T3\": {\"score\": 2, \"reason\": \"The shoulder and elbow have matching orange round caps on their axes, but the base yaw is a plain sphere sitting in the dome and the top wrist pivot is a different style, so not every axis gets the same feature.\"}, \"T4\": {\"score\": 2, \"reason\": \"The domed base and capsule link are soft, generous primitives, but the link reads as a flat-sided plate, the parts sit next to each other rather than merging, and the forearm surface looks faceted in the top view.\"}, \"T5\": {\"score\": 2, \"reason\": \"A dark visor slot with two orange eyes on the base gives it a face, but the face is small, low down and separate from the arm's silhouette, so it doesn't give the robot character at a glance.\"}, \"T6\": {\"score\": 2, \"reason\": \"The base is compact and the forearm tapers to a distinct orange tip, but the upper link has a uniform section.\"}, \"T7\": {\"score\": 2, \"reason\": \"Smooth antialiased shading shows the curvature from a good three-quarter view, but the dark grid background isn't a seamless studio backdrop and there is no soft contact shadow.\"}}",
+      "session_id": "93c9555d-2627-47f1-9422-9582bf3a9443",
+      "duration_ms": 22627,
+      "num_turns": 17,
+      "total_cost_usd": 0.125204,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2536,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.125204,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 721,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "Continuous white shells cover the base, link and wrist with no servo cases or boards visible, and the mechanism appears only as the dark base ring and the capped joints."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "A white shell and a dark charcoal used for the base ring and face panel, plus one saturated orange accent placed deliberately on the joint caps, the eyes and the tool tip."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The shoulder and elbow are clean orange discs centred on their axes, but the base yaw and the wrist have no matching round feature, so not every axis is treated the same way."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The domed base and pill-shaped link have generous radii, but the wrist is a boxy block with visible gaps and the cone has faceted, lumpy surfaces, so the parts do not merge into one continuous form."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "The dark visor with two orange eyes on the base works as a face, but it sits low and small on the body, so it does not give the robot its character at a glance in the three-quarter views."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the tool tapers to a distinct orange tip, but the main link is a uniform pill and the base has no distinct foot."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Antialiased and lit so the curvature reads, from good three-quarter angles, but it sits on a dark CAD grid with no seamless backdrop or soft contact shadow."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"Continuous white shells cover the base, link and wrist with no servo cases or boards visible, and the mechanism appears only as the dark base ring and the capped joints.\"}, \"T2\": {\"score\": 3, \"reason\": \"A white shell and a dark charcoal used for the base ring and face panel, plus one saturated orange accent placed deliberately on the joint caps, the eyes and the tool tip.\"}, \"T3\": {\"score\": 2, \"reason\": \"The shoulder and elbow are clean orange discs centred on their axes, but the base yaw and the wrist have no matching round feature, so not every axis is treated the same way.\"}, \"T4\": {\"score\": 2, \"reason\": \"The domed base and pill-shaped link have generous radii, but the wrist is a boxy block with visible gaps and the cone has faceted, lumpy surfaces, so the parts do not merge into one continuous form.\"}, \"T5\": {\"score\": 2, \"reason\": \"The dark visor with two orange eyes on the base works as a face, but it sits low and small on the body, so it does not give the robot its character at a glance in the three-quarter views.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the tool tapers to a distinct orange tip, but the main link is a uniform pill and the base has no distinct foot.\"}, \"T7\": {\"score\": 2, \"reason\": \"Antialiased and lit so the curvature reads, from good three-quarter angles, but it sits on a dark CAD grid with no seamless backdrop or soft contact shadow.\"}}",
+      "session_id": "8f756ac2-c299-4842-a712-f144a0fae000",
+      "duration_ms": 25771,
+      "num_turns": 17,
+      "total_cost_usd": 0.1309132,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2832,
+          "cacheReadInputTokens": 5646,
+          "cacheCreationInputTokens": 9141,
+          "webSearchRequests": 0,
+          "costUSD": 0.1309132,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 1042,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "arm3-d-product-shell",
+  "receipt": {
+    "project": "orun1-ho-arm3-d-product-shell",
+    "accepted_revision": "2e0b6b037e54a99149f243f69ff145e088ef855aedf8b16780e520f8ddd38a36",
+    "look_revision": "2e0b6b037e54a99149f243f69ff145e088ef855aedf8b16780e520f8ddd38a36",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

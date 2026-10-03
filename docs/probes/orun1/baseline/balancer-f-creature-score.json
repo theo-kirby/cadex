@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "c5961b2da39114dac6bc023baf0baf86817004fa0ed607357d6b89f090e24b7d"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "db960bdd8f43805cc3da262512f3fdb39e8b494ab6b8320dde8dc943d6fe6b40"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "0d14cd4d1200010b9af14fdf9b3410284e71fd656dfcab832912c6866e2863eb"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "053f410287c5770133ad8757a023939c1c750cba6fd445dab1de0848cc9903cb"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "afb20cd8e31be06828db423cb7126c452d52ea733653327fb6eb52cb4bbe8572"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "f16d7e99102360dead16e5fecdd8ed0ab6ee8d503ef2db47cea0ec19d77c9d20"
+    }
+  ],
+  "medians": {
+    "T1": 3,
+    "T2": 3,
+    "T3": 2,
+    "T4": 2,
+    "T5": 3,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 17,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous white pill body and head shell hide all servos, boards and the battery, so the hardware shows only as dark tyres and arms."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Cream shell and dark grey parts are applied by role, with one orange accent placed on the eyes, beak and wheel hubs."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The wheel axes are round orange hub caps and the head turns on a clean ring split line, but the wing pivots have no visible round joint feature."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body is a soft pill topped by a near-spherical head with generous radii, but the wings, flat tail flap, wheels and cone horns are separate pieces rather than merged forms."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A large owl face with orange eyes in a dark mask and an ear-tufted silhouette gives a clear front and character at a glance."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and upright on distinct wheels, and the wings taper, but there are no legs tapering to feet."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Lighting shows the curvature from good three-quarter angles, but the backdrop is a dark CAD grid with no contact shadow and the surface shading is blotchy."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A continuous white pill body and head shell hide all servos, boards and the battery, so the hardware shows only as dark tyres and arms.\"}, \"T2\": {\"score\": 3, \"reason\": \"Cream shell and dark grey parts are applied by role, with one orange accent placed on the eyes, beak and wheel hubs.\"}, \"T3\": {\"score\": 2, \"reason\": \"The wheel axes are round orange hub caps and the head turns on a clean ring split line, but the wing pivots have no visible round joint feature.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body is a soft pill topped by a near-spherical head with generous radii, but the wings, flat tail flap, wheels and cone horns are separate pieces rather than merged forms.\"}, \"T5\": {\"score\": 3, \"reason\": \"A large owl face with orange eyes in a dark mask and an ear-tufted silhouette gives a clear front and character at a glance.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and upright on distinct wheels, and the wings taper, but there are no legs tapering to feet.\"}, \"T7\": {\"score\": 2, \"reason\": \"Lighting shows the curvature from good three-quarter angles, but the backdrop is a dark CAD grid with no contact shadow and the surface shading is blotchy.\"}}",
+      "session_id": "2a06ae61-41ef-475a-bc84-07b963245e86",
+      "duration_ms": 20595,
+      "num_turns": 17,
+      "total_cost_usd": 0.1212678,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2355,
+          "cacheReadInputTokens": 5639,
+          "cacheCreationInputTokens": 9128,
+          "webSearchRequests": 0,
+          "costUSD": 0.1212678,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 637,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous cream pill body and domed head enclose everything, and no servo, board or fastener shows in any view."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Cream shell and charcoal (wings, tyres, eye mask) are used consistently, with one saturated orange accent placed on the eyes, beak and wheel hubs."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The wheel axes have matching round orange hub caps and the neck has a clean ring split, but the wing pivots have no visible round feature."
+        },
+        "T4": {
+          "score": 3,
+          "reason": "Every part is a soft, generously radiused form (pill body, sphere head, leaf-shaped wings, rounded tyres), and the head-to-body split line is the only surface detail."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The large owl eyes in a dark mask with an orange beak make an unmistakable front and character, and the eared silhouette is recognisable at a glance."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the wheels and tail fin act as distinct feet, but there are no limbs that taper towards them, and the tall body on a small wheelbase looks only partly balanced."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Shaded so the curvature reads, from good three-quarter angles, but it sits on a dark grid floor with no contact shadow, the shading is faintly blotchy and faceted, and several views are flat orthographics."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 3, \"reason\": \"A continuous cream pill body and domed head enclose everything, and no servo, board or fastener shows in any view.\"},\n\"T2\": {\"score\": 3, \"reason\": \"Cream shell and charcoal (wings, tyres, eye mask) are used consistently, with one saturated orange accent placed on the eyes, beak and wheel hubs.\"},\n\"T3\": {\"score\": 2, \"reason\": \"The wheel axes have matching round orange hub caps and the neck has a clean ring split, but the wing pivots have no visible round feature.\"},\n\"T4\": {\"score\": 3, \"reason\": \"Every part is a soft, generously radiused form (pill body, sphere head, leaf-shaped wings, rounded tyres), and the head-to-body split line is the only surface detail.\"},\n\"T5\": {\"score\": 3, \"reason\": \"The large owl eyes in a dark mask with an orange beak make an unmistakable front and character, and the eared silhouette is recognisable at a glance.\"},\n\"T6\": {\"score\": 2, \"reason\": \"The body is compact and the wheels and tail fin act as distinct feet, but there are no limbs that taper towards them, and the tall body on a small wheelbase looks only partly balanced.\"},\n\"T7\": {\"score\": 2, \"reason\": \"Shaded so the curvature reads, from good three-quarter angles, but it sits on a dark grid floor with no contact shadow, the shading is faintly blotchy and faceted, and several views are flat orthographics.\"}}\n```",
+      "session_id": "c06bcfe4-9c43-43fe-96b0-a8f6e2884a23",
+      "duration_ms": 21610,
+      "num_turns": 17,
+      "total_cost_usd": 0.1229094,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2416,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1229094,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 621,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "A continuous cream pill-and-sphere shell hides every servo, board and battery, and only the dark tyres, wings and eye mask show as deliberate features."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Cream shell and dark grey parts are used consistently by role, and one saturated orange accent appears only on the eyes, beak and wheel hubs."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The wheel axles are matching round orange caps, but the head turns at a plain seam rather than a styled ring, and the wings have no visible pivot."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The body reads as a soft pill under a spherical head with generous radii, but the wings, tail flap and wheels sit on the body as separate add-ons instead of merging into it."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The big orange owl eyes in a dark mask, with the beak and ear tufts, give a clear front and a recognisable character at a glance."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The upright body is compact and stands on distinct wheels, but there are no limbs to taper towards them."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Shaded from a good three-quarter angle so the curvature reads, but the background is a dark grid with no contact shadow, the shell shading has streaky artefacts, and some views are flat orthographic."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"A continuous cream pill-and-sphere shell hides every servo, board and battery, and only the dark tyres, wings and eye mask show as deliberate features.\"}, \"T2\": {\"score\": 3, \"reason\": \"Cream shell and dark grey parts are used consistently by role, and one saturated orange accent appears only on the eyes, beak and wheel hubs.\"}, \"T3\": {\"score\": 2, \"reason\": \"The wheel axles are matching round orange caps, but the head turns at a plain seam rather than a styled ring, and the wings have no visible pivot.\"}, \"T4\": {\"score\": 2, \"reason\": \"The body reads as a soft pill under a spherical head with generous radii, but the wings, tail flap and wheels sit on the body as separate add-ons instead of merging into it.\"}, \"T5\": {\"score\": 3, \"reason\": \"The big orange owl eyes in a dark mask, with the beak and ear tufts, give a clear front and a recognisable character at a glance.\"}, \"T6\": {\"score\": 2, \"reason\": \"The upright body is compact and stands on distinct wheels, but there are no limbs to taper towards them.\"}, \"T7\": {\"score\": 2, \"reason\": \"Shaded from a good three-quarter angle so the curvature reads, but the background is a dark grid with no contact shadow, the shell shading has streaky artefacts, and some views are flat orthographic.\"}}",
+      "session_id": "ec199f46-f29e-4ba8-ad65-e4470329eae3",
+      "duration_ms": 19782,
+      "num_turns": 17,
+      "total_cost_usd": 0.12007860000000001,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2285,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.12007860000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 534,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "balancer-f-creature",
+  "receipt": {
+    "project": "orun1-ho-balancer-f-creature",
+    "accepted_revision": "a6252e6486042482793ab85d55e7a95fce8a381ff82e81559662111f44fc883a",
+    "look_revision": "a6252e6486042482793ab85d55e7a95fce8a381ff82e81559662111f44fc883a",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

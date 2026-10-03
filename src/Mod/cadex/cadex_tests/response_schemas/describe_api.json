@@ -135,6 +135,12 @@
      "str"
     ]
    },
+   "foot_pads": {
+    "notes": "str",
+    "skus": [
+     "str"
+    ]
+   },
    "gearmotors": {
     "notes": "str",
     "skus": [
@@ -199,6 +205,12 @@
       "travel_degrees": "float"
      }
     ],
+    "skus": [
+     "str"
+    ]
+   },
+   "wheels": {
+    "notes": "str",
     "skus": [
      "str"
     ]

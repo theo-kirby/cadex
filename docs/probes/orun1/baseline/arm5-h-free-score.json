@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "a32a204bf1c7bc834ef7cbc912c461f4686ea8625e4b1c06618192771fafd0f5"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "f852562e7c0ff9b5a399f6fd26e1b7e336f6cdef8808a9fc7c74728ff48787f9"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "17576281e1e019d2878fa600aa30d29c966957102309cbac2dcccc23352188b6"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "7abc3259b6947a347001e140363be867d064aad360864a6c3cad33efcd57d37f"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "18912aea7caab49f7d8c684664345b02b584fb4ddde40471f307d6cf28d9e878"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "347eb50e131557fbd0de77266e97952a0214bdcfb36fcf429effd21a460f4294"
+    }
+  ],
+  "medians": {
+    "T1": 3,
+    "T2": 2,
+    "T3": 2,
+    "T4": 2,
+    "T5": 1,
+    "T6": 2,
+    "T7": 1
+  },
+  "total": 13,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "White shells fully cover the base, shoulder, links and wrist, so no servo cases or boards show, and the mechanism only appears as the orange caps and the small dark gripper parts."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "The white shell and one orange accent on the joint caps are used deliberately, but the dark mechanism colour only appears on the gripper and the base underline, so it isn't applied consistently as a second material."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Most joints have round orange caps on their axes, but the base yaw and wrist roll joints are plain cylinders without the same treatment."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The puck base, tapered upper arm and rounded links read as soft primitives, but the wrist blocks and flat gripper plates are still boxy, and the parts sit separately with gaps and slots instead of merging."
+        },
+        "T5": {
+          "score": 1,
+          "reason": "The gripper suggests a front, but there is no face or focal element to give it character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The compact puck base and tapered upper arm read well, but the wrist goes back to uniform boxy blocks before ending in a plain gripper, so the taper doesn't continue to a distinct end."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The lighting shows curvature clearly in good three-quarter views, but the dark grid backdrop isn't a seamless studio set and there is no contact shadow."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 3, \"reason\": \"White shells fully cover the base, shoulder, links and wrist, so no servo cases or boards show, and the mechanism only appears as the orange caps and the small dark gripper parts.\"},\n\"T2\": {\"score\": 2, \"reason\": \"The white shell and one orange accent on the joint caps are used deliberately, but the dark mechanism colour only appears on the gripper and the base underline, so it isn't applied consistently as a second material.\"},\n\"T3\": {\"score\": 2, \"reason\": \"Most joints have round orange caps on their axes, but the base yaw and wrist roll joints are plain cylinders without the same treatment.\"},\n\"T4\": {\"score\": 2, \"reason\": \"The puck base, tapered upper arm and rounded links read as soft primitives, but the wrist blocks and flat gripper plates are still boxy, and the parts sit separately with gaps and slots instead of merging.\"},\n\"T5\": {\"score\": 1, \"reason\": \"The gripper suggests a front, but there is no face or focal element to give it character.\"},\n\"T6\": {\"score\": 2, \"reason\": \"The compact puck base and tapered upper arm read well, but the wrist goes back to uniform boxy blocks before ending in a plain gripper, so the taper doesn't continue to a distinct end.\"},\n\"T7\": {\"score\": 2, \"reason\": \"The lighting shows curvature clearly in good three-quarter views, but the dark grid backdrop isn't a seamless studio set and there is no contact shadow.\"}}\n```",
+      "session_id": "74f4f626-c4de-4fb1-9ddc-34e39ad0c858",
+      "duration_ms": 23020,
+      "num_turns": 17,
+      "total_cost_usd": 0.1269094,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2616,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1269094,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 820,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 3,
+          "reason": "Smooth white shells hide every servo and board; the only visible mechanism is the dark gripper bracket and the dark band at the base of the pedestal."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "The white shell and orange accent are disciplined, but the dark mechanism colour appears only on the gripper and the base band, while every other joint stays white."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Several axes have round orange caps that line up with them, but the base yaw is a rounded box and the wrist joints are pill-shaped segments, so the joints do not match."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The domed base and rounded-box housings have generous radii, but the parts sit apart instead of merging, and the forearm link and gripper fingers read as bars and boxes."
+        },
+        "T5": {
+          "score": 1,
+          "reason": "The gripper shows which way the arm faces, but there is no face element."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The upper arm tapers and the arm stands on a solid pedestal, but the outstretched chain of separate blocks with a thin forearm looks strung out rather than balanced."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The shading reads, but the robot sits on a dark CAD grid with no contact shadow, the upper arm has a blotchy surface texture, and several views are flat orthographic angles."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 3, \"reason\": \"Smooth white shells hide every servo and board; the only visible mechanism is the dark gripper bracket and the dark band at the base of the pedestal.\"}, \"T2\": {\"score\": 2, \"reason\": \"The white shell and orange accent are disciplined, but the dark mechanism colour appears only on the gripper and the base band, while every other joint stays white.\"}, \"T3\": {\"score\": 2, \"reason\": \"Several axes have round orange caps that line up with them, but the base yaw is a rounded box and the wrist joints are pill-shaped segments, so the joints do not match.\"}, \"T4\": {\"score\": 2, \"reason\": \"The domed base and rounded-box housings have generous radii, but the parts sit apart instead of merging, and the forearm link and gripper fingers read as bars and boxes.\"}, \"T5\": {\"score\": 1, \"reason\": \"The gripper shows which way the arm faces, but there is no face element.\"}, \"T6\": {\"score\": 2, \"reason\": \"The upper arm tapers and the arm stands on a solid pedestal, but the outstretched chain of separate blocks with a thin forearm looks strung out rather than balanced.\"}, \"T7\": {\"score\": 1, \"reason\": \"The shading reads, but the robot sits on a dark CAD grid with no contact shadow, the upper arm has a blotchy surface texture, and several views are flat orthographic angles.\"}}",
+      "session_id": "a38e0909-ba11-457d-a3c5-aaddd35ad502",
+      "duration_ms": 24249,
+      "num_turns": 17,
+      "total_cost_usd": 0.1304094,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2791,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1304094,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 1032,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "Rounded white covers hide every servo and board, but they are separate blocks with visible gaps, and the boom and gripper fingers read as flat plates rather than one continuous shell."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Off-white shell and dark charcoal on the gripper, wrist rings and base band follow their roles, and one saturated orange accent sits deliberately on the joint caps and gripper pads."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The shoulder, elbow and wrist have round orange caps concentric with their axes, but the base yaw and some wrist joints are plain rounded boxes, so the joints are not consistent."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The domed base and tapered links have generous radii, but the yaw housing and wrist modules are separate rounded boxes, the gripper fingers are flat bars, and parts sit apart instead of merging."
+        },
+        "T5": {
+          "score": 1,
+          "reason": "A front can only be inferred from the gripper; there is no face or focal feature to give the arm character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The upper link tapers and the drum base is a distinct, grounded foot, but the stance is long and the wrist reads as a chain of similar-sized blocks rather than a balanced taper."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "Shading reads, but the backdrop is a dark grid rather than a seamless studio sweep, there is no contact shadow, the boom has noisy faceted shading, and stray black seam lines show on the blocks."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"Rounded white covers hide every servo and board, but they are separate blocks with visible gaps, and the boom and gripper fingers read as flat plates rather than one continuous shell.\"}, \"T2\": {\"score\": 3, \"reason\": \"Off-white shell and dark charcoal on the gripper, wrist rings and base band follow their roles, and one saturated orange accent sits deliberately on the joint caps and gripper pads.\"}, \"T3\": {\"score\": 2, \"reason\": \"The shoulder, elbow and wrist have round orange caps concentric with their axes, but the base yaw and some wrist joints are plain rounded boxes, so the joints are not consistent.\"}, \"T4\": {\"score\": 2, \"reason\": \"The domed base and tapered links have generous radii, but the yaw housing and wrist modules are separate rounded boxes, the gripper fingers are flat bars, and parts sit apart instead of merging.\"}, \"T5\": {\"score\": 1, \"reason\": \"A front can only be inferred from the gripper; there is no face or focal feature to give the arm character.\"}, \"T6\": {\"score\": 2, \"reason\": \"The upper link tapers and the drum base is a distinct, grounded foot, but the stance is long and the wrist reads as a chain of similar-sized blocks rather than a balanced taper.\"}, \"T7\": {\"score\": 1, \"reason\": \"Shading reads, but the backdrop is a dark grid rather than a seamless studio sweep, there is no contact shadow, the boom has noisy faceted shading, and stray black seam lines show on the blocks.\"}}",
+      "session_id": "be3ceb90-b1a2-4c2f-abdb-0db5763dd541",
+      "duration_ms": 25320,
+      "num_turns": 17,
+      "total_cost_usd": 0.1303694,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2789,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1303694,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 967,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "arm5-h-free",
+  "receipt": {
+    "project": "orun1-ho-arm5-h-free",
+    "accepted_revision": "68fb29675d6b2022abb820dd8717d2ac496b3dc3cbe83611292acc97fb04cd37",
+    "look_revision": "68fb29675d6b2022abb820dd8717d2ac496b3dc3cbe83611292acc97fb04cd37",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

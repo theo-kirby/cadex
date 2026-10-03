@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "78bda0ced98ba4dff11a3613933e7afa191a71493ea9c1eb91848e4ca7f7be65"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "de1c70ceb69c0c1f5f89f095c05b41bf61c6082b2a9728286f6edfcc71b2a949"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "98cc61cef8cb5d9cfd856ec8296e88388a64a9765461bee44ffdef9a5c523b27"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "1212ff00d5c96dafa409a58e92cbdd0b6856a938144bb9f38e97c18613fb2a21"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "628fe9e13e0d7ac48b1dbe6df5431363011b94d583b1e0fa6546ecdfaffef05f"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "e3e842f796081bbd6a9a0faf5561a4312d3ba66ae774db4a9f9ff40b15612eb4"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 3,
+    "T3": 2,
+    "T4": 2,
+    "T5": 3,
+    "T6": 2,
+    "T7": 1
+  },
+  "total": 15,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "The white hood, thigh pods and foot shells cover most of the robot, but the dark lower-leg links and the dark rectangular body block under the hood (side view) are left as exposed brackets rather than styled bands."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Cream shell parts and charcoal mechanism parts are used consistently by role, and the only accent is the teal eyes on the face."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Most hip and knee axes appear as round dark bosses where the links end, but some still show small screw dots and they are not one consistent cap style across every joint."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The hood is one soft, generously rounded form and the thigh and foot shells are pill-shaped, but the flat foot plates, slab-like dark links and boxy body block keep it from being fully soft and merged."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The dark visor with two teal eyes gives an obvious front and a friendly character at a glance, and the mushroom-hood silhouette is easy to recognise."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the shoe-and-plate feet are clearly distinct, but the legs keep the same section all the way down instead of tapering towards the foot."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The renders are shaded from reasonable angles but sit on a dark viewport grid, have no contact shadow, and show blotchy faceted shading on the hood, so they look like a CAD viewport capture rather than a studio render."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"The white hood, thigh pods and foot shells cover most of the robot, but the dark lower-leg links and the dark rectangular body block under the hood (side view) are left as exposed brackets rather than styled bands.\"}, \"T2\": {\"score\": 3, \"reason\": \"Cream shell parts and charcoal mechanism parts are used consistently by role, and the only accent is the teal eyes on the face.\"}, \"T3\": {\"score\": 2, \"reason\": \"Most hip and knee axes appear as round dark bosses where the links end, but some still show small screw dots and they are not one consistent cap style across every joint.\"}, \"T4\": {\"score\": 2, \"reason\": \"The hood is one soft, generously rounded form and the thigh and foot shells are pill-shaped, but the flat foot plates, slab-like dark links and boxy body block keep it from being fully soft and merged.\"}, \"T5\": {\"score\": 3, \"reason\": \"The dark visor with two teal eyes gives an obvious front and a friendly character at a glance, and the mushroom-hood silhouette is easy to recognise.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the shoe-and-plate feet are clearly distinct, but the legs keep the same section all the way down instead of tapering towards the foot.\"}, \"T7\": {\"score\": 1, \"reason\": \"The renders are shaded from reasonable angles but sit on a dark viewport grid, have no contact shadow, and show blotchy faceted shading on the hood, so they look like a CAD viewport capture rather than a studio render.\"}}",
+      "session_id": "730097d2-9ea7-442f-b652-7bc7f637521c",
+      "duration_ms": 23854,
+      "num_turns": 17,
+      "total_cost_usd": 0.12740400000000002,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2646,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.12740400000000002,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 832,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous white hood and white thigh and foot covers hide most of the hardware, but the dark leg links and a plain dark box under the hood are left showing."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "White is used for the shell and dark grey for the mechanism, and the only saturated accent is the teal eyes on the face."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Most joints show as round dark bosses on their axes, but the dark links are plain flat bars with small visible screw dots, so the joints don't all share one deliberate treatment."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The hood is one soft rounded shape and the thigh pills and foot shoes are rounded, but the dark links have a constant section, the sole plates are flat and the body block under the hood is a box."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "The dark visor with two teal eyes gives the robot a clear front and character at a glance, and the mushroom-head biped outline is easy to recognise."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the feet are clearly separate shoe-and-sole parts, but the legs don't taper smoothly: a wide thigh pill sits beside a thin straight shin bar."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The shading lets the curves read, but every view sits on a dark CAD grid with no contact shadow, the hood shows streaky shading artefacts, and several views are flat orthographic angles."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous white hood and white thigh and foot covers hide most of the hardware, but the dark leg links and a plain dark box under the hood are left showing.\"}, \"T2\": {\"score\": 3, \"reason\": \"White is used for the shell and dark grey for the mechanism, and the only saturated accent is the teal eyes on the face.\"}, \"T3\": {\"score\": 2, \"reason\": \"Most joints show as round dark bosses on their axes, but the dark links are plain flat bars with small visible screw dots, so the joints don't all share one deliberate treatment.\"}, \"T4\": {\"score\": 2, \"reason\": \"The hood is one soft rounded shape and the thigh pills and foot shoes are rounded, but the dark links have a constant section, the sole plates are flat and the body block under the hood is a box.\"}, \"T5\": {\"score\": 3, \"reason\": \"The dark visor with two teal eyes gives the robot a clear front and character at a glance, and the mushroom-head biped outline is easy to recognise.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the feet are clearly separate shoe-and-sole parts, but the legs don't taper smoothly: a wide thigh pill sits beside a thin straight shin bar.\"}, \"T7\": {\"score\": 1, \"reason\": \"The shading lets the curves read, but every view sits on a dark CAD grid with no contact shadow, the hood shows streaky shading artefacts, and several views are flat orthographic angles.\"}}",
+      "session_id": "f5d29cfb-305c-47d8-b1c9-1bacc2bc9903",
+      "duration_ms": 22247,
+      "num_turns": 17,
+      "total_cost_usd": 0.12105859999999999,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2334,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.12105859999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 552,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous hood, thigh pills and foot shells cover the body hardware, but the lower legs show as plain dark link plates with visible screw points rather than enclosed forms."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Off-white shell and dark charcoal mechanism are applied by role, with a single saturated cyan accent placed deliberately on the eyes."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Knee and ankle axes read as round dark discs concentric with their pivots, but the hip joints are hidden and a few axes show only as small screw dots, so they are not uniform."
+        },
+        "T4": {
+          "score": 2,
+          "reason": "The head reads as one generous soft hood, and the thighs and feet are rounded pills, but the dark lower legs are constant-section flat bars, the foot plates are flat slabs, and the parts do not merge."
+        },
+        "T5": {
+          "score": 3,
+          "reason": "A large dark visor with two cyan eyes gives an immediate front and a friendly character, and the mushroom-head biped silhouette is recognisable."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the feet are distinct shelled pads on plates, but the limbs do not clearly taper from the wide thigh shells to the foot."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "Shaded on a dark CAD grid viewport with no contact shadow, a high isometric angle, and visible streaky shading artefacts on the hood, so it is not a studio presentation."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous hood, thigh pills and foot shells cover the body hardware, but the lower legs show as plain dark link plates with visible screw points rather than enclosed forms.\"}, \"T2\": {\"score\": 3, \"reason\": \"Off-white shell and dark charcoal mechanism are applied by role, with a single saturated cyan accent placed deliberately on the eyes.\"}, \"T3\": {\"score\": 2, \"reason\": \"Knee and ankle axes read as round dark discs concentric with their pivots, but the hip joints are hidden and a few axes show only as small screw dots, so they are not uniform.\"}, \"T4\": {\"score\": 2, \"reason\": \"The head reads as one generous soft hood, and the thighs and feet are rounded pills, but the dark lower legs are constant-section flat bars, the foot plates are flat slabs, and the parts do not merge.\"}, \"T5\": {\"score\": 3, \"reason\": \"A large dark visor with two cyan eyes gives an immediate front and a friendly character, and the mushroom-head biped silhouette is recognisable.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the feet are distinct shelled pads on plates, but the limbs do not clearly taper from the wide thigh shells to the foot.\"}, \"T7\": {\"score\": 1, \"reason\": \"Shaded on a dark CAD grid viewport with no contact shadow, a high isometric angle, and visible streaky shading artefacts on the hood, so it is not a studio presentation.\"}}",
+      "session_id": "5d36f1b7-23ba-432a-948b-cfdc0021312c",
+      "duration_ms": 20999,
+      "num_turns": 17,
+      "total_cost_usd": 0.1229586,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2429,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1229586,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 637,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "biped-d-product-shell",
+  "receipt": {
+    "project": "orun1-ho-biped-d-product-shell",
+    "accepted_revision": "350aaa9069abc116815fe5b04c3011931b229233fc5313c8fd6832ae3583d39a",
+    "look_revision": "350aaa9069abc116815fe5b04c3011931b229233fc5313c8fd6832ae3583d39a",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

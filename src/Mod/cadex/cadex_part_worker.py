@@ -1795,6 +1795,11 @@ def _blend(
     # the refusal came back with no workable radius at all -- which is the
     # one number a model can act on without re-selecting anything.
     workable = _blend_largest_radius(probe, selected, distance)
+    # The partition walks the kernel's order, which is the order the accepted
+    # attempt searched in. A sorted order changed which edges a capped search
+    # kept on designs that had been accepted, and refused some of them; a
+    # rebuild that keeps a different subset reopens by recipe (ADR-476,
+    # ADR-477).
     accepted, rejected, unprobed = _blend_partition(probe, selected, distance)
     refused_names = _blend_edge_names(rejected, details, selected)
     report: dict[str, Any] = {

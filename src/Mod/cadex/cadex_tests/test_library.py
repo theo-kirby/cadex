@@ -500,7 +500,11 @@ def test_servo_joint_dynamics_is_the_datasheet_torque_speed_line() -> None:
                                        ("pi-zero-2-w", 40),
                                        ("pca9685-adafruit-rev-c", 62),
                                        ("bno085-adafruit-4754", 12),
-                                       ("pololu-d36v50f6", 12)])
+                                       ("pololu-d36v50f6", 12),
+                                       ("pi-5", 40),
+                                       ("rpi-camera-module-3", 0),
+                                       ("pololu-vl53l1x-3415", 7),
+                                       ("tb6612-adafruit-2448", 18)])
 def test_board_interfaces_and_terminal_rows(sku, count):
     board = _lib().board(sku)
     spec = board.spec
@@ -515,8 +519,12 @@ def test_board_interfaces_and_terminal_rows(sku, count):
     assert "https://" in spec["source"]
     assert "density_kg_m3" in spec["approximate"]
     # A script can mutate its copy without poisoning a later generation.
-    spec["terminals"][0]["origin"][0] = -999
-    assert catalog.board_spec(sku)["terminals"][0]["origin"][0] > 0
+    if spec["mount_holes"]:
+        spec["mount_holes"][0][0] = -999
+        assert catalog.board_spec(sku)["mount_holes"][0][0] > 0
+    if count:
+        spec["terminals"][0]["origin"][0] = -999
+        assert catalog.board_spec(sku)["terminals"][0]["origin"][0] > 0
 
 
 def test_board_manufacturer_dimension_pins():
@@ -559,6 +567,227 @@ def test_imu_and_regulator_manufacturer_pins():
     assert "terminal_signals" in reg["approximate"]
 
 
+def test_orun1_board_manufacturer_pins():
+    """ADR-485: a Linux brain, a camera and a range sensor, from their drawings."""
+    pi = catalog.board_spec("pi-5")
+    assert (pi["width_mm"], pi["length_mm"], pi["mount_hole_dia_mm"]) == (85.0, 56.0, 2.7)
+    assert pi["mount_holes"] == [[3.5, 3.5], [3.5, 52.5], [61.5, 3.5], [61.5, 52.5]]
+    rows = {r["name"]: r for r in pi["terminals"]}
+    assert rows["j8_1"]["origin"] == [8.37, 51.23, 1.45] and rows["j8_1"]["signal"] == "3V3"
+    assert rows["j8_2"]["origin"] == [8.37, 53.77, 1.45]
+    assert rows["j8_40"]["signal"] == "GPIO21"
+    # The port stacks overhang the +X edge by 3 mm and stand 16 mm proud.
+    (mx, _my, _mz), (sx, _sy, sz) = pi["cosmetic_origin"], pi["cosmetic_size"]
+    assert mx + sx == pytest.approx(88.0) and sz == 16.0
+    assert "rpi5" in pi["source"] and "thickness_mm" in pi["approximate"]
+    cam = catalog.board_spec("rpi-camera-module-3")
+    assert (cam["width_mm"], cam["length_mm"], cam["thickness_mm"]) == (25.0, 23.862, 1.12)
+    assert cam["mount_holes"] == [[2.0, 2.0], [2.0, 14.5], [23.0, 2.0], [23.0, 14.5]]
+    assert cam["mount_hole_dia_mm"] == 2.2 and cam["lens_centre"] == [12.5, 14.4]
+    assert cam["fov_degrees"]["horizontal"] == 66.0 and cam["terminals"] == []
+    # The lens envelope tops out where the drawing's barrel tip is.
+    assert cam["cosmetic_origin"][2] + cam["cosmetic_size"][2] == pytest.approx(8.55)
+    tof = catalog.board_spec("pololu-vl53l1x-3415")
+    assert (tof["width_mm"], tof["length_mm"], tof["mount_hole_dia_mm"]) == (12.7, 17.78, 2.18)
+    assert [r["signal"] for r in tof["terminals"]] == "VDD VIN GND SDA SCL XSHUT GPIO1".split()
+    assert tof["range_mm"] == [40.0, 4000.0] and tof["fov_degrees"]["full"] == 27.0
+    assert "mount_holes" in tof["approximate"]
+    for spec in (pi, cam, tof):
+        assert spec["sources"] and all(u.startswith("https://") for u in spec["sources"])
+
+
+def test_motor_driver_manufacturer_pins():
+    """ADR-490: the H-bridge two N20s need, from Adafruit's published board."""
+    drv = catalog.board_spec("tb6612-adafruit-2448")
+    assert (drv["width_mm"], drv["length_mm"], drv["mount_hole_dia_mm"]) == (19.05, 26.67, 2.5)
+    assert drv["mount_holes"] == [[16.51, 2.54], [16.51, 24.13]]
+    rows = {r["name"]: r for r in drv["terminals"]}
+    assert rows["jp1_1"]["origin"] == [2.54, 24.765, 1.6] and rows["jp1_1"]["signal"] == "VM"
+    assert rows["jp1_10"]["origin"] == [2.54, 1.905, 1.6] and rows["jp1_10"]["signal"] == "PWMA"
+    assert [rows[f"jp1_{i}"]["signal"] for i in (4, 5, 6, 7, 8, 9)] == \
+        "PWMB BIN2 BIN1 STBY AIN1 AIN2".split()
+    assert [rows[f"jp3_{i}"]["signal"] for i in range(1, 7)] == "MA1 MA2 GND GND MB2 MB1".split()
+    assert rows["jp3_1"]["origin"] == [17.78, 6.985, 1.6] and rows["jp3_1"]["hole_dia"] == 1.016
+    assert (rows["j1_1"]["signal"], rows["j1_2"]["origin"]) == ("VM", [11.098, 23.114, 1.6])
+    # The TB6612's SSOP24 body, rotated 90 degrees, stands to the stated 3 mm.
+    (mx, my, mz), (sx, sy, sz) = drv["cosmetic_origin"], drv["cosmetic_size"]
+    assert (mx + sx / 2, my + sy / 2) == (pytest.approx(9.906), pytest.approx(14.986))
+    assert mz + sz == pytest.approx(3.0)
+    # Drives a 2S pack's motors directly, and two N20s at stall.
+    assert drv["motor_voltage_range_v"][0] <= 7.4 <= drv["motor_voltage_range_v"][1]
+    n20 = catalog.gearmotor_spec("pololu-2367")
+    assert drv["channels"] == 2 and drv["continuous_current_a"] >= n20["stall_current_a"]
+    assert "514d5ded" in drv["source"] and drv["mass_g"] == 1.8
+
+
+def test_camera_bay_reaches_the_block_on_its_back_face():
+    cam = _lib().board("rpi-camera-module-3")
+    low, high = _box_extents(cam.bay())
+    assert low[2] == pytest.approx(-2.75 - 1.0)
+    assert high[2] == pytest.approx(8.55 + 1.0 + 8.0)
+    # A deeper underside than the part needs is still the caller's.
+    assert _box_extents(cam.bay(underside=5))[0][2] == pytest.approx(-6.0)
+
+
+def test_sts3215_spec_pins():
+    """ADR-485: the bus servo's datasheet numbers, and what is not dimensioned."""
+    sts = catalog.servo_spec(" STS3215 ")
+    assert (sts["body_length_mm"], sts["body_width_mm"], sts["case_height_mm"]) == (45.22, 24.72, 29.0)
+    assert sts["envelope_height_mm"] == 35.0 and sts["shaft_offset_from_front_mm"] == 10.11
+    assert (sts["spline_teeth"], sts["spline_dia_mm"], sts["spline_height_mm"]) == (25, 5.9, 3.4)
+    assert sts["stall_torque"] == [{"volts": 6.0, "kg_cm": 16.5}, {"volts": 7.4, "kg_cm": 19.5}]
+    assert sts["speed"][1] == {"volts": 7.4, "s_per_60_deg": 0.192}
+    assert sts["mass_g"] == 55.0 and sts["travel_degrees"] == 360.0
+    assert sts["mount_faces"][0] == {"face": "output", "x_from_axis_mm": [8.30, -29.00],
+                                     "y_mm": [-10.25, 10.25]}
+    assert "hole_depth_mm" in sts["approximate"]
+    assert all(u.startswith("https://") for u in sts["sources"])
+    sts["mount_faces"][0]["y_mm"][0] = 99.0
+    assert catalog.servo_spec("sts3215")["mount_faces"][0]["y_mm"][0] == -10.25
+
+
+def test_sts3215_recipe_is_held_by_its_case_holes():
+    servo = _servo_lib().servo("sts3215")
+    boxes = _ops(servo.body, "box")
+    assert len(boxes) == 1  # no tab plate
+    assert boxes[0].arguments == (45.22, 24.72, 29.0)
+    assert tuple(boxes[0].properties["origin"]) == pytest.approx((10.11 - 45.22, -12.36, -29.0))
+    drills = [c for c in _ops(servo.body, "cylinder") if c.arguments[0] == pytest.approx(1.0)]
+    assert len(drills) == 8
+    points = servo.spec["mount_points"]
+    assert len(points) == 8
+    output = [p for p in points if p["face"] == "output"]
+    rear = [p for p in points if p["face"] == "rear"]
+    assert {p["origin"][2] for p in output} == {0.0} and {p["origin"][2] for p in rear} == {-29.0}
+    assert all(p["axis"] == [0.0, 0.0, -1.0] for p in output)
+    assert all(p["axis"] == [0.0, 0.0, 1.0] for p in rear)
+    assert sorted({p["origin"][0] for p in rear}) == [-32.75, 8.30]
+    assert servo.spec["mount_holes"] == [p["origin"][:2] for p in output]
+    # The idler boss stands below the rear face on the shaft axis.
+    boss = next(c for c in _ops(servo.body, "cylinder") if c.arguments == (3.0, 4.1))
+    assert tuple(boss.properties["origin"]) == (0.0, 0.0, -33.1)
+    assert 1000.0 < servo.spec["effective_density_kg_m3"] < 2000.0
+    with pytest.raises(LibraryError, match="bus"):
+        servo.horn()
+
+
+def test_sts3215_bay_keeps_its_faces_and_reserves_the_lead():
+    servo = _servo_lib().servo("sts3215")
+    boxes = _boxes(servo.bay())
+    back = 10.11 - 45.22
+    assert ((back - 0.5, -12.86, -29.5), (10.61, 12.86, 0.5)) in [
+        (pytest.approx(lo), pytest.approx(hi)) for lo, hi in boxes]
+    assert ((back - 6.5, -12.86, -29.5), (back - 0.5, 12.86, 0.5)) in [
+        (pytest.approx(lo), pytest.approx(hi)) for lo, hi in boxes]
+    columns = sorted(c.arguments for c in _ops(servo.bay(), "cylinder"))
+    assert columns == [(pytest.approx(3.45), 3.4), (pytest.approx(3.5), 4.1)]
+    assert len(_boxes(servo.bay(lead_room=0))) == 1
+    placed = _servo_lib().servo("sts3215", origin=(5, 0, 0), direction=(1, 0, 0))
+    assert placed.bay().properties == placed.body.properties
+    assert catalog_identity_of(servo.bay()) is None
+
+
+def test_sts3215_actuator_carries_its_bus_voltage_torque():
+    calls = []
+
+    class _Assembly:
+        def actuator(self, joint, **kwargs):
+            calls.append(kwargs)
+            return kwargs
+
+        def joint_dynamics(self, joint, **kwargs):
+            calls.append(kwargs)
+            return kwargs
+
+    lib = create_library_api(_part(), _Assembly())
+    servo = lib.servo("sts3215")
+    servo.actuator("j", control_deg="a", voltage=7.4)
+    assert calls[-1]["torque_limit_nmm"] == pytest.approx(19.5 * catalog.KG_CM_TO_NMM)
+    servo.joint_dynamics("j", voltage=7.4)
+    assert calls[-1]["damping_nmms_per_deg"] == pytest.approx(
+        19.5 * catalog.KG_CM_TO_NMM / (60.0 / 0.192))
+
+
+def test_wheel_spec_recipe_and_bay():
+    """ADR-485: a tyred wheel that presses onto the catalogued N20's D shaft."""
+    spec = catalog.wheel_spec("POLOLU-1430")
+    assert (spec["tyre_dia_mm"], spec["width_mm"], spec["rim_dia_mm"]) == (80.0, 10.0, 76.5)
+    assert (spec["bore_dia_mm"], spec["bore_flat_to_opposite_mm"]) == (3.0, 2.5)
+    gearmotor = catalog.gearmotor_spec("pololu-2367")
+    assert spec["bore_dia_mm"] == gearmotor["shaft_dia_mm"]
+    assert spec["bore_flat_to_opposite_mm"] == gearmotor["shaft_flat_to_opposite_mm"]
+    assert "pololu-2367" in spec["fits"]
+    # ADR-489: the stated mass split between the wheel and its tyre.
+    tyre_g = 4194.8e-9 * 1100.0 * 1e3
+    assert spec["tyre_mass_g"] == pytest.approx(tyre_g, abs=0.01)
+    assert spec["density_kg_m3"] == pytest.approx(
+        (19.8 - tyre_g) * 1e-3 / (14715.5e-9), abs=0.05)
+    wheel = _lib().wheel("pololu-1430")
+    assert (wheel.family, wheel.part_number) == ("wheel", "pololu-1430")
+    radii = {c.arguments[0] for c in _ops(wheel.body, "cylinder")}
+    # Hub, flange, rim and its inside, the hub holes and the bore: no tyre.
+    assert radii == {3.3, 8.5, 38.25, 33.5, 1.55, 1.5}
+    # Six spokes, each a root block, two ribs and a rim block.
+    assert len(_ops(wheel.body, "box")) == 24
+    bore = next(c for c in _ops(wheel.body, "cylinder") if c.arguments[0] == 1.5)
+    assert bore.arguments[1] == spec["bore_depth_mm"] + 1.0
+    tyre = wheel.tyre()
+    assert (tyre.family, tyre.part_number) == ("tyre", "pololu-1430")
+    assert tyre.spec["density_kg_m3"] == 1100.0
+    assert {c.arguments[0] for c in _ops(tyre.body, "cylinder")} == {39.0, 40.0, 38.25}
+    assert len(_ops(tyre.body, "torus")) == 2
+    assert catalog_identity_of(tyre.body) == {"family": "tyre", "part_number": "pololu-1430"}
+    bay = wheel.bay()
+    well = sorted(c.arguments for c in _ops(bay, "cylinder"))
+    assert well == [(6.3, 4.75), (43.0, 16.0)]
+    placed = _lib().wheel("pololu-1430", origin=(0, 50, 0), direction=(0, 1, 0))
+    assert placed.bay().properties == placed.body.properties
+    assert placed.tyre().body.properties == placed.body.properties
+    assert catalog_identity_of(bay) is None
+    with pytest.raises(CatalogError, match="Unknown wheel"):
+        _lib().wheel("generic-80mm")
+    with pytest.raises(LibraryError, match="wheel.bay: clearance must be"):
+        wheel.bay(clearance=-1)
+
+
+def test_foot_pad_spec_recipe_and_bay():
+    """ADR-485: a rubber foot held by a screw, and the hole that screw needs."""
+    spec = catalog.foot_pad_spec("essentra-462178")
+    assert (spec["top_dia_mm"], spec["base_dia_mm"], spec["height_mm"]) == (19.0, 16.0, 8.0)
+    assert (spec["screw"], spec["screw_hole_dia_mm"]) == ("m3", 3.0)
+    assert (spec["counterbore_dia_mm"], spec["counterbore_depth_mm"]) == (7.0, 6.0)
+    assert spec["screw_length_min_mm"] == 2.0
+    pad = _lib().foot_pad("essentra-462178", direction=(0, 0, -1))
+    (cone,) = _ops(pad.body, "cone")
+    assert cone.arguments == (9.5, 8.0, 8.0)
+    holes = sorted(c.arguments[0] for c in _ops(pad.body, "cylinder"))
+    assert holes == [1.5, 3.5]
+    bay = pad.bay()
+    assert bay.properties == pad.body.properties
+    keep_out, screw = sorted(_ops(bay, "cylinder"), key=lambda c: -c.arguments[0])
+    assert keep_out.arguments == (10.0, 8.5)
+    assert screw.arguments == (catalog.thread_spec("m3")["tap_drill_mm"] / 2.0, 8.0)
+    assert tuple(screw.properties["origin"]) == (0.0, 0.0, -8.0)
+    assert len(_ops(pad.bay(screw_depth=0), "cylinder")) == 1
+    assert catalog_identity_of(bay) is None
+    with pytest.raises(CatalogError, match="Unknown foot pad"):
+        _lib().foot_pad("bumpon")
+    with pytest.raises(LibraryError, match="foot_pad.bay: screw_depth must be"):
+        pad.bay(screw_depth=float("inf"))
+
+
+def test_orun1_families_are_browsable():
+    families = catalog.catalog_families()
+    assert families["wheels"]["skus"] == ["pololu-1430"]
+    assert families["foot_pads"]["skus"] == ["essentra-462178"]
+    assert {"pi-5", "rpi-camera-module-3", "pololu-vl53l1x-3415",
+            "tb6612-adafruit-2448"} <= set(families["boards"]["skus"])
+    assert "sts3215" in families["servos"]["skus"]
+    assert "mount_points" in families["servos"]["notes"]
+    names = {entry["name"] for entry in library_listing()["exports"]}
+    assert {"wheel", "foot_pad"} <= names
+
+
 def test_battery_envelope_mass_and_density():
     """ADR-407: the heaviest part on a small robot carries its stated mass."""
     pack = _lib().battery(" GENSACE-GEA2S100045D ")
@@ -598,7 +827,8 @@ def test_battery_bay_houses_the_pack_with_room_for_its_leads():
 
 @pytest.mark.parametrize("sku", ["esp32-devkitc-v4", "pi-zero-2-w",
                                  "pca9685-adafruit-rev-c", "bno085-adafruit-4754",
-                                 "pololu-d36v50f6"])
+                                 "pololu-d36v50f6", "pi-5", "pololu-vl53l1x-3415",
+                                 "tb6612-adafruit-2448"])
 def test_board_bay_contains_the_board_and_its_overhang(sku):
     board = _lib().board(sku)
     spec = board.spec
@@ -610,6 +840,42 @@ def test_board_bay_contains_the_board_and_its_overhang(sku):
     assert low[2] == pytest.approx(-3.0)
     assert high[2] == pytest.approx(max(spec["thickness_mm"], mz + sz) + 1 + 8)
     assert catalog_identity_of(board.bay()) is None
+
+
+def test_board_mounting_sizes_standoffs_taps_and_screws_from_the_board():
+    """ADR-493: a board's screws thread printed material by construction."""
+    reg = _lib().board("pololu-d36v50f6", origin=(7.0, -12.7, 52.0),
+                       direction=(1, 0, 0), roll_degrees=90.0)
+    hold = reg.mounting()
+    t = reg.spec["thickness_mm"]
+    assert (hold.screw, hold.length_mm) == ("m2", 7.0)  # ceil(1.57 + 5)
+    assert len(hold.standoffs) == len(hold.holes) == len(hold.screws) == 3
+    tap = catalog.thread_spec("m2")["tap_drill_mm"]
+    for boss, hole, (x, y) in zip(hold.standoffs, hold.holes, reg.spec["mount_holes"]):
+        assert boss.properties == hole.properties == reg.body.properties
+        (cyl,) = _ops(boss, "cylinder")
+        assert cyl.arguments == (2.5, 4.0)
+        assert tuple(cyl.properties["origin"]) == (x, y, -4.0)
+        (cyl,) = _ops(hole, "cylinder")
+        assert cyl.arguments == pytest.approx((tap / 2.0, 7.0 - t + 1.5))
+        assert tuple(cyl.properties["origin"]) == pytest.approx((x, y, -(7.0 - t + 1.0)))
+    # Each screw seats on the PCB's top face, on its hole's axis.
+    seat = hold.screws[0].body.properties["translation"]
+    assert seat == pytest.approx((7.0 + t, -12.7 + 2.159, 52.0 + 2.159))
+    assert {s.part_number for s in hold.screws} == {hold.screws[0].part_number}
+    assert _lib().board("pi-5").mounting().screw == "m2.5"
+    assert _lib().board("bno085-adafruit-4754").mounting(screw="m2").screw == "m2"
+    assert _lib().board("bno085-adafruit-4754").mounting(standoff=5).length_mm == 8.0
+    with pytest.raises(LibraryError, match="has no mounting holes"):
+        _lib().board("esp32-devkitc-v4").mounting()
+    with pytest.raises(LibraryError, match="does not pass the board's 2.18 mm holes"):
+        reg.mounting(screw="m2.5")
+    with pytest.raises(LibraryError, match="less than 0.8 mm of wall"):
+        reg.mounting(diameter=3.0)
+    with pytest.raises(LibraryError, match="does not pass the 1.57 mm PCB"):
+        reg.mounting(length=1.0)
+    with pytest.raises(LibraryError, match="standoff must be positive"):
+        reg.mounting(standoff=0)
 
 
 def test_esp32_bay_covers_the_module_overhanging_its_pcb():
@@ -659,6 +925,42 @@ def test_servo_bay_houses_the_case_tabs_and_lead(sku):
     # Without lead room the lead box is gone, not a zero-length solid.
     assert len(_boxes(servo.bay(lead_room=0))) == 2
     assert catalog_identity_of(servo.bay()) is None
+
+
+@pytest.mark.parametrize("sku", ["sg90", "mg90s", "mg996r", "ds3218"])
+def test_servo_bay_leaves_a_ledge_under_the_lead_side_screw(sku):
+    """ADR-491: the lead room must not take the lead-side tab screw's bite.
+
+    Every tabbed servo's lead-side hole sits 3.1-4.75 mm past the back end
+    face, inside the 6 mm lead room. Run to the tab underside, the room cut
+    away the material that screw goes into, so designs dropped it and held
+    each servo by one tab (orun1-t1-hexapod). ``ledge`` is opt-in because
+    the bay's boxes are part of every accepted recipe that cut one.
+    """
+    servo = _servo_lib().servo(sku)
+    spec = servo.spec
+    ledge_top = spec["mount_hole_z_mm"] - 0.5
+    lead_side = [(x, y) for x, y in spec["mount_holes"]
+                 if x < spec["shaft_offset_from_front_mm"] - spec["body_length_mm"]]
+    assert lead_side
+
+    def cut(boxes, point):
+        return any(all(lo[i] < point[i] < hi[i] for i in range(3)) for lo, hi in boxes)
+
+    ledged, plain = _boxes(servo.bay(ledge=4)), _boxes(servo.bay())
+    for x, y in lead_side:
+        for depth in (0.5, 2.0, 3.5):
+            assert not cut(ledged, (x, y, ledge_top - depth)), (sku, depth)
+        # ...the room itself is still there below the ledge, and the
+        # default bay is ADR-443's, so accepted recipes do not move.
+        assert cut(ledged, (x, y, ledge_top - 4.5))
+        assert cut(plain, (x, y, ledge_top - 0.5))
+    with pytest.raises(LibraryError, match="servo.bay: ledge 40 mm leaves no lead room"):
+        servo.bay(ledge=40)
+    with pytest.raises(LibraryError, match="servo.bay: ledge must be"):
+        servo.bay(ledge=-1)
+    bus = _servo_lib().servo("sts3215")
+    assert _boxes(bus.bay(ledge=4)) == _boxes(bus.bay())
 
 
 def test_servo_bay_contains_the_servo_body():
@@ -995,6 +1297,17 @@ result = {
                                      direction=(1, 0, 0), roll_degrees=30).body,
     "esp_board": esp.body,
     "pi_board": pi_board.body,
+    "pi5_board": lib.board("pi-5", origin=(0, 80, 0)).body,
+    "camera": lib.board("rpi-camera-module-3", direction=(1, 0, 0)).body,
+    "tof": lib.board("pololu-vl53l1x-3415", origin=(0, -40, 0)).body,
+    "motor_driver": lib.board("tb6612-adafruit-2448", origin=(40, -40, 0)).body,
+    "bus_servo": lib.servo("sts3215", origin=(0, -80, 0), direction=(0, 1, 0)).body,
+    "bus_servo_bay": lib.servo("sts3215", origin=(0, -80, 0), direction=(0, 1, 0)).bay(),
+    "wheel": lib.wheel("pololu-1430", origin=(100, 30, 20), direction=(1, 0, 0)).body,
+    "wheel_bay": lib.wheel("pololu-1430").bay(),
+    "tyre": lib.wheel("pololu-1430", origin=(100, 30, 20), direction=(1, 0, 0)).tyre().body,
+    "foot_pad": lib.foot_pad("essentra-462178", direction=(0, 0, -1)).body,
+    "foot_pad_bay": lib.foot_pad("essentra-462178").bay(),
     "pwm_board": pwm.body,
     "servo": servo.body,
     "horn": servo.horn("double_arm").body,
@@ -1046,6 +1359,8 @@ def test_the_library_builds_on_the_real_kernel() -> None:
             "joint", "joint_placed", "bldc", "bldc_placed", "linear_actuator", "linear_actuator_placed",
             "gearmotor", "gearmotor_placed",
             "esp_board", "pi_board", "pwm_board",
+            "pi5_board", "camera", "tof", "motor_driver", "bus_servo", "bus_servo_bay",
+            "wheel", "wheel_bay", "tyre", "foot_pad", "foot_pad_bay",
             "servo",
             "horn",
             "big_servo",
@@ -1719,3 +2034,145 @@ for module, teeth, width, height in ((2, 10, 10, 8), (1.5, 4, 6, 5)):
     print("RACK " + json.dumps({"module": module, "teeth": teeth, "volume_mm3": round(shape.Volume, 3)}))
 print("GEARS-OK")
 """
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle").FREECADCMD is None,
+    reason="No FreeCADCmd binary available for a wheel sweep.",
+)
+def test_a_catalog_wheel_sweeps_clean_round_its_catalog_motor(tmp_path):
+    """ADR-487: a full turn of the wheel joint leaves the shaft and bore apart.
+
+    orun1's balancer trial measured 4.26 mm³ between the turning 1430's D
+    bore and the N20's static D shaft, so no catalog wheel on its catalog
+    motor could pass a sweep. The shaft really turns with the wheel; the
+    round bore is what lets the sweep measure it so. This drives the
+    engine's own sweep over the two library bodies as documented: the
+    wheel on the shaft clear of the boss, the hinge on the shaft axis, -180..180.
+    """
+    import json
+    import subprocess
+    from test_cadexd_lifecycle import CADEX_ROOT, FREECADCMD
+    from CadexFitReport import MAXIMUM_COMMON_VOLUME_MM3
+
+    driver = tmp_path / "wheel_sweep.py"
+    driver.write_text(WHEEL_SWEEP_DRIVER)
+    completed = subprocess.run(
+        [str(FREECADCMD), "-c",
+         f"import sys; sys.path.insert(0, {str(CADEX_ROOT)!r}); exec(open({str(driver)!r}).read())"],
+        capture_output=True, text=True, timeout=300,
+    )
+    line = next((l for l in completed.stdout.splitlines() if l.startswith("WHEEL-SWEEP ")), None)
+    assert line, completed.stdout + completed.stderr
+    result = json.loads(line[len("WHEEL-SWEEP "):])
+    (solved,) = result["baseline"]
+    assert solved["common_volume_mm3"] <= MAXIMUM_COMMON_VOLUME_MM3
+    (joint,) = result["report"]["joints"]
+    assert joint["status"] == "complete" and joint["sample_count"] == 25, json.dumps(joint)[:900]
+    (pair,) = joint["pairs"]
+    assert pair["relative_motion"] is True
+    assert pair["maximum_common_volume_mm3"] <= MAXIMUM_COMMON_VOLUME_MM3, pair
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle").FREECADCMD is None,
+    reason="No FreeCADCmd binary available for a wheel build.",
+)
+def test_the_catalog_wheel_is_a_spoked_rim_and_a_separate_tyre(tmp_path):
+    """ADR-489: the 1430 is built as its STEP model reads, not as a slab.
+
+    orun1's balancer lost twice to designs whose wheels read as wheels;
+    both losses cited the catalog wheel being a plain disc. On the real
+    kernel: the wheel's volume is the pinned spoked body's, well under the
+    disc it replaced; a point between two spokes is open air; and the tyre
+    is a second solid, seated on the rim, touching and not overlapping it,
+    whose volume and the wheel's together are within 3% of Pololu's STEP.
+    """
+    import json
+    import subprocess
+    from test_cadexd_lifecycle import CADEX_ROOT, FREECADCMD
+
+    driver = tmp_path / "wheel_build.py"
+    driver.write_text(WHEEL_BUILD_DRIVER)
+    completed = subprocess.run(
+        [str(FREECADCMD), "-c",
+         f"import sys; sys.path.insert(0, {str(CADEX_ROOT)!r}); exec(open({str(driver)!r}).read())"],
+        capture_output=True, text=True, timeout=300,
+    )
+    line = next((l for l in completed.stdout.splitlines() if l.startswith("WHEEL-BUILD ")), None)
+    assert line, completed.stdout + completed.stderr
+    result = json.loads(line[len("WHEEL-BUILD "):])
+    spec = catalog.wheel_spec("pololu-1430")
+    disc = math.pi * 40.0 ** 2 * 10.0
+    assert result["wheel"]["valid"] and result["wheel"]["solids"] == 1
+    assert result["wheel"]["volume"] == pytest.approx(spec["wheel_volume_mm3"], abs=1.0)
+    assert result["wheel"]["volume"] < 0.3 * disc
+    assert result["between_spokes_inside"] is False
+    assert result["on_spoke_inside"] is True
+    assert result["tyre"]["valid"] and result["tyre"]["solids"] == 1
+    assert result["tyre"]["volume"] == pytest.approx(spec["tyre_volume_mm3"], abs=1.0)
+    assert result["common_volume"] < 1e-6 and result["distance"] < 1e-6
+    step_volume = 19220.1  # Pololu's STEP model, measured in this kernel (ADR-489)
+    total = result["wheel"]["volume"] + result["tyre"]["volume"]
+    assert abs(total - step_volume) / step_volume < 0.03
+    assert result["outer_dia"] == pytest.approx(80.0, abs=0.01)
+
+
+WHEEL_BUILD_DRIVER = r'''
+import json, math
+import FreeCAD as App
+from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
+from cadex_domain_api import create_domain_api
+from cadex_library_api import create_library_api
+from cadex_part_worker import build_part_shape
+pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+lib = create_library_api(create_domain_api(pack.domain, pack.api_exports, pack.output_types))
+wheel = lib.wheel("pololu-1430")
+w = build_part_shape(wheel.body.to_payload())
+t = build_part_shape(wheel.tyre().body.to_payload())
+def facts(shape):
+    return {"volume": shape.Volume, "solids": len(shape.Solids), "valid": shape.isValid()}
+mid = 6.75  # the wheel's centre plane, from the hub tip
+probe = lambda r, deg: App.Vector(r * math.cos(math.radians(deg)), r * math.sin(math.radians(deg)), mid)
+print("WHEEL-BUILD " + json.dumps({
+    "wheel": facts(w), "tyre": facts(t),
+    "between_spokes_inside": w.isInside(probe(22.0, 30.0), 1e-6, True),
+    "on_spoke_inside": w.isInside(probe(22.0, 0.0) + App.Vector(0, 1.8, 0), 1e-6, True),
+    "common_volume": w.common(t).Volume, "distance": w.distToShape(t)[0],
+    "outer_dia": t.optimalBoundingBox().XLength,
+}))
+'''
+
+
+WHEEL_SWEEP_DRIVER = r'''
+import json
+import FreeCAD as App
+from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
+from cadex_domain_api import create_domain_api
+from cadex_library_api import create_library_api
+from cadex_part_worker import build_part_shape
+from cadex_assembly_worker import _measure_clearance, _measure_joint_sweeps
+pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+lib = create_library_api(create_domain_api(pack.domain, pack.api_exports, pack.output_types))
+D = App.newDocument("WheelSweep")
+motor = D.addObject("Part::Feature", "motor")
+motor.Shape = build_part_shape(lib.gearmotor("pololu-2367").body.to_payload())
+wheel = D.addObject("Part::Feature", "wheel")
+# On the shaft axis, its hub 0.3 mm clear of the 0.7 mm boss.
+wheel.Shape = build_part_shape(lib.wheel("pololu-1430", origin=(0, 0, 1.0)).body.to_payload())
+D.recompute()
+components = {"motor": motor, "wheel": wheel}
+data = {"motor": {"grounded": True}, "wheel": {"grounded": False}}
+# Both connectors at the world origin on the shaft axis, each in its own
+# component's frame: the shape's placement becomes the object's.
+def axis(obj):
+    return {"matrix": list(obj.Placement.inverse().toMatrix().A)}
+joints = {"wheel": {"kind": "revolute", "suppressed": False, "parameters": {},
+    "angle_limits_degrees": [-180, 180], "length_limits_mm": None,
+    "connectors": [{"component_output": "motor", "local_frame": axis(motor)},
+                   {"component_output": "wheel", "local_frame": axis(wheel)}]}}
+baseline = _measure_clearance(components)
+report = _measure_joint_sweeps(components, data, joints, baseline,
+                               {"sweep_step_degrees": 15}, True)
+print("WHEEL-SWEEP " + json.dumps(dict(baseline=baseline, report=report)))
+'''

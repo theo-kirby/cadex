@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "8442240a980d9e8d2cface85eec8b6d84bbb15403c8442ad6d3193fa9df684fe"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "6e27423d0e13a992e13da0ad9398d6f517071ea2e1b0488a5bdf4521b668fba6"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "ba7bf3ab7afaa7fddb254e082b1866bb2bae1e1de5abe024c18759d7f86f9954"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "4de90c620481a016a5e879e3b13b72a2f22d8855ef6e13ef14373da6bdf00de3"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "6cd4871b60da3e6d0ec9a0839904f5592bdea886704b7bd0d3f402c6bd50304c"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "10d979004067a00b7c3b413162e89d7f8ab27cad9ffd1218c215b45590797ac2"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 2,
+    "T3": 2,
+    "T4": 1,
+    "T5": 2,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 13,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A chamfered top cover and a dark base tray enclose the body hardware, but the box-shaped hip housings on each leg still read as servo cases."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "The scheme is white shell, dark grey base and an orange accent deliberately placed on the feet and front panel, but the dark tone is a chassis plate rather than the mechanism colour, since the joints themselves are white."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Most rotation axes are round disc caps concentric with their axes, but they sit beside blocky boxes and are not unified into one consistent joint feature."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The robot reads as chamfered boxes, flat discs and a flat base plate with small edge treatment, not soft primitives with large radii."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A small orange panel on one end of the top cover suggests a front, but it is a generic slot that is hard to read as a face."
+        },
+        "T6": {
+          "score": 3,
+          "reason": "The body is compact and the legs taper to distinct orange foot caps, giving a balanced, intentional hexapod stance."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The three-quarter views are cleanly lit on a dark background, but the grid floor is not a seamless studio backdrop and there is little contact shadow."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"A chamfered top cover and a dark base tray enclose the body hardware, but the box-shaped hip housings on each leg still read as servo cases.\"}, \"T2\": {\"score\": 2, \"reason\": \"The scheme is white shell, dark grey base and an orange accent deliberately placed on the feet and front panel, but the dark tone is a chassis plate rather than the mechanism colour, since the joints themselves are white.\"}, \"T3\": {\"score\": 2, \"reason\": \"Most rotation axes are round disc caps concentric with their axes, but they sit beside blocky boxes and are not unified into one consistent joint feature.\"}, \"T4\": {\"score\": 1, \"reason\": \"The robot reads as chamfered boxes, flat discs and a flat base plate with small edge treatment, not soft primitives with large radii.\"}, \"T5\": {\"score\": 2, \"reason\": \"A small orange panel on one end of the top cover suggests a front, but it is a generic slot that is hard to read as a face.\"}, \"T6\": {\"score\": 3, \"reason\": \"The body is compact and the legs taper to distinct orange foot caps, giving a balanced, intentional hexapod stance.\"}, \"T7\": {\"score\": 2, \"reason\": \"The three-quarter views are cleanly lit on a dark background, but the grid floor is not a seamless studio backdrop and there is little contact shadow.\"}}\n```",
+      "session_id": "4f85c2e9-1f0a-4d9d-acf7-3bd762430ad3",
+      "duration_ms": 23098,
+      "num_turns": 17,
+      "total_cost_usd": 0.1255386,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2558,
+          "cacheReadInputTokens": 5653,
+          "cacheCreationInputTokens": 9154,
+          "webSearchRequests": 0,
+          "costUSD": 0.1255386,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 810,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 1,
+          "reason": "Only the body has a chamfered top cover over a bare dark base plate, while the servo-shaped boxes, horn discs and screwed mounting tabs on the legs stay plainly visible."
+        },
+        "T2": {
+          "score": 2,
+          "reason": "The white shell, dark chassis and orange accent on the feet and front are applied consistently, but the dark colour marks the base plate rather than the mechanism, which is white."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Most rotation axes are round pucks or discs concentric with their axes, but they mix thick pucks with thin horn-like discs and are not one consistent feature."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The robot reads as chamfered boxes, flat plates, flat discs and straight bars with small edge treatments, not soft primitives with large radii."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "A small orange chamfered panel marks the front, but it reads as a generic accent patch rather than a clear face."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The legs taper to distinct orange foot caps, but the flat, wide body and splayed six-leg layout sprawl rather than read as compact."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Shading reads and the antialiased three-quarter views are good, but the dark grid floor has no contact shadow or studio polish, and some views are flat orthographic shots."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 1, \"reason\": \"Only the body has a chamfered top cover over a bare dark base plate, while the servo-shaped boxes, horn discs and screwed mounting tabs on the legs stay plainly visible.\"}, \"T2\": {\"score\": 2, \"reason\": \"The white shell, dark chassis and orange accent on the feet and front are applied consistently, but the dark colour marks the base plate rather than the mechanism, which is white.\"}, \"T3\": {\"score\": 2, \"reason\": \"Most rotation axes are round pucks or discs concentric with their axes, but they mix thick pucks with thin horn-like discs and are not one consistent feature.\"}, \"T4\": {\"score\": 1, \"reason\": \"The robot reads as chamfered boxes, flat plates, flat discs and straight bars with small edge treatments, not soft primitives with large radii.\"}, \"T5\": {\"score\": 2, \"reason\": \"A small orange chamfered panel marks the front, but it reads as a generic accent patch rather than a clear face.\"}, \"T6\": {\"score\": 2, \"reason\": \"The legs taper to distinct orange foot caps, but the flat, wide body and splayed six-leg layout sprawl rather than read as compact.\"}, \"T7\": {\"score\": 2, \"reason\": \"Shading reads and the antialiased three-quarter views are good, but the dark grid floor has no contact shadow or studio polish, and some views are flat orthographic shots.\"}}\n```",
+      "session_id": "bc6ae04b-ee2b-460c-9370-4c5687bfae91",
+      "duration_ms": 23586,
+      "num_turns": 17,
+      "total_cost_usd": 0.124624,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2507,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.124624,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 739,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A dark tray and a white chamfered cover enclose the body, but the hip and knee blocks read as exposed servo-case boxes, and standoff plates with screws show through the gaps."
+        },
+        "T2": {
+          "score": 1,
+          "reason": "White, dark grey and orange are used, and the orange is placed well on the feet and face, but the dark colour is only on the base tray while the joints are white, so the colours don't follow the shell and mechanism roles."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Most rotation axes have large round discs or round hip pads concentric with them, but they look like flat servo-horn discs rather than styled, consistent joint features."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The robot is built from boxes, a chamfered box cover, flat discs and straight bars with only small edge softening, so it still reads as plates and blocks."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "An orange chamfered panel marks the front, but it is a small, generic face element and gives little character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The legs taper to distinct orange foot caps, but the body is a wide, flat, sprawling plate, so the stance doesn't read as compact."
+        },
+        "T7": {
+          "score": 1,
+          "reason": "The render is shaded and antialiased with a decent three-quarter view, but it sits on a busy dark grid with no contact shadow, and several views are flat orthographic angles."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A dark tray and a white chamfered cover enclose the body, but the hip and knee blocks read as exposed servo-case boxes, and standoff plates with screws show through the gaps.\"}, \"T2\": {\"score\": 1, \"reason\": \"White, dark grey and orange are used, and the orange is placed well on the feet and face, but the dark colour is only on the base tray while the joints are white, so the colours don't follow the shell and mechanism roles.\"}, \"T3\": {\"score\": 2, \"reason\": \"Most rotation axes have large round discs or round hip pads concentric with them, but they look like flat servo-horn discs rather than styled, consistent joint features.\"}, \"T4\": {\"score\": 1, \"reason\": \"The robot is built from boxes, a chamfered box cover, flat discs and straight bars with only small edge softening, so it still reads as plates and blocks.\"}, \"T5\": {\"score\": 2, \"reason\": \"An orange chamfered panel marks the front, but it is a small, generic face element and gives little character.\"}, \"T6\": {\"score\": 2, \"reason\": \"The legs taper to distinct orange foot caps, but the body is a wide, flat, sprawling plate, so the stance doesn't read as compact.\"}, \"T7\": {\"score\": 1, \"reason\": \"The render is shaded and antialiased with a decent three-quarter view, but it sits on a busy dark grid with no contact shadow, and several views are flat orthographic angles.\"}}",
+      "session_id": "305db156-ba52-4f29-880e-b9f88b9a77ee",
+      "duration_ms": 24417,
+      "num_turns": 17,
+      "total_cost_usd": 0.127444,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2648,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.127444,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 876,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "hexapod-e-hard-surface",
+  "receipt": {
+    "project": "orun1-ho-hexapod-e-hard-surface",
+    "accepted_revision": "380f52c178dfd618abb9247f5b412d87e3c9eaf81b64ce58f45a616f8a1a98b1",
+    "look_revision": "380f52c178dfd618abb9247f5b412d87e3c9eaf81b64ce58f45a616f8a1a98b1",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

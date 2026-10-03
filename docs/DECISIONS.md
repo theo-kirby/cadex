@@ -31253,3 +31253,846 @@ code path.
   22.9 N·m/rad servo and joint limits on both sides do not agree. Excluding
   the jaws only hid this. It must be diagnosed before any gripper is trained,
   alongside whether MJX 3.10 honours `equality/joint`.
+
+## ADR-476 — A partial blend sorts its edges, and an accepted recipe reopens when the kernel rebuilds it differently (2026-10-02)
+
+**Context.** Three sweep projects (`digestbug-balancer-b-motors-in-body`,
+`digestbug-balancer-d-product-shell`, `digestbug-hexapod-h-free`) refused every
+open with "The restore pass digest does not match the accepted digest." Each
+`script.py` is byte-identical to its accepted revision's source and the engine
+code had not changed since acceptance. Working on `orun1-*` copies, every
+output was compared between the accepted attempt and a restored one. Only the
+kernel fingerprint differed, and never the definition. Two causes:
+
+1. **Partial blends depended on the kernel's edge order.** `part.fillet(...,
+   on_failure="skip")` with no edge selector probes the whole edge list
+   greedily and stops at 48 kernel calls. A boolean's result lists its edges
+   in an order that is not fixed across processes, so a different subset was
+   probed and kept on every rebuild. On balancer-b's `tub` the result was 20, 19
+   and 31 of 165 edges in three runs, with up to 3.6 mm vertex moves (whole
+   fillets appearing and disappearing). Even with a fixed order, the kernel's
+   verdict on a marginal subset still varied once: `frame` kept 36 edges in one
+   process and 37 in the next.
+2. **`part.offset` moved vertices.** The hexapod's `shell` (`fillet ∘ cut ∘
+   offset`) kept its topology and bounding box. Its volume moved in the fourth
+   decimal, and 3 of its 92 vertices moved 4.5–4.9 µm, about 40 times their
+   own BREP tolerance. ADR-421's fingerprint assumed the vertex set stayed
+   bit-identical. Here it did not.
+
+The resumed interrupted turns were not a cause. The source run on restore is
+the accepted source, and the rebuild drifted the same way on a copy with no
+session. (The hexapod's accepted attempt is staged under a different
+revision directory, `c5c63c30…`, from its accepted revision `94759ef5…`. The
+store records the path, so restore reads it correctly.) Load affected only how
+often the defect showed: `d` opened alone and refused when three opens ran in
+parallel.
+
+**Decision.**
+- *(Withdrawn by ADR-477: the sort refused six held-out sweep designs and is reverted.)* When the whole selection fails, `_blend` searches it in a canonical order:
+  geometry type, centre, length and radius rounded to the micrometre, then
+  the full canonical detail as a tie-break (`_blend_canonical_order`). Which
+  edges a partial blend keeps is now a function of the shape, not of the
+  process's enumeration. Every blend it *builds* still passes the edges in
+  kernel order: the order a fillet is given is the order its result
+  enumerates, so sorting the one-call fast path re-indexed every filleted
+  output against ADR-025's golden (`test_subshape_enumeration` caught it). The
+  fast path is unchanged. A kept set that refuses in kernel order is retried
+  in measured order before giving up.
+- `open_project`'s restore pass takes one last opinion before refusing. If the
+  accepted and the restored attempt ran the same source and settings
+  (`param_values`, mounts, cages, nets, boards, inputs), and every output has
+  the same name, domain, type and canonical definition
+  (`staged_recipe_digest`), the open succeeds with `matched_by: "recipe"` and
+  `drifted_outputs`, the outputs whose geometry differs
+  (`staged_drifted_outputs`). The accepted digest, attempt and candidate stay
+  pinned, and nothing is re-accepted or learned. A missing request or result on
+  either side still refuses, and so does a changed script.
+
+**What this gives up.** The restore pass no longer proves that a rebuild is
+bit-reproducible. It proves that the rebuild ran the accepted recipe, and it
+names what the kernel made differently. An engine change that alters geometry
+for an unchanged recipe now opens with those outputs named, where it used to
+refuse. The byte digest and the geometry digest are unchanged and are still
+consulted first.
+
+**Consequences.**
+- Sorting changes which edges any cap-bound partial blend keeps. Every
+  accepted design that relied on one rebuilds those outputs differently once,
+  and opens through the recipe path with them named. Measured on the three
+  copies: balancer-b `frame` and `tub`; balancer-d `base`, `core` and `hood`;
+  the hexapod `chassis`, the six `coxa_*` and `shell`. Designs whose blends
+  all succeed in one call are untouched, bytes and ordinals both.
+- `open_project` re-accepts nothing, but `cadex render` does: it asks for a
+  display through `rebuild`, which is an accepting op (ADR-303, as ADR-389
+  noted). Once a drifted project has been rendered, its accepted digest and
+  attempt are the rendered rebuild's, at the same accepted revision. On a
+  fresh copy of balancer-d, three renders in a row all succeeded and left the
+  accepted digest at `c01707f1…`, then `4b2126ce…`, then `c01707f1…`. Its rebuild
+  still alternates between two kernel answers after the sort, so the next
+  open goes through the recipe path again. Whether a display rebuild should
+  re-accept a drifted model is left open. This ADR does not change it.
+- `CadexdProtocol`'s `restore` gains the optional key `drifted_outputs`, and
+  `docs/INTEGRATION.md` moves with it. The shell's client reads
+  `matches_accepted` and does not change.
+- Regressions that fail on the old source:
+  `test_part_blending.py::test_a_capped_partial_blend_does_not_depend_on_the_kernels_edge_order`
+  and
+  `test_cadexd_lifecycle.py::test_the_accepted_recipe_reopens_when_the_kernel_rebuilds_it_differently`,
+  which also pins the refusal when the accepted request is missing. The
+  changed-script refusal test now asserts the recipe verdict too.
+
+## ADR-477 — A partial blend searches in the kernel's order again; ADR-476's sort is withdrawn (2026-10-02)
+
+**Context.** ADR-476 sorted a failing blend's edges by measured geometry
+(curve type first) before the capped partition search, so that which edges a
+`skip` or `reduce` blend kept would not depend on the process. It was measured
+on the three `digestbug-*` copies only. Drawing the D1 baseline's inputs, the
+next unit opened fresh copies of the 26 held-out sweep designs:
+
+| engine | open | of which `matched_by: recipe` | refused |
+|---|---|---|---|
+| before ADR-476 (`7e55ffed`) | 25 | 0 | 1 (`wildcard-b`, digest) |
+| ADR-476 (`44889478`) | 20 | 11 | 6 |
+
+Five of the six refusals were "api.fillet: no edge in the selection could be
+blended at that radius". On `arm3-a-servo-joint` the sort put all of the
+selection's B-spline edges first. Those were the ones that could not take the
+0.6 mm radius, and the 48-call cap went on rejecting 22 of them, so 0 of 244
+edges were blended. The sixth (`wildcard-h-free`) was a `fuse` that came
+back as four solids downstream of a changed blend. The eleven recipe matches
+reopened, but with fillets the owner had not rated, and the owner's ratings
+are D1's ground truth.
+
+**Decision.** The partition walks `selected` in the kernel's order, as it did
+before ADR-476. `_blend_order_key` and `_blend_canonical_order` are deleted,
+and so is the measured-order retry of a kept set. ADR-476's other half stays:
+a rebuild that keeps a different subset reopens through the recipe path with
+`drifted_outputs` named, which is what actually reopened the three
+digestbug projects.
+
+**Measured.** Every one of the 55 sweep designs and the three digestbug
+copies was opened from a fresh copy, eight at a time: 55 opened (48 exact,
+3 `geometry`, 4 `recipe`, including `digestbug-balancer-b` and
+`digestbug-hexapod-h-free`). Of the three that did not, two were the 300 s
+domain timeout under that load, and the third (`digestbug-balancer-d`) hit the
+probe's **15 s clock**. That is the remaining defect: it made 10 calls in 15 s
+under load, probed no edge, and refused. Run one at a time, all three opened: `hexapod-c` exact, `wildcard-f`
+by recipe, and `digestbug-balancer-d` on 4 of 4 fresh copies. So **58 of
+58 open unloaded.** A partial blend bounded by wall-clock time is still
+load-dependent. This ADR does not change the clock.
+
+**Consequences.**
+- `test_part_blending.py::test_a_capped_partial_blend_does_not_depend_on_the_kernels_edge_order`
+  pinned the withdrawn sort and is replaced by
+  `test_a_capped_partial_blend_searches_in_the_order_the_design_was_accepted_in`,
+  which fails on ADR-476's source with the arm3 refusal.
+- ADR-476's lifecycle regression (`test_the_accepted_recipe_reopens_when_the_kernel_rebuilds_it_differently`)
+  is unchanged and passes.
+- No protocol change. The fast path and every built blend's edge order are as
+  before ADR-476.
+
+## ADR-478 — orun1's D1 judge is pairwise on the hero alone, and v2 is frozen before any held-out call (2026-10-02)
+
+**Context.** D1 asks for a frozen judge that agrees with the owner on
+designs it never saw. The baseline (ot10's T1–T7 rubric) scored 13.5% on the
+held-out gap pairs and ranked the No above both Loves
+(`docs/probes/orun1/README.md`, "D1 baseline result"): it scores the finish
+ot10 prescribed, not what the owner rated.
+
+**Decision.** The judge compares two designs per call and is asked which one
+the owner would rate higher. A design's score is its fraction of comparisons
+won. The form matches both bars, D1's pairwise agreement and D4's wins
+against same-type sweep designs. It sees only the studio hero, the one
+picture per design the owner rated from, rendered by the product from an
+`orun1-*` copy at the accepted revision. Two versions were built on the 29
+dev designs: v1 at 81.5% (44 of 54 gap pairs), and v2 at 90.7% (49 of 54),
+reproduced exactly by a replicate with every pair's sides swapped. v2 is
+frozen in the README with its prompt verbatim and its sha256 pinned in
+`runner/pairwise.py` (`FROZEN`). The runner refuses `--split heldout` for
+any other version, for a mirror, and into a directory that already holds a
+held-out result.
+
+**Consequences.**
+- Nothing about the judge was chosen from a held-out design. v2's dev
+  figure is optimistic, because v2 was written after reading v1's dev misses.
+  The held-out measurement is the one D1 counts, and it is published
+  whatever it is.
+- The ot10 rubric is not retired by this ADR. D2 decides that.
+- New probe machinery only (`runner/draw_set.py`, `runner/pairwise.py`,
+  `metrics.split_verdicts`). No product, engine or protocol change. No new
+  dependency.
+- **Held-out result (2026-10-02).** v2 was measured on the 26 held-out
+  designs once: 97.3% gap-pair agreement (36 of 37), every Love above every
+  No (2 of 2), and τ-b 0.436 over 325 pairs. ot10's judge scored 13.5%, failed
+  Love over No and had τ-b −0.079 on the same pairs. v2 meets D1's bar and is the
+  judge D4 is scored with (`docs/probes/orun1/judge/v2-heldout/`).
+
+## ADR-479 — The design language is rewritten from the owner's ratings, and inside out is the procedure (2026-10-02)
+
+**Context.** orun1 D2. ot10 wrote `docs/DESIGN-LANGUAGE.md` from ten
+reference images (ADR-411), and the overlay taught it. The owner rated 55
+sweep designs blind (`docs/probes/orun1/sweep/ratings.json`). The three Nos
+are the archetype the old language prescribed. The best-rated thesis is the
+one the old language forbade. D1's frozen judge v2 agrees with the owner on
+designs it never saw, and the ot10 rubric does not (ADR-478).
+
+**Decision.** The language is rewritten on the charter's A1–A3, and each
+rule cites sweep ids with their verdicts and split, or the charter, or is
+marked **[judgement]**. A robot is an engineered machine in one of two
+finishes, exposed mechanism or panelled hard surface, which the agent
+chooses and justifies. There is no face, no pillow body, and the accent is
+small and functional. The overlay's design section (`CadexAgentGuidance.md`)
+is now six steps: concept, parts, place them, structure that carries them,
+finish, refine with `look`. Each step is taught as a rule with no rating, id,
+render or judge text. A test holds that last property against every sweep id
+and image name.
+
+**Consequences.**
+- The contradicted rules are removed by ADR-480 to ADR-483, and the rubric
+  by ADR-484.
+- Kept, with their sources: the role palette (all four Loves use it), joint
+  caps over the horn (ADR-440), tapered limbs (ADR-428's depth half), `.bay()`
+  bays (ADR-442/443), printability, the dark floor (ADR-444).
+- `look`'s `hardware_silhouette_share` still carries ot10's 0.20 bar and its
+  `meets` flag. The overlay now tells the agent to read it as how much shows,
+  not as a failure, in the exposed finish. Removing the bar from the engine is
+  a separate change.
+- Text only: no engine code, protocol or payload change beyond the shipped
+  guidance file. Tests: `cli/tests/test_turn_loop.py` (inside-out order, old
+  archetype gone, no ratings quoted), `cadex_tests/test_agent_guidance.py`.
+
+## ADR-480 — The mandated face is removed; a real sensor may sit where it was (2026-10-02)
+
+**Context.** ot10 §4 and ADR-422 required a face of checked size and
+contrast on every robot. In the orun1 sweep the 47 designs whose notes
+mention a face, eyes or a visor average 1.43. The 8 without average 2.00.
+Every No (`biped-a-servo-joint`, `hexapod-g-minimal`, `biped-h-free`) is a
+visor with two dot eyes. Charter A1: the face is out, and a focal sensor may
+take its place as a real part.
+
+**Decision.** The face rule, its size bar and its +X contrast check are
+removed from the language and the overlay. The overlay says: no eyes, no
+visor, no mouth. The front may carry a camera, a range sensor or a slot for
+one, as a held part, or the controller can be the focal point
+(`balancer-c-exposed-mechanism`, Love). ADR-422's tests are replaced by one
+that fails if a face rule comes back.
+
+**Consequences.** Two Loves carry a forward sensor-like element that their
+own notes called an "eye-bar" and "two lenses". The rule therefore separates
+a sensor on a hard front from a mascot face, and it advises one part over a
+pair of round lenses **[judgement]**. A1 is the owner's to revise.
+
+## ADR-481 — The single soft body primitive is removed (2026-10-02)
+
+**Context.** ot10 §0 and §1: "one soft body primitive with a face", "a
+hood, a pill, a sphere or a heavily rounded box", radii 10–20% of the body.
+All three Nos are that body, and the product-shell thesis it led to scored
+1.43. The owner's words in the charter: "a rounded box with four legs".
+Charter A1: the soft pillow-box body is out.
+
+**Decision.** The language names the mascot box as the archetype to avoid.
+Edges are finished with a fillet or a 45° chamfer sized to the part (the
+engine's sharp-edge measure already counts a 45° chamfer as finished), and
+one large uniform radius over a whole box is called the pillow. The body is
+whatever structure carries the parts: frames, a spine, a deck, a column, a
+hull.
+
+**Consequences.** `quadruped-e-hard-surface` (Love) is chamfered, and a
+chamfered body now passes the language as well as the sharp-edge bar.
+
+## ADR-482 — "Never an exposed case or a bare board" is removed; hardware that shows is ordered (2026-10-02)
+
+**Context.** ot10 §1 said shells hide the purchased hardware, and ADR-428
+added that a cradle following a servo case must be covered or rounded away.
+The exposed-mechanism thesis is the best rated in the sweep (2.14), with two
+of the four Loves (`balancer-c-exposed-mechanism`,
+`biped-c-exposed-mechanism`).
+
+**Decision.** Hardware may show. Where it shows it is square to the frame, on
+a centreline or grid, held by its own screws or bay, with its cable on a
+deliberate path. Exposed mechanism is one of the two finishes (A2). ADR-428's
+cradle rule and the overlay's SHELLS HIDE THE HARDWARE rule are removed.
+ADR-428's depth-taper rule stays.
+
+**Consequences.** A part held only by being inside a cover is now named as
+not held. D3's mounting check is what will measure that.
+
+## ADR-483 — "Split lines are the only surface detail" is replaced by "detail is real" (2026-10-02)
+
+**Context.** ot10 §1 allowed only shell seams as detail. The Loves use
+fasteners, a bolted hatch, routed cables and seams where parts really
+separate (`quadruped-e-hard-surface`: "every seam, groove and socket-head bolt
+is a real joint"; `arm5-g-minimal`: "seams only where parts actually
+separate").
+
+**Decision.** Surface detail is a part boundary: a real seam, a fastener
+that fastens, a hatch, a panel, a cable that carries something. A greeble, a
+fake vent or a stripe is still not allowed.
+
+**Consequences.** Visible fasteners are now a deliberate pattern, not
+something to hide (§6).
+
+## ADR-484 — ot10's T1–T7 rubric is retired as the authority; judge v2 replaces it (2026-10-02)
+
+**Context.** ot10's rubric (`docs/probes/ot10/README.md`, sha256
+`1c81caa2…`) scored the finish ot10 prescribed. On orun1's held-out set it
+agreed with the owner on 13.5% of the gap pairs, ranked the No above both
+Loves, and had τ-b −0.079. Frozen judge v2 scored 97.3%, held Love over No
+and had τ-b 0.436 (ADR-478).
+
+**Decision.** Retired, not rewritten. The rubric stops being the measure of
+Cadex design quality, and D1's frozen judge v2 (`docs/probes/orun1/README.md`)
+is orun1's authority. The rubric's files, its frozen test and ot10's scores
+stay unchanged as ot10's record and as orun1's baseline. They are not
+deleted, because the baseline result cites them. The language no longer
+cites the ten core references, and the test that required every one to be
+cited now requires only that no reference image or path appears.
+
+**Consequences.** `look`'s three measures (P1–P3) were defined by that
+contract. P2 (sharp edges) and P3 (materials) still agree with the new
+language. P1's hardware bar does not (ADR-479), and it is still in
+`CadexStudio.PROXY_BARS`.
+
+## ADR-485 — The catalog gains the parts an engineered robot is built round: a bus servo, a Pi 5, a camera, a range sensor, a wheel and a foot pad (2026-10-02)
+
+**Context.** orun1's D3 asks for the parts the owner's Loves are built
+from, and D2's rewritten language (ADR-479, ADR-480) tells the agent to put
+a real sensor where a face was and to design feet and wheels as parts. The
+catalog had hobby PWM servos, a Pi Zero, no camera, no range sensor, no
+wheel and no foot, so the agent could follow neither rule with a catalogued
+part.
+
+**Decision.** Six rows, each with datasheet sources, true dimensions,
+mounting features, a bay, and an `approximate` list naming every number no
+drawing dimensions:
+- **`servo("sts3215")`**, Feetech STS3215 C001 (7.4 V, 1:345, 12-bit
+  encoder). Feetech's C001 PDF and Waveshare's ST3215 DXF. A new servo
+  family, `bus`, with `mount_style: "case_holes"`: no tabs, eight M2
+  self-tapping holes on the output and rear faces, published as
+  `spec['mount_points']` (origin, screw axis, hole, thread). Its bay keeps
+  both faces reachable and reserves the spline, the rear idler boss and the
+  lead room. Its actuator and joint dynamics come from Feetech's 6 V and
+  7.4 V ratings. The tab servos' recipe is unchanged, so no existing digest
+  moves.
+- **`board("pi-5")`**: the Pi 5 drawing for the outline, holes and ports,
+  and the Pi 4 drawing for the port heights. The marker is the port stacks,
+  which overhang the +X edge by 3 mm. GPIO pads are J8_1–40.
+- **`board("rpi-camera-module-3")`**: the drawing and product brief, with
+  lens centre and field of view in the spec. The back-face FPC block is
+  carried as `underside_components_mm`, and `board.bay` never stops short
+  of it. That is a behaviour change for boards that carry the field, and
+  no earlier board does.
+- **`board("pololu-vl53l1x-3415")`**: Pololu's annotated photos (no
+  dimensioned PDF exists) and ST's datasheet, with range and FOV in the
+  spec.
+- **`wheel("pololu-1430")`**: a new `wheels` family, 80 × 10 mm with a
+  silicone tyre and a 3 mm D press-fit bore. Pololu's drawing, plus its
+  STEP model measured in this repo's kernel. The bore matches
+  `gearmotor("pololu-2367")`'s shaft, and a test pins that. Its bay is the
+  swept disc.
+- **`foot_pad("essentra-462178")`**: a new `foot_pads` family, a natural
+  rubber screw-on foot (Essentra's feet catalogue). Its bay is the pad's
+  keep-out plus the M3 tapping hole its screw takes into the printed foot.
+
+`describe_api.library.catalog` gains `wheels` and `foot_pads`, with the same
+`skus` + `notes` shape as every other family. The golden and
+`docs/INTEGRATION.md` move with it. No request op changes. The overlay
+names each part where the machine needs it. Provenance: `docs/PROVENANCE.md`
+§8h.
+
+**Consequences.** The STS3215's raised cover and rear bump (the 35 mm
+envelope against the 29 mm modelled case) are scaled from a drawing, not
+dimensioned, so they are not modelled and the spec says so. Neither the
+foot pad's durometer nor its mass is stated, so its density is rubber's
+nominal value. The mounting check D3 also asks for is the next unit; it
+reads `mount_points` and `mount_holes`.
+
+## ADR-486 — Every build reply says what holds each purchased part (2026-10-02)
+
+**Context.** orun1's D3 asks the product to report, for every purchased
+part, which printed part holds it and by what, and to name a part held by
+nothing or held only by being inside a shell. The fit block measured gaps
+and welds (ADR-346, ADR-370), but a board resting on a deck, a servo
+floating in a shell and a servo screwed through its tabs all read the same
+there: a welded pair with no failing gap. The owner's Loves fasten every
+part visibly; ADR-480's HOLD EVERY PART rule said so in words that nothing
+measured.
+
+**Decision.** `fit.mounting`, a block beside `fit.attachments`, from the
+same `inspect scope=clearance` value, built by
+`CadexFitReport.mounting_summary` so the CLI and the shell show the same
+rows:
+- **The library remembers two facts per run**, in side tables beside
+  `_CATALOG_IDENTITY` and for its reason (ADR-236): each body's mounting-hole
+  lines in its placed coordinates (servo tabs and bus-servo case holes,
+  board holes, gearmotor and BLDC bores, a foot pad's screw, and a bolt's
+  own axis), and the body each `.bay()` cavity was cut for.
+- **The project worker stamps them beside the definition**:
+  `catalog_mount_axes` on every catalog output (empty where a part has no
+  holes, so absence marks an older revision), and `houses` on a part output
+  whose definition contains a bay cavity anywhere. No digest moves.
+- **The clearance scope publishes `components`** (the inventory rows, with
+  `mount_axes` and `houses`), so the block costs no second engine call.
+- **The judgement:** `screws` when a placed bolt's axis is within 0.5 mm
+  and 5° of a hole axis and the bolt touches both the part and a printed
+  part (contact 0.5 mm, or any common volume); `bay` when a printed part
+  houses it at the same solved placement (a wheel's well never counts);
+  `press fit` for a bearing, bushing or spherical joint touching a printed
+  part; `output` for a horn or wheel touching a servo or motor that is
+  itself held. Otherwise `contact only`, `inside shell` or `held by
+  nothing`. Fasteners are what holds, never what is checked; the printed
+  gear and rack generators hold like any printed part.
+- **Older revisions are `unavailable`**, never judged: without the stamps
+  every screwed part would read as loose.
+- The overlay's HOLD EVERY PART rule names the block and tells the agent a
+  screw it only drilled a hole for is not there: place it as a `lib.bolt`
+  component on the hole's axis.
+
+**Measured.** On fresh revisions of copies of three sweep designs
+(`orun1-mount-*`, the script plus one trailing comment): the biped-c Love
+passes 11 of 11 (servos and boards by screws, pack and ESP32 by bay); the
+balancer-c Love holds 4 of 6 and reports both gearmotors `contact only` —
+its cheeks are drilled at the motor holes but no screw is placed; the
+quadruped-e Love holds 17 of 21 (servos by screws, horns on their outputs,
+pack by bay) and reports its four boards `contact only` on printed bosses
+with no screws placed. Each report matches its script.
+
+**Consequences.** It is a holding check, not a strength check: one bolt on
+one hole counts the part as screwed, and a clip is not recognised (there is
+no catalog clip), so a clipped part reads `contact only`. A part held by a
+printed bracket that is itself loose is not chased. Projects accepted
+before this ADR show `unavailable` until a new revision is accepted: on
+the balancer copy, whose restore pass drifted and rolled back (F1's path),
+a plain `rebuild` left the old attempt pinned and the stamps unpublished.
+
+## ADR-487 — The catalog wheel's bore is round, so a wheel joint sweeps clean round its motor's D shaft (2026-10-03)
+
+**Context.** orun1's first D4 trial (`orun1-t1-balancer`) put two
+`lib.wheel("pololu-1430")` on two `lib.gearmotor("pololu-2367")`, as the
+overlay tells the agent to. Its swept fit could not pass: a limited wheel
+joint measured 4.26 mm³ between the turning wheel's D bore and the motor's
+static D shaft, so the agent declared the wheels continuous and the sweep
+came back `incomplete`. In a real drive the shaft turns with the wheel.
+The engine has no notion of a part that belongs to two components: the
+shaft is in the motor's body, which does not move with the wheel joint.
+
+**Decision.** `lib.wheel` cuts its bore round at `bore_dia_mm` and drops
+the D flat from the geometry. A round bore turned about the shaft axis looks
+the same at every angle, so the sweep measures the static shaft exactly as it
+would measure a turning one. That holds only when the joint is on the shaft
+axis, which is also the only case where a real shaft turns with the wheel. A
+misaligned wheel joint still reports its intersection. The motor keeps its D
+shaft: it is a sourced dimension (PROVENANCE §8b), pinned on the real kernel.
+The flat stays in the wheel's spec as `bore_flat_to_opposite_mm`, and a new
+`approximate` entry says it is not modelled. This follows the servo spline,
+whose teeth are not modelled either.
+
+I chose this over the critic's two options for these reasons. A shaft
+returned as a separate solid for the agent to fuse into the wheel would
+change `gearmotor.body` under every accepted design and depend on the agent
+doing the fuse. A sweep exemption for a drive and output pair would also
+excuse a rim that really hits the motor case.
+
+The docstring's placement was wrong too: "at the motor's shaft datum" puts
+the hub through the motor's 0.7 mm boss (8.57 mm³ at the solved pose). The
+docstring now says to place the wheel at least `boss_height_mm` out. The
+overlay's wheel line says the same, and adds that the wheel revolute declares
+`angle_limits_degrees=(-180, 180)`, because a joint with no limits is never
+swept.
+
+**Measured.**
+`test_library.py::test_a_catalog_wheel_sweeps_clean_round_its_catalog_motor`
+drives the engine's own `_measure_joint_sweeps` on the real kernel. It takes
+the two library bodies, with the wheel 1 mm out on the shaft axis, and turns a
+hinge from −180° to 180° in 15° steps (25 samples). On the old source the
+pair's maximum swept common volume is 6.97 mm³, which fails. With the fix it
+is under `MAXIMUM_COMMON_VOLUME_MM3`, at the solved pose and through the
+whole turn.
+
+**Consequences.** Every accepted design with a 1430 wheel rebuilds that
+output differently once and reopens by the recipe path with it named
+(ADR-476). The wheel is still a solid disc. Modelling its rim, hub and tyre is
+the critic's second unit and is not part of this one.
+
+## ADR-488 — A bolt holds a part only if it fits the hole; the catalog carries M1.6 (2026-10-03)
+
+**Context.** ADR-486's mounting check counted a part as screwed when a
+`lib.bolt` lay on one of its hole axes, touching it and a printed part. It
+never asked whether that bolt could be in that hole. orun1's balancer trial 1
+put `lib.bolt("m2", …)` on the axes of the N20 gearmotor's (`pololu-2367`)
+M1.6 tapped face holes, and both motors were reported `held` by `screws`.
+Trial 2's agent saw the mismatch itself and gave up: "Screwing the N20 motors
+with M2 bolts into their M1.6 face holes was rejected (wrong thread,
+intersecting solids). Catalog bolts start at M2 and the gearmotor has no
+.bay()" (`orun1-t2-balancer`, record `first-eagle-0836`). The check was too
+lenient, and the catalog had no screw that fits the only motor it carries.
+
+**Decision.**
+- Each published mount axis carries one size fact, stamped by the library
+  beside the axis (never inside a definition, so no digest moves): a bolt's
+  `bolt_dia_mm`; a part whose spec names a `mount_thread` publishes
+  `thread_dia_mm` (N20 M1.6, STS3215 M2 self-tapping, the BLDC's M3);
+  any other part publishes its hole diameter as `hole_dia_mm`.
+- `CadexFitReport.mounting_summary` counts a bolt on a hole's axis only if it
+  fits: equal to a tapped hole's thread, no larger than a clearance hole. A
+  bolt that does not fit holds nothing and is named in the row's `misfits`
+  and its detail. A side with no size fact (a revision accepted before this)
+  is judged by its axis alone, as before, until rebuilt.
+- The catalog gains M1.6 in the four tables that have a standard for it:
+  thread (ISO 261 pitch 0.35, basic minor 1.221; tap drill 1.25; ISO 273
+  fine/medium clearance 1.7/1.8), ISO 4762 socket head (dk 3.0, k 1.6,
+  s 1.5), ISO 4032 hex nut (s 3.2, m 1.3) and ISO 7089 washer (1.7 × 4.0 ×
+  0.3). Countersunk (ISO 10642 starts at M3), nyloc and heat-set insert
+  tables do not gain it, and refuse it loudly as before.
+- The overlay's HOLD EVERY PART paragraph says a bolt must fit its hole and
+  names the N20's M1.6 screws.
+
+A gearmotor `.bay()` was the critic's alternative. I did not build it in this
+unit: with an M1.6 screw the N20 is held the way its datasheet means it to be
+held, by its face, and a bay would be a second way to the same verdict.
+
+**Measured.** `cadex_tests/test_mounting_check.py`: three fixtures on
+published values (M2 in M1.6 tapped holes reported `contact only` with two
+`misfits`, M1.6 held; M3 through a 2.5 mm clearance hole reported, M2 and
+M2.5 held; no size facts judged by axis alone) and a real-kernel pair, an
+N20 under a plate bolted with `m1.6` (held, 2 of 2 holes) and with `m2`
+(`contact only`, two misfits). On the old source five of these fail (the
+M2 cases came back `held`; `m1.6` was an unknown thread); with the change
+all 19 tests in the file pass.
+
+**Consequences.** Trial 1's "9 of 9 held" would now be 7 of 9 on a rebuild.
+Any accepted design that put an oversized or wrong-thread bolt on a hole axis
+reports that part on its next acceptance. The check is still not a strength
+check, and still does not ask whether a bolt is long enough to engage.
+
+## ADR-489 — The catalog wheel is a spoked rim, and its tyre is a part of its own (2026-10-03)
+
+**Context.** `lib.wheel("pololu-1430")` was a solid disc the size of the tyre,
+plus the hub (ADR-485). Both orun1 balancer trials (`orun1-t1-balancer`,
+`orun1-t2-balancer`) lost their two frozen-v2 comparisons against the sweep's
+c (Love) and e (Like), and both judge transcripts cite plain disc wheels. A
+wheel is the most visible purchased part on a balancer, so a slab there makes
+the whole design read as a placeholder. The rule this run follows is that
+hardware is drawn as the real part (ADR-482, ADR-483).
+
+**Decision.**
+- The wheel body follows Pololu's STEP model, measured in this repo's kernel
+  by radial and angular probes: a hub tube (Ø6.6, 9.35 long), a cone shoulder
+  into a Ø17 × 5.2 flange, six spokes, and a rim from Ø67 to Ø76.5 across the
+  full 10 mm. Each spoke is a root block over the hub holes, two 1.1 mm ribs
+  on a 3.6 mm pitch, 4.6 deep, and a block that widens into the rim. The six
+  Ø3.1 holes on the Ø19.1 circle are now modelled, clocked on the spokes as
+  the STEP places them. The bore stays round (ADR-487).
+- `wheel.tyre()` is the silicone tyre as its own body: Ø76.5 to Ø80, 10 wide,
+  with 1 mm shoulder rounds. It is a catalog part (`tyre/pololu-1430`), so
+  the agent places it as its own component and gives it its own role. This
+  follows the `servo.horn()` precedent, a second part drawn from the first.
+  The overlay says to place it in `mechanism`, fixed to its wheel, so that
+  the rim can take another role.
+- The stated 19.8 g is split between the two bodies. The tyre is its kernel
+  volume (4194.8 mm³) at a nominal silicone density of 1100 kg/m³ (4.61 g).
+  The wheel takes the rest over its kernel volume (14715.5 mm³), which works
+  out to 1032 kg/m³, consistent with the ABS Pololu names. Both volumes are
+  in the catalog row and pinned by a test. Together they come within 1.6% of
+  the STEP model's 19220.1 mm³.
+- The mounting check gains `rim`: a `tyre` touching a `wheel` is held on its
+  rim, and is freed with the wheel, just as a wheel is freed with a loose
+  motor.
+
+I did not add a fourth appearance role ("rubber"). Roles are per component,
+the overlay already gives tyres `mechanism`, and a new role would move
+`APPEARANCE_ROLES`, the studio and every palette contract for one dark colour.
+A separate tyre component is what lets the design show it.
+
+**Measured.** `test_library.py::test_the_catalog_wheel_is_a_spoked_rim_and_a_separate_tyre`
+runs on the real kernel. It checks: the wheel's volume equals the pinned
+volume and is under 30% of the disc it replaced; a point between two spokes
+is open air while a point on a rib is solid; the tyre is one valid solid,
+80.00 mm across, touching the rim and not overlapping it; and wheel plus tyre
+come within 3% of the STEP model. On the old source the recipe test fails
+(`tyre_mass_g`), the kernel test fails (`WheelPart` has no `tyre`), and the
+mounting fixture comes back `held by nothing` instead of `rim`.
+`test_mounting_check.py` adds a tyre on a held wheel (held, `rim`), on a
+wheel whose motor is loose (held by nothing, naming the wheel), and off any
+wheel (held by nothing).
+
+**Consequences.** Every accepted design with a 1430 wheel rebuilds that
+output differently once and reopens by the recipe path with it named
+(ADR-476). Until it places `wheel.tyre()`, such a design shows a bare rim,
+which is the truthful picture of a wheel with no tyre. The tread is still
+not modelled.
+
+## ADR-490 — A motor driver board: the TB6612 the balancer's N20s need (2026-10-03)
+
+**Context.** The third balancer trial (`orun1-t3-balancer`) drives its wheels
+with two Pololu 2367 N20 gearmotors, and its transcript (`t3-balancer.err`)
+says what it could not place: "the N20 gearmotors need a dual H-bridge driver
+to run, and the catalog doesn't have one. I left room for one rather than
+invent it", naming the TB6612FNG. A brushed DC motor cannot run from a
+microcontroller pin, so every catalog design with an N20 was a machine with
+no way to drive its motors. D3 asks for anything the D4 transcripts show the
+agent reaching for and not finding.
+
+**Decision.**
+- `lib.board("tb6612-adafruit-2448")`: Adafruit's TB6612 breakout, the part
+  the agent named. Outline (19.05 × 26.67 mm), both Ø2.5 holes, the 18 pads
+  with their nets (JP1 inputs and supply, JP3 motor outputs, J1 the terminal
+  block pads) and the chip's body are parsed from Adafruit's published EAGLE
+  board at a pinned commit, as the BNO085's were (ADR-407). The ratings
+  (4.5–13.5 V motor supply, 2.7–5 V logic, 1.2 A per channel, 3 A peak), the
+  3 mm overall height and 1.8 g come from the product page. It is a `boards`
+  row, so `.bay()`, terminals, harness wiring and the mounting check
+  (screws through its own holes, ADR-486/488) all apply unchanged.
+- The overlay's complete-machine list names it for brushed DC motors such as
+  the N20, one board per two motors, its motor supply straight from the 2S
+  pack.
+- Both holes sit on the JP3 edge. That is the board; the catalog note says
+  the far edge needs a ledge or a slot in its bay, rather than inventing
+  holes.
+
+I chose the Adafruit breakout over Pololu's DRV8833 and TB6612 carriers
+because their product pages (713, 2130) show no mounting holes, so the
+mounting check could only ever report them as held by a bay. A published
+board file is also a better source than a dimension photo. The encoder N20 variant the same transcript
+asks for is a separate gap and is not taken here.
+
+**Measured.** `test_library.py::test_motor_driver_manufacturer_pins` pins the
+outline, holes, every signal, the chip's centre at the board file's
+(9.906, 14.986) and the stated 3 mm height, and checks that 1.2 A covers the
+N20's 0.67 A stall and that a 2S pack is inside its motor range. The board
+joins the terminal-row, bay and real-kernel build tests.
+`test_mounting_check.py::test_the_motor_driver_is_held_by_its_two_screws_on_the_real_kernel`
+builds it on a plate: two M2 bolts into tapped holes is `held` by `screws`
+("2 of 2 mounting holes"), and with no bolts it is `contact only`. On the old
+source the kernel build fails with `Unknown board 'tb6612-adafruit-2448'`.
+
+**Consequences.** No protocol or response-shape change: `describe_api`
+lists one more board SKU in an existing family. The terminal block is not
+modelled, because it ships loose.
+
+## ADR-491 — A servo bay can leave a ledge under the lead-side tab (2026-10-03)
+
+**Context.** orun1's hexapod trial 1 (`orun1-t1-hexapod`) held each of its 18
+MG90S servos with one screw, "1 of 2 mounting holes". The agent's note said
+the catalog MG90S "models a lead block under the lead-side tab". It does not.
+`lib.servo` builds the case, a tab plate drilled at both holes and the
+spline, and the two tabs are identical. No MG90S or SG90 source shows a
+block there either, and stock brackets screw both tabs. The block was the
+bay. ADR-443's `servo.bay()` cut its 6 mm (6.5 mm with clearance) lead room
+from the case bottom **right up to the tab underside**, and every tabbed
+servo's lead-side hole lies inside that room: 3.15 mm past the end face on
+the SG90, 3.1 on the MG90S, 4.4 on the MG996R and 4.75 on the DS3218. So the
+cut removed the material the lead-side screw would bite into.
+
+**Decision.** `servo.bay()` takes `ledge` (mm, default 0). With `ledge=4`
+the lead room stops 4 mm under the tab-pocket floor, which is two diameters
+of M2 thread, so both tabs' screws bite. The room keeps its 6 mm reach and
+the full case width. A tabbed servo's lead leaves near the case bottom, so
+the room is still 11.9 mm tall on the SG90, the shortest case. A ledge that
+leaves no room is refused by name. A bus servo has no tabs, so `ledge` does
+not change its bay. The overlay and `docs/XSCRIPT.md` tell the agent to cut
+tabbed servos with `servo.bay(ledge=4)`. The ledge depth is a convention, not
+a datasheet dimension.
+
+**Why opt-in rather than a new default.** The first version changed the
+default. With it installed, a copy of the accepted hexapod
+(`orun1-ledge-reopen`) **refused to open**: "The restore pass digest does
+not match the accepted digest." Its `recipe_comparison` said "the rebuild
+did not run the accepted recipe". A bay is never catalogued, so its boxes
+are expanded into the printed part's own `definition`. A changed default is
+therefore a changed recipe for every accepted design that cut a servo bay,
+and ADR-476's recipe path cannot reopen it. That is F1's failure. With the
+opt-in shape installed, the same copy reopens byte-identical
+(`2c9fe271…`, `matches_accepted: true`). Note that `pixi run build-engine`
+is what the worker imports. The dev-tree CLI's first open ran the installed
+copy and proved nothing.
+
+**Measured.** `test_library.py::test_servo_bay_leaves_a_ledge_under_the_lead_side_screw`
+covers the SG90, MG90S, MG996R and DS3218. It probes 0.5, 2.0 and 3.5 mm
+under each lead-side hole for no cut, checks that the room still exists
+below the ledge, checks that the default bay still cuts there, and covers
+the refusal and the bus servo. On the old source all four cases fail.
+`test_mounting_check.py::test_a_ledged_servo_bay_gives_the_lead_side_screw_its_thread_on_the_real_kernel`
+puts an MG90S in a block cut with its bay, with an M2 bolt in a tapped hole
+at each tab. The lead-side bolt's common volume with the block (its thread)
+is **3.51 mm³ with `ledge=4`, equal to the free side, and 0.0 without**.
+
+**Not taken.** The mounting check counts both bolts as holding in *both*
+cases. The lead-side head comes within `MOUNT_CONTACT_MM` (0.5 mm) of the
+tab pocket's end wall, so a bolt whose shank bites nothing still reads
+"into a printed part". That leniency is a separate defect in the check and
+is left for its own unit.
+
+**Consequences.** No protocol or response-shape change, and no accepted
+recipe moves. New designs get the ledge only if they pass it. The overlay
+tells them to.
+
+## ADR-492 — A bolt holds only by its thread, and the fit allows the thread (2026-10-03)
+
+**Status:** accepted. orun1 D3. [Cadex-new]
+
+**The defect.** ADR-491 found that the mounting check credited a bolt that
+bites nothing. With a plain `servo.bay()` the MG90S lead-side shank hangs in
+the lead room, yet its head comes within `MOUNT_CONTACT_MM` (0.5 mm) of the
+tab pocket, and that counted as "into a printed part". The check read 2 of 2.
+
+**The rule.** A bolt on a hole's axis that fits the hole now holds only if
+its shank threads into something. That means it shares at least
+`THREAD_ENGAGEMENT_MM3` (0.1 mm³) with a printed part, which is then the
+holder, or the head clamps the printed part while the thread is in one of
+these:
+- the held part's own tapped hole (a `thread_dia_mm` hole; the catalog
+  models it as an open bore, so reaching it is the only evidence there is);
+- the held part itself;
+- a nut or a heat-set insert (their bores are modelled at the minor
+  diameter).
+
+A bolt that fails this is listed in the row's `unthreaded` and holds
+nothing. `thresholds.thread_engagement_mm3` publishes the volume.
+
+**Why the fit had to move with it.** The static fit failed *any* bolt/print
+common volume above 1e-6 mm³ as an `intersection`. So a screw in a
+`lib.tap_drill` hole could never pass fit, although the overlay said to cut
+one. Measured on both D4 trials: **no bolt in either shares any volume with a
+printed part**. `orun1-t1-hexapod` cut its tap at radius 1.0 mm (it defined
+`TAP = lib.tap_drill("m2")` and never used it). `orun1-t3-balancer` wrote
+"self-tapping holes in the print: modelled at the thread's major diameter".
+A bore at the major diameter leaves the thread nothing to cut. With the
+mounting rule alone, the product would fail every screw one way or the
+other. So `CadexFitReport.thread_allowances` gives each `lib.bolt` × printed
+pair an allowance of `π/4 (d² − minor²) L`: the ring the thread can cut,
+from the bolt's part number and the ISO 261 minor diameter (copied into the
+module, which is loaded by path; a test holds the copy equal to
+`CadexCatalog`). An overlap within that allowance is `clear` and counted in
+`fit.threaded_count`. A bolt through solid, or into a pilot finer than the
+minor diameter, overlaps more and still fails. The sweep keeps the allowance
+only for a pair already threaded at the solved pose, so a link swinging into
+a bolt is still a collision. `cadex clearance` writes such a row as
+`threaded`. The worker's own `fit_failures` field is unchanged. The reader
+was already the verdict, so no protocol op, response key or digest moves.
+
+**Measured.**
+- `test_mounting_check.py::test_a_ledged_servo_bay_…_on_the_real_kernel`
+  now reads **1 of 2** for the plain bay (`unthreaded: [lead-side bolt]`)
+  and **2 of 2** with `ledge=4`. In both, no bolt/block pair fails fit. On
+  the old source it read 2 of 2 for both.
+- Unit fixtures cover four cases: a head over a cavity (unthreaded), and a
+  printed thread, the part's tapped hole and a nut (each held). For the
+  allowance: the tap drill passes, solid and a too-small pilot fail, and a
+  swept pair is allowed only if it was threaded at rest.
+- Re-measured from each trial's published clearance value. Fit is unchanged
+  in both: hexapod 0/3655 failing, balancer t3 0/561, sweeps pass.
+  - Hexapod trial 1 (`35193b3e`): mounting still **49/49**. But every one of
+    its 18 bolts (one per MG90S) is now `unthreaded`, and the servos are held
+    by their bays, not by screws.
+  - Balancer trial 3: mounting goes from **pass 11/11 to reported 8/11**.
+    The BNO085, the D36V50F6 regulator and the VL53L1X become
+    `contact only` (9 unthreaded bolts). The two N20s stay held by their own
+    M1.6 tapped faces.
+
+**Consequences.** Earlier mounting numbers overstate screws, and a
+re-measure reads differently from the receipts published before this ADR.
+The overlay tells the agent to cut `lib.tap_drill` holes into solid
+material and explains what `unthreaded` and `threaded_count` mean.
+
+## ADR-493 — A board is screwed down by its own `.mounting()` (2026-10-03)
+
+**Status:** accepted. orun1 D3. [Cadex-new]
+
+**The defect.** Under ADR-492, balancer trial 3 (`orun1-t3-balancer`)
+reads 8 of 11. Its BNO085, D36V50F6 and VL53L1X are `contact only`, and all
+nine of their bolts are `unthreaded`. The cause is in the script, and the
+product made it the obvious script:
+- Every board screw hole is bored at the thread's **major** diameter
+  (`m2t = 1.0005`). The script says why: "modelled at the thread's major
+  diameter so the unmodelled thread is what bites". Before ADR-492 the
+  static fit failed any bolt/print overlap, so a bore at the bolt's own
+  diameter was the only hole that passed fit. That bore leaves the thread
+  nothing to cut.
+- The product offered no way to screw a board down. `board.bay()`'s
+  docstring said "standoffs through the mounting holes go in after the cut"
+  and stopped there. The agent had to work out the screw size, the
+  standoff, the pilot and each bolt's seat by hand, in the board's rotated
+  frame, for every board. Servos and foot pads already had a helper, but
+  boards did not.
+
+**The change.** `BoardPart.mounting(standoff=3.0, *, screw=None,
+diameter=None, length=None)` returns a `BoardMounting`. It has three lists,
+one solid per mounting hole, each placed in the board's frame:
+- `standoffs`: bosses `diameter` across (default 2.5 screw diameters), from
+  the PCB's bottom face down `standoff` plus 1 mm, so they fuse into the
+  carrier. With `board.bay()`'s defaults the gap under the PCB is 3 mm,
+  which is the default standoff.
+- `holes`: the screw's tapping drill (`lib.tap_drill`), from the PCB down
+  1 mm past the screw's tip.
+- `screws`: `lib.bolt` parts seated on the PCB's top face, on each hole's
+  axis. `screw` defaults to the largest metric size the hole passes.
+  `length` defaults to the PCB plus 2.5 thread diameters, rounded up to a
+  millimetre.
+
+It refuses in these cases: a board with no mounting holes (the ESP32
+DevKitC), a screw larger than the hole, a boss with less than 0.8 mm of
+wall round the tap, and a screw too short to pass the PCB. The overlay
+names `.mounting()` and says never to drill a board's screw hole at the
+screw's own diameter. Nothing moves in the protocol, the digest or the fit
+reader; it is one library method and its data class.
+
+**Measured.** `test_mounting_check.py::test_a_board_on_its_own_mounting_threads_every_screw_on_the_real_kernel`
+puts the D36V50F6 on a vertical web, rolled exactly as trial 3 carries it:
+- trial 3's own hold (major-diameter bores, M2 × 6): `contact only`,
+  **0 of 3** threaded (3 `unthreaded`);
+- `.mounting(standoff=3)`: `held` by `screws`, **3 of 3**, nothing
+  unthreaded, no intersection, `fit.threaded_count` 3.
+
+The mounted half failed on the installed engine before the change, with
+`'BoardPart' object has no attribute 'mounting'`. A headless test pins the
+geometry: bosses, taps, each screw's seat in a rotated frame, the
+screw-size choice (D36V50F6 M2, Pi 5 and BNO085 M2.5), and each refusal.
+
+**Not done here.** Trial 3 is an accepted product-agent design, and the
+actor never hand-edits a counted design, so it is not re-authored. Its
+8 of 11 stands until a new balancer turn is run on this revision.
+
+## ADR-494 — A joint is one small cap, and a leg is long against it (2026-10-03)
+
+**Status:** accepted. orun1 D4, from hexapod trial 1. Partly reverses ADR-440. [Cadex-new]
+
+**The evidence.** Hexapod trial 1 (`orun1-t1-hexapod`, rev `35193b3e`) passed
+fit, sweep and mounting and lost under frozen judge v2 to the one Like it had
+to beat. The judge's reason: "crowded clusters of joints, oddly angled links
+and upturned segments … cluttered and arbitrary". Its script shows where the
+clusters came from, and both causes are the product's:
+- it sized every cap from `s0.horn("single_arm")`, the default style, so
+  `R = 16.0 + 1.6` and every joint is a 35 mm disc;
+- it added a matching disc on each servo's far face (`BOSS_T`), because
+  ADR-440's overlay said "where the servo's other face shows, put the same
+  disc there too";
+- under those discs hang a 48 mm thigh and a 70 mm shin, 1.4 and 2.0 cap
+  diameters, with the knee raised above the deck.
+The overlay had a section rule for limbs (ADR-428) and nothing on their
+length against their joints.
+
+**The change.** Teaching only; no library default moves, because changing
+`horn()`'s default style would change the digest of every accepted script
+that relies on it (F1's lesson).
+- JOINTS ARE FEATURES: one cap per axis, from the shortest horn that carries
+  the link — `servo.horn("cross")` on a micro servo, whose 10.2 mm reach
+  gives a cap about two thirds the diameter (Ø23.6 against Ø35.2) — at reach
+  plus wall and no larger. **Removed:** ADR-440's second disc on the far face.
+  The far side is closed by the limb that wraps the case.
+- New rule LEGS ARE LONG AGAINST THEIR JOINTS: thigh and shin each at least
+  2.5 cap diameters between axes, the shin longest, the hip link no longer
+  than its two servos need, the thigh level or a little above at the
+  standing pose, never a knee folded up high, checked with `look` `focus`
+  on one leg.
+- REFINE names "a short leg under crowded joint caps" as a crude thing to fix.
+
+The 2.5 figure is the run's judgement, not a rated measurement: it is the
+smallest round ratio that puts trial 1's 70 mm shin under the bar and lets an
+MG90S leg with a cross-horn cap (59 mm thigh) stay inside the servo's stall
+torque on a tripod. `docs/DESIGN-LANGUAGE.md` §3 and §5 carry it marked so.
+
+**Tests.** `test_a_joint_is_one_small_cap_and_a_leg_is_long_against_it` and
+`test_the_cross_horn_the_overlay_names_is_shorter_than_the_default`
+(`cli/tests/test_turn_loop.py`) both fail on the previous overlay. ADR-440's
+test no longer asks for "both sides of the joint".

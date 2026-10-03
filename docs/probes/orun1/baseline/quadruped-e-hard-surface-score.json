@@ -1,0 +1,231 @@
+{
+  "schema": "ot10-judge-v1",
+  "model": "claude-opus-5-5",
+  "effort": "high",
+  "calls": 3,
+  "rubric_sha256": "1c81caa2c5f6ac61e936d8cf99cbfe4a56649007fd83a7c5bc02824d16c1b08f",
+  "references": [
+    "01-desktop-arm-product-finish.jpg",
+    "04-jerboa-poster-orange-accent.jpg",
+    "07-white-hood-quadruped-yellow-studio.jpg",
+    "08-grey-cad-render-filleted-joints.jpg",
+    "12-tan-folded-quadruped-chunky.jpg",
+    "14-ibots-crab-white-shell-dark-visor.jpg",
+    "26-white-frog-shell-dark-joints.jpg",
+    "39-grey-wheel-leg-hexapod-product.jpg",
+    "43-yellow-sphere-quadruped-dark-legs.jpg",
+    "46-orange-spider-concept-sheet.jpg"
+  ],
+  "candidates": [
+    {
+      "name": "candidate-1.png",
+      "sha256": "5735e8a22726e22d99902d91d731a2e6c20dca799a1de37f53079d4936850fe1"
+    },
+    {
+      "name": "candidate-2.png",
+      "sha256": "05bcb3a99cbdfc7bb525d90f7344a0719890d90e14d92727f19b900a6929fba3"
+    },
+    {
+      "name": "candidate-3.png",
+      "sha256": "08c081c4a79766496e4dea131e4a65af651579b05e7f07682bf16b3d2764649f"
+    },
+    {
+      "name": "candidate-4.png",
+      "sha256": "a04322b6e86804ec898cf44f787e5e85f42acaebf4270aec9f676d1bc8a3a6ca"
+    },
+    {
+      "name": "candidate-5.png",
+      "sha256": "083e984acbd7c1849b57e8010090ec74a11bbb2b872b556f938e565db9bb1a24"
+    },
+    {
+      "name": "candidate-6.png",
+      "sha256": "12847613c6cd3e367dd0e507cbbd53f563cf2275ea3575f78e066fe6632266a4"
+    }
+  ],
+  "medians": {
+    "T1": 2,
+    "T2": 3,
+    "T3": 2,
+    "T4": 1,
+    "T5": 2,
+    "T6": 2,
+    "T7": 2
+  },
+  "total": 14,
+  "raw": [
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous chamfered box shell encloses the body hardware, but the knee servo cases are exposed on the legs as light pods with visible screw holes."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The shell is off-white and the mechanism is dark charcoal, with a single orange accent used deliberately on the face slot and the feet."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The hip joints are large dark cylindrical bosses and the knees have round caps on their axes, but the treatment differs between joints and some axes show as small screw heads."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a chamfered rectangular box with flat bolted plates, and the limbs read as constant-section bars, so it still looks like plates and boxes rather than soft forms with large radii."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "The front has a dark recessed panel with an orange slit as a face element, but it is a small generic slot rather than a strong focal face."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The lower legs taper to distinct orange foot pads, but the side-mounted knee pods widen the stance and make the layout read as somewhat sprawling rather than balanced."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Clean antialiased renders, shaded so the forms read, on a dark grid floor from a high three-quarter angle, but with no soft contact shadow or seamless studio backdrop."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A continuous chamfered box shell encloses the body hardware, but the knee servo cases are exposed on the legs as light pods with visible screw holes.\"}, \"T2\": {\"score\": 3, \"reason\": \"The shell is off-white and the mechanism is dark charcoal, with a single orange accent used deliberately on the face slot and the feet.\"}, \"T3\": {\"score\": 2, \"reason\": \"The hip joints are large dark cylindrical bosses and the knees have round caps on their axes, but the treatment differs between joints and some axes show as small screw heads.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a chamfered rectangular box with flat bolted plates, and the limbs read as constant-section bars, so it still looks like plates and boxes rather than soft forms with large radii.\"}, \"T5\": {\"score\": 2, \"reason\": \"The front has a dark recessed panel with an orange slit as a face element, but it is a small generic slot rather than a strong focal face.\"}, \"T6\": {\"score\": 2, \"reason\": \"The lower legs taper to distinct orange foot pads, but the side-mounted knee pods widen the stance and make the layout read as somewhat sprawling rather than balanced.\"}, \"T7\": {\"score\": 2, \"reason\": \"Clean antialiased renders, shaded so the forms read, on a dark grid floor from a high three-quarter angle, but with no soft contact shadow or seamless studio backdrop.\"}}",
+      "session_id": "76cdb654-f5af-4508-a599-b7f62fefb17a",
+      "duration_ms": 24603,
+      "num_turns": 17,
+      "total_cost_usd": 0.1292894,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2735,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1292894,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 954,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A chamfered white shell with a dark lower tray encloses the body, but the knee servos sit outside it as plain servo-shaped boxes with screw holes."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "The palette sticks to roles: off-white for the shell, dark grey for the mechanism and top plate, and one orange accent used only on the front face slot and the feet."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "The hips are large dark cylindrical bosses and the knees have round caps on their axes, but the two joint types look different and the knee cap sits on a bolted servo box."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a chamfered rectangular box rather than a soft rounded form, and the legs are flat constant-section bars, so it still reads as plates and bars."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "The front has a dark recessed slot with an orange bar, but it is a small, generic face that does not give the robot much character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The body is compact and the orange foot pads are distinct, but the upper links are uniform bars and the outboard knee boxes make the legs look awkward, so the taper is only partial."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "The render is cleanly shaded and antialiased so the cylinders read well, but it uses a high isometric angle on a dark grid with no contact shadow or studio backdrop."
+        }
+      },
+      "reply": "{\"T1\": {\"score\": 2, \"reason\": \"A chamfered white shell with a dark lower tray encloses the body, but the knee servos sit outside it as plain servo-shaped boxes with screw holes.\"}, \"T2\": {\"score\": 3, \"reason\": \"The palette sticks to roles: off-white for the shell, dark grey for the mechanism and top plate, and one orange accent used only on the front face slot and the feet.\"}, \"T3\": {\"score\": 2, \"reason\": \"The hips are large dark cylindrical bosses and the knees have round caps on their axes, but the two joint types look different and the knee cap sits on a bolted servo box.\"}, \"T4\": {\"score\": 1, \"reason\": \"The body is a chamfered rectangular box rather than a soft rounded form, and the legs are flat constant-section bars, so it still reads as plates and bars.\"}, \"T5\": {\"score\": 2, \"reason\": \"The front has a dark recessed slot with an orange bar, but it is a small, generic face that does not give the robot much character.\"}, \"T6\": {\"score\": 2, \"reason\": \"The body is compact and the orange foot pads are distinct, but the upper links are uniform bars and the outboard knee boxes make the legs look awkward, so the taper is only partial.\"}, \"T7\": {\"score\": 2, \"reason\": \"The render is cleanly shaded and antialiased so the cylinders read well, but it uses a high isometric angle on a dark grid with no contact shadow or studio backdrop.\"}}",
+      "session_id": "f29d8d2c-7342-4d50-bc3f-52e9c752b720",
+      "duration_ms": 22750,
+      "num_turns": 17,
+      "total_cost_usd": 0.1265894,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2600,
+          "cacheReadInputTokens": 5667,
+          "cacheCreationInputTokens": 9180,
+          "webSearchRequests": 0,
+          "costUSD": 0.1265894,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 822,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    },
+    {
+      "scores": {
+        "T1": {
+          "score": 2,
+          "reason": "A continuous chamfered body shell and dark hip drums enclose the main hardware, but the light-grey knee modules have the stadium outline, screw ears and output disc of exposed servo cases."
+        },
+        "T2": {
+          "score": 3,
+          "reason": "Warm light-grey shell and charcoal mechanism are applied by role, with one saturated orange accent placed deliberately on the face slot and the feet."
+        },
+        "T3": {
+          "score": 2,
+          "reason": "Hips are large dark drums and knees have round bosses, both concentric with their axes, but the two joint types differ and the foot pins are bare."
+        },
+        "T4": {
+          "score": 1,
+          "reason": "The body is a rectangular box with small chamfers, and the limbs read as flat chamfered bars and plates rather than soft merged forms."
+        },
+        "T5": {
+          "score": 2,
+          "reason": "There is a face, an orange slot in a dark front panel, but it is small and generic and does not give the boxy silhouette much character."
+        },
+        "T6": {
+          "score": 2,
+          "reason": "The lower legs taper to distinct orange foot pads, but the long boxy body and the outboard offset knee modules keep the stance from reading as compact and balanced."
+        },
+        "T7": {
+          "score": 2,
+          "reason": "Clean antialiased renders on a dark grid from a decent elevated three-quarter angle, but there is no contact shadow or seamless studio backdrop, and the high isometric view flattens the forms."
+        }
+      },
+      "reply": "```json\n{\"T1\": {\"score\": 2, \"reason\": \"A continuous chamfered body shell and dark hip drums enclose the main hardware, but the light-grey knee modules have the stadium outline, screw ears and output disc of exposed servo cases.\"},\n\"T2\": {\"score\": 3, \"reason\": \"Warm light-grey shell and charcoal mechanism are applied by role, with one saturated orange accent placed deliberately on the face slot and the feet.\"},\n\"T3\": {\"score\": 2, \"reason\": \"Hips are large dark drums and knees have round bosses, both concentric with their axes, but the two joint types differ and the foot pins are bare.\"},\n\"T4\": {\"score\": 1, \"reason\": \"The body is a rectangular box with small chamfers, and the limbs read as flat chamfered bars and plates rather than soft merged forms.\"},\n\"T5\": {\"score\": 2, \"reason\": \"There is a face, an orange slot in a dark front panel, but it is small and generic and does not give the boxy silhouette much character.\"},\n\"T6\": {\"score\": 2, \"reason\": \"The lower legs taper to distinct orange foot pads, but the long boxy body and the outboard offset knee modules keep the stance from reading as compact and balanced.\"},\n\"T7\": {\"score\": 2, \"reason\": \"Clean antialiased renders on a dark grid from a decent elevated three-quarter angle, but there is no contact shadow or seamless studio backdrop, and the high isometric view flattens the forms.\"}}\n```",
+      "session_id": "6b67bbc4-943f-410b-aec8-d2fb19c2013f",
+      "duration_ms": 24844,
+      "num_turns": 17,
+      "total_cost_usd": 0.129384,
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 2745,
+          "cacheReadInputTokens": 5660,
+          "cacheCreationInputTokens": 9167,
+          "webSearchRequests": 0,
+          "costUSD": 0.129384,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 968,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ],
+  "design": "quadruped-e-hard-surface",
+  "receipt": {
+    "project": "orun1-ho-quadruped-e-hard-surface",
+    "accepted_revision": "c54352d795cd26cba955c30d65dfdb6aa9eed729c270babad21078c72db27693",
+    "look_revision": "c54352d795cd26cba955c30d65dfdb6aa9eed729c270babad21078c72db27693",
+    "render_ok": true,
+    "renders": [
+      "hero.png",
+      "look_iso.png",
+      "look_iso_back.png",
+      "look_front.png",
+      "look_right.png",
+      "look_top.png"
+    ]
+  }
+}

@@ -156,6 +156,52 @@ def _geometry_agrees(
     return True, observed, learned
 
 
+def _recipe_agrees(
+    root: Path, accepted: Any, candidate: Any
+) -> tuple[bool, dict[str, Any]]:
+    """Did the rebuild run the accepted recipe, whatever the kernel made of it?
+
+    The last opinion, consulted only after the geometry has disagreed. Some
+    kernel operations are not a function of their inputs across processes: a
+    partial ``skip`` blend keeps a different marginal edge, ``part.offset``
+    moves a vertex by micrometres (ADR-476). Byte and geometry digests both
+    see a different model, correctly, and refusing shut accepted designs for
+    good. When the source, the settings and every output's definition match
+    the accepted attempt exactly, the design is the accepted one and the
+    difference is the kernel's: open, and name every output it rebuilt
+    differently. Missing evidence is never agreement.
+    """
+
+    from CadexGeometryDigest import staged_drifted_outputs, staged_recipe_digest
+
+    def staging(attempt: Any) -> Path | None:
+        relative = str(attempt.get("staging") or "") if isinstance(attempt, Mapping) else ""
+        path = (root / relative) if relative else None
+        if path is None or not (path / "result.json").is_file():
+            return None
+        if not (path / "request.json").is_file():
+            return None
+        return path
+
+    accepted_path, restored_path = staging(accepted), staging(candidate)
+    if accepted_path is None or restored_path is None:
+        return False, {"recipe_comparison": "an attempt kept no request and result to compare"}
+    try:
+        same = staged_recipe_digest(accepted_path) == staged_recipe_digest(restored_path)
+        if not same:
+            return False, {"recipe_comparison": "the rebuild did not run the accepted recipe"}
+        drifted = staged_drifted_outputs(accepted_path, restored_path)
+    except Exception as exc:  # kernel, filesystem or malformed result
+        return False, {"recipe_comparison": f"the recipes could not be compared: {exc}"}
+    return True, {
+        "recipe_comparison": (
+            "same source, settings and definitions; the kernel rebuilt "
+            f"{len(drifted)} output(s) differently"
+        ),
+        "drifted_outputs": drifted,
+    }
+
+
 class _EmptyRegistry:
     """core.inspect scope='api' resolves through describe_project_api on the
     xscript engine; cadexd serves no per-tool schema registry."""
@@ -565,6 +611,7 @@ class CadexdServer:
                 repaired = True
             restored_digest = str(payload.get("digest") or "")
             geometry_digest = ""
+            drifted: list[str] | None = None
             if restored_digest != accepted_digest:
                 # The restore pass runs through `write_script`, which is an
                 # *accepting* operation: by now it has already recorded what
@@ -620,6 +667,13 @@ class CadexdServer:
                     }
                 )
                 if not agreed:
+                    recipe_agreed, recipe_observed = _recipe_agrees(
+                        root, state.get("accepted_attempt"), candidate_attempt
+                    )
+                    observed.update(recipe_observed)
+                    if recipe_agreed:
+                        drifted = list(recipe_observed["drifted_outputs"])
+                if not agreed and drifted is None:
                     with suppress(OSError):
                         store.prune_artifacts()
                     return failure(
@@ -632,6 +686,8 @@ class CadexdServer:
                         },
                     )
                 geometry_digest = str(observed.get("restored_geometry_digest") or "")
+                if drifted is not None:
+                    geometry_digest = ""
             with suppress(OSError):
                 store.prune_artifacts()
             restore = {
@@ -645,6 +701,12 @@ class CadexdServer:
                 # new shape to stay correct.
                 restore["matched_by"] = "geometry"
                 restore["geometry_digest"] = geometry_digest
+            if drifted is not None:
+                # Same recipe, different kernel answer (ADR-476): the design
+                # opens, the accepted digest stays pinned, and every output
+                # the kernel rebuilt differently is named.
+                restore["matched_by"] = "recipe"
+                restore["drifted_outputs"] = drifted
             if repaired:
                 # The rerun re-wrote script.py and working_revision on its way
                 # through, so the store is consistent again by the time this

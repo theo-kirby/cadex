@@ -542,7 +542,10 @@ NESTED_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     # `geometry_digest` appear only when the re-derived digest did *not* equal
     # the accepted one and the two retained attempts were re-measured to be
     # the same model anyway (ADR-389) — a byte-for-byte match reports neither,
-    # so the ordinary reply is unchanged.
+    # so the ordinary reply is unchanged. `matched_by: "recipe"` with
+    # `drifted_outputs` is the last opinion: the geometry disagreed, but the
+    # source, settings and every definition are the accepted ones, so the
+    # kernel's different answer is named and the design opens (ADR-476).
     "restore": (
         frozenset({"performed"}),
         frozenset(
@@ -552,6 +555,7 @@ NESTED_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 "repaired_from_accepted",
                 "matched_by",
                 "geometry_digest",
+                "drifted_outputs",
             }
         ),
     ),
