@@ -117,6 +117,12 @@ should say so.
   stored in the project config (for example `agent.json`), with CLI flags
   that override them per call. The dashboard shows them read-only. Tests
   pin both the stored values and the overrides.
+- **Next, before more D3 work (added 2026-10-03, iteration 32):** D2 is
+  complete. Land the blueprint composer and the project budgets above
+  next, each as its own unit with an ADR, tests and a record, then resume
+  D3. `shell/` is already deleted, so read the old composer from the tag
+  `v1-blender-shell` (`git show v1-blender-shell:shell/scripts/startup/mesh_agent/cadex_sheet.py`). It is
+  reference only, and copying from it is still barred.
 
 ## Done criteria
 
