@@ -770,11 +770,52 @@ def test_the_joint_cap_goes_over_the_horn_and_is_sized_from_its_spec() -> None:
     joints = next(i for i in _overlay_items(design) if i.startswith("- JOINTS ARE FEATURES."))
     for phrase in ("The cap goes where the horn is", "servo's far face",
                    "Make the driven part's hub the cap", '`.spec["arm_reach_mm"]`',
-                   "cut with `horn.body`", "within 1 mm of the case top",
-                   "both sides of the joint"):
+                   "cut with `horn.body`", "within 1 mm of the case top"):
         assert phrase in joints
     refine = design[design.index("6. REFINE WITH `look`"):]
     assert "a horn you can see" in refine
+
+
+def test_a_joint_is_one_small_cap_and_a_leg_is_long_against_it() -> None:
+    """ADR-494 (orun1 D4): hexapod trial 1 lost on crowded joints and short legs.
+
+    It sized every cap from the default single-arm horn (16 mm reach, a 35 mm
+    disc), put the same disc on each servo's far face as ADR-440 asked, and
+    hung a 48 mm thigh and a 70 mm shin under them. The frozen judge called it
+    "crowded clusters of joints ... upturned segments". The overlay now asks
+    for one cap per axis from the shortest horn, and sizes the leg from it.
+    """
+
+    design = _design_section()
+    joints = next(i for i in _overlay_items(design) if i.startswith("- JOINTS ARE FEATURES."))
+    assert "both sides of the joint" not in joints
+    for phrase in ('`servo.horn("cross")`', "no larger", "Do not add a second disc",
+                   "never a stack of discs"):
+        assert phrase in joints
+    structure = design[design.index("4. STRUCTURE THAT CARRIES THEM"):design.index("5. FINISH")]
+    legs = next(i for i in _overlay_items(structure)
+                if i.startswith("- LEGS ARE LONG AGAINST THEIR JOINTS."))
+    for phrase in ("2.5 times the joint cap's diameter", "the shin is the longest segment",
+                   "no longer than its two servos need", "never a knee folded up",
+                   "`focus` on one leg"):
+        assert phrase in legs
+    refine = design[design.index("6. REFINE WITH `look`"):]
+    assert "a short leg under crowded joint caps" in refine
+
+
+def test_the_cross_horn_the_overlay_names_is_shorter_than_the_default() -> None:
+    """The overlay's two-thirds claim is the catalog's own reach figures."""
+
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[2] / "src/Mod/cadex/CadexCatalog.py"
+    spec = importlib.util.spec_from_file_location("cadex_catalog_for_overlay", path)
+    catalog = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(catalog)
+    cross, single = (catalog.MICRO_HORNS[k]["arm_reach_mm"] for k in ("cross", "single_arm"))
+    assert f"{cross} mm reach" in CLI_OVERLAY
+    ratio = (cross + 1.6) / (single + 1.6)
+    assert 0.6 < ratio < 0.72  # "about two thirds the diameter"
 
 
 def test_the_horn_spec_carries_the_reach_the_overlay_sizes_the_cap_from() -> None:

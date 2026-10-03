@@ -32052,3 +32052,47 @@ screw-size choice (D36V50F6 M2, Pi 5 and BNO085 M2.5), and each refusal.
 **Not done here.** Trial 3 is an accepted product-agent design, and the
 actor never hand-edits a counted design, so it is not re-authored. Its
 8 of 11 stands until a new balancer turn is run on this revision.
+
+## ADR-494 — A joint is one small cap, and a leg is long against it (2026-10-03)
+
+**Status:** accepted. orun1 D4, from hexapod trial 1. Partly reverses ADR-440. [Cadex-new]
+
+**The evidence.** Hexapod trial 1 (`orun1-t1-hexapod`, rev `35193b3e`) passed
+fit, sweep and mounting and lost under frozen judge v2 to the one Like it had
+to beat. The judge's reason: "crowded clusters of joints, oddly angled links
+and upturned segments … cluttered and arbitrary". Its script shows where the
+clusters came from, and both causes are the product's:
+- it sized every cap from `s0.horn("single_arm")`, the default style, so
+  `R = 16.0 + 1.6` and every joint is a 35 mm disc;
+- it added a matching disc on each servo's far face (`BOSS_T`), because
+  ADR-440's overlay said "where the servo's other face shows, put the same
+  disc there too";
+- under those discs hang a 48 mm thigh and a 70 mm shin, 1.4 and 2.0 cap
+  diameters, with the knee raised above the deck.
+The overlay had a section rule for limbs (ADR-428) and nothing on their
+length against their joints.
+
+**The change.** Teaching only; no library default moves, because changing
+`horn()`'s default style would change the digest of every accepted script
+that relies on it (F1's lesson).
+- JOINTS ARE FEATURES: one cap per axis, from the shortest horn that carries
+  the link — `servo.horn("cross")` on a micro servo, whose 10.2 mm reach
+  gives a cap about two thirds the diameter (Ø23.6 against Ø35.2) — at reach
+  plus wall and no larger. **Removed:** ADR-440's second disc on the far face.
+  The far side is closed by the limb that wraps the case.
+- New rule LEGS ARE LONG AGAINST THEIR JOINTS: thigh and shin each at least
+  2.5 cap diameters between axes, the shin longest, the hip link no longer
+  than its two servos need, the thigh level or a little above at the
+  standing pose, never a knee folded up high, checked with `look` `focus`
+  on one leg.
+- REFINE names "a short leg under crowded joint caps" as a crude thing to fix.
+
+The 2.5 figure is the run's judgement, not a rated measurement: it is the
+smallest round ratio that puts trial 1's 70 mm shin under the bar and lets an
+MG90S leg with a cross-horn cap (59 mm thigh) stay inside the servo's stall
+torque on a tripod. `docs/DESIGN-LANGUAGE.md` §3 and §5 carry it marked so.
+
+**Tests.** `test_a_joint_is_one_small_cap_and_a_leg_is_long_against_it` and
+`test_the_cross_horn_the_overlay_names_is_shorter_than_the_default`
+(`cli/tests/test_turn_loop.py`) both fail on the previous overlay. ADR-440's
+test no longer asks for "both sides of the joint".
