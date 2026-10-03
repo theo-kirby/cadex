@@ -104,6 +104,16 @@ PROJECTS_STATIC_FILES = {
     "projects.js": ("text/javascript; charset=utf-8", STATIC_DIR / "projects.js"),
 }
 PROJECTS_SCHEMA = "cadex-projects-v1"
+#: An Ouroboros run's page, under ``/r/<run>/`` (ADR-513).
+RUN_STATIC_FILES = {
+    "run.html": ("text/html; charset=utf-8", STATIC_DIR / "run.html"),
+    "run.js": ("text/javascript; charset=utf-8", STATIC_DIR / "run.js"),
+    "review.css": STATIC_FILES["review.css"],
+}
+RUNS_SCHEMA = "cadex-ouroboros-runs-v1"
+RUN_SCHEMA = "cadex-ouroboros-run-v1"
+#: A run directory's name: what ``ouroboros run`` mints, and nothing a path could hide in.
+OUROBOROS_RUN_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 #: Content types for the retained artifacts; anything else downloads as bytes.
 CONTENT_TYPES = {
     ".json": "application/json; charset=utf-8",
@@ -2317,6 +2327,26 @@ class ReviewHandler(BaseHTTPRequestHandler):
         if segments == ["api", "projects"]:
             self._send_json(projects.listing())
             return
+        runs: OuroborosRuns = self.server.runs  # type: ignore[attr-defined]
+        if segments == ["api", "runs"]:
+            self._send_json(runs.listing())
+            return
+        if head == "r" and rest:
+            if len(rest) == 1 and not path.endswith("/"):
+                self._send_bytes(b"", "text/plain; charset=utf-8", HTTPStatus.MOVED_PERMANENTLY,
+                                 {"Location": "/r/" + quote(rest[0], safe="") + "/"})
+                return
+            page = rest[1:] or ["run.html"]
+            if len(page) == 1 and page[0] in RUN_STATIC_FILES and runs.has(rest[0]):
+                content_type, file = RUN_STATIC_FILES[page[0]]
+                self._send_bytes(file.read_bytes(), content_type)
+                return
+            run = runs.run(rest[0]) if page == ["api", "run"] else None
+            if run is not None:
+                self._send_json(run)
+                return
+            self._not_found("/".join(segments))
+            return
         if head == "p" and rest:
             project = projects.project(rest[0])
             if project is None:
@@ -2487,6 +2517,147 @@ class ProjectsDirectory:
                 "served_at": _now()}
 
 
+class OuroborosRuns:
+    """The Ouroboros runs under one directory, read-only (ADR-513).
+
+    A run is a subdirectory holding ``iterations.jsonl`` or ``status.json``.
+    Only four files of it are read -- ``run.yml``'s top-level scalars,
+    ``status.json``, ``iterations.jsonl`` and ``critic.jsonl`` -- so the
+    transcripts, logs and patches beside them never reach a page. Every read
+    is fresh, so a live run's next iteration appears on the next poll; a
+    line that is not a JSON object is counted, not fatal.
+    """
+
+    def __init__(self, root: Path | str | None) -> None:
+        self.root = Path(root).expanduser().resolve() if root is not None else None
+
+    def _names(self) -> list[str]:
+        if self.root is None or not self.root.is_dir():
+            return []
+        return sorted(child.name for child in self.root.iterdir()
+                      if child.is_dir() and OUROBOROS_RUN_NAME.match(child.name)
+                      and ((child / "iterations.jsonl").is_file() or (child / "status.json").is_file()))
+
+    def has(self, name: str) -> bool:
+        return name in self._names()
+
+    @staticmethod
+    def _rows(path: Path) -> tuple[list[dict[str, Any]], int]:
+        rows: list[dict[str, Any]] = []
+        skipped = 0
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return rows, 0
+        for line in text.splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                skipped += 1
+                continue
+            if isinstance(row, dict) and isinstance(row.get("iteration"), int):
+                rows.append(row)
+            else:
+                skipped += 1
+        return rows, skipped
+
+    @staticmethod
+    def _config(path: Path) -> dict[str, str]:
+        """``run.yml``'s unindented ``key: value`` lines; no YAML parser (A2)."""
+
+        values: dict[str, str] = {}
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            return values
+        for line in lines:
+            key, sep, value = line.partition(":")
+            if sep and key and not key[0].isspace() and key.strip() == key and value.strip():
+                values[key] = value.strip().strip("'\"")
+        return values
+
+    def _read(self, name: str) -> dict[str, Any] | None:
+        if name not in self._names():
+            return None
+        assert self.root is not None
+        directory = self.root / name
+        config = self._config(directory / "run.yml")
+        try:
+            status = json.loads((directory / "status.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            status = {}
+        if not isinstance(status, dict):
+            status = {}
+        steps, skipped_steps = self._rows(directory / "iterations.jsonl")
+        verdicts, skipped_verdicts = self._rows(directory / "critic.jsonl")
+        by_number: dict[int, dict[str, Any]] = {}
+
+        def entry(number: int) -> dict[str, Any]:
+            return by_number.setdefault(number, {"iteration": number, "ts": None, "housekeeping": False,
+                                                 "attempts": 0, "actor": None, "commit": None,
+                                                 "verdict": None, "critic": None})
+
+        for row in steps:
+            item = entry(row["iteration"])
+            item["ts"] = row.get("ts") or item["ts"]
+            item["housekeeping"] = item["housekeeping"] or bool(row.get("housekeeping"))
+            step = row.get("step")
+            if step == "actor":
+                item["attempts"] += 1
+                item["actor"] = {key: row.get(key) for key in ("exit", "timed_out", "error", "turns")}
+            elif step == "commit":
+                item["commit"] = {key: row.get(key) for key in ("sha", "changed", "recorded", "cost")}
+            elif step == "critique":
+                item["verdict"] = row.get("verdict")
+                item["critique"] = {"reason": row.get("reason") or "; ".join(map(str, row.get("reasons") or [])),
+                                    "must_fix": row.get("must_fix") or []}
+        for row in verdicts:
+            item = entry(row["iteration"])
+            item["ts"] = item["ts"] or row.get("ts")
+            item["verdict"] = row.get("verdict") or item["verdict"]
+            item["critic"] = {key: row.get(key) or "" for key in ("reason", "did", "doing", "fix_first", "reply")}
+        iterations = [by_number[number] for number in sorted(by_number)]
+        tally: dict[str, int] = {}
+        for item in iterations:
+            if item["verdict"]:
+                tally[item["verdict"]] = tally.get(item["verdict"], 0) + 1
+        last = iterations[-1] if iterations else None
+        return {
+            "name": name,
+            "state": status.get("state") or "unknown",
+            "branch": status.get("branch") or config.get("branch") or f"ouroboros/{name}",
+            "started": config.get("started"),
+            "updated": status.get("ts") or (last or {}).get("ts"),
+            "cost_usd": status.get("cost_usd"),
+            "elapsed_s": status.get("elapsed_s"),
+            "iteration_count": len(iterations),
+            "verdicts": tally,
+            "latest": None if last is None else {
+                "iteration": last["iteration"], "verdict": last["verdict"],
+                "did": (last["critic"] or {}).get("did", "")},
+            "skipped_lines": skipped_steps + skipped_verdicts,
+            "iterations": iterations,
+        }
+
+    def listing(self) -> dict[str, Any]:
+        runs = []
+        for name in self._names():
+            run = self._read(name)
+            if run is not None:
+                run.pop("iterations")
+                runs.append({**run, "url": "/r/" + quote(name, safe="") + "/"})
+        runs.sort(key=lambda run: str(run["updated"] or ""), reverse=True)
+        return {"schema": RUNS_SCHEMA, "available": self.root is not None and self.root.is_dir(),
+                "root": self.root.name if self.root is not None else None, "runs": runs,
+                "served_at": _now()}
+
+    def run(self, name: str) -> dict[str, Any] | None:
+        run = self._read(name)
+        return None if run is None else {"schema": RUN_SCHEMA, **run, "served_at": _now()}
+
+
 class ProjectsServer(ThreadingHTTPServer):
     """A directory of projects, one address: the index lists them, and each
     project's review page is served under ``/p/<name>/``."""
@@ -2495,8 +2666,9 @@ class ProjectsServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
     def __init__(self, projects_root: Path | str, host: str, port: int,
-                 log: Callable[[str], None] | None = None) -> None:
+                 log: Callable[[str], None] | None = None, runs_root: Path | str | None = None) -> None:
         self.projects = ProjectsDirectory(projects_root)
+        self.runs = OuroborosRuns(runs_root)
         self.turns = Turns()
         self.log = log
         self.write_token = secrets.token_urlsafe(32)
@@ -2506,10 +2678,12 @@ class ProjectsServer(ThreadingHTTPServer):
 
 
 def serve_projects(projects_root: Path | str, host: str = "127.0.0.1", port: int = 0,
-                   log: Callable[[str], None] | None = None) -> tuple[ProjectsServer, threading.Thread]:
-    """As :func:`serve`, over a directory of projects (``cadex app``)."""
+                   log: Callable[[str], None] | None = None,
+                   runs_root: Path | str | None = None) -> tuple[ProjectsServer, threading.Thread]:
+    """As :func:`serve`, over a directory of projects (``cadex app``), with
+    the Ouroboros runs under ``runs_root`` listed beside them (ADR-513)."""
 
-    server = ProjectsServer(projects_root, host, port, log=log)
+    server = ProjectsServer(projects_root, host, port, log=log, runs_root=runs_root)
     thread = threading.Thread(target=server.serve_forever, name="cadex-app", daemon=True)
     thread.start()
     return server, thread

@@ -33150,3 +33150,57 @@ Chromium against a real engine: a turn leaves a question and a flag
 through the real bridge, the page lists both and serves the flagged PNG,
 the owner answers in the page, and the next turn's prompt quotes the note.
 `test_project_tool_surface.py` pins `BRIDGE_TOOLS` and the tool's schema.
+
+## ADR-513 — Autonomous runs beside the projects: Ouroboros runs in `cadex app` (2026-10-03, owner charter orun2 D3)
+
+**Decision.** The dashboard's index lists the Ouroboros runs of one runs
+directory beside the projects, and each run has a read-only page at
+`/r/<run>/` showing its iterations, newest first, with the critic's
+verdict, its reason, what it saw done, its message to the next iteration,
+and the iteration's commit. The directory is `cadex app --runs`, then
+`CADEX_RUNS`, then the checkout's own `.ouroboros/runs`, so `pixi run app`
+on this repo shows this repo's runs with no flag. The server's
+`OuroborosRuns` (`review_server.py`) folds `iterations.jsonl`'s actor,
+commit and critique rows and `critic.jsonl`'s verdicts into one entry per
+iteration, and reads `status.json` and `run.yml`'s unindented scalars for
+the masthead. API: `GET /api/runs` (`cadex-ouroboros-runs-v1`) and `GET
+/r/<run>/api/run` (`cadex-ouroboros-run-v1`). Spec: `docs/DASHBOARD.md`
+§27.
+
+**Why.** D3's first half: an autonomous run is how the owner uses Cadex,
+and until now its iterations and verdicts were readable only through
+`ouroboros status` or the JSONL itself. The run directory is the truth (A3)
+in the same way the project directory is, so the page reads it and holds
+nothing.
+
+**Read-only by construction.** Four named files are read, fresh per
+request; no other file of a run directory is reachable (transcripts, logs,
+patches, pids), there is no POST route under `/r/`, and a run name must be
+a plain token naming a directory that holds `iterations.jsonl` or
+`status.json`. A malformed JSONL line is counted in `skipped_lines`, not
+fatal, because a live run may be mid-write. `run.yml` is read line by line
+for its top-level scalars rather than with a YAML parser (A2: no new
+dependency).
+
+**Rejected.** Reading the run branch's git history for this unit: the
+JSONL already carries every iteration's SHA, and the branch is the next
+unit's concern (record-linked artifacts). Serving `loop.log` or the
+transcripts: transcripts are never shown or committed. A runs page per
+project: an Ouroboros run spans the repo, not a project.
+
+**Cost.** About 150 lines in `review_server.py`, 100 in `run.js`, 30 in
+`run.html`, 35 in `projects.js`, one CLI flag and a four-file fixture run
+under `cli/tests/fixtures/ouroboros_runs/fx1/`. No dependency.
+
+**What would reverse it.** If Ouroboros changes its run-directory format,
+the reader follows it; if runs move off this machine, the directory flag
+already points anywhere.
+
+**Test.** `cli/tests/test_app.py`: the listing (newest first, verdict
+tallies, a skipped malformed line, a status-only run), the per-iteration
+fold (housekeeping, a reject's `must_fix`, a pending verdict), a verdict
+appended to a live run appearing on the next read, every non-page file of
+a run (a decoy transcript included) answering 404, the redirect, nothing
+written into the run directory, an absent directory as an empty list, the
+`--runs`/`CADEX_RUNS` defaults, and, in headless Chromium, the index's Runs
+card leading to the run page's rows, badges, reasons and folded message.

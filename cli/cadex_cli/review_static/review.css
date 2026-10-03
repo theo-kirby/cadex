@@ -383,8 +383,9 @@ pre#doc-view { white-space: pre-wrap; overflow-wrap: anywhere; background: var(-
   ul#videos video { max-height: calc(100dvh - var(--bar) - 120px); }
 }
 
-/* The projects index (`cadex app`): one card, one row per project. */
+/* The projects index (`cadex app`): a card of projects, a card of runs (ADR-513), one row each. */
 main#projects-frame { padding: var(--gutter); max-width: 960px; }
-#projects { list-style: none; margin: 0; padding: 0; }
-#projects li { padding: var(--s2) 0; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
-#projects li:last-child { border-bottom: 0; }
+main#projects-frame { display: flex; flex-direction: column; gap: var(--s4); }
+#projects, #runs { list-style: none; margin: 0; padding: 0; }
+#projects li, #runs li { padding: var(--s2) 0; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
+#projects li:last-child, #runs li:last-child { border-bottom: 0; }

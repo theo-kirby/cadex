@@ -190,6 +190,8 @@ DEFAULT_PROJECT_DIRNAME = ".cadex"
 #: Where `cadex app` (and a bare `cadex`) looks for projects when neither
 #: ``--projects`` nor ``CADEX_PROJECTS`` names a directory: under home.
 DEFAULT_PROJECTS_DIRNAME = "cadex-projects"
+#: Where this checkout's Ouroboros runs live; ``cadex app`` lists them (ADR-513).
+DEFAULT_RUNS_DIR = Path(__file__).resolve().parents[2] / ".ouroboros" / "runs"
 
 
 def _progress(message: str) -> None:
@@ -776,6 +778,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=f"The projects directory (created if absent). Default: "
         f"CADEX_PROJECTS, then ~/{DEFAULT_PROJECTS_DIRNAME}.",
+    )
+    app_parser.add_argument(
+        "--runs",
+        default=None,
+        help="The Ouroboros runs directory, listed read-only beside the "
+        "projects. Default: CADEX_RUNS, then this checkout's .ouroboros/runs.",
     )
     app_parser.add_argument(
         "--host",
@@ -2222,6 +2230,13 @@ def projects_directory(args: argparse.Namespace) -> Path:
     return Path(chosen or Path.home() / DEFAULT_PROJECTS_DIRNAME).expanduser()
 
 
+def runs_directory(args: argparse.Namespace) -> Path:
+    """``--runs``, then ``CADEX_RUNS``, then this checkout's ``.ouroboros/runs``."""
+
+    chosen = getattr(args, "runs", None) or os.environ.get("CADEX_RUNS", "")
+    return Path(chosen).expanduser() if chosen else DEFAULT_RUNS_DIR
+
+
 def command_app(args: argparse.Namespace, report: RunReport) -> int:
     """Serve the dashboard over a directory of projects until interrupted.
 
@@ -2241,7 +2256,7 @@ def command_app(args: argparse.Namespace, report: RunReport) -> int:
     if port < 0 or port > 65535:
         raise ValueError(f"app: --port must be 0..65535, not {port}")
     try:
-        server, thread = serve_projects(root, host, port)
+        server, thread = serve_projects(root, host, port, runs_root=runs_directory(args))
     except OSError as exc:
         raise ValueError(f"app: cannot bind {host}:{port}: {exc}") from exc
     _progress(f"app: serving {root} at {server.url} (writes need the page's token; Ctrl-C to stop)")

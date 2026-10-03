@@ -2,8 +2,9 @@
 <!-- SPDX-FileCopyrightText: 2026 Cadex Authors
      SPDX-License-Identifier: LGPL-2.1-or-later
      The projects index (`cadex app`): every project under one directory,
-     each linking to its review page at /p/<name>/. Tokens are the review
-     page's (docs/DASHBOARD.md). -->
+     each linking to its review page at /p/<name>/, and beside them the
+     Ouroboros runs, each linking to /r/<run>/ (ADR-513). Tokens are the
+     review page's (docs/DASHBOARD.md). -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -24,6 +25,12 @@
     <ul id="projects"></ul>
     <p id="projects-empty" class="muted" hidden>No projects here yet. Start one with
       <code>./cadex -p "a 40x25x15 mm bracket" --project &lt;this directory&gt;/bracket</code>.</p>
+  </section>
+  <section class="card">
+    <h2>Runs</h2>
+    <ul id="runs"></ul>
+    <p id="runs-empty" class="muted" hidden>No Ouroboros runs here. <code>./cadex app --runs &lt;dir&gt;</code>
+      points at a <code>.ouroboros/runs</code> directory.</p>
   </section>
 </main>
 <script src="projects.js"></script>

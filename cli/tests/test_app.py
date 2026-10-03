@@ -173,3 +173,151 @@ def test_browser_goes_from_the_index_to_a_drawn_project(tmp_path, browser) -> No
     finally:
         server.shutdown()
         server.server_close()
+
+
+# -- Ouroboros runs beside the projects (orun2 D3, ADR-513) ------------------
+
+RUNS_FIXTURE = CLI_DIR / "tests" / "fixtures" / "ouroboros_runs"
+
+
+def _runs(tmp_path: Path) -> Path:
+    """The committed ``fx1`` run, a newer ``fx2`` with only a status, a
+    decoy transcript beside them, and directories that are not runs."""
+
+    import shutil
+
+    runs = tmp_path / "runs"
+    shutil.copytree(RUNS_FIXTURE, runs)
+    (runs / "fx1" / "transcripts").mkdir()
+    (runs / "fx1" / "transcripts" / "actor.jsonl").write_text('{"secret": "transcript"}\n')
+    (runs / "fx2").mkdir()
+    (runs / "fx2" / "status.json").write_text(json.dumps(
+        {"ts": "2026-10-02T08:00:00+00:00", "state": "stopped", "branch": "ouroboros/fx2"}))
+    (runs / "notes").mkdir()
+    (runs / ".hidden").mkdir()
+    (runs / ".hidden" / "status.json").write_text("{}")
+    return runs
+
+
+@pytest.fixture
+def app_with_runs(tmp_path):
+    projects, runs = _projects(tmp_path), _runs(tmp_path)
+    server, _thread = serve_projects(projects, "127.0.0.1", 0, runs_root=runs)
+    try:
+        yield runs, server
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_runs_are_listed_beside_projects_newest_first(app_with_runs) -> None:
+    runs, server = app_with_runs
+    listing = _json(server.url + "api/runs")
+    assert listing["schema"] == "cadex-ouroboros-runs-v1" and listing["available"] is True
+    assert [run["name"] for run in listing["runs"]] == ["fx2", "fx1"]
+    fx1 = listing["runs"][1]
+    assert fx1["url"] == "/r/fx1/" and fx1["state"] == "work" and fx1["branch"] == "ouroboros/fx1"
+    assert fx1["started"] == "2026-10-01T09:00:00" and fx1["cost_usd"] == 4.5
+    assert fx1["iteration_count"] == 3 and fx1["verdicts"] == {"continue": 1, "reject": 1}
+    assert fx1["latest"] == {"iteration": 3, "verdict": None, "did": ""}
+    assert fx1["skipped_lines"] == 1 and "iterations" not in fx1
+    assert listing["runs"][0]["iteration_count"] == 0 and listing["runs"][0]["state"] == "stopped"
+    # The projects listing is unchanged by the runs beside it.
+    assert [e["name"] for e in _json(server.url + "api/projects")["projects"]] == ["biped", "empty"]
+
+
+def test_a_run_shows_each_iteration_with_its_critic_verdict(app_with_runs) -> None:
+    runs, server = app_with_runs
+    run = _json(server.url + "r/fx1/api/run")
+    assert run["schema"] == "cadex-ouroboros-run-v1" and run["name"] == "fx1"
+    first, second, third = run["iterations"]
+    assert first["housekeeping"] is True and first["verdict"] == "continue"
+    assert first["actor"] == {"exit": 0, "timed_out": False, "error": None, "turns": 12}
+    assert first["commit"]["sha"] == "aaaaaaaaaa" and first["critic"]["did"] == "Seeded the fixture criteria."
+    assert second["verdict"] == "reject" and second["critique"]["must_fix"] == ["Restore the bore assertion."]
+    assert second["critique"]["reason"] == "The bracket test was weakened."
+    assert second["critic"]["fix_first"] == "Restore the bore assertion."
+    assert third["verdict"] is None and third["critic"] is None and third["commit"]["recorded"] is True
+    # A live run's next verdict appears on the next read: nothing is cached.
+    with (runs / "fx1" / "critic.jsonl").open("a") as handle:
+        handle.write(json.dumps({"ts": "2026-10-01T10:21:00+00:00", "iteration": 3, "verdict": "continue",
+                                 "reason": "r", "reply": "next", "did": "Fixed the bore.", "doing": "",
+                                 "fix_first": "", "source": "critic:claude"}) + "\n")
+    assert _json(server.url + "r/fx1/api/run")["iterations"][2]["verdict"] == "continue"
+    assert _json(server.url + "api/runs")["runs"][1]["verdicts"] == {"continue": 2, "reject": 1}
+
+
+def test_a_run_page_serves_only_its_own_files_and_reads_nothing_else(app_with_runs) -> None:
+    runs, server = app_with_runs
+    status, headers, body = _get(server.url + "r/fx1/")
+    assert status == 200 and b'src="run.js"' in body and b'href="review.css"' in body
+    assert _get(server.url + "r/fx1/run.js")[0] == 200 and _get(server.url + "r/fx1/review.css")[0] == 200
+    for path in ("r/fx1/transcripts/actor.jsonl", "r/fx1/critic.jsonl", "r/fx1/loop.log",
+                 "r/notes/", "r/notes/api/run", "r/.hidden/api/run", "r/missing/", "r/fx1/api/project",
+                 "r/fx1/index.html", "r/%2E%2E/api/run"):
+        assert _get(server.url + path)[0] == 404, path
+    assert b"transcript" not in json.dumps(_json(server.url + "r/fx1/api/run")).encode()
+    # The bare name redirects into the run's own directory, as /p/<name> does.
+    import http.client
+    connection = http.client.HTTPConnection(*server.server_address[:2])
+    connection.request("GET", "/r/fx1")
+    response = connection.getresponse()
+    assert response.status == 301 and response.getheader("Location") == "/r/fx1/"
+    connection.close()
+    # Reading wrote nothing into the run directory.
+    assert sorted(p.name for p in (runs / "fx1").iterdir()) == [
+        "critic.jsonl", "iterations.jsonl", "run.yml", "status.json", "transcripts"]
+
+
+def test_no_runs_directory_is_an_empty_list_not_an_error(tmp_path) -> None:
+    projects = _projects(tmp_path)
+    for runs_root in (None, tmp_path / "absent"):
+        server, _thread = serve_projects(projects, "127.0.0.1", 0, runs_root=runs_root)
+        try:
+            listing = _json(server.url + "api/runs")
+            assert listing["available"] is False and listing["runs"] == []
+            assert _get(server.url + "r/fx1/")[0] == 404
+        finally:
+            server.shutdown()
+            server.server_close()
+
+
+def test_the_runs_directory_defaults(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv("CADEX_RUNS", raising=False)
+    parse = cli.build_parser().parse_args
+    assert cli.runs_directory(parse([])) == REPO / ".ouroboros" / "runs"
+    monkeypatch.setenv("CADEX_RUNS", str(tmp_path / "env"))
+    assert cli.runs_directory(parse([])) == tmp_path / "env"
+    assert cli.runs_directory(parse(["app", "--runs", str(tmp_path / "flag")])) == tmp_path / "flag"
+
+
+@needs_browser
+def test_browser_goes_from_the_index_to_a_runs_iterations_and_verdicts(tmp_path, browser) -> None:
+    projects, runs = _projects(tmp_path), _runs(tmp_path)
+    server, _thread = serve_projects(projects, "127.0.0.1", 0, runs_root=runs)
+    try:
+        page = browser.page(server.url)
+        page.wait_for("document.querySelectorAll('#runs li').length === 2")
+        page.wait_for("document.querySelectorAll('#projects li').length === 2")
+        assert page.attribute("#runs li[data-run='fx1'] a", "href") == "/r/fx1/"
+        assert "work · 3 iteration(s) · 1 continue, 1 reject" in page.text("#runs li[data-run='fx1']")
+        assert page.evaluate("document.getElementById('runs-empty').hidden") is True
+        run = browser.page(server.url + "r/fx1/")
+        run.wait_for("document.querySelectorAll('#iterations tr').length === 3")
+        assert run.text("#run-name") == "fx1 — run"
+        assert "ouroboros/fx1" in run.text("#run-line") and "$4.50" in run.text("#run-line")
+        # Newest first; the pending iteration says so.
+        assert run.evaluate("[...document.querySelectorAll('#iterations tr')].map(r => r.dataset.iteration)") == ["3", "2", "1"]
+        assert "pending" in run.text("#iterations tr[data-iteration='3']")
+        rejected = "#iterations tr[data-iteration='2']"
+        assert run.attribute(rejected + " .badge", "data-tone") == "bad"
+        assert "Changed the bore and loosened its test." in run.text(rejected + " .did")
+        assert "The bracket test was weakened." in run.text(rejected + " .reason")
+        assert "Restore the bore assertion, then rerun both suites." in run.evaluate(
+            "document.querySelector(\"" + rejected + " .reply\").textContent")
+        assert "housekeeping" in run.text("#iterations tr[data-iteration='1']")
+        assert run.evaluate("[...document.querySelectorAll('#run-tally .badge')].map(b => b.textContent)") == [
+            "1 continue", "1 reject"]
+    finally:
+        server.shutdown()
+        server.server_close()

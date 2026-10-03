@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<!-- SPDX-FileCopyrightText: 2026 Cadex Authors
+     SPDX-License-Identifier: LGPL-2.1-or-later
+     One Ouroboros run (ADR-513), served at /r/<run>/: its iterations, newest
+     first, each with the critic's verdict and what it said was done. Read
+     from the run directory; writes nothing. Tokens are the review page's
+     (docs/DASHBOARD.md). -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cadex run</title>
+<link rel="stylesheet" href="review.css">
+</head>
+<body>
+<header id="top">
+  <div class="title">
+    <h1 id="run-name">loading…</h1>
+    <div id="run-line" class="muted"></div>
+  </div>
+  <a href="../../">all projects and runs</a>
+</header>
+<main id="projects-frame">
+  <section class="card">
+    <h2>Iterations</h2>
+    <div id="run-tally" class="badges"></div>
+    <table class="grid">
+      <thead><tr><th>#</th><th>verdict</th><th>what the critic saw</th><th>commit</th></tr></thead>
+      <tbody id="iterations"></tbody>
+    </table>
+    <p id="iterations-empty" class="muted" hidden>No iterations yet.</p>
+  </section>
+</main>
+<script src="run.js"></script>
+</body>
+</html>

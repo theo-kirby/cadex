@@ -1065,6 +1065,35 @@ write path. The next `cadex -p` receives the answer as a comment, one line
 quoting what it answers: `(answering your note "…") …`, and marks it
 delivered as §20 does.
 
+## 27. Autonomous runs beside the projects (ADR-513)
+
+`cadex app` lists the **Ouroboros runs** of a runs directory beside the
+projects: `--runs`, then `CADEX_RUNS`, then the checkout's own
+`.ouroboros/runs`. The index gains a second card, **Runs**, one row per
+run, newest activity first: the run's name linking to `/r/<run>/`, its loop
+state, its iteration count and the critic's verdicts tallied
+(`2 continue, 1 reject`). An absent directory is an empty card with a hint,
+not an error.
+
+`/r/<run>/` is the run's page (`run.html`, `run.js`, this stylesheet). Its
+masthead names the run, its state, branch, iteration count, cost and last
+update; under it one card, **Iterations**: the verdict tally as badges
+(`ok` tone for `continue` and `done_accepted`, `bad` for `reject` and
+`done_rejected`, `warn` for `stuck` and `looping`), then a grid, newest
+first, of iteration number (marked `housekeeping` for a reconcile), verdict
+(or **pending** while the critic has not spoken), what the critic said was
+done with its reason under it in the muted ink, the critic's message to the
+next iteration folded in a `<details>`, and the commit's short SHA (with
+`recorded` when the iteration minted a record). Both pages poll, so a live
+run's next iteration appears without a reload.
+
+The server reads exactly four files of a run — `run.yml`'s top-level
+scalars, `status.json`, `iterations.jsonl` and `critic.jsonl` — fresh on
+every request, and serves nothing else from the directory: transcripts,
+logs and patches never reach a page. A run is a directory whose name is a
+plain token holding `iterations.jsonl` or `status.json`. There is no write
+route under `/r/`.
+
 ## Operator run status (ADR-387)
 
 The operator deployment adds a compact bottom-right status strip with run name,
