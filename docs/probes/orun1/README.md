@@ -594,3 +594,47 @@ other starts are kept and count as interruptions, not attempts:
   c has long tapered legs and compact hips. The agent's transcript asks
   for no missing part. Its only hardware compromise is the one-screw servo
   above.
+
+### D4 trial 4: balancer (a trial, not a confirmation)
+
+`orun1-t4-balancer`: the frozen balancer prompt, one turn at product
+revision `5c853b0e`, which has ADR-491 to ADR-493 in it (the servo ledge,
+the thread-engagement rule, and `board.mounting()`). Model
+`claude-opus-5-5`, effort `medium`. The turn ended on its own after 35 tool
+calls. Accepted revision `e30742e5…`. The hero was drawn from the copy
+`orun1-t4-balancer-render`, which re-accepted at the same revision:
+`d4/t4-balancer/hero.png` (640 px).
+
+- **Design.** Two mirrored graphite side plates sandwich a bone-white core
+  with one front window that shows the battery standing upright. An orange
+  top deck carries the ESP32 in a bay, the BNO085 and the VL53L1X. The
+  regulator and the TB6612 motor driver are screwed to the rear face, on
+  standoffs. Two N20 gearmotors are screwed face-on to the plates and drive
+  1430 spoked wheels with tyres. There is no face.
+- **Catalog.** All 12 purchased parts and 27 bolts are catalog parts. This
+  is the first balancer to fit the ADR-490 motor driver.
+- **Static fit.** 903 pairs, 0 failing. 38 fixed pairs, all touching.
+  **Swept fit: `pass`.** Both joints are complete at ±180° in 30° steps.
+- **Mounting (D3): `pass`, 12 of 12 held, 23 threaded.** Motors: `screws`,
+  2 of 2. Regulator 3 of 3, driver 2 of 2, IMU 4 of 4 and range sensor 2 of
+  2, all `screws`. **All four were placed with `board.mounting()`**
+  (ADR-493). ESP32 and battery: `bay`. Wheels: `output`. Tyres: `rim`.
+- **Judge (frozen v2, `runner/versus.py`): 3 of 5, a majority.** That is
+  down from trial 3's 4 of 5. It beat d, f and h (Likes). It lost to c
+  (Love) and e (Like). Both losing reasons name the same two things: "white
+  box with a window" or "white block with a cut-out window", and the wheels
+  ("loose-looking spoked wheels", "thin spoked wheels look less resolved").
+  Cost $0.19. Every reason is in `d4/t4-balancer/pairs.jsonl`.
+- **What it says.** The hardware is now complete and every hold is real.
+  What the judge holds against the design is its form, in two places:
+  - **The wheel.** The ADR-489 spoked wheel loses in trials 3 and 4 alike.
+    Its spokes render as twin ribs with cross-blocks, and the judge calls
+    them arbitrary, loose or thin. That is the catalog's geometry, not the
+    agent's choice.
+  - **The core.** Trial 3 left its boards on the visible faces. Trial 4
+    put the regulator and driver on the rear face, so the hero shows a
+    plain white block with a window. The guidance does not yet tell the
+    agent to put ordered electronics on the side the hero shows.
+  The transcript asks for no missing part. It shows two small frictions:
+  `lib.wheel(...).bay()` does not exist, and six `inspect` calls asked for
+  a `/facts/bounding_box` path that is not published.
