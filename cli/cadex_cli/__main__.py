@@ -1919,8 +1919,10 @@ def _walk_common(args: argparse.Namespace) -> list[str]:
 def command_review(args: argparse.Namespace, report: RunReport) -> int:
     """Serve one project's review dashboard until interrupted (ADR-286).
 
-    Inspection only: the server reads the project's manifest, records and
-    retained artifacts on every request and writes nothing, so stopping it
+    The server reads the project's manifest, records and retained
+    artifacts on every request; its only write is a slider's, which runs
+    ``cadex params`` as a child and needs the page's per-launch token
+    (ADR-503). So stopping it
     — Ctrl-C, SIGTERM — changes nothing about the project, and a walk or a
     training run in progress is neither stopped nor duplicated by starting
     or restarting it. The URL is printed on stderr as soon as the socket is
@@ -1937,7 +1939,7 @@ def command_review(args: argparse.Namespace, report: RunReport) -> int:
         server, thread = serve_review(root, str(args.host), port)
     except OSError as exc:
         raise ValueError(f"review: cannot bind {args.host}:{port}: {exc}") from exc
-    _progress(f"review: serving {root.name} at {server.url} (read-only; Ctrl-C to stop)")
+    _progress(f"review: serving {root.name} at {server.url} (writes need the page's token; Ctrl-C to stop)")
     _serve_until_stopped(server, thread)
     report.ok = True
     report.notes.append(f"review: served {server.url}; stopped")
@@ -1973,7 +1975,7 @@ def projects_directory(args: argparse.Namespace) -> Path:
 def command_app(args: argparse.Namespace, report: RunReport) -> int:
     """Serve the dashboard over a directory of projects until interrupted.
 
-    The same read-only review pages as ``cadex review``, one per project
+    The same review pages as ``cadex review``, one per project
     under ``/p/<name>/``, behind an index that lists every project in the
     directory anew on each request. The directory is created if absent, so
     a fresh clone reaches a first page without having made a project. The
@@ -1992,7 +1994,7 @@ def command_app(args: argparse.Namespace, report: RunReport) -> int:
         server, thread = serve_projects(root, host, port)
     except OSError as exc:
         raise ValueError(f"app: cannot bind {host}:{port}: {exc}") from exc
-    _progress(f"app: serving {root} at {server.url} (read-only; Ctrl-C to stop)")
+    _progress(f"app: serving {root} at {server.url} (writes need the page's token; Ctrl-C to stop)")
     _serve_until_stopped(server, thread)
     report.ok = True
     report.notes.append(f"app: served {server.url}; stopped")

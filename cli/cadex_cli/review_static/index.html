@@ -11,6 +11,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The server writes this launch's write token here; every POST carries it (ADR-503). -->
+<meta name="cadex-write-token" content="">
 <title>Cadex review</title>
 <link rel="stylesheet" href="review.css">
 </head>
@@ -141,6 +143,7 @@
     <section id="params-panel" class="card panel">
       <h2>Parameters and specs</h2>
       <div id="params-note"></div>
+      <div id="params-write" data-state="idle"></div>
       <div class="scroll"><table id="params" class="grid"><thead><tr><th>name</th><th>value</th><th>default</th><th>min</th><th>max</th><th>unit</th><th>label</th></tr></thead><tbody></tbody></table></div>
     </section>
     <section id="artifacts-panel" class="card panel">

@@ -23,6 +23,10 @@
   var state = { review: null, selected: 'accepted', lastOk: null, stale: false, model: null, viewer: null,
                 error: null, following: true, docKey: null, docRequest: 0, detail: null, showProxies: false };
   var pendingPoll = null;
+  // This launch's write token, written into the page by the server; every
+  // POST carries it (ADR-503).
+  var WRITE_TOKEN = (document.querySelector('meta[name="cadex-write-token"]') || {}).content || '';
+  var paramsKey = null, writing = null, lastWrite = null;
   // The last poll's measured cost, for the operator and the regression suite:
   // bytes of the run list, bytes of the selected run's detail, wall time.
   var lastPoll = { project_bytes: 0, detail_bytes: 0, ms: 0 };
@@ -234,12 +238,17 @@
     (Array.isArray(specs) ? specs : []).forEach(function (spec) { if (spec && spec.name) byName[spec.name] = spec; });
     var names = Object.keys(values);
     Object.keys(byName).forEach(function (name) { if (names.indexOf(name) < 0) names.push(name); });
+    // Rebuilt only when what it shows changes, and never under a write in
+    // flight, so a poll does not snatch a slider from the hand moving it.
+    var key = JSON.stringify([state.selected, values, specs]);
+    if (writing || key === paramsKey) return;
+    paramsKey = key;
     var body = $('params').querySelector('tbody');
     clearChildren(body);
     names.sort().forEach(function (name) {
       var spec = byName[name] || {};
       body.appendChild(el('tr', { 'data-param': name }, [
-        el('td', { text: name }), el('td', { text: fmt(values[name]) }), el('td', { text: fmt(spec.default) }),
+        el('td', { text: name }), el('td', {}, [paramValue(name, values[name], spec, !run)]), el('td', { text: fmt(spec.default) }),
         el('td', { text: fmt(spec.min) }), el('td', { text: fmt(spec.max) }), el('td', { text: fmt(spec.unit) }),
         el('td', { text: fmt(spec.label) })
       ]));
@@ -247,6 +256,61 @@
     text('params-note', Array.isArray(specs)
       ? 'specs from ' + source + (names.length ? '' : ' (no parameters declared)')
       : 'specs unavailable' + (source ? ': ' + source : '') + (names.length ? ' — values only' : ''));
+  }
+
+  // A declared number with a range is a slider on the accepted view: the
+  // project as it stands now is the only thing a write can change. A run's
+  // parameters are a record and stay text.
+  // A parameter never set reads at its declared default, and says so.
+  function paramValue(name, value, spec, writable) {
+    var current = typeof value === 'number' ? value : spec.default;
+    var bounded = typeof current === 'number' && isFinite(spec.min) && isFinite(spec.max) && spec.max > spec.min;
+    if (!writable || !bounded || !WRITE_TOKEN) return el('span', { text: fmt(value) });
+    var shown = el('output', { text: fmt(current) + (value == null ? ' (default)' : '') });
+    value = current;
+    var slider = el('input', { type: 'range', min: String(spec.min), max: String(spec.max),
+                               step: String(spec.step > 0 ? spec.step : 'any'), value: String(value),
+                               'data-param': name, title: 'set ' + name + ' (runs cadex params --set)' });
+    slider.setAttribute('aria-label', name);
+    slider.addEventListener('input', function () { shown.textContent = fmt(Number(slider.value)); });
+    // One write per release, not one per pixel of the drag.
+    slider.addEventListener('change', function () { writeParams(name, Number(slider.value)); });
+    return el('span', { className: 'param-slider' }, [slider, shown]);
+  }
+
+  function writeParams(name, value) {
+    var status = $('params-write'), started = performance.now(), values = {};
+    values[name] = value;
+    writing = { name: name, value: value };
+    paramsKey = null;
+    $('params').querySelectorAll('input[type=range]').forEach(function (input) { input.disabled = true; });
+    status.dataset.state = 'pending';
+    status.textContent = 'cadex params --set ' + name + '=' + fmt(value) + ' …';
+    var reply = null;
+    return fetch(BASE + '/api/params', {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'X-Cadex-Token': WRITE_TOKEN },
+      body: JSON.stringify({ values: values })
+    }).then(function (response) {
+      return response.json().then(function (body) { reply = body; });
+    }).then(function () {
+      writing = null;
+      if (!reply.ok) throw new Error(reply.error || 'exit ' + reply.exit);
+      // A poll already in flight may predate the write; the next one cannot.
+      return (pendingPoll || Promise.resolve()).catch(function () {}).then(poll);
+    }).then(function () {
+      lastWrite = { ok: true, name: name, value: value, revision: reply.accepted_revision, digest: reply.digest,
+                    server_s: reply.seconds, total_ms: performance.now() - started };
+      status.dataset.state = 'done';
+      status.textContent = name + ' = ' + fmt(value) + ': accepted at ' + short(reply.accepted_revision) +
+        ' in ' + reply.seconds.toFixed(2) + ' s (model shown after ' + (lastWrite.total_ms / 1000).toFixed(2) + ' s)';
+    }).catch(function (error) {
+      writing = null; paramsKey = null;
+      lastWrite = { ok: false, name: name, value: value, error: error.message };
+      status.dataset.state = 'error';
+      status.textContent = name + ' = ' + fmt(value) + ' refused: ' + error.message;
+      if (state.review) renderParams();
+    });
   }
 
   function telemetryFor(run) {
@@ -889,6 +953,8 @@
     ready: ready,
     select: select,
     refresh: poll,
+    setParam: writeParams,
+    lastWrite: function () { return lastWrite; },
     viewer: function () { return state.viewer; },
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, detail_bytes: lastPoll.detail_bytes, ms: lastPoll.ms }; },
     state: function () {

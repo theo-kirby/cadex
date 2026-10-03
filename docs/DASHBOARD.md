@@ -81,7 +81,7 @@ where (§12) — and the element ids do not change with the width.
 | 4 | **Curves** | `#curves`, `#telemetry`, `[data-metric]`, `[data-history]`, `#checkpoint-source`, `#checkpoints` | Training telemetry: the five metrics as a stat row, the three histories (reward per step, loss, episode length) as curves side by side on desk and stacked on phone, then checkpoint provenance. | stage, *Curves* tab |
 | 5 | **Videos** | `#videos-region`, `#videos`, `#videos li[data-video][data-showing]` | The run's recorded clips, playable inline and downloadable, each captioned with its identity strip (revision, style, policy, seed, and what it shows — recordings made before that was recorded say so). | stage, *Videos* tab |
 | 5a | **Evaluation** | `#evaluation`, `#evaluation-status[data-state]`, `#evaluation-dot`, `#evaluation-list button[data-evaluation]`, `#evaluation-predicates tr[data-predicate]`, `#evaluation-seeds tr[data-seed][data-filmed]`, `#evaluation-metrics tr[data-metric-row]`, `#evaluation-reward tr[data-term]`, `#evaluation-film li[data-film-seed] [data-film]`, `#evaluation-download` | A policy held to its task's success spec on every frozen seed (§17): the verdict, each predicate's tally, each seed's verdict, ending and values, the behaviour metrics, the reward by term, and the film drawn from the seeds. | stage, *Evaluation* tab |
-| 6 | **Record** | `#record`, `#training`, `#params`, `#params-note`, `#artifacts`, `#problems`, `#disk`, `#docs`, `#decisions`, `#doc-view` | The appendix: training request and receipt, parameters and specs, retained artifacts and disk use, document snapshots and decisions. Full tables at desk width; on phone each table scrolls inside its own card, never the page. | right sidebar: *Training and rollout* (`#record`), *Parameters and specs* (`#params-panel`), *Artifacts* (`#artifacts-panel`); left sidebar: *Documents and decisions* (`#docs-panel`); an opened document on the stage's *Document* tab (`#doc-panel`) |
+| 6 | **Record** | `#record`, `#training`, `#params`, `#params-note`, `#params-write`, `#artifacts`, `#problems`, `#disk`, `#docs`, `#decisions`, `#doc-view` | The appendix: training request and receipt, parameters and specs, retained artifacts and disk use, document snapshots and decisions. Full tables at desk width; on phone each table scrolls inside its own card, never the page. | right sidebar: *Training and rollout* (`#record`), *Parameters and specs* (`#params-panel`), *Artifacts* (`#artifacts-panel`); left sidebar: *Documents and decisions* (`#docs-panel`); an opened document on the stage's *Document* tab (`#doc-panel`) |
 
 The element ids and `data-*` attributes above are the hooks the CLI suite
 (`cli/tests/test_review_server.py`, `test_review_lifecycle.py`,
@@ -751,6 +751,44 @@ inside its card on the phone with no horizontal overflow, and nothing under
 12 px; the reader's pick holding across a poll; and a project with no
 evaluation saying what makes one. `test_rendered_page_follows_the_spec`
 holds the heading and the reading order.
+
+## 18. Steering: the parameter slider (ADR-503)
+
+The page's first write. On the accepted view, every declared number with a
+finite `min` below its `max` is a range input in the *value* column of
+`#params`, stepped by the declaration's `step`; a parameter never set reads
+at its default and says `(default)`. A run's parameters are a record and
+stay text: only the project as it stands now can be changed. Dragging moves
+the number beside the slider and nothing else; **releasing** it is one
+write — `POST api/params` with `{"values": {name: value}}` — so a drag is
+one `cadex params --set`, never one per pixel. While it runs every slider
+is disabled and `#params-write` says the command being run; it then says
+the accepted revision and two times, the child's and release-to-drawn, in
+the page's ok colour, or the CLI's own refusal in its bad colour. The poll
+that follows the reply reloads the model, because the accepted revision
+moved; the table is never rebuilt under a write in flight, so a poll does
+not snatch a slider from the hand moving it.
+
+The server has no write path of its own (charter A3): the POST runs
+`cadex params --project <root> --set NAME=VALUE --json` as a child, as
+`cadex walk` runs a leg, without `--wait`, so a project held by another run
+is refused (409) rather than queued, and the `PROGRESS.md` row and the
+project commit are the CLI's. Every POST, under `/` and `/p/<name>/`,
+needs the per-launch token the server writes into the
+`<meta name="cadex-write-token">` of the page it serves, sent as
+`X-Cadex-Token`; a browser's `Origin`, when sent, must be the server's own
+`Host`. Both checks run before routing, so an unknown path is refused, not
+found. The server binds 127.0.0.1; another device reaches it through
+`tailscale serve` in front of it.
+
+Measured on 2026-10-03, a one-box plate on the dev tree, headless
+Chromium, n=20: slider release to the rebuilt model drawn, p50 548 ms,
+p95 556 ms; the `cadex params` child alone, p50 0.534 s, p95 0.542 s.
+Beside it, `cadexd_latency_integration.py` on the same machine: warm
+`set_params` median 0.382 s, with display 0.482 s, against its 0.65 s bar.
+The cold child costs about 50 ms over a warm engine on this model, which
+is why the server keeps none; a heavier project is where that would be
+measured again.
 
 ## Operator run status (ADR-387)
 

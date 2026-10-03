@@ -150,6 +150,13 @@ ul#videos .caption .video-play { flex: 0 0 auto; }
 ul#problems, ul#docs, ul#decisions, ul#disk-dirs, ul#disk-shared { margin: var(--s2) 0 0; padding-left: var(--s4); overflow-wrap: anywhere; }
 ul#problems li { color: var(--bad); }
 #params-note, #docs-note { color: var(--ink-2); margin-bottom: var(--s2); }
+/* A slider is a write (ADR-503): its status line says what ran and how it ended. */
+#params-write { color: var(--ink-2); margin-bottom: var(--s2); overflow-wrap: anywhere; }
+#params-write:empty { display: none; }
+#params-write[data-state="done"] { color: var(--ok); } #params-write[data-state="error"] { color: var(--bad); }
+.param-slider { display: flex; align-items: center; gap: var(--s2); }
+.param-slider input[type="range"] { width: 120px; accent-color: var(--accent); }
+.param-slider input[type="range"]:disabled { opacity: 0.5; }
 #disk { margin-bottom: var(--s3); } #disk[data-state="counted"] #disk-summary { color: var(--ink); }
 #disk[data-state="truncated"] #disk-summary, #disk[data-state="unreadable"] #disk-summary { color: var(--warn); }
 ul#disk-shared li[data-shared="true"] { color: var(--info); }

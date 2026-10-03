@@ -342,7 +342,9 @@ and why it must not become one now that both halves are in one tree.
 The dashboard reads the store and never writes it: the manifest's accepted
 attempt, that attempt's `result.json` and its `display/*.tess.json`
 sidecars, which is how the viewer shows the accepted model without asking
-an engine (`review_server.py`). Until ADR-498 the Blender shell also read
+an engine (`review_server.py`). When a person steers from the page — a
+parameter slider — the server runs the `cadex params` command as a child,
+so the write is cadexd's, through the CLI, as any other (ADR-503). Until ADR-498 the Blender shell also read
 `assets/` on Save-As to carry them into a new root through `put_asset`
 (ADR-046); a project is now copied as a directory.
 

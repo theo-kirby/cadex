@@ -10,10 +10,18 @@ under, the retained artifacts, and the model itself — the per-output
 meshes a run's rollout leg exported, placed where the rollout trace's
 first frame put them, or the accepted attempt's own tessellation for the
 project as it stands now — and each evaluation of a policy against its
-task's success spec, with the film drawn from it (ADR-459). It is a review
-client: it opens no engine,
-rebuilds nothing, accepts nothing, and holds no state of its own, so a
+task's success spec, with the film drawn from it (ADR-459). Reading
+opens no engine, rebuilds nothing and holds no state of its own, so a
 browser that goes away changes nothing about the project.
+
+Writing is the dashboard's light steering (orun2 D2, ADR-503), and it has
+no write path of its own: each POST runs the very ``cadex`` command a
+person would type (``params --set``), as a child process the way ``cadex
+walk`` runs its legs, so the project lock, the ``PROGRESS.md`` row and the
+project commit are the CLI's. Every POST needs the per-launch token the
+server writes into the page it serves, and a browser's ``Origin``, when
+sent, must be this server's own; anything else is refused before it is
+routed.
 
 What it will serve is an allowlist, never a path. Every route names a run
 by its directory name, an artifact by its record key, a document by the
@@ -37,8 +45,11 @@ import hashlib
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import hmac
 import math
 import mimetypes
+import re
+import secrets
 from pathlib import Path
 import struct
 import sys
@@ -47,6 +58,7 @@ from typing import Any, Callable, Mapping
 from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
 
+from .walk import run_leg
 from .review_record import (
     policy_lineage,
     PROJECT_ARTIFACT_KEYS,
@@ -1371,6 +1383,51 @@ class ReviewProject:
             return None
 
 
+#: The page's write token, as the served ``index.html`` carries it: the
+#: placeholder is replaced, per response, with the launch's own token.
+WRITE_TOKEN_META = b'<meta name="cadex-write-token" content="">'
+WRITE_TOKEN_HEADER = "X-Cadex-Token"
+#: Bound on a POST body; a parameter change is a few dozen bytes.
+WRITE_BODY_LIMIT = 64 * 1024
+#: How long one dashboard write may run before it is stopped, in seconds.
+WRITE_TIMEOUT_S = 300.0
+PARAM_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def write_params(root: Path, values: Any) -> tuple[HTTPStatus, dict[str, Any]]:
+    """``cadex params --project ROOT --set NAME=VALUE ...``, as a child.
+
+    The dashboard's slider and the command line are one write path (A3):
+    this spawns the CLI exactly as ``cadex walk`` spawns a leg, without
+    ``--wait``, so a project another run holds is refused rather than
+    queued, and the reply is the child's own envelope.
+    """
+
+    from .report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE  # report imports this module
+
+    if not isinstance(values, Mapping) or not values:
+        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "values must be a non-empty object."}
+    argv = ["params", "--project", str(root)]
+    for name, value in sorted(values.items()):
+        if not isinstance(name, str) or not PARAM_NAME.match(name):
+            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"not a parameter name: {name!r}"}
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"{name} must be a finite number."}
+        argv += ["--set", f"{name}={value!r}"]
+    leg = run_leg("params", argv + ["--json"], timeout=WRITE_TIMEOUT_S)
+    envelope = leg.envelope
+    reply = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
+             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv]}
+    for key in ("accepted_revision", "digest", "params", "error"):
+        if key in envelope:
+            reply[key] = envelope[key]
+    if reply["ok"]:
+        return HTTPStatus.OK, reply
+    if leg.code == EXIT_USAGE:
+        return HTTPStatus.BAD_REQUEST, reply
+    return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
+
+
 # The two ways Linux reports a peer that went away mid-write: EPIPE, or
 # ECONNRESET when the peer closed with bytes still unread (ADR-324).
 CLIENT_GONE = (BrokenPipeError, ConnectionResetError)
@@ -1507,6 +1564,55 @@ class ReviewHandler(BaseHTTPRequestHandler):
         except CLIENT_GONE:
             pass
 
+    def _write_refusal(self) -> str | None:
+        """Why this POST may not write, or ``None`` when it may.
+
+        The token is the launch's own and reaches only a page this server
+        served, which a page of another origin cannot read; the ``Origin``
+        check refuses a cross-site form or fetch even before that.
+        """
+
+        token = self.headers.get(WRITE_TOKEN_HEADER, "")
+        if not token or not hmac.compare_digest(token, self.server.write_token):  # type: ignore[attr-defined]
+            return f"a write needs this launch's {WRITE_TOKEN_HEADER} header (from the page the server served)."
+        origin = self.headers.get("Origin")
+        if origin is not None and urlsplit(origin).netloc != self.headers.get("Host", ""):
+            return f"cross-origin write refused: Origin {origin!r} is not this server."
+        return None
+
+    def do_POST(self) -> None:  # noqa: N802
+        parts = urlsplit(self.path)
+        segments = [unquote(segment) for segment in parts.path.split("/") if segment]
+        try:
+            refusal = self._write_refusal()
+            if refusal is not None:
+                self._send_json({"ok": False, "error": refusal}, HTTPStatus.FORBIDDEN)
+                return
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = -1
+            if not 0 < length <= WRITE_BODY_LIMIT:
+                self._send_json({"ok": False, "error": "a write needs a JSON body of at most "
+                                 f"{WRITE_BODY_LIMIT} bytes."}, HTTPStatus.BAD_REQUEST)
+                return
+            try:
+                body = json.loads(self.rfile.read(length))
+            except ValueError:
+                self._send_json({"ok": False, "error": "the body is not JSON."}, HTTPStatus.BAD_REQUEST)
+                return
+            projects = getattr(self.server, "projects", None)
+            project: ReviewProject | None = self.project if projects is None else None
+            if projects is not None and segments[:1] == ["p"] and len(segments) > 1:
+                project, segments = projects.project(segments[1]), segments[2:]
+            if project is None or segments != ["api", "params"] or not isinstance(body, dict):
+                self._not_found(parts.path)
+                return
+            status, reply = write_params(project.root, body.get("values"))
+            self._send_json(reply, status)
+        except CLIENT_GONE:
+            pass
+
     def _route_projects(self, projects: "ProjectsDirectory", path: str, segments: list[str],
                         download: bool) -> None:
         """The projects index at ``/``; each project's page under ``/p/<name>/``."""
@@ -1541,7 +1647,11 @@ class ReviewHandler(BaseHTTPRequestHandler):
         head, rest = segments[0], segments[1:]
         if len(segments) == 1 and head in STATIC_FILES:
             content_type, path = STATIC_FILES[head]
-            self._send_bytes(path.read_bytes(), content_type)
+            body = path.read_bytes()
+            if head == "index.html":
+                body = body.replace(WRITE_TOKEN_META, WRITE_TOKEN_META.replace(
+                    b'content=""', b'content="' + self.server.write_token.encode("ascii") + b'"'))  # type: ignore[attr-defined]
+            self._send_bytes(body, content_type)
             return
         if head == "api":
             if rest == ["project"]:
@@ -1619,6 +1729,7 @@ class ReviewServer(ThreadingHTTPServer):
                  log: Callable[[str], None] | None = None) -> None:
         self.project = ReviewProject(project_root)
         self.log = log
+        self.write_token = secrets.token_urlsafe(32)
         super().__init__((host, port), ReviewHandler)
 
     @property
@@ -1678,6 +1789,7 @@ class ProjectsServer(ThreadingHTTPServer):
                  log: Callable[[str], None] | None = None) -> None:
         self.projects = ProjectsDirectory(projects_root)
         self.log = log
+        self.write_token = secrets.token_urlsafe(32)
         super().__init__((host, port), ReviewHandler)
 
     url = ReviewServer.url

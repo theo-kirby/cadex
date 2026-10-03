@@ -32549,3 +32549,62 @@ writing to a project, `pixi run app`'s task, and a headless-Chromium walk
 from the index to a project whose accepted and run models draw under the
 prefix.
 
+## ADR-503 — The dashboard's first write: a parameter slider through `cadex params`, behind a per-launch token (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. A new HTTP route on the dashboard server
+(`POST api/params`); no cadexd protocol, tool-surface or CLI-flag change.
+
+**Context.** D2 asks that a person move a parameter slider in the browser
+and see the rebuilt model, that writes be safe by default (127.0.0.1, a
+per-launch token or a same-origin check), and A3 that the dashboard never
+own a second write path. Until now the server answered GET and HEAD only.
+A3 permits a warm `cadexd` per open project; holding one would also hold
+the project lock, or else need a staleness rule against agent turns
+writing the same project, so the cold path was measured first: `cadex
+params` on a one-box plate takes 0.53 s end to end on the dev tree,
+against 0.48 s for a warm `set_params` with display in
+`cadexd_latency_integration.py`.
+
+**Decision.** `POST api/params` (under `/` for `cadex review`, under
+`/p/<name>/` for `cadex app`) takes `{"values": {name: number}}`, checks
+each name is an identifier and each value a finite number, and runs
+`cadex params --project <root> --set NAME=VALUE ... --json` through
+`walk.run_leg` — the way `cadex walk` spawns a leg, with a 300 s bound and
+no `--wait`. The reply is the child's envelope (`accepted_revision`,
+`digest`, `params`, `error`) with its exit code and seconds: 200 on
+success, 400 for a usage error, 422 for an engine refusal, 409 otherwise
+(a held project lock is this). No warm engine is kept. Every POST is
+checked before routing: `X-Cadex-Token` must equal the token
+`secrets.token_urlsafe(32)` minted per server launch and written into the
+`<meta name="cadex-write-token">` of the `index.html` that server serves,
+and an `Origin` header, when present, must equal `Host`. On the page,
+each declared number with a finite range is a slider on the accepted view;
+one release is one write; the table is not rebuilt under a write in
+flight; the following poll reloads the model because the accepted
+revision moved (`docs/DASHBOARD.md` §18).
+
+**Cost.** Each slider release is a full CLI run: a `PROGRESS.md` row and a
+project commit per move, which is A3 taken literally, and a cold engine
+start per move, which costs about 50 ms over a warm engine on a trivial
+model and more on a heavy one. The token defends against cross-site
+requests, not against DNS rebinding of a loopback name, where a page could
+read the token as same-origin; the server's 127.0.0.1 bind and `tailscale
+serve` in front for remote use are the posture, as before. `cadex review`
+and `cadex app` no longer describe themselves as read-only.
+
+**What would reverse it.** A measured slider latency on a real robot
+project far over the raw bar would justify the warm engine A3 allows,
+with its lock and staleness rule written down; owner preference for fewer
+commits per sweep would justify a coalescing rule, not a second write path.
+
+**Test.** `cli/tests/test_dashboard_writes.py`: with no engine, every POST
+without the token, with another launch's or a truncated token, or from
+another origin is refused 403 before routing and spawns nothing; a tokened
+write spawns exactly `cadex params --project <root> --set ... --json`;
+malformed bodies and unknown paths are 400 and 404; a refused child is a
+409 carrying its error; `cadex review` guards its root the same way. With
+a real engine in headless Chromium: five slider releases each yield a new
+accepted revision shown in `#model-status`, a drawn model whose x extent
+equals the width set, a `PROGRESS.md` row and a project commit, and the
+measured release-to-drawn latency (n=20 on 2026-10-03: p50 548 ms, p95
+556 ms).
