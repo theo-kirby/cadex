@@ -46,7 +46,7 @@ header#top .title { min-width: 0; }
    reading order of §2 — runs, identity, model, curves, videos, record. */
 main#frame { display: flex; flex-direction: column; gap: var(--s4); padding: var(--gutter); }
 #left, #right, #stage, .stage-panels { display: contents; }
-#sidebar { order: 1; } #turn-panel { order: 2; } #comment-panel { order: 2; } #revision-panel { order: 2; } #export-panel { order: 2; } #identity { order: 2; } #model { order: 3; } #model-settings { order: 4; }
+#sidebar { order: 1; } #turn-panel { order: 2; } #note-panel { order: 2; } #comment-panel { order: 2; } #revision-panel { order: 2; } #export-panel { order: 2; } #identity { order: 2; } #model { order: 3; } #model-settings { order: 4; }
 #curves { order: 5; } #videos-region { order: 6; } #evaluation { order: 6; } #record { order: 7; } #params-panel { order: 8; }
 #artifacts-panel { order: 9; } #docs-panel { order: 10; } #doc-panel { order: 11; }
 #doc-panel:has(#doc-view.hidden) { display: none; }
@@ -165,15 +165,27 @@ ul#problems li { color: var(--bad); }
 pre#turn-transcript { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-2); border: var(--bw) solid var(--rule); padding: var(--s2);
                       border-radius: var(--radius-sm); max-height: 320px; overflow: auto; font-family: var(--mono); font-size: var(--fs-0); margin: var(--s2) 0 0; }
 /* A comment is a write (ADR-505): on the whole design or a picked part, waiting for the next turn. */
-#comment-text, #revision-note { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; color: var(--ink);
+#comment-text, #note-text, #revision-note { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; color: var(--ink);
                 background: var(--surface-2); border: var(--bw) solid var(--rule); border-radius: var(--radius-sm); padding: var(--s2); margin-top: var(--s2); }
-#comment-panel .controls, #revision-panel .controls { justify-content: space-between; margin-top: var(--s2); }
+#comment-panel .controls, #note-panel .controls, #revision-panel .controls { justify-content: space-between; margin-top: var(--s2); }
 #comment-target { color: var(--ink-2); overflow-wrap: anywhere; } #comment-target:not([data-part=""]) { color: var(--accent); }
 #comment-status { color: var(--ink-2); margin-top: var(--s2); overflow-wrap: anywhere; }
 #comment-status:empty { display: none; }
 #comment-status[data-state="done"] { color: var(--ok); } #comment-status[data-state="error"] { color: var(--bad); }
 ul#comment-list { margin: var(--s2) 0 0; padding-left: var(--s4); overflow-wrap: anywhere; }
 ul#comment-list li[data-delivered="true"] { color: var(--ink-2); }
+/* A note is the agent's (ADR-512): a flag or a question it left without waiting; an answer is a comment. */
+ul#note-list { margin: var(--s2) 0 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
+ul#note-list li { padding: var(--s2) 0; border-top: var(--bw) solid var(--rule); }
+ul#note-list li:first-child { border-top: 0; }
+ul#note-list li[data-type="question"][data-answered="false"] .note-type { color: var(--accent); }
+ul#note-list li[data-answered="true"] { color: var(--ink-2); }
+.note-reply { color: var(--ink); margin-top: var(--s1); } .note-artifact { display: inline-block; margin-top: var(--s1); }
+.note-reply-button { margin-top: var(--s1); }
+#note-target { color: var(--accent); overflow-wrap: anywhere; }
+#note-status { color: var(--ink-2); margin-top: var(--s2); overflow-wrap: anywhere; }
+#note-status:empty { display: none; }
+#note-status[data-state="done"] { color: var(--ok); } #note-status[data-state="error"] { color: var(--bad); }
 #revision-status { color: var(--ink-2); margin-top: var(--s2); overflow-wrap: anywhere; }
 #revision-status:empty { display: none; }
 #revision-status[data-state="done"] { color: var(--ok); } #revision-status[data-state="error"] { color: var(--bad); }

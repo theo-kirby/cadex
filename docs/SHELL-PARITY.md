@@ -97,9 +97,11 @@ Owner's defaults (charter A1):
 ## 2. The 23 agent tools
 
 The product agent's surface is `cli/cadex_cli/tools.py`: `CLI_TOOL_OPS` +
-`BRIDGE_TOOLS`, pinned by `test_project_tool_surface.py`. It already has four
-tools the shell never had: `train_start`, `train_status`, `train_stop` and
-`evaluate`.
+`BRIDGE_TOOLS`, pinned by `test_project_tool_surface.py`. It has five
+tools the shell never had: `train_start`, `train_status`, `train_stop`,
+`evaluate`, and `leave_note`, the agent's non-blocking channel to the
+owner (ADR-512, charter A1; `cli/tests/test_owner_channel.py`,
+`test_dashboard_writes.py::test_browser_shows_the_agents_question_and_the_answer_reaches_the_next_turn`).
 
 | shell tool | what it did | status | where / why |
 |---|---|---|---|

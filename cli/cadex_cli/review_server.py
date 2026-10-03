@@ -66,7 +66,7 @@ from urllib.parse import parse_qs, quote, unquote, urlsplit
 from xml.etree import ElementTree
 
 from .agent import IMAGE_LIMIT, IMAGES_PER_TURN, ImageAttachment, ImageRefused, image_attachment
-from .comments import read_comments
+from .comments import read_comments, read_notes
 from .revisions import read_history as read_revision_history
 from .walk import run_leg
 from .review_record import (
@@ -1460,6 +1460,8 @@ class ReviewProject:
         review["presentation"] = presentation(self.root, review["accepted"])
         review["evaluations"] = evaluations(self.root, review["accepted"])
         review["comments"] = read_comments(self.root)[-COMMENTS_SHOWN:]
+        review["notes"] = [dict(note, url=f"note/{note['id']}" if self.note_artifact(note["id"]) else "")
+                           for note in read_notes(self.root)[-NOTES_SHOWN:]]
         review["revisions"] = revision_trail(self.root)
         review["exports"] = export_listing(self.root)
         review["sections"] = section_listing(self.root)
@@ -1575,6 +1577,19 @@ class ReviewProject:
             return None
         path = self.root / RUNS_DIRNAME / name / item["path"]
         return path if path.is_file() else None
+
+    def note_artifact(self, note_id: str) -> Path | None:
+        """The file an agent note flags (ADR-512), when it is one the page
+        can show: inside the project, still present, and of a served type."""
+
+        note = next((note for note in read_notes(self.root) if note["id"] == note_id), None)
+        if note is None or not note["artifact"]:
+            return None
+        path = (self.root / note["artifact"]).resolve()
+        if not path.is_relative_to(self.root) or not path.is_file() \
+                or path.suffix.lower() not in NOTE_ARTIFACT_SUFFIXES:
+            return None
+        return path
 
     def current_document(self, relative: str) -> Path | None:
         review = read_project_review(self.root)
@@ -1692,14 +1707,17 @@ def write_comment(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict
     from .comments import COMMENT_LIMIT, PART_LIMIT
     from .report import EXIT_OK, EXIT_USAGE  # report imports this module
 
-    text, part = body.get("text"), body.get("part", "")
+    text, part, reply_to = body.get("text"), body.get("part", ""), body.get("reply_to", "")
     if not isinstance(text, str) or not text.strip():
         return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "text must be non-empty text."}
     if len(text) > COMMENT_LIMIT or "\x00" in text:
         return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"a comment is at most {COMMENT_LIMIT} characters of text."}
     if not isinstance(part, str) or len(part) > PART_LIMIT or "\x00" in part or "\n" in part:
         return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"part must be one line of at most {PART_LIMIT} characters."}
-    argv = ["comment", "--project", str(root), "--json"] + (["--part=" + part.strip()] if part.strip() else [])
+    if not isinstance(reply_to, str) or (reply_to and not NOTE_ID.match(reply_to)):
+        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "reply_to must be an agent note's id."}
+    argv = ["comment", "--project", str(root), "--json"] + (["--part=" + part.strip()] if part.strip() else []) \
+        + (["--reply=" + reply_to] if reply_to else [])
     leg = run_leg("comment", argv + ["--", text.strip()], timeout=WRITE_TIMEOUT_S)
     envelope = leg.envelope
     reply: dict[str, Any] = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
@@ -1714,6 +1732,7 @@ def write_comment(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict
 
 
 REVISION_ACTIONS = ("accept", "reject", "restore")
+NOTE_ID = re.compile(r"^n-[0-9a-f]{12}$")
 REVISION_SELECTOR = re.compile(r"^[0-9a-fA-F]{1,64}$|^[0-9]{1,6}$")
 
 
@@ -1935,6 +1954,10 @@ def revision_trail(root: Path) -> list[dict[str, Any]]:
 
 #: How many comments ``/api/project`` carries, newest kept.
 COMMENTS_SHOWN = 100
+#: How many agent notes ``/api/project`` carries, newest kept (ADR-512).
+NOTES_SHOWN = 50
+#: What a note's flagged artifact may be for the page to link it.
+NOTE_ARTIFACT_SUFFIXES = frozenset({".png", ".svg", ".mp4", ".webm", ".json", ".md", ".txt"})
 
 
 #: How long one dashboard prompt turn may run before it is stopped, in seconds.
@@ -2382,6 +2405,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
             path = project.run_artifact(rest[1], rest[2])
         elif head == "artifact" and rest[:1] == ["project"] and len(rest) == 3:
             path = project.project_artifact(rest[1], rest[2])
+        elif head == "note" and len(rest) == 1 and NOTE_ID.match(rest[0]):
+            path = project.note_artifact(rest[0])
         elif head == "presentation" and len(rest) == 1:
             path = project.presentation_image(rest[0])
         elif head == "export" and len(rest) == 2:

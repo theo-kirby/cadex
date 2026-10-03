@@ -286,6 +286,30 @@ def test_clearance_is_a_served_inspect_scope_the_cli_offers(tmp_path) -> None:
 
 
 
+def test_the_cli_bridge_tools_are_pinned_and_the_owner_channel_never_waits() -> None:
+    """The tools the CLI's bridge answers with no engine op behind them are
+    a deliberate list (ADR-406, ADR-464), and ``leave_note`` is the
+    agent's one path to the owner (ADR-512, orun2 A1): a flag or a question,
+    optionally naming one project file, and no argument that could make the
+    turn wait for an answer. Read by path, like ``INSPECT_SCOPES`` above."""
+    from importlib.util import module_from_spec, spec_from_file_location
+
+    tools_py = MODULE_DIR.parent.parent.parent / "cli" / "cadex_cli" / "tools.py"
+    spec = spec_from_file_location("cadex_cli_tools_for_bridge_test", tools_py)
+    assert spec is not None and spec.loader is not None
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert tuple(module.BRIDGE_TOOLS) == (
+        "look", "leave_note", "train_start", "train_status", "train_stop", "evaluate")
+    channel = module.BRIDGE_TOOLS["leave_note"]["input_schema"]
+    assert channel["properties"]["type"]["enum"] == ["flag", "question"]
+    assert set(channel["properties"]) == {"type", "text", "artifact"}
+    assert channel["required"] == ["type", "text"]
+    assert channel["additionalProperties"] is False
+    # A bridge tool never shadows an engine op.
+    assert not set(module.BRIDGE_TOOLS) & set(module.CLI_TOOL_OPS)
+
+
 # ---------------------------------------------------------------------------
 # Engine table, transport budgets, and session construction
 # ---------------------------------------------------------------------------

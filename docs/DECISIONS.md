@@ -33092,3 +33092,61 @@ rollout):
   the next frame's;
 - Play runs to the last frame and stops there;
 - an unknown run is a 404.
+
+## ADR-512 — The agent reaches the owner without waiting: `leave_note` (2026-10-03, owner charter orun2 A1)
+
+**Decision.** The product agent gains one bridge-answered tool,
+`leave_note(type, text, artifact?)`. `type` is `flag` (review the
+accepted revision, or the one project file named by `artifact`) or
+`question` (an answer would change the design). It appends a note to the
+project's `comments.jsonl`, tagged with the accepted revision, and returns
+at once. Nothing in it can block: there is no wait argument and no poll.
+The dashboard lists the notes in a **From the agent** panel and links a
+flagged file it can show (`docs/DASHBOARD.md` §26). The owner answers with
+an ordinary comment carrying `reply_to`: `cadex comment --reply <id>`, or
+the panel's **Answer**, which runs that command. The next `cadex -p`
+receives the answer the way it receives every comment (ADR-505), as one
+line quoting the note it answers. `CLI_OVERLAY` tells the agent to carry
+on in the same turn with the most reversible assumption and to name it in
+the note.
+
+**Why this shape.** A3 allows one write path, and the comments path
+already reaches the next turn, is append-only and is versioned with the
+project. A note is a second record kind in the same file, and an answer is
+a comment. So the channel adds no file, no delivery mechanism and no
+second dashboard write. The tool is bridge-answered (like `look` and the
+loop tools, ADR-406, ADR-464), so `OP_ARG_SPECS` and `docs/INTEGRATION.md`
+do not change.
+
+**The name.** The tool is `leave_note`, not `notify_owner`. The agent's
+prompt is barred from saying "owner" (`test_turn_loop.py`'s leak guard,
+orun1 D2), because the owner's design ratings must reach the agent only as
+written rules. A tool named after the owner would put the word in the
+overlay, so the overlay says "the person reviewing the design" instead.
+The guard is unchanged.
+
+**Rejected.** A blocking `ask_owner` that waits for an answer, which the
+charter forbids. A separate `inbox.jsonl`, which would be a second history
+for the same conversation. Serving any project file a note names: the
+`note/<id>` route serves only the file that note names, inside the
+project, of a type the page shows.
+
+**Cost.** About 100 lines in `comments.py`/`bridge.py`/`tools.py`, 70 in
+`review.js`, 25 in `review_server.py`, one CLI flag and one overlay
+paragraph. No dependency.
+
+**What would reverse it.** If agents use notes as progress chatter rather
+than for judgement calls, the remedy is the overlay's wording, not a gate.
+If the owner wants answers mid-turn, that is a blocking channel and a
+direction change.
+
+**Test.** `cli/tests/test_owner_channel.py`: storage and validation (an
+artifact path outside the project or absent is refused), the bridge tool
+returns in under a second and refuses an unknown argument, `--reply` on
+the CLI, the server's argv and its `reply_to` check, the review listing and
+the artifact route, and, against a real engine, a question from one mock
+turn answered into the next. `test_dashboard_writes.py`, in headless
+Chromium against a real engine: a turn leaves a question and a flag
+through the real bridge, the page lists both and serves the flagged PNG,
+the owner answers in the page, and the next turn's prompt quotes the note.
+`test_project_tool_surface.py` pins `BRIDGE_TOOLS` and the tool's schema.

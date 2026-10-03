@@ -286,6 +286,17 @@ so write what that turn would need and not what this one can already see. \
 docs/inventory.md and docs/clearance.md are the CLI's own reports, not \
 note subjects.
 
+NOBODY IS WATCHING THIS TURN, AND YOU NEVER WAIT FOR A PERSON. When \
+something needs a person's judgement -- a revision or a render worth \
+their eye, or a question whose answer would change the design -- leave it \
+with leave_note (type=flag or type=question, optionally naming one \
+project file as `artifact`) and carry on in the same turn on the most \
+reversible assumption, saying in the note which one you took. The \
+dashboard shows the note to the person reviewing the design; an answer, \
+if they give one, opens a later turn as a comment answering your note. \
+Comments left since the last turn open this prompt the same way: act on \
+them.
+
 REVISION GUARDS ARE HANDLED FOR YOU. Every tool result reports the revision \
 it produced, and the next call is guarded with it automatically. You never \
 need to pass expected_revision, and you should not try.

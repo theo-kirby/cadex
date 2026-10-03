@@ -42,8 +42,10 @@ from typing import Any
 from . import evaluate as evaluation
 from . import loop
 from .clearance import read_fit
+from .comments import add_note
 from .client import CadexdClient
 from .inventory import InventoryError, read_inventory, read_inventory_summary
+from .review_record import read_accepted_identity
 from .studio import FIT_REPORT, STUDIO
 from .tools import (
     BRIDGE_TOOLS, STANDARD_DISPLAY, VIEW_ARGS, injects_display, injects_revision,
@@ -218,6 +220,8 @@ class Bridge:
         if tool in BRIDGE_TOOLS:
             if tool == "look":
                 return self._look(arguments)
+            if tool == "leave_note":
+                return self._leave_note(arguments)
             return self._loop_tool(tool, arguments)
         if tool not in protocol.OP_ARG_SPECS:
             return _content(f"No such tool: {tool!r}.", is_error=True)
@@ -361,6 +365,38 @@ class Bridge:
             f"({facts['revision'][:12]})",
         ))
         return {"content": content, "is_error": False}
+
+    # -- the owner channel (ADR-512) ------------------------------------
+
+    def _leave_note(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Append the agent's note to the project's ``comments.jsonl`` and
+        return at once; the owner's answer arrives as a comment in a later
+        turn, so nothing here waits or polls."""
+
+        allowed = set(BRIDGE_TOOLS["leave_note"]["input_schema"]["properties"])
+        unknown = sorted(set(arguments) - allowed)
+        try:
+            if unknown:
+                raise ValueError(f"leave_note takes {', '.join(sorted(allowed))}; not {', '.join(unknown)}.")
+            if self.project_root is None:
+                raise ValueError("leave_note needs a project directory; this session has none.")
+            identity = read_accepted_identity(self.project_root)
+            note = add_note(
+                self.project_root, str(arguments.get("type") or ""), arguments.get("text"),
+                revision=str(identity.get("revision") or "") if identity.get("available") else "",
+                artifact=str(arguments.get("artifact") or ""))
+        except ValueError as exc:
+            self._record(ToolCall("leave_note", dict(arguments), False, str(exc)))
+            return _content(json.dumps({"ok": False, "error": str(exc)}, indent=2), is_error=True)
+        self._record(ToolCall(
+            "leave_note", dict(arguments), True,
+            f"{note['type']} {note['id']}" + (f" on {note['artifact']}" if note["artifact"] else "")))
+        return _content(json.dumps({
+            "ok": True, "id": note["id"], "type": note["type"], "revision": note["revision"],
+            "artifact": note["artifact"],
+            "delivery": "left on the dashboard for the person reviewing the design; do not wait for an answer. "
+                        "One, if given, arrives as a comment at the start of a later turn.",
+        }, indent=2))
 
     # -- the training loop (ADR-464) ------------------------------------
 

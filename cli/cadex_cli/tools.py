@@ -201,6 +201,48 @@ BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
             "additionalProperties": False,
         },
     },
+    # The agent's way to reach the owner without waiting (ADR-512, orun2 A1):
+    # a note in the project's comments.jsonl that the dashboard shows; the
+    # owner's answer is a comment, so it arrives the way every comment does.
+    "leave_note": {
+        "description": (
+            "LEAVE A NOTE FOR THE PERSON REVIEWING THIS DESIGN, AND GO ON "
+            "WITHOUT WAITING. Nobody is watching this turn; notes are read "
+            "later, on the dashboard. "
+            "`type=flag` asks for a review of something: the accepted revision "
+            "as it stands now, or one file in the project named by `artifact` "
+            "(a render, an evaluation report). `type=question` asks a "
+            "question whose answer would change the design. This returns at "
+            "once and nothing answers it during this turn: decide the "
+            "question yourself on the most reversible assumption, say which "
+            "in the note, and carry on. An answer, when one is given, "
+            "arrives at the start of a later turn as a comment answering "
+            "your note. Use it for what only a person can judge, not for "
+            "progress reports."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": ["flag", "question"],
+                    "description": "flag: review this. question: answer this when you can.",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "The note, in a sentence or two: what to look at and "
+                    "why, or the question and the assumption you went on with.",
+                },
+                "artifact": {
+                    "type": "string",
+                    "description": "Optional: one project-relative file path the note is "
+                    "about, e.g. out/hero.png. Omit to flag the accepted revision.",
+                },
+            },
+            "required": ["type", "text"],
+            "additionalProperties": False,
+        },
+    },
     # The training loop (ADR-464): design a task, train on it, evaluate the
     # policy against the task's success spec, revise. The same four tools for
     # every behaviour; none of them knows what is being trained.

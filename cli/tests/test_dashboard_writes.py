@@ -496,6 +496,79 @@ def test_browser_comments_on_a_picked_part_and_the_next_turn_receives_it(
         server.server_close()
 
 
+@needs_browser
+def test_browser_shows_the_agents_question_and_the_answer_reaches_the_next_turn(
+        engine, tmp_path, capsys, fake_claude, browser) -> None:
+    """The agent's channel to the owner (ADR-512, orun2 A1): a turn leaves a
+    question and a flag through ``leave_note`` and finishes without
+    waiting; the page lists both; the owner answers the question there,
+    which is ``cadex comment --reply``; the next turn receives the answer."""
+
+    projects = tmp_path / "projects"
+    source = tmp_path / "post.py"
+    source.write_text(PLATE_AND_POST, encoding="utf-8")
+    assert main(["script", "--set", str(source), "--project", str(projects / "post"), "--json"]) == EXIT_OK
+    capsys.readouterr()
+    root = projects / "post"
+    (root / "out").mkdir()
+    (root / "out" / "sketch.png").write_bytes(base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="))
+    script, seen, _gate = fake_claude
+    question = "Should the post be round? I kept it square."
+    script.write_text(json.dumps([
+        ["tool", "write_script", {"source": PLATE_AND_POST.replace("8.0, 30.0)", "8.0, 40.0)")}],
+        ["tool", "leave_note", {"type": "question", "text": question}],
+        ["tool", "leave_note", {"type": "flag", "text": "the sketch I worked from", "artifact": "out/sketch.png"}],
+        ["done", "Done: the post is 40 mm tall."],
+    ]), encoding="utf-8")
+    server, _thread = serve_projects(projects, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url + "p/post/")
+        assert page.evaluate("document.querySelectorAll('#note-list li').length") == 0
+        assert page.evaluate("document.getElementById('note-empty').hidden") is False
+        page.evaluate("document.getElementById('turn-prompt').value = 'make the post taller'")
+        page.click("#turn-start")
+        page.wait_for("window.cadexReview.turn().state === 'done' || window.cadexReview.turn().state === 'failed'",
+                      timeout=120)
+        assert page.evaluate("window.cadexReview.turn().state") == "done"
+        page.wait_for("document.querySelectorAll('#note-list li').length === 2", timeout=30)
+        # Newest first: the flag, linking the file it names; then the question.
+        assert page.attribute("#note-list li", "data-type") == "flag"
+        href = page.evaluate("document.querySelector('#note-list li .note-artifact').href")
+        status, headers, body = _get(href)
+        assert status == 200 and body.startswith(b"\x89PNG")
+        ask = "#note-list li[data-type='question']"
+        assert page.attribute(ask, "data-answered") == "false"
+        assert question in page.evaluate("document.querySelector(%s).textContent" % json.dumps(ask))
+        note_id = page.attribute(ask, "data-note")
+
+        page.click(ask + " .note-reply-button")
+        assert page.attribute("#note-target", "data-note") == note_id
+        page.evaluate("document.getElementById('note-text').value = 'yes, round it'")
+        page.click("#note-send")
+        page.wait_for("document.getElementById('note-status').dataset.state === 'done'", timeout=60)
+        page.wait_for("document.querySelector(%s).dataset.answered === 'true'" % json.dumps(ask), timeout=30)
+        lines = [json.loads(line) for line in (root / "comments.jsonl").read_text().splitlines()]
+        assert [(line["kind"], line.get("reply_to")) for line in lines] == [
+            ("note", None), ("note", None), ("comment", note_id)]
+
+        script.write_text(json.dumps([
+            ["tool", "write_script", {"source": PLATE_AND_POST}],
+            ["done", "Done."],
+        ]), encoding="utf-8")
+        page.evaluate("document.getElementById('turn-prompt').value = 'go on'")
+        page.click("#turn-start")
+        page.wait_for("window.cadexReview.turn().id && window.cadexReview.turn().reply && "
+                      "window.cadexReview.turn().reply.notes.indexOf('delivered 1 comment(s) from the owner.') >= 0",
+                      timeout=120)
+        given = seen.read_text(encoding="utf-8")
+        assert '- (answering your note "%s") yes, round it' % question in given
+        assert given.endswith("\n\ngo on")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 # -- the fourth write: accept, reject and restore a revision (ADR-506) ------
 
 

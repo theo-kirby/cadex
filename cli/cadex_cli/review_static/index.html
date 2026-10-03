@@ -48,6 +48,18 @@
       <div id="turn-status" data-state="idle"></div>
       <pre id="turn-transcript" hidden></pre>
     </section>
+    <section id="note-panel" class="card panel">
+      <h2>From the agent</h2>
+      <!-- The agent's leave_note notes (ADR-512): flags and questions it left without waiting. An answer runs `cadex comment --reply NOTE_ID TEXT --project …`; the next design turn receives it. -->
+      <div id="note-empty" class="muted small">No notes from the agent.</div>
+      <ul id="note-list"></ul>
+      <div id="note-answer" hidden>
+        <div class="controls"><span id="note-target" data-note="">answering —</span></div>
+        <textarea id="note-text" rows="2" placeholder="Your answer, for the next turn." aria-label="Answer"></textarea>
+        <div class="controls"><button id="note-send" type="button">Answer</button></div>
+      </div>
+      <div id="note-status" data-state="idle"></div>
+    </section>
     <section id="comment-panel" class="card panel">
       <h2>Comments</h2>
       <!-- Runs `cadex comment [--part NAME] TEXT --project …` (ADR-505); the next design turn receives them. -->

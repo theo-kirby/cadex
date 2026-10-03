@@ -732,6 +732,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="The part the comment is about, by its output name. Default: "
         "the whole design.",
     )
+    comment_parser.add_argument(
+        "--reply",
+        default="",
+        metavar="NOTE_ID",
+        help="Answer the agent's note with this id (ADR-512): the next turn "
+        "receives the answer quoting what it answers.",
+    )
     comment_parser.add_argument("text", help="The comment, in words.")
 
     revision_parser = subparsers.add_parser(
@@ -1227,18 +1234,19 @@ def _parse_assignments(raw: Sequence[str]) -> dict[str, Any]:
 
 
 def command_comment(args: argparse.Namespace, report: RunReport) -> int:
-    """``cadex comment [--part NAME] TEXT``: one comment for the next turn.
+    """``cadex comment [--part NAME] [--reply NOTE_ID] TEXT``: one comment for the next turn.
 
     The dashboard's comment box runs this command (A3). It touches no
     engine: the comment is a line in ``comments.jsonl`` (ADR-505), tagged
-    with the revision accepted when it was left.
+    with the revision accepted when it was left. ``--reply`` makes it the
+    owner's answer to an agent note (ADR-512).
     """
 
     root = Path(args.project).expanduser()
     if not root.is_dir():
         raise ValueError(f"no project at {root}.")
     identity = read_accepted_identity(root)
-    comment = add_comment(root, args.text, part=args.part,
+    comment = add_comment(root, args.text, part=args.part, reply_to=args.reply,
                           revision=identity.get("revision", "") if identity.get("available") else "")
     report.comments = [comment]
     report.accepted_revision = comment["revision"]

@@ -447,29 +447,73 @@
     });
   }
 
-  function sendComment(text, part) {
-    var status = $('comment-status');
+  // An answer to an agent note (ADR-512) is the same write with `reply_to`,
+  // reported in the note panel rather than the comment box.
+  function sendComment(text, part, replyTo) {
+    var prefix = replyTo ? 'note' : 'comment';
+    var status = $(prefix + '-status');
     status.dataset.state = 'pending';
     status.textContent = 'running cadex comment …';
-    $('comment-send').disabled = true;
+    $(prefix + '-send').disabled = true;
     return fetch(BASE + '/api/comment', {
       method: 'POST', cache: 'no-store',
       headers: { 'Content-Type': 'application/json', 'X-Cadex-Token': WRITE_TOKEN },
-      body: JSON.stringify({ text: text, part: part || '' })
+      body: JSON.stringify(replyTo ? { text: text, reply_to: replyTo } : { text: text, part: part || '' })
     }).then(function (response) {
       return response.json();
     }).then(function (reply) {
       if (!reply.ok) throw new Error(reply.error || 'refused');
       lastComment = reply.comment;
       status.dataset.state = 'done';
-      status.textContent = 'left ' + (reply.comment.part ? 'on part ' + reply.comment.part : 'on the whole design') + '; the next turn receives it';
-      $('comment-text').value = '';
+      status.textContent = (replyTo ? 'answered' : 'left ' + (reply.comment.part ? 'on part ' + reply.comment.part : 'on the whole design')) + '; the next turn receives it';
+      $(prefix + '-text').value = '';
       return (pendingPoll || Promise.resolve()).catch(function () {}).then(poll).then(function () { return reply.comment; });
     }).catch(function (error) {
       status.dataset.state = 'error';
       status.textContent = 'not left: ' + error.message;
       return null;
-    }).finally(function () { $('comment-send').disabled = false; });
+    }).finally(function () { $(prefix + '-send').disabled = false; });
+  }
+
+  // Notes from the agent (ADR-512): what its leave_note tool flagged for
+  // review or asked, newest first. The agent never waited for these; an
+  // answer is a comment the next turn receives, quoting the note.
+  var notesKey = null, answerTo = '';
+
+  function answerNote(id) {
+    answerTo = id || '';
+    var note = ((state.review && state.review.notes) || []).filter(function (n) { return n.id === answerTo; })[0];
+    $('note-answer').hidden = !note;
+    $('note-target').dataset.note = note ? note.id : '';
+    $('note-target').textContent = note ? 'answering: ' + note.text : 'answering —';
+  }
+
+  function renderNotes() {
+    var notes = (state.review && state.review.notes) || [];
+    var key = JSON.stringify(notes);
+    if (key === notesKey) return;
+    notesKey = key;
+    var list = $('note-list');
+    clearChildren(list);
+    $('note-empty').hidden = notes.length > 0;
+    notes.slice().reverse().forEach(function (note) {
+      var about = [note.type === 'question' ? 'question' : 'flagged for review',
+                   note.artifact ? note.artifact : 'revision ' + short(note.revision), note.at];
+      var children = [
+        el('span', { className: 'note-type', text: note.type === 'question' ? '? ' : '⚑ ' }),
+        el('span', { text: note.text }),
+        el('div', { className: 'muted small', text: about.join(' · ') })
+      ];
+      if (note.url) children.push(el('a', { className: 'note-artifact small', href: note.url, target: '_blank', text: 'open ' + note.artifact }));
+      note.answers.forEach(function (answer) {
+        children.push(el('div', { className: 'note-reply small', 'data-answer': answer.id, text: '↳ ' + answer.text }));
+      });
+      var button = el('button', { type: 'button', className: 'note-reply-button', text: note.answers.length ? 'Answer again' : 'Answer' });
+      button.addEventListener('click', function () { answerNote(note.id); $('note-text').focus(); });
+      children.push(button);
+      list.appendChild(el('li', { 'data-note': note.id, 'data-type': note.type, 'data-answered': String(note.answers.length > 0) }, children));
+    });
+    if (answerTo) answerNote(answerTo);
   }
 
   // Revisions (ADR-506): the owner's verdict on the accepted revision, and
@@ -1405,6 +1449,7 @@
     if (!state.review) return;
     if (state.selected !== 'accepted' && !selectedRun()) state.selected = 'accepted';
     renderHeader(); renderSidebar(); renderIdentity(); renderPolicyOrigin(); renderParams(); renderTraining(); renderArtifacts(); renderDocs();
+    renderNotes();
     renderComments();
     renderRevisions();
     renderExports();
@@ -1496,6 +1541,10 @@
     $('turn-image').addEventListener('change', function () { attachImages($('turn-image').files); });
     if (state.viewer.setOnPick) state.viewer.setOnPick(pickPart);
     $('comment-whole').addEventListener('click', function () { pickPart(''); });
+    $('note-send').addEventListener('click', function () {
+      var text = $('note-text').value.trim();
+      if (text && answerTo) sendComment(text, '', answerTo);
+    });
     $('comment-send').addEventListener('click', function () {
       var text = $('comment-text').value.trim();
       if (text) sendComment(text, commentPart);
@@ -1528,6 +1577,7 @@
     comment: sendComment,
     lastComment: function () { return lastComment; },
     commentPart: function () { return commentPart; },
+    answerNote: answerNote,
     revision: writeRevision,
     lastRevision: function () { return lastRevision; },
     exportModel: writeExport,

@@ -75,6 +75,7 @@ where (§12) — and the element ids do not change with the width.
 |---|---|---|---|---|
 | 0 | **Masthead** | `#top`, `#project-name`, `#accepted-line`, `#freshness` | The project's name, the accepted identity now (revision, digest, updated, run count), and whether the page is live or stale. One row on desk, two on phone. | top bar |
 | 0a | **Design turn** | `#turn-panel`, `#turn-prompt`, `#turn-resume`, `#turn-start`, `#turn-status[data-state]`, `#turn-transcript` | Start a `cadex -p` turn on the project from a prompt and watch its transcript stream; the status says what ran and how it ended (§19). Under the run list on phone. | left sidebar, first |
+| 0a′ | **From the agent** | `#note-panel`, `#note-empty`, `#note-list li[data-note][data-type][data-answered]`, `.note-artifact`, `.note-reply-button`, `#note-answer`, `#note-target[data-note]`, `#note-text`, `#note-send`, `#note-status[data-state]` | What the agent flagged for the owner's review or asked, without waiting, and the owner's answer to each (§26). Under the turn panel on phone. | left sidebar, between the turn and the comments |
 | 0b | **Comments** | `#comment-panel`, `#comment-target[data-part]`, `#comment-whole`, `#comment-text`, `#comment-send`, `#comment-status[data-state]`, `#comment-list li[data-part][data-delivered]` | Leave a comment on the whole design or on a part clicked in the model, for the next turn; the list says which a turn has received (§20). Under the turn panel on phone. | left sidebar, second |
 | 0c | **Revisions** | `#revision-panel`, `#revision-current`, `#revision-note`, `#revision-accept`, `#revision-reject`, `#revision-status[data-state]`, `#revision-list li[data-revision][data-ordinal][data-current][data-verdict]`, `.revision-restore` | The owner's verdict on the accepted revision, and the stored trail with a way back to any of it (§21). Under the comments on phone. | left sidebar, third |
 | 0d | **Export** | `#export-panel`, `#export-run`, `#export-status[data-state]`, `#export-list li[data-name]` | Export the accepted revision's STEP and STL through `cadex export` and download them (§23). Under the revisions on phone. | left sidebar, fourth |
@@ -1037,6 +1038,32 @@ overlay shows the simulation time. `#play-note` gives the time, the frame,
 and each actuator's command in force against its range. Nothing is
 simulated in the page. A run with no trace says why there is nothing to
 play.
+
+## 26. The agent's notes: flags and questions it did not wait on (ADR-512)
+
+The other direction of steering. During a turn the agent's `leave_note`
+tool appends a **note** to the project's `comments.jsonl`: `type` **flag**
+(review the accepted revision, or the one project file it names as
+`artifact`) or **question** (an answer would change the design; the note
+says which assumption the agent went on with). The tool returns at once and
+the turn carries on: nothing in the product waits for the owner.
+
+`/api/project` carries the last 50 notes under `notes`. `#note-panel` sits
+between the turn panel and the comments, headed **From the agent**, and
+lists them newest first: ⚑ for a flag, **?** for a question (in the accent
+colour while unanswered), what it is about (the artifact's path, or the
+revision it was left on) and when. A flagged file the page can show — PNG,
+SVG, video, JSON, Markdown or text, inside the project and still present —
+is linked as `note/<id>`; the route serves only the file that note names.
+The owner's answers are listed under the note, and an answered note drops
+to the muted ink.
+
+**Answer** opens `#note-answer` for that note. Sending is the comment write
+of §20 with `{"text": text, "reply_to": id}`; the server runs `cadex comment
+--project <root> --json --reply=<id> -- <text>`, so there is still one
+write path. The next `cadex -p` receives the answer as a comment, one line
+quoting what it answers: `(answering your note "…") …`, and marks it
+delivered as §20 does.
 
 ## Operator run status (ADR-387)
 
