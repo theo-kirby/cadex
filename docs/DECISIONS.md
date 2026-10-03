@@ -31421,3 +31421,8 @@ held-out result.
 - New probe machinery only (`runner/draw_set.py`, `runner/pairwise.py`,
   `metrics.split_verdicts`). No product, engine or protocol change. No new
   dependency.
+- **Held-out result (2026-10-02).** v2 was measured on the 26 held-out
+  designs once: 97.3% gap-pair agreement (36 of 37), every Love above every
+  No (2 of 2), and τ-b 0.436 over 325 pairs. ot10's judge scored 13.5%, failed
+  Love over No and had τ-b −0.079 on the same pairs. v2 meets D1's bar and is the
+  judge D4 is scored with (`docs/probes/orun1/judge/v2-heldout/`).

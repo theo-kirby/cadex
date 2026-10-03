@@ -327,3 +327,45 @@ its own right.
   already holds a held-out result.
 - **Command:**
   `pixi run python docs/probes/orun1/runner/pairwise.py --version v2 --split heldout --inputs <drawn heroes> --out docs/probes/orun1/judge/v2-heldout --jobs 8`.
+
+### D1 held-out result: judge v2 (measured once, 2026-10-02)
+
+Frozen v2 ran once on the held-out set, exactly as frozen above: 26 heroes
+drawn by `runner/draw_set.py --split heldout` from `orun1-ho-<id>` copies at
+their accepted revisions (hashes and revisions in the summary), 325 calls,
+all 325 judged on the first pass with no harness failure, unjudged pair or
+resume. **It meets every part of D1's bar.**
+
+| metric (held-out) | ot10 judge (baseline) | **judge v2 (frozen)** | D1 bar |
+|---|---|---|---|
+| pairwise agreement, owner gap ≥ 2 | 13.5% (5 of 37; 3 ties, 29 reversed) | **97.3%** (36 of 37; 0 ties, 1 reversed) | ≥ 80% |
+| every Love above every No | fails, 0 of 2 | **holds, 2 of 2** | holds |
+| Kendall's τ-b, all held-out pairs | −0.079 over 325 pairs | **0.436** over 325 pairs (154 concordant, 43 discordant, 122 tied by owner only, 6 tied by judge only) | reported |
+| A picked | — | 50.5% | — |
+
+Scores (fraction of 25 comparisons won) by owner verdict:
+
+| owner | n | v2 scores | mean |
+|---|---|---|---|
+| Love | 2 | 1.00, 0.80 | 0.90 |
+| Like | 11 | 0.96, 0.88, 0.80, 0.76, 0.68, 0.64, 0.52, 0.44, 0.32, 0.24, 0.16 | 0.58 |
+| Meh | 12 | 0.88, 0.72, 0.64, 0.60, 0.48, 0.36, 0.32, 0.28, 0.24, 0.12, 0.04, 0.00 | 0.39 |
+| No | 1 | 0.12 | 0.12 |
+
+- The held-out Loves rank first (`quadruped-e-hard-surface`, 1.00, won
+  every comparison) and joint fifth (`biped-c-exposed-mechanism`, 0.80). The
+  held-out No (`biped-h-free`) is fourth from the bottom at 0.12.
+- The one reversed gap pair is `biped-c-exposed-mechanism` (Love) against
+  `arm3-h-free` (Meh, 0.88). It is reversed by the **aggregation**, not by
+  the call: on that pair's own call the judge picked the Love. The Meh arm
+  won more of its other comparisons. This is the dev caution about arms
+  repeating: v2 rates a clean arm higher than the owner does.
+- Caveats, not excuses: the held-out extremes are small (2 Loves, 1 No, so
+  "Love above No" is two pairs), and τ-b counts the 122 pairs the owner
+  rated level as neither concordant nor discordant. The judge orders the
+  middle (Like against Meh) less well than the extremes, as on dev.
+- Cost $11.88 (325 calls). Every call and its reason: `judge/v2-heldout/pairs.jsonl`;
+  the metric output, inputs' hashes and revisions: `judge/v2-heldout/summary.json`.
+- **v2 is the judge D4 uses.** It was measured on the held-out set once. No
+  later version is needed for D1, and the held-out set has now been used
+  for its one purpose: nothing may be tuned on it.
