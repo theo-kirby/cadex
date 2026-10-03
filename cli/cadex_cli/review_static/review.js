@@ -618,6 +618,35 @@
     });
   }
 
+  // Drawings (ADR-516): blueprint sheets the agent stored with the project,
+  // newest first, each linked; the newest is shown. Nothing here writes.
+  var drawingsKey = null;
+
+  function renderDrawings() {
+    var shown = (state.review && state.review.drawings) || { available: false, reason: 'no drawings block', sheets: [] };
+    var key = JSON.stringify(shown);
+    if (key === drawingsKey) return;
+    drawingsKey = key;
+    var list = $('drawing-list'), link = $('drawing-latest-link');
+    clearChildren(list);
+    if (!shown.available) {
+      link.hidden = true;
+      list.appendChild(el('li', { className: 'muted small', text: shown.reason || 'no drawings' }));
+      return;
+    }
+    var newest = shown.sheets[0];
+    link.hidden = false;
+    link.href = BASE + '/' + newest.url;
+    $('drawing-latest').src = BASE + '/' + newest.url;
+    shown.sheets.forEach(function (sheet) {
+      list.appendChild(el('li', { 'data-file': sheet.file, 'data-relation': sheet.relation }, [
+        el('a', { href: BASE + '/' + sheet.url, target: '_blank', rel: 'noopener', text: sheet.name + ' v' + sheet.version }),
+        el('span', { className: 'muted small', text: ' · ' + short(sheet.revision) + (sheet.relation === 'current' ? '' : ' (earlier design)') + ' · ' }),
+        el('a', { href: BASE + '/' + sheet.url + '?download=1', download: sheet.file, text: 'download' })
+      ]));
+    });
+  }
+
   function writeExport(formats) {
     var status = $('export-status');
     formats = formats || ['step', 'stl'];
@@ -1453,6 +1482,7 @@
     renderComments();
     renderRevisions();
     renderExports();
+    renderDrawings();
     renderSections();
     renderPresentation();
     renderEvaluation();

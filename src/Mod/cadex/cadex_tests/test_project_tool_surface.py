@@ -300,12 +300,18 @@ def test_the_cli_bridge_tools_are_pinned_and_the_owner_channel_never_waits() -> 
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
     assert tuple(module.BRIDGE_TOOLS) == (
-        "look", "leave_note", "train_start", "train_status", "train_stop", "evaluate")
+        "look", "draw_blueprint", "leave_note", "train_start", "train_status", "train_stop", "evaluate")
     channel = module.BRIDGE_TOOLS["leave_note"]["input_schema"]
     assert channel["properties"]["type"]["enum"] == ["flag", "question"]
     assert set(channel["properties"]) == {"type", "text", "artifact"}
     assert channel["required"] == ["type", "text"]
     assert channel["additionalProperties"] is False
+    # The drawing sheet (ADR-516): a name is its identity, and it takes
+    # nothing that could name an arbitrary file to store.
+    sheet = module.BRIDGE_TOOLS["draw_blueprint"]["input_schema"]
+    assert set(sheet["properties"]) == {"name", "views", "callouts", "dimensions", "notes"}
+    assert sheet["required"] == ["name"] and sheet["additionalProperties"] is False
+    assert "put_blueprint" not in module.CLI_TOOL_OPS
     # A bridge tool never shadows an engine op.
     assert not set(module.BRIDGE_TOOLS) & set(module.CLI_TOOL_OPS)
 

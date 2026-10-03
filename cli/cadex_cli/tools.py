@@ -201,6 +201,55 @@ BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
             "additionalProperties": False,
         },
     },
+    # The drawing sheet (ADR-516): the owner kept the blueprint composer as a
+    # headless tool. The engine composes it; the store versions it by name.
+    "draw_blueprint": {
+        "description": (
+            "DRAW A DIMENSIONED BLUEPRINT SHEET of the accepted design and store it "
+            "with the project, versioned by `name`; the sheet comes back to you as a "
+            "picture and the dashboard shows it under Drawings. Line drawings on one "
+            "shared scale, up to four views (default: top, iso, front, right in the "
+            "third-angle arrangement); each orthographic view carries the overall "
+            "extents in mm, and every part.measurement(...) the script declares is "
+            "drawn once where it reads (a design that places components lists them "
+            "instead). Callouts are numbered balloons on the three-quarter view, keyed "
+            "in a parts list; a title block names the sheet, version, revision, digest, "
+            "date and scale. Drawing again under a stored name stores its next version, "
+            "and any key you leave out is taken from that sheet's stored recipe. Draw "
+            "one when a design is accepted and worth documenting, not after every edit."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "The sheet's name, its identity and title, e.g. "
+                    "\"gearbox overview\". At most 60 characters.",
+                },
+                "views": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["front", "right", "top", "iso", "iso_back"]},
+                    "description": "1 to 4 distinct views, laid out row-major on a 2x2 grid.",
+                },
+                "callouts": {
+                    "type": ["boolean", "array"],
+                    "items": {"type": "string"},
+                    "description": "true (default: the largest parts, up to 12), false, or "
+                    "the component or output names to balloon.",
+                },
+                "dimensions": {
+                    "type": "boolean",
+                    "description": "Overall extents and declared measurements; default true.",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "A short note printed on the sheet, at most 400 characters.",
+                },
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
     # The agent's way to reach the owner without waiting (ADR-512, orun2 A1):
     # a note in the project's comments.jsonl that the dashboard shows; the
     # owner's answer is a comment, so it arrives the way every comment does.
@@ -486,9 +535,9 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
 #: reference images a *shell* stored, and nothing here can put one there.
 #: `blueprint` is IN, and the asymmetry is deliberate (ADR-150): a reference
 #: image is a shell-only *input*, while a blueprint sheet is a stored
-#: *deliverable* of the project — a headless caller cannot render one
-#: (`put_blueprint` is absent from CLI_TOOL_OPS for exactly that reason),
-#: but reading and exporting what the shell stored is this client's job.
+#: *deliverable* of the project. The model draws one with the bridge's
+#: `draw_blueprint` (ADR-516), which calls `put_blueprint` itself, so that
+#: op stays out of CLI_TOOL_OPS: a path to an arbitrary PNG is not a tool.
 INSPECT_SCOPES = (
     "script",
     "output",

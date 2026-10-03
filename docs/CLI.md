@@ -78,7 +78,7 @@ Flags, valid on either side of the subcommand:
 | `--min-clearance-mm N` | `clearance`: flag distances strictly below N (default 0.1 mm). |
 | `--max-common-volume-mm3 N` | `clearance` and `smoke`: flag volumes strictly above N (default 0.000001 mm³). Thresholds must be finite and nonnegative; changing them does not rebuild. |
 | `--assembly OUTPUT` | `inventory` and `clearance`: the assembly output to inventory. A project publishes at most one, so this is only ever a check that you are looking at it. |
-| `--blueprints` | `export` only: also copy the project's stored blueprint sheets into `--out`, store filenames kept (ADR-150) — which since ADR-157 means `0007-gearbox-overview-v1.png` for a **named** sheet rather than a revision prefix. Read-only — the shell renders them; this only reaches the store through `inspect scope=blueprint`. |
+| `--blueprints` | `export` only: also copy the project's stored blueprint sheets into `--out`, store filenames kept (ADR-150) — which since ADR-157 means `0007-gearbox-overview-v1.png` for a **named** sheet rather than a revision prefix. Read-only — the agent's `draw_blueprint` draws them (ADR-516); this only reaches the store through `inspect scope=blueprint`. |
 | `--engine ROOT` | A staged engine payload. Default: `$CADEX_ENGINE_ROOT`, then the dev tree. |
 | `--json` | Emit the machine-readable envelope on stdout. |
 | `--wait` | Block for the project lock instead of failing. |
@@ -2131,6 +2131,28 @@ could make it block. The dashboard lists the notes (`docs/DASHBOARD.md`
 note. The overlay tells the agent to go on, in the same turn, with the most
 reversible assumption and to say which in the note.
 
+### The drawing sheet: `draw_blueprint` (ADR-516)
+
+A dimensioned multi-view drawing of the accepted design, stored with the
+project. `draw_blueprint` takes `name` (the sheet's identity and title) and
+optionally `views` (1 to 4 of `front`, `right`, `top`, `iso`, `iso_back`;
+default `top`, `iso`, `front`, `right`, the third-angle arrangement),
+`callouts` (true, false or part names), `dimensions` (default true) and
+`notes`. The engine's `CadexStudio.blueprint_report` draws it from the same
+accepted reply `look` uses: line views on one shared scale, each
+orthographic view dimensioned with the overall extents measured on the
+tessellation, every declared `part.measurement(...)` drawn once in the
+first orthographic view where it reads (listed instead when the design
+places components, since its points are in a part's frame), numbered
+balloons on the first three-quarter view keyed in a parts list, and a title
+block with the sheet's name and version, the project, revision, digest,
+date, scale and units. The bridge stores it with `put_blueprint`, whose
+store versions it by name in `blueprints/` with the recipe in `meta`;
+drawing again under a stored name stores the next version and takes any
+key left out from that recipe. The model gets the facts and the sheet as an
+image; the dashboard lists every version under **Drawings**
+(`docs/DASHBOARD.md` §28).
+
 ### The training loop: `train_start`, `train_status`, `train_stop`, `evaluate` (ADR-464)
 
 The product agent runs the whole loop — design a task, train a policy on
@@ -2707,11 +2729,11 @@ about a payload (ADR-023).
 - **No picture tool in the model bridge.** `inspect scope=image` and
   `resolve_pin` remain absent (§4). The caller can use `cadex render` or the
   walk's CPU previews (§2); the model bridge does not expose those commands.
-  Since ADR-150:
-  blueprint *sheets* the shell already rendered and stored are readable —
+  Blueprint *sheets* are the exception (ADR-150, ADR-516): the bridge's
+  `draw_blueprint` composes one and stores it through `put_blueprint`,
   `inspect scope=blueprint` lists them and `export --blueprints` copies
-  them out — because a stored deliverable is not a render. Making one
-  (`put_blueprint`) stays shell-only.
+  them out, because a stored deliverable is not a render. `put_blueprint`
+  itself is not a model tool: a path to an arbitrary PNG is not one.
 - **Export converts BREP and copies the rest.** Only BREP outputs are
   converted (STEP, STL, BREP); every other staged artifact is copied as
   staged (§3), and outputs with nothing staged — assembly components and

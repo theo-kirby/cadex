@@ -549,8 +549,8 @@ def _complete_blueprint(captured: Mapping[str, Any]) -> Any:
         "note": (
             "Every stored blueprint sheet, oldest first, each recording the "
             "accepted revision it was rendered from. Inspect one with "
-            "target=<ordinal|revision|file> for its store path; make a new "
-            "one with the shell's make_blueprint tool."
+            "target=<ordinal|name|revision|file> for its store path; draw a new "
+            "one with the agent's draw_blueprint tool (ADR-516)."
         ),
     }
 

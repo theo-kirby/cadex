@@ -1497,6 +1497,7 @@ class ReviewProject:
         review["revisions"] = revision_trail(self.root)
         review["exports"] = export_listing(self.root)
         review["sections"] = section_listing(self.root)
+        review["drawings"] = blueprint_listing(self.root)
         review["served_at"] = _now()
         return review
 
@@ -1583,6 +1584,13 @@ class ReviewProject:
         if offered.get("revision") != revision or name not in {cut["name"] for cut in offered["cuts"]}:
             return None
         return self.root / SECTION_DIR / revision / name / "section.svg"
+
+    def blueprint_file(self, name: str) -> Path | None:
+        """A stored sheet ``blueprint_listing`` offers, and nothing else."""
+
+        if name not in {sheet["file"] for sheet in blueprint_listing(self.root)["sheets"]}:
+            return None
+        return self.root / BLUEPRINT_DIR / name
 
     def run_video(self, name: str, index: int) -> Path | None:
         record = self.run(name)
@@ -1881,6 +1889,47 @@ def export_listing(root: Path) -> dict[str, Any]:
         return {"available": False, "revision": revision,
                 "reason": "not exported yet: Export runs cadex export for this revision"}
     return {"available": True, "revision": revision, "files": files}
+
+
+BLUEPRINT_DIR = "blueprints"
+BLUEPRINT_INDEX = "blueprints.json"
+#: ``{ordinal:04d}-{slug}.png`` as ``CadexBlueprints.store_project_blueprint`` names a sheet.
+BLUEPRINT_FILE = re.compile(r"^[0-9]{4,}-[A-Za-z0-9._-]{1,80}\.png$")
+
+
+def blueprint_listing(root: Path) -> dict[str, Any]:
+    """The project's stored drawing sheets (ADR-516), newest first, read-only.
+
+    Read from ``blueprints/blueprints.json``, the index the engine's store
+    writes on ``put_blueprint``; a sheet is served at ``blueprint/<file>``
+    only when this lists it. Every version is listed, each with the
+    revision it drew, so a sheet of an earlier design reads as one.
+    """
+
+    index = _load_json(root / BLUEPRINT_DIR / BLUEPRINT_INDEX)
+    accepted = read_accepted_identity(root)
+    current = accepted.get("revision") if accepted.get("available") else None
+    sheets = []
+    for entry in (index or {}).get("entries") or []:
+        if not isinstance(entry, dict):
+            continue
+        name = str(entry.get("file") or "")
+        path = root / BLUEPRINT_DIR / name
+        if not BLUEPRINT_FILE.match(name) or path.is_symlink() or not path.is_file():
+            continue
+        revision = str(entry.get("revision") or "")
+        sheets.append({
+            "file": name, "name": str(entry.get("name") or entry.get("label") or name),
+            "version": int(entry.get("version") or 1), "revision": revision,
+            "relation": "current" if current and revision == current else "earlier",
+            "created_at": str(entry.get("created_at") or ""), "bytes": path.stat().st_size,
+            "url": f"blueprint/{quote(name, safe='')}",
+        })
+    sheets.reverse()
+    if not sheets:
+        return {"available": False, "sheets": [],
+                "reason": "no drawing yet: the agent's draw_blueprint stores one with the project"}
+    return {"available": True, "sheets": sheets}
 
 
 SECTION_DIR = "review/section"
@@ -2468,6 +2517,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
             path = project.presentation_image(rest[0])
         elif head == "export" and len(rest) == 2:
             path = project.exported_file(rest[0], rest[1])
+        elif head == "blueprint" and len(rest) == 1:
+            path = project.blueprint_file(rest[0])
         elif head == "section" and len(rest) == 3 and rest[2] == "section.svg":
             path = project.section_file(rest[0], rest[1])
         elif head == "video" and rest[:1] == ["run"] and len(rest) == 3 and rest[2].isdigit():

@@ -222,6 +222,8 @@ class Bridge:
                 return self._look(arguments)
             if tool == "leave_note":
                 return self._leave_note(arguments)
+            if tool == "draw_blueprint":
+                return self._draw_blueprint(arguments)
             return self._loop_tool(tool, arguments)
         if tool not in protocol.OP_ARG_SPECS:
             return _content(f"No such tool: {tool!r}.", is_error=True)
@@ -329,21 +331,10 @@ class Bridge:
                 "`focus` (names), nothing else.", is_error=True,
             )
         with self._lock:
-            reply = self.state.last_accepted
-            if reply is None:
-                args: dict[str, Any] = {"display": dict(STANDARD_DISPLAY)}
-                if injects_revision(self.client.engine.protocol, "rebuild"):
-                    args["expected_revision"] = self.state.revision
-                try:
-                    reply = self.client.request("rebuild", args)
-                except Exception as exc:
-                    return _content(f"look could not rebuild to get geometry: {exc}", is_error=True)
-                self._track("rebuild", reply)
-                if reply.get("ok") is True:
-                    # What a modelling reply would have carried: without them
-                    # the floor frames the view and every part is one palette.
-                    self.state.last_fit = self._read_fit()
-                    self.state.last_inventory = self._read_inventory()
+            try:
+                reply = self._accepted_reply()
+            except Exception as exc:
+                return _content(f"look could not rebuild to get geometry: {exc}", is_error=True)
             fit, inventory = self.state.last_fit, self.state.last_inventory
             try:
                 facts, shots = STUDIO.look_report(reply, fit, inventory, views, focus)
@@ -365,6 +356,103 @@ class Bridge:
             f"({facts['revision'][:12]})",
         ))
         return {"content": content, "is_error": False}
+
+    def _accepted_reply(self) -> dict[str, Any]:
+        """The last accepted modelling reply, rebuilding once when this
+        bridge holds none; called under the lock. Raises when the engine
+        cannot be reached."""
+
+        reply = self.state.last_accepted
+        if reply is None:
+            args: dict[str, Any] = {"display": dict(STANDARD_DISPLAY)}
+            if injects_revision(self.client.engine.protocol, "rebuild"):
+                args["expected_revision"] = self.state.revision
+            reply = self.client.request("rebuild", args)
+            self._track("rebuild", reply)
+            if reply.get("ok") is True:
+                # What a modelling reply would have carried: without them
+                # the floor frames the view and every part is one palette.
+                self.state.last_fit = self._read_fit()
+                self.state.last_inventory = self._read_inventory()
+        return reply
+
+    # -- drawing sheets (ADR-516) -----------------------------------------
+
+    def _draw_blueprint(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        """Compose a dimensioned drawing sheet of the accepted design, store
+        it with the project through ``put_blueprint`` and hand the model the
+        picture (ADR-516).
+
+        Drawn by the engine's own ``CadexStudio.blueprint_report`` from the
+        same accepted reply ``look`` draws. A sheet's ``name`` is its
+        identity: drawing again under a stored name stores the next version,
+        and any key left out is taken from that sheet's stored recipe, so
+        "add a note to the gearbox sheet" is one key, not the whole recipe.
+        """
+
+        allowed = set(BRIDGE_TOOLS["draw_blueprint"]["input_schema"]["properties"])
+        unknown = sorted(set(arguments) - allowed)
+
+        def refuse(message: str) -> dict[str, Any]:
+            self._record(ToolCall("draw_blueprint", dict(arguments), False, message))
+            return _content(json.dumps({"ok": False, "error": message}, indent=2), is_error=True)
+
+        if unknown:
+            return refuse(f"draw_blueprint takes {', '.join(sorted(allowed))}; not {', '.join(unknown)}.")
+        name = " ".join(str(arguments.get("name") or "").split())
+        with self._lock:
+            stored = self._stored_blueprint(name) if name else None
+            recipe = dict(arguments)
+            meta = (stored or {}).get("meta") or {}
+            if meta.get("schema") == STUDIO.BLUEPRINT_RECIPE_SCHEMA:
+                recipe = {**{k: meta[k] for k in STUDIO.BLUEPRINT_RECIPE_KEYS if k in meta}, **recipe}
+            try:
+                recipe = STUDIO.blueprint_recipe(recipe)
+                reply = self._accepted_reply()
+                version = int((stored or {}).get("version") or 0) + 1
+                data, facts = STUDIO.blueprint_report(
+                    reply, self.state.last_fit, self.state.last_inventory, recipe,
+                    project=self.project_root.name if self.project_root else "",
+                    version=version, date=time.strftime("%Y-%m-%d"))
+            except STUDIO.StudioError as exc:
+                return refuse(str(exc))
+            except Exception as exc:  # a dead engine must reach the model
+                return refuse(f"draw_blueprint could not rebuild to get geometry: {exc}")
+            with tempfile.TemporaryDirectory(prefix="cadex-blueprint-") as scratch:
+                sheet = Path(scratch) / "sheet.png"
+                sheet.write_bytes(data)
+                try:
+                    put = self.client.request("put_blueprint", {
+                        "source_path": str(sheet), "name": recipe["name"],
+                        "label": recipe["name"], "meta": recipe})
+                except Exception as exc:
+                    return refuse(f"the sheet could not be stored: {exc}")
+        if put.get("ok") is not True:
+            return refuse(f"the sheet was refused by the store: {put.get('error') or put.get('failure_code')}")
+        entry = next((item for item in put.get("blueprints") or []
+                      if item.get("file") == put.get("name")), {})
+        facts.update({"stored": f"blueprints/{put.get('name')}", "version": int(entry.get("version") or version),
+                      "sha256": put.get("sha256"),
+                      "recipe": {k: recipe[k] for k in STUDIO.BLUEPRINT_RECIPE_KEYS}})
+        self._record(ToolCall(
+            "draw_blueprint", dict(arguments), True,
+            f"{recipe['name']} v{facts['version']} ({facts['revision'][:12]})"))
+        return {"content": [
+            {"type": "text", "text": json.dumps(facts, indent=2)},
+            {"type": "image", "data": base64.b64encode(data).decode("ascii"), "mimeType": "image/png"},
+        ], "is_error": False}
+
+    def _stored_blueprint(self, name: str) -> dict[str, Any] | None:
+        """The newest stored sheet under ``name``, or ``None``; called under the lock."""
+
+        try:
+            reply = self.client.request("inspect", {"scope": "blueprint", "target": name, "path": "/blueprint"})
+        except Exception:
+            return None
+        value = reply.get("value") if reply.get("ok") is True else None
+        if not isinstance(value, dict) or " ".join(str(value.get("name") or "").split()).casefold() != name.casefold():
+            return None
+        return value
 
     # -- the owner channel (ADR-512) ------------------------------------
 

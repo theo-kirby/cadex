@@ -33320,3 +33320,85 @@ Chromium, orun1's committed `docs/probes/orun1/` copied into a checkout
 renders on `/r/orun1/`: title and section headings, the ratings table's
 header, nine rows and bold `type mean`, no comment text, and the
 `balancer-c-exposed-mechanism` hero loaded through `/r/orun1/probes/`.
+
+## ADR-516 — The blueprint composer, kept as a headless tool: `draw_blueprint` (2026-10-03, owner notes orun2)
+
+**Decision.** The owner kept the shell's blueprint composer as a headless
+engine-side tool (orun2 owner notes, 2026-10-03). It is re-derived in
+`CadexStudio.py`, the engine's pure-standard-library renderer that already
+draws `look`, the hero and the concept sheet. `blueprint_recipe` validates
+a recipe: `name`, `views` (1 to 4 of front, right, top, iso, iso_back),
+`callouts`, `dimensions` and `notes`. `blueprint_sheet` draws a
+1536×1024 PNG on the dashboard's dark floor:
+- up to four line views (`line_view`, now with explicit `bounds`) on **one
+  shared scale**. The default is top, iso, front, right row-major on a
+  2×2 grid, which is the third-angle arrangement;
+- the overall extents on every orthographic view, measured on the
+  tessellation;
+- each declared `part.measurement` record (ADR-139) drawn once, in the
+  first orthographic view where it is at least 24 px long. Axis-aligned
+  measurements are lifted outside the outline, and diameters and radii go
+  across their circle. When the design places components, the records are
+  listed and not drawn, because their points are in a part's own frame and
+  the record does not say which part;
+- numbered balloons on the first three-quarter view, keyed in a parts list
+  (the largest parts first, at most 12, or the names given);
+- notes, and a title block with the sheet's name and version, the project,
+  revision, digest, date, scale (px/mm, all views), units and arrangement.
+
+The product agent gets one bridge-answered tool, `draw_blueprint`. It draws
+from the same accepted reply `look` uses, stores the PNG through the
+existing `put_blueprint` op (ADR-150), which versions it by name in
+`blueprints/` (ADR-157), with the recipe in `meta`, and returns the facts
+and the sheet as an image. Drawing again under a stored name stores the
+next version and takes any key left out from the stored recipe. The
+dashboard lists every version newest first under **Drawings**, shows the
+newest and serves only files the index names (`docs/DASHBOARD.md` §28).
+
+**Why this shape.** The store, its versioning, `inspect scope=blueprint`
+and `export --blueprints` already existed and needed no change. Only the
+renderer was missing headlessly, and the engine already holds one, so the
+sheet uses the same palette, font and line pass as the concept sheet.
+Because the tool is bridge-answered, `OP_ARG_SPECS` and
+`docs/INTEGRATION.md` do not change. `put_blueprint` stays out of
+`CLI_TOOL_OPS`: a model tool that stores any PNG path is not wanted, and
+the bridge is the only caller. The shell module
+(`v1-blender-shell:shell/scripts/startup/mesh_agent/cadex_sheet.py`) was
+read as reference for what a sheet carries. No line was copied, and the
+layout, measurement placement and title block are new code.
+
+**Not carried over.** Per-cell explode, section and hide overrides,
+custom azimuths, params and text panels as cells, weighted per-cell
+aspect, the layout templates beyond 1, 2 and 2×2, and the four viewport
+themes. One sheet answers one question, and notes stand in for the text
+panel. `docs/SHELL-PARITY.md` names each of these.
+
+**Cost.** About 330 lines in `CadexStudio.py`, 110 in `bridge.py`, 50 in
+`tools.py`, 55 in `review_server.py`, and 30 in `review.js`, `index.html`
+and `review.css`. No dependency. A four-view sheet of a single part draws
+in under a second on sb1x.
+
+**What would reverse it.** Owners asking for interactive edits to a sheet
+would be the blueprint editor, which A1 dropped. A sheet that misplaces a
+measurement in an assembly would argue for adding the part's placement to
+the measurement record, which is an engine change of its own.
+
+**Test.** `cli/tests/test_blueprint.py`. Headless:
+- recipe defaults and refusals;
+- one shared scale and the overall extents, with the floor left out;
+- balloons on the iso view;
+- the dark floor, with ink in every cell;
+- declared measurements drawn once where they read and listed where they
+  do not;
+- a placed design lists its measurements;
+- unknown callouts are refused;
+- the bridge draws, stores through `put_blueprint` and revises by name,
+  taking omitted keys from the recipe, and its refusals store nothing;
+- the dashboard listing and its file allowlist.
+
+Against a real engine in headless Chromium: a bored plate with an extent
+and a diameter measurement is drawn (60/40/10 mm extents, both
+measurements drawn), redrawn as version 2, read back from
+`blueprints.json`, listed by the page newest first with the newest shown at
+1536 px, and downloaded byte-identical. `test_project_tool_surface.py` pins
+`BRIDGE_TOOLS` and the tool's schema.

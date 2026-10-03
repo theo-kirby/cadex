@@ -80,6 +80,7 @@ where (§12) — and the element ids do not change with the width.
 | 0b | **Comments** | `#comment-panel`, `#comment-target[data-part]`, `#comment-whole`, `#comment-text`, `#comment-send`, `#comment-status[data-state]`, `#comment-list li[data-part][data-delivered]` | Leave a comment on the whole design or on a part clicked in the model, for the next turn; the list says which a turn has received (§20). Under the turn panel on phone. | left sidebar, second |
 | 0c | **Revisions** | `#revision-panel`, `#revision-current`, `#revision-note`, `#revision-accept`, `#revision-reject`, `#revision-status[data-state]`, `#revision-list li[data-revision][data-ordinal][data-current][data-verdict]`, `.revision-restore` | The owner's verdict on the accepted revision, and the stored trail with a way back to any of it (§21). Under the comments on phone. | left sidebar, third |
 | 0d | **Export** | `#export-panel`, `#export-run`, `#export-status[data-state]`, `#export-list li[data-name]` | Export the accepted revision's STEP and STL through `cadex export` and download them (§23). Under the revisions on phone. | left sidebar, fourth |
+| 0e | **Drawings** | `#drawing-panel`, `#drawing-latest`, `#drawing-list li[data-file][data-relation]` | The blueprint sheets the agent's `draw_blueprint` stored, newest first, the newest shown (§28). Read-only. Under the export on phone. | left sidebar, fifth |
 | 1 | **Run selection** | `#sidebar`, `#runs`, `#runs-summary`, `#current-run`, `#views li[data-run]` | Which view is shown: *Accepted now*, then every recorded run with its relation (current/historical) and status. The current run is marked. A sidebar at desk width; a collapsible run list under the masthead on phone (§6). | left sidebar |
 | 2 | **Identity** | `#identity`, `#view-kind`, `#view-relation`, `#view-status`, `#view-revision`, `#view-digest`, `#view-identity-source`, `#view-recorded`, `#policy-origin`, `#view-note`, `#view-policy-store` | What the rest of the page is about. Kind and relation as chips, then the key/value block. | right sidebar |
 | 2a | **Concept** | `#concept`, `#concept-status[data-state]`, `#concept-figure`, `#concept-sheet`, `#concept-caption`, `#concept-hero` | The design as presented: the concept sheet the last render drew (§14) — studio hero, name, key numbers, palette and line views — with the revision it was drawn from and its relation to the accepted one. Leads the page when there is one. | stage, *Concept* tab, first; the stage opens on it |
@@ -1120,6 +1121,24 @@ an HTML page; names are plain tokens with no dot-file and no `..`; no
 symlink on the path is followed, so nothing outside that directory is
 reachable; each response carries `Content-Security-Policy: sandbox` and
 `nosniff`. Outside a checkout, or with no such directory, the card says so.
+
+## 28. Drawings: the blueprint sheets the agent stored (ADR-516)
+
+`#drawing-panel`, headed **Drawings**, sits under Export. It lists the
+project's stored blueprint sheets newest first, read from
+`blueprints/blueprints.json`, the index the engine's store writes when the
+agent's `draw_blueprint` calls `put_blueprint`. Each row (`data-file`, and
+`data-relation` `current` or `earlier`) is the sheet's name and version,
+the revision it drew (marked *earlier design* when that is not the accepted
+one) and a download link. The newest sheet is shown at the panel's width
+and opens full size. `api/project` carries the listing as `drawings`; a
+sheet is served at `blueprint/<file>` only when the listing names it. The
+page writes nothing here: a person asks for a drawing by commenting, and
+the next turn draws it.
+
+The sheet itself is engine-drawn on the dark floor of §4: paper is the
+viewport's background, lines and numbers are `--ink`, labels `--ink-2`,
+rules `--rule`, so a sheet sits in the page as the concept sheet does.
 
 ## Operator run status (ADR-387)
 

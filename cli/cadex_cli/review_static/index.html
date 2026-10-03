@@ -91,6 +91,12 @@
       <div id="export-status" data-state="idle"></div>
       <ul id="export-list"></ul>
     </section>
+    <section id="drawing-panel" class="card panel">
+      <h2>Drawings</h2>
+      <!-- Blueprint sheets the agent's draw_blueprint stored in blueprints/ (ADR-516), newest first; read-only. -->
+      <a id="drawing-latest-link" href="" target="_blank" rel="noopener" hidden><img id="drawing-latest" alt="Newest drawing sheet: dimensioned line views, callouts and title block"></a>
+      <ul id="drawing-list"></ul>
+    </section>
     <nav id="sidebar" class="card panel">
       <h2>Runs</h2>
       <details id="runs" open>
