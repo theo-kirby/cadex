@@ -158,7 +158,7 @@ def test_the_spec_itself_names_no_private_address():
 # frame distributes between its left sidebar, stage and right sidebar.
 READING_ORDER = ("#sidebar", "#turn-panel", "#comment-panel", "#revision-panel", "#identity", "#concept", "#model", "#model-settings", "#curves", "#videos-region",
                  "#evaluation", "#record", "#params-panel", "#artifacts-panel", "#docs-panel")
-HEADINGS = ["Design turn", "Comments", "Revisions", "Runs", "Documents and decisions", "Concept", "Model", "Curves", "Videos", "Evaluation", "Identity", "Model settings",
+HEADINGS = ["Design turn", "Comments", "Revisions", "Export", "Runs", "Documents and decisions", "Concept", "Model", "Curves", "Videos", "Evaluation", "Identity", "Model settings",
             "Training and rollout", "Parameters and specs", "Artifacts"]
 
 MEASURE = """(function () {

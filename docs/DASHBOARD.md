@@ -77,6 +77,7 @@ where (§12) — and the element ids do not change with the width.
 | 0a | **Design turn** | `#turn-panel`, `#turn-prompt`, `#turn-resume`, `#turn-start`, `#turn-status[data-state]`, `#turn-transcript` | Start a `cadex -p` turn on the project from a prompt and watch its transcript stream; the status says what ran and how it ended (§19). Under the run list on phone. | left sidebar, first |
 | 0b | **Comments** | `#comment-panel`, `#comment-target[data-part]`, `#comment-whole`, `#comment-text`, `#comment-send`, `#comment-status[data-state]`, `#comment-list li[data-part][data-delivered]` | Leave a comment on the whole design or on a part clicked in the model, for the next turn; the list says which a turn has received (§20). Under the turn panel on phone. | left sidebar, second |
 | 0c | **Revisions** | `#revision-panel`, `#revision-current`, `#revision-note`, `#revision-accept`, `#revision-reject`, `#revision-status[data-state]`, `#revision-list li[data-revision][data-ordinal][data-current][data-verdict]`, `.revision-restore` | The owner's verdict on the accepted revision, and the stored trail with a way back to any of it (§21). Under the comments on phone. | left sidebar, third |
+| 0d | **Export** | `#export-panel`, `#export-run`, `#export-status[data-state]`, `#export-list li[data-name]` | Export the accepted revision's STEP and STL through `cadex export` and download them (§23). Under the revisions on phone. | left sidebar, fourth |
 | 1 | **Run selection** | `#sidebar`, `#runs`, `#runs-summary`, `#current-run`, `#views li[data-run]` | Which view is shown: *Accepted now*, then every recorded run with its relation (current/historical) and status. The current run is marked. A sidebar at desk width; a collapsible run list under the masthead on phone (§6). | left sidebar |
 | 2 | **Identity** | `#identity`, `#view-kind`, `#view-relation`, `#view-status`, `#view-revision`, `#view-digest`, `#view-identity-source`, `#view-recorded`, `#policy-origin`, `#view-note`, `#view-policy-store` | What the rest of the page is about. Kind and relation as chips, then the key/value block. | right sidebar |
 | 2a | **Concept** | `#concept`, `#concept-status[data-state]`, `#concept-figure`, `#concept-sheet`, `#concept-caption`, `#concept-hero` | The design as presented: the concept sheet the last render drew (§14) — studio hero, name, key numbers, palette and line views — with the revision it was drawn from and its relation to the accepted one. Leads the page when there is one. | stage, *Concept* tab, first; the stage opens on it |
@@ -948,6 +949,30 @@ pass `--host 0.0.0.0`.
 `--host <tailscale address>` (`docs/CLI.md`) binds the tailnet address
 directly without TLS, and is the older path. Cadex's own runs never start
 `tailscale serve`. It is a step the owner takes.
+
+## 23. Export: STEP and STL, and the concept sheet (ADR-509)
+
+The page's fifth write. `#export-panel` sits under the revisions: one
+button, **Export STEP + STL**, a status line, and `#export-list`, the files
+exported for the accepted revision, each a download link (`data-name` on
+its row) with its size. The button is `POST api/export` with an optional
+`{"formats": [...]}` drawn from `step`, `stl` and `brep` (default
+`["step", "stl"]`), behind the token and `Origin` check of §18. The server
+runs `cadex export --project <root> --out <root>/review/export/<revision>
+--format <formats> --json` as a child, so the rebuild, the conversion, the
+`PROGRESS.md` row and the project commit are the CLI's. The directory is
+under `/review/`, which the project's own ignore rules keep out of its
+commits. If a write moved the accepted revision before the child took the
+lock, what it wrote is removed and the reply says to export again.
+
+`api/project` carries an `exports` block for the accepted revision only,
+read from that directory: `.step`, `.stl`, `.brep` and the staged `.xml`,
+`.json` and `.ply` outputs `cadex export` copies beside them. A file is
+served at `export/<revision>/<name>` only when the block names it.
+Directories for earlier revisions stay on disk and are not offered.
+
+The concept sheet is a download already: `#concept-download` is
+`presentation/sheet.png?download=1`, the sheet `cadex render` drew (§14).
 
 ## Operator run status (ADR-387)
 

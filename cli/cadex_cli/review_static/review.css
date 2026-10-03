@@ -46,7 +46,7 @@ header#top .title { min-width: 0; }
    reading order of §2 — runs, identity, model, curves, videos, record. */
 main#frame { display: flex; flex-direction: column; gap: var(--s4); padding: var(--gutter); }
 #left, #right, #stage, .stage-panels { display: contents; }
-#sidebar { order: 1; } #turn-panel { order: 2; } #comment-panel { order: 2; } #revision-panel { order: 2; } #identity { order: 2; } #model { order: 3; } #model-settings { order: 4; }
+#sidebar { order: 1; } #turn-panel { order: 2; } #comment-panel { order: 2; } #revision-panel { order: 2; } #export-panel { order: 2; } #identity { order: 2; } #model { order: 3; } #model-settings { order: 4; }
 #curves { order: 5; } #videos-region { order: 6; } #evaluation { order: 6; } #record { order: 7; } #params-panel { order: 8; }
 #artifacts-panel { order: 9; } #docs-panel { order: 10; } #doc-panel { order: 11; }
 #doc-panel:has(#doc-view.hidden) { display: none; }
@@ -181,6 +181,10 @@ ol#revision-list { margin: var(--s2) 0 0; padding-left: var(--s4); overflow-wrap
 ol#revision-list li[data-current="true"] { font-weight: 600; }
 ol#revision-list li[data-verdict="rejected"] { color: var(--ink-2); }
 ol#revision-list .revision-restore { margin-left: var(--s2); }
+#export-status { color: var(--ink-2); margin-top: var(--s2); overflow-wrap: anywhere; }
+#export-status:empty { display: none; }
+#export-status[data-state="done"] { color: var(--ok); } #export-status[data-state="error"] { color: var(--bad); }
+ul#export-list { margin: var(--s2) 0 0; padding-left: var(--s4); overflow-wrap: anywhere; }
 .param-slider { display: flex; align-items: center; gap: var(--s2); }
 .param-slider input[type="range"] { width: 120px; accent-color: var(--accent); }
 .param-slider input[type="range"]:disabled { opacity: 0.5; }

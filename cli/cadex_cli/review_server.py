@@ -14,11 +14,12 @@ task's success spec, with the film drawn from it (ADR-459). Reading
 opens no engine, rebuilds nothing and holds no state of its own, so a
 browser that goes away changes nothing about the project.
 
-Writing is the dashboard's light steering (orun2 D2, ADR-503 to ADR-505),
+Writing is the dashboard's light steering (orun2 D2, ADR-503 to ADR-506, ADR-509),
 and it has no write path of its own: each POST runs the very ``cadex``
 command a person would type (``params --set``, ``-p PROMPT`` for a
-design turn whose stderr is the live transcript, or ``comment`` for a
-note on the design or a picked part, ADR-505), as a child process the
+design turn whose stderr is the live transcript, ``comment`` for a
+note on the design or a picked part (ADR-505), ``revision`` for a verdict
+(ADR-506), or ``export`` into the ignored ``review/export/``, ADR-509), as a child process the
 way ``cadex walk`` runs its legs, so the project lock, the ``PROGRESS.md``
 row and the project commit are the CLI's. Every POST needs the per-launch token the
 server writes into the page it serves, and a browser's ``Origin``, when
@@ -112,6 +113,8 @@ CONTENT_TYPES = {
     ".svg": "image/svg+xml",
     ".png": "image/png",
     ".stl": "model/stl",
+    ".step": "model/step",
+    ".brep": "application/octet-stream",
     ".mp4": "video/mp4",
     ".webm": "video/webm",
     ".txt": "text/plain; charset=utf-8",
@@ -1290,6 +1293,7 @@ class ReviewProject:
         review["evaluations"] = evaluations(self.root, review["accepted"])
         review["comments"] = read_comments(self.root)[-COMMENTS_SHOWN:]
         review["revisions"] = revision_trail(self.root)
+        review["exports"] = export_listing(self.root)
         review["served_at"] = _now()
         return review
 
@@ -1360,6 +1364,14 @@ class ReviewProject:
         if key not in offered.get("files", {}):
             return None
         return self.root / offered["source"] / name
+
+    def exported_file(self, revision: str, name: str) -> Path | None:
+        """A file ``export_listing`` offers for the accepted revision, and nothing else."""
+
+        offered = export_listing(self.root)
+        if offered.get("revision") != revision or name not in {f["name"] for f in offered.get("files", [])}:
+            return None
+        return self.root / EXPORT_DIR / revision / name
 
     def run_video(self, name: str, index: int) -> Path | None:
         record = self.run(name)
@@ -1562,6 +1574,85 @@ def write_revision(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dic
     if leg.code == EXIT_USAGE:
         return HTTPStatus.BAD_REQUEST, reply
     return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
+
+
+#: Where the dashboard's Export button has ``cadex export`` write, one
+#: directory per accepted revision (ADR-509). Under ``/review/``, which the
+#: project's own ignore rules keep out of its commits: a rebuild re-makes it.
+EXPORT_DIR = "review/export"
+EXPORT_FORMATS = ("step", "stl", "brep")
+#: What the export directory may serve: the converted geometry and the
+#: staged non-geometry outputs ``cadex export`` copies beside it.
+EXPORT_SUFFIXES = (".step", ".stl", ".brep", ".xml", ".json", ".ply")
+REVISION_HASH = re.compile(r"^[0-9a-f]{64}$")
+
+
+def write_export(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
+    """``cadex export --project ROOT --out ROOT/review/export/<revision> --format F``, as a child (ADR-509).
+
+    The Export button and the command line are one write path (A3): the
+    CLI rebuilds the accepted script under the project lock, without
+    ``--wait``, and converts each staged BREP. The directory is named by
+    the revision accepted when the button was pressed; if a write moved
+    the accepted revision before the child took the lock, what it wrote is
+    removed and the reply says to export again, so a directory never holds
+    another revision's files.
+    """
+
+    from .report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE  # report imports this module
+
+    formats = body.get("formats", ["step", "stl"])
+    if not isinstance(formats, list) or not formats or any(f not in EXPORT_FORMATS for f in formats) \
+            or len(set(formats)) != len(formats):
+        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"formats must be a list drawn from {', '.join(EXPORT_FORMATS)}."}
+    accepted = read_accepted_identity(root)
+    revision = accepted.get("revision") if accepted.get("available") else None
+    if not isinstance(revision, str) or not REVISION_HASH.match(revision):
+        return HTTPStatus.CONFLICT, {"ok": False, "error": "nothing to export: the project has no accepted revision."}
+    out = root / EXPORT_DIR / revision
+    argv = ["export", "--project", str(root), "--out", str(out), "--format", ",".join(formats), "--json"]
+    leg = run_leg("export", argv, timeout=WRITE_TIMEOUT_S)
+    envelope = leg.envelope
+    reply: dict[str, Any] = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
+                             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv], "revision": revision}
+    for key in ("accepted_revision", "digest", "error"):
+        if key in envelope:
+            reply[key] = envelope[key]
+    if reply["ok"] and envelope.get("accepted_revision") != revision:
+        shutil.rmtree(out, ignore_errors=True)
+        reply.update(ok=False, error="the accepted revision changed while exporting; export again.")
+        return HTTPStatus.CONFLICT, reply
+    if reply["ok"]:
+        reply["exports"] = export_listing(root)
+        return HTTPStatus.OK, reply
+    if leg.code == EXIT_USAGE:
+        return HTTPStatus.BAD_REQUEST, reply
+    return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
+
+
+def export_listing(root: Path) -> dict[str, Any]:
+    """The accepted revision's exported files, as ``cadex export`` left them.
+
+    Only the accepted revision's directory is offered, so a file exported
+    from an earlier design never reads as this one; an older directory
+    stays on disk until the project is cleaned, and is not served.
+    """
+
+    accepted = read_accepted_identity(root)
+    revision = accepted.get("revision") if accepted.get("available") else None
+    if not isinstance(revision, str) or not REVISION_HASH.match(revision):
+        return {"available": False, "reason": "no accepted revision to export"}
+    directory = root / EXPORT_DIR / revision
+    files = []
+    if directory.is_dir() and not directory.is_symlink():
+        for path in sorted(directory.iterdir()):
+            if path.suffix.lower() in EXPORT_SUFFIXES and path.is_file() and not path.is_symlink():
+                files.append({"name": path.name, "bytes": path.stat().st_size,
+                              "url": f"export/{revision}/{quote(path.name, safe='')}"})
+    if not files:
+        return {"available": False, "revision": revision,
+                "reason": "not exported yet: Export runs cadex export for this revision"}
+    return {"available": True, "revision": revision, "files": files}
 
 
 def revision_trail(root: Path) -> list[dict[str, Any]]:
@@ -1898,7 +1989,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             if projects is not None and segments[:1] == ["p"] and len(segments) > 1:
                 project, segments = projects.project(segments[1]), segments[2:]
             if project is None or segments not in (["api", "params"], ["api", "turn"], ["api", "comment"],
-                                                    ["api", "revision"]) \
+                                                    ["api", "revision"], ["api", "export"]) \
                     or not isinstance(body, dict):
                 self._not_found(parts.path)
                 return
@@ -1908,6 +1999,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 status, reply = write_comment(project.root, body)
             elif segments == ["api", "revision"]:
                 status, reply = write_revision(project.root, body)
+            elif segments == ["api", "export"]:
+                status, reply = write_export(project.root, body)
             else:
                 status, reply = write_params(project.root, body.get("values"))
             self._send_json(reply, status)
@@ -2011,6 +2104,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
             path = project.project_artifact(rest[1], rest[2])
         elif head == "presentation" and len(rest) == 1:
             path = project.presentation_image(rest[0])
+        elif head == "export" and len(rest) == 2:
+            path = project.exported_file(rest[0], rest[1])
         elif head == "video" and rest[:1] == ["run"] and len(rest) == 3 and rest[2].isdigit():
             path = project.run_video(rest[1], int(rest[2]))
         elif head == "evaluation" and len(rest) == 2:

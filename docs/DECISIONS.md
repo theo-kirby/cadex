@@ -32930,3 +32930,53 @@ is named as one interpenetrating pair of four points at −2.0 mm; the
 agent's `inspect scope=contacts` through cadexd returns exactly the
 page's pairs; the page's own slider (`cadex params`, ADR-503) lifts the
 post to 0 mm and both the readout and the scope empty.
+
+## ADR-509 — Export from the dashboard: `cadex export` behind the Export button (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. A fifth dashboard write, `POST api/export`
+(`review_server.write_export`), an `exports` block on `api/project`
+(`review_server.export_listing`), a download route
+`export/<revision>/<name>`, and `#export-panel` on the page. No
+`OP_ARG_SPECS` change, no tool-surface change, no new dependency.
+
+**Decision.** The Export button runs `cadex export --project <root> --out
+<root>/review/export/<revision> --format step,stl --json` as a child, the
+way the slider runs `cadex params` (ADR-503), behind the same per-launch
+token and `Origin` check. There is no second write path (A3): the rebuild,
+the BREP conversion, the `PROGRESS.md` row and the project commit are the
+CLI's. The output directory is named by the revision accepted when the
+button was pressed and sits under `/review/`, which the project's own
+`.gitignore` keeps out of its commits, because a rebuild re-makes it. If
+the child reports a different accepted revision (a write landed before it
+took the lock), the server removes what it wrote and answers 409 "export
+again", so a directory never holds another revision's files. The page
+lists the accepted revision's files only, and the server serves a file
+only when that listing names it. The concept sheet was already a download
+(`presentation/sheet.png?download=1`, ADR-430); this unit proves it in the
+browser.
+
+**Dropped.** The shell's "Export Printable Parts" filtered to the
+printable subset. The dashboard exports every output, which includes the
+printable ones. The engine's `export_printable` op stays on the protocol.
+A person reviewing a design wants the whole design's files, and a filter
+is one more control. Recorded in `docs/SHELL-PARITY.md`.
+
+**Cost.** Exports for earlier revisions stay on disk under
+`review/export/` until the project is cleaned; they are ignored by the
+project's git and not served. About 90 lines in `review_server.py` and 60
+in `review.js`.
+
+**What would reverse it.** If `export_model` becomes a protocol op (as
+`export.py`'s docstring expects), the child still runs `cadex export` and
+nothing here changes. If the owner wants the printable-only set, a
+`printable` format flag on `cadex export` would come first, and the button
+would pass it.
+
+**Test.** `cli/tests/test_dashboard_export.py`: without an engine, the
+token, `Origin` and body checks, the exact argv, the listing's suffix
+allowlist, 404s for unlisted, other-revision and traversal names, the
+moved-revision cleanup, and no accepted revision. In headless Chromium
+against a real engine, the page exports a 30×20×6 mm plate, and the
+browser downloads `plate.step` (an ISO-10303-21 file with a B-rep) and
+`plate.stl` (12 facets, extents 30×20×6 mm) through the listed links, and
+the concept sheet `cadex render` drew downloads as the very PNG on disk.

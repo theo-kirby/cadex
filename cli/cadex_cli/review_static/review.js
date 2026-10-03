@@ -548,6 +548,60 @@
     });
   }
 
+  // Export (ADR-509): `cadex export` run by the server for the accepted
+  // revision, into the project's ignored review/export/<revision>/; the
+  // files it wrote are listed for download from the project block.
+  var exportsKey = null, lastExport = null, exportWriting = false;
+
+  function renderExports() {
+    var shown = (state.review && state.review.exports) || { available: false, reason: 'no export block' };
+    var current = state.review && state.review.accepted && state.review.accepted.revision;
+    var key = JSON.stringify([shown, current, exportWriting]);
+    if (key === exportsKey) return;
+    exportsKey = key;
+    $('export-run').disabled = exportWriting || !current;
+    var list = $('export-list');
+    clearChildren(list);
+    if (!shown.available) {
+      list.appendChild(el('li', { className: 'muted small', text: shown.reason || 'nothing exported' }));
+      return;
+    }
+    shown.files.forEach(function (file) {
+      list.appendChild(el('li', { 'data-name': file.name }, [
+        el('a', { href: BASE + '/' + file.url + '?download=1', download: file.name, text: file.name }),
+        el('span', { className: 'muted small', text: ' · ' + bytes(file.bytes) })
+      ]));
+    });
+  }
+
+  function writeExport(formats) {
+    var status = $('export-status');
+    formats = formats || ['step', 'stl'];
+    exportWriting = true; exportsKey = null; renderExports();
+    status.dataset.state = 'pending';
+    status.textContent = 'cadex export --format ' + formats.join(',') + ' …';
+    return fetch(BASE + '/api/export', {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', 'X-Cadex-Token': WRITE_TOKEN },
+      body: JSON.stringify({ formats: formats })
+    }).then(function (response) {
+      return response.json();
+    }).then(function (reply) {
+      if (!reply.ok) throw new Error(reply.error || 'exit ' + reply.exit);
+      lastExport = reply;
+      status.dataset.state = 'done';
+      status.textContent = 'exported ' + short(reply.revision) + ' in ' + reply.seconds.toFixed(1) + ' s';
+      exportWriting = false;
+      return (pendingPoll || Promise.resolve()).catch(function () {}).then(poll).then(function () { return reply; });
+    }).catch(function (error) {
+      exportWriting = false; exportsKey = null;
+      status.dataset.state = 'error';
+      status.textContent = 'export refused: ' + error.message;
+      if (state.review) renderExports();
+      return null;
+    });
+  }
+
   function telemetryFor(run) {
     // The selected run's detail (histories, verified checkpoints) when it has
     // arrived for this run; otherwise the list's summary, which carries the
@@ -1137,6 +1191,7 @@
     renderHeader(); renderSidebar(); renderIdentity(); renderPolicyOrigin(); renderParams(); renderTraining(); renderArtifacts(); renderDocs();
     renderComments();
     renderRevisions();
+    renderExports();
     renderPresentation();
     renderEvaluation();
   }
@@ -1230,6 +1285,7 @@
     });
     $('revision-accept').addEventListener('click', function () { writeRevision('accept', ''); });
     $('revision-reject').addEventListener('click', function () { writeRevision('reject', ''); });
+    $('export-run').addEventListener('click', function () { writeExport(); });
     poll().then(function () { readyResolve(true); });
     setInterval(poll, POLL_MS);
     pollTurn();
@@ -1251,6 +1307,8 @@
     commentPart: function () { return commentPart; },
     revision: writeRevision,
     lastRevision: function () { return lastRevision; },
+    exportModel: writeExport,
+    lastExport: function () { return lastExport; },
     viewer: function () { return state.viewer; },
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, detail_bytes: lastPoll.detail_bytes, ms: lastPoll.ms }; },
     state: function () {
