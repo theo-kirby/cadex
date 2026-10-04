@@ -20,7 +20,20 @@ Open charter criterion for run orun2: **W1. Nothing the product could do headles
 - **Blueprint rows → ported.** `cadex_sheet.py`, `make_blueprint` and `save_blueprint` are the agent's `draw_blueprint` (`CadexStudio.blueprint_sheet`, stored through `put_blueprint`, versioned by name); `cadex_drawings.py` and the Blueprint editor become stored sheets shown under the dashboard's **Drawings** panel. Test: `cli/tests/test_blueprint.py`, including a real-engine headless-Chromium test (ADR-516) [rec: sweet-arrow-0695].
 - **`prefs.py` row → ported; its last "owner to confirm" closed.** The shell's engine timeout and memory budgets now belong to the project: `agent.json` budgets, `cadex budgets`, `--engine-timeout`/`--engine-memory` per call, the engine resolving budgets per field, read-only on the dashboard. Test: `cli/tests/test_project_budgets.py`, including real-engine and headless-Chromium tests (ADR-517) [rec: curious-flint-4836].
 
-Not yet evidenced: a row-by-row audit that every remaining row carries a final ported/covered/dropped verdict, and the eight-step walk run against the dashboard. Reconcile judgement: stays `open` — the folded records close individual ledger rows, not the criterion's whole-ledger and walk conditions [rec: curious-flint-4836].
+**Walk steps 1–6 evidenced, each seen in the dashboard** on `orun2-w1-quad`, a whole copy of `ot11-quad-1`, driven in headless Chromium by `docs/probes/orun2/w1/walk_dashboard.py` (measurements in `walk-steps.json`, commit `9d487b65`) [rec: red-loom-2239]:
+
+- **1. Prompt:** `cadex -p` 335 s, accepted `a7d487ae`; listed on the index and under CLI agent turns [rec: red-loom-2239]
+- **2. Accepted design:** **Accept** verdict; model loaded, 62 components; page and index agree [rec: red-loom-2239]
+- **3. Params sweep:** `shin` slider 3/3 at ~116 s each; 55 mm returns to digest `25984e70` [rec: red-loom-2239]
+- **4. Render:** `cadex render` 155 s, shown on the Concept tab [rec: red-loom-2239]
+- **5. STEP/STL:** page Export 62 STEP + 62 STL in 116.8 s [rec: red-loom-2239]
+- **6. MJCF:** `model-model.xml` (8 actuators) and the task JSON downloaded [rec: red-loom-2239]
+
+**Gates:** both full suites green at `21d130f5` — engine 2594 passed / 56 skipped; CLI 1398 passed / 1 skipped (GPU hidden), after the dashboard-restart flake (fixture `recorded_at` ties) and a viewer-settle race in four dashboard-write browser tests were fixed in test logic, with no retry and no weakened assertion [rec: amber-moon-9415]. The packaged gate has not been run this run.
+
+**Not yet evidenced:** walk step 7 (a short training run on the 5090; `orun2-w1-quad` stores `policy_on` 0, and `nvidia-smi` could not reach the driver in that iteration) and step 8 (`evaluate`); the row-by-row ledger audit; final full suites and the packaged gate [rec: red-loom-2239]. **Against "nothing lost":** a robot project trained before ADR-469 cannot be opened at all — see `brisk-rock-9862` [rec: red-loom-2239]. Minor findings from the walk: the Model tab opens with the robot as a speck until **Fit** and in debug colours; a CLI turn's transcript and `look` images do not appear on the project page [rec: red-loom-2239].
+
+Reconcile judgement: stays `open` — steps 7–8, the ledger audit, the packaged gate and the lock defect stand between this and the criterion [rec: red-loom-2239].
 
 Declared target: `gap-w1-nothing-product-could-do`. The human owns the charter checkbox; roles report results and do not tick it. Reconcile judgement: earlier runs have criteria with the same letters, so every orun2 gap title carries the run [rec: winter-stone-5109].
 
@@ -34,3 +47,5 @@ None yet.
 - old-arrow-4088 — SHELL-PARITY.md skeleton: 47 module / 23 tool / 7 editor rows, none blank, statuses interim
 - sweet-arrow-0695 — blueprint ledger rows ported: draw_blueprint and the Drawings panel, tested (ADR-516)
 - curious-flint-4836 — prefs.py ledger row ported: engine budgets belong to the project, tested (ADR-517)
+- amber-moon-9415 — both full suites green at 21d130f5; restart flake and viewer-settle race fixed in test logic
+- red-loom-2239 — W1 walk steps 1–6 on orun2-w1-quad, each seen in the dashboard; pre-ADR-469 trained projects unopenable

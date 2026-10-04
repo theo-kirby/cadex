@@ -7,9 +7,11 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: superseded
 
 ## Current
+
+**Superseded in orun2's R1 frontier clean-up:** orun1 is archived (`3e345fd2`) with trials only and no confirmation turn; the orun1 reconcile deferred this to orun2 R1's clean-up. [rec: crimson-stone-9344]
 
 Open charter criterion for run orun1: **D4. Plain prompts produce designs that clear the owner's bar.** - **Plain prompts, frozen before generation** in the README: one per type (quadruped, hexapod, biped, 5-axis arm, 3-axis arm, two-wheeled balancer, and one wildcard of the agent's choosing). Each names the type, its joint count, "design only" and nothing about style. The style must come from the product's guidance, not the prompt. - Each design is a fresh `orun1-*` project at the final product revision. It is accepted, its static and swept fit pass, its purchased parts are all from the catalog, and every one of them passes D3's mounting check. - **The bar, judged by D1's frozen version** that met the held-out bar: - each new design wins the majority of its pairwise comparisons against the sweep designs of the same type that the owner rated Like or Love; - the new hexapod is held to the same bar, with no exemption. - **Confirmation, not fishing.** One pre-registered confirmation turn per type at the final revision counts. Every earlier attempt is published. A second confirmation of a type needs a recorded product change between the two. - The final set (hero, concept sheet and the judge's result for each) is committed under `docs/probes/orun1/final/` for the owner to review. [rec: sweet-brook-2725]
 
@@ -49,3 +51,4 @@ Between trials 2 and 3 the M1.6 gap was closed by ADR-488 [rec: honest-ledge-902
 - deep-cove-1130 — hexapod trial 1: static 0/3655, sweep 18/18, mounting 49/49, frozen v2 1 of 2 (loses to c on proportion/joint clutter)
 - icy-willow-3129 — re-measure under ADR-492: hexapod t1 servo bolts all unthreaded (held by bay); balancer t3 11/11 → 8/11
 - little-shade-0096 — balancer trial 4: fit pass, mounting 12/12 via .mounting(), frozen v2 3/5 (loses on plain core and spoked wheels); a trial
+- crimson-stone-9344 — superseded in orun2's R1 frontier clean-up

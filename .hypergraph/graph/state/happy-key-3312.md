@@ -7,9 +7,11 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: superseded
 
 ## Current
+
+**Superseded in orun2's R1 frontier clean-up:** the GUI app it brought to parity is deleted (ADR-498); the dashboard is the only UI (ADR-500). [rec: crimson-stone-9344]
 
 **Owner direction (2026-09-29):** bring the GUI app up to the CLI and the review dashboard. The app agent lacked look, the design language and measured fit; the app UI lacked run history, per-run curves, renders and videos. The owner chose native panels over the same on-disk files, and engine-side shared code; 8 slices were planned [rec: warm-spire-8762].
 
@@ -42,3 +44,4 @@ None yet.
 - staid-nest-0170 — slice 6, ADR-451
 - peaceful-sail-5197 — slice 7, ADR-452
 - eager-basin-6116 — slice 8, ADR-453
+- crimson-stone-9344 — superseded in orun2's R1 frontier clean-up

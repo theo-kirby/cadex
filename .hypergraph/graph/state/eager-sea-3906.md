@@ -19,9 +19,10 @@ Open charter criterion for run orun2: **R1. The contract describes the three-par
 - **README, ARCHITECTURE §1, INTEGRATION, ROADMAP** (commit `06bdb19a`): framed as engine + dashboard + agent; ROADMAP Phase 12 superseded, Phase 13b's shell half closed, Phase 6 historical. Pinned by `test_readme_architecture_and_integration_describe_the_three_parts` [rec: careful-rain-8917].
 - **BLENDER docs** in `docs/history/`: `BLENDER-RECIPES.md` [rec: clear-heron-4371], `BLENDER.md` and `BLENDER-TREE.md` [rec: calm-quartz-1493]; confirmed in place [rec: even-clover-8953].
 - **`docs/DASHBOARD.md`** replaces `REVIEW-DESIGN.md` as the UI spec (git mv, ADR-501, commit `f132d3e9`), keeping hierarchy, type scale, dark palette and dark floor; live pointers re-pointed. Pinned by `test_dashboard_md_replaces_review_design_as_the_ui_spec` [rec: even-clover-8953].
-- **Frontier pruning**: ot7 F4–F7 and F10, ot10 A5 and A7, and orun1 C1 superseded, each with its reason; the shell-era phrasing in the training and roadmap nodes dropped [rec: light-path-5130]. `STATE.md` regenerates and `hypergraph check` is run by this reconcile.
+- **Frontier pruning**: ot7 F4–F7 and F10, ot10 A5 and A7, and orun1 C1 superseded, each with its reason; the shell-era phrasing in the training and roadmap nodes dropped [rec: light-path-5130]. A second pass superseded eight more, each with its reason: orun1 D3 and D4 (archived run, unconfirmed), GUI parity, the `.blend` file lifecycle, the `hide_render` shell bug and the three-modes node (moot with the shell), and the ot8 and ot9 run roots (runs ended). Criteria met on evidence but never ticked (ot11 R1 `smooth-fountain-9832`, ot11 P1–P4/R2/R3/C1, ot10, orun1 F1/D1/D2, the ot5/ot6/ot8/ot9 children) stay `working` — superseding met work would hide it [rec: crimson-stone-9344].
+- **On-disk audit** at `26880abd`: every R1 doc item re-checked in the files and met, AGENTS.md still 215 lines [rec: crimson-stone-9344]. `STATE.md` regenerates and `hypergraph check` is run by this reconcile.
 
-Reconcile judgement: status stays `working`, not ticked — every named piece is evidenced, but the human owns the charter checkbox [rec: light-path-5130]. Declared target: `gap-r1-contract-describes-three-part` [rec: winter-stone-5109].
+Reconcile judgement: status stays `working`, not ticked — every named piece is evidenced and audited on disk, but the human owns the charter checkbox [rec: crimson-stone-9344]. Declared target: `gap-r1-contract-describes-three-part` [rec: winter-stone-5109].
 
 ## Negative knowledge
 
@@ -36,3 +37,4 @@ None yet.
 - careful-rain-8917 — README, ARCHITECTURE, INTEGRATION and ROADMAP describe the three parts (06bdb19a)
 - even-clover-8953 — docs/DASHBOARD.md replaces REVIEW-DESIGN.md (ADR-501, f132d3e9)
 - light-path-5130 — frontier pruned: ot7/ot10/orun1 stale criteria superseded; the last R1 piece
+- crimson-stone-9344 — R1 items audited on disk; eight more stale earlier-run and shell-moot nodes superseded

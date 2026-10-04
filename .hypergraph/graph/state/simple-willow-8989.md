@@ -7,9 +7,11 @@ parents:
 - shy-crane-2573
 summary: ''
 ---
-Status: working
+Status: superseded
 
 ## Current
+
+**Superseded in orun2's R1 frontier clean-up:** .blend open/save/Save-As belonged to the deleted shell (ADR-498); the project directory is the truth (ADR-500). [rec: crimson-stone-9344]
 
 The file-handling path inherited from Blender — opening, saving, Save-As, creating a new file, how the `.cadex` project directory relates to the `.blend` that displays it, and how the menus come up. **The author names this as one of the two most fragile parts of the product** [rec: western-badger-3023].
 
@@ -59,3 +61,4 @@ A later source-only audit reconfirmed the same seven suffixes in the engine, she
 - silver-rain-7333 — staged six-process consent/refusal/cold-recovery qualification; accepted outputs and protected docs/assets preserved
 - empty-ledge-4581 — source-only audit reconfirms all seven stored/carried suffixes; no Save-As correction or new runtime claim
 - calm-sky-2656 — source-absent cold restore/export preserves linked geometry, accepted identity, assets and project docs
+- crimson-stone-9344 — superseded in orun2's R1 frontier clean-up

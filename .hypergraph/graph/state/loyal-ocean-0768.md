@@ -7,9 +7,11 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: superseded
 
 ## Current
+
+**Superseded in orun2's R1 frontier clean-up:** orun1 is archived (`3e345fd2`); the transcript-driven catalog clause waited on D4 confirmation runs that never ran. The catalog half and mounting check below keep their recorded evidence; the base-plus-styles charter carries the design bar next. [rec: crimson-stone-9344]
 
 Open charter criterion for run orun1: **D3. The product can design with the parts these robots need, and can tell when a part is not held.** - The catalog gains, with a datasheet source, true dimensions, mounting features and a bay, as the existing servos and boards have: - a serial bus servo of the STS3215 class; - a single-board computer larger than the Pi Zero (a Pi 4 or 5 class board or a compute module carrier); - a camera module and a range sensor (time-of-flight class); - a wheel and tyre set and a rubber foot pad; - anything else the D4 transcripts show the agent reaching for and not finding, with the transcript cited. - **A mounting check.** The product reports, for every purchased part, which printed part holds it and by what (screws, a bay, a clip, a horn). A part held by nothing, or held only by being inside a shell, is reported. The product agent sees this report in every build reply. Tests pin it on a fixture that passes and one that fails. [rec: sweet-brook-2725]
 
@@ -46,3 +48,4 @@ Both D3 halves have evidence. Still open: the transcript-driven catalog clause (
 - icy-willow-3129 — ADR-492: mounting check requires thread engagement; fit allows the thread ring
 - floral-horizon-1217 — ADR-493: board.mounting() threads every board screw; trial-3 hold 0/3 → 3/3 on the real kernel
 - little-shade-0096 — balancer t4 used .mounting() on all four screwed boards: 12/12 held; wheel .bay() and bounding_box frictions
+- crimson-stone-9344 — superseded in orun2's R1 frontier clean-up

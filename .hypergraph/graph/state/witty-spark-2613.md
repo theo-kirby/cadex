@@ -7,9 +7,11 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: superseded
 
 ## Current
+
+**Superseded in orun2's R1 frontier clean-up:** its GUI-attached mode was the deleted shell (ADR-498); the headless and remote-training modes stay covered by `crisp-reef-5607` and `training/SETUP.md`. [rec: crimson-stone-9344]
 
 Charter criterion: **Three modes, one shape.** The walk runs headless (exercised), with the GUI attached (documented, not exercised while the headless-only constraint holds), and with training on a remote machine (the handoff is documented and scripted, not executed while the local-only constraint holds). The loop's steps and artifacts are the same in all three. Declared target `gap-three-modes-one-shape-walk` [rec: empty-wolf-3962]. Re-seeded unticked by the nt3 directive [rec: modest-summit-8554] and again by the ot4 directive, whose constraints keep the other two modes exactly where ADR-200 and ADR-201 left them, but whose machine is new — `sb1x`, where the headless mode had no clean run at all [rec: humble-forest-6896] [rec: open-hollow-2140].
 
@@ -75,3 +77,4 @@ Reconcile judgement: retain `working`. The record leaves the tick to this pass a
 - cool-eagle-6400 — ADR-269: the GUI-attached mode documented leg by leg in docs/CLI.md §2 and pinned by two consistency tests against run_leg and four mesh_agent facts; the shell's application-handler count corrected from two to four; cli/tests 260 passed, 0 skipped; still no GUI-attached walk executed
 - brisk-eagle-8550 — ADR-282: `--detach` carried through the walk in two halves — a launch writing walk-pending.json that stores and declares nothing, and `--complete` collecting the returned policy through a new `collect` leg into the unchanged declare/rollout/review legs; six named refusals; cli/tests 301 passed; still no live dispatch
 - lucky-haven-1081 — ADR-495: GUI-attached mode retired with the shell; scaffold, CLI.md and its mesh_agent pins replaced; GUI limb moot
+- crimson-stone-9344 — superseded in orun2's R1 frontier clean-up

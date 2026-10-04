@@ -7,9 +7,11 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: superseded
 
 ## Current
+
+**Superseded in orun2's R1 frontier clean-up:** run ot9 ended and merged (`8a7a6919`); its B1–B5 children keep their recorded evidence (the ot6/ot7 root precedent). [rec: crimson-stone-9344]
 
 **Owner-directed work for run `ot9` (ADR-404): train a policy that keeps Robin upright on its accepted design for the task's declared eight-second episode [rec: silver-cloud-5850] [rec: curious-branch-9704].** It follows ot8 (`ancient-vine-9908`), whose G4 measured Robin's zero-command fall as adequate actuator authority with missing feedback — a control-blocked outcome, not a design or export defect [rec: silver-cloud-5850]. ot9 is the trained-control answer to that diagnosis. Charter and configuration were committed at `c7aea2db`; the loop itself was started by the operator directive on `ouroboros/ot9` [rec: silver-cloud-5850] [rec: curious-branch-9704].
 
@@ -44,3 +46,4 @@ None yet.
 - long-glacier-5252 — B4 measured, design unchanged from ot8
 - falling-fountain-6090 — B5 closing report; done claimed for critic review
 - lively-eagle-0275 — ADR-405 fixed REPORT defect 3; report moved to the final revision, done re-claimed
+- crimson-stone-9344 — superseded in orun2's R1 frontier clean-up
