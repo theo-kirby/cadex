@@ -20,7 +20,7 @@ dashboard, the agent". Every number below was measured on sb1x (linux-64,
 | D3 runs first-class | evidence recorded | ADR-513, ADR-514, ADR-515, ADR-518, ADR-519 | `mellow-otter-0798`, `polished-reef-4161`, `lean-star-6139`, `quiet-ivy-3898`, `amber-moon-9415` |
 | A1 one contract, a channel | evidence recorded | `leave_note` (ADR-512), the guidance settled (ADR-521) | `proud-quill-5791`, `autumn-rose-7173` |
 | W1 nothing lost | evidence recorded | walk steps 1–8 ran and were seen in the dashboard; step 7 trained on the 5090 (300 it × 1024 envs, 331 s) and `evaluate` passed 10 of 10 seeds (defect 5, cleared). The ledger has no "to port" row | `red-loom-2239`, `icy-tooth-7719`, `dusty-bramble-8099`, `mellow-fjord-5906`, `neat-grove-1406`, `solemn-birch-8260` |
-| C1 this report | this file | §1–§6 below | `clear-current-6218`, `lively-beacon-5538`, `clever-sky-3211` |
+| C1 this report | this file; done not yet claimed (§7) | §1–§6 below | `clear-current-6218`, `lively-beacon-5538`, `clever-sky-3211` |
 
 The owner-note units each have their own record: the blueprint composer
 (ADR-516, `sweet-arrow-0695`) and the project budgets (ADR-517,
@@ -199,6 +199,12 @@ Each was re-checked on 2026-10-04 while the screenshots were taken.
 ## 7. The done claim
 
 Every criterion has recorded, measured evidence, W1's GPU leg included
-(defect 5, cleared). This report claims
-done for the critic's review. The owner ticks the boxes, and none is ticked
-here.
+(defect 5, cleared). **Done is not claimed yet.** C1 says "reconcile, then
+claim done", and the state graph has not folded the latest records: at
+`b0c9706a` the unreconciled tail is `rough-bell-4055` (W1's GPU leg) and the
+record that withdrew this claim. A work iteration may not reconcile; the
+loop's housekeeping pass does. Once that pass has folded the tail into the
+W1 and C1 state nodes, removed the plan's last "shell client" wording
+(`young-crane-9546`, rank 1), and `hypergraph check` exits 0, this section
+claims done for the critic's review and cites that reconcile commit. The
+owner ticks the boxes, and none is ticked here.
