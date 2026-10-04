@@ -32,7 +32,7 @@ const LEADER = {color:0x9aa3ad, opacity:.85};
 export function create(canvas) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, toScreen(){return null;}, setOnDraw(){}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -132,8 +132,10 @@ export function create(canvas) {
     }
     hudCamera.right=w; hudCamera.top=h; hudCamera.updateProjectionMatrix();
   }
+  let onDraw=null;
   function paint() {
     renderer.render(scene,camera);
+    if (onDraw) onDraw();
     if (clock===null) return;
     paintClock(canvas.clientWidth||canvas.width,canvas.clientHeight||canvas.height);
     renderer.autoClear=false; renderer.clearDepth(); renderer.render(hud,hudCamera); renderer.autoClear=true;
@@ -317,6 +319,19 @@ export function create(canvas) {
     const p=m.geometry.boundingBox.getCenter(new THREE.Vector3()).applyMatrix4(m.matrixWorld).project(camera), r=canvas.getBoundingClientRect();
     return [r.left+(p.x+1)/2*r.width, r.top+(1-p.y)/2*r.height];
   }
+  // A point in mm, in a solid's own frame (or the model's, for null), as canvas pixels with
+  // [0,0] top left; null when the solid is not drawn or the point is behind the camera. The
+  // dimension overlay draws from it, so the anchors are the only thing in model space.
+  const projected=new THREE.Vector3();
+  function toScreen(name, point) {
+    const frame=name===null||name===undefined?model:meshes.get(name);
+    if (!frame||!Array.isArray(point)||point.length!==3||!point.every(Number.isFinite)) return null;
+    frame.updateMatrixWorld(true);
+    projected.fromArray(point).multiplyScalar(.001).applyMatrix4(frame.matrixWorld).project(camera);
+    if (projected.z>1||projected.z<-1) return null;
+    const w=canvas.clientWidth||canvas.width, h=canvas.clientHeight||canvas.height;
+    return [(projected.x+1)/2*w, (1-projected.y)/2*h];
+  }
   // The picked solid glows faintly; null clears it. Never set by a capture.
   function highlight(name) {picked=meshes.has(name)?name:null; meshes.forEach((m,n)=>m.material.emissive.setHex(n===picked?0x3a3a3a:0)); draw(); return picked;}
   canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);press=pointers.size===1?[e.clientX,e.clientY]:null;if(pointers.size===2)pinch=span();e.preventDefault();});
@@ -337,7 +352,7 @@ export function create(canvas) {
   window.addEventListener('resize',draw);
   return {available:true,load,install,clear,fit,draw,setPoses,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
     setSection,setLines,showLines,
-    pick,screenPoint,highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
+    pick,screenPoint,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,style:STYLE,stage,showing:showing(),
       proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length},
       section:section&&{...section}, leaders:{drawn:leaders?leaders.geometry.attributes.position.count/2:0,shown:!!(leaders&&leaders.visible)},

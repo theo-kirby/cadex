@@ -1211,6 +1211,41 @@ rows carry no roles. The shell's printable ticks are not kept: they only
 chose what a printable-only export wrote, and the Export button writes
 every output (ADR-509).
 
+## 31. Dimensions: the script's declared measurements over the solids (ADR-524)
+
+A script declares a dimension with `part.measurement(...)`, and the engine
+resolves it on the exact BREP when it builds: the number, its text, and two
+anchor points, a circle (centre, radius, normal) or an angle's vertex and
+ends, in the measured output's own frame. The blueprint sheet draws these
+(§28); the viewer draws them too, over the solids, while
+`show declared dimensions` is on (it is on by default when there are any).
+
+`api/model/accepted` carries a `measurements` block: `available`, `source`
+and `records`, or `reason`. Each record has the engine's fields (`kind`,
+`label`, `text`, `value_mm` or `value_deg`, `anchors_mm`, `center_mm`,
+`radius_mm`, `normal`, `vertex_mm`), plus `subject`, `component` (the
+component that shows the measured output, the first of several), `frame`,
+`drawn` and `reason`. A record whose output the viewer does not show is
+listed, not drawn. So is one on an undeclared intermediate in a design that
+places components: its points are in a part frame the viewer cannot name,
+and the sheet lists it for the same reason. A run's retained meshes carry
+none, and say so.
+
+`review_static/dimensions.js` lays each record out. Only the anchors are in
+model space (`viewer.toScreen(component, point_mm)`); the offset (22 px),
+extension gap and overrun, slash ticks and the 13 px number are screen
+pixels, so a dimension reads the same at any size, its line never goes
+edge-on, and its number stays upright. Below a 12 px span it becomes a
+leader, a stub and the number, so the value survives looking straight down
+its axis. A diameter or radius is drawn across the circle's widest
+on-screen diameter (or radius) of 24 samples. An angle draws its arms and
+an arc. The overlay is an SVG over the canvas (`#dimension-overlay`,
+`data-drawn`), redrawn on every viewer frame, so it follows orbit, zoom,
+explode and playback; it is never in a capture or a video. Lines are
+`--info`, the number `--ink` on a `--bg` halo, and nothing is occluded:
+drawings do not hide their dimensions. `#dimension-list` lists every record
+with its frame and any reason.
+
 ## Operator run status (ADR-387)
 
 The operator deployment adds a compact bottom-right status strip with run name,

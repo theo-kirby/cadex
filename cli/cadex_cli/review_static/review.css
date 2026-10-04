@@ -116,6 +116,12 @@ button:focus-visible { border-color: var(--rule-strong); }
 canvas#viewer { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; max-height: 620px; background: var(--bg);
                 border: var(--bw) solid var(--rule); border-radius: var(--radius); touch-action: none; }
 .controls .hint { margin-right: auto; }
+/* Dimensions (§31): the engine's numbers over the solids, never occluded, in the page's ink. */
+.viewport { position: relative; }
+svg#dimension-overlay { position: absolute; inset: var(--bw); width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+svg#dimension-overlay line { stroke: var(--info); stroke-width: 1.25; }
+svg#dimension-overlay text { fill: var(--ink); font: 600 13px var(--font); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+ul#dimension-list { margin: var(--s2) 0 0; padding-left: var(--s4); font-size: var(--fs-0); color: var(--ink-2); }
 ul#collision-contacts, ul#model-components { margin: var(--s2) 0 0; padding-left: var(--s4); font-size: var(--fs-0); color: var(--ink-2); }
 ul#model-components li .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: var(--s2); vertical-align: middle; }
 
@@ -331,6 +337,7 @@ pre#doc-view { white-space: pre-wrap; overflow-wrap: anywhere; background: var(-
   /* The model fills the stage; its status and controls float over the scene. */
   #model { padding: 0; overflow: hidden; }
   #model .viewport { position: absolute; inset: 0; }
+  #model svg#dimension-overlay { inset: 0; }
   #model canvas#viewer { width: 100%; height: 100%; aspect-ratio: auto; max-height: none; border: 0; border-radius: 0; }
   #model-status, #model .viewer-controls { position: absolute; z-index: 1; margin: 0; padding: var(--s1) var(--s3); border: 1px solid var(--rule);
       border-radius: var(--radius-sm); background: color-mix(in srgb, var(--bg) 78%, transparent); backdrop-filter: blur(6px); }

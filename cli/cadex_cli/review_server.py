@@ -97,7 +97,8 @@ STATIC_FILES = {
     "review.css": ("text/css; charset=utf-8", STATIC_DIR / "review.css"),
     "review.js": ("text/javascript; charset=utf-8", STATIC_DIR / "review.js"),
     **{name: ("text/javascript; charset=utf-8", STATIC_DIR / name) for name in
-       ("three.module.js", "floor.js", "environment.js", "review_scene.js", "stl.js", "capture.js")},
+       ("three.module.js", "floor.js", "environment.js", "review_scene.js", "stl.js", "capture.js",
+        "dimensions.js")},
     "capture.html": ("text/html; charset=utf-8", STATIC_DIR / "capture.html"),
     "viewer.js": ("text/javascript; charset=utf-8", STATIC_DIR / "viewer.js"),
 }
@@ -690,6 +691,7 @@ def _identity_model(**fields: Any) -> dict[str, Any]:
         "contacts": _no_contacts("t=0 contacts are read from the accepted attempt's MJCF export only"),
         "exploded": [],
         "appearance": {"available": False, "reason": "no model to show", "palette": None, "printable": []},
+        "measurements": {"available": False, "reason": "no model to show", "records": []},
     }
     base.update(fields)
     return base
@@ -753,6 +755,8 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
         revision=model_block.get("accepted_revision"), digest=model_block.get("digest"),
         appearance={"available": False, "palette": None, "printable": [],
                     "reason": "a run's retained meshes carry no appearance roles; the accepted model shows them"},
+        measurements={"available": False, "records": [],
+                      "reason": "a run's retained meshes carry no declared measurements; the accepted model shows them"},
     )
     run_ref = resolve_reference(root, f"{RUNS_DIRNAME}/{run_name}")
     if run_ref["error"] or not run_ref["exists"]:
@@ -919,6 +923,7 @@ def _model_before_rollout(root: Path, model: dict[str, Any]) -> dict[str, Any]:
         "contacts": accepted["contacts"],
         "exploded": accepted["exploded"],
         "appearance": accepted["appearance"],
+        "measurements": accepted["measurements"],
     })
     return model
 
@@ -1042,6 +1047,66 @@ def part_looks(result: Mapping[str, Any], entries: list[dict[str, Any]]) -> dict
             "printable": sorted(roster)}
 
 
+#: The record fields the viewer's dimension overlay draws from, as the engine
+#: publishes them on a ``measurement`` output (``measurement_record``, ADR-139).
+_MEASUREMENT_FIELDS = ("kind", "label", "text", "value_mm", "value_deg", "anchors_mm",
+                       "center_mm", "radius_mm", "normal", "vertex_mm")
+
+
+def declared_measurements(result: Mapping[str, Any], entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """The script's declared ``part.measurement`` records, and where to draw each (ADR-524).
+
+    The engine resolved each one against the exact BREP when it built the
+    accepted attempt: the number, its text, and the anchor points or circle
+    it is drawn from, in the measured output's own frame (``subject``). The
+    viewer draws them in that frame on the component that shows the output,
+    so a placed, exploded or played part carries its dimension with it. A
+    record whose subject the viewer does not show is listed with the reason
+    and not drawn. One with no subject (an undeclared intermediate) is in
+    the model's own coordinates only when nothing is placed; in a design
+    that places components it is in some part's frame the viewer cannot
+    name, so it is listed and not drawn, as the blueprint sheet does.
+    Nothing is measured here.
+    """
+
+    placed = any(entry.get("placement") is not None for entry in entries)
+    shown: dict[str, list[str]] = {}
+    for entry in entries:
+        if entry.get("mesh") and entry.get("output"):
+            shown.setdefault(str(entry["output"]), []).append(str(entry["name"]))
+    records = []
+    for item in result.get("outputs") or []:
+        if not isinstance(item, Mapping) or not isinstance(item.get("measurement"), Mapping):
+            continue
+        record = item["measurement"]
+        subject = str(record.get("subject") or "")
+        row: dict[str, Any] = {"name": str(item.get("name") or ""), "subject": subject}
+        row.update({key: record.get(key) for key in _MEASUREMENT_FIELDS})
+        if not subject and placed:
+            row.update(component=None, frame="an undeclared intermediate shape's own frame", drawn=False,
+                       reason="measures an undeclared intermediate shape, and the design places components, "
+                              "so its points are in a part frame the viewer cannot place")
+        elif not subject:
+            row.update(component=None, frame="model coordinates (an undeclared intermediate shape)",
+                       drawn=True, reason=None)
+        elif subject in shown:
+            names = shown[subject]
+            row.update(component=names[0], frame=f"{subject}'s own frame, on component {names[0]}",
+                       drawn=True, reason=None)
+            if len(names) > 1:
+                row["reason"] = f"drawn on {names[0]} only; {', '.join(names[1:])} show the same output"
+        else:
+            row.update(component=None, frame=f"{subject}'s own frame", drawn=False,
+                       reason=f"measures {subject}, which the viewer does not show")
+        records.append(row)
+    if not records:
+        return {"available": False, "records": [],
+                "reason": "the script declares no part.measurement"}
+    return {"available": True, "records": records,
+            "source": "the accepted attempt's declared part.measurement records, measured by the engine "
+                      "on the exact BREP (the numbers the blueprint sheet draws)"}
+
+
 def accepted_model(project_root: Path | str) -> dict[str, Any]:
     """The accepted model now, from the accepted attempt's own tessellation.
 
@@ -1157,6 +1222,7 @@ def accepted_model(project_root: Path | str) -> dict[str, Any]:
         "components": entries,
         "exploded": exploded_views(result, {entry["name"]: entry["placement"] for entry in entries}),
         "appearance": part_looks(result, entries),
+        "measurements": declared_measurements(result, entries),
         "meshes": {output: entry["artifact"] for output, entry in tess_by_output.items()},
     })
     return model

@@ -138,7 +138,7 @@
       <section id="model" class="card region stage-panel" data-stage="model" role="tabpanel">
         <h2>Model</h2>
         <div id="model-status" data-state="empty">no model loaded</div>
-        <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas></div>
+        <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas><svg id="dimension-overlay" aria-label="declared dimensions"></svg></div>
         <div class="controls viewer-controls"><span class="hint">drag or touch to orbit · wheel to zoom</span><button id="model-fit" type="button">Fit</button></div>
       </section>
       <section id="curves" class="card region stage-panel" data-stage="curves" role="tabpanel">
@@ -200,6 +200,12 @@
         <span id="collision-note" class="muted"></span>
       </div>
       <ul id="collision-contacts"></ul>
+      <!-- Dimensions: the script's part.measurement records, drawn in screen space over the solids (§31). -->
+      <div class="controls">
+        <label class="toggle" for="show-dimensions"><input type="checkbox" id="show-dimensions" checked> <span>show declared dimensions</span></label>
+        <span id="dimension-note" class="muted"></span>
+      </div>
+      <ul id="dimension-list"></ul>
       <!-- Explode: the engine's assembly.exploded_view stages, played 0..N with setPoses (§24). -->
       <div class="controls">
         <label for="explode-amount">explode</label>

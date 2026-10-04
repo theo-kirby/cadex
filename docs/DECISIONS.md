@@ -33810,3 +33810,45 @@ turn and of a turn that wrote its call as text);
 `test_dashboard_writes.py::test_browser_starts_a_turn_and_watches_it_land`
 (a real `cadex -p` child behind the fake `claude` reports a priced result,
 and headless Chromium shows its tokens and price on the turn status).
+
+## ADR-524 — The viewer draws the script's declared dimensions over the solids (2026-10-04, owner charter orun2 D2/W1)
+
+**Context.** The shell parity ledger's last "to port" row was
+`cadex_dimension.py`'s viewport overlay: it drew each declared
+`part.measurement` from the engine's two anchors, with everything else laid
+out in screen space and a leader when seen end-on. The blueprint sheet
+already draws these records (ADR-516); the dashboard's viewer drew none.
+The critic asked for this port framed as "pick two points or faces and show
+the distance". That would be a new geometry query (a face-level pick and an
+engine distance op), which is the face-ID channel the ledger still has as
+"owner to confirm", not what the shell module did. The port follows the
+module; picking two faces stays with that owner row.
+
+**Decision.** `review_server.declared_measurements` reads the records from
+the accepted `result.json` (nothing is measured or rebuilt) and attaches
+each to the component that shows its output; `api/model/accepted` carries
+them as `measurements`. The page draws them as an SVG over the canvas,
+re-derived in `review_static/dimensions.js`: anchors through the new
+`viewer.toScreen(component, point_mm)`, everything else in pixels, a leader
+under a 12 px span, the widest on-screen diameter of a circle, an angle
+with its arc. A new `setOnDraw` hook redraws it on every frame, so it
+follows the part through explode and playback. A record on an undeclared
+intermediate in a placed design is listed and not drawn, the rule the
+sheet already uses. `docs/DASHBOARD.md` §31. Read from `v1-blender-shell`
+as a description only; nothing copied. No new dependency.
+
+**Cost.** ~70 lines of server, ~100 of layout, ~60 of page code; one model
+manifest block.
+
+**What would reverse it.** Dimensions belonging only on drawings: then the
+toggle defaults off, or the overlay goes and the sheet remains.
+
+**Test.** `cli/tests/test_dashboard_dimensions.py`: without an engine,
+which component each record is drawn on and why one is not; against a real
+engine, the manifest carries the engine's own numbers in the placed part's
+frame, and headless Chromium draws them where the solid is (a part-frame
+anchor through the component lands on its world point), turns an end-on
+extent into a leader, draws a top-down bore at 6 mm on screen, and clears
+when switched off. `test_dashboard_inspect.py`'s rollout playback test now
+waits for Play to enable rather than reading it once.
+

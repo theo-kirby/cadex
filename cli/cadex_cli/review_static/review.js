@@ -23,7 +23,8 @@
   // A running turn's transcript is read this often; an idle read is a few bytes.
   var TURN_POLL_MS = 1000;
   var state = { review: null, selected: 'accepted', lastOk: null, stale: false, model: null, viewer: null,
-                error: null, following: true, docKey: null, docRequest: 0, detail: null, showProxies: false };
+                error: null, following: true, docKey: null, docRequest: 0, detail: null, showProxies: false,
+                showDimensions: true };
   var pendingPoll = null;
   // This launch's write token, written into the page by the server; every
   // POST carries it (ADR-503).
@@ -1272,6 +1273,60 @@
       (state.showProxies && drawable ? ' (' + stats.proxies.drawn + ' outlines from ' + collision.source + ')' : '');
   }
 
+  // Dimensions (DASHBOARD.md §31, ADR-524): the script's declared part.measurement records,
+  // measured by the engine on the exact BREP. Each is drawn on the component that shows its
+  // output, re-laid-out in screen space on every frame the viewer draws, so it follows orbit,
+  // zoom, explode and playback. A record the view cannot place this frame is listed, not drawn.
+  var SVG = 'http://www.w3.org/2000/svg';
+  function drawDimensions() {
+    var overlay = $('dimension-overlay'), manifest = state.model, block = (manifest && manifest.measurements) || {};
+    clearChildren(overlay);
+    var placed = 0;
+    if (state.showDimensions && manifest && manifest.available && block.available && state.viewer.available) {
+      (block.records || []).forEach(function (record) {
+        if (!record.drawn) return;
+        var shape = window.CadexViewer.dimensionLayout(record, function (point) { return state.viewer.toScreen(record.component, point); });
+        if (!shape) return;
+        var group = document.createElementNS(SVG, 'g');
+        group.setAttribute('data-measurement', record.name);
+        group.setAttribute('data-form', shape.form);
+        shape.lines.forEach(function (l) {
+          var line = document.createElementNS(SVG, 'line');
+          line.setAttribute('x1', l[0].toFixed(1)); line.setAttribute('y1', l[1].toFixed(1));
+          line.setAttribute('x2', l[2].toFixed(1)); line.setAttribute('y2', l[3].toFixed(1));
+          group.appendChild(line);
+        });
+        var label = document.createElementNS(SVG, 'text');
+        label.setAttribute('x', shape.at[0].toFixed(1)); label.setAttribute('y', shape.at[1].toFixed(1));
+        label.setAttribute('text-anchor', shape.anchor);
+        label.textContent = shape.text;
+        group.appendChild(label);
+        overlay.appendChild(group);
+        placed++;
+      });
+    }
+    overlay.dataset.drawn = String(placed);
+  }
+
+  function renderDimensions() {
+    var manifest = state.model, block = (manifest && manifest.measurements) || {}, list = $('dimension-list');
+    var toggle = $('show-dimensions'), note = $('dimension-note');
+    var records = block.available ? block.records : [];
+    var drawable = records.filter(function (r) { return r.drawn; }).length;
+    toggle.disabled = !(manifest && manifest.available && drawable);
+    toggle.checked = state.showDimensions;
+    clearChildren(list);
+    if (!manifest || !manifest.available) note.textContent = '';
+    else if (!block.available) note.textContent = '(none: ' + block.reason + ')';
+    else note.textContent = '(' + records.length + ' declared, ' + drawable + ' drawable; measured by the engine on the exact BREP)';
+    records.forEach(function (record) {
+      list.appendChild(el('li', { 'data-measurement': record.name, 'data-drawn': String(record.drawn),
+        text: record.name + (record.label ? ' (' + record.label + ')' : '') + ': ' + record.text + ' · ' + record.kind +
+          ' · ' + record.frame + (record.reason ? ' · ' + record.reason : '') }));
+    });
+    drawDimensions();
+  }
+
   function loadModel() {
     var run = selectedRun();
     var url = run ? BASE + '/api/model/run/' + encodeURIComponent(run.run) : BASE + '/api/model/accepted';
@@ -1288,6 +1343,7 @@
         status.textContent = 'no model to show: ' + manifest.reason + ' (revision ' + short(manifest.revision) + ')';
         renderModelComponents(manifest, []);
         renderShowing();
+        renderDimensions();
         renderExplode(manifest);
         renderPlayback(manifest);
         return;
@@ -1313,6 +1369,7 @@
           ' · placements: ' + manifest.placement_source;
         renderModelComponents(manifest, loaded);
         renderShowing();
+        renderDimensions();
         renderExplode(manifest);
         renderPlayback(manifest);
       });
@@ -1582,12 +1639,17 @@
   function initialize() {
     $('check-policy-origin').addEventListener('click', function () { renderPolicyOrigin(true); });
     state.viewer = window.CadexViewer.create($('viewer'));
+    state.viewer.setOnDraw(drawDimensions);
     $('current-run').addEventListener('click', function () {
       if (!state.review) return;
       select(currentView());
       state.following = true;
     });
     $('model-fit').addEventListener('click', function () { state.viewer.fit(); });
+    $('show-dimensions').addEventListener('change', function (event) {
+      state.showDimensions = !!event.target.checked;
+      drawDimensions();
+    });
     $('show-collision').addEventListener('change', function (event) {
       state.showProxies = !!event.target.checked;
       state.viewer.showProxies(state.showProxies);

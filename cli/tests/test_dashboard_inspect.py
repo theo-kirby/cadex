@@ -444,7 +444,8 @@ def test_browser_plays_a_real_rollout_with_the_trace_s_placements(carriage_run, 
     page.evaluate("window.cadexReview.select('baseline')")
     page.wait_for("(window.cadexReview.playback() || {}).times_s !== undefined", timeout=60)
     assert _model_state(page) == "loaded"
-    assert page.evaluate("document.getElementById('play-toggle').disabled") is False
+    # The button enables once the trace's frames have loaded, after the model settles: wait for it.
+    page.wait_for("!document.getElementById('play-toggle').disabled", timeout=30)
     assert "no command yet" in page.text("#play-note")
 
     # A mid-trace frame, at its own time, is the trace's placements exactly.

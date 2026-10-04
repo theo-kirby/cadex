@@ -57,7 +57,7 @@ Owner's defaults (charter A1):
 | `cadex_blueprint.py` | 495 | Viewport "blueprint" restyle: flat fill, true BREP edges, four themes, 10 mm grid. Also the theme table for sheets | dropped (ADR-498) as a live restyle; themes dropped (ADR-516) | Restyling the live viewport is hands-on presentation. The rendered equivalent is `CadexStudio.line_view` / `look`. Sheets keep one theme, the dashboard's dark floor (`docs/DASHBOARD.md` §4), so a sheet sits in the page as the concept sheet does; four themes were a viewport choice (ADR-516) |
 | `cadex_cage.py` | 381 | Section-cage rings as draggable wire objects, applied back as table rows | dropped (ADR-498) | On the drop list (cage ring-drag). The data stays engine-side: `CadexCage` via `CadexInspection._script_cages` |
 | `cadex_collision.py` | 546 | MuJoCo collision-shape overlay parented to components, plus a contact and interpenetration summary at t=0 | already covered (overlay); ported (ADR-508) the t=0 contact readout | Overlay: `review_server.py` `collision_proxies`, `review_scene.js` proxies, and the `review.js` show-collision toggle. The t=0 readout: `review_server.initial_contacts` and `#collision-contacts`, from the export's stored `dynamics.initial_contacts`; test `cli/tests/test_dashboard_inspect.py::test_browser_names_the_parts_touching_at_rest_and_the_agent_reads_the_same` |
-| `cadex_dimension.py` | 770 | Draws declared `part.measurement` dimensions (linear, diameter, radius, angle) in screen space | ported (ADR-516) on drawing sheets; to port (D2.5): the in-viewer overlay | `CadexStudio.blueprint_sheet` draws each declared `part.measurement` (linear, diameter, radius, angle) once, on the view where it reads, re-derived (`cli/tests/test_blueprint.py::test_declared_measurements_are_drawn_once_where_they_read`). `CadexStudio.look` deliberately draws none, and the dashboard's viewer draws none yet |
+| `cadex_dimension.py` | 770 | Draws declared `part.measurement` dimensions (linear, diameter, radius, angle) in screen space | ported (ADR-516) on drawing sheets; ported (D2.5, ADR-524) as the viewer overlay | `CadexStudio.blueprint_sheet` draws each declared `part.measurement` (linear, diameter, radius, angle) once, on the view where it reads, re-derived (`cli/tests/test_blueprint.py::test_declared_measurements_are_drawn_once_where_they_read`). The dashboard's viewer draws the same records over the solids (`review_server.declared_measurements`, `review_static/dimensions.js`): the engine's anchors on the component that shows the measured output, everything else in screen pixels, a leader when end-on, the widest on-screen diameter of a circle. A placed design's undeclared-intermediate records are listed, not drawn, as on the sheet. `CadexStudio.look` deliberately draws none. Test: `cli/tests/test_dashboard_dimensions.py::test_browser_draws_each_declared_dimension_where_the_solid_is` |
 | `cadex_drawings.py` | 1,294 | Blueprint Editor: live draft or stored sheet, pager, Save/version, PNG export, click a cell to queue `@cell-N` | dropped (ADR-498) as an editor; ported (ADR-516) stored sheets as outputs | The interactive editor is on the drop list. Stored sheets are shown as outputs: the dashboard's **Drawings** panel lists every version newest first, shows the newest and downloads each (`review_server.blueprint_listing`, `docs/DASHBOARD.md` §28). Test: `test_blueprint.py::test_browser_shows_a_drawn_and_revised_sheet_from_a_real_engine`. Cell-click → a comment on the design (ADR-505); cell-level pins are not ported |
 | `cadex_explode.py` | 630 | Exploded view 0–1 using the engine's staged moves (slerp per stage), with leader lines | ported (D2.5, ADR-510) | `review_server.exploded_views` turns the engine's `exploded_view` record into pose frames, and the dashboard's `#explode-amount` plays them 0–N with slerp per stage through `setPoses`, with the engine's leader lines. Test: `cli/tests/test_dashboard_inspect.py::test_browser_explodes_the_engine_stages_and_cuts_a_section` |
 | `cadex_hydrate.py` | 511 | Decoded `cadex-tessellation-v1` into Blender objects with per-face and per-edge IDs, instanced components, pose-only preview | already covered (geometry); face-ID channel owner to confirm | `review_server.py` `accepted_model`, `tessellation_to_stl`, `review_scene.js` `load` / `install`. The STL route drops face IDs; part picking (ADR-505) does not need them, and only face-level pins would |
@@ -190,23 +190,24 @@ The audit fixed these rows:
 - **Owner confirmed:** `cadex_live.py`, the Live editor and `demo/` (owner
   notes).
 - **Split:** `cadex_dimension.py`. Sheets draw measurements (ADR-516), and
-  the viewer overlay is still open.
+  the viewer overlay was still open; it is now ported too (ADR-524).
 - **Named:** Chat and Parameters, which now cite their exact tests.
 
 Rows a status appears in. A row with a split status counts under each part.
 
 | section | rows | ported | already covered | dropped | still to port | owner to confirm |
 |---|---|---|---|---|---|---|
-| §1 modules | 47 | 20 | 15 | 25 | 1 | 2 |
+| §1 modules | 47 | 20 | 15 | 25 | 0 | 2 |
 | §2 tools | 23 | 6 | 17 | 2 | 0 | 0 |
 | §3 editors | 7 | 5 | 2 | 5 | 0 | 0 |
 
-**W1 cannot be claimed while any row says "to port".** One row still does:
-- `cadex_dimension.py`: the viewer overlay (D2.5).
+**W1 cannot be claimed while any row says "to port".** No row does now:
+the last, `cadex_dimension.py`'s viewer overlay, was ported by ADR-524.
 
 Since the audit, `cadex_roles.py`, `cadex_print.py` and the Parameters
 editor were ported (ADR-522), `modes.py` (ADR-521), and `agent.py`'s
-per-turn cost and text-tool-call warning (ADR-523).
+per-turn cost and text-tool-call warning (ADR-523), and
+`cadex_dimension.py`'s viewer overlay (ADR-524).
 
 The two "owner to confirm" rows are face-level pins and the face-ID
 channel. A1 asks for part picking, and that is ported.
