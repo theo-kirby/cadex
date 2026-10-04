@@ -34271,4 +34271,46 @@ run), `test_dashboard_writes.py` (slider, turn, revisions in a browser),
 `test_review_server.py` (orbit and zoom, the accepted model drawn and kept
 when the server goes, an unaccepted project, identity tracking).
 
+## ADR-534 — The project page is the app: Blender-style areas, four editors, a light theme, a hairline style (2026-10-04, owner direction, draft)
+
+**Context.** ADR-533 cut the page to its minimum the same day. The owner then
+asked for it to stop being a dashboard: "this is the app now". They wanted it in
+Blender's design language, with each window a draggable, resizable module, and four
+of them for now: a 3D viewport (models, sims, animation, policy), a 2D viewport
+(blueprints, images, documents, spec sheets, curves, plots), settings (model
+select, config, file) and chat (what to build or change). They also asked for a
+light and a dark mode, with the viewport shaded by default and a hairline or
+diagram style on request. This is a draft for the owner to try.
+
+**Decision.**
+- The project page is a screen tiled by areas. Each area shows one editor (`layout.js`, a plain
+  script). Gutters resize. A header drag docks the area on another's edge or swaps the two. Header
+  buttons split, maximize (Ctrl+Space) and close. Each editor shows at most once, and the
+  layout is kept per browser. Below 700 px one editor fills the screen, picked from a tab bar.
+- The four editors are the 3D viewport, the 2D viewport, Settings and Chat (`docs/DASHBOARD.md` §2, §12).
+  Chat is the design turn of ADR-504 shown as a conversation. Today it reaches what
+  `cadex -p` reaches. The owner intends it to grow into the agent that drives the whole app
+  (runs, modelling, sub-agents, disk and CLI); that is not built here.
+- The theme is dark by default, with light and system as choices (`theme.js`, §4). The environment module keeps its
+  one dark palette (ADR-331), so the shaded viewport and every capture are unchanged.
+- The render style is shaded by default, or hairline: a screen-space edge pass drawing silhouettes and creases
+  on paper that follows the theme (`review_scene.js` `setStyle`, §10). No capture uses it.
+
+**What comes back from ADR-533.** Only read-only views, on routes that never stopped answering:
+a run's model and its rollout playback, the drawing sheets, the presentation images, the
+project documents and the run's training curves. No write, route or tool changed;
+`review_server.py` adds only the two new static files.
+
+**Test.** `test_review_design.py`:
+- desk: the four areas of the default layout tile the screen without overlapping;
+- phone: one area plus the tab bar;
+- the dark tokens are computed by default;
+- `test_light_theme_is_chosen_kept_and_drawn`: the light theme and the hairline survive a reload, and the hairline paints the theme's paper.
+
+The browser suites for the slider, the turn and the revisions pass unchanged
+against the new shell.
+
+**What would reverse it.** The owner, after trying it. Each of the layout engine, the theme and
+the hairline style is one file or one function, so any of them can go alone.
+
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

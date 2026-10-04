@@ -2,4 +2,5 @@
 import {create} from './review_scene.js';
 import {parseStl} from './stl.js';
 window.CadexViewer = {create,parseStl};
+await import('./layout.js');
 await import('./review.js');

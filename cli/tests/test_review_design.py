@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""The review dashboard's design spec, and the ot6 evidence caps (ADR-328).
+"""The app's design spec, and the ot6 evidence caps (ADR-328, ADR-534).
 
 ``docs/DASHBOARD.md`` is the contract the page is held to (ADR-329).
 Without a browser this suite pins the spec's required sections, its
@@ -12,9 +12,9 @@ address or this machine's hostname in any of them. With a Chromium it
 renders the page at the two charter sizes, 1400×900 and 400×850 with touch
 emulation, and reads the spec back from the rendered page: the layout
 viewport is the device width, nothing overflows it, the palette tokens and
-type scale compute to §3–§4, the model fills everything right of the rail
-at desk (§12) and leads the phone's column, and the page has the three
-sections of §2 and no more (ADR-533).
+type scale compute to §3–§4, the default layout's four areas tile the
+screen at desk (§12), and on the phone one area, the 3D viewport, fills it
+above a tab bar (ADR-534).
 """
 from __future__ import annotations
 
@@ -150,14 +150,16 @@ def test_the_spec_itself_names_no_private_address():
 
 # -- the rendered page ---------------------------------------------------------
 
-# §2's reading order on a phone: the model, then the rail's three writes.
-READING_ORDER = ("#model", "#turn-panel", "#params-panel", "#revision-panel")
-HEADINGS = ["Design turn", "Parameters", "Revisions"]
+# §2: the four editors, in the default layout's reading order, and the
+# settings editor's panels.
+EDITORS = ["settings", "view3d", "view2d", "chat"]
+HEADINGS = ["File", "Parameters", "Revisions", "View"]
 
 MEASURE = """(function () {
   var cs = getComputedStyle(document.documentElement);
-  function rect(sel) { var n = document.querySelector(sel); if (!n) return null; var r = n.getBoundingClientRect();
+  function box(n) { if (!n) return null; var r = n.getBoundingClientRect();
     return {x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom}; }
+  function rect(sel) { return box(document.querySelector(sel)); }
   function size(sel) { return getComputedStyle(document.querySelector(sel)).fontSize; }
   var smallest = Infinity;
   document.querySelectorAll('body *').forEach(function (n) {
@@ -169,13 +171,16 @@ MEASURE = """(function () {
     fonts: Object.fromEntries(%s.map(function (s) { return [s, size(s)]; })),
     smallest_font: smallest,
     body_bg: getComputedStyle(document.body).backgroundColor,
-    headings: Array.from(document.querySelectorAll('h2')).map(function (h) {
+    headings: Array.from(document.querySelectorAll('#screen h2')).map(function (h) {
       return {text: h.textContent, transform: getComputedStyle(h).textTransform}; }),
-    regions: %s.map(function (s) { return rect(s).y; }),
-    canvas: rect('#viewer'), stage: rect('#stage'), left: rect('#left'), top: rect('#top'),
+    mode: document.getElementById('screen').dataset.mode,
+    areas: Array.from(document.querySelectorAll('#screen .area')).map(function (a) {
+      return Object.assign({editor: a.dataset.editor}, box(a)); }),
+    tabs: Array.from(document.querySelectorAll('#screen nav.tabs .tab')).map(function (t) { return t.dataset.editor; }),
+    canvas: rect('#viewer'), model: rect('#model'), screen: rect('#screen'), top: rect('#top'),
     scrollHeight: document.documentElement.scrollHeight, innerHeight: innerHeight
   };
-})()""" % (json.dumps(list(TOKENS)), json.dumps(list(TYPE)), json.dumps(list(READING_ORDER)))
+})()""" % (json.dumps(list(TOKENS)), json.dumps(list(TYPE)))
 
 
 def _rendered(browser, url, size):
@@ -222,24 +227,69 @@ def _assert_follows_the_spec(browser, server, size) -> None:
     # 5. The type scale, and nothing below 12 px.
     assert m["fonts"] == TYPE
     assert m["smallest_font"] >= 12
-    # Headings are sentence case, never uppercase; the page has these three and no more.
-    assert [h["text"] for h in m["headings"]] == HEADINGS
+    # Headings are sentence case, never uppercase.
     assert all(h["transform"] == "none" for h in m["headings"])
+    # 3. §12: a thin bar over the screen; the page never scrolls; the screen fills the rest.
+    assert m["top"]["height"] <= 48, m["top"]
+    assert m["scrollHeight"] <= m["innerHeight"], m["scrollHeight"]
+    assert m["screen"]["y"] >= m["top"]["bottom"] - 1 and round(m["screen"]["bottom"]) == m["innerHeight"]
+    # The 3D viewport's canvas fills its area's body.
+    assert m["canvas"]["width"] >= 0.98 * m["model"]["width"] and m["canvas"]["height"] >= 0.98 * m["model"]["height"]
     if size == "desk":
-        # 3. §12: a thin bar over the rail and the model, edge to edge; the page never scrolls.
-        assert m["top"]["height"] <= 48, m["top"]
-        assert m["scrollHeight"] <= m["innerHeight"], m["scrollHeight"]
-        assert round(m["left"]["x"]) == 0 and round(m["left"]["width"]) == 300
-        assert m["left"]["right"] <= m["stage"]["x"] and round(m["stage"]["right"]) == width
-        assert m["stage"]["y"] >= m["top"]["y"] + m["top"]["height"] - 1
-        assert m["canvas"]["width"] >= 0.98 * m["stage"]["width"]
-        assert m["canvas"]["height"] >= 0.98 * m["stage"]["height"]
-        assert round(m["stage"]["bottom"]) == m["innerHeight"]
+        # §12: the default layout tiles the screen with the four editors, none overlapping.
+        assert m["mode"] == "areas"
+        assert [a["editor"] for a in m["areas"]] == EDITORS
+        assert [h["text"] for h in m["headings"]] == HEADINGS
+        covered = sum(a["width"] * a["height"] for a in m["areas"])
+        assert 0.95 * m["screen"]["width"] * m["screen"]["height"] <= covered <= m["screen"]["width"] * m["screen"]["height"]
+        for i, a in enumerate(m["areas"]):
+            for b in m["areas"][i + 1:]:
+                overlap = (min(a["right"], b["right"]) - max(a["x"], b["x"]), min(a["bottom"], b["bottom"]) - max(a["y"], b["y"]))
+                assert overlap[0] <= 0.5 or overlap[1] <= 0.5, (a, b)
         return
-    # 3. On the phone the model leads the column at the full width.
-    assert m["regions"] == sorted(m["regions"]), "regions are out of reading order"
+    # §6: on the phone one editor fills the screen, the 3D viewport first, and a tab bar picks it.
+    assert m["mode"] == "tabs"
+    assert [a["editor"] for a in m["areas"]] == ["view3d"]
+    assert m["tabs"] == ["view3d", "view2d", "settings", "chat"]
     assert m["canvas"]["width"] >= width - 1
-    assert m["canvas"]["y"] < m["regions"][1]
+
+
+@needs_browser
+def test_light_theme_is_chosen_kept_and_drawn(tmp_path, browser) -> None:
+    """§4: the light theme overrides the same tokens, survives a reload, and
+    the hairline style draws the theme's paper."""
+
+    from test_review_server import REVISION_B, _review_project, _stage_accepted, serve
+    root = _review_project(tmp_path)
+    _stage_accepted(root, REVISION_B)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _rendered(browser, server.url, "desk")
+        assert page.evaluate("document.documentElement.dataset.theme") == "dark"
+        page.click("#theme-choice button[data-choice=light]")
+        assert page.evaluate("document.documentElement.dataset.theme") == "light"
+        light = page.evaluate("getComputedStyle(document.body).backgroundColor")
+        assert light != "rgb(20, 20, 20)"
+        page.click("#view3d-style button[data-style=hairline]")
+        assert page.evaluate("window.cadexReview.viewer().stats().render_style") == "hairline"
+        page.send("Page.reload", {})
+        page.wait_for("document.readyState === 'complete' && !!window.cadexReview")
+        page.evaluate("window.cadexReview.ready", await_promise=True)
+        assert page.evaluate("document.documentElement.dataset.theme") == "light"
+        assert page.evaluate("getComputedStyle(document.body).backgroundColor") == light
+        assert page.evaluate("window.cadexReview.renderStyle()") == "hairline"
+        # The hairline's paper fills the canvas where the model is not.
+        assert _model_state(page) == "loaded"
+        pixel = page.evaluate("""(function () {
+          var v = window.cadexReview.viewer(); v.draw();
+          var c = document.getElementById('viewer'), g = document.createElement('canvas');
+          g.width = c.width; g.height = c.height; var x = g.getContext('2d'); x.drawImage(c, 0, 0);
+          return Array.from(x.getImageData(2, 2, 1, 1).data.slice(0, 3)); })()""")
+        assert pixel == [0xfb, 0xfb, 0xf9], pixel
+        page.evaluate("localStorage.clear()")
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def test_after_receipt_records_the_page_the_spec_describes():

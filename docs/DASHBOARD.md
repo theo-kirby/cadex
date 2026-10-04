@@ -22,8 +22,8 @@ second one.
 **The pages are cut to the minimum (ADR-533).** On 2026-10-04 the owner had
 every panel removed that watching and steering a design does not need, to be
 added back one at a time as the need shows. What is left is three pages:
-the index (projects and runs), a project (the model and three ways to steer
-it) and a run (its charter and iterations). The server's routes are
+the index (projects and runs), a project and a run (its charter and
+iterations). The server's routes are
 unchanged, so every API the removed panels read — runs, telemetry, videos,
 evaluations, comments, notes, exports, sections, drawings, documents — still
 answers, and the CLI and the agent still use them; adding a panel back is
@@ -32,22 +32,31 @@ kept in its history; the ones that remain keep their numbers, so a `§`
 reference elsewhere still lands. §7 and §8 are the measured ot6 record of
 the page before and after the first spec, kept because the tests check them.
 
+**The project page is the app (ADR-534).** The same day the owner asked for
+the page to stop being a dashboard and be the app, in Blender's design
+language: the screen is tiled by **areas**, each showing one **editor** —
+the 3D viewport, the 2D viewport, Settings and Chat — and each area can be
+resized, moved, split, maximized or closed (§12). There is a light theme
+beside the dark one (§4), and the 3D viewport draws shaded by default or as
+a hairline diagram (§10). Still no build step: `layout.js` tiles the
+screen, `theme.js` picks the theme, and both are plain scripts.
+
 ## 1. Purpose
 
-The page answers one question for one person: **what does the design look
+The app answers one question for one person: **what does the design look
 like now, and how do I change it?** The reader is the owner, at a desk or on
-a phone, watching what the agent produced and stepping in lightly; they
-never model by hand (VISION's non-goals). The project page has three writes,
-each one `cadex` command: a design turn (§19), a parameter slider (§18) and
-a revision verdict (§21). Every write is a `POST` behind a per-launch token
+a phone, watching what the agent produced and steering it, mostly by telling
+it what to do; they never model by hand (VISION's non-goals). The project
+page has three writes, each one `cadex` command: a chat message, which is a
+design turn (§19), a parameter slider (§18) and a revision verdict (§21). Every write is a `POST` behind a per-launch token
 and a same-origin check (§18), on a server bound to 127.0.0.1 (§22).
 
-- **The model is the subject.** The viewport is the largest thing on every
-  width: the whole page right of the rail at desk, the first thing under the
-  top bar on a phone.
+- **The model is the subject.** The 3D viewport is the largest area in the
+  default layout and the first tab on a phone.
+- **The layout is the reader's.** Every editor lives in an area the reader
+  can move and size; the layout is kept in their browser, not the project.
 - **Nothing that is not needed.** No identity block, no hashes in the
-  chrome, no tabs. The top bar says which project and which revision; the
-  rail holds the three writes.
+  chrome. The top bar says which project and which revision.
 
 ## 2. Hierarchy
 
@@ -57,15 +66,19 @@ accepted first, 20 to a page. Each row is the name, linking to its page, and
 a muted date; **Newer** and **Older** page through them, and the page number
 is kept in the URL (`?page=N`).
 
-**Project** (`/p/<name>/`, or `/` under `cadex review`), in reading order:
+**Project** (`/p/<name>/`, or `/` under `cadex review`): the top bar over
+the screen (`#screen[data-mode]`), which `layout.js` tiles with areas
+(`.area[data-area][data-editor]`, §12). Each editor's markup is parked in
+`#editor-shelf`; an area takes its `.editor-tools` into its header and its
+`.editor-body` below.
 
-| # | Region | Element hooks (stable) | What it is for |
+| Editor | `data-editor` | Element hooks (stable) | What it is for |
 |---|---|---|---|
-| 0 | **Top bar** | `#top`, `#home`, `#project-name`, `#accepted-line`, `#freshness[data-state]` | A link home (hidden under `cadex review`), the project's name, the accepted revision's ordinal and when it was accepted, and **live** or **offline**. |
-| 1 | **Model** | `#stage`, `#model`, `#model-status[data-state]`, `#viewer`, `#model-fit` | The accepted revision's solids in the shared environment (§4, §10); orbit by pointer or touch; **Fit**. The status line shows only while loading or when there is nothing to draw. |
-| 2 | **Design turn** | `#turn-panel`, `#turn-prompt`, `#turn-resume`, `#turn-start`, `#turn-status[data-state]`, `#turn-transcript` | Start a `cadex -p` turn and watch its transcript stream (§19). |
-| 3 | **Parameters** | `#params-panel`, `#params tr[data-param]`, `#params-write[data-state]`, `#params-empty` | One row per declared parameter: its label, and a slider with the value and unit, or the value alone when it has no range (§18). |
-| 4 | **Revisions** | `#revision-panel`, `#revision-accept`, `#revision-reject`, `#revision-status[data-state]`, `#revision-list li[data-revision][data-ordinal][data-current]`, `.revision-restore` | Accept or reject the current revision, or restore an earlier one (§21). |
+| **Top bar** | — | `#top`, `#home`, `#project-name`, `#accepted-line`, `#freshness[data-state]`, `#theme-toggle` | A link home (hidden under `cadex review`), the project's name, the accepted revision's ordinal and date, **live** or **offline**, and a light/dark toggle. |
+| **3D viewport** | `view3d` | `#view3d-source`, `#view3d-style button[data-style]`, `#model-fit`, `#model`, `#model-status[data-state]`, `#viewer`, `#playback`, `#play-toggle`, `#play-time`, `#play-clock` | The accepted model or a run's, shaded or hairline (§10); orbit by pointer or touch; **Fit**. A run that kept a rollout trace plays it on the timeline. |
+| **2D viewport** | `view2d` | `#view2d-source`, `#view2d-fit`, `#sheet-stage[data-kind]`, `#sheet-empty` | The project's drawings and presentation images (pan, zoom, double-click to fit), its documents (markdown, drawn as text only), and each run's training curves (reward, loss, episode length) as plots. |
+| **Settings** | `settings` | `#file-panel`, `#project-select`, `#project-open`; `#params-panel`, `#params tr[data-param]`, `#params-write[data-state]`, `#params-empty`; `#revision-panel`, `#revision-accept`, `#revision-reject`, `#revision-status[data-state]`, `#revision-list li[data-revision][data-ordinal][data-current]`, `.revision-restore`; `#view-panel`, `#theme-choice`, `#style-choice`, `#layout-reset` | Open another project; the parameter sliders (§18); accept, reject or restore a revision (§21); the theme, the render style and the layout. Panels fold. There is no Save: every change is already a revision. |
+| **Chat** | `chat` | `#chat-log`, `#chat-live`, `#turn-prompt`, `#turn-resume`, `#turn-start`, `#turn-status[data-state]`, `#turn-transcript`, `#chat-new` | What to build or change: each message is a design turn, and the agent's words and tool calls stream in as its reply (§19). |
 
 **Run** (`/r/<run>/`): the top bar (home, the run's name, its state and
 iteration count), **Charter** and **Iterations** (§27).
@@ -84,7 +97,7 @@ One family, one scale, one line height.
 | `--fs-2` | 17 px | 600 | the page title (`h1`) in the top bar |
 | `--fs-3` | 22 px | 600 | reserved; nothing uses it now |
 
-At desk the top bar title is `--fs-2` and a rail heading `--fs-1` at
+The top bar title is `--fs-2` and a Settings panel heading `--fs-1` at
 600; the scale does not change with the width.
 
 - **Family**: `--font: system-ui, "Segoe UI", "Helvetica Neue", Arial, sans-serif`;
@@ -102,11 +115,23 @@ At desk the top bar title is `--fs-2` and a rail heading `--fs-1` at
 
 ## 4. Palette
 
-**Dark only.** The light theme is removed from the environment module
-(ADR-331, under D3 of ADR-328), not kept behind a switch. The chrome tokens below are chosen so
-that the page background *is* the scene background: the viewport is a window
-onto the same near-black place the videos are captured in, not a light card
-inside a dark frame.
+**Dark by default, light on request (ADR-534).** The chrome tokens below are
+the dark theme, chosen so that the page background *is* the scene background:
+the viewport is a window onto the same near-black place the videos are
+captured in. The environment module keeps its one dark palette (ADR-331):
+the shaded viewport and every capture stay in it whatever the theme, as a
+Blender viewport keeps its own colour under a light interface.
+
+The light theme overrides the same token names under
+`:root[data-theme="light"]`: `--bg` #cfcfcf, `--surface` #f4f4f4,
+`--surface-2` #e6e6e6, `--surface-3` #d9d9d9, `--rule` #c4c4c4,
+`--rule-strong` #a8a8a8, `--ink` #1c1c1c, `--ink-2` #5c5c5c, `--accent`
+#262626, `--ok` #18794a, `--warn` #8a6100, `--bad` #b42318, `--info`
+#0b7285. Two tokens beyond the table follow the theme too: `--select` (a
+pressed button, the drop hint) and `--paper` / `--paper-ink` (the hairline
+diagram, §10). `theme.js` sets `data-theme` before the first paint from the
+browser's stored choice — dark, light or the system's — and every page
+loads it.
 
 The base is the greyscale of the `neural-whoop` reference studio (its `:root`
 dark set) and of the one `PALETTE` in
@@ -116,7 +141,7 @@ dark tile and scene values and nothing else (ADR-331).
 | Token | Value | Used for | Equals |
 |---|---|---|---|
 | `--bg` | `#141414` | page background | `PALETTE.scene.bg` (`0x141414`) — chrome and viewport share it |
-| `--surface` | `#1b1b1b` | top bar, the rail | reference `--panel` |
+| `--surface` | `#1b1b1b` | an area's body | reference `--panel` |
 | `--surface-2` | `#242424` | controls, table heads, code blocks, curve backgrounds | reference `--panel-2`; between the mat's tiles `#1c1c1c` / `#232323` and its major line |
 | `--surface-3` | `#2c2c2c` | hover, the selected run | reference `--panel-3` |
 | `--rule` | `#3a3a3a` | every border and heading rule | reference `--line`; also the mat's major grid line |
@@ -158,8 +183,10 @@ A 4 px base: `--s1` 4, `--s2` 8, `--s3` 12, `--s4` 16, `--s5` 24, `--s6` 32.
 - **Controls**: minimum 40 × 40 px hit area on touch (`@media (pointer:
   coarse)`), 32 px on desk; `--surface-2` fill, `--rule` border, `--surface-3`
   on hover, `--rule-strong` on focus. No native chrome on buttons.
-- **The viewport** fills everything right of the rail at desk and keeps a
-  4:3 box the full width of the column below it, with `touch-action: none`
+- **Areas** have a 6 px radius (`--radius-area`) and a 4 px gap (`--gap`)
+  between them on `--bg`; an area's header is 32 px on `--surface-2`, its
+  controls 24 px.
+- **The viewport** fills its area's body, with `touch-action: none`
   so a one-finger drag orbits instead of scrolling the page. The canvas
   backing store follows the box, so the model is never stretched. **Orbit
   is by pointer events** (ADR-330): one pointer orbits, two fingers
@@ -174,8 +201,8 @@ One.
 
 | Range | Layout |
 |---|---|
-| **≥ 1000 px** (desk; 1400 is the reference width) | The project page is a 44 px top bar over a 300 px rail on the left and the model filling the rest (§12). The page never scrolls; the rail scrolls on its own. |
-| **< 1000 px** (phone; 400 × 850 is the reference size) | One column: the top bar, the model the full width, then the turn, the parameters and the revisions. `--s3` gutters below 600 px. |
+| **≥ 700 px** (desk; 1400 is the reference width) | A 40 px top bar over the screen, tiled by areas (§12). The page never scrolls; each editor scrolls on its own. |
+| **< 700 px** (phone; 400 × 850 is the reference size) | One editor fills the screen, the 3D viewport first, and a tab bar at the bottom picks it. `--s3` gutters below 600 px. |
 
 The index and a run's page are one column, at most 760 px wide, at every
 width.
@@ -188,10 +215,12 @@ rendered page at 1400 × 900 and at 400 × 850 with touch emulation:
    `overflow-x: hidden` on the body.
 2. **The layout viewport is the device width**: `innerWidth === 400` at phone
    size. §7 shows what happens when it is not.
-3. **The viewport fills its column**: at desk the canvas fills everything
-   right of the rail and below the bar, and the page does not scroll; on
-   phone it is the full `innerWidth` and comes before the rail.
-4. **The palette tokens of §4 are the computed values** on the rendered page.
+3. **The screen fills the window**: below the bar to the bottom edge, and the
+   page does not scroll. At desk the default layout's four areas tile it
+   without overlapping; on a phone the one area is the 3D viewport and the
+   canvas is the full `innerWidth`.
+4. **The palette tokens of §4 are the computed values** on the rendered page,
+   in the default dark theme; the light theme survives a reload.
 5. **Type never drops below 12 px**, and `h1`/`h2`/body compute to §3.
 
 ## 7. Before: the page as ot5 left it
@@ -344,6 +373,16 @@ Every receipt ships under `docs/probes/ot6/` within the charter's caps
 
 ## 10. The viewport: dark only, shared with the capture
 
+**Render styles (ADR-534).** The 3D viewport draws **shaded** by default —
+the lit stage below, the one every capture uses — or **hairline**: a
+diagram of silhouettes and creases in `--paper-ink` on flat `--paper`, with
+no floor, shadow or fog. The hairline is one screen-space pass in
+`review_scene.js` (`setStyle`): the solids' view normals and depth are drawn
+offscreen, and ink goes wherever either jumps between neighbouring pixels —
+depth for silhouettes, a normal turn of more than about 30° for creases — so a
+tessellated fillet, whose facets turn by less, stays clean. The choice is the
+browser's (`cadex.render`); a capture never uses it.
+
 The environment module behind the viewport and the video capturer has one
 palette, the reference's dark one (ADR-331); the light palette and its theme
 setter are gone from the code rather than parked behind a switch. Its scene
@@ -398,15 +437,32 @@ and the assessment are the second half of
 [docs/probes/ot6/look/README.md](probes/ot6/look/README.md), composite
 [follow-side-by-side.png](probes/ot6/look/follow-side-by-side.png).
 
-## 12. The desk layout: a rail beside the model
+## 12. The screen: areas and editors (ADR-534)
 
-At desk the project page is a grid of two columns under the top bar: the
-rail (`#left`, 300 px, `--surface`, a `--rule` on its right edge) and the
-stage (`#stage`), which holds the model alone. The model's canvas fills the
-stage edge to edge, and **Fit** floats in its bottom-right corner. The rail
-scrolls on its own; the page does not. The rail is not resizable or
-foldable, and there is no right sidebar or tab row (ADR-533 removed the
-frame of ADR-342).
+After Blender's screen. The screen is a tree: a split (`row` or `col`, with
+each child's share) or an area showing one editor. The default is Settings
+down the left (20 %), the 3D viewport over the 2D viewport in the middle
+(56 %, split 64/36), and Chat on the right (24 %).
+
+- **Resize**: drag the 4 px gutter between two areas; it moves that boundary
+  only, and no area goes below 120 px.
+- **Pick the editor**: the dropdown at the left of an area's header. Each
+  editor shows at most once, so picking one already shown swaps the two areas.
+- **Move**: drag an area's header (its grip or any empty part of it) onto
+  another area. A drop on an edge docks it on that side, splitting the target;
+  a drop in the middle swaps the two. A hint shows where it will land.
+- **Split, maximize, close**: the four buttons at the right of the header.
+  A split opens an editor not shown yet beside the area, so with all four
+  shown there is nothing to split. Maximize (or Ctrl+Space over the area)
+  gives the area the whole screen until it is pressed again. The last area
+  cannot close.
+- **Kept**: the layout is this browser's (`localStorage`
+  `cadex.layout.v1`); Settings → View → Layout → **Reset** returns the
+  default. A browser that refuses storage gets the default every visit.
+
+An editor's markup is never rebuilt by a layout change: the area moves the
+editor's own elements, so a canvas keeps its WebGL context and a half-typed
+message stays typed. Below 700 px there is no tiling (§6).
 
 ## 15. Policy videos are drawn in the studio look (ADR-431)
 
@@ -514,9 +570,10 @@ measured again.
 
 ## 19. Steering: a design turn (ADR-504)
 
-The page's second write. `#turn-panel` leads the rail (on phone it sits
-under the model): a prompt, a **continue** toggle
-(on by default — the CLI's `--resume`) and **Start turn**. Starting is
+The page's second write, and the Chat editor's whole job: a message box, a
+**continue** toggle (on by default — the CLI's `--resume`) and **Send**
+(or Enter; Shift+Enter is a new line). **New chat** turns continue off for
+the next message, which starts a new agent session, and clears the log. Starting is
 `POST api/turn` with `{"prompt": text, "resume": bool}`, behind the same
 token and `Origin` check as the slider (§18); the server answers 202 and
 runs `cadex --project <root> --prompt=<text> [--resume] --json` as a child
@@ -533,9 +590,13 @@ returns what arrived after character `N`, with the turn's id, state
 (`accepted_revision`, `digest`, `notes`, `error`, `usage`, exit and seconds); with no
 turn it is `{"state": "idle"}`. The page reads it every second, so a page
 opened mid-turn, or on another device, picks the running turn up from the
-start. While it runs the prompt and button are disabled and
-`#turn-status[data-state=running]` reads **running…**; when it ends it reads
-**done**, or the CLI's refusal in the bad colour, and the next project poll
+start. In the chat the prompt is the user's message and the transcript is
+the reply: the agent's prose as text, each `· tool` line as a quiet
+monospace row, and a footer naming the revision it accepted or, in the bad
+colour, why it failed. Earlier exchanges of the visit stay above. While it
+runs the prompt and button are disabled and
+`#turn-status[data-state=running]` reads **working…**; when it ends it reads
+**done**, or **failed**, and the next project poll
 reloads the model because the accepted revision moved. The server never writes into the project: what a
 turn leaves there — the revision, the `PROGRESS.md` row, the project
 commit, the agent's decisions and notes, and its transcript and `look`
@@ -559,7 +620,7 @@ The page attaches no image (ADR-533); `api/turn` still takes `images`
 
 ## 21. Steering: accept, reject or restore a revision (ADR-506)
 
-The page's third write. `#revision-panel` sits under the parameters:
+The page's third write. `#revision-panel` sits under the parameters in Settings:
 **Accept** and **Reject**, and `#revision-list`, the stored trail newest
 first, numbered by ordinal — **current** for the accepted one, when it was
 accepted for the rest — with **Restore** on every row but the current one.

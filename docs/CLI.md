@@ -1404,10 +1404,15 @@ other command keeps the restore.
 # review: serving biped at http://100.x.y.z:8765/ (writes need the page's token; Ctrl-C to stop)
 ```
 
-The page's layout, type and colour follow `docs/DASHBOARD.md`: one dark
-palette, one type scale. **Since ADR-533 the page shows only the accepted
-model, a design turn, the parameter sliders and the revisions**, in a rail
-beside the model at desk width and one column, model first, on a phone.
+The page's layout, type and colour follow `docs/DASHBOARD.md`: a dark
+theme by default and a light one, one type scale. **Since ADR-534 the
+project page is the app**: a screen tiled by resizable, movable areas after
+Blender's, each showing one editor — the 3D viewport, the 2D viewport,
+Settings and Chat — and one editor at a time, picked from a tab bar, on a
+phone. ADR-533 had cut what it shows to the accepted model, a design turn,
+the parameter sliders and the revisions; ADR-534 adds back run models and
+playback, drawings, images, documents and training plots, all read from
+routes that were already served.
 `cli/tests/test_review_design.py` reads the spec back from the rendered page
 at 1400×900 and 400×850.
 
