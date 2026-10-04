@@ -332,6 +332,14 @@
   // offset, so each read carries only what arrived since the last.
   var turn = { id: null, state: 'idle', text: '', next: 0, reply: null, prompt: '' }, turnRequest = null;
 
+  // What the turn cost, as Claude Code reported it (ADR-523); nothing when unpriced.
+  function turnCost(usage) {
+    if (!usage) return '';
+    var tokens = (usage.input_tokens || 0) + (usage.cached_tokens || 0) + (usage.output_tokens || 0);
+    return ' · ' + tokens.toLocaleString('en-US') + ' tokens' +
+      (typeof usage.cost_usd === 'number' ? ', $' + usage.cost_usd.toFixed(2) : '');
+  }
+
   function renderTurn() {
     var status = $('turn-status'), transcript = $('turn-transcript'), running = turn.state === 'running';
     status.dataset.state = turn.state;
@@ -342,8 +350,8 @@
     else if (running) status.textContent = 'running: ' + turn.prompt +
       (turn.images && turn.images.length ? ' (with ' + turn.images.map(function (image) { return image.name; }).join(', ') + ')' : '');
     else if (turn.reply && turn.reply.ok) status.textContent = 'accepted at ' + short(turn.reply.accepted_revision) +
-      ' in ' + Number(turn.reply.seconds || 0).toFixed(1) + ' s';
-    else status.textContent = (turn.reply && turn.reply.error) || 'the turn failed';
+      ' in ' + Number(turn.reply.seconds || 0).toFixed(1) + ' s' + turnCost(turn.reply.usage);
+    else status.textContent = ((turn.reply && turn.reply.error) || 'the turn failed') + turnCost(turn.reply && turn.reply.usage);
     transcript.hidden = !turn.text;
     if (transcript.textContent !== turn.text) {
       var pinned = transcript.scrollTop + transcript.clientHeight >= transcript.scrollHeight - 4;

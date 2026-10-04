@@ -48,7 +48,7 @@ Owner's defaults (charter A1):
 | module | lines | what it did | status | where / why |
 |---|---|---|---|---|
 | `__init__.py` | 281 | Registered the package, its save/load/frame-change handlers, keymaps and teardown order | dropped (ADR-498) | Blender registration. Nothing to port |
-| `agent.py` | 819 | The chat turn inside Blender: tool pump on the main thread, one undo step per turn, cancel, provider/model switch, per-turn time/tokens/cost, a warning when the model writes a tool call as text | ported (ADR-504, ADR-506, ADR-507); to port (A1): per-turn cost, the text-tool-call warning | The turn is `cli/cadex_cli/agent.py` `ClaudeTurn` + `loop.py`. The transcript streams to the page (ADR-504; `test_dashboard_writes.py::test_browser_starts_a_turn_and_watches_it_land`). Image attachments are ported (ADR-507): `cadex -p --image`, the turn panel's **Attach image** (`cli/tests/test_prompt_images.py`, `test_dashboard_writes.py`). Still missing: per-turn cost and the text-tool-call warning. Undo is ported as revision reject/restore: `cadex revision`, the dashboard's revision buttons (ADR-506; `cli/tests/test_revisions.py`, `test_dashboard_writes.py::test_browser_accepts_rejects_and_restores_a_revision`) |
+| `agent.py` | 819 | The chat turn inside Blender: tool pump on the main thread, one undo step per turn, cancel, provider/model switch, per-turn time/tokens/cost, a warning when the model writes a tool call as text | ported (ADR-504, ADR-506, ADR-507, ADR-523) | The turn is `cli/cadex_cli/agent.py` `ClaudeTurn` + `loop.py`. The transcript streams to the page (ADR-504; `test_dashboard_writes.py::test_browser_starts_a_turn_and_watches_it_land`). Image attachments are ported (ADR-507): `cadex -p --image`, the turn panel's **Attach image** (`cli/tests/test_prompt_images.py`, `test_dashboard_writes.py`). Per-turn time, tokens and cost and the text-tool-call warning are ported (ADR-523): `turn_usage` and `imitated_tool_call` read the claude CLI's frames; the envelope's `usage`, a ` · turn:` transcript line and the turn status's tokens and price (`cli/tests/test_turn_usage.py`, `test_dashboard_writes.py::test_browser_starts_a_turn_and_watches_it_land`). The provider switch went with Codex and pi (ADR-497); the model switch is `--model`. Undo is ported as revision reject/restore: `cadex revision`, the dashboard's revision buttons (ADR-506; `cli/tests/test_revisions.py`, `test_dashboard_writes.py::test_browser_accepts_rejects_and_restores_a_revision`) |
 | `backend.py` | 779 | One subprocess per turn for Claude Code, Codex or pi, normalising their event streams. Built-in tools off | dropped: Codex and pi (charter A4, ADR-497); already covered: Claude | `cli/cadex_cli/agent.py` `find_claude`, `ClaudeTurn._command`. The shell set `ENABLE_TOOL_SEARCH=false` (ADR-163) so that MCP tools were not deferred out of reach with built-ins off. The CLI does not, and does not need to: `_command` enumerates every engine tool in `--allowedTools`, and W1's real prompt turn on `orun2-w1-quad` (`docs/probes/orun2/w1/README.md`, step 1) called `inspect`, `look`, `edit_script`, `set_params` and `rebuild` with only the output cap in its environment. Settled; nothing to port |
 | `bridge.py` | 115 | Token-guarded localhost TCP bridge that queued tool calls onto Blender's main thread | already covered | `cli/cadex_cli/bridge.py` `Bridge` |
 | `cadex_animate.py` | 460 | Baked a simulation or rollout trace into Blender F-curves, plus per-frame actuator commands | ported (D2.5, ADR-511) as browser playback; the baking itself dropped (ADR-498) | `review_server.trace_playback` serves a run's rollout trace at `api/playback/run/<name>`, and the dashboard's Play button and `#play-time` slider play it through `setPoses`. The frame rules are re-derived: time-based frames (the untimed input frame dropped), quaternion sign continuity, and zero-order-hold commands. xyzw→wxyz was Blender's convention and three.js needs no conversion. Test: `cli/tests/test_dashboard_inspect.py::test_browser_plays_a_real_rollout_with_the_trace_s_placements` |
@@ -197,16 +197,16 @@ Rows a status appears in. A row with a split status counts under each part.
 
 | section | rows | ported | already covered | dropped | still to port | owner to confirm |
 |---|---|---|---|---|---|---|
-| §1 modules | 47 | 20 | 15 | 25 | 2 | 2 |
+| §1 modules | 47 | 20 | 15 | 25 | 1 | 2 |
 | §2 tools | 23 | 6 | 17 | 2 | 0 | 0 |
 | §3 editors | 7 | 5 | 2 | 5 | 0 | 0 |
 
-**W1 cannot be claimed while any row says "to port".** Two rows still do:
-- `agent.py`: per-turn cost and the text-tool-call warning (A1);
+**W1 cannot be claimed while any row says "to port".** One row still does:
 - `cadex_dimension.py`: the viewer overlay (D2.5).
 
 Since the audit, `cadex_roles.py`, `cadex_print.py` and the Parameters
-editor were ported (ADR-522), and `modes.py` (ADR-521).
+editor were ported (ADR-522), `modes.py` (ADR-521), and `agent.py`'s
+per-turn cost and text-tool-call warning (ADR-523).
 
 The two "owner to confirm" rows are face-level pins and the face-ID
 channel. A1 asks for part picking, and that is ported.

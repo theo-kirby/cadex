@@ -17,6 +17,7 @@ handed, as :mod:`mock_backend`'s do; only the model is faked.
     ["tool", "write_script", {...}]   a real bridge round trip
     ["wait", "/path/to/gate"]         block until that file exists (120 s)
     ["done", "final words"]           the turn's result
+    ["done", "words", {...}]          the same, with result-frame fields
 
 and ``CADEX_FAKE_CLAUDE_SEEN``, when set, receives the prompt it was given.
 A prompt with images arrives as ``--input-format stream-json`` on stdin
@@ -77,7 +78,10 @@ def main(argv: list[str]) -> int:
                     return 3
                 time.sleep(0.05)
         elif kind == "done":
-            _emit({"type": "result", "is_error": False, "result": step[1]})
+            # An optional third element is merged into the result frame:
+            # the cost and usage a real turn reports (ADR-523).
+            _emit({"type": "result", "is_error": False, "result": step[1],
+                   **(step[2] if len(step) > 2 else {})})
     return 0
 
 

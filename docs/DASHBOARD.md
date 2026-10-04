@@ -841,13 +841,14 @@ lines and the model's prose — which is exactly what a terminal running the
 same command shows. The server holds it in memory and `GET api/turn?since=N`
 returns what arrived after character `N`, with the turn's id, state
 (`running`, `done`, `failed`) and, once it ends, the child's envelope
-(`accepted_revision`, `digest`, `notes`, `error`, exit and seconds); with no
+(`accepted_revision`, `digest`, `notes`, `error`, `usage`, exit and seconds); with no
 turn it is `{"state": "idle"}`. The page reads it every second, so a page
 opened mid-turn, or on another device, picks the running turn up from the
 start. While it runs the prompt and button are disabled and
 `#turn-status[data-state=running]` names the prompt; when it ends the
 status gives the accepted revision in the ok colour or the CLI's refusal in
-the bad colour, and the next project poll reloads the model because the
+the bad colour, followed by the turn's tokens and price when the claude CLI
+reported them (ADR-523), and the next project poll reloads the model because the
 accepted revision moved. The transcript is never written into the project:
 what a turn leaves there — the revision, the `PROGRESS.md` row, the
 project commit, the agent's decisions and notes — is the CLI's (charter A3),

@@ -2231,7 +2231,8 @@ class PromptTurn:
             envelope = leg.envelope
             reply = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
                      "seconds": round(leg.seconds, 3)}
-            for key in ("accepted_revision", "digest", "params", "error", "notes", "session_id", "attachments"):
+            for key in ("accepted_revision", "digest", "params", "error", "notes", "session_id", "attachments",
+                        "usage"):
                 if key in envelope:
                     reply[key] = envelope[key]
         except Exception as exc:  # noqa: BLE001 - the page must hear how it ended

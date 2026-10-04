@@ -352,7 +352,9 @@ def test_browser_starts_a_turn_and_watches_it_land(plate_app, fake_claude, brows
         ["wait", str(gate)],
         ["tool", "write_script", {"source": wider}],
         ["text", "Done: the plate is 64 mm wide.\n"],
-        ["done", "Done: the plate is 64 mm wide."],
+        ["done", "Done: the plate is 64 mm wide.",
+         {"total_cost_usd": 0.4213, "duration_ms": 9000,
+          "usage": {"input_tokens": 1000, "cache_read_input_tokens": 20000, "output_tokens": 500}}],
     ]), encoding="utf-8")
     page = _open(browser, server.url + "p/plate/")
     assert _model_state(page) == "loaded"
@@ -389,6 +391,10 @@ def test_browser_starts_a_turn_and_watches_it_land(plate_app, fake_claude, brows
                          " - window.cadexReview.viewer().stats().bounds.min[0]") == pytest.approx(64.0, abs=0.01)
     assert page.attribute("#turn-status", "data-state") == "done"
     assert revision[:12] in page.text("#turn-status")
+    # What the turn cost, as the claude CLI reported it (ADR-523).
+    assert turn["reply"]["usage"]["cost_usd"] == pytest.approx(0.4213)
+    assert "21,500 tokens, $0.42" in page.text("#turn-status")
+    assert "· turn: 1,000 in, 20,000 cached, 500 out tokens, $0.42, 9.0 s" in turn["text"]
     # It was the CLI's turn: its PROGRESS.md row and its project commit.
     assert f"prompt: {prompt}" in (root / "PROGRESS.md").read_text()
     after = int(subprocess.run(["git", "-C", str(root), "rev-list", "--count", "HEAD"],

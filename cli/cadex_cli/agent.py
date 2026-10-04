@@ -665,6 +665,73 @@ def _python_executable() -> str:
     return sys.executable or "python3"
 
 
+def turn_usage(frames: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """What a turn cost, summed over its ``result`` frames (ADR-523).
+
+    Claude Code closes every ``-p`` run with one ``result`` frame carrying
+    ``total_cost_usd``, ``duration_ms`` and the token ``usage``; a turn the
+    CLI asked once more holds two. ``{}`` when no frame reported any of it,
+    and ``cost_usd`` is ``None`` when the harness priced nothing, so a turn
+    that cost nothing is never confused with one nobody priced.
+    """
+
+    totals = {"input_tokens": 0, "cached_tokens": 0, "output_tokens": 0}
+    cost: float | None = None
+    duration_ms = 0
+    reported = 0
+    for frame in frames:
+        if frame.get("type") != "result":
+            continue
+        usage = frame.get("usage") if isinstance(frame.get("usage"), dict) else {}
+        price = frame.get("total_cost_usd")
+        if not usage and not _number(price):
+            continue
+        reported += 1
+        totals["input_tokens"] += _count(usage.get("input_tokens")) + _count(
+            usage.get("cache_creation_input_tokens"))
+        totals["cached_tokens"] += _count(usage.get("cache_read_input_tokens"))
+        totals["output_tokens"] += _count(usage.get("output_tokens"))
+        if _number(price):
+            cost = (cost or 0.0) + float(price)
+        duration_ms += _count(frame.get("duration_ms"))
+    if not reported:
+        return {}
+    return {**totals, "cost_usd": None if cost is None else round(cost, 6),
+            "duration_ms": duration_ms, "results": reported}
+
+
+def _number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _count(value: Any) -> int:
+    return int(value) if _number(value) and value > 0 else 0
+
+
+#: Markup a model writes when it means to call a tool it cannot reach. A
+#: real call arrives as a ``tool_use`` block and never as text (ADR-523).
+IMITATED_TOOL_CALL_MARKS = ("<invoke name=", "<function_calls>")
+
+
+def imitated_tool_call(frames: Sequence[dict[str, Any]]) -> bool:
+    """True when the model wrote a tool call into its prose instead of making one.
+
+    A model that cannot reach its tools rarely says so: it writes the call
+    out, imagines the reply and carries on as though the work happened. The
+    turn then reads like a working one while the engine saw nothing, so the
+    CLI names it rather than leaving the owner to notice the unchanged model.
+    """
+
+    for frame in frames:
+        if frame.get("type") != "assistant":
+            continue
+        for block in (frame.get("message") or {}).get("content") or []:
+            if isinstance(block, dict) and block.get("type") == "text" and any(
+                    mark in str(block.get("text") or "") for mark in IMITATED_TOOL_CALL_MARKS):
+                return True
+    return False
+
+
 def _model_spoke(frames: list[dict[str, Any]]) -> bool:
     """True when the model produced an assistant message — i.e. it ran."""
 

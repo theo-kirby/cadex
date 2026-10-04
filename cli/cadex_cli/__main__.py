@@ -51,8 +51,10 @@ from .agent import (
     TurnResult,
     default_model,
     find_claude,
+    imitated_tool_call,
     read_image,
     system_prompt,
+    turn_usage,
 )
 from .bridge import Bridge, BridgeState, ToolCall
 from .client import CadexdClient, CadexdError, open_project
@@ -1093,6 +1095,26 @@ NUDGE_PROMPT = (
 )
 
 
+#: Said when the model wrote a tool call as prose (ADR-523): the call never
+#: reached the bridge, so whatever the prose claims was not done.
+IMITATED_WARNING = (
+    "the model wrote a tool call as text instead of making one, so it did "
+    "not reach the engine tools; nothing it wrote that way was done."
+)
+
+
+def describe_usage(usage: Mapping[str, Any]) -> str:
+    """One line for a turn's cost: tokens in (cached) and out, price, time."""
+
+    parts = [f"{usage.get('input_tokens', 0):,} in", f"{usage.get('cached_tokens', 0):,} cached",
+             f"{usage.get('output_tokens', 0):,} out tokens"]
+    if usage.get("cost_usd") is not None:
+        parts.append(f"${usage['cost_usd']:.2f}")
+    if usage.get("duration_ms"):
+        parts.append(f"{usage['duration_ms'] / 1000:.1f} s")
+    return ", ".join(parts)
+
+
 def _spent_nothing(result: TurnResult, state: BridgeState) -> bool:
     """Did the turn end well, reach the engine not once, and change nothing?"""
 
@@ -1247,6 +1269,15 @@ def command_prompt(
             finally:
                 turn.cleanup()
             sys.stderr.write("\n")
+            # What the turn cost, and whether the model only pretended to
+            # use its tools (ADR-523): both on the transcript, where a
+            # person watching the dashboard reads it.
+            report.usage = turn_usage(result.frames)
+            if report.usage:
+                _progress(" · turn: " + describe_usage(report.usage))
+            imitated = IMITATED_WARNING if imitated_tool_call(result.frames) else ""
+            if imitated:
+                _progress(" ✗ " + imitated)
             sys.stderr.flush()
 
         # A refused override cannot replace the model of an unchanged session.
@@ -1269,6 +1300,8 @@ def command_prompt(
             )
         if result.text.strip():
             report.notes.append(result.text.strip())
+        if imitated:
+            report.notes.append(imitated)
         # What the agent decided lands in the project's own ADR log
         # (ADR-193): a closing line that starts `DECISION:`. A convention,
         # not a tool, because the agent has no file access here.

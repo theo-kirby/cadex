@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-03. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is a **third client of the cadexd protocol**, peer to the Blender
 shell and owing it nothing: no display, no `bpy` imports, no shell code.
@@ -92,7 +92,16 @@ to four, which attaches a PNG, JPEG, GIF or WebP image to the prompt
 any engine starts. The turn then sends the prompt to `claude` as one
 stream-json user message on stdin, text then images, instead of as the
 `-p` argument. The envelope's `attachments` lists each image's name, type,
-size and SHA-256. `--image` with anything but `-p` is a usage error. Model resolution for prompts and
+size and SHA-256. `--image` with anything but `-p` is a usage error.
+A prompt turn reports what it cost (ADR-523): the envelope's `usage` holds
+`input_tokens`, `cached_tokens`, `output_tokens`, `cost_usd`, `duration_ms`
+and `results`, summed over every `result` frame the claude CLI sent (two when
+the CLI asked once more); `cost_usd` is `null` when nothing priced the turn,
+and `usage` is absent when no frame reported any of it. The same line goes
+to stderr as ` · turn: …`. When the model writes tool-call markup
+(`<invoke name=` or `<function_calls>`) into its prose instead of making the
+call, stderr carries ` ✗ ` and the last note says the call never reached
+the engine. Model resolution for prompts and
 walk design turns is: explicit `--model`, nonblank `$CADEX_MODEL`, the
 project's `agent.json.model`, then `claude-fable-5` (ADR-249, ADR-276).
 The recorded model applies with or without `--resume`; that flag controls

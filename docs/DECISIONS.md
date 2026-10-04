@@ -33766,3 +33766,47 @@ and `inspect scope=script`'s printable roster, and headless Chromium shows
 each part's role, its viewer colour as the swatch, printed or purchased and
 printable; without an engine, a design with no assembly and an unknown role
 each say why they keep index colours.
+
+## ADR-523 — A turn reports what it cost, and names a tool call written as text (2026-10-04, owner charter orun2 A1/W1)
+
+**Context.** The shell parity ledger's `agent.py` row had two points still
+to port. The shell's chat showed each turn's time, tokens and cost, and it
+said so when the model wrote a tool call into its prose instead of making
+one — the failure that hid ADR-163 for as long as it did, because such a
+turn reads like a working one while the engine sees nothing. The CLI's turn
+already receives every fact needed: Claude Code closes each `-p` run with a
+`result` frame carrying `total_cost_usd`, `duration_ms` and token `usage`,
+and the model's prose arrives as `assistant` text blocks. It threw both away.
+
+**Decision.** Two pure functions in `cli/cadex_cli/agent.py`, re-derived
+(nothing copied from the shell): `turn_usage(frames)` sums input (with cache
+writes), cached-read and output tokens, cost and duration over every
+`result` frame — two when the CLI asked once more — and `imitated_tool_call
+(frames)` looks for `<invoke name=` or `<function_calls>` in the model's
+text blocks. A real call is a `tool_use` block and never text, so the markup
+has no legitimate reading. `cadex -p` puts the first in the envelope as
+`usage` and on stderr as a ` · turn:` line; the second becomes a ` ✗ ` line
+and the run's last note. The turn is not refused for it: the engine already
+refuses or accepts on what actually reached it, and the warning says why
+nothing did. The dashboard's turn reply passes `usage` through, and the turn
+status adds the token count and price. `cost_usd` is `null` when nothing
+priced the turn, so an unpriced turn is never shown as free. No new
+dependency; no protocol or tool-surface change.
+
+**Not ported.** The shell kept a running session total; the dashboard lists
+turns from `PROGRESS.md` (ADR-519), which carries no cost column, and adding
+one changes a document the agent reads every turn. A turn's cost lives in its
+envelope and its transcript.
+
+**Cost.** ~70 lines of CLI code, ~8 of page code, one envelope field.
+
+**What would reverse it.** Claude Code dropping or renaming the result
+frame's cost fields: then `usage` goes absent rather than wrong, and this
+ADR is revisited.
+
+**Test.** `cli/tests/test_turn_usage.py` (summing, unpriced turns, markup
+detection, and against a real engine the envelope and stderr of a priced
+turn and of a turn that wrote its call as text);
+`test_dashboard_writes.py::test_browser_starts_a_turn_and_watches_it_land`
+(a real `cadex -p` child behind the fake `claude` reports a priced result,
+and headless Chromium shows its tokens and price on the turn status).

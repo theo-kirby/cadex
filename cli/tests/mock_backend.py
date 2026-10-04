@@ -72,6 +72,8 @@ class MockTurn:
             kind = step[0]
             if kind == "text":
                 result.text += step[1]
+                result.frames.append({"type": "assistant", "session_id": self.session_id,
+                                      "message": {"content": [{"type": "text", "text": step[1]}]}})
                 if self.on_text is not None:
                     self.on_text(step[1])
             elif kind == "tool":
@@ -93,6 +95,8 @@ class MockTurn:
                         "session_id": self.session_id,
                         "is_error": False,
                         "result": step[1],
+                        # The cost and usage a real result frame carries (ADR-523).
+                        **(step[2] if len(step) > 2 else {}),
                     }
                 )
             elif kind == "fail":
