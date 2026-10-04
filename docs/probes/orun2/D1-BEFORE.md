@@ -2,7 +2,8 @@
 
 Verified against source: 2026-10-03. Measured on sb1x (linux-64, 32 cores,
 60 GB RAM) at `a375745c`, the orun2 run branch before any deletion. The
-"after" column is filled by re-running `measure_d1.sh` once `shell/` is gone.
+"after" numbers, from re-running `measure_d1.sh` once `shell/` was gone,
+are in `REPORT.md` §1.
 Every number below was measured. Nothing in this file is an estimate unless it
 says so.
 

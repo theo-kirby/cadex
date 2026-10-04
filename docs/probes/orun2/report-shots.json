@@ -1,0 +1,80 @@
+{
+ "index_projects": 346,
+ "model_state": "loaded",
+ "first_tab": "concept",
+ "speck_as_opened": {
+  "count": 86006,
+  "box": [
+   139,
+   277,
+   686,
+   588
+  ],
+  "width": 822,
+  "height": 723,
+  "fraction": 0.1447
+ },
+ "speck_after_fit": {
+  "count": 86006,
+  "box": [
+   139,
+   277,
+   686,
+   588
+  ],
+  "width": 822,
+  "height": 723,
+  "fraction": 0.1447
+ },
+ "viewer_bounds": {
+  "min": [
+   -600,
+   -600,
+   -2
+  ],
+  "max": [
+   600,
+   600,
+   122.70061492919922
+  ],
+  "center": [
+   0,
+   0,
+   60.35030746459961
+  ],
+  "radius": 850.8158207514304
+ },
+ "viewer_components": [
+  "c_floor",
+  "c_tray",
+  "c_hood",
+  "c_visor"
+ ],
+ "parts_summary": {
+  "appearance": "roles",
+  "text": "parts: 25 printed, 37 purchased, 62 printable \u00b7 colours by role: accent #FF6A1A, mechanism #2A2C31, shell #ECE8DF"
+ },
+ "cli_turns_listed": 1,
+ "turn_transcript_shown": false,
+ "look_images_on_page": 0,
+ "latest_turn": {
+  "digest": "25984e70",
+  "notes": [],
+  "ordinal": 114,
+  "project": "orun2-w1-quad",
+  "prompt": "This is an accepted quadruped walker. Make one small design change: add two shallow cable-tie slots (about 4 x 2 mm) through the top of the hood, so a\u2026",
+  "revision": "a7d487ae08b7f7a35276f56ac946d9e34ea505ff7effc58c4717257be0f163d6",
+  "said": "",
+  "url": "/p/orun2-w1-quad/",
+  "verdict": "accepted",
+  "verdicts": [
+   {
+    "at": "2026-10-04T01:35:07Z",
+    "text": "The owner accepted revision a7d487ae08b7.",
+    "verdict": "accepted"
+   }
+  ],
+  "when": "2026-10-04T01:34:56Z"
+ },
+ "page_text_chars": 27630
+}
