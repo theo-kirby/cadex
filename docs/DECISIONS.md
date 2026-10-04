@@ -34111,3 +34111,50 @@ against the real defaults with nothing patched. Engine and CLI suites; the
 packaged lifecycle gate on a restaged payload.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-531 — The staged engine payload stops carrying LLVM and clang (2026-10-04, owner charter orun2 long-term subtraction)
+
+**Context.** REPORT defect 6: the installed footprint did not move in orun2.
+The staged payload copies `.pixi/envs/default` and prunes only what a GUI
+leak gate asked about (`docs/cadex-release-packaging.md`, "What is
+accidentally in the payload"). A `readelf -d` pass over every ELF in a
+payload staged at `68b60f26` (10,127 `NEEDED` entries) finds that
+`libLLVM.so.20.1`, `libLLVM.so.21.1`, `libclang-cpp.so.20.1`,
+`libclang-cpp.so.21.1`, `libclang.so.13`, `libLTO.so.*`, `libRemarks.so.*`
+and `lib/clang/21/lib/linux/libclang_rt.*` are needed by nothing but each
+other, and no payload library names them as a string for `dlopen`. The
+environment's `conda-meta` says why they are there: `qt6-main` depends on
+`libllvm20`, `libclang-cpp20.1` and `libclang13` (its documentation and
+translation tools), `pyside6` on `libclang13` (the shiboken generator), and
+`clang` brings `libllvm21`, `libclang-cpp21.1` and compiler-rt — the
+compiler that builds the engine. None runs when the engine does. The
+`.pixi` environment itself is not touched: the owner deferred its GUI-era
+dependency audit to the next run, and LLVM 21 is the build's compiler.
+The GPU-visible half of W1 step 7 stays blocked: `nvidia-smi` could not
+reach the driver this iteration.
+
+**Decision.** `build_engine_payload.sh` deletes `lib/libLLVM*`,
+`lib/libclang*`, `lib/libLTO.so*`, `lib/libRemarks.so*` and `lib/clang`
+after its development-leftover prune, on both staging paths, and its leak
+gate refuses `libLLVM*` and `libclang*` anywhere in the payload. Its header
+stops saying the Blender shell carries the payload.
+
+**Measured.** The same tree staged with the old and new script:
+3,258,031,078 B and 40,916 files before, 2,588,443,821 B and 40,578 files
+after — −669,587,257 B, −20.6%.
+
+**Cost.** None found: the packaged lifecycle gate passes on the pruned
+payload. A future engine feature that JIT-compiles through LLVM (none
+exists) would have to un-prune it and say why.
+
+**What would reverse it.** A payload binary or Python module that links or
+`dlopen`s one of them; the leak gate then fails the stage loudly rather
+than shipping a broken import.
+
+**Test.** `test_headless_import_guardrails.py::
+test_the_payload_prunes_the_llvm_toolchain` pins the prune and the gate in
+the script; `test_a_staged_payload_carries_no_llvm` checks a staged
+payload under `CADEX_ENGINE_ROOT`. Engine suite, CLI suite CPU-only, and
+the packaged lifecycle gate on the restaged payload.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

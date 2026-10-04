@@ -38,8 +38,11 @@ not an import graph, and the hazard is visible in the source.
 from __future__ import annotations
 
 import ast
+import os
 from pathlib import Path
 import re
+
+import pytest
 
 MOD_DIR = Path(__file__).resolve().parent.parent.parent
 PAYLOAD_SCRIPT = (
@@ -157,3 +160,38 @@ def test_the_payload_prunes_the_coin_binding() -> None:
     assert re.search(r"-iname 'pivy'", text), (
         "the payload's GUI-leak gate no longer names pivy"
     )
+
+
+def test_the_payload_prunes_the_llvm_toolchain() -> None:
+    """LLVM and clang go, and the leak gate refuses to let them back (ADR-531).
+
+    Nothing in the payload links them except each other: they serve Qt's
+    tools, PySide's generator and the compiler, never the running engine.
+    The prune and the gate are both asserted, as for pivy above.
+    """
+    text = PAYLOAD_SCRIPT.read_text(encoding="utf-8")
+    assert re.search(r"-name 'libLLVM\*' -o -name 'libclang\*' \\\n\s+-o -name 'libLTO", text), (
+        "the payload no longer prunes libLLVM/libclang/libLTO"
+    )
+    assert 'rm -rf "${payload}/lib/clang"' in text, (
+        "the payload no longer prunes lib/clang"
+    )
+    gate = text[text.index('leaked="$(find'):text.index('if [ -n "${leaked}" ]')]
+    assert "libLLVM*" in gate and "libclang*" in gate, (
+        "the payload's leak gate no longer names libLLVM/libclang"
+    )
+
+
+def test_a_staged_payload_carries_no_llvm() -> None:
+    """The packaged half: a staged payload has no LLVM or clang library."""
+    root = os.environ.get("CADEX_ENGINE_ROOT")
+    if not root:
+        pytest.skip("CADEX_ENGINE_ROOT not set (packaged-gate test)")
+    lib = Path(root) / "lib"
+    found = sorted(
+        p.name
+        for pattern in ("libLLVM*", "libclang*", "libLTO.so*", "libRemarks.so*")
+        for p in lib.glob(pattern)
+    )
+    assert not found, f"LLVM/clang back in the payload: {found}"
+    assert not (lib / "clang").exists(), "lib/clang back in the payload"

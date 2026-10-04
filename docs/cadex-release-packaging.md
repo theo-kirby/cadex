@@ -1,6 +1,6 @@
 # Packaging — The Engine Payload
 
-Verified against source: 2026-10-03
+Verified against source: 2026-10-04
 
 **One repository builds one engine payload** (ADR-030, ADR-498). The
 *engine payload* is a relocatable directory the CLI finds by manifest
@@ -177,6 +177,15 @@ The prune list in `build_engine_payload.sh` removes the things that would be
 embarrassing — Qt GUI, Coin, PySide, headers, unused workbenches — and
 nothing else, because it was written to answer "did a widget toolkit leak
 in?", not "is this small?".
+
+**LLVM and clang are pruned now (ADR-531).** No ELF in the payload links
+`libLLVM*`, `libclang*`, `libLTO`, `libRemarks` or `lib/clang`'s sanitizer
+runtimes except each other: they serve Qt's tools, PySide's generator and
+the compiler. The script deletes them and the leak gate refuses them. On
+2026-10-04 the same tree staged at **3,258,031,078 B** before and
+**2,588,443,821 B** after (−669,587,257 B, −20.6%; 40,916 → 40,578 files).
+The rest of the development environment (node, perl, opencv, pcl, the
+compiler's own `lib/gcc`) is still copied.
 
 Two honest consequences:
 
