@@ -160,16 +160,46 @@ def test_browser_goes_from_the_index_to_a_drawn_project(tmp_path, browser) -> No
     try:
         page = browser.page(server.url)
         page.wait_for("document.querySelectorAll('#projects li').length === 2")
-        assert "accepted " + REVISION_B[:12] in page.text("#projects li[data-project='biped']")
+        # Newest accepted first, each a link and a date; one page, so no pager.
+        assert page.evaluate("[...document.querySelectorAll('#projects li')].map(l => l.dataset.project)")[0] == "biped"
         assert page.attribute("#projects li[data-project='biped'] a", "href") == "/p/biped/"
+        assert page.text("#projects-count") == "2"
+        assert page.evaluate("document.getElementById('pager').hidden") is True
         project = _open(browser, server.url + "p/biped/")
-        assert project.text("#project-name") == "biped — review"
-        project.evaluate("window.cadexReview.select('accepted')", await_promise=True)
+        assert project.text("#project-name") == "biped"
+        assert project.attribute("#home", "href") == "../../"
         assert _model_state(project) == "loaded"
         assert project.evaluate("window.cadexReview.viewer().stats()")["components"] >= 1
-        # A run's own retained mesh resolves under the prefix too.
-        project.click("#views li[data-run='second']")
-        assert _model_state(project) == "loaded"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
+def test_browser_pages_through_the_projects_newest_first(tmp_path, browser) -> None:
+    """ADR-533: 20 projects to a page, newest accepted first, the page in the URL."""
+
+    projects = tmp_path / "many"
+    for index in range(45):
+        (projects / f"p{index:02d}").mkdir(parents=True)
+        (projects / f"p{index:02d}" / "script.json").write_text("{}")
+    server, _thread = serve_projects(projects, "127.0.0.1", 0)
+    try:
+        page = browser.page(server.url)
+        page.wait_for("document.querySelectorAll('#projects li').length === 20")
+        assert page.text("#page-at") == "1 of 3"
+        assert page.evaluate("document.getElementById('page-prev').disabled") is True
+        first = page.evaluate("[...document.querySelectorAll('#projects li')].map(l => l.dataset.project)")
+        assert first[0] == "p00" and first[-1] == "p19"
+        page.click("#page-next")
+        page.click("#page-next")
+        page.wait_for("document.getElementById('page-at').textContent === '3 of 3'")
+        assert page.evaluate("document.querySelectorAll('#projects li').length") == 5
+        assert page.evaluate("location.search") == "?page=3"
+        assert page.evaluate("document.getElementById('page-next').disabled") is True
+        again = browser.page(server.url + "?page=2")
+        again.wait_for("document.getElementById('page-at').textContent === '2 of 3'")
+        assert again.evaluate("document.querySelector('#projects li').dataset.project") == "p20"
     finally:
         server.shutdown()
         server.server_close()
@@ -404,43 +434,27 @@ def test_browser_goes_from_the_index_to_a_runs_iterations_and_verdicts(tmp_path,
     try:
         page = browser.page(server.url)
         page.wait_for("document.querySelectorAll('#runs li').length === 2")
-        page.wait_for("document.querySelectorAll('#projects li').length === 2")
+        assert page.evaluate("document.getElementById('runs-card').hidden") is False
         assert page.attribute("#runs li[data-run='fx1'] a", "href") == "/r/fx1/"
-        assert "work · 3 iteration(s) · 1 continue, 1 reject" in page.text("#runs li[data-run='fx1']")
-        assert page.evaluate("document.getElementById('runs-empty').hidden") is True
+        assert "work · 3 iterations" in page.text("#runs li[data-run='fx1']")
         run = browser.page(server.url + "r/fx1/")
         run.wait_for("document.querySelectorAll('#iterations tr').length === 3")
-        assert run.text("#run-name") == "fx1 — run"
-        assert "ouroboros/fx1" in run.text("#run-line") and "$4.50" in run.text("#run-line")
-        # Newest first; the pending iteration says so.
+        assert run.text("#run-name") == "fx1"
+        assert run.text("#run-line") == "work · 3 iterations"
+        # Newest first; the pending iteration says so; a verdict is in its status colour.
         assert run.evaluate("[...document.querySelectorAll('#iterations tr')].map(r => r.dataset.iteration)") == ["3", "2", "1"]
         assert "pending" in run.text("#iterations tr[data-iteration='3']")
         rejected = "#iterations tr[data-iteration='2']"
-        assert run.attribute(rejected + " .badge", "data-tone") == "bad"
-        assert "Changed the bore and loosened its test." in run.text(rejected + " .did")
-        assert "The bracket test was weakened." in run.text(rejected + " .reason")
-        assert "Restore the bore assertion, then rerun both suites." in run.evaluate(
-            "document.querySelector(\"" + rejected + " .reply\").textContent")
-        assert "housekeeping" in run.text("#iterations tr[data-iteration='1']")
-        assert run.evaluate("[...document.querySelectorAll('#run-tally .badge')].map(b => b.textContent)") == [
-            "1 continue", "1 reject"]
-        # The charter's criteria, from the run's branch, each folding open to its text.
+        assert run.attribute(rejected + " .verdict", "data-tone") == "bad"
+        assert "The bracket test was weakened." in run.text(rejected)
+        # The charter's criteria, from the run's branch, ticked or not.
         run.wait_for("document.querySelectorAll('#charter li').length === 3")
-        assert run.text("#charter-count") == "· 1 of 3 ticked"
-        assert run.text("#charter-source") == ".ouroboros/goal.md from ouroboros/fx1"
+        assert run.text("#charter-count") == "1 of 3 ticked"
         assert run.evaluate("[...document.querySelectorAll('#charter li')].map(l => l.dataset.criterion + ':' + l.dataset.checked)") == [
             "S1:true", "D3:false", ":false"]
-        assert run.attribute("#charter li[data-criterion='S1'] .badge", "data-tone") == "ok"
-        assert "Runs are first-class in the dashboard." in run.text("#charter li[data-criterion='D3'] summary")
-        assert run.evaluate("document.querySelector(\"#charter li[data-criterion='D3'] details\").open") is False
-        run.evaluate("document.querySelector(\"#charter li[data-criterion='D3'] summary\").click()")
-        assert "Read-only." in run.text("#charter li[data-criterion='D3'] .criterion-text")
-        # A poll does not fold back a criterion the reader opened.
-        run.evaluate("window.probe = document.querySelector(\"#charter li[data-criterion='D3'] details\");"
-                     "document.querySelector('#iterations tr').dataset.probe = '1'; true")
-        run.wait_for("!document.querySelector('#iterations tr[data-probe]')", timeout=20)  # a poll redrew
-        assert run.evaluate("document.querySelector(\"#charter li[data-criterion='D3'] details\") === window.probe") is True
-        assert run.evaluate("document.querySelector(\"#charter li[data-criterion='D3'] details\").open") is True
+        assert run.text("#charter li[data-criterion='S1']").startswith("✓ S1")
+        assert "Runs are first-class in the dashboard." in run.text("#charter li[data-criterion='D3']")
+        assert "Read-only." in run.attribute("#charter li[data-criterion='D3']", "title")
         assert run.evaluate("document.getElementById('charter-empty').hidden") is True
     finally:
         server.shutdown()
@@ -517,49 +531,6 @@ def test_probes_outside_a_checkout_are_refused(app_with_runs) -> None:
     probes = _json(server.url + "r/fx1/api/run")["probes"]
     assert probes["available"] is False and probes["files"] == []
     assert probes["reason"] == "the runs directory is not a checkout's .ouroboros/runs"
-
-
-@needs_browser
-def test_browser_reads_orun1s_probe_readme_and_an_image_from_the_repo(tmp_path, browser) -> None:
-    """orun1's committed review material, copied whole from this repo into a
-    checkout beside a run directory, renders on ``/r/orun1/``: what
-    ``~/orun1-review/build.py`` built by hand, from the repo alone."""
-
-    import shutil
-
-    checkout = tmp_path / "checkout"
-    shutil.copytree(REPO / "docs" / "probes" / "orun1", checkout / "docs" / "probes" / "orun1",
-                    ignore=shutil.ignore_patterns("__pycache__"))
-    runs = checkout / ".ouroboros" / "runs"
-    (runs / "orun1").mkdir(parents=True)
-    (runs / "orun1" / "status.json").write_text(json.dumps({"state": "done", "branch": "ouroboros/orun1"}))
-    server, _thread = serve_projects(_projects(tmp_path), "127.0.0.1", 0, runs_root=runs)
-    try:
-        run = browser.page(server.url + "r/orun1/")
-        run.wait_for("document.querySelector('#probe-readme h3') !== null")
-        # Its headings sit one level under the card's own.
-        assert run.text("#probe-readme h2") == "orun1 — the owner's design preferences, measured"
-        headings = run.evaluate("[...document.querySelectorAll('#probe-readme h3')].map(h => h.textContent)")
-        assert headings[:3] == ["The sweep", "The ratings", "What the ratings say"]
-        # The ratings table is a table, with its bold cells bold; no comment leaks through as text.
-        assert run.evaluate("[...document.querySelectorAll('#probe-readme table thead th')].map(t => t.textContent)")[:3] == [
-            "thesis", "arm3", "arm5"]
-        assert run.evaluate("document.querySelectorAll('#probe-readme table')[0].querySelectorAll('tbody tr').length") == 9
-        assert run.evaluate("document.querySelector('#probe-readme table tbody tr:last-child strong').textContent") == "type mean"
-        assert "<!--" not in run.text("#probe-readme")
-        assert run.text("#probes-source") == "docs/probes/orun1 in the checkout"
-        # One of the owner-rated heroes, loaded through /r/orun1/probes/.
-        hero = "#probe-images li[data-path='sweep/balancer-c-exposed-mechanism.png'] img"
-        run.evaluate("document.querySelector(\"" + hero + "\").scrollIntoView(); true")
-        run.wait_for("document.querySelector(\"" + hero + "\").complete && "
-                     "document.querySelector(\"" + hero + "\").naturalWidth > 0")
-        assert run.attribute(hero, "src").endswith("/r/orun1/probes/sweep/balancer-c-exposed-mechanism.png")
-        assert run.evaluate("document.querySelectorAll('#probe-images li').length") == len(
-            list((REPO / "docs" / "probes" / "orun1").rglob("*.png")))
-        assert run.evaluate("document.getElementById('probes-empty').hidden") is True
-    finally:
-        server.shutdown()
-        server.server_close()
 
 
 # -- A run's records and the artifacts they name (orun2 D3, ADR-518) ---------
@@ -673,85 +644,3 @@ def test_records_outside_a_checkout_are_refused(app_with_runs, tmp_path) -> None
     runs = OuroborosRuns(_checkout_with_runs(tmp_path))
     assert runs.records("fx1", "ouroboros/fx1", [])["reason"] == (
         ".hypergraph/graph/record is not a directory of the checkout")
-
-
-@needs_browser
-def test_browser_shows_orun1s_records_and_what_they_point_to_from_the_repo(tmp_path, browser) -> None:
-    """orun1's records, committed in this repo, with the probe material and
-    docs they name, on ``/r/orun1/``: each record under the iteration it
-    landed in, a trial's hero loaded through ``linked/``, and the design
-    language the run rewrote opened in place -- what ``~/orun1-review/build.py``
-    assembled by hand from the run branch, the trial projects and the run
-    directory, now from the repo alone."""
-
-    import shutil
-
-    checkout = tmp_path / "checkout"
-    for tree in ("orun1", "ot10"):
-        shutil.copytree(REPO / "docs" / "probes" / tree, checkout / "docs" / "probes" / tree,
-                        ignore=shutil.ignore_patterns("__pycache__"))
-    shutil.copy2(REPO / "docs" / "DESIGN-LANGUAGE.md", checkout / "docs" / "DESIGN-LANGUAGE.md")
-    records = checkout / ".hypergraph" / "graph" / "record"
-    records.mkdir(parents=True)
-    created = {}
-    for path in sorted((REPO / ".hypergraph" / "graph" / "record").glob("*.md")):
-        text = path.read_text(encoding="utf-8")
-        if "\n- branch: ouroboros/orun1\n" in text:
-            shutil.copy2(path, records / path.name)
-            created[path.stem] = text.split("created_at: '", 1)[1].split("'", 1)[0]
-    assert len(created) >= 20
-    # One iteration per record, each ending a minute after it, so each lands in its own.
-    order = sorted(created, key=created.get)
-    runs = checkout / ".ouroboros" / "runs"
-    (runs / "orun1").mkdir(parents=True)
-    (runs / "orun1" / "status.json").write_text(json.dumps({"state": "done", "branch": "ouroboros/orun1"}))
-    import datetime
-    rows = []
-    for number, slug in enumerate(order, 1):
-        end = datetime.datetime.fromisoformat(created[slug]) + datetime.timedelta(minutes=1)
-        rows.append(json.dumps({"ts": end.isoformat(), "iteration": number, "step": "commit", "sha": f"{number:010d}",
-                                "changed": True, "recorded": True}))
-    (runs / "orun1" / "iterations.jsonl").write_text("\n".join(rows) + "\n")
-    server, _thread = serve_projects(_projects(tmp_path), "127.0.0.1", 0, runs_root=runs)
-    try:
-        run = browser.page(server.url + "r/orun1/")
-        run.wait_for(f"document.querySelectorAll('#records > li').length === {len(created)}")
-        assert run.text("#records-source") == ".hypergraph/graph/record in the checkout"
-        # deep-cove-1130 is the t1-hexapod trial: its hero, through /r/orun1/linked/.
-        row = "#records > li[data-record='deep-cove-1130']"
-        assert run.text(row + " .badge") == "#" + str(order.index("deep-cove-1130") + 1)
-        hero = row + " ul.record-images li[data-path='docs/probes/orun1/d4/t1-hexapod/hero.png'] img"
-        run.evaluate("document.querySelector(\"" + hero + "\").scrollIntoView(); true")
-        run.wait_for("document.querySelector(\"" + hero + "\").complete && "
-                     "document.querySelector(\"" + hero + "\").naturalWidth > 0")
-        assert run.attribute(hero, "src").endswith("/r/orun1/linked/docs/probes/orun1/d4/t1-hexapod/hero.png")
-        assert "docs/probes/orun1/d4/t1-hexapod/summary.json" in run.text(row + " ul.record-files")
-        # Every trial the run recorded under d4/ shows its hero.
-        assert run.evaluate("[...document.querySelectorAll('#records ul.record-images li')].map(l => l.dataset.path)"
-                            ".filter(p => /d4\\/[^/]+\\/hero\\.png$/.test(p)).sort()") == sorted(
-            f"docs/probes/orun1/d4/{trial.name}/hero.png" for trial in (REPO / "docs/probes/orun1/d4").iterdir()
-            if (trial / "hero.png").is_file())
-        # The iteration row links its record.
-        number = order.index("golden-bay-7992") + 1
-        assert run.text(f"#iterations tr[data-iteration='{number}'] a.record-link") == "golden-bay-7992"
-        # golden-bay-7992 rewrote the design language: it opens in place, drawn.
-        run.evaluate("document.querySelector(\"#records > li[data-record='golden-bay-7992'] "
-                     "li[data-path='docs/DESIGN-LANGUAGE.md'] a\").click(); true")
-        run.wait_for("document.getElementById('linked-doc').dataset.loaded === 'docs/DESIGN-LANGUAGE.md'")
-        assert run.evaluate("document.getElementById('linked-doc').hidden") is False
-        assert run.text("#linked-doc-body h2") == "The Cadex design language — small printed robots that look engineered"
-        assert "0. The one-sentence version" in run.evaluate(
-            "[...document.querySelectorAll('#linked-doc-body h3')].map(h => h.textContent)")
-        assert run.evaluate("location.pathname") == "/r/orun1/"
-        # The run's README opens the same way, its ratings table a table.
-        run.evaluate("document.querySelector(\"#records > li[data-record='deep-cove-1130'] "
-                     "li[data-path='docs/probes/orun1/README.md'] a\").click(); true")
-        run.wait_for("document.getElementById('linked-doc').dataset.loaded === 'docs/probes/orun1/README.md'")
-        assert run.text("#linked-doc-body h2") == "orun1 — the owner's design preferences, measured"
-        assert run.evaluate("document.querySelectorAll('#linked-doc-body table')[0].querySelectorAll('tbody tr').length") == 9
-        run.click("#linked-doc-close")
-        assert run.evaluate("document.getElementById('linked-doc').hidden") is True
-        assert run.evaluate("document.getElementById('records-empty').hidden") is True
-    finally:
-        server.shutdown()
-        server.server_close()

@@ -12,10 +12,9 @@ address or this machine's hostname in any of them. With a Chromium it
 renders the page at the two charter sizes, 1400×900 and 400×850 with touch
 emulation, and reads the spec back from the rendered page: the layout
 viewport is the device width, nothing overflows it, the palette tokens and
-type scale compute to §3–§4, the viewport fills the desk stage and the
-phone's column, the run list is in the left sidebar at desk and a closed
-disclosure on the phone, and at desk the frame of §12 resizes, folds and
-changes what its stage shows under a real mouse (ADR-342).
+type scale compute to §3–§4, the model fills everything right of the rail
+at desk (§12) and leads the phone's column, and the page has the three
+sections of §2 and no more (ADR-533).
 """
 from __future__ import annotations
 
@@ -30,7 +29,7 @@ import json
 
 import pytest
 
-from test_review_server import _model_state, _telemetry, browser, needs_browser, served  # noqa: F401
+from test_review_server import _model_state, browser, needs_browser, served  # noqa: F401
 
 REPO = Path(__file__).resolve().parents[2]
 SPEC = REPO / "docs" / "DASHBOARD.md"
@@ -44,10 +43,7 @@ SECTIONS = ("## 1. Purpose", "## 2. Hierarchy", "## 3. Type scale", "## 4. Palet
             "## 5. Spacing and shape", "## 6. Breakpoints")
 TOKENS = ("--bg", "--surface", "--surface-2", "--surface-3", "--rule", "--rule-strong",
           "--ink", "--ink-2", "--accent", "--ok", "--warn", "--bad", "--info")
-TYPE = {"body": "14px", "h1": "22px", "h2": "17px", ".badge": "12px", ".mono": "12px"}
-# The desk frame's thin top bar and ruled sidebar sections step the two
-# headings down one rung of the same scale (§12).
-TYPE_DESK = {**TYPE, "h1": "17px", "h2": "14px"}
+TYPE = {"body": "14px", "h1": "17px", "h2": "14px", "#accepted-line": "12px"}
 # The charter's two sizes: (width, height, mobile emulation with touch).
 SIZES = {"desk": (1400, 900, False), "phone": (400, 850, True)}
 PHONE_GUTTER = 12
@@ -154,20 +150,18 @@ def test_the_spec_itself_names_no_private_address():
 
 # -- the rendered page ---------------------------------------------------------
 
-# §2's reading order: what a phone reads top to bottom, and what the desk
-# frame distributes between its left sidebar, stage and right sidebar.
-READING_ORDER = ("#sidebar", "#turn-panel", "#note-panel", "#comment-panel", "#revision-panel", "#identity", "#concept", "#model", "#model-settings", "#curves", "#videos-region",
-                 "#evaluation", "#record", "#params-panel", "#artifacts-panel", "#docs-panel")
-HEADINGS = ["Design turn", "From the agent", "Comments", "Revisions", "Export", "Drawings", "Runs", "Documents and decisions", "Concept", "Model", "Curves", "Videos", "Evaluation", "Identity", "Model settings",
-            "Training and rollout", "Parameters and specs", "Artifacts"]
+# §2's reading order on a phone: the model, then the rail's three writes.
+READING_ORDER = ("#model", "#turn-panel", "#params-panel", "#revision-panel")
+HEADINGS = ["Design turn", "Parameters", "Revisions"]
 
 MEASURE = """(function () {
   var cs = getComputedStyle(document.documentElement);
   function rect(sel) { var n = document.querySelector(sel); if (!n) return null; var r = n.getBoundingClientRect();
-    return {x: r.x, y: r.y, width: r.width, height: r.height, right: r.right}; }
+    return {x: r.x, y: r.y, width: r.width, height: r.height, right: r.right, bottom: r.bottom}; }
   function size(sel) { return getComputedStyle(document.querySelector(sel)).fontSize; }
   var smallest = Infinity;
   document.querySelectorAll('body *').forEach(function (n) {
+    if (!n.checkVisibility()) return;
     var v = parseFloat(getComputedStyle(n).fontSize); if (v > 0 && v < smallest) smallest = v; });
   return {
     innerWidth: innerWidth, scrollWidth: document.documentElement.scrollWidth,
@@ -178,15 +172,8 @@ MEASURE = """(function () {
     headings: Array.from(document.querySelectorAll('h2')).map(function (h) {
       return {text: h.textContent, transform: getComputedStyle(h).textTransform}; }),
     regions: %s.map(function (s) { return rect(s).y; }),
-    canvas: rect('#viewer'), stage: rect('#stage'), left: rect('#left'), right: rect('#right'), top: rect('#top'),
-    scrollHeight: document.documentElement.scrollHeight, innerHeight: innerHeight,
-    sidebar: rect('#sidebar'), views: rect('#views'),
-    summary: rect('#runs-summary'), runs: rect('#runs'), runs_open: document.getElementById('runs').open,
-    views_visible: document.getElementById('views').checkVisibility(),
-    histories: Array.from(document.querySelectorAll('[data-history]')).map(function (n) {
-      var r = n.getBoundingClientRect(), s = n.querySelector('svg');
-      return {y: r.y, width: r.width, svg: s ? s.getBoundingClientRect().width : 0}; }),
-    metrics: Array.from(document.querySelectorAll('[data-metric]')).map(function (n) { return n.textContent; })
+    canvas: rect('#viewer'), stage: rect('#stage'), left: rect('#left'), top: rect('#top'),
+    scrollHeight: document.documentElement.scrollHeight, innerHeight: innerHeight
   };
 })()""" % (json.dumps(list(TOKENS)), json.dumps(list(TYPE)), json.dumps(list(READING_ORDER)))
 
@@ -206,15 +193,23 @@ def _rendered(browser, url, size):
 
 @needs_browser
 @pytest.mark.parametrize("size", sorted(SIZES))
-def test_rendered_page_follows_the_spec(served, browser, size) -> None:
+def test_rendered_page_follows_the_spec(tmp_path, browser, size) -> None:
     """§6's invariants, read back from the page at each charter size."""
 
-    root, server = served
-    _telemetry(root, iteration=4, run="first")
+    from test_review_server import REVISION_B, _review_project, _stage_accepted, serve
+    root = _review_project(tmp_path)
+    _stage_accepted(root, REVISION_B)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        _assert_follows_the_spec(browser, server, size)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def _assert_follows_the_spec(browser, server, size) -> None:
     page = _rendered(browser, server.url, size)
-    page.evaluate("window.cadexReview.select('first')", await_promise=True)
     assert _model_state(page) == "loaded"
-    page.wait_for("document.querySelectorAll('[data-history] svg').length === 3")
     page.wait_for("document.getElementById('freshness').dataset.state === 'live'")
     m = page.evaluate(MEASURE)
     width = SIZES[size][0]
@@ -225,272 +220,26 @@ def test_rendered_page_follows_the_spec(served, browser, size) -> None:
     assert m["tokens"] == spec_tokens()
     assert m["body_bg"] == "rgb(20, 20, 20)"
     # 5. The type scale, and nothing below 12 px.
-    assert m["fonts"] == (TYPE_DESK if size == "desk" else TYPE)
+    assert m["fonts"] == TYPE
     assert m["smallest_font"] >= 12
-    # Headings are sentence case, never uppercase.
+    # Headings are sentence case, never uppercase; the page has these three and no more.
     assert [h["text"] for h in m["headings"]] == HEADINGS
     assert all(h["transform"] == "none" for h in m["headings"])
-    # The stat row keeps the "key: value" text the other suites read.
-    assert m["metrics"][:2] == ["iteration: 4", "total: 10"]
-    tops = [h["y"] for h in m["histories"]]
     if size == "desk":
-        # 3. The frame (§12): a thin bar over a left sidebar, the stage and a
-        # right sidebar, edge to edge, and the page itself never scrolls.
+        # 3. §12: a thin bar over the rail and the model, edge to edge; the page never scrolls.
         assert m["top"]["height"] <= 48, m["top"]
         assert m["scrollHeight"] <= m["innerHeight"], m["scrollHeight"]
-        assert round(m["left"]["x"]) == 0 and round(m["left"]["width"]) == 264
-        assert round(m["right"]["right"]) == width and round(m["right"]["width"]) == 340
-        assert m["left"]["right"] <= m["stage"]["x"] and m["stage"]["right"] <= m["right"]["x"]
-        assert m["stage"]["y"] >= m["top"]["y"] + m["top"]["height"]
-        assert m["stage"]["width"] >= width - 264 - 340 - 2 * 6 - 2
-        # The viewport fills the stage below its tabs; the runs are open in the sidebar.
+        assert round(m["left"]["x"]) == 0 and round(m["left"]["width"]) == 300
+        assert m["left"]["right"] <= m["stage"]["x"] and round(m["stage"]["right"]) == width
+        assert m["stage"]["y"] >= m["top"]["y"] + m["top"]["height"] - 1
         assert m["canvas"]["width"] >= 0.98 * m["stage"]["width"]
-        assert m["canvas"]["height"] >= m["stage"]["height"] - 48
-        assert m["sidebar"]["x"] >= m["left"]["x"] and m["sidebar"]["right"] <= m["left"]["right"]
-        assert m["runs_open"] and m["summary"]["height"] == 0
-        # The curves are stacked on the stage, each the width of the column.
-        assert tops == sorted(tops) and len(set(round(t) for t in tops)) == 3, f"curves not stacked: {tops}"
+        assert m["canvas"]["height"] >= 0.98 * m["stage"]["height"]
+        assert round(m["stage"]["bottom"]) == m["innerHeight"]
         return
-    # 3. On the phone the viewport is the full width inside the gutters; the
-    # run list is a closed disclosure whose line is the only thing visible.
+    # 3. On the phone the model leads the column at the full width.
     assert m["regions"] == sorted(m["regions"]), "regions are out of reading order"
-    assert m["canvas"]["width"] >= 0.9 * (width - 2 * PHONE_GUTTER)
-    assert m["sidebar"]["width"] == width - 2 * PHONE_GUTTER and m["sidebar"]["y"] < m["regions"][1]
-    assert not m["runs_open"] and m["summary"]["height"] > 0 and not m["views_visible"]
-    assert round(m["runs"]["y"] + m["runs"]["height"]) == round(m["summary"]["y"] + m["summary"]["height"])
-    assert page.text("#runs-summary") == "Runs · current: second · 3 recorded"
-    assert tops == sorted(tops) and len(set(round(t) for t in tops)) == 3, f"curves not stacked: {tops}"
-    assert all(h["svg"] >= 0.9 * h["width"] >= 200 for h in m["histories"]), m["histories"]
-    # Opening the disclosure shows every run; the page still does not overflow.
-    page.click("#runs-summary")
-    page.wait_for("document.getElementById('runs').open")
-    assert page.evaluate("document.querySelectorAll('#views li[data-run]').length") == 3
-    assert page.evaluate("document.getElementById('views').checkVisibility()")
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-
-
-def _centre(page, selector):
-    page.scroll_into_view(selector)
-    box = page.rect(selector)
-    return box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
-
-
-@needs_browser
-def test_phone_touch_orbits_pinches_plays_and_downloads(served, browser) -> None:
-    """D2's interaction half at 400×850 with touch emulation, on a run with a
-    real encoded video: one finger orbits the model without scrolling the
-    page, two fingers pinch-zoom, a tap on Fit resets the camera, the curves
-    are legible, a tap starts the video and a tap downloads it whole."""
-
-    from cadex_cli.video import render as render_video
-    from test_video import _video_run
-
-    if not shutil.which("ffmpeg"):
-        pytest.skip("FFmpeg not available")
-    root, server = served
-    _video_run(root, "clip")
-    video = render_video(root, "clip")
-    _telemetry(root, iteration=4, run="clip")
-    page = _rendered(browser, server.url, "phone")
-    page.evaluate("window.cadexReview.select('clip')", await_promise=True)
-    assert _model_state(page) == "loaded"
-    page.wait_for("document.querySelectorAll('[data-history] svg').length === 3")
-    assert page.evaluate("window.cadexReview.viewer().nonBackgroundPixels()") > 1000, "the model is not drawn"
-    # One finger orbits: yaw and pitch change, the distance does not, and the
-    # page stays where it was (touch-action: none on the canvas).
-    cx, cy = _centre(page, "#viewer")
-    before = page.evaluate("window.cadexReview.viewer().camera()")
-    scroll = page.evaluate("scrollY")
-    page.touch_drag(cx, cy, cx + 120, cy + 50)
-    orbited = page.wait_for(
-        "(function(){var c=window.cadexReview.viewer().camera();"
-        f"return (c.yaw !== {before['yaw']} && c.pitch !== {before['pitch']}) && c}})()")
-    assert orbited["distance"] == before["distance"]
-    assert page.evaluate("scrollY") == scroll, "the drag scrolled the page"
-    # Two fingers spreading zoom in; the orbit is untouched.
-    page.pinch(cx, cy, 60, 180)
-    zoomed = page.wait_for(
-        "(function(){var c=window.cadexReview.viewer().camera();"
-        f"return c.distance < {orbited['distance']} && c}})()")
-    assert zoomed["yaw"] == orbited["yaw"] and zoomed["pitch"] == orbited["pitch"]
-    assert page.evaluate("window.cadexReview.viewer().nonBackgroundPixels()") > 1000
-    # A tap on Fit — a 40 px control under a coarse pointer — resets the camera.
-    assert page.rect("#model-fit")["height"] >= 40
-    page.tap(*_centre(page, "#model-fit"))
-    reset = page.wait_for("(function(){var c=window.cadexReview.viewer().camera(); return c.yaw === 0.8 && c})()")
-    assert reset["distance"] == before["distance"]
-    # The curves are legible: each history fills the width, its caption is
-    # body-sized or larger, and nothing on the page is below 12 px.
-    curves = page.evaluate("""Array.from(document.querySelectorAll('[data-history]')).map(function (n) {
-      var r = n.getBoundingClientRect(), s = n.querySelector('svg').getBoundingClientRect();
-      return {width: r.width, svg: s.width, height: s.height,
-              caption: Math.min.apply(null, Array.from(n.querySelectorAll('*')).map(function (e) {
-                return parseFloat(getComputedStyle(e).fontSize); }))}; })""")
-    assert len(curves) == 3
-    for curve in curves:
-        assert curve["svg"] >= 0.9 * curve["width"] >= 300 and curve["height"] >= 60, curve
-        assert curve["caption"] >= 12, curve
-    # The video plays from a tap on the page's own Play control, which then
-    # reads Pause, and a tap on the download link fetches it whole.
-    page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
-    assert page.rect("#videos video")["width"] >= 0.9 * (SIZES["phone"][0] - 2 * PHONE_GUTTER - 2 * PHONE_GUTTER)
-    page.evaluate("document.querySelector('#videos video').muted = true")
-    assert page.text("#videos [data-video-play]") == "Play" and page.rect("#videos [data-video-play]")["height"] >= 40
-    page.tap(*_centre(page, "#videos [data-video-play]"))
-    page.wait_for("(function(){var v=document.querySelector('#videos video');return !v.paused && v.currentTime > 0.1})()")
-    assert page.text("#videos [data-video-play]") == "Pause"
-    download = page.download("#videos li[data-video] a[href$='download=1']", by_touch=True)
-    assert hashlib.sha256(download.path.read_bytes()).hexdigest() == video["sha256"]
-    assert download.received_bytes == download.total_bytes == download.path.stat().st_size
-    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-
-
-@needs_browser
-def test_desk_sidebars_drag_fold_and_the_stage_changes_what_it_shows(served, browser) -> None:
-    """§12 at 1400×900 with a real mouse: dragging a sidebar's inner edge
-    resizes it and the viewport's backing store follows; dragging it most of
-    the way shut folds it and the stage takes the width; the top bar's toggle
-    brings it back at the width it had; a section folds under its heading;
-    the stage's tabs change what the centre shows, and a document opened from
-    the sidebar comes onto the stage and leaves it with the view."""
-
-    root, server = served
-    _telemetry(root, iteration=4, run="first")
-    page = _rendered(browser, server.url, "desk")
-    page.evaluate("try { localStorage.clear() } catch (_) {}")
-    page.send("Page.reload", {})
-    page.wait_for("document.readyState === 'complete' && !!window.cadexReview && !!window.cadexFrame")
-    page.evaluate("window.cadexReview.ready", await_promise=True)
-    page.evaluate("window.cadexReview.select('first')", await_promise=True)
-    assert _model_state(page) == "loaded"
-    settle = "new Promise(r => setTimeout(r, 400))"
-
-    def geometry():
-        return page.evaluate("""(function () {
-          function r(s) { var b = document.querySelector(s).getBoundingClientRect(); return {x: b.x, width: b.width, right: b.right, height: b.height}; }
-          var c = document.getElementById('viewer');
-          return {left: r('#left'), right: r('#right'), stage: r('#stage'), canvas: r('#viewer'), backing: c.width,
-                  handle: r('.resizer[data-side="left"]'), frame: window.cadexFrame.layout()}; })()""")
-
-    before = geometry()
-    assert before["frame"]["left"] == {"width": 264, "open": True} and before["frame"]["stage"] == "model"
-    # Drag the left edge 136 px outwards: the sidebar widens, the stage narrows
-    # by the same amount, and the canvas redraws at its new width.
-    hx = before["handle"]["x"] + before["handle"]["width"] / 2
-    page.drag(hx, 400, hx + 136, 400)
-    page.evaluate(settle, await_promise=True)
-    wider = geometry()
-    assert abs(wider["left"]["width"] - 400) <= 2, wider["left"]
-    assert abs((before["stage"]["width"] - wider["stage"]["width"]) - 136) <= 3
-    assert abs(wider["backing"] - wider["canvas"]["width"]) <= 2 and wider["backing"] < before["backing"]
-    assert page.evaluate("window.cadexReview.viewer().nonBackgroundPixels()") > 1000
-    # Drag it nearly shut: it folds away entirely and the stage takes the room.
-    hx = wider["handle"]["x"] + wider["handle"]["width"] / 2
-    page.drag(hx, 400, 40, 400)
-    page.evaluate(settle, await_promise=True)
-    folded = geometry()
-    assert folded["frame"]["left"]["open"] is False and folded["left"]["width"] == 0
-    assert page.evaluate("getComputedStyle(document.getElementById('left')).visibility") == "hidden"
-    assert folded["stage"]["width"] > wider["stage"]["width"] + 380
-    assert page.attribute("#toggle-left", "aria-expanded") == "false"
-    # The top bar's toggle reopens it at the width it had before it folded.
-    page.click("#toggle-left")
-    page.evaluate(settle, await_promise=True)
-    assert abs(geometry()["left"]["width"] - 400) <= 2
-    # The right sidebar folds from the bar and the page still never scrolls.
-    page.click("#toggle-right")
-    page.evaluate(settle, await_promise=True)
-    assert geometry()["right"]["width"] == 0
-    assert page.evaluate("document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth")
-    page.click("#toggle-right")
-    # A section folds under its heading, and unfolds.
-    page.click("#identity > h2")
-    assert page.attribute("#identity", "data-folded") == "true"
-    assert not page.evaluate("document.getElementById('view-revision').checkVisibility()")
-    page.click("#identity > h2")
-    assert page.evaluate("document.getElementById('view-revision').checkVisibility()")
-    # The stage's tabs: curves replace the model in the centre.
-    page.click("#stage-tabs [data-stage='curves']")
-    assert page.attribute("#stage", "data-active") == "curves"
-    assert page.evaluate("document.querySelector('[data-history] svg').checkVisibility({visibilityProperty: true})")
-    assert not page.evaluate("document.getElementById('viewer').checkVisibility({visibilityProperty: true})")
-    assert page.attribute("#curves-dot", "data-state") == page.attribute("#telemetry", "data-state")
-    # A document opened from the sidebar takes the stage; the view changing closes it.
-    page.click("#docs li[data-doc='DECISIONS.md'] a")
-    page.wait_for("document.getElementById('doc-view').textContent.includes('ADR-')")
-    assert page.attribute("#stage", "data-active") == "doc"
-    assert page.evaluate("!document.getElementById('doc-tab').hidden")
-    assert page.evaluate("document.getElementById('doc-view').checkVisibility({visibilityProperty: true})")
-    page.evaluate("window.cadexReview.select('second')", await_promise=True)
-    page.wait_for("document.getElementById('stage').dataset.active === 'model'")
-    assert page.evaluate("document.getElementById('doc-tab').hidden")
-    # The layout is the reader's, remembered across a reload in this browser.
-    page.send("Page.reload", {})
-    page.wait_for("document.readyState === 'complete' && !!window.cadexFrame")
-    assert page.evaluate("window.cadexFrame.layout().left") == {"width": 400, "open": True}
-
-
-@needs_browser
-def test_landscape_phone_gets_the_frame_with_drawers_over_the_model(served, browser) -> None:
-    """§13 at 844×390 under touch: the desk frame rather than the portrait
-    column — thin bar, the model across the whole width, no page scroll — with
-    both sidebars closed; a tap on a bar toggle slides that sidebar in as a
-    drawer over the model without narrowing it, opening the other closes it,
-    a tap on the model beside a drawer closes it, and one finger still orbits."""
-
-    root, server = served
-    _telemetry(root, iteration=4, run="first")
-    page = browser.page("about:blank")
-    page.send("Emulation.setDeviceMetricsOverride", {"width": 844, "height": 390, "deviceScaleFactor": 1, "mobile": True,
-                                                     "screenOrientation": {"type": "landscapePrimary", "angle": 90}})
-    page.send("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
-    page.send("Page.navigate", {"url": server.url})
-    page.wait_for("document.readyState === 'complete' && !!window.cadexReview && !!window.cadexFrame")
-    page.evaluate("window.cadexReview.ready", await_promise=True)
-    page.evaluate("window.cadexReview.select('first')", await_promise=True)
-    assert _model_state(page) == "loaded"
-    settle = "new Promise(r => setTimeout(r, 450))"
-
-    def measure():
-        return page.evaluate("""(function () {
-          function r(s) { var b = document.querySelector(s).getBoundingClientRect(); return {x: b.x, right: b.right, width: b.width, height: b.height, y: b.y}; }
-          return {w: innerWidth, h: innerHeight, sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight,
-                  top: r('#top'), stage: r('#stage'), canvas: r('#viewer'), left: r('#left'), right: r('#right'),
-                  drawers: window.cadexFrame.layout().drawers}; })()""")
-
-    def tap(selector):
-        box = page.rect(selector)
-        page.tap(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-        page.evaluate(settle, await_promise=True)
-
-    m = measure()
-    assert m["sw"] <= m["w"] and m["sh"] <= m["h"], m
-    assert m["top"]["height"] <= 44 and m["stage"]["y"] >= m["top"]["height"]
-    assert m["stage"]["width"] >= m["w"] - 2 * 4 - 2 and m["canvas"]["width"] >= 0.98 * m["stage"]["width"]
-    assert m["drawers"] == {"left": False, "right": False}
-    assert m["left"]["right"] <= 1 and m["right"]["x"] >= m["w"] - 1, "a closed drawer is on screen"
-    # The right sidebar slides in over the model; the model keeps its width.
-    tap("#toggle-right")
-    m2 = measure()
-    assert m2["drawers"] == {"left": False, "right": True}
-    assert abs(m2["right"]["right"] - m["w"]) <= 1 and m2["right"]["width"] >= 200
-    assert m2["stage"]["width"] == m["stage"]["width"]
-    assert page.evaluate("document.getElementById('view-revision').checkVisibility({visibilityProperty: true})")
-    # Opening the left one closes the right: one drawer at a time.
-    tap("#toggle-left")
-    m3 = measure()
-    assert m3["drawers"] == {"left": True, "right": False} and abs(m3["left"]["x"]) <= 1
-    assert page.evaluate("document.querySelectorAll('#views li[data-run]').length") == 3
-    # A tap on the model beside the drawer closes it.
-    page.tap(m3["w"] - 60, m3["h"] / 2)
-    page.evaluate(settle, await_promise=True)
-    assert measure()["drawers"] == {"left": False, "right": False}
-    # One finger on the model still orbits, and the page does not move.
-    cx, cy = m["canvas"]["x"] + m["canvas"]["width"] / 2, m["canvas"]["y"] + m["canvas"]["height"] / 2
-    before = page.evaluate("window.cadexReview.viewer().camera()")
-    page.touch_drag(cx, cy, cx + 120, cy + 40)
-    page.wait_for("window.cadexReview.viewer().camera().yaw !== %s" % json.dumps(before["yaw"]))
-    assert page.evaluate("scrollY") == 0
+    assert m["canvas"]["width"] >= width - 1
+    assert m["canvas"]["y"] < m["regions"][1]
 
 
 def test_after_receipt_records_the_page_the_spec_describes():
@@ -931,6 +680,19 @@ def test_heron_training_receipt_measures_the_arm_reach_in_the_new_look():
     assert "Verified against source: 2026-" in text
 
 
+#: Browser tests ADR-533 removed with the page panels they drove. A receipt
+#: that cites one keeps its history; the behaviour is no longer on the page.
+REMOVED_BY_ADR_533 = frozenset({
+    "test_browser_long_history_keeps_selection_and_playback_with_bounded_poll_work",
+    "test_browser_explains_a_failed_observation_whose_training_finished",
+    "test_browser_interrupted_download_leaves_polling_and_a_fresh_download_working",
+    "test_browser_cancelled_download_is_logged_once_and_the_next_download_completes",
+    "test_browser_lists_a_completed_run_whose_policy_was_never_stored_as_a_problem",
+    "test_browser_observes_final_policy_publication_failure",
+    "test_browser_playing_video_survives_new_current_attempt",
+    "test_browser_polls_training_histories_checkpoints_and_stale_states",
+})
+
 REGRESSION = REPO / "docs/probes/ot6/regression"
 # The ot5 behaviours D9 names, each pinned to the tests that exercise it in
 # the CLI suite (`file::test`), so a renamed or deleted test breaks the receipt.
@@ -986,8 +748,10 @@ def test_final_regression_receipt_shows_everything_ot5_proved_still_holds():
     for behaviour, tests in OT5_BEHAVIOURS.items():
         for test in tests:
             path, name = test.split("::")
-            assert f"def {name}(" in (REPO / "cli/tests" / path).read_text(), f"{behaviour}: {test} is gone"
             assert files[f"cli/tests/{path}"][2] == 0, behaviour
+            if name in REMOVED_BY_ADR_533:
+                continue
+            assert f"def {name}(" in (REPO / "cli/tests" / path).read_text(), f"{behaviour}: {test} is gone"
     assert receipt["operator_url"] == "http://<private-address>:8765/"
     assert receipt["project"] == "ot6-heron" and receipt["run"] == "heron1-final"
     served = {r["run"]: r for r in receipt["runs"]}
@@ -1084,41 +848,3 @@ def _open_plain(browser, url):
     page = browser.page(url)
     page.wait_for("document.readyState === 'complete'")
     return page
-
-
-@needs_browser
-@pytest.mark.parametrize("size", sorted(SIZES))
-def test_the_page_leads_with_the_concept_sheet_when_the_project_has_one(served, browser, size) -> None:
-    """§14 (ADR-430): with a concept sheet drawn for the accepted revision,
-    the desk stage opens on *Concept* and the phone column reads it before
-    the model; the image is the sheet itself, named by its revision."""
-
-    from cadex_cli.studio import STUDIO as render
-    from test_review_server import REVISION_B
-    sheet = render
-
-    root, server = served
-    directory = root / "review" / "render"
-    directory.mkdir(parents=True, exist_ok=True)
-    blank = sheet.Canvas(sheet.WIDTH, sheet.HEIGHT, sheet.PAPER)
-    (directory / "sheet.png").write_bytes(render.png(blank.pixels, sheet.WIDTH, sheet.HEIGHT))
-    (directory / "hero.png").write_bytes(render.png(bytearray(3 * 4), 2))
-    (directory / "summary.json").write_text(json.dumps({
-        "revision": REVISION_B, "digest": "d" * 64, "palette": {},
-        "hero": {"path": "review/render/hero.png"},
-        "sheet": {"path": "review/render/sheet.png",
-                  "numbers": {"name": root.name, "mass_kg": 0.39, "servo_count": 6, "size_mm": [92, 108, 221]}}}))
-    page = _rendered(browser, server.url, size)
-    page.wait_for("document.getElementById('concept-sheet').complete"
-                  " && document.getElementById('concept-sheet').naturalWidth > 0")
-    assert page.evaluate("document.getElementById('concept-sheet').naturalWidth") == sheet.WIDTH
-    assert page.attribute("#concept-status", "data-state") == "current"
-    assert page.text("#concept-caption") == f"{root.name} · 0.39 kg · 6 servos · 92 × 108 × 221 mm"
-    concept, model = page.rect("#concept"), page.rect("#model")
-    if size == "desk":
-        assert page.evaluate("document.getElementById('stage').dataset.active") == "concept"
-        assert page.evaluate("document.getElementById('concept').checkVisibility({visibilityProperty: true})")
-        assert page.evaluate("document.documentElement.scrollHeight <= innerHeight")
-    else:
-        assert concept["y"] < model["y"]
-        assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")

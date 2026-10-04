@@ -262,38 +262,3 @@ def _draw(engine, root, arguments):
         result = bridge.call("draw_blueprint", arguments)
     assert result["is_error"] is False, result
     return json.loads(result["content"][0]["text"]), base64.b64decode(result["content"][1]["data"])
-
-
-@needs_browser
-def test_browser_shows_a_drawn_and_revised_sheet_from_a_real_engine(engine, bored_app, browser) -> None:
-    root, server = bored_app
-    facts, data = _draw(engine, root, {"name": "bored plate", "notes": "A quarter bore at the corner."})
-    assert facts["version"] == 1 and facts["stored"].startswith("blueprints/0001-bored-plate")
-    overall = {(d["view"], d["axis"]): d["mm"] for d in facts["dimensions"] if d["source"] == "overall"}
-    assert overall[("front", "X")] == pytest.approx(60.0, abs=0.01)
-    assert overall[("front", "Z")] == pytest.approx(10.0, abs=0.01)
-    assert overall[("top", "Y")] == pytest.approx(40.0, abs=0.01)
-    # The engine's own numbers, drawn: the extent and the bore's diameter.
-    declared = {d["output"]: d for d in facts["dimensions"] if d["source"] == "declared"}
-    assert declared["height"]["mm"] == pytest.approx(10.0) and declared["bore"]["mm"] == pytest.approx(6.0)
-    assert facts["measurements"]["declared"] == 2 and facts["measurements"]["drawn"] == 2
-    assert (root / facts["stored"]).read_bytes() == data
-    # Versioned with the project, and readable through the engine's own inspect.
-    revised, _ = _draw(engine, root, {"name": "bored plate", "views": ["front", "top"]})
-    assert revised["version"] == 2 and revised["recipe"]["notes"] == "A quarter bore at the corner."
-    index = json.loads((root / "blueprints" / "blueprints.json").read_text())
-    assert [(e["name"], e["version"]) for e in index["entries"]] == [("bored plate", 1), ("bored plate", 2)]
-    assert index["entries"][-1]["meta"]["views"] == ["front", "top"]
-
-    page = _open(browser, server.url + "p/orun2-bored/")
-    page.wait_for("document.querySelectorAll('#drawing-list li[data-file]').length === 2", timeout=30)
-    files = page.evaluate("Array.from(document.querySelectorAll('#drawing-list li[data-file]'))"
-                          ".map(li => [li.dataset.file, li.dataset.relation, li.textContent])")
-    assert [f[0] for f in files] == [index["entries"][1]["file"], index["entries"][0]["file"]]
-    assert all(f[1] == "current" for f in files) and "bored plate v2" in files[0][2]
-    page.wait_for("document.getElementById('drawing-latest').naturalWidth > 0", timeout=30)
-    assert page.evaluate("document.getElementById('drawing-latest').naturalWidth") == studio.WIDTH
-    sheet = page.download('#drawing-list li[data-file] a[download]', timeout=30)
-    assert sheet.path.read_bytes() == (root / "blueprints" / index["entries"][1]["file"]).read_bytes()
-    assert _get(server.url + "p/orun2-bored/blueprint/blueprints.json")[0] == 404
-    assert _json(server.url + "p/orun2-bored/api/project")["drawings"]["sheets"][0]["version"] == 2

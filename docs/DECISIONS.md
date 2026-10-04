@@ -34213,3 +34213,62 @@ gate; `test_a_staged_payload_carries_no_opencv_pcl_node_or_perl` checks a
 staged payload under `CADEX_ENGINE_ROOT`.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-533 — The dashboard is cut to the minimum: the model, a turn, the sliders and the revisions (2026-10-04, owner direction)
+
+**Decision.** On the owner's direction ("removes everything entirely except
+the necessities, so that we go to the simplest possible version, and then we
+can add stuff back as needed"), the dashboard's three pages keep only what
+watching and steering a design needs:
+
+- **Index**: the Ouroboros runs, then the projects newest accepted first,
+  20 to a page (**Newer** / **Older**, the page in `?page=N`), each a link
+  and a date.
+- **Project**: a top bar (home, name, accepted revision's ordinal and date,
+  live/offline), the accepted model filling everything right of a 300 px
+  rail at desk and leading the column on a phone, and in the rail the
+  three writes: a design turn (ADR-504), the parameter sliders (ADR-503)
+  and the revisions with accept, reject and restore (ADR-506).
+- **Run**: the charter's criteria (✓ when ticked) and the iterations newest
+  first with the critic's verdict and reason.
+
+Removed from the pages: run selection and every historical-run view, the
+identity block, the concept sheet and its tab, the curves, videos and
+evaluation tabs, the documents and decisions panel, training and artifacts
+and disk use, the comments and part pick, the agent's notes, export,
+drawings, the collision toggle and contact readout, the dimension overlay,
+explode, section cut, rollout playback, the parts' roles and print roster,
+image attach, the `look` images, the turn's cost line, the revision note and
+verdict marks, the right sidebar, resizable and foldable sidebars, landscape
+drawers and the stage tabs (the ADR-342 frame), the CLI agent-turns list and
+the run page's probes, records, tally and per-iteration commit column.
+`markdown.js` and `dimensions.js`, used only by removed panels, are deleted.
+
+**What is not removed.** The server's routes, readers and write paths are
+unchanged except for the two deleted files leaving its static tables. Every
+API the removed panels read still answers, every CLI command behind a
+removed control (`cadex comment`, `cadex export`, `cadex section`,
+`cadex -p --image`) still works, and the agent's tools are untouched. So W1
+holds (`docs/SHELL-PARITY.md` carries the note), and adding a panel back is
+page work only.
+
+**Measured.** `review_static/` and the server: −3,055 / +334 lines; the
+seven page files are 792 lines, `review.js` 1,975 → 355. Browser tests that
+drove removed panels are deleted with them (−3,348 / +191 in `cli/tests`);
+the ones for what stays are rewritten against it, and a pagination test is
+added (`test_app.py::test_browser_pages_through_the_projects_newest_first`).
+`docs/DASHBOARD.md` 1,274 → 646 lines: its surviving sections keep their
+numbers, so `§` references elsewhere still land; §7–§8, the measured ot6
+record the tests check, are kept.
+
+**What would reverse it.** Any panel the owner asks for back, one at a
+time, each with its spec section and browser test.
+
+**Test.** `test_review_design.py::test_rendered_page_follows_the_spec` (the
+three sections and no more, the rail and the model at desk, model first on a
+phone, tokens and type), `test_app.py` (index → project, paging, index →
+run), `test_dashboard_writes.py` (slider, turn, revisions in a browser),
+`test_review_server.py` (orbit and zoom, the accepted model drawn and kept
+when the server goes, an unaccepted project, identity tracking).
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

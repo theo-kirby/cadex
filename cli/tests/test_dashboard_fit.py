@@ -67,9 +67,7 @@ def test_the_manifest_marks_the_floor_and_only_the_floor(engine, floor_app) -> N
 @needs_browser
 def test_browser_fit_frames_the_body_and_coverage_ignores_the_floor(engine, floor_app, browser) -> None:
     page = _open(browser, floor_app.url + "p/orun2-fit/")
-    page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
     assert _model_state(page) == "loaded"
-    page.click("#stage-tabs [data-stage=model]")
     page.click("#model-fit")
     stats = page.evaluate("window.cadexReview.viewer().stats()")
     assert stats["world"] == ["c_floor"] and stats["components"] == 2

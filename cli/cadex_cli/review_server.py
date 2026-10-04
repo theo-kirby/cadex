@@ -98,8 +98,7 @@ STATIC_FILES = {
     "review.css": ("text/css; charset=utf-8", STATIC_DIR / "review.css"),
     "review.js": ("text/javascript; charset=utf-8", STATIC_DIR / "review.js"),
     **{name: ("text/javascript; charset=utf-8", STATIC_DIR / name) for name in
-       ("three.module.js", "floor.js", "environment.js", "review_scene.js", "stl.js", "capture.js",
-        "dimensions.js")},
+       ("three.module.js", "floor.js", "environment.js", "review_scene.js", "stl.js", "capture.js")},
     "capture.html": ("text/html; charset=utf-8", STATIC_DIR / "capture.html"),
     "viewer.js": ("text/javascript; charset=utf-8", STATIC_DIR / "viewer.js"),
 }
@@ -119,7 +118,6 @@ TURNS_SHOWN = 100
 RUN_STATIC_FILES = {
     "run.html": ("text/html; charset=utf-8", STATIC_DIR / "run.html"),
     "run.js": ("text/javascript; charset=utf-8", STATIC_DIR / "run.js"),
-    "markdown.js": ("text/javascript; charset=utf-8", STATIC_DIR / "markdown.js"),
     "review.css": STATIC_FILES["review.css"],
 }
 RUNS_SCHEMA = "cadex-ouroboros-runs-v1"

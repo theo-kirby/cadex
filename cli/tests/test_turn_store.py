@@ -23,7 +23,7 @@ from cadex_cli.report import EXIT_OK, RunReport
 from cadex_cli.review_server import turn_snapshot
 from cadex_cli.turn_store import TurnRecorder, latest_turn, turn_file
 from test_dashboard_writes import PLATE, fake_claude, plate_app  # noqa: F401
-from test_review_server import _get, _open, _model_state, browser, needs_browser  # noqa: F401
+from test_review_server import _get, _json, _open, _model_state, browser, needs_browser  # noqa: F401
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
@@ -103,7 +103,7 @@ def test_only_the_stores_own_images_are_served(tmp_path) -> None:
 
 
 @needs_browser
-def test_browser_shows_a_terminal_turns_transcript_and_looks(plate_app, fake_claude, browser, capsys,
+def test_browser_shows_a_terminal_turns_transcript(plate_app, fake_claude, browser, capsys,
                                                              monkeypatch) -> None:
     root, server = plate_app
     # The fake claude imports the bridge client, as a dashboard child's would.
@@ -138,14 +138,10 @@ def test_browser_shows_a_terminal_turns_transcript_and_looks(plate_app, fake_cla
     assert "Widening the plate to 52 mm" in page.text("#turn-transcript")
     assert "· write_script" in page.text("#turn-transcript") and "· look  iso, top" in page.text("#turn-transcript")
     assert page.evaluate("document.getElementById('turn-transcript').hidden") is False
-    assert turn["reply"]["accepted_revision"][:12] in page.text("#turn-status")
-    # Both pictures the model saw are on the page, decoded.
-    page.wait_for("Array.prototype.every.call(document.querySelectorAll('#turn-looks img'), "
-                  "function (img) { return img.complete && img.naturalWidth > 0; }) && "
-                  "document.querySelectorAll('#turn-looks img').length === 2", timeout=30)
-    assert page.evaluate("document.getElementById('turn-looks').hidden") is False
-    assert page.evaluate("Array.prototype.map.call(document.querySelectorAll('#turn-looks img'), "
-                         "function (img) { return img.alt; })") == ["look: iso", "look: top"]
-    status, _headers, body = _get(server.url + "p/plate/" + turn["looks"][0]["url"])
+    assert page.text("#turn-status") == "done"
+    # The page no longer shows the pictures (ADR-533); the API still lists them, decoded.
+    looks = _json(server.url + "p/plate/api/turn")["looks"]
+    assert [look["view"] for look in looks] == ["iso", "top"]
+    status, _headers, body = _get(server.url + "p/plate/" + looks[0]["url"])
     assert status == 200 and body[:4] == b"\x89PNG"
     assert _get(server.url + f"p/plate/turn/{stored['id']}/transcript.txt")[0] == 404

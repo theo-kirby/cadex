@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""The dashboard's writes: slider (ADR-503), design turn (ADR-504), comment (ADR-505) and revision verdicts (ADR-506), orun2 D2.
+"""The dashboard's writes: slider (ADR-503), design turn (ADR-504), comment (ADR-505) and revision verdicts (ADR-506), orun2 D2; the page has the slider, the turn and the verdicts since ADR-533.
 
 Two halves. Every POST, under ``cadex review``'s ``/`` and ``cadex app``'s
 ``/p/<name>/``, is refused without the per-launch token the server writes
@@ -209,11 +209,11 @@ def test_browser_moves_a_slider_and_sees_the_rebuilt_model(plate_app, browser) -
         page.wait_for("(window.cadexReview.lastWrite() || {}).value === %d" % width, timeout=60)
         write = page.evaluate("window.cadexReview.lastWrite()")
         assert write["ok"] is True, write
-        assert page.attribute("#params-write", "data-state") == "done"
+        # A write that landed clears its status line (ADR-533).
+        assert page.attribute("#params-write", "data-state") == "idle" and page.text("#params-write") == ""
         # The page shows the accepted revision the CLI reported, drawn.
         assert page.evaluate("window.cadexReview.state().revision") == write["revision"] != before
         assert _model_state(page) == "loaded"
-        assert write["revision"][:12] in page.text("#model-status")
         size = page.evaluate("window.cadexReview.viewer().stats().bounds.max[0]"
                              " - window.cadexReview.viewer().stats().bounds.min[0]")
         assert size == pytest.approx(float(width), abs=0.01)
@@ -390,10 +390,9 @@ def test_browser_starts_a_turn_and_watches_it_land(plate_app, fake_claude, brows
     assert page.evaluate("window.cadexReview.viewer().stats().bounds.max[0]"
                          " - window.cadexReview.viewer().stats().bounds.min[0]") == pytest.approx(64.0, abs=0.01)
     assert page.attribute("#turn-status", "data-state") == "done"
-    assert revision[:12] in page.text("#turn-status")
-    # What the turn cost, as the claude CLI reported it (ADR-523).
+    assert page.text("#turn-status") == "done"
+    # What the turn cost, as the claude CLI reported it (ADR-523); the page no longer shows it.
     assert turn["reply"]["usage"]["cost_usd"] == pytest.approx(0.4213)
-    assert "21,500 tokens, $0.42" in page.text("#turn-status")
     assert "· turn: 1,000 in, 20,000 cached, 500 out tokens, $0.42, 9.0 s" in turn["text"]
     # It was the CLI's turn: its PROGRESS.md row and its project commit.
     assert f"prompt: {prompt}" in (root / "PROGRESS.md").read_text()
@@ -423,157 +422,6 @@ def test_a_comment_needs_the_token(app, monkeypatch) -> None:
     assert _post(url, {"text": "thin"}, {"X-Cadex-Token": token, "Origin": "http://evil.example"})[0] == 403
     assert _post(url, {"text": ""}, {"X-Cadex-Token": token})[0] == 400
     assert calls == []
-
-
-@needs_browser
-def test_browser_comments_on_a_picked_part_and_the_next_turn_receives_it(
-        engine, tmp_path, capsys, fake_claude, browser) -> None:
-    projects = tmp_path / "projects"
-    source = tmp_path / "post.py"
-    source.write_text(PLATE_AND_POST, encoding="utf-8")
-    assert main(["script", "--set", str(source), "--project", str(projects / "post"), "--json"]) == EXIT_OK
-    capsys.readouterr()
-    root = projects / "post"
-    script, seen, _gate = fake_claude
-    script.write_text(json.dumps([
-        ["text", "Making the post taller.\n"],
-        ["tool", "write_script", {"source": PLATE_AND_POST.replace("8.0, 30.0)", "8.0, 45.0)")}],
-        ["done", "Done: the post is 45 mm tall."],
-    ]), encoding="utf-8")
-    server, _thread = serve_projects(projects, "127.0.0.1", 0)
-    try:
-        page = _open(browser, server.url + "p/post/")
-        assert _model_state(page) == "loaded"
-        assert page.evaluate("window.cadexReview.viewer().stats().components") == 2
-        # A comment on the whole design, before anything is picked.
-        assert page.attribute("#comment-target", "data-part") == ""
-        page.evaluate("document.getElementById('comment-text').value = 'keep the plate as it is'")
-        page.click("#comment-send")
-        page.wait_for("document.getElementById('comment-status').dataset.state === 'done'", timeout=60)
-        page.wait_for("document.querySelectorAll('#comment-list li').length === 1", timeout=30)
-        assert page.attribute("#comment-list li", "data-part") == ""
-        assert page.attribute("#comment-list li", "data-delivered") == "false"
-        page.scroll_into_view("#viewer")
-        # A real click — press and release, no drag — on each part names it.
-        for name in ("plate", "post"):
-            x, y = page.evaluate("window.cadexReview.viewer().screenPoint(%s)" % json.dumps(name))
-            page.mouse("mousePressed", x, y, clickCount=1)
-            page.mouse("mouseReleased", x, y, clickCount=1)
-            page.wait_for("window.cadexReview.commentPart() === %s" % json.dumps(name))
-            assert page.evaluate("window.cadexReview.viewer().picked()") == name
-            assert page.attribute("#comment-target", "data-part") == name
-        # A drag orbits and picks nothing new.
-        x, y = page.evaluate("window.cadexReview.viewer().screenPoint('plate')")
-        page.drag(x, y, x + 60, y + 20)
-        assert page.evaluate("window.cadexReview.commentPart()") == "post"
-        page.evaluate("document.getElementById('comment-text').value = 'make the post taller'")
-        page.click("#comment-send")
-        page.wait_for("document.querySelectorAll('#comment-list li').length === 2", timeout=60)
-        # Newest first on the page; the CLI wrote both, tagged with the revision on screen.
-        assert page.attribute("#comment-list li", "data-part") == "post"
-        revision = page.evaluate("window.cadexReview.state().revision")
-        lines = [json.loads(line) for line in (root / "comments.jsonl").read_text().splitlines()]
-        assert [(line["part"], line["text"], line["revision"]) for line in lines] == [
-            ("", "keep the plate as it is", revision), ("post", "make the post taller", revision)]
-
-        page.evaluate("document.getElementById('turn-prompt').value = 'go on'")
-        page.click("#turn-start")
-        page.wait_for("window.cadexReview.turn().state === 'done' || window.cadexReview.turn().state === 'failed'",
-                      timeout=120)
-        turn = page.evaluate("window.cadexReview.turn()")
-        assert turn["state"] == "done", turn
-        given = seen.read_text(encoding="utf-8")
-        assert given.endswith("\n\ngo on")
-        assert "- (on part post) make the post taller" in given
-        assert "- (on the whole design) keep the plate as it is" in given
-        assert "delivered 2 comment(s) from the owner." in turn["reply"]["notes"]
-        # Delivered: the page says so, and the next turn would not see them again.
-        page.wait_for("Array.from(document.querySelectorAll('#comment-list li'))"
-                      ".every(function (li) { return li.dataset.delivered === 'true'; })", timeout=30)
-        from cadex_cli.comments import pending_comments
-        assert pending_comments(root) == []
-        # The pick survives the reload of the rebuilt model.
-        page.wait_for("window.cadexReview.state().model && window.cadexReview.state().model.revision === %s"
-                      % json.dumps(turn["reply"]["accepted_revision"]), timeout=30)
-        assert _model_state(page) == "loaded"
-        assert page.evaluate("window.cadexReview.viewer().picked()") == "post"
-        assert page.attribute("#comment-target", "data-part") == "post"
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
-@needs_browser
-def test_browser_shows_the_agents_question_and_the_answer_reaches_the_next_turn(
-        engine, tmp_path, capsys, fake_claude, browser) -> None:
-    """The agent's channel to the owner (ADR-512, orun2 A1): a turn leaves a
-    question and a flag through ``leave_note`` and finishes without
-    waiting; the page lists both; the owner answers the question there,
-    which is ``cadex comment --reply``; the next turn receives the answer."""
-
-    projects = tmp_path / "projects"
-    source = tmp_path / "post.py"
-    source.write_text(PLATE_AND_POST, encoding="utf-8")
-    assert main(["script", "--set", str(source), "--project", str(projects / "post"), "--json"]) == EXIT_OK
-    capsys.readouterr()
-    root = projects / "post"
-    (root / "out").mkdir()
-    (root / "out" / "sketch.png").write_bytes(base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="))
-    script, seen, _gate = fake_claude
-    question = "Should the post be round? I kept it square."
-    script.write_text(json.dumps([
-        ["tool", "write_script", {"source": PLATE_AND_POST.replace("8.0, 30.0)", "8.0, 40.0)")}],
-        ["tool", "leave_note", {"type": "question", "text": question}],
-        ["tool", "leave_note", {"type": "flag", "text": "the sketch I worked from", "artifact": "out/sketch.png"}],
-        ["done", "Done: the post is 40 mm tall."],
-    ]), encoding="utf-8")
-    server, _thread = serve_projects(projects, "127.0.0.1", 0)
-    try:
-        page = _open(browser, server.url + "p/post/")
-        assert page.evaluate("document.querySelectorAll('#note-list li').length") == 0
-        assert page.evaluate("document.getElementById('note-empty').hidden") is False
-        page.evaluate("document.getElementById('turn-prompt').value = 'make the post taller'")
-        page.click("#turn-start")
-        page.wait_for("window.cadexReview.turn().state === 'done' || window.cadexReview.turn().state === 'failed'",
-                      timeout=120)
-        assert page.evaluate("window.cadexReview.turn().state") == "done"
-        page.wait_for("document.querySelectorAll('#note-list li').length === 2", timeout=30)
-        # Newest first: the flag, linking the file it names; then the question.
-        assert page.attribute("#note-list li", "data-type") == "flag"
-        href = page.evaluate("document.querySelector('#note-list li .note-artifact').href")
-        status, headers, body = _get(href)
-        assert status == 200 and body.startswith(b"\x89PNG")
-        ask = "#note-list li[data-type='question']"
-        assert page.attribute(ask, "data-answered") == "false"
-        assert question in page.evaluate("document.querySelector(%s).textContent" % json.dumps(ask))
-        note_id = page.attribute(ask, "data-note")
-
-        page.click(ask + " .note-reply-button")
-        assert page.attribute("#note-target", "data-note") == note_id
-        page.evaluate("document.getElementById('note-text').value = 'yes, round it'")
-        page.click("#note-send")
-        page.wait_for("document.getElementById('note-status').dataset.state === 'done'", timeout=60)
-        page.wait_for("document.querySelector(%s).dataset.answered === 'true'" % json.dumps(ask), timeout=30)
-        lines = [json.loads(line) for line in (root / "comments.jsonl").read_text().splitlines()]
-        assert [(line["kind"], line.get("reply_to")) for line in lines] == [
-            ("note", None), ("note", None), ("comment", note_id)]
-
-        script.write_text(json.dumps([
-            ["tool", "write_script", {"source": PLATE_AND_POST}],
-            ["done", "Done."],
-        ]), encoding="utf-8")
-        page.evaluate("document.getElementById('turn-prompt').value = 'go on'")
-        page.click("#turn-start")
-        page.wait_for("window.cadexReview.turn().id && window.cadexReview.turn().reply && "
-                      "window.cadexReview.turn().reply.notes.indexOf('delivered 1 comment(s) from the owner.') >= 0",
-                      timeout=120)
-        given = seen.read_text(encoding="utf-8")
-        assert '- (answering your note "%s") yes, round it' % question in given
-        assert given.endswith("\n\ngo on")
-    finally:
-        server.shutdown()
-        server.server_close()
 
 
 # -- the fourth write: accept, reject and restore a revision (ADR-506) ------
@@ -636,12 +484,12 @@ def test_browser_accepts_rejects_and_restores_a_revision(plate_app, fake_claude,
 
     # Accept: a verdict on the revision on screen; nothing rebuilt.
     page.click("#revision-accept")
-    page.wait_for("document.getElementById('revision-status').dataset.state === 'done'", timeout=60)
-    page.wait_for("document.querySelector('#revision-list li').dataset.verdict === 'accepted'", timeout=30)
+    page.wait_for("window.cadexReview.lastRevision() && window.cadexReview.lastRevision().revisions.action === 'accept'",
+                  timeout=60)
+    assert page.attribute("#revision-status", "data-state") == "idle"
     assert page.evaluate("window.cadexReview.state().revision") == thick["accepted_revision"]
 
-    # Reject, with a reason: the one before comes back and is drawn.
-    page.evaluate("document.getElementById('revision-note').value = 'too thick'")
+    # Reject: the one before comes back and is drawn.
     page.click("#revision-reject")
     page.wait_for("window.cadexReview.lastRevision() && window.cadexReview.lastRevision().revisions.action === 'reject'",
                   timeout=120)
@@ -680,7 +528,7 @@ def test_browser_accepts_rejects_and_restores_a_revision(plate_app, fake_claude,
     assert page.evaluate("window.cadexReview.turn().state") == "done"
     given = seen.read_text(encoding="utf-8")
     assert "The owner accepted revision " + thick["accepted_revision"][:12] in given
-    assert "rejected revision %s and put back revision %s (#2). too thick" % (
+    assert "rejected revision %s and put back revision %s (#2)." % (
         thick["accepted_revision"][:12], wide["accepted_revision"][:12]) in given
     assert "restored revision %s (#1)" % first["revision"][:12] in given
     assert given.endswith("\n\ngo on")
@@ -735,63 +583,6 @@ def test_a_turn_carries_its_images_as_cli_image_files(app, monkeypatch) -> None:
     # The slider's route keeps its own small limit.
     assert _post(server.url + "p/biped/api/params", {"values": {"width": 40}, "pad": "x" * 70_000},
                  token)[0] == 400
-
-
-@needs_browser
-def test_browser_attaches_an_image_to_a_turn_and_the_turn_receives_it(plate_app, fake_claude, browser) -> None:
-    from test_prompt_images import png
-
-    root, server = plate_app
-    script, seen, _gate = fake_claude
-    wider = PLATE.replace("num(30.0,", "num(48.0,")
-    script.write_text(json.dumps([
-        ["text", "Reading the sketch.\n"],
-        ["tool", "write_script", {"source": wider}],
-        ["done", "Matched the sketch: 48 mm."],
-    ]), encoding="utf-8")
-    sketch = png(16, 8, (220, 40, 40))
-    page = _open(browser, server.url + "p/plate/")
-    assert _model_state(page) == "loaded"
-    # What a file picker hands the page: a File in the hidden input, then `change`.
-    page.evaluate("""(function () {
-      var bytes = Uint8Array.from(atob(%s), function (c) { return c.charCodeAt(0); });
-      var files = new DataTransfer();
-      files.items.add(new File([bytes], 'sketch.png', { type: 'image/png' }));
-      var input = document.getElementById('turn-image');
-      input.files = files.files;
-      input.dispatchEvent(new Event('change'));
-    })()""" % json.dumps(base64.b64encode(sketch).decode("ascii")))
-    page.wait_for("window.cadexReview.attached().length === 1", timeout=30)
-    assert "sketch.png" in page.text("#turn-images")
-    assert page.text("#turn-attach") == "Remove image"
-    page.evaluate("document.getElementById('turn-prompt').value = 'match the attached sketch'")
-    page.evaluate("document.getElementById('turn-resume').checked = false")
-    page.click("#turn-start")
-    page.wait_for("window.cadexReview.turn().state === 'done' || window.cadexReview.turn().state === 'failed'",
-                  timeout=120)
-    turn = page.evaluate("window.cadexReview.turn()")
-    assert turn["state"] == "done", turn
-    digest = hashlib.sha256(sketch).hexdigest()
-    # The claude the child ran was handed the very bytes the page picked, as an image block.
-    assert json.loads(Path(str(seen) + ".images.json").read_text()) == [
-        {"media_type": "image/png", "sha256": digest}]
-    assert seen.read_text(encoding="utf-8") == "match the attached sketch"
-    record = {"name": "sketch.png", "media_type": "image/png", "bytes": len(sketch), "sha256": digest}
-    assert turn["images"] == [record] and turn["reply"]["attachments"] == [record]
-    assert "attached sketch.png  image/png" in turn["text"]
-    # Sent once: the next prompt starts with nothing attached.
-    assert page.evaluate("window.cadexReview.attached()") == []
-    assert page.evaluate("document.getElementById('turn-images').hidden") is True
-    assert page.text("#turn-attach") == "Attach image"
-    revision = turn["reply"]["accepted_revision"]
-    page.wait_for("window.cadexReview.state().model && window.cadexReview.state().model.revision === %s"
-                  % json.dumps(revision), timeout=30)
-    # state().model is set when the manifest arrives, before the viewer has
-    # drawn its meshes: wait for the load to settle before measuring them.
-    assert _model_state(page) == "loaded"
-    assert page.evaluate("window.cadexReview.viewer().stats().bounds.max[0]"
-                         " - window.cadexReview.viewer().stats().bounds.min[0]") == pytest.approx(48.0, abs=0.01)
-    assert "prompt: match the attached sketch" in (root / "PROGRESS.md").read_text()
 
 
 def test_remote_viewing_is_tailscale_serve_in_front_of_loopback() -> None:
