@@ -20,18 +20,13 @@ are read on every visit and updated as the work goes:
   a reader lines up by eye (ADR-194, row 9).
 
 Longer notes go under ``docs/``, one file per subject, named by the subject
-(``docs/gear-ratios.md``, ``docs/sensors.md``, ``docs/rejected.md``). They
-land the same way a decision does — a closing line ``NOTE <subject>: …``
-(ADR-245) — and are pasted back on the next visit, so the convention the
-walk documents is one a design turn can actually reach.
+(``docs/gear-ratios.md``, ``docs/sensors.md``, ``docs/rejected.md``).
 
-**The CLI scaffolds and appends; the agent reads and decides.** The CLI's
-agent runs with no built-in tools — its whole world is the engine (see
-:mod:`cadex_cli.agent`) — so it cannot open a file. The three documents are
-pasted into its system prompt instead, bounded, and what it decides comes
-back through one convention rather than a new tool: a line of its closing
-text that starts ``DECISION:`` lands in ``DECISIONS.md``. ``PROGRESS.md``
-is written by the CLI after every accepted run, so it holds what actually
+**The CLI scaffolds and appends; the agent reads and decides.** The agent
+driving a project is the person's own (ADR-538), with a shell and files of
+its own, so it reads these documents and writes ``DECISIONS.md`` and the
+notes itself; the guidance (:mod:`cadex_cli.guidance`) tells it to.
+``PROGRESS.md`` is written by the CLI after every accepted run, so it holds what actually
 happened rather than what a model said would. The three files are the
 CLI's and a person's in every mode, local or remote, so the shape is the
 same in every mode because the files are (ADR-201).
@@ -75,30 +70,10 @@ PROJECT_DOC_NAMES = (ARCHITECTURE_NAME, DECISIONS_NAME, PROGRESS_NAME)
 #: Where a project's longer notes live, one file per subject.
 DOMAIN_DOCS_DIRNAME = "docs"
 
-#: A closing line of a turn that starts with this is a decision.
-DECISION_PREFIX = "DECISION:"
-
-#: A closing line of a turn that starts with this is a domain note:
-#: ``NOTE <subject>: <text>`` lands in ``docs/<subject>.md``. The same
-#: convention as ``DECISION:``, for the notes too long for an ADR line.
-NOTE_PREFIX = "NOTE"
-
 #: Subjects under ``docs/`` the CLI writes itself. A note never appends to
 #: a generated report, so ``inventory.md`` and ``clearance.md`` stay what
 #: the last run measured.
 GENERATED_DOC_STEMS = ("inventory", "clearance")
-
-#: How much of each domain note the agent is shown back. Smaller than a
-#: project document's share: there is one of each of those and there can
-#: be many notes.
-NOTE_DOC_LIMIT = 2_000
-
-#: How much of each document the agent is shown: both ends of the
-#: architecture, tails of decisions and progress, retaining the newest
-#: appended history. The architecture keeps both ends because its head is
-#: the scaffold's own guide: a guide that outgrows this budget would
-#: otherwise leave no room for what the project wrote below it (ADR-279).
-PROMPT_DOC_LIMIT = 8_000
 
 PROGRESS_HEADER = "| When (UTC) | Run | Revision | Digest | What | Numbers |"
 PROGRESS_RULE = "|---|---|---|---|---|---|"
@@ -108,12 +83,7 @@ _ARCHITECTURE_TEMPLATE = """\
 
 Read on every visit; keep it true. Maintained by the agent and the
 `cadex` CLI (ADR-193 in the Cadex repository).
-Prompt context keeps 8,000 characters of this file — both ends, half each,
-so what is written below this guide is read even as the guide grows — and the
-last 8,000 of decisions and progress, plus an omission marker when shortened.
-Domain notes keep their last 2,000 characters; full documents stay on disk.
-Progress rows, decisions and domain-note updates replace their files only after
-writing succeeds, so a failed update preserves the previous document. This is
+Progress rows replace their file only after writing succeeds, so a failed update preserves the previous document. This is
 per-file protection, not a transaction across documents or a power-loss guarantee.
 
 ## What this project is
@@ -156,12 +126,8 @@ On a leg timeout, the process group gets a full five-second SIGTERM cleanup
 grace even if its direct child exits early, then an unconditional SIGKILL.
 For toy CPU runs, use `JAX_PLATFORMS=cpu`; `training/SETUP.md` §b gives
 the invocation and resource bounds, including for a CUDA-capable venv.
-`agent.json.updated_at` records changed session identity or model, not every
-attempt. A refused turn saves a changed session ID for resumption; the same
-session ID leaves that file untouched, including its previous model. Turns
-choose explicit `--model`, nonblank `$CADEX_MODEL`, the recorded project model,
-then the CLI default; `--resume` controls only conversation continuity. Opening may refresh accepted restore
-attempt metadata in `script.json`, even when the subsequent turn fails.
+Opening may refresh accepted restore attempt metadata in `script.json`, even
+when the subsequent build fails.
 A refused walk does not roll that bookkeeping back or create a failure commit.
 After failed retraining, the accepted sweep stays applied with `policy_on=0`;
 prior artifacts and history survive. Retry with a fresh `--out` and `--name`,
@@ -217,11 +183,8 @@ Longer notes go under `{docs}/`, one file per subject, named by the
 subject — `{docs}/gear-ratios.md`, `{docs}/sensors.md`,
 `{docs}/actuators.md`, `{docs}/rejected.md` — and are linked from here.
 
-A design turn writes one by ending a closing line with
-`{note_prefix} <subject>: <text>`, which the CLI appends as a dated bullet
-in `{docs}/<subject>.md`, the way a `{prefix}` line lands an ADR. Every
-note is pasted back into the next turn's prompt, so a mechanism with
-actuators or sensors should leave `{docs}/actuators.md` and
+The agent writes them as it works and reads them on its next visit, so a
+mechanism with actuators or sensors should leave `{docs}/actuators.md` and
 `{docs}/sensors.md` behind. `{docs}/inventory.md` and
 `{docs}/clearance.md` are the CLI's generated reports, not note subjects.
 
@@ -233,7 +196,7 @@ section for `{docs}/sensors.md`. The `documentation` block in
 `review.json` and the `{progress}` row report the notes kept here, the
 subjects the model declares, and the ones with no note — `docs notes N,
 none missing` or `docs notes N, no <subjects>`. A missing note is a
-finding for the next design turn, never a walk failure, and the CLI never
+finding for the agent's next session, never a walk failure, and the CLI never
 writes the note itself: what drives a joint and what a sensor measures
 are this project's to say, and an invented note would be pasted back as
 if it were knowledge. A run that exported no model declares nothing and
@@ -244,8 +207,8 @@ _DECISIONS_TEMPLATE = """\
 # {name} — Decisions
 
 One entry per decision that shaped the model or its training: what was
-chosen, what it was chosen over, and why. Newest last. A `cadex -p` turn
-that ends with a line starting `{prefix}` lands here as the next entry.
+chosen, what it was chosen over, and why. Newest last. The agent working
+the project writes each entry as it decides.
 
 ## ADR-001 — Project scaffolded ({date})
 
@@ -261,14 +224,6 @@ explicitly staged files still enter automatic commits. In a project-root
 repository, accepted runs attempt to commit all working changes, including
 unrelated edits. A project nested beneath another repository root, without
 its own `.git`, gets no automatic commit and leaves the parent index untouched.
-"""
-
-_NOTE_TEMPLATE = """\
-# {title}
-
-One bullet per note, newest last. Written by the `cadex` CLI from a turn's
-closing `NOTE {title}:` lines, and read back to the agent on its next
-visit. Edit it freely; it is the project's, not the CLI's.
 """
 
 _PROGRESS_TEMPLATE = """\
@@ -350,8 +305,6 @@ def scaffold_project_docs(root: Path | str) -> list[str]:
     fill = {
         "name": name,
         "docs": DOMAIN_DOCS_DIRNAME,
-        "prefix": DECISION_PREFIX,
-        "note_prefix": NOTE_PREFIX,
         "date": _today(),
         "architecture": ARCHITECTURE_NAME,
         "progress": PROGRESS_NAME,
@@ -371,58 +324,6 @@ def scaffold_project_docs(root: Path | str) -> list[str]:
         path.write_text(template.format(**fill), encoding="utf-8")
         created.append(doc_name)
     return created
-
-
-def _bounded(text: str, limit: int, *, keep: str) -> str:
-    """Shorten *text* to *limit* characters, keeping the ``keep`` end.
-
-    ``keep="ends"`` keeps both, halving the budget between them. That is
-    what a document with boilerplate at the top and the project's own
-    writing underneath needs: keeping only the head made a scaffold that
-    grew past the limit evict every line the project wrote about itself,
-    silently and without changing a test that used a short document
-    (ADR-279).
-    """
-
-    if len(text) <= limit:
-        return text
-    if keep == "tail":
-        return f"[… {len(text) - limit} earlier characters omitted …]\n" + text[-limit:]
-    if keep == "ends":
-        head = limit // 2
-        tail = limit - head
-        return (text[:head]
-                + f"\n[… {len(text) - limit} characters omitted …]\n"
-                + text[-tail:])
-    return text[:limit] + f"\n[… {len(text) - limit} more characters omitted …]"
-
-
-def read_project_docs(root: Path | str, *, limit: int = PROMPT_DOC_LIMIT) -> str:
-    """The three documents and the domain notes as one prompt section.
-
-    Each is bounded. Empty when none exist — a project that predates the
-    scaffold and was never visited by a run that creates it says nothing
-    rather than inventing headings. The notes are pasted with the
-    documents because the agent has no file tool: a note it writes on one
-    visit is only worth writing if it reads it on the next.
-    """
-
-    parts: list[str] = []
-    for doc_name, path in project_doc_paths(root).items():
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        keep = "ends" if doc_name == ARCHITECTURE_NAME else "tail"
-        parts.append(f"--- {doc_name} ---\n{_bounded(text.strip(), limit, keep=keep)}")
-    for relative, path in domain_note_paths(root).items():
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        bounded = _bounded(text.strip(), NOTE_DOC_LIMIT, keep="tail")
-        parts.append(f"--- {relative} ---\n{bounded}")
-    return "\n\n".join(parts)
 
 
 #: The numbers cell is the one that carries several findings at once --
@@ -521,33 +422,6 @@ def previous_numbers(root: Path | str) -> dict[str, tuple[float, str]]:
                 except ValueError:
                     pass
     return found
-
-
-def progress_rows(root: Path | str) -> list[dict[str, str]]:
-    """``PROGRESS.md``'s rows as written, oldest first (ADR-519).
-
-    Each is ``when``, ``run``, ``revision`` and ``digest`` (empty for a
-    dash), ``what`` and ``numbers``, with the cells' escaped pipes put back.
-    A person's hand-added row counts; the header, the rule and every line
-    that is not a row are skipped. Empty when there is no file.
-    """
-
-    try:
-        lines = (Path(root) / PROGRESS_NAME).read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return []
-    rows: list[dict[str, str]] = []
-    for line in lines:
-        match = _ROW_RE.match(line.strip())
-        if not match or match.group(1).startswith(("When", "---")):
-            continue
-        when, run, revision, digest, what, numbers = (
-            cell.replace("\\|", "|") for cell in match.groups())
-        rows.append({"when": when, "run": run,
-                     "revision": "" if revision == "—" else revision,
-                     "digest": "" if digest == "—" else digest,
-                     "what": what, "numbers": numbers})
-    return rows
 
 
 def spelled_number(label: str, value: float) -> str:
@@ -716,80 +590,6 @@ def append_progress_row(
     return row
 
 
-def decision_lines(text: str) -> list[str]:
-    """The ``DECISION:`` lines of a turn's closing text, stripped of the prefix."""
-
-    found: list[str] = []
-    for line in str(text or "").splitlines():
-        stripped = line.strip().lstrip("-*• ").strip()
-        if stripped.upper().startswith(DECISION_PREFIX):
-            body = stripped[len(DECISION_PREFIX):].strip()
-            if body:
-                found.append(body)
-    return found
-
-
-def _note_stem(subject: str) -> str:
-    """``docs/<stem>.md`` for a note's subject, or ``""`` if it names none."""
-
-    slug = re.sub(r"[^a-z0-9]+", "-", str(subject or "").lower()).strip("-")
-    return slug[:48].strip("-")
-
-
-def note_lines(text: str) -> list[tuple[str, str]]:
-    """The ``NOTE <subject>:`` lines of a turn's closing text.
-
-    Each is a ``(stem, body)`` pair, the stem slugged for
-    ``docs/<stem>.md``. A line naming no subject, carrying no body, or
-    aimed at a report the CLI generates itself is not a note.
-    """
-
-    found: list[tuple[str, str]] = []
-    for line in str(text or "").splitlines():
-        stripped = line.strip().lstrip("-*• ").strip()
-        if stripped[: len(NOTE_PREFIX)].upper() != NOTE_PREFIX:
-            continue
-        rest = stripped[len(NOTE_PREFIX):]
-        if rest[:1] not in (" ", "\t") or ":" not in rest:
-            continue
-        subject, body = rest.split(":", 1)
-        stem, body = _note_stem(subject), body.strip()
-        if stem and body and stem not in GENERATED_DOC_STEMS:
-            found.append((stem, body))
-    return found
-
-
-def record_notes(root: Path | str, text: str) -> list[str]:
-    """Land a turn's ``NOTE <subject>:`` lines under ``docs/``.
-
-    One file per subject, each note appended as a dated bullet, the file
-    created with a title when the subject is new. Returns the
-    project-relative paths written, so a report can say so. Nothing to
-    land, nothing touched.
-    """
-
-    notes = note_lines(text)
-    if not notes:
-        return []
-    directory = Path(root) / DOMAIN_DOCS_DIRNAME
-    directory.mkdir(parents=True, exist_ok=True)
-    date = _today()
-    written: list[str] = []
-    for stem, body in notes:
-        path = directory / f"{stem}.md"
-        if path.exists():
-            existing = path.read_text(encoding="utf-8")
-        else:
-            existing = _NOTE_TEMPLATE.format(title=stem.replace("-", " "))
-        if not existing.endswith("\n"):
-            existing += "\n"
-        _replace_document(path, f"{existing}\n- ({date}) {body}\n")
-        relative = f"{DOMAIN_DOCS_DIRNAME}/{path.name}"
-        if relative not in written:
-            written.append(relative)
-    return written
-
-
 def domain_note_paths(root: Path | str) -> dict[str, Path]:
     """The project's agent-authored domain notes, by project-relative path.
 
@@ -812,7 +612,7 @@ def domain_note_paths(root: Path | str) -> dict[str, Path]:
 
 #: The note subjects a mechanism's own declaration asks for, by the MJCF
 #: section that declares them (ADR-256). The CLI never writes these notes --
-#: what drives a joint and what a sensor measures are the design turn's to
+#: what drives a joint and what a sensor measures are the agent's to
 #: say -- but a walk can read what the model it trained on declares and
 #: report which of those subjects the project keeps no note for.
 DECLARED_NOTE_SUBJECTS = {"actuator": "actuators", "sensor": "sensors"}
@@ -825,8 +625,8 @@ def documentation_status(
 
     ``expected`` is what the mechanism declares, as note subjects
     (:data:`DECLARED_NOTE_SUBJECTS`). ``missing`` is the subjects with no
-    ``docs/<subject>.md`` -- a finding for the next design turn, which
-    reads the notes back in its prompt, and never a failure: the CLI does
+    ``docs/<subject>.md`` -- a finding for the agent's next session, and
+    never a failure: the CLI does
     not write a note whose content it would have to invent.
     """
 
@@ -838,43 +638,6 @@ def documentation_status(
         "expected": wanted,
         "missing": [subject for subject in wanted if subject not in stems],
     }
-
-
-def _next_adr_number(text: str) -> int:
-    numbers = [int(match) for match in re.findall(r"^## ADR-(\d+)", text, re.MULTILINE)]
-    return (max(numbers) + 1) if numbers else 1
-
-
-def record_decisions(root: Path | str, text: str) -> list[str]:
-    """Land a turn's ``DECISION:`` lines in ``DECISIONS.md`` as ADR entries.
-
-    Each becomes ``## ADR-NNN — <first sentence> (<date>)`` with the whole
-    line as the body, numbered after the last entry present. Returns the
-    entries written, so a report can say so. Nothing to land, nothing
-    touched.
-    """
-
-    lines = decision_lines(text)
-    if not lines:
-        return []
-    base = Path(root)
-    path = base / DECISIONS_NAME
-    if not path.exists():
-        scaffold_project_docs(base)
-    existing = path.read_text(encoding="utf-8")
-    number = _next_adr_number(existing)
-    date = _today()
-    entries: list[str] = []
-    chunks: list[str] = []
-    for line in lines:
-        title = _cell(line.split(". ", 1)[0].rstrip("."), 96)
-        chunks.append(f"\n## ADR-{number:03d} — {title} ({date})\n\n{line.strip()}\n")
-        entries.append(f"ADR-{number:03d}")
-        number += 1
-    if not existing.endswith("\n"):
-        existing += "\n"
-    _replace_document(path, existing + "".join(chunks))
-    return entries
 
 
 # -- the repository the project owns (ADR-194) ----------------------------

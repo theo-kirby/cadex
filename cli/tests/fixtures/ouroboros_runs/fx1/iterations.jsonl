@@ -1,9 +1,0 @@
-{"ts": "2026-10-01T09:10:00+00:00", "iteration": 1, "step": "actor", "attempt": 0, "exit": 0, "timed_out": false, "error": null, "session": "s1", "turns": 12, "housekeeping": true}
-{"ts": "2026-10-01T09:10:00+00:00", "iteration": 1, "step": "commit", "sha": "aaaaaaaaaa", "changed": true, "recorded": false, "cost": 0.5, "housekeeping": true}
-{"ts": "2026-10-01T09:11:00+00:00", "iteration": 1, "step": "critique", "verdict": "continue", "source": "critic:claude", "reason": "The reconcile seeded the criteria.", "cost": 0.1}
-{"ts": "2026-10-01T09:40:00+00:00", "iteration": 2, "step": "actor", "attempt": 0, "exit": 0, "timed_out": false, "error": null, "session": "s2", "turns": 30, "housekeeping": null}
-{"ts": "2026-10-01T09:40:00+00:00", "iteration": 2, "step": "commit", "sha": "bbbbbbbbbb", "changed": true, "recorded": true, "cost": 2.0, "housekeeping": null}
-{"ts": "2026-10-01T09:41:00+00:00", "iteration": 2, "step": "critique", "verdict": "reject", "source": "critic:claude", "reasons": ["The bracket test was weakened."], "must_fix": ["Restore the bore assertion."], "cost": 0.2}
-not a json line
-{"ts": "2026-10-01T10:20:00+00:00", "iteration": 3, "step": "actor", "attempt": 0, "exit": 0, "timed_out": false, "error": null, "session": "s3", "turns": 25, "housekeeping": null}
-{"ts": "2026-10-01T10:20:00+00:00", "iteration": 3, "step": "commit", "sha": "cccccccccc", "changed": true, "recorded": true, "cost": 1.5, "housekeeping": null}

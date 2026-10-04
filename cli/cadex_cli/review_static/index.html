@@ -5,13 +5,12 @@
      showing one editor, after Blender's. layout.js tiles #screen from the
      editors parked in #editor-shelf: each editor's .editor-tools go in its
      area's header and its .editor-body below. Element ids are the hooks the
-     CLI suite pins. -->
+     CLI suite pins. The page writes nothing: the agent working the project
+     changes it, and the page follows (ADR-537). -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- The server writes this launch's write token here; every POST carries it (ADR-503). -->
-<meta name="cadex-write-token" content="">
 <title>Cadex</title>
 <script src="theme.js"></script>
 <link rel="stylesheet" href="review.css">
@@ -23,6 +22,54 @@
     <h1 id="project-name">loading…</h1>
     <div id="accepted-line"></div>
   </div>
+  <!-- The menu bar (ADR-539): File, Revisions and View, each a dropdown. -->
+  <nav id="menubar" aria-label="Menu">
+    <details class="menu" id="file-panel">
+      <summary>File</summary>
+      <div class="menu-panel">
+        <div class="field" id="project-field">
+          <label for="project-select">Project</label>
+          <select id="project-select"></select>
+        </div>
+        <div class="controls">
+          <button id="project-open" type="button">Open</button>
+          <a id="project-all" href="../../">All projects</a>
+        </div>
+        <p class="muted small">Every change is kept as a revision, so there is nothing to save by hand.</p>
+      </div>
+    </details>
+    <details class="menu" id="revision-panel">
+      <summary>Revisions</summary>
+      <div class="menu-panel">
+        <ol id="revision-list" reversed></ol>
+        <p id="revision-empty" class="muted small" hidden>No revisions yet: the trail starts with the first accepted build.</p>
+      </div>
+    </details>
+    <details class="menu" id="view-panel">
+      <summary>View</summary>
+      <div class="menu-panel">
+        <div class="field">
+          <span>Theme</span>
+          <span class="segmented" id="theme-choice" role="group" aria-label="Theme">
+            <button type="button" data-choice="dark">Dark</button>
+            <button type="button" data-choice="light">Light</button>
+            <button type="button" data-choice="system">System</button>
+          </span>
+        </div>
+        <div class="field">
+          <span>Render</span>
+          <span class="segmented" id="style-choice" role="group" aria-label="Render style">
+            <button type="button" data-style="shaded">Shaded</button>
+            <button type="button" data-style="hairline">Hairline</button>
+          </span>
+        </div>
+        <div class="field">
+          <span>Layout</span>
+          <button id="layout-reset" type="button">Reset</button>
+        </div>
+      </div>
+    </details>
+  </nav>
   <div class="top-end">
     <div id="freshness" data-state="loading">loading…</div>
     <button id="theme-toggle" class="icon-button" type="button" title="Light or dark" aria-label="Light or dark">
@@ -65,90 +112,6 @@
     </div>
   </section>
 
-  <section class="editor" id="editor-settings" data-editor="settings" data-title="Settings" data-short="Settings">
-    <div class="editor-tools"></div>
-    <div class="editor-body" id="settings">
-      <details class="group" id="file-panel" open>
-        <summary><h2>File</h2></summary>
-        <div class="field" id="project-field">
-          <label for="project-select">Project</label>
-          <select id="project-select"></select>
-        </div>
-        <div class="controls">
-          <button id="project-open" type="button">Open</button>
-          <a id="project-all" href="../../">All projects</a>
-        </div>
-        <p class="muted small">Every change is kept as a revision, so there is nothing to save by hand.</p>
-      </details>
-      <details class="group" id="params-panel" open>
-        <summary><h2>Parameters</h2></summary>
-        <!-- A slider runs `cadex params --set NAME=VALUE --project …` (ADR-503). -->
-        <div id="params-write" data-state="idle"></div>
-        <table id="params"><tbody></tbody></table>
-        <p id="params-empty" class="muted small" hidden>No parameters declared.</p>
-      </details>
-      <details class="group" id="revision-panel" open>
-        <summary><h2>Revisions</h2></summary>
-        <!-- Runs `cadex revision accept|reject|restore … --project …` (ADR-506). -->
-        <div class="controls">
-          <button id="revision-accept" type="button" disabled>Accept</button>
-          <button id="revision-reject" type="button" disabled>Reject</button>
-        </div>
-        <div id="revision-status" data-state="idle"></div>
-        <ol id="revision-list" reversed></ol>
-      </details>
-      <details class="group" id="view-panel" open>
-        <summary><h2>View</h2></summary>
-        <div class="field">
-          <span>Theme</span>
-          <span class="segmented" id="theme-choice" role="group" aria-label="Theme">
-            <button type="button" data-choice="dark">Dark</button>
-            <button type="button" data-choice="light">Light</button>
-            <button type="button" data-choice="system">System</button>
-          </span>
-        </div>
-        <div class="field">
-          <span>Render</span>
-          <span class="segmented" id="style-choice" role="group" aria-label="Render style">
-            <button type="button" data-style="shaded">Shaded</button>
-            <button type="button" data-style="hairline">Hairline</button>
-          </span>
-        </div>
-        <div class="field">
-          <span>Layout</span>
-          <button id="layout-reset" type="button">Reset</button>
-        </div>
-      </details>
-    </div>
-  </section>
-
-  <section class="editor" id="editor-chat" data-editor="chat" data-title="Chat" data-short="Chat">
-    <div class="editor-tools">
-      <button id="chat-new" type="button" title="The next message starts a new conversation">New chat</button>
-    </div>
-    <div class="editor-body" id="chat">
-      <div id="chat-log" aria-live="polite">
-        <p id="chat-empty" class="empty">Tell Cadex what to build or change.</p>
-        <!-- Earlier exchanges of this visit go above; the newest turn is this one. -->
-        <div id="chat-live" class="exchange" hidden>
-          <div class="msg msg-user" id="chat-live-prompt"></div>
-          <div class="msg msg-agent">
-            <pre class="msg-text" id="turn-transcript" hidden></pre>
-            <div class="msg-foot" id="turn-answer"></div>
-          </div>
-        </div>
-      </div>
-      <!-- A message runs `cadex -p PROMPT --project …` (ADR-504); its progress streams into the reply. -->
-      <form id="chat-compose">
-        <textarea id="turn-prompt" rows="3" placeholder="What to build or change" aria-label="Message"></textarea>
-        <div class="controls">
-          <label class="toggle" for="turn-resume"><input type="checkbox" id="turn-resume" checked> <span>continue</span></label>
-          <span id="turn-status" data-state="idle"></span>
-          <button id="turn-start" type="submit">Send</button>
-        </div>
-      </form>
-    </div>
-  </section>
 </div>
 <script type="module" src="viewer.js"></script>
 </body>

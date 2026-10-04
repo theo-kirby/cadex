@@ -1,17 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Cadex Authors
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// The app (ADR-534): four editors tiled by layout.js, after Blender's areas.
+// The app (ADR-534): two editors tiled by layout.js, after Blender's areas,
+// under a menu bar (ADR-539).
 //
 //   3D viewport  the accepted model or a run's, shaded or hairline, and a
-//                run's rollout played back on a timeline;
-//   2D viewport  the project's drawings, images, documents and training plots;
-//   Settings     the project, its parameters and revisions, and the view;
-//   Chat         what to build or change: each message is a design turn.
+//                run's rollout played back on a timeline -- the whole screen
+//                by default;
+//   2D viewport  the project's drawings, images, documents and training plots,
+//                a split away;
+//   Menu bar     File (the project), Revisions (the trail), View (theme,
+//                render style, layout).
 //
-// Every write is a `cadex` command the server runs (ADR-503, ADR-504,
-// ADR-506). Polls /api/project for what changed and reloads the model only
-// when what it shows moves.
+// Read-only (ADR-537): the agent working the project changes it, through
+// the CLI or `cadex mcp`, and the page follows. Polls /api/project for what
+// changed and reloads the model only when what it shows moves.
 (function () {
   'use strict';
 
@@ -20,18 +23,9 @@
   // carries that prefix.
   var BASE = (location.pathname.match(/^\/p\/[^/]+(?=\/)/) || [''])[0];
   var POLL_MS = 2000;
-  // A running turn's transcript is read this often; an idle read is a few bytes.
-  var TURN_POLL_MS = 1000;
-  // This launch's write token, written into the page by the server; every
-  // POST carries it (ADR-503).
-  var WRITE_TOKEN = (document.querySelector('meta[name="cadex-write-token"]') || {}).content || '';
-  var ORDER = ['view3d', 'view2d', 'settings', 'chat'];
-  // Settings down the left, the two viewports stacked in the middle, the chat on the right.
-  var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.2, 0.56, 0.24], children: [
-    { editor: 'settings' },
-    { dir: 'col', sizes: [0.64, 0.36], children: [{ editor: 'view3d' }, { editor: 'view2d' }] },
-    { editor: 'chat' }
-  ] };
+  var ORDER = ['view3d', 'view2d'];
+  // One 3D viewport over the whole screen; split an area for the 2D one.
+  var DEFAULT_LAYOUT = { editor: 'view3d' };
   var STYLES = ['shaded', 'hairline'];
   var state = { review: null, lastOk: null, stale: false, error: null, model: null, viewer: null, layout: null };
   var pendingPoll = null;
@@ -70,15 +64,6 @@
       return response.json();
     });
   }
-  function post(path, body) {
-    return fetch(BASE + path, {
-      method: 'POST', cache: 'no-store',
-      headers: { 'Content-Type': 'application/json', 'X-Cadex-Token': WRITE_TOKEN },
-      body: JSON.stringify(body)
-    }).then(function (response) { return response.json(); });
-  }
-  // A poll already in flight may predate a write; the next one cannot.
-  function repoll() { return (pendingPoll || Promise.resolve()).catch(function () {}).then(poll); }
   // This browser's view preferences; a browser that refuses storage gets the defaults.
   function readPref(key, choices, fallback) {
     try { var value = localStorage.getItem(key); return choices.indexOf(value) >= 0 ? value : fallback; }
@@ -110,128 +95,28 @@
       : 'nothing accepted yet';
   }
 
-  // -- Settings: parameters -------------------------------------------------------
-  // A declared number with a range is a slider; anything else reads as its
-  // value. A parameter never set reads at its default.
-  var paramsKey = null, writing = null, lastWrite = null;
-
-  function renderParams() {
-    var accepted = state.review.accepted;
-    var values = accepted.available ? accepted.param_values || {} : {}, specs = accepted.available ? accepted.param_specs : null;
-    var byName = {};
-    (Array.isArray(specs) ? specs : []).forEach(function (spec) { if (spec && spec.name) byName[spec.name] = spec; });
-    var names = Object.keys(values);
-    Object.keys(byName).forEach(function (name) { if (names.indexOf(name) < 0) names.push(name); });
-    // Rebuilt only when what it shows changes, and never under a write in
-    // flight, so a poll does not snatch a slider from the hand moving it.
-    var key = JSON.stringify([values, specs]);
-    if (writing || key === paramsKey) return;
-    paramsKey = key;
-    var body = $('params').querySelector('tbody');
-    body.textContent = '';
-    names.sort().forEach(function (name) {
-      var spec = byName[name] || {};
-      body.appendChild(el('tr', { 'data-param': name }, [
-        el('th', { text: spec.label || name, title: name + (spec.unit ? ' (' + spec.unit + ')' : '') }),
-        el('td', {}, [paramValue(name, values[name], spec)])
-      ]));
-    });
-    $('params-empty').hidden = names.length > 0;
-  }
-
-  function paramValue(name, value, spec) {
-    var current = typeof value === 'number' ? value : spec.default;
-    var bounded = typeof current === 'number' && isFinite(spec.min) && isFinite(spec.max) && spec.max > spec.min;
-    var unit = spec.unit ? ' ' + spec.unit : '';
-    if (!bounded || !WRITE_TOKEN) return el('span', { text: fmt(value) + unit });
-    var shown = el('output', { text: fmt(current) + unit });
-    var slider = el('input', { type: 'range', min: String(spec.min), max: String(spec.max),
-                               step: String(spec.step > 0 ? spec.step : 'any'), value: String(current), 'data-param': name });
-    slider.setAttribute('aria-label', spec.label || name);
-    slider.addEventListener('input', function () { shown.textContent = fmt(Number(slider.value)) + unit; });
-    // One write per release, not one per pixel of the drag.
-    slider.addEventListener('change', function () { writeParams(name, Number(slider.value)); });
-    return el('span', { className: 'param-slider' }, [slider, shown]);
-  }
-
-  function writeParams(name, value) {
-    var status = $('params-write'), started = performance.now(), values = {}, reply = null;
-    values[name] = value;
-    writing = { name: name, value: value };
-    paramsKey = null;
-    $('params').querySelectorAll('input[type=range]').forEach(function (input) { input.disabled = true; });
-    status.dataset.state = 'pending';
-    status.textContent = 'rebuilding…';
-    return post('/api/params', { values: values }).then(function (body) {
-      reply = body;
-      writing = null;
-      if (!reply.ok) throw new Error(reply.error || 'exit ' + reply.exit);
-      return repoll();
-    }).then(function () {
-      lastWrite = { ok: true, name: name, value: value, revision: reply.accepted_revision, digest: reply.digest,
-                    server_s: reply.seconds, total_ms: performance.now() - started };
-      status.dataset.state = 'idle';
-      status.textContent = '';
-    }).catch(function (error) {
-      writing = null; paramsKey = null;
-      lastWrite = { ok: false, name: name, value: value, error: error.message };
-      status.dataset.state = 'error';
-      status.textContent = name + ' = ' + fmt(value) + ' refused: ' + error.message;
-      if (state.review) renderParams();
-    });
-  }
-
-  // -- Settings: revisions --------------------------------------------------------
-  // Accept the current one, reject it for the one before, or restore any earlier one.
-  var revisionsKey = null, revisionWriting = false, lastRevision = null;
+  // -- Menu bar: revisions --------------------------------------------------------
+  // The trail the agent's accepted writes left, newest first.
+  var revisionsKey = null;
 
   function renderRevisions() {
     var trail = state.review.revisions || [], current = state.review.accepted && state.review.accepted.revision;
-    var key = JSON.stringify([trail, current, revisionWriting]);
+    var key = JSON.stringify([trail, current]);
     if (key === revisionsKey) return;
     revisionsKey = key;
-    $('revision-accept').disabled = revisionWriting || !current;
-    $('revision-reject').disabled = revisionWriting || !current || trail.length < 2;
     var list = $('revision-list');
+    $('revision-empty').hidden = trail.length > 0;
     list.textContent = '';
     // The trail comes newest first.
     trail.forEach(function (entry) {
       var here = entry.revision === current;
-      var item = el('li', { value: entry.ordinal, 'data-revision': entry.revision, 'data-ordinal': String(entry.ordinal), 'data-current': String(here) }, [
+      list.appendChild(el('li', { value: entry.ordinal, 'data-revision': entry.revision, 'data-ordinal': String(entry.ordinal), 'data-current': String(here) }, [
         el('span', { text: here ? 'current' : brief(entry.saved_at), title: when(entry.saved_at) + ' · ' + entry.revision })
-      ]);
-      if (!here) {
-        var restore = el('button', { type: 'button', className: 'revision-restore', text: 'Restore' });
-        restore.disabled = revisionWriting;
-        restore.addEventListener('click', function () { writeRevision('restore', String(entry.ordinal)); });
-        item.appendChild(restore);
-      }
-      list.appendChild(item);
+      ]));
     });
   }
 
-  function writeRevision(action, revision) {
-    var status = $('revision-status');
-    revisionWriting = true; revisionsKey = null; renderRevisions();
-    status.dataset.state = 'pending';
-    status.textContent = action + '…';
-    return post('/api/revision', { action: action, revision: revision || '', note: '' }).then(function (reply) {
-      if (!reply.ok) throw new Error(reply.error || 'exit ' + reply.exit);
-      lastRevision = reply;
-      status.dataset.state = 'idle';
-      status.textContent = '';
-      revisionWriting = false;
-      return repoll().then(function () { return reply; });
-    }).catch(function (error) {
-      revisionWriting = false; revisionsKey = null;
-      status.dataset.state = 'error';
-      status.textContent = action + ' refused: ' + error.message;
-      if (state.review) renderRevisions();
-      return null;
-    });
-  }
-
-  // -- Settings: the project and the view -----------------------------------------
+  // -- Menu bar: the project and the view -----------------------------------------
   function loadProjects() {
     if (!BASE) {
       // `cadex review` serves one project: there is nothing to switch to.
@@ -251,6 +136,22 @@
   function openProject() {
     var name = $('project-select').value;
     if (name && name !== decodeURIComponent(BASE.slice(3))) location.href = '../' + encodeURIComponent(name) + '/';
+  }
+  // One menu open at a time; a click outside or Escape closes it.
+  function wireMenus() {
+    var menus = Array.prototype.slice.call(document.querySelectorAll('#menubar details.menu'));
+    function closeAll(except) { menus.forEach(function (menu) { if (menu !== except) menu.open = false; }); }
+    menus.forEach(function (menu) {
+      menu.addEventListener('toggle', function () { if (menu.open) closeAll(menu); });
+      // Hovering across the bar while one is open moves to the next, as a menu bar does.
+      menu.querySelector('summary').addEventListener('pointerenter', function () {
+        if (menus.some(function (other) { return other.open && other !== menu; })) menu.open = true;
+      });
+    });
+    document.addEventListener('pointerdown', function (event) {
+      if (!event.target.closest('#menubar')) closeAll(null);
+    });
+    document.addEventListener('keydown', function (event) { if (event.key === 'Escape') closeAll(null); });
   }
   function renderThemeChoice() { pressed('theme-choice', 'data-choice', window.cadexTheme.choice()); }
 
@@ -635,134 +536,15 @@
     stage.appendChild(svg);
   }
 
-  // -- Chat ----------------------------------------------------------------------------
-  // Each message is one design turn (ADR-504): one `cadex -p` child per
-  // project, started here or by another page on this server; its transcript
-  // is read from an offset, so each read carries only what arrived since the
-  // last. Earlier exchanges of this visit stay above the newest.
-  var turn = { id: null, state: 'idle', text: '', next: 0, reply: null, prompt: '' }, turnRequest = null;
-  var dismissed = null, exchanges = [];
-
-  // The transcript is the agent's words with its tool calls between them
-  // (`· name  args`): words read as the message, a tool call as a quiet row.
-  function renderTranscript(node, text) {
-    node.textContent = '';
-    text.split(/(?<=\n)/).forEach(function (line) {
-      var tool = /^\s*· /.test(line);
-      node.appendChild(el('span', { className: tool ? 't-tool' : 't-say', text: line }));
-    });
-  }
-  function footOf(t) {
-    var reply = t.reply || {};
-    if (t.state === 'running') return '';
-    if (t.state === 'interrupted') return 'Interrupted.';
-    if (!reply.ok) return reply.error || 'The turn failed.';
-    return reply.accepted_revision ? 'Revision ' + short(reply.accepted_revision) + ' accepted.' : '';
-  }
-  function archiveTurn() {
-    if (!turn.id || turn.state === 'running' || turn.id === dismissed) return;
-    if (exchanges.some(function (x) { return x.id === turn.id; })) return;
-    exchanges.push({ id: turn.id, prompt: turn.prompt });
-    var said = el('pre', { className: 'msg-text' });
-    renderTranscript(said, turn.text);
-    var foot = el('div', { className: 'msg-foot' + (turn.reply && turn.reply.ok ? '' : ' failed'), text: footOf(turn) });
-    $('chat-log').insertBefore(el('div', { className: 'exchange', 'data-turn': turn.id }, [
-      el('div', { className: 'msg msg-user', text: turn.prompt || '' }),
-      el('div', { className: 'msg msg-agent' }, [said, foot])
-    ]), $('chat-live'));
-  }
-  function renderTurn() {
-    var status = $('turn-status'), transcript = $('turn-transcript'), running = turn.state === 'running';
-    var live = $('chat-live'), log = $('chat-log');
-    status.dataset.state = turn.state;
-    $('turn-start').disabled = running;
-    $('turn-prompt').disabled = running;
-    if (turn.state === 'idle') status.textContent = '';
-    else if (running) status.textContent = 'working…';
-    else if (turn.state === 'interrupted') status.textContent = 'interrupted';
-    else if (turn.reply && turn.reply.ok) status.textContent = 'done';
-    else status.textContent = 'failed';
-    live.hidden = !turn.id || turn.id === dismissed;
-    $('chat-empty').hidden = !live.hidden || exchanges.length > 0;
-    $('chat-live-prompt').textContent = turn.prompt || '';
-    var foot = $('turn-answer');
-    foot.textContent = footOf(turn);
-    foot.className = 'msg-foot' + (!running && turn.reply && !turn.reply.ok ? ' failed' : '');
-    transcript.hidden = !turn.text;
-    if (transcript.textContent !== turn.text) {
-      var pinned = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
-      renderTranscript(transcript, turn.text);
-      if (pinned) log.scrollTop = log.scrollHeight;
-    }
-  }
-
-  function pollTurn() {
-    if (turnRequest) return turnRequest;
-    turnRequest = json(BASE + '/api/turn?since=' + turn.next).then(function (reply) {
-      if (reply.state === 'idle') return;
-      var wasRunning = turn.state === 'running';
-      if (reply.id !== turn.id) {
-        // Another turn, or this one now read from the project's store: its
-        // transcript starts over, so read it from the top.
-        archiveTurn();
-        turn = { id: reply.id, state: wasRunning ? 'running' : reply.state, text: '', next: 0, reply: null,
-                 prompt: reply.prompt, source: reply.source };
-        turnRequest = null;
-        return pollTurn();
-      }
-      turn.text += reply.text; turn.next = reply.next; turn.state = reply.state; turn.reply = reply.reply; turn.source = reply.source;
-      renderTurn();
-      // The turn ended: the accepted revision may have moved under the model.
-      if (wasRunning && reply.state !== 'running') return repoll();
-    }).catch(function () {}).finally(function () { turnRequest = null; });
-    return turnRequest;
-  }
-
-  function startTurn(prompt, resume) {
-    var status = $('turn-status');
-    status.dataset.state = 'pending';
-    status.textContent = 'starting…';
-    return post('/api/turn', { prompt: prompt, resume: !!resume, images: [] }).then(function (reply) {
-      if (!reply.ok) throw new Error(reply.error || 'refused');
-      archiveTurn();
-      turn = { id: reply.turn.id, state: reply.turn.state, text: reply.turn.text, next: reply.turn.next,
-               reply: reply.turn.reply, prompt: reply.turn.prompt };
-      $('turn-prompt').value = '';
-      // Whatever this message started, the next one continues it.
-      $('turn-resume').checked = true;
-      renderTurn();
-      $('chat-log').scrollTop = $('chat-log').scrollHeight;
-      return reply.turn;
-    }).catch(function (error) {
-      status.dataset.state = 'error';
-      status.textContent = 'not sent: ' + error.message;
-      return null;
-    });
-  }
-  function send() {
-    var prompt = $('turn-prompt').value.trim();
-    if (prompt && turn.state !== 'running') startTurn(prompt, $('turn-resume').checked);
-  }
-  function newChat() {
-    if (turn.state === 'running') return;
-    dismissed = turn.id;
-    exchanges = [];
-    $('chat-log').querySelectorAll('.exchange:not(#chat-live)').forEach(function (node) { node.remove(); });
-    $('turn-resume').checked = false;
-    renderTurn();
-    $('turn-prompt').focus();
-  }
-
   // -- the loop -----------------------------------------------------------------------
   function render() {
     renderFreshness();
     if (!state.review) return;
-    renderHeader(); renderParams(); renderRevisions(); renderSources(); renderSheetSources();
+    renderHeader(); renderRevisions(); renderSources(); renderSheetSources();
   }
 
   // The poll is the project read alone: a model it starts loading is
-  // handed back to the caller (a write waits for it) but never holds up the
-  // next poll, so the page stays live while a large model comes in.
+  // handed back to the caller but never holds up the next poll, so the page stays live while a large model comes in.
   function poll() {
     if (pendingPoll) return pendingPoll;
     var started = performance.now(), model = null;
@@ -801,7 +583,7 @@
                         tools: home.querySelector('.editor-tools'), body: home.querySelector('.editor-body') };
     });
     state.layout = window.CadexLayout.create({ root: $('screen'), shelf: $('editor-shelf'), editors: editors, order: ORDER,
-                                               storageKey: 'cadex.layout.v1', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
+                                               storageKey: 'cadex.layout.v3', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
     state.viewer = window.CadexViewer.create($('viewer'));
     applyStyle(renderStyle);
 
@@ -833,14 +615,7 @@
     document.addEventListener('cadex-theme', function () { if (renderStyle === 'hairline') applyStyle('hairline'); });
     renderThemeChoice();
     $('layout-reset').addEventListener('click', function () { state.layout.reset(); });
-
-    $('chat-compose').addEventListener('submit', function (event) { event.preventDefault(); send(); });
-    $('turn-prompt').addEventListener('keydown', function (event) {
-      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); send(); }
-    });
-    $('chat-new').addEventListener('click', newChat);
-    $('revision-accept').addEventListener('click', function () { writeRevision('accept', ''); });
-    $('revision-reject').addEventListener('click', function () { writeRevision('reject', ''); });
+    wireMenus();
 
     // Each canvas follows its box; redraw whenever the box changes.
     if (window.ResizeObserver) {
@@ -850,19 +625,11 @@
     loadProjects();
     poll().then(function () { readyResolve(true); });
     setInterval(poll, POLL_MS);
-    pollTurn();
-    setInterval(pollTurn, TURN_POLL_MS);
   }
 
   window.cadexReview = {
     ready: ready,
     refresh: poll,
-    setParam: writeParams,
-    lastWrite: function () { return lastWrite; },
-    startTurn: startTurn,
-    turn: function () { return { id: turn.id, state: turn.state, text: turn.text, reply: turn.reply, source: turn.source }; },
-    revision: writeRevision,
-    lastRevision: function () { return lastRevision; },
     viewer: function () { return state.viewer; },
     layout: function () { return state.layout; },
     setStyle: applyStyle,

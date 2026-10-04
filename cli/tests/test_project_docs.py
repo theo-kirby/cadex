@@ -3,10 +3,10 @@
 
 """The project as a codebase (ADR-193): the three documents and who writes them.
 
-The pure half needs no engine: scaffold, bounded read, the progress row, the
-``DECISION:`` convention. The engine half drives ``main()`` and
-``command_prompt`` for real and checks that a first visit scaffolds, an
-accepted run lands a row, and a turn's decision lands an ADR entry.
+The pure half needs no engine: scaffold and the progress row. The engine
+half drives ``main()`` for real and checks that a first visit scaffolds and
+an accepted run lands a row and a commit. The agent writes ``DECISIONS.md``
+and the notes itself (ADR-538); the CLI writes the rest.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ from pathlib import Path
 
 import pytest
 
-from cadex_cli.__main__ import _progress_what, command_prompt, main
-from cadex_cli.agent import CLI_OVERLAY, system_prompt
+from cadex_cli.__main__ import _progress_what, main
+from cadex_cli.guidance import OVERLAY
 from cadex_cli.export import ExportedOutput
 from cadex_cli.project_docs import (
     ARCHITECTURE_NAME,
@@ -29,19 +29,11 @@ from cadex_cli.project_docs import (
     PROGRESS_NAME,
     PROJECT_DOC_NAMES,
     append_progress_row,
-    decision_lines,
     documentation_status,
-    note_lines,
     progress_numbers,
-    read_project_docs,
-    record_decisions,
-    record_notes,
     scaffold_project_docs,
 )
 from cadex_cli.report import EXIT_OK, RunReport
-
-from mock_backend import turn_factory
-from test_turn_loop import BRACKET, _args
 
 PLATE = """
 p = params(width=num(30.0, unit="mm", min=10.0, max=90.0, step=1.0))
@@ -63,7 +55,7 @@ def test_scaffold_creates_the_three_and_never_overwrites(tmp_path) -> None:
     assert "# actuator — Architecture" in architecture
     assert "docs/gear-ratios.md" in architecture
     # The convention reaches both a fresh project's docs and its design agent.
-    for guidance in (architecture, CLI_OVERLAY):
+    for guidance in (architecture, OVERLAY):
         normalized = " ".join(guidance.split())
         for fact in (
             "publish each catalog body", "separate assembly components",
@@ -205,6 +197,29 @@ def test_no_live_doc_names_the_deleted_shell() -> None:
     assert naming == [], naming
 
 
+#: Where the name of Ouroboros, the separate research loop that has driven
+#: this repository, may appear: the dev-loop pointer in the agent contract,
+#: the loop's own directory, and the history the shell's names may also
+#: appear in (ADR-536). It is not part of Cadex.
+OUROBOROS_ALLOWED = SHELL_HISTORY_DOCS + ("AGENTS.md", "CLAUDE.md", ".gitignore", "docs/probes/")
+
+
+def test_no_product_file_names_ouroboros() -> None:
+    """ADR-536: Ouroboros is not part of Cadex, so no product file -- code,
+    page, test or live doc -- names it."""
+
+    root = Path(__file__).resolve().parents[2]
+    listing = subprocess.run(
+        ["git", "grep", "-l", "-i", "-I", "ouroboros", "--", "."], cwd=root,
+        capture_output=True, text=True, check=False)
+    if listing.returncode not in (0, 1):
+        pytest.skip("not a git checkout")
+    naming = [name for name in listing.stdout.splitlines()
+              if name and not name.startswith(OUROBOROS_ALLOWED)
+              and name != "cli/tests/test_project_docs.py"]
+    assert naming == [], naming
+
+
 def test_agents_md_describes_the_three_part_product() -> None:
     """ADR-500 (charter R1): the agent contract describes the engine, the
     dashboard and the agent, at no more than half the 432 lines it had when
@@ -214,7 +229,7 @@ def test_agents_md_describes_the_three_part_product() -> None:
     text = (root / "AGENTS.md").read_text(encoding="utf-8")
     assert len(text.splitlines()) <= 216, len(text.splitlines())
     flat = " ".join(text.split())
-    for part in ("1. **The engine**", "2. **The dashboard**", "3. **The agent**"):
+    for part in ("1. **The engine**", "2. **The dashboard**", "3. **The agent bindings.**"):
         assert part in flat, part
     vision = " ".join((root / "docs" / "VISION.md").read_text(encoding="utf-8").split())
     for text in (flat, vision):
@@ -257,10 +272,10 @@ def test_readme_architecture_and_integration_describe_the_three_parts() -> None:
     assert "**Superseded: a desktop app that copies the dashboard.**" in roadmap
 
 
-def test_claude_code_is_the_only_harness() -> None:
-    """ADR-497 (charter A4): the Codex and pi backends went with the shell.
-    No CLI module names either harness, and the agent contract says Claude
-    Code is the only one rather than offering the other two as a preference."""
+def test_cadex_has_no_agent_harness_of_its_own() -> None:
+    """ADR-538, reversing ADR-497: Cadex runs no model loop. No CLI module
+    spawns an agent CLI or carries one's flags, and the agent contract says
+    the agent is the person's own."""
 
     root = Path(__file__).resolve().parents[2]
     package = root / "cli" / "cadex_cli"
@@ -269,18 +284,15 @@ def test_claude_code_is_the_only_harness() -> None:
         if source.suffix not in {".py", ".js", ".html"}:
             continue
         text = source.read_text(encoding="utf-8")
-        if re.search(r"\bcodex\b|\bpi_tools\b|\bPiBackend\b|registerTool", text, re.IGNORECASE):
+        if re.search(r"--mcp-config|--allowedTools|ClaudeTurn|find_claude|\banthropic\b|stream-json",
+                     text):
             naming.append(source.name)
     assert naming == [], naming
+    assert not (package / "agent.py").exists() and not (package / "turn_store.py").exists()
 
     agents = " ".join((root / "AGENTS.md").read_text(encoding="utf-8").split())
-    vision = " ".join((root / "docs" / "VISION.md").read_text(encoding="utf-8").split())
-    assert "**Claude Code is the only harness** (ADR-497)" in agents
-    assert "the only harness (ADR-497" in vision
-    for text in (agents, vision):
-        assert "OpenAI Codex CLI" not in text
-        assert "Claude Code, Codex, or pi" not in text
-
+    assert "Cadex has no agent of its own" in agents
+    assert "**Claude Code is the only harness**" not in agents
 
 def test_a_train_row_names_the_mode_it_ran_in() -> None:
     """`PROGRESS.md`'s What column says `(remote)` for a run on the box and
@@ -296,67 +308,6 @@ def test_a_train_row_names_the_mode_it_ran_in() -> None:
     )
     assert local == "train 2 it × 4 envs → r.cxpolicy (stored)"
     assert remote == local + " (remote)"
-
-
-@pytest.mark.parametrize("limit", [4_000, 8_000])
-def test_read_keeps_architecture_head_and_recent_history_without_editing(tmp_path, limit) -> None:
-    scaffold_project_docs(tmp_path)
-    sources = {name: f"old {name}\n" + "x" * 20_000 + f"\nnew {name}"
-               for name in PROJECT_DOC_NAMES}
-    sources["docs/sensors.md"] = "old sensor\n" + "y" * 3_000 + "\nnew sensor"
-    (tmp_path / "docs").mkdir(exist_ok=True)
-    for name, source in sources.items():
-        (tmp_path / name).write_text(source, encoding="utf-8")
-
-    text = read_project_docs(tmp_path, limit=limit)
-
-    for name, source in sources.items():
-        ends = name == ARCHITECTURE_NAME
-        bound = 2_000 if name.startswith("docs/") else limit
-        omitted = len(source) - bound
-        if ends:
-            head = bound // 2
-            expected = (source[:head]
-                        + f"\n[… {omitted} characters omitted …]\n"
-                        + source[-(bound - head):])
-        else:
-            expected = (f"[… {omitted} earlier characters omitted …]\n"
-                        + source[-bound:])
-        assert f"--- {name} ---\n{expected}" in text
-        assert (tmp_path / name).read_bytes() == source.encode("utf-8")
-
-
-def test_a_scaffold_that_outgrows_the_budget_still_shows_the_project_s_own_lines(
-    tmp_path,
-) -> None:
-    """The guide at the top must never evict what the project wrote below it.
-
-    The architecture scaffold is boilerplate that grows every time the walk
-    contract does; the project's own paragraphs are appended under it. Head-
-    bounding meant that the moment the scaffold passed the budget — which it
-    did at ADR-277, at 8,191 characters — every project's own architecture
-    silently stopped reaching the agent's prompt (ADR-279). The check is made
-    against the real scaffold rather than a synthetic string so that a future
-    guide line cannot break it back without failing here.
-    """
-
-    scaffold_project_docs(tmp_path)
-    architecture = tmp_path / ARCHITECTURE_NAME
-    scaffold = architecture.read_text(encoding="utf-8")
-    own = "\n## Own\n\nThe hinge pin is 3 mm; the cable exit stays clear.\n"
-    architecture.write_text(scaffold + own, encoding="utf-8")
-    # Force the eviction the old bounding suffered even on a short scaffold.
-    limit = len(scaffold) - 500
-
-    text = read_project_docs(tmp_path, limit=limit)
-
-    assert "The hinge pin is 3 mm; the cable exit stays clear." in text
-    assert scaffold.strip().splitlines()[0] in text  # ...and the guide's head
-    assert "characters omitted" in text
-
-
-def test_read_says_nothing_for_a_project_with_no_docs(tmp_path) -> None:
-    assert read_project_docs(tmp_path) == ""
 
 
 # -- the progress row ----------------------------------------------------
@@ -393,77 +344,7 @@ def test_numbers_come_from_the_trace_and_the_receipt(tmp_path) -> None:
     assert progress_numbers(training={}, outputs=outputs[:1]) == ""
 
 
-# -- the DECISION: convention --------------------------------------------
-
-
-def test_decision_lines_are_found_and_land_as_numbered_entries(tmp_path) -> None:
-    text = (
-        "Built the bracket.\n"
-        "- DECISION: two-stage reduction. One stage needed a 90 mm gear.\n"
-        "decision: keep the bore at 6 mm\n"
-        "Not a decision.\n"
-    )
-    assert decision_lines(text) == [
-        "two-stage reduction. One stage needed a 90 mm gear.",
-        "keep the bore at 6 mm",
-    ]
-
-    assert record_decisions(tmp_path, text) == ["ADR-002", "ADR-003"]
-    decisions = (tmp_path / DECISIONS_NAME).read_text()
-    assert "## ADR-001 — Project scaffolded" in decisions
-    assert "## ADR-002 — two-stage reduction (" in decisions
-    assert "## ADR-003 — keep the bore at 6 mm (" in decisions
-    assert record_decisions(tmp_path, "nothing decided") == []
-    assert record_decisions(tmp_path, "DECISION: one more") == ["ADR-004"]
-
-
-def test_note_lines_land_one_file_per_subject_and_come_back_next_visit(tmp_path) -> None:
-    """A design turn's longer notes reach `docs/` (ADR-245).
-
-    The convention was documented and unreachable: the agent has no file
-    tool, and a headless walk has no caller to ask. A closing `NOTE
-    <subject>:` line lands the same way a `DECISION:` line does.
-    """
-
-    text = (
-        "Built the leg.\n"
-        "- NOTE actuators: MG90S at 1.8 kg-cm stall; damping = stall / no-load.\n"
-        "note Gear Ratios: 4:1, in two stages.\n"
-        "NOTE clearance: the review's own report is not a note subject.\n"
-        "NOTE: no subject here.\n"
-        "NOTE sensors:\n"
-        "Nothing to note.\n"
-    )
-    assert note_lines(text) == [
-        ("actuators", "MG90S at 1.8 kg-cm stall; damping = stall / no-load."),
-        ("gear-ratios", "4:1, in two stages."),
-    ]
-
-    assert record_notes(tmp_path, text) == ["docs/actuators.md", "docs/gear-ratios.md"]
-    actuators = (tmp_path / "docs" / "actuators.md").read_text()
-    assert actuators.startswith("# actuators\n")
-    assert "- (" in actuators and "MG90S at 1.8 kg-cm stall" in actuators
-    assert not (tmp_path / "docs" / "clearance.md").exists()
-
-    # A second note on the same subject appends; the first survives.
-    assert record_notes(tmp_path, "NOTE actuators: the knee stalls at 40 deg.") == [
-        "docs/actuators.md"
-    ]
-    actuators = (tmp_path / "docs" / "actuators.md").read_text()
-    assert "MG90S at 1.8 kg-cm stall" in actuators
-    assert "the knee stalls at 40 deg." in actuators
-    assert record_notes(tmp_path, "nothing noted") == []
-
-    # ...and the next turn reads them back beside the three documents,
-    # while the CLI's own generated reports stay out of the prompt.
-    scaffold_project_docs(tmp_path)
-    (tmp_path / "docs" / "clearance.md").write_text("| pair | mm |\n", encoding="utf-8")
-    prompt_docs = read_project_docs(tmp_path)
-    assert "--- docs/actuators.md ---" in prompt_docs
-    assert "--- docs/gear-ratios.md ---" in prompt_docs
-    assert "--- docs/clearance.md ---" not in prompt_docs
-    assert "| pair | mm |" not in prompt_docs
-    assert "the knee stalls at 40 deg." in prompt_docs
+# -- domain notes ----------------------------------------------------------
 
 
 def test_documentation_status_names_the_subjects_a_project_has_no_note_for(
@@ -484,7 +365,8 @@ def test_documentation_status_names_the_subjects_a_project_has_no_note_for(
         "actuators", "sensors"
     ]
 
-    record_notes(tmp_path, "NOTE sensors: the hinge angle, in degrees.")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "sensors.md").write_text("# sensors\n\nThe hinge angle, in degrees.\n")
     (tmp_path / "docs" / "clearance.md").write_text("| pair | mm |\n", encoding="utf-8")
     status = documentation_status(tmp_path, ["actuators", "sensors", "sensors", ""])
     assert status["notes"] == ["docs/sensors.md"]
@@ -503,23 +385,22 @@ def test_documentation_status_names_the_subjects_a_project_has_no_note_for(
 
 
 def test_the_scaffold_and_the_overlay_ask_for_the_notes_the_walk_exercises(tmp_path) -> None:
-    """The convention is asked for, not only described (ADR-245).
+    """The notes are asked for, not only described (ADR-245).
 
-    `docs/CLI.md`, the `ARCHITECTURE.md` scaffold and the design
-    instruction are one ticket: a mechanism with actuators or sensors
-    leaves those two notes behind, and the generated reports are not
-    note subjects.
+    `docs/CLI.md`, the `ARCHITECTURE.md` scaffold and the guidance are one
+    ticket: a mechanism with actuators or sensors leaves those two notes
+    behind, the agent writes them itself (ADR-538), and the generated
+    reports are not note subjects.
     """
 
-    assert "NOTE actuators:" in CLI_OVERLAY
-    assert "NOTE sensors:" in CLI_OVERLAY
-    assert "docs/inventory.md and docs/clearance.md are the CLI's own reports" in (
-        " ".join(CLI_OVERLAY.split())
-    )
+    overlay = " ".join(OVERLAY.split())
+    assert "docs/actuators.md" in overlay and "docs/sensors.md" in overlay
+    assert "docs/inventory.md and docs/clearance.md are the CLI's own reports" in overlay
+    assert "Record each decision yourself as a numbered entry in DECISIONS.md" in overlay
 
     scaffold_project_docs(tmp_path)
     architecture = " ".join((tmp_path / ARCHITECTURE_NAME).read_text().split())
-    assert "NOTE <subject>: <text>" in architecture
+    assert "NOTE <subject>" not in architecture
     assert "actuators.md" in architecture and "sensors.md" in architecture
 
     # ...and it says the walk reads the convention back (ADR-256): which
@@ -536,24 +417,6 @@ def test_the_scaffold_and_the_overlay_ask_for_the_notes_the_walk_exercises(tmp_p
     assert (
         "never a walk failure, and the CLI never writes the note itself" in architecture
     )
-
-    walk_doc = " ".join(
-        (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text().split()
-    )
-    assert "a closing line `NOTE <subject>: <text>` becomes a dated bullet" in walk_doc
-    assert "a turn's closing `NOTE <subject>:` lines, or a person" in walk_doc
-
-
-def test_the_overlay_names_the_convention_and_the_prompt_carries_the_docs() -> None:
-    assert "ARCHITECTURE.md" in CLI_OVERLAY
-    assert "DECISION:" in CLI_OVERLAY
-    assert "docs/gear-ratios.md" in CLI_OVERLAY
-    api = {"program_schema": "cadex-xscript-project-v9"}
-    with_docs = system_prompt(api, project_docs="--- PROGRESS.md ---\n| row |")
-    assert "THIS PROJECT'S OWN DOCS" in with_docs
-    assert "| row |" in with_docs
-    assert with_docs.index("| row |") < with_docs.index("cadex-xscript-project-v9")
-    assert "THIS PROJECT'S OWN DOCS" not in system_prompt(api)
 
 
 # -- with the engine -----------------------------------------------------
@@ -623,35 +486,6 @@ def test_a_first_visit_scaffolds_and_an_accepted_run_lands_a_row(
     ) == 2
     assert len(_git(root, "log", "--format=%h").splitlines()) == 2
     assert _git(root, "status", "--porcelain") in ("", "M script.json")
-
-
-@pytest.mark.usefixtures("engine")
-def test_a_turn_reads_the_docs_and_its_decision_lands(tmp_path) -> None:
-    root = Path(_args(tmp_path).project)
-    scaffold_project_docs(root)
-    (root / ARCHITECTURE_NAME).write_text(
-        "# project — Architecture\n\nA plate for the sensor mount.\n"
-    )
-    factory = turn_factory(
-        [
-            [
-                ("tool", "describe_api", {}),
-                ("tool", "write_script", {"source": BRACKET}),
-                ("done", "Built a 30 mm plate.\nDECISION: width is the one parameter."),
-            ]
-        ]
-    )
-    report = RunReport()
-
-    code = command_prompt(_args(tmp_path), report, turn_factory=factory)
-
-    assert code == EXIT_OK, report.error
-    turn = factory.made[0]
-    assert "THIS PROJECT'S OWN DOCS" in turn.system_prompt_text
-    assert "A plate for the sensor mount." in turn.system_prompt_text
-    decisions = (root / DECISIONS_NAME).read_text()
-    assert "## ADR-002 — width is the one parameter (" in decisions
-    assert "recorded ADR-002 in DECISIONS.md." in report.notes
 
 
 # -- the comparison as one row, and the repository (ADR-194) --------------
@@ -952,21 +786,14 @@ def test_objective_evidence_ignores_seeds_and_model_but_names_action_changes(tmp
     assert task_comparison(path)["objective_id"] is None
 
 
-@pytest.mark.parametrize("kind", ["progress", "decision", "note"])
 @pytest.mark.parametrize("failure", ["write", "replace"])
-def test_failed_document_write_preserves_history_and_retry(
-    tmp_path, monkeypatch, kind, failure
-):
+def test_failed_progress_write_preserves_history_and_retry(tmp_path, monkeypatch, failure):
     scaffold_project_docs(tmp_path)
-    record_notes(tmp_path, "NOTE sensors: original sensor rationale")
-    path, update = {
-        "progress": (tmp_path / PROGRESS_NAME,
-                     lambda: append_progress_row(tmp_path, run="walk", what="new result")),
-        "decision": (tmp_path / DECISIONS_NAME,
-                     lambda: record_decisions(tmp_path, "DECISION: new result")),
-        "note": (tmp_path / "docs/sensors.md",
-                 lambda: record_notes(tmp_path, "NOTE sensors: new result")),
-    }[kind]
+    path = tmp_path / PROGRESS_NAME
+
+    def update():
+        append_progress_row(tmp_path, run="walk", what="new result")
+
     path.chmod(0o640)
     original = path.read_bytes()
     files = set(tmp_path.rglob("*"))
@@ -989,7 +816,7 @@ def test_failed_document_write_preserves_history_and_retry(
     assert set(tmp_path.rglob("*")) == files
     update()
     assert path.read_bytes().startswith(original)
-    assert path.read_text().count("new result") == (2 if kind == "decision" else 1)
+    assert path.read_text().count("new result") == 1
     assert path.stat().st_mode & 0o777 == 0o640
     assert set(tmp_path.rglob("*")) == files
 

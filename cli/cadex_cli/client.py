@@ -278,7 +278,7 @@ def open_project(
 
     ``cadexd`` creates the root itself (``mkdir(parents=True,
     exist_ok=True)``), so ``--project`` may name a directory that does not
-    exist yet — which is what makes ``cadex -p ... --project ./new`` a
+    exist yet — which is what makes ``cadex script --set s.py --project ./new`` a
     one-liner rather than a two-step. ``budgets`` are the project's engine
     budgets for this call (ADR-517); the reply's ``budgets`` are the ones
     in force.

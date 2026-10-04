@@ -35,12 +35,14 @@ attempts are re-measured instead of refused (`CadexGeometryDigest.py`,
 ADR-389). On the other side of the
 protocol is `cli/` (ADR-061), which carries the other two. **The
 dashboard** (`review_server.py` and `review_static/`, served by `./cadex
-review`) is the only UI: a standard-library server and vanilla JS over the
-project directory, where a person watches results and steps in; its spec is
-`docs/DASHBOARD.md`. **The agent** is the Claude Code CLI, which the CLI
-runs over one tool surface (`tools.py`, through an MCP stdio shim) and one
-guidance source (`CadexAgentGuidance.md` plus `agent.system_prompt`);
-Cadex has no model loop of its own (ADR-497). The CLI spawns `cadexd` per
+app`) is the only UI: a standard-library server and vanilla JS over the
+project directory, read-only (ADR-537), where a person watches the design
+while their agent works it; its spec is `docs/DASHBOARD.md`. **The agent**
+is the person's own: `cadex mcp` (`mcp.py` for the wire, `McpSession` in
+`__main__.py` for the engine) serves one tool surface (`tools.py`, run by
+`bridge.py`) and one guidance source (`CadexAgentGuidance.md` plus
+`guidance.py`) to any MCP client, and the `cadex` commands cover the rest;
+Cadex has no model loop of its own (ADR-538). The CLI spawns `cadexd` per
 project and finds the engine as a payload by manifest
 (`docs/INTEGRATION.md`, ADR-023) or in the build tree. The Blender shell
 that used to sit on this side is deleted (ADR-498), and with it
@@ -58,8 +60,8 @@ a desktop app that copies the dashboard) and it is what the tests pin.
 ```
  cli/  (the dashboard and the agent)     cadexd child (per project)
  ────────────────────────────           ─────────────────────────────────────────────
- ./cadex -p / params / review           cadexd.py → CadexScriptedRuntime
- cadex_cli/agent.py (Claude Code) ═NDJSON═▶ (serial dispatch; persist source, spawn ONE
+ ./cadex mcp / params / app            cadexd.py → CadexScriptedRuntime
+ cadex_cli/mcp.py (any agent)  ═══NDJSON═▶ (serial dispatch; persist source, spawn ONE
  cadex_cli/client.py                     --safe-mode worker, validate, publish into the
  cadex_cli/review_server.py  ◀══════════ ephemeral App::Document, accept, tessellate)
  (dashboard: viewer, renders,
@@ -346,18 +348,11 @@ and why it must not become one now that both halves are in one tree.
 The dashboard reads the store and never writes it: the manifest's accepted
 attempt, that attempt's `result.json` and its `display/*.tess.json`
 sidecars, which is how the viewer shows the accepted model without asking
-an engine (`review_server.py`). When a person steers from the page — a
-parameter slider, or a design turn from a prompt — the server runs the
-`cadex params` or `cadex -p` command as a child, so the write is cadexd's,
-through the CLI, as any other (ADR-503, ADR-504); a turn's stderr is
-streamed back to the page as its live transcript. A comment on the design
-or a part clicked in the model runs `cadex comment`, which appends to the
-project's `comments.jsonl`; the next `cadex -p` receives the undelivered
-ones ahead of its prompt (ADR-505). Accept, Reject and Restore on a
-revision run `cadex revision`: a verdict is a `comments.jsonl` line the next
-turn receives, and a reject or restore writes a stored version from
-`script_history/` back through `write_script`, then its recorded values
-through `set_params` (ADR-506). Until ADR-498 the Blender shell also read
+an engine (`review_server.py`). It has no write route (ADR-537): every
+change is the agent's, through `cadex mcp` or a `cadex` command, and the
+page follows on its next poll. `cadex revision reject|restore` writes a
+stored version from `script_history/` back through `write_script`, then its
+recorded values through `set_params` (ADR-506). Until ADR-498 the Blender shell also read
 `assets/` on Save-As to carry them into a new root through `put_asset`
 (ADR-046); a project is now copied as a directory.
 
@@ -371,10 +366,9 @@ schema-checked writes. A candidate is written before it runs and rolled back
 if it fails, so `script.py` only ever holds a source that executed; the
 accepted revision's own source stays pinned in its staging directory and is
 readable with `read_accepted_source()`, which is what the restore pass falls
-back to when the working script will not run at all (ADR-044). **Conversation history is no longer here**: the
-CLI keeps the Claude Code session id in the project's `agent.json`
-(`cli/cadex_cli/session.py`), Claude Code keeps the transcript, and the
-engine's conversation store died with the Qt shell (ADR-020). VibeCAD-era
+back to when the working script will not run at all (ADR-044). **Conversation history is not here**: the
+person's agent keeps its own (ADR-538), and the engine's conversation store
+died with the Qt shell (ADR-020). VibeCAD-era
 per-domain program stores are not migrated (ADR-011).
 
 ### Support

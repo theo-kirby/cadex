@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""A project's accepted revisions, as the owner reviews them (orun2 D2, ADR-506).
+"""A project's accepted revisions, and going back through them (orun2 D2, ADR-506).
 
 The engine keeps the undo trail: ``script_history/`` in the project root,
 every accepted source as a plain ``.py`` file and ``history.json`` indexing
@@ -11,9 +11,6 @@ is the engine's ordinary ``write_script`` (and ``set_params`` for its
 values), run by ``cadex revision``, so a restored version re-runs and is
 re-accepted like anything else rather than trusted because it used to work.
 
-The owner's verdict on a revision (accepted, rejected, restored) is a line in
-``comments.jsonl`` (ADR-505) with a ``verdict`` field, so the next turn is
-told about it the way it is told about a comment.
 """
 
 from __future__ import annotations
@@ -24,10 +21,6 @@ from typing import Any, Mapping
 
 HISTORY_DIR = "script_history"
 HISTORY_INDEX = "history.json"
-#: The verdicts ``cadex revision`` records.
-VERDICTS = ("accepted", "rejected", "restored")
-
-
 def read_history(root: Path | str) -> list[dict[str, Any]]:
     """The accepted revisions, oldest first; empty when there is no trail."""
 

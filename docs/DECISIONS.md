@@ -34353,3 +34353,184 @@ checks:
 - that the remembered manifest is rebuilt when the project manifest changes.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-536 — Ouroboros is not part of Cadex (2026-10-04, owner direction)
+
+**Context.** Ouroboros is a separate autonomous research and development loop. It has driven
+this repository's runs, but it is not part of the product. The dashboard still read its run
+directories:
+- `cadex app` listed `.ouroboros/runs` (ADR-513), each run at `/r/<run>/` with its charter
+  (ADR-514), probes (ADR-515) and records (ADR-518);
+- `tools/operator_review.py` served the project that the configured run had dispatched (ADR-387).
+
+**Decision.** No product file names Ouroboros. Removed:
+- `OuroborosRuns`, `/api/runs` and every `/r/` route from `review_server.py`;
+- `run.html` and `run.js`;
+- `cadex app --runs` and `CADEX_RUNS`;
+- the Runs card on the index;
+- `tools/operator_review.py`, its selftest and `docs/OPERATOR-REVIEW.md`;
+- `docs/DASHBOARD.md` §27 and the operator status section;
+- the run fixtures and their tests in `test_app.py`.
+
+This reverses ADR-387, ADR-513, ADR-514, ADR-515 and ADR-518.
+
+**What stays.** Ouroboros is still named in these places:
+- The loop's own `.ouroboros/` directory and its pointer in `AGENTS.md` and `CLAUDE.md`, which
+  are how the repository is developed, not the product.
+- The history: this log, `docs/history/`, the frozen evidence under `docs/probes/`, the
+  hypergraph records and `STATE.md`.
+
+**Test.** `test_project_docs.py::test_no_product_file_names_ouroboros` fails if a tracked file
+outside those places names it.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-537 — The dashboard is read-only (2026-10-04, owner direction)
+
+**Context.** The owner is converging on an interface of their own choosing: an agent such as
+Claude Code, Pi or Codex, beside this dashboard as the view, on the Cadex engine. In that
+arrangement the dashboard's writes duplicate the agent:
+- the Chat editor (ADR-504) is a second agent interface;
+- the parameter slider (ADR-503) and the revision verdicts (ADR-506) are steering the agent
+  already does through the CLI;
+- the comment, export and section routes (ADR-505, ADR-509) are already CLI commands.
+
+**Decision.** The dashboard writes nothing.
+- `review_server.py` loses `do_POST` and the write token (`<meta name="cadex-write-token">`,
+  `X-Cadex-Token`, the `Origin` check).
+- It also loses `write_params`, `write_comment`, `write_revision`, `write_export`,
+  `write_section_cut`, `PromptTurn`, `Turns` and `GET api/turn`.
+- Any method but GET and HEAD is 501.
+- The page loses the Chat editor, the Parameters panel, Accept, Reject and Restore, so three
+  editors remain.
+- The revision trail stays, read-only.
+- The layout key moves to `cadex.layout.v2`, so a saved layout that names Chat is dropped.
+
+The read routes are unchanged. The page's poll follows whatever the agent changes.
+`docs/DASHBOARD.md` §18 replaces §18, §19 and §21. This reverses ADR-503 to ADR-507, ADR-509
+and the section-cut write.
+
+**Test.** `test_dashboard_read_only.py` replaces `test_dashboard_writes.py`. It checks:
+- every former write route answers POST, PUT, PATCH and DELETE with 501;
+- the projects directory is byte-identical afterwards, and the page carries no token, chat or
+  parameters panel;
+- in Chromium, against a real engine, a `cadex params --set` run outside the page moves the
+  open page to the rebuilt model.
+
+`test_dashboard_export.py` is deleted. The section test now checks the cuts that
+`cadex section` leaves.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-538 — Cadex has no agent of its own: the agent is a library any agent uses (2026-10-04, owner direction)
+
+**Context.** Cadex had become its own agent:
+- `cadex -p` ran `claude -p` with a system prompt, an MCP relay shim, a unix-socket bridge and
+  a resumable session (ADR-061, ADR-497);
+- the walk ran design turns (`walk --prompt`), the dashboard ran turns from its chat
+  (ADR-504), and a turn store kept their transcripts (ADR-526);
+- comments and notes travelled between the owner and the next turn (ADR-505, ADR-512);
+- the agent's closing `DECISION:` and `NOTE` lines were scraped into the project's documents,
+  because that agent had no file tools (ADR-193, ADR-245).
+
+The owner is converging on a different shape. The person works in an agent of their choice,
+such as Claude Code, Pi or Codex, with Cadex's visualization beside it. Cadex should be a
+library that any of those agents uses: system prompts, a CLI surface and tool bindings. It
+should not be an agent with its own copy of all that.
+
+**Decision.** Cadex runs no model loop.
+- **`cadex mcp --project DIR`** is a standalone MCP stdio server that any client registers.
+  - `mcp.py` is the wire: JSON-RPC, the idle callback, and stdout guarded for the protocol.
+  - `McpSession` in `__main__.py` holds the engine.
+  - The tool list and the guidance need no engine. The first tool call takes the project lock
+    and opens the engine. `--idle` quiet seconds (default 30) close both, so the agent's own
+    `cadex … --wait` commands run between bursts of tool calls.
+  - A session that accepted a build lands one `PROGRESS.md` row (`mcp: write_script,
+    set_params ×2`) and one project commit as it closes.
+- **The guidance** is `guidance.py`: the situation, rewritten for an agent with a shell and
+  files, around `CadexAgentGuidance.md`.
+  - `cadex guidance` prints it.
+  - `cadex mcp` sends a brief of under 2,000 characters as the server's `instructions`. The
+    brief names the project and tells the agent to run `<repo>/cadex guidance` in its shell
+    before its first tool call. Claude Code cuts a server's instructions at 2,048 characters
+    by default, and the whole text is about 34,000.
+  - It no longer says "you have no shell" or "nobody is watching".
+  - It asks the agent to write `DECISIONS.md` and `docs/<subject>.md` itself, and to run CLI
+    legs with `--wait`.
+  - The engine guidance's five `DECISION:` lines now read "record it in DECISIONS.md".
+- **The bridge** is called in process. Its socket, token and `on_look` hook are gone.
+- **Removed:**
+  - `cadex -p`, with `--resume`, `--model`, `--claude`, `--image`, `CADEX_MODEL`,
+    `CADEX_EFFORT` and `CADEX_MAX_OUTPUT_TOKENS`;
+  - `agent.py`, along with `ClaudeTurn`, the nudge, imitated-tool-call detection and turn usage;
+  - `turn_store.py` and the dashboard's `turn/` route, `agent_turns` and `/api/turns`;
+  - `walk --prompt`, `--resume`, `--model` and `--claude`, and `run_leg`'s stderr relay;
+  - the owner channel: `comments.py`, `cadex comment`, the `leave_note` tool,
+    `cadex revision accept` and `--note`, the verdict lines, and the notes in `/api/project`
+    and `/note/`;
+  - `record_decisions`, `record_notes`, `read_project_docs` and `progress_rows`;
+  - the envelope's `session_id`, `model`, `comments`, `attachments` and `usage`;
+  - `agent.json`'s `session_id` and `model`. An older file is still read for its budgets.
+  - `test_ot7_runner.py` and `test_ot8_runner.py`. The ot7 and ot8 probe runners drove
+    `cadex -p` turns through `cadex_cli.agent`, so they cannot run any more. They stay under
+    `docs/probes/` as frozen evidence of those runs, like the receipts they wrote.
+
+This reverses or supersedes ADR-497 ("Claude Code is the only harness") and ADR-504 to
+ADR-507. It also supersedes ADR-512, ADR-519, ADR-523, ADR-526 and the turn half of ADR-061.
+The tool surface loses `leave_note` and is otherwise unchanged. No protocol op changes.
+
+**Verified.** Driven over real stdio against the dev engine with a one-box plate:
+- `initialize` answered in 0.05 s;
+- `tools/list` returned 14 tools, and a cold `write_script` took 0.4 s;
+- after a 3 s `--idle`, the engine closed and landed `| mcp | 9aafd182 | … | mcp: write_script |`
+  and a commit;
+- a `set_params` reopened the engine in 0.5 s, and closing stdin landed the second row and
+  commit;
+- unknown tools and methods were refused.
+
+`test_loop.py`'s whole design, train and evaluate rounds now run through `McpSession` against
+a live engine.
+
+**Test.**
+- `test_mcp_protocol.py`: the stdio loop over a real pipe, idle called once per quiet spell,
+  and an engine that will not open reaching the model as a tool error.
+- `test_agent_guidance.py`: the brief fits the cap and names the command, `cadex guidance`
+  prints the whole text, and none of the old turn conventions are left.
+- `test_project_docs.py::test_cadex_has_no_agent_harness_of_its_own`.
+
+**What would reverse it.** A product reason for Cadex to own a model loop again, such as a
+hosted service with no user agent. That would build on `cadex mcp`, not beside it.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-539 — The settings are a menu bar; the screen is one 3D viewport (2026-10-04, owner direction)
+
+**Context.** After ADR-537 the read-only page tiled three editors by default:
+- Settings down the left, holding the File, Revisions and View panels;
+- the 3D viewport and the 2D viewport stacked beside it.
+
+The owner asked for the settings in a menu bar and one 3D viewport over the whole screen by
+default.
+
+**Decision.**
+- The top bar carries `#menubar` with three `<details class="menu">` dropdowns: File,
+  Revisions and View.
+- They hold the same elements and ids as the former panels, plus `#revision-empty` for a
+  project with no trail.
+- One menu opens at a time. A click outside or Escape closes it, and with one open, hovering
+  another opens that one.
+- On a phone a dropdown spans the screen between the gutters.
+- The Settings editor is gone. The editors are the 3D and the 2D viewport, and the default
+  layout is `{editor: 'view3d'}`.
+- The layout key moves to `cadex.layout.v3`, so a saved layout that names Settings is dropped.
+- `docs/DASHBOARD.md` §2 and §12 are updated.
+
+**Test.** `test_review_design.py` checks:
+- at desk size, the default areas are `["view3d"]` and the menus are File, Revisions, View;
+- the menu names are 14 px, and nothing overflows;
+- the phone tabs are 3D and 2D.
+
+Checked by screenshot at 1400×900 and 400×850 with each menu open. On the phone the panel's
+right edge sits at 388 px of 400, with no horizontal scroll.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

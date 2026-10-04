@@ -750,9 +750,7 @@ def test_browser_unaccepted_project_reports_missing_model_and_next_cli_action(tm
         assert page.text("#accepted-line") == "nothing accepted yet"
         assert _model_state(page) == "missing"
         assert page.text("#model-status").startswith("no model: ")
-        assert page.evaluate("document.getElementById('params-empty').hidden") is False
         assert page.evaluate("document.querySelectorAll('#revision-list li').length") == 0
-        assert page.evaluate("document.getElementById('revision-accept').disabled") is True
     finally:
         server.shutdown()
         server.server_close()
@@ -1034,7 +1032,6 @@ def test_browser_draws_a_first_accepted_script_written_through_the_bridge_withou
         assert _model_state(page) == 'loaded'
         assert page.evaluate('window.cadexReview.viewer().stats()')['components'] == 2
         assert page.evaluate('window.cadexReview.state().revision') == accepted
-        assert page.text("#params tr[data-param='arm_len'] output") == '80'
         assert page.evaluate('window.cadexReview.viewer().nonBackgroundPixels()') > 1000
     finally:
         server.shutdown()

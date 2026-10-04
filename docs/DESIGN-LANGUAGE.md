@@ -63,7 +63,7 @@ pillow body, and one small functional accent.**
   charter, was "a rounded box with four legs". (ADR-481 removes the
   rule that prescribed it.)
 - **Pick a finish, and say why.** Per A2 there are two finishes, and the
-  agent names its choice in a `DECISION:` line before any geometry:
+  agent records its choice in the project's `DECISIONS.md` before any geometry:
   - **Exposed mechanism.** This finish has the highest thesis mean in the
     sweep (2.14). The actuators, boards, battery and cable run are visible
     and laid out with order. Examples: `balancer-c-exposed-mechanism`

@@ -31,8 +31,7 @@ from pathlib import Path
 import cadex_cli.review_server as review_server
 from cadex_cli.review_server import (_matrix_placement, exploded_views, initial_contacts, serve_projects,
                                      trace_playback)
-from cadex_cli.walk import Leg
-from test_dashboard_writes import _post, _token, app  # noqa: F401
+from test_dashboard_read_only import app  # noqa: F401
 from test_train import REAL_TRAINER_PYTHON
 from test_review_server import _get, _json, _model_state, _open, browser, needs_browser  # noqa: F401
 
@@ -204,49 +203,24 @@ def test_exploded_frames_are_cumulative_from_the_assembled_pose() -> None:
 REVISION = "a" * 64
 
 
-def test_a_section_needs_the_token_and_is_the_cli_section_command(app, monkeypatch) -> None:
+def test_the_cuts_cadex_section_wrote_are_listed_and_served(app, monkeypatch) -> None:
     projects, server = app
     root = projects / "biped"
     monkeypatch.setattr(review_server, "read_accepted_identity",
                         lambda _root: {"available": True, "revision": REVISION, "digest": "d" * 64})
-    calls = []
-
-    def fake_leg(name, argv, *, capture=True, timeout=0.0):
-        calls.append((name, list(argv), timeout))
-        offset = next((float(a.split("=", 1)[1]) for a in argv if a.startswith("--offset-mm=")), 2.5)
-        plane = argv[argv.index("--plane") + 1]
-        cut = Path(argv[argv.index("--project") + 1]) / "review" / "section" / REVISION / f"{plane}-{offset:.17g}"
+    assert _json(server.url + "p/biped/api/project")["sections"]["available"] is False
+    for plane, offset, source in (("XZ", 2.5, "derived"), ("XY", -1.5, "explicit")):
+        cut = root / "review" / "section" / REVISION / f"{plane}-{offset:.17g}"
         cut.mkdir(parents=True, exist_ok=True)
         (cut / "section.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'/>")
         (cut / "summary.json").write_text(json.dumps({
-            "revision": REVISION, "plane": plane, "offset_mm": offset,
-            "offset_source": "derived" if "--offset-mm" not in " ".join(argv) else "explicit",
+            "revision": REVISION, "plane": plane, "offset_mm": offset, "offset_source": source,
             "status": "ok", "objects_cut": 1, "objects": {"a": {"status": "ok"}, "b": {"status": "empty"}},
             "approximation": "tessellation cut"}))
-        return Leg(name=name, argv=list(argv), code=0, seconds=0.25,
-                   envelope={"ok": True, "accepted_revision": REVISION, "digest": "d" * 64})
-
-    monkeypatch.setattr(review_server, "run_leg", fake_leg)
-    url = server.url + "p/biped/api/section"
-    assert _post(url, {"plane": "XZ"})[0] == 403
-    token = _token(server.url + "p/biped/")
-    assert _post(url, {"plane": "XZ"}, {"X-Cadex-Token": token, "Origin": "http://evil.example"})[0] == 403
-    for bad in ({}, {"plane": "xz"}, {"plane": "XZ", "offset_mm": "1"}, {"plane": "XZ", "offset_mm": True},
-                {"plane": "XZ", "offset_mm": 1e9}, {"plane": "--project=/tmp"}):
-        assert _post(url, bad, {"X-Cadex-Token": token})[0] == 400, bad
-    assert calls == []
-    assert _json(server.url + "p/biped/api/project")["sections"]["available"] is False
-    status, reply = _post(url, {"plane": "XZ"}, {"X-Cadex-Token": token})
-    assert status == 200 and reply["ok"] is True, reply
-    assert calls[-1] == ("section", ["section", "--project", str(root.resolve()), "--plane", "XZ", "--json"],
-                         review_server.WRITE_TIMEOUT_S)
-    assert reply["cut"]["name"] == "XZ-2.5" and reply["cut"]["missed"] == ["b"]
-    # A negative offset travels as one --offset-mm= token, never a flag of its own.
-    status, reply = _post(url, {"plane": "XY", "offset_mm": -1.5}, {"X-Cadex-Token": token})
-    assert status == 200 and calls[-1][1][5] == "--offset-mm=-1.5" and reply["cut"]["name"] == "XY--1.5"
     cuts = _json(server.url + "p/biped/api/project")["sections"]["cuts"]
     assert {cut["name"] for cut in cuts} == {"XZ-2.5", "XY--1.5"}
-    status, headers, body = _get(server.url + "p/biped/" + reply["cut"]["svg"])
+    assert all(cut["missed"] == ["b"] for cut in cuts)
+    status, headers, body = _get(server.url + "p/biped/" + cuts[0]["svg"])
     assert status == 200 and headers["content-type"] == "image/svg+xml" and body.startswith(b"<svg")
     for missing in ("section/%s/XY--1.5/summary.json" % REVISION, "section/%s/XZ-9/section.svg" % REVISION,
                     "section/%s/XY--1.5/section.svg" % ("b" * 64), "section/%s/..%%2F/section.svg" % REVISION):

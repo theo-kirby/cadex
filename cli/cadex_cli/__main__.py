@@ -3,9 +3,13 @@
 
 """``cadex`` — the command line.
 
-Nine subcommands over one project, of which exactly two spend tokens::
+Cadex has no agent of its own (ADR-538). The agent is the person's --
+Claude Code, Codex, Pi -- and it drives a project two ways: through
+``cadex mcp``'s tools, and through these commands, none of which spends a
+token::
 
-    cadex -p "a mounting bracket for a NEMA17, 4 mm wall" --out ./out
+    cadex mcp --project ./bracket          # the tools, over MCP stdio
+    cadex guidance                         # the text an agent is given
     cadex params --set fin_angle=12 --out ./sweep/12
     cadex script --set bracket.py --out ./out
     cadex export --out ./out
@@ -15,17 +19,15 @@ Nine subcommands over one project, of which exactly two spend tokens::
     cadex asset --put walk.cxpolicy --put walk-task.json
     cadex train --out ./run --iterations 200 --envs 64 --put
     cadex smoke --out ./smoke
+    cadex app                              # the dashboard, read-only
 
-That asymmetry is the whole design. An expensive turn authors a *parametric*
-script once; after that a sweep is ``set_params`` and a re-export, with no
-model in the loop at all, and an external simulator can feed its results back
-into the next turn only when the shape itself has to change.
+The agent authors a *parametric* script once; after that a sweep is
+``set_params`` and a re-export, with no model in the loop at all.
 
 Exit codes are part of the interface, so a pipeline can branch on the reason
-rather than on stderr: ``0`` fine, ``1`` the engine or the agent failed,
-``2`` the command was wrong, ``3`` the engine refused the script. Progress
-goes to stderr and the report goes to stdout, so ``--json`` is always safe to
-pipe.
+rather than on stderr: ``0`` fine, ``1`` the engine failed, ``2`` the
+command was wrong, ``3`` the engine refused the script. Progress goes to
+stderr and the report goes to stdout, so ``--json`` is always safe to pipe.
 """
 
 from __future__ import annotations
@@ -42,28 +44,15 @@ import threading
 import time
 from typing import Any, Iterator, Mapping, Sequence
 
-from .agent import (
-    ClaudeTurn,
-    ClaudeUnavailable,
-    DEFAULT_MODEL,
-    IMAGES_PER_TURN,
-    ImageRefused,
-    TurnResult,
-    default_model,
-    find_claude,
-    imitated_tool_call,
-    read_image,
-    system_prompt,
-    turn_usage,
-)
-from .bridge import Bridge, BridgeState, ToolCall
+from contextlib import ExitStack
+
+from .bridge import MODELLING_OPS, Bridge, ToolCall
 from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine, source_comparison
 from .export import ExportedOutput, ExportError, export_blueprints, export_outputs, parse_formats
 from .inventory import InventoryError, read_inventory, write_inventory
 from .render import acquire_snapshot, describe_proxies, write_render
 from .section import write_section
-from .comments import add_comment, mark_delivered, pending_comments, with_comments
 from .revisions import (
     previous as previous_revision,
     read_history as read_revision_history,
@@ -86,9 +75,6 @@ from .project_docs import (
     task_comparison,
     comparison_cell,
     progress_numbers,
-    read_project_docs,
-    record_decisions,
-    record_notes,
     scaffold_project_docs,
 )
 from .report import (
@@ -112,7 +98,6 @@ from .session import (
     read_script_state,
     read_working_revision,
     write_agent_budgets,
-    write_agent_state,
 )
 from .train import (
     TrainError,
@@ -162,8 +147,9 @@ from .smoke import (
     smoke_command,
     smoke_interpreter,
 )
-from .tools import STANDARD_DISPLAY
-from .turn_store import TurnRecorder
+from .guidance import brief as guidance_brief, instructions as guidance_text
+from .mcp import serve as serve_mcp
+from .tools import STANDARD_DISPLAY, tool_definitions
 from .walk import (
     DEFAULT_LEG_TIMEOUT_S,
     PROGRESS_FILENAME,
@@ -190,14 +176,12 @@ from .walk import (
 )
 
 #: Where a run works when ``--project`` is not given. Hidden, and beside
-#: whatever the caller is doing, so `cadex -p ... --out ./out` in an empty
-#: directory is a complete command.
+#: whatever the caller is doing, so `cadex script --set s.py --out ./out` in
+#: an empty directory is a complete command.
 DEFAULT_PROJECT_DIRNAME = ".cadex"
 #: Where `cadex app` (and a bare `cadex`) looks for projects when neither
 #: ``--projects`` nor ``CADEX_PROJECTS`` names a directory: under home.
 DEFAULT_PROJECTS_DIRNAME = "cadex-projects"
-#: Where this checkout's Ouroboros runs live; ``cadex app`` lists them (ADR-513).
-DEFAULT_RUNS_DIR = Path(__file__).resolve().parents[2] / ".ouroboros" / "runs"
 
 
 def _progress(message: str) -> None:
@@ -211,40 +195,34 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cadex",
         description="Cadex, headless. One parametric project script, driven "
-        "by an AI turn or by parameters alone.",
+        "by your own agent (cadex mcp) or by parameters alone. A bare `cadex` "
+        "serves the dashboard.",
     )
     _common(parser)
-    parser.add_argument(
-        "-p",
-        "--prompt",
-        default=None,
-        help="What to build or change, in words. Spends tokens.",
+    subparsers = parser.add_subparsers(dest="command")
+
+    mcp_parser = subparsers.add_parser(
+        "mcp",
+        help="Serve this project's tools to an agent over MCP stdio (ADR-538): "
+        "register `cadex mcp --project DIR` with Claude Code, Codex or any "
+        "MCP client. The engine opens on the first tool call and closes after "
+        "--idle quiet seconds, landing a PROGRESS.md row and a project commit "
+        "when the session changed the design.",
     )
-    parser.add_argument(
-        "--image",
-        action="append",
-        default=[],
-        metavar="PATH",
-        help="Attach an image (PNG, JPEG, GIF or WebP) to the prompt; "
-        f"repeatable, at most {IMAGES_PER_TURN}. The agent sees it.",
-    )
-    parser.add_argument(
-        "--resume",
-        action="store_true",
-        help="Continue this project's stored conversation instead of "
-        "starting a fresh one.",
-    )
-    parser.add_argument(
-        "--model",
-        default=None,
-        help="Model for the turn. Default: $CADEX_MODEL, then the project "
-        f"model, then {DEFAULT_MODEL}.",
-    )
-    parser.add_argument(
-        "--claude", default="", help="Path to the claude CLI, if it is not on PATH."
+    _common(mcp_parser, inherit=True)
+    mcp_parser.add_argument(
+        "--idle", type=float, default=30.0, metavar="SECONDS",
+        help="Close the engine, and release the project, after this many "
+        "seconds without a call (default 30; 0 holds it until the client "
+        "goes). The next call reopens it.",
     )
 
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers.add_parser(
+        "guidance",
+        help="Print the whole guidance an agent driving Cadex follows; "
+        "`cadex mcp`'s instructions are a short brief that tells the agent "
+        "to run this. No engine.",
+    )
 
     params_parser = subparsers.add_parser(
         "params", help="Set declared parameters and rebuild. No AI, no tokens."
@@ -595,37 +573,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     walk_parser = subparsers.add_parser(
         "walk",
-        help="The lifecycle walk as one command: optional design turns, an "
-        "optional parameter change, train, re-declare the policy, verify "
-        "and roll out, review. Each leg is a child cadex command. Spends "
-        "tokens only for --prompt.",
+        help="The lifecycle walk as one command: an optional parameter "
+        "change, train, re-declare the policy, verify and roll out, review. "
+        "Each leg is a child cadex command. No tokens.",
     )
     _common(walk_parser, inherit=True)
-    walk_parser.add_argument(
-        "--prompt",
-        dest="prompts",
-        action="append",
-        default=[],
-        metavar="TEXT",
-        help="Repeatable, in order: design turns before training. The first "
-        "starts a conversation (or continues one with --resume); the rest "
-        "continue it.",
-    )
-    walk_parser.add_argument(
-        "--resume",
-        action="store_true",
-        default=False,
-        help="Continue the project's stored conversation for the first --prompt.",
-    )
-    walk_parser.add_argument(
-        "--model",
-        default=None,
-        help="Model for the turns. Default: $CADEX_MODEL, then the project "
-        f"model, then {DEFAULT_MODEL}.",
-    )
-    walk_parser.add_argument(
-        "--claude", default="", help="Path to the claude CLI, if it is not on PATH."
-    )
     walk_parser.add_argument(
         "--set",
         dest="assignments",
@@ -702,8 +654,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Finish a detached walk: read walk-pending.json under --out, "
         "take the policy the dispatcher brought home, and run the remaining "
-        "legs (store, declare, verify and roll out, review). Runs no design "
-        "turn and no trainer.",
+        "legs (store, declare, verify and roll out, review). Runs no "
+        "trainer.",
     )
     _remote_flags(walk_parser)
     _grounding_flag(walk_parser)
@@ -728,27 +680,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="TCP port. Default 8765; 0 takes a free port and reports it.",
     )
 
-    comment_parser = subparsers.add_parser(
-        "comment",
-        help="Leave a comment on the design, or on one part, for the next "
-        "turn to receive (ADR-505). No engine, no tokens.",
-    )
-    _common(comment_parser, inherit=True)
-    comment_parser.add_argument(
-        "--part",
-        default="",
-        help="The part the comment is about, by its output name. Default: "
-        "the whole design.",
-    )
-    comment_parser.add_argument(
-        "--reply",
-        default="",
-        metavar="NOTE_ID",
-        help="Answer the agent's note with this id (ADR-512): the next turn "
-        "receives the answer quoting what it answers.",
-    )
-    comment_parser.add_argument("text", help="The comment, in words.")
-
     budgets_parser = subparsers.add_parser(
         "budgets",
         help="Show or store the project's engine budgets (ADR-517): the "
@@ -769,25 +700,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     revision_parser = subparsers.add_parser(
         "revision",
-        help="Review the accepted revisions (ADR-506): list the trail, accept "
-        "the current one, reject it (put back the one before), or restore "
-        "any stored one. A verdict reaches the next turn like a comment.",
+        help="Review the accepted revisions (ADR-506): list the trail, reject "
+        "the current one (put back the one before), or restore any stored one.",
     )
     _common(revision_parser, inherit=True)
     revision_parser.add_argument(
-        "action", choices=("list", "accept", "reject", "restore"),
-        help="list: the stored trail. accept: record the owner's approval of "
-        "the accepted revision (no engine). reject: put back the revision "
-        "accepted before it. restore: put back the named one.",
+        "action", choices=("list", "reject", "restore"),
+        help="list: the stored trail. reject: put back the revision accepted "
+        "before it. restore: put back the named one.",
     )
     revision_parser.add_argument(
         "selector", nargs="?", default="",
-        help="An ordinal or a revision prefix. restore needs one; accept and "
-        "reject take one only to check it is the accepted revision.",
-    )
-    revision_parser.add_argument(
-        "--note", default="",
-        help="Why, in words; the next turn reads it with the verdict.",
+        help="An ordinal or a revision prefix. restore needs one; reject "
+        "takes one only to check it is the accepted revision.",
     )
 
     app_parser = subparsers.add_parser(
@@ -802,12 +727,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=f"The projects directory (created if absent). Default: "
         f"CADEX_PROJECTS, then ~/{DEFAULT_PROJECTS_DIRNAME}.",
-    )
-    app_parser.add_argument(
-        "--runs",
-        default=None,
-        help="The Ouroboros runs directory, listed read-only beside the "
-        "projects. Default: CADEX_RUNS, then this checkout's .ouroboros/runs.",
     )
     app_parser.add_argument(
         "--host",
@@ -1059,315 +978,7 @@ def _refresh_script_state(client: CadexdClient, report: RunReport) -> None:
     report.params = params_from_script(read_script_state(client))
 
 
-#: How much of the agent's closing words and of an engine refusal reach the
-#: envelope. Long enough to name a cause, short enough that a walk's
-#: ``error`` line stays one readable paragraph.
-REASON_CHARS = 400
-
-
-def _clip(text: str, limit: int = REASON_CHARS) -> str:
-    text = " ".join(str(text).split())
-    return text if len(text) <= limit else text[: limit - 1] + "…"
-
-
-#: What a turn that never reached the engine is asked, once, before the run
-#: is given up as rejected.
-#:
-#: A design turn that ends without a *single* tool call has done nothing at
-#: all: the project is byte-for-byte what it was, and the whole invocation —
-#: engine start, bridge, the model's own reading of the project — is spent
-#: for a paragraph on stderr. That is not a hypothetical. It happened three
-#: times on one project in one evening, most clearly at 84 s with
-#: ``stop_reason: end_turn`` after 5,893 thinking tokens and 335 of prose:
-#: the model reasoned its way to a decision and ended the turn before acting
-#: on it. So ask once, in the same conversation, and take a script if one
-#: comes.
-#:
-#: Deliberately narrow. It fires only when the model called *nothing*: a turn
-#: that offered a script and had it refused was told why by the engine and
-#: stopped anyway, and asking that turn again is how a loop starts.
-NUDGE_PROMPT = (
-    "That turn ended without a single tool call, so the project is exactly "
-    "as it was and nothing you decided has been recorded. This is your one "
-    "follow-up. If you know what to change, make it now with the modelling "
-    "tools and let the engine accept it. If you have concluded that no "
-    "change is warranted, answer in one line beginning 'NO CHANGE:' and "
-    "stop."
-)
-
-
-#: Said when the model wrote a tool call as prose (ADR-523): the call never
-#: reached the bridge, so whatever the prose claims was not done.
-IMITATED_WARNING = (
-    "the model wrote a tool call as text instead of making one, so it did "
-    "not reach the engine tools; nothing it wrote that way was done."
-)
-
-
-def describe_usage(usage: Mapping[str, Any]) -> str:
-    """One line for a turn's cost: tokens in (cached) and out, price, time."""
-
-    parts = [f"{usage.get('input_tokens', 0):,} in", f"{usage.get('cached_tokens', 0):,} cached",
-             f"{usage.get('output_tokens', 0):,} out tokens"]
-    if usage.get("cost_usd") is not None:
-        parts.append(f"${usage['cost_usd']:.2f}")
-    if usage.get("duration_ms"):
-        parts.append(f"{usage['duration_ms'] / 1000:.1f} s")
-    return ", ".join(parts)
-
-
-def _spent_nothing(result: TurnResult, state: BridgeState) -> bool:
-    """Did the turn end well, reach the engine not once, and change nothing?"""
-
-    return (
-        result.ok
-        and not state.calls
-        and state.last_accepted is None
-        and bool(result.session_id)
-    )
-
-
-def _merge_turns(first: TurnResult, second: TurnResult) -> TurnResult:
-    """Fold the follow-up into the turn it continues.
-
-    The follow-up is best effort and can only improve the outcome: if it
-    fails, the run reports the rejection it already had rather than a harder
-    failure, because the first turn genuinely did end well. Its prose is
-    appended so a closing ``DECISION:`` or ``NOTE`` line from either turn
-    lands in the project's documents.
-    """
-
-    merged = TurnResult(
-        ok=first.ok,
-        session_id=second.session_id or first.session_id,
-        text="\n".join(part for part in (first.text, second.text) if part.strip()),
-        exit_code=second.exit_code,
-        error=first.error,
-        resume_failed=first.resume_failed or second.resume_failed,
-        frames=first.frames + second.frames,
-    )
-    return merged
-
-
-def _rejection_reason(text: str, calls: Sequence[ToolCall]) -> str:
-    """Why a turn ended with no accepted script, in one line.
-
-    The bare sentence — "the turn finished without the engine accepting a
-    script" — is true of two quite different runs, and only the parent can
-    tell them apart: a turn that *offered* a script and had it refused, and
-    a turn that never offered one at all. Both were seen inside ``cadex
-    walk`` in one afternoon, and the envelope said the same thing for each,
-    so the record could not name the cause. So carry the two facts the
-    parent already has: the last thing the engine refused, and the agent's
-    own closing words. Nothing here retries and nothing here guesses — this
-    is the reason, written down.
-    """
-
-    parts = ["the turn finished without the engine accepting a script."]
-    refused = next((call for call in reversed(calls) if not call.ok), None)
-    if refused is not None:
-        detail = _clip(refused.summary) or refused.failure_code or "failed"
-        code = f" [{refused.failure_code}]" if refused.failure_code else ""
-        parts.append(f"the engine last refused {refused.op}{code}: {detail}")
-    else:
-        offered = ", ".join(dict.fromkeys(call.op for call in calls))
-        parts.append(
-            "the engine refused nothing: the agent made "
-            + (f"{len(calls)} tool call(s) ({_clip(offered, 120)})" if calls
-               else "no tool call")
-            + " and never offered a script."
-        )
-    if text.strip():
-        parts.append(f"the agent's closing words: {_clip(text)}")
-    return " ".join(parts)
-
-
 # -- commands ------------------------------------------------------------
-
-
-def command_prompt(
-    args: argparse.Namespace,
-    report: RunReport,
-    *,
-    turn_factory: Any = ClaudeTurn,
-) -> int:
-    """One AI turn against this project.
-
-    ``turn_factory`` is the seam the suite drives: a mock that replays a
-    scripted tool sequence through the *real* bridge socket exercises this
-    whole function — revision injection, progress, report assembly, export —
-    without spending a token. See ``cli/tests/mock_backend.py``.
-    """
-
-    paths = list(getattr(args, "image", None) or [])
-    if len(paths) > IMAGES_PER_TURN:
-        report.error = f"a prompt carries at most {IMAGES_PER_TURN} images; {len(paths)} were given."
-        return EXIT_USAGE
-    try:
-        images = [read_image(path) for path in paths]
-    except ImageRefused as exc:
-        report.error = str(exc)
-        return EXIT_USAGE
-    report.attachments = [image.summary() for image in images]
-    claude_path = find_claude(args.claude) if turn_factory is ClaudeTurn else ""
-    stored = read_agent_state(Path(args.project).expanduser())
-    session_id = stored.session_id if args.resume else ""
-    model = args.model or default_model(stored.model)
-    report.model = model
-
-    with _engine_session(args, report) as (engine, client):
-        api = client.request("describe_api")
-        if api.get("ok") is not True:
-            report.error = f"describe_api failed: {api.get('error')}"
-            return EXIT_FAILURE
-
-        recorder = TurnRecorder(report.project_root, args.prompt, attachments=report.attachments,
-                                resume=bool(args.resume))
-        code = EXIT_FAILURE
-        try:
-            with recorder.capture():
-                code = _prompt_turn(args, report, engine, client, recorder, api=api, images=images,
-                                    turn_factory=turn_factory, claude_path=claude_path, stored=stored,
-                                    session_id=session_id, model=model)
-        finally:
-            recorder.finish(report, code)
-        return code
-
-
-def _prompt_turn(
-    args: argparse.Namespace,
-    report: RunReport,
-    engine: Engine,
-    client: CadexdClient,
-    recorder: TurnRecorder,
-    *,
-    api: Mapping[str, Any],
-    images: Sequence[Any],
-    turn_factory: Any,
-    claude_path: str,
-    stored: Any,
-    session_id: str,
-    model: str,
-) -> int:
-    """The turn itself, once the engine answers; its stderr is the transcript."""
-
-    # The revision the bridge starts from is the engine's own working
-    # revision, so the first write of a resumed project is guarded
-    # correctly without the model being told what it is.
-    revision = read_working_revision(client)
-
-    def on_call(call: ToolCall) -> None:
-        mark = "·" if call.ok else "✗"
-        _progress(f" {mark} {call.op}  {call.summary}")
-
-    def on_text(text: str) -> None:
-        """The model's prose is narration, so it goes to stderr too."""
-
-        sys.stderr.write(text)
-
-    with Bridge(client, on_call=on_call, on_look=recorder.look, initial_revision=revision,
-                project_root=report.project_root) as bridge:
-        turn = turn_factory(
-            claude_path=claude_path,
-            model=model,
-            system_prompt_text=system_prompt(
-                api, project_docs=read_project_docs(report.project_root)
-            ),
-            socket_path=str(bridge.socket_path),
-            token=bridge.token,
-            session_id=session_id,
-            on_text=on_text,
-            cwd=report.project_root,
-        )
-        # The owner's comments since the last turn travel ahead of the
-        # prompt (ADR-505); they are delivered once a turn has run on them.
-        comments = pending_comments(report.project_root)
-        for image in images:
-            _progress(f" · attached {image.name}  {image.media_type}, {len(image.data)} bytes")
-        try:
-            prompt = with_comments(args.prompt, comments)
-            result = turn.run(prompt, images) if images else turn.run(prompt)
-            if _spent_nothing(result, bridge.state):
-                _progress(
-                    " · the turn reached the engine not once; asking "
-                    "once more"
-                )
-                result = _merge_turns(result, turn.run(NUDGE_PROMPT))
-                report.notes.append(
-                    "the first turn made no tool call; asked once more "
-                    "in the same conversation."
-                )
-        finally:
-            turn.cleanup()
-        sys.stderr.write("\n")
-        # What the turn cost, and whether the model only pretended to
-        # use its tools (ADR-523): both on the transcript, where a
-        # person watching the dashboard reads it.
-        report.usage = turn_usage(result.frames)
-        if report.usage:
-            _progress(" · turn: " + describe_usage(report.usage))
-        imitated = IMITATED_WARNING if imitated_tool_call(result.frames) else ""
-        if imitated:
-            _progress(" ✗ " + imitated)
-        sys.stderr.flush()
-
-    # A refused override cannot replace the model of an unchanged session.
-    # New locators still persist on failure so the conversation can resume.
-    if result.session_id and (result.ok or result.session_id != stored.session_id):
-        write_agent_state(
-            report.project_root,
-            session_id=result.session_id,
-            model=model,
-        )
-    report.session_id = result.session_id
-    if result.ok and comments:
-        at = mark_delivered(report.project_root, comments, session_id=result.session_id)
-        report.comments = [dict(comment, delivered=at) for comment in comments]
-        report.notes.append(f"delivered {len(comments)} comment(s) from the owner.")
-    if result.resume_failed:
-        report.notes.append(
-            "the stored session id could not be resumed; ran a fresh "
-            "conversation."
-        )
-    if result.text.strip():
-        report.notes.append(result.text.strip())
-    if imitated:
-        report.notes.append(imitated)
-    # What the agent decided lands in the project's own ADR log
-    # (ADR-193): a closing line that starts `DECISION:`. A convention,
-    # not a tool, because the agent has no file access here.
-    landed = record_decisions(report.project_root, result.text)
-    if landed:
-        report.notes.append(
-            "recorded " + ", ".join(landed) + " in DECISIONS.md."
-        )
-    # ...and its longer notes land beside them, one file per subject
-    # (ADR-245): a closing line `NOTE <subject>:`. The same convention
-    # rather than a second mechanism, and read back on the next visit.
-    noted = record_notes(report.project_root, result.text)
-    if noted:
-        report.notes.append("wrote " + ", ".join(noted) + ".")
-
-    accepted = bridge.state.last_accepted
-    report.revision = bridge.state.revision or report.revision
-    if accepted is not None:
-        apply_modeling_reply(report, accepted)
-    if bridge.state.last_fit is not None:
-        report.fit = dict(bridge.state.last_fit)
-    if bridge.state.last_inventory is not None:
-        report.inventory = dict(bridge.state.last_inventory)
-    _refresh_script_state(client, report)
-
-    if not result.ok:
-        report.error = result.error or "the agent turn failed."
-        return EXIT_FAILURE
-    if accepted is None:
-        report.error = _rejection_reason(result.text, bridge.state.calls)
-        return EXIT_REJECTED
-
-    _finish(args, report, engine, accepted.get("display"))
-    report.ok = True
-    return EXIT_OK
 
 
 def _parse_assignments(raw: Sequence[str]) -> dict[str, Any]:
@@ -1390,27 +1001,6 @@ def _parse_assignments(raw: Sequence[str]) -> dict[str, Any]:
     if not values:
         raise ValueError("params needs at least one --set NAME=VALUE.")
     return values
-
-
-def command_comment(args: argparse.Namespace, report: RunReport) -> int:
-    """``cadex comment [--part NAME] [--reply NOTE_ID] TEXT``: one comment for the next turn.
-
-    The dashboard's comment box runs this command (A3). It touches no
-    engine: the comment is a line in ``comments.jsonl`` (ADR-505), tagged
-    with the revision accepted when it was left. ``--reply`` makes it the
-    owner's answer to an agent note (ADR-512).
-    """
-
-    root = Path(args.project).expanduser()
-    if not root.is_dir():
-        raise ValueError(f"no project at {root}.")
-    identity = read_accepted_identity(root)
-    comment = add_comment(root, args.text, part=args.part, reply_to=args.reply,
-                          revision=identity.get("revision", "") if identity.get("available") else "")
-    report.comments = [comment]
-    report.accepted_revision = comment["revision"]
-    report.ok = True
-    return EXIT_OK
 
 
 def command_budgets(args: argparse.Namespace, report: RunReport) -> int:
@@ -1442,27 +1032,11 @@ def command_budgets(args: argparse.Namespace, report: RunReport) -> int:
     return EXIT_OK
 
 
-def _verdict_text(verdict: str, revision: str, note: str, *, entry: Mapping[str, Any] | None = None,
-                  other: str = "") -> str:
-    short = revision[:12]
-    if verdict == "accepted":
-        said = f"The owner accepted revision {short}."
-    elif verdict == "rejected":
-        said = (f"The owner rejected revision {short} and put back revision "
-                f"{other[:12]} (#{(entry or {}).get('ordinal')}).")
-    else:
-        said = (f"The owner restored revision {short} (#{(entry or {}).get('ordinal')}) "
-                f"over revision {other[:12]}.")
-    return said + (" " + note.strip() if note.strip() else "")
-
-
 def command_revision(args: argparse.Namespace, report: RunReport) -> int:
-    """``cadex revision list|accept|reject|restore``: the owner's review of a revision.
+    """``cadex revision list|reject|restore``: going back through the trail (ADR-506).
 
-    The dashboard's Accept, Reject and Restore buttons run this command
-    (A3, ADR-506). ``list`` and ``accept`` touch no engine: the trail is a
-    file the engine keeps, and an approval is a verdict line in
-    ``comments.jsonl`` for the next turn. ``reject`` and ``restore`` put a
+    ``list`` touches no engine: the trail is a file the engine keeps.
+    ``reject`` and ``restore`` put a
     stored version back through the engine's ordinary ``write_script`` —
     with ``replace``, since going back may drop outputs on purpose — and
     then its recorded values through ``set_params``, so the project lands
@@ -1480,20 +1054,6 @@ def command_revision(args: argparse.Namespace, report: RunReport) -> int:
         report.ok = True
         return EXIT_OK
     want = str(args.selector or "").strip().lower()
-    if action == "accept":
-        identity = read_accepted_identity(root)
-        current = identity.get("revision", "") if identity.get("available") else ""
-        if not current:
-            raise ValueError("there is no accepted revision to accept.")
-        if want and not current.startswith(want):
-            raise ValueError(f"only the accepted revision ({current[:12]}) can be accepted.")
-        report.comments = [add_comment(root, _verdict_text("accepted", current, args.note),
-                                       revision=current, verdict="accepted")]
-        report.accepted_revision = current
-        report.revisions = {"action": "accept", "target": current, "accepted": current, "exact": True}
-        report.ok = True
-        return EXIT_OK
-
     with _engine_session(args, report, restore=False) as (engine, client):
         identity = read_accepted_identity(root)
         current = identity.get("revision", "") if identity.get("available") else ""
@@ -1579,11 +1139,6 @@ def command_revision(args: argparse.Namespace, report: RunReport) -> int:
                    if not isinstance(values, dict) else
                    "its recorded values did not reproduce it.")
             )
-        verdict = "rejected" if action == "reject" else "restored"
-        report.comments = [add_comment(
-            root, _verdict_text(verdict, current if action == "reject" else goal, args.note,
-                                entry=target, other=goal if action == "reject" else current),
-            revision=current if action == "reject" else goal, verdict=verdict)]
         _finish(args, report, engine, reply.get("display"))
         report.ok = True
         return EXIT_OK
@@ -1873,7 +1428,7 @@ def command_asset(args: argparse.Namespace, report: RunReport) -> int:
     the store that is not the script's — and the envelope's ``assets`` row
     carries the sha256 ``assembly.policy(sha256=...)`` then requires. It
     never rebuilds: a stored file changes nothing until a script names it,
-    and that change is ``cadex script --set`` or a turn's ``edit_script``.
+    and that change is ``cadex script --set`` or the agent's ``edit_script``.
 
     With no ``--put`` it lists the store, which is what a pipeline reads to
     learn a digest it did not store itself.
@@ -1941,7 +1496,7 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
 
     It never rebuilds *after* training: the policy is real when a script
     names it with the sha256 this run reports, which is ``cadex script
-    --set`` or a turn's ``edit_script``, the same as ``cadex asset``.
+    --set`` or the agent's ``edit_script``, the same as ``cadex asset``.
     """
 
     if not args.out:
@@ -2323,7 +1878,7 @@ def _remote_usage_error(args: argparse.Namespace) -> str:
     """What is wrong with ``--remote``'s company, or nothing (ADR-200).
 
     Shared by ``train`` and ``walk`` so the walk refuses before its first
-    leg rather than after a design turn spent tokens. ``--trainer-python``
+    leg rather than after a leg has spent time. ``--trainer-python``
     names a venv on this machine and the box has its own
     (``CADEX_TRAIN_VENV``); ``--allow-cpu`` is the dispatcher's flag and
     means nothing locally. A warm start is no longer refused here: since
@@ -2358,13 +1913,125 @@ def _walk_common(args: argparse.Namespace) -> list[str]:
     return common
 
 
+class McpSession:
+    """``cadex mcp``'s tool host: one project's engine behind the bridge (ADR-538).
+
+    The engine is opened on the first tool call that needs it -- the tool
+    list and the guidance need none -- and closed after a quiet spell
+    (:func:`cadex_cli.mcp.serve` calls :meth:`idle`). Closing releases the
+    project lock, so the agent's own ``cadex render --wait`` or ``cadex
+    train --wait`` on the same project runs between bursts of tool calls
+    instead of queueing behind a server that holds the project for the
+    whole conversation. Opening waits for that lock in turn.
+
+    A session that accepted a build lands what a CLI run lands, before it
+    lets go: a ``PROGRESS.md`` row and a commit in the project's own
+    repository, naming the calls that changed the design.
+    """
+
+    def __init__(self, args: argparse.Namespace) -> None:
+        self.args = args
+        self.engine = resolve_engine(args.engine or None)
+        self._stack: ExitStack | None = None
+        self._bridge: Bridge | None = None
+        self._client: CadexdClient | None = None
+        self._report: RunReport | None = None
+
+    def instructions(self) -> str:
+        return guidance_brief(str(Path(self.args.project).expanduser().resolve()))
+
+    def tools(self) -> list[dict[str, Any]]:
+        return tool_definitions(self.engine.protocol)
+
+    def call(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        return self._open().call(tool, arguments)
+
+    def idle(self) -> None:
+        self.close()
+
+    def _open(self) -> Bridge:
+        if self._bridge is not None:
+            return self._bridge
+        report = RunReport(project_root=str(Path(self.args.project).expanduser()))
+        stack = ExitStack()
+        try:
+            _engine, client = stack.enter_context(_engine_session(self.args, report))
+            revision = read_working_revision(client)
+        except BaseException:
+            stack.close()
+            raise
+        for note in report.notes:
+            _progress(f"mcp: {note}")
+
+        def on_call(call: ToolCall) -> None:
+            _progress(f" {'·' if call.ok else '✗'} {call.op}  {call.summary}")
+
+        self._stack, self._client, self._report = stack, client, report
+        self._bridge = Bridge(client, on_call=on_call, initial_revision=revision,
+                              project_root=report.project_root)
+        _progress(f"mcp: opened {report.project_root} at revision {revision[:12] or 'none'}")
+        return self._bridge
+
+    def close(self) -> None:
+        """Land the session's row and commit, then shut the engine and release the project."""
+
+        bridge, stack, client, report = self._bridge, self._stack, self._client, self._report
+        if bridge is None or stack is None or client is None or report is None:
+            return
+        self._bridge = self._stack = self._client = self._report = None
+        try:
+            accepted = bridge.state.last_accepted
+            if accepted is not None:
+                apply_modeling_reply(report, accepted)
+                if bridge.state.last_fit is not None:
+                    report.fit = dict(bridge.state.last_fit)
+                if bridge.state.last_inventory is not None:
+                    report.inventory = dict(bridge.state.last_inventory)
+                _refresh_script_state(client, report)
+                changed = [call.op for call in bridge.state.calls if call.ok and call.op in MODELLING_OPS]
+                self.args.mcp_summary = ", ".join(
+                    op if changed.count(op) == 1 else f"{op} ×{changed.count(op)}"
+                    for op in dict.fromkeys(changed))
+                report.ok = True
+                _record_progress("mcp", self.args, report)
+                _commit_run("mcp", self.args, report)
+        finally:
+            stack.close()
+        _progress(f"mcp: closed {report.project_root}"
+                  + (f" at revision {report.accepted_revision[:12]}" if report.ok else ""))
+
+
+def command_mcp(args: argparse.Namespace, report: RunReport) -> int:
+    """Serve the project's tools over MCP stdio until the client goes (ADR-538).
+
+    The protocol owns stdout: the server writes its messages to a private
+    copy of the descriptor and points descriptor 1 at stderr, so nothing
+    else in the process -- an engine child, a stray print -- can corrupt it.
+    """
+
+    if args.idle < 0:
+        raise ValueError(f"mcp: --idle must be 0 or more seconds, not {args.idle:g}.")
+    # A tool call waits for a CLI command on the same project, never fails on it.
+    args.wait = True
+    session = McpSession(args)
+    out = os.fdopen(os.dup(sys.stdout.fileno()), "w", encoding="utf-8")
+    sys.stdout.flush()
+    os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
+    _progress(f"mcp: serving {Path(args.project).expanduser()} on stdio")
+    try:
+        serve_mcp(session, sys.stdin.buffer, out, idle_seconds=float(args.idle))
+    finally:
+        session.close()
+        out.close()
+    report.ok = True
+    return EXIT_OK
+
+
 def command_review(args: argparse.Namespace, report: RunReport) -> int:
     """Serve one project's review dashboard until interrupted (ADR-286).
 
     The server reads the project's manifest, records and retained
-    artifacts on every request; its only write is a slider's, which runs
-    ``cadex params`` as a child and needs the page's per-launch token
-    (ADR-503). So stopping it
+    artifacts on every request and writes nothing (ADR-537). So stopping it
     — Ctrl-C, SIGTERM — changes nothing about the project, and a walk or a
     training run in progress is neither stopped nor duplicated by starting
     or restarting it. The URL is printed on stderr as soon as the socket is
@@ -2381,7 +2048,7 @@ def command_review(args: argparse.Namespace, report: RunReport) -> int:
         server, thread = serve_review(root, str(args.host), port)
     except OSError as exc:
         raise ValueError(f"review: cannot bind {args.host}:{port}: {exc}") from exc
-    _progress(f"review: serving {root.name} at {server.url} (writes need the page's token; Ctrl-C to stop)")
+    _progress(f"review: serving {root.name} at {server.url} (read-only; Ctrl-C to stop)")
     _serve_until_stopped(server, thread)
     report.ok = True
     report.notes.append(f"review: served {server.url}; stopped")
@@ -2414,13 +2081,6 @@ def projects_directory(args: argparse.Namespace) -> Path:
     return Path(chosen or Path.home() / DEFAULT_PROJECTS_DIRNAME).expanduser()
 
 
-def runs_directory(args: argparse.Namespace) -> Path:
-    """``--runs``, then ``CADEX_RUNS``, then this checkout's ``.ouroboros/runs``."""
-
-    chosen = getattr(args, "runs", None) or os.environ.get("CADEX_RUNS", "")
-    return Path(chosen).expanduser() if chosen else DEFAULT_RUNS_DIR
-
-
 def command_app(args: argparse.Namespace, report: RunReport) -> int:
     """Serve the dashboard over a directory of projects until interrupted.
 
@@ -2440,10 +2100,10 @@ def command_app(args: argparse.Namespace, report: RunReport) -> int:
     if port < 0 or port > 65535:
         raise ValueError(f"app: --port must be 0..65535, not {port}")
     try:
-        server, thread = serve_projects(root, host, port, runs_root=runs_directory(args))
+        server, thread = serve_projects(root, host, port)
     except OSError as exc:
         raise ValueError(f"app: cannot bind {host}:{port}: {exc}") from exc
-    _progress(f"app: serving {root} at {server.url} (writes need the page's token; Ctrl-C to stop)")
+    _progress(f"app: serving {root} at {server.url} (read-only; Ctrl-C to stop)")
     _serve_until_stopped(server, thread)
     report.ok = True
     report.notes.append(f"app: served {server.url}; stopped")
@@ -2453,7 +2113,7 @@ def command_app(args: argparse.Namespace, report: RunReport) -> int:
 def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     """The lifecycle walk as one command (ADR-199).
 
-    Design turns (``--prompt``, repeatable), the iterate change (``--set``,
+    The iterate change (``--set``,
     which blanks the policy switch and exports the bundle at the new
     digest), ``cadex train --put``, the digest edit — the one leg that was
     a person's — as a rewrite of the script's one ``assembly.policy``
@@ -2496,12 +2156,11 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         # Refusing them is cheaper than a run that silently ignored them.
         for flag, on in (
             ("--detach", args.detach), ("--remote", args.remote),
-            ("--allow-cpu", args.allow_cpu), ("--prompt", bool(args.prompts)),
-            ("--set", bool(args.assignments)),
+            ("--allow-cpu", args.allow_cpu), ("--set", bool(args.assignments)),
         ):
             if on:
                 report.error = (
-                    f"--complete finishes a launched run; {flag} would design "
+                    f"--complete finishes a launched run; {flag} would change "
                     "or train again. Run them as their own walk."
                 )
                 return EXIT_USAGE
@@ -2558,7 +2217,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         "init_from": args.init_from or None,
         "init_from_parent_task": args.init_from_parent_task or None,
         "init_from_task_change": args.init_from_task_change or None,
-        "prompts": len(args.prompts or []), "assignments": dict(assignments),
+        "assignments": dict(assignments),
     }
 
     def land_record(status: str, **extra: Any) -> None:
@@ -2604,21 +2263,6 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
         return leg.code if leg.code in (EXIT_USAGE, EXIT_REJECTED) else EXIT_FAILURE
 
     if not args.complete:
-        # Design: the model turns, in order.
-        for index, prompt in enumerate(args.prompts):
-            argv = [*common, "-p", prompt, "--json"]
-            if args.model:
-                argv += ["--model", args.model]
-            if index > 0 or args.resume:
-                argv.append("--resume")
-            if args.claude:
-                argv += ["--claude", args.claude]
-            _progress(f" · walk  design turn {index + 1}/{len(args.prompts)}")
-            leg = run_leg("design", argv, timeout=leg_timeout)
-            if leg.code != EXIT_OK:
-                return failed(leg, "the design turn was not accepted")
-            learned(leg)
-
         # Iterate: blank the switch and apply the change; the bundle is exported
         # at its new digest (ADR-192).
         if assignments:
@@ -2632,7 +2276,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
                 return failed(leg, "the change was refused")
             learned(leg)
         if legs:
-            # A design turn or sweep moved the accepted revision: the specs
+            # The sweep moved the accepted revision: the specs
             # the record carries must be the moved manifest's, and the
             # `running` record on disk must name the training input before
             # the train leg starts writing telemetry beside it.
@@ -2868,7 +2512,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     # What the mechanism declares, against what the project documents:
     # a driven joint asks for docs/actuators.md and an observed one for
     # docs/sensors.md (ADR-245's convention, ADR-256's check). The notes
-    # are the design turn's to write, so a gap is reported, never filled.
+    # are the agent's to write, so a gap is reported, never filled.
     subjects, model_path = declared_note_subjects(out_dir / TRAIN_DIRNAME)
     known["model_xml"] = model_path
     # Whether it walked (ADR-409): judged on the free body's tilt and
@@ -2991,18 +2635,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
 
-    command = args.command or "prompt"
-    if command == "prompt" and not args.prompt:
-        # A bare `cadex` opens the dashboard; `cadex -h` is the help.
-        command = "app"
-    if args.image and command != "prompt":
-        parser.error("--image attaches to a prompt: give it with -p PROMPT.")
+    # A bare `cadex` opens the dashboard; `cadex -h` is the help.
+    command = args.command or "app"
+    if command == "guidance":
+        sys.stdout.write(guidance_text())
+        return EXIT_OK
 
     report = RunReport(project_root=str(Path(args.project).expanduser()))
-    quiet = command == "script" and not getattr(args, "source_file", "")
+    # `cadex mcp`'s stdout is the protocol, and a script listing is its source.
+    quiet = command == "mcp" or (command == "script" and not getattr(args, "source_file", ""))
     try:
-        if command == "prompt":
-            code = command_prompt(args, report)
+        if command == "mcp":
+            code = command_mcp(args, report)
         elif command == "params":
             code = command_params(args, report)
         elif command == "export":
@@ -3033,8 +2677,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_review(args, report)
         elif command == "app":
             code = command_app(args, report)
-        elif command == "comment":
-            code = command_comment(args, report)
         elif command == "budgets":
             code = command_budgets(args, report)
         elif command == "revision":
@@ -3045,7 +2687,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             WalkError) as exc:
         report.error = str(exc)
         code = EXIT_USAGE if isinstance(exc, ValueError) else EXIT_FAILURE
-    except (EngineError, ClaudeUnavailable, ProjectBusy, CadexdError) as exc:
+    except (EngineError, ProjectBusy, CadexdError) as exc:
         report.error = str(exc)
         code = EXIT_FAILURE
     except KeyboardInterrupt:
@@ -3055,36 +2697,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     if code == EXIT_OK and report.ok and not quiet:
         _record_progress(command, args, report)
         _commit_run(command, args, report)
-    if not (quiet and code == EXIT_OK):
+    if command == "mcp":
+        if report.error:
+            _progress(f"mcp: {report.error}")
+    elif not (quiet and code == EXIT_OK):
         emit(report, as_json=bool(args.json))
     return code
-
-
-#: Notes the CLI adds about the project's own housekeeping (ADR-193,
-#: ADR-194), never what a turn said it did.
-_HOUSEKEEPING_NOTES = (
-    "scaffolded ",
-    "recorded ",
-    "nothing to",
-    "initialised ",
-    "inside an existing",
-    "no git on",
-    "git init",
-    "committed ",
-    "delivered ",
-)
 
 
 def _progress_what(command: str, args: argparse.Namespace, report: RunReport) -> str:
     """What this run did, in the words a person would use for the row."""
 
-    if command == "prompt":
-        said = ""
-        for note in report.notes:
-            if note and not note.startswith(_HOUSEKEEPING_NOTES):
-                said = note.strip().splitlines()[0]
-                break
-        return f"prompt: {args.prompt}" + (f" → {said}" if said else "")
+    if command == "mcp":
+        return f"mcp: {getattr(args, 'mcp_summary', '') or 'a session'}"
     if command == "params":
         return "params " + ", ".join(
             f"{name}={value}" for name, value in sorted(
@@ -3255,9 +2880,9 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command in ("review", "app", "comment", "budgets"):  # no run: no row, no commit (ADR-286, ADR-505)
+    if command in ("review", "app", "budgets"):  # no run: no row, no commit (ADR-286)
         return
-    if command == "revision" and args.action in ("list", "accept"):  # a read, a verdict (ADR-506)
+    if command == "revision" and args.action == "list":  # a read (ADR-506)
         return
     # Read once, before the row is appended: both branches compare against
     # the last row that carried each number, and the walk branch is why
@@ -3303,9 +2928,9 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command in ("review", "app", "comment", "budgets"):
+    if command in ("review", "app", "budgets"):
         return
-    if command == "revision" and args.action in ("list", "accept"):
+    if command == "revision" and args.action == "list":
         return
     # A walk's legs each committed; what is left is its review.json, when
     # --out lies under the project, plus generated project review artifacts.

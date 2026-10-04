@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Cadex Authors
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// The projects index (ADR-533): /api/runs as one row per Ouroboros run, then
-// /api/projects newest first, PAGE_SIZE to a page, the page kept in the URL
-// (?page=N). Polls so a new project or a run's next iteration appears.
+// The projects index (ADR-533): /api/projects newest first, PAGE_SIZE to a
+// page, the page kept in the URL (?page=N). Polls so a new project appears.
 // Writes nothing.
 (function () {
   'use strict';
@@ -68,15 +67,6 @@
     renderProjects();
   }
 
-  function renderRuns(data) {
-    var list = $('runs');
-    list.textContent = '';
-    data.runs.forEach(function (run) {
-      list.appendChild(row({ run: run.name }, run.url, run.name, run.state + ' · ' + run.iteration_count + ' iterations'));
-    });
-    $('runs-card').hidden = data.runs.length === 0;
-  }
-
   function getJson(url) {
     return fetch(url, { cache: 'no-store' }).then(function (response) {
       if (!response.ok) throw new Error(url + ': HTTP ' + response.status);
@@ -85,12 +75,9 @@
   }
 
   function poll() {
-    Promise.all([
-      getJson('api/projects').then(render).catch(function (error) {
-        $('projects-count').textContent = 'unavailable: ' + error.message;
-      }),
-      getJson('api/runs').then(renderRuns).catch(function () {})
-    ]).then(function () { setTimeout(poll, POLL_MS); });
+    getJson('api/projects').then(render).catch(function (error) {
+      $('projects-count').textContent = 'unavailable: ' + error.message;
+    }).then(function () { setTimeout(poll, POLL_MS); });
   }
 
   $('page-prev').addEventListener('click', function () { go(page - 1); });

@@ -124,7 +124,7 @@ assumed safe from absence in the shipping keep-list.
 ## Run-start inherited delta
 
 Run nt2 starts at `7dd3d0458c61d300100177955267eca074d6865b`
-(`ouroboros: start run nt2`), after the nt1 merge. Compare that revision with
+(the run-start commit), after the nt1 merge. Compare that revision with
 `d031bde033aca73242fa7a668f657fa15b16935f`, not the earlier nt1 run.
 
 | Metric | nt2 start | Audit HEAD |

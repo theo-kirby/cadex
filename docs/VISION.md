@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-10-03
+Verified against source: 2026-10-04
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -12,17 +12,18 @@ in `docs/ARCHITECTURE.md`; the path from here to there is `docs/ROADMAP.md`.
 One agentic CAD app for robots and mechanisms, made of **three things and
 nothing else** (ADR-500): **the engine**, which builds, verifies, measures,
 renders, simulates and exports a design from its script; **the dashboard**,
-where a person watches that work and steps in; and **the agent**, Claude
-Code, which does the work through one tool surface and reaches the owner
-without ever waiting on them. It is a derivative of, but not dependent on,
+where a person watches that work, read-only; and **the agent bindings** —
+one tool surface over MCP, one guidance text and the `cadex` commands —
+through which the person's own agent, whichever it is, does the work
+(ADR-537, ADR-538). It is a derivative of, but not dependent on,
 FreeCAD (ADR-025), and it combines:
 
 - **FreeCAD-class capability** — real parametric BREP modeling **on OCCT**.
   OCCT is the kernel and it stays; FreeCAD is the application layer around
   it, and that layer is being removed.
-- **Autonomy first** — the owner uses Cadex almost entirely through
-  autonomous runs, so the interface is built for *looking, reviewing and
-  light steering* of work the agent did, not for hands-on modelling. The
+- **Agent first** — the owner works through an agent, so Cadex is built
+  for an agent to drive and a person to *look at and review*, not for
+  hands-on modelling. The
   Blender shell that held the hands-on half is deleted (ADR-498; tag
   `v1-blender-shell`).
 - **The xscript methodology** — the AI authors a declarative Python program;
@@ -71,28 +72,25 @@ and a gait video — and 0.1.0 roughly means that sentence works.
 
 ### The interface
 
-- **The dashboard is the only UI** (`./cadex review`, ADR-500). A browser
-  page over a projects directory: the model viewer, parameter sliders, the
-  turn transcript, renders and `look` views, section, exploded and collision
-  views, rollout playback, training curves and evaluation films, drawings
-  and concept sheets as outputs, exports, and accept, reject and restore of
-  a revision. Its design spec is `docs/DASHBOARD.md`.
-- **A person steers lightly.** Start a turn from a prompt (optionally with
-  an image), move a slider, leave a comment on the design or on a part
-  picked in the viewer, accept or restore a revision. Every write goes
-  through the code path the CLI uses; the project directory is the truth,
-  and there is never a second write path.
-- **The agent reaches the owner without waiting.** It can flag a revision
-  or post a question; the dashboard shows it, and the owner's answer
-  arrives in the agent's next turn. Autonomy never blocks on a person.
+- **The conversation is the person's agent; the dashboard is the view**
+  (ADR-537, ADR-538). The person works in an agent of their choice —
+  Claude Code, Codex, Pi — which registers `cadex mcp` and reads its
+  guidance, and watches the result in the dashboard beside it.
+- **The dashboard is the only UI, and it is read-only** (`./cadex app`,
+  ADR-500, ADR-537). A browser page over a projects directory: the model
+  viewer, the revision trail, drawings, images, documents and training
+  plots, rollout playback. It writes nothing; the project directory is the
+  truth, and the agent is the only thing that changes it. Its design spec
+  is `docs/DASHBOARD.md`.
 - **The dashboard stays light**: a standard-library Python server, vanilla
   JS and the vendored three.js. No npm, no bundler, no front-end framework.
 - **No user-accessible modeling tools.** No fillet button, no extrude
-  button, no sketch editor. The agent writes script; sliders tweak declared
-  parameters without the agent in the loop.
+  button, no sketch editor. The agent writes script; `cadex params` sweeps
+  declared parameters without the agent in the loop.
 - **No workbench concept.** Workbenches are an implementation detail of the
   FreeCAD substrate, not a product concept.
-- **One revision per agent turn.**
+- **Every accepted build is a revision**, and every agent session that
+  changed the design is one `PROGRESS.md` row and one project commit.
 
 ### Scope
 
@@ -194,24 +192,22 @@ returning it.
 - Supporting all FreeCAD workbenches, file formats, or addons.
 - Multi-engine scripting (build123d, OpenSCAD — retired in the teardown).
 - **Two of anything**: one engine, one UI, one script format, one
-  document, one harness. The Qt/Coin3D shell was deleted in Phase 7
+  document, one tool surface. The Qt/Coin3D shell was deleted in Phase 7
   (ADR-021) and the Blender shell in ADR-498; the Rust shell once planned to
   replace the latter is not coming (ADR-500). The CLI and the dashboard are
-  not two front ends but one client of the protocol (ADR-061): the CLI is
-  how the agent and a script drive a project, the dashboard is how a person
-  sees and steers it, and both write through the same code.
+  not two front ends but one client of the protocol (ADR-061): the CLI and
+  `cadex mcp` are how an agent and a script drive a project, and the
+  dashboard is how a person sees it.
 - **Hands-on modelling UI.** Cage ring-drag, a wiring editor, an
   interactive blueprint editor, window chrome: dropped with the shell
-  (`docs/SHELL-PARITY.md`). A shape a person wants changed is a comment or a
-  prompt, not a gesture.
-- **A second provider stack.** Cadex delegates the model loop and
-  authentication to the user's installed Claude Code CLI, the only harness
-  (ADR-497; the shell's Codex and pi backends, ADR-174/175, are retired).
-  Cadex has no API-key entry, provider SDK stack or harness selector.
-
-  The CLI orchestrates the agent's turns (ADR-061). It does not state the
-  xscript API: it asks the engine through `describe_api` and generates tool
-  schemas from `OP_ARG_SPECS`.
+  (`docs/SHELL-PARITY.md`). A shape a person wants changed is something they
+  tell their agent, not a gesture.
+- **An agent of its own.** Cadex runs no model loop, holds no API key and
+  carries no provider SDK or harness (ADR-538, superseding ADR-497's "Claude
+  Code is the only harness"). It is a library an agent uses: the tools over
+  MCP, the guidance, the CLI. It does not state the xscript API: the agent
+  asks the engine through `describe_api`, and the tool schemas are
+  generated from `OP_ARG_SPECS`.
 - **Dependence on FreeCAD.** OCCT stays as the geometry kernel,
   and so does **MuJoCo** as the dynamics kernel — a dependency in the OCCT
   category, kept upstream and unmodified rather than forked (ADR-075).
@@ -249,7 +245,8 @@ returning it.
    tolerance, so a policy whose weights arrived intact but whose architecture
    the engine reads differently is a refusal rather than a bad gait.
 5. **The AI is the only modeler; the human is the only judge.** Humans steer
-   via chat and sliders, accept or reject; they never push geometry buttons.
+   by talking to their agent and judge in the dashboard; they never push
+   geometry buttons.
 
    **Training is agent-driven and stays offboard** (ADR-084). The trainer
    lives in `training/`, with its own dependencies and environment; neither

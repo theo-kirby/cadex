@@ -16,18 +16,16 @@ they are laid out, typed and coloured, and why.
 The dashboard stays light (charter A2): a standard-library Python server,
 vanilla JS and the vendored three.js — no npm, no bundler, no build step,
 no front-end framework. The project directory is the truth (A3): the page
-reads it, and every write goes through the code paths the CLI uses, never a
-second one.
+reads it and writes nothing (ADR-537). The agent working the project -- any
+agent, through the CLI or `cadex mcp` -- changes it, and the page follows.
 
 **The pages are cut to the minimum (ADR-533).** On 2026-10-04 the owner had
 every panel removed that watching and steering a design does not need, to be
-added back one at a time as the need shows. What is left is three pages:
-the index (projects and runs), a project and a run (its charter and
-iterations). The server's routes are
-unchanged, so every API the removed panels read — runs, telemetry, videos,
-evaluations, comments, notes, exports, sections, drawings, documents — still
-answers, and the CLI and the agent still use them; adding a panel back is
-page work only. The sections the cut emptied are gone from this file and
+added back one at a time as the need shows. What is left is two pages: the
+index of projects and a project. The server's read routes are unchanged, so
+every API the removed panels read — runs, telemetry, videos, evaluations,
+comments, notes, exports, sections, drawings, documents — still answers, and
+the CLI and the agent still use them; adding a panel back is page work only. The sections the cut emptied are gone from this file and
 kept in its history; the ones that remain keep their numbers, so a `§`
 reference elsewhere still lands. §7 and §8 are the measured ot6 record of
 the page before and after the first spec, kept because the tests check them.
@@ -35,21 +33,27 @@ the page before and after the first spec, kept because the tests check them.
 **The project page is the app (ADR-534).** The same day the owner asked for
 the page to stop being a dashboard and be the app, in Blender's design
 language: the screen is tiled by **areas**, each showing one **editor** —
-the 3D viewport, the 2D viewport, Settings and Chat — and each area can be
+the 3D viewport and the 2D viewport — and each area can be
 resized, moved, split, maximized or closed (§12). There is a light theme
 beside the dark one (§4), and the 3D viewport draws shaded by default or as
 a hairline diagram (§10). Still no build step: `layout.js` tiles the
 screen, `theme.js` picks the theme, and both are plain scripts.
 
+**The settings are a menu bar (ADR-539).** File, Revisions and View sit in the top bar as dropdowns, and the screen is one 3D viewport by default.
+
+**The page is read-only (ADR-537).** The owner's interface is now an agent
+of their choice -- Claude Code, Codex, Pi -- driving the engine through the
+CLI and `cadex mcp`, with this page beside it as the view. The Chat editor,
+the parameter sliders and the revision verdicts are gone, and the server
+has no write route (§18).
+
 ## 1. Purpose
 
 The app answers one question for one person: **what does the design look
-like now, and how do I change it?** The reader is the owner, at a desk or on
-a phone, watching what the agent produced and steering it, mostly by telling
-it what to do; they never model by hand (VISION's non-goals). The project
-page has three writes, each one `cadex` command: a chat message, which is a
-design turn (§19), a parameter slider (§18) and a revision verdict (§21). Every write is a `POST` behind a per-launch token
-and a same-origin check (§18), on a server bound to 127.0.0.1 (§22).
+like now?** The reader is the owner, at a desk or on a phone, watching what
+the agent produced while it works; they steer it in the agent's own
+interface and never model by hand (VISION's non-goals). The page writes
+nothing (§18), on a server bound to 127.0.0.1 (§22).
 
 - **The model is the subject.** The 3D viewport is the largest area in the
   default layout and the first tab on a phone.
@@ -60,8 +64,7 @@ and a same-origin check (§18), on a server bound to 127.0.0.1 (§22).
 
 ## 2. Hierarchy
 
-**Index** (`/`, `projects.html`): the top bar, then **Runs** — one row per
-Ouroboros run (§27), hidden when there are none — then **Projects**, newest
+**Index** (`/`, `projects.html`): the top bar, then **Projects**, newest
 accepted first, 20 to a page. Each row is the name, linking to its page, and
 a muted date; **Newer** and **Older** page through them, and the page number
 is kept in the URL (`?page=N`).
@@ -77,11 +80,7 @@ the screen (`#screen[data-mode]`), which `layout.js` tiles with areas
 | **Top bar** | — | `#top`, `#home`, `#project-name`, `#accepted-line`, `#freshness[data-state]`, `#theme-toggle` | A link home (hidden under `cadex review`), the project's name, the accepted revision's ordinal and date, **live** or **offline**, and a light/dark toggle. |
 | **3D viewport** | `view3d` | `#view3d-source`, `#view3d-style button[data-style]`, `#model-fit`, `#model`, `#model-status[data-state]`, `#viewer`, `#playback`, `#play-toggle`, `#play-time`, `#play-clock` | The accepted model or a run's, shaded or hairline (§10); orbit by pointer or touch; **Fit**. A run that kept a rollout trace plays it on the timeline. |
 | **2D viewport** | `view2d` | `#view2d-source`, `#view2d-fit`, `#sheet-stage[data-kind]`, `#sheet-empty` | The project's drawings and presentation images (pan, zoom, double-click to fit), its documents (markdown, drawn as text only), and each run's training curves (reward, loss, episode length) as plots. |
-| **Settings** | `settings` | `#file-panel`, `#project-select`, `#project-open`; `#params-panel`, `#params tr[data-param]`, `#params-write[data-state]`, `#params-empty`; `#revision-panel`, `#revision-accept`, `#revision-reject`, `#revision-status[data-state]`, `#revision-list li[data-revision][data-ordinal][data-current]`, `.revision-restore`; `#view-panel`, `#theme-choice`, `#style-choice`, `#layout-reset` | Open another project; the parameter sliders (§18); accept, reject or restore a revision (§21); the theme, the render style and the layout. Panels fold. There is no Save: every change is already a revision. |
-| **Chat** | `chat` | `#chat-log`, `#chat-live`, `#turn-prompt`, `#turn-resume`, `#turn-start`, `#turn-status[data-state]`, `#turn-transcript`, `#chat-new` | What to build or change: each message is a design turn, and the agent's words and tool calls stream in as its reply (§19). |
-
-**Run** (`/r/<run>/`): the top bar (home, the run's name, its state and
-iteration count), **Charter** and **Iterations** (§27).
+| **Menu bar** | — | `#menubar`; `#file-panel` (`#project-select`, `#project-open`, `#project-all`); `#revision-panel` (`#revision-list li[data-revision][data-ordinal][data-current]`, `#revision-empty`); `#view-panel` (`#theme-choice`, `#style-choice`, `#layout-reset`) | File, Revisions and View in the top bar, each a `<details class="menu">` dropdown (ADR-539): open another project; the revision trail, read-only (§18); the theme, the render style and the layout. One opens at a time; a click outside or Escape closes it, and with one open, hovering another opens that one. On a phone the dropdown spans the screen between the gutters. |
 
 The element ids and `data-*` attributes above are the hooks the CLI suite
 pins.
@@ -97,8 +96,8 @@ One family, one scale, one line height.
 | `--fs-2` | 17 px | 600 | the page title (`h1`) in the top bar |
 | `--fs-3` | 22 px | 600 | reserved; nothing uses it now |
 
-The top bar title is `--fs-2` and a Settings panel heading `--fs-1` at
-600; the scale does not change with the width.
+The top bar title is `--fs-2` at 600 and a menu name `--fs-1` at
+400; the scale does not change with the width.
 
 - **Family**: `--font: system-ui, "Segoe UI", "Helvetica Neue", Arial, sans-serif`;
   identities in `--mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace`
@@ -443,9 +442,9 @@ and the assessment are the second half of
 ## 12. The screen: areas and editors (ADR-534)
 
 After Blender's screen. The screen is a tree: a split (`row` or `col`, with
-each child's share) or an area showing one editor. The default is Settings
-down the left (20 %), the 3D viewport over the 2D viewport in the middle
-(56 %, split 64/36), and Chat on the right (24 %).
+each child's share) or an area showing one editor. The default is one 3D
+viewport over the whole screen (ADR-539); split it to bring in the 2D
+viewport. The settings live in the menu bar (§2), not in an editor.
 
 - **Resize**: drag the 4 px gutter between two areas; it moves that boundary
   only, and no area goes below 120 px.
@@ -455,17 +454,16 @@ down the left (20 %), the 3D viewport over the 2D viewport in the middle
   another area. A drop on an edge docks it on that side, splitting the target;
   a drop in the middle swaps the two. A hint shows where it will land.
 - **Split, maximize, close**: the four buttons at the right of the header.
-  A split opens an editor not shown yet beside the area, so with all four
+  A split opens an editor not shown yet beside the area, so with both
   shown there is nothing to split. Maximize (or Ctrl+Space over the area)
   gives the area the whole screen until it is pressed again. The last area
   cannot close.
 - **Kept**: the layout is this browser's (`localStorage`
-  `cadex.layout.v1`); Settings → View → Layout → **Reset** returns the
+  `cadex.layout.v3`; earlier keys held the Chat and Settings editors); View → Layout → **Reset** in the menu bar returns the
   default. A browser that refuses storage gets the default every visit.
 
 An editor's markup is never rebuilt by a layout change: the area moves the
-editor's own elements, so a canvas keeps its WebGL context and a half-typed
-message stays typed. Below 700 px there is no tiling (§6).
+editor's own elements, so a canvas keeps its WebGL context. Below 700 px there is no tiling (§6).
 
 ## 15. Policy videos are drawn in the studio look (ADR-431)
 
@@ -535,125 +533,29 @@ drawn image; the studio video's identity covers the palette source), with
 the shadow held by `test_contact_shadow_darkens_the_floor_under_the_design_only`.
 Before/after: `docs/probes/ot10/a8-*.png`.
 
-## 18. Steering: the parameter slider (ADR-503)
+## 18. Read-only: the agent changes the project, the page follows (ADR-537)
 
-The page's first write. Every declared number with a
-finite `min` below its `max` is a range input in the *value* column of
-`#params`, stepped by the declaration's `step`; a parameter never set reads
-at its default. Dragging moves
-the number beside the slider and nothing else; **releasing** it is one
-write — `POST api/params` with `{"values": {name: value}}` — so a drag is
-one `cadex params --set`, never one per pixel. While it runs every slider
-is disabled and `#params-write` reads **rebuilding…**; it then clears, or
-shows the CLI's own refusal in the bad colour. The poll
-that follows the reply reloads the model, because the accepted revision
-moved; the table is never rebuilt under a write in flight, so a poll does
-not snatch a slider from the hand moving it.
+The server answers GET and HEAD and nothing else: any other method, on any
+route, is 501, and the served page carries no token. The page's 2 s poll of
+`api/project` notices when the accepted revision moves -- a `cadex params`,
+a `write_script` through `cadex mcp`, a `cadex revision restore` -- and
+reloads the model then. The Revisions menu keeps `#revision-list`, the stored trail
+newest first, numbered by ordinal, **current** for the accepted one and when
+it was accepted for the rest; each row carries `data-revision`,
+`data-ordinal` and `data-current`.
 
-The server has no write path of its own (charter A3): the POST runs
-`cadex params --project <root> --set NAME=VALUE --json` as a child, as
-`cadex walk` runs a leg, without `--wait`, so a project held by another run
-is refused (409) rather than queued, and the `PROGRESS.md` row and the
-project commit are the CLI's. Every POST, under `/` and `/p/<name>/`,
-needs the per-launch token the server writes into the
-`<meta name="cadex-write-token">` of the page it serves, sent as
-`X-Cadex-Token`; a browser's `Origin`, when sent, must be the server's own
-`Host`. Both checks run before routing, so an unknown path is refused, not
-found. The server binds 127.0.0.1; another device reaches it through
-`tailscale serve` in front of it.
-
-Measured on 2026-10-03, a one-box plate on the dev tree, headless
-Chromium, n=20: slider release to the rebuilt model drawn, p50 548 ms,
-p95 556 ms; the `cadex params` child alone, p50 0.534 s, p95 0.542 s.
-Beside it, `cadexd_latency_integration.py` on the same machine: warm
-`set_params` median 0.382 s, with display 0.482 s, against its 0.65 s bar.
-The cold child costs about 50 ms over a warm engine on this model, which
-is why the server keeps none; a heavier project is where that would be
-measured again.
-
-## 19. Steering: a design turn (ADR-504)
-
-The page's second write, and the Chat editor's whole job: a message box, a
-**continue** toggle (on by default — the CLI's `--resume`) and **Send**
-(or Enter; Shift+Enter is a new line). **New chat** turns continue off for
-the next message, which starts a new agent session, and clears the log. Starting is
-`POST api/turn` with `{"prompt": text, "resume": bool}`, behind the same
-token and `Origin` check as the slider (§18); the server answers 202 and
-runs `cadex --project <root> --prompt=<text> [--resume] --json` as a child
-through the walk's `run_leg`, bounded at an hour. The prompt travels as one
-`--prompt=` argument, so text that begins with a dash stays text. One turn
-runs per project at a time on a server; a second start is 409 until it
-ends, and a slider or turn from elsewhere meets the CLI's own project lock.
-
-The transcript is the child's stderr — the `· tool  summary` progress
-lines and the model's prose — which is exactly what a terminal running the
-same command shows. The server holds it in memory and `GET api/turn?since=N`
-returns what arrived after character `N`, with the turn's id, state
-(`running`, `done`, `failed`) and, once it ends, the child's envelope
-(`accepted_revision`, `digest`, `notes`, `error`, `usage`, exit and seconds); with no
-turn it is `{"state": "idle"}`. The page reads it every second, so a page
-opened mid-turn, or on another device, picks the running turn up from the
-start. In the chat the prompt is the user's message and the transcript is
-the reply: the agent's prose as text, each `· tool` line as a quiet
-monospace row, and a footer naming the revision it accepted or, in the bad
-colour, why it failed. Earlier exchanges of the visit stay above. While it
-runs the prompt and button are disabled and
-`#turn-status[data-state=running]` reads **working…**; when it ends it reads
-**done**, or **failed**, and the next project poll
-reloads the model because the accepted revision moved. The server never writes into the project: what a
-turn leaves there — the revision, the `PROGRESS.md` row, the project
-commit, the agent's decisions and notes, and its transcript and `look`
-images under `turns/` — is the CLI's (charter A3).
-
-**The stored turn** (ADR-526). Every `cadex -p`, typed at a terminal or
-started here, keeps `turns/<id>/turn.json`, `transcript.txt` (its stderr,
-flushed as it goes) and one `look-NN-<view>.png` per picture the agent's
-`look` tool drew. When this server is not running a turn on the project,
-`api/turn` answers from the newest stored one in the same shape, with
-`source: "store"` (a live turn says `"live"`), `looks` as `[{view, url}]`
-under `turn/<id>/<name>`, and `state` `interrupted` for a turn whose
-process died before it ended. So a terminal turn shows on the page — live
-while it runs, since the transcript is read from an offset — a finished
-page turn hands over to the stored copy without a reload, and a server
-restart forgets nothing. The page does not show the `look` images
-(ADR-533); `api/turn` still lists them.
-
-The page attaches no image (ADR-533); `api/turn` still takes `images`
-(ADR-507), and `cadex -p --image` is the CLI's way to send one.
-
-## 21. Steering: accept, reject or restore a revision (ADR-506)
-
-The page's third write. `#revision-panel` sits under the parameters in Settings:
-**Accept** and **Reject**, and `#revision-list`, the stored trail newest
-first, numbered by ordinal — **current** for the accepted one, when it was
-accepted for the rest — with **Restore** on every row but the current one.
-Each row carries `data-revision`, `data-ordinal` and `data-current`. While a
-write runs, every button is disabled.
-
-Each button is `POST api/revision` with `{"action": "accept" | "reject" |
-"restore", "revision": selector, "note": text}`, behind the token and
-`Origin` check of §18; the server runs `cadex revision --project <root>
---json [--note=<text>] <action> [<selector>]` as a child, and a selector is
-an ordinal or a hex revision prefix, never a flag. **Accept** writes the
-owner's verdict and rebuilds nothing. **Reject** puts back the revision
-accepted before this one; **Restore** puts back the one on its row. Both
-rebuild through the engine (the CLI's `write_script`, then `set_params` for
-the values that revision was accepted with) under the project lock, so a
-project a turn holds is refused, and the next poll draws the model they
-accepted. The status line says which revision came back and whether it is
-the same revision or, when a parameter that revision left at its default
-must now be stated, the **same geometry**.
-
-Every verdict is a line in `comments.jsonl`; the next turn is given it
-ahead of its prompt as `(a verdict on a revision) The owner rejected
-revision … and put back revision … (#2).` The page sends no note; the CLI's
-`--note` still takes one.
+What the page once wrote is the CLI's alone now, where an agent reaches it:
+`cadex params --set` for the slider (ADR-503), `cadex mcp` or the agent's
+own session for the chat (ADR-504), `cadex comment` (ADR-505), `cadex
+revision accept|reject|restore` (ADR-506), `cadex export` (ADR-509) and
+`cadex section`. The listings those commands leave -- exports, sections,
+comments, notes -- still answer under `api/project`.
 
 ## 22. Remote viewing: `tailscale serve` in front of 127.0.0.1
 
 The dashboard binds `127.0.0.1` by default (`cadex app`, `cadex review`,
 `serve_projects` and `serve` all default to it), so nothing off the machine
-reaches it. To watch and steer from a phone or another computer on your
+reaches it. To watch from a phone or another computer on your
 tailnet, leave it on loopback and put Tailscale's HTTPS proxy in front of
 it, on the same machine:
 
@@ -665,11 +567,8 @@ tailscale serve status           # what is being served
 
 Only devices on your tailnet can open that URL, and Tailscale terminates TLS.
 Mount it at the root as shown: the page's URLs are relative to the project page, but
-a sub-path mount is not tested. The write guards of §18 still apply behind the proxy:
-every write needs the per-launch token from the page the server served, and a
-browser's `Origin` must match the `Host` the server sees. A proxy that
-rewrites `Host` will have writes refused as cross-origin, which fails safe.
-Do not use `tailscale funnel`, which publishes to the internet, and do not
+a sub-path mount is not tested. There is nothing to write behind the proxy
+(§18), but the page still shows the whole project to whoever opens it. Do not use `tailscale funnel`, which publishes to the internet, and do not
 pass `--host 0.0.0.0`.
 `--host <tailscale address>` (`docs/CLI.md`) binds the tailnet address
 directly without TLS, and is the older path. Cadex's own runs never start
@@ -698,38 +597,3 @@ the 2 s project poll.
 
 Measured on a link emulated at 30 Mbit/s and 40 ms (Chromium, the 45-part
 arm): first load 9.1 s → 3.9 s, reopening the same model 8.2 s → 0.8 s.
-
-## 27. Autonomous runs beside the projects (ADR-513)
-
-`cadex app` lists the **Ouroboros runs** of a runs directory above the
-projects: `--runs`, then `CADEX_RUNS`, then the checkout's own
-`.ouroboros/runs`. Each row is the run's name linking to `/r/<run>/` and a
-muted `<state> · <n> iterations`.
-
-`/r/<run>/` is the run's page (`run.html`, `run.js`, this stylesheet): the
-top bar names the run, its state and iteration count; under it **Charter**
-(ADR-514), the done criteria under `## Done criteria` in `run.yml`'s `goal`
-file as the **run's branch** holds it, one row each — a ✓ when ticked, the
-id and the title, the criterion's text as the row's tooltip — and
-**Iterations**, newest first: the number, the verdict in its status colour
-(`--ok` for `continue` and `done_accepted`, `--bad` for `reject` and
-`done_rejected`, `--warn` for `stuck` and `looping`, **pending** while the
-critic has not spoken), and the critic's reason. The page polls, so a live
-run's next iteration appears without a reload.
-
-The server reads exactly four files of a run — `run.yml`'s top-level
-scalars, `status.json`, `iterations.jsonl` and `critic.jsonl` — fresh on
-every request, and serves nothing else from the directory: transcripts,
-logs and patches never reach a page. There is no write route under `/r/`.
-Its probe and record routes (ADR-515, ADR-518) still answer, with nothing
-on the page that links to them.
-
-## Operator run status (ADR-387)
-
-The operator deployment adds a compact bottom-right status strip with run name,
-iteration, loop state and project name. It uses the dark chrome palette and
-12 px text, and reloads the page on project changes so prior-project videos,
-documents and camera state do not carry across. When the configured run has no
-dispatched project, show a waiting message instead of the previous model. This
-strip belongs to the operator launcher; ordinary single-project review keeps
-its existing layout. See `OPERATOR-REVIEW.md` for the selection contract.

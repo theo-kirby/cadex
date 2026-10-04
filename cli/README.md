@@ -13,9 +13,9 @@ fresh. See ADR-061.
 Full documentation: [`../docs/CLI.md`](../docs/CLI.md).
 
 ```bash
-./cadex -p "a 40x25x15 mm bracket with a 6 mm bore" --project ./b --out ./b/out
+./cadex mcp --project ./b          # register with your agent's MCP client
+./cadex guidance                   # the text that server gives the agent
 ./cadex params --project ./b --set bore=8 --out ./b/v2
-./cadex -p "add a 2 mm fillet to the vertical edges" --project ./b --resume
 pixi run python -m pytest cli/tests
 ```
 

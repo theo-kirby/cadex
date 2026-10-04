@@ -286,12 +286,12 @@ def test_clearance_is_a_served_inspect_scope_the_cli_offers(tmp_path) -> None:
 
 
 
-def test_the_cli_bridge_tools_are_pinned_and_the_owner_channel_never_waits() -> None:
+def test_the_cli_bridge_tools_are_pinned() -> None:
     """The tools the CLI's bridge answers with no engine op behind them are
-    a deliberate list (ADR-406, ADR-464), and ``leave_note`` is the
-    agent's one path to the owner (ADR-512, orun2 A1): a flag or a question,
-    optionally naming one project file, and no argument that could make the
-    turn wait for an answer. Read by path, like ``INSPECT_SCOPES`` above."""
+    a deliberate list (ADR-406, ADR-464, ADR-516). ``leave_note``, the
+    owner channel of ADR-512, went with Cadex's own agent (ADR-538): the
+    person now talks to their agent directly. Read by path, like
+    ``INSPECT_SCOPES`` above."""
     from importlib.util import module_from_spec, spec_from_file_location
 
     tools_py = MODULE_DIR.parent.parent.parent / "cli" / "cadex_cli" / "tools.py"
@@ -300,12 +300,7 @@ def test_the_cli_bridge_tools_are_pinned_and_the_owner_channel_never_waits() -> 
     module = module_from_spec(spec)
     spec.loader.exec_module(module)
     assert tuple(module.BRIDGE_TOOLS) == (
-        "look", "draw_blueprint", "leave_note", "train_start", "train_status", "train_stop", "evaluate")
-    channel = module.BRIDGE_TOOLS["leave_note"]["input_schema"]
-    assert channel["properties"]["type"]["enum"] == ["flag", "question"]
-    assert set(channel["properties"]) == {"type", "text", "artifact"}
-    assert channel["required"] == ["type", "text"]
-    assert channel["additionalProperties"] is False
+        "look", "draw_blueprint", "train_start", "train_status", "train_stop", "evaluate")
     # The drawing sheet (ADR-516): a name is its identity, and it takes
     # nothing that could name an arbitrary file to store.
     sheet = module.BRIDGE_TOOLS["draw_blueprint"]["input_schema"]

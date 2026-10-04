@@ -1,26 +1,16 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""The parent's end of the tool path: a socket server in front of cadexd.
+"""The tools, run against one engine: what ``cadex mcp`` answers with.
 
-``claude`` spawns MCP servers as its own children, so a CLI that wants the
-model to reach the engine has some IPC to pay for whatever it does. This is
-the cheapest arrangement that keeps the parent in the loop: the parent owns
-the single ``cadexd`` child and a unix-domain socket in a private directory;
-:mod:`cadex_cli.mcp`, spawned by ``claude``, relays every ``tools/call``
-down that socket.
-
-The shape is the Blender shell's, without the reason the shell needed it.
-There, the bridge exists because ``bpy`` may only be touched from Blender's
-main thread. Here nothing is thread-affine and the bridge earns its keep a
-different way: **the parent observes every tool call**, which is what lets
-it print progress, know the final revision without asking, and hold the
-model's display block for :mod:`cadex_cli.export` — none of which a run
-whose engine lived inside the MCP child could do.
-
-A unix socket rather than the shell's localhost TCP: it lives in a
-0700 directory, so the filesystem enforces what the token only asserts.
-The token is kept anyway — belt and braces cost one comparison.
+The bridge sits between a tool call and :class:`CadexdClient`. It owns
+what the agent is never asked for -- the revision guard and the display
+request (:mod:`cadex_cli.tools`) -- runs the tools no engine op backs
+(``look``, the training loop, ``draw_blueprint``), and records every call,
+which is how ``cadex mcp`` knows what a session accepted when it lands the
+session's ``PROGRESS.md`` row (ADR-538). It is a plain object called in
+process: the relay socket a CLI-run ``claude`` child once reached it
+through went with that child (ADR-538).
 """
 
 from __future__ import annotations
@@ -30,10 +20,6 @@ import base64
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
-import secrets
-import shutil
-import socket
-import socketserver
 import tempfile
 import threading
 import time
@@ -42,28 +28,22 @@ from typing import Any
 from . import evaluate as evaluation
 from . import loop
 from .clearance import read_fit
-from .comments import add_note
 from .client import CadexdClient
 from .inventory import InventoryError, read_inventory, read_inventory_summary
-from .review_record import read_accepted_identity
 from .studio import FIT_REPORT, STUDIO
 from .tools import (
     BRIDGE_TOOLS, STANDARD_DISPLAY, VIEW_ARGS, injects_display, injects_revision,
     tool_definitions,
 )
 
-#: Long enough that a slow rebuild is not a broken pipe; the engine's own
-#: budget is what actually bounds a run.
-SOCKET_TIMEOUT_SECONDS = 3600.0
-
 #: The ops that run the script and publish a revision. Each one's reply is
 #: what the model reasons about a build from, so each one carries the
 #: measured fit (ADR-346) and the published catalog identity (ADR-362).
 MODELLING_OPS = frozenset({"write_script", "edit_script", "set_params", "rebuild"})
 
-#: The longest one ``train_status`` call waits for a run to end. A turn that
-#: wants longer asks again; a tool call that blocks for an hour is a turn
-#: nobody can tell from a hung one.
+#: The longest one ``train_status`` call waits for a run to end. An agent
+#: that wants longer asks again; a tool call that blocks for an hour cannot
+#: be told from a hung one.
 TRAIN_WAIT_MAX_S = 900.0
 #: How many filmed seeds an ``evaluate`` reply carries as pictures, two
 #: sheets each.
@@ -91,30 +71,29 @@ class ToolCall:
 
 @dataclass
 class BridgeState:
-    """What the parent knows after the model has had its turn."""
+    """What the calls so far have left: the revision, the last build and every call."""
 
     #: The revision to guard the next write with, tracked from replies.
     revision: str = ""
     #: The most recent successful modelling reply, display block and all.
     last_accepted: dict[str, Any] | None = None
     #: The measured fit of the most recent successful modelling reply, as
-    #: the model saw it -- what the turn report carries as `fit`.
+    #: the model saw it.
     last_fit: dict[str, Any] | None = None
     #: The catalog identity of the most recent successful modelling reply,
-    #: as the model saw it -- what the turn report carries as `inventory`.
+    #: as the model saw it.
     last_inventory: dict[str, Any] | None = None
     calls: list[ToolCall] = field(default_factory=list)
 
 
 class Bridge:
-    """Serve tool calls from the MCP child against one :class:`CadexdClient`."""
+    """Run tool calls against one :class:`CadexdClient`."""
 
     def __init__(
         self,
         client: CadexdClient,
         *,
         on_call: Callable[[ToolCall], None] | None = None,
-        on_look: Callable[[str, bytes], None] | None = None,
         initial_revision: str = "",
         project_root: Path | str | None = None,
     ) -> None:
@@ -124,98 +103,23 @@ class Bridge:
         #: one those tools refuse; every other tool is unaffected.
         self.project_root = Path(project_root).resolve() if project_root else None
         self.on_call = on_call
-        #: Handed each picture ``look`` gives the model, by view, so the turn
-        #: can keep what the model saw (ADR-526).
-        self.on_look = on_look
         self.state = BridgeState(revision=str(initial_revision or ""))
         self._lock = threading.Lock()
-        self._dir: Path | None = None
-        self._server: socketserver.UnixStreamServer | None = None
-        self._thread: threading.Thread | None = None
-        self.token = secrets.token_urlsafe(24)
-        self.socket_path: Path | None = None
 
-    # -- lifecycle -------------------------------------------------------
-
-    def start(self) -> Bridge:
-        directory = Path(tempfile.mkdtemp(prefix="cadex-cli-bridge-"))
-        directory.chmod(0o700)
-        # Unix socket paths are capped near 108 bytes on Linux and 104 on
-        # macOS, so the name stays short and the entropy lives in mkdtemp's.
-        path = directory / "s"
-        bridge = self
-
-        class _Handler(socketserver.StreamRequestHandler):
-            timeout = SOCKET_TIMEOUT_SECONDS
-
-            def handle(self) -> None:
-                line = self.rfile.readline()
-                if not line:
-                    return
-                try:
-                    payload = json.loads(line.decode("utf-8"))
-                except (UnicodeDecodeError, ValueError):
-                    reply: dict[str, Any] = {"error": "malformed bridge request"}
-                else:
-                    reply = bridge.handle(payload)
-                self.wfile.write(json.dumps(reply).encode("utf-8") + b"\n")
-                self.wfile.flush()
-
-        server = socketserver.UnixStreamServer(str(path), _Handler)
-        path.chmod(0o600)
-        thread = threading.Thread(
-            # A short poll interval only shortens teardown: `shutdown()`
-            # waits for the accept loop to come round, and the default 0.5 s
-            # is half a second on the end of every run.
-            target=lambda: server.serve_forever(poll_interval=0.02),
-            daemon=True,
-            name="cadex-cli-bridge",
-        )
-        thread.start()
-
-        self._dir = directory
-        self._server = server
-        self._thread = thread
-        self.socket_path = path
+    # A scope for the calls, so a caller can say where they end; the bridge
+    # holds nothing that needs releasing.
+    def __enter__(self) -> Bridge:
         return self
 
-    def stop(self) -> None:
-        if self._server is not None:
-            self._server.shutdown()
-            self._server.server_close()
-            self._server = None
-        if self._thread is not None:
-            self._thread.join(timeout=5.0)
-            self._thread = None
-        if self._dir is not None:
-            shutil.rmtree(self._dir, ignore_errors=True)
-            self._dir = None
-        self.socket_path = None
-
-    def __enter__(self) -> Bridge:
-        return self.start()
-
     def __exit__(self, *_exc: object) -> None:
-        self.stop()
+        pass
 
     # -- the tool path ---------------------------------------------------
 
-    def handle(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Answer one bridge request. Also the seam the tests drive."""
+    def tools(self) -> list[dict[str, Any]]:
+        """Every tool, as ``{"name", "description", "input_schema"}``."""
 
-        if not secrets.compare_digest(
-            str(payload.get("token") or ""), self.token
-        ):
-            return {"error": "bad bridge token"}
-        op = str(payload.get("op") or "")
-        if op == "list_tools":
-            return {"tools": tool_definitions(self.client.engine.protocol)}
-        if op == "call":
-            return self.call(
-                str(payload.get("tool") or ""),
-                dict(payload.get("input") or {}),
-            )
-        return {"error": f"unknown bridge op {op!r}"}
+        return tool_definitions(self.client.engine.protocol)
 
     def call(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Run one tool against the engine and answer in MCP content blocks."""
@@ -224,8 +128,6 @@ class Bridge:
         if tool in BRIDGE_TOOLS:
             if tool == "look":
                 return self._look(arguments)
-            if tool == "leave_note":
-                return self._leave_note(arguments)
             if tool == "draw_blueprint":
                 return self._draw_blueprint(arguments)
             return self._loop_tool(tool, arguments)
@@ -303,7 +205,7 @@ class Bridge:
         )
         self._record(call)
         view = _model_view(tool, reply, args, view_args)
-        # The model sees both blocks bounded (ADR-435); the turn report and
+        # The model sees both blocks bounded (ADR-435); the session's row and
         # `state` keep them whole.
         if fit is not None:
             view["fit"] = fit_view(fit)
@@ -319,7 +221,7 @@ class Bridge:
 
         Drawn from the last accepted modelling reply's display block when the
         bridge holds one -- the tessellation the build already published, so
-        looking costs no rebuild -- and from a ``rebuild`` only when a turn
+        looking costs no rebuild -- and from a ``rebuild`` only when a session
         opens on a revision this bridge has not built yet. World geometry the
         fit block names is left out. Each part is drawn in the appearance
         role the script declared, in the assembly's palette (ADR-413); an
@@ -349,8 +251,6 @@ class Bridge:
         text = json.dumps(facts, indent=2)
         content = [{"type": "text", "text": text}]
         for view, data, _details in shots:
-            if self.on_look is not None:
-                self.on_look(view, data)
             content.append({
                 "type": "image",
                 "data": base64.b64encode(data).decode("ascii"),
@@ -459,38 +359,6 @@ class Bridge:
         if not isinstance(value, dict) or " ".join(str(value.get("name") or "").split()).casefold() != name.casefold():
             return None
         return value
-
-    # -- the owner channel (ADR-512) ------------------------------------
-
-    def _leave_note(self, arguments: dict[str, Any]) -> dict[str, Any]:
-        """Append the agent's note to the project's ``comments.jsonl`` and
-        return at once; the owner's answer arrives as a comment in a later
-        turn, so nothing here waits or polls."""
-
-        allowed = set(BRIDGE_TOOLS["leave_note"]["input_schema"]["properties"])
-        unknown = sorted(set(arguments) - allowed)
-        try:
-            if unknown:
-                raise ValueError(f"leave_note takes {', '.join(sorted(allowed))}; not {', '.join(unknown)}.")
-            if self.project_root is None:
-                raise ValueError("leave_note needs a project directory; this session has none.")
-            identity = read_accepted_identity(self.project_root)
-            note = add_note(
-                self.project_root, str(arguments.get("type") or ""), arguments.get("text"),
-                revision=str(identity.get("revision") or "") if identity.get("available") else "",
-                artifact=str(arguments.get("artifact") or ""))
-        except ValueError as exc:
-            self._record(ToolCall("leave_note", dict(arguments), False, str(exc)))
-            return _content(json.dumps({"ok": False, "error": str(exc)}, indent=2), is_error=True)
-        self._record(ToolCall(
-            "leave_note", dict(arguments), True,
-            f"{note['type']} {note['id']}" + (f" on {note['artifact']}" if note["artifact"] else "")))
-        return _content(json.dumps({
-            "ok": True, "id": note["id"], "type": note["type"], "revision": note["revision"],
-            "artifact": note["artifact"],
-            "delivery": "left on the dashboard for the person reviewing the design; do not wait for an answer. "
-                        "One, if given, arrives as a comment at the start of a later turn.",
-        }, indent=2))
 
     # -- the training loop (ADR-464) ------------------------------------
 

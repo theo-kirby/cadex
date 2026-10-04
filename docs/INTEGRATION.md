@@ -34,9 +34,10 @@ The two sides of the boundary:
 - **the engine** (repo root) — FreeCAD fork; the xscript engine, headless.
   Builds `FreeCADCmd` and `CadexGeometryWorker` and **no application**
   (ADR-021/022). LGPL-2.1+.
-- **the client** (`cli/`, ADR-061) — the CLI that runs the agent (Claude
-  Code over one tool surface, ADR-497) and serves the dashboard
-  (`./cadex review`). It spawns one `cadexd` per project. LGPL-2.1+.
+- **the client** (`cli/`, ADR-061) — the CLI and `cadex mcp`, through which
+  any agent drives the engine over one tool surface (ADR-538), and the
+  read-only dashboard (`./cadex app`). It spawns one `cadexd` per project.
+  LGPL-2.1+.
 
 Two consequences worth knowing when editing the tables below: the CLI
 validates **every** reply against `OP_RESPONSE_SPECS` as a hard error rather

@@ -35,15 +35,15 @@ it is three things** ([ADR-500](docs/DECISIONS.md)):
    rebuild without the AI in the loop, and the model is rebuildable from the
    script at any time. The engine builds, verifies, measures, renders,
    simulates and exports a design.
-2. **The dashboard** — `./cadex review`, a browser page and the only UI.
-   A person watches results there and steps in when needed.
-3. **The agent** — the Claude Code CLI you are already logged into, driving
-   the engine through one tool surface. There is no API key and no model
-   loop of Cadex's own.
+2. **The dashboard** — `./cadex app`, a browser page and the only UI. It
+   is read-only: you watch the design there while your agent works it.
+3. **The agent** — yours. Claude Code, Codex, Pi or any MCP client drives
+   the engine through `cadex mcp`, one tool surface and one guidance text,
+   and through the `cadex` commands. Cadex has no agent, API key or model
+   loop of its own (ADR-538).
 
-The owner uses Cadex almost entirely through autonomous runs, so the
-product is built around that: the agent designs, the engine checks, and a
-person reviews and lightly steers from a browser. There are no modeling
+You talk to your agent; the agent designs, the engine checks, and the
+dashboard shows you the result as it lands. There are no modeling
 toolbars and no workbench concept to learn. Until 2026-10-03 Cadex also
 had a Blender-based desktop shell; it is deleted (ADR-498), and the tag
 `v1-blender-shell` is the last tree that has it.
@@ -110,10 +110,11 @@ by a process boundary:
   vendored three.js; no npm, no bundler, no framework. It reads the project
   directory, which is the truth. Its design spec is
   [docs/DASHBOARD.md](docs/DASHBOARD.md).
-- **the agent** — Claude Code, run by the CLI (`cli/`) over one tool
-  surface (`cli/cadex_cli/tools.py`) and one guidance source. The CLI
-  finds an engine in the build tree or, staged, by reading its
-  `cadex-engine.json` manifest.
+- **the agent bindings** (`cli/`) — `cadex mcp`, an MCP stdio server over
+  one tool surface (`cli/cadex_cli/tools.py`) and one guidance source
+  (`cli/cadex_cli/guidance.py`), and the `cadex` commands. Any agent uses
+  them; Cadex runs none. The CLI finds an engine in the build tree or,
+  staged, by reading its `cadex-engine.json` manifest.
 
 And two directories that are deliberately none of the three:
 
@@ -136,17 +137,17 @@ either side replaceable.
 
 ## Use it
 
-Everything runs headless; the dashboard is where you look
-([`docs/CLI.md`](docs/CLI.md)).
+Everything runs headless; your agent is where you talk and the dashboard is
+where you look ([`docs/CLI.md`](docs/CLI.md)).
 
 ```bash
-./cadex -p "a mounting bracket for a NEMA17, 4 mm wall" --project ./b --out ./b/out
-./cadex params --project ./b --set wall=6 --out ./b/wall6   # no AI, no tokens
-./cadex -p "make the fins 20% thinner" --project ./b --resume
+claude mcp add cadex -- "$PWD/cadex" mcp --project "$PWD/b"   # or your client's equivalent
 ./cadex app --projects .        # watch it, and every project beside it, in a browser
+# ...then ask your agent: "a mounting bracket for a NEMA17, 4 mm wall"
+./cadex params --project ./b --set wall=6 --out ./b/wall6   # no AI, no tokens
 ```
 
-One expensive turn writes a *parametric* script; after that a loop sweeps
+The agent writes a *parametric* script once; after that a loop sweeps
 its parameters and re-exports STEP/STL for the price of a rebuild, so an
 external simulator can drive the design and the model is asked only when the
 shape must change.

@@ -11,19 +11,15 @@ same store would each restore it, each rebuild it, and each write
 ``script.json``. An advisory ``flock`` on ``<project_root>/.cadex-cli.lock``
 turns that from silent corruption into a refusal with a readable message.
 
-**``agent.json``.** The conversation's ``session_id`` and the model that
-produced it have to survive between runs for ``--resume`` to mean anything.
-They are the CLI's business and not the engine's, so they go in a
-CLI-owned *sibling* of ``script.json``: the CLI reads the engine's state
-file through ``inspect`` and never writes it. Keeping the two files apart is
-what stops a CLI version bump from being able to break a project that the
-shell also opens.
-
-**The project's engine budgets** live there too (ADR-517): the wall-clock
+**``agent.json``.** The CLI's own state file, a *sibling* of
+``script.json``: the CLI reads the engine's state file through ``inspect``
+and never writes it, so a CLI version bump cannot break a project. Since
+Cadex stopped running its own agent (ADR-538) it holds one thing, **the
+project's engine budgets** (ADR-517): the wall-clock
 seconds and the memory ceiling one engine script run may spend,
 ``open_project``'s ``budgets``. A project that needs a longer rebuild says
 so once, ``cadex budgets --set timeout_seconds=900``, and every later run —
-a turn, a slider, a walk's legs — opens with it. ``--engine-timeout`` and
+an MCP session, a ``cadex params``, a walk's legs — opens with it. ``--engine-timeout`` and
 ``--engine-memory`` override them for one call. An unset budget is absent,
 never zero, and the engine fills it from its own default per field.
 """
@@ -61,8 +57,6 @@ class ProjectBusy(RuntimeError):
 class AgentState:
     """What the CLI remembers about a project between runs."""
 
-    session_id: str = ""
-    model: str = ""
     updated_at: str = ""
     #: The project's engine budgets (ADR-517); only the ones it sets.
     budgets: dict[str, Any] = field(default_factory=dict)
@@ -70,8 +64,6 @@ class AgentState:
     def to_json(self) -> dict[str, Any]:
         payload = {
             "schema": AGENT_STATE_SCHEMA,
-            "session_id": self.session_id,
-            "model": self.model,
             "updated_at": self.updated_at,
         }
         if self.budgets:
@@ -136,8 +128,10 @@ def read_agent_state(project_root: Path | str) -> AgentState:
     """Read ``agent.json``; an absent or unreadable file is simply empty.
 
     Unreadable is not an error on purpose. The worst a corrupt state file may
-    do is cost one conversation's continuity — refusing to model over it
-    would be a far bigger failure than the one it is reporting.
+    do is cost the stored budgets — refusing to model over it would be a far
+    bigger failure than the one it is reporting. A file an older CLI wrote,
+    with a conversation's ``session_id`` and ``model`` beside the budgets, is
+    read for its budgets alone.
     """
 
     path = agent_state_path(project_root)
@@ -148,8 +142,6 @@ def read_agent_state(project_root: Path | str) -> AgentState:
     if not isinstance(payload, dict) or payload.get("schema") != AGENT_STATE_SCHEMA:
         return AgentState()
     return AgentState(
-        session_id=str(payload.get("session_id") or ""),
-        model=str(payload.get("model") or ""),
         updated_at=str(payload.get("updated_at") or ""),
         budgets=_stored_budgets(payload.get("budgets")),
     )
@@ -174,10 +166,7 @@ def _now() -> str:
 
 
 def write_agent_budgets(project_root: Path | str, changes: Mapping[str, Any]) -> AgentState:
-    """Store the project's engine budgets: each change sets one, 0 unsets it.
-
-    The conversation identity beside them is kept as it is.
-    """
+    """Store the project's engine budgets: each change sets one, 0 unsets it."""
 
     stored = read_agent_state(project_root)
     budgets = dict(stored.budgets)
@@ -187,29 +176,7 @@ def write_agent_budgets(project_root: Path | str, changes: Mapping[str, Any]) ->
             budgets[key] = value
         else:
             budgets.pop(key, None)
-    state = AgentState(session_id=stored.session_id, model=stored.model,
-                       updated_at=_now(), budgets=budgets)
-    _write_agent_file(project_root, state)
-    return state
-
-
-def write_agent_state(
-    project_root: Path | str, *, session_id: str, model: str
-) -> AgentState:
-    """Persist changed conversation identity; retain its timestamp on a no-op."""
-
-    stored = read_agent_state(project_root)
-    if stored.session_id and (stored.session_id, stored.model) == (
-        str(session_id or ""), str(model or "")
-    ):
-        return stored
-
-    state = AgentState(
-        session_id=str(session_id or ""),
-        model=str(model or ""),
-        updated_at=_now(),
-        budgets=stored.budgets,
-    )
+    state = AgentState(updated_at=_now(), budgets=budgets)
     _write_agent_file(project_root, state)
     return state
 

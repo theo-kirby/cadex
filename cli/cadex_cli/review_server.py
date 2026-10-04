@@ -14,17 +14,9 @@ task's success spec, with the film drawn from it (ADR-459). Reading
 opens no engine, rebuilds nothing and holds no state of its own, so a
 browser that goes away changes nothing about the project.
 
-Writing is the dashboard's light steering (orun2 D2, ADR-503 to ADR-506, ADR-509),
-and it has no write path of its own: each POST runs the very ``cadex``
-command a person would type (``params --set``, ``-p PROMPT`` for a
-design turn whose stderr is the live transcript, ``comment`` for a
-note on the design or a picked part (ADR-505), ``revision`` for a verdict
-(ADR-506), or ``export`` into the ignored ``review/export/``, ADR-509), as a child process the
-way ``cadex walk`` runs its legs, so the project lock, the ``PROGRESS.md``
-row and the project commit are the CLI's. Every POST needs the per-launch token the
-server writes into the page it serves, and a browser's ``Origin``, when
-sent, must be this server's own; anything else is refused before it is
-routed.
+It has no write route at all (ADR-537): a request other than GET or HEAD
+is refused. The project changes only through the agent that is working
+it -- the CLI, or ``cadex mcp`` -- and the page follows on its next poll.
 
 What it will serve is an allowlist, never a path. Every route names a run
 by its directory name, an artifact by its record key, a document by the
@@ -43,8 +35,6 @@ module and an attributed prototype environment (ADR-301), with no CDN.
 from __future__ import annotations
 
 from array import array
-import base64
-import binascii
 from collections import OrderedDict
 import copy
 import datetime as _datetime
@@ -52,32 +42,21 @@ import hashlib
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
-import hmac
 import math
 import mimetypes
-import os
 import re
-import secrets
 from pathlib import Path
-import shutil
 import struct
-import subprocess
 import sys
-import tempfile
 import threading
 import zlib
 from typing import Any, Callable, Mapping
-from urllib.parse import parse_qs, quote, unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
 
-from .agent import IMAGE_LIMIT, IMAGES_PER_TURN, ImageAttachment, ImageRefused, image_attachment
-from .comments import read_comments, read_notes
-from .project_docs import progress_rows
 from .revisions import read_history as read_revision_history
-from .walk import run_leg
 from .session import read_agent_state
 from .studio import PRINTABLES, STUDIO
-from .turn_store import REPLY_KEYS, TRANSCRIPT_LIMIT, latest_turn, read_transcript, turn_file
 from .review_record import (
     policy_lineage,
     PROJECT_ARTIFACT_KEYS,
@@ -114,45 +93,6 @@ PROJECTS_STATIC_FILES = {
     "projects.js": ("text/javascript; charset=utf-8", STATIC_DIR / "projects.js"),
 }
 PROJECTS_SCHEMA = "cadex-projects-v1"
-#: The CLI agent turns across a projects directory, ``/api/turns`` (ADR-519).
-TURNS_SCHEMA = "cadex-agent-turns-v1"
-#: How many turns ``/api/turns`` carries, newest kept.
-TURNS_SHOWN = 100
-#: An Ouroboros run's page, under ``/r/<run>/`` (ADR-513).
-RUN_STATIC_FILES = {
-    "run.html": ("text/html; charset=utf-8", STATIC_DIR / "run.html"),
-    "run.js": ("text/javascript; charset=utf-8", STATIC_DIR / "run.js"),
-    "review.css": STATIC_FILES["review.css"],
-    "theme.js": STATIC_FILES["theme.js"],
-}
-RUNS_SCHEMA = "cadex-ouroboros-runs-v1"
-RUN_SCHEMA = "cadex-ouroboros-run-v1"
-#: A run directory's name: what ``ouroboros run`` mints, and nothing a path could hide in.
-OUROBOROS_RUN_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-#: A run's branch, as ``git`` is given it: a plain ref name, never an option.
-OUROBOROS_BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$")
-#: One charter criterion: a checkbox at the start of a line under ``## Done criteria``.
-CHARTER_ITEM = re.compile(r"^- \[([ xX])\] ?(.*)$")
-#: A run's probe material is ``docs/probes/<run>/`` in the checkout, served
-#: read-only under ``/r/<run>/probes/`` (ADR-515): only these suffixes, so no
-#: page the dashboard's origin would run is ever served from the repo.
-PROBE_KINDS = {".png": "image", ".jpg": "image", ".jpeg": "image", ".svg": "image",
-               ".md": "text", ".txt": "text", ".py": "text",
-               ".json": "data", ".jsonl": "data", ".csv": "data",
-               ".mp4": "video", ".webm": "video"}
-#: One path segment of a probe file: no dot-file, no separator, no ``..``.
-PROBE_SEGMENT = re.compile(r"^[A-Za-z0-9_+-][A-Za-z0-9._+-]{0,127}$")
-#: The most files one run's probe listing names; the rest are counted.
-PROBE_LISTING_LIMIT = 2000
-#: Served probe files run nothing and are never sniffed into something that does.
-PROBE_HEADERS = {"Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff"}
-#: A run's records are the checkout's hypergraph record nodes whose ``## Repo``
-#: names the run's branch (ADR-518); the repo paths under ``docs/`` they name
-#: are the artifacts its page links, served under ``/r/<run>/linked/``.
-RECORD_DIR = Path(".hypergraph") / "graph" / "record"
-RECORD_PATH_MENTION = re.compile(r"(?<![\w/.~-])docs(?:/[A-Za-z0-9_+-][A-Za-z0-9._+-]*)+/?")
-#: The most artifacts one record lists; the rest are counted.
-RECORD_ARTIFACT_LIMIT = 24
 #: Content types for the retained artifacts; anything else downloads as bytes.
 CONTENT_TYPES = {
     ".json": "application/json; charset=utf-8",
@@ -1689,50 +1629,6 @@ def default_run(review: Mapping[str, Any]) -> str:
     return str(candidates[-1]["run"]) if candidates else "accepted"
 
 
-def agent_turns(root: Path) -> list[dict[str, Any]]:
-    """A project's CLI agent turns, oldest first, from what the CLI already
-    keeps (ADR-519): read-only, and no store of their own (A3).
-
-    A turn is a ``prompt`` row of ``PROGRESS.md`` -- one per turn the CLI
-    accepted, whether typed at a terminal or started from the dashboard,
-    with its time, the revision and digest it left and its words. The row's
-    revision prefix finds the rest: the revision's ordinal in the trail
-    (``script_history/``), the owner's verdicts on it and the notes the agent
-    left on it (``comments.jsonl``). The turn's transcript and ``look`` images
-    are the CLI's ``turns/`` store (ADR-526), which the project page reads.
-    """
-
-    rows = [row for row in progress_rows(root) if row["run"] == "prompt"]
-    if not rows:
-        return []
-    trail = read_revision_history(root)
-    comments = read_comments(root)
-    notes = read_notes(root)
-    turns = []
-    for row in rows:
-        short = row["revision"].lower()
-
-        def on(revision: Any) -> bool:
-            return bool(short) and str(revision or "").lower().startswith(short)
-
-        entry = next((item for item in trail if on(item.get("revision"))), None)
-        verdicts = [{"verdict": comment["verdict"], "at": comment["at"], "text": comment["text"]}
-                    for comment in comments if comment.get("verdict") and on(comment["revision"])]
-        what = row["what"].removeprefix("prompt: ")
-        prompt, _arrow, said = what.partition(" → ")
-        turns.append({
-            "when": row["when"], "prompt": prompt, "said": said,
-            "revision": str(entry["revision"]) if entry else short,
-            "ordinal": entry.get("ordinal") if entry else None,
-            "digest": row["digest"],
-            "verdict": verdicts[-1]["verdict"] if verdicts else None,
-            "verdicts": verdicts,
-            "notes": [{"type": note["type"], "text": note["text"], "answered": bool(note["answers"])}
-                      for note in notes if on(note["revision"])],
-        })
-    return turns
-
-
 class ReviewProject:
     """What the server knows how to serve for one project, resolved per request.
 
@@ -1757,9 +1653,6 @@ class ReviewProject:
             record["telemetry"] = training_telemetry(self.root, record, detail=False)
         review["presentation"] = presentation(self.root, review["accepted"])
         review["evaluations"] = evaluations(self.root, review["accepted"])
-        review["comments"] = read_comments(self.root)[-COMMENTS_SHOWN:]
-        review["notes"] = [dict(note, url=f"note/{note['id']}" if self.note_artifact(note["id"]) else "")
-                           for note in read_notes(self.root)[-NOTES_SHOWN:]]
         review["revisions"] = revision_trail(self.root)
         review["exports"] = export_listing(self.root)
         review["sections"] = section_listing(self.root)
@@ -1886,19 +1779,6 @@ class ReviewProject:
         path = self.root / RUNS_DIRNAME / name / item["path"]
         return path if path.is_file() else None
 
-    def note_artifact(self, note_id: str) -> Path | None:
-        """The file an agent note flags (ADR-512), when it is one the page
-        can show: inside the project, still present, and of a served type."""
-
-        note = next((note for note in read_notes(self.root) if note["id"] == note_id), None)
-        if note is None or not note["artifact"]:
-            return None
-        path = (self.root / note["artifact"]).resolve()
-        if not path.is_relative_to(self.root) or not path.is_file() \
-                or path.suffix.lower() not in NOTE_ARTIFACT_SUFFIXES:
-            return None
-        return path
-
     def current_document(self, relative: str) -> Path | None:
         review = read_project_review(self.root)
         allowed = {name for name, present in review["docs"].items()
@@ -1992,129 +1872,6 @@ GZIP_TYPES = ("application/json", "text/", "model/stl", "image/svg+xml")
 _GZIP_MEMO: "OrderedDict[str, bytes]" = OrderedDict()
 _GZIP_MEMO_SIZE = 512
 
-#: The page's write token, as the served ``index.html`` carries it: the
-#: placeholder is replaced, per response, with the launch's own token.
-WRITE_TOKEN_META = b'<meta name="cadex-write-token" content="">'
-WRITE_TOKEN_HEADER = "X-Cadex-Token"
-#: Bound on a POST body; a parameter change is a few dozen bytes.
-WRITE_BODY_LIMIT = 64 * 1024
-#: Bound on a design turn's body, which may carry its images as base64
-#: (ADR-507): every one at the CLI's limit, plus the prompt.
-TURN_BODY_LIMIT = IMAGES_PER_TURN * (IMAGE_LIMIT * 4 // 3 + 4) + WRITE_BODY_LIMIT
-#: How long one dashboard write may run before it is stopped, in seconds.
-WRITE_TIMEOUT_S = 300.0
-PARAM_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-
-def write_params(root: Path, values: Any) -> tuple[HTTPStatus, dict[str, Any]]:
-    """``cadex params --project ROOT --set NAME=VALUE ...``, as a child.
-
-    The dashboard's slider and the command line are one write path (A3):
-    this spawns the CLI exactly as ``cadex walk`` spawns a leg, without
-    ``--wait``, so a project another run holds is refused rather than
-    queued, and the reply is the child's own envelope.
-    """
-
-    from .report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE  # report imports this module
-
-    if not isinstance(values, Mapping) or not values:
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "values must be a non-empty object."}
-    argv = ["params", "--project", str(root)]
-    for name, value in sorted(values.items()):
-        if not isinstance(name, str) or not PARAM_NAME.match(name):
-            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"not a parameter name: {name!r}"}
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"{name} must be a finite number."}
-        argv += ["--set", f"{name}={value!r}"]
-    leg = run_leg("params", argv + ["--json"], timeout=WRITE_TIMEOUT_S)
-    envelope = leg.envelope
-    reply = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
-             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv]}
-    for key in ("accepted_revision", "digest", "params", "error"):
-        if key in envelope:
-            reply[key] = envelope[key]
-    if reply["ok"]:
-        return HTTPStatus.OK, reply
-    if leg.code == EXIT_USAGE:
-        return HTTPStatus.BAD_REQUEST, reply
-    return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
-
-
-def write_comment(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
-    """``cadex comment --project ROOT [--part NAME] -- TEXT``, as a child (ADR-505).
-
-    The comment box and the command line are one write path (A3). The text
-    travels after ``--`` and the part as one ``--part=`` token, so neither
-    is read as a flag; the bounds are the CLI's own, checked here only so a
-    bad body spawns nothing.
-    """
-
-    from .comments import COMMENT_LIMIT, PART_LIMIT
-    from .report import EXIT_OK, EXIT_USAGE  # report imports this module
-
-    text, part, reply_to = body.get("text"), body.get("part", ""), body.get("reply_to", "")
-    if not isinstance(text, str) or not text.strip():
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "text must be non-empty text."}
-    if len(text) > COMMENT_LIMIT or "\x00" in text:
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"a comment is at most {COMMENT_LIMIT} characters of text."}
-    if not isinstance(part, str) or len(part) > PART_LIMIT or "\x00" in part or "\n" in part:
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"part must be one line of at most {PART_LIMIT} characters."}
-    if not isinstance(reply_to, str) or (reply_to and not NOTE_ID.match(reply_to)):
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "reply_to must be an agent note's id."}
-    argv = ["comment", "--project", str(root), "--json"] + (["--part=" + part.strip()] if part.strip() else []) \
-        + (["--reply=" + reply_to] if reply_to else [])
-    leg = run_leg("comment", argv + ["--", text.strip()], timeout=WRITE_TIMEOUT_S)
-    envelope = leg.envelope
-    reply: dict[str, Any] = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
-                             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv]}
-    if envelope.get("comments"):
-        reply["comment"] = envelope["comments"][0]
-    if "error" in envelope:
-        reply["error"] = envelope["error"]
-    if reply["ok"]:
-        return HTTPStatus.OK, reply
-    return (HTTPStatus.BAD_REQUEST if leg.code == EXIT_USAGE else HTTPStatus.CONFLICT), reply
-
-
-REVISION_ACTIONS = ("accept", "reject", "restore")
-NOTE_ID = re.compile(r"^n-[0-9a-f]{12}$")
-REVISION_SELECTOR = re.compile(r"^[0-9a-fA-F]{1,64}$|^[0-9]{1,6}$")
-
-
-def write_revision(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
-    """``cadex revision ACTION --project ROOT [--note=TEXT] [SELECTOR]``, as a child (ADR-506).
-
-    Accept, Reject and Restore on the page and the command line are one
-    write path (A3). A reject or restore rebuilds, under the project lock
-    and without ``--wait``, so a project a turn holds is refused (409).
-    """
-
-    from .comments import COMMENT_LIMIT
-    from .report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE  # report imports this module
-
-    action, selector, note = body.get("action"), body.get("revision", ""), body.get("note", "")
-    if action not in REVISION_ACTIONS:
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"action must be one of {', '.join(REVISION_ACTIONS)}."}
-    if not isinstance(selector, str) or (selector and not REVISION_SELECTOR.match(selector)):
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "revision must be an ordinal or a revision prefix."}
-    if action == "restore" and not selector:
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "restore needs the revision to put back."}
-    if not isinstance(note, str) or len(note) > COMMENT_LIMIT or "\x00" in note:
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"note must be at most {COMMENT_LIMIT} characters of text."}
-    argv = ["revision", "--project", str(root), "--json"] + (["--note=" + note.strip()] if note.strip() else [])
-    argv += [action] + ([selector] if selector else [])
-    leg = run_leg("revision", argv, timeout=WRITE_TIMEOUT_S)
-    envelope = leg.envelope
-    reply: dict[str, Any] = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
-                             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv]}
-    for key in ("accepted_revision", "digest", "revisions", "error"):
-        if key in envelope:
-            reply[key] = envelope[key]
-    if reply["ok"]:
-        return HTTPStatus.OK, reply
-    if leg.code == EXIT_USAGE:
-        return HTTPStatus.BAD_REQUEST, reply
-    return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
 
 
 #: Where the dashboard's Export button has ``cadex export`` write, one
@@ -2126,49 +1883,6 @@ EXPORT_FORMATS = ("step", "stl", "brep")
 #: staged non-geometry outputs ``cadex export`` copies beside it.
 EXPORT_SUFFIXES = (".step", ".stl", ".brep", ".xml", ".json", ".ply")
 REVISION_HASH = re.compile(r"^[0-9a-f]{64}$")
-
-
-def write_export(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
-    """``cadex export --project ROOT --out ROOT/review/export/<revision> --format F``, as a child (ADR-509).
-
-    The Export button and the command line are one write path (A3): the
-    CLI rebuilds the accepted script under the project lock, without
-    ``--wait``, and converts each staged BREP. The directory is named by
-    the revision accepted when the button was pressed; if a write moved
-    the accepted revision before the child took the lock, what it wrote is
-    removed and the reply says to export again, so a directory never holds
-    another revision's files.
-    """
-
-    from .report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE  # report imports this module
-
-    formats = body.get("formats", ["step", "stl"])
-    if not isinstance(formats, list) or not formats or any(f not in EXPORT_FORMATS for f in formats) \
-            or len(set(formats)) != len(formats):
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"formats must be a list drawn from {', '.join(EXPORT_FORMATS)}."}
-    accepted = read_accepted_identity(root)
-    revision = accepted.get("revision") if accepted.get("available") else None
-    if not isinstance(revision, str) or not REVISION_HASH.match(revision):
-        return HTTPStatus.CONFLICT, {"ok": False, "error": "nothing to export: the project has no accepted revision."}
-    out = root / EXPORT_DIR / revision
-    argv = ["export", "--project", str(root), "--out", str(out), "--format", ",".join(formats), "--json"]
-    leg = run_leg("export", argv, timeout=WRITE_TIMEOUT_S)
-    envelope = leg.envelope
-    reply: dict[str, Any] = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
-                             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv], "revision": revision}
-    for key in ("accepted_revision", "digest", "error"):
-        if key in envelope:
-            reply[key] = envelope[key]
-    if reply["ok"] and envelope.get("accepted_revision") != revision:
-        shutil.rmtree(out, ignore_errors=True)
-        reply.update(ok=False, error="the accepted revision changed while exporting; export again.")
-        return HTTPStatus.CONFLICT, reply
-    if reply["ok"]:
-        reply["exports"] = export_listing(root)
-        return HTTPStatus.OK, reply
-    if leg.code == EXIT_USAGE:
-        return HTTPStatus.BAD_REQUEST, reply
-    return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
 
 
 def export_listing(root: Path) -> dict[str, Any]:
@@ -2280,55 +1994,8 @@ def section_listing(root: Path) -> dict[str, Any]:
     cuts.sort(key=lambda cut: -cut.pop("mtime"))
     if not cuts:
         return {"available": False, "revision": revision, "cuts": [],
-                "reason": "no section cut yet: Cut runs cadex section for this revision"}
+                "reason": "no section cut yet: `cadex section` cuts this revision"}
     return {"available": True, "revision": revision, "cuts": cuts}
-
-
-def write_section_cut(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
-    """``cadex section --project ROOT --plane P [--offset-mm=N] --json``, as a child (orun2 D2.5).
-
-    The Cut button and the command line are one path (A3): the CLI acquires
-    the accepted tessellation from the engine and writes the SVG and summary
-    under ``review/section/<revision>/``. With no ``offset_mm`` the offset is
-    derived the way the walk derives it (ADR-273). The reply names the cut
-    the child wrote, read back from the listing.
-    """
-
-    from .report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE  # report imports this module
-
-    plane, offset = body.get("plane"), body.get("offset_mm")
-    if plane not in SECTION_PLANES:
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"plane must be one of {', '.join(SECTION_PLANES)}."}
-    if offset is not None and (isinstance(offset, bool) or not isinstance(offset, (int, float))
-                               or not math.isfinite(offset) or abs(offset) > 1e6):
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "offset_mm must be a finite number of mm, or absent."}
-    accepted = read_accepted_identity(root)
-    revision = accepted.get("revision") if accepted.get("available") else None
-    if not isinstance(revision, str) or not REVISION_HASH.match(revision):
-        return HTTPStatus.CONFLICT, {"ok": False, "error": "nothing to cut: the project has no accepted revision."}
-    argv = ["section", "--project", str(root), "--plane", plane, "--json"]
-    if offset is not None:
-        argv[5:5] = [f"--offset-mm={float(offset)!r}"]
-    leg = run_leg("section", argv, timeout=WRITE_TIMEOUT_S)
-    envelope = leg.envelope
-    reply: dict[str, Any] = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
-                             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv], "revision": revision}
-    for key in ("accepted_revision", "digest", "error", "notes"):
-        if key in envelope:
-            reply[key] = envelope[key]
-    if reply["ok"]:
-        listing = section_listing(root)
-        reply["sections"] = listing
-        cuts = [cut for cut in listing["cuts"] if cut["plane"] == plane
-                and (offset is None or cut["offset_mm"] == float(offset))]
-        if envelope.get("accepted_revision") != revision or not cuts:
-            reply.update(ok=False, error="the accepted revision changed while cutting; cut again.")
-            return HTTPStatus.CONFLICT, reply
-        reply["cut"] = cuts[0]
-        return HTTPStatus.OK, reply
-    if leg.code == EXIT_USAGE:
-        return HTTPStatus.BAD_REQUEST, reply
-    return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
 
 
 def revision_trail(root: Path) -> list[dict[str, Any]]:
@@ -2336,199 +2003,6 @@ def revision_trail(root: Path) -> list[dict[str, Any]]:
 
     keep = ("ordinal", "revision", "saved_at", "outputs")
     return [{key: entry.get(key) for key in keep} for entry in reversed(read_revision_history(root))]
-
-
-#: How many comments ``/api/project`` carries, newest kept.
-COMMENTS_SHOWN = 100
-#: How many agent notes ``/api/project`` carries, newest kept (ADR-512).
-NOTES_SHOWN = 50
-#: What a note's flagged artifact may be for the page to link it.
-NOTE_ARTIFACT_SUFFIXES = frozenset({".png", ".svg", ".mp4", ".webm", ".json", ".md", ".txt"})
-
-
-#: How long one dashboard prompt turn may run before it is stopped, in seconds.
-TURN_TIMEOUT_S = 3600.0
-#: Bound on a prompt, in characters; a design brief, not a document.
-PROMPT_LIMIT = 16_000
-
-
-class PromptTurn:
-    """One ``cadex -p PROMPT --project ROOT`` child and its live transcript.
-
-    The transcript is the child's stderr — the tool-call progress lines and
-    the model's prose, exactly what a terminal shows — held in memory for
-    the page to read from any offset while the turn runs. The server never
-    writes it into the project: what the turn leaves there (the revision,
-    the ``PROGRESS.md`` row, the project commit, the agent's decisions and
-    notes, and its transcript and ``look`` images under ``turns/``) is the
-    CLI's, as for a turn typed at a terminal (A3, ADR-526).
-    """
-
-    def __init__(self, root: Path, prompt: str, resume: bool,
-                 images: tuple[ImageAttachment, ...] = ()) -> None:
-        self.id = secrets.token_hex(6)
-        self.root = root
-        self.prompt = prompt
-        self.resume = resume
-        self.images = [image.summary() for image in images]
-        self.started = _now()
-        self.state = "running"
-        self.reply: dict[str, Any] | None = None
-        self._text: list[str] = []
-        self._length = 0
-        self._truncated = False
-        self._lock = threading.Lock()
-        self.argv = ["--project", str(root), "--prompt=" + prompt] + (["--resume"] if resume else [])
-        # An attached image reaches the child as a file only it reads, in a
-        # scratch directory outside the project that goes when the turn
-        # ends; what the turn keeps of it is the CLI's (ADR-507).
-        self._scratch: Path | None = None
-        if images:
-            self._scratch = Path(tempfile.mkdtemp(prefix="cadex-turn-images-"))
-            for index, image in enumerate(images):
-                path = self._scratch / str(index) / image.name
-                path.parent.mkdir()
-                path.write_bytes(image.data)
-                self.argv.append("--image=" + str(path))
-
-    def _append(self, text: str) -> None:
-        with self._lock:
-            if self._truncated:
-                return
-            if self._length + len(text) > TRANSCRIPT_LIMIT:
-                text = "\n[transcript truncated at %d characters]\n" % TRANSCRIPT_LIMIT
-                self._truncated = True
-            self._text.append(text)
-            self._length += len(text)
-
-    def start(self) -> None:
-        threading.Thread(target=self._run, name="cadex-turn-" + self.id, daemon=True).start()
-
-    def _run(self) -> None:
-        from .report import EXIT_OK  # report imports this module
-
-        try:
-            leg = run_leg("prompt", self.argv + ["--json"], timeout=TURN_TIMEOUT_S, on_stderr=self._append)
-            envelope = leg.envelope
-            reply = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
-                     "seconds": round(leg.seconds, 3)}
-            for key in REPLY_KEYS:
-                if key in envelope:
-                    reply[key] = envelope[key]
-        except Exception as exc:  # noqa: BLE001 - the page must hear how it ended
-            reply = {"ok": False, "exit": None, "error": f"the turn could not run: {exc}"}
-        finally:
-            if self._scratch is not None:
-                shutil.rmtree(self._scratch, ignore_errors=True)
-        with self._lock:
-            self.reply = reply
-            self.state = "done" if reply["ok"] else "failed"
-
-    def snapshot(self, since: int = 0) -> dict[str, Any]:
-        with self._lock:
-            text = "".join(self._text)
-            return {"id": self.id, "state": self.state, "prompt": self.prompt, "resume": self.resume,
-                    "images": list(self.images), "started": self.started, "command": ["cadex", *self.argv],
-                    "text": text[max(0, min(since, len(text))):], "next": len(text), "reply": self.reply}
-
-
-def _look_urls(record: Mapping[str, Any]) -> list[dict[str, Any]]:
-    return [{"view": look["view"], "url": f"turn/{record['id']}/{look['name']}"}
-            for look in record.get("looks") or []]
-
-
-def stored_turn_snapshot(root: Path, record: Mapping[str, Any], since: int = 0) -> dict[str, Any]:
-    """A turn the CLI kept under ``turns/`` (ADR-526), in the live turn's shape.
-
-    The same shape whether the turn was typed at a terminal or started
-    here: it is what ``cadex -p`` wrote, read and never written.
-    """
-
-    text = read_transcript(root, str(record["id"]))
-    reply = record.get("reply")
-    if isinstance(reply, dict) and record.get("started") and record.get("finished"):
-        start = _datetime.datetime.fromisoformat(str(record["started"]))
-        reply = dict(reply, seconds=(_datetime.datetime.fromisoformat(str(record["finished"])) - start).total_seconds())
-    return {"id": record["id"], "state": record.get("state"), "prompt": record.get("prompt", ""),
-            "resume": record.get("resume", False), "images": list(record.get("attachments") or []),
-            "started": record.get("started"), "source": "store",
-            "text": text[max(0, min(since, len(text))):], "next": len(text), "reply": reply,
-            "looks": _look_urls(record), "looks_dropped": record.get("looks_dropped", 0)}
-
-
-def turn_snapshot(root: Path, live: "PromptTurn | None", since: int = 0) -> dict[str, Any]:
-    """``/api/turn``: a turn running here, else the newest turn the project kept.
-
-    A turn this server started streams from memory while it runs, with the
-    images its child has kept so far; once it ends, or when the newest turn
-    was typed at a terminal, the project's own ``turns/`` store answers. A
-    child that failed before it could keep anything is answered from memory.
-    """
-
-    stored = latest_turn(root)
-    if live is not None and (live.state == "running" or stored is None or str(stored["started"]) < live.started):
-        snapshot = dict(live.snapshot(since), source="live", looks=[])
-        if stored is not None and str(stored["started"]) >= live.started:
-            snapshot["looks"] = _look_urls(stored)
-        return snapshot
-    if stored is not None:
-        return stored_turn_snapshot(root, stored, since)
-    return {"state": "idle"}
-
-
-def _turn_images(value: Any) -> tuple[ImageAttachment, ...]:
-    """A turn body's ``images``, ``[{"name", "data" (base64)}]``, checked as the CLI checks a file."""
-
-    if not isinstance(value, list) or len(value) > IMAGES_PER_TURN:
-        raise ImageRefused(f"images must be a list of at most {IMAGES_PER_TURN}.")
-    images = []
-    for item in value:
-        if not isinstance(item, dict) or not isinstance(item.get("name"), str) \
-                or not isinstance(item.get("data"), str):
-            raise ImageRefused('each image is {"name": text, "data": base64 text}.')
-        try:
-            data = base64.b64decode(item["data"], validate=True)
-        except (binascii.Error, ValueError):
-            raise ImageRefused(f"{item['name']!r} is not base64.") from None
-        name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(item["name"]).name).strip("._") or "image"
-        images.append(image_attachment(data, name[:80]))
-    return tuple(images)
-
-
-class Turns:
-    """At most one dashboard turn per project, and the last one each ran."""
-
-    def __init__(self) -> None:
-        self._turns: dict[Path, PromptTurn] = {}
-        self._lock = threading.Lock()
-
-    def current(self, root: Path) -> PromptTurn | None:
-        with self._lock:
-            return self._turns.get(root.resolve())
-
-    def start(self, root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
-        """Start ``cadex -p`` on ``root``, unless the body is wrong or one runs."""
-
-        prompt, resume = body.get("prompt"), body.get("resume", False)
-        if not isinstance(prompt, str) or not prompt.strip():
-            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "prompt must be non-empty text."}
-        if len(prompt) > PROMPT_LIMIT or "\x00" in prompt:
-            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"a prompt is at most {PROMPT_LIMIT} characters of text."}
-        if not isinstance(resume, bool):
-            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "resume must be true or false."}
-        try:
-            images = _turn_images(body.get("images", []))
-        except ImageRefused as exc:
-            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)}
-        key = root.resolve()
-        with self._lock:
-            running = self._turns.get(key)
-            if running is not None and running.state == "running":
-                return HTTPStatus.CONFLICT, {"ok": False, "error": "a turn is already running on this project.",
-                                             "turn": {"id": running.id, "state": running.state}}
-            turn = self._turns[key] = PromptTurn(key, prompt.strip(), resume, images)
-        turn.start()
-        return HTTPStatus.ACCEPTED, {"ok": True, "turn": turn.snapshot()}
 
 
 # The two ways Linux reports a peer that went away mid-write: EPIPE, or
@@ -2680,7 +2154,6 @@ class ReviewHandler(BaseHTTPRequestHandler):
         parts = urlsplit(self.path)
         segments = [unquote(segment) for segment in parts.path.split("/") if segment]
         download = "download=1" in parts.query.split("&")
-        self.query = parts.query
         if any(segment in (".", "..") or "\\" in segment for segment in segments):
             self._not_found(parts.path)
             return
@@ -2690,69 +2163,6 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 self._route(self.project, segments, download)
             else:
                 self._route_projects(projects, parts.path, segments, download)
-        except CLIENT_GONE:
-            pass
-
-    def _write_refusal(self) -> str | None:
-        """Why this POST may not write, or ``None`` when it may.
-
-        The token is the launch's own and reaches only a page this server
-        served, which a page of another origin cannot read; the ``Origin``
-        check refuses a cross-site form or fetch even before that.
-        """
-
-        token = self.headers.get(WRITE_TOKEN_HEADER, "")
-        if not token or not hmac.compare_digest(token, self.server.write_token):  # type: ignore[attr-defined]
-            return f"a write needs this launch's {WRITE_TOKEN_HEADER} header (from the page the server served)."
-        origin = self.headers.get("Origin")
-        if origin is not None and urlsplit(origin).netloc != self.headers.get("Host", ""):
-            return f"cross-origin write refused: Origin {origin!r} is not this server."
-        return None
-
-    def do_POST(self) -> None:  # noqa: N802
-        parts = urlsplit(self.path)
-        segments = [unquote(segment) for segment in parts.path.split("/") if segment]
-        try:
-            refusal = self._write_refusal()
-            if refusal is not None:
-                self._send_json({"ok": False, "error": refusal}, HTTPStatus.FORBIDDEN)
-                return
-            try:
-                length = int(self.headers.get("Content-Length") or 0)
-            except ValueError:
-                length = -1
-            limit = TURN_BODY_LIMIT if segments[-2:] == ["api", "turn"] else WRITE_BODY_LIMIT
-            if not 0 < length <= limit:
-                self._send_json({"ok": False, "error": "a write needs a JSON body of at most "
-                                 f"{limit} bytes."}, HTTPStatus.BAD_REQUEST)
-                return
-            try:
-                body = json.loads(self.rfile.read(length))
-            except ValueError:
-                self._send_json({"ok": False, "error": "the body is not JSON."}, HTTPStatus.BAD_REQUEST)
-                return
-            projects = getattr(self.server, "projects", None)
-            project: ReviewProject | None = self.project if projects is None else None
-            if projects is not None and segments[:1] == ["p"] and len(segments) > 1:
-                project, segments = projects.project(segments[1]), segments[2:]
-            if project is None or segments not in (["api", "params"], ["api", "turn"], ["api", "comment"],
-                                                    ["api", "revision"], ["api", "export"], ["api", "section"]) \
-                    or not isinstance(body, dict):
-                self._not_found(parts.path)
-                return
-            if segments == ["api", "turn"]:
-                status, reply = self.server.turns.start(project.root, body)  # type: ignore[attr-defined]
-            elif segments == ["api", "comment"]:
-                status, reply = write_comment(project.root, body)
-            elif segments == ["api", "revision"]:
-                status, reply = write_revision(project.root, body)
-            elif segments == ["api", "export"]:
-                status, reply = write_export(project.root, body)
-            elif segments == ["api", "section"]:
-                status, reply = write_section_cut(project.root, body)
-            else:
-                status, reply = write_params(project.root, body.get("values"))
-            self._send_json(reply, status)
         except CLIENT_GONE:
             pass
 
@@ -2769,39 +2179,6 @@ class ReviewHandler(BaseHTTPRequestHandler):
             return
         if segments == ["api", "projects"]:
             self._send_json(projects.listing())
-            return
-        if segments == ["api", "turns"]:
-            self._send_json(projects.turns())
-            return
-        runs: OuroborosRuns = self.server.runs  # type: ignore[attr-defined]
-        if segments == ["api", "runs"]:
-            self._send_json(runs.listing())
-            return
-        if head == "r" and rest:
-            if len(rest) == 1 and not path.endswith("/"):
-                self._send_bytes(b"", "text/plain; charset=utf-8", HTTPStatus.MOVED_PERMANENTLY,
-                                 {"Location": "/r/" + quote(rest[0], safe="") + "/"})
-                return
-            page = rest[1:] or ["run.html"]
-            if len(page) == 1 and page[0] in RUN_STATIC_FILES and runs.has(rest[0]):
-                content_type, file = RUN_STATIC_FILES[page[0]]
-                self._send_bytes(file.read_bytes(), content_type)
-                return
-            if page[0] == "probes" and len(page) > 1:
-                probe = runs.probe_file(rest[0], page[1:])
-                if probe is not None:
-                    self._send_file(probe, download=False, headers=PROBE_HEADERS)
-                    return
-            if page[0] == "linked" and len(page) > 1:
-                linked = runs.linked_file(rest[0], page[1:])
-                if linked is not None:
-                    self._send_file(linked, download=False, headers=PROBE_HEADERS)
-                    return
-            run = runs.run(rest[0]) if page == ["api", "run"] else None
-            if run is not None:
-                self._send_json(run)
-                return
-            self._not_found("/".join(segments))
             return
         if head == "p" and rest:
             project = projects.project(rest[0])
@@ -2823,11 +2200,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
         head, rest = segments[0], segments[1:]
         if len(segments) == 1 and head in STATIC_FILES:
             content_type, path = STATIC_FILES[head]
-            body = path.read_bytes()
-            if head == "index.html":
-                body = body.replace(WRITE_TOKEN_META, WRITE_TOKEN_META.replace(
-                    b'content=""', b'content="' + self.server.write_token.encode("ascii") + b'"'))  # type: ignore[attr-defined]
-            self._send_bytes(body, content_type)
+            self._send_bytes(path.read_bytes(), content_type)
             return
         if head == "api":
             if rest == ["project"]:
@@ -2855,11 +2228,6 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 return
             if rest == ["model", "accepted"]:
                 self._send_json(accepted_model(project.root))
-                return
-            if rest == ["turn"]:
-                turn = self.server.turns.current(project.root)  # type: ignore[attr-defined]
-                since = parse_qs(self.query).get("since", ["0"])[0]
-                self._send_json(turn_snapshot(project.root, turn, int(since) if since.isdigit() else 0))
                 return
             if rest[:2] == ["model", "run"] and len(rest) == 3:
                 record = project.run(rest[2])
@@ -2897,10 +2265,6 @@ class ReviewHandler(BaseHTTPRequestHandler):
             path = project.run_artifact(rest[1], rest[2])
         elif head == "artifact" and rest[:1] == ["project"] and len(rest) == 3:
             path = project.project_artifact(rest[1], rest[2])
-        elif head == "note" and len(rest) == 1 and NOTE_ID.match(rest[0]):
-            path = project.note_artifact(rest[0])
-        elif head == "turn" and len(rest) == 2:
-            path = turn_file(project.root, rest[0], rest[1])
         elif head == "presentation" and len(rest) == 1:
             path = project.presentation_image(rest[0])
         elif head == "export" and len(rest) == 2:
@@ -2932,9 +2296,7 @@ class ReviewServer(ThreadingHTTPServer):
     def __init__(self, project_root: Path | str, host: str, port: int,
                  log: Callable[[str], None] | None = None) -> None:
         self.project = ReviewProject(project_root)
-        self.turns = Turns()
         self.log = log
-        self.write_token = secrets.token_urlsafe(32)
         super().__init__((host, port), ReviewHandler)
 
     @property
@@ -2982,473 +2344,6 @@ class ProjectsDirectory:
         return {"schema": PROJECTS_SCHEMA, "root": self.root.name, "projects": projects,
                 "served_at": _now()}
 
-    def turns(self) -> dict[str, Any]:
-        """Every project's CLI agent turns, newest first (ADR-519)."""
-
-        # A row's time has one-second resolution: within a project, a tie
-        # falls to the row written later.
-        found = [(turn["when"], index, {**turn, "project": name, "url": "/p/" + quote(name, safe="") + "/"})
-                 for name in self._names() for index, turn in enumerate(agent_turns(self.root / name))]
-        found.sort(key=lambda item: item[:2], reverse=True)
-        return {"schema": TURNS_SCHEMA, "root": self.root.name, "count": len(found),
-                "turns": [turn for _when, _index, turn in found[:TURNS_SHOWN]], "served_at": _now()}
-
-
-class OuroborosRuns:
-    """The Ouroboros runs under one directory, read-only (ADR-513).
-
-    A run is a subdirectory holding ``iterations.jsonl`` or ``status.json``.
-    Only four files of it are read -- ``run.yml``'s top-level scalars,
-    ``status.json``, ``iterations.jsonl`` and ``critic.jsonl`` -- so the
-    transcripts, logs and patches beside them never reach a page. Every read
-    is fresh, so a live run's next iteration appears on the next poll; a
-    line that is not a JSON object is counted, not fatal.
-
-    A run's charter is the one more read: when the directory is a checkout's
-    ``.ouroboros/runs``, ``run.yml``'s ``goal`` file is read from the run's
-    branch (``git show``, the checkout's working tree when that branch is the
-    one checked out), so a finished run shows the charter it ran to and not
-    the one that replaced it, and its ``## Done criteria`` checkboxes are
-    listed.
-
-    A run's probe material is ``docs/probes/<run>/`` in the checkout's working
-    tree (ADR-515): listed with the run, and each file served read-only under
-    ``/r/<run>/probes/``. Only :data:`PROBE_KINDS` suffixes, only
-    :data:`PROBE_SEGMENT` names, and no symlink anywhere on the path, so
-    nothing outside that directory is reachable through it.
-
-    A run's records are the checkout's record nodes whose ``## Repo`` names
-    the run's branch (ADR-518), each placed in the iteration it landed in,
-    with the ``docs/`` files its text names served under ``/r/<run>/linked/``
-    by the same rules.
-    """
-
-    def __init__(self, root: Path | str | None) -> None:
-        self.root = Path(root).expanduser().resolve() if root is not None else None
-        self.checkout = (self.root.parent.parent if self.root is not None
-                         and self.root.parent.name == ".ouroboros" else None)
-
-    def _names(self) -> list[str]:
-        if self.root is None or not self.root.is_dir():
-            return []
-        return sorted(child.name for child in self.root.iterdir()
-                      if child.is_dir() and OUROBOROS_RUN_NAME.match(child.name)
-                      and ((child / "iterations.jsonl").is_file() or (child / "status.json").is_file()))
-
-    def has(self, name: str) -> bool:
-        return name in self._names()
-
-    @staticmethod
-    def _rows(path: Path) -> tuple[list[dict[str, Any]], int]:
-        rows: list[dict[str, Any]] = []
-        skipped = 0
-        try:
-            text = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return rows, 0
-        for line in text.splitlines():
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-            except ValueError:
-                skipped += 1
-                continue
-            if isinstance(row, dict) and isinstance(row.get("iteration"), int):
-                rows.append(row)
-            else:
-                skipped += 1
-        return rows, skipped
-
-    @staticmethod
-    def _config(path: Path) -> dict[str, str]:
-        """``run.yml``'s unindented ``key: value`` lines; no YAML parser (A2)."""
-
-        values: dict[str, str] = {}
-        try:
-            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
-            return values
-        for line in lines:
-            key, sep, value = line.partition(":")
-            if sep and key and not key[0].isspace() and key.strip() == key and value.strip():
-                values[key] = value.strip().strip("'\"")
-        return values
-
-    def _git(self, *args: str) -> str | None:
-        assert self.checkout is not None
-        try:
-            done = subprocess.run(["git", "-C", str(self.checkout), *args], capture_output=True,
-                                  timeout=10, check=False)
-        except (OSError, subprocess.SubprocessError):
-            return None
-        return done.stdout.decode("utf-8", errors="replace") if done.returncode == 0 else None
-
-    def _goal(self, goal: str, branch: str) -> tuple[str | None, str | None, str | None]:
-        """The goal file's text as the run's branch holds it: ``(text, source, reason)``."""
-
-        if self.checkout is None:
-            return None, None, "the runs directory is not a checkout's .ouroboros/runs"
-        relative = Path(goal)
-        if relative.is_absolute() or ".." in relative.parts or not relative.parts:
-            return None, None, f"goal {goal!r} is not a path inside the checkout"
-        if not OUROBOROS_BRANCH.match(branch) or ".." in branch:
-            return None, None, f"branch {branch!r} is not a plain ref name"
-        head = self._git("symbolic-ref", "--quiet", "--short", "HEAD")
-        if head is not None and head.strip() == branch:
-            try:
-                return (self.checkout / relative).read_text(encoding="utf-8", errors="replace"), \
-                    "working tree", None
-            except OSError:
-                return None, None, f"{goal} is missing from the working tree"
-        for ref, source in ((f"refs/heads/{branch}", branch), (f"refs/remotes/origin/{branch}", f"origin/{branch}")):
-            text = self._git("show", f"{ref}:{relative.as_posix()}")
-            if text is not None:
-                return text, source, None
-        return None, None, f"neither {branch} nor origin/{branch} holds {goal}"
-
-    @staticmethod
-    def criteria(text: str) -> list[dict[str, Any]]:
-        """The checkboxes under ``## Done criteria``: each one's id, title,
-        whether it is ticked, and its markdown as written."""
-
-        lines = text.splitlines()
-        start = next((i for i, line in enumerate(lines)
-                      if re.match(r"^##\s+done criteria\s*$", line, re.IGNORECASE)), None)
-        if start is None:
-            return []
-        items: list[dict[str, Any]] = []
-        body: list[str] = []
-        for line in lines[start + 1:]:
-            if line.startswith("## "):
-                break
-            match = CHARTER_ITEM.match(line)
-            if match:
-                body = [match.group(2)]
-                items.append({"checked": match.group(1) != " ", "lines": body})
-            elif items and (not line.strip() or line[:1].isspace()):
-                body.append(line[2:] if line.startswith("  ") else line.strip())
-            elif items:
-                body = []  # prose between the checkboxes belongs to none of them
-        out: list[dict[str, Any]] = []
-        for item in items:
-            markdown = "\n".join(item["lines"]).strip()
-            flat = " ".join(markdown.split())
-            bold = re.match(r"^\*\*(.+?)\*\*", flat)
-            title = bold.group(1).strip() if bold else flat.split(". ")[0]
-            ident = re.match(r"^([A-Z]+[0-9]+[a-z]?)\.\s+", title)
-            out.append({"id": ident.group(1) if ident else None,
-                        "title": title[ident.end():] if ident else title,
-                        "checked": item["checked"], "markdown": markdown})
-        return out
-
-    def _charter(self, config: Mapping[str, str], branch: str) -> dict[str, Any]:
-        goal = config.get("goal") or ".ouroboros/goal.md"
-        text, source, reason = self._goal(goal, branch)
-        criteria = self.criteria(text) if text is not None else []
-        if text is not None and not criteria:
-            reason = f"{goal} has no checkboxes under '## Done criteria'"
-        return {"available": text is not None, "goal": goal, "source": source, "reason": reason,
-                "checked": sum(1 for item in criteria if item["checked"]), "total": len(criteria),
-                "criteria": criteria}
-
-    def _probe_base(self, name: str) -> Path | None:
-        """``docs/probes/<run>/``, when it is a real directory of the checkout."""
-
-        if self.checkout is None or not self.has(name):
-            return None
-        base = self.checkout / "docs" / "probes" / name
-        try:
-            resolved = base.resolve(strict=True)
-        except OSError:
-            return None
-        return base if resolved == base and resolved.is_dir() else None
-
-    def probe_file(self, name: str, segments: list[str]) -> Path | None:
-        """One file under the run's probe directory, or ``None`` for anything
-        that is not plainly one: a bad name, a suffix off the list, a symlink."""
-
-        base = self._probe_base(name)
-        if base is None or not segments or not all(PROBE_SEGMENT.match(part) and ".." not in part
-                                                   for part in segments):
-            return None
-        path = base.joinpath(*segments)
-        if path.suffix.lower() not in PROBE_KINDS:
-            return None
-        try:
-            resolved = path.resolve(strict=True)
-        except OSError:
-            return None
-        return path if resolved == path and path.is_file() else None
-
-    def probes(self, name: str) -> dict[str, Any]:
-        """What :meth:`probe_file` would serve for this run, by path."""
-
-        base = self._probe_base(name)
-        root = f"docs/probes/{name}"
-        if base is None:
-            reason = ("the runs directory is not a checkout's .ouroboros/runs" if self.checkout is None
-                      else f"{root} is not a directory of the checkout")
-            return {"available": False, "root": root, "reason": reason, "readme": None,
-                    "files": [], "truncated": 0}
-        files: list[dict[str, Any]] = []
-        truncated = 0
-        for directory, dirs, names in os.walk(base):
-            here = Path(directory)
-            dirs[:] = sorted(d for d in dirs if PROBE_SEGMENT.match(d) and d != "__pycache__"
-                             and not (here / d).is_symlink())
-            for file in sorted(names):
-                path = here / file
-                kind = PROBE_KINDS.get(path.suffix.lower())
-                if kind is None or not PROBE_SEGMENT.match(file) or path.is_symlink() or not path.is_file():
-                    continue
-                if len(files) >= PROBE_LISTING_LIMIT:
-                    truncated += 1
-                    continue
-                files.append({"path": path.relative_to(base).as_posix(), "kind": kind,
-                              "bytes": path.stat().st_size})
-        files.sort(key=lambda entry: (entry["path"].count("/"), entry["path"]))
-        readme = next((entry["path"] for entry in files if entry["path"].lower() == "readme.md"), None)
-        return {"available": True, "root": root, "reason": None, "readme": readme, "files": files,
-                "truncated": truncated}
-
-    def _record_nodes(self) -> list[dict[str, Any]]:
-        """Every record node of the checkout: slug, title, created, branch and
-        the ``docs/`` paths its text names, cached until the directory changes."""
-
-        assert self.checkout is not None
-        directory = self.checkout / RECORD_DIR
-        try:
-            stamp = directory.stat().st_mtime_ns
-        except OSError:
-            return []
-        cached = getattr(self, "_record_cache", None)
-        if cached is not None and cached[0] == stamp:
-            return cached[1]
-        nodes: list[dict[str, Any]] = []
-        for path in sorted(directory.glob("*.md")):
-            try:
-                text = path.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                continue
-            head, sep, body = text[4:].partition("\n---\n") if text.startswith("---\n") else ("", "", text)
-            if not sep:
-                continue
-            fields: dict[str, str] = {}
-            for line in head.splitlines():
-                key, colon, value = line.partition(":")
-                if colon and key in ("slug", "title", "created_at"):
-                    value = value.strip()
-                    if len(value) > 1 and value[0] == value[-1] == "'":
-                        value = value[1:-1].replace("''", "'")
-                    elif len(value) > 1 and value[0] == value[-1] == '"':
-                        value = value[1:-1]
-                    fields[key] = value
-            branch = re.search(r"^- branch: *(\S+) *$", body, re.MULTILINE)
-            if not fields.get("slug") or branch is None:
-                continue
-            mentions = list(dict.fromkeys(match.group(0).rstrip(".") for match in RECORD_PATH_MENTION.finditer(body)))
-            nodes.append({"slug": fields["slug"], "title": fields.get("title", ""),
-                          "created_at": fields.get("created_at"), "branch": branch.group(1),
-                          "mentions": [m for m in mentions if m.rstrip("/") != "docs"]})
-        self._record_cache = (stamp, nodes)
-        return nodes
-
-    def _docs_path(self, relative: str) -> Path | None:
-        """A plain ``docs/...`` path of the checkout, file or directory, with
-        no symlink on it and no dot-segment, or ``None``."""
-
-        assert self.checkout is not None
-        parts = relative.rstrip("/").split("/")
-        if parts[0] != "docs" or len(parts) < 2 or not all(PROBE_SEGMENT.match(part) and ".." not in part
-                                                           for part in parts[1:]):
-            return None
-        path = self.checkout.joinpath(*parts)
-        try:
-            resolved = path.resolve(strict=True)
-        except OSError:
-            return None
-        return path if resolved == path else None
-
-    @staticmethod
-    def _artifact(path: Path, relative: str) -> dict[str, Any] | None:
-        kind = PROBE_KINDS.get(path.suffix.lower())
-        if kind is None or not path.is_file():
-            return None
-        return {"path": relative, "kind": kind, "bytes": path.stat().st_size}
-
-    def _linked(self, mention: str) -> list[dict[str, Any]]:
-        """The servable files one mention names: the file, or a directory's own files."""
-
-        path = self._docs_path(mention)
-        if path is None:
-            return []
-        relative = mention.rstrip("/")
-        if not path.is_dir():
-            artifact = self._artifact(path, relative)
-            return [artifact] if artifact is not None else []
-        out = []
-        for child in sorted(path.iterdir()):
-            if PROBE_SEGMENT.match(child.name) and not child.is_symlink():
-                artifact = self._artifact(child, f"{relative}/{child.name}")
-                if artifact is not None:
-                    out.append(artifact)
-        return out
-
-    @staticmethod
-    def _when(stamp: Any) -> _datetime.datetime | None:
-        try:
-            when = _datetime.datetime.fromisoformat(str(stamp))
-        except ValueError:
-            return None
-        return when if when.tzinfo is not None else when.replace(tzinfo=_datetime.timezone.utc)
-
-    def records(self, name: str, branch: str, iterations: list[dict[str, Any]]) -> dict[str, Any]:
-        """The run's records, newest first, each with the iteration it landed
-        in -- the first whose last step is not older than it -- and the
-        artifacts under ``docs/`` it names (ADR-518)."""
-
-        root = RECORD_DIR.as_posix()
-        if self.checkout is None or not self.has(name):
-            return {"available": False, "root": root, "reason": "the runs directory is not a checkout's .ouroboros/runs",
-                    "records": []}
-        if not (self.checkout / RECORD_DIR).is_dir():
-            return {"available": False, "root": root, "reason": f"{root} is not a directory of the checkout",
-                    "records": []}
-        ends = [(when, item["iteration"]) for item in iterations
-                if (when := self._when(item.get("ts"))) is not None]
-        out = []
-        for node in self._record_nodes():
-            if node["branch"] != branch:
-                continue
-            created = self._when(node["created_at"])
-            landed = next((number for when, number in ends if created is not None and when >= created), None)
-            artifacts: list[dict[str, Any]] = []
-            for mention in node["mentions"]:
-                for artifact in self._linked(mention):
-                    if artifact["path"] not in {a["path"] for a in artifacts}:
-                        artifacts.append(artifact)
-            out.append({"slug": node["slug"], "title": node["title"], "created_at": node["created_at"],
-                        "iteration": landed, "artifacts": artifacts[:RECORD_ARTIFACT_LIMIT],
-                        "more": max(0, len(artifacts) - RECORD_ARTIFACT_LIMIT)})
-        out.sort(key=lambda record: str(record["created_at"] or ""), reverse=True)
-        return {"available": True, "root": root, "reason": None, "records": out}
-
-    def linked_file(self, name: str, segments: list[str]) -> Path | None:
-        """One file a record of this run names, or one inside a probe
-        directory (``docs/probes/<dir>/``) a record of it names a path in, so
-        a linked README's own images resolve. Anything else is ``None``."""
-
-        if self.checkout is None or not self.has(name) or not segments:
-            return None
-        relative = "/".join(segments)
-        path = self._docs_path(relative)
-        if path is None or self._artifact(path, relative) is None:
-            return None
-        run = self._read(name)
-        if run is None:
-            return None
-        for node in self._record_nodes():
-            if node["branch"] != run["branch"]:
-                continue
-            for mention in node["mentions"]:
-                mention = mention.rstrip("/")
-                parts = mention.split("/")
-                if relative == mention or relative.rpartition("/")[0] == mention:
-                    return path
-                if parts[:2] == ["docs", "probes"] and len(parts) > 2 and relative.startswith("/".join(parts[:3]) + "/"):
-                    return path
-        return None
-
-    def _read(self, name: str) -> dict[str, Any] | None:
-        if name not in self._names():
-            return None
-        assert self.root is not None
-        directory = self.root / name
-        config = self._config(directory / "run.yml")
-        try:
-            status = json.loads((directory / "status.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            status = {}
-        if not isinstance(status, dict):
-            status = {}
-        steps, skipped_steps = self._rows(directory / "iterations.jsonl")
-        verdicts, skipped_verdicts = self._rows(directory / "critic.jsonl")
-        by_number: dict[int, dict[str, Any]] = {}
-
-        def entry(number: int) -> dict[str, Any]:
-            return by_number.setdefault(number, {"iteration": number, "ts": None, "housekeeping": False,
-                                                 "attempts": 0, "actor": None, "commit": None,
-                                                 "verdict": None, "critic": None})
-
-        for row in steps:
-            item = entry(row["iteration"])
-            item["ts"] = row.get("ts") or item["ts"]
-            item["housekeeping"] = item["housekeeping"] or bool(row.get("housekeeping"))
-            step = row.get("step")
-            if step == "actor":
-                item["attempts"] += 1
-                item["actor"] = {key: row.get(key) for key in ("exit", "timed_out", "error", "turns")}
-            elif step == "commit":
-                item["commit"] = {key: row.get(key) for key in ("sha", "changed", "recorded", "cost")}
-            elif step == "critique":
-                item["verdict"] = row.get("verdict")
-                item["critique"] = {"reason": row.get("reason") or "; ".join(map(str, row.get("reasons") or [])),
-                                    "must_fix": row.get("must_fix") or []}
-        for row in verdicts:
-            item = entry(row["iteration"])
-            item["ts"] = item["ts"] or row.get("ts")
-            item["verdict"] = row.get("verdict") or item["verdict"]
-            item["critic"] = {key: row.get(key) or "" for key in ("reason", "did", "doing", "fix_first", "reply")}
-        iterations = [by_number[number] for number in sorted(by_number)]
-        tally: dict[str, int] = {}
-        for item in iterations:
-            if item["verdict"]:
-                tally[item["verdict"]] = tally.get(item["verdict"], 0) + 1
-        last = iterations[-1] if iterations else None
-        return {
-            "name": name,
-            "state": status.get("state") or "unknown",
-            "branch": status.get("branch") or config.get("branch") or f"ouroboros/{name}",
-            "started": config.get("started"),
-            "updated": status.get("ts") or (last or {}).get("ts"),
-            "cost_usd": status.get("cost_usd"),
-            "elapsed_s": status.get("elapsed_s"),
-            "iteration_count": len(iterations),
-            "verdicts": tally,
-            "latest": None if last is None else {
-                "iteration": last["iteration"], "verdict": last["verdict"],
-                "did": (last["critic"] or {}).get("did", "")},
-            "skipped_lines": skipped_steps + skipped_verdicts,
-            "iterations": iterations,
-        }
-
-    def listing(self) -> dict[str, Any]:
-        runs = []
-        for name in self._names():
-            run = self._read(name)
-            if run is not None:
-                run.pop("iterations")
-                runs.append({**run, "url": "/r/" + quote(name, safe="") + "/"})
-        runs.sort(key=lambda run: str(run["updated"] or ""), reverse=True)
-        return {"schema": RUNS_SCHEMA, "available": self.root is not None and self.root.is_dir(),
-                "root": self.root.name if self.root is not None else None, "runs": runs,
-                "served_at": _now()}
-
-    def run(self, name: str) -> dict[str, Any] | None:
-        run = self._read(name)
-        if run is None:
-            return None
-        assert self.root is not None
-        charter = self._charter(self._config(self.root / name / "run.yml"), run["branch"])
-        records = self.records(name, run["branch"], run["iterations"])
-        for item in run["iterations"]:
-            item["records"] = [record["slug"] for record in records["records"]
-                               if record["iteration"] == item["iteration"]]
-        return {"schema": RUN_SCHEMA, **run, "charter": charter, "probes": self.probes(name),
-                "records": records, "served_at": _now()}
-
-
 class ProjectsServer(ThreadingHTTPServer):
     """A directory of projects, one address: the index lists them, and each
     project's review page is served under ``/p/<name>/``."""
@@ -3457,24 +2352,19 @@ class ProjectsServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
     def __init__(self, projects_root: Path | str, host: str, port: int,
-                 log: Callable[[str], None] | None = None, runs_root: Path | str | None = None) -> None:
+                 log: Callable[[str], None] | None = None) -> None:
         self.projects = ProjectsDirectory(projects_root)
-        self.runs = OuroborosRuns(runs_root)
-        self.turns = Turns()
         self.log = log
-        self.write_token = secrets.token_urlsafe(32)
         super().__init__((host, port), ReviewHandler)
 
     url = ReviewServer.url
 
 
 def serve_projects(projects_root: Path | str, host: str = "127.0.0.1", port: int = 0,
-                   log: Callable[[str], None] | None = None,
-                   runs_root: Path | str | None = None) -> tuple[ProjectsServer, threading.Thread]:
-    """As :func:`serve`, over a directory of projects (``cadex app``), with
-    the Ouroboros runs under ``runs_root`` listed beside them (ADR-513)."""
+                   log: Callable[[str], None] | None = None) -> tuple[ProjectsServer, threading.Thread]:
+    """As :func:`serve`, over a directory of projects (``cadex app``)."""
 
-    server = ProjectsServer(projects_root, host, port, log=log, runs_root=runs_root)
+    server = ProjectsServer(projects_root, host, port, log=log)
     thread = threading.Thread(target=server.serve_forever, name="cadex-app", daemon=True)
     thread.start()
     return server, thread
