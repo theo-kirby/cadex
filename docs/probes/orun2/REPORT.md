@@ -86,6 +86,9 @@ and the face-ID channel. Part picking, which A1 asks for, is ported.
 | Every live doc's description of the shell, held by a test | ADR-499 |
 | The Rust shell (ROADMAP Phase 12) and VISION's "Blender-class UX" pillar | ADR-500 |
 | `docs/REVIEW-DESIGN.md`, renamed to `docs/DASHBOARD.md` | ADR-501 |
+| The live policy session: `live_open`/`live_step`/`live_close` from `OP_ARG_SPECS`, their goldens and handlers | ADR-528 |
+| The studio renderer's child-process entry, which only the shell spawned | ADR-529 |
+| The engine's FreeCAD preference-group fallback for its sandbox budgets, which nothing writes now | ADR-530 |
 | Every ledger row marked dropped: cage ring-drag, the wiring editor UI, the blueprint editor, playback baking, chrome, the Blender transcript store, the live policy session, the demo biped | ADR-498, by the ledger's reasons and the owner notes |
 
 ## 4. D2 — slider latency

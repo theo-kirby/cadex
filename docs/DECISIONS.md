@@ -34066,3 +34066,48 @@ returns. Engine and CLI suites; the packaged lifecycle gate on a restaged
 payload.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-530 — The engine stops reading a FreeCAD preference group for its budgets (2026-10-04, owner charter orun2 long-term subtraction)
+
+**Context.** `CadexEngineSettings` was split out of the Qt preferences in
+Phase 7 (ADR-021) and kept the one `App.ParamGet` call in the engine: the
+sandbox budgets fell back to `ScriptedTimeoutSeconds` and
+`ScriptedMemoryLimitMB` under `User parameter:BaseApp/Preferences/Mod/cadex`.
+`CadexScriptedRuntime` said the fallback was "preserved for the interactive
+shell and headless rebuild". An audit of writers finds none: the Qt dialog
+went with the GUI (ADR-021, ADR-214), the Blender shell kept its budgets in
+its own add-on preferences and is deleted (ADR-498), and budgets now belong
+to the project (`agent.json`, CLI flags, ADR-517). Of the readers, `cadexd`
+resolves budgets once at `open_project` from what the CLI sends, and the
+runtime's fallback only fires when a service carries none. No `cli/`,
+`training/`, `analysis/` or `package/` file names either key or the group.
+The GPU-visible half of W1 step 7 stays blocked: `nvidia-smi` could not reach
+the driver this iteration.
+
+**Decision.** `CadexEngineSettings` loses `PREFERENCE_GROUP`, `preferences`,
+`load_engine_budgets` and its `FreeCAD` import. `default_budgets()` returns
+the two constants (300 s, 6144 MB), and `resolve_budgets` takes each
+positive caller budget per field, else the default — the ADR-517 rule with
+the defaults where the preferences were. The runtime's fallback calls
+`default_budgets`. `docs/ARCHITECTURE.md` and `docs/XSCRIPT.md` say where
+the bounds come from now. Two unused `ParamGet` stub classes leave
+`test_engine_defaults_and_envelopes.py`, and the identity test stops
+asserting the group's name, which no longer exists.
+
+**Cost.** A machine whose `user.cfg` was hand-edited to change those two
+keys loses that setting; the project budget (`cadex budgets --set`) is the
+way to set one. The CLI's `budgets.source` still says `engine` for a budget
+the project did not set. No cadexd op, response shape, CLI tool or
+dashboard view changes, and the payload ships the same files.
+
+**What would reverse it.** A per-machine budget that every project on that
+machine should share — then it belongs in the CLI's own config beside the
+project's, sent the same way, not in FreeCAD's parameter tree.
+
+**Test.** `test_engine_defaults_and_envelopes.py::TestEngineSettingDefaults::
+test_the_engine_reads_no_preference_group` fails if any removed name
+returns or any engine module calls `ParamGet`; the per-field tests run
+against the real defaults with nothing patched. Engine and CLI suites; the
+packaged lifecycle gate on a restaged payload.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

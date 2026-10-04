@@ -74,7 +74,7 @@ def test_core_modeling_modules_import_under_cadex_names() -> None:
 
 
 
-def test_module_directory_and_preference_group_are_lowercase_cadex() -> None:
+def test_module_directory_is_lowercase_cadex() -> None:
     assert (ROOT / "src" / "Mod" / "cadex").is_dir()
     assert not (ROOT / "src" / "Mod" / "VibeCAD").exists()
 
@@ -82,9 +82,9 @@ def test_module_directory_and_preference_group_are_lowercase_cadex() -> None:
     mod_cmake = _source("src/Mod/CMakeLists.txt")
     assert "add_subdirectory(cadex)" in mod_cmake
 
-    # The engine owns its preference group, in the lowercase namespace.
+    # The engine reads no preference group (ADR-530), so none can carry the
+    # old name.
     source = _source("src/Mod/cadex/CadexEngineSettings.py")
-    assert "User parameter:BaseApp/Preferences/Mod/cadex" in source
     assert "Mod/VibeCAD" not in source
 
     # Phase 8 removes the retired GUI core; the engine preference check stays.

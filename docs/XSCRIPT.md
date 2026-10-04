@@ -1561,8 +1561,8 @@ Source is validated before any worker runs (AST policy in
   `CadexDynamics.py` is a test-pinned invariant rather than a convenience.
   Plus the project's flat `assets/` directory (bounded: 64 files / 128 MB,
   known suffixes only).
-- Hard bounds from preferences (`ScriptedTimeoutSeconds`,
-  `ScriptedMemoryLimitMB`); a parent-side watchdog kills over-budget
+- Hard bounds from the project's budgets (`agent.json`, ADR-517), else
+  the engine's defaults of 300 s and 6144 MB (ADR-530); a parent-side watchdog kills over-budget
   workers and reports `MEMORY_LIMIT_EXCEEDED` with observed usage.
   **The worker carries the same two numbers again as kernel limits, in
   different units**: `_resource_limits` sets `RLIMIT_CPU` to the timeout in

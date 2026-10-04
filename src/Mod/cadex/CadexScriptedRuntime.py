@@ -1112,8 +1112,8 @@ def capture_project_state(
         _raise(tool_name, "NO_DOCUMENT", "precondition", "No active FreeCAD document.")
     scope = service.project_scope_snapshot()
     # Budgets come from the service when it carries them (cadexd resolves
-    # them once at open_project); the preferences fallback is preserved for
-    # the interactive shell and headless rebuild (Phase 5.3).
+    # them once at open_project); headless rebuild falls back to the
+    # engine's defaults (ADR-530).
     timeout = 0.0
     memory_mb = 0
     budgets_reader = getattr(service, "scripted_budgets", None)
@@ -1122,9 +1122,9 @@ def capture_project_state(
         timeout = float(budgets.get("timeout_seconds") or 0.0)
         memory_mb = int(budgets.get("memory_limit_mb") or 0)
     if timeout <= 0.0 or memory_mb <= 0:
-        from CadexEngineSettings import load_engine_budgets
+        from CadexEngineSettings import default_budgets
 
-        settings = load_engine_budgets()
+        settings = default_budgets()
         timeout = float(settings.get("timeout_seconds") or 0.0)
         memory_mb = int(settings.get("memory_limit_mb") or 0)
     if timeout <= 0.0 or memory_mb <= 0:
