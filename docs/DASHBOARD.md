@@ -1157,6 +1157,31 @@ The sheet itself is engine-drawn on the dark floor of §4: paper is the
 viewport's background, lines and numbers are `--ink`, labels `--ink-2`,
 rules `--rule`, so a sheet sits in the page as the concept sheet does.
 
+## 29. CLI agent turns beside the Ouroboros runs (ADR-519)
+
+The index's **Runs** card holds two lists: **Ouroboros** (§27) and
+**Agent turns**, every CLI agent turn across the projects directory,
+newest first, at most 100 (the heading then says `· newest 100 of N`).
+Each row (`data-project`, `data-revision`, `data-verdict`) is the project's
+name linking to `/p/<name>/`, a muted line with the turn's time and the
+revision it left with that revision's ordinal (`revision 70ab5fda6115
+(#3)`), then a badge with the owner's latest verdict on that revision
+(`ok` tone for **accepted**, `bad` for **rejected**, `current` for
+**restored**, muted **unreviewed** when there is none); under them the
+prompt, the agent's first words after `→` in the muted ink, and, when the
+agent left notes on that revision (ADR-512), how many and how many are
+unanswered.
+
+A turn has no store of its own (A3). It is the `prompt` row the CLI
+appends to the project's `PROGRESS.md` for every accepted turn, typed at a
+terminal or started from the page, joined by its revision prefix to the
+trail in `script_history/` and to the verdicts and notes in
+`comments.jsonl`. `GET /api/turns` (schema `cadex-agent-turns-v1`) carries
+`count` and `turns`, each `project`, `url`, `when`, `prompt`, `said`,
+`revision`, `ordinal`, `digest`, `verdict`, `verdicts` and `notes`. No
+transcript is kept for a turn, so none is shown; a turn the CLI did not
+accept wrote no row and is not listed.
+
 ## Operator run status (ADR-387)
 
 The operator deployment adds a compact bottom-right status strip with run name,

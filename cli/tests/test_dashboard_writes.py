@@ -489,6 +489,7 @@ def test_browser_comments_on_a_picked_part_and_the_next_turn_receives_it(
         # The pick survives the reload of the rebuilt model.
         page.wait_for("window.cadexReview.state().model && window.cadexReview.state().model.revision === %s"
                       % json.dumps(turn["reply"]["accepted_revision"]), timeout=30)
+        assert _model_state(page) == "loaded"
         assert page.evaluate("window.cadexReview.viewer().picked()") == "post"
         assert page.attribute("#comment-target", "data-part") == "post"
     finally:
@@ -643,6 +644,7 @@ def test_browser_accepts_rejects_and_restores_a_revision(plate_app, fake_claude,
     assert reply["accepted_revision"] == wide["accepted_revision"]
     page.wait_for("window.cadexReview.state().model && window.cadexReview.state().model.revision === %s"
                   % json.dumps(wide["accepted_revision"]), timeout=30)
+    assert _model_state(page) == "loaded"
     assert _extent(page, 0) == pytest.approx(50.0, abs=0.01)
     assert _extent(page, 2) == pytest.approx(6.0, abs=0.01)
 
@@ -655,6 +657,7 @@ def test_browser_accepts_rejects_and_restores_a_revision(plate_app, fake_claude,
     assert reply["revisions"]["same_geometry"] is True and reply["digest"] == first["digest"]
     page.wait_for("window.cadexReview.state().model && window.cadexReview.state().model.revision === %s"
                   % json.dumps(reply["accepted_revision"]), timeout=30)
+    assert _model_state(page) == "loaded"
     assert _extent(page, 0) == pytest.approx(30.0, abs=0.01)
     # The CLI's rows: reject and restore are runs; accept is not.
     progress = (root / "PROGRESS.md").read_text()
@@ -777,6 +780,9 @@ def test_browser_attaches_an_image_to_a_turn_and_the_turn_receives_it(plate_app,
     revision = turn["reply"]["accepted_revision"]
     page.wait_for("window.cadexReview.state().model && window.cadexReview.state().model.revision === %s"
                   % json.dumps(revision), timeout=30)
+    # state().model is set when the manifest arrives, before the viewer has
+    # drawn its meshes: wait for the load to settle before measuring them.
+    assert _model_state(page) == "loaded"
     assert page.evaluate("window.cadexReview.viewer().stats().bounds.max[0]"
                          " - window.cadexReview.viewer().stats().bounds.min[0]") == pytest.approx(48.0, abs=0.01)
     assert "prompt: match the attached sketch" in (root / "PROGRESS.md").read_text()

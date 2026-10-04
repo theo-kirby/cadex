@@ -69,6 +69,7 @@ from xml.etree import ElementTree
 
 from .agent import IMAGE_LIMIT, IMAGES_PER_TURN, ImageAttachment, ImageRefused, image_attachment
 from .comments import read_comments, read_notes
+from .project_docs import progress_rows
 from .revisions import read_history as read_revision_history
 from .walk import run_leg
 from .session import read_agent_state
@@ -107,6 +108,10 @@ PROJECTS_STATIC_FILES = {
     "projects.js": ("text/javascript; charset=utf-8", STATIC_DIR / "projects.js"),
 }
 PROJECTS_SCHEMA = "cadex-projects-v1"
+#: The CLI agent turns across a projects directory, ``/api/turns`` (ADR-519).
+TURNS_SCHEMA = "cadex-agent-turns-v1"
+#: How many turns ``/api/turns`` carries, newest kept.
+TURNS_SHOWN = 100
 #: An Ouroboros run's page, under ``/r/<run>/`` (ADR-513).
 RUN_STATIC_FILES = {
     "run.html": ("text/html; charset=utf-8", STATIC_DIR / "run.html"),
@@ -1475,6 +1480,49 @@ def default_run(review: Mapping[str, Any]) -> str:
     return str(candidates[-1]["run"]) if candidates else "accepted"
 
 
+def agent_turns(root: Path) -> list[dict[str, Any]]:
+    """A project's CLI agent turns, oldest first, from what the CLI already
+    keeps (ADR-519): read-only, and no store of their own (A3).
+
+    A turn is a ``prompt`` row of ``PROGRESS.md`` -- one per turn the CLI
+    accepted, whether typed at a terminal or started from the dashboard,
+    with its time, the revision and digest it left and its words. The row's
+    revision prefix finds the rest: the revision's ordinal in the trail
+    (``script_history/``), the owner's verdicts on it and the notes the agent
+    left on it (``comments.jsonl``). No transcript is kept, so none is shown.
+    """
+
+    rows = [row for row in progress_rows(root) if row["run"] == "prompt"]
+    if not rows:
+        return []
+    trail = read_revision_history(root)
+    comments = read_comments(root)
+    notes = read_notes(root)
+    turns = []
+    for row in rows:
+        short = row["revision"].lower()
+
+        def on(revision: Any) -> bool:
+            return bool(short) and str(revision or "").lower().startswith(short)
+
+        entry = next((item for item in trail if on(item.get("revision"))), None)
+        verdicts = [{"verdict": comment["verdict"], "at": comment["at"], "text": comment["text"]}
+                    for comment in comments if comment.get("verdict") and on(comment["revision"])]
+        what = row["what"].removeprefix("prompt: ")
+        prompt, _arrow, said = what.partition(" → ")
+        turns.append({
+            "when": row["when"], "prompt": prompt, "said": said,
+            "revision": str(entry["revision"]) if entry else short,
+            "ordinal": entry.get("ordinal") if entry else None,
+            "digest": row["digest"],
+            "verdict": verdicts[-1]["verdict"] if verdicts else None,
+            "verdicts": verdicts,
+            "notes": [{"type": note["type"], "text": note["text"], "answered": bool(note["answers"])}
+                      for note in notes if on(note["revision"])],
+        })
+    return turns
+
+
 class ReviewProject:
     """What the server knows how to serve for one project, resolved per request.
 
@@ -2408,6 +2456,9 @@ class ReviewHandler(BaseHTTPRequestHandler):
         if segments == ["api", "projects"]:
             self._send_json(projects.listing())
             return
+        if segments == ["api", "turns"]:
+            self._send_json(projects.turns())
+            return
         runs: OuroborosRuns = self.server.runs  # type: ignore[attr-defined]
         if segments == ["api", "runs"]:
             self._send_json(runs.listing())
@@ -2608,6 +2659,17 @@ class ProjectsDirectory:
             })
         return {"schema": PROJECTS_SCHEMA, "root": self.root.name, "projects": projects,
                 "served_at": _now()}
+
+    def turns(self) -> dict[str, Any]:
+        """Every project's CLI agent turns, newest first (ADR-519)."""
+
+        # A row's time has one-second resolution: within a project, a tie
+        # falls to the row written later.
+        found = [(turn["when"], index, {**turn, "project": name, "url": "/p/" + quote(name, safe="") + "/"})
+                 for name in self._names() for index, turn in enumerate(agent_turns(self.root / name))]
+        found.sort(key=lambda item: item[:2], reverse=True)
+        return {"schema": TURNS_SCHEMA, "root": self.root.name, "count": len(found),
+                "turns": [turn for _when, _index, turn in found[:TURNS_SHOWN]], "served_at": _now()}
 
 
 class OuroborosRuns:

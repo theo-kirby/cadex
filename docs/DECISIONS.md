@@ -33553,3 +33553,68 @@ iteration, the t1-hexapod hero loaded through `/r/orun1/linked/`, every
 committed d4 trial hero shown, an iteration row linking `golden-bay-7992`,
 `docs/DESIGN-LANGUAGE.md` opened in place with its title and sections, the
 orun1 README opened with its nine-row ratings table, and closed again.
+
+## ADR-519 — CLI agent turns listed as runs, read from `PROGRESS.md`: `/api/turns` (2026-10-03, owner charter orun2 D3)
+
+**Decision.** `cadex app`'s index lists the **CLI agent turns** of every
+project beside the Ouroboros runs (ADR-513), in the same **Runs** card:
+`GET /api/turns` (`cadex-agent-turns-v1`) and an **Agent turns** list in
+`projects.js`, newest first, at most 100 (`count` says how many exist).
+- **Where a turn comes from.** No new store (A3): the `prompt` rows of the
+  project's `PROGRESS.md`, which the CLI already appends for every turn it
+  accepts, whether typed at a terminal or started from the dashboard
+  (ADR-193, ADR-504). `project_docs.progress_rows` is the one reader of the
+  table, cells unescaped and dashes made empty.
+- **Its revision and verdict.** The row's 8-character revision prefix
+  finds the full revision and its ordinal in `script_history/history.json`
+  (ADR-506), the owner's verdict comments on it (`accepted`, `rejected`,
+  `restored`; the latest is the turn's `verdict`) and the notes the agent
+  left on it (ADR-512) in `comments.jsonl`. A row without a revision joins
+  nothing.
+- **Order.** By the row's time, ties (one-second resolution) to the row
+  written later within a project.
+- **Fixed with it: a turn's words.** A turn that received the owner's
+  comments wrote `→ delivered N comment(s) from the owner.` as what it
+  said, since the delivery note came first; `delivered ` joins the CLI's
+  housekeeping notes, so the row now carries the agent's own first words.
+
+**Fixed in the same unit: the dashboard-restart flake (#36).**
+`test_review_lifecycle.py`'s restart test expected the page's default view
+to be `second`, but the fixture writes four runs whose `recorded_at` has
+one-second resolution and ties fall to the run's name: `second` won only
+while all four landed in the same second. Under load `sample`, written
+last, was newest and the page opened it. Reproduced by sleeping 1.1 s
+before `sample` (fails), fixed by stamping the fixture's four records in
+the order the test means (passes with and without the sleep). No retry,
+no assertion weakened, no product code changed. The same suite run showed
+a second race of one class in `test_dashboard_writes.py`: four browser
+tests waited for `state().model.revision` to name the new revision and then
+measured the viewer, but `review.js` sets `state.model` when the manifest
+arrives and draws the meshes after, so the image-turn test read the old
+plate (30 mm for 48). Each now also waits for the model status to settle
+(`_model_state`), as the turn test already did.
+
+**Rejected.** A turn store of its own (a second write path, against A3);
+the agent's transcript (the CLI keeps none, and a full transcript is not
+committed); git log of the project repository (a project may not be its
+own repository, ADR-194, and the row is already the commit's message);
+listing the CLI's other runs (`params`, `revision reject`): they are runs,
+not agent turns, and the project's page shows them.
+
+**Cost.** ~70 lines in `review_server.py`, ~25 in `project_docs.py`, ~55 in
+`projects.js`, six lines of HTML and CSS; §29 of `docs/DASHBOARD.md`.
+
+**What would reverse it.** The CLI keeping a turn log of its own (then the
+list reads that), or `PROGRESS.md` ceasing to carry one row per accepted
+turn.
+
+**Test.** `cli/tests/test_agent_turns.py`: a hand-laid project's rows (an
+escaped pipe, a params row between, a turn with no revision) joined to the
+trail, verdicts and answered and unanswered notes, and nothing written;
+`/api/turns` across two projects, newest first, bounded at 100 with the
+count. In headless Chromium against a real engine and the real bridge (only
+the model faked): two `cadex -p` turns, `cadex revision accept` on the
+first and `reject` on the second, appear on the already-open index without
+a click, newest first, each with the revision it left, its ordinal and its
+verdict, the second with its agent note, in the card that holds the
+Ouroboros runs. `test_review_lifecycle.py` for the flake.

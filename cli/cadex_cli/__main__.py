@@ -2984,6 +2984,7 @@ _HOUSEKEEPING_NOTES = (
     "no git on",
     "git init",
     "committed ",
+    "delivered ",
 )
 
 

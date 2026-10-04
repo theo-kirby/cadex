@@ -523,6 +523,33 @@ def previous_numbers(root: Path | str) -> dict[str, tuple[float, str]]:
     return found
 
 
+def progress_rows(root: Path | str) -> list[dict[str, str]]:
+    """``PROGRESS.md``'s rows as written, oldest first (ADR-519).
+
+    Each is ``when``, ``run``, ``revision`` and ``digest`` (empty for a
+    dash), ``what`` and ``numbers``, with the cells' escaped pipes put back.
+    A person's hand-added row counts; the header, the rule and every line
+    that is not a row are skipped. Empty when there is no file.
+    """
+
+    try:
+        lines = (Path(root) / PROGRESS_NAME).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rows: list[dict[str, str]] = []
+    for line in lines:
+        match = _ROW_RE.match(line.strip())
+        if not match or match.group(1).startswith(("When", "---")):
+            continue
+        when, run, revision, digest, what, numbers = (
+            cell.replace("\\|", "|") for cell in match.groups())
+        rows.append({"when": when, "run": run,
+                     "revision": "" if revision == "—" else revision,
+                     "digest": "" if digest == "—" else digest,
+                     "what": what, "numbers": numbers})
+    return rows
+
+
 def spelled_number(label: str, value: float) -> str:
     """How a compared number is written in the column.
 

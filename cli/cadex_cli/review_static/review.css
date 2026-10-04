@@ -389,9 +389,10 @@ pre#doc-view { white-space: pre-wrap; overflow-wrap: anywhere; background: var(-
    a run's charter criteria are rows of the same kind. */
 main#projects-frame { padding: var(--gutter); max-width: 960px; }
 main#projects-frame { display: flex; flex-direction: column; gap: var(--s4); }
-#projects, #runs, #charter { list-style: none; margin: 0; padding: 0; }
-#projects li, #runs li, #charter li { padding: var(--s2) 0; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
-#projects li:last-child, #runs li:last-child, #charter li:last-child { border-bottom: 0; }
+#projects, #runs, #turns, #charter { list-style: none; margin: 0; padding: 0; }
+#projects li, #runs li, #turns li, #charter li { padding: var(--s2) 0; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
+#projects li:last-child, #runs li:last-child, #turns li:last-child, #charter li:last-child { border-bottom: 0; }
+#turns .turn-prompt { margin-top: var(--s1); }
 
 /* A run's probe material (ADR-515): its README as a document, its images as a gallery on the dark floor. */
 article.markdown { overflow-wrap: anywhere; }

@@ -38,7 +38,7 @@ from cadex_cli.report import EXIT_OK
 from cadex_cli.video import render
 from cdp_browser import HeadlessBrowser
 from test_review_record import REVISION_A, REVISION_B
-from test_review_server import (CLI_DIR, _get, _open, _review_project,
+from test_review_server import (CLI_DIR, _get, _open, _review_project, _rewrite_record,
                                 _stage_accepted, browser, needs_browser)
 from test_video import _video_run
 
@@ -161,6 +161,11 @@ def _lifecycle_project(tmp_path: Path) -> tuple[Path, dict]:
     root = _review_project(tmp_path)
     _stage_accepted(root, REVISION_B)
     _video_run(root, "sample")
+    # ``recorded_at`` has one-second resolution and ties fall to the name, so
+    # which run is newest -- the page's default view -- must not depend on
+    # how long the fixture took to write: stamp the order the test means.
+    for order, name in enumerate(("first", "broken", "sample", "second")):
+        _rewrite_record(root / "runs" / name, recorded_at=f"2026-01-01T00:00:0{order}Z")
     return root, render(root, "sample")
 
 
