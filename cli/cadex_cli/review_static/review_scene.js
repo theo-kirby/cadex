@@ -147,9 +147,10 @@ export function create(canvas) {
   }
   function updateBounds() {
     model.updateMatrixWorld(true);
-    // Bounds in model-local simulator coordinates, not the rotated scene.
-    const box = new THREE.Box3();
-    meshes.forEach(m=> {m.updateMatrix(); const matrix=m.matrix.clone(); matrix.elements[12]*=1000;matrix.elements[13]*=1000;matrix.elements[14]*=1000; const b=m.userData.mmBounds.clone().applyMatrix4(matrix);box.union(b);});
+    // Bounds in model-local simulator coordinates, not the rotated scene. A part the engine calls
+    // world geometry (a task floor) is the stage, not the design, so it sizes nothing unless it is all there is.
+    const box = new THREE.Box3(), design=[...meshes.values()].filter(m=>!m.userData.world);
+    (design.length?design:[...meshes.values()]).forEach(m=> {m.updateMatrix(); const matrix=m.matrix.clone(); matrix.elements[12]*=1000;matrix.elements[13]*=1000;matrix.elements[14]*=1000; const b=m.userData.mmBounds.clone().applyMatrix4(matrix);box.union(b);});
     if (box.isEmpty()) {bounds=null; return;}
     const min=box.min.toArray(), max=box.max.toArray();
     bounds={min,max,center:min.map((v,i)=>(v+max[i])/2),radius:Math.hypot(...min.map((v,i)=>max[i]-v))/2 || 1};
@@ -206,6 +207,7 @@ export function create(canvas) {
       g.computeVertexNormals();g.computeBoundingBox();
       const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:colourOf(entry,i),roughness:.72,metalness:.05,side:THREE.DoubleSide}));
       m.userData.mmBounds=new THREE.Box3().setFromArray(entry.positions);
+      m.userData.world=entry.world===true;
       m.castShadow=true;m.receiveShadow=true;pose(m,entry.placement);
       meshes.set(entry.name,m);model.add(m);triangleCount+=entry.positions.length/9;
     });
@@ -284,11 +286,14 @@ export function create(canvas) {
   }
   function modelPixels() {
     // Count model pixels, and box them, against the exact same environment-only render, so
-    // a grid cannot turn an empty-model regression green and the overlay is never counted.
+    // a grid cannot turn an empty-model regression green and the overlay is never counted. World
+    // geometry is left out of the model render, so a task floor's slab is never counted as the design.
+    const world=[...meshes.values()].some(m=>!m.userData.world)?[...meshes.values()].filter(m=>m.userData.world&&m.visible):[];
+    world.forEach(m=>{m.visible=false;});
     draw();const gl=renderer.getContext(),W=canvas.width,H=canvas.height,a=new Uint8Array(W*H*4),b=new Uint8Array(a.length);
     gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,a);
     model.visible=false;paint();gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,b);
-    model.visible=true;draw();let n=0,x0=W,y0=H,x1=-1,y1=-1;
+    model.visible=true;world.forEach(m=>{m.visible=true;});draw();let n=0,x0=W,y0=H,x1=-1,y1=-1;
     for(let i=0;i<a.length;i+=4)if(Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2])>12){n++;const p=i>>2,x=p%W,y=H-1-((p-x)/W);x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y);}
     return {count:n,box:n?[x0,y0,x1,y1]:null,width:W,height:H};
   }
@@ -353,7 +358,8 @@ export function create(canvas) {
   return {available:true,load,install,clear,fit,draw,setPoses,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
     setSection,setLines,showLines,
     pick,screenPoint,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
-    camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,style:STYLE,stage,showing:showing(),
+    camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,
+      world:[...meshes].filter(([,m])=>m.userData.world).map(([n])=>n),style:STYLE,stage,showing:showing(),
       proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length},
       section:section&&{...section}, leaders:{drawn:leaders?leaders.geometry.attributes.position.count/2:0,shown:!!(leaders&&leaders.visible)},
       poses:Object.fromEntries([...meshes].map(([n,m])=>[n,{position_mm:m.position.toArray().map(v=>v*1000),rotation_xyzw:m.quaternion.toArray()}]))}),

@@ -124,7 +124,8 @@ in `report-shots.json`. Every image is on the dark floor, under 300 KB.
 - `dashboard-index.png`: the projects index.
 - `dashboard-concept.png`: the tab a project opens on, the concept sheet of
   the accepted design.
-- `dashboard-model.png`: the Model tab after **Fit** (see defect 1).
+- `dashboard-model.png`: the Model tab after **Fit**, framing the robot
+  (defect 1, fixed).
 - `dashboard-evaluation.png`: evaluations and the predicate table.
 - `w1/w1-*.png`: the W1 walk, one per step.
 
@@ -132,14 +133,16 @@ in `report-shots.json`. Every image is on the dark floor, under 300 KB.
 
 Each was re-checked on 2026-10-04 while the screenshots were taken.
 
-1. **The Model tab shows the robot as a speck, and Fit does not help.**
-   Confirmed: `dashboard-model.png` is taken *after* Fit. The cause was
-   measured this pass. The viewer's bounds run from −600 to +600 mm in x and
-   y because `c_floor`, the task's 1.2 m floor, is drawn as a component and
-   counts toward what Fit frames. The robot is 178 × 151 × 123 mm.
-   `modelPixels()` gives 14.5% coverage both before and after Fit, but the
-   box it reports is the floor slab, not the robot. Fit, and the
-   coverage check, should leave out a floor component.
+1. **The robot as a speck: fixed (ADR-525).** The viewer's bounds had run
+   from −600 to +600 mm because `c_floor`, the task's 1.2 m floor, counted
+   toward what Fit frames, and `modelPixels()` boxed the floor slab. The
+   engine already names that slab world geometry in the fit block; the
+   model manifest now carries it as `world: true`, and the viewer leaves
+   world parts out of Fit's bounds and out of the coverage check while
+   still drawing them. Re-taken: Fit frames 178 × 151 × 123 mm (the robot
+   alone), and the robot covers 20.3% of the canvas, its box well inside
+   the frame (`report-shots.json`). `test_dashboard_fit.py` pins it
+   against a real engine.
 2. **Debug colours: fixed.** The page paints by appearance role. Its parts
    line reads "colours by role: accent #FF6A1A, mechanism #2A2C31, shell
    #ECE8DF", and the model is white and orange in the shot (ADR-522).

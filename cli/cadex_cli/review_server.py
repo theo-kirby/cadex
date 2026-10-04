@@ -1107,6 +1107,21 @@ def declared_measurements(result: Mapping[str, Any], entries: list[dict[str, Any
                       "on the exact BREP (the numbers the blueprint sheet draws)"}
 
 
+def world_components(result: Mapping[str, Any]) -> set[str]:
+    """The components the accepted attempt's fit calls world geometry.
+
+    A task floor or bench is drawn like any part, but it is the stage, not
+    the design: the viewer frames and measures coverage without it. The
+    engine decides (``world=True``, a collision plane, a bare planar face —
+    docs/XSCRIPT.md); nothing here infers purpose from a name.
+    """
+
+    return {str(row.get("component")) for output in result.get("outputs") or []
+            if isinstance(output, Mapping)
+            for row in output.get("world_geometry") or []
+            if isinstance(row, Mapping) and row.get("status") == "world geometry" and row.get("component")}
+
+
 def accepted_model(project_root: Path | str) -> dict[str, Any]:
     """The accepted model now, from the accepted attempt's own tessellation.
 
@@ -1163,6 +1178,7 @@ def accepted_model(project_root: Path | str) -> dict[str, Any]:
     component_sources = result.get("component_sources") or {}
     placements, _components = _first_frame_placements(
         _load_json(staging / "outputs" / "assembly-simulation-trace.json"))
+    world = world_components(result)
     entries: list[dict[str, Any]] = []
     used: set[str] = set()
     for name, output in outputs_by_name.items():
@@ -1189,6 +1205,7 @@ def accepted_model(project_root: Path | str) -> dict[str, Any]:
             "mesh": f"/mesh/accepted/{source}.stl" if source in tess_by_output else None,
             "mesh_status": "retained" if source in tess_by_output else "missing",
             "placement": placement, "placement_source": placement_source,
+            "world": name in world,
         })
     for output in tess_by_output:
         if output in used:

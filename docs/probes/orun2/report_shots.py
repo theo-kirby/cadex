@@ -9,7 +9,7 @@ the index and one project page in headless Chromium
 
 - **speck**: the model's pixel coverage of the canvas as the Model tab first
   draws it, against the same after pressing **Fit**, and the bounds Fit
-  frames (a task floor drawn as a component counts toward them);
+  frames (a task floor the engine calls world geometry sizes nothing, ADR-525);
 - **colours**: whether the parts are painted by appearance role (ADR-522) or
   by the per-index debug palette;
 - **CLI transcript**: whether the latest CLI agent turn's text, or a `look`
@@ -83,7 +83,7 @@ def main() -> int:
             page.click("#model-fit")
             time.sleep(0.5)
             found["speck_after_fit"] = coverage(page)
-            # What Fit frames: the bounds of every drawn component, floor included.
+            # What Fit frames: the bounds of every drawn component but world geometry.
             found["viewer_bounds"] = page.evaluate("window.cadexReview.viewer().stats().bounds")
             found["viewer_components"] = page.evaluate(
                 "Object.keys(window.cadexReview.viewer().stats().poses || {}).slice(0, 4)")

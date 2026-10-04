@@ -209,7 +209,10 @@ A 4 px base: `--s1` 4, `--s2` 8, `--s3` 12, `--s4` 16, `--s5` 24, `--s6` 32.
   stretched. **Orbit is by pointer events** (ADR-330): one pointer — mouse
   or finger — orbits, two fingers pinch-zoom, the wheel zooms, and the
   canvas captures the pointer so a drag that leaves it still orbits. The
-  Fit button restores the framing, framing the model's bounding sphere in
+  Fit button restores the framing, framing the design's bounding sphere — a
+  part the engine calls world geometry (a task floor, `world=True`) is drawn
+  but sizes nothing, and the model-pixel coverage check leaves it out too
+  (ADR-525) — in
   the narrower field of view: a canvas at least as wide as it is tall frames
   by the vertical one exactly as before (so a 512 × 512 capture is
   unchanged), a portrait stage between two wide sidebars by the horizontal.

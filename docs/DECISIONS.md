@@ -33852,3 +33852,36 @@ extent into a leader, draws a top-down bore at 6 mm on screen, and clears
 when switched off. `test_dashboard_inspect.py`'s rollout playback test now
 waits for Play to enable rather than reading it once.
 
+## ADR-525 — Fit frames the design, not the task floor (2026-10-04, owner charter orun2 D2/C1)
+
+**Context.** The closing report's defect 1: on `orun2-w1-quad` the Model
+tab showed the robot as a speck even after Fit. The task's 1.2 m floor is
+drawn as a component (`c_floor`), and the viewer's bounds were every drawn
+part's, so Fit framed a 1200 mm slab under a 178 mm robot, and
+`modelPixels()` reported the slab's box as the model's.
+
+**Decision.** The engine already decides what is world geometry — a
+component declared `world=True`, a collision plane on a design body, a bare
+planar face — and publishes it as the assembly's `world_geometry` rows
+(docs/XSCRIPT.md); `look` and the film already keep it from sizing their
+framing. `review_server.world_components` reads those rows from the
+accepted `result.json`, and each component in `api/model/accepted` carries
+`world: true|false`. The viewer leaves world parts out of the bounds Fit
+frames (unless they are all there is) and out of the model render that
+`modelPixels()` counts; it still draws them, and `stats().world` lists
+them. Nothing infers purpose from a name. A run's retained training view
+copies the accepted manifest, so new walks carry the flag; older run views,
+read from rollout meshes alone, have none and frame as before.
+
+**Cost.** ~15 lines of server, ~10 of viewer. No new dependency.
+
+**What would reverse it.** A design whose world geometry *is* the subject
+(a bench fixture): it would need a second Fit target, not this exclusion.
+
+**Test.** `cli/tests/test_dashboard_fit.py`: which rows count as world
+geometry; against a real engine, a 60 × 40 × 30 mm body on a 1200 mm
+`world=True` floor gives a manifest marking only the floor, and in headless
+Chromium Fit's bounds are the body's and the body covers 31% of the canvas
+with its box inside the frame (it fails on the old viewer). The report's
+`dashboard-model.png` was re-taken: 20.3% coverage, bounds 178 × 151 × 123 mm.
+
