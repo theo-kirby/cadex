@@ -25,13 +25,15 @@ Open charter criterion for run orun2: **C1. Closing report.** - `docs/probes/oru
 
 **Defect 4 closed (ADR-527).** A preview skips the static and swept fit: preview median 0.0435 s against the 0.10 s bar, `ok: true`, pinned by `test_preview_skips_fit.py`. Engine 2608 passed / 56 skipped, CLI 1420 passed / 1 skipped, packaged gate 24 passed / 0 skipped [rec: clever-sky-3211].
 
+**Refreshed at `37733eec`; done claimed for critic review.** Each criterion in REPORT.md names its evidence records: S1, R1, D1, D2, D3 and A1 have recorded evidence, W1 all but the GPU half of step 7; D1/D2 numbers stand from `13c660cf` (no later commit touches build, setup or slider path). §7 claims done for the critic, with no owner box ticked. Docs-only change: CPU-only `cli/tests -k "doc or report or probe or fit"` 326 passed, `test-engine -k doc` 19 passed [rec: hidden-glacier-9870].
+
 **Open defects in the report** [rec: clever-sky-3211]:
-- 5: the W1 5090 leg is waiting on the owner's driver (see `shady-clover-5534`); owner-side [rec: clear-current-6218] [rec: clever-sky-3211].
+- 5: the W1 5090 leg is waiting on the owner's driver (see `shady-clover-5534`); owner-side, and re-checked at `37733eec` as the sole blocker — `nvidia-smi` cannot reach the driver, no nvidia module loaded on 7.0.0-34; once loaded it is one `cadex walk` on `orun2-w1-robin` without `JAX_PLATFORMS=cpu` [rec: clear-current-6218] [rec: clever-sky-3211] [rec: hidden-glacier-9870].
 - 6: the installed footprint is unchanged; deferred [rec: clear-current-6218] [rec: clever-sky-3211].
 
 Known gap in the ADR-525 fix: run views built from rollout meshes alone (older runs with no retained training view) carry no `world` flag and still frame the floor. New walks copy the accepted manifest, so they are covered [rec: clear-current-6218].
 
-Reconcile judgement: flipped `open` → `working`, since the criterion now has measured evidence. It is not claimed. The report still carries defects 5 (owner) and 6 (deferred), and the "claim done for critic review" step has not been taken [rec: clear-current-6218] [rec: clever-sky-3211]. Declared target: `gap-c1-closing-report-docs-probes`. The human owns the charter checkbox, and every orun2 gap title carries the run [rec: winter-stone-5109].
+Reconcile judgement: status stays `working`. Done is claimed for critic review, not accepted, and the owner holds the charter checkbox; defect 5 is owner-side and defect 6 deferred, neither a run-side blocker [rec: hidden-glacier-9870]. Declared target: `gap-c1-closing-report-docs-probes`; every orun2 gap title carries the run [rec: winter-stone-5109].
 
 ## Negative knowledge
 
@@ -43,3 +45,4 @@ None yet.
 - clear-current-6218 — REPORT.md draft (90556e24) recorded; defect 1 fixed by ADR-525 (Fit/coverage skip world geometry), report re-shot
 - lively-beacon-5538 — defect 3 fixed by ADR-526 (terminal turns keep transcript and looks on the page)
 - clever-sky-3211 — defect 4 closed by ADR-527 (preview skips static and swept fit); open defects now 5 and 6
+- hidden-glacier-9870 — REPORT.md refreshed at 37733eec with per-criterion records; defect 5 re-checked as sole blocker; done claimed for critic review
