@@ -7,26 +7,22 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: superseded
 
 ## Current
 
 Open charter criterion for run orun2: **D2. From a browser alone, a person can watch and steer a design.** - Each of the following is proven by a test driven through the existing headless Chromium path (`cli/cadex_cli/browser.py`) against a real engine: 1. **Start a turn.** Start a design turn from a prompt, optionally with an attached image. Watch it live as the transcript streams and the renders and model update as revisions are accepted. 2. **Move a slider.** Move a parameter slider and see the rebuilt model. Report p50 and p95 latency on a warm project beside the raw-NDJSON bar (`cadexd_latency_integration.py`). 3. **Leave a comment.** Comment on the whole design or on a picked part. The next agent turn receives it. 4. **Manage revisions.** Accept, reject and restore a revision. 5. **Inspect.** Use the section, exploded and collision views, and play a rollout in the viewer. 6. **Export.** Export STEP and STL, and download a concept sheet. - Write endpoints are safe by default: - the server binds 127.0.0.1; - writes need a per-launch token or a same-origin check; - remote viewing is documented as `tailscale serve` in front of it. [rec: winter-stone-5109]
 
-**Write path and safety.** Every dashboard write runs the CLI as a child process (one write path, A3), behind a per-launch token and an Origin check, on 127.0.0.1 [rec: morning-peak-8268]. Remote viewing is `tailscale serve` in front of the loopback bind, `docs/DASHBOARD.md` §22, pinned by `test_remote_viewing_is_tailscale_serve_in_front_of_loopback` [rec: sweet-mist-9111].
+**Superseded: the dashboard is read-only (ADR-537).** It has no POST routes, no write token, no chat, sliders or verdict buttons; any non-GET/HEAD request gets 501. Steering moved to the person's own agent, which drives the project through `cadex mcp --project DIR` (ADR-538) [rec: still-ivy-2146]. Viewing is on `sweet-bloom-8352`; the agent binding is on `chilly-union-8972`.
 
-| Item | State | Evidence |
-|---|---|---|
-| 1. Start a turn | evidenced | POST `api/turn` runs `cadex -p`; GET `api/turn` streams its stderr; Chromium test shows the live transcript then the accepted revision drawn (ADR-504) [rec: placid-bell-2440]. Turns started at a terminal are watchable too: the page shows their stored transcript and look images (ADR-526) [rec: lively-beacon-5538]. Image attach: `cadex -p --image` (magic-byte and size check, stream-json image blocks, at most 4); the page's Attach image passes files via a scratch dir outside the project, removed after the turn; Chromium test against a real engine shows `claude` receives the exact bytes (SHA-256) (ADR-507) [rec: sweet-mist-9111] |
-| 2. Slider | evidenced | POST `api/params` runs `cadex params`; release-to-drawn p50 582 ms / p95 636 ms (n=5) beside raw `set_params` 0.381 s (0.482 s with display; bar 0.65 s) [rec: morning-peak-8268]. Raw-NDJSON bar now fully met: preview 0.0435 s, `set_params` 0.381 s, display 0.432 s (ADR-527) [rec: clever-sky-3211] |
-| 3. Comment | evidenced | `cadex comment` writes `comments.jsonl`; the next `cadex -p` receives pending comments ahead of its prompt; POST `api/comment`; Chromium test picks parts by click and a page-started turn receives both comments (ADR-505) [rec: noble-glade-0483] |
-| 4. Revisions | evidenced | `cadex revision accept/reject/restore` behind POST `api/revision`; Chromium test accepts, rejects (exact revision back), restores (same geometry), and a page turn receives the verdicts (ADR-506) [rec: stormy-grove-7025] |
-| 5. Inspect | evidenced | Collision: `core.inspect scope=contacts` and `#collision-contacts`; page and agent report the same t=0 pairs and the slider clears a 2 mm interpenetration (ADR-508) [rec: calm-falcon-6751]. Section and exploded: the exploded view plays the engine's stages and Cut runs an interactive section, Chromium-tested against a real engine (`test_dashboard_inspect.py`, ADR-510); accepted placements now prefer `solved_placement_matrix` [rec: narrow-crest-4950]. Rollout playback: the viewer plays a run's own trace in simulation seconds through `setPoses`, browser-tested on a real walk (ADR-511) [rec: staid-wave-3739] |
-| 6. Export | evidenced | POST `api/export` runs `cadex export` into the ignored `review/export/<revision>/` behind the token; Chromium test downloads a valid STEP, a 12-facet 30×20×6 mm STL and the concept-sheet PNG (`test_dashboard_export.py`, ADR-509) [rec: polished-lodge-7956] |
+**How it got there, 2026-10-04** [rec: glad-wood-4169] [rec: still-ivy-2146]:
+- Before: all six items carried a real-engine Chromium test: turn with transcript and image attach (ADR-504, 507, 526) [rec: placid-bell-2440] [rec: sweet-mist-9111] [rec: lively-beacon-5538]; slider p50 582 ms / p95 636 ms beside raw `set_params` 0.381 s [rec: morning-peak-8268] [rec: clever-sky-3211]; comments (ADR-505) [rec: noble-glade-0483]; revisions (ADR-506) [rec: stormy-grove-7025]; collision, section, exploded and rollout playback (ADR-508, 510, 511) [rec: calm-falcon-6751] [rec: narrow-crest-4950] [rec: staid-wave-3739]; STEP/STL/sheet export (ADR-509) [rec: polished-lodge-7956]. Writes ran the CLI as a child behind a per-launch token and Origin check on 127.0.0.1 [rec: morning-peak-8268]; remote viewing is `tailscale serve` in front of the loopback bind [rec: sweet-mist-9111].
+- ADR-533 cut the page to model, turn, sliders and revisions; the inspect, parts, dimensions, export, comment and render panels left the page while their API and CLI equivalents stayed [rec: glad-wood-4169].
+- ADR-534 drafted the page as an app on branch `app-shell`: tiled resizable areas holding a 3D viewport (with rollout playback), a 2D viewport, Settings and Chat; light/dark theme; shaded or hairline render [rec: cool-road-8381].
+- ADR-535 made remote use practical: first load 9.1 s → 3.9 s and reopen 8.2 s → 0.8 s at 30 Mbit (memoized manifest, content-ETagged STL, gzip), loads abort, retry and never freeze the page. Still slow: a parameter rebuild is 80–150 s, mostly the post-build fit checks (ADR-346) and the assembly pass [rec: careful-glacier-8772].
+- ADR-537 then removed the turn, sliders and verdict buttons with every write route [rec: still-ivy-2146].
 
-**Remaining:** none at the item level — every item, and every item-5 view, carries a real-engine Chromium test [rec: staid-wave-3739].
-
-Declared target: `gap-d2-from-browser-alone-person`. The human owns the charter checkbox; roles report results and do not tick it. Reconcile judgement: stays `working` rather than `done` — all six items are evidenced, but the charter checkbox is the owner's to tick, and orun2 gaps stay `working` until then [rec: staid-wave-3739].
+Declared target: `gap-d2-from-browser-alone-person`. The owner's direction retired the criterion rather than ticking it [rec: still-ivy-2146].
 
 ## Negative knowledge
 
@@ -46,3 +42,7 @@ None yet.
 - staid-wave-3739 — item 5 rollout playback through setPoses (ADR-511); item 5 complete
 - lively-beacon-5538 — item 1 covers terminal-started turns: stored transcript and looks on the page (ADR-526)
 - clever-sky-3211 — item 2 raw-NDJSON bar fully within bar after the preview skips fit (ADR-527)
+- glad-wood-4169 — page cut to model, turn, sliders, revisions (ADR-533)
+- cool-road-8381 — app-shell draft: areas, four editors, themes, hairline render (ADR-534)
+- careful-glacier-8772 — cached/ETagged/gzipped model delivery, resilient loads; rebuild still 80-150 s (ADR-535)
+- still-ivy-2146 — superseded: dashboard read-only (ADR-537); steering via cadex mcp (ADR-538)

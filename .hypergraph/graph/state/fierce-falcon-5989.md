@@ -15,10 +15,10 @@ Open charter criterion for run orun2: **A1. The agent has one contract, and a wa
 
 | Half | State | Evidence |
 |---|---|---|
-| Non-blocking channel | evidenced | Bridge tool `leave_note(type flag\|question, text, artifact?)` appends to `comments.jsonl` and returns at once; the dashboard's *From the agent* panel lists notes and serves the flagged file; the owner answers with `cadex comment --reply`, which reaches the next turn quoting the note. Pinned by `test_project_tool_surface.py`, `test_owner_channel.py` and a Chromium test against a real engine (ADR-512, commit ed1c6e1d) [rec: proud-quill-5791] |
-| One contract | open | SHELL-PARITY §4's shell-only guidance points and the `ENABLE_TOOL_SEARCH` check are still to settle [rec: proud-quill-5791] |
+| Non-blocking channel | removed | Was evidenced: `leave_note` into `comments.jsonl`, a *From the agent* panel, `cadex comment --reply` (ADR-512) [rec: proud-quill-5791]. Removed with `comments.py`, the relay socket and `cadex -p` (ADR-538); the person talks to their own agent directly [rec: still-ivy-2146] |
+| One contract | evidenced | The guidance served by `cadex mcp` (a <2,000-char MCP `instructions` brief pointing at the whole) and printed by `cadex guidance` is the one contract; `CadexAgentGuidance.md` carries it, with `DECISION:` lines going to `DECISIONS.md` [rec: still-ivy-2146]. Not re-checked by that record: SHELL-PARITY §4's shell-only guidance points and the `ENABLE_TOOL_SEARCH` check, open before it [rec: proud-quill-5791] |
 
-Declared target: `gap-a1-agent-has-one-contract`. The human owns the charter checkbox; roles report results and do not tick it. Reconcile judgement: flipped `open` → `working` — the channel half has measured evidence; the one-contract half is open [rec: proud-quill-5791].
+Declared target: `gap-a1-agent-has-one-contract`. Reconcile judgement: stays `working`. The channel half is retired by owner direction (ADR-538), not failed; the contract half now has a single source. The owner holds the charter checkbox [rec: still-ivy-2146].
 
 ## Negative knowledge
 
@@ -28,3 +28,4 @@ None yet.
 
 - winter-stone-5109 — orun2 operator-declared charter gap
 - proud-quill-5791 — leave_note owner channel evidenced (ADR-512)
+- still-ivy-2146 — channel removed (ADR-538); one contract is the cadex mcp / cadex guidance text

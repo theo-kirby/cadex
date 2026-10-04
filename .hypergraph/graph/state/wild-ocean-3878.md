@@ -29,13 +29,13 @@ Open charter criterion for run orun2: **C1. Closing report.** - `docs/probes/oru
 
 **Defect 5 cleared (`a320a489`).** The W1 5090 leg ran: `w1-gpu-1` trained on the GPU, and evaluate passed 10/10 seeds (see `shady-clover-5534`). REPORT's W1 row, defect 5, §7 and its header carry the measured result [rec: rough-bell-4055].
 
-**Done claim withdrawn pending this reconcile (`b0c9706a`).** The critic said §7 claimed done before the reconcile that C1 requires. §7 now says done is not claimed, and the C1 row reads "done not yet claimed (§7)". The first work unit after the reconcile that folds `rough-bell-4055`, `snowy-beacon-2710` and `empty-heron-1077` re-claims done in §7 and cites that reconcile's commit [rec: snowy-beacon-2710] [rec: empty-heron-1077].
+**Done claimed for critic review (`fd71b598`, branch `ouroboros/orun2`).** After reconcile `3d0c6faa` folded `rough-bell-4055`, `snowy-beacon-2710` and `empty-heron-1077`, REPORT §7 claims done again and re-checks each criterion against its folded state node; the C1 row says done is claimed; no owner box is ticked. Checks at the claim: `git ls-files shell` empty, all eight orun2 criterion nodes `working`, `hypergraph check` exit 0, `test_project_docs.py` 40 passed (docs-only change) [rec: civic-prairie-1265]. An earlier claim had been withdrawn because it came before this reconcile [rec: snowy-beacon-2710] [rec: empty-heron-1077].
 
-**Open defects in the report:** 6, the installed footprint is unchanged; deferred [rec: clear-current-6218] [rec: clever-sky-3211].
+**Open defects in the report:** 6, the installed `.pixi` footprint is unchanged, deferred by the owner to the next run [rec: clear-current-6218] [rec: civic-prairie-1265]; 7, plan bet `young-crane-9546` rank 1 still says "the shell client", pending `light-path-5130`'s plan impact — planner-owned, not a criterion [rec: civic-prairie-1265].
 
 Known gap in the ADR-525 fix: run views built from rollout meshes alone (older runs with no retained training view) carry no `world` flag and still frame the floor. New walks copy the accepted manifest, so they are covered [rec: clear-current-6218].
 
-Reconcile judgement: status stays `working`. Done is currently withdrawn, and the owner holds the charter checkbox. The only open defect is 6, which is deferred and does not block the run [rec: snowy-beacon-2710]. `snowy-beacon-2710` declared its impact on `gentle-bramble-6120`, which is orun1's superseded C1. `empty-heron-1077` corrected the target to this node, so the delta is folded here, and `gentle-bramble-6120` keeps its claims unchanged [rec: empty-heron-1077]. The leftover "and the shell client" wording in `young-crane-9546` rank 1 is in the plan view. The planner pass owns that view, so this reconcile leaves it alone. Declared target: `gap-c1-closing-report-docs-probes`; every orun2 gap title carries the run [rec: winter-stone-5109].
+Reconcile judgement: status stays `working`. Done is claimed for the critic; the owner holds the charter checkbox. Neither open defect holds a criterion [rec: civic-prairie-1265]. `snowy-beacon-2710` had declared its impact on orun1's `gentle-bramble-6120`; `empty-heron-1077` corrected it to this node, and `gentle-bramble-6120` keeps its claims [rec: empty-heron-1077]. Declared target: `gap-c1-closing-report-docs-probes` [rec: winter-stone-5109]. Later the same day the owner took Ouroboros out of the product (ADR-536), which retires D2, D3 and part of A1 rather than ticking them; REPORT.md predates that [rec: still-ivy-2146].
 
 ## Negative knowledge
 
@@ -51,3 +51,5 @@ None yet.
 - rough-bell-4055 — defect 5 cleared: W1 5090 leg trained and evaluate passed 10/10
 - snowy-beacon-2710 — REPORT §7 withdrew the done claim pending the reconcile (impact misnamed gentle-bramble-6120; folded here)
 - empty-heron-1077 — corrected the C1 target to this node; re-claim follows this reconcile
+- civic-prairie-1265 — done re-claimed for critic review at fd71b598; defects 6 and 7 remain
+- still-ivy-2146 — Ouroboros out of the product the same day; D2/D3/A1 retired, not ticked
