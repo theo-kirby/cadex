@@ -1,7 +1,7 @@
 ---
 node_id: 2af180e9-6391-5f72-b437-4b4e48c7c567
 slug: brisk-rock-9862
-title: Projects trained before ADR-469 cannot be opened (stale policy locks the project)
+title: Projects trained before ADR-469 open with a stale policy named (ADR-520)
 created_at: '2026-10-04T01:57:02+00:00'
 parents:
 - calm-peak-5247
@@ -20,7 +20,7 @@ Status: working
 
 **The original defect, for history:** ADR-469 moved `CONTACT_TIMECONST_S` 0.02 → 0.004, which moved every pre-2026-10-01 robot's task digest (`ca60b4ce…` → `d50e953b…` for `ot11-robin-1`); restore refused the policy and the open failed, so no command could run, not even one setting `policy_on` to 0 [rec: red-loom-2239].
 
-Reconcile judgement: status `working` rather than a new status — the declared "resolved" maps onto this graph's vocabulary as a working capability. Not verified: the other ADR-469 casualties (`ot9-robin`, the `ot5`/`ot6` copies) were not opened, being read-only under the charter [rec: icy-tooth-7719].
+Reconcile judgement: retitled from "cannot be opened" to describe the working capability, as requested in [rec: autumn-rose-7173]. Status `working` rather than a new status — the declared "resolved" maps onto this graph's vocabulary as a working capability. Not verified: the other ADR-469 casualties (`ot9-robin`, the `ot5`/`ot6` copies) were not opened, being read-only under the charter [rec: icy-tooth-7719].
 
 ## Negative knowledge
 
@@ -30,3 +30,4 @@ None yet.
 
 - red-loom-2239 — found on W1's walk: restore refuses the pre-ADR-469 policy and open_project fails
 - icy-tooth-7719 — ADR-520: stale policy refused without locking the project; packaged gate and both suites green
+- autumn-rose-7173 — retitle requested: the node is working and its title still said cannot be opened
