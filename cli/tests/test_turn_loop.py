@@ -25,6 +25,7 @@ import pytest
 
 from cadex_cli.__main__ import command_prompt
 from cadex_cli.agent import CLI_OVERLAY, system_prompt
+from cadex_cli.comments import with_comments
 from cadex_cli.report import EXIT_FAILURE, EXIT_OK, EXIT_REJECTED, RunReport
 from cadex_cli.session import agent_state_path, read_agent_state
 
@@ -201,7 +202,37 @@ def test_the_prompt_teaches_the_two_policy_strings_as_inline_literals() -> None:
     assert "weights=WEIGHTS" in CLI_OVERLAY
 
 
-# -- the turn ------------------------------------------------------------
+def test_the_prompt_carries_the_guidance_that_lived_only_in_the_shell() -> None:
+    """The shell's overlay points kept by ADR-521 (docs/SHELL-PARITY.md §4).
+
+    Re-derived in new words, so this pins the ideas, not the shell's text.
+    The contact check after an MJCF export is pinned with the engine's
+    guidance (``test_agent_guidance.py``), not here.
+    """
+
+    text = system_prompt({})
+    # Deterministic and self-contained.
+    assert "Running it twice gives the same model" in text
+    assert "nothing read from outside the project" in text
+    # The frame and the names a person reads.
+    assert "+Z IS UP" in text
+    assert "Name every output short and for what it is" in text
+    # Secondary dimensions follow the primary ones.
+    assert "compute the rest from them" in text
+    # Builds cost seconds, so batch them.
+    assert "EVERY BUILD COSTS SECONDS" in text
+    assert "in one set_params call" in text
+    # A picked part is ground truth, the review form of a face pin.
+    assert "names the output the person clicked" in text
+    # The harness walkthrough, reduced to what the tools do not say.
+    assert "A HARNESS IS DECLARED, NOT DRAWN" in text
+    assert "`boards(...)` and `nets(...)`" in text
+    assert "inspect scope=wiring" in text
+    # Every comment kind the overlay explains is one comments.py writes.
+    assert "on part post" in with_comments("p", [{"text": "t", "part": "post"}])
+
+
+# -- the turn------------------------------------------------------------
 
 
 @pytest.mark.usefixtures("engine")

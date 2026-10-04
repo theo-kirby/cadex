@@ -83,7 +83,7 @@ Owner's defaults (charter A1):
 | `mock_backend.py` | 112 | Scripted fake backend for the shell suites | dropped (ADR-498) | Test harness for deleted code |
 | `model.py` | 589 | Script mirror into a text block; parameter specs → live sliders; debounced rebuild; rewrite `num()` defaults | ported (ADR-503) sliders; dropped (ADR-498) the text-block mirror and default rewriting | Each parameter spec is a slider whose change runs `cadex params` and rebuilds (`test_dashboard_writes.py::test_browser_moves_a_slider_and_sees_the_rebuilt_model`). Rebuilds are per set, not debounced drags. `./cadex script` prints and replaces the script |
 | `model_api.py` | 41 | Clamped a parameter value to its type and range | ported (ADR-503) | The slider is a range input built with the spec's `min`, `max` and `step` (`review.js`), so it cannot leave the range; the browser test asserts both bounds (`test_dashboard_writes.py::test_browser_moves_a_slider_and_sees_the_rebuilt_model`) |
-| `modes.py` | 99 | The Cadex prompt overlay and `system_prompt()` | to port (A1) | `cli/cadex_cli/agent.py` `CLI_OVERLAY` + `CadexAgentGuidance.md` cover most of it. §4 lists what is only here |
+| `modes.py` | 99 | The Cadex prompt overlay and `system_prompt()` | ported (ADR-521) | `cli/cadex_cli/agent.py` `CLI_OVERLAY` + `CadexAgentGuidance.md`. The points that were only here are re-derived or dropped point by point in §4. Tests: `cli/tests/test_turn_loop.py::test_the_prompt_carries_the_guidance_that_lived_only_in_the_shell`, `src/Mod/cadex/cadex_tests/test_agent_guidance.py::test_the_guidance_checks_the_rest_contacts_after_an_mjcf_export` |
 | `prefs.py` | 536 | AI settings (harness, model, CLI paths, engine override, timeout and memory budgets), account popover | dropped (ADR-498); the engine budgets ported to the project (ADR-517) | Harness and account UI goes with A4. The engine override is `--engine` / `CADEX_ENGINE_ROOT`. The owner moved the timeout and memory budgets to the project (owner notes, 2026-10-03): stored in `agent.json` by `cadex budgets --set`, overridden per call by `--engine-timeout` / `--engine-memory`, sent as `open_project`'s `budgets`, shown read-only in the dashboard's Identity panel. Test: `cli/tests/test_project_budgets.py` |
 | `spaces.py` | 235 | Editor headers; the "Model Script" panel (Apply/Revert/Rebuild) | dropped (ADR-498) | Chrome. The script panel is covered by `./cadex script` |
 | `tools.py` | 1,961 | The 23 agent tools (§2) | per tool, §2 | The product agent's tools are `cli/cadex_cli/tools.py` |
@@ -146,25 +146,25 @@ space with one header and one panel region. Everything it showed was drawn by
 | Live (`space_cadex_live`) | Live policy session, push, actuator bars | dropped (ADR-498); owner confirmed (owner notes, 2026-10-03) | See `cadex_live.py` |
 | Blueprint (`space_cadex_blueprint`) | Draft or stored sheet, pager, save, export, cell pin | dropped (ADR-498) as an editor; ported (ADR-516) stored sheets as outputs | The dashboard's **Drawings** panel (`docs/DASHBOARD.md` §28): every version listed, the newest shown, each downloadable. Test: `test_blueprint.py::test_browser_shows_a_drawn_and_revised_sheet_from_a_real_engine` |
 
-## 4. Agent guidance that lived only in the shell (A1 input)
+## 4. Agent guidance that lived only in the shell (A1, settled by ADR-521)
 
 These points were in the shell's `agent.py` `SYSTEM_PROMPT` or its `modes.py`
-overlay, and are absent from both `cli/cadex_cli/agent.py` `CLI_OVERLAY` and
-`CadexAgentGuidance.md`. A1 decides each one, re-derived in new words:
+overlay. Each is settled below. A point marked ported is written in new words
+in `CLI_OVERLAY` (`cli/cadex_cli/agent.py`) unless named otherwise. Nothing
+was copied from the tag. The CLI test is
+`test_turn_loop.py::test_the_prompt_carries_the_guidance_that_lived_only_in_the_shell`.
 
-- the script must be deterministic and self-contained;
-- derive secondary dimensions from primary ones;
-- +Z is up;
-- give outputs short, meaningful names;
-- face pins (`@face-N of <output>`) and drawing cells (`@cell-N`) are ground
-  truth. This becomes live again with pick-to-comment;
-- rebuilds take 0.5 s to several s, so batch value changes;
-- after `assembly.mjcf`, check the collision shapes and the t=0 contact
-  line;
-- measured terminals: a fitted row is copied, not re-derived. This goes with
-  the terminal picker;
-- the board/net declaration walkthrough. The CLI has it only in tool
-  descriptions.
+| point | status | where |
+|---|---|---|
+| The script is deterministic and self-contained | ported | "THE MODEL IS ONE SCRIPT": same model twice, nothing random, no clock, no network, nothing read from outside the project |
+| Derive secondary dimensions from primary ones | ported | "BUILD IT PARAMETRIC": a few primary parameters, the rest computed from them |
+| +Z is up | ported | "THE MODEL IS ONE SCRIPT" |
+| Short, meaningful output names | ported | "THE MODEL IS ONE SCRIPT": the review, a comment and the next turn all name a part by its output |
+| Face pins (`@face-N`) and drawing cells (`@cell-N`) are ground truth | ported at part granularity; face pins owner to confirm; cells dropped (ADR-498) | "NOBODY IS WATCHING": a comment `on part <name>` names the output the person clicked. Face pins wait on the face-ID channel (§1, `cadex_pick.py`). Cell pins belonged to the blueprint editor, and sheets are outputs now (ADR-516) |
+| Rebuilds take 0.5 s to several s, so batch value changes | ported | "EVERY BUILD COSTS SECONDS": one `set_params` call, one `edit_script` call's `replacements` |
+| After `assembly.mjcf`, check the collision shapes and the t=0 contact line | already covered | `CadexAgentGuidance.md`: `inspect scope=contacts` after an `assembly.mjcf` export. Test: `test_agent_guidance.py::test_the_guidance_checks_the_rest_contacts_after_an_mjcf_export` |
+| Measured terminals: a fitted row is copied, not re-derived | ported in the form that survives | "A HARNESS IS DECLARED": a catalog board's terminal rows are used as they are. The terminal picker that fitted rows by hand is dropped (ADR-498, `cadex_terminal_pick.py`) |
+| The board/net declaration walkthrough | ported, reduced | "A HARNESS IS DECLARED": `boards(...)`/`nets(...)` rows, `set_params` changing them, `inspect scope=wiring`. Row shapes stay in `describe_api` and the `set_params` field descriptions, the live source, so the overlay does not copy them |
 
 Tool-gating rules that do not carry over:
 - the undo step per turn (replaced by revisions);
@@ -197,17 +197,15 @@ Rows a status appears in. A row with a split status counts under each part.
 
 | section | rows | ported | already covered | dropped | still to port | owner to confirm |
 |---|---|---|---|---|---|---|
-| §1 modules | 47 | 17 | 15 | 24 | 5 | 2 |
+| §1 modules | 47 | 18 | 15 | 24 | 4 | 2 |
 | §2 tools | 23 | 6 | 17 | 2 | 0 | 0 |
 | §3 editors | 7 | 5 | 2 | 5 | 1 | 0 |
 
-**W1 cannot be claimed while any row says "to port".** Six rows still do:
+**W1 cannot be claimed while any row says "to port".** Five rows still do:
 - `agent.py`: per-turn cost and the text-tool-call warning (A1);
 - `cadex_dimension.py`: the viewer overlay (D2.5);
 - `cadex_print.py` and the Parameters editor: printable-part display (D2.6);
-- `cadex_roles.py`: appearance-role colours in the viewer (D2);
-- `modes.py`: the guidance points in §4. None of them is in
-  `CadexAgentGuidance.md` or `CLI_OVERLAY` yet (A1).
+- `cadex_roles.py`: appearance-role colours in the viewer (D2).
 
 The two "owner to confirm" rows are face-level pins and the face-ID
 channel. A1 asks for part picking, and that is ported.

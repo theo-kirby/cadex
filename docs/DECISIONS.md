@@ -33678,3 +33678,47 @@ note. Proved on a copy of `orun2-w1-robin` against the built engine: the
 open that returned `CADEXD_RESTORE_FAILED` returns `stale_policy`,
 `cadex params --set policy_on=0` then accepts a new revision, and the next
 open restores with `matches_accepted: true`.
+
+## ADR-521 — The shell's leftover agent guidance is settled point by point in `CLI_OVERLAY` (2026-10-04, owner charter orun2 A1/W1)
+
+**Context.** The parity ledger's `modes.py` row was the last "to port"
+row on the agent's guidance: nine points that the shell's overlay and its
+`SYSTEM_PROMPT` gave the model, and that neither `CLI_OVERLAY` nor
+`CadexAgentGuidance.md` carried (`docs/SHELL-PARITY.md` §4). A1 makes the
+CLI's overlay plus the engine's guidance the single source, so each point
+is either kept there or dropped with a reason.
+
+**Decision.** Re-derived in new words in `CLI_OVERLAY`, with nothing read
+off the tag beyond the ledger's own summary:
+- the script is deterministic and self-contained, +Z is up, and outputs get
+  short names for what they are, because the review, a comment and the next
+  turn name a part by its output;
+- the few primary dimensions are parameters and the rest is computed from
+  them;
+- every build costs seconds, so value changes go in one `set_params` call
+  and edits in one `edit_script` call's `replacements`;
+- a comment `on part <name>` names the output the person clicked. This is
+  the review form of the shell's face pins. Face pins themselves stay
+  "owner to confirm" with the face-ID channel, and drawing-cell pins go
+  with the blueprint editor (ADR-498);
+- a harness is declared as `boards(...)`/`nets(...)` rows that `set_params`
+  can change; a catalog board's terminal rows are used as given, and
+  `inspect scope=wiring` reads back the route. The row shapes stay in
+  `describe_api` and the tool field descriptions, the live source.
+
+Already covered: the t=0 contact check after `assembly.mjcf` is in
+`CadexAgentGuidance.md` (`inspect scope=contacts`); this ADR only pins it.
+Dropped: copying a hand-fitted terminal row, with the terminal picker that
+produced one (ADR-498).
+
+**Cost.** ~25 lines of prompt text in every turn's system prompt.
+
+**What would reverse it.** A turn transcript showing one of these
+sentences steering the model wrong, for example batching edits that should
+have been checked one at a time.
+
+**Test.** `cli/tests/test_turn_loop.py::test_the_prompt_carries_the_guidance_that_lived_only_in_the_shell`
+pins each kept point in the assembled system prompt, and that the comment
+form the overlay describes is the one `comments.with_comments` writes.
+`src/Mod/cadex/cadex_tests/test_agent_guidance.py::test_the_guidance_checks_the_rest_contacts_after_an_mjcf_export`
+pins the covered point.

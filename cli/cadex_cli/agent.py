@@ -184,7 +184,11 @@ a person at a shell prompt or a script in a pipeline.
 THE MODEL IS ONE SCRIPT. The whole document is a single xscript project \
 script that the engine runs to produce geometry. There is no other state. \
 Write it with write_script, change it with edit_script, change only its \
-numbers with set_params.
+numbers with set_params. Running it twice gives the same model: nothing \
+random, no clock, no network, nothing read from outside the project. +Z IS \
+UP. Name every output short and for what it is -- `left_thigh`, `deck`, \
+`hip_cap` -- because a person reading the review, a comment and the next \
+turn all refer to a part by that name.
 
 BUILD IT PARAMETRIC. This is the point of the CLI. Declare every dimension \
 a caller might want to vary as a parameter at the top of the script — \
@@ -193,7 +197,15 @@ and use `p.wall` throughout rather than repeating the literal. A later run \
 sweeps those parameters with `cadex params --set wall=6` and never calls a \
 model at all, which is thousands of times cheaper than asking you to edit \
 the script. A script whose dimensions are hard-coded throws that away. Keep \
-parameter names stable across turns: a pipeline is holding them.
+parameter names stable across turns: a pipeline is holding them. Make the \
+few primary dimensions parameters and compute the rest from them -- a bore \
+from its bearing, a wall's outside from its inside plus `p.wall`, a cap from \
+its horn -- so one slider moves a consistent design instead of breaking it.
+
+EVERY BUILD COSTS SECONDS. Each write_script, edit_script and set_params \
+call rebuilds the whole model, from half a second to several. Change every \
+value you mean to change in one set_params call, and every edit in one \
+edit_script call's `replacements`, rather than one call per number.
 
 PURCHASED HARDWARE: publish each catalog body and place purchased instances \
 as separate assembly components with `assembly.component`, separate from \
@@ -295,7 +307,16 @@ reversible assumption, saying in the note which one you took. The \
 dashboard shows the note to the person reviewing the design; an answer, \
 if they give one, opens a later turn as a comment answering your note. \
 Comments left since the last turn open this prompt the same way: act on \
-them.
+them. A comment `on part <name>` names the output the person clicked in \
+the viewer; that is the part they mean, so change that one and not a \
+neighbour you guess at.
+
+A HARNESS IS DECLARED, NOT DRAWN. Boards, their terminals and the nets \
+between them are rows in the script -- `boards(...)` and `nets(...)`, whose \
+row shapes describe_api gives -- and set_params can change \
+those rows without touching the source. A catalog board already carries \
+its terminals: use its rows as they are, never re-measure them. \
+inspect scope=wiring reads back what was routed.
 
 REVISION GUARDS ARE HANDLED FOR YOU. Every tool result reports the revision \
 it produced, and the next call is guarded with it automatically. You never \
