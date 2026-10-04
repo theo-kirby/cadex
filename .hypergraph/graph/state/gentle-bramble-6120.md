@@ -25,6 +25,7 @@ None yet.
 
 - sweet-brook-2725 — orun1 operator-declared charter gap
 - light-path-5130 — superseded in orun2's R1 frontier pruning
+- snowy-beacon-2710 — impact misdirected here (orun2 C1 work); redirected by empty-heron-1077 and folded into wild-ocean-3878; no claim here changed
 
 ## Superseded
 

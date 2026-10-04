@@ -21,6 +21,11 @@ Open charter criterion for run orun2: **S1. The shell is gone and nothing reache
 - **Delete commit** (`6b21d3f7`, ADR-498): `git ls-files shell` = 0 (6,185 tracked files went), no `.gitattributes` LFS rule or shell submodule remains; licensing restated — the manifest is FreeCAD-only, `test_the_repository_carries_no_gpl_source` pins no GPL SPDX header and nothing under `shell/`, NOTICE/THIRD_PARTY/PROVENANCE rewritten; `BLENDER.md` and `BLENDER-TREE.md` in `docs/history/`. Engine 2582/56 skipped, CLI 1292/1 skipped, packaged gate 35 passed [rec: calm-quartz-1493].
 - **Live-doc sweep** (`4266f639`, ADR-499): no live doc names `shell/`, `mesh_agent`, a `.blend` or `CADEX_BLENDER_EXECUTABLE`, pinned by `test_no_live_doc_names_the_deleted_shell`; only ADRs and the history set do [rec: mellow-pine-4848]. That sweep started from 192 live references counted before the disable commit [rec: old-arrow-4088].
 
+**Re-audited at `f3b4828f`** (measurement only, nothing changed) [rec: empty-heron-1077]:
+- `git ls-files shell` is 0 [rec: empty-heron-1077].
+- Every remaining `shell/`, `mesh_agent`, `.blend` or `CADEX_BLENDER_EXECUTABLE` hit is allowed. The hits are: ROADMAP Phase 6 (historical), the parity ledger, the orun2 before-measurement and report, the guard tests themselves, the "left with shell/ (ADR-498)" notes, older read-only probes, and two false positives ("shell/timeout wrappers") [rec: empty-heron-1077].
+- `test_project_docs.py` 40 passed. `test_licensing_compliance.py` 10 passed, 1 skipped. The skip is the packaged-gate test with `CADEX_ENGINE_ROOT` unset, so it does not count as a pass [rec: empty-heron-1077].
+
 Reconcile judgement: status stays `working` — implemented and evidenced; the human owns the charter checkbox and roles do not tick it. Declared target: `gap-s1-shell-gone-nothing-reaches`; every orun2 gap title carries the run because earlier runs reuse the letters [rec: winter-stone-5109].
 
 ## Negative knowledge
@@ -36,3 +41,4 @@ None yet.
 - crimson-union-6659 — ADR-497: Claude Code is the only harness; Codex/pi retired and test-pinned
 - calm-quartz-1493 — ADR-498: shell/ deleted, licensing restated without the GPL half; packaged gate 35 passed
 - mellow-pine-4848 — ADR-499: no live doc names the deleted shell, test-pinned; every S1 requirement evidenced
+- empty-heron-1077 — S1 re-audit at f3b4828f: shell 0 files, every remaining reference allowed, doc and licensing guards green
