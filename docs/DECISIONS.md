@@ -33938,3 +33938,41 @@ which the project's repository does not track. `test_dashboard_writes.py`'s
 page-started turns pass unchanged through the live-then-stored handover.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-527 — A preview skips static and swept fit (2026-10-04, owner charter orun2 C1)
+
+**Context.** The closing report's defect 4: the raw-NDJSON bar's preview
+lane (`cadexd_latency_integration.py`) ran at a median of 0.78 s against
+its 0.10 s bar, so the script's `ok` was false. cProfile around one warm
+preview inside the resident worker put 0.720 s of 0.767 s in
+`_measure_clearance`: 106 `optimalBoundingBox` calls (0.638 s) and two
+boolean `common`s, over a 24-hole filleted plate and a lever. A preview
+returns only solved placements (ADR-055) and discards the clearance,
+world-geometry, attachment and sweep rows it had paid for. Fit is advisory
+(`_check_fit` never refuses), so none of it can move a placement or decline
+a preview.
+
+**Decision.** `validate_and_solve_assembly(..., skip_derived=True)` — used
+only by the preview — skips the static fit, the fit and attachment checks
+and the swept fit, the same way it already skips traces, exports and
+exploded views. The accepting run measures all of them as before.
+
+**Measured** (dev tree, sb1x, two runs): preview median 0.043 s (was
+0.763–0.782 s), the first preview 0.28 s (was 1.03 s), and `ok: true`. The
+accepting lanes did not move: `set_params` 0.38 s, with draft display
+0.46–0.48 s. The bar is unchanged.
+
+**Cost.** A preview no longer notices that a pose collides; it never
+reported that anyway. No protocol or response shape changes.
+
+**What would reverse it.** A preview that reports fit (for example, a live
+collision tint while dragging) would need clearance back, and should then
+measure only the pairs whose relative pose moved.
+
+**Test.** `test_preview_skips_fit.py` runs a real preview under FreeCADCmd
+with all four fit stages patched to raise, and checks that it still poses
+the revolute joint where its parameter says. It fails on the tree before
+this change. `test_cadexd_lifecycle.py`'s preview test still checks that
+previews match the accepting path.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

@@ -156,9 +156,13 @@ Each was re-checked on 2026-10-04 while the screenshots were taken.
    real engine in headless Chromium: a turn run through the CLI's `main()`,
    not from the page, shows its transcript, status and both decoded `look`
    images, and the project's repository tracks none of it.
-4. **The raw-NDJSON bar's preview lane misses its own bar**: median
-   0.763 s against 0.10 s, so the script's overall `ok` is false. The
-   same was recorded before this run. It is not the slider's path.
+4. **The raw-NDJSON bar's preview lane: fixed (ADR-527).** Its median
+   was 0.763 s against a 0.10 s bar, so the script's `ok` was false.
+   Profiling one warm preview put 0.72 s of 0.77 s in static-fit
+   clearance, which the preview threw away. A preview now skips fit, as it
+   already skipped traces and exports. The median is now 0.043 s, the
+   first preview 0.28 s, `ok` is true, and the bar is unchanged.
+   `test_preview_skips_fit.py` pins it.
 5. **W1 step 7 ran on the CPU.** The kernel had no `nvidia` module, so
    the 5090 leg is waiting on the owner. This is a lifecycle check, not a
    gait.
