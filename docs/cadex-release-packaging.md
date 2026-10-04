@@ -184,8 +184,14 @@ runtimes except each other: they serve Qt's tools, PySide's generator and
 the compiler. The script deletes them and the leak gate refuses them. On
 2026-10-04 the same tree staged at **3,258,031,078 B** before and
 **2,588,443,821 B** after (−669,587,257 B, −20.6%; 40,916 → 40,578 files).
-The rest of the development environment (node, perl, opencv, pcl, the
-compiler's own `lib/gcc`) is still copied.
+**OpenCV, PCL, Node and Perl are pruned too (ADR-532).** No payload ELF
+links them except each other and `cv2`, which nothing in the payload
+imports; Node and Perl are pyright's and git's runtimes, and the payload
+carries neither interpreter. The same tree staged at 2,588,443,821 B before
+and **2,213,397,834 B** after (−375,045,987 B, −14.5%; 40,578 → 36,594
+files). Still copied from the development environment: the compiler's own
+`lib/gcc`, and nine libraries that lost their last user with ADR-532
+(listed there).
 
 Two honest consequences:
 

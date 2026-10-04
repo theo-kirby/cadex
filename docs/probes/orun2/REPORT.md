@@ -3,7 +3,8 @@
 Verified against source: 2026-10-04, at `37733eec` (the orun2 run branch).
 The D1 and D2 numbers were measured at `13c660cf`; no later commit touches
 the build, the setup route or the slider path.
-ADR-531 (the payload's LLVM prune) landed after; §3 and defect 6 carry it.
+ADR-531 and ADR-532 (the payload's LLVM, then OpenCV/PCL/Node/Perl prunes)
+landed after; §3 and defect 6 carry them.
 Charter: `.ouroboros/goal.md`, "Cadex is three things — the engine, the
 dashboard, the agent". Every number below was measured on sb1x (linux-64,
 32 cores). The owner ticks the criteria; this report claims none of them.
@@ -64,8 +65,8 @@ the after build. What changed is that the 4 steps are the documented route
 and need nothing but pixi. The installed footprint did not shrink in this
 table either: the pixi environment still carries the GUI-era dependencies,
 and that audit was deferred by the owner to the next run. After this table
-was measured, the staged payload lost LLVM and clang (ADR-531, defect 6):
-2,588,443,821 B.
+was measured, the staged payload lost LLVM and clang (ADR-531), then
+OpenCV, PCL, Node and Perl (ADR-532, defect 6): 2,213,397,834 B.
 
 ## 2. The parity ledger
 
@@ -100,6 +101,7 @@ and the face-ID channel. Part picking, which A1 asks for, is ported.
 | The studio renderer's child-process entry, which only the shell spawned | ADR-529 |
 | The engine's FreeCAD preference-group fallback for its sandbox budgets, which nothing writes now | ADR-530 |
 | LLVM and clang from the staged payload: 669,587,257 B that no ELF in it links | ADR-531 |
+| OpenCV, PCL, Node and Perl from the staged payload: 375,045,987 B that no ELF or module in it uses | ADR-532 |
 | Every ledger row marked dropped: cage ring-drag, the wiring editor UI, the blueprint editor, playback baking, chrome, the Blender transcript store, the live policy session, the demo biped | ADR-498, by the ledger's reasons and the owner notes |
 
 ## 4. D2 — slider latency
@@ -183,13 +185,14 @@ Each was re-checked on 2026-10-04 while the screenshots were taken.
    driver needs the owner. Once it loads, the 5090 leg is one command,
    `cadex walk` on `orun2-w1-robin` without `JAX_PLATFORMS=cpu`. The CPU run
    is a lifecycle check, not a gait.
-6. **The installed footprint shrank by one slice; the pixi environment did
-   not.** The staged payload no longer carries LLVM and clang, which no ELF
-   in it links (ADR-531): 3,258,031,078 B → **2,588,443,821 B** on the same
-   tree (−669,587,257 B, −20.6%), with the packaged gate green. Still
-   copied: node, perl, opencv, pcl and the compiler's `lib/gcc`. The
-   `.pixi` environment (5.65 GB) is unchanged; its GUI-era dependency audit
-   is deferred by the owner to the next run.
+6. **The installed footprint shrank by two slices; the pixi environment
+   did not.** The staged payload no longer carries LLVM and clang (ADR-531)
+   or OpenCV, PCL, Node and Perl (ADR-532), none of which any ELF or module
+   in it uses: 3,258,031,078 B → 2,588,443,821 B → **2,213,397,834 B** on
+   the same tree (−32.1% in all), with the packaged gate green. Still
+   copied: the compiler's `lib/gcc` and nine libraries ADR-532 orphaned.
+   The `.pixi` environment (5.65 GB) is unchanged; its GUI-era dependency
+   audit is deferred by the owner to the next run.
 
 ## 7. The done claim
 

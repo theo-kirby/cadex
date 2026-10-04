@@ -207,6 +207,20 @@ find "${payload}/lib" -maxdepth 1 \( -name 'libLLVM*' -o -name 'libclang*' \
      -o -name 'libLTO.so*' -o -name 'libRemarks.so*' \) -exec rm -rf {} + 2>/dev/null || true
 rm -rf "${payload}/lib/clang"
 
+# OpenCV, PCL, Node and Perl: no ELF in the payload links them except each
+# other and OpenCV's own Python binding, which nothing in the payload
+# imports (ADR-532). OpenCV and PCL are direct pixi dependencies of the
+# inherited GUI-era tree -- the only cv2 import is the Assembly GUI's video
+# export, which headless never loads, and no built module links PCL. Node
+# comes with pyright and Perl with git, both developer tools; the payload
+# carries no node or perl executable, so their runtimes are dead weight.
+find "${payload}/lib" -maxdepth 1 \( -name 'libopencv*' -o -name 'libpcl*' \
+     -o -name 'libnode.so*' -o -name 'libnode.*dylib' \) -exec rm -rf {} + 2>/dev/null || true
+rm -rf "${payload}/lib/node_modules" "${payload}/lib/perl5" "${payload}/share/perl5" \
+       "${payload}/share/opencv4" "${payload}/share/pcl-"* \
+       "${payload}/lib/python"*/site-packages/cv2 \
+       "${payload}/lib/python"*/site-packages/opencv_python*.dist-info
+
 # ---------------------------------------------------------------------------
 # macOS: repair install names and rpaths for the payload's final location.
 # ---------------------------------------------------------------------------
@@ -286,6 +300,9 @@ leaked="$(find "${payload}" \( \
         -o -iname 'libpyside6*' -o -iname 'libshiboken6*' \
         -o -iname 'PySide6-*.dist-info' -o -iname 'shiboken6-*.dist-info' \
         -o -name 'libLLVM*' -o -name 'libclang*' \
+        -o -name 'libopencv*' -o -name 'libpcl*' -o -name 'libnode.*' \
+        -o -path "${payload}/lib/python*/site-packages/cv2" \
+        -o -path "${payload}/lib/node_modules" -o -path "${payload}/lib/perl5" \
     \) -print 2>/dev/null | head -20 || true)"
 if [ -n "${leaked}" ]; then
     echo "FAIL: a GUI or toolchain dependency leaked into the headless engine payload:"

@@ -34158,3 +34158,58 @@ payload under `CADEX_ENGINE_ROOT`. Engine suite, CLI suite CPU-only, and
 the packaged lifecycle gate on the restaged payload.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-532 — The staged engine payload stops carrying OpenCV, PCL, Node and Perl (2026-10-04, owner charter orun2 long-term subtraction)
+
+**Context.** REPORT defect 6 after ADR-531: the payload still copied node,
+perl, opencv and pcl from the development environment. The same `readelf -d`
+pass, over the 1,764 ELFs of a payload staged at `7cdf79a9`, finds that no
+ELF outside each family links `libopencv*`, `libpcl*` or `libnode.so*`,
+except OpenCV's own Python binding `cv2`, and no payload library names any
+of them as a `dlopen` string. Nothing in the payload imports `cv2`: the one
+`import cv2` in the tree is the Assembly GUI's video export
+(`src/Mod/Assembly/CommandCreateSimulation.py`, reached only from
+`InitGui.py`), which a headless engine never loads, and no `cadex` module,
+CLI, trainer or analysis module imports it. No built module links PCL.
+`conda-meta` says why each is there: `opencv` and `pcl` are direct
+`pixi.toml` dependencies left from the GUI-era tree, `nodejs` arrives with
+`pyright` and `perl` with `git` — developer tools. The payload's `bin/`
+carries no `node` or `perl` executable, so `lib/node_modules` (npm) and
+`lib/perl5` are runtimes without an interpreter. The `.pixi` environment
+is not touched (the owner deferred its audit to the next run). The
+GPU-visible half of W1 step 7 stays blocked: `nvidia-smi` could not reach
+the driver this iteration either.
+
+**Decision.** `build_engine_payload.sh` deletes `lib/libopencv*`,
+`lib/libpcl*`, `lib/libnode.*`, `lib/node_modules`, `lib/perl5`,
+`share/perl5`, `share/opencv4`, `share/pcl-*`, and `site-packages/cv2` with
+its two `opencv_python*` dist-info stubs, on both staging paths. Its leak
+gate refuses the libraries, `cv2`, `lib/node_modules` and `lib/perl5`.
+`share/licenses/opencv4` stays: carrying a licence text for something not
+shipped costs nothing.
+
+**Measured.** The same tree staged with the old and new script:
+2,588,443,821 B and 40,578 files before, 2,213,397,834 B and 36,594 files
+after — −375,045,987 B, −14.5%. Against the payload before ADR-531
+(3,258,031,078 B) the two prunes together remove 32.1%. A `NEEDED` pass on
+the new payload resolves every entry it resolved before; nine libraries
+lose their last user with this prune (`libQt6Test`, `libavif`,
+`libboost_iostreams`, `libbrotlidec`, `libbrotlienc`, `libcares`,
+`libjasper`, `libuv`, `libwebpdecoder`) and are left for a later audited
+slice rather than swept up here.
+
+**Cost.** None found: the packaged lifecycle gate, the guardrails and the
+licensing test pass on the pruned payload (41 passed). An engine feature
+that wants to write video through OpenCV would have to un-prune it and say
+why; Cadex's films are encoded by the CLI with `ffmpeg`
+(`cli/cadex_cli/video.py`), outside the payload.
+
+**What would reverse it.** A payload binary or Python module that links,
+`dlopen`s or imports one of them; the leak gate fails the stage loudly.
+
+**Test.** `test_headless_import_guardrails.py::
+test_the_payload_prunes_opencv_pcl_node_and_perl` pins the prune and the
+gate; `test_a_staged_payload_carries_no_opencv_pcl_node_or_perl` checks a
+staged payload under `CADEX_ENGINE_ROOT`.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
