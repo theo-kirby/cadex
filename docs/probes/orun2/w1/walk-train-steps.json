@@ -1,0 +1,84 @@
+{
+ "7_training": {
+  "runs_listed": [
+   "no-policy-8s",
+   "r3-ppo-1",
+   "r3-rollout-seed0",
+   "w1-aside",
+   "bal-1",
+   "w1-cpu-1",
+   "w1-cpu-2"
+  ],
+  "selected": "w1-cpu-2",
+  "metrics": {
+   "iteration": "iteration: 2",
+   "total": "total: 3",
+   "reward_per_step": "reward_per_step: -0.042631",
+   "loss": "loss: 10.301",
+   "episode_steps": "episode_steps: 17.778"
+  },
+  "histories": {
+   "curve": 3,
+   "loss_curve": 3,
+   "episode_steps_curve": 3
+  },
+  "checkpoint_source": "Checkpoints: this run's own train/ directory",
+  "training_record": [
+   "requested allow_cpufalse",
+   "requested assignments{}",
+   "requested envs8",
+   "requested init_from\u2014",
+   "requested init_from_parent_task\u2014",
+   "requested init_from_task_change\u2014",
+   "requested iterations3",
+   "requested label\u2014",
+   "requested prompts0",
+   "requested remotefalse",
+   "requested seed0",
+   "requested task\u2014",
+   "requested timeout_s1800",
+   "receipt comparison{\"actions\":[{\"actuator\":\"joint_wheel_l_axle/motor\",\"fallback\":\"0\",\"high\":92.18251,\"index\":0,\"joint\":\"joint_wheel_l_axle\",\"kind\":\"motor\",\"low\":-92.18251,\"motion_type\":\"angular\",\"scale\":0.001,\"source\":\"torque_limit_nmm\",\"unit\":\"nmm\"},{\"actuator\":\"joint_wheel_r_axle/motor\",\"fallback\":\"0\",\"high\":92.18251,\"index\":1,\"joint\":\"joint_wheel_r_axle\",\"kind\":\"motor\",\"low\":-92.18251,\"motion_type\":\"angular\",\"scale\":0.001,\"source\":\"torque_limit_nmm\",\"unit\":\"nmm\"}],\"actions_id\":\"10d26a45183bfbe6545a5c2f46aa9e8cbbf20059f9ff86f61bedf81eeff33d23\",\"objective\":{\"episode\":{\"control_hz\":50,\"control_interval_s\":0.02,\"episode_seconds\":10,\"max_steps\":500,\"reset_keyframe\":\"solved\",\"reward_stage\":\"after_step\",\"solver_step_s\":0.002,\"solver_steps_per_action\":10},\"functions\":[\"abs\",\"arcsin\",\"arctan\",\"asin\",\"cos\",\"exp\",\"sin\",\"sqrt\",\"tanh\"],\"observations\":[{\"adr\":0,\"channels\":[\"rot_qw\",\"rot_qx\",\"rot_qy\",\"rot_qz\"],\"dim\":4,\"grounded_kind\":\"imu\",\"grounded_sensor\":\"imu\",\"kind\":\"component_orientation\",\"name\":\"rot\",\"scale\":1,\"sensor\":\"obs/0\",\"target\":\"comp_board\",\"unit\":\"quat\"},{\"adr\":4,\"channels\":[\"gyro_x\",\"gyro_y\",\"gyro_z\"],\"dim\":3,\"grounded_kind\":\"imu\",\"grounded_sensor\":\"imu\",\"kind\":\"component_angular_velocity\",\"name\":\"gyro\",\"scale\":57.29577951308232,\"sensor\":\"obs/1\",\"target\":\"comp_board\",\"unit\":\"deg/s\"},{\"adr\":7,\"channels\":[\"wheel_l_pos\"],\"dim\":1,\"grounded_kind\":\"joint_encoder\",\"grounded_sensor\":\"enc_l\",\"kind\":\"position\",\"name\":\"wheel_l_pos\",\"scale\":57.29577951308232,\"sensor\":\"obs/2\",\"target\":\"joint_wheel_l_axle\",\"unit\":\"deg\"},{\"adr\":8,\"channels\":[\"wheel_r_pos\"],\"dim\":1,\"grounded_kind\":\"joint_encoder\",\"grounded_sensor\":\"enc_r\",\"kind\":\"position\",\"name\":\"wheel_r_pos\",\"scale\":57.29577951308232,\"sensor\":\"obs/3\",\"target\":\"joint_wheel_r_axle\",\"unit\":\"deg\"},{\"adr\":9,\"channels\":[\"chassis_pos_x\",\"chassis_pos_y\",\"chassis_pos_z\"],\"dim\":3,\"kind\":\"component_position\",\"name\":\"chassis_pos\",\"role\":\"privileged\",\"scale\":1000,\"sensor\":\"obs/4\",\"target\":\"comp_chassis\",\"unit\":\"mm\"},{\"adr\":12,\"channels\":[\"chassis_vel_x\",\"chassis_vel_y\",\"chassis_vel_z\"],\"dim\":3,\"kind\":\"component_linear_velocity\",\"name\":\"chassis_vel\",\"role\":\"privileged\",\"scale\":1000,\"sensor\":\"obs/5\",\"target\":\"comp_chassis\",\"unit\":\"mm/s\"},{\"adr\":15,\"channels\":[\"wheel_l_vel\"],\"dim\":1,\"grounded_kind\":\"joint_encoder\",\"grounded_sensor\":\"enc_l\",\"kind\":\"velocity\",\"name\":\"wheel_l_vel\",\"scale\":57.29577951308232,\"sensor\":\"obs/6\",\"target\":\"joint_wheel_l_axle\",\"unit\":\"deg/s\"},{\"adr\":16,\"channels\":[\"wheel_r_vel\"],\"dim\":1,\"grounded_kind\":\"joint_encoder\",\"grounded_sensor\":\"enc_r\",\"kind\":\"velocity\",\"name\":\"wheel_r_vel\",\"scale\":57.29577951308232,\"sensor\":\"obs/7\",\"target\":\"joint_wheel_r_axle\",\"unit\":\"deg/s\"},{\"adr\":17,\"channels\":[\"com_x\",\"com_y\",\"com_z\"],\"dim\":3,\"kind\":\"centre_of_mass\",\"name\":\"com\",\"role\":\"privileged\",\"scale\":1000,\"sensor\":\"obs/8\",\"target\":\"comp_chassis\",\"unit\":\"mm\"},{\"adr\":20,\"channels\":[\"com_vel_x\",\"com_vel_y\",\"com_vel_z\"],\"dim\":3,\"kind\":\"centre_of_mass_velocity\",\"name\":\"com_vel\",\"role\":\"privileged\",\"scale\":1000,\"sensor\":\"obs/9\",\"target\":\"comp_chassis\",\"unit\":\"mm/s\"},{\"adr\":23,\"channels\":[\"wheel_l_torque\"],\"dim\":1,\"kind\":\"actuator_force\",\"name\":\"wheel_l_torque\",\"role\":\"privileged\",\"scale\":1000,\"sensor\":\"obs/10\",\"target\":\"joint_wheel_l_axle\",\"unit\":\"nmm\"},{\"adr\":24,\"channels\":[\"wheel_r_torque\"],\"dim\":1,\"kind\":\"actuator_force\",\"name\":\"wheel_r_torque\",\"role\":\"privileged\",\"scale\":1000,\"sensor\":\"obs/11\",\"target\":\"joint_wheel_r_axle\",\"unit\":\"nmm\"}],\"reward\":[{\"expression\":\"1.0\",\"label\":\"alive\",\"weight\":2},{\"expression\":\"2*sqrt(rot_qx*rot_qx + rot_qy*rot_qy)\",\"label\":\"tilt\",\"weight\":-3},{\"expression\":\"tanh(sqrt(com_x*com_x + com_y*com_y)/80.000)\",\"label\":\"drift\",\"weight\":-2},{\"expression\":\"tanh(sqrt(com_vel_x*com_vel_x + com_vel_y*com_vel_y)/100)\",\"label\":\"com_speed\",\"weight\":-0.75},{\"expression\":\"tanh(sqrt(chassis_vel_x*chassis_vel_x + chassis_vel_y*chassis_vel_y)/150)\",\"label\":\"top_speed\",\"weight\":-0.5},{\"expression\":\"abs(2*(rot_qw*rot_qz + rot_qx*rot_qy))\",\"label\":\"heading\",\"weight\":-3},{\"expression\":\"tanh(abs(gyro_z)/90)\",\"label\":\"yaw_rate\",\"weight\":-0.4},{\"expression\":\"wheel_l_torque*wheel_l_torque + wheel_r_torque*wheel_r_torque\",\"label\":\"control_cost\",\"weight\":-0.00002942001909829243}],\"schema\":\"cadex-training-task-v1\",\"termination\":[{\"above\":null,\"below\":75.25,\"expression\":\"chassis_pos_z\",\"label\":\"fallen\"},{\"above\":null,\"below\":0.85,\"expression\":\"1 - 2*(rot_qx*rot_qx + rot_qy*rot_qy)\",\"label\":\"tipped\"},{\"above\":250,\"below\":null,\"expression\":\"sqrt(com_x*com_x + com_y*com_y)\",\"label\":\"strayed\"},{\"above\":0.71,\"below\":null,\"expression\":\"abs(2*(rot_qw*rot_qz + rot_qx*rot_qy))\",\"label\":\"spun\"}]},\"objective_id\":\"v1:3ce3a8ebefde920104f39cce0b3f124845316bdf2959497cfb85ab1bc33009a7\",\"training_seed\":0}",
+   "receipt devicecpu",
+   "receipt parameters5058",
+   "receipt reward_per_step-0.042631",
+   "receipt sha256d2556f70a25c8d4d5400195b67ca1b57d63729d7c528e648e7bc14ec89e99e0d",
+   "receipt task_sha256d50e953bafb1c5ed285fc618fe08251d5b30b6eeec49b4db97619bde9a08b1fc",
+   "receipt wall_time_s13.227",
+   "receipt witness_error6.8400e-9",
+   "task sha256d50e953bafb1c5ed285fc618fe08251d5b30b6eeec49b4db97619bde9a08b1fc",
+   "policyw1-cpu-2.cxpolicy \u00b7 d2556f70a25c8d4d5400195b67ca1b57d63729d7c528e648e7bc14ec89e99e0d",
+   "rollout seed0",
+   "rollout total reward8.8193",
+   "rollout gaitdid not walk \u2014 terminated: tipped at step 19; training episodes ended early: a median of 23 of 500 steps over the last 50 iterations",
+   "rollout body travel54.982 mm \u00b7 tilt \u2264 30.527\u00b0 \u00b7 heading -0.32639\u00b0"
+  ]
+ },
+ "8_evaluate": {
+  "status": "fail: 0 of 10 seeds pass \u00b7 policy policy (d2556f70a25c) on task balance_task \u00b7 revision bda7c1c9c31f, the accepted design \u00b7 evaluated 2026-10-04T02:33:07Z \u00b7 failing B1 (10 of 10), B2 (10 of 10), B5 (10 of 10)",
+  "verdict": "fail",
+  "shown": {
+   "name": "w1-cpu-2",
+   "verdict": "fail",
+   "seeds": 10,
+   "film": "ready",
+   "filmed": [
+    1101
+   ]
+  },
+  "predicates": [
+   "B1completed\u2265 10 of 10000",
+   "B2max_tilt_deg\u2264 300 of 1032.40233.62836.109",
+   "B3max_drift_com_heights\u2264 210 of 100.588290.606470.67919",
+   "B4max_heading_deg\u2264 2010 of 100.287790.467330.61579",
+   "B5recovery_s_max\u2264 20 of 10not measured\u2014\u2014"
+  ],
+  "film_images": 2,
+  "film_video": 1
+ },
+ "progress_tail": [
+  "| 2026-10-04T02:32:01Z | script | e76783bf | a8072033 | script --set script.py |  |",
+  "| 2026-10-04T02:32:20Z | params | bda7c1c9 | 812358fc | params policy_on=1 | total_reward 8.8 (\u0394 -761.3 vs 46031050 at 770.1) |",
+  "| 2026-10-04T02:32:40Z | walk | bda7c1c9 | 812358fc | walk 3 it \u00d7 8 envs \u2192 runs/w1-cpu-2 | clearance offending 0; unknown 0; pairs checked 378 (initial solved pose; 0.1 mm / 1e-06 mm\u00b3); motion travel_mm 57.72 on comp_chassis, travel_deg 30.53 on comp_screw_clamp_r_1 over 21 solved frame(s); docs notes 4, none missing; objective v1:3ce3a8ebefde920104f39cce0b3f124845316bdf2959497cfb85ab1bc33009a7; training_seed 0; rollout_seed 0; actions 10d26a45183bfbe6545a5c2f46aa9e8cbbf20059f9ff86f61bedf81eeff33d23; previous evidence: none; deltas are descriptive; matching objectives do not establish equivalent control difficulty |",
+  "| 2026-10-04T02:33:07Z | evaluate | bda7c1c9 | 812358fc | evaluate policy on balance_task \u2192 fail (w1-cpu-2) | evaluation fail 0/10 seeds: B1 (10 of 10); B2 (10 of 10); B5 (10 of 10) |"
+ ]
+}
