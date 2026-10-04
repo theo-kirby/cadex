@@ -1,68 +1,54 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""The MCP stdio server ``claude`` spawns, and the socket it relays down.
+"""``cadex mcp``'s transport: MCP over stdio, answered by a tool host (ADR-538).
 
-Run as ``python <path>/mcp.py --socket <path> --token <token>``, arranged by
-:mod:`cadex_cli.agent` through ``--mcp-config``. It is a *child of
-``claude``*, not of the CLI, so it shares nothing with the parent but the
-socket: no engine, no project, no state of its own beyond the request it is
-relaying — and no import outside the standard library, which is what lets it
-be started as a bare script path with nothing on ``PYTHONPATH``.
+Cadex has no agent of its own. Any agent that speaks MCP -- Claude Code,
+Codex, Pi -- registers ``cadex mcp --project DIR`` as a stdio server and
+gets the project's tools and the guidance that goes with them. This module is
+only the wire: newline-delimited JSON-RPC 2.0 on stdin/stdout, the subset
+every client exercises -- ``initialize``, ``notifications/initialized``,
+``ping``, ``tools/list``, ``tools/call`` -- and a proper ``-32601`` for
+anything else. What the tools do is the host's: :class:`ToolHost`, which
+``cadex mcp`` implements with the project's engine and the bridge.
 
-The transport is newline-delimited JSON-RPC 2.0 on stdin/stdout. Only the
-subset Claude Code actually exercises is implemented — ``initialize``,
-``notifications/initialized``, ``ping``, ``tools/list``, ``tools/call`` —
-because a shim that answers methods nobody sends is a shim with untested
-code in it. Anything else gets a proper ``-32601``.
+The guidance travels as the ``instructions`` of the ``initialize`` result,
+which is where an MCP client puts a server's own system-prompt text, so a
+client that reads it needs no other setup. ``cadex guidance`` prints the
+same text for one that does not.
 
-Standard library only, and deliberately: this process is spawned by a
-program we do not control, in an environment we did not set up.
+The host is told when the client has gone quiet: :func:`serve` waits for
+the next message at most ``idle_seconds`` and calls ``host.idle()`` when
+none came, so the host can let go of what it holds -- the project lock,
+above all, so the agent's own ``cadex`` commands on the same project get
+through between bursts of tool calls.
 """
 
 from __future__ import annotations
 
-import argparse
 import json
-import socket
-import sys
-from typing import Any
+import os
+import select
+from typing import Any, BinaryIO, Protocol
 
 SERVER_NAME = "cadex"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "0.2.0"
 DEFAULT_PROTOCOL_VERSION = "2024-11-05"
 
-#: Matches the bridge's own socket timeout: a rebuild may take minutes.
-RELAY_TIMEOUT_SECONDS = 3600.0
 
+class ToolHost(Protocol):
+    """What answers the tools: the engine, behind :class:`cadex_cli.bridge.Bridge`."""
 
-class BridgeUnreachable(OSError):
-    """The parent's bridge socket did not answer."""
+    def instructions(self) -> str: ...
 
+    def tools(self) -> list[dict[str, Any]]:
+        """Each tool as ``{"name", "description", "input_schema"}``."""
 
-def bridge_request(
-    socket_path: str, token: str, payload: dict[str, Any]
-) -> dict[str, Any]:
-    """One request down the bridge socket; one reply back."""
+    def call(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        """``{"content": [MCP content blocks], "is_error": bool}``."""
 
-    message = dict(payload)
-    message["token"] = token
-    connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    connection.settimeout(RELAY_TIMEOUT_SECONDS)
-    try:
-        connection.connect(socket_path)
-        connection.sendall(json.dumps(message).encode("utf-8") + b"\n")
-        buffer = b""
-        while not buffer.endswith(b"\n"):
-            chunk = connection.recv(65536)
-            if not chunk:
-                break
-            buffer += chunk
-    finally:
-        connection.close()
-    if not buffer.strip():
-        raise BridgeUnreachable("The Cadex bridge closed without answering.")
-    return json.loads(buffer.decode("utf-8"))
+    def idle(self) -> None:
+        """The client sent nothing for a while; let go of what can be reopened."""
 
 
 def _write(message: dict[str, Any], stream: Any) -> None:
@@ -75,31 +61,10 @@ def _result(message_id: Any, result: dict[str, Any], stream: Any) -> None:
 
 
 def _error(message_id: Any, code: int, message: str, stream: Any) -> None:
-    _write(
-        {
-            "jsonrpc": "2.0",
-            "id": message_id,
-            "error": {"code": code, "message": message},
-        },
-        stream,
-    )
+    _write({"jsonrpc": "2.0", "id": message_id, "error": {"code": code, "message": message}}, stream)
 
 
-def _mcp_tools(socket_path: str, token: str) -> list[dict[str, Any]]:
-    reply = bridge_request(socket_path, token, {"op": "list_tools"})
-    return [
-        {
-            "name": tool["name"],
-            "description": tool["description"],
-            "inputSchema": tool["input_schema"],
-        }
-        for tool in reply.get("tools", [])
-    ]
-
-
-def handle(
-    message: dict[str, Any], socket_path: str, token: str, stream: Any
-) -> None:
+def handle(message: dict[str, Any], host: ToolHost, stream: Any) -> None:
     """Answer one JSON-RPC message. Split out so the tests can drive it."""
 
     method = str(message.get("method") or "")
@@ -110,13 +75,12 @@ def handle(
         _result(
             message_id,
             {
-                # Echo the client's version: this shim speaks the subset every
-                # revision of MCP shares, so refusing one would be posturing.
-                "protocolVersion": params.get(
-                    "protocolVersion", DEFAULT_PROTOCOL_VERSION
-                ),
+                # Echo the client's version: this server speaks the subset
+                # every revision of MCP shares.
+                "protocolVersion": params.get("protocolVersion", DEFAULT_PROTOCOL_VERSION),
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+                "instructions": host.instructions(),
             },
             stream,
         )
@@ -125,72 +89,54 @@ def handle(
     elif method == "ping":
         _result(message_id, {}, stream)
     elif method == "tools/list":
-        try:
-            _result(message_id, {"tools": _mcp_tools(socket_path, token)}, stream)
-        except (OSError, ValueError) as exc:
-            _error(message_id, -32000, f"Cadex bridge unreachable: {exc}", stream)
+        tools = [{"name": tool["name"], "description": tool["description"],
+                  "inputSchema": tool["input_schema"]} for tool in host.tools()]
+        _result(message_id, {"tools": tools}, stream)
     elif method == "tools/call":
         params = message.get("params") or {}
         try:
-            reply = bridge_request(
-                socket_path,
-                token,
-                {
-                    "op": "call",
-                    "tool": params.get("name", ""),
-                    "input": params.get("arguments") or {},
-                },
-            )
-        except (OSError, ValueError) as exc:
-            # A tool result, not a JSON-RPC error: the model can read this
-            # one and say so, where a transport error just ends the turn.
-            _result(
-                message_id,
-                {
-                    "content": [
-                        {"type": "text", "text": f"Cadex bridge unreachable: {exc}"}
-                    ],
-                    "isError": True,
-                },
-                stream,
-            )
-        else:
-            _result(
-                message_id,
-                {
-                    "content": reply.get("content", []),
-                    "isError": bool(reply.get("is_error", False)),
-                },
-                stream,
-            )
+            reply = host.call(str(params.get("name") or ""), dict(params.get("arguments") or {}))
+        except Exception as exc:  # the engine failing to open must reach the model
+            # A tool result, not a JSON-RPC error: the model can read this one
+            # and say so, where a transport error just ends its turn.
+            reply = {"content": [{"type": "text", "text": f"Cadex could not run the tool: {exc}"}],
+                     "is_error": True}
+        _result(message_id, {"content": reply.get("content", []),
+                             "isError": bool(reply.get("is_error", False))}, stream)
     elif message_id is not None:
         _error(message_id, -32601, f"Method not found: {method}", stream)
 
 
-def serve(socket_path: str, token: str, stdin: Any, stdout: Any) -> None:
+def serve(host: ToolHost, stdin: BinaryIO, stdout: Any, *, idle_seconds: float = 0.0) -> None:
+    """Answer messages until stdin closes; ``host.idle()`` after each quiet spell.
+
+    Reads the raw descriptor, not a buffered reader, so waiting with
+    ``select`` never misses a line already buffered.
+    """
+
+    fd = stdin.fileno()
+    pending = b""
+    quiet_since_idle = True
     while True:
-        line = stdin.readline()
-        if not line:
-            return
+        while b"\n" not in pending:
+            wait = idle_seconds if idle_seconds > 0 and not quiet_since_idle else None
+            ready, _, _ = select.select([fd], [], [], wait)
+            if not ready:
+                host.idle()
+                quiet_since_idle = True
+                continue
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                return
+            pending += chunk
+        line, pending = pending.split(b"\n", 1)
         line = line.strip()
         if not line:
             continue
         try:
-            message = json.loads(line)
-        except ValueError:
+            message = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
             continue
         if isinstance(message, dict):
-            handle(message, socket_path, token, stdout)
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="cadex_cli.mcp")
-    parser.add_argument("--socket", required=True)
-    parser.add_argument("--token", required=True)
-    args = parser.parse_args(argv)
-    serve(args.socket, args.token, sys.stdin, sys.stdout)
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+            handle(message, host, stdout)
+            quiet_since_idle = False

@@ -45,8 +45,6 @@ class RunReport:
     digest: str = ""
     params: dict[str, Any] = field(default_factory=dict)
     outputs: list[ExportedOutput] = field(default_factory=list)
-    session_id: str = ""
-    model: str = ""
     engine: dict[str, str] = field(default_factory=dict)
     out_dir: str = ""
     #: The project store's asset listing — every stored file with its size
@@ -91,15 +89,6 @@ class RunReport:
     #: ``film`` (ADR-459) is the film's state and where each sheet and
     #: video drawn from the seeds landed.
     evaluation: dict[str, Any] = field(default_factory=dict)
-    #: ``cadex comment``: the comment it left; ``cadex -p``: the owner's
-    #: comments the turn received (ADR-505).
-    comments: list[dict[str, Any]] = field(default_factory=list)
-    #: ``cadex -p --image``: each image the turn carried, by name, type,
-    #: size and SHA-256 — never the bytes (ADR-507).
-    attachments: list[dict[str, Any]] = field(default_factory=list)
-    #: ``cadex -p``: what the turn cost as Claude Code reported it --
-    #: tokens in, cached and out, ``cost_usd`` and ``duration_ms`` (ADR-523).
-    usage: dict[str, Any] = field(default_factory=dict)
     error: str = ""
     #: ``cadex revision``: the trail it listed, or the revision it put back (ADR-506).
     revisions: dict[str, Any] = field(default_factory=dict)
@@ -121,10 +110,7 @@ class RunReport:
             "digest": self.digest,
             "params": self.params,
             "outputs": [output.to_json() for output in self.outputs],
-            "session_id": self.session_id,
         }
-        if self.model:
-            payload["model"] = self.model
         if self.engine:
             payload["engine"] = self.engine
         if self.out_dir:
@@ -145,12 +131,6 @@ class RunReport:
             payload["smoke"] = dict(self.smoke)
         if self.evaluation:
             payload["evaluation"] = dict(self.evaluation)
-        if self.comments:
-            payload["comments"] = [dict(item) for item in self.comments]
-        if self.attachments:
-            payload["attachments"] = [dict(item) for item in self.attachments]
-        if self.usage:
-            payload["usage"] = dict(self.usage)
         if self.revisions:
             payload["revisions"] = dict(self.revisions)
         if self.budgets:

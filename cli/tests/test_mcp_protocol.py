@@ -1,18 +1,20 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""The MCP shim, the bridge socket, and the tool surface they publish.
+"""``cadex mcp``'s transport, the bridge, and the tool surface they publish.
 
 Everything here runs against :mod:`fake_cadexd`, so what is under test is
-the plumbing: the JSON-RPC subset Claude Code needs, the relay down the unix
-socket, the schemas generated from ``OP_ARG_SPECS``, and the revision the
-model never has to supply.
+the plumbing: the JSON-RPC subset an MCP client needs, the stdio loop and
+its idle callback, the schemas generated from ``OP_ARG_SPECS``, and the
+revision the model never has to supply (ADR-538).
 """
 
 from __future__ import annotations
 
 import io
 import json
+import os
+import threading
 from typing import Any
 
 import pytest
@@ -34,6 +36,26 @@ def bridge():
         yield running
 
 
+class _Host:
+    """The bridge as ``cadex mcp`` hosts it, without an engine to open."""
+
+    def __init__(self, bridge: Bridge) -> None:
+        self.bridge = bridge
+        self.idled = 0
+
+    def instructions(self) -> str:
+        return "the guidance"
+
+    def tools(self) -> list[dict[str, Any]]:
+        return self.bridge.tools()
+
+    def call(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        return self.bridge.call(tool, arguments)
+
+    def idle(self) -> None:
+        self.idled += 1
+
+
 def _rpc(bridge: Bridge, method: str, params: dict[str, Any] | None = None, id_: Any = 1):
     stream = io.StringIO()
     message: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
@@ -41,7 +63,7 @@ def _rpc(bridge: Bridge, method: str, params: dict[str, Any] | None = None, id_:
         message["id"] = id_
     if params is not None:
         message["params"] = params
-    mcp.handle(message, str(bridge.socket_path), bridge.token, stream)
+    mcp.handle(message, _Host(bridge), stream)
     raw = stream.getvalue()
     return json.loads(raw) if raw.strip() else None
 
@@ -54,6 +76,7 @@ def test_initialize_echoes_the_client_protocol_version(bridge) -> None:
     assert reply["result"]["protocolVersion"] == "2025-06-18"
     assert reply["result"]["capabilities"] == {"tools": {}}
     assert reply["result"]["serverInfo"]["name"] == "cadex"
+    assert reply["result"]["instructions"] == "the guidance"
 
 
 def test_initialized_and_ping_behave(bridge) -> None:
@@ -665,33 +688,20 @@ def test_a_dead_engine_becomes_a_tool_error_the_model_can_read() -> None:
     assert payload["failure_code"] == "CADEXD_UNREACHABLE"
 
 
-# -- the socket itself ---------------------------------------------------
+# -- the stdio loop ------------------------------------------------------
 
 
-def test_the_bridge_refuses_a_wrong_token(bridge) -> None:
-    reply = mcp.bridge_request(
-        str(bridge.socket_path), "not-the-token", {"op": "list_tools"}
-    )
-    assert reply == {"error": "bad bridge token"}
-
-
-def test_the_socket_lives_in_a_private_directory(bridge) -> None:
-    directory = bridge.socket_path.parent
-    assert directory.stat().st_mode & 0o077 == 0
-
-
-def test_the_socket_is_gone_after_the_bridge_stops() -> None:
-    client = FakeCadexd()
-    bridge = Bridge(client).start()
-    path = bridge.socket_path
-    bridge.stop()
-    assert not path.exists()
+def _pipe(text: str):
+    read, write = os.pipe()
+    os.write(write, text.encode("utf-8"))
+    os.close(write)
+    return os.fdopen(read, "rb", buffering=0)
 
 
 def test_serve_reads_newline_delimited_messages(bridge) -> None:
-    """The stdio transport, driven the way ``claude`` drives it."""
+    """The stdio transport, driven the way an MCP client drives it."""
 
-    stdin = io.StringIO(
+    stdin = _pipe(
         json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"})
         + "\n"
         + "\n"  # a blank line is not a message
@@ -700,22 +710,50 @@ def test_serve_reads_newline_delimited_messages(bridge) -> None:
         + "\n"
     )
     stdout = io.StringIO()
-    mcp.serve(str(bridge.socket_path), bridge.token, stdin, stdout)
+    mcp.serve(_Host(bridge), stdin, stdout)
 
     replies = [json.loads(line) for line in stdout.getvalue().splitlines() if line]
     assert [reply["id"] for reply in replies] == [1, 2]
     assert len(replies[1]["result"]["tools"]) == len(CLI_TOOL_OPS) + len(BRIDGE_TOOLS)
 
 
-def test_tools_list_reports_an_unreachable_bridge_rather_than_hanging() -> None:
+def test_a_quiet_client_lets_the_host_go_once_per_quiet_spell(bridge) -> None:
+    """``idle()`` once after a message and a quiet spell, not again until the
+    next message: the host is not woken to close what it already closed."""
+
+    read, write = os.pipe()
+    host, stdout = _Host(bridge), io.StringIO()
+    thread = threading.Thread(target=mcp.serve, args=(host, os.fdopen(read, "rb", buffering=0), stdout),
+                              kwargs={"idle_seconds": 0.05})
+    thread.start()
+    try:
+        os.write(write, (json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}) + "\n").encode())
+        threading.Event().wait(0.4)
+        assert host.idled == 1
+        os.write(write, (json.dumps({"jsonrpc": "2.0", "id": 2, "method": "ping"}) + "\n").encode())
+        threading.Event().wait(0.4)
+        assert host.idled == 2
+    finally:
+        os.close(write)
+        thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert [json.loads(line)["id"] for line in stdout.getvalue().splitlines()] == [1, 2]
+
+
+def test_a_host_that_cannot_open_the_engine_is_a_tool_error() -> None:
+    """The engine failing to open -- the project busy, no engine -- reaches
+    the model as a result it can read, not a transport error."""
+
+    class Closed(_Host):
+        def call(self, tool, arguments):
+            raise RuntimeError("project busy")
+
     stream = io.StringIO()
-    mcp.handle(
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
-        "/nonexistent/socket",
-        "token",
-        stream,
-    )
-    assert json.loads(stream.getvalue())["error"]["code"] == -32000
+    mcp.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {"name": "rebuild", "arguments": {}}}, Closed(Bridge(FakeCadexd())), stream)
+    result = json.loads(stream.getvalue())["result"]
+    assert result["isError"] is True and "project busy" in result["content"][0]["text"]
+
 
 
 def _contract(description: str) -> dict[str, Any]:

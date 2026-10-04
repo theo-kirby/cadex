@@ -34421,3 +34421,84 @@ and the section-cut write.
 `cadex section` leaves.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-538 — Cadex has no agent of its own: the agent is a library any agent uses (2026-10-04, owner direction)
+
+**Context.** Cadex had become its own agent:
+- `cadex -p` ran `claude -p` with a system prompt, an MCP relay shim, a unix-socket bridge and
+  a resumable session (ADR-061, ADR-497);
+- the walk ran design turns (`walk --prompt`), the dashboard ran turns from its chat
+  (ADR-504), and a turn store kept their transcripts (ADR-526);
+- comments and notes travelled between the owner and the next turn (ADR-505, ADR-512);
+- the agent's closing `DECISION:` and `NOTE` lines were scraped into the project's documents,
+  because that agent had no file tools (ADR-193, ADR-245).
+
+The owner is converging on a different shape. The person works in an agent of their choice,
+such as Claude Code, Pi or Codex, with Cadex's visualization beside it. Cadex should be a
+library that any of those agents uses: system prompts, a CLI surface and tool bindings. It
+should not be an agent with its own copy of all that.
+
+**Decision.** Cadex runs no model loop.
+- **`cadex mcp --project DIR`** is a standalone MCP stdio server that any client registers.
+  - `mcp.py` is the wire: JSON-RPC, the idle callback, and stdout guarded for the protocol.
+  - `McpSession` in `__main__.py` holds the engine.
+  - The tool list and the guidance need no engine. The first tool call takes the project lock
+    and opens the engine. `--idle` quiet seconds (default 30) close both, so the agent's own
+    `cadex … --wait` commands run between bursts of tool calls.
+  - A session that accepted a build lands one `PROGRESS.md` row (`mcp: write_script,
+    set_params ×2`) and one project commit as it closes.
+- **The guidance** is `guidance.py`: the situation, rewritten for an agent with a shell and
+  files, around `CadexAgentGuidance.md`.
+  - `cadex guidance` prints it.
+  - `cadex mcp` sends a brief of under 2,000 characters as the server's `instructions`. The
+    brief names the project and tells the agent to run `<repo>/cadex guidance` in its shell
+    before its first tool call. Claude Code cuts a server's instructions at 2,048 characters
+    by default, and the whole text is about 34,000.
+  - It no longer says "you have no shell" or "nobody is watching".
+  - It asks the agent to write `DECISIONS.md` and `docs/<subject>.md` itself, and to run CLI
+    legs with `--wait`.
+  - The engine guidance's five `DECISION:` lines now read "record it in DECISIONS.md".
+- **The bridge** is called in process. Its socket, token and `on_look` hook are gone.
+- **Removed:**
+  - `cadex -p`, with `--resume`, `--model`, `--claude`, `--image`, `CADEX_MODEL`,
+    `CADEX_EFFORT` and `CADEX_MAX_OUTPUT_TOKENS`;
+  - `agent.py`, along with `ClaudeTurn`, the nudge, imitated-tool-call detection and turn usage;
+  - `turn_store.py` and the dashboard's `turn/` route, `agent_turns` and `/api/turns`;
+  - `walk --prompt`, `--resume`, `--model` and `--claude`, and `run_leg`'s stderr relay;
+  - the owner channel: `comments.py`, `cadex comment`, the `leave_note` tool,
+    `cadex revision accept` and `--note`, the verdict lines, and the notes in `/api/project`
+    and `/note/`;
+  - `record_decisions`, `record_notes`, `read_project_docs` and `progress_rows`;
+  - the envelope's `session_id`, `model`, `comments`, `attachments` and `usage`;
+  - `agent.json`'s `session_id` and `model`. An older file is still read for its budgets.
+  - `test_ot7_runner.py` and `test_ot8_runner.py`. The ot7 and ot8 probe runners drove
+    `cadex -p` turns through `cadex_cli.agent`, so they cannot run any more. They stay under
+    `docs/probes/` as frozen evidence of those runs, like the receipts they wrote.
+
+This reverses or supersedes ADR-497 ("Claude Code is the only harness") and ADR-504 to
+ADR-507. It also supersedes ADR-512, ADR-519, ADR-523, ADR-526 and the turn half of ADR-061.
+The tool surface loses `leave_note` and is otherwise unchanged. No protocol op changes.
+
+**Verified.** Driven over real stdio against the dev engine with a one-box plate:
+- `initialize` answered in 0.05 s;
+- `tools/list` returned 14 tools, and a cold `write_script` took 0.4 s;
+- after a 3 s `--idle`, the engine closed and landed `| mcp | 9aafd182 | … | mcp: write_script |`
+  and a commit;
+- a `set_params` reopened the engine in 0.5 s, and closing stdin landed the second row and
+  commit;
+- unknown tools and methods were refused.
+
+`test_loop.py`'s whole design, train and evaluate rounds now run through `McpSession` against
+a live engine.
+
+**Test.**
+- `test_mcp_protocol.py`: the stdio loop over a real pipe, idle called once per quiet spell,
+  and an engine that will not open reaching the model as a tool error.
+- `test_agent_guidance.py`: the brief fits the cap and names the command, `cadex guidance`
+  prints the whole text, and none of the old turn conventions are left.
+- `test_project_docs.py::test_cadex_has_no_agent_harness_of_its_own`.
+
+**What would reverse it.** A product reason for Cadex to own a model loop again, such as a
+hosted service with no user agent. That would build on `cadex mcp`, not beside it.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

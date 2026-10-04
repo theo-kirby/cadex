@@ -37,12 +37,12 @@ where every machine keeps the trainer venv.
 
 The two projects reproduced here have **no domain notes**, and the walk's
 review says so: `script --set` installs the recipe and nothing beside it, and a
-recipe walk runs no design turn, so the reproduced project's `docs/` holds only
+recipe walk has no agent writing notes, so the reproduced project's `docs/` holds only
 the generated `inventory.md` and `clearance.md`. Both mechanisms declare an
 `<actuator>` and a `<sensor>` section, so the ADR-256 documentation eye reports
 `0 domain note(s) for 2 declared subject(s); no note for actuators, sensors`
-for each. That is the convention working, not a failure — the notes are a
-design turn's to write, and the CLI never invents one. The example directories
+for each. That is the convention working, not a failure — the notes are the
+agent's to write, and the CLI never invents one. The example directories
 beside this file carry the notes a maintained project would keep
 (`docs/actuators.md`, `docs/sensors.md`), which is where to read what the
 convention asks for.
@@ -85,8 +85,7 @@ here rather than taken on trust.
 through `run_leg` (`cli/cadex_cli/walk.py`), so what the walk decides is
 which legs run and with which flags — nothing else. The legs are `train`,
 `declare` (a script read, the digest edit, a `script --set`) and `rollout`,
-with a `sweep` leg in front of them only when `--set` asks for one, and
-design turns in front of that only when `--prompt` does. Which mechanism
+with a `sweep` leg in front of them only when `--set` asks for one. Which mechanism
 the project holds is not an input to any of those decisions.
 
 **The absence of a mechanism-specific path** is pinned by two regressions

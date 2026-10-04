@@ -1,6 +1,6 @@
 # AGENTS.md — Agent Entry Point
 
-Verified against source: 2026-10-03. **This is the single agent contract.**
+Verified against source: 2026-10-04. **This is the single agent contract.**
 `CLAUDE.md` only imports it (`@AGENTS.md`), so there is one file to read and
 one to edit (ADR-137).
 
@@ -17,17 +17,19 @@ Cadex is an AI-native CAD app for designing robots and mechanisms, and it is
    assembly one also carrying dynamics on MuJoCo, MJCF export, tasks,
    policies and rollouts (ADR-102, `docs/MUJOCO.md`). It builds, verifies,
    measures, renders, simulates and exports a design from its script.
-2. **The dashboard**, `./cadex review` (`cli/cadex_cli/review_server.py`
-   and `review_static/`) — the only UI. A person watches results there and
-   steps in when needed. A standard-library server, vanilla JS and the
-   vendored three.js: no npm, no bundler, no framework.
-3. **The agent** — the Claude Code CLI the user is already logged into.
-   **Claude Code is the only harness** (ADR-497). It drives
-   the engine through one tool surface (`cli/cadex_cli/tools.py`) over an MCP
-   stdio shim, with one guidance source (`CadexAgentGuidance.md` plus
-   `agent.system_prompt`). Cadex has no API key, provider SDK or model loop
-   of its own. `./cadex -p "…"` runs one turn; `./cadex params --set k=v`
-   sweeps parameters with no model in the loop.
+2. **The dashboard**, `./cadex app` (`cli/cadex_cli/review_server.py`
+   and `review_static/`) — the only UI, and **read-only** (ADR-537). A
+   person watches the design there while their agent works it. A
+   standard-library server, vanilla JS and the vendored three.js: no npm,
+   no bundler, no framework.
+3. **The agent bindings.** Cadex has no agent of its own (ADR-538): the
+   person brings one — Claude Code, Codex, Pi — and it drives the engine
+   through `cadex mcp --project DIR`, an MCP stdio server with one tool
+   surface (`cli/cadex_cli/tools.py`) and one guidance source
+   (`CadexAgentGuidance.md` plus `cli/cadex_cli/guidance.py`, sent as the
+   server's instructions and printed by `cadex guidance`), and through the
+   `cadex` commands. No API key, provider SDK or model loop;
+   `./cadex params --set k=v` sweeps parameters with no model at all.
 
 **This repository is the whole product** (ADR-030): clone it, `pixi run
 setup-engine && pixi run build-engine`, and you have all three. The Blender
@@ -77,7 +79,7 @@ in the same PR.
 ## Repo map
 
 ```
-cadex                     the CLI shim: ./cadex -p "..."  (docs/CLI.md)
+cadex                     the CLI shim: ./cadex mcp, ./cadex params  (docs/CLI.md)
 cli/cadex_cli/            the CLI, the agent's tools, and the dashboard (LGPL)
 cli/tests/                its suite; engine-needing tests skip without an engine
 src/Mod/cadex/            the engine (file map in docs/ARCHITECTURE.md)
@@ -95,9 +97,9 @@ build/release/bin/        FreeCADCmd, CadexGeometryWorker (no application)
 ```bash
 pixi run setup-engine && pixi run build-engine   # the whole setup (ADR-060)
 pixi run app                                     # the dashboard over ~/cadex-projects
-./cadex -p "a 40x25x15 mm bracket with a 6 mm bore" --project ./b --out ./b/out --json
+claude mcp add cadex -- ./cadex mcp --project ./b   # any MCP client; then ask your agent
 ./cadex params --project ./b --set bore=8 --out ./b/v2   # spends no tokens
-./cadex -p "add a 2 mm fillet" --project ./b --resume
+./cadex guidance                                 # what the agent is told
 
 pixi run test-engine                       # THE engine suite, no build needed
 pixi run python -m pytest cli/tests        # the CLI and dashboard suite
@@ -209,7 +211,3 @@ not happen, and a dead end recorded is worth as much as a success:
 The record graph's epoch marker is `winter-rain-7897` (2026-08-09); the 14 nodes
 before it are prehistory, distilled from the repo and an author interview.
 <!-- hypergraph:end -->
-
-## Unattended runs
-
-This repo is driven by Ouroboros, an unattended agent loop. Before you start, stop, or read one, read [`.ouroboros/AGENTS.md`](.ouroboros/AGENTS.md); past runs are in [`.ouroboros/RUNS.md`](.ouroboros/RUNS.md).

@@ -44,7 +44,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
 import mimetypes
-import os
 import re
 from pathlib import Path
 import struct
@@ -55,12 +54,9 @@ from typing import Any, Callable, Mapping
 from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
 
-from .comments import read_comments, read_notes
-from .project_docs import progress_rows
 from .revisions import read_history as read_revision_history
 from .session import read_agent_state
 from .studio import PRINTABLES, STUDIO
-from .turn_store import turn_file
 from .review_record import (
     policy_lineage,
     PROJECT_ARTIFACT_KEYS,
@@ -97,10 +93,6 @@ PROJECTS_STATIC_FILES = {
     "projects.js": ("text/javascript; charset=utf-8", STATIC_DIR / "projects.js"),
 }
 PROJECTS_SCHEMA = "cadex-projects-v1"
-#: The CLI agent turns across a projects directory, ``/api/turns`` (ADR-519).
-TURNS_SCHEMA = "cadex-agent-turns-v1"
-#: How many turns ``/api/turns`` carries, newest kept.
-TURNS_SHOWN = 100
 #: Content types for the retained artifacts; anything else downloads as bytes.
 CONTENT_TYPES = {
     ".json": "application/json; charset=utf-8",
@@ -1637,50 +1629,6 @@ def default_run(review: Mapping[str, Any]) -> str:
     return str(candidates[-1]["run"]) if candidates else "accepted"
 
 
-def agent_turns(root: Path) -> list[dict[str, Any]]:
-    """A project's CLI agent turns, oldest first, from what the CLI already
-    keeps (ADR-519): read-only, and no store of their own (A3).
-
-    A turn is a ``prompt`` row of ``PROGRESS.md`` -- one per turn the CLI
-    accepted, whether typed at a terminal or started from the dashboard,
-    with its time, the revision and digest it left and its words. The row's
-    revision prefix finds the rest: the revision's ordinal in the trail
-    (``script_history/``), the owner's verdicts on it and the notes the agent
-    left on it (``comments.jsonl``). The turn's transcript and ``look`` images
-    are the CLI's ``turns/`` store (ADR-526), which the project page reads.
-    """
-
-    rows = [row for row in progress_rows(root) if row["run"] == "prompt"]
-    if not rows:
-        return []
-    trail = read_revision_history(root)
-    comments = read_comments(root)
-    notes = read_notes(root)
-    turns = []
-    for row in rows:
-        short = row["revision"].lower()
-
-        def on(revision: Any) -> bool:
-            return bool(short) and str(revision or "").lower().startswith(short)
-
-        entry = next((item for item in trail if on(item.get("revision"))), None)
-        verdicts = [{"verdict": comment["verdict"], "at": comment["at"], "text": comment["text"]}
-                    for comment in comments if comment.get("verdict") and on(comment["revision"])]
-        what = row["what"].removeprefix("prompt: ")
-        prompt, _arrow, said = what.partition(" → ")
-        turns.append({
-            "when": row["when"], "prompt": prompt, "said": said,
-            "revision": str(entry["revision"]) if entry else short,
-            "ordinal": entry.get("ordinal") if entry else None,
-            "digest": row["digest"],
-            "verdict": verdicts[-1]["verdict"] if verdicts else None,
-            "verdicts": verdicts,
-            "notes": [{"type": note["type"], "text": note["text"], "answered": bool(note["answers"])}
-                      for note in notes if on(note["revision"])],
-        })
-    return turns
-
-
 class ReviewProject:
     """What the server knows how to serve for one project, resolved per request.
 
@@ -1705,9 +1653,6 @@ class ReviewProject:
             record["telemetry"] = training_telemetry(self.root, record, detail=False)
         review["presentation"] = presentation(self.root, review["accepted"])
         review["evaluations"] = evaluations(self.root, review["accepted"])
-        review["comments"] = read_comments(self.root)[-COMMENTS_SHOWN:]
-        review["notes"] = [dict(note, url=f"note/{note['id']}" if self.note_artifact(note["id"]) else "")
-                           for note in read_notes(self.root)[-NOTES_SHOWN:]]
         review["revisions"] = revision_trail(self.root)
         review["exports"] = export_listing(self.root)
         review["sections"] = section_listing(self.root)
@@ -1834,19 +1779,6 @@ class ReviewProject:
         path = self.root / RUNS_DIRNAME / name / item["path"]
         return path if path.is_file() else None
 
-    def note_artifact(self, note_id: str) -> Path | None:
-        """The file an agent note flags (ADR-512), when it is one the page
-        can show: inside the project, still present, and of a served type."""
-
-        note = next((note for note in read_notes(self.root) if note["id"] == note_id), None)
-        if note is None or not note["artifact"]:
-            return None
-        path = (self.root / note["artifact"]).resolve()
-        if not path.is_relative_to(self.root) or not path.is_file() \
-                or path.suffix.lower() not in NOTE_ARTIFACT_SUFFIXES:
-            return None
-        return path
-
     def current_document(self, relative: str) -> Path | None:
         review = read_project_review(self.root)
         allowed = {name for name, present in review["docs"].items()
@@ -1940,7 +1872,6 @@ GZIP_TYPES = ("application/json", "text/", "model/stl", "image/svg+xml")
 _GZIP_MEMO: "OrderedDict[str, bytes]" = OrderedDict()
 _GZIP_MEMO_SIZE = 512
 
-NOTE_ID = re.compile(r"^n-[0-9a-f]{12}$")
 
 
 #: Where the dashboard's Export button has ``cadex export`` write, one
@@ -2072,14 +2003,6 @@ def revision_trail(root: Path) -> list[dict[str, Any]]:
 
     keep = ("ordinal", "revision", "saved_at", "outputs")
     return [{key: entry.get(key) for key in keep} for entry in reversed(read_revision_history(root))]
-
-
-#: How many comments ``/api/project`` carries, newest kept.
-COMMENTS_SHOWN = 100
-#: How many agent notes ``/api/project`` carries, newest kept (ADR-512).
-NOTES_SHOWN = 50
-#: What a note's flagged artifact may be for the page to link it.
-NOTE_ARTIFACT_SUFFIXES = frozenset({".png", ".svg", ".mp4", ".webm", ".json", ".md", ".txt"})
 
 
 # The two ways Linux reports a peer that went away mid-write: EPIPE, or
@@ -2257,9 +2180,6 @@ class ReviewHandler(BaseHTTPRequestHandler):
         if segments == ["api", "projects"]:
             self._send_json(projects.listing())
             return
-        if segments == ["api", "turns"]:
-            self._send_json(projects.turns())
-            return
         if head == "p" and rest:
             project = projects.project(rest[0])
             if project is None:
@@ -2345,10 +2265,6 @@ class ReviewHandler(BaseHTTPRequestHandler):
             path = project.run_artifact(rest[1], rest[2])
         elif head == "artifact" and rest[:1] == ["project"] and len(rest) == 3:
             path = project.project_artifact(rest[1], rest[2])
-        elif head == "note" and len(rest) == 1 and NOTE_ID.match(rest[0]):
-            path = project.note_artifact(rest[0])
-        elif head == "turn" and len(rest) == 2:
-            path = turn_file(project.root, rest[0], rest[1])
         elif head == "presentation" and len(rest) == 1:
             path = project.presentation_image(rest[0])
         elif head == "export" and len(rest) == 2:
@@ -2427,18 +2343,6 @@ class ProjectsDirectory:
             })
         return {"schema": PROJECTS_SCHEMA, "root": self.root.name, "projects": projects,
                 "served_at": _now()}
-
-    def turns(self) -> dict[str, Any]:
-        """Every project's CLI agent turns, newest first (ADR-519)."""
-
-        # A row's time has one-second resolution: within a project, a tie
-        # falls to the row written later.
-        found = [(turn["when"], index, {**turn, "project": name, "url": "/p/" + quote(name, safe="") + "/"})
-                 for name in self._names() for index, turn in enumerate(agent_turns(self.root / name))]
-        found.sort(key=lambda item: item[:2], reverse=True)
-        return {"schema": TURNS_SCHEMA, "root": self.root.name, "count": len(found),
-                "turns": [turn for _when, _index, turn in found[:TURNS_SHOWN]], "served_at": _now()}
-
 
 class ProjectsServer(ThreadingHTTPServer):
     """A directory of projects, one address: the index lists them, and each

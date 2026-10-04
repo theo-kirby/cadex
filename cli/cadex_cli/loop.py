@@ -7,7 +7,7 @@ The product agent designs a task, trains a policy on it, evaluates the
 policy against the task's success spec and revises. Three of those four are
 tools it already had or ``cadex evaluate`` already was; this module is the
 fourth, **a training run the agent can start, watch and stop, and that
-outlives the turn that started it**.
+outlives the agent session that started it**.
 
 A run is a directory, ``runs/<name>/`` in the project, and three files say
 everything about it:
@@ -21,7 +21,7 @@ everything about it:
 * ``train/progress.json`` is the trainer's own, rewritten every iteration.
 
 The supervisor is ``python -m cadex_cli.loop RUN_DIR``, spawned into a
-session of its own so that the agent turn, the CLI and the terminal can all
+session of its own so that the agent session, the CLI and the terminal can all
 go away while it trains. It holds two advisory locks for as long as it
 lives: the run's, which is how a reader tells a live run from one whose
 supervisor was killed (an **interruption**, never an attempt), and the
@@ -67,7 +67,7 @@ LOG_NAME = "train.log"
 STDOUT_NAME = "trainer-stdout.log"
 #: One line per thing the loop did, in the project root: a run registered, a
 #: run ended, a stop asked for, an evaluation measured. It is what a later
-#: turn -- and the closing report -- reads the rounds back from.
+#: session -- and the closing report -- reads the rounds back from.
 LEDGER_NAME = "loop-ledger.jsonl"
 
 #: The machine's one training slot. A file lock rather than a pid file: the

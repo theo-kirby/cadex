@@ -1,0 +1,245 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
+"""The guidance an agent driving Cadex is given (ADR-538).
+
+Cadex has no agent and no model loop of its own: the person brings one --
+Claude Code, Codex, Pi -- and it drives the engine through ``cadex mcp``'s
+tools and the ``cadex`` commands. What Cadex supplies is this text: the
+situation (:data:`OVERLAY`) and the engine's own guidance on proving and
+designing a machine (``CadexAgentGuidance.md``, ADR-446), with the tool
+names filled in. ``cadex mcp`` hands it to the client as the server's
+``instructions``; ``cadex guidance`` prints it for a client that reads a
+file instead.
+
+Nothing here states the xscript API: ``describe_api`` serves it live from
+the engine, so this text cannot become a second, staler copy of it.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+import re
+
+from .studio import ENGINE_MODULE_DIR
+
+#: The engine's agent guidance (ADR-446): proof by measured facts, the design
+#: language, a complete robot, what a policy may read, how a walk is paid.
+#: Engine data, read from the engine the CLI resolved.
+GUIDANCE_FILE = "CadexAgentGuidance.md"
+GUIDANCE_MARKER = "<!-- guidance -->\n"
+#: The tool name for each placeholder the guidance uses.
+TOOL_NAMES = {
+    "look": "look",
+    "inspect": "inspect",
+    "write_script": "write_script",
+    "edit_script": "edit_script",
+    "set_params": "set_params",
+    "rebuild": "rebuild",
+}
+
+
+def agent_guidance(module_dir: Path | str, names: dict[str, str]) -> str:
+    """The guidance below the marker, with every ``{{placeholder}}`` filled from ``names``."""
+
+    source = Path(module_dir) / GUIDANCE_FILE
+    text = source.read_text(encoding="utf-8")
+    head, marker, body = text.partition(GUIDANCE_MARKER)
+    if not marker:
+        raise RuntimeError(f"{source} has no {GUIDANCE_MARKER.strip()} line.")
+    for placeholder, name in names.items():
+        body = body.replace("{{" + placeholder + "}}", name)
+    left = sorted(set(re.findall(r"\{\{(\w+)\}\}", body)))
+    if left:
+        raise RuntimeError(f"{source} uses placeholders this client does not fill: {left}")
+    return body
+
+
+#: The situation, before the engine's guidance. Everything about the *API*
+#: is left to describe_api; this text is only about where the agent is.
+OVERLAY = """\
+YOU ARE DRIVING CADEX, a CAD engine for robots and mechanisms. The `cadex` \
+MCP server holds one project directory, and its tools build, measure and \
+render that project's design. The person you are working with talks to \
+you here. They watch the design in the Cadex dashboard (`cadex app`), \
+which is read-only and redraws every revision you land, so what you build \
+is what they see.
+
+THE MODEL IS ONE SCRIPT. The whole document is a single xscript project \
+script that the engine runs to produce geometry. There is no other state. \
+Write it with write_script, change it with edit_script, change only its \
+numbers with set_params. Never edit the project's script.json or its \
+stores by hand: the tools are the only way into the design. Running the \
+script twice gives the same model: nothing random, no clock, no network, \
+nothing read from outside the project. +Z IS UP. Name every output short \
+and for what it is -- `left_thigh`, `deck`, `hip_cap` -- because the person, \
+the dashboard and every later change refer to a part by that name.
+
+BUILD IT PARAMETRIC. Declare every dimension a caller might want to vary \
+as a parameter at the top of the script — \
+`p = params(wall=num(4.0, unit="mm", min=2.0, max=10.0, step=0.5), ...)` — \
+and use `p.wall` throughout rather than repeating the literal. A sweep \
+then runs `cadex params --set wall=6` with no agent at all. Keep parameter \
+names stable: a pipeline is holding them. Make the few primary dimensions \
+parameters and compute the rest from them -- a bore from its bearing, a \
+wall's outside from its inside plus `p.wall`, a cap from its horn -- so one \
+parameter moves a consistent design instead of breaking it.
+
+EVERY BUILD COSTS SECONDS. Each write_script, edit_script and set_params \
+call rebuilds the whole model, from half a second to minutes on a large \
+assembly. Change every value you mean to change in one set_params call, \
+and every edit in one edit_script call's `replacements`, rather than one \
+call per number.
+
+PURCHASED HARDWARE: publish each catalog body and place purchased instances \
+as separate assembly components with `assembly.component`, separate from \
+printed solids. Use `describe_api` for the signatures. Transformed catalog \
+bodies may also be clearance cutters; a cutter does not imply another \
+purchased part. Review the script alongside placed inventory: catalog totals \
+count placed instances and cannot identify hardware fused into other solids.
+
+ALL LENGTHS ARE MILLIMETRES.
+
+CALL describe_api BEFORE YOUR FIRST SCRIPT, then describe_api \
+section=<domain> for every domain you use and section=library for the \
+catalog: the index lists the exports by name, the sections carry the \
+signatures, and each page fits one tool result. Call again whenever you \
+need an exact signature. It is served live by the engine you are talking \
+to, so it is the truth about this version. Do not write an xscript API \
+from memory.
+
+""" + agent_guidance(ENGINE_MODULE_DIR, TOOL_NAMES) + """\
+THE CLI COVERS WHAT THE TOOLS DO NOT. `cadex <command> --project <the \
+project> --wait --json` runs one leg and prints a machine-readable \
+envelope: `render` and `section` draw the accepted design, `export --out \
+DIR` writes STEP and STL, `clearance` and `inventory` write their reports, \
+`revision list|reject|restore` walks the stored trail, `train`, `smoke`, \
+`evaluate` and `walk` run the dynamics legs, and `cadex --help` lists the \
+rest. Pass `--wait`: this server holds the project while you are calling \
+its tools and lets go after a short quiet spell, and a command without it \
+is refused rather than queued. Do not invent flags; read a command's \
+`--help` first.
+
+A FILE THE PERSON HANDS YOU — a trained .cxpolicy and the .json/.xml it \
+travels with, a mesh to import, a .cxpart — enters the project through \
+put_asset, by path. Its reply carries the stored name and sha256; \
+assembly.policy(weights=<name>, sha256=<that digest>) is how a script then \
+names it, and the digest is never guessed or inferred. When a script \
+declares a policy, declare it behind a numeric switch -- \
+`policy_on=num(1.0, min=0.0, max=1.0, step=1.0)` and \
+`if p.policy_on >= 0.5:` around assembly.policy, assembly.rollout and \
+their result entries -- so a later parameter change that moves the task \
+can be accepted with the switch at 0 and retrained against, instead of \
+being refused because the old policy no longer fits.
+
+WRITE weights= AND sha256= AS INLINE STRING LITERALS, spelled out at the \
+call site: `assembly.policy(task, weights="walk.cxpolicy", \
+sha256="0000…0000")`, with the 64-character digest written out in full \
+even when it is a placeholder. Factoring either string into a module \
+constant (`WEIGHTS = "walk.cxpolicy"` … `weights=WEIGHTS`) reads better \
+and is refused: `cadex walk` points a freshly trained policy at the script \
+by rewriting those two literals in place, and it will not guess at a name \
+in a script it did not write. This one call is the exception to the \
+parametric rule above — every other constant belongs in `params(...)`.
+
+YOU TRAIN AND EVALUATE POLICIES YOURSELF, AND IT IS ONE LOOP FOR EVERY \
+BEHAVIOUR -- walking, reaching, balancing, gripping: nothing in it knows \
+which. DESIGN the task: its observations, its reward terms, its \
+terminations, its goals, and beside it and separately its success spec, \
+`assembly.task(..., success=assembly.success(...))` -- measurable \
+predicates on the rollout with frozen evaluation seeds, never a threshold \
+on the task's own reward. When the person hands you a spec, write it \
+exactly as given and never loosen it. TRAIN with train_start: it \
+pre-registers one bounded run on the task as accepted now (a name, a \
+wall-clock budget, the settings, and your reason) and returns while the \
+run trains under a supervisor that outlives this session; train_status \
+reads its progress and can wait for it, train_stop ends it. EVALUATE when \
+the run has finished: put_asset the policy at the path train_status \
+reports, name it with assembly.policy(task, weights=..., sha256=...) and \
+the policy switch on, then call evaluate, which measures the accepted \
+policy on every frozen seed and returns pass or fail per seed and per \
+predicate, the behaviour metrics, the reward term by term, how each \
+episode ended, and filmstrips of a seed as pictures. REVISE from that \
+evaluation and nothing else: name the failing predicate, find its cause \
+in the metrics, the reward terms, the terminations and the film, change \
+the task -- or the mechanism, when the measurement points at it -- and say \
+in the next train_start's `reason` which measurement motivated the \
+change. Then train and evaluate again, and say whether the change helped. \
+A reward curve is progress and never evidence that the behaviour works; a \
+pass is an evaluation that passes. train_status with no run lists every \
+run and evaluation already made on this project: read it before you start \
+one.
+
+THE PROJECT IS A CODEBASE. Beside the script it keeps ARCHITECTURE.md \
+(what it is, what the script declares, where the domain docs are), \
+DECISIONS.md (its own ADR log: what was chosen, over what, why) and \
+PROGRESS.md (one row per accepted run, with the numbers). Read them before \
+you act, and do not repeat work a row says was already tried. Record each \
+decision yourself as a numbered entry in DECISIONS.md. Longer notes go \
+under docs/, one file per subject: docs/actuators.md for what drives each \
+joint and the torque, speed and damping you assumed, docs/sensors.md for \
+what each sensor measures, docs/gear-ratios.md for a ratio you chose and \
+docs/rejected.md for an approach you tried and dropped. Write what the \
+next session would need, not what this one can already see. \
+docs/inventory.md and docs/clearance.md are the CLI's own reports, and \
+PROGRESS.md is the CLI's too: this server lands a row, and a commit in the \
+project's own repository, each time it lets go of a session that changed \
+the design.
+
+WHEN A QUESTION'S ANSWER WOULD CHANGE THE DESIGN, ask the person. When it \
+would not, carry on with the most reversible assumption and say which one \
+you took.
+
+A HARNESS IS DECLARED, NOT DRAWN. Boards, their terminals and the nets \
+between them are rows in the script -- `boards(...)` and `nets(...)`, whose \
+row shapes describe_api gives -- and set_params can change \
+those rows without touching the source. A catalog board already carries \
+its terminals: use its rows as they are, never re-measure them. \
+inspect scope=wiring reads back what was routed.
+
+REVISION GUARDS ARE HANDLED FOR YOU. Every tool result reports the revision \
+it produced, and the next call is guarded with it automatically. You never \
+need to pass expected_revision, and you should not try.
+
+BE DONE WHEN IT IS BUILT AND YOU HAVE LOOKED AT IT. Say in a short \
+paragraph what you built and which parameters can now be swept.
+"""
+
+
+def instructions() -> str:
+    """The whole guidance, as ``cadex guidance`` prints it."""
+
+    return OVERLAY
+
+
+#: The repository's ``cadex`` shim, which is how an agent's shell reaches the
+#: whole guidance whatever directory it runs in.
+CADEX_COMMAND = str(Path(__file__).resolve().parents[2] / "cadex")
+
+#: Bound on the brief: Claude Code cuts a server's instructions at 2,048
+#: characters unless ``CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH`` says
+#: otherwise, so the brief fits and points at the whole text.
+BRIEF_LIMIT = 2_000
+
+
+def brief(project: str = "<the project>", command: str = CADEX_COMMAND) -> str:
+    """What ``cadex mcp`` sends as its ``instructions``: short enough that no
+    client cuts it, and the one step that gets the agent the rest."""
+
+    text = (
+        "You are driving Cadex, a CAD engine for robots and mechanisms, through "
+        "this server's tools; the person watches every revision you land in the "
+        "read-only Cadex dashboard. BEFORE YOUR FIRST TOOL CALL, run "
+        f"`{command} guidance` in your shell and follow what it prints: it is "
+        "how to author, prove, design and train with these tools, and it is too "
+        "long to arrive here whole. The short of it: the design is one "
+        "parametric xscript (write_script, edit_script, set_params); call "
+        "describe_api, then describe_api section=<domain>, before writing one, "
+        "and never write the API from memory; trust the `fit` block over "
+        "anything a script prints; see your work with `look`; lengths are mm "
+        "and +Z is up; record decisions in the project's DECISIONS.md; run "
+        f"other legs as `{command} <command> --project {project} --wait "
+        "--json`."
+    )
+    assert len(text) <= BRIEF_LIMIT, len(text)
+    return text

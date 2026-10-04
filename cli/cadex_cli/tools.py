@@ -29,7 +29,7 @@ shown the revision on every result — the value it would have had to guess
 is reported rather than demanded.
 
 **``display`` is not in the schemas either — the bridge supplies it too.**
-It asks the engine for tessellation, which no CLI turn draws; but the
+It asks the engine for tessellation, which no tool result carries; but the
 accepted attempt it lands in is what the review dashboard draws, and an
 attempt accepted *without* it left a freshly created project unreviewable
 until a later public rebuild republished it (ADR-312). So every modelling
@@ -55,7 +55,7 @@ CLI_TOOL_OPS = (
     "rebuild",
     "inspect",
     # A part built in another project (ADR-138). Here rather than left to the
-    # `cadex link` subcommand because a turn that is told "use the sensor
+    # `cadex link` subcommand because an agent that is told "use the sensor
     # from ../sensorA" cannot otherwise do it: nothing else in the surface
     # reaches outside this project.
     "link_part",
@@ -250,48 +250,6 @@ BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
             "additionalProperties": False,
         },
     },
-    # The agent's way to reach the owner without waiting (ADR-512, orun2 A1):
-    # a note in the project's comments.jsonl that the dashboard shows; the
-    # owner's answer is a comment, so it arrives the way every comment does.
-    "leave_note": {
-        "description": (
-            "LEAVE A NOTE FOR THE PERSON REVIEWING THIS DESIGN, AND GO ON "
-            "WITHOUT WAITING. Nobody is watching this turn; notes are read "
-            "later, on the dashboard. "
-            "`type=flag` asks for a review of something: the accepted revision "
-            "as it stands now, or one file in the project named by `artifact` "
-            "(a render, an evaluation report). `type=question` asks a "
-            "question whose answer would change the design. This returns at "
-            "once and nothing answers it during this turn: decide the "
-            "question yourself on the most reversible assumption, say which "
-            "in the note, and carry on. An answer, when one is given, "
-            "arrives at the start of a later turn as a comment answering "
-            "your note. Use it for what only a person can judge, not for "
-            "progress reports."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "type": {
-                    "type": "string",
-                    "enum": ["flag", "question"],
-                    "description": "flag: review this. question: answer this when you can.",
-                },
-                "text": {
-                    "type": "string",
-                    "description": "The note, in a sentence or two: what to look at and "
-                    "why, or the question and the assumption you went on with.",
-                },
-                "artifact": {
-                    "type": "string",
-                    "description": "Optional: one project-relative file path the note is "
-                    "about, e.g. out/hero.png. Omit to flag the accepted revision.",
-                },
-            },
-            "required": ["type", "text"],
-            "additionalProperties": False,
-        },
-    },
     # The training loop (ADR-464): design a task, train on it, evaluate the
     # policy against the task's success spec, revise. The same four tools for
     # every behaviour; none of them knows what is being trained.
@@ -299,7 +257,7 @@ BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
         "description": (
             "START ONE BOUNDED TRAINING RUN on the accepted revision's task, and "
             "return at once: the run trains under a supervisor that outlives this "
-            "turn. The run is pre-registered before it starts -- its settings, "
+            "session. The run is pre-registered before it starts -- its settings, "
             "its seed, its wall-clock budget, its stop rule and your reason are "
             "written to runs/<run>/registration.json -- so say in `reason` which "
             "measurement from the last evaluation motivated this run and what you "
@@ -363,7 +321,7 @@ BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
             "and sha256, and its task_bundle: the file a warm start from this run "
             "passes as init_from_parent_task. `wait_s` blocks until the run ends or that long passes, "
             "whichever is first. Without `run`: every run of this project and the "
-            "loop's ledger of runs and evaluations, which is how a new turn learns "
+            "loop's ledger of runs and evaluations, which is how a new session learns "
             "what was already tried. A reward curve is progress, never a verdict."
         ),
         "input_schema": {

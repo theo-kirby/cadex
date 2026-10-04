@@ -23,7 +23,7 @@ import time
 
 import pytest
 
-from cadex_cli.agent import CLI_OVERLAY
+from cadex_cli.guidance import OVERLAY
 from cadex_cli import walk as walk_module
 from cadex_cli.report import EXIT_FAILURE, EXIT_OK, EXIT_REJECTED, EXIT_USAGE
 from cadex_cli.walk import (
@@ -77,7 +77,7 @@ def test_declare_refuses_the_constant_factored_script_and_takes_the_taught_one(
 
     The design turn wrote ``WEIGHTS = "…"`` above the call and passed the
     name by reference, which reads better and is refused: the edit is a
-    literal rewrite. The overlay in ``cadex_cli.agent`` now teaches the
+    literal rewrite. The guidance in ``cadex_cli.guidance`` now teaches the
     inline form, so the example it teaches is rewritten here to prove the
     two halves agree.
     """
@@ -92,7 +92,7 @@ def test_declare_refuses_the_constant_factored_script_and_takes_the_taught_one(
         declare_policy(factored_sha, "job2.cxpolicy", "ab" * 32)
 
     # The example the authoring contract teaches is one this rewrite takes.
-    call = re.search(r"assembly\.policy\(task,[^)]*\)", CLI_OVERLAY)
+    call = re.search(r"assembly\.policy\(task,[^)]*\)", OVERLAY)
     assert call is not None, "the overlay no longer shows the policy call"
     taught = call.group(0)
     taught = walk_module._replace_keyword(taught, "weights", "job2.cxpolicy")
@@ -421,10 +421,7 @@ FAKE_CADEX = textwrap.dedent(
             print(json.dumps({"ok": False, "error": leg + " refused by the fake"}))
             sys.exit(3)
 
-    if "-p" in argv:
-        refuse("design")
-        envelope(session_id="s1", notes=["fake turn"])
-    elif "train" in argv:
+    if "train" in argv:
         out = after("--out")
         # What the record said when training started -- before the trainer
         # writes its first telemetry sample beside it -- kept for the test.
@@ -748,14 +745,13 @@ def test_the_iterate_walk_sweeps_first_and_carries_the_warm_start(
         "--set", "lift_weight=2e-4", "--name", "job2.cxpolicy",
         "--init-from", "prev/job.cxpolicy", "--init-from-parent-task", "prev/job-task.json",
         "--init-from-task-change", "lift weight doubled", "--label", "second",
-        "--prompt", "make the arm longer", "--iterations", "1", "--envs", "1",
+        "--iterations", "1", "--envs", "1",
     )
     assert code == EXIT_OK, envelope
     assert [leg["leg"] for leg in envelope["walk"]["legs"]] == [
-        "design", "sweep", "train", "declare", "rollout"
+        "sweep", "train", "declare", "rollout"
     ]
-    design, sweep, train, _read, _declare, _rollout = _legs(fake_cadex)
-    assert design[design.index("-p") + 1] == "make the arm longer" and "--resume" not in design
+    sweep, train, _read, _declare, _rollout = _legs(fake_cadex)
     sets = [sweep[i + 1] for i, flag in enumerate(sweep) if flag == "--set"]
     assert sets == [f"{POLICY_SWITCH}=0", "lift_weight=0.0002"]  # parsed, then spelled
     assert sweep[sweep.index("--out") + 1] == str(out / "sweep")
@@ -905,19 +901,19 @@ def test_a_walk_that_fails_after_training_keeps_the_train_leg_s_identity(
                                "identity_source": "train leg envelope"}
     assert record["params"]["specs_source"] == "project manifest before training"
     assert record["policy"]["sha256"] and record["policy"]["name"] == "job.cxpolicy"
-    # A design turn moves the revision before training: the record is
-    # re-landed as `running` with the moved identity before the train leg.
+    # A sweep moves the revision before training: the record is re-landed
+    # as `running` with the moved identity before the train leg.
     out = toy_root / "runs" / "walk-6"
     monkeypatch.setenv("FAKE_CADEX_FAIL", "train")
     code, _ = _run(capsys, "--project", str(toy_root), "walk", "--out", str(out),
-                   "--prompt", "longer arm")
+                   "--set", "lift_weight=2e-4")
     assert code == EXIT_REJECTED
     at_train = json.loads((out / "run.json.at-train").read_text())
     assert at_train["status"] == "running"
-    assert at_train["model"]["identity_source"] == "design leg envelope"
+    assert at_train["model"]["identity_source"] == "sweep leg envelope"
     assert at_train["model"]["accepted_revision"] == "r" * 64
     assert at_train["params"]["specs_source"] == "project manifest before training"
-    assert [leg["leg"] for leg in at_train["legs"]] == ["design"]
+    assert [leg["leg"] for leg in at_train["legs"]] == ["sweep"]
 
 
 # -- the walk's own wall clock (ADR-261) --------------------------------------
@@ -2022,7 +2018,6 @@ def test_complete_refuses_what_it_cannot_honestly_declare(
 @pytest.mark.parametrize("flags,named", [
     (["--detach"], "--detach needs --remote."),
     (["--complete", "--remote"], "--remote"),
-    (["--complete", "--prompt", "hello"], "--prompt"),
     (["--complete", "--set", "k=1"], "--set"),
 ])
 def test_the_two_detached_modes_refuse_before_any_leg_runs(

@@ -74,8 +74,9 @@ def test_the_json_envelope_carries_what_a_pipeline_needs(project) -> None:
         "digest",
         "params",
         "outputs",
-        "session_id",
     }
+    # Cadex runs no agent (ADR-538): nothing in the envelope is a conversation's.
+    assert not set(envelope) & {"session_id", "model", "usage", "attachments", "comments"}
     assert envelope["params"] == {"width": 30.0, "thickness": 6.0}
     (output,) = envelope["outputs"]
     assert output["name"] == "plate" and output["kind"] == "brep"
@@ -102,17 +103,7 @@ def test_json_goes_to_stdout_and_progress_does_not(project, capsys, tmp_path) ->
 def test_params_changes_geometry_with_no_model_in_the_loop(
     project, capsys, tmp_path, monkeypatch
 ) -> None:
-    """The whole point of the CLI: a sweep that never spawns ``claude``.
-
-    ``find_claude`` is made to explode, so a run that reached for a model
-    would fail loudly rather than pass quietly.
-    """
-
-    import cadex_cli.__main__ as entry
-
-    monkeypatch.setattr(
-        entry, "find_claude", lambda *_a, **_k: pytest.fail("spawned a model")
-    )
+    """The whole point of the CLI: a sweep with no model anywhere in it."""
 
     code = main(
         [
@@ -334,157 +325,72 @@ def test_the_human_summary_names_the_files_and_the_next_guard(
     assert "next   expected_revision" in captured.out
 
 
-@pytest.mark.parametrize("session_id,model", [
-    ("offline-session", "sonnet"),
-    ("new-session", "sonnet"),
-    ("offline-session", "opus"),
-    ("new-session", "opus"),
-    ("offline-session", None),
-])
-def test_refused_walk_preserves_session_unless_identity_changes(
-    project, tmp_path, capsys, monkeypatch, session_id, model
-):
-    """Ordinary walk, real restore, offline Claude executable; no provider."""
+def test_there_is_no_prompt_to_give(capsys) -> None:
+    """ADR-538: Cadex has no agent of its own, so ``-p`` and its flags are
+    refused as usage rather than quietly ignored."""
+
+    for argv in (["-p", "a bracket"], ["--resume"], ["--model", "m"], ["walk", "--prompt", "x"]):
+        with pytest.raises(SystemExit) as exit_:
+            main(argv)
+        assert exit_.value.code == 2, argv
+        capsys.readouterr()
+
+
+def test_cadex_mcp_serves_a_session_over_stdio_and_lands_its_row(engine, tmp_path) -> None:
+    """The product path an agent takes (ADR-538), as a real process on real
+    pipes: the guidance and the tools with no engine, a build, the engine let
+    go after the idle spell with one row and one commit, and stdout holding
+    nothing but the protocol."""
+
+    import os
     import subprocess
-    from cadex_cli.session import write_agent_state
+    import sys
+    import time
 
-    monkeypatch.delenv("CADEX_MODEL", raising=False)
-    root = project["root"]
-    write_agent_state(root, session_id="offline-session", model="sonnet")
-    agent = root / "agent.json"
-    payload = json.loads(agent.read_text())
-    payload["updated_at"] = "2000-01-01T00:00:00Z"
-    agent.write_text(json.dumps(payload))
-    before_agent = agent.read_bytes()
-    before_stat = agent.stat()
-    # Keep existing user edits, including edits to a tracked document.
-    decisions = root / "DECISIONS.md"
-    decisions.write_text(decisions.read_text() + "\nUser's pending decision.\n")
-    (root / "user-note.txt").write_text("untracked user work\n")
-    preserved = {name: (root / name).read_bytes() for name in (
-        "script.py", "PROGRESS.md", "ARCHITECTURE.md", "DECISIONS.md", "user-note.txt"
-    )}
-    def head():
-        return subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"])
-    before_head = head()
-    before = json.loads((root / "script.json").read_text())
-    refusal = "Controlled offline usage-credit refusal"
-    fake = tmp_path / "refuse"
-    fake.write_text(
-        "#!/usr/bin/env python3\nimport json,sys\n"
-        + f"assert sys.argv[sys.argv.index('--model') + 1] == {model or 'sonnet'!r}\n"
-        + "print(" + repr(json.dumps({"type": "assistant", "message": {
-            "content": [{"type": "text", "text": refusal}]}})) + ")\n"
-        + "print(" + repr(json.dumps({"type": "result", "is_error": True,
-            "session_id": session_id, "result": refusal})) + ")\nsys.exit(1)\n"
-    )
-    fake.chmod(0o755)
-    code = main(["walk", "--resume", "--prompt", "offline refusal",
-                 "--project", str(root), "--out", str(root / "runs/refused"),
-                 "--claude", str(fake), "--json",
-                 *(["--model", model] if model else [])])
-    report = _envelope(capsys)
-    assert code == EXIT_FAILURE
-    assert refusal in report["error"]
-    assert head() == before_head
-    for name, content in preserved.items():
-        assert (root / name).read_bytes() == content
-    after = json.loads((root / "script.json").read_text())
-    for key in ("accepted_revision", "accepted_digest", "param_values"):
-        assert after[key] == before[key]
-    # Restore re-proves the live model while retaining its saved display
-    # artifacts (ADR-303); the replay remains visible as the latest candidate.
-    assert after["accepted_attempt"] == before["accepted_attempt"]
-    assert (root / after["accepted_attempt"]["staging"] / "outputs").is_dir()
-    assert after["latest_candidate"]["attempt_id"] != after["accepted_attempt"]["attempt_id"]
-    stored = json.loads(agent.read_text())
-    expected_model = "sonnet" if session_id == "offline-session" else model
-    assert (stored["session_id"], stored["model"]) == (session_id, expected_model)
-    if session_id == "offline-session":
-        assert agent.read_bytes() == before_agent
-        assert agent.stat().st_ino == before_stat.st_ino
-        assert agent.stat().st_mtime_ns == before_stat.st_mtime_ns
-    else:
-        assert stored["updated_at"] != payload["updated_at"]
+    root = tmp_path / "plate"
+    cli_dir = Path(__file__).resolve().parents[1]
+    env = {**os.environ, "PYTHONPATH": str(cli_dir) + os.pathsep + os.environ.get("PYTHONPATH", "")}
+    server = subprocess.Popen(
+        [sys.executable, "-m", "cadex_cli", "mcp", "--project", str(root), "--idle", "1"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+    sent = 0
 
+    def rpc(method, params=None):
+        nonlocal sent
+        sent += 1
+        server.stdin.write(json.dumps({"jsonrpc": "2.0", "id": sent, "method": method,
+                                       "params": params or {}}) + "\n")
+        server.stdin.flush()
+        reply = json.loads(server.stdout.readline())
+        assert reply["id"] == sent, reply
+        return reply
 
-def test_the_machine_can_name_the_turn_model_once(monkeypatch) -> None:
-    """``$CADEX_MODEL`` is the machine's answer; ``--model`` still wins.
-
-    A box whose default model is unavailable -- out of usage credit, not
-    enabled on the account -- otherwise cannot run ``cadex walk`` without a
-    person putting ``--model`` on every command, and a lifecycle walk is not
-    allowed to need a person.
-    """
-
-    from cadex_cli.agent import DEFAULT_MODEL, MODEL_ENV, default_model
-    from cadex_cli.__main__ import build_parser
-
-    monkeypatch.delenv(MODEL_ENV, raising=False)
-    assert default_model() == DEFAULT_MODEL
-    assert build_parser().parse_args(["walk"]).model is None
-
-    monkeypatch.setenv(MODEL_ENV, "  a-model-with-credit  ")
-    assert default_model() == "a-model-with-credit"
-    for argv, expected in (
-        (["walk"], None),
-        (["walk", "--model", "explicit"], "explicit"),
-        (["-p", "hello"], None),
-        (["--model", "explicit", "-p", "hello"], "explicit"),
-    ):
-        assert build_parser().parse_args(argv).model == expected, argv
-
-    monkeypatch.setenv(MODEL_ENV, "   ")
-    assert default_model() == DEFAULT_MODEL
-
-
-def test_every_turn_pins_its_effort_and_bounds_each_model_message(monkeypatch, tmp_path) -> None:
-    """ADR-356: the harness's documented per-step thinking control is the
-    effort level, and its hard per-message bound is the request's max
-    output tokens. Both are set on every turn, machine-overridable, and
-    neither touches the prompt."""
-
-    from cadex_cli import agent
-
-    monkeypatch.delenv(agent.EFFORT_ENV, raising=False)
-    monkeypatch.delenv(agent.MAX_OUTPUT_TOKENS_ENV, raising=False)
-    monkeypatch.setenv("UNRELATED", "kept")
-
-    def turn(**overrides):
-        return agent.ClaudeTurn(
-            claude_path="/fixture/claude", model="m", system_prompt_text="s",
-            socket_path=str(tmp_path / "sock"), token="t", cwd=tmp_path, **overrides,
-        )
-
-    default = turn()
     try:
-        command = default._command("frozen prompt", resume=False)
-        assert command[command.index("--effort") + 1] == "high" == agent.DEFAULT_EFFORT
-        assert command[command.index("-p") + 1] == "frozen prompt"
-        environment = default._environment()
-        assert environment[agent.HARNESS_MAX_OUTPUT_TOKENS_ENV] == "32000"
-        assert environment["UNRELATED"] == "kept"
+        from cadex_cli.guidance import brief
+        init = rpc("initialize", {"protocolVersion": "2025-06-18"})["result"]
+        assert init["serverInfo"]["name"] == "cadex" and init["instructions"] == brief(str(root.resolve()))
+        names = [tool["name"] for tool in rpc("tools/list")["result"]["tools"]]
+        assert names[:2] == ["describe_api", "write_script"] and "leave_note" not in names
+        assert not (root / "script.json").exists()  # no engine yet
+        built = rpc("tools/call", {"name": "write_script", "arguments": {"source": PLATE}})["result"]
+        assert built["isError"] is False, built
+        payload = json.loads(built["content"][0]["text"])
+        assert payload["ok"] is True
+        deadline = time.monotonic() + 60
+        while "| mcp |" not in (root / "PROGRESS.md").read_text() and time.monotonic() < deadline:
+            time.sleep(0.2)
+        progress = (root / "PROGRESS.md").read_text()
+        (row,) = [line for line in progress.splitlines() if "| mcp |" in line]
+        assert "mcp: write_script" in row
+        # Let go: a command that needs the lock gets it without waiting.
+        assert main(["revision", "list", "--project", str(root), "--json"]) == EXIT_OK
     finally:
-        default.cleanup()
-
-    monkeypatch.setenv(agent.EFFORT_ENV, " medium ")
-    monkeypatch.setenv(agent.MAX_OUTPUT_TOKENS_ENV, "24000")
-    machine = turn()
-    try:
-        assert "medium" in machine._command("p", resume=False)
-        assert machine._environment()[agent.HARNESS_MAX_OUTPUT_TOKENS_ENV] == "24000"
-    finally:
-        machine.cleanup()
-    explicit = turn(effort="low", max_output_tokens=8000)
-    try:
-        assert "low" in explicit._command("p", resume=False)
-        assert explicit._environment()[agent.HARNESS_MAX_OUTPUT_TOKENS_ENV] == "8000"
-    finally:
-        explicit.cleanup()
-
-    monkeypatch.setenv(agent.EFFORT_ENV, "ultracode")
-    with pytest.raises(ValueError, match="effort level"):
-        agent.default_effort()
-    monkeypatch.setenv(agent.MAX_OUTPUT_TOKENS_ENV, "0")
-    with pytest.raises(ValueError, match="positive"):
-        agent.default_max_output_tokens()
+        server.stdin.close()
+        assert server.wait(timeout=120) == 0
+        stray = server.stdout.read()
+        server.stdout.close()
+        server.stderr.close()
+    assert stray == ""
+    log = subprocess.run(["git", "-C", str(root), "log", "--format=%s"],
+                         capture_output=True, text=True, check=True).stdout.splitlines()
+    assert log[0] == "cadex mcp: write_script"

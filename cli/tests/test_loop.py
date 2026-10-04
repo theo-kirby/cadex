@@ -7,14 +7,13 @@ Three layers. The run registry and its supervisor are driven against a
 hand-built retained attempt and a fake trainer, with the supervisor really
 detached, and need nothing. The four bridge tools are driven the same way
 through ``Bridge.call``. The whole round -- a task accepted by a live
-engine, a run started in one turn, its policy declared and evaluated in the
-next -- goes through ``command_prompt`` and the real bridge socket with a
-scripted model, and skips without a built engine.
+engine, a run started in one ``cadex mcp`` session, its policy declared and
+evaluated in the next -- goes through the session host the agent's tool
+calls reach (ADR-538), and skips without a built engine.
 """
 
 from __future__ import annotations
 
-import argparse
 import base64
 import hashlib
 import importlib.util
@@ -32,14 +31,12 @@ import pytest
 
 from conftest import SOURCE_MODULE_DIR
 from fake_cadexd import FakeCadexd
-from mock_backend import turn_factory
 
 from cadex_cli import loop
 from cadex_cli import train as train_module
-from cadex_cli.__main__ import command_prompt
-from cadex_cli.agent import CLI_OVERLAY, ClaudeTurn
+from cadex_cli.__main__ import McpSession, build_parser
 from cadex_cli.bridge import Bridge
-from cadex_cli.report import EXIT_OK, RunReport
+from cadex_cli.guidance import OVERLAY
 from cadex_cli.tools import BRIDGE_TOOLS
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -406,10 +403,6 @@ def test_a_killed_supervisor_is_an_interruption_not_an_attempt(project, monkeypa
 # -- the four tools --------------------------------------------------------------
 
 
-def _payload(reply: dict) -> dict:
-    return json.loads(reply["content"][0]["text"])
-
-
 def test_the_agent_starts_watches_and_stops_runs_through_the_bridge(project, monkeypatch) -> None:
     with Bridge(FakeCadexd(), project_root=project) as bridge:
         started = bridge.call("train_start", {
@@ -464,8 +457,8 @@ def test_the_loop_names_no_behaviour() -> None:
     """One loop for every behaviour: nothing in it, in its tools or in what
     the agent is told about it may know what is being trained."""
 
-    paragraph = CLI_OVERLAY[CLI_OVERLAY.index("YOU TRAIN AND EVALUATE"):
-                            CLI_OVERLAY.index("THE PROJECT IS A CODEBASE")]
+    paragraph = OVERLAY[OVERLAY.index("YOU TRAIN AND EVALUATE"):
+                        OVERLAY.index("THE PROJECT IS A CODEBASE")]
     # The one sentence that lists behaviours does so to say none is special.
     assert "nothing in it knows which" in " ".join(paragraph.split())
     listing, rest = paragraph.split("nothing in it knows", 1)
@@ -497,18 +490,6 @@ def test_the_lifecycle_walk_defers_to_the_spec_when_the_task_has_one(tmp_path) -
     # The loop itself never reads the gait block, or the walk.
     source = Path(loop.__file__).read_text(encoding="utf-8")
     assert "gait" not in source and "from .walk" not in source
-
-
-def test_the_agent_is_allowed_every_tool_it_is_shown(tmp_path) -> None:
-    turn = ClaudeTurn(claude_path="claude", model="m", system_prompt_text="s",
-                      socket_path=str(tmp_path / "s"), token="t")
-    try:
-        command = turn._command("p", resume=False)
-    finally:
-        turn.cleanup()
-    allowed = command[command.index("--allowedTools") + 1:]
-    for name in BRIDGE_TOOLS:
-        assert f"mcp__cadex__{name}" in allowed, name
 
 
 # -- one whole round, through the product path -----------------------------------
@@ -595,19 +576,23 @@ print(json.dumps({{"out": str(out), "bytes": len(made["blob"]),
 """
 
 
-def _args(root: Path, **overrides) -> argparse.Namespace:
-    values = {"prompt": "train it", "project": str(root), "out": "", "format": "step,stl",
-              "engine": "", "json": False, "wait": False, "resume": False, "model": "mock",
-              "claude": "", "command": None}
-    values.update(overrides)
-    return argparse.Namespace(**values)
+def _session(root: Path) -> McpSession:
+    """What ``cadex mcp --project ROOT`` answers tool calls with."""
+
+    args = build_parser().parse_args(["mcp", "--project", str(root)])
+    args.wait = True
+    return McpSession(args)
+
+
+def _payload(reply: dict) -> dict:
+    return json.loads(reply["content"][0]["text"])
 
 
 @pytest.mark.skipif(not HAS_MUJOCO, reason="mujoco is not importable here")
 def test_one_round_of_the_loop_runs_through_the_product_path(engine, tmp_path, monkeypatch) -> None:
-    """Design, train, evaluate: two turns of a scripted model over the real
-    bridge socket and a live engine. The run started in the first turn is
-    read in the second, which declares its policy and evaluates it."""
+    """Design, train, evaluate: two agent sessions over a live engine. The
+    run started in the first is read in the second, which declares its
+    policy and evaluates it."""
 
     trainer = tmp_path / "fixture_train.py"
     trainer.write_text(FIXTURE_TRAINER.format(
@@ -618,37 +603,35 @@ def test_one_round_of_the_loop_runs_through_the_product_path(engine, tmp_path, m
     monkeypatch.setenv(loop.MACHINE_LOCK_ENV, str(tmp_path / "slot.lock"))
     root = tmp_path / "project"
 
-    first = turn_factory([[
-        ("tool", "write_script", {"source": SCRIPT}),
-        ("tool", "train_start", {"run": "r1", "budget_s": 120, "reason": REASON,
-                                 "settings": {"iterations": 2, "envs": 4, "seed": 3}}),
-        ("done", "Designed the task and started run r1."),
-    ]])
-    assert command_prompt(_args(root), RunReport(), turn_factory=first) == EXIT_OK
-    started = first.made[0].last_payload("train_start")
+    session = _session(root)
+    try:
+        assert _payload(session.call("write_script", {"source": SCRIPT}))["ok"] is True
+        started = _payload(session.call("train_start", {
+            "run": "r1", "budget_s": 120, "reason": REASON,
+            "settings": {"iterations": 2, "envs": 4, "seed": 3}}))
+    finally:
+        session.close()
     assert started["ok"] is True and started["task"] == "job", started
-    # The turn is over and its engine is gone; the run is not.
+    # The session is over and its engine is gone; the run is not.
     run = _until(root / "runs" / "r1", seconds=60.0)
     assert run["state"] == "finished", run
-    # It trained the revision the turn accepted, from the store's own bundle.
+    # It trained the revision the session accepted, from the store's own bundle.
     state = json.loads((root / "script.json").read_text())
     assert run["registration"]["accepted_revision"] == state["accepted_revision"]
     policy = run["status"]["policy"]
 
-    second = turn_factory([[
-        ("tool", "train_status", {"run": "r1"}),
-        ("tool", "put_asset", {"source_path": policy["path"]}),
-        ("tool", "write_script", {"source": SCRIPT + POLICY.replace("@SHA@", policy["sha256"])}),
-        ("tool", "evaluate", {}),
-        ("tool", "train_status", {}),
-        ("done", "Evaluated r1: it fails `still`."),
-    ]])
-    assert command_prompt(_args(root, resume=True), RunReport(),
-                          turn_factory=second) == EXIT_OK
-    turn = second.made[0]
-    assert turn.last_payload("put_asset")["sha256"] == policy["sha256"]
-    assert turn.last_payload("write_script")["ok"] is True, turn.last_payload("write_script")
-    (_, reply), = [item for item in turn.tool_results if item[0] == "evaluate"]
+    session = _session(root)
+    try:
+        session.call("train_status", {"run": "r1"})
+        put = _payload(session.call("put_asset", {"source_path": policy["path"]}))
+        written = _payload(session.call(
+            "write_script", {"source": SCRIPT + POLICY.replace("@SHA@", policy["sha256"])}))
+        reply = session.call("evaluate", {})
+        ledger = _payload(session.call("train_status", {}))["ledger"]
+    finally:
+        session.close()
+    assert put["sha256"] == policy["sha256"]
+    assert written["ok"] is True, written
     assert reply["is_error"] is False, reply
     text, *pictures = reply["content"]
     view = json.loads(text["text"])
@@ -670,8 +653,7 @@ def test_one_round_of_the_loop_runs_through_the_product_path(engine, tmp_path, m
     assert len(text["text"]) < 21_500
     report = Path(view["report"])
     assert report.is_file() and report.is_relative_to(root / "evaluations")
-    # The ledger is the round, in order, and the next turn can read it.
-    ledger = turn.last_payload("train_status")["ledger"]
+    # The ledger is the round, in order, and the next session can read it.
     assert [row["kind"] for row in ledger] == ["train_registered", "train_ended", "evaluated"]
     assert ledger[-1]["verdict"] == "fail" and ledger[-1]["failing"] == ["still (2 of 2)"]
     assert ledger[-1]["policy_sha256"] == policy["sha256"]
@@ -694,23 +676,22 @@ REAL_TRAINER_PYTHON = _real_trainer_python()
                     reason="No training venv with jax and mujoco (training/SETUP.md).")
 def test_the_real_trainer_runs_under_the_supervisor_and_the_engine_takes_its_policy(
         engine, tmp_path, monkeypatch, cpu_training) -> None:
-    """The same round with nothing faked but the model: the real trainer on
+    """The same round with nothing faked: the real trainer on
     CPU for two iterations, a checkpoint on the way, and a policy the live
     engine verifies by the digest the supervisor reported."""
 
     monkeypatch.setenv(loop.MACHINE_LOCK_ENV, str(tmp_path / "slot.lock"))
     root = tmp_path / "project"
-    first = turn_factory([[
-        ("tool", "write_script", {"source": SCRIPT}),
-        ("tool", "train_start", {
+    session = _session(root)
+    try:
+        session.call("write_script", {"source": SCRIPT})
+        session.call("train_start", {
             "run": "real", "budget_s": 600, "reason": REASON,
             "settings": {"iterations": 2, "envs": 4, "seed": 5, "hidden": [8, 8],
-                         "checkpoint_every": 1, "label": "loop-real"}}),
-        ("tool", "train_status", {"run": "real", "wait_s": 600}),
-        ("done", "Trained."),
-    ]])
-    assert command_prompt(_args(root), RunReport(), turn_factory=first) == EXIT_OK
-    status = first.made[0].last_payload("train_status")
+                         "checkpoint_every": 1, "label": "loop-real"}})
+        status = _payload(session.call("train_status", {"run": "real", "wait_s": 600}))
+    finally:
+        session.close()
     assert status["state"] == "finished", status
     assert status["progress"]["iteration"] == 1 and status["progress"]["total"] == 2
     assert status["progress"]["reward_per_step"] is not None
@@ -719,14 +700,14 @@ def test_the_real_trainer_runs_under_the_supervisor_and_the_engine_takes_its_pol
     run = loop.read_run(root / "runs" / "real")
     assert run["status"]["receipt"]["task_sha256"] == run["registration"]["task_sha256"]
 
-    second = turn_factory([[
-        ("tool", "put_asset", {"source_path": status["policy"]["path"]}),
-        ("tool", "write_script",
-         {"source": SCRIPT + POLICY.replace("@SHA@", status["policy"]["sha256"])}),
-        ("done", "Declared."),
-    ]])
-    assert command_prompt(_args(root, resume=True), RunReport(), turn_factory=second) == EXIT_OK
-    assert second.made[0].last_payload("write_script")["ok"] is True
+    session = _session(root)
+    try:
+        session.call("put_asset", {"source_path": status["policy"]["path"]})
+        written = _payload(session.call(
+            "write_script", {"source": SCRIPT + POLICY.replace("@SHA@", status["policy"]["sha256"])}))
+    finally:
+        session.close()
+    assert written["ok"] is True
 
 
 def test_a_run_names_its_task_bundle_so_a_warm_start_can_be_registered(project) -> None:

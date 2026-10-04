@@ -25,26 +25,34 @@ from cadex_cli.session import (
     effective_budgets,
     read_agent_state,
     write_agent_budgets,
-    write_agent_state,
 )
 from test_review_server import _json, _open, browser, needs_browser  # noqa: F401
 
 
 # -- the stored values ---------------------------------------------------
 
-def test_budgets_are_stored_beside_the_conversation_and_survive_it(tmp_path) -> None:
-    write_agent_state(tmp_path, session_id="s-1", model="sonnet")
+def test_budgets_are_stored_and_one_is_unset_by_zero(tmp_path) -> None:
     state = write_agent_budgets(tmp_path, {"timeout_seconds": "900", "memory_limit_mb": 8192})
     assert state.budgets == {"timeout_seconds": 900.0, "memory_limit_mb": 8192}
-    assert (state.session_id, state.model) == ("s-1", "sonnet")
     on_disk = json.loads((tmp_path / "agent.json").read_text())
     assert on_disk["budgets"] == {"timeout_seconds": 900.0, "memory_limit_mb": 8192}
-    # A later turn rewrites the conversation identity and keeps the budgets.
-    write_agent_state(tmp_path, session_id="s-2", model="sonnet")
     assert read_agent_state(tmp_path).budgets == {"timeout_seconds": 900.0, "memory_limit_mb": 8192}
     # 0 unsets one; the other stays.
     assert write_agent_budgets(tmp_path, {"timeout_seconds": 0}).budgets == {"memory_limit_mb": 8192}
-    assert read_agent_state(tmp_path).session_id == "s-2"
+
+
+def test_a_file_an_older_cli_wrote_is_read_for_its_budgets(tmp_path) -> None:
+    """Before ADR-538 the file also kept a conversation; that part is dropped
+    on the next write and never read."""
+
+    (tmp_path / "agent.json").write_text(json.dumps({
+        "schema": "cadex-cli-agent-v1", "session_id": "s-1", "model": "sonnet",
+        "budgets": {"timeout_seconds": 600}}))
+    assert read_agent_state(tmp_path).budgets == {"timeout_seconds": 600.0}
+    write_agent_budgets(tmp_path, {"memory_limit_mb": 4096})
+    on_disk = json.loads((tmp_path / "agent.json").read_text())
+    assert "session_id" not in on_disk and "model" not in on_disk
+    assert on_disk["budgets"] == {"timeout_seconds": 600.0, "memory_limit_mb": 4096}
 
 
 @pytest.mark.parametrize("key,value", [
@@ -59,10 +67,9 @@ def test_a_budget_out_of_range_is_refused_with_its_bound(key, value) -> None:
 
 def test_a_hand_edited_file_with_nonsense_budgets_reads_as_unset(tmp_path) -> None:
     (tmp_path / "agent.json").write_text(json.dumps({
-        "schema": "cadex-cli-agent-v1", "session_id": "s",
+        "schema": "cadex-cli-agent-v1",
         "budgets": {"timeout_seconds": -5, "memory_limit_mb": True, "extra": 1}}))
-    state = read_agent_state(tmp_path)
-    assert state.budgets == {} and state.session_id == "s"
+    assert read_agent_state(tmp_path).budgets == {}
     (tmp_path / "agent.json").write_text(json.dumps({
         "schema": "cadex-cli-agent-v1", "budgets": {"timeout_seconds": 120, "memory_limit_mb": 4096}}))
     assert read_agent_state(tmp_path).budgets == {"timeout_seconds": 120.0, "memory_limit_mb": 4096}
