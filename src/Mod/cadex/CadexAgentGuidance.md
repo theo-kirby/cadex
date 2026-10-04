@@ -6,9 +6,8 @@ The agent guidance every Cadex front end puts in its system prompt (ADR-446):
 how to prove a design with measured facts, the design language
 (docs/DESIGN-LANGUAGE.md, ADR-479), what a self-moving robot carries, what a policy may
 read, and how a walking task is rewarded. It is engine data, shipped in the
-payload beside CadexStudio.py, so the CLI and the shell tell their agents the
-same thing. It is not code: the CLI reads it from the engine it resolved, and
-the shell reads it from its bundled payload.
+payload beside CadexStudio.py. It is not code: the CLI reads it from the
+engine it resolved.
 
 Everything below the marker line is the guidance, verbatim. Tool names are
 placeholders: {{look}}, {{inspect}}, {{write_script}}, {{edit_script}},

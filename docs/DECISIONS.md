@@ -34021,3 +34021,48 @@ INTEGRATION op-table test holds the doc to the specs, and the packaged
 lifecycle gate runs against a rebuilt, restaged payload.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-529 — The studio renderer's child-process entry leaves with the shell (2026-10-04, owner charter orun2 long-term subtraction)
+
+**Context.** ADR-445 moved the studio renderer into the engine as
+`CadexStudio.py` and gave it two ways in: the CLI loads it by path, and the
+Blender shell — which could import no engine code — ran it as a child process
+with a `cadex-studio-request-v1` JSON file (`run_request`, `main`). ADR-447
+added `kind: "blocks"`, which built the fit and inventory blocks from raw
+`inspect` values for the shell, and ADR-449 added `role_colours` (with
+`display_objects`) so the shell's viewport could paint each part by its
+appearance role. The shell is deleted (ADR-498). An audit of every `cli/`
+caller of the module — `render.py`, `studio.py`, `film.py`, `video.py`,
+`bridge.py`, `review_server.py`, `agent.py` — finds none that runs the
+process entry, sends a request, or calls `role_colours`: they import the
+module by path and call `snapshot`, `render_files`, `look_report`,
+`materials`, `blueprint_sheet` and the rest directly. The dashboard paints
+parts with `CadexStudio.materials` (ADR-522), not `role_colours`.
+
+**Decision.** Delete the process entry (`REQUEST_SCHEMA`, `RESULT_SCHEMA`,
+`_blocks`, `run_request`, `main`, the `__main__` guard), and `role_colours`
+and `display_objects`, from `CadexStudio.py`. `render_files` keeps its
+appearance-row helpers. `docs/INTEGRATION.md`'s "second program in the
+payload" section becomes a short statement that the module is loaded by path
+and has no process entry; `docs/ARCHITECTURE.md`, the `CadexFitReport.py`
+docstring and the `CadexAgentGuidance.md` header stop naming the shell.
+`cadex_tests/test_studio_process.py` becomes `test_studio_standing.py`: the
+closure and install facts stay, the render and look are tested in process,
+and the process tests go with what they tested.
+
+**Cost.** About 150 lines of engine code and 105 of tests, net. A client that may
+not import engine code has no way to reach the renderer; none exists. No
+cadexd op, response shape, CLI tool, dashboard view or agent behaviour
+changes, and the payload ships the same files.
+
+**What would reverse it.** A non-Python client that cannot load the module —
+a desktop app copying the dashboard, say — would need a process entry again.
+It should be designed against that client, starting from this ADR's parent
+commit.
+
+**Test.** `test_studio_standing.py::test_the_shells_process_entry_stays_gone`
+fails if any of the removed names, the schema string or a `__main__` guard
+returns. Engine and CLI suites; the packaged lifecycle gate on a restaged
+payload.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

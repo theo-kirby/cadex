@@ -9,9 +9,8 @@ part, ADR-486) from ``inspect scope=clearance``,
 and ``inventory_summary`` (catalog identity, ADR-362, appearance, ADR-413, and
 printed edges, ADR-415) from ``inspect scope=inventory``; and ``fit_view`` and
 ``inventory_view``, the two blocks bounded the way a build reply shows them to
-the model (ADR-435). Engine code shared by
-the CLI and the shell, on ``CadexStudio``'s terms (ADR-445): the CLI loads it by
-path; the shell reaches it through ``CadexStudio``'s process entry. The service
+the model (ADR-435). Engine code on
+``CadexStudio``'s terms (ADR-445): the CLI loads it by path. The service
 never imports it. Formerly ``cli/cadex_cli/clearance.py`` and ``inventory.py``;
 moved unchanged.
 """

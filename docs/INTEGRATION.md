@@ -496,44 +496,21 @@ about transport — one bundle, discovery by manifest, and a payload gate that
 runs the lifecycle test against the *packaged* tree, because a source tree
 that passes proves nothing about a payload.
 
-### The studio renderer: a second program in the payload `cadex-studio-request-v1` `[Cadex-new — ADR-445]`
+### The studio renderer: engine code clients load by path `[Cadex-new — ADR-445, ADR-529]`
 
 `Mod/cadex/CadexStudio.py` draws the review views, the studio hero, the
-concept sheet and the agent's `look` from an accepted reply's display block.
-It is **not a cadexd op**: cadexd dispatches serially, and a render takes
-about 12 s, which would stall a slider drag queued behind it. Nothing in the
-service imports it (`test_studio_process.py` asserts the closure). It is pure
-standard library, and it reaches each client in the way that client's rules
-allow:
+concept sheet, the blueprint sheet and the agent's `look` from an accepted
+reply's display block. It is **not a cadexd op**: cadexd dispatches serially,
+and a render takes about 12 s, which would stall a slider drag queued behind
+it. Nothing in the service imports it (`test_studio_standing.py` asserts the
+closure). It is pure standard library, and the CLI and the dashboard load it
+by path from the engine they resolved, exactly as they load
+`CadexdProtocol`; `CadexFitReport.py` (ADR-447) reaches them the same way.
 
-- the CLI (LGPL) loads it by path from the engine it resolved, exactly as it
-  loads `CadexdProtocol`;
-- any client that may not import engine code runs it as a **child
-  process** (ADR-448; the deleted Blender shell did):
-  `python Mod/cadex/CadexStudio.py REQUEST.json`, and reads one JSON line
-  from stdout.
-
-The request is `{schema: "cadex-studio-request-v1", kind: "render" | "look" |
-"blocks", reply, fit, inventory, clearance?, inventory_value?, display?, out_dir,
-project_root?, relative_dir?, views?, focus?}`: `reply` is the accepted
-modelling or `rebuild` reply with its display block, and `out_dir` is
-absolute. The fit and inventory blocks come either built, as `fit` and
-`inventory`, or raw, as the `inspect scope=clearance` and `scope=inventory`
-values in `clearance` and `inventory_value`, which the process turns into
-blocks with `CadexFitReport` (ADR-447) -- how a client that may not import
-engine code gets the same blocks the CLI builds in process. Any of the four
-may be `null`. `kind: "blocks"` draws nothing and needs no `reply` or
-`out_dir`: it returns the two blocks alone, and each bounded the way a
-build reply shows it to the model (`fit_view`, `inventory_view`, ADR-435).
-Given the accepted `display` map as well, it also returns `appearance`:
-`{objects: {name: {role, color, source}}, palette, environment}`, the role
-and colour each object is drawn in, by the same rule and in the same shape
-as a render's `summary.json` (ADR-449). No buffer is read for it, and an
-object with neither a declared role nor an inventory to judge it by is left
-out, so a viewport keeps its own colour for it. The result is `{schema: "cadex-studio-result-v1", ok, kind, files,
-facts | summary, fit?, inventory?, appearance?}` or `{ok: false, error}`; exit 0 on
-success, 1 on a refusal, 2 for an unreadable request. `facts` is exactly what
-the CLI agent's `look` returns as text, so the two agents read the same thing.
+It has **no process entry**. The child-process request
+`cadex-studio-request-v1` (`kind: render | look | blocks`) existed for the
+deleted Blender shell, which could import no engine code, and left with it
+(ADR-529); `test_studio_standing.py` fails if it returns.
 
 ### The agent guidance: engine data, not code `[Cadex-new — ADR-446]`
 

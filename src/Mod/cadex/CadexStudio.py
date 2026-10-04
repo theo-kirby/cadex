@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """The studio renderer: accepted tessellation to lit images, the concept sheet, and the design proxies.
 
-One implementation for every client (ADR-445). The headless CLI loads this
-file by path, as it loads ``CadexdProtocol``; the shell runs it as a separate
-process through :func:`main`, so no shell code imports it. It is **not** a
+One implementation for every client (ADR-445). The CLI and the dashboard
+load this file by path, as they load ``CadexdProtocol``; it has no process
+entry of its own (ADR-529). It is **not** a
 cadexd op: ``cadexd`` dispatches serially, and a 12 s render inside it would
 stall the slider drag queued behind it. Nothing in the service imports it.
 
@@ -30,7 +30,6 @@ import json
 import math
 from pathlib import Path
 import struct
-import sys
 import time
 import zlib
 
@@ -1604,47 +1603,6 @@ def _palette_hex(palette):
     return {role: '#%02X%02X%02X' % tuple(rgb) for role, rgb in {**ROLE_COLORS, **palette}.items()}
 
 
-def display_objects(display):
-    """``object -> source`` for a display map, as :func:`snapshot` names them.
-
-    Components by their own name, placing their ``source_output``; an output
-    with geometry of its own and no component placing it, by its name. No
-    buffer is read, so this is cheap enough to run on every accepted build.
-    """
-    display = {str(k): v for k, v in dict(display or {}).items() if isinstance(v, dict)}
-    sources = {str(e['source_output']) for e in display.values() if e.get('source_output')}
-    objects = {}
-    for name, entry in sorted(display.items()):
-        source = str(entry.get('source_output') or name)
-        if name in sources or source == name and not entry.get('tessellation'):
-            continue
-        objects[name] = source
-    return objects
-
-
-def role_colours(display, fit=None, inventory=None):
-    """What a viewport paints each object, by the rules the studio draws with.
-
-    ``{'objects': {object: {role, color, source}}, 'palette': {role: hex},
-    'environment': [...]}``. The same resolution as a render's
-    ``summary['appearance']`` -- declared role, else supplier -- so a part is
-    the colour in the app's viewport that it is in ``look``, the hero and the
-    sheet. World geometry the fit names is left out. With no inventory to
-    tell printed from purchased, ``objects`` holds only declared roles: the
-    studio's index colours say nothing about a design, and a viewport keeps
-    its own.
-    """
-    summary = {'objects': {name: {'source': source, 'color': (0, 0, 0)}
-                           for name, source in display_objects(display).items()}}
-    environment, purchased = classify(summary, fit, inventory)
-    appearance, palette = declared(inventory)
-    looks = materials(summary, purchased=purchased, appearance=appearance, palette=palette)
-    names = [name for name in summary['objects']
-             if name not in environment and (purchased is not None or name in appearance)]
-    return {'objects': _appearance_rows(names, looks, appearance, purchased),
-            'palette': _palette_hex(palette), 'environment': sorted(environment)}
-
-
 def render_files(triangles, source, root, fit, inventory, relative_dir):
     """``(files, summary)``: the review render of one snapshot, not yet written.
 
@@ -1721,107 +1679,3 @@ def write_files(directory, files):
     except OSError as exc:
         raise StudioError('render: cannot write views: ' + str(exc)) from exc
     return written
-
-
-# --- The process entry: how a client that may not import this runs it --------
-
-REQUEST_SCHEMA = 'cadex-studio-request-v1'
-RESULT_SCHEMA = 'cadex-studio-result-v1'
-
-
-def _blocks(request):
-    """``(fit, inventory)`` from a request: given as blocks, or built from raw values.
-
-    A client that may not import engine code (the shell) sends the raw
-    ``inspect scope=clearance`` and ``scope=inventory`` values as
-    ``clearance`` and ``inventory_value``, and the blocks are built here by
-    ``CadexFitReport`` (ADR-447), exactly as the CLI builds them in process.
-    A block given directly wins over a raw value; either may be ``null``.
-    """
-    fit, inventory = request.get('fit'), request.get('inventory')
-    if fit is None and request.get('clearance') is not None or \
-            inventory is None and request.get('inventory_value') is not None:
-        import CadexFitReport  # the process entry has this module's directory on sys.path
-        try:
-            if fit is None and request.get('clearance') is not None:
-                fit = CadexFitReport.fit_summary(request['clearance'])
-            if inventory is None and request.get('inventory_value') is not None:
-                inventory = CadexFitReport.inventory_summary(request['inventory_value'])
-        except (KeyError, TypeError, ValueError, AttributeError) as exc:
-            raise StudioError(f'blocks: malformed inspect value: {type(exc).__name__}: {exc}') from exc
-    return fit, inventory
-
-
-def run_request(request):
-    """One request (``REQUEST_SCHEMA``) to one result (``RESULT_SCHEMA``); never raises.
-
-    ``kind`` is ``render`` (``render_files`` into ``out_dir``, summary paths
-    under ``relative_dir``), ``look`` (one ``<view>.png`` per view into
-    ``out_dir`` plus the look's facts) or ``blocks`` (the ``fit`` and
-    ``inventory`` blocks and their bounded model views ``fit_view`` and
-    ``inventory_view``, no drawing, no ``out_dir``; given the accepted
-    ``display`` as well, ``appearance`` is :func:`role_colours`). ``reply`` is the
-    accepted reply with its display block. The blocks come as ``fit`` and
-    ``inventory``, or raw as ``clearance`` and ``inventory_value``
-    (:func:`_blocks`); any of them may be ``null``.
-    """
-    try:
-        _require(isinstance(request, dict) and request.get('schema') == REQUEST_SCHEMA,
-                 'request schema must be ' + REQUEST_SCHEMA)
-        kind, out_dir = request.get('kind'), request.get('out_dir')
-        _require(kind in ('render', 'look', 'blocks'), "kind must be 'render', 'look' or 'blocks'")
-        fit, inventory = _blocks(request)
-        if kind == 'blocks':
-            # ...and each bounded as a build reply shows it to the model (ADR-435).
-            import CadexFitReport
-            # With the accepted ``display`` too, the colour each object is
-            # drawn in, for a viewport to paint (ADR-449).
-            display = request.get('display')
-            _require(display is None or isinstance(display, dict), 'display must be a display map')
-            return {'schema': RESULT_SCHEMA, 'ok': True, 'kind': kind, 'fit': fit, 'inventory': inventory,
-                    'fit_view': None if fit is None else CadexFitReport.fit_view(fit),
-                    'inventory_view': None if inventory is None else CadexFitReport.inventory_view(inventory),
-                    'appearance': None if display is None else role_colours(display, fit, inventory)}
-        _require(isinstance(out_dir, str) and Path(out_dir).is_absolute(), 'out_dir must be an absolute path')
-        reply = request.get('reply')
-        _require(isinstance(reply, dict), 'reply must be the accepted reply')
-        if kind == 'look':
-            facts, shots = look_report(reply, fit, inventory, request.get('views') or LOOK_DEFAULT_VIEWS,
-                                       request.get('focus') or ())
-            written = write_files(out_dir, {f'{view}.png': data for view, data, _ in shots})
-            return {'schema': RESULT_SCHEMA, 'ok': True, 'kind': kind, 'facts': facts,
-                    'fit': fit, 'inventory': inventory, 'files': [str(path) for path in written]}
-        root = request.get('project_root')
-        _require(isinstance(root, str) and root, 'project_root is required for a render')
-        triangles, source = snapshot(reply, world(fit))
-        files, summary = render_files(triangles, source, root, fit, inventory,
-                                      str(request.get('relative_dir') or 'review/render'))
-        written = write_files(out_dir, files)
-        return {'schema': RESULT_SCHEMA, 'ok': True, 'kind': kind, 'summary': summary,
-                'files': [str(path) for path in written]}
-    except StudioError as exc:
-        return {'schema': RESULT_SCHEMA, 'ok': False, 'error': str(exc)}
-
-
-def main(argv=None):
-    """``python CadexStudio.py REQUEST.json``: the result as one JSON line on stdout.
-
-    Exit 0 when the render succeeded, 1 when it was refused, 2 for a
-    request file that cannot be read at all.
-    """
-    argv = sys.argv[1:] if argv is None else argv
-    if len(argv) != 1:
-        print(json.dumps({'schema': RESULT_SCHEMA, 'ok': False, 'error': 'usage: CadexStudio.py REQUEST.json'}))
-        return 2
-    try:
-        request = json.loads(Path(argv[0]).read_text(encoding='utf-8'))
-    except (OSError, ValueError) as exc:
-        print(json.dumps({'schema': RESULT_SCHEMA, 'ok': False, 'error': f'unreadable request: {exc}'}))
-        return 2
-    result = run_request(request)
-    print(json.dumps(result, default=str))
-    return 0 if result['ok'] else 1
-
-
-if __name__ == '__main__':
-    raise SystemExit(main())
