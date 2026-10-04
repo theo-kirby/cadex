@@ -108,7 +108,7 @@ def test_the_project_lists_each_evaluation_as_a_bounded_summary(served) -> None:
     old, new = _json(server.url + "api/project")["evaluations"]
     assert (old["name"], old["verdict"], old["passed"], old["seeds"], old["relation"]) == (
         "steady", "pass", 2, 2, "historical")
-    assert old["failing"] == [] and old["film"] == {"state": "none", "seeds": []}
+    assert old["failing"] == [] and old["film"] == {"state": "none", "seeds": [], "sheets": []}
     assert old["evaluated_at"] == "2001-09-09T01:46:40Z"
     assert (new["name"], new["verdict"], new["passed"], new["seeds"], new["relation"]) == (
         "w2-shuffle", "fail", 0, 10, "current")
@@ -116,7 +116,11 @@ def test_the_project_lists_each_evaluation_as_a_bounded_summary(served) -> None:
     assert new["task_output"] == "walk_task" and new["terminations"] == {"horizon": 8, "tipped": 2}
     # What failed, worst first: stepping and slip on every seed.
     assert new["failing"][:3] == ["W5-steps (10 of 10)", "W5-share (10 of 10)", "W7 (10 of 10)"]
-    assert new["film"] == {"state": "ready", "seeds": [1101, 1105]}
+    assert new["film"] == {"state": "ready", "seeds": [1101, 1105], "sheets": [
+        {"seed": 1101, "overview": "seed-1101-overview.png", "detail": "seed-1101-detail.png",
+         "video": "seed-1101-rollout.webm"},
+        {"seed": 1105, "overview": "seed-1105-overview.png", "detail": "seed-1105-detail.png",
+         "video": None}]}
     # A summary: no per-seed row travels in the list a poll fetches.
     assert not any(isinstance(value, (list, dict)) and "metrics" in json.dumps(value)
                    for value in new.values())
@@ -133,7 +137,9 @@ def test_a_rewritten_report_is_read_again_and_an_invalid_one_is_not_listed(serve
     report["film"] = _film(directory, (1110,))
     (directory / "evaluation.json").write_text(json.dumps(report))
     (again,) = _json(server.url + "api/project")["evaluations"]
-    assert again["film"] == {"state": "ready", "seeds": [1110]} and again["stamp"] != row["stamp"]
+    assert again["film"] == {"state": "ready", "seeds": [1110], "sheets": [
+        {"seed": 1110, "overview": "seed-1110-overview.png", "detail": "seed-1110-detail.png",
+         "video": "seed-1110-rollout.webm"}]} and again["stamp"] != row["stamp"]
 
     other = root / "evaluations" / "junk"
     other.mkdir()
@@ -217,3 +223,34 @@ def test_an_idle_poll_parses_no_report_twice(served, monkeypatch) -> None:
 def _shown(page, name: str) -> None:
     page.wait_for("window.cadexReview.state().evaluation"
                   f" && window.cadexReview.state().evaluation.name === {json.dumps(name)}")
+
+
+@needs_browser
+def test_the_2d_viewport_lists_and_plays_each_evaluation_film(tmp_path, browser) -> None:
+    """ADR-541: a filmed seed's video and sheets are 2D-viewport sources."""
+
+    from test_review_server import _open, _review_project, serve
+    root = _review_project(tmp_path)
+    _w2_shuffle(root)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        films = [s for s in page.evaluate("window.cadexReview.sheets()") if s["group"] == "Evaluations"]
+        assert [(s["kind"], s["label"].rsplit(" · ", 2)[1:]) for s in films] == [
+            ("video", ["seed 1101", "video"]), ("image", ["seed 1101", "filmstrip"]),
+            ("image", ["seed 1101", "detail"]), ("image", ["seed 1105", "filmstrip"]),
+            ("image", ["seed 1105", "detail"])]
+        page.evaluate(f"window.cadexReview.setSheet({json.dumps(films[0]['key'])})", await_promise=True)
+        video = page.evaluate("""(function () { var v = document.getElementById('sheet-video');
+            return v && {src: v.src, controls: v.controls, muted: v.muted,
+                         kind: document.getElementById('sheet-stage').dataset.kind}; })()""")
+        assert video["kind"] == "video" and video["controls"] and video["muted"], video
+        assert "/evaluation/w2-shuffle/seed-1101-rollout.webm?v=" in video["src"]
+        status, headers, body = _get(video["src"])
+        assert status == 200 and headers["content-type"] == "video/webm" and body == WEBM
+        page.evaluate(f"window.cadexReview.setSheet({json.dumps(films[1]['key'])})", await_promise=True)
+        assert page.wait_for("(function(){var i=document.getElementById('sheet-image');"
+                             "return i && i.complete && i.naturalWidth})()") == SHEET[0]
+    finally:
+        server.shutdown()
+        server.server_close()

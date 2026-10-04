@@ -34594,3 +34594,35 @@ current does not. That error is conservative, and stated in the docstring.
 and `forcerange` is the chosen rating.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-541 — The 2D viewport shows each evaluation's film (2026-10-04, owner direction)
+
+**Context.** `cadex evaluate` draws, for each filmed seed, a filmstrip, a detail sheet and a
+rollout video (ADR-459). The server lists evaluations and serves their files under
+`evaluation/<name>/<file>`, but since ADR-533 the page listed none of them. The owner asked
+whether any videos were viewable in the 2D viewport during the quad-qdd run. None were: the
+quadruped's failed stand evaluation had a 7-second rollout on disk and no way to see it but a
+hand-typed URL.
+
+**Decision.**
+- The 2D viewport gains an **Evaluations** group, newest evaluation first. Each filmed seed
+  contributes up to three sources:
+  - its rollout **video**, a `<video>` with controls, muted and looping;
+  - its **filmstrip** and **detail** sheets, as images that pan and zoom like any other.
+- Each label carries the task, verdict and seed tally, and `(earlier)` for a historical
+  revision.
+- To list only what exists, the project summary's `evaluations[].film` gains `sheets`: per
+  filmed seed, the file each of `overview`, `detail` and `video` is in, or `null`. Names
+  pass the same character check the file route uses.
+- The change is additive. `seeds` is unchanged, and the page stays read-only (ADR-537).
+
+**Test.** `test_review_evaluation.py`:
+- the summary's `sheets` for a two-seed film whose first seed has the video;
+- in Chromium, the five sources in order, the video element's source, controls and mute;
+- the served bytes and type of the video, and the filmstrip loading as an image.
+
+Checked live on `quad-qdd`: its stand evaluation lists three sources, and the video
+decodes at 512×512 for 7.1 s.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+

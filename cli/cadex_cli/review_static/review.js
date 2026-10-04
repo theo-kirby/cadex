@@ -7,7 +7,7 @@
 //   3D viewport  the accepted model or a run's, shaded or hairline, and a
 //                run's rollout played back on a timeline -- the whole screen
 //                by default;
-//   2D viewport  the project's drawings, images, documents and training plots,
+//   2D viewport  the project's drawings, images, documents, evaluation films and training plots,
 //                a split away;
 //   Menu bar     File (the project), Revisions (the trail), View (theme,
 //                render style, layout).
@@ -312,7 +312,8 @@
 
   // -- 2D viewport -------------------------------------------------------------------
   // Everything flat the project has: its drawings, its presentation images,
-  // its documents, and each run's training curves. Images pan and zoom.
+  // its documents, its evaluations' films, and each run's training curves.
+  // Images pan and zoom; a rollout video plays in place.
   var sheet = { key: null, shownKey: null, list: [], kind: null, view: { scale: 1, x: 0, y: 0, fitted: true } };
   var CURVES = [['curve', 'reward'], ['loss_curve', 'loss'], ['episode_steps_curve', 'episode length']];
 
@@ -333,6 +334,21 @@
     });
     (Array.isArray(docs.domain) ? docs.domain : []).forEach(function (path) {
       list.push({ key: 'doc:' + path, group: 'Documents', kind: 'doc', label: path.replace(/^docs\//, ''), url: 'doc/current/' + path });
+    });
+    // Newest first: each filmed seed's rollout video and its two sheets (ADR-541).
+    (review.evaluations || []).slice().reverse().forEach(function (e) {
+      var film = e.film || {};
+      if (film.state !== 'ready') return;
+      var title = (e.task_label || e.task_output || e.name) + ' ' + e.verdict + ' ' + e.passed + '/' + e.seeds +
+                  (e.relation === 'historical' ? ' (earlier)' : '');
+      (film.sheets || []).forEach(function (s) {
+        [['video', 'video', 'video'], ['overview', 'image', 'filmstrip'], ['detail', 'image', 'detail']].forEach(function (part) {
+          if (!s[part[0]]) return;
+          list.push({ key: 'film:' + e.name + ':' + s[part[0]], group: 'Evaluations', kind: part[1],
+                      url: 'evaluation/' + encodeURIComponent(e.name) + '/' + encodeURIComponent(s[part[0]]) + '?v=' + e.stamp,
+                      label: title + ' · seed ' + s.seed + ' · ' + part[2] });
+        });
+      });
     });
     (review.runs || []).forEach(function (run) {
       var samples = (run.telemetry || {}).samples || {};
@@ -382,6 +398,11 @@
       var img = el('img', { src: item.url, alt: item.label, draggable: false, id: 'sheet-image' });
       img.addEventListener('load', fitSheet);
       stage.appendChild(img);
+      return Promise.resolve();
+    }
+    if (item.kind === 'video') {
+      stage.appendChild(el('video', { src: item.url, controls: true, loop: true, muted: true, playsInline: true,
+                                      autoplay: true, id: 'sheet-video', ariaLabel: item.label }));
       return Promise.resolve();
     }
     if (item.kind === 'doc') {

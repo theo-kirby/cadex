@@ -1512,6 +1512,26 @@ def _film_files(directory: Path, report: Mapping[str, Any]) -> dict[str, dict[st
     return files
 
 
+def _film_sheets(film: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Per filmed seed, the file each of its sheets and its video is in, or None.
+
+    Names only, as the report wrote them; the 2D viewport lists them and
+    ``evaluation/<name>/<file>`` serves only what the report names (ADR-541).
+    """
+
+    sheets = []
+    for row in film.get("seeds") or []:
+        if not isinstance(row, dict):
+            continue
+        entry: dict[str, Any] = {"seed": row.get("seed")}
+        for key in ("overview", "detail", "video"):
+            item = row.get(key)
+            name = item.get("file") if isinstance(item, dict) else None
+            entry[key] = name if isinstance(name, str) and name and set(name) <= _EVALUATION_NAME else None
+        sheets.append(entry)
+    return sheets
+
+
 def _evaluation_relation(report: Mapping[str, Any], accepted: Mapping[str, Any]) -> str:
     if not accepted.get("available") or not report.get("accepted_revision"):
         return "unknown"
@@ -1568,7 +1588,8 @@ def evaluations(project_root: Path | str, accepted: Mapping[str, Any]) -> list[d
                 "task_label": report.get("task_label"),
                 "film": {"state": film.get("state") or "none",
                          "seeds": [row.get("seed") for row in film.get("seeds") or []
-                                   if isinstance(row, dict)]},
+                                   if isinstance(row, dict)],
+                         "sheets": _film_sheets(film)},
                 "stamp": "-".join(str(part) for part in stamp[1:]),
                 "evaluated_at": _datetime.datetime.fromtimestamp(
                     stamp[2] / 1e9, _datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
