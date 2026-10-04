@@ -114,6 +114,7 @@ class Bridge:
         client: CadexdClient,
         *,
         on_call: Callable[[ToolCall], None] | None = None,
+        on_look: Callable[[str, bytes], None] | None = None,
         initial_revision: str = "",
         project_root: Path | str | None = None,
     ) -> None:
@@ -123,6 +124,9 @@ class Bridge:
         #: one those tools refuse; every other tool is unaffected.
         self.project_root = Path(project_root).resolve() if project_root else None
         self.on_call = on_call
+        #: Handed each picture ``look`` gives the model, by view, so the turn
+        #: can keep what the model saw (ADR-526).
+        self.on_look = on_look
         self.state = BridgeState(revision=str(initial_revision or ""))
         self._lock = threading.Lock()
         self._dir: Path | None = None
@@ -344,7 +348,9 @@ class Bridge:
                 return _content(str(exc), is_error=True)
         text = json.dumps(facts, indent=2)
         content = [{"type": "text", "text": text}]
-        for _view, data, _details in shots:
+        for view, data, _details in shots:
+            if self.on_look is not None:
+                self.on_look(view, data)
             content.append({
                 "type": "image",
                 "data": base64.b64encode(data).decode("ascii"),

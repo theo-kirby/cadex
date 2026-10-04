@@ -163,6 +163,7 @@ from .smoke import (
     smoke_interpreter,
 )
 from .tools import STANDARD_DISPLAY
+from .turn_store import TurnRecorder
 from .walk import (
     DEFAULT_LEG_TIMEOUT_S,
     PROGRESS_FILENAME,
@@ -1220,123 +1221,153 @@ def command_prompt(
             report.error = f"describe_api failed: {api.get('error')}"
             return EXIT_FAILURE
 
-        # The revision the bridge starts from is the engine's own working
-        # revision, so the first write of a resumed project is guarded
-        # correctly without the model being told what it is.
-        revision = read_working_revision(client)
+        recorder = TurnRecorder(report.project_root, args.prompt, attachments=report.attachments,
+                                resume=bool(args.resume))
+        code = EXIT_FAILURE
+        try:
+            with recorder.capture():
+                code = _prompt_turn(args, report, engine, client, recorder, api=api, images=images,
+                                    turn_factory=turn_factory, claude_path=claude_path, stored=stored,
+                                    session_id=session_id, model=model)
+        finally:
+            recorder.finish(report, code)
+        return code
 
-        def on_call(call: ToolCall) -> None:
-            mark = "·" if call.ok else "✗"
-            _progress(f" {mark} {call.op}  {call.summary}")
 
-        def on_text(text: str) -> None:
-            """The model's prose is narration, so it goes to stderr too."""
+def _prompt_turn(
+    args: argparse.Namespace,
+    report: RunReport,
+    engine: Engine,
+    client: CadexdClient,
+    recorder: TurnRecorder,
+    *,
+    api: Mapping[str, Any],
+    images: Sequence[Any],
+    turn_factory: Any,
+    claude_path: str,
+    stored: Any,
+    session_id: str,
+    model: str,
+) -> int:
+    """The turn itself, once the engine answers; its stderr is the transcript."""
 
-            sys.stderr.write(text)
+    # The revision the bridge starts from is the engine's own working
+    # revision, so the first write of a resumed project is guarded
+    # correctly without the model being told what it is.
+    revision = read_working_revision(client)
 
-        with Bridge(client, on_call=on_call, initial_revision=revision,
-                    project_root=report.project_root) as bridge:
-            turn = turn_factory(
-                claude_path=claude_path,
-                model=model,
-                system_prompt_text=system_prompt(
-                    api, project_docs=read_project_docs(report.project_root)
-                ),
-                socket_path=str(bridge.socket_path),
-                token=bridge.token,
-                session_id=session_id,
-                on_text=on_text,
-                cwd=report.project_root,
-            )
-            # The owner's comments since the last turn travel ahead of the
-            # prompt (ADR-505); they are delivered once a turn has run on them.
-            comments = pending_comments(report.project_root)
-            for image in images:
-                _progress(f" · attached {image.name}  {image.media_type}, {len(image.data)} bytes")
-            try:
-                prompt = with_comments(args.prompt, comments)
-                result = turn.run(prompt, images) if images else turn.run(prompt)
-                if _spent_nothing(result, bridge.state):
-                    _progress(
-                        " · the turn reached the engine not once; asking "
-                        "once more"
-                    )
-                    result = _merge_turns(result, turn.run(NUDGE_PROMPT))
-                    report.notes.append(
-                        "the first turn made no tool call; asked once more "
-                        "in the same conversation."
-                    )
-            finally:
-                turn.cleanup()
-            sys.stderr.write("\n")
-            # What the turn cost, and whether the model only pretended to
-            # use its tools (ADR-523): both on the transcript, where a
-            # person watching the dashboard reads it.
-            report.usage = turn_usage(result.frames)
-            if report.usage:
-                _progress(" · turn: " + describe_usage(report.usage))
-            imitated = IMITATED_WARNING if imitated_tool_call(result.frames) else ""
-            if imitated:
-                _progress(" ✗ " + imitated)
-            sys.stderr.flush()
+    def on_call(call: ToolCall) -> None:
+        mark = "·" if call.ok else "✗"
+        _progress(f" {mark} {call.op}  {call.summary}")
 
-        # A refused override cannot replace the model of an unchanged session.
-        # New locators still persist on failure so the conversation can resume.
-        if result.session_id and (result.ok or result.session_id != stored.session_id):
-            write_agent_state(
-                report.project_root,
-                session_id=result.session_id,
-                model=model,
-            )
-        report.session_id = result.session_id
-        if result.ok and comments:
-            at = mark_delivered(report.project_root, comments, session_id=result.session_id)
-            report.comments = [dict(comment, delivered=at) for comment in comments]
-            report.notes.append(f"delivered {len(comments)} comment(s) from the owner.")
-        if result.resume_failed:
-            report.notes.append(
-                "the stored session id could not be resumed; ran a fresh "
-                "conversation."
-            )
-        if result.text.strip():
-            report.notes.append(result.text.strip())
+    def on_text(text: str) -> None:
+        """The model's prose is narration, so it goes to stderr too."""
+
+        sys.stderr.write(text)
+
+    with Bridge(client, on_call=on_call, on_look=recorder.look, initial_revision=revision,
+                project_root=report.project_root) as bridge:
+        turn = turn_factory(
+            claude_path=claude_path,
+            model=model,
+            system_prompt_text=system_prompt(
+                api, project_docs=read_project_docs(report.project_root)
+            ),
+            socket_path=str(bridge.socket_path),
+            token=bridge.token,
+            session_id=session_id,
+            on_text=on_text,
+            cwd=report.project_root,
+        )
+        # The owner's comments since the last turn travel ahead of the
+        # prompt (ADR-505); they are delivered once a turn has run on them.
+        comments = pending_comments(report.project_root)
+        for image in images:
+            _progress(f" · attached {image.name}  {image.media_type}, {len(image.data)} bytes")
+        try:
+            prompt = with_comments(args.prompt, comments)
+            result = turn.run(prompt, images) if images else turn.run(prompt)
+            if _spent_nothing(result, bridge.state):
+                _progress(
+                    " · the turn reached the engine not once; asking "
+                    "once more"
+                )
+                result = _merge_turns(result, turn.run(NUDGE_PROMPT))
+                report.notes.append(
+                    "the first turn made no tool call; asked once more "
+                    "in the same conversation."
+                )
+        finally:
+            turn.cleanup()
+        sys.stderr.write("\n")
+        # What the turn cost, and whether the model only pretended to
+        # use its tools (ADR-523): both on the transcript, where a
+        # person watching the dashboard reads it.
+        report.usage = turn_usage(result.frames)
+        if report.usage:
+            _progress(" · turn: " + describe_usage(report.usage))
+        imitated = IMITATED_WARNING if imitated_tool_call(result.frames) else ""
         if imitated:
-            report.notes.append(imitated)
-        # What the agent decided lands in the project's own ADR log
-        # (ADR-193): a closing line that starts `DECISION:`. A convention,
-        # not a tool, because the agent has no file access here.
-        landed = record_decisions(report.project_root, result.text)
-        if landed:
-            report.notes.append(
-                "recorded " + ", ".join(landed) + " in DECISIONS.md."
-            )
-        # ...and its longer notes land beside them, one file per subject
-        # (ADR-245): a closing line `NOTE <subject>:`. The same convention
-        # rather than a second mechanism, and read back on the next visit.
-        noted = record_notes(report.project_root, result.text)
-        if noted:
-            report.notes.append("wrote " + ", ".join(noted) + ".")
+            _progress(" ✗ " + imitated)
+        sys.stderr.flush()
 
-        accepted = bridge.state.last_accepted
-        report.revision = bridge.state.revision or report.revision
-        if accepted is not None:
-            apply_modeling_reply(report, accepted)
-        if bridge.state.last_fit is not None:
-            report.fit = dict(bridge.state.last_fit)
-        if bridge.state.last_inventory is not None:
-            report.inventory = dict(bridge.state.last_inventory)
-        _refresh_script_state(client, report)
+    # A refused override cannot replace the model of an unchanged session.
+    # New locators still persist on failure so the conversation can resume.
+    if result.session_id and (result.ok or result.session_id != stored.session_id):
+        write_agent_state(
+            report.project_root,
+            session_id=result.session_id,
+            model=model,
+        )
+    report.session_id = result.session_id
+    if result.ok and comments:
+        at = mark_delivered(report.project_root, comments, session_id=result.session_id)
+        report.comments = [dict(comment, delivered=at) for comment in comments]
+        report.notes.append(f"delivered {len(comments)} comment(s) from the owner.")
+    if result.resume_failed:
+        report.notes.append(
+            "the stored session id could not be resumed; ran a fresh "
+            "conversation."
+        )
+    if result.text.strip():
+        report.notes.append(result.text.strip())
+    if imitated:
+        report.notes.append(imitated)
+    # What the agent decided lands in the project's own ADR log
+    # (ADR-193): a closing line that starts `DECISION:`. A convention,
+    # not a tool, because the agent has no file access here.
+    landed = record_decisions(report.project_root, result.text)
+    if landed:
+        report.notes.append(
+            "recorded " + ", ".join(landed) + " in DECISIONS.md."
+        )
+    # ...and its longer notes land beside them, one file per subject
+    # (ADR-245): a closing line `NOTE <subject>:`. The same convention
+    # rather than a second mechanism, and read back on the next visit.
+    noted = record_notes(report.project_root, result.text)
+    if noted:
+        report.notes.append("wrote " + ", ".join(noted) + ".")
 
-        if not result.ok:
-            report.error = result.error or "the agent turn failed."
-            return EXIT_FAILURE
-        if accepted is None:
-            report.error = _rejection_reason(result.text, bridge.state.calls)
-            return EXIT_REJECTED
+    accepted = bridge.state.last_accepted
+    report.revision = bridge.state.revision or report.revision
+    if accepted is not None:
+        apply_modeling_reply(report, accepted)
+    if bridge.state.last_fit is not None:
+        report.fit = dict(bridge.state.last_fit)
+    if bridge.state.last_inventory is not None:
+        report.inventory = dict(bridge.state.last_inventory)
+    _refresh_script_state(client, report)
 
-        _finish(args, report, engine, accepted.get("display"))
-        report.ok = True
-        return EXIT_OK
+    if not result.ok:
+        report.error = result.error or "the agent turn failed."
+        return EXIT_FAILURE
+    if accepted is None:
+        report.error = _rejection_reason(result.text, bridge.state.calls)
+        return EXIT_REJECTED
+
+    _finish(args, report, engine, accepted.get("display"))
+    report.ok = True
+    return EXIT_OK
 
 
 def _parse_assignments(raw: Sequence[str]) -> dict[str, Any]:

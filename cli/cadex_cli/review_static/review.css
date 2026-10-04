@@ -170,6 +170,10 @@ ul#problems li { color: var(--bad); }
 #turn-status[data-state="done"] { color: var(--ok); } #turn-status[data-state="failed"], #turn-status[data-state="error"] { color: var(--bad); }
 pre#turn-transcript { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-2); border: var(--bw) solid var(--rule); padding: var(--s2);
                       border-radius: var(--radius-sm); max-height: 320px; overflow: auto; font-family: var(--mono); font-size: var(--fs-0); margin: var(--s2) 0 0; }
+/* What the turn's `look` tool showed the agent (ADR-526): the CLI's renders, on their own floor. */
+#turn-looks { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--s1); margin-top: var(--s2); }
+#turn-looks[hidden] { display: none; }
+#turn-looks img { display: block; width: 100%; height: auto; border-radius: var(--radius-sm); border: var(--bw) solid var(--rule); }
 /* A comment is a write (ADR-505): on the whole design or a picked part, waiting for the next turn. */
 #comment-text, #note-text, #revision-note { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; color: var(--ink);
                 background: var(--surface-2); border: var(--bw) solid var(--rule); border-radius: var(--radius-sm); padding: var(--s2); margin-top: var(--s2); }

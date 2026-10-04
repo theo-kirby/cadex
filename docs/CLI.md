@@ -1250,6 +1250,7 @@ first visit and never overwritten by it:
 | `DECISIONS.md` | The project's own ADR log — what was chosen, over what, why. Newest last. | a turn's closing `DECISION:` lines, or a person |
 | `PROGRESS.md` | One row per accepted run: time, command, revision, digest, what, numbers. | **the CLI**, after every accepted run |
 | `comments.jsonl` | The owner's comments on the design or a picked part, the agent's notes to the owner and the owner's answers to them, and which turn received what, append-only (ADR-505, ADR-512). | `cadex comment` (the dashboard's comment and answer boxes), the agent's `leave_note`, and `cadex -p` when it delivers comments |
+| `turns/<id>/` | One directory per design turn, the 20 newest kept: `turn.json` (prompt, state, how it ended), `transcript.txt` (its stderr) and the `look-NN-<view>.png` images its `look` tool drew. Ignored by the project's repository; the dashboard's turn panel reads it (ADR-526). | **the CLI**, during every `cadex -p` |
 | `docs/<subject>.md` | Longer notes, one file per subject: `docs/gear-ratios.md`, `docs/sensors.md`, `docs/actuators.md`, `docs/rejected.md`. | a turn's closing `NOTE <subject>:` lines, or a person |
 
 The agent reads all three on every `cadex -p` turn — they are pasted into
@@ -1981,6 +1982,7 @@ cli/cadex_cli/
   protocol.py          loads THAT engine's own CadexdProtocol
   client.py            spawn cadexd, ready banner, request, cancel, shutdown
   session.py           agent.json and the project lockfile
+  turn_store.py        turns/<id>/: a turn's transcript and look images (ADR-526)
   tools.py             the tool surface, generated from OP_ARG_SPECS
   bridge.py            unix-socket server in the parent, in front of cadexd
   mcp.py               the MCP stdio server `claude` spawns

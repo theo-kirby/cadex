@@ -75,7 +75,7 @@ where (§12) — and the element ids do not change with the width.
 | # | Region | Element hooks (stable) | What it is for | Desk frame |
 |---|---|---|---|---|
 | 0 | **Masthead** | `#top`, `#project-name`, `#accepted-line`, `#freshness` | The project's name, the accepted identity now (revision, digest, updated, run count), and whether the page is live or stale. One row on desk, two on phone. | top bar |
-| 0a | **Design turn** | `#turn-panel`, `#turn-prompt`, `#turn-resume`, `#turn-start`, `#turn-status[data-state]`, `#turn-transcript` | Start a `cadex -p` turn on the project from a prompt and watch its transcript stream; the status says what ran and how it ended (§19). Under the run list on phone. | left sidebar, first |
+| 0a | **Design turn** | `#turn-panel`, `#turn-prompt`, `#turn-resume`, `#turn-start`, `#turn-status[data-state]`, `#turn-transcript` | Start a `cadex -p` turn on the project from a prompt and watch its transcript stream; the status says what ran and how it ended, and `#turn-looks` shows the pictures its `look` tool drew; with no turn running here, the newest turn the CLI kept, terminal turns included (§19). Under the run list on phone. | left sidebar, first |
 | 0a′ | **From the agent** | `#note-panel`, `#note-empty`, `#note-list li[data-note][data-type][data-answered]`, `.note-artifact`, `.note-reply-button`, `#note-answer`, `#note-target[data-note]`, `#note-text`, `#note-send`, `#note-status[data-state]` | What the agent flagged for the owner's review or asked, without waiting, and the owner's answer to each (§26). Under the turn panel on phone. | left sidebar, between the turn and the comments |
 | 0b | **Comments** | `#comment-panel`, `#comment-target[data-part]`, `#comment-whole`, `#comment-text`, `#comment-send`, `#comment-status[data-state]`, `#comment-list li[data-part][data-delivered]` | Leave a comment on the whole design or on a part clicked in the model, for the next turn; the list says which a turn has received (§20). Under the turn panel on phone. | left sidebar, second |
 | 0c | **Revisions** | `#revision-panel`, `#revision-current`, `#revision-note`, `#revision-accept`, `#revision-reject`, `#revision-status[data-state]`, `#revision-list li[data-revision][data-ordinal][data-current][data-verdict]`, `.revision-restore` | The owner's verdict on the accepted revision, and the stored trail with a way back to any of it (§21). Under the comments on phone. | left sidebar, third |
@@ -852,10 +852,23 @@ start. While it runs the prompt and button are disabled and
 status gives the accepted revision in the ok colour or the CLI's refusal in
 the bad colour, followed by the turn's tokens and price when the claude CLI
 reported them (ADR-523), and the next project poll reloads the model because the
-accepted revision moved. The transcript is never written into the project:
-what a turn leaves there — the revision, the `PROGRESS.md` row, the
-project commit, the agent's decisions and notes — is the CLI's (charter A3),
-and a server restart forgets the transcript, not the turn's result.
+accepted revision moved. The server never writes into the project: what a
+turn leaves there — the revision, the `PROGRESS.md` row, the project
+commit, the agent's decisions and notes, and its transcript and `look`
+images under `turns/` — is the CLI's (charter A3).
+
+**The stored turn** (ADR-526). Every `cadex -p`, typed at a terminal or
+started here, keeps `turns/<id>/turn.json`, `transcript.txt` (its stderr,
+flushed as it goes) and one `look-NN-<view>.png` per picture the agent's
+`look` tool drew. When this server is not running a turn on the project,
+`api/turn` answers from the newest stored one in the same shape, with
+`source: "store"` (a live turn says `"live"`), `looks` as `[{view, url}]`
+under `turn/<id>/<name>`, and `state` `interrupted` for a turn whose
+process died before it ended. So a terminal turn shows on the page — live
+while it runs, since the transcript is read from an offset — a finished
+page turn hands over to the stored copy without a reload, and a server
+restart forgets nothing. `#turn-looks` under the transcript is a grid of
+those images, each a link to the full PNG, hidden when the turn drew none.
 
 **Attach image** (ADR-507) opens a file picker for up to four PNG, JPEG,
 GIF or WebP images; `#turn-images` names them in the accent ink and the
@@ -1182,9 +1195,10 @@ terminal or started from the page, joined by its revision prefix to the
 trail in `script_history/` and to the verdicts and notes in
 `comments.jsonl`. `GET /api/turns` (schema `cadex-agent-turns-v1`) carries
 `count` and `turns`, each `project`, `url`, `when`, `prompt`, `said`,
-`revision`, `ordinal`, `digest`, `verdict`, `verdicts` and `notes`. No
-transcript is kept for a turn, so none is shown; a turn the CLI did not
-accept wrote no row and is not listed.
+`revision`, `ordinal`, `digest`, `verdict`, `verdicts` and `notes`. The
+turn's transcript and `look` images are on its project page (§19, ADR-526),
+not in this list; a turn the CLI did not accept wrote no row and is not
+listed.
 
 ## 30. Parts: appearance roles and the printable roster (ADR-522)
 

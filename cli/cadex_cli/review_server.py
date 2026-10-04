@@ -74,6 +74,7 @@ from .revisions import read_history as read_revision_history
 from .walk import run_leg
 from .session import read_agent_state
 from .studio import PRINTABLES, STUDIO
+from .turn_store import REPLY_KEYS, TRANSCRIPT_LIMIT, latest_turn, read_transcript, turn_file
 from .review_record import (
     policy_lineage,
     PROJECT_ARTIFACT_KEYS,
@@ -1636,7 +1637,8 @@ def agent_turns(root: Path) -> list[dict[str, Any]]:
     with its time, the revision and digest it left and its words. The row's
     revision prefix finds the rest: the revision's ordinal in the trail
     (``script_history/``), the owner's verdicts on it and the notes the agent
-    left on it (``comments.jsonl``). No transcript is kept, so none is shown.
+    left on it (``comments.jsonl``). The turn's transcript and ``look`` images
+    are the CLI's ``turns/`` store (ADR-526), which the project page reads.
     """
 
     rows = [row for row in progress_rows(root) if row["run"] == "prompt"]
@@ -2250,9 +2252,6 @@ NOTE_ARTIFACT_SUFFIXES = frozenset({".png", ".svg", ".mp4", ".webm", ".json", ".
 TURN_TIMEOUT_S = 3600.0
 #: Bound on a prompt, in characters; a design brief, not a document.
 PROMPT_LIMIT = 16_000
-#: Bound on the transcript kept for one turn, in characters; past it the
-#: tail is dropped and the transcript says so.
-TRANSCRIPT_LIMIT = 4 * 1024 * 1024
 
 
 class PromptTurn:
@@ -2260,10 +2259,11 @@ class PromptTurn:
 
     The transcript is the child's stderr — the tool-call progress lines and
     the model's prose, exactly what a terminal shows — held in memory for
-    the page to read from any offset while the turn runs. It is never
-    written into the project: what the turn leaves there (the revision, the
-    ``PROGRESS.md`` row, the project commit, the agent's decisions and
-    notes) is the CLI's, as for a turn typed at a terminal (A3).
+    the page to read from any offset while the turn runs. The server never
+    writes it into the project: what the turn leaves there (the revision,
+    the ``PROGRESS.md`` row, the project commit, the agent's decisions and
+    notes, and its transcript and ``look`` images under ``turns/``) is the
+    CLI's, as for a turn typed at a terminal (A3, ADR-526).
     """
 
     def __init__(self, root: Path, prompt: str, resume: bool,
@@ -2314,8 +2314,7 @@ class PromptTurn:
             envelope = leg.envelope
             reply = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
                      "seconds": round(leg.seconds, 3)}
-            for key in ("accepted_revision", "digest", "params", "error", "notes", "session_id", "attachments",
-                        "usage"):
+            for key in REPLY_KEYS:
                 if key in envelope:
                     reply[key] = envelope[key]
         except Exception as exc:  # noqa: BLE001 - the page must hear how it ended
@@ -2333,6 +2332,50 @@ class PromptTurn:
             return {"id": self.id, "state": self.state, "prompt": self.prompt, "resume": self.resume,
                     "images": list(self.images), "started": self.started, "command": ["cadex", *self.argv],
                     "text": text[max(0, min(since, len(text))):], "next": len(text), "reply": self.reply}
+
+
+def _look_urls(record: Mapping[str, Any]) -> list[dict[str, Any]]:
+    return [{"view": look["view"], "url": f"turn/{record['id']}/{look['name']}"}
+            for look in record.get("looks") or []]
+
+
+def stored_turn_snapshot(root: Path, record: Mapping[str, Any], since: int = 0) -> dict[str, Any]:
+    """A turn the CLI kept under ``turns/`` (ADR-526), in the live turn's shape.
+
+    The same shape whether the turn was typed at a terminal or started
+    here: it is what ``cadex -p`` wrote, read and never written.
+    """
+
+    text = read_transcript(root, str(record["id"]))
+    reply = record.get("reply")
+    if isinstance(reply, dict) and record.get("started") and record.get("finished"):
+        start = _datetime.datetime.fromisoformat(str(record["started"]))
+        reply = dict(reply, seconds=(_datetime.datetime.fromisoformat(str(record["finished"])) - start).total_seconds())
+    return {"id": record["id"], "state": record.get("state"), "prompt": record.get("prompt", ""),
+            "resume": record.get("resume", False), "images": list(record.get("attachments") or []),
+            "started": record.get("started"), "source": "store",
+            "text": text[max(0, min(since, len(text))):], "next": len(text), "reply": reply,
+            "looks": _look_urls(record), "looks_dropped": record.get("looks_dropped", 0)}
+
+
+def turn_snapshot(root: Path, live: "PromptTurn | None", since: int = 0) -> dict[str, Any]:
+    """``/api/turn``: a turn running here, else the newest turn the project kept.
+
+    A turn this server started streams from memory while it runs, with the
+    images its child has kept so far; once it ends, or when the newest turn
+    was typed at a terminal, the project's own ``turns/`` store answers. A
+    child that failed before it could keep anything is answered from memory.
+    """
+
+    stored = latest_turn(root)
+    if live is not None and (live.state == "running" or stored is None or str(stored["started"]) < live.started):
+        snapshot = dict(live.snapshot(since), source="live", looks=[])
+        if stored is not None and str(stored["started"]) >= live.started:
+            snapshot["looks"] = _look_urls(stored)
+        return snapshot
+    if stored is not None:
+        return stored_turn_snapshot(root, stored, since)
+    return {"state": "idle"}
 
 
 def _turn_images(value: Any) -> tuple[ImageAttachment, ...]:
@@ -2693,7 +2736,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             if rest == ["turn"]:
                 turn = self.server.turns.current(project.root)  # type: ignore[attr-defined]
                 since = parse_qs(self.query).get("since", ["0"])[0]
-                self._send_json(turn.snapshot(int(since) if since.isdigit() else 0) if turn is not None else {"state": "idle"})
+                self._send_json(turn_snapshot(project.root, turn, int(since) if since.isdigit() else 0))
                 return
             if rest[:2] == ["model", "run"] and len(rest) == 3:
                 record = project.run(rest[2])
@@ -2727,6 +2770,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
             path = project.project_artifact(rest[1], rest[2])
         elif head == "note" and len(rest) == 1 and NOTE_ID.match(rest[0]):
             path = project.note_artifact(rest[0])
+        elif head == "turn" and len(rest) == 2:
+            path = turn_file(project.root, rest[0], rest[1])
         elif head == "presentation" and len(rest) == 1:
             path = project.presentation_image(rest[0])
         elif head == "export" and len(rest) == 2:

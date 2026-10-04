@@ -33885,3 +33885,56 @@ Chromium Fit's bounds are the body's and the body covers 31% of the canvas
 with its box inside the frame (it fails on the old viewer). The report's
 `dashboard-model.png` was re-taken: 20.3% coverage, bounds 178 × 151 × 123 mm.
 
+
+## ADR-526 — A turn keeps its transcript and `look` images, and the project page shows them (2026-10-04, owner charter orun2 C1/D2)
+
+**Context.** The closing report's defect 3: a design turn typed at a
+terminal showed nothing on its project page. Its `PROGRESS.md` row reached
+the index (ADR-519), but the page's transcript was the dashboard's own
+in-memory copy of a child it had started (ADR-504), so a terminal turn had
+none, and the pictures the agent's `look` tool drew (ADR-406) were handed
+to the model and kept nowhere. A server restart forgot even a page turn's
+transcript.
+
+**Decision.** `cadex -p` keeps each turn under the project's
+`turns/<UTC stamp>-<hex>/` (`cli/cadex_cli/turn_store.py`): `turn.json`
+(the prompt, attachments, start and end, pid, state, and the envelope keys
+the live turn already reported), `transcript.txt` (everything the turn
+wrote to stderr — the tool lines and the model's prose — flushed as it
+goes, so a terminal turn can be watched while it runs) and one
+`look-NN-<view>.png` per picture `look` gave the model, via a new
+`Bridge(on_look=…)` hook. The CLI is the only writer. A dashboard turn is a
+`cadex -p` child, so it lands in the same store; there is no second write
+path (A3). `GET api/turn` answers a turn this server is running from
+memory, as before, and otherwise the project's newest stored turn in the
+same shape (`source: "store"`, with `looks` as URLs under `turn/<id>/`); a
+stored turn still `running` whose process is gone reads `interrupted`. The
+page shows the images under the transcript (`#turn-looks`). Only the
+store's own image names are served; the transcript is read only through
+`api/turn`.
+
+**Bounds.** A transcript stops at 4 MiB of text and says so (the bound the
+page already held), a turn keeps 24 images, a project keeps its 20 newest
+turns. `turns/` writes its own `.gitignore` of `*`, so a project's
+repository never commits a log — including projects whose top-level
+`.gitignore` predates this.
+
+**Cost.** ~200 lines of store, ~60 of server and page. No new dependency.
+The tool surface (`test_project_tool_surface.py`) is unchanged: `look`
+returns the same content; the protocol is untouched.
+
+**What would reverse it.** Transcripts that carry something a project copy
+must not (a secret pasted into a prompt): the store would then need a
+redaction step or an opt-out, not removal from the page.
+
+**Test.** `cli/tests/test_turn_store.py`: the record, transcript and
+images a turn keeps, its three bounds and the self-ignoring directory, a
+dead turn reading `interrupted`, and the server refusing every name that is
+not the store's own image or that resolves outside the project; then,
+against a real engine in headless Chromium, a turn run through `main()` as
+a terminal would — `write_script`, then `look` at `iso` and `top` — whose
+transcript, status and both decoded images the project page shows, and
+which the project's repository does not track. `test_dashboard_writes.py`'s
+page-started turns pass unchanged through the live-then-stored handover.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

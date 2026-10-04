@@ -350,6 +350,7 @@
     if (turn.state === 'idle') status.textContent = '';
     else if (running) status.textContent = 'running: ' + turn.prompt +
       (turn.images && turn.images.length ? ' (with ' + turn.images.map(function (image) { return image.name; }).join(', ') + ')' : '');
+    else if (turn.state === 'interrupted') status.textContent = 'interrupted before it ended: ' + turn.prompt;
     else if (turn.reply && turn.reply.ok) status.textContent = 'accepted at ' + short(turn.reply.accepted_revision) +
       ' in ' + Number(turn.reply.seconds || 0).toFixed(1) + ' s' + turnCost(turn.reply.usage);
     else status.textContent = ((turn.reply && turn.reply.error) || 'the turn failed') + turnCost(turn.reply && turn.reply.usage);
@@ -358,6 +359,18 @@
       var pinned = transcript.scrollTop + transcript.clientHeight >= transcript.scrollHeight - 4;
       transcript.textContent = turn.text;
       if (pinned) transcript.scrollTop = transcript.scrollHeight;
+    }
+    // What the agent's `look` tool showed it, as the CLI kept it (ADR-526).
+    var looks = $('turn-looks'), list = turn.looks || [], key = list.map(function (look) { return look.url; }).join('|');
+    looks.hidden = !list.length;
+    if (looks.dataset.key !== key) {
+      looks.dataset.key = key;
+      looks.textContent = '';
+      list.forEach(function (look) {
+        var link = el('a', { href: BASE + '/' + look.url, target: '_blank', title: 'look: ' + look.view });
+        link.appendChild(el('img', { src: BASE + '/' + look.url, alt: 'look: ' + look.view, loading: 'lazy' }));
+        looks.appendChild(link);
+      });
     }
   }
 
@@ -368,15 +381,18 @@
       return response.json();
     }).then(function (reply) {
       if (reply.state === 'idle') return;
-      var wasRunning = turn.state === 'running' && turn.id === reply.id;
+      var wasRunning = turn.state === 'running';
       if (reply.id !== turn.id) {
-        // Another turn: its transcript starts over, so read it from the top.
-        turn = { id: reply.id, state: reply.state, text: '', next: 0, reply: null, prompt: reply.prompt,
-                 images: reply.images || [] };
+        // Another turn, or the one that ran here now read from the project's
+        // store: its transcript starts over, so read it from the top. A turn
+        // that was running stays so until that read, which reloads the model.
+        turn = { id: reply.id, state: wasRunning ? 'running' : reply.state, text: '', next: 0, reply: null,
+                 prompt: reply.prompt, images: reply.images || [], looks: [], source: reply.source };
         turnRequest = null;
         return pollTurn();
       }
       turn.text += reply.text; turn.next = reply.next; turn.state = reply.state; turn.reply = reply.reply;
+      turn.looks = reply.looks || []; turn.source = reply.source;
       renderTurn();
       // The turn ended: the accepted revision may have moved under the model.
       if (wasRunning && reply.state !== 'running') return (pendingPoll || Promise.resolve()).catch(function () {}).then(poll);
@@ -1703,7 +1719,8 @@
     setParam: writeParams,
     lastWrite: function () { return lastWrite; },
     startTurn: startTurn,
-    turn: function () { return { id: turn.id, state: turn.state, text: turn.text, reply: turn.reply, images: turn.images || [] }; },
+    turn: function () { return { id: turn.id, state: turn.state, text: turn.text, reply: turn.reply, images: turn.images || [],
+                                  looks: turn.looks || [], source: turn.source }; },
     attachImages: attachImages,
     attached: function () { return turnImages.map(function (image) { return image.name; }); },
     comment: sendComment,
