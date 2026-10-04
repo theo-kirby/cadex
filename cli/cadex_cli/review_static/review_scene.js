@@ -193,19 +193,22 @@ export function create(canvas) {
   function setProxies(geoms) {proxyGeoms=Array.isArray(geoms)?geoms.map(g=>JSON.parse(JSON.stringify(g))):[]; buildProxies(); draw();}
   function showProxies(flag) {proxiesShown=!!flag; proxyLines.forEach(l=>{l.visible=proxiesShown;}); draw(); return proxiesShown;}
   function showing() {return proxiesShown&&proxiesDrawn?'tessellated solids with collision proxies':'tessellated solids';}
+  // A part's colour is its appearance role's (ADR-522) when the manifest gives one, as `look`
+  // and the concept sheet paint it; a design with no assembly keeps the index palette.
+  const colourOf=(entry,i)=>/^#[0-9A-Fa-f]{6}$/.test(entry.color||'')?parseInt(entry.color.slice(1),16):PALETTE[i%PALETTE.length];
   function install(entries) {
     clear();
     entries.forEach((entry,i)=> {
       const g=new THREE.BufferGeometry();
       g.setAttribute('position',new THREE.Float32BufferAttribute(entry.positions.map(v=>v*.001),3));
       g.computeVertexNormals();g.computeBoundingBox();
-      const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:PALETTE[i%PALETTE.length],roughness:.72,metalness:.05,side:THREE.DoubleSide}));
+      const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:colourOf(entry,i),roughness:.72,metalness:.05,side:THREE.DoubleSide}));
       m.userData.mmBounds=new THREE.Box3().setFromArray(entry.positions);
       m.castShadow=true;m.receiveShadow=true;pose(m,entry.placement);
       meshes.set(entry.name,m);model.add(m);triangleCount+=entry.positions.length/9;
     });
     updateBounds();if(bounds)frameBounds(bounds);applySection();fit();
-    return entries.map((e,i)=>({name:e.name,triangles:e.positions.length/9,color:[16,8,0].map(shift=>(PALETTE[i%PALETTE.length]>>shift)&255)}));
+    return entries.map((e,i)=>({name:e.name,triangles:e.positions.length/9,color:[16,8,0].map(shift=>(colourOf(e,i)>>shift)&255)}));
   }
   async function load(manifest,fetchImpl=window.fetch.bind(window)) {
     const entries=await Promise.all((manifest?.components||[]).filter(e=>e.mesh).map(async e=> {

@@ -73,6 +73,7 @@ from .project_docs import progress_rows
 from .revisions import read_history as read_revision_history
 from .walk import run_leg
 from .session import read_agent_state
+from .studio import PRINTABLES, STUDIO
 from .review_record import (
     policy_lineage,
     PROJECT_ARTIFACT_KEYS,
@@ -688,6 +689,7 @@ def _identity_model(**fields: Any) -> dict[str, Any]:
         "collision": _no_collision("no model to show"),
         "contacts": _no_contacts("t=0 contacts are read from the accepted attempt's MJCF export only"),
         "exploded": [],
+        "appearance": {"available": False, "reason": "no model to show", "palette": None, "printable": []},
     }
     base.update(fields)
     return base
@@ -749,6 +751,8 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
     model = _identity_model(
         view="run", run=run_name, relation=record.get("relation"),
         revision=model_block.get("accepted_revision"), digest=model_block.get("digest"),
+        appearance={"available": False, "palette": None, "printable": [],
+                    "reason": "a run's retained meshes carry no appearance roles; the accepted model shows them"},
     )
     run_ref = resolve_reference(root, f"{RUNS_DIRNAME}/{run_name}")
     if run_ref["error"] or not run_ref["exists"]:
@@ -914,6 +918,7 @@ def _model_before_rollout(root: Path, model: dict[str, Any]) -> dict[str, Any]:
         "collision": accepted["collision"],
         "contacts": accepted["contacts"],
         "exploded": accepted["exploded"],
+        "appearance": accepted["appearance"],
     })
     return model
 
@@ -977,6 +982,64 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def part_looks(result: Mapping[str, Any], entries: list[dict[str, Any]]) -> dict[str, Any]:
+    """Each shown part's appearance role, colour and print status (ADR-522).
+
+    The rule is the renderer's (``CadexStudio.materials``), so the viewer
+    paints a part as ``look`` and the concept sheet do: the role a
+    component declared, else mechanism for a catalogued (purchased) part and
+    shell for a printed one, in the assembly's palette. The facts are the
+    ones ``inspect scope=inventory`` joins, read from the same accepted
+    ``result.json``. ``printable`` is the engine's roster, every output with
+    a surface ``export_printable`` would accept. Sets ``role``, ``color``,
+    ``role_source``, ``supplier`` and ``printable`` on each entry and
+    returns the model's ``appearance`` block. With no assembly there is no
+    supplier to read and every entry keeps ``role`` ``None``: the viewer
+    keeps its index colours, as ``look`` does.
+    """
+
+    outputs = {str(item.get("name") or ""): item for item in result.get("outputs") or []
+               if isinstance(item, Mapping)}
+    roster = PRINTABLES.printable_roster(result.get("outputs"))
+    for entry in entries:
+        entry.update(role=None, color=None, role_source=None, supplier=None,
+                     printable=entry.get("output") in roster)
+    links = {name: item for name, item in outputs.items() if item.get("type") == "component_link"}
+    assemblies = [item for item in outputs.values() if item.get("type") == "assembly"]
+    if not links:
+        return {"available": False, "reason": "no assembly: no inventory to tell printed from purchased",
+                "palette": None, "printable": sorted(roster)}
+    appearance = {}
+    for name, item in links.items():
+        role = ((item.get("definition") or {}).get("properties") or {}).get("appearance")
+        if role:
+            appearance[name] = str(role)
+    palette_block = ((((assemblies[0].get("definition") or {}).get("properties") or {}).get("palette"))
+                     if assemblies else None) or {}
+    summary = {"objects": {entry["name"]: {"source": entry.get("output"), "color": (0, 0, 0)}
+                           for entry in entries}}
+    purchased = {entry["name"] for entry in entries
+                 if isinstance((outputs.get(str(entry.get("output"))) or {}).get("catalog"), Mapping)}
+    try:
+        _declared, palette = STUDIO.declared({"appearance": appearance, "palette": palette_block})
+        looks = STUDIO.materials(summary, purchased=purchased,
+                                 appearance={k: v for k, v in appearance.items() if k in summary["objects"]},
+                                 palette=palette)
+    except STUDIO.StudioError as exc:
+        return {"available": False, "reason": str(exc), "palette": None, "printable": sorted(roster)}
+    for entry in entries:
+        role, rgb = looks[entry["name"]]
+        entry.update(role=role, color="#%02X%02X%02X" % tuple(rgb),
+                     role_source="declared" if entry["name"] in appearance else "supplier",
+                     supplier="purchased" if entry["name"] in purchased else "printed")
+    return {"available": True,
+            "source": "the accepted assembly's declared roles, else purchased mechanism and printed shell "
+                      "(CadexStudio.materials, as look and the concept sheet draw them)",
+            "palette": {role: "#%02X%02X%02X" % tuple(rgb)
+                        for role, rgb in {**STUDIO.ROLE_COLORS, **palette}.items()},
+            "printable": sorted(roster)}
 
 
 def accepted_model(project_root: Path | str) -> dict[str, Any]:
@@ -1093,6 +1156,7 @@ def accepted_model(project_root: Path | str) -> dict[str, Any]:
                              else "declared component placements"),
         "components": entries,
         "exploded": exploded_views(result, {entry["name"]: entry["placement"] for entry in entries}),
+        "appearance": part_looks(result, entries),
         "meshes": {output: entry["artifact"] for output, entry in tess_by_output.items()},
     })
     return model

@@ -1,6 +1,6 @@
 # DASHBOARD.md — The dashboard, Cadex's only UI
 
-Verified against source: 2026-10-03. [Cadex-new]
+Verified against source: 2026-10-04. [Cadex-new]
 
 This is the design specification for the dashboard: the page `cadex review`
 serves (`cli/cadex_cli/review_server.py` and `review_static/`, ADR-286), the
@@ -1181,6 +1181,34 @@ trail in `script_history/` and to the verdicts and notes in
 `revision`, `ordinal`, `digest`, `verdict`, `verdicts` and `notes`. No
 transcript is kept for a turn, so none is shown; a turn the CLI did not
 accept wrote no row and is not listed.
+
+## 30. Parts: appearance roles and the printable roster (ADR-522)
+
+The viewer paints each part in its appearance role, by the renderer's own
+rule (`CadexStudio.materials`), so a part is the colour `look` and the
+concept sheet draw it: the role its component declared
+(`assembly.component(..., appearance=...)`), else mechanism for a part whose
+output came off a catalog row (purchased) and shell for one modelled in the
+script (printed), in the assembly's `palette=`. The facts come from the
+accepted attempt's `result.json`, the file `inspect scope=inventory` joins.
+
+`api/model/accepted` gives each component `role`, `color` (`#RRGGBB`),
+`role_source` (`declared` or `supplier`), `supplier` (`printed` or
+`purchased`) and `printable`: whether its output is on the engine's
+printable roster (`CadexPrintables.printable_roster`, every output with a
+surface, the list `export_printable` checks against). The manifest's
+`appearance` block carries `available`, `source`, `palette` (role → colour)
+and `printable` (the roster's names), or `reason` when it is not available.
+
+`#model-components` leads with `#parts-summary`: how many parts are
+printed, purchased and printable, and the role colours. Each row
+(`data-role`, `data-supplier`, `data-printable`) shows its swatch, its
+role (marked *declared* when the script said so), printed or purchased and
+printable. A design with no assembly has no supplier to read, so it keeps
+the index colours and says so; so does a run's own retained meshes, whose
+rows carry no roles. The shell's printable ticks are not kept: they only
+chose what a printable-only export wrote, and the Export button writes
+every output (ADR-509).
 
 ## Operator run status (ADR-387)
 

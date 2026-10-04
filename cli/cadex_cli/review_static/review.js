@@ -1173,15 +1173,35 @@
     decisions.appendChild(el('li', { className: 'muted', text: 'decisions as of this run are in the DECISIONS.md snapshot above' }));
   }
 
+  // The parts roster (ADR-522): each part's appearance role and where it came from, printed or
+  // purchased, and whether the engine's printable roster has it. A summary line leads.
+  function partLooks(component) {
+    if (!component.role) return '';
+    return ' · ' + component.role + (component.role_source === 'declared' ? ' (declared)' : '') + ' · ' + component.supplier +
+      (component.printable ? ' · printable' : '');
+  }
+
   function renderModelComponents(manifest, loaded) {
-    var list = $('model-components');
+    var list = $('model-components'), looks = manifest.appearance || {};
     clearChildren(list);
-    (manifest.components || []).forEach(function (component, index) {
+    var components = manifest.components || [];
+    if (manifest.available) {
+      var printed = components.filter(function (c) { return c.supplier === 'printed'; }).length;
+      var bought = components.filter(function (c) { return c.supplier === 'purchased'; }).length;
+      var printable = components.filter(function (c) { return c.printable; }).length;
+      list.appendChild(el('li', { id: 'parts-summary', className: 'muted', 'data-appearance': looks.available ? 'roles' : 'index', title: looks.source || '',
+        text: looks.available
+          ? 'parts: ' + printed + ' printed, ' + bought + ' purchased, ' + printable + ' printable · colours by role: ' +
+            Object.keys(looks.palette).map(function (role) { return role + ' ' + looks.palette[role]; }).join(', ')
+          : 'parts: ' + printable + ' printable · index colours (' + looks.reason + ')' }));
+    }
+    components.forEach(function (component, index) {
       var mesh = loaded.filter(function (entry) { return entry.name === component.name; })[0];
-      var line = el('li', { 'data-component': component.name, 'data-mesh': component.mesh_status });
+      var line = el('li', { 'data-component': component.name, 'data-mesh': component.mesh_status,
+        'data-role': component.role || '', 'data-supplier': component.supplier || '', 'data-printable': String(!!component.printable) });
       if (mesh) { var swatch = el('span', { className: 'swatch' }); swatch.style.background = 'rgb(' + mesh.color.join(',') + ')'; line.appendChild(swatch); }
       line.appendChild(document.createTextNode(component.name + (component.output && component.output !== component.name ? ' ← ' + component.output : '') +
-        ' · mesh ' + component.mesh_status + (mesh ? ' (' + mesh.triangles + ' triangles)' : '') + ' · placement: ' + component.placement_source +
+        partLooks(component) + ' · mesh ' + component.mesh_status + (mesh ? ' (' + mesh.triangles + ' triangles)' : '') + ' · placement: ' + component.placement_source +
         ' · collision: ' + proxySummary(manifest, component.name)));
       list.appendChild(line);
     });

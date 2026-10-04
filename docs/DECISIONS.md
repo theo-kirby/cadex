@@ -33722,3 +33722,47 @@ pins each kept point in the assembled system prompt, and that the comment
 form the overlay describes is the one `comments.with_comments` writes.
 `src/Mod/cadex/cadex_tests/test_agent_guidance.py::test_the_guidance_checks_the_rest_contacts_after_an_mjcf_export`
 pins the covered point.
+
+## ADR-522 — The viewer paints parts by appearance role and lists them printed, purchased and printable (2026-10-04, owner charter orun2 D2/W1)
+
+**Context.** A1 lists "printable-part and appearance-role display" among
+what the dashboard must port. The shell's `cadex_roles.py` painted the
+viewport shell / mechanism / accent, and its `cadex_print.py` with the
+Parameters editor kept a roster of printable parts with ticks stored in the
+`.blend`. The dashboard's viewer coloured parts by index, and its parts list
+said nothing about roles or printing. The engine already publishes every
+fact needed in the accepted `result.json`: the role a component declared
+(ADR-413), the catalog row an output came off (ADR-233), the assembly's
+palette, and the printable roster `export_printable` checks (ADR-158).
+
+**Decision.** `review_server.part_looks` reads those facts and colours each
+part with `CadexStudio.materials`, the rule `look` and the concept sheet
+already draw with: the declared role, else mechanism if purchased and shell
+if printed, in the assembly's palette. `api/model/accepted` gives each
+component `role`, `color`, `role_source`, `supplier` and `printable`, and an
+`appearance` block. The viewer uses the colour; the parts list leads with a
+count of printed, purchased and printable parts and shows each part's role
+and status (`docs/DASHBOARD.md` §30). With no assembly the viewer keeps its
+index colours and says why, as `look` does. `CadexPrintables` is loaded
+beside `CadexStudio` in `cli/cadex_cli/studio.py`; it is standard library
+only. No new dependency.
+
+**Dropped: the printable ticks.** They chose what a printable-only export
+wrote, and that filter is already dropped (ADR-509): the Export button
+writes every output. A tick would have nothing to feed, so it gets no
+project-store home. The engine's `export_printable` op stays on the
+protocol.
+
+**Cost.** ~60 lines of server and ~30 of page code; five fields per
+component in the model manifest.
+
+**What would reverse it.** The owner wanting to print a subset from the
+dashboard: then ticks return with a stored home and an export that reads
+them, under an ADR.
+
+**Test.** `cli/tests/test_dashboard_parts.py`: against a real engine, the
+roles, colours, suppliers and roster agree with `inspect scope=inventory`
+and `inspect scope=script`'s printable roster, and headless Chromium shows
+each part's role, its viewer colour as the swatch, printed or purchased and
+printable; without an engine, a design with no assembly and an unknown role
+each say why they keep index colours.

@@ -660,7 +660,7 @@ def test_browser_selecting_a_historical_run_shows_that_run_not_today(served, bro
     assert status.startswith("HISTORICAL model of run first at revision " + REVISION_A[:12])
     assert "2 component(s), 24 triangles" in status
     components = page.evaluate(
-        "Array.from(document.querySelectorAll('#model-components li')).map(n => n.textContent)")
+        "Array.from(document.querySelectorAll('#model-components li[data-component]')).map(n => n.textContent)")
     assert any(line.startswith("body ← torso · mesh retained (12 triangles)") for line in components)
     assert any("shin ← leg" in line and "rollout trace, first frame" in line for line in components)
     state = page.evaluate("window.cadexReview.state()")
