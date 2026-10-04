@@ -34353,3 +34353,34 @@ checks:
 - that the remembered manifest is rebuilt when the project manifest changes.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-536 — Ouroboros is not part of Cadex (2026-10-04, owner direction)
+
+**Context.** Ouroboros is a separate autonomous research and development loop. It has driven
+this repository's runs, but it is not part of the product. The dashboard still read its run
+directories:
+- `cadex app` listed `.ouroboros/runs` (ADR-513), each run at `/r/<run>/` with its charter
+  (ADR-514), probes (ADR-515) and records (ADR-518);
+- `tools/operator_review.py` served the project that the configured run had dispatched (ADR-387).
+
+**Decision.** No product file names Ouroboros. Removed:
+- `OuroborosRuns`, `/api/runs` and every `/r/` route from `review_server.py`;
+- `run.html` and `run.js`;
+- `cadex app --runs` and `CADEX_RUNS`;
+- the Runs card on the index;
+- `tools/operator_review.py`, its selftest and `docs/OPERATOR-REVIEW.md`;
+- `docs/DASHBOARD.md` §27 and the operator status section;
+- the run fixtures and their tests in `test_app.py`.
+
+This reverses ADR-387, ADR-513, ADR-514, ADR-515 and ADR-518.
+
+**What stays.** Ouroboros is still named in these places:
+- The loop's own `.ouroboros/` directory and its pointer in `AGENTS.md` and `CLAUDE.md`, which
+  are how the repository is developed, not the product.
+- The history: this log, `docs/history/`, the frozen evidence under `docs/probes/`, the
+  hypergraph records and `STATE.md`.
+
+**Test.** `test_project_docs.py::test_no_product_file_names_ouroboros` fails if a tracked file
+outside those places names it.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

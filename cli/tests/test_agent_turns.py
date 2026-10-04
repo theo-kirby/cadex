@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""CLI agent turns listed as runs beside the Ouroboros runs (orun2 D3, ADR-519).
+"""CLI agent turns listed on the projects index (orun2 D3, ADR-519).
 
 A turn has no store of its own (A3): it is the ``prompt`` row the CLI writes
 to ``PROGRESS.md`` for every accepted turn, joined by its revision to the

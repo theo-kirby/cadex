@@ -60,8 +60,7 @@ and a same-origin check (§18), on a server bound to 127.0.0.1 (§22).
 
 ## 2. Hierarchy
 
-**Index** (`/`, `projects.html`): the top bar, then **Runs** — one row per
-Ouroboros run (§27), hidden when there are none — then **Projects**, newest
+**Index** (`/`, `projects.html`): the top bar, then **Projects**, newest
 accepted first, 20 to a page. Each row is the name, linking to its page, and
 a muted date; **Newer** and **Older** page through them, and the page number
 is kept in the URL (`?page=N`).
@@ -698,38 +697,3 @@ the 2 s project poll.
 
 Measured on a link emulated at 30 Mbit/s and 40 ms (Chromium, the 45-part
 arm): first load 9.1 s → 3.9 s, reopening the same model 8.2 s → 0.8 s.
-
-## 27. Autonomous runs beside the projects (ADR-513)
-
-`cadex app` lists the **Ouroboros runs** of a runs directory above the
-projects: `--runs`, then `CADEX_RUNS`, then the checkout's own
-`.ouroboros/runs`. Each row is the run's name linking to `/r/<run>/` and a
-muted `<state> · <n> iterations`.
-
-`/r/<run>/` is the run's page (`run.html`, `run.js`, this stylesheet): the
-top bar names the run, its state and iteration count; under it **Charter**
-(ADR-514), the done criteria under `## Done criteria` in `run.yml`'s `goal`
-file as the **run's branch** holds it, one row each — a ✓ when ticked, the
-id and the title, the criterion's text as the row's tooltip — and
-**Iterations**, newest first: the number, the verdict in its status colour
-(`--ok` for `continue` and `done_accepted`, `--bad` for `reject` and
-`done_rejected`, `--warn` for `stuck` and `looping`, **pending** while the
-critic has not spoken), and the critic's reason. The page polls, so a live
-run's next iteration appears without a reload.
-
-The server reads exactly four files of a run — `run.yml`'s top-level
-scalars, `status.json`, `iterations.jsonl` and `critic.jsonl` — fresh on
-every request, and serves nothing else from the directory: transcripts,
-logs and patches never reach a page. There is no write route under `/r/`.
-Its probe and record routes (ADR-515, ADR-518) still answer, with nothing
-on the page that links to them.
-
-## Operator run status (ADR-387)
-
-The operator deployment adds a compact bottom-right status strip with run name,
-iteration, loop state and project name. It uses the dark chrome palette and
-12 px text, and reloads the page on project changes so prior-project videos,
-documents and camera state do not carry across. When the configured run has no
-dispatched project, show a waiting message instead of the previous model. This
-strip belongs to the operator launcher; ordinary single-project review keeps
-its existing layout. See `OPERATOR-REVIEW.md` for the selection contract.

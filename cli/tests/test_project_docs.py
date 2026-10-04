@@ -205,6 +205,29 @@ def test_no_live_doc_names_the_deleted_shell() -> None:
     assert naming == [], naming
 
 
+#: Where the name of Ouroboros, the separate research loop that has driven
+#: this repository, may appear: the dev-loop pointer in the agent contract,
+#: the loop's own directory, and the history the shell's names may also
+#: appear in (ADR-536). It is not part of Cadex.
+OUROBOROS_ALLOWED = SHELL_HISTORY_DOCS + ("AGENTS.md", "CLAUDE.md", ".gitignore", "docs/probes/")
+
+
+def test_no_product_file_names_ouroboros() -> None:
+    """ADR-536: Ouroboros is not part of Cadex, so no product file -- code,
+    page, test or live doc -- names it."""
+
+    root = Path(__file__).resolve().parents[2]
+    listing = subprocess.run(
+        ["git", "grep", "-l", "-i", "-I", "ouroboros", "--", "."], cwd=root,
+        capture_output=True, text=True, check=False)
+    if listing.returncode not in (0, 1):
+        pytest.skip("not a git checkout")
+    naming = [name for name in listing.stdout.splitlines()
+              if name and not name.startswith(OUROBOROS_ALLOWED)
+              and name != "cli/tests/test_project_docs.py"]
+    assert naming == [], naming
+
+
 def test_agents_md_describes_the_three_part_product() -> None:
     """ADR-500 (charter R1): the agent contract describes the engine, the
     dashboard and the agent, at no more than half the 432 lines it had when
