@@ -14,17 +14,9 @@ task's success spec, with the film drawn from it (ADR-459). Reading
 opens no engine, rebuilds nothing and holds no state of its own, so a
 browser that goes away changes nothing about the project.
 
-Writing is the dashboard's light steering (orun2 D2, ADR-503 to ADR-506, ADR-509),
-and it has no write path of its own: each POST runs the very ``cadex``
-command a person would type (``params --set``, ``-p PROMPT`` for a
-design turn whose stderr is the live transcript, ``comment`` for a
-note on the design or a picked part (ADR-505), ``revision`` for a verdict
-(ADR-506), or ``export`` into the ignored ``review/export/``, ADR-509), as a child process the
-way ``cadex walk`` runs its legs, so the project lock, the ``PROGRESS.md``
-row and the project commit are the CLI's. Every POST needs the per-launch token the
-server writes into the page it serves, and a browser's ``Origin``, when
-sent, must be this server's own; anything else is refused before it is
-routed.
+It has no write route at all (ADR-537): a request other than GET or HEAD
+is refused. The project changes only through the agent that is working
+it -- the CLI, or ``cadex mcp`` -- and the page follows on its next poll.
 
 What it will serve is an allowlist, never a path. Every route names a run
 by its directory name, an artifact by its record key, a document by the
@@ -43,8 +35,6 @@ module and an attributed prototype environment (ADR-301), with no CDN.
 from __future__ import annotations
 
 from array import array
-import base64
-import binascii
 from collections import OrderedDict
 import copy
 import datetime as _datetime
@@ -52,32 +42,25 @@ import hashlib
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
-import hmac
 import math
 import mimetypes
 import os
 import re
-import secrets
 from pathlib import Path
-import shutil
 import struct
-import subprocess
 import sys
-import tempfile
 import threading
 import zlib
 from typing import Any, Callable, Mapping
-from urllib.parse import parse_qs, quote, unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
 
-from .agent import IMAGE_LIMIT, IMAGES_PER_TURN, ImageAttachment, ImageRefused, image_attachment
 from .comments import read_comments, read_notes
 from .project_docs import progress_rows
 from .revisions import read_history as read_revision_history
-from .walk import run_leg
 from .session import read_agent_state
 from .studio import PRINTABLES, STUDIO
-from .turn_store import REPLY_KEYS, TRANSCRIPT_LIMIT, latest_turn, read_transcript, turn_file
+from .turn_store import turn_file
 from .review_record import (
     policy_lineage,
     PROJECT_ARTIFACT_KEYS,
@@ -1957,129 +1940,7 @@ GZIP_TYPES = ("application/json", "text/", "model/stl", "image/svg+xml")
 _GZIP_MEMO: "OrderedDict[str, bytes]" = OrderedDict()
 _GZIP_MEMO_SIZE = 512
 
-#: The page's write token, as the served ``index.html`` carries it: the
-#: placeholder is replaced, per response, with the launch's own token.
-WRITE_TOKEN_META = b'<meta name="cadex-write-token" content="">'
-WRITE_TOKEN_HEADER = "X-Cadex-Token"
-#: Bound on a POST body; a parameter change is a few dozen bytes.
-WRITE_BODY_LIMIT = 64 * 1024
-#: Bound on a design turn's body, which may carry its images as base64
-#: (ADR-507): every one at the CLI's limit, plus the prompt.
-TURN_BODY_LIMIT = IMAGES_PER_TURN * (IMAGE_LIMIT * 4 // 3 + 4) + WRITE_BODY_LIMIT
-#: How long one dashboard write may run before it is stopped, in seconds.
-WRITE_TIMEOUT_S = 300.0
-PARAM_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-
-def write_params(root: Path, values: Any) -> tuple[HTTPStatus, dict[str, Any]]:
-    """``cadex params --project ROOT --set NAME=VALUE ...``, as a child.
-
-    The dashboard's slider and the command line are one write path (A3):
-    this spawns the CLI exactly as ``cadex walk`` spawns a leg, without
-    ``--wait``, so a project another run holds is refused rather than
-    queued, and the reply is the child's own envelope.
-    """
-
-    from .report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE  # report imports this module
-
-    if not isinstance(values, Mapping) or not values:
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "values must be a non-empty object."}
-    argv = ["params", "--project", str(root)]
-    for name, value in sorted(values.items()):
-        if not isinstance(name, str) or not PARAM_NAME.match(name):
-            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"not a parameter name: {name!r}"}
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
-            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"{name} must be a finite number."}
-        argv += ["--set", f"{name}={value!r}"]
-    leg = run_leg("params", argv + ["--json"], timeout=WRITE_TIMEOUT_S)
-    envelope = leg.envelope
-    reply = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
-             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv]}
-    for key in ("accepted_revision", "digest", "params", "error"):
-        if key in envelope:
-            reply[key] = envelope[key]
-    if reply["ok"]:
-        return HTTPStatus.OK, reply
-    if leg.code == EXIT_USAGE:
-        return HTTPStatus.BAD_REQUEST, reply
-    return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
-
-
-def write_comment(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
-    """``cadex comment --project ROOT [--part NAME] -- TEXT``, as a child (ADR-505).
-
-    The comment box and the command line are one write path (A3). The text
-    travels after ``--`` and the part as one ``--part=`` token, so neither
-    is read as a flag; the bounds are the CLI's own, checked here only so a
-    bad body spawns nothing.
-    """
-
-    from .comments import COMMENT_LIMIT, PART_LIMIT
-    from .report import EXIT_OK, EXIT_USAGE  # report imports this module
-
-    text, part, reply_to = body.get("text"), body.get("part", ""), body.get("reply_to", "")
-    if not isinstance(text, str) or not text.strip():
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "text must be non-empty text."}
-    if len(text) > COMMENT_LIMIT or "\x00" in text:
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"a comment is at most {COMMENT_LIMIT} characters of text."}
-    if not isinstance(part, str) or len(part) > PART_LIMIT or "\x00" in part or "\n" in part:
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"part must be one line of at most {PART_LIMIT} characters."}
-    if not isinstance(reply_to, str) or (reply_to and not NOTE_ID.match(reply_to)):
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "reply_to must be an agent note's id."}
-    argv = ["comment", "--project", str(root), "--json"] + (["--part=" + part.strip()] if part.strip() else []) \
-        + (["--reply=" + reply_to] if reply_to else [])
-    leg = run_leg("comment", argv + ["--", text.strip()], timeout=WRITE_TIMEOUT_S)
-    envelope = leg.envelope
-    reply: dict[str, Any] = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
-                             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv]}
-    if envelope.get("comments"):
-        reply["comment"] = envelope["comments"][0]
-    if "error" in envelope:
-        reply["error"] = envelope["error"]
-    if reply["ok"]:
-        return HTTPStatus.OK, reply
-    return (HTTPStatus.BAD_REQUEST if leg.code == EXIT_USAGE else HTTPStatus.CONFLICT), reply
-
-
-REVISION_ACTIONS = ("accept", "reject", "restore")
 NOTE_ID = re.compile(r"^n-[0-9a-f]{12}$")
-REVISION_SELECTOR = re.compile(r"^[0-9a-fA-F]{1,64}$|^[0-9]{1,6}$")
-
-
-def write_revision(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
-    """``cadex revision ACTION --project ROOT [--note=TEXT] [SELECTOR]``, as a child (ADR-506).
-
-    Accept, Reject and Restore on the page and the command line are one
-    write path (A3). A reject or restore rebuilds, under the project lock
-    and without ``--wait``, so a project a turn holds is refused (409).
-    """
-
-    from .comments import COMMENT_LIMIT
-    from .report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE  # report imports this module
-
-    action, selector, note = body.get("action"), body.get("revision", ""), body.get("note", "")
-    if action not in REVISION_ACTIONS:
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"action must be one of {', '.join(REVISION_ACTIONS)}."}
-    if not isinstance(selector, str) or (selector and not REVISION_SELECTOR.match(selector)):
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "revision must be an ordinal or a revision prefix."}
-    if action == "restore" and not selector:
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "restore needs the revision to put back."}
-    if not isinstance(note, str) or len(note) > COMMENT_LIMIT or "\x00" in note:
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"note must be at most {COMMENT_LIMIT} characters of text."}
-    argv = ["revision", "--project", str(root), "--json"] + (["--note=" + note.strip()] if note.strip() else [])
-    argv += [action] + ([selector] if selector else [])
-    leg = run_leg("revision", argv, timeout=WRITE_TIMEOUT_S)
-    envelope = leg.envelope
-    reply: dict[str, Any] = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
-                             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv]}
-    for key in ("accepted_revision", "digest", "revisions", "error"):
-        if key in envelope:
-            reply[key] = envelope[key]
-    if reply["ok"]:
-        return HTTPStatus.OK, reply
-    if leg.code == EXIT_USAGE:
-        return HTTPStatus.BAD_REQUEST, reply
-    return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
 
 
 #: Where the dashboard's Export button has ``cadex export`` write, one
@@ -2091,49 +1952,6 @@ EXPORT_FORMATS = ("step", "stl", "brep")
 #: staged non-geometry outputs ``cadex export`` copies beside it.
 EXPORT_SUFFIXES = (".step", ".stl", ".brep", ".xml", ".json", ".ply")
 REVISION_HASH = re.compile(r"^[0-9a-f]{64}$")
-
-
-def write_export(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
-    """``cadex export --project ROOT --out ROOT/review/export/<revision> --format F``, as a child (ADR-509).
-
-    The Export button and the command line are one write path (A3): the
-    CLI rebuilds the accepted script under the project lock, without
-    ``--wait``, and converts each staged BREP. The directory is named by
-    the revision accepted when the button was pressed; if a write moved
-    the accepted revision before the child took the lock, what it wrote is
-    removed and the reply says to export again, so a directory never holds
-    another revision's files.
-    """
-
-    from .report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE  # report imports this module
-
-    formats = body.get("formats", ["step", "stl"])
-    if not isinstance(formats, list) or not formats or any(f not in EXPORT_FORMATS for f in formats) \
-            or len(set(formats)) != len(formats):
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"formats must be a list drawn from {', '.join(EXPORT_FORMATS)}."}
-    accepted = read_accepted_identity(root)
-    revision = accepted.get("revision") if accepted.get("available") else None
-    if not isinstance(revision, str) or not REVISION_HASH.match(revision):
-        return HTTPStatus.CONFLICT, {"ok": False, "error": "nothing to export: the project has no accepted revision."}
-    out = root / EXPORT_DIR / revision
-    argv = ["export", "--project", str(root), "--out", str(out), "--format", ",".join(formats), "--json"]
-    leg = run_leg("export", argv, timeout=WRITE_TIMEOUT_S)
-    envelope = leg.envelope
-    reply: dict[str, Any] = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
-                             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv], "revision": revision}
-    for key in ("accepted_revision", "digest", "error"):
-        if key in envelope:
-            reply[key] = envelope[key]
-    if reply["ok"] and envelope.get("accepted_revision") != revision:
-        shutil.rmtree(out, ignore_errors=True)
-        reply.update(ok=False, error="the accepted revision changed while exporting; export again.")
-        return HTTPStatus.CONFLICT, reply
-    if reply["ok"]:
-        reply["exports"] = export_listing(root)
-        return HTTPStatus.OK, reply
-    if leg.code == EXIT_USAGE:
-        return HTTPStatus.BAD_REQUEST, reply
-    return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
 
 
 def export_listing(root: Path) -> dict[str, Any]:
@@ -2245,55 +2063,8 @@ def section_listing(root: Path) -> dict[str, Any]:
     cuts.sort(key=lambda cut: -cut.pop("mtime"))
     if not cuts:
         return {"available": False, "revision": revision, "cuts": [],
-                "reason": "no section cut yet: Cut runs cadex section for this revision"}
+                "reason": "no section cut yet: `cadex section` cuts this revision"}
     return {"available": True, "revision": revision, "cuts": cuts}
-
-
-def write_section_cut(root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
-    """``cadex section --project ROOT --plane P [--offset-mm=N] --json``, as a child (orun2 D2.5).
-
-    The Cut button and the command line are one path (A3): the CLI acquires
-    the accepted tessellation from the engine and writes the SVG and summary
-    under ``review/section/<revision>/``. With no ``offset_mm`` the offset is
-    derived the way the walk derives it (ADR-273). The reply names the cut
-    the child wrote, read back from the listing.
-    """
-
-    from .report import EXIT_OK, EXIT_REJECTED, EXIT_USAGE  # report imports this module
-
-    plane, offset = body.get("plane"), body.get("offset_mm")
-    if plane not in SECTION_PLANES:
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"plane must be one of {', '.join(SECTION_PLANES)}."}
-    if offset is not None and (isinstance(offset, bool) or not isinstance(offset, (int, float))
-                               or not math.isfinite(offset) or abs(offset) > 1e6):
-        return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "offset_mm must be a finite number of mm, or absent."}
-    accepted = read_accepted_identity(root)
-    revision = accepted.get("revision") if accepted.get("available") else None
-    if not isinstance(revision, str) or not REVISION_HASH.match(revision):
-        return HTTPStatus.CONFLICT, {"ok": False, "error": "nothing to cut: the project has no accepted revision."}
-    argv = ["section", "--project", str(root), "--plane", plane, "--json"]
-    if offset is not None:
-        argv[5:5] = [f"--offset-mm={float(offset)!r}"]
-    leg = run_leg("section", argv, timeout=WRITE_TIMEOUT_S)
-    envelope = leg.envelope
-    reply: dict[str, Any] = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
-                             "seconds": round(leg.seconds, 3), "command": ["cadex", *argv], "revision": revision}
-    for key in ("accepted_revision", "digest", "error", "notes"):
-        if key in envelope:
-            reply[key] = envelope[key]
-    if reply["ok"]:
-        listing = section_listing(root)
-        reply["sections"] = listing
-        cuts = [cut for cut in listing["cuts"] if cut["plane"] == plane
-                and (offset is None or cut["offset_mm"] == float(offset))]
-        if envelope.get("accepted_revision") != revision or not cuts:
-            reply.update(ok=False, error="the accepted revision changed while cutting; cut again.")
-            return HTTPStatus.CONFLICT, reply
-        reply["cut"] = cuts[0]
-        return HTTPStatus.OK, reply
-    if leg.code == EXIT_USAGE:
-        return HTTPStatus.BAD_REQUEST, reply
-    return (HTTPStatus.UNPROCESSABLE_ENTITY if leg.code == EXIT_REJECTED else HTTPStatus.CONFLICT), reply
 
 
 def revision_trail(root: Path) -> list[dict[str, Any]]:
@@ -2309,191 +2080,6 @@ COMMENTS_SHOWN = 100
 NOTES_SHOWN = 50
 #: What a note's flagged artifact may be for the page to link it.
 NOTE_ARTIFACT_SUFFIXES = frozenset({".png", ".svg", ".mp4", ".webm", ".json", ".md", ".txt"})
-
-
-#: How long one dashboard prompt turn may run before it is stopped, in seconds.
-TURN_TIMEOUT_S = 3600.0
-#: Bound on a prompt, in characters; a design brief, not a document.
-PROMPT_LIMIT = 16_000
-
-
-class PromptTurn:
-    """One ``cadex -p PROMPT --project ROOT`` child and its live transcript.
-
-    The transcript is the child's stderr — the tool-call progress lines and
-    the model's prose, exactly what a terminal shows — held in memory for
-    the page to read from any offset while the turn runs. The server never
-    writes it into the project: what the turn leaves there (the revision,
-    the ``PROGRESS.md`` row, the project commit, the agent's decisions and
-    notes, and its transcript and ``look`` images under ``turns/``) is the
-    CLI's, as for a turn typed at a terminal (A3, ADR-526).
-    """
-
-    def __init__(self, root: Path, prompt: str, resume: bool,
-                 images: tuple[ImageAttachment, ...] = ()) -> None:
-        self.id = secrets.token_hex(6)
-        self.root = root
-        self.prompt = prompt
-        self.resume = resume
-        self.images = [image.summary() for image in images]
-        self.started = _now()
-        self.state = "running"
-        self.reply: dict[str, Any] | None = None
-        self._text: list[str] = []
-        self._length = 0
-        self._truncated = False
-        self._lock = threading.Lock()
-        self.argv = ["--project", str(root), "--prompt=" + prompt] + (["--resume"] if resume else [])
-        # An attached image reaches the child as a file only it reads, in a
-        # scratch directory outside the project that goes when the turn
-        # ends; what the turn keeps of it is the CLI's (ADR-507).
-        self._scratch: Path | None = None
-        if images:
-            self._scratch = Path(tempfile.mkdtemp(prefix="cadex-turn-images-"))
-            for index, image in enumerate(images):
-                path = self._scratch / str(index) / image.name
-                path.parent.mkdir()
-                path.write_bytes(image.data)
-                self.argv.append("--image=" + str(path))
-
-    def _append(self, text: str) -> None:
-        with self._lock:
-            if self._truncated:
-                return
-            if self._length + len(text) > TRANSCRIPT_LIMIT:
-                text = "\n[transcript truncated at %d characters]\n" % TRANSCRIPT_LIMIT
-                self._truncated = True
-            self._text.append(text)
-            self._length += len(text)
-
-    def start(self) -> None:
-        threading.Thread(target=self._run, name="cadex-turn-" + self.id, daemon=True).start()
-
-    def _run(self) -> None:
-        from .report import EXIT_OK  # report imports this module
-
-        try:
-            leg = run_leg("prompt", self.argv + ["--json"], timeout=TURN_TIMEOUT_S, on_stderr=self._append)
-            envelope = leg.envelope
-            reply = {"ok": leg.code == EXIT_OK and envelope.get("ok") is True, "exit": leg.code,
-                     "seconds": round(leg.seconds, 3)}
-            for key in REPLY_KEYS:
-                if key in envelope:
-                    reply[key] = envelope[key]
-        except Exception as exc:  # noqa: BLE001 - the page must hear how it ended
-            reply = {"ok": False, "exit": None, "error": f"the turn could not run: {exc}"}
-        finally:
-            if self._scratch is not None:
-                shutil.rmtree(self._scratch, ignore_errors=True)
-        with self._lock:
-            self.reply = reply
-            self.state = "done" if reply["ok"] else "failed"
-
-    def snapshot(self, since: int = 0) -> dict[str, Any]:
-        with self._lock:
-            text = "".join(self._text)
-            return {"id": self.id, "state": self.state, "prompt": self.prompt, "resume": self.resume,
-                    "images": list(self.images), "started": self.started, "command": ["cadex", *self.argv],
-                    "text": text[max(0, min(since, len(text))):], "next": len(text), "reply": self.reply}
-
-
-def _look_urls(record: Mapping[str, Any]) -> list[dict[str, Any]]:
-    return [{"view": look["view"], "url": f"turn/{record['id']}/{look['name']}"}
-            for look in record.get("looks") or []]
-
-
-def stored_turn_snapshot(root: Path, record: Mapping[str, Any], since: int = 0) -> dict[str, Any]:
-    """A turn the CLI kept under ``turns/`` (ADR-526), in the live turn's shape.
-
-    The same shape whether the turn was typed at a terminal or started
-    here: it is what ``cadex -p`` wrote, read and never written.
-    """
-
-    text = read_transcript(root, str(record["id"]))
-    reply = record.get("reply")
-    if isinstance(reply, dict) and record.get("started") and record.get("finished"):
-        start = _datetime.datetime.fromisoformat(str(record["started"]))
-        reply = dict(reply, seconds=(_datetime.datetime.fromisoformat(str(record["finished"])) - start).total_seconds())
-    return {"id": record["id"], "state": record.get("state"), "prompt": record.get("prompt", ""),
-            "resume": record.get("resume", False), "images": list(record.get("attachments") or []),
-            "started": record.get("started"), "source": "store",
-            "text": text[max(0, min(since, len(text))):], "next": len(text), "reply": reply,
-            "looks": _look_urls(record), "looks_dropped": record.get("looks_dropped", 0)}
-
-
-def turn_snapshot(root: Path, live: "PromptTurn | None", since: int = 0) -> dict[str, Any]:
-    """``/api/turn``: a turn running here, else the newest turn the project kept.
-
-    A turn this server started streams from memory while it runs, with the
-    images its child has kept so far; once it ends, or when the newest turn
-    was typed at a terminal, the project's own ``turns/`` store answers. A
-    child that failed before it could keep anything is answered from memory.
-    """
-
-    stored = latest_turn(root)
-    if live is not None and (live.state == "running" or stored is None or str(stored["started"]) < live.started):
-        snapshot = dict(live.snapshot(since), source="live", looks=[])
-        if stored is not None and str(stored["started"]) >= live.started:
-            snapshot["looks"] = _look_urls(stored)
-        return snapshot
-    if stored is not None:
-        return stored_turn_snapshot(root, stored, since)
-    return {"state": "idle"}
-
-
-def _turn_images(value: Any) -> tuple[ImageAttachment, ...]:
-    """A turn body's ``images``, ``[{"name", "data" (base64)}]``, checked as the CLI checks a file."""
-
-    if not isinstance(value, list) or len(value) > IMAGES_PER_TURN:
-        raise ImageRefused(f"images must be a list of at most {IMAGES_PER_TURN}.")
-    images = []
-    for item in value:
-        if not isinstance(item, dict) or not isinstance(item.get("name"), str) \
-                or not isinstance(item.get("data"), str):
-            raise ImageRefused('each image is {"name": text, "data": base64 text}.')
-        try:
-            data = base64.b64decode(item["data"], validate=True)
-        except (binascii.Error, ValueError):
-            raise ImageRefused(f"{item['name']!r} is not base64.") from None
-        name = re.sub(r"[^A-Za-z0-9._-]+", "_", Path(item["name"]).name).strip("._") or "image"
-        images.append(image_attachment(data, name[:80]))
-    return tuple(images)
-
-
-class Turns:
-    """At most one dashboard turn per project, and the last one each ran."""
-
-    def __init__(self) -> None:
-        self._turns: dict[Path, PromptTurn] = {}
-        self._lock = threading.Lock()
-
-    def current(self, root: Path) -> PromptTurn | None:
-        with self._lock:
-            return self._turns.get(root.resolve())
-
-    def start(self, root: Path, body: Mapping[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
-        """Start ``cadex -p`` on ``root``, unless the body is wrong or one runs."""
-
-        prompt, resume = body.get("prompt"), body.get("resume", False)
-        if not isinstance(prompt, str) or not prompt.strip():
-            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "prompt must be non-empty text."}
-        if len(prompt) > PROMPT_LIMIT or "\x00" in prompt:
-            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": f"a prompt is at most {PROMPT_LIMIT} characters of text."}
-        if not isinstance(resume, bool):
-            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": "resume must be true or false."}
-        try:
-            images = _turn_images(body.get("images", []))
-        except ImageRefused as exc:
-            return HTTPStatus.BAD_REQUEST, {"ok": False, "error": str(exc)}
-        key = root.resolve()
-        with self._lock:
-            running = self._turns.get(key)
-            if running is not None and running.state == "running":
-                return HTTPStatus.CONFLICT, {"ok": False, "error": "a turn is already running on this project.",
-                                             "turn": {"id": running.id, "state": running.state}}
-            turn = self._turns[key] = PromptTurn(key, prompt.strip(), resume, images)
-        turn.start()
-        return HTTPStatus.ACCEPTED, {"ok": True, "turn": turn.snapshot()}
 
 
 # The two ways Linux reports a peer that went away mid-write: EPIPE, or
@@ -2645,7 +2231,6 @@ class ReviewHandler(BaseHTTPRequestHandler):
         parts = urlsplit(self.path)
         segments = [unquote(segment) for segment in parts.path.split("/") if segment]
         download = "download=1" in parts.query.split("&")
-        self.query = parts.query
         if any(segment in (".", "..") or "\\" in segment for segment in segments):
             self._not_found(parts.path)
             return
@@ -2655,69 +2240,6 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 self._route(self.project, segments, download)
             else:
                 self._route_projects(projects, parts.path, segments, download)
-        except CLIENT_GONE:
-            pass
-
-    def _write_refusal(self) -> str | None:
-        """Why this POST may not write, or ``None`` when it may.
-
-        The token is the launch's own and reaches only a page this server
-        served, which a page of another origin cannot read; the ``Origin``
-        check refuses a cross-site form or fetch even before that.
-        """
-
-        token = self.headers.get(WRITE_TOKEN_HEADER, "")
-        if not token or not hmac.compare_digest(token, self.server.write_token):  # type: ignore[attr-defined]
-            return f"a write needs this launch's {WRITE_TOKEN_HEADER} header (from the page the server served)."
-        origin = self.headers.get("Origin")
-        if origin is not None and urlsplit(origin).netloc != self.headers.get("Host", ""):
-            return f"cross-origin write refused: Origin {origin!r} is not this server."
-        return None
-
-    def do_POST(self) -> None:  # noqa: N802
-        parts = urlsplit(self.path)
-        segments = [unquote(segment) for segment in parts.path.split("/") if segment]
-        try:
-            refusal = self._write_refusal()
-            if refusal is not None:
-                self._send_json({"ok": False, "error": refusal}, HTTPStatus.FORBIDDEN)
-                return
-            try:
-                length = int(self.headers.get("Content-Length") or 0)
-            except ValueError:
-                length = -1
-            limit = TURN_BODY_LIMIT if segments[-2:] == ["api", "turn"] else WRITE_BODY_LIMIT
-            if not 0 < length <= limit:
-                self._send_json({"ok": False, "error": "a write needs a JSON body of at most "
-                                 f"{limit} bytes."}, HTTPStatus.BAD_REQUEST)
-                return
-            try:
-                body = json.loads(self.rfile.read(length))
-            except ValueError:
-                self._send_json({"ok": False, "error": "the body is not JSON."}, HTTPStatus.BAD_REQUEST)
-                return
-            projects = getattr(self.server, "projects", None)
-            project: ReviewProject | None = self.project if projects is None else None
-            if projects is not None and segments[:1] == ["p"] and len(segments) > 1:
-                project, segments = projects.project(segments[1]), segments[2:]
-            if project is None or segments not in (["api", "params"], ["api", "turn"], ["api", "comment"],
-                                                    ["api", "revision"], ["api", "export"], ["api", "section"]) \
-                    or not isinstance(body, dict):
-                self._not_found(parts.path)
-                return
-            if segments == ["api", "turn"]:
-                status, reply = self.server.turns.start(project.root, body)  # type: ignore[attr-defined]
-            elif segments == ["api", "comment"]:
-                status, reply = write_comment(project.root, body)
-            elif segments == ["api", "revision"]:
-                status, reply = write_revision(project.root, body)
-            elif segments == ["api", "export"]:
-                status, reply = write_export(project.root, body)
-            elif segments == ["api", "section"]:
-                status, reply = write_section_cut(project.root, body)
-            else:
-                status, reply = write_params(project.root, body.get("values"))
-            self._send_json(reply, status)
         except CLIENT_GONE:
             pass
 
@@ -2758,11 +2280,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
         head, rest = segments[0], segments[1:]
         if len(segments) == 1 and head in STATIC_FILES:
             content_type, path = STATIC_FILES[head]
-            body = path.read_bytes()
-            if head == "index.html":
-                body = body.replace(WRITE_TOKEN_META, WRITE_TOKEN_META.replace(
-                    b'content=""', b'content="' + self.server.write_token.encode("ascii") + b'"'))  # type: ignore[attr-defined]
-            self._send_bytes(body, content_type)
+            self._send_bytes(path.read_bytes(), content_type)
             return
         if head == "api":
             if rest == ["project"]:
@@ -2790,11 +2308,6 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 return
             if rest == ["model", "accepted"]:
                 self._send_json(accepted_model(project.root))
-                return
-            if rest == ["turn"]:
-                turn = self.server.turns.current(project.root)  # type: ignore[attr-defined]
-                since = parse_qs(self.query).get("since", ["0"])[0]
-                self._send_json(turn_snapshot(project.root, turn, int(since) if since.isdigit() else 0))
                 return
             if rest[:2] == ["model", "run"] and len(rest) == 3:
                 record = project.run(rest[2])
@@ -2867,9 +2380,7 @@ class ReviewServer(ThreadingHTTPServer):
     def __init__(self, project_root: Path | str, host: str, port: int,
                  log: Callable[[str], None] | None = None) -> None:
         self.project = ReviewProject(project_root)
-        self.turns = Turns()
         self.log = log
-        self.write_token = secrets.token_urlsafe(32)
         super().__init__((host, port), ReviewHandler)
 
     @property
@@ -2939,9 +2450,7 @@ class ProjectsServer(ThreadingHTTPServer):
     def __init__(self, projects_root: Path | str, host: str, port: int,
                  log: Callable[[str], None] | None = None) -> None:
         self.projects = ProjectsDirectory(projects_root)
-        self.turns = Turns()
         self.log = log
-        self.write_token = secrets.token_urlsafe(32)
         super().__init__((host, port), ReviewHandler)
 
     url = ReviewServer.url

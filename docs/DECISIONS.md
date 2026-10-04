@@ -34384,3 +34384,40 @@ This reverses ADR-387, ADR-513, ADR-514, ADR-515 and ADR-518.
 outside those places names it.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-537 — The dashboard is read-only (2026-10-04, owner direction)
+
+**Context.** The owner is converging on an interface of their own choosing: an agent such as
+Claude Code, Pi or Codex, beside this dashboard as the view, on the Cadex engine. In that
+arrangement the dashboard's writes duplicate the agent:
+- the Chat editor (ADR-504) is a second agent interface;
+- the parameter slider (ADR-503) and the revision verdicts (ADR-506) are steering the agent
+  already does through the CLI;
+- the comment, export and section routes (ADR-505, ADR-509) are already CLI commands.
+
+**Decision.** The dashboard writes nothing.
+- `review_server.py` loses `do_POST` and the write token (`<meta name="cadex-write-token">`,
+  `X-Cadex-Token`, the `Origin` check).
+- It also loses `write_params`, `write_comment`, `write_revision`, `write_export`,
+  `write_section_cut`, `PromptTurn`, `Turns` and `GET api/turn`.
+- Any method but GET and HEAD is 501.
+- The page loses the Chat editor, the Parameters panel, Accept, Reject and Restore, so three
+  editors remain.
+- The revision trail stays, read-only.
+- The layout key moves to `cadex.layout.v2`, so a saved layout that names Chat is dropped.
+
+The read routes are unchanged. The page's poll follows whatever the agent changes.
+`docs/DASHBOARD.md` §18 replaces §18, §19 and §21. This reverses ADR-503 to ADR-507, ADR-509
+and the section-cut write.
+
+**Test.** `test_dashboard_read_only.py` replaces `test_dashboard_writes.py`. It checks:
+- every former write route answers POST, PUT, PATCH and DELETE with 501;
+- the projects directory is byte-identical afterwards, and the page carries no token, chat or
+  parameters panel;
+- in Chromium, against a real engine, a `cadex params --set` run outside the page moves the
+  open page to the rebuilt model.
+
+`test_dashboard_export.py` is deleted. The section test now checks the cuts that
+`cadex section` leaves.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

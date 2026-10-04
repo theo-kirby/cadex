@@ -23,7 +23,7 @@ from cadex_cli.__main__ import main
 from cadex_cli.project_docs import append_progress_row, progress_rows
 from cadex_cli.report import EXIT_OK
 from cadex_cli.review_server import TURNS_SHOWN, agent_turns, serve_projects
-from test_dashboard_writes import PLATE, fake_claude  # noqa: F401
+from test_dashboard_read_only import PLATE, fake_claude  # noqa: F401
 from test_review_server import CLI_DIR, _get, _json, browser, needs_browser  # noqa: F401
 
 REV_1 = "1" * 8 + "a" * 56

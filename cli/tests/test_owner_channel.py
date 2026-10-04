@@ -128,23 +128,6 @@ def test_cadex_comment_reply_answers_a_note(tmp_path, capsys) -> None:
     capsys.readouterr()
 
 
-def test_the_dashboard_answer_is_the_cli_command(tmp_path, monkeypatch) -> None:
-    import cadex_cli.review_server as review_server
-    from cadex_cli.walk import Leg
-
-    calls = []
-    monkeypatch.setattr(review_server, "run_leg", lambda name, argv, **_: calls.append(list(argv)) or Leg(
-        name=name, argv=list(argv), code=EXIT_OK, seconds=0.1, envelope={"ok": True, "comments": [{"id": "c-1"}]}))
-    root = tmp_path / "project"
-    for bad in ({"text": "x", "reply_to": 3}, {"text": "x", "reply_to": "--part=x"},
-                {"text": "x", "reply_to": "n-../../etc"}):
-        assert review_server.write_comment(root, bad)[0] == 400, bad
-    assert calls == []
-    status, _reply = review_server.write_comment(root, {"text": "yes", "reply_to": "n-0123456789ab"})
-    assert status == 200
-    assert calls == [["comment", "--project", str(root), "--json", "--reply=n-0123456789ab", "--", "yes"]]
-
-
 def test_the_project_review_lists_notes_and_serves_what_they_flag(tmp_path) -> None:
     from cadex_cli.review_server import ReviewProject
 

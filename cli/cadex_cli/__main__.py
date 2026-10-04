@@ -2354,9 +2354,7 @@ def command_review(args: argparse.Namespace, report: RunReport) -> int:
     """Serve one project's review dashboard until interrupted (ADR-286).
 
     The server reads the project's manifest, records and retained
-    artifacts on every request; its only write is a slider's, which runs
-    ``cadex params`` as a child and needs the page's per-launch token
-    (ADR-503). So stopping it
+    artifacts on every request and writes nothing (ADR-537). So stopping it
     — Ctrl-C, SIGTERM — changes nothing about the project, and a walk or a
     training run in progress is neither stopped nor duplicated by starting
     or restarting it. The URL is printed on stderr as soon as the socket is
@@ -2373,7 +2371,7 @@ def command_review(args: argparse.Namespace, report: RunReport) -> int:
         server, thread = serve_review(root, str(args.host), port)
     except OSError as exc:
         raise ValueError(f"review: cannot bind {args.host}:{port}: {exc}") from exc
-    _progress(f"review: serving {root.name} at {server.url} (writes need the page's token; Ctrl-C to stop)")
+    _progress(f"review: serving {root.name} at {server.url} (read-only; Ctrl-C to stop)")
     _serve_until_stopped(server, thread)
     report.ok = True
     report.notes.append(f"review: served {server.url}; stopped")
@@ -2428,7 +2426,7 @@ def command_app(args: argparse.Namespace, report: RunReport) -> int:
         server, thread = serve_projects(root, host, port)
     except OSError as exc:
         raise ValueError(f"app: cannot bind {host}:{port}: {exc}") from exc
-    _progress(f"app: serving {root} at {server.url} (writes need the page's token; Ctrl-C to stop)")
+    _progress(f"app: serving {root} at {server.url} (read-only; Ctrl-C to stop)")
     _serve_until_stopped(server, thread)
     report.ok = True
     report.notes.append(f"app: served {server.url}; stopped")

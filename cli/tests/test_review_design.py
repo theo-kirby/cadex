@@ -12,7 +12,7 @@ address or this machine's hostname in any of them. With a Chromium it
 renders the page at the two charter sizes, 1400×900 and 400×850 with touch
 emulation, and reads the spec back from the rendered page: the layout
 viewport is the device width, nothing overflows it, the palette tokens and
-type scale compute to §3–§4, the default layout's four areas tile the
+type scale compute to §3–§4, the default layout's three areas tile the
 screen at desk (§12), and on the phone one area, the 3D viewport, fills it
 above a tab bar (ADR-534).
 """
@@ -150,10 +150,10 @@ def test_the_spec_itself_names_no_private_address():
 
 # -- the rendered page ---------------------------------------------------------
 
-# §2: the four editors, in the default layout's reading order, and the
+# §2: the three editors, in the default layout's reading order, and the
 # settings editor's panels.
-EDITORS = ["settings", "view3d", "view2d", "chat"]
-HEADINGS = ["File", "Parameters", "Revisions", "View"]
+EDITORS = ["settings", "view3d", "view2d"]
+HEADINGS = ["File", "Revisions", "View"]
 
 MEASURE = """(function () {
   var cs = getComputedStyle(document.documentElement);
@@ -236,7 +236,7 @@ def _assert_follows_the_spec(browser, server, size) -> None:
     # The 3D viewport's canvas fills its area's body.
     assert m["canvas"]["width"] >= 0.98 * m["model"]["width"] and m["canvas"]["height"] >= 0.98 * m["model"]["height"]
     if size == "desk":
-        # §12: the default layout tiles the screen with the four editors, none overlapping.
+        # §12: the default layout tiles the screen with the three editors, none overlapping.
         assert m["mode"] == "areas"
         assert [a["editor"] for a in m["areas"]] == EDITORS
         assert [h["text"] for h in m["headings"]] == HEADINGS
@@ -250,7 +250,7 @@ def _assert_follows_the_spec(browser, server, size) -> None:
     # §6: on the phone one editor fills the screen, the 3D viewport first, and a tab bar picks it.
     assert m["mode"] == "tabs"
     assert [a["editor"] for a in m["areas"]] == ["view3d"]
-    assert m["tabs"] == ["view3d", "view2d", "settings", "chat"]
+    assert m["tabs"] == ["view3d", "view2d", "settings"]
     assert m["canvas"]["width"] >= width - 1
 
 

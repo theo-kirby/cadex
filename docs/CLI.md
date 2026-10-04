@@ -1401,18 +1401,21 @@ other command keeps the restore.
 
 ```bash
 ./cadex review --project ~/cadex-projects/biped --host "$(tailscale ip -4)" --port 8765
-# review: serving biped at http://100.x.y.z:8765/ (writes need the page's token; Ctrl-C to stop)
+# review: serving biped at http://100.x.y.z:8765/ (read-only; Ctrl-C to stop)
 ```
 
 The page's layout, type and colour follow `docs/DASHBOARD.md`: a dark
 theme by default and a light one, one type scale. **Since ADR-534 the
 project page is the app**: a screen tiled by resizable, movable areas after
-Blender's, each showing one editor — the 3D viewport, the 2D viewport,
-Settings and Chat — and one editor at a time, picked from a tab bar, on a
-phone. ADR-533 had cut what it shows to the accepted model, a design turn,
-the parameter sliders and the revisions; ADR-534 adds back run models and
+Blender's, each showing one editor — the 3D viewport, the 2D viewport and
+Settings — and one editor at a time, picked from a tab bar, on a phone.
+ADR-533 had cut what it shows to the accepted model, a design turn, the
+parameter sliders and the revisions; ADR-534 adds back run models and
 playback, drawings, images, documents and training plots, all read from
-routes that were already served.
+routes that were already served. **Since ADR-537 it writes nothing**: the
+design turn, the sliders and the revision verdicts are gone, the server
+answers GET and HEAD only, and the page follows what the agent's CLI and
+`cadex mcp` calls change.
 `cli/tests/test_review_design.py` reads the spec back from the rendered page
 at 1400×900 and 400×850.
 

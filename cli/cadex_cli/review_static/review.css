@@ -170,56 +170,18 @@ details.group > summary h2 { margin: 0; }
 .field { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin: var(--s2) 0; color: var(--ink-2); font-size: var(--fs-0); }
 .field select { flex: 1; max-width: 70%; font-size: var(--fs-0); min-height: 28px; }
 .field .segmented button { font-size: var(--fs-0); min-height: 28px; padding: 0 var(--s2); }
-#params-write, #revision-status { font-size: var(--fs-0); color: var(--ink-2); overflow-wrap: anywhere; }
-#params-write:empty, #revision-status:empty { display: none; }
-#params-write[data-state="error"], #revision-status[data-state="error"] { color: var(--bad); }
-table#params { width: 100%; border-collapse: collapse; table-layout: fixed; }
-table#params th { text-align: left; font-weight: 400; color: var(--ink-2); font-size: var(--fs-0); padding: var(--s1) var(--s2) var(--s1) 0; width: 38%;
-                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-table#params td { padding: var(--s1) 0; }
-.param-slider { display: flex; align-items: center; gap: var(--s2); }
-.param-slider input[type="range"] { flex: 1; width: 0; accent-color: var(--accent); }
-.param-slider input[type="range"]:disabled { opacity: 0.5; }
-.param-slider output { font-size: var(--fs-0); white-space: nowrap; min-width: 64px; text-align: right; }
 ol#revision-list { margin: var(--s2) 0 0; padding-left: var(--s5); font-size: var(--fs-0); }
 ol#revision-list li { padding: 2px 0; color: var(--ink-2); white-space: nowrap; }
 ol#revision-list li::marker { color: var(--ink-2); }
 ol#revision-list li[data-current="true"] { color: var(--ink); font-weight: 600; }
-ol#revision-list .revision-restore { margin-left: var(--s2); min-height: 22px; font-size: var(--fs-0); padding: 0 var(--s2); }
 
-/* Chat: the conversation above, the message being written below. */
-#chat { display: flex; flex-direction: column; overflow: hidden; }
-#chat-log { flex: 1; min-height: 0; overflow-y: auto; padding: var(--s3); display: flex; flex-direction: column; gap: var(--s3); }
-#chat-empty { margin: auto; text-align: center; }
-.exchange { display: flex; flex-direction: column; gap: var(--s2); }
-.msg { overflow-wrap: anywhere; white-space: pre-wrap; }
-.msg-user { align-self: flex-end; max-width: 88%; background: var(--surface-3); padding: var(--s2) var(--s3); border-radius: 12px 12px 4px 12px; }
-.msg-agent { align-self: stretch; }
-.msg-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
-.msg-text .t-tool { color: var(--ink-2); font: var(--fs-0)/1.6 var(--mono); }
-.msg-foot { margin-top: var(--s1); font-size: var(--fs-0); color: var(--ink-2); }
-.msg-foot:empty { display: none; }
-.msg-foot.failed { color: var(--bad); }
-#chat-compose { flex: none; padding: var(--s2) var(--s3) var(--s3); border-top: 1px solid var(--rule); }
-#chat-compose .controls { margin-bottom: 0; }
-#chat-compose #turn-start { margin-left: auto; }
-#turn-status { font-size: var(--fs-0); color: var(--ink-2); overflow-wrap: anywhere; }
-#turn-status[data-state="failed"], #turn-status[data-state="error"] { color: var(--bad); }
-
-/* The index and a run's page: one column of plain rows. */
+/* The index: one column of plain rows. */
 main#projects-frame { display: flex; flex-direction: column; gap: var(--s5); padding: var(--gutter); max-width: 760px; }
 ul.rows { list-style: none; margin: 0; padding: 0; }
 ul.rows li { display: flex; justify-content: space-between; gap: var(--s3); padding: var(--s2) 0; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
 ul.rows li:last-child { border-bottom: 0; }
 ul.rows li .small { white-space: nowrap; }
-#charter li { justify-content: flex-start; color: var(--ink-2); }
-#charter li[data-checked="true"] { color: var(--ink); }
 #pager { justify-content: center; margin-top: var(--s4); }
-table.grid { width: 100%; border-collapse: collapse; }
-table.grid td { text-align: left; padding: var(--s2) var(--s2) var(--s2) 0; border-bottom: 1px solid var(--rule); vertical-align: top; overflow-wrap: anywhere; }
-table.grid td.verdict, table.grid td:first-child { white-space: nowrap; font-size: var(--fs-0); }
-td.verdict[data-tone="ok"] { color: var(--ok); } td.verdict[data-tone="bad"] { color: var(--bad); }
-td.verdict[data-tone="warn"] { color: var(--warn); } td.verdict[data-tone="current"] { color: var(--info); }
 
 @media (max-width: 599px) {
   :root { --gutter: var(--s3); }

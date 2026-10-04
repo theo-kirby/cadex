@@ -119,34 +119,8 @@ def test_the_next_turn_receives_pending_comments_and_only_once(tmp_path) -> None
     assert third.made[0].prompts[0] == "again"
 
 
-def test_the_dashboard_comment_is_the_cli_command(tmp_path, monkeypatch) -> None:
-    """``POST api/comment`` spawns ``cadex comment``; a bad body spawns nothing."""
-
-    import cadex_cli.review_server as review_server
-    from cadex_cli.walk import Leg
-
-    calls = []
-
-    def fake_leg(name, argv, *, capture=True, timeout=0.0, on_stderr=None):
-        calls.append((name, list(argv)))
-        return Leg(name=name, argv=list(argv), code=EXIT_OK, seconds=0.2,
-                   envelope={"ok": True, "comments": [{"id": "c-1", "text": argv[-1]}]})
-
-    monkeypatch.setattr(review_server, "run_leg", fake_leg)
-    root = tmp_path / "project"
-    for bad in ({}, {"text": ""}, {"text": 3}, {"text": "x\x00"}, {"text": "ok", "part": 4},
-                {"text": "ok", "part": "a\nb"}, {"text": "x" * (COMMENT_LIMIT + 1)}):
-        assert review_server.write_comment(root, bad)[0] == 400, bad
-    assert calls == []
-    status, reply = review_server.write_comment(root, {"text": " --thin ", "part": "post"})
-    assert status == 200 and reply["comment"] == {"id": "c-1", "text": "--thin"}
-    assert calls == [("comment", ["comment", "--project", str(root), "--json", "--part=post", "--", "--thin"])]
-    review_server.write_comment(root, {"text": "whole"})
-    assert calls[-1][1] == ["comment", "--project", str(root), "--json", "--", "whole"]
-
-
 def test_the_comment_command_runs_as_a_child(tmp_path) -> None:
-    """The argv the server builds is one the real CLI accepts."""
+    """A comment's text may look like a flag and still be the text."""
 
     from cadex_cli.walk import run_leg
 
