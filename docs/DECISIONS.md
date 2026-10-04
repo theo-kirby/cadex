@@ -33479,3 +33479,77 @@ In headless Chromium, Identity shows "engine defaults (none stored)", then
 control in the row.
 `test_engine_defaults_and_envelopes.py::test_caller_budgets_win_per_field`
 pins the engine half.
+
+## ADR-518 — A run's page shows its records and what they point to: `/r/<run>/linked/` (2026-10-03, owner charter orun2 D3)
+
+**Decision.** `/r/<run>/` gains a **Records** card under Probes.
+`GET /r/<run>/api/run` carries `records` (`available`, `root`, `reason`,
+`records` — each `slug`, `title`, `created_at`, `iteration`, `artifacts`
+(`path`, `kind`, `bytes`) and `more`), and each iteration gains `records`,
+the slugs that landed in it; the listing carries neither.
+- **Which records.** The checkout's `.hypergraph/graph/record/*.md` whose
+  `## Repo` section says `- branch: <the run's branch>`. Read from the
+  working tree, like ADR-515's probes: records are committed and merged,
+  and a merged run's branch may be gone. Parsed by hand (frontmatter
+  `slug`, `title`, `created_at`), cached until the directory's mtime moves.
+- **Which iteration.** The first whose last logged step is not older than
+  the record. A record newer than every finished iteration is the current
+  one's (`iteration: null`, shown as **this iteration**).
+- **Which artifacts.** Every `docs/...` path the record's text names, a
+  trailing period dropped: the file, or a named directory's own files (not
+  deeper). Only ADR-515's suffixes, segments and no-symlink rule; at most 24
+  per record, the rest counted.
+- **What is served.** `/r/<run>/linked/<path>` serves a file only when one
+  of the run's records names it or its directory, or names a path in the
+  same `docs/probes/<dir>/` — so a linked README's relative images load.
+  Same `sandbox` and `nosniff` headers as the probe route; no write route.
+- **The page.** Each record row shows its iteration badge, title and slug,
+  its images as a gallery, every other file as a link; a markdown file
+  opens in place in `#linked-doc`, drawn by ADR-515's `markdown.js`. Each
+  iteration row's commit cell links its records.
+
+**Why.** D3 asks that each run show "the artifacts its records point to
+(renders, reports, probe pages)", and that orun1's review material render
+from the repo alone, replacing `~/orun1-review/build.py`. ADR-515 served
+`docs/probes/<run>/` but said plainly that record-linked artifacts outside
+it were unreachable. build.py's page had three parts beyond what ADR-515
+covered: each D4 trial's hero (from the trial *project's* render
+directory, which is outside the repo), the design language the run
+rewrote (`docs/DESIGN-LANGUAGE.md`), and the README. orun1's records name
+every committed trial hero (`docs/probes/orun1/d4/<trial>/`), the design
+language and the README, so all three are now on the run's page from the
+repo alone.
+
+**Scope, stated.** Paths outside `docs/` (project-relative paths such as
+`review/render/sheet.png`, which name a project in `~/cadex-projects`, not
+the repo) are not linked. build.py's live run status and critic log were
+already on the page (ADR-513), and its per-trial win/loss table is the
+trial's `summary.json`, linked rather than drawn.
+
+**Rejected.** Serving any file under `docs/` (wider than the records
+justify); mapping records to iterations by commit (a record's `commit:` is
+the work commit, the loop's is the one after, so the two never match);
+`git show` per record (the working tree holds them).
+
+**Cost.** ~150 lines in `review_server.py`, ~130 in `run.js`, a card in
+`run.html`, ~10 CSS lines (the markdown styles now apply to any
+`article.markdown`).
+
+**What would reverse it.** Records ceasing to name repo paths, or probe
+material leaving the repo (ADR-515's reversal).
+
+**Test.** `cli/tests/test_app.py`: a record lands in iteration 2, another
+after the last finished iteration; a named file, a named directory's own
+files (not deeper), a trailing period dropped; HTML, a symlink, a missing
+file and a path not rooted at `docs/` never listed; served byte-exact with
+the headers; files in a named probe directory served, another run's and an
+unnamed directory's 404, as are dot-files, `..` literal and encoded, a
+directory and paths outside `docs/`; a record with no `## Repo` belongs to
+no run; a new record appears on the next read; nothing is written; outside
+a checkout or with no record directory, the reason. In headless Chromium,
+orun1's 22 committed records with the probe material and design language
+they name, copied into a checkout: every record listed under its own
+iteration, the t1-hexapod hero loaded through `/r/orun1/linked/`, every
+committed d4 trial hero shown, an iteration row linking `golden-bay-7992`,
+`docs/DESIGN-LANGUAGE.md` opened in place with its title and sections, the
+orun1 README opened with its nine-row ratings table, and closed again.

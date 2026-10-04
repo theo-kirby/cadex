@@ -6,7 +6,10 @@
 // critic's message to the next iteration folds under each row; above them,
 // the charter's done criteria, each folding open to its text, and the run's
 // probe material (ADR-515): its README drawn, its images as a gallery, every
-// file linked. Polls, so a live run's next iteration appears. Writes nothing.
+// file linked; and the run's hypergraph records (ADR-518), each with the
+// iteration it landed in and the artifacts under docs/ it names -- images
+// drawn, a markdown file opened in place, every file linked. Polls, so a live
+// run's next iteration appears. Writes nothing.
 (function () {
   'use strict';
 
@@ -144,9 +147,130 @@
       : 'No probe material in ' + probes.root + '.';
   }
 
+  var lastRecords = null;
+
+  function linkedUrl(path) {
+    return 'linked/' + path.split('/').map(encodeURIComponent).join('/');
+  }
+
+  function openDocument(path) {
+    var doc = document.getElementById('linked-doc');
+    var body = document.getElementById('linked-doc-body');
+    document.getElementById('linked-doc-path').textContent = path;
+    body.textContent = 'loading ' + path + '…';
+    doc.dataset.path = path;
+    doc.hidden = false;
+    fetch(linkedUrl(path), { cache: 'no-store' }).then(function (response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.text();
+    }).then(function (text) {
+      if (doc.dataset.path !== path) return;
+      body.textContent = '';
+      window.CadexMarkdown.render(body, text, linkedUrl(path).replace(/[^/]*$/, ''));
+      doc.dataset.loaded = path;
+      doc.scrollIntoView();
+    }).catch(function (error) {
+      body.textContent = path + ' is unavailable: ' + error.message;
+    });
+  }
+
+  function renderRecords(records) {
+    // Redrawn only when the records changed, so an open document holds.
+    var key = JSON.stringify(records || null);
+    if (key === lastRecords) return;
+    lastRecords = key;
+    records = records || { available: false, records: [], reason: 'this server reports no records' };
+    var list = document.getElementById('records');
+    list.textContent = '';
+    var linked = 0;
+    records.records.forEach(function (record) {
+      linked += record.artifacts.length;
+      var li = document.createElement('li');
+      li.id = 'record-' + record.slug;
+      li.dataset.record = record.slug;
+      var head = document.createElement('div');
+      head.appendChild(badge(record.iteration === null ? 'this iteration' : '#' + record.iteration,
+                             record.iteration === null ? 'current' : 'historical'));
+      var title = document.createElement('span');
+      title.className = 'record-title';
+      title.textContent = ' ' + record.title;
+      head.appendChild(title);
+      var slug = document.createElement('div');
+      slug.className = 'muted small';
+      slug.textContent = record.slug + (record.created_at ? ' · ' + record.created_at : '');
+      li.appendChild(head);
+      li.appendChild(slug);
+      var images = record.artifacts.filter(function (file) { return file.kind === 'image'; });
+      if (images.length) {
+        var gallery = document.createElement('ul');
+        gallery.className = 'probe-gallery record-images';
+        images.forEach(function (file) {
+          var item = document.createElement('li');
+          item.dataset.path = file.path;
+          var link = document.createElement('a');
+          link.href = linkedUrl(file.path);
+          var img = document.createElement('img');
+          img.src = link.href;
+          img.alt = file.path;
+          img.loading = 'lazy';
+          link.appendChild(img);
+          var caption = document.createElement('div');
+          caption.className = 'small muted';
+          caption.textContent = file.path;
+          item.appendChild(link);
+          item.appendChild(caption);
+          gallery.appendChild(item);
+        });
+        li.appendChild(gallery);
+      }
+      var others = record.artifacts.filter(function (file) { return file.kind !== 'image'; });
+      if (others.length || record.more) {
+        var files = document.createElement('ul');
+        files.className = 'record-files small';
+        others.forEach(function (file) {
+          var item = document.createElement('li');
+          item.dataset.path = file.path;
+          var link = document.createElement('a');
+          link.href = linkedUrl(file.path);
+          link.textContent = file.path;
+          if (/\.md$/i.test(file.path)) {
+            link.addEventListener('click', function (event) {
+              event.preventDefault();
+              openDocument(file.path);
+            });
+          }
+          item.appendChild(link);
+          item.appendChild(document.createTextNode(' · ' + file.kind + ' · ' + file.bytes + ' B'));
+          files.appendChild(item);
+        });
+        if (record.more) {
+          var more = document.createElement('li');
+          more.className = 'muted';
+          more.textContent = record.more + ' more not listed';
+          files.appendChild(more);
+        }
+        li.appendChild(files);
+      }
+      list.appendChild(li);
+    });
+    document.getElementById('records-count').textContent = records.records.length
+      ? '· ' + records.records.length + ' record(s), ' + linked + ' linked file(s)' : '';
+    document.getElementById('records-source').textContent = records.available ? records.root + ' in the checkout' : '';
+    var empty = document.getElementById('records-empty');
+    empty.hidden = records.records.length > 0;
+    empty.textContent = records.reason ? 'No records: ' + records.reason + '.' : 'No record names this run\'s branch.';
+  }
+
+  document.getElementById('linked-doc-close').addEventListener('click', function () {
+    var doc = document.getElementById('linked-doc');
+    doc.hidden = true;
+    doc.dataset.path = '';
+  });
+
   function render(run) {
     renderCharter(run.charter);
     renderProbes(run.probes);
+    renderRecords(run.records);
     document.title = 'Cadex run ' + run.name;
     document.getElementById('run-name').textContent = run.name + ' — run';
     var parts = [run.state, run.branch, run.iteration_count + ' iteration(s)'];
@@ -194,7 +318,16 @@
       }
       var commit = item.commit && item.commit.sha ? item.commit.sha.slice(0, 10) : '—';
       if (item.commit && item.commit.recorded) commit += ' · recorded';
-      cell(row, commit).className = 'small';
+      var where = cell(row, commit);
+      where.className = 'small';
+      (item.records || []).forEach(function (slug) {
+        var link = document.createElement('a');
+        link.className = 'record-link';
+        link.href = '#record-' + slug;
+        link.textContent = slug;
+        where.appendChild(document.createElement('br'));
+        where.appendChild(link);
+      });
       body.appendChild(row);
     });
     document.getElementById('iterations-empty').hidden = run.iterations.length > 0;

@@ -394,18 +394,27 @@ main#projects-frame { display: flex; flex-direction: column; gap: var(--s4); }
 #projects li:last-child, #runs li:last-child, #charter li:last-child { border-bottom: 0; }
 
 /* A run's probe material (ADR-515): its README as a document, its images as a gallery on the dark floor. */
-#probe-readme { overflow-wrap: anywhere; }
-#probe-readme h2 { font-size: var(--fs-2); margin-top: var(--s4); }
-#probe-readme h3, #probe-readme h4 { margin: var(--s4) 0 var(--s2); }
-#probe-readme pre { background: var(--surface-2); padding: var(--s2); border-radius: var(--radius-sm); overflow-x: auto; font: var(--fs-0)/1.45 var(--mono); }
-#probe-readme code { font-family: var(--mono); font-size: .92em; }
-#probe-readme li[data-depth="1"] { margin-left: var(--s4); }
-#probe-readme blockquote { margin: 0 0 var(--s2); padding-left: var(--s3); border-left: 2px solid var(--rule); color: var(--ink-2); }
-#probe-readme .md-table-wrap { overflow-x: auto; margin-bottom: var(--s2); }
-#probe-readme .md-image { max-width: 100%; }
+article.markdown { overflow-wrap: anywhere; }
+article.markdown h2 { font-size: var(--fs-2); margin-top: var(--s4); }
+article.markdown h3, article.markdown h4 { margin: var(--s4) 0 var(--s2); }
+article.markdown pre { background: var(--surface-2); padding: var(--s2); border-radius: var(--radius-sm); overflow-x: auto; font: var(--fs-0)/1.45 var(--mono); }
+article.markdown code { font-family: var(--mono); font-size: .92em; }
+article.markdown li[data-depth="1"] { margin-left: var(--s4); }
+article.markdown blockquote { margin: 0 0 var(--s2); padding-left: var(--s3); border-left: 2px solid var(--rule); color: var(--ink-2); }
+article.markdown .md-table-wrap { overflow-x: auto; margin-bottom: var(--s2); }
+article.markdown .md-image { max-width: 100%; }
 ul.probe-gallery { list-style: none; margin: var(--s3) 0 0; padding: 0; display: grid; gap: var(--s3);
                    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
 ul.probe-gallery img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-sm); background: var(--surface-2); }
 ul.probe-gallery li .small { overflow-wrap: anywhere; }
 #probe-files { list-style: none; margin: var(--s2) 0 0; padding: 0; font-size: var(--fs-0); }
 #probe-files li { padding: 2px 0; overflow-wrap: anywhere; }
+/* A run's records (ADR-518): each with the iteration it landed in and the artifacts it names. */
+#records { list-style: none; margin: 0; padding: 0; }
+#records > li { padding: var(--s2) 0; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
+#records > li:last-child { border-bottom: 0; }
+ul.record-images { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); margin-top: var(--s2); }
+ul.record-files { list-style: none; margin: var(--s2) 0 0; padding: 0; }
+ul.record-files li { padding: 2px 0; overflow-wrap: anywhere; }
+#linked-doc { border: 1px solid var(--rule); border-radius: var(--radius-sm); padding: var(--s3); margin: var(--s2) 0; }
+.linked-doc-head { display: flex; justify-content: space-between; gap: var(--s2); align-items: baseline; }

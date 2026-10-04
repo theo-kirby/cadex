@@ -560,3 +560,198 @@ def test_browser_reads_orun1s_probe_readme_and_an_image_from_the_repo(tmp_path, 
     finally:
         server.shutdown()
         server.server_close()
+
+
+# -- A run's records and the artifacts they name (orun2 D3, ADR-518) ---------
+
+def _record(slug: str, branch: str, created: str, body: str, title: str | None = None) -> str:
+    title = (title or slug + " — it's a record").replace("'", "''")
+    return (f"---\nnode_id: x\nslug: {slug}\ntitle: '{title}'\n"
+            f"created_at: '{created}'\nparents: []\n---\n## What\n\n{body}\n\n"
+            f"## Repo\n\n- repo: fixture\n- branch: {branch}\n- commit: abc\n")
+
+
+def _checkout_with_records(tmp_path: Path) -> tuple[Path, Path]:
+    """:func:`_checkout_with_probes` with records: two of ``fx1`` (one landing
+    in iteration 2, one after the last finished iteration), one of ``fx2``,
+    and the files they name, served and not."""
+
+    runs, probes = _checkout_with_probes(tmp_path)
+    checkout = runs.parent.parent
+    docs = checkout / "docs"
+    (docs / "GUIDE.md").write_text("# Guide\n\nText.\n")
+    (docs / "SECRET.md").write_text("fx2 only\n")
+    (docs / "page.html").write_text("<script>alert(1)</script>\n")
+    (docs / "escape.md").symlink_to(tmp_path / "outside" / "secret.md")
+    other = docs / "probes" / "other"
+    (other / "sub").mkdir(parents=True)
+    (other / "shot.png").write_bytes(PNG_1PX)
+    (other / "unnamed.png").write_bytes(PNG_1PX)
+    (other / "sub" / "a.json").write_text("{}\n")
+    (other / "sub" / "b.png").write_bytes(PNG_1PX)
+    (other / "sub" / "deeper").mkdir()
+    (other / "sub" / "deeper" / "c.md").write_text("deeper\n")
+    (docs / "probes" / "third").mkdir()
+    (docs / "probes" / "third" / "x.md").write_text("never named\n")
+    records = checkout / ".hypergraph" / "graph" / "record"
+    records.mkdir(parents=True)
+    (records / "early-fox-0001.md").write_text(_record(
+        "early-fox-0001", "ouroboros/fx1", "2026-10-01T09:30:00+00:00",
+        "Shot `docs/probes/other/shot.png`, the folder docs/probes/other/sub/, the guide docs/GUIDE.md. "
+        "Also docs/page.html, docs/escape.md, docs/missing.png and src/docs/GUIDE.md and docs/."))
+    (records / "late-owl-0002.md").write_text(_record(
+        "late-owl-0002", "ouroboros/fx1", "2026-10-01T10:30:00+00:00", "See docs/probes/fx1/README.md."))
+    (records / "other-run-0003.md").write_text(_record(
+        "other-run-0003", "ouroboros/fx2", "2026-10-01T09:30:00+00:00", "See docs/SECRET.md and docs/probes/third/x.md."))
+    (records / "no-repo-0004.md").write_text("---\nslug: no-repo-0004\n---\n## What\n\ndocs/SECRET.md\n")
+    return runs, checkout
+
+
+def test_a_runs_records_name_their_iteration_and_artifacts(tmp_path) -> None:
+    runs, checkout = _checkout_with_records(tmp_path)
+    server, _thread = serve_projects(_projects(tmp_path), "127.0.0.1", 0, runs_root=runs)
+    try:
+        run = _json(server.url + "r/fx1/api/run")
+        records = run["records"]
+        assert (records["available"], records["root"], records["reason"]) == (True, ".hypergraph/graph/record", None)
+        late, early = records["records"]
+        assert late == {"slug": "late-owl-0002", "title": "late-owl-0002 — it's a record",
+                        "created_at": "2026-10-01T10:30:00+00:00", "iteration": None, "more": 0,
+                        "artifacts": [{"path": "docs/probes/fx1/README.md", "kind": "text",
+                                       "bytes": (checkout / "docs/probes/fx1/README.md").stat().st_size}]}
+        # Landed in iteration 2: the first whose last step is not older than it.
+        assert early["iteration"] == 2 and early["more"] == 0
+        # A named file, a named directory's own files (not deeper), a trailing period
+        # dropped; never HTML, a symlink, a missing file, or a path not rooted at docs/.
+        assert [a["path"] for a in early["artifacts"]] == [
+            "docs/probes/other/shot.png", "docs/probes/other/sub/a.json", "docs/probes/other/sub/b.png",
+            "docs/GUIDE.md"]
+        assert [item["records"] for item in run["iterations"]] == [[], ["early-fox-0001"], []]
+        assert "records" not in _json(server.url + "api/runs")["runs"][0]
+        status, headers, body = _get(server.url + "r/fx1/linked/docs/probes/other/shot.png")
+        assert status == 200 and body == PNG_1PX and headers["content-type"] == "image/png"
+        assert headers["content-security-policy"] == "sandbox" and headers["x-content-type-options"] == "nosniff"
+        assert _get(server.url + "r/fx1/linked/docs/GUIDE.md")[2].startswith(b"# Guide")
+        # In a docs/probes/<dir>/ a record names a path in, so a README's own images resolve.
+        for path in ("docs/probes/other/unnamed.png", "docs/probes/other/sub/deeper/c.md",
+                     "docs/probes/fx1/sweep/hero.png"):
+            assert _get(server.url + "r/fx1/linked/" + path)[0] == 200, path
+        for path in ("r/fx1/linked/docs/SECRET.md", "r/fx1/linked/docs/probes/third/x.md",
+                     "r/fx1/linked/docs/page.html", "r/fx1/linked/docs/escape.md",
+                     "r/fx1/linked/docs/probes/fx1/escape.md", "r/fx1/linked/docs/probes/fx1/linked/secret.md",
+                     "r/fx1/linked/docs/probes/fx1/.secret.md", "r/fx1/linked/docs/probes/other/../../SECRET.md",
+                     "r/fx1/linked/docs/probes/other/%2E%2E/%2E%2E/SECRET.md", "r/fx1/linked/docs/probes/other/sub",
+                     "r/fx1/linked/.ouroboros/goal.md", "r/fx1/linked/docs", "r/fx1/linked/",
+                     "r/missing/linked/docs/GUIDE.md"):
+            assert _get(server.url + path)[0] == 404, path
+        # fx2's own record, and only it; a record with no Repo section belongs to no run.
+        fx2 = _json(server.url + "r/fx2/api/run")["records"]["records"]
+        assert [r["slug"] for r in fx2] == ["other-run-0003"]
+        assert [a["path"] for a in fx2[0]["artifacts"]] == ["docs/SECRET.md", "docs/probes/third/x.md"]
+        assert _get(server.url + "r/fx2/linked/docs/SECRET.md")[0] == 200
+        # A new record appears on the next read; serving wrote nothing.
+        (checkout / ".hypergraph/graph/record/new-day-0005.md").write_text(_record(
+            "new-day-0005", "ouroboros/fx1", "2026-10-01T09:00:00+00:00", "Nothing named."))
+        assert [r["slug"] for r in _json(server.url + "r/fx1/api/run")["records"]["records"]] == [
+            "late-owl-0002", "early-fox-0001", "new-day-0005"]
+        assert subprocess.run(["git", "-C", str(checkout), "status", "--porcelain"], capture_output=True,
+                              text=True, check=True).stdout.split() == [
+            "M", ".ouroboros/goal.md", "??", ".hypergraph/", "??", ".ouroboros/runs/", "??", "docs/"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_records_outside_a_checkout_are_refused(app_with_runs, tmp_path) -> None:
+    _runs_dir, server = app_with_runs
+    records = _json(server.url + "r/fx1/api/run")["records"]
+    assert records["available"] is False and records["records"] == []
+    assert records["reason"] == "the runs directory is not a checkout's .ouroboros/runs"
+    assert _get(server.url + "r/fx1/linked/docs/GUIDE.md")[0] == 404
+    from cadex_cli.review_server import OuroborosRuns
+
+    runs = OuroborosRuns(_checkout_with_runs(tmp_path))
+    assert runs.records("fx1", "ouroboros/fx1", [])["reason"] == (
+        ".hypergraph/graph/record is not a directory of the checkout")
+
+
+@needs_browser
+def test_browser_shows_orun1s_records_and_what_they_point_to_from_the_repo(tmp_path, browser) -> None:
+    """orun1's records, committed in this repo, with the probe material and
+    docs they name, on ``/r/orun1/``: each record under the iteration it
+    landed in, a trial's hero loaded through ``linked/``, and the design
+    language the run rewrote opened in place -- what ``~/orun1-review/build.py``
+    assembled by hand from the run branch, the trial projects and the run
+    directory, now from the repo alone."""
+
+    import shutil
+
+    checkout = tmp_path / "checkout"
+    for tree in ("orun1", "ot10"):
+        shutil.copytree(REPO / "docs" / "probes" / tree, checkout / "docs" / "probes" / tree,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copy2(REPO / "docs" / "DESIGN-LANGUAGE.md", checkout / "docs" / "DESIGN-LANGUAGE.md")
+    records = checkout / ".hypergraph" / "graph" / "record"
+    records.mkdir(parents=True)
+    created = {}
+    for path in sorted((REPO / ".hypergraph" / "graph" / "record").glob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        if "\n- branch: ouroboros/orun1\n" in text:
+            shutil.copy2(path, records / path.name)
+            created[path.stem] = text.split("created_at: '", 1)[1].split("'", 1)[0]
+    assert len(created) >= 20
+    # One iteration per record, each ending a minute after it, so each lands in its own.
+    order = sorted(created, key=created.get)
+    runs = checkout / ".ouroboros" / "runs"
+    (runs / "orun1").mkdir(parents=True)
+    (runs / "orun1" / "status.json").write_text(json.dumps({"state": "done", "branch": "ouroboros/orun1"}))
+    import datetime
+    rows = []
+    for number, slug in enumerate(order, 1):
+        end = datetime.datetime.fromisoformat(created[slug]) + datetime.timedelta(minutes=1)
+        rows.append(json.dumps({"ts": end.isoformat(), "iteration": number, "step": "commit", "sha": f"{number:010d}",
+                                "changed": True, "recorded": True}))
+    (runs / "orun1" / "iterations.jsonl").write_text("\n".join(rows) + "\n")
+    server, _thread = serve_projects(_projects(tmp_path), "127.0.0.1", 0, runs_root=runs)
+    try:
+        run = browser.page(server.url + "r/orun1/")
+        run.wait_for(f"document.querySelectorAll('#records > li').length === {len(created)}")
+        assert run.text("#records-source") == ".hypergraph/graph/record in the checkout"
+        # deep-cove-1130 is the t1-hexapod trial: its hero, through /r/orun1/linked/.
+        row = "#records > li[data-record='deep-cove-1130']"
+        assert run.text(row + " .badge") == "#" + str(order.index("deep-cove-1130") + 1)
+        hero = row + " ul.record-images li[data-path='docs/probes/orun1/d4/t1-hexapod/hero.png'] img"
+        run.evaluate("document.querySelector(\"" + hero + "\").scrollIntoView(); true")
+        run.wait_for("document.querySelector(\"" + hero + "\").complete && "
+                     "document.querySelector(\"" + hero + "\").naturalWidth > 0")
+        assert run.attribute(hero, "src").endswith("/r/orun1/linked/docs/probes/orun1/d4/t1-hexapod/hero.png")
+        assert "docs/probes/orun1/d4/t1-hexapod/summary.json" in run.text(row + " ul.record-files")
+        # Every trial the run recorded under d4/ shows its hero.
+        assert run.evaluate("[...document.querySelectorAll('#records ul.record-images li')].map(l => l.dataset.path)"
+                            ".filter(p => /d4\\/[^/]+\\/hero\\.png$/.test(p)).sort()") == sorted(
+            f"docs/probes/orun1/d4/{trial.name}/hero.png" for trial in (REPO / "docs/probes/orun1/d4").iterdir()
+            if (trial / "hero.png").is_file())
+        # The iteration row links its record.
+        number = order.index("golden-bay-7992") + 1
+        assert run.text(f"#iterations tr[data-iteration='{number}'] a.record-link") == "golden-bay-7992"
+        # golden-bay-7992 rewrote the design language: it opens in place, drawn.
+        run.evaluate("document.querySelector(\"#records > li[data-record='golden-bay-7992'] "
+                     "li[data-path='docs/DESIGN-LANGUAGE.md'] a\").click(); true")
+        run.wait_for("document.getElementById('linked-doc').dataset.loaded === 'docs/DESIGN-LANGUAGE.md'")
+        assert run.evaluate("document.getElementById('linked-doc').hidden") is False
+        assert run.text("#linked-doc-body h2") == "The Cadex design language — small printed robots that look engineered"
+        assert "0. The one-sentence version" in run.evaluate(
+            "[...document.querySelectorAll('#linked-doc-body h3')].map(h => h.textContent)")
+        assert run.evaluate("location.pathname") == "/r/orun1/"
+        # The run's README opens the same way, its ratings table a table.
+        run.evaluate("document.querySelector(\"#records > li[data-record='deep-cove-1130'] "
+                     "li[data-path='docs/probes/orun1/README.md'] a\").click(); true")
+        run.wait_for("document.getElementById('linked-doc').dataset.loaded === 'docs/probes/orun1/README.md'")
+        assert run.text("#linked-doc-body h2") == "orun1 — the owner's design preferences, measured"
+        assert run.evaluate("document.querySelectorAll('#linked-doc-body table')[0].querySelectorAll('tbody tr').length") == 9
+        run.click("#linked-doc-close")
+        assert run.evaluate("document.getElementById('linked-doc').hidden") is True
+        assert run.evaluate("document.getElementById('records-empty').hidden") is True
+    finally:
+        server.shutdown()
+        server.server_close()

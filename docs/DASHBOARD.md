@@ -1122,6 +1122,23 @@ symlink on the path is followed, so nothing outside that directory is
 reachable; each response carries `Content-Security-Policy: sandbox` and
 `nosniff`. Outside a checkout, or with no such directory, the card says so.
 
+Under the Probes card, the **Records** card (ADR-518) lists the run's
+hypergraph records, newest first: the checkout's
+`.hypergraph/graph/record/*.md` whose `## Repo` names the run's branch. Each
+row (`#record-<slug>`) is a muted badge with the iteration it landed in
+(the first whose last step is not older than the record; **this
+iteration** before one has), the title, a muted line with slug and time,
+then the artifacts the record's text names under `docs/` — a named file,
+or a named directory's own files — the images as a smaller gallery, every
+other file as a link; a markdown file opens in place in a bordered document
+above the list (`#linked-doc`, with **close**), drawn by the same
+`markdown.js`. At most 24 artifacts per record; the rest are counted. Each
+iteration row's commit cell links its records. Artifacts are served under
+`/r/<run>/linked/<path>` with the probe route's suffix list, segment rule,
+no-symlink rule and headers, and only when one of the run's records names
+the file or its directory, or names a path in the same
+`docs/probes/<dir>/` (so a linked README's own images resolve).
+
 ## 28. Drawings: the blueprint sheets the agent stored (ADR-516)
 
 `#drawing-panel`, headed **Drawings**, sits under Export. It lists the

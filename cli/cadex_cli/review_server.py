@@ -135,6 +135,13 @@ PROBE_SEGMENT = re.compile(r"^[A-Za-z0-9_+-][A-Za-z0-9._+-]{0,127}$")
 PROBE_LISTING_LIMIT = 2000
 #: Served probe files run nothing and are never sniffed into something that does.
 PROBE_HEADERS = {"Content-Security-Policy": "sandbox", "X-Content-Type-Options": "nosniff"}
+#: A run's records are the checkout's hypergraph record nodes whose ``## Repo``
+#: names the run's branch (ADR-518); the repo paths under ``docs/`` they name
+#: are the artifacts its page links, served under ``/r/<run>/linked/``.
+RECORD_DIR = Path(".hypergraph") / "graph" / "record"
+RECORD_PATH_MENTION = re.compile(r"(?<![\w/.~-])docs(?:/[A-Za-z0-9_+-][A-Za-z0-9._+-]*)+/?")
+#: The most artifacts one record lists; the rest are counted.
+RECORD_ARTIFACT_LIMIT = 24
 #: Content types for the retained artifacts; anything else downloads as bytes.
 CONTENT_TYPES = {
     ".json": "application/json; charset=utf-8",
@@ -2420,6 +2427,11 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 if probe is not None:
                     self._send_file(probe, download=False, headers=PROBE_HEADERS)
                     return
+            if page[0] == "linked" and len(page) > 1:
+                linked = runs.linked_file(rest[0], page[1:])
+                if linked is not None:
+                    self._send_file(linked, download=False, headers=PROBE_HEADERS)
+                    return
             run = runs.run(rest[0]) if page == ["api", "run"] else None
             if run is not None:
                 self._send_json(run)
@@ -2620,6 +2632,11 @@ class OuroborosRuns:
     ``/r/<run>/probes/``. Only :data:`PROBE_KINDS` suffixes, only
     :data:`PROBE_SEGMENT` names, and no symlink anywhere on the path, so
     nothing outside that directory is reachable through it.
+
+    A run's records are the checkout's record nodes whose ``## Repo`` names
+    the run's branch (ADR-518), each placed in the iteration it landed in,
+    with the ``docs/`` files its text names served under ``/r/<run>/linked/``
+    by the same rules.
     """
 
     def __init__(self, root: Path | str | None) -> None:
@@ -2811,6 +2828,154 @@ class OuroborosRuns:
         return {"available": True, "root": root, "reason": None, "readme": readme, "files": files,
                 "truncated": truncated}
 
+    def _record_nodes(self) -> list[dict[str, Any]]:
+        """Every record node of the checkout: slug, title, created, branch and
+        the ``docs/`` paths its text names, cached until the directory changes."""
+
+        assert self.checkout is not None
+        directory = self.checkout / RECORD_DIR
+        try:
+            stamp = directory.stat().st_mtime_ns
+        except OSError:
+            return []
+        cached = getattr(self, "_record_cache", None)
+        if cached is not None and cached[0] == stamp:
+            return cached[1]
+        nodes: list[dict[str, Any]] = []
+        for path in sorted(directory.glob("*.md")):
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            head, sep, body = text[4:].partition("\n---\n") if text.startswith("---\n") else ("", "", text)
+            if not sep:
+                continue
+            fields: dict[str, str] = {}
+            for line in head.splitlines():
+                key, colon, value = line.partition(":")
+                if colon and key in ("slug", "title", "created_at"):
+                    value = value.strip()
+                    if len(value) > 1 and value[0] == value[-1] == "'":
+                        value = value[1:-1].replace("''", "'")
+                    elif len(value) > 1 and value[0] == value[-1] == '"':
+                        value = value[1:-1]
+                    fields[key] = value
+            branch = re.search(r"^- branch: *(\S+) *$", body, re.MULTILINE)
+            if not fields.get("slug") or branch is None:
+                continue
+            mentions = list(dict.fromkeys(match.group(0).rstrip(".") for match in RECORD_PATH_MENTION.finditer(body)))
+            nodes.append({"slug": fields["slug"], "title": fields.get("title", ""),
+                          "created_at": fields.get("created_at"), "branch": branch.group(1),
+                          "mentions": [m for m in mentions if m.rstrip("/") != "docs"]})
+        self._record_cache = (stamp, nodes)
+        return nodes
+
+    def _docs_path(self, relative: str) -> Path | None:
+        """A plain ``docs/...`` path of the checkout, file or directory, with
+        no symlink on it and no dot-segment, or ``None``."""
+
+        assert self.checkout is not None
+        parts = relative.rstrip("/").split("/")
+        if parts[0] != "docs" or len(parts) < 2 or not all(PROBE_SEGMENT.match(part) and ".." not in part
+                                                           for part in parts[1:]):
+            return None
+        path = self.checkout.joinpath(*parts)
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError:
+            return None
+        return path if resolved == path else None
+
+    @staticmethod
+    def _artifact(path: Path, relative: str) -> dict[str, Any] | None:
+        kind = PROBE_KINDS.get(path.suffix.lower())
+        if kind is None or not path.is_file():
+            return None
+        return {"path": relative, "kind": kind, "bytes": path.stat().st_size}
+
+    def _linked(self, mention: str) -> list[dict[str, Any]]:
+        """The servable files one mention names: the file, or a directory's own files."""
+
+        path = self._docs_path(mention)
+        if path is None:
+            return []
+        relative = mention.rstrip("/")
+        if not path.is_dir():
+            artifact = self._artifact(path, relative)
+            return [artifact] if artifact is not None else []
+        out = []
+        for child in sorted(path.iterdir()):
+            if PROBE_SEGMENT.match(child.name) and not child.is_symlink():
+                artifact = self._artifact(child, f"{relative}/{child.name}")
+                if artifact is not None:
+                    out.append(artifact)
+        return out
+
+    @staticmethod
+    def _when(stamp: Any) -> _datetime.datetime | None:
+        try:
+            when = _datetime.datetime.fromisoformat(str(stamp))
+        except ValueError:
+            return None
+        return when if when.tzinfo is not None else when.replace(tzinfo=_datetime.timezone.utc)
+
+    def records(self, name: str, branch: str, iterations: list[dict[str, Any]]) -> dict[str, Any]:
+        """The run's records, newest first, each with the iteration it landed
+        in -- the first whose last step is not older than it -- and the
+        artifacts under ``docs/`` it names (ADR-518)."""
+
+        root = RECORD_DIR.as_posix()
+        if self.checkout is None or not self.has(name):
+            return {"available": False, "root": root, "reason": "the runs directory is not a checkout's .ouroboros/runs",
+                    "records": []}
+        if not (self.checkout / RECORD_DIR).is_dir():
+            return {"available": False, "root": root, "reason": f"{root} is not a directory of the checkout",
+                    "records": []}
+        ends = [(when, item["iteration"]) for item in iterations
+                if (when := self._when(item.get("ts"))) is not None]
+        out = []
+        for node in self._record_nodes():
+            if node["branch"] != branch:
+                continue
+            created = self._when(node["created_at"])
+            landed = next((number for when, number in ends if created is not None and when >= created), None)
+            artifacts: list[dict[str, Any]] = []
+            for mention in node["mentions"]:
+                for artifact in self._linked(mention):
+                    if artifact["path"] not in {a["path"] for a in artifacts}:
+                        artifacts.append(artifact)
+            out.append({"slug": node["slug"], "title": node["title"], "created_at": node["created_at"],
+                        "iteration": landed, "artifacts": artifacts[:RECORD_ARTIFACT_LIMIT],
+                        "more": max(0, len(artifacts) - RECORD_ARTIFACT_LIMIT)})
+        out.sort(key=lambda record: str(record["created_at"] or ""), reverse=True)
+        return {"available": True, "root": root, "reason": None, "records": out}
+
+    def linked_file(self, name: str, segments: list[str]) -> Path | None:
+        """One file a record of this run names, or one inside a probe
+        directory (``docs/probes/<dir>/``) a record of it names a path in, so
+        a linked README's own images resolve. Anything else is ``None``."""
+
+        if self.checkout is None or not self.has(name) or not segments:
+            return None
+        relative = "/".join(segments)
+        path = self._docs_path(relative)
+        if path is None or self._artifact(path, relative) is None:
+            return None
+        run = self._read(name)
+        if run is None:
+            return None
+        for node in self._record_nodes():
+            if node["branch"] != run["branch"]:
+                continue
+            for mention in node["mentions"]:
+                mention = mention.rstrip("/")
+                parts = mention.split("/")
+                if relative == mention or relative.rpartition("/")[0] == mention:
+                    return path
+                if parts[:2] == ["docs", "probes"] and len(parts) > 2 and relative.startswith("/".join(parts[:3]) + "/"):
+                    return path
+        return None
+
     def _read(self, name: str) -> dict[str, Any] | None:
         if name not in self._names():
             return None
@@ -2892,8 +3057,12 @@ class OuroborosRuns:
             return None
         assert self.root is not None
         charter = self._charter(self._config(self.root / name / "run.yml"), run["branch"])
+        records = self.records(name, run["branch"], run["iterations"])
+        for item in run["iterations"]:
+            item["records"] = [record["slug"] for record in records["records"]
+                               if record["iteration"] == item["iteration"]]
         return {"schema": RUN_SCHEMA, **run, "charter": charter, "probes": self.probes(name),
-                "served_at": _now()}
+                "records": records, "served_at": _now()}
 
 
 class ProjectsServer(ThreadingHTTPServer):

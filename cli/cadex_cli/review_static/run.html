@@ -4,7 +4,8 @@
      One Ouroboros run (ADR-513), served at /r/<run>/: its iterations, newest
      first, each with the critic's verdict and what it said was done, under
      the charter's done criteria as the run's branch holds them, and the
-     run's probe material from docs/probes/<run>/ (ADR-515). Read from the
+     run's probe material from docs/probes/<run>/ (ADR-515), and its records
+     with the renders, reports and probe pages they name (ADR-518). Read from the
      run directory and the checkout; writes nothing. Tokens are the review page's
      (docs/DASHBOARD.md). -->
 <html lang="en">
@@ -39,6 +40,17 @@
       <ul id="probe-files"></ul>
     </details>
     <p id="probes-empty" class="muted" hidden></p>
+  </section>
+  <section class="card" id="records-card">
+    <h2>Records <span id="records-count" class="muted small"></span></h2>
+    <div id="records-source" class="muted small"></div>
+    <article id="linked-doc" class="markdown" hidden>
+      <div class="linked-doc-head small"><span id="linked-doc-path" class="muted"></span>
+        <button type="button" id="linked-doc-close">close</button></div>
+      <div id="linked-doc-body"></div>
+    </article>
+    <ol id="records"></ol>
+    <p id="records-empty" class="muted" hidden></p>
   </section>
   <section class="card">
     <h2>Iterations</h2>
