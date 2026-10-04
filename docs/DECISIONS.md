@@ -33618,3 +33618,63 @@ first and `reject` on the second, appear on the already-open index without
 a click, newest first, each with the revision it left, its ordinal and its
 verdict, the second with its agent note, in the card that holds the
 Ouroboros runs. `test_review_lifecycle.py` for the flake.
+
+## ADR-520 — A stale policy is refused without locking the project: `restore.stale_policy` (2026-10-03, owner charter orun2 W1)
+
+**Context.** ADR-469 moved `CONTACT_TIMECONST_S` from 0.02 to 0.004, which
+puts `solref="0.004"` on every contact geom and so moves the task bundle
+digest of every robot. Every policy trained before 2026-10-01 is therefore
+refused by `verify_policy` with `policy_task_mismatch`, which is right. But
+`open_project`'s restore pass re-runs the stored script, the script declares
+the policy, and the refusal failed the open itself: `CADEXD_RESTORE_FAILED`,
+after the accepted-source retry (ADR-044) failed the same way. No command
+could reach the project, including the design turn or `cadex params --set
+policy_on=0` that would set the policy aside. orun2's W1 walk found it on a
+copy of `ot11-robin-1`; it reaches every robot project trained before
+ADR-469 (`ot11-robin-1`, `ot9-robin`, the `ot5`/`ot6` copies).
+
+**Decision.** When the restore run fails only because the worker refused an
+`assembly.policy` output at its `policy_model` stage for one of five reasons
+that mean *the task moved on from the policy* — `policy_task_mismatch`,
+`policy_model_mismatch`, `policy_channels_mismatch`,
+`policy_actions_mismatch`, `policy_output_range_mismatch`
+(`cadexd.STALE_POLICY_REASONS`) — the open succeeds with `restore:
+{performed: false, stale_policy: {output, reason, error, correction,
+*_sha256}}`. The policy is still refused at every build that declares it.
+Nothing is re-accepted: the accepted revision, digest and attempt stay
+pinned, and `latest_candidate` is put back as a refused restore does
+(ADR-421). The CLI adds a note to the envelope naming the output and the
+two ways out (retrain, or set the policy aside). A corrupt container, a
+missing witness, a witness that disagrees, a refusal at any other stage, or
+a script that will not run for any other reason still refuses the open.
+
+**Protocol.** No request changes; `OP_ARG_SPECS` is unchanged. The
+`restore` reply gains one optional key, declared in `OP_RESPONSE_SPECS`,
+pinned by the golden `open_project.stale_policy.json`, and described in
+`docs/INTEGRATION.md`.
+
+**Rejected.** Re-running the restore with the policy skipped (a second
+script semantics just for opens, and a digest that could never match the
+accepted one); re-deriving the policy's task to accept it as equivalent
+(`trained_task` already exists for the author to declare that, and a solref
+change is a different simulation); migrating old projects in place (it
+writes projects the charter keeps read-only, and the next engine change
+would need another migration).
+
+**Cost.** ~60 lines in `cadexd.py`, one spec key, ~20 lines in the CLI.
+
+**What would reverse it.** An open that must always leave a live document,
+or a policy refusal that turns out to hide a model the user changed (then
+the five reasons narrow).
+
+**Test.** `src/Mod/cadex/cadex_tests/test_restore_stale_policy.py`: through
+the server dispatch with the lifecycle faked, each of the five reasons
+opens with the output, reason and both digests named, the reply validates
+against the pinned spec, and the accepted state and candidate record are
+unchanged; a corrupt container, a disagreeing witness, the right reason at
+another stage, and a script that will not run each still return
+`CADEXD_RESTORE_FAILED`. `cli/tests/test_stale_policy_note.py` for the
+note. Proved on a copy of `orun2-w1-robin` against the built engine: the
+open that returned `CADEXD_RESTORE_FAILED` returns `stale_policy`,
+`cadex params --set policy_on=0` then accepts a new revision, and the next
+open restores with `matches_accepted: true`.

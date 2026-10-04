@@ -546,6 +546,9 @@ NESTED_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     # `drifted_outputs` is the last opinion: the geometry disagreed, but the
     # source, settings and every definition are the accepted ones, so the
     # kernel's different answer is named and the design opens (ADR-476).
+    # `stale_policy` rides only on a skipped restore whose script refused a
+    # policy trained on a task the engine no longer builds: the project opens
+    # unrestored instead of locking, and the stale output is named (ADR-520).
     "restore": (
         frozenset({"performed"}),
         frozenset(
@@ -556,6 +559,7 @@ NESTED_RESPONSE_SPECS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 "matched_by",
                 "geometry_digest",
                 "drifted_outputs",
+                "stale_policy",
             }
         ),
     ),

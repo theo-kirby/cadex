@@ -61,6 +61,51 @@ from CadexdProtocol import (
 )
 
 
+#: The `verify_policy` refusals that say the task moved on from the policy,
+#: not that the policy file is broken: it was trained on another bundle, model,
+#: channel list or action map than the script now declares (ADR-520). An
+#: engine change that only re-tunes the simulation (ADR-469's contact solref)
+#: produces exactly these on every policy trained before it.
+STALE_POLICY_REASONS = frozenset(
+    {
+        "policy_task_mismatch",
+        "policy_model_mismatch",
+        "policy_channels_mismatch",
+        "policy_actions_mismatch",
+        "policy_output_range_mismatch",
+    }
+)
+
+
+def _stale_policy(payload: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """The stale policy a failed restore run refused, or ``None``.
+
+    Only a `policy_model`-stage refusal whose reason is in
+    :data:`STALE_POLICY_REASONS` counts. A corrupt container, a missing
+    weights file, or any other script failure is not staleness and keeps
+    the open's hard refusal.
+    """
+
+    if not isinstance(payload, Mapping) or payload.get("ok") is not False:
+        return None
+    observed = payload.get("observed")
+    details = observed.get("details") if isinstance(observed, Mapping) else None
+    if not isinstance(details, Mapping):
+        return None
+    reason = str(details.get("reason") or "")
+    if details.get("stage") != "policy_model" or reason not in STALE_POLICY_REASONS:
+        return None
+    stale: dict[str, Any] = {
+        "output": str(details.get("simulation_output") or ""),
+        "reason": reason,
+        "error": str(payload.get("error") or ""),
+        "correction": str(details.get("correction") or ""),
+    }
+    for key, value in details.items():
+        if str(key).endswith("_sha256"):
+            stale[str(key)] = str(value)
+    return stale
+
 
 def _remembered_geometry(state: Mapping[str, Any], accepted_digest: str) -> str:
     """What this project last measured its accepted outputs to be, or ``""``.
@@ -602,6 +647,33 @@ class CadexdServer:
                     else None
                 )
                 if retry is None or retry.get("ok") is not True:
+                    stale = _stale_policy(retry) or _stale_policy(payload)
+                    if stale is not None:
+                        # The script runs, but the policy it declares was
+                        # trained on a task this engine no longer builds
+                        # (ADR-520). Refusing the policy is right; locking
+                        # the project is not, because every way to fix it
+                        # (retrain, or a turn that sets the policy aside)
+                        # starts with an open. The failed run rolled the
+                        # working script back and left the accepted revision,
+                        # digest and attempt pinned; only its candidate record
+                        # is put back, as a refused restore does (ADR-421).
+                        # The open proceeds unrestored, naming the stale
+                        # output.
+                        store.write(
+                            state_updates={
+                                "latest_candidate": state.get("latest_candidate")
+                            }
+                        )
+                        return {
+                            "ok": True,
+                            "schema": PROTOCOL_SCHEMA,
+                            "project_root": str(root),
+                            "budgets": budgets,
+                            "manifest": manifest,
+                            "script": self._script_state(),
+                            "restore": {"performed": False, "stale_policy": stale},
+                        }
                     return failure(
                         CADEXD_RESTORE_FAILED,
                         "The restore pass could not re-run the stored script.",

@@ -951,6 +951,9 @@ def _engine_session(
             opened = open_project(client, project_root, restore=restore, budgets=budgets)
             report.params = params_from_script(opened.get("script"))
             report.budgets = _budgets_report(stored, overrides, opened.get("budgets"))
+            stale = stale_policy_note(opened)
+            if stale:
+                report.notes.append(stale)
             # The project as a codebase (ADR-193): its three documents
             # exist from the first visit on. Plain files beside
             # script.json, like agent.json; the engine never reads them.
@@ -968,6 +971,26 @@ def _engine_session(
             yield engine, client
         finally:
             client.shutdown()
+
+
+def stale_policy_note(opened: Mapping[str, Any]) -> str:
+    """The envelope's note when the open skipped a restore for a stale policy.
+
+    ``open_project`` opens such a project unrestored rather than locking it
+    (ADR-520); the note says which output, why, and the two ways out, so a
+    pipeline reading only the notes still learns it.
+    """
+
+    restore = opened.get("restore")
+    stale = restore.get("stale_policy") if isinstance(restore, Mapping) else None
+    if not isinstance(stale, Mapping):
+        return ""
+    return (
+        f"policy output {stale.get('output')!r} is stale ({stale.get('reason')}): "
+        "it was trained on a task this engine no longer builds, so the project "
+        "opened without its restore pass (ADR-520). Retrain it, or set the "
+        "policy aside, before the next rebuild."
+    )
 
 
 def _budget_overrides(args: argparse.Namespace) -> dict[str, Any]:
