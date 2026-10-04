@@ -4,7 +4,8 @@ Verified against source: 2026-10-04, at `37733eec` (the orun2 run branch).
 The D1 and D2 numbers were measured at `13c660cf`; no later commit touches
 the build, the setup route or the slider path.
 ADR-531 and ADR-532 (the payload's LLVM, then OpenCV/PCL/Node/Perl prunes)
-landed after; §3 and defect 6 carry them. W1's GPU leg (defect 5) was measured at `50442820`.
+landed after; §3 and defect 6 carry them. W1's GPU leg (defect 5) was measured at `50442820`. The done claim (§7)
+was re-checked at `3d0c6faa`, the reconcile that folded the last records.
 Charter: `.ouroboros/goal.md`, "Cadex is three things — the engine, the
 dashboard, the agent". Every number below was measured on sb1x (linux-64,
 32 cores). The owner ticks the criteria; this report claims none of them.
@@ -20,7 +21,7 @@ dashboard, the agent". Every number below was measured on sb1x (linux-64,
 | D3 runs first-class | evidence recorded | ADR-513, ADR-514, ADR-515, ADR-518, ADR-519 | `mellow-otter-0798`, `polished-reef-4161`, `lean-star-6139`, `quiet-ivy-3898`, `amber-moon-9415` |
 | A1 one contract, a channel | evidence recorded | `leave_note` (ADR-512), the guidance settled (ADR-521) | `proud-quill-5791`, `autumn-rose-7173` |
 | W1 nothing lost | evidence recorded | walk steps 1–8 ran and were seen in the dashboard; step 7 trained on the 5090 (300 it × 1024 envs, 331 s) and `evaluate` passed 10 of 10 seeds (defect 5, cleared). The ledger has no "to port" row | `red-loom-2239`, `icy-tooth-7719`, `dusty-bramble-8099`, `mellow-fjord-5906`, `neat-grove-1406`, `solemn-birch-8260` |
-| C1 this report | this file; done not yet claimed (§7) | §1–§6 below | `clear-current-6218`, `lively-beacon-5538`, `clever-sky-3211` |
+| C1 this report | this file; done claimed for critic review (§7) | §1–§6 below | `clear-current-6218`, `lively-beacon-5538`, `clever-sky-3211`, `hidden-glacier-9870`, `rough-bell-4055` |
 
 The owner-note units each have their own record: the blueprint composer
 (ADR-516, `sweet-arrow-0695`) and the project budgets (ADR-517,
@@ -195,16 +196,38 @@ Each was re-checked on 2026-10-04 while the screenshots were taken.
    copied: the compiler's `lib/gcc` and nine libraries ADR-532 orphaned.
    The `.pixi` environment (5.65 GB) is unchanged; its GUI-era dependency
    audit is deferred by the owner to the next run.
+7. **The short plan bet still names a shell client.** `young-crane-9546`
+   (rank 1, rollout-pose clearance) says an op change moves "the shell
+   client" in the same PR. R1's frontier clean-up (`light-path-5130`)
+   declared its replacement by the orun2 ladder, but the plan impact is
+   still pending: `hypergraph check` reports it as `I5`, 5 pending
+   impacts awaiting reconcile. It is planner-owned text, not a live doc,
+   a frontier node or a criterion, so it does not hold S1 or R1; the next
+   reconcile folds it.
 
 ## 7. The done claim
 
-Every criterion has recorded, measured evidence, W1's GPU leg included
-(defect 5, cleared). **Done is not claimed yet.** C1 says "reconcile, then
-claim done", and the state graph has not folded the latest records: at
-`b0c9706a` the unreconciled tail is `rough-bell-4055` (W1's GPU leg) and the
-record that withdrew this claim. A work iteration may not reconcile; the
-loop's housekeeping pass does. Once that pass has folded the tail into the
-W1 and C1 state nodes, removed the plan's last "shell client" wording
-(`young-crane-9546`, rank 1), and `hypergraph check` exits 0, this section
-claims done for the critic's review and cites that reconcile commit. The
-owner ticks the boxes, and none is ticked here.
+**Done is claimed, for the critic's review.** The reconcile at `3d0c6faa`
+folded the last records (`rough-bell-4055`, `snowy-beacon-2710`,
+`empty-heron-1077`); the unreconciled tail is empty and `hypergraph check`
+exits 0 (0 violations, 6 warnings). Re-checked there, against each
+criterion's folded state node:
+
+- **S1** (`sunny-clover-3750`): `git ls-files shell | wc -l` = 0. Outside
+  ADRs, `docs/history/` and the graph, the files that still name `shell/`,
+  `mesh_agent` or `.blend` are the guardrails that forbid them coming back
+  (`test_project_docs.py`, `test_licensing_compliance.py`), the licensing
+  manifest and its tool saying the Blender half left, the parity ledger,
+  and `docs/ROADMAP.md`'s Phase 6, which R1 marks historical.
+- **R1** (`eager-sea-3906`): `AGENTS.md` is 215 lines (432 before); the
+  frontier is four live nodes, none a stale run criterion.
+- **D1, D2, D3, A1** (`sweet-bloom-8352`, `twilight-aspen-1541`,
+  `swift-nest-0229`, `fierce-falcon-5989`): working, each with the records
+  in the table above; nothing after their evidence touched them.
+- **W1** (`shady-clover-5534`): working, steps 1–8 seen in the dashboard,
+  step 7 on the 5090 and `evaluate` 10 of 10.
+- **C1** (`wild-ocean-3878`): this file, §1–§6.
+
+Remaining defects: 6 (the `.pixi` environment, deferred by the owner) and
+7 (the plan's leftover wording, for the reconcile). Neither holds a
+criterion. The owner ticks the boxes, and none is ticked here.
