@@ -34213,3 +34213,143 @@ gate; `test_a_staged_payload_carries_no_opencv_pcl_node_or_perl` checks a
 staged payload under `CADEX_ENGINE_ROOT`.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-533 — The dashboard is cut to the minimum: the model, a turn, the sliders and the revisions (2026-10-04, owner direction)
+
+**Decision.** On the owner's direction ("removes everything entirely except
+the necessities, so that we go to the simplest possible version, and then we
+can add stuff back as needed"), the dashboard's three pages keep only what
+watching and steering a design needs:
+
+- **Index**: the Ouroboros runs, then the projects newest accepted first,
+  20 to a page (**Newer** / **Older**, the page in `?page=N`), each a link
+  and a date.
+- **Project**: a top bar (home, name, accepted revision's ordinal and date,
+  live/offline), the accepted model filling everything right of a 300 px
+  rail at desk and leading the column on a phone, and in the rail the
+  three writes: a design turn (ADR-504), the parameter sliders (ADR-503)
+  and the revisions with accept, reject and restore (ADR-506).
+- **Run**: the charter's criteria (✓ when ticked) and the iterations newest
+  first with the critic's verdict and reason.
+
+Removed from the pages: run selection and every historical-run view, the
+identity block, the concept sheet and its tab, the curves, videos and
+evaluation tabs, the documents and decisions panel, training and artifacts
+and disk use, the comments and part pick, the agent's notes, export,
+drawings, the collision toggle and contact readout, the dimension overlay,
+explode, section cut, rollout playback, the parts' roles and print roster,
+image attach, the `look` images, the turn's cost line, the revision note and
+verdict marks, the right sidebar, resizable and foldable sidebars, landscape
+drawers and the stage tabs (the ADR-342 frame), the CLI agent-turns list and
+the run page's probes, records, tally and per-iteration commit column.
+`markdown.js` and `dimensions.js`, used only by removed panels, are deleted.
+
+**What is not removed.** The server's routes, readers and write paths are
+unchanged except for the two deleted files leaving its static tables. Every
+API the removed panels read still answers, every CLI command behind a
+removed control (`cadex comment`, `cadex export`, `cadex section`,
+`cadex -p --image`) still works, and the agent's tools are untouched. So W1
+holds (`docs/SHELL-PARITY.md` carries the note), and adding a panel back is
+page work only.
+
+**Measured.** `review_static/` and the server: −3,055 / +334 lines; the
+seven page files are 792 lines, `review.js` 1,975 → 355. Browser tests that
+drove removed panels are deleted with them (−3,348 / +191 in `cli/tests`);
+the ones for what stays are rewritten against it, and a pagination test is
+added (`test_app.py::test_browser_pages_through_the_projects_newest_first`).
+`docs/DASHBOARD.md` 1,274 → 646 lines: its surviving sections keep their
+numbers, so `§` references elsewhere still land; §7–§8, the measured ot6
+record the tests check, are kept.
+
+**What would reverse it.** Any panel the owner asks for back, one at a
+time, each with its spec section and browser test.
+
+**Test.** `test_review_design.py::test_rendered_page_follows_the_spec` (the
+three sections and no more, the rail and the model at desk, model first on a
+phone, tokens and type), `test_app.py` (index → project, paging, index →
+run), `test_dashboard_writes.py` (slider, turn, revisions in a browser),
+`test_review_server.py` (orbit and zoom, the accepted model drawn and kept
+when the server goes, an unaccepted project, identity tracking).
+
+## ADR-534 — The project page is the app: Blender-style areas, four editors, a light theme, a hairline style (2026-10-04, owner direction, draft)
+
+**Context.** ADR-533 cut the page to its minimum the same day. The owner then
+asked for it to stop being a dashboard: "this is the app now". They wanted it in
+Blender's design language, with each window a draggable, resizable module, and four
+of them for now: a 3D viewport (models, sims, animation, policy), a 2D viewport
+(blueprints, images, documents, spec sheets, curves, plots), settings (model
+select, config, file) and chat (what to build or change). They also asked for a
+light and a dark mode, with the viewport shaded by default and a hairline or
+diagram style on request. This is a draft for the owner to try.
+
+**Decision.**
+- The project page is a screen tiled by areas. Each area shows one editor (`layout.js`, a plain
+  script). Gutters resize. A header drag docks the area on another's edge or swaps the two. Header
+  buttons split, maximize (Ctrl+Space) and close. Each editor shows at most once, and the
+  layout is kept per browser. Below 700 px one editor fills the screen, picked from a tab bar.
+- The four editors are the 3D viewport, the 2D viewport, Settings and Chat (`docs/DASHBOARD.md` §2, §12).
+  Chat is the design turn of ADR-504 shown as a conversation. Today it reaches what
+  `cadex -p` reaches. The owner intends it to grow into the agent that drives the whole app
+  (runs, modelling, sub-agents, disk and CLI); that is not built here.
+- The theme is dark by default, with light and system as choices (`theme.js`, §4). The environment module keeps its
+  one dark palette (ADR-331), so the shaded viewport and every capture are unchanged.
+- The render style is shaded by default, or hairline: a screen-space edge pass drawing silhouettes and creases
+  on paper that follows the theme (`review_scene.js` `setStyle`, §10). No capture uses it.
+
+**What comes back from ADR-533.** Only read-only views, on routes that never stopped answering:
+a run's model and its rollout playback, the drawing sheets, the presentation images, the
+project documents and the run's training curves. No write, route or tool changed;
+`review_server.py` adds only the two new static files.
+
+**Test.** `test_review_design.py`:
+- desk: the four areas of the default layout tile the screen without overlapping;
+- phone: one area plus the tab bar;
+- the dark tokens are computed by default;
+- `test_light_theme_is_chosen_kept_and_drawn`: the light theme and the hairline survive a reload, and the hairline paints the theme's paper.
+
+The browser suites for the slider, the turn and the revisions pass unchanged
+against the new shell.
+
+**What would reverse it.** The owner, after trying it. Each of the layout engine, the theme and
+the hairline style is one file or one function, so any of them can go alone.
+
+## ADR-535 — The model is cached, tagged and compressed on the way to the page (2026-10-04, owner report)
+
+**Context.** The owner tried the app over Tailscale and said it was "suuuuper slow, to load, to switch
+things, to rebuild" and that "a lot of times the model fails to load". Measured:
+- A 45-part accepted model is 28 MB of binary STL. It was served uncompressed with `no-store`,
+  so every open, source switch or rebuild downloaded all of it again.
+- Each mesh request re-derived the whole model manifest, hashing every BREP of the attempt:
+  about 2 s of server CPU per load, even on the server's own loopback.
+- The page's 2 s poll waited on the model download, so the page went quiet during a slow load.
+  Nothing retried a dropped request, and a superseded load kept downloading.
+
+**Decision.** `review_server.py`:
+- remembers `accepted_model` until its inputs move;
+- keeps each converted mesh by the tessellation's content hash, which is also the mesh's
+  `ETag` under `Cache-Control: no-cache`, answering 304 to a match;
+- gzips JSON, text and STL of 1 KB or more for a client that accepts it.
+
+`review.js` aborts a superseded load, retries a failed request twice, retries a failed load on
+later polls with backoff, and no longer holds the project poll on the model. `docs/DASHBOARD.md` §22.
+
+**Measured.** At 30 Mbit/s and 40 ms, emulated in Chromium:
+- first load 9.1 s → 3.9 s;
+- reopening the same model 8.2 s → 0.8 s;
+- the model on the wire 28 MB → 9.3 MB;
+- the projects listing 1.1 MB → 100 KB;
+- server time for the 45 meshes, loopback, warm: 2.1 s → 0.13 s.
+
+**Not addressed: the rebuild itself.** A slider move on the same arm is a full
+`cadex params` run of 80–150 s. The parts build in about 10 s. The worker then spends about
+60 s on what follows the build (the static and swept fit checks of ADR-346 and the assembly
+pass), and tessellation is about 4 s. That is engine work under its own ADRs and is left for
+the owner to direct.
+
+**Test.** `test_review_server.py::test_an_accepted_mesh_is_tagged_by_content_compressed_and_revalidated`
+checks:
+- the mesh's ETag, and a 304 for a matching tag;
+- the gzip bytes against the plain ones;
+- that the remembered manifest is rebuilt when the project manifest changes.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

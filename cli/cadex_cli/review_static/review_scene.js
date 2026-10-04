@@ -28,11 +28,16 @@ const PROXY = {color:0xffe08a, opacity:.9};
 // engine's exploded-view segments, in the page's `--muted`.
 const SECTION_NORMALS = {XY:[0,0,1], XZ:[0,1,0], YZ:[1,0,0]};
 const LEADER = {color:0x9aa3ad, opacity:.85};
+// Render styles (ADR-534). 'shaded' is the lit stage every capture uses and the viewport's
+// default; 'hairline' is a diagram: silhouettes and creases in ink on flat paper, and no floor,
+// shadow or fog. The page passes its own paper and ink so the diagram follows the theme.
+const STYLES = ['shaded','hairline'];
+const HAIRLINE = {paper:'#fbfbf9', ink:'#1c1c1c'};
 
 export function create(canvas) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, toScreen(){return null;}, setOnDraw(){}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, draw(){}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -132,8 +137,83 @@ export function create(canvas) {
     }
     hudCamera.right=w; hudCamera.top=h; hudCamera.updateProjectionMatrix();
   }
+  // The hairline pass: the solids' view normals and depth go to an offscreen target at twice
+  // the canvas's resolution, an edge pass marks ink wherever either jumps between neighbouring
+  // pixels -- the silhouettes against depth, the creases against the normals -- with a hard
+  // threshold, and the canvas takes the average of each 2x2 block. So a line is crisp and one
+  // pixel wide and its stair-steps are smoothed, rather than a soft threshold's grey halo. A
+  // tessellated fillet's facets turn by less than the crease threshold, so a curved face stays clean.
+  const SUPERSAMPLE=2;
+  let style='shaded', target=null, edges=null;
+  const paper=new THREE.Color(), ink=new THREE.Color();
+  const normals=new THREE.MeshNormalMaterial({side:THREE.DoubleSide});
+  const fullscreen='varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }';
+  const edgePass=new THREE.ShaderMaterial({
+    uniforms:{tNormal:{value:null}, tDepth:{value:null}, texel:{value:new THREE.Vector2()}, near:{value:.01}, far:{value:100}},
+    vertexShader:fullscreen,
+    fragmentShader:`uniform sampler2D tNormal; uniform sampler2D tDepth; uniform vec2 texel; uniform float near, far;
+      varying vec2 vUv;
+      float lin(vec2 uv){ float z=texture2D(tDepth,uv).x*2.-1.; return 2.*near*far/(far+near-z*(far-near)); }
+      vec3 nrm(vec2 uv){ return texture2D(tNormal,uv).xyz*2.-1.; }
+      void main(){
+        vec3 n0=nrm(vUv); float d0=lin(vUv), e=0.;
+        vec2 o[4]; o[0]=vec2(1.,0.); o[1]=vec2(-1.,0.); o[2]=vec2(0.,1.); o[3]=vec2(0.,-1.);
+        for (int i=0;i<4;i++) {
+          vec2 uv=vUv+o[i]*texel; float d=lin(uv);
+          // Only the nearer side of a depth jump is inked, so a silhouette is one line, not two.
+          if (1.-dot(n0,nrm(uv))>.2) e=1.;
+          if (d>d0 && (d-d0)/d0>.025) e=1.;
+        }
+        gl_FragColor=vec4(e,e,e,1.);
+      }`,
+    depthTest:false, depthWrite:false, toneMapped:false});
+  const resolvePass=new THREE.ShaderMaterial({
+    uniforms:{tEdges:{value:null}, paper:{value:new THREE.Vector3()}, ink:{value:new THREE.Vector3()}},
+    vertexShader:fullscreen,
+    fragmentShader:`uniform sampler2D tEdges; uniform vec3 paper, ink; varying vec2 vUv;
+      void main(){ gl_FragColor=vec4(mix(paper,ink,texture2D(tEdges,vUv).r),1.); }`,
+    depthTest:false, depthWrite:false, toneMapped:false});
+  const passScene=new THREE.Scene(), passCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
+  const passQuad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),edgePass);
+  passScene.add(passQuad);
+  function srgb(colour, vector) {const c=colour.clone().convertLinearToSRGB(); vector.set(c.r,c.g,c.b);}
+  function setColours({paper:p=null, ink:k=null}={}) {paper.set(p||HAIRLINE.paper); ink.set(k||HAIRLINE.ink);}
+  setColours();
+  function paintHairline() {
+    const size=renderer.getDrawingBufferSize(new THREE.Vector2());
+    // At most 16 Mpx offscreen, so a large high-DPI canvas does not run a small GPU out of memory.
+    const limit=renderer.capabilities.maxTextureSize;
+    const scale=Math.max(1,Math.min(SUPERSAMPLE,limit/size.x,limit/size.y,Math.sqrt(16e6/(size.x*size.y))));
+    const w=Math.floor(size.x*scale), h=Math.floor(size.y*scale);
+    if (!target||target.width!==w||target.height!==h) {
+      if (target) {target.depthTexture.dispose(); target.dispose(); edges.dispose();}
+      target=new THREE.WebGLRenderTarget(w,h,{depthTexture:new THREE.DepthTexture(w,h),minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter});
+      // Linear filtering at each canvas pixel's centre is the mean of its 2x2 block.
+      edges=new THREE.WebGLRenderTarget(w,h,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,depthBuffer:false});
+    }
+    const background=scene.background, fog=scene.fog, shown=world.children.map(o=>o.visible);
+    scene.background=null; scene.fog=null; scene.overrideMaterial=normals;
+    world.children.forEach(o=>{if(o!==model)o.visible=false;});
+    renderer.setRenderTarget(target); renderer.setClearColor(0x000000,0); renderer.clear(); renderer.render(scene,camera);
+    scene.background=background; scene.fog=fog; scene.overrideMaterial=null;
+    world.children.forEach((o,i)=>{o.visible=shown[i];});
+    const u=edgePass.uniforms;
+    u.tNormal.value=target.texture; u.tDepth.value=target.depthTexture;
+    u.texel.value.set(1/w,1/h); u.near.value=camera.near; u.far.value=camera.far;
+    passQuad.material=edgePass; renderer.setRenderTarget(edges); renderer.render(passScene,passCamera);
+    renderer.setRenderTarget(null);
+    resolvePass.uniforms.tEdges.value=edges.texture;
+    srgb(paper,resolvePass.uniforms.paper.value); srgb(ink,resolvePass.uniforms.ink.value);
+    passQuad.material=resolvePass; renderer.render(passScene,passCamera);
+  }
+  function setStyle(name, colours={}) {
+    if (STYLES.includes(name)) style=name;
+    setColours(colours); draw();
+    return style;
+  }
   let onDraw=null;
   function paint() {
+    if (style==='hairline') {paintHairline(); if (onDraw) onDraw(); return;}
     renderer.render(scene,camera);
     if (onDraw) onDraw();
     if (clock===null) return;
@@ -188,7 +268,9 @@ export function create(canvas) {
   }
   function clear() {
     disposeProxies(); proxyGeoms=[]; setLines([]);
-    meshes.forEach(m=> {model.remove(m); m.geometry.dispose();m.material.dispose();});
+    meshes.forEach(m=> {
+      model.remove(m); m.geometry.dispose(); m.material.dispose();
+    });
     meshes.clear(); bounds=null;triangleCount=0;picked=null;draw();
   }
   // The proxies to offer: the manifest's `collision.geoms`, each in its component's frame.
@@ -338,7 +420,7 @@ export function create(canvas) {
     return [(projected.x+1)/2*w, (1-projected.y)/2*h];
   }
   // The picked solid glows faintly; null clears it. Never set by a capture.
-  function highlight(name) {picked=meshes.has(name)?name:null; meshes.forEach((m,n)=>m.material.emissive.setHex(n===picked?0x3a3a3a:0)); draw(); return picked;}
+  function highlight(name) {picked=meshes.has(name)?name:null; meshes.forEach((m,n)=>{if(m.material.emissive)m.material.emissive.setHex(n===picked?0x3a3a3a:0);}); draw(); return picked;}
   canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);press=pointers.size===1?[e.clientX,e.clientY]:null;if(pointers.size===2)pinch=span();e.preventDefault();});
   canvas.addEventListener('pointermove',e=>{
     const p=pointers.get(e.pointerId);if(!p)return;
@@ -356,10 +438,10 @@ export function create(canvas) {
   canvas.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(e.deltaY*.0015));draw();},{passive:false});
   window.addEventListener('resize',draw);
   return {available:true,load,install,clear,fit,draw,setPoses,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
-    setSection,setLines,showLines,
+    setSection,setLines,showLines,setStyle,style:()=>style,
     pick,screenPoint,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,
-      world:[...meshes].filter(([,m])=>m.userData.world).map(([n])=>n),style:STYLE,stage,showing:showing(),
+      world:[...meshes].filter(([,m])=>m.userData.world).map(([n])=>n),style:STYLE,render_style:style,stage,showing:showing(),
       proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length},
       section:section&&{...section}, leaders:{drawn:leaders?leaders.geometry.attributes.position.count/2:0,shown:!!(leaders&&leaders.visible)},
       poses:Object.fromEntries([...meshes].map(([n,m])=>[n,{position_mm:m.position.toArray().map(v=>v*1000),rotation_xyzw:m.quaternion.toArray()}]))}),

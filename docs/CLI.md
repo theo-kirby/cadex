@@ -1404,15 +1404,23 @@ other command keeps the restore.
 # review: serving biped at http://100.x.y.z:8765/ (writes need the page's token; Ctrl-C to stop)
 ```
 
-The page's layout, type and colour follow `docs/DASHBOARD.md`
-(ADR-329, ADR-342): one dark palette, one type scale, and the same regions
-— masthead, run selection, identity, model, curves, videos, record — laid
-out two ways. At desk width they form a frame: a thin top bar, a left and a
-right sidebar you can drag to resize or fold, and a stage in the centre that
-shows the model, or the curves, the videos or an opened document. On a phone
-they form one column with a closed run disclosure. Neither overflows
-horizontally. `cli/tests/test_review_design.py` reads the spec back
-from the rendered page at 1400×900 and 400×850.
+The page's layout, type and colour follow `docs/DASHBOARD.md`: a dark
+theme by default and a light one, one type scale. **Since ADR-534 the
+project page is the app**: a screen tiled by resizable, movable areas after
+Blender's, each showing one editor — the 3D viewport, the 2D viewport,
+Settings and Chat — and one editor at a time, picked from a tab bar, on a
+phone. ADR-533 had cut what it shows to the accepted model, a design turn,
+the parameter sliders and the revisions; ADR-534 adds back run models and
+playback, drawings, images, documents and training plots, all read from
+routes that were already served.
+`cli/tests/test_review_design.py` reads the spec back from the rendered page
+at 1400×900 and 400×850.
+
+**What follows describes what the server reads and serves.** Every route
+below still answers. Where a paragraph names a panel, a tab, a button or a
+run selector, that page element was removed by ADR-533 and is not on the
+page; the data it drew is still in the `GET /api/...` reply the paragraph
+names, for the CLI, the agent, or a panel added back later.
 
 **The page leads with the design (ADR-430).** When the project has a
 concept sheet, the desk stage opens on its **Concept** tab and the phone
@@ -2138,10 +2146,9 @@ takes `type` (`flag`: review this; `question`: an answer would change the
 design), `text`, and optionally `artifact`, one project-relative file. It
 appends a note to the project's `comments.jsonl`, tagged with the accepted
 revision, and returns at once with the note's id; it has no argument that
-could make it block. The dashboard lists the notes (`docs/DASHBOARD.md`
-§26). The owner answers with `cadex comment --reply <id>` or the page's
-**Answer**, and the next turn receives the answer as a comment quoting the
-note. The overlay tells the agent to go on, in the same turn, with the most
+could make it block. `GET /api/project` lists the notes; the page does not
+show them (ADR-533). The owner answers with `cadex comment --reply <id>`,
+and the next turn receives the answer as a comment quoting the note. The overlay tells the agent to go on, in the same turn, with the most
 reversible assumption and to say which in the note.
 
 ### The drawing sheet: `draw_blueprint` (ADR-516)
@@ -2163,8 +2170,8 @@ date, scale and units. The bridge stores it with `put_blueprint`, whose
 store versions it by name in `blueprints/` with the recipe in `meta`;
 drawing again under a stored name stores the next version and takes any
 key left out from that recipe. The model gets the facts and the sheet as an
-image; the dashboard lists every version under **Drawings**
-(`docs/DASHBOARD.md` §28).
+image; `GET /api/project` lists every version (the page's **Drawings** panel
+was removed by ADR-533).
 
 ### The training loop: `train_start`, `train_status`, `train_stop`, `evaluate` (ADR-464)
 
@@ -2713,7 +2720,7 @@ Fast, and honest about what it did not run.
 | `test_evaluate.py` | `cadex evaluate` (ADR-457) in three layers: what it reads from a hand-built retained attempt (no engine); the child run for real on the engine suite's own fixtures, which needs `mujoco` here and **skips** without it; and the command against a script a live engine accepted with a policy it verified — **skips** without a built engine. |
 | `test_loop.py` | The training loop (ADR-464) in three layers: the registry and the supervisor against a hand-built retained attempt and a fake trainer, with the supervisor really detached — registration whole before launch and each refusal, a run outliving the process that started it, stop, budget, collapse against crash, SIGTERM and SIGKILL as interruptions, one run at a time per project and per machine; the four tools through `Bridge.call`; and whole rounds through `command_prompt` and the real bridge socket with a scripted model against a live engine — a run started in one turn, its policy declared and evaluated in the next — which **skip** without a built engine, the real-trainer round also without the training venv. It also refuses behaviour words in the loop, its tools and its prompt paragraph. |
 | `test_film.py` | The evaluation's film (ADR-459) on a hand-built retained attempt and hand-written traces, with no engine: which seeds `--film` picks; the solids read from the attempt's own tessellation and refused outside it; materials from the inventory; both sheets' frame times, views, floor and dark backdrop read back from the PNGs; the detail window centred on the evaluation's base while a part is left behind, fixed for a mechanism with no floating base, and refused for a base that is not drawn (ADR-460); the early-ending and no-disturbance windows; the target marker (ADR-463): a ring read back from both sheets' pixels at the projected target of each frame's own time, hollow, drawn over the solids, jumping where the target does, held in a fixed window and in the video's, absent from a trace with no point goal, and refused for a point goal the trace cannot place; the trace digest check; the report rewritten with its film; `--film-only`'s refusals. The video tests need FFmpeg and **skip** without it. |
-| `test_review_evaluation.py` | The dashboard's view of an evaluation (ADR-459, DASHBOARD.md §17). The failing fixture is ot10's `w2-2` shuffle, from the receipt under `docs/probes/ot11/retained/`; a passing one is written in the test. Over HTTP: the bounded summary list, the whole report, the file allowlist and its refusals, one parse per file identity. In headless Chromium at 1400×900 and 400×850: every predicate's tally, every seed's verdict, ending and per-predicate values, the metrics and reward tables, the film, the reader's pick. The page half **skips** without a Chromium. |
+| `test_review_evaluation.py` | The dashboard's view of an evaluation (ADR-459; its page panel was removed by ADR-533, the API still serves it). The failing fixture is ot10's `w2-2` shuffle, from the receipt under `docs/probes/ot11/retained/`; a passing one is written in the test. Over HTTP: the bounded summary list, the whole report, the file allowlist and its refusals, one parse per file identity. In headless Chromium at 1400×900 and 400×850: every predicate's tally, every seed's verdict, ending and per-predicate values, the metrics and reward tables, the film, the reader's pick. The page half **skips** without a Chromium. |
 | `test_video.py` | Rollout video rendering (D4) on synthetic fixtures: decoded frames and timing, retained identity, the failed-rerender record, and in the same headless Chromium inline playback across polls and a download the browser wrote, checked byte for byte. **Skips** rendering/playback without both Chromium and FFmpeg. Fixture coverage, not fresh-biped evidence. |
 
 `tests/fake_cadexd.py` is a scripted engine, not a loose mock: its replies
@@ -3212,5 +3219,5 @@ whole, with `files` saying which of its film is on disk.
 `GET /evaluation/<name>/<file>` serves `evaluation.json` and the film files
 that report names, and nothing else in the directory: a trace, an unnamed
 file or a link out of the evaluation is a 404. The page's **Evaluation**
-tab is `docs/DASHBOARD.md` §17. Only evaluations under `evaluations/`
+tab was removed by ADR-533. Only evaluations under `evaluations/`
 are listed; one written elsewhere with `--out` is not.

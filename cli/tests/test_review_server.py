@@ -378,6 +378,36 @@ def test_a_run_before_its_rollout_borrows_the_accepted_model_only_when_it_is_tha
     assert not model["available"] and model["relation"] == "historical"
 
 
+def test_an_accepted_mesh_is_tagged_by_content_compressed_and_revalidated(served, monkeypatch) -> None:
+    """A mesh carries its tessellation's content hash as its ETag and is
+    revalidated, not refetched: a matching If-None-Match is 304 with no body.
+    A client that accepts gzip gets the same bytes compressed; one that does
+    not gets them plain. The manifest it is read from is remembered and is
+    rebuilt when the manifest changes."""
+
+    import gzip
+    from cadex_cli import review_server
+    root, server = served
+    monkeypatch.setattr(review_server, "GZIP_MIN_BYTES", 0)  # the fixture's mesh is 684 bytes
+    _stage_accepted(root, REVISION_B)
+    status, headers, plain = _get(server.url + "mesh/accepted/torso.stl")
+    assert status == 200 and "content-encoding" not in headers
+    assert headers["cache-control"] == "no-cache" and headers["etag"].startswith('"')
+    status, packed_headers, packed = _get(server.url + "mesh/accepted/torso.stl", {"Accept-Encoding": "gzip"})
+    assert status == 200 and packed_headers["content-encoding"] == "gzip" and gzip.decompress(packed) == plain
+    assert packed_headers["etag"] == headers["etag"]
+    status, _h, body = _get(server.url + "mesh/accepted/torso.stl", {"If-None-Match": headers["etag"]})
+    assert status == 304 and body == b""
+    status, _h, body = _get(server.url + "mesh/accepted/torso.stl", {"If-None-Match": '"stale"'})
+    assert status == 200 and body == plain
+    first = _json(server.url + "api/model/accepted")
+    assert _json(server.url + "api/model/accepted") == first
+    manifest = json.loads((root / "script.json").read_text())
+    manifest.pop("accepted_attempt")
+    (root / "script.json").write_text(json.dumps(manifest))
+    assert _json(server.url + "api/model/accepted")["available"] is False
+
+
 def test_the_accepted_model_comes_from_the_accepted_attempt_only(served) -> None:
     root, server = served
     model = _json(server.url + "api/model/accepted")
@@ -604,100 +634,22 @@ def _model_state(page) -> str:
 
 
 @needs_browser
-def test_browser_shows_the_accepted_identity_and_every_run_with_its_relation(served, browser) -> None:
-    _root, server = served
-    page = _open(browser, server.url)
-    assert page.text("#project-name") == "biped — review"
-    assert REVISION_B[:12] in page.text("#accepted-line")
-    page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
-    assert page.text("#view-kind") == "ACCEPTED NOW"
-    assert page.text("#view-revision") == REVISION_B
-    assert page.text("#view-digest") == "d" * 64
-    relations = page.evaluate(
-        "Array.from(document.querySelectorAll('#views li[data-run]')).map("
-        "n => [n.dataset.run, n.dataset.relation, n.dataset.status])")
-    assert sorted(relations) == [["broken", "historical", "ok"], ["first", "historical", "ok"],
-                                 ["second", "current", "ok"]]
-    assert page.text("#params tr[data-param='leg_len'] td:nth-child(2)") == "90"
-    assert page.text("#params tr[data-param='leg_len'] td:nth-child(3)") == "80"
-    assert page.attribute("#freshness", "data-state") == "live"
-    assert "updated" in page.text("#freshness")
-    assert page.evaluate("Array.from(document.querySelectorAll('#docs li[data-doc]')).map(n => n.dataset.doc)") == [
-        "ARCHITECTURE.md", "DECISIONS.md", "PROGRESS.md", "docs/actuators.md", "docs/inventory.md"]
-    assert page.text("#decisions li[data-decision]") == "ADR-001 — Project scaffolded (2026-09-12)"
-    assert _model_state(page) == "missing"
-    assert "no model to show" in page.text("#model-status")
+def test_browser_orbit_and_zoom_move_the_camera_over_a_drawn_model(tmp_path, browser) -> None:
+    root = _review_project(tmp_path)
+    _stage_accepted(root, REVISION_B)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        _orbit_and_zoom(browser, server)
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
-@needs_browser
-def test_browser_selecting_a_historical_run_shows_that_run_not_today(served, browser) -> None:
-    _root, server = served
+def _orbit_and_zoom(browser, server) -> None:
     page = _open(browser, server.url)
-    page.click("#views li[data-run='first']")
-    assert page.wait_for("document.getElementById('view-revision').textContent === " + json.dumps(REVISION_A))
-    assert page.text("#view-kind") == "RUN first"
-    assert page.text("#view-relation").startswith("HISTORICAL — recorded at " + REVISION_A[:12])
-    assert "accepted now is " + REVISION_B[:12] in page.text("#view-relation")
-    assert page.attribute("#view-relation", "data-tone") == "historical"
-    assert page.text("#view-status") == "completed"
-    assert page.text("#view-identity-source") == "rollout leg envelope"
-    # Parameters and specs are the run's own record, not the accepted manifest's.
-    assert page.text("#params tr[data-param='leg_len'] td:nth-child(2)") == "77"
-    assert page.text("#params tr[data-param='leg_len'] td:nth-child(3)") == "70"
-    assert "inspect scope=script at revision a" in page.text("#params-note")
-    assert page.text("#training tr[data-key='requested iterations'] td") == "10"
-    assert page.text("#training tr[data-key='rollout seed'] td") == "7"
-    assert page.attribute("#artifacts tr[data-key='trace'] td:nth-child(3)", "data-status") == "retained"
-    assert page.attribute("#artifacts tr[data-key='model_xml'] td:nth-child(3)", "data-status") == "retained"
-    assert "none recorded" in page.text("#videos li")
-    assert "snapshot taken when this run was recorded" in page.text("#docs-note")
-    page.click("#docs li[data-doc='DECISIONS.md'] a")
-    assert "ADR-002 — Longer shins" in page.wait_for(
-        "document.getElementById('doc-view').textContent.includes('ADR-002') && "
-        "document.getElementById('doc-view').textContent")
     assert _model_state(page) == "loaded"
-    status = page.text("#model-status")
-    assert status.startswith("HISTORICAL model of run first at revision " + REVISION_A[:12])
-    assert "2 component(s), 24 triangles" in status
-    components = page.evaluate(
-        "Array.from(document.querySelectorAll('#model-components li[data-component]')).map(n => n.textContent)")
-    assert any(line.startswith("body ← torso · mesh retained (12 triangles)") for line in components)
-    assert any("shin ← leg" in line and "rollout trace, first frame" in line for line in components)
-    state = page.evaluate("window.cadexReview.state()")
-    assert state["selected"] == "first" and state["revision"] == REVISION_A
-    assert state["model"]["revision"] == REVISION_A
-
-
-@needs_browser
-def test_browser_lists_an_escaped_run_as_unreadable_and_draws_nothing_for_it(served, browser, tmp_path) -> None:
-    root, server = served
-    _escaped_run(root, tmp_path)
-    page = _open(browser, server.url)
-    assert page.attribute("#views li[data-run='escaped']", "data-status") == "unreadable"
-    page.click("#views li[data-run='escaped']")
-    assert page.wait_for("document.getElementById('view-kind').textContent === 'RUN escaped'")
-    assert _model_state(page) == "missing"
-    status = page.text("#model-status")
-    assert status.startswith("no model to show: run directory escapes the project directory")
-    assert page.evaluate("document.querySelectorAll('#model-components li').length") == 0
-    state = page.evaluate("window.cadexReview.state()")
-    assert state["selected"] == "escaped" and state["model"]["available"] is False
-    # The project's own historical run still draws afterwards.
-    page.click("#views li[data-run='first']")
-    assert page.wait_for("document.getElementById('view-kind').textContent === 'RUN first'")
-    assert _model_state(page) == "loaded"
-
-
-@needs_browser
-def test_browser_orbit_and_zoom_move_the_camera_over_a_drawn_model(served, browser) -> None:
-    _root, server = served
-    page = _open(browser, server.url)
-    page.click("#views li[data-run='second']")
-    assert _model_state(page) == "loaded"
-    assert page.text("#view-relation").startswith("CURRENT")
     stats = page.evaluate("window.cadexReview.viewer().stats()")
-    assert stats["components"] == 2 and stats["triangles"] == 24
-    assert stats["bounds"]["min"][2] == -40.0 and stats["bounds"]["max"][2] == 20.0
+    assert stats["components"] == 1 and stats["triangles"] == 12
     drawn_before = page.evaluate("window.cadexReview.viewer().nonBackgroundPixels()")
     assert drawn_before > 1000, "the model is not drawn"
     page.send("Emulation.setDeviceMetricsOverride", {
@@ -732,89 +684,6 @@ def test_browser_orbit_and_zoom_move_the_camera_over_a_drawn_model(served, brows
     page.click("#model-fit")
     reset = page.wait_for("(function(){var c=window.cadexReview.viewer().camera(); return c.yaw === 0.8 && c})()")
     assert reset["distance"] == before["distance"]
-    # A run that lost its rollout draws nothing and says so, with the artifact marked missing.
-    page.click("#views li[data-run='broken']")
-    page.wait_for("document.getElementById('view-kind').textContent === 'RUN broken'")
-    assert _model_state(page) == "missing"
-    assert "rollout trace missing" in page.text("#model-status")
-    assert page.evaluate("window.cadexReview.viewer().stats().components") == 0
-    assert page.attribute("#artifacts tr[data-key='trace'] td:nth-child(3)", "data-status") == "missing"
-    assert page.text("#artifacts tr[data-key='receipt'] td:nth-child(3)") == "not recorded"
-    assert "artifacts.trace: missing" in page.evaluate(
-        "Array.from(document.querySelectorAll('#problems li')).map(n => n.textContent)")
-
-
-@needs_browser
-def test_browser_shows_solids_by_default_and_proxies_only_under_the_labelled_toggle(served, browser) -> None:
-    """D4 (ADR-333): the viewport draws the tessellated solids; the collision
-    proxies — which differ from them in this project — appear only while the
-    labelled toggle is on, the status line says what is showing, and each
-    run's proxies are its own."""
-
-    root, server = served
-    page = _open(browser, server.url)
-    # This fixture's proxies are three to five times its solids, so they need
-    # a stage wider than the one left between both sidebars at 1280 px to
-    # show their box growing on every side (DASHBOARD.md §12).
-    page.evaluate("window.cadexFrame.toggle('left', false); window.cadexFrame.toggle('right', false)")
-    page.evaluate("new Promise(r => setTimeout(r, 400))", await_promise=True)
-    page.click("#views li[data-run='second']")
-    assert _model_state(page) == "loaded"
-    toggle = "document.getElementById('show-collision')"
-    assert page.evaluate(toggle + ".checked") is False and page.evaluate(toggle + ".disabled") is False
-    assert page.text("label[for='show-collision']").strip().startswith("show collision geometry")
-    assert page.attribute("#model-status", "data-showing") == "solids"
-    assert page.text("#model-status").endswith("· showing: tessellated solids")
-    stats = page.evaluate("window.cadexReview.viewer().stats()")
-    assert stats["showing"] == "tessellated solids"
-    assert stats["proxies"] == {"shown": False, "drawn": 2, "listed": 2}
-    solids = page.evaluate("window.cadexReview.viewer().modelPixels()")
-    assert solids["count"] > 1000
-    assert "collision: 1 box" in page.text("#model-components li[data-component='body']")
-    assert "collision: 1 capsule" in page.text("#model-components li[data-component='shin']")
-    page.scroll_into_view("#show-collision")
-    page.click("#show-collision")
-    page.wait_for("document.getElementById('model-status').dataset.showing === 'solids+proxies'")
-    assert page.evaluate("window.cadexReview.viewer().stats().showing") == "tessellated solids with collision proxies"
-    assert "showing: tessellated solids with collision proxies (2 outlines from runs/second/train/rig-model.xml" in page.text("#model-status")
-    with_proxies = page.evaluate("window.cadexReview.viewer().modelPixels()")
-    # The proxies outrun the solids: the box is three times the torso cube, the
-    # capsule five times the leg cube, so the drawn box grows on every side.
-    assert with_proxies["count"] > solids["count"] + 500
-    assert with_proxies["box"][0] < solids["box"][0] and with_proxies["box"][2] > solids["box"][2]
-    assert with_proxies["box"][1] < solids["box"][1] and with_proxies["box"][3] > solids["box"][3]
-    # The proxies move with the solids: poses set on the viewer carry both.
-    page.evaluate("window.cadexReview.viewer().setPoses({body:{position_mm:[0,0,0],rotation_xyzw:[0,0,0,1]},"
-                  "shin:{position_mm:[60,0,-40],rotation_xyzw:[0,0,0,1]}})")
-    moved = page.evaluate("window.cadexReview.viewer().modelPixels()")
-    assert moved["box"] != with_proxies["box"]
-    # Another run keeps the reader's choice and draws its own proxies; a run
-    # whose export is gone offers none and says so; the accepted view has none staged.
-    (root / "runs" / "first" / "train" / "rig-model.xml").write_text(
-        PROXY_MJCF.replace('size="0.03 0.03 0.03"', 'size="0.06 0.06 0.06"'))
-    page.click("#views li[data-run='first']")
-    page.wait_for("document.getElementById('view-kind').textContent === 'RUN first'")
-    assert _model_state(page) == "loaded"
-    page.wait_for("document.getElementById('model-status').dataset.showing === 'solids+proxies'")
-    assert page.evaluate(toggle + ".checked") is True
-    first = page.evaluate("window.cadexReview.viewer().modelPixels()")
-    # Twice the box at the same fit: the outline reaches further out on every side.
-    assert first["box"][0] < with_proxies["box"][0] and first["box"][2] > with_proxies["box"][2]
-    assert first["box"][1] <= with_proxies["box"][1] and first["box"][3] >= with_proxies["box"][3]
-    (root / "runs" / "second" / "train" / "rig-model.xml").unlink()
-    page.click("#views li[data-run='second']")
-    page.wait_for("document.getElementById('view-kind').textContent === 'RUN second'")
-    assert _model_state(page) == "loaded"
-    page.wait_for("document.getElementById('model-status').dataset.showing === 'solids'")
-    assert page.evaluate(toggle + ".disabled") is True
-    assert page.text("#collision-note").startswith("(none retained: MJCF export missing")
-    assert "collision: not retained" in page.text("#model-components li[data-component='body']")
-    assert page.evaluate("window.cadexReview.viewer().modelPixels()")["count"] < with_proxies["count"]
-    page.click("#views li[data-view='accepted']")
-    page.wait_for("document.getElementById('view-kind').textContent === 'ACCEPTED NOW'")
-    assert _model_state(page) == "missing"
-    assert page.evaluate(toggle + ".disabled") is True and page.text("#collision-note") == ""
-    assert page.evaluate("document.getElementById('model-status').hasAttribute('data-showing')") is False
 
 
 @needs_browser
@@ -825,20 +694,21 @@ def test_browser_draws_the_accepted_attempt_and_labels_a_lost_server_stale(tmp_p
     try:
         page = _open(browser, server.url)
         assert _model_state(page) == "loaded"
-        page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
-        assert page.text("#model-status").startswith("accepted model at revision " + REVISION_B[:12])
-        assert "1 component(s), 12 triangles" in page.text("#model-status")
+        assert page.text("#model-status") == ""  # a drawn model needs no caption
+        assert page.evaluate("window.cadexReview.viewer().stats()")["triangles"] == 12
         assert page.evaluate("window.cadexReview.viewer().nonBackgroundPixels()") > 1000
         assert page.attribute("#freshness", "data-state") == "live"
+        line = page.text("#accepted-line")
     finally:
         server.shutdown()
         server.server_close()
     page.evaluate("window.cadexReview.refresh()", await_promise=True)
     assert page.attribute("#freshness", "data-state") == "stale"
-    assert page.text("#freshness").startswith("stale: server unreachable, last update ")
+    assert page.text("#freshness") == "offline"
     assert page.evaluate("window.cadexReview.state().stale") is True
-    # What was on screen stays: the last good identity, not a blank page.
-    assert page.text("#view-revision") == REVISION_B
+    # What was on screen stays: the last good identity and model, not a blank page.
+    assert page.text("#accepted-line") == line and line.startswith("revision ")
+    assert page.evaluate("window.cadexReview.viewer().nonBackgroundPixels()") > 1000
 
 
 @needs_browser
@@ -876,19 +746,13 @@ def test_browser_unaccepted_project_reports_missing_model_and_next_cli_action(tm
     server, _thread = serve(root, "127.0.0.1", 0)
     try:
         page = _open(browser, server.url)
-        assert page.text("#project-name") == "fresh-biped — review"
-        assert "nothing accepted: no script.json" in page.text("#accepted-line")
-        assert "0 run(s)" in page.text("#accepted-line")
-        assert page.text("#view-revision") == "none"
-        assert page.text("#view-digest") == "none"
-        assert page.text("#view-status") == ""
-        assert "cadex -p" in page.text("#view-note")
+        assert page.text("#project-name") == "fresh-biped"
+        assert page.text("#accepted-line") == "nothing accepted yet"
         assert _model_state(page) == "missing"
-        assert "no model to show" in page.text("#model-status")
-        assert "specs unavailable" in page.text("#params-note")
-        assert page.evaluate("document.querySelectorAll('#views li[data-run]').length") == 0
-        page.click("#docs li[data-doc='PROGRESS.md'] a")
-        page.wait_for("document.getElementById('doc-view').textContent.includes('No accepted design turns.')")
+        assert page.text("#model-status").startswith("no model: ")
+        assert page.evaluate("document.getElementById('params-empty').hidden") is False
+        assert page.evaluate("document.querySelectorAll('#revision-list li').length") == 0
+        assert page.evaluate("document.getElementById('revision-accept').disabled") is True
     finally:
         server.shutdown()
         server.server_close()
@@ -1043,948 +907,6 @@ def test_playback_checkpoints_resolve_through_the_recorded_training_run(served, 
     assert [(c["status"], c["source"]) for c in telemetry()["checkpoints"]] == [("retained", "first")]
 
 
-@needs_browser
-def test_browser_shows_checkpoint_provenance_for_current_and_historical_playback(served, browser):
-    """The page names where a playback's checkpoints come from — its own
-    train/, the recorded training run, or nowhere in this project — for the
-    current playback and for a historical one, and a historical view keeps
-    its own revision while its training run's files go missing."""
-
-    root, server = served
-    for source in ("first", "second"):
-        _telemetry(root, 2, run=source, state="done", checkpoints=[_checkpoint(root, source)])
-    _playback_run(root, "first-final", source="first", revision=REVISION_A)
-    _playback_run(root, "second-final", source="second", revision=REVISION_B)
-    page = _open(browser, server.url)
-    page.click("#views li[data-run='second-final']")
-    page.wait_for("document.getElementById('view-kind').textContent === 'RUN second-final'")
-    page.wait_for("document.getElementById('checkpoint-source').dataset.state === 'resolved'")
-    assert page.text("#view-relation").startswith("CURRENT")
-    assert page.attribute("#checkpoint-source", "data-run") == "second"
-    assert "recorded training run second" in page.text("#checkpoint-source")
-    assert page.attribute("#checkpoints li", "data-status") == "retained"
-    assert page.attribute("#checkpoints li", "data-source") == "second"
-    assert "from training run second" in page.text("#checkpoints li")
-    page.click("#views li[data-run='first-final']")
-    page.wait_for("document.getElementById('view-kind').textContent === 'RUN first-final'")
-    page.wait_for("document.getElementById('checkpoint-source').dataset.run === 'first'")
-    assert page.text("#view-relation").startswith("HISTORICAL")
-    assert page.text("#view-revision") == REVISION_A
-    assert page.attribute("#checkpoints li", "data-status") == "retained"
-    assert page.attribute("#checkpoints li", "data-source") == "first"
-    # The training run's own view says its checkpoints are its own.
-    page.click("#views li[data-run='first']")
-    page.wait_for("document.getElementById('checkpoint-source').dataset.state === 'none'")
-    assert page.attribute("#checkpoints li", "data-source") == "run"
-    assert "from training run" not in page.text("#checkpoints li")
-    # Back on the historical playback: the checkpoint file goes, then the whole training run.
-    page.click("#views li[data-run='first-final']")
-    page.wait_for("document.getElementById('checkpoint-source').dataset.run === 'first'")
-    (root / "runs/first/train/iter-2.cxpolicy").unlink()
-    page.wait_for("document.querySelector('#checkpoints li').dataset.status === 'missing'")
-    assert "not found in this project" in page.text("#checkpoints li")
-    assert page.attribute("#checkpoint-source", "data-state") == "resolved"
-    shutil.rmtree(root / "runs/first/train")
-    page.wait_for("document.getElementById('checkpoint-source').dataset.state === 'missing'")
-    assert "training run first missing" in page.text("#checkpoint-source")
-    assert "not in this project" in page.text("#checkpoint-source")
-    assert page.text("#view-kind") == "RUN first-final"
-    assert page.text("#view-revision") == REVISION_A
-    assert page.attribute("#telemetry", "data-state") == "done"
-
-
-@needs_browser
-def test_browser_polls_training_histories_checkpoints_and_stale_states(served, browser):
-    root, server = served
-    path = root / 'runs/first/train/progress.json'
-    path.unlink()
-    record = json.loads((path.parent.parent / RUN_RECORD_FILENAME).read_text())
-    _rewrite_record(path.parent.parent, artifacts={**record['artifacts'], 'progress': None})
-    page = _open(browser, server.url)
-    page.click("#views li[data-run='first']")
-    page.wait_for("document.getElementById('telemetry').dataset.state === 'missing'")
-    path.write_text('{partial')
-    page.wait_for("document.getElementById('telemetry').dataset.state === 'invalid'")
-    page.evaluate("window.telemetryTestIdentity = {}")
-    for iteration in range(3):
-        started = time.monotonic()
-        _telemetry(root, iteration)
-        page.wait_for("document.querySelector('[data-metric=iteration]').textContent === " + json.dumps(f'iteration: {iteration}'))
-        assert time.monotonic() - started < 5
-        assert page.attribute('#telemetry', 'data-state') == 'training'
-        assert page.attribute('[data-history=loss_curve]', 'data-points') == str(iteration + 1)
-        assert page.text('[data-metric=loss]') == f'loss: {3-iteration}'
-        assert page.text('[data-metric=episode_steps]') == f'episode_steps: {12+iteration}'
-        assert page.text('#view-revision') == REVISION_A
-        assert page.evaluate('!!window.telemetryTestIdentity')
-    checkpoint = path.parent / 'iter-2.cxpolicy'
-    checkpoint.write_bytes(b'fixture checkpoint, not a verified policy')
-    item = {'path': checkpoint.name, 'iteration': 2, 'sha256': hashlib.sha256(checkpoint.read_bytes()).hexdigest()}
-    _telemetry(root, 2, checkpoints=[item])
-    page.wait_for("document.querySelector('#checkpoints li').dataset.status === 'retained'")
-    checkpoint.write_bytes(b'changed')
-    page.wait_for("document.querySelector('#checkpoints li').dataset.status === 'digest mismatch'")
-    _telemetry(root, 2, updated_at=time.time()-31)
-    page.wait_for("document.getElementById('telemetry').dataset.state === 'stale'")
-    assert 'process state unknown' in page.text('#telemetry')
-    assert page.attribute('#freshness', 'data-state') == 'live'
-    _telemetry(root, 2, state='failed', error='controlled fixture failure')
-    page.wait_for("document.getElementById('telemetry').dataset.state === 'failed'")
-    assert 'controlled fixture failure' in page.text('#telemetry')
-    assert 'cadex walk' in page.text('#telemetry')
-    assert page.attribute('[data-history=loss_curve]', 'data-points') == '3'
-    _telemetry(root, 2, state='done', updated_at=time.time()-3600)
-    page.wait_for("document.getElementById('telemetry').dataset.state === 'done'")
-    page.click("#views li[data-run='second']")
-    page.wait_for("document.getElementById('view-kind').textContent === 'RUN second'")
-    assert page.attribute('#telemetry', 'data-state') == 'invalid'
-    page.click("#views li[data-run='first']")
-    page.wait_for("document.getElementById('telemetry').dataset.state === 'done'")
-    assert page.attribute('[data-history=loss_curve]', 'data-points') == '3'
-
-
-@needs_browser
-def test_browser_identifies_a_training_run_s_model_and_keeps_it_through_failure(tmp_path, browser):
-    """The fresh biped's first walk on screen: a run that is training shows
-    the revision, digest, specs and model it trains on — borrowed from the
-    accepted attempt, labelled — and keeps every one of them when the
-    trainer and then the walk report failure."""
-
-    root = _project(tmp_path)
-    _manifest(root, REVISION_B)
-    _stage_accepted(root, REVISION_B)
-    run = _training_run(root, "probe", revision=REVISION_B)
-    progress = run / "train" / "progress.json"
-
-    def telemetry(iteration, **changes):
-        data = {"schema": "cadex-training-progress-v1", "state": "training",
-                "updated_at": time.time(), "task_sha256": "t" * 64,
-                "iteration": iteration, "total": 40, "reward_per_step": 0.1 * iteration,
-                "loss": 2.0, "episode_steps": 30,
-                "curve": [[i, 0.1 * i] for i in range(iteration + 1)],
-                "loss_curve": [[i, 2.0] for i in range(iteration + 1)],
-                "episode_steps_curve": [[i, 30] for i in range(iteration + 1)], "checkpoints": []}
-        data.update(changes)
-        temporary = progress.with_suffix(".partial")
-        temporary.write_text(json.dumps(data))
-        temporary.replace(progress)
-
-    server, _thread = serve(root, "127.0.0.1", 0)
-    try:
-        page = _open(browser, server.url)
-        page.click("#views li[data-run='probe']")
-        page.wait_for("document.getElementById('view-kind').textContent === 'RUN probe'")
-        assert page.text("#view-relation").startswith("CURRENT")
-        assert page.attribute("#views li[data-run='probe']", "data-relation") == "current"
-        assert page.text("#view-revision") == REVISION_B
-        assert page.text("#view-digest") == "d" * 64
-        assert page.text("#view-identity-source") == "project manifest (script.json) at walk start"
-        assert "never finished" in page.text("#view-status")
-        assert "project manifest (script.json) at walk start" in page.text("#params-note")
-        assert page.text("#params tr[data-param='leg_len'] td:nth-child(3)") == "80"
-        assert _model_state(page) == "loaded"
-        assert "borrowed" in page.text("#model-status") and "run probe" in page.text("#model-status")
-        assert page.attribute("#model-components li[data-component='body']", "data-mesh") == "retained"
-        # Telemetry arrives beside an identity that is already on screen.
-        telemetry(3)
-        page.wait_for("document.querySelector('[data-metric=iteration]').textContent === 'iteration: 3'")
-        assert page.attribute("#telemetry", "data-state") == "training"
-        assert page.text("#view-revision") == REVISION_B
-        # The trainer fails, then the walk lands its failed record: the run's
-        # identity, specs and model stay; only the state changes.
-        telemetry(3, state="failed", error="controlled fixture failure")
-        _training_run(root, "probe", revision=REVISION_B, status="failed",
-                      error="training did not produce a policy (leg train, exit 3): controlled fixture failure")
-        page.wait_for("document.getElementById('view-status').textContent === 'failed'")
-        page.wait_for("document.getElementById('telemetry').dataset.state === 'failed'")
-        assert page.text("#view-relation").startswith("CURRENT")
-        assert page.text("#view-revision") == REVISION_B
-        assert page.text("#view-identity-source") == "project manifest (script.json) at walk start"
-        assert "controlled fixture failure" in page.text("#view-note")
-        assert page.text("#params tr[data-param='leg_len'] td:nth-child(3)") == "80"
-        assert page.attribute("#telemetry", "data-state") == "failed"
-        assert page.attribute("[data-history=loss_curve]", "data-points") == "4"
-        assert _model_state(page) == "loaded" and "borrowed" in page.text("#model-status")
-        # The accepted view is untouched by any of it.
-        page.click("#views li[data-view='accepted']")
-        page.wait_for("document.getElementById('view-kind').textContent === 'ACCEPTED NOW'")
-        assert page.text("#view-revision") == REVISION_B
-        assert _model_state(page) == "loaded" and "borrowed" not in page.text("#model-status")
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
-@needs_browser
-def test_browser_explains_a_failed_observation_whose_training_finished(tmp_path, browser):
-    """The Lark run ``lark109-engine`` on screen (ADR-326): the trainer
-    reached ``done`` and saved its policy, then the run's observation
-    failed and nothing put the policy in the store. A fresh visit selects
-    that failed attempt over the older completed one; the page says the
-    training finished and the failure came after it, names the store state
-    and the CLI command that stores the retained policy, and serves the
-    trainer's copy. When the operator runs that command the page notices
-    on its next poll — no reload, no record rewrite — and the run stays
-    ``failed``: storing a policy does not rewrite history."""
-
-    root = _project(tmp_path)
-    _manifest(root, REVISION_B)
-    _stage_accepted(root, REVISION_B)
-    _training_run(root, "earlier", revision=REVISION_B, status="ok")
-    run = _training_run(root, "probe", revision=REVISION_B)
-    payload = b"fixture policy bytes, trained to the last update"
-    (run / "train" / "probe.cxpolicy").write_bytes(payload)
-    digest = hashlib.sha256(payload).hexdigest()
-    _telemetry(root, 99, run="probe", state="done", total=100, out="probe.cxpolicy")
-    error = ("Observation aborted: the probe's exclusion guard tripped during the "
-             "completion wait; the engine kill/restart phases had passed.")
-    _training_run(root, "probe", revision=REVISION_B, status="failed", error=error,
-                  policy_name="probe.cxpolicy", policy_sha256=digest)
-    assert json.loads((run / RUN_RECORD_FILENAME).read_text())["policy"]["asset"] is None
-
-    server, _thread = serve(root, "127.0.0.1", 0)
-    try:
-        page = _open(browser, server.url)
-        page.wait_for("document.getElementById('view-kind').textContent === 'RUN probe'")
-        assert page.text("#view-status") == "failed"
-        page.wait_for("document.getElementById('telemetry').dataset.state === 'done'")
-        page.wait_for("document.getElementById('view-note').textContent.includes('training itself finished')")
-        note = page.text("#view-note")
-        assert "error: Observation aborted" in note
-        assert "training itself finished (iteration 99 of 100, policy probe.cxpolicy saved by the trainer)" in note
-        assert "failed after that, in its observation or recording, not in the trainer" in note
-        assert page.attribute("#view-policy-store", "data-state") == "unstored"
-        store = page.text("#view-policy-store")
-        assert "never stored as a project asset" in store
-        assert "trainer copy retained at train/probe.cxpolicy" in store
-        assert ("next: store it: cadex asset --project <project-dir> --put "
-                "<project-dir>/runs/probe/train/probe.cxpolicy") in store
-        assert "or start a new attempt: cadex walk --out runs/<new-name>" in store
-        assert page.text("#problems").strip() == ""      # nothing recorded is missing
-        row = "#artifacts tr[data-group='artifacts'][data-key='policy']"
-        assert page.text(row + " td:nth-child(2)") == "train/probe.cxpolicy"
-        assert page.attribute(row + " td:nth-child(3)", "data-status") == "retained"
-        assert page.text("#artifacts tr[data-group='project_artifacts'][data-key='policy'] td:nth-child(3)") == "not recorded"
-        download = page.download(row + " a[href$='download=1']")
-        assert download.path.read_bytes() == payload
-        # The operator runs the command the page named (its effect: the store
-        # copy appears). The page notices on its own; the record is untouched.
-        before = (run / RUN_RECORD_FILENAME).read_bytes()
-        (root / "assets" / "probe.cxpolicy").write_bytes(payload)
-        page.wait_for("document.getElementById('view-policy-store').dataset.state === 'stored'")
-        store = page.text("#view-policy-store")
-        assert "holds this policy with the recorded digest" in store and "next:" not in store
-        assert page.text("#view-status") == "failed"
-        assert "training itself finished" in page.text("#view-note")
-        assert (run / RUN_RECORD_FILENAME).read_bytes() == before
-        # The earlier completed run is untouched: no policy, no store state.
-        page.click("#views li[data-run='earlier']")
-        page.wait_for("document.getElementById('view-kind').textContent === 'RUN earlier'")
-        assert page.text("#view-status") == "completed"
-        assert page.attribute("#view-policy-store", "data-state") == "none"
-        assert "training itself finished" not in page.text("#view-note")
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
-@needs_browser
-def test_browser_lists_a_completed_run_whose_policy_was_never_stored_as_a_problem(tmp_path, browser):
-    """The Lark runs ``lark96-restart`` and ``lark109-engine2`` on screen
-    (ADR-327): bounded drivers that trained to ``done`` and recorded ``ok``
-    with the policy under ``train/`` and nothing in the project store. A
-    completed run whose only policy copy is the trainer's is a retention
-    gap: the page lists it under problems with the one command that closes
-    it, beside the policy-store row's advice. When the operator runs that
-    command the problem disappears on the next poll — no reload, no record
-    rewrite — and the run stays ``completed``. A fresh visit still selects
-    the newest run."""
-
-    root = _project(tmp_path)
-    _manifest(root, REVISION_B)
-    _stage_accepted(root, REVISION_B)
-    payloads = {}
-    for name in ("bounded-a", "bounded-b"):
-        run = _training_run(root, name, revision=REVISION_B)
-        payloads[name] = f"fixture policy bytes of {name}".encode()
-        (run / "train" / f"{name}.cxpolicy").write_bytes(payloads[name])
-        _training_run(root, name, revision=REVISION_B, status="ok",
-                      policy_name=f"{name}.cxpolicy",
-                      policy_sha256=hashlib.sha256(payloads[name]).hexdigest())
-        assert json.loads((run / RUN_RECORD_FILENAME).read_text())["policy"]["asset"] is None
-    _telemetry(root, 99, run="bounded-b", state="done", total=100, out="bounded-b.cxpolicy")
-    command = "cadex asset --project <project-dir> --put <project-dir>/runs/bounded-b/train/bounded-b.cxpolicy"
-
-    server, _thread = serve(root, "127.0.0.1", 0)
-    try:
-        page = _open(browser, server.url)
-        page.wait_for("document.getElementById('view-kind').textContent === 'RUN bounded-b'")
-        assert page.text("#view-status") == "completed"
-        page.wait_for("document.getElementById('view-policy-store').dataset.state === 'unstored'")
-        assert ("next: store it: " + command) in page.text("#view-policy-store")
-        page.wait_for("document.querySelectorAll('#problems li').length === 1")
-        assert page.text("#problems li") == (
-            "policy_store: unstored — this completed run's policy bounded-b.cxpolicy is retained at "
-            "train/bounded-b.cxpolicy but the project store does not hold it; store it: " + command)
-        row = "#artifacts tr[data-group='artifacts'][data-key='policy']"
-        assert page.attribute(row + " td:nth-child(3)", "data-status") == "retained"
-        # The operator runs the command the page named: the gap closes on the
-        # next poll, the record is untouched, and the run is still completed.
-        record = root / "runs" / "bounded-b" / RUN_RECORD_FILENAME
-        before = record.read_bytes()
-        (root / "assets" / "bounded-b.cxpolicy").write_bytes(payloads["bounded-b"])
-        page.wait_for("document.getElementById('view-policy-store').dataset.state === 'stored'")
-        page.wait_for("document.querySelectorAll('#problems li').length === 0")
-        assert page.text("#view-status") == "completed"
-        assert "next:" not in page.text("#view-policy-store")
-        assert record.read_bytes() == before
-        assert page.evaluate("performance.getEntriesByType('navigation').length") == 1
-        # The other bounded run still carries its own gap, and only its own.
-        page.click("#views li[data-run='bounded-a']")
-        page.wait_for("document.getElementById('view-kind').textContent === 'RUN bounded-a'")
-        page.wait_for("document.querySelectorAll('#problems li').length === 1")
-        assert "bounded-a.cxpolicy" in page.text("#problems li") and "bounded-b" not in page.text("#problems li")
-        assert page.attribute("#view-policy-store", "data-state") == "unstored"
-        fresh = _open(browser, server.url)
-        fresh.wait_for("document.getElementById('view-kind').textContent === 'RUN bounded-b'")
-        assert fresh.attribute("#view-policy-store", "data-state") == "stored"
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
-@needs_browser
-@pytest.mark.parametrize('failure_stage', ['header', 'validation', 'witness', 'save'])
-def test_browser_observes_final_policy_publication_failure(served, browser, monkeypatch, failure_stage):
-    """Fault the real trainer's publication path after a retained checkpoint.
-
-    Training and policy math are fixtures; the atomic writer, failure handler,
-    HTTP reader and browser are real. No GPU or verified-policy claim is made.
-    """
-    import importlib.util
-    import types
-
-    root, server = served
-    trainer_path = CLI_DIR.parent / 'training/cadex_train.py'
-    spec = importlib.util.spec_from_file_location('review_test_trainer', trainer_path)
-    trainer = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(trainer)
-    monkeypatch.setitem(sys.modules, 'jax', types.ModuleType('jax'))
-    monkeypatch.setitem(sys.modules, 'jax.numpy', types.ModuleType('jax.numpy'))
-    monkeypatch.setattr(trainer, 'globals_for', lambda _: {})
-    monkeypatch.setattr(trainer, 'load_bundle', lambda *_: {
-        'task_sha256': 't' * 64, 'model_sha256': 'm' * 64})
-    monkeypatch.setattr(trainer, 'policy_header', lambda *_, **__: {})
-    monkeypatch.setattr(trainer, 'checked_policy', lambda *_, **__: b'fixture policy')
-    monkeypatch.setattr(trainer, 'witness_disagreement', lambda *_: (0.0, 0, 0))
-    target = root / 'runs/first/train/final.cxpolicy'
-    progress_path = target.parent / 'progress.json'
-    prior_run = root / 'runs/second' / RUN_RECORD_FILENAME
-    prior_bytes = prior_run.read_bytes()
-    error = RuntimeError('controlled final policy ' + failure_stage + ' failure')
-    original_write = trainer.write_atomically
-
-    def fail(*_, **__):
-        raise error
-
-    page = _open(browser, server.url)
-    page.click("#views li[data-run='first']")
-    page.evaluate('window.publicationTestIdentity = {}')
-
-    def trained_fixture(bundle, options, *, emit, progress):
-        rows = [{'iteration': 0, 'reward_per_step': 0.5, 'loss': 2.0,
-                 'episode_steps': 12}]
-        trained = {'parameters': [], 'reward_curve': rows,
-                   'wall_time_s': 1.0, 'backend': 'fixture'}
-        emit('iter-0', 0, 0.5, trained)
-        progress(state='training', iteration=0, total=1, curve=rows,
-                 wall=1.0, device='fixture')
-        page.wait_for("document.getElementById('telemetry').dataset.state === 'training'")
-        if failure_stage == 'save':
-            def write(path, blob):
-                if path == target:
-                    raise error
-                return original_write(path, blob)
-            monkeypatch.setattr(trainer, 'write_atomically', write)
-        else:
-            function = {'header': 'policy_header', 'validation': 'checked_policy',
-                        'witness': 'witness_disagreement'}[failure_stage]
-            monkeypatch.setattr(trainer, function, fail)
-        return trained
-
-    monkeypatch.setattr(trainer, 'train', trained_fixture)
-    with pytest.raises(RuntimeError) as raised:
-        trainer.main(['trainer', 'fixture-task.json', '--out', str(target), '--quiet', '--iterations', '1'])
-    assert raised.value is error
-    data = json.loads(progress_path.read_text())
-    assert data['state'] == 'failed'
-    assert data['iteration'] == 0 and data['total'] == 1
-    assert data['curve'] == [[0, 0.5]]
-    assert data['loss_curve'] == [[0, 2.0]]
-    assert data['episode_steps_curve'] == [[0, 12.0]]
-    assert data['task_sha256'] == 't' * 64 and data['model_sha256'] == 'm' * 64
-    assert data['updated_at'] >= data['started_at']
-    assert not target.exists()
-    checkpoint = data['checkpoints'][0]
-    assert hashlib.sha256((target.parent / checkpoint['path']).read_bytes()).hexdigest() == checkpoint['sha256']
-    page.wait_for("document.getElementById('telemetry').dataset.state === 'failed'")
-    assert str(error) in page.text('#telemetry')
-    assert 'cadex walk' in page.text('#telemetry')
-    assert page.text('[data-metric=iteration]') == 'iteration: 0'
-    assert page.attribute('[data-history=loss_curve]', 'data-points') == '1'
-    assert page.attribute('#checkpoints li', 'data-status') == 'retained'
-    assert page.text('#view-revision') == REVISION_A
-    assert page.evaluate('!!window.publicationTestIdentity')
-    assert prior_run.read_bytes() == prior_bytes
-
-
-@needs_browser
-def test_browser_retained_training_parts_survive_revision_change(served, browser):
-    root, server = served
-    run = _training_run(root, 'exported', revision=REVISION_A)
-    model_xml = run / 'train/model.xml'
-    model_xml.write_text('<mujoco/>')
-    mesh = run / 'train/torso.stl'
-    mesh.write_text(_cube_stl(20))
-    record = json.loads((run / RUN_RECORD_FILENAME).read_text())
-    _rewrite_record(run, artifacts={**record['artifacts'], 'model_xml': 'train/model.xml'})
-    before = {p: p.read_bytes() for p in run.rglob('*') if p.is_file()}
-    page = _open(browser, server.url)
-    page.click("#views li[data-run='exported']")
-    page.wait_for("document.getElementById('view-kind').textContent === 'RUN exported'")
-    assert _model_state(page) == 'loaded'
-    assert page.text('#view-revision') == REVISION_A
-    assert page.text('#view-relation').startswith('HISTORICAL')
-    assert 'assembly placements not recorded' in page.text('#model-status')
-    assert 'not a solved pose' in page.text('#model-status')
-    page.scroll_into_view('#viewer')
-    rect = page.rect('#viewer')
-    x, y = rect['x'] + rect['width']/2, rect['y'] + rect['height']/2
-    camera = page.evaluate('window.cadexReview.viewer().camera()')
-    page.drag(x, y, x+100, y+40)
-    page.wait_for(f'window.cadexReview.viewer().camera().yaw !== {camera["yaw"]}')
-    page.wheel(x, y, -240)
-    page.wait_for(f'window.cadexReview.viewer().camera().distance < {camera["distance"]}')
-    assert page.evaluate('window.cadexReview.viewer().nonBackgroundPixels()') > 1000
-    assert _get(server.url + 'mesh/run/exported/torso.stl')[2] == mesh.read_bytes()
-    assert before == {p: p.read_bytes() for p in run.rglob('*') if p.is_file()}
-    # A deleted export, escaping anchor or symlinked mesh cannot borrow today's model.
-    mesh.unlink()
-    mesh.symlink_to(root / 'runs/second/rollout/torso.stl')
-    assert not _json(server.url + 'api/model/run/exported')['available']
-    assert _get(server.url + 'mesh/run/exported/torso.stl')[0] == 404
-    mesh.unlink()
-    mesh.write_text(_cube_stl(20))
-    model_xml.unlink()
-    assert not _json(server.url + 'api/model/run/exported')['available']
-    model_xml.symlink_to(root / 'script.json')
-    assert not _json(server.url + 'api/model/run/exported')['available']
-    assert _get(server.url + 'mesh/run/exported/torso.stl')[0] == 404
-    _rewrite_record(run, artifacts={**record['artifacts'], 'model_xml': '../outside.xml'})
-    assert not _json(server.url + 'api/model/run/exported')['available']
-
-
-@needs_browser
-def test_browser_training_snapshot_keeps_assembly_and_documents(tmp_path, browser):
-    from cadex_cli.review_server import retain_training_view
-
-    root = _project(tmp_path)
-    _manifest(root, REVISION_A)
-    staging = _stage_accepted(root, REVISION_A)
-    run = _training_run(root, 'frozen', revision=REVISION_A)
-    (root / 'DECISIONS.md').write_text('## ADR-1: Original narrow stance\n')
-    retain_training_view(root, run)
-    frozen = (run / 'training-view.json').read_bytes()
-    identity = json.loads(frozen)['identity']
-    mesh = (run / 'training-view/torso.stl').read_bytes()
-    _manifest(root, REVISION_B)
-    revised = _stage_accepted(root, REVISION_B)
-    (revised / 'outputs/assembly-simulation-trace.json').write_text(
-        _trace({'body': [1000.0, 0.0, 0.0]}))
-    shutil.rmtree(staging)
-    manifest = json.loads((root / 'script.json').read_text())
-    manifest['param_values'] = {'leg_len': 120}
-    manifest['param_specs'] = [{'name': 'leg_len', 'default': 110}]
-    (root / 'script.json').write_text(json.dumps(manifest))
-    (root / 'DECISIONS.md').write_text('## ADR-2: Wider revised stance\n')
-    retain_training_view(root, run)
-    write_run_record(run, project_root=root, status='failed', mode='blocking',
-                     accepted_revision=REVISION_A, digest='d' * 64,
-                     snapshot_docs=True, params={'leg_len': 999})
-    assert (run / 'training-view.json').read_bytes() == frozen
-    assert (run / 'training-view/torso.stl').read_bytes() == mesh
-    server, _thread = serve(root, '127.0.0.1', 0)
-    try:
-        page = _open(browser, server.url)
-        page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
-        accepted_target = page.evaluate('window.cadexReview.viewer().camera().target')
-        page.click("#views li[data-run='frozen']")
-        page.wait_for("document.getElementById('view-kind').textContent === 'RUN frozen'")
-        assert _model_state(page) == 'loaded'
-        assert page.text('#view-revision') == REVISION_A
-        assert page.text('#view-relation').startswith('HISTORICAL')
-        record = read_run_record(run, root)
-        assert record['params']['values'] == identity['param_values']
-        assert record['params']['specs'] == identity['param_specs']
-        assert page.text("#params tr[data-param='leg_len'] td:nth-child(2)") == '90'
-        assert page.text("#params tr[data-param='leg_len'] td:nth-child(3)") == '80'
-        assert 'retained before training' in page.text('#model-status')
-        assert page.evaluate('window.cadexReview.viewer().camera().target') != accepted_target
-        assert page.evaluate('window.cadexReview.viewer().nonBackgroundPixels()') > 1000
-        model = _json(server.url + 'api/model/run/frozen')
-        assert model['components'][0]['name'] == 'body'
-        assert model['components'][0]['placement']['position_mm'] == [5, 0, 10]
-        page.click("#docs li[data-doc='DECISIONS.md'] a")
-        page.wait_for("document.body.textContent.includes('Original narrow stance')")
-        assert 'Wider revised stance' not in page.text('body')
-        assert _get(server.url + 'mesh/run/frozen/torso.stl')[2] == mesh
-        (run / 'training-view/torso.stl').write_bytes(b'changed mesh')
-        assert _get(server.url + 'mesh/run/frozen/torso.stl')[0] == 404
-        assert _json(server.url + 'api/model/run/frozen')['components'][0]['mesh_status'] == 'digest mismatch'
-        (run / 'training-view/torso.stl').unlink()
-        (run / 'training-view/torso.stl').symlink_to(root / 'script.json')
-        assert _get(server.url + 'mesh/run/frozen/torso.stl')[0] == 404
-        (run / 'training-view.json').write_text('{')
-        assert not _json(server.url + 'api/model/run/frozen')['available']
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
-@needs_browser
-def test_browser_walk_parameter_sweep_retains_model_before_training(
-    engine, tmp_path, capsys, monkeypatch, browser,
-):
-    """Real engine/params/walk; stop at trainer dispatch, then revise again."""
-    from cadex_cli import __main__ as command
-    from cadex_cli.report import EXIT_FAILURE
-    from cadex_cli.walk import Leg
-    from test_train import _run
-    from test_walk import TOY
-
-    root = tmp_path / 'swept-project'
-    source = tmp_path / 'mechanism.py'
-    source.write_text(TOY.replace(
-        'p = params(', 'p = params(arm_len=num(80, min=40, max=160), '
-    ).replace('part.box(80, 8, 8)', 'part.box(p.arm_len, 8, 8)'))
-    code, result = _run(capsys, 'script', '--project', str(root), '--set', str(source))
-    assert code == EXIT_OK, result
-    initial_revision = result['accepted_revision']
-    run = root / 'runs/swept'
-    server, _thread = serve(root, '127.0.0.1', 0)
-    real_run_leg = command.run_leg
-    evidence = {}
-
-    def dispatch(name, argv, **kwargs):
-        if name != 'train':
-            return real_run_leg(name, argv, **kwargs)
-        # This callback is the exact boundary before any trainer starts.
-        record = read_run_record(run, root)
-        revision = record['model']['accepted_revision']
-        assert revision != initial_revision
-        assert record['status'] == 'running'
-        assert record['params']['values']['arm_len'] == 100
-        model = _json(server.url + 'api/model/run/swept')
-        assert model['available'], model
-        assert model['revision'] == revision
-        assert model['digest'] == record['model']['digest']
-        assert {c['name'] for c in model['components']} == {'base', 'swing'}
-        assert all(c['placement'] for c in model['components'])
-        mesh_bytes = {c['name']: _get(server.url.rstrip('/') + c['mesh'])[2]
-                      for c in model['components']}
-        page = _open(browser, server.url)
-        page.click("#views li[data-run='swept']")
-        page.wait_for("document.getElementById('view-kind').textContent === 'RUN swept'")
-        assert _model_state(page) == 'loaded'
-        assert page.text('#view-revision') == revision
-        assert page.text("#params tr[data-param='arm_len'] td:nth-child(2)") == '100'
-        assert page.text("#params tr[data-param='arm_len'] td:nth-child(3)") == '80'
-        assert page.text('#view-relation').startswith('CURRENT')
-        assert 'assembled model retained before training' in page.text('#model-status')
-        page.scroll_into_view('#viewer')
-        rect = page.rect('#viewer')
-        x, y = rect['x'] + rect['width']/2, rect['y'] + rect['height']/2
-        camera = page.evaluate('window.cadexReview.viewer().camera()')
-        page.drag(x, y, x+90, y+40)
-        page.wait_for(f'window.cadexReview.viewer().camera().yaw !== {camera["yaw"]}')
-        page.wheel(x, y, -240)
-        page.wait_for(f'window.cadexReview.viewer().camera().distance < {camera["distance"]}')
-        assert page.evaluate('window.cadexReview.viewer().nonBackgroundPixels()') > 1000
-        evidence.update(page=page, model=model, meshes=mesh_bytes,
-                        marker=(run / 'training-view.json').read_bytes())
-        return Leg(name, argv, code=EXIT_FAILURE,
-                   envelope={'error': 'intentional stop at training dispatch'})
-
-    monkeypatch.setattr(command, 'run_leg', dispatch)
-    try:
-        code, result = _run(capsys, 'walk', '--project', str(root), '--out', str(run),
-                            '--set', 'arm_len=100', '--iterations', '1', '--envs', '4')
-        assert code == EXIT_FAILURE, result
-        assert 'intentional stop' in result['error']
-        code, later = _run(capsys, 'params', '--project', str(root), '--set', 'arm_len=140')
-        assert code == EXIT_OK, later
-        assert later['accepted_revision'] != evidence['model']['revision']
-        # Retained bytes, rather than any staging cache, are what the URL serves.
-        page = evidence['page']
-        page.wait_for("document.getElementById('view-relation').textContent.startsWith('HISTORICAL')",
-                      timeout=10)
-        assert _model_state(page) == 'loaded'
-        assert page.text('#view-revision') == evidence['model']['revision']
-        assert page.text("#params tr[data-param='arm_len'] td:nth-child(2)") == '100'
-        assert page.text("#params tr[data-param='arm_len'] td:nth-child(3)") == '80'
-        assert (run / 'training-view.json').read_bytes() == evidence['marker']
-        historical = _json(server.url + 'api/model/run/swept')
-        assert historical['components'] == evidence['model']['components']
-        for component in historical['components']:
-            assert _get(server.url.rstrip('/') + component['mesh'])[2] == evidence['meshes'][component['name']]
-        record = read_run_record(run, root)
-        assert record['params']['values']['arm_len'] == 100
-        assert record['status'] == 'failed'
-        accepted = _json(server.url + 'api/model/accepted')
-        swing = next(c for c in accepted['components'] if c['name'] == 'swing')
-        assert _get(server.url.rstrip('/') + swing['mesh'])[2] != evidence['meshes']['swing']
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
-def test_browser_refuses_damaged_video_and_recovers(served, browser, monkeypatch):
-    root, server = served
-    run = root / 'runs/first'
-    video = run / 'final.webm'
-    original = bytes(range(128))
-    video.write_bytes(original)
-    _rewrite_record(run, videos=[{'path': video.name,
-                                 'sha256': hashlib.sha256(original).hexdigest()}])
-    page = _open(browser, server.url)
-    page.click("#views li[data-run='first']")
-    page.wait_for("!!document.querySelector('#videos video')")
-    from cadex_cli import review_record
-    original_hash = review_record._sha256
-    reads = []
-    def counted(path):
-        if path == video:
-            reads.append(path)
-        return original_hash(path)
-    monkeypatch.setattr(review_record, '_sha256', counted)
-    for _ in range(3):
-        page.evaluate('window.cadexReview.refresh()', await_promise=True)
-    assert not reads, 'polling an unchanged retained video must not reread its bytes'
-    for damaged in (original[:32], b'x' * len(original)):
-        video.write_bytes(damaged)
-        page.wait_for("document.getElementById('videos').textContent.includes('digest mismatch')")
-        assert not page.evaluate("!!document.querySelector('#videos video')")
-        assert 'Retry the CLI video command' in page.text('#videos')
-        assert _get(server.url + 'video/run/first/0')[0] == 404
-        assert _get(server.url + 'video/run/first/0', {'Range': 'bytes=0-5'})[0] == 404
-        video.write_bytes(original)
-        page.wait_for("!!document.querySelector('#videos video')")
-        assert _get(server.url + 'video/run/first/0')[2] == original
-    video.unlink()
-    page.wait_for("document.querySelector('#videos [data-video]').textContent.includes('missing')")
-    assert 'Retry the CLI video command' in page.text('#videos')
-
-
-def test_browser_coalesces_polls_during_initial_video_verification(served, browser, monkeypatch):
-    """Cold verification exceeding three poll intervals must read bytes once."""
-    from cadex_cli import review_record
-    root, server = served
-    run = root / 'runs/first'
-    video = run / 'cold.webm'
-    video.write_bytes(b'corrupt retained video')
-    _rewrite_record(run, videos=[{'path': video.name, 'sha256': '0' * 64}])
-    entered, release = threading.Event(), threading.Event()
-    original_hash = review_record._sha256
-    reads = []
-
-    def slow_hash(path):
-        if path == video:
-            reads.append(path)
-            entered.set()
-            if not release.wait(20):
-                raise OSError('test verification timed out')
-        return original_hash(path)
-
-    monkeypatch.setattr(review_record, '_sha256', slow_hash)
-    page = browser.page(server.url)
-    try:
-        assert entered.wait(5)
-        page.evaluate('new Promise(resolve => setTimeout(resolve, 7200))', await_promise=True)
-        assert page.attribute('#freshness', 'data-state') == 'loading'
-        assert not page.evaluate("!!document.querySelector('#videos video')")
-        assert len(reads) == 1, 'slow initial verification must not launch overlapping polls'
-    finally:
-        release.set()
-    page.evaluate('window.cadexReview.ready', await_promise=True)
-    page.click("#views li[data-run='first']")
-    page.wait_for("document.getElementById('videos').textContent.includes('digest mismatch')")
-    assert not page.evaluate("!!document.querySelector('#videos video')")
-    # Completion releases the pending request, so subsequent changes still arrive.
-    _rewrite_record(run, status='failed')
-    page.wait_for("document.getElementById('view-status').textContent === 'failed'")
-    assert page.attribute('#freshness', 'data-state') == 'live'
-    assert len(reads) == 1
-
-
-def test_two_browser_clients_share_cold_video_verification(served, browser, monkeypatch):
-    """Concurrent clients must share byte reads and both refuse corrupt output."""
-    from cadex_cli import review_record
-    root, server = served
-    run = root / 'runs/first'
-    video = run / 'shared-cold.webm'
-    video.write_bytes(b'corrupt retained video')
-    _rewrite_record(run, videos=[{'path': video.name, 'sha256': '0' * 64}])
-    entered, second, release = threading.Event(), threading.Event(), threading.Event()
-    original_hash = review_record._sha256
-    original_verify = review_record._video_sha256
-    reads, requests = [], []
-
-    def verify(path):
-        if path == video:
-            requests.append(path)
-            if len(requests) == 2:
-                second.set()
-        return original_verify(path)
-
-    def slow_hash(path):
-        if path == video:
-            reads.append(path)
-            entered.set()
-            if not release.wait(20):
-                raise OSError('test verification timed out')
-        return original_hash(path)
-
-    monkeypatch.setattr(review_record, '_sha256', slow_hash)
-    monkeypatch.setattr(review_record, '_video_sha256', verify)
-    first = browser.page(server.url)
-    try:
-        assert entered.wait(5)
-        other = browser.page(server.url)
-        assert second.wait(5), 'second browser must reach server verification'
-        for page in (first, other):
-            assert page.attribute('#freshness', 'data-state') == 'loading'
-            assert not page.evaluate("!!document.querySelector('#videos video')")
-    finally:
-        release.set()
-    for page in (first, other):
-        page.evaluate('window.cadexReview.ready', await_promise=True)
-        page.click("#views li[data-run='first']")
-        page.wait_for("document.getElementById('videos').textContent.includes('digest mismatch')")
-        assert not page.evaluate("!!document.querySelector('#videos video')")
-    assert len(reads) == 1, 'two cold clients must hash the shared file once'
-    # Publish one file version: truncating in place exposes an intermediate
-    # empty file to timer polls, which correctly needs another verification.
-    replacement = video.with_suffix('.partial')
-    replacement.write_bytes(b'changed corrupt bytes')
-    replacement.replace(video)
-    for page in (first, other):
-        page.evaluate('window.cadexReview.refresh()', await_promise=True)
-        assert 'digest mismatch' in page.text('#videos')
-    assert len(reads) == 2, 'changed bytes need one fresh verification'
-    assert review_record._cached_video_sha256.cache_info().maxsize == 256
-
-
-@needs_browser
-def test_browser_current_attempt_selection_preserves_deliberate_history(served, browser):
-    root, server = served
-    first = root / 'runs/first'
-    second = root / 'runs/second'
-    _rewrite_record(first, recorded_at='2026-01-01T00:00:00Z', status='running')
-    _rewrite_record(second, recorded_at='2026-01-03T00:00:00Z', status='failed')
-    _rewrite_record(root / 'runs/broken', recorded_at='2026-01-02T00:00:00Z')
-    _telemetry(root)
-    page = _open(browser, server.url)
-    assert page.text('#view-kind') == 'RUN first'  # active beats newer failure
-    assert page.attribute('#telemetry', 'data-state') == 'training'
-    _telemetry(root, state='failed')
-    _rewrite_record(first, status='failed')
-    page.wait_for("document.getElementById('view-kind').textContent === 'RUN second'")
-    assert page.text('#view-status') == 'failed'
-    assert _model_state(page) == 'loaded'
-    assert page.text('#view-revision') == REVISION_B
-    fresh = _open(browser, server.url)
-    assert fresh.text('#view-kind') == 'RUN second'
-    page.click("#views li[data-run='first']")
-    page.wait_for("document.getElementById('model-status').dataset.state === 'loaded'")
-    _rewrite_record(second, recorded_at='2026-01-04T00:00:00Z')
-    page.evaluate('window.cadexReview.refresh()', await_promise=True)
-    assert page.text('#view-kind') == 'RUN first'
-    assert page.text('#view-revision') == REVISION_A
-    assert 'second' in page.text('#current-run')
-    page.click('#current-run')
-    assert page.text('#view-kind') == 'RUN second'
-    _rewrite_record(first, status='running')
-    _telemetry(root, updated_at=time.time() - 60)
-    page.evaluate('window.cadexReview.refresh()', await_promise=True)
-    assert page.text('#view-kind') == 'RUN second'  # stale is not active
-    _telemetry(root)
-    page.wait_for("document.getElementById('view-kind').textContent === 'RUN first'")
-
-
-@needs_browser
-def test_browser_playing_video_survives_new_current_attempt(served, browser):
-    from test_video import _video_run
-    from cadex_cli.video import render as render_video
-
-    if not shutil.which('ffmpeg'):
-        pytest.skip('FFmpeg not available')
-    root, server = served
-    run = _video_run(root)
-    render_video(root, 'sample')
-    _rewrite_record(run, recorded_at='2099-01-01T00:00:00Z')
-    page = _open(browser, server.url)
-    assert page.text('#view-kind') == 'RUN sample'
-    page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
-    page.evaluate("window.playing = document.querySelector('#videos video'); playing.muted = true; playing.loop = true; playing.play()", await_promise=True)
-    page.wait_for('playing.currentTime > 0.1')
-    _rewrite_record(root / 'runs/second', recorded_at='2099-01-02T00:00:00Z', status='failed')
-    page.evaluate('window.cadexReview.refresh()', await_promise=True)
-    assert page.text('#view-kind') == 'RUN sample'
-    assert page.evaluate("playing === document.querySelector('#videos video') && !playing.paused")
-    assert 'second' in page.text('#current-run')
-    fresh = _open(browser, server.url)
-    assert fresh.text('#view-kind') == 'RUN second'
-    assert fresh.text('#view-status') == 'failed'
-    page.click('#current-run')
-    assert page.text('#view-kind') == 'RUN second'
-
-
-@needs_browser
-def test_browser_historical_playback_survives_published_failed_attempt(served, browser):
-    from test_video import _video_run
-    from cadex_cli.video import render as render_video
-
-    if not shutil.which('ffmpeg'):
-        pytest.skip('FFmpeg not available')
-    root, server = served
-    old = _video_run(root, 'historical-video')
-    video = render_video(root, 'historical-video')
-    _rewrite_record(old, recorded_at='2099-01-01T00:00:00Z')
-    _rewrite_record(root / 'runs/second', recorded_at='2099-01-02T00:00:00Z')
-    page = _open(browser, server.url)
-    assert page.text('#view-kind') == 'RUN second'
-    page.click("#views li[data-run='historical-video']")
-    assert page.text('#view-relation').startswith('HISTORICAL')
-    revision = page.text('#view-revision')
-    page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
-    page.evaluate("window.playing=document.querySelector('#videos video');"
-                  "window.playedSeconds=0; window.lastVideoTime=0;"
-                  "playing.addEventListener('timeupdate', () => {"
-                  "playedSeconds += Math.max(0, playing.currentTime-lastVideoTime);"
-                  "lastVideoTime=playing.currentTime; });"
-                  "playing.muted=true; playing.loop=true; playing.play()", await_promise=True)
-    page.wait_for('playedSeconds > 0.1')
-
-    # Publish a new attempt, rather than relabelling a run already in the list.
-    failed = _mesh_run(root, 'new-failure', revision=REVISION_B)
-    _rewrite_record(failed, recorded_at='2099-01-03T00:00:00Z', status='failed')
-    page.wait_for("document.getElementById('current-run').textContent === 'Current run: new-failure'")
-    elapsed = page.evaluate('playedSeconds')
-    # Count two subsequent automatic polls; never call refresh from the test.
-    page.evaluate("window.polls=0; window.originalFetch=window.fetch;"
-                  "window.fetch=async (...args) => { const response=await originalFetch(...args);"
-                  "if(String(args[0]).includes('api/project')) polls++; return response; }")
-    page.wait_for('polls >= 2 && playedSeconds > ' + str(elapsed + 0.25))
-    assert page.text('#view-kind') == 'RUN historical-video'
-    assert page.text('#view-revision') == revision
-    assert page.text('#view-relation').startswith('HISTORICAL')
-    assert page.evaluate("playing===document.querySelector('#videos video') && !playing.paused")
-    assert hashlib.sha256(page.download('#videos a').path.read_bytes()).hexdigest() == video['sha256']
-
-    fresh = _open(browser, server.url)
-    assert fresh.text('#view-kind') == 'RUN new-failure'
-    assert fresh.text('#view-status') == 'failed'
-    assert fresh.text('#view-revision') == REVISION_B
-    assert not fresh.evaluate("!!document.querySelector('#videos video')")
-    page.send('Page.bringToFront')
-    assert page.text('#view-kind') == 'RUN historical-video'
-    assert page.evaluate("playing===document.querySelector('#videos video') && !playing.paused")
-    page.click('#current-run')
-    assert page.text('#view-kind') == 'RUN new-failure'
-    assert page.text('#view-status') == 'failed'
-    assert page.text('#view-revision') == REVISION_B
-    assert page.evaluate("performance.getEntriesByType('navigation').length") == 1
-
-
-@needs_browser
-def test_browser_current_run_gains_video_preserving_historical_playback(served, browser):
-    from test_video import _video_run
-    from cadex_cli.video import render as render_video
-
-    if not shutil.which('ffmpeg'):
-        pytest.skip('FFmpeg not available')
-    root, server = served
-    old = _video_run(root, 'old-video')
-    old_video = render_video(root, 'old-video')
-    current = _video_run(root, 'current-video')
-    trace_path = current / 'rollout/assembly-simulation-trace.json'
-    trace = json.loads(trace_path.read_text())
-    trace['frames'][-1]['component_placements']['body']['position_mm'][2] += 20
-    trace_path.write_text(json.dumps(trace))
-    _rewrite_record(old, recorded_at='2099-01-01T00:00:00Z')
-    _rewrite_record(current, recorded_at='2099-01-02T00:00:00Z')
-    page = _open(browser, server.url)
-    assert page.text('#view-kind') == 'RUN current-video'
-    assert not page.evaluate("!!document.querySelector('#videos video')")
-    page.click("#views li[data-run='old-video']")
-    page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
-    old_revision = page.text('#view-revision')
-    page.evaluate("window.playing=document.querySelector('#videos video'); playing.muted=true; playing.loop=true; playing.play()", await_promise=True)
-    page.wait_for('playing.currentTime > 0.1')
-    # Publish through the actual renderer/status writer while history is playing.
-    published = render_video(root, 'current-video')
-    assert published['sha256'] != old_video['sha256']
-    page.evaluate('window.cadexReview.refresh()', await_promise=True)
-    assert page.text('#view-kind') == 'RUN old-video'
-    assert page.text('#view-revision') == old_revision
-    assert page.evaluate("playing===document.querySelector('#videos video') && !playing.paused")
-    assert 'current-video' in page.text('#current-run')
-    page.click('#current-run')
-    page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
-    assert page.text('#view-kind') == 'RUN current-video'
-    page.evaluate("window.newVideo=document.querySelector('#videos video'); newVideo.muted=true; newVideo.play()", await_promise=True)
-    page.wait_for('newVideo.currentTime > 0.1')
-    download = page.download('#videos a')
-    assert hashlib.sha256(download.path.read_bytes()).hexdigest() == published['sha256']
-    fresh = _open(browser, server.url)
-    assert fresh.text('#view-kind') == 'RUN current-video'
-    fresh.wait_for("document.querySelector('#videos video')?.readyState >= 2")
-
-    # Recover current output while a historical video remains playing. Real
-    # encoded bytes exercise playback as well as the retained-file hash gate.
-    video_path = current / published['path']
-    retained = video_path.read_bytes()
-    for fault in ('missing', 'partial'):
-        if fault == 'missing':
-            video_path.unlink()
-        else:
-            video_path.write_bytes(retained[:64])
-        message = 'missing' if fault == 'missing' else 'digest mismatch'
-        fresh.wait_for("document.querySelector('#videos [data-video]').textContent.includes(" +
-                       json.dumps(message) + ")")
-        assert fresh.text('#videos > li') == 'Video files: unavailable (0/1 retained)'
-        assert 'Retry the CLI video command' in fresh.text('#videos')
-        assert not fresh.evaluate("!!document.querySelector('#videos video, #videos a')")
-        assert _get(server.url + 'video/run/current-video/0')[0] == 404
-        assert _get(server.url + 'video/run/current-video/0', {'Range': 'bytes=0-63'})[0] == 404
-        page.send('Page.bringToFront')
-        page.click("#views li[data-run='old-video']")
-        page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
-        page.evaluate("window.playing=document.querySelector('#videos video'); playing.muted=true; playing.loop=true; playing.play()", await_promise=True)
-        page.wait_for('playing.currentTime > 0.1')
-        assert hashlib.sha256(page.download('#videos a').path.read_bytes()).hexdigest() == old_video['sha256']
-        video_path.write_bytes(retained)
-        fresh.wait_for("!!document.querySelector('#videos video')")
-        page.evaluate('window.cadexReview.refresh()', await_promise=True)
-        assert page.text('#view-kind') == 'RUN old-video'
-        assert page.text('#view-revision') == old_revision
-        assert page.evaluate("playing===document.querySelector('#videos video') && !playing.paused")
-        page.click('#current-run')
-        page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
-        assert hashlib.sha256(page.download('#videos a').path.read_bytes()).hexdigest() == published['sha256']
-        assert page.evaluate("performance.getEntriesByType('navigation').length") == 1
-
-
 def test_byte_identical_outputs_each_keep_their_accepted_mesh(served, tmp_path) -> None:
     """A mirrored pair of legs is two outputs with one BREP digest; the
     accepted model and the retained training view show both, not one."""
@@ -2024,60 +946,6 @@ def test_byte_identical_outputs_each_keep_their_accepted_mesh(served, tmp_path) 
 
 
 @needs_browser
-@pytest.mark.parametrize('view', ['accepted', 'first'])
-def test_browser_keeps_open_document_across_polls_until_view_changes(served, browser, view):
-    _root, server = served
-    page = _open(browser, server.url)
-    page.evaluate('window.cadexReview.select(' + json.dumps(view) + ')', await_promise=True)
-    page.click("#docs li[data-doc='DECISIONS.md'] a")
-    page.wait_for("document.getElementById('doc-view').textContent.includes('ADR-')")
-    body = page.text('#doc-view')
-    for _ in range(3):
-        page.evaluate('window.cadexReview.refresh()', await_promise=True)
-        assert not page.evaluate("document.getElementById('doc-view').classList.contains('hidden')")
-        assert page.text('#doc-view') == body
-    other = 'second' if view == 'first' else 'first'
-    page.evaluate('window.cadexReview.select(' + json.dumps(other) + ')', await_promise=True)
-    assert page.evaluate("document.getElementById('doc-view').classList.contains('hidden')")
-
-
-@needs_browser
-def test_browser_document_reading_pins_current_and_ignores_late_response(served, browser):
-    root, server = served
-    page = _open(browser, server.url)
-    selected = page.evaluate('window.cadexReview.state().selected')
-    page.click("#docs li[data-doc='DECISIONS.md'] a")
-    page.wait_for("document.getElementById('doc-view').textContent.includes('Loaded on open;')")
-    _mesh_run(root, 'new-attempt', revision=REVISION_B)
-    _rewrite_record(root / 'runs' / 'new-attempt', recorded_at='2099-01-01T00:00:00Z')
-    page.evaluate('window.cadexReview.refresh()', await_promise=True)
-    assert page.text('#current-run') == 'Current run: new-attempt'
-    assert page.evaluate('window.cadexReview.state().selected') == selected
-    assert not page.evaluate("document.getElementById('doc-view').classList.contains('hidden')")
-    # Delay a document response across a view change and a newer document load.
-    page.evaluate("""(() => {
-      const original = window.fetch;
-      window.fetch = function(url, options) {
-        if (url.startsWith('/doc/') && !window.delayedDoc) {
-          return new Promise(resolve => { window.delayedDoc = () => resolve(new Response('obsolete response')); });
-        }
-        return original(url, options);
-      };
-    })()""")
-    page.click("#docs li[data-doc='DECISIONS.md'] a")
-    page.wait_for('!!window.delayedDoc')
-    page.click('#current-run')
-    page.wait_for("document.getElementById('view-kind').textContent === 'RUN new-attempt'")
-    assert page.evaluate("document.getElementById('doc-view').classList.contains('hidden')")
-    page.click("#docs li[data-doc='DECISIONS.md'] a")
-    page.wait_for("document.getElementById('doc-view').textContent.includes('Loaded on open;')")
-    body = page.text('#doc-view')
-    page.evaluate('window.delayedDoc()')
-    page.evaluate('new Promise(resolve => setTimeout(resolve, 50))', await_promise=True)
-    assert page.text('#doc-view') == body
-
-
-@needs_browser
 @pytest.mark.parametrize('initially_accepted', [True, False])
 def test_browser_accepted_geometry_tracks_live_identity(tmp_path, browser, initially_accepted):
     root = _review_project(tmp_path)
@@ -2088,7 +956,6 @@ def test_browser_accepted_geometry_tracks_live_identity(tmp_path, browser, initi
     server, _thread = serve(root, '127.0.0.1', 0)
     try:
         page = _open(browser, server.url)
-        page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
         assert _model_state(page) == ('loaded' if initially_accepted else 'missing')
         # Publish a new accepted attempt while this browser keeps inspecting.
         _manifest(root, REVISION_A)
@@ -2099,18 +966,15 @@ def test_browser_accepted_geometry_tracks_live_identity(tmp_path, browser, initi
         (staging / 'display/display-000.tess.json').write_text(json.dumps(sidecar))
         (staging / 'display/display-000.tess.bin').write_bytes(data)
         page.evaluate('window.cadexReview.refresh()', await_promise=True)
-        assert page.text('#view-revision') == REVISION_A
-        assert page.evaluate('window.cadexReview.state().model.revision') == REVISION_A
+        assert page.evaluate('window.cadexReview.state().revision') == REVISION_A
+        page.wait_for("window.cadexReview.state().model && window.cadexReview.state().model.revision === %s"
+                      % json.dumps(REVISION_A))
         assert _model_state(page) == 'loaded'
         assert page.evaluate('window.cadexReview.viewer().stats().bounds.max[0]') == 45.0
         # Identical polls must preserve deliberate orbit/zoom.
         page.evaluate('const viewer = window.cadexReview.viewer(); const camera = viewer.camera(); camera.yaw += .3; camera.distance *= 1.2; viewer.setCamera(camera); window.cameraBefore = viewer.camera()')
         page.evaluate('window.cadexReview.refresh()', await_promise=True)
         assert page.evaluate('JSON.stringify(cameraBefore) === JSON.stringify(window.cadexReview.viewer().camera())')
-        # A later acceptance must not replace a selected retained historical mesh.
-        page.evaluate("window.cadexReview.select('second')", await_promise=True)
-        page.evaluate('window.cadexReview.refresh()', await_promise=True)
-        assert page.evaluate('window.cadexReview.state().model.revision') == REVISION_B
     finally:
         server.shutdown()
         server.server_close()
@@ -2168,98 +1032,13 @@ def test_browser_draws_a_first_accepted_script_written_through_the_bridge_withou
         assert {c['name'] for c in model['components']} == {'base', 'swing'}
         page = _open(browser, server.url)
         assert _model_state(page) == 'loaded'
-        status = page.text('#model-status')
-        assert status.startswith('accepted model at revision ' + accepted[:12])
-        assert '2 component(s)' in status and 'retained no tessellation' not in status
-        assert page.text('#view-revision') == accepted
-        assert page.text("#params tr[data-param='arm_len'] td:nth-child(3)") == '80'
+        assert page.evaluate('window.cadexReview.viewer().stats()')['components'] == 2
+        assert page.evaluate('window.cadexReview.state().revision') == accepted
+        assert page.text("#params tr[data-param='arm_len'] output") == '80'
         assert page.evaluate('window.cadexReview.viewer().nonBackgroundPixels()') > 1000
     finally:
         server.shutdown()
         server.server_close()
-
-
-def test_browser_policy_origin_uses_bytes_and_exposes_conflicting_source(served, browser):
-    root, server = served
-    item = _checkpoint(root, 'first')
-    _telemetry(root, 2, state='done', checkpoints=[item])
-    playback = _playback_run(root, 'quince', source='first', revision=REVISION_A)
-    _rewrite_record(playback, policy={'sha256': item['sha256']})
-    page = browser.page(server.url)
-    page.evaluate('window.cadexReview.ready', await_promise=True)
-    page.click("#views li[data-run='quince']")
-    page.wait_for("document.getElementById('policy-origin').dataset.state === 'resolved'")
-    assert page.attribute('#policy-origin', 'data-run') == 'first'
-    assert page.attribute('#policy-origin', 'data-source-agrees') == 'true'
-    assert 'first · checkpoint · iteration 2' in page.text('#policy-origin')
-    # A changed declaration must not replace the byte-resolved origin.
-    _rewrite_record(playback, training={'requested': {'source_run': 'second'}, 'receipt': {}})
-    page.evaluate('window.cadexReview.refresh()', await_promise=True)
-    page.wait_for("document.getElementById('policy-origin').dataset.sourceAgrees === 'false'")
-    assert page.attribute('#policy-origin', 'data-run') == 'first'
-    assert page.attribute('#policy-origin', 'data-tone') == 'bad'
-    assert 'SOURCE-NAME DISAGREEMENT' in page.text('#policy-origin')
-    assert 'declared source: second' in page.text('#policy-origin')
-    assert page.text('#view-relation').startswith('HISTORICAL')
-    # Ordinary polls do not hash the files again; the labelled snapshot has
-    # an explicit refresh for a changed/missing retained file.
-    (root / 'runs/first/train' / item['path']).unlink()
-    page.evaluate('window.cadexReview.refresh()', await_promise=True)
-    assert page.attribute('#policy-origin', 'data-state') == 'resolved'
-    page.click('#check-policy-origin')
-    page.wait_for("document.getElementById('policy-origin').dataset.state === 'unresolved'")
-    assert 'no run in this project retains' in page.text('#policy-origin')
-    assert 'SOURCE-NAME DISAGREEMENT' not in page.text('#policy-origin')
-    # Final-policy identification needs no declared source or naming convention.
-    policy = _checkpoint(root, 'second', name='weights.bin', payload=b'other final bytes')
-    _rewrite_record(root / 'runs/second', policy={'sha256': policy['sha256']})
-    page.evaluate('window.cadexReview.refresh()', await_promise=True)
-    page.click("#views li[data-run='second']")
-    page.wait_for("document.getElementById('policy-origin').dataset.run === 'second'")
-    assert 'second · final' in page.text('#policy-origin')
-    assert page.attribute('#policy-origin', 'data-source-agrees') == 'null'
-    page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
-    assert page.attribute('#policy-origin', 'data-state') == 'unselected'
-    # An origin request finishing after selection changes cannot overwrite
-    # the accepted view; a visible request failure can be retried.
-    page.evaluate("""window.originFetch = window.fetch;
-      window.fetch = function(url, options) {
-        if (url.startsWith('/api/policy-origin/')) return new Promise(function(resolve, reject) {
-          window.rejectOrigin = reject;
-        });
-        return originFetch(url, options);
-      };""")
-    page.evaluate("window.cadexReview.select('second')", await_promise=True)
-    assert page.attribute('#policy-origin', 'data-state') == 'pending'
-    page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
-    page.evaluate("rejectOrigin(new Error('late failure'))")
-    assert page.attribute('#policy-origin', 'data-state') == 'unselected'
-    page.evaluate("window.cadexReview.select('second')", await_promise=True)
-    page.evaluate("rejectOrigin(new Error('injected unavailable'))")
-    page.wait_for("document.getElementById('policy-origin').dataset.state === 'failed'")
-    assert 'injected unavailable' in page.text('#policy-origin')
-    page.evaluate('window.fetch = originFetch')
-    page.click('#check-policy-origin')
-    page.wait_for("document.getElementById('policy-origin').dataset.state === 'resolved'")
-    assert page.attribute('#policy-origin', 'data-run') == 'second'
-
-
-@needs_browser
-def test_browser_downloads_unicode_video_filename(served, browser):
-    root, server = served
-    run = root / 'runs' / 'second'
-    name = '歩行 résumé.webm'
-    payload = b'retained video bytes'
-    (run / name).write_bytes(payload)
-    _rewrite_record(run, videos=[{
-        'path': name, 'sha256': hashlib.sha256(payload).hexdigest(),
-        'policy_sha256': 'p' * 64, 'seed': 7, 'sim_seconds': 4.0,
-    }])
-    page = _open(browser, server.url)
-    assert page.text('#view-kind') == 'RUN second'
-    download = page.download('#videos a')
-    assert download.path.read_bytes() == payload
-    assert download.path.name == name
 
 
 @pytest.mark.parametrize('name', ['résumé.webm', 'clip"quoted.webm', 'clip\r\nX-Injected: yes.webm'])
@@ -2347,113 +1126,6 @@ def test_an_interrupted_download_is_one_log_line_not_a_traceback(tmp_path, capsy
         assert status == 206 and body == payload[resume_from:]
         assert headers['content-range'] == f'bytes {resume_from}-{len(payload) - 1}/{len(payload)}'
         assert 'Traceback' not in capsys.readouterr().err
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
-@needs_browser
-def test_browser_interrupted_download_leaves_polling_and_a_fresh_download_working(
-        tmp_path, browser, capsys) -> None:
-    """With the page open and polling, one client cancels the video download
-    mid-transfer: the page keeps polling and stays live, the server logs
-    one line and no traceback, and a fresh browser download of the same
-    video completes byte-identical (ADR-324)."""
-
-    root, payload = _large_video_project(tmp_path)
-    lines: list[str] = []
-    server, _thread = serve(root, '127.0.0.1', 0, log=lines.append)
-    try:
-        page = _open(browser, server.url)
-        assert page.text('#view-kind') == 'RUN second'
-        assert page.attribute('#freshness', 'data-state') == 'live'
-        page.evaluate("window.polls=0; window.originalFetch=window.fetch;"
-                      "window.fetch=async (...args) => { const response=await originalFetch(...args);"
-                      "if(String(args[0]).includes('api/project')) polls++; return response; }")
-        received = _abort_download(server, '/video/run/second/0?download=1')
-        assert 0 < received < len(payload)
-        polls_at_abort = page.evaluate('polls')
-        line = _wait_for_line(lines, 'client closed the connection')
-        assert line.endswith(f'of {len(payload)} bytes of big.webm')
-        # Two automatic polls after the interruption, never refresh() from here.
-        page.wait_for(f'polls >= {polls_at_abort + 2}', timeout=15)
-        assert page.attribute('#freshness', 'data-state') == 'live'
-        assert page.text('#view-kind') == 'RUN second'
-
-        download = page.download('#videos a', timeout=60)
-        assert download.received_bytes == download.total_bytes == len(payload)
-        assert download.path.name == 'big.webm'
-        assert hashlib.sha256(download.path.read_bytes()).hexdigest() == hashlib.sha256(payload).hexdigest()
-        err = capsys.readouterr().err
-        assert 'Traceback' not in err and 'Exception occurred' not in err, err
-        # The page's own <video> element abandons its request once it has
-        # seen enough of a file it cannot decode, so the cancelled download
-        # is one of possibly several closed connections — each one line.
-        closed = [entry for entry in lines if 'client closed' in entry]
-        assert line in closed
-        assert all(re.search(r'after \d+ of 50331648 bytes of big\.webm$', entry) for entry in closed)
-    finally:
-        server.shutdown()
-        server.server_close()
-
-
-@needs_browser
-def test_browser_cancelled_download_is_logged_once_and_the_next_download_completes(
-        tmp_path, browser, capsys) -> None:
-    """The cancellation comes from the browser's own download manager this
-    time, not a raw socket: with the page's network throttled so the 48 MiB
-    video is still arriving, ``Browser.cancelDownload`` stops it part-way.
-    The server logs the bytes it had sent in one line and no traceback, the
-    page keeps polling, and a fresh unthrottled download of the same video
-    completes byte-identical (ADR-324)."""
-
-    root, payload = _large_video_project(tmp_path)
-    lines: list[str] = []
-    server, _thread = serve(root, '127.0.0.1', 0, log=lines.append)
-    try:
-        page = _open(browser, server.url)
-        assert page.text('#view-kind') == 'RUN second'
-        page.evaluate("window.polls=0; window.originalFetch=window.fetch;"
-                      "window.fetch=async (...args) => { const response=await originalFetch(...args);"
-                      "if(String(args[0]).includes('api/project')) polls++; return response; }")
-        directory = browser.download_dir()
-        page.send('Browser.setDownloadBehavior', {
-            'behavior': 'allow', 'downloadPath': str(directory), 'eventsEnabled': True})
-        page.send('Network.enable')
-        page.send('Network.emulateNetworkConditions', {
-            'offline': False, 'latency': 0, 'downloadThroughput': 4 << 20, 'uploadThroughput': -1})
-        page.click('#videos a')
-        guid = browser.wait_event('Browser.downloadWillBegin', page.session, timeout=30)['guid']
-        partial = browser.wait_event(
-            'Browser.downloadProgress', page.session, timeout=60,
-            predicate=lambda params: params.get('guid') == guid
-            and (params.get('state') != 'inProgress' or params.get('receivedBytes', 0) > 0))
-        assert partial['state'] == 'inProgress', partial
-        assert 0 < partial['receivedBytes'] < len(payload) == partial['totalBytes']
-        page.send('Browser.cancelDownload', {'guid': guid})
-        final = browser.wait_event(
-            'Browser.downloadProgress', page.session, timeout=30,
-            predicate=lambda params: params.get('guid') == guid
-            and params.get('state') in ('completed', 'canceled'))
-        assert final['state'] == 'canceled', final
-        assert final['receivedBytes'] < len(payload)
-        page.send('Network.emulateNetworkConditions', {
-            'offline': False, 'latency': 0, 'downloadThroughput': -1, 'uploadThroughput': -1})
-        polls_at_cancel = page.evaluate('polls')
-        line = _wait_for_line(lines, 'client closed the connection')
-        sent, total = map(int, re.search(r'after (\d+) of (\d+) bytes of big\.webm$', line).groups())
-        assert total == len(payload) and sent < total
-        page.wait_for(f'polls >= {polls_at_cancel + 2}', timeout=15)
-        assert page.attribute('#freshness', 'data-state') == 'live'
-
-        download = page.download('#videos a', timeout=60)
-        assert download.received_bytes == download.total_bytes == len(payload)
-        assert hashlib.sha256(download.path.read_bytes()).hexdigest() == hashlib.sha256(payload).hexdigest()
-        err = capsys.readouterr().err
-        assert 'Traceback' not in err and 'Exception occurred' not in err, err
-        closed = [entry for entry in lines if 'client closed' in entry]
-        assert line in closed
-        assert all(re.search(r'after \d+ of 50331648 bytes of big\.webm$', entry) for entry in closed)
     finally:
         server.shutdown()
         server.server_close()

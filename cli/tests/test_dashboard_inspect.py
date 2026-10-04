@@ -122,45 +122,24 @@ def _agent_pairs(engine, root) -> list[dict]:
     return reply["value"]
 
 
-def _page_pairs(page) -> list[list]:
-    return page.evaluate(
-        "Array.from(document.querySelectorAll('#collision-contacts li[data-pair]'))"
-        ".map(li => [li.dataset.pair, li.dataset.penetrating, li.textContent])")
+def test_the_agent_reads_the_parts_touching_at_rest_that_the_server_serves(engine, rest_app, capsys) -> None:
+    """ADR-508's agent half: ``inspect scope=contacts`` and ``/api/model``
+    name the same pairs, with no page in the loop (the page's collision
+    readout was removed by ADR-533)."""
 
+    from cadex_cli.__main__ import main
+    from cadex_cli.report import EXIT_OK
 
-@needs_browser
-def test_browser_names_the_parts_touching_at_rest_and_the_agent_reads_the_same(
-        engine, rest_app, browser) -> None:
     root, server = rest_app
-    page = _open(browser, server.url + "p/rest/")
-    assert _model_state(page) == "loaded"
-    # The collision view has the proxies to draw, and beside it the t=0 readout.
-    assert page.evaluate("document.getElementById('show-collision').disabled") is False
-    assert page.attribute("#collision-contacts", "data-state") == "penetrating"
-    [(pair, penetrating, text)] = _page_pairs(page)
-    assert pair == "floor|post" and penetrating == "true"
-    assert "interpenetrating 2.0 mm" in text and "4 point(s)" in text
-    assert "1 pair(s), 4 contact point(s)" in page.text("#collision-contacts")
-
-    # The agent reads the same pair, with no page in the loop.
     served = _json(server.url + "p/rest/api/model/accepted")["contacts"]
     agent = _agent_pairs(engine, root)
     assert agent == served["pairs"]
     assert agent[0]["components"] == ["floor", "post"] and agent[0]["points"] == 4
     assert agent[0]["deepest_mm"] == pytest.approx(-2.0, abs=1e-6)
-
-    # Lift the post with the page's own slider (the `cadex params` write,
-    # ADR-503): the rebuilt export reports nothing touching, and so does the page.
-    slider = "#params input[type=range][data-param=sink]"
-    page.evaluate(
-        "(() => { const s = document.querySelector(%s); s.value = '0';"
-        " s.dispatchEvent(new Event('input')); s.dispatchEvent(new Event('change')); })()"
-        % json.dumps(slider))
-    page.wait_for("(window.cadexReview.lastWrite() || {}).value === 0", timeout=120)
-    assert page.evaluate("window.cadexReview.lastWrite()")["ok"] is True
-    page.wait_for("document.getElementById('collision-contacts').dataset.state === 'clear'", timeout=60)
-    assert _page_pairs(page) == []
-    assert "nothing" in page.text("#collision-contacts")
+    # Lift the post through the CLI: the rebuilt export reports nothing touching.
+    assert main(["params", "--project", str(root), "--set", "sink=0", "--json"]) == EXIT_OK
+    capsys.readouterr()
+    assert _json(server.url + "p/rest/api/model/accepted")["contacts"]["pairs"] == []
     assert _agent_pairs(engine, root) == []
 
 
@@ -302,76 +281,6 @@ def _poses(page) -> dict:
     return page.evaluate("window.cadexReview.viewer().stats().poses")
 
 
-@needs_browser
-def test_browser_explodes_the_engine_stages_and_cuts_a_section(engine, boom_app, browser) -> None:
-    root, server = boom_app
-    page = _open(browser, server.url + "p/boom/")
-    assert _model_state(page) == "loaded"
-    # Assembled is the solved pose, not the declared [0, 0, 40].
-    poses = _poses(page)
-    assert poses["swing"]["position_mm"] == pytest.approx([12.0, 0.0, 4.0], abs=1e-6)
-    assert "solved component placement" in page.text("#model-components")
-    assert page.evaluate("document.getElementById('explode-amount').disabled") is False
-    assert page.attribute("#explode-amount", "max") == "2"
-    assert page.evaluate("window.cadexReview.viewer().stats().leaders") == {"drawn": 2, "shown": False}
-
-    # Fully exploded is exactly the engine's final poses, for every component.
-    page.evaluate("(() => { const s = document.getElementById('explode-amount'); s.value = '2';"
-                  " s.dispatchEvent(new Event('input')); })()")
-    poses = _poses(page)
-    for name, pose in _engine_final_poses(root).items():
-        assert poses[name]["position_mm"] == pytest.approx(pose["position_mm"], abs=1e-6), name
-        assert poses[name]["rotation_xyzw"] == pytest.approx(pose["quaternion_xyzw"], abs=1e-6), name
-    assert page.evaluate("window.cadexReview.viewer().stats().leaders.shown") is True
-    assert "stage 2.00 of 2" in page.text("#explode-note")
-    # Between stages: the first stage done (lifted 30), half of the second (slid 10).
-    page.evaluate("window.cadexReview.explode(1.5)")
-    assert _poses(page)["swing"]["position_mm"] == pytest.approx([22.0, 0.0, 34.0], abs=1e-6)
-    assert _poses(page)["base"]["position_mm"] == pytest.approx([0.0, 0.0, 0.0], abs=1e-6)
-    page.evaluate("window.cadexReview.explode(0)")
-    assert _poses(page)["swing"]["position_mm"] == pytest.approx([12.0, 0.0, 4.0], abs=1e-6)
-    assert page.evaluate("window.cadexReview.viewer().stats().leaders.shown") is False
-
-    # Section: Cut runs cadex section with a derived offset; the page shows its SVG
-    # and clips the viewer at the plane and offset the CLI cut.
-    assert "no section cut yet" in page.text("#section-list")
-    whole = page.evaluate("window.cadexReview.viewer().modelPixels().count")
-    page.wait_for("!document.getElementById('section-cut').disabled", timeout=30)
-    page.click("#section-cut")
-    page.wait_for("['done','error'].includes(document.getElementById('section-status').dataset.state)", timeout=180)
-    assert page.attribute("#section-status", "data-state") == "done", page.text("#section-status")
-    cut = page.evaluate("window.cadexReview.lastSection().cut")
-    summary = json.loads((root / "review" / "section" / cut["svg"].split("/")[1] / cut["name"] / "summary.json").read_text())
-    assert cut["plane"] == "XZ" and cut["offset_source"] == "derived" and cut["offset_mm"] == summary["offset_mm"]
-    assert cut["objects_cut"] == 2 and summary["objects_cut"] == 2
-    assert page.evaluate("window.cadexReview.viewer().stats().section") == {"plane": "XZ", "offset_mm": cut["offset_mm"]}
-    page.wait_for("document.getElementById('section-svg').complete && document.getElementById('section-svg').naturalWidth > 0", timeout=30)
-    assert page.evaluate("document.getElementById('section-svg').naturalWidth") == 512
-    assert page.attribute('#section-list li[data-cut="%s"]' % cut["name"], "data-active") == "true"
-    halved = page.evaluate("window.cadexReview.viewer().modelPixels().count")
-    assert 0 < halved < whole
-    # The clip keeps the side below the offset: past the whole model it keeps
-    # everything, short of it nothing.
-    assert page.evaluate("window.cadexReview.viewer().setSection('XY', 100)") == {"plane": "XY", "offset_mm": 100}
-    assert page.evaluate("window.cadexReview.viewer().modelPixels().count") == whole
-    page.evaluate("window.cadexReview.viewer().setSection('XY', -5)")
-    assert page.evaluate("window.cadexReview.viewer().modelPixels().count") == 0
-
-    # An explicit offset through the page's own field: XY at 7 mm cuts the arm
-    # (z 4..10) and misses the plate (z 0..4).
-    page.evaluate("document.getElementById('section-plane').value = 'XY';"
-                  " document.getElementById('section-offset').value = '7'")
-    page.click("#section-cut")
-    page.wait_for("(window.cadexReview.lastSection() || {}).cut && window.cadexReview.lastSection().cut.plane === 'XY'", timeout=180)
-    cut = page.evaluate("window.cadexReview.lastSection().cut")
-    assert cut["offset_source"] == "explicit" and cut["offset_mm"] == 7 and cut["missed"] == ["base"]
-    assert page.evaluate("window.cadexReview.viewer().stats().section") == {"plane": "XY", "offset_mm": 7}
-    page.wait_for("document.querySelectorAll('#section-list li[data-cut]').length === 2", timeout=30)
-    page.click("#section-clear")
-    assert page.evaluate("window.cadexReview.viewer().stats().section") is None
-    assert page.evaluate("window.cadexReview.viewer().modelPixels().count") == whole
-
-
 # -- rollout playback (ADR-511) --------------------------------------------
 
 def _frame(index, time_s, z, q, command=None):
@@ -423,58 +332,3 @@ def carriage_run(engine, tmp_path, capsys, cpu_training):
     finally:
         server.shutdown()
         server.server_close()
-
-
-@needs_browser
-@pytest.mark.skipif(REAL_TRAINER_PYTHON is None, reason="No training venv with jax and mujoco (training/SETUP.md).")
-def test_browser_plays_a_real_rollout_with_the_trace_s_placements(carriage_run, browser) -> None:
-    root, server = carriage_run
-    trace = json.loads((root / "runs" / "baseline" / "rollout" / "assembly-simulation-trace.json").read_text())
-    timed = [f for f in trace["frames"] if f["nominal_time_s"] is not None]
-    model = _json(server.url + "p/carriage/api/model/run/baseline")
-    assert model["playback"] == {"available": True, "frames": len(timed),
-                                 "duration_s": timed[-1]["nominal_time_s"],
-                                 "url": "/api/playback/run/baseline"}
-    served = _json(server.url + "p/carriage/api/playback/run/baseline")
-    assert served["source"] == "runs/baseline/rollout/assembly-simulation-trace.json"
-    assert served["times_s"] == [f["nominal_time_s"] for f in timed]
-    assert _get(server.url + "p/carriage/api/playback/run/nope")[0] == 404
-
-    page = _open(browser, server.url + "p/carriage/")
-    page.evaluate("window.cadexReview.select('baseline')")
-    page.wait_for("(window.cadexReview.playback() || {}).times_s !== undefined", timeout=60)
-    assert _model_state(page) == "loaded"
-    # The button enables once the trace's frames have loaded, after the model settles: wait for it.
-    page.wait_for("!document.getElementById('play-toggle').disabled", timeout=30)
-    assert "no command yet" in page.text("#play-note")
-
-    # A mid-trace frame, at its own time, is the trace's placements exactly.
-    k = len(timed) // 2
-    frame = timed[k]
-    shown = page.evaluate("window.cadexReview.play(%r)" % frame["nominal_time_s"])
-    assert shown["frame"] == k and shown["command"] == pytest.approx(frame["actuator_commands"])
-    poses = _poses(page)
-    for name, placement in frame["component_placements"].items():
-        assert poses[name]["position_mm"] == pytest.approx(placement["position_mm"], abs=1e-3), name
-        assert poses[name]["rotation_xyzw"] == pytest.approx(placement["rotation_xyzw"], abs=1e-6), name
-    # The slide moved between the first frame and this one, so this is not the rest pose.
-    first = timed[0]["component_placements"]["slide"]["position_mm"]
-    assert poses["slide"]["position_mm"][2] != pytest.approx(first[2], abs=1.0)
-    assert ("frame %d of %d" % (k + 1, len(timed))) in page.text("#play-note")
-    assert "j/motor" in page.text("#play-note")
-
-    # Halfway between two frames, positions are blended; the command in force is the next frame's.
-    a, b = timed[k], timed[k + 1]
-    mid = page.evaluate("window.cadexReview.play(%r)" % ((a["nominal_time_s"] + b["nominal_time_s"]) / 2))
-    assert mid["frame"] == k and mid["command"] == pytest.approx(b["actuator_commands"])
-    za, zb = (f["component_placements"]["slide"]["position_mm"][2] for f in (a, b))
-    assert _poses(page)["slide"]["position_mm"][2] == pytest.approx((za + zb) / 2, abs=1e-3)
-
-    # Play runs in simulation seconds to the end and stops on the last frame.
-    page.evaluate("window.cadexReview.play(0)")
-    page.click("#play-toggle")
-    page.wait_for("!window.cadexReview.playing() && window.cadexReview.playback().t === %r" % timed[-1]["nominal_time_s"],
-                  timeout=30)
-    last = timed[-1]["component_placements"]["slide"]["position_mm"]
-    assert _poses(page)["slide"]["position_mm"] == pytest.approx(last, abs=1e-3)
-    assert page.text("#play-toggle") == "Play"

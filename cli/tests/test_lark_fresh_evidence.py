@@ -28,6 +28,19 @@ import pytest
 
 from conftest import REPO_ROOT
 
+#: Browser tests ADR-533 removed with the page panels they drove. A receipt
+#: that cites one keeps its history; the behaviour is no longer on the page.
+REMOVED_BY_ADR_533 = frozenset({
+    "test_browser_long_history_keeps_selection_and_playback_with_bounded_poll_work",
+    "test_browser_explains_a_failed_observation_whose_training_finished",
+    "test_browser_interrupted_download_leaves_polling_and_a_fresh_download_working",
+    "test_browser_cancelled_download_is_logged_once_and_the_next_download_completes",
+    "test_browser_lists_a_completed_run_whose_policy_was_never_stored_as_a_problem",
+    "test_browser_observes_final_policy_publication_failure",
+    "test_browser_playing_video_survives_new_current_attempt",
+    "test_browser_polls_training_histories_checkpoints_and_stale_states",
+})
+
 PROBE = REPO_ROOT / "docs" / "probes" / "lark-fresh"
 HEX64 = r"[0-9a-f]{64}"
 DECLARED = ("torso_w", "torso_d", "torso_h", "thigh_len", "shin_len", "limb_w",
@@ -678,7 +691,7 @@ def test_download104_receipt_shows_interrupted_downloads_recover_on_the_persiste
     assert fresh["historical_selection"] == "lark98-checkpoint20" and fresh["decoded_frames"] > 1
     tests = (REPO_ROOT / "cli" / "tests" / "test_review_server.py").read_text()
     for name in receipt["regression"]:
-        assert name.split("::")[1] in tests, name
+        assert name.split("::")[1] in tests or name.split("::")[1] in REMOVED_BY_ADR_533, name
     assert "download104-evidence.json" in (PROBE / "README.md").read_text()
     assert "download104-evidence.json" in (PROBE / "LIFECYCLE.md").read_text()
 
@@ -717,7 +730,7 @@ def test_download106_receipt_shows_a_browser_cancelled_download_recovering_on_th
     assert check["historical_selection"] == "lark98-checkpoint20" and check["components"] == 8
     tests = (REPO_ROOT / "cli" / "tests" / "test_review_server.py").read_text()
     for name in receipt["regression"]:
-        assert name.split("::")[1] in tests, name
+        assert name.split("::")[1] in tests or name.split("::")[1] in REMOVED_BY_ADR_533, name
     assert "download106-evidence.json" in (PROBE / "README.md").read_text()
     assert "download106-evidence.json" in (PROBE / "LIFECYCLE.md").read_text()
 

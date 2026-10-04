@@ -1,107 +1,80 @@
 // SPDX-FileCopyrightText: 2026 Cadex Authors
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// The projects index: lists /api/projects, one link per project, and beside
-// them /api/runs, one link per Ouroboros run (ADR-513), and /api/turns, the
-// CLI agent turns with their revisions and the owner's verdicts (ADR-519).
-// Polls so a project created, a run iteration finished or a turn accepted
-// while the page is open appears.
+// The projects index (ADR-533): /api/runs as one row per Ouroboros run, then
+// /api/projects newest first, PAGE_SIZE to a page, the page kept in the URL
+// (?page=N). Polls so a new project or a run's next iteration appears.
 // Writes nothing.
 (function () {
   'use strict';
 
   var POLL_MS = 5000;
+  var PAGE_SIZE = 20;
+  var projects = [];
+  var page = Math.max(1, parseInt(new URLSearchParams(location.search).get('page'), 10) || 1);
+
+  function $(id) { return document.getElementById(id); }
+  function when(stamp) {
+    var date = stamp ? new Date(stamp) : null;
+    return date && !isNaN(date) ? date.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  }
+  function row(dataset, href, name, detail) {
+    var item = document.createElement('li');
+    Object.keys(dataset).forEach(function (key) { item.dataset[key] = dataset[key]; });
+    var link = document.createElement('a');
+    link.href = href;
+    link.textContent = name;
+    var small = document.createElement('span');
+    small.className = 'muted small';
+    small.textContent = detail;
+    item.appendChild(link);
+    item.appendChild(small);
+    return item;
+  }
+
+  function pages() { return Math.max(1, Math.ceil(projects.length / PAGE_SIZE)); }
+
+  function renderProjects() {
+    page = Math.min(page, pages());
+    var list = $('projects');
+    list.textContent = '';
+    projects.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE).forEach(function (project) {
+      list.appendChild(row({ project: project.name }, project.url, project.name,
+        project.accepted.available ? when(project.accepted.updated_at) : 'nothing accepted'));
+    });
+    $('projects-count').textContent = projects.length ? String(projects.length) : '';
+    $('projects-empty').hidden = projects.length > 0;
+    $('pager').hidden = pages() < 2;
+    $('page-at').textContent = page + ' of ' + pages();
+    $('page-prev').disabled = page <= 1;
+    $('page-next').disabled = page >= pages();
+  }
+
+  function go(to) {
+    page = Math.min(Math.max(1, to), pages());
+    var url = new URL(location.href);
+    if (page > 1) url.searchParams.set('page', String(page)); else url.searchParams.delete('page');
+    history.replaceState(null, '', url);
+    renderProjects();
+    window.scrollTo(0, 0);
+  }
 
   function render(data) {
-    document.getElementById('projects-root').textContent = data.root + ' · ' + data.projects.length + ' project(s)';
-    var list = document.getElementById('projects');
-    list.textContent = '';
-    data.projects.forEach(function (project) {
-      var item = document.createElement('li');
-      item.dataset.project = project.name;
-      var link = document.createElement('a');
-      link.href = project.url;
-      link.textContent = project.name;
-      var detail = document.createElement('span');
-      detail.className = 'muted small';
-      var accepted = project.accepted.available ? 'accepted ' + project.accepted.revision.slice(0, 12) : project.accepted.reason;
-      detail.textContent = ' · ' + accepted + ' · ' + project.runs + ' run(s)';
-      item.appendChild(link);
-      item.appendChild(detail);
-      list.appendChild(item);
+    // Newest accepted first; a project with nothing accepted sorts last.
+    projects = data.projects.slice().sort(function (a, b) {
+      var x = (a.accepted.available && a.accepted.updated_at) || '', y = (b.accepted.available && b.accepted.updated_at) || '';
+      return x === y ? a.name.localeCompare(b.name) : (x < y ? 1 : -1);
     });
-    document.getElementById('projects-empty').hidden = data.projects.length > 0;
+    renderProjects();
   }
 
   function renderRuns(data) {
-    var list = document.getElementById('runs');
+    var list = $('runs');
     list.textContent = '';
     data.runs.forEach(function (run) {
-      var item = document.createElement('li');
-      item.dataset.run = run.name;
-      var link = document.createElement('a');
-      link.href = run.url;
-      link.textContent = run.name;
-      var detail = document.createElement('span');
-      detail.className = 'muted small';
-      var tally = Object.keys(run.verdicts).sort().map(function (verdict) {
-        return run.verdicts[verdict] + ' ' + verdict;
-      }).join(', ');
-      detail.textContent = ' · ' + run.state + ' · ' + run.iteration_count + ' iteration(s)' + (tally ? ' · ' + tally : '');
-      item.appendChild(link);
-      item.appendChild(detail);
-      list.appendChild(item);
+      list.appendChild(row({ run: run.name }, run.url, run.name, run.state + ' · ' + run.iteration_count + ' iterations'));
     });
-    document.getElementById('runs-empty').hidden = data.runs.length > 0;
-  }
-
-  var VERDICT_TONES = { accepted: 'ok', rejected: 'bad', restored: 'current' };
-
-  function renderTurns(data) {
-    var list = document.getElementById('turns');
-    list.textContent = '';
-    document.getElementById('turns-count').textContent = data.count > data.turns.length
-      ? '· newest ' + data.turns.length + ' of ' + data.count : '';
-    data.turns.forEach(function (turn) {
-      var item = document.createElement('li');
-      item.dataset.project = turn.project;
-      item.dataset.revision = turn.revision;
-      item.dataset.verdict = turn.verdict || 'none';
-      var link = document.createElement('a');
-      link.href = turn.url;
-      link.textContent = turn.project;
-      var revision = document.createElement('span');
-      revision.className = 'muted small turn-revision';
-      revision.textContent = ' · ' + turn.when + ' · ' + (turn.revision
-        ? 'revision ' + turn.revision.slice(0, 12) + (turn.ordinal ? ' (#' + turn.ordinal + ')' : '')
-        : 'no revision') + ' ';
-      var verdict = document.createElement('span');
-      verdict.className = 'badge turn-verdict';
-      verdict.dataset.tone = VERDICT_TONES[turn.verdict] || 'historical';
-      verdict.textContent = turn.verdict || 'unreviewed';
-      var prompt = document.createElement('div');
-      prompt.className = 'turn-prompt';
-      prompt.textContent = turn.prompt;
-      item.appendChild(link);
-      item.appendChild(revision);
-      item.appendChild(verdict);
-      item.appendChild(prompt);
-      if (turn.said) {
-        var said = document.createElement('div');
-        said.className = 'muted small turn-said';
-        said.textContent = '→ ' + turn.said;
-        item.appendChild(said);
-      }
-      if (turn.notes.length) {
-        var notes = document.createElement('div');
-        notes.className = 'muted small turn-notes';
-        var open = turn.notes.filter(function (note) { return !note.answered; }).length;
-        notes.textContent = turn.notes.length + ' note(s) for the owner' + (open ? ', ' + open + ' unanswered' : '');
-        item.appendChild(notes);
-      }
-      list.appendChild(item);
-    });
-    document.getElementById('turns-empty').hidden = data.turns.length > 0;
+    $('runs-card').hidden = data.runs.length === 0;
   }
 
   function getJson(url) {
@@ -114,12 +87,13 @@
   function poll() {
     Promise.all([
       getJson('api/projects').then(render).catch(function (error) {
-        document.getElementById('projects-root').textContent = 'unavailable: ' + error.message;
+        $('projects-count').textContent = 'unavailable: ' + error.message;
       }),
-      getJson('api/runs').then(renderRuns).catch(function () {}),
-      getJson('api/turns').then(renderTurns).catch(function () {})
+      getJson('api/runs').then(renderRuns).catch(function () {})
     ]).then(function () { setTimeout(poll, POLL_MS); });
   }
 
+  $('page-prev').addEventListener('click', function () { go(page - 1); });
+  $('page-next').addEventListener('click', function () { go(page + 1); });
   poll();
 }());

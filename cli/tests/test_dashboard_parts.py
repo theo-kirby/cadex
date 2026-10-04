@@ -100,23 +100,3 @@ def test_the_roles_are_the_ones_the_agent_reads_from_the_inventory(engine, rig_a
     assert "catalog" in rows["screw"] and inventory["palette"] == {"shell": "#C9AE86"}
     roster = {entry["name"] for entry in script["value"]}
     assert set(model["appearance"]["printable"]) == roster
-
-
-@needs_browser
-def test_browser_paints_each_part_by_role_and_lists_the_parts(engine, rig_app, browser) -> None:
-    _root, server = rig_app
-    page = _open(browser, server.url + "p/rig/")
-    assert _model_state(page) == "loaded"
-    summary = page.text("#parts-summary")
-    assert page.attribute("#parts-summary", "data-appearance") == "roles"
-    assert summary == ("parts: 2 printed, 1 purchased, 3 printable · colours by role: "
-                       "accent #F26A1B, mechanism #2F3237, shell #C9AE86")
-    rows = page.evaluate(
-        "Array.from(document.querySelectorAll('#model-components li[data-component]')).map(li => "
-        "[li.dataset.component, li.dataset.role, li.dataset.supplier, li.dataset.printable, "
-        "li.querySelector('.swatch').style.background, li.textContent])")
-    by_name = {row[0]: row[1:] for row in rows}
-    assert by_name["cap"][:4] == ["accent", "printed", "true", "rgb(242, 106, 27)"]
-    assert "cap ← cap_body · accent (declared) · printed · printable" in by_name["cap"][4]
-    assert by_name["screw"][:4] == ["mechanism", "purchased", "true", "rgb(47, 50, 55)"]
-    assert by_name["base"][:4] == ["shell", "printed", "true", "rgb(201, 174, 134)"]

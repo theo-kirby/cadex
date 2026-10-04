@@ -1,42 +1,37 @@
 <!DOCTYPE html>
 <!-- SPDX-FileCopyrightText: 2026 Cadex Authors
      SPDX-License-Identifier: LGPL-2.1-or-later
-     The projects index (`cadex app`): every project under one directory,
-     each linking to its review page at /p/<name>/, and beside them the
-     Ouroboros runs, each linking to /r/<run>/ (ADR-513), and the CLI agent
-     turns read from each project (ADR-519). Tokens are the
-     review page's (docs/DASHBOARD.md). -->
+     The projects index (`cadex app`, ADR-533): the Ouroboros runs, then the
+     projects newest first, a page at a time, each linking to its page. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cadex</title>
+<script src="theme.js"></script>
 <link rel="stylesheet" href="review.css">
 </head>
 <body>
 <header id="top">
   <div class="title">
     <h1>Cadex</h1>
-    <div id="projects-root" class="muted">loading…</div>
   </div>
 </header>
 <main id="projects-frame">
-  <section class="card">
-    <h2>Projects</h2>
-    <ul id="projects"></ul>
-    <p id="projects-empty" class="muted" hidden>No projects here yet. Start one with
-      <code>./cadex -p "a 40x25x15 mm bracket" --project &lt;this directory&gt;/bracket</code>.</p>
-  </section>
-  <section class="card">
+  <section id="runs-card" hidden>
     <h2>Runs</h2>
-    <h3>Ouroboros</h3>
-    <ul id="runs"></ul>
-    <p id="runs-empty" class="muted" hidden>No Ouroboros runs here. <code>./cadex app --runs &lt;dir&gt;</code>
-      points at a <code>.ouroboros/runs</code> directory.</p>
-    <h3>Agent turns <span id="turns-count" class="muted small"></span></h3>
-    <ul id="turns"></ul>
-    <p id="turns-empty" class="muted" hidden>No agent turns yet. Each accepted
-      <code>./cadex -p</code> turn, or one started from a project's page, is listed here.</p>
+    <ul id="runs" class="rows"></ul>
+  </section>
+  <section>
+    <h2>Projects <span id="projects-count" class="muted small"></span></h2>
+    <ul id="projects" class="rows"></ul>
+    <p id="projects-empty" class="muted" hidden>No projects yet. Start one with
+      <code>./cadex -p "a 40x25x15 mm bracket" --project &lt;this directory&gt;/bracket</code>.</p>
+    <nav id="pager" class="controls" hidden>
+      <button id="page-prev" type="button">Newer</button>
+      <span id="page-at"></span>
+      <button id="page-next" type="button">Older</button>
+    </nav>
   </section>
 </main>
 <script src="projects.js"></script>

@@ -193,31 +193,3 @@ def test_a_run_opens_with_the_stored_budgets_and_a_flag_overrides_one(engine, tm
     assert main(["params", "--project", str(root), "--set", "width=60", "--engine-timeout", "-1",
                  "--json"]) == EXIT_USAGE
     assert "timeout_seconds" in json.loads(capsys.readouterr().out)["error"]
-
-
-@needs_browser
-def test_the_dashboard_shows_the_stored_budgets_read_only(engine, tmp_path, capsys, browser) -> None:
-    projects = tmp_path / "projects"
-    root = projects / "orun2-budgets"
-    _script(root, tmp_path)
-    capsys.readouterr()
-    server, _thread = serve_projects(projects, "127.0.0.1", 0)
-    try:
-        page = _open(browser, server.url + "p/orun2-budgets/")
-        page.wait_for("document.getElementById('view-budgets').textContent.length > 0", timeout=30)
-        assert page.evaluate("document.getElementById('view-budgets').textContent") == \
-            "engine defaults (none stored)"
-        assert main(["budgets", "--project", str(root), "--set", "timeout_seconds=900"]) == EXIT_OK
-        capsys.readouterr()
-        assert _json(server.url + "p/orun2-budgets/api/project")["budgets"] == {
-            "stored": {"timeout_seconds": 900.0}}
-        page.wait_for("document.getElementById('view-budgets').textContent.indexOf('900 s') === 0",
-                      timeout=30)
-        assert page.evaluate("document.getElementById('view-budgets').textContent") == \
-            "900 s · engine default for the other"
-        # Shown, never edited: no control inside the row.
-        assert page.evaluate("document.querySelectorAll('#view-budgets input, #view-budgets button').length") == 0
-        assert ReviewProject(root).review()["budgets"]["stored"] == {"timeout_seconds": 900.0}
-    finally:
-        server.shutdown()
-        server.server_close()

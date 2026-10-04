@@ -39,7 +39,7 @@ from cadex_cli.video import render
 from cdp_browser import HeadlessBrowser
 from test_review_record import REVISION_A, REVISION_B
 from test_review_server import (CLI_DIR, _get, _open, _review_project, _rewrite_record,
-                                _stage_accepted, browser, needs_browser)
+                                _model_state, _stage_accepted, browser, needs_browser)
 from test_video import _video_run
 
 PRODUCER = r"""
@@ -197,28 +197,12 @@ def test_restarting_the_dashboard_keeps_the_review_and_leaves_training_alone(tmp
     try:
         producer.snapshot()
         page = _open(browser, first.url)
-        # A fresh visit lands on the current run without a click; the same
-        # visit after the restart must land on the same one.
-        default_before = page.text("#view-kind")
-        assert default_before == "RUN second", default_before
+        assert _model_state(page) == "loaded"
+        assert page.evaluate("window.cadexReview.state().revision") == REVISION_B
         identities_before = _run_identities(first.url)
         assert sorted(identities_before) == ["broken", "first", "sample", "second"]
-        page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
-        assert page.text("#view-revision") == REVISION_B
-        runs_before = page.evaluate("window.cadexReview.state().runs")
-        assert sorted(runs_before) == ["broken", "first", "sample", "second"]
-        page.click("#views li[data-run='sample']")
-        page.wait_for("document.getElementById('telemetry').dataset.state === 'training'")
-        page.wait_for("document.querySelector('#videos video')?.readyState >= 2")
-        page.evaluate("window.testVideo = document.querySelector('#videos video');"
-                      "window.lifecycleMarker = 'opened before restart'; "
-                      "testVideo.muted = true; testVideo.loop = true; testVideo.play()", await_promise=True)
-        page.wait_for("!testVideo.paused && testVideo.currentTime > 0.1")
-        page.wait_for("parseInt(document.querySelector('[data-metric=iteration]').textContent.split(': ')[1]) >= 2")
-        shown_before = int(page.text("[data-metric=iteration]").split(": ")[1])
-        assert page.attribute("[data-history=loss_curve]", "data-points") == str(shown_before + 1)
-        assert page.text("#view-relation").startswith("HISTORICAL — recorded at " + REVISION_A[:12])
         assert _server_video(first.url) == (root / "runs/sample" / video["path"]).read_bytes()
+        page.evaluate("window.lifecycleMarker = 'opened before restart'")
 
         # Stop the dashboard. The page notices, keeps what it had, and the
         # producer — which the server never knew about — carries on.
@@ -226,8 +210,8 @@ def test_restarting_the_dashboard_keeps_the_review_and_leaves_training_alone(tmp
         assert code == EXIT_OK, output
         page.evaluate("window.cadexReview.refresh()", await_promise=True)
         assert page.attribute("#freshness", "data-state") == "stale"
-        assert page.text("#view-revision") == REVISION_A
-        assert page.evaluate("document.querySelector('#videos video') === window.testVideo")
+        assert page.evaluate("window.cadexReview.state().revision") == REVISION_B
+        assert page.evaluate("window.cadexReview.viewer().nonBackgroundPixels()") > 1000
         while_down = producer.snapshot()
         time.sleep(0.7)
         assert producer.snapshot()["iteration"] > while_down["iteration"]
@@ -238,41 +222,16 @@ def test_restarting_the_dashboard_keeps_the_review_and_leaves_training_alone(tmp
         second = ReviewCommand(root, first.port)
         assert second.url == first.url
         page.wait_for("document.getElementById('freshness').dataset.state === 'live'", timeout=10)
-        assert page.evaluate("window.lifecycleMarker") == "opened before restart"
-        state = page.evaluate("window.cadexReview.state()")
-        assert state["selected"] == "sample" and state["revision"] == REVISION_A
-        assert sorted(state["runs"]) == sorted(runs_before)
-        assert page.text("#view-revision") == REVISION_A
-        page.wait_for("parseInt(document.querySelector('[data-metric=iteration]').textContent.split(': ')[1]) > " + str(shown_before))
         assert time.monotonic() - restart_started < 5
-        shown_after = int(page.text("[data-metric=iteration]").split(": ")[1])
-        assert page.attribute("#telemetry", "data-state") == "training"
-        assert page.attribute("[data-history=loss_curve]", "data-points") == str(shown_after + 1)
-        assert page.evaluate("document.querySelector('#videos video') === window.testVideo && testVideo.readyState >= 2 && !testVideo.paused")
-        playback_time = page.evaluate("testVideo.currentTime")
-        page.wait_for("testVideo.currentTime !== " + str(playback_time))
+        assert page.evaluate("window.lifecycleMarker") == "opened before restart"
+        assert page.evaluate("window.cadexReview.state().revision") == REVISION_B
         assert hashlib.sha256(_server_video(second.url)).hexdigest() == video["sha256"]
 
         # Reopen: a fresh page against the restarted server reads the same project.
         reopened = _open(browser, second.url)
-        assert reopened.text("#view-kind") == default_before
+        assert _model_state(reopened) == "loaded"
+        assert reopened.evaluate("window.cadexReview.state().revision") == REVISION_B
         assert _run_identities(second.url) == identities_before
-        reopened.evaluate("window.cadexReview.select('accepted')", await_promise=True)
-        assert reopened.text("#view-revision") == REVISION_B
-        assert REVISION_B[:12] in reopened.text("#accepted-line")
-        assert sorted(reopened.evaluate("window.cadexReview.state().runs")) == sorted(runs_before)
-        reopened.click("#views li[data-run='sample']")
-        reopened.wait_for("document.getElementById('view-revision').textContent === " + json.dumps(REVISION_A))
-        assert reopened.text("#view-relation").startswith("HISTORICAL — recorded at " + REVISION_A[:12])
-        assert reopened.text("#params tr[data-param='leg_len'] td:nth-child(2)") == "90"
-        reopened.wait_for("document.getElementById('telemetry').dataset.state === 'training'")
-        reopened.wait_for("parseInt(document.querySelector('[data-metric=iteration]').textContent.split(': ')[1]) > " + str(shown_after))
-        points = int(reopened.attribute("[data-history=loss_curve]", "data-points"))
-        assert points == int(reopened.text("[data-metric=iteration]").split(": ")[1]) + 1
-        reopened.wait_for("document.querySelector('#videos video')?.readyState >= 2")
-        assert video["policy_sha256"][:12] in reopened.text("#videos") and "seed 7" in reopened.text("#videos")
-        download = reopened.download("#videos a")
-        assert hashlib.sha256(download.path.read_bytes()).hexdigest() == video["sha256"]
 
         # The producer: same process throughout, never restarted, never doubled.
         assert producer.alive()
@@ -296,17 +255,6 @@ def test_copied_project_reopens_without_source_and_keeps_edits_isolated(tmp_path
     from test_review_record import _manifest
 
     root, video = _lifecycle_project(tmp_path)
-    progress = root / 'runs/sample/train/progress.json'
-    progress.write_text(json.dumps({
-        'schema': 'cadex-training-progress-v1', 'state': 'done',
-        'updated_at': time.time(), 'task_sha256': 't' * 64,
-        'iteration': 2, 'total': 2, 'reward_per_step': 0.5,
-        'loss': 0.25, 'episode_steps': 14,
-        'curve': [[0, 0.1], [1, 0.3], [2, 0.5]],
-        'loss_curve': [[0, 1], [1, 0.5], [2, 0.25]],
-        'episode_steps_curve': [[0, 12], [1, 13], [2, 14]],
-        'checkpoints': [],
-    }))
     # No file is excluded: accepted artifacts, assets and retained runs travel.
     before = _tree_digest(root, ignore=root / 'nonexistent')
     copy = tmp_path / 'independent-copy'
@@ -317,10 +265,8 @@ def test_copied_project_reopens_without_source_and_keeps_edits_isolated(tmp_path
     try:
         original_page = _open(browser, source.url)
         copied_page = _open(browser, copied.url)
-        original_page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
-        copied_page.evaluate("window.cadexReview.select('accepted')", await_promise=True)
-        assert original_page.text('#view-revision') == REVISION_B
-        assert copied_page.text('#view-revision') == REVISION_B
+        assert original_page.evaluate('window.cadexReview.state().revision') == REVISION_B
+        assert copied_page.evaluate('window.cadexReview.state().revision') == REVISION_B
         # Simulate an accepted design change in the copy, without an engine.
         # This proves reader isolation; it does not claim a real design/retrain.
         revision_c = 'c' * 64
@@ -328,33 +274,20 @@ def test_copied_project_reopens_without_source_and_keeps_edits_isolated(tmp_path
         _manifest(copy, revision_c)
         _stage_accepted(copy, revision_c)
         copied_page.evaluate('window.cadexReview.refresh()', await_promise=True)
-        copied_page.wait_for("document.getElementById('view-revision').textContent === " + json.dumps(revision_c))
+        copied_page.wait_for("window.cadexReview.state().revision === " + json.dumps(revision_c))
         original_page.evaluate('window.cadexReview.refresh()', await_promise=True)
-        assert original_page.text('#view-revision') == REVISION_B
+        assert original_page.evaluate('window.cadexReview.state().revision') == REVISION_B
         assert _tree_digest(root, ignore=root / 'nonexistent') == before
         assert source.stop()[0] == EXIT_OK
         unavailable = tmp_path / 'source-unavailable'
         root.rename(unavailable)
         assert not root.exists()
-        # A new browser page must resolve every historical artifact in the copy.
+        # A new browser page draws the copy's own model, and every retained run
+        # still resolves from the copy alone.
         reopened = _open(browser, copied.url)
-        reopened.evaluate("window.cadexReview.select('accepted')", await_promise=True)
-        assert reopened.text('#view-revision') == revision_c
-        assert sorted(reopened.evaluate('window.cadexReview.state().runs')) == ['broken', 'first', 'sample', 'second']
-        reopened.click("#views li[data-run='sample']")
-        reopened.wait_for("document.getElementById('view-revision').textContent === " + json.dumps(REVISION_A))
-        assert reopened.text('#view-relation').startswith('HISTORICAL')
-        assert reopened.text("#params tr[data-param='leg_len'] td:nth-child(2)") == '90'
-        reopened.wait_for('window.cadexReview.viewer().stats().triangles === 24')
-        assert reopened.attribute('#telemetry', 'data-state') == 'done'
-        for history in ('curve', 'loss_curve', 'episode_steps_curve'):
-            assert reopened.attribute(f'[data-history={history}]', 'data-points') == '3'
-        reopened.wait_for("document.querySelector('#videos video')?.readyState >= 2")
-        reopened.evaluate("window.copyVideo=document.querySelector('#videos video'); copyVideo.muted=true; copyVideo.loop=true; copyVideo.play()", await_promise=True)
-        reopened.wait_for('copyVideo.currentTime > 0.1')
-        assert video['policy_sha256'][:12] in reopened.text('#videos')
-        download = reopened.download('#videos a')
-        assert hashlib.sha256(download.path.read_bytes()).hexdigest() == video['sha256']
+        assert _model_state(reopened) == 'loaded'
+        assert reopened.evaluate('window.cadexReview.state().revision') == revision_c
+        assert sorted(_run_identities(copied.url)) == ['broken', 'first', 'sample', 'second']
         assert hashlib.sha256(_server_video(copied.url)).hexdigest() == video['sha256']
         assert _tree_digest(unavailable, ignore=unavailable / 'nonexistent') == before
         # Historical bytes in the edited copy remain exactly the copied bytes.

@@ -19,6 +19,20 @@ dashboard (`cli/cadex_cli/review_server.py` + `review_static/`) **only
 displays**: it opens no engine, rebuilds nothing and accepts nothing (ADR-286).
 So every PORT row that steers is new dashboard work under D2.
 
+**2026-10-04, after the merge: the page was cut to the minimum (ADR-533).**
+The owner had the dashboard reduced to the model, a design turn, the
+parameter sliders and the revisions. The page no longer shows the comments
+and part pick, the agent's notes, export, drawings, the collision toggle and
+contact readout, the dimension overlay, the explode slider, the section cut,
+rollout playback, the parts' roles and print roster, image attach, or the
+`look` images, so rows below that name one of those as the dashboard's are
+now **headless only**. Nothing they describe was lost. Each server route
+still answers and each CLI command (`cadex comment`, `cadex export`,
+`cadex section`, `cadex -p --image`, `inspect scope=contacts`,
+`draw_blueprint`) still works with its tests, and the agent's tools are
+unchanged. The browser tests that drove those panels were removed with
+them. A panel added back is page work only.
+
 **Status vocabulary.** The charter's three final answers are:
 - **ported** — where it went, and the test that proves it;
 - **already covered** — where;
