@@ -107,6 +107,8 @@ Reconcile judgement: retain `working`. This is the first evidence of the contrac
 
 **A grounded mechanism exports with no environment floor (2026-09-14).** Heron, the ot6 two-DoF arm, is grounded at its base, and its dynamics export carries `environment: None`: ADR-335 supplies a floor only to a free base, so a grounded arm's only bench is its termination channel. Any future arm task that needs the tip to collide with the bench would need the environment floor extended to grounded exports — an engine unit, not taken. The same design at first carried a floor `assembly.collision("plane")` on its base, which the charter forbids as world geometry in a design; the product agent removed it on a `--resume` turn quoting the measurement [rec: narrow-quill-3259].
 
+**A robot trained before ADR-469 re-enters the loop (ADR-520, 2026-10-04).** A pre-ADR-469 project now opens with its stale policy named instead of locking (`brisk-rock-9862`); on `orun2-w1-robin` the policy was set aside with `params --set policy_on=0`, then a CPU `cadex walk` (3 iterations, 8 envs; train 81.3 s, policy `d2556f70` on task `d50e953b`, digest edit accepted `bda7c1c9`) and `cadex evaluate` ran end to end. The evaluation **failed 0 of 10 seeds** (B1, B2 tilt 32.4–36.1° vs ≤ 30°, B5 fail; B3, B4 pass) — expected for a 3-iteration budget, and the earlier 10/10 evaluations stay listed as historical. Retrain-or-set-aside is the recovery path for every older project [rec: icy-tooth-7719] [rec: dusty-bramble-8099].
+
 ## Negative knowledge
 
 - [scope: a parameter sweep on a project with a policy declared, without the switch convention | confidence: high | evidence: sweet-light-3396, keen-sail-4481] `cadex params --set` is refused at exit 3 when the change moves the task digest, because the declared policy no longer fits, and nothing is written. Iterate cannot be a plain sweep; the ADR-192 answer is a script that declares the policy behind a `policy_on` switch the sweep blanks. A `params --drop-policy` flag and an engine op were considered and not taken.
@@ -190,3 +192,5 @@ Reconcile judgement: retain `working`. This is the first evidence of the contrac
 - light-hill-1224 — ADR-406 raised the render caps that killed hex2's review leg
 - mild-lily-4405 — ADR-433: the gait check reads training survival as a trailing 50-iteration median, not off a horizon-boundary last iteration
 - chilly-arrow-2197 — cadex walk kept as one use, not the loop; its review defers to a success spec (ADR-464)
+- icy-tooth-7719 — ADR-520: a pre-ADR-469 trained project opens with its stale policy named; set aside or retrain
+- dusty-bramble-8099 — orun2-w1-robin set aside, retrained on CPU and evaluated (0/10) after ADR-520
