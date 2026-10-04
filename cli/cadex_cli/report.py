@@ -100,6 +100,11 @@ class RunReport:
     error: str = ""
     #: ``cadex revision``: the trail it listed, or the revision it put back (ADR-506).
     revisions: dict[str, Any] = field(default_factory=dict)
+    #: The project's engine budgets (ADR-517): after an engine run, those
+    #: ``in_force`` with each one's ``source`` (``override``, ``project`` or
+    #: ``engine``) and what the project ``stored``; ``cadex budgets``
+    #: reports ``stored`` alone.
+    budgets: dict[str, Any] = field(default_factory=dict)
     #: Free-form notes worth printing but not worth a field of their own.
     notes: list[str] = field(default_factory=list)
 
@@ -143,6 +148,8 @@ class RunReport:
             payload["attachments"] = [dict(item) for item in self.attachments]
         if self.revisions:
             payload["revisions"] = dict(self.revisions)
+        if self.budgets:
+            payload["budgets"] = dict(self.budgets)
         if self.notes:
             payload["notes"] = list(self.notes)
         if self.error:
@@ -352,6 +359,14 @@ def human_lines(report: RunReport) -> list[str]:
         lines.append("review gait {:s}".format(
             "walked" if gait.get("walked")
             else "DID NOT WALK: " + "; ".join(gait.get("findings") or ())))
+    budgets = report.budgets
+    if budgets and ("in_force" not in budgets
+                    or any(source != "engine" for source in (budgets.get("source") or {}).values())):
+        shown = budgets.get("in_force") if "in_force" in budgets else budgets.get("stored")
+        sources = budgets.get("source") or {}
+        lines.append("budgets " + ("  ".join(
+            f"{key} {value:g}" + (f" ({sources[key]})" if key in sources else "")
+            for key, value in sorted((shown or {}).items())) or "none stored: the engine's defaults"))
     for note in report.notes:
         lines.append(f"note   {note}")
     if report.revision:

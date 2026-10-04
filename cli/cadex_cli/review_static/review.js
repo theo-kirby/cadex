@@ -178,8 +178,20 @@
     });
   }
 
+  // The project's engine budgets (ADR-517), read-only: stored with
+  // `cadex budgets --set`, overridden per call by --engine-timeout/-memory.
+  function budgetsText(budgets) {
+    var stored = (budgets && budgets.stored) || {}, parts = [];
+    if (stored.timeout_seconds) parts.push(stored.timeout_seconds + ' s');
+    if (stored.memory_limit_mb) parts.push(stored.memory_limit_mb + ' MB');
+    var unset = (!stored.timeout_seconds ? 1 : 0) + (!stored.memory_limit_mb ? 1 : 0);
+    if (!parts.length) return 'engine defaults (none stored)';
+    return parts.join(' · ') + (unset ? ' · engine default for the other' : '');
+  }
+
   function renderIdentity() {
     var accepted = state.review.accepted, run = selectedRun();
+    text('view-budgets', budgetsText(state.review.budgets));
     var kind = $('view-kind'), relation = $('view-relation'), status = $('view-status');
     if (!run) {
       kind.textContent = 'ACCEPTED NOW'; kind.dataset.tone = 'accepted';

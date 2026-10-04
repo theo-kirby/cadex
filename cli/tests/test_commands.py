@@ -256,9 +256,9 @@ def test_neither_form_of_script_asks_for_the_restore_pass(
     asked: list[bool] = []
     real = main_module.open_project
 
-    def recording(client, root, *, restore=True):
+    def recording(client, root, *, restore=True, **kwargs):
         asked.append(bool(restore))
-        return real(client, root, restore=restore)
+        return real(client, root, restore=restore, **kwargs)
 
     monkeypatch.setattr(main_module, "open_project", recording)
 

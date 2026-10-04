@@ -71,6 +71,7 @@ from .agent import IMAGE_LIMIT, IMAGES_PER_TURN, ImageAttachment, ImageRefused, 
 from .comments import read_comments, read_notes
 from .revisions import read_history as read_revision_history
 from .walk import run_leg
+from .session import read_agent_state
 from .review_record import (
     policy_lineage,
     PROJECT_ARTIFACT_KEYS,
@@ -1498,6 +1499,8 @@ class ReviewProject:
         review["exports"] = export_listing(self.root)
         review["sections"] = section_listing(self.root)
         review["drawings"] = blueprint_listing(self.root)
+        # Read-only; `cadex budgets --set` is how they change (ADR-517).
+        review["budgets"] = {"stored": dict(read_agent_state(self.root).budgets)}
         review["served_at"] = _now()
         return review
 

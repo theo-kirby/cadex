@@ -107,8 +107,9 @@ from `src/` (ADR-061).
 - **Worker**: `FreeCADCmd --safe-mode -c <bootstrap>` subprocess launched
   via `src/Mod/cadex/CadexScriptedProcess.py` (`run_process`: no console
   window, new session, stdin closed, hard timeout + memory watchdog;
-  budgets from preferences `ScriptedTimeoutSeconds` /
-  `ScriptedMemoryLimitMB`, carried into the worker again as `RLIMIT_CPU`
+  budgets from `open_project`'s `budgets` per field, else preferences
+  `ScriptedTimeoutSeconds` / `ScriptedMemoryLimitMB` (the CLI sends the
+  project's, stored in `agent.json`, ADR-517), carried into the worker again as `RLIMIT_CPU`
   and `RLIMIT_AS` in different units — see `docs/XSCRIPT.md` and ADR-250).
   Its environment is a closed allowlist (`worker_environment`) that pins
   `PYTHONHASHSEED` and the BLAS thread pool, so a worker's address-space

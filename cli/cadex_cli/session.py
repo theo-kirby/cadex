@@ -18,23 +18,39 @@ CLI-owned *sibling* of ``script.json``: the CLI reads the engine's state
 file through ``inspect`` and never writes it. Keeping the two files apart is
 what stops a CLI version bump from being able to break a project that the
 shell also opens.
+
+**The project's engine budgets** live there too (ADR-517): the wall-clock
+seconds and the memory ceiling one engine script run may spend,
+``open_project``'s ``budgets``. A project that needs a longer rebuild says
+so once, ``cadex budgets --set timeout_seconds=900``, and every later run —
+a turn, a slider, a walk's legs — opens with it. ``--engine-timeout`` and
+``--engine-memory`` override them for one call. An unset budget is absent,
+never zero, and the engine fills it from its own default per field.
 """
 
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import datetime as _datetime
 import errno
 import json
+import math
 import os
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Mapping
 
 #: The CLI's state file, beside the engine's ``script.json``.
 AGENT_STATE_NAME = "agent.json"
 AGENT_STATE_SCHEMA = "cadex-cli-agent-v1"
 LOCK_NAME = ".cadex-cli.lock"
+
+
+#: The project's engine budgets, by ``open_project`` key, with each one's type.
+BUDGET_KEYS: dict[str, type] = {"timeout_seconds": float, "memory_limit_mb": int}
+#: Bounds a stored or overriding budget must fall within: an hour of
+#: wall-clock, 128 GiB of memory — the shell's preference ranges.
+BUDGET_LIMITS: dict[str, float] = {"timeout_seconds": 3600.0, "memory_limit_mb": 131072}
 
 
 class ProjectBusy(RuntimeError):
@@ -48,14 +64,68 @@ class AgentState:
     session_id: str = ""
     model: str = ""
     updated_at: str = ""
+    #: The project's engine budgets (ADR-517); only the ones it sets.
+    budgets: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": AGENT_STATE_SCHEMA,
             "session_id": self.session_id,
             "model": self.model,
             "updated_at": self.updated_at,
         }
+        if self.budgets:
+            payload["budgets"] = dict(self.budgets)
+        return payload
+
+
+def budget_value(key: str, value: Any) -> float | int:
+    """One budget, checked: a positive number within its bound, or 0 to unset.
+
+    Raises :class:`ValueError` with the words a person needs; the CLI turns
+    that into a usage error.
+    """
+
+    if key not in BUDGET_KEYS:
+        raise ValueError(f"not a budget: {key!r} (one of {', '.join(BUDGET_KEYS)})")
+    kind = BUDGET_KEYS[key]
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{key} must be a number, not {value!r}") from None
+    if not math.isfinite(number) or number < 0 or number > BUDGET_LIMITS[key]:
+        raise ValueError(f"{key} must be within [0, {BUDGET_LIMITS[key]:g}]; 0 unsets it")
+    if kind is int and number != int(number):
+        raise ValueError(f"{key} is a whole number of megabytes, not {value!r}")
+    return kind(number)
+
+
+def _stored_budgets(raw: Any) -> dict[str, Any]:
+    """The budgets a file holds; anything out of range is simply not set."""
+
+    budgets: dict[str, Any] = {}
+    if not isinstance(raw, dict):
+        return budgets
+    for key in BUDGET_KEYS:
+        if key not in raw or isinstance(raw[key], bool):
+            continue
+        try:
+            value = budget_value(key, raw[key])
+        except ValueError:
+            continue
+        if value > 0:
+            budgets[key] = value
+    return budgets
+
+
+def effective_budgets(stored: Mapping[str, Any], overrides: Mapping[str, Any]) -> dict[str, Any]:
+    """The budgets one call opens with: each positive override over the stored one."""
+
+    budgets = dict(stored)
+    for key, value in overrides.items():
+        if value:
+            budgets[key] = budget_value(key, value)
+    return budgets
 
 
 def agent_state_path(project_root: Path | str) -> Path:
@@ -81,7 +151,46 @@ def read_agent_state(project_root: Path | str) -> AgentState:
         session_id=str(payload.get("session_id") or ""),
         model=str(payload.get("model") or ""),
         updated_at=str(payload.get("updated_at") or ""),
+        budgets=_stored_budgets(payload.get("budgets")),
     )
+
+
+def _write_agent_file(project_root: Path | str, state: AgentState) -> None:
+    path = agent_state_path(project_root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Written whole and renamed into place: a pipeline that kills a run
+    # mid-write must not leave a half-file that read_agent_state has to
+    # forgive.
+    scratch = path.with_name(path.name + ".partial")
+    scratch.write_text(
+        json.dumps(state.to_json(), indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    os.replace(scratch, path)
+
+
+def _now() -> str:
+    return (_datetime.datetime.now(_datetime.timezone.utc).replace(microsecond=0)
+            .isoformat().replace("+00:00", "Z"))
+
+
+def write_agent_budgets(project_root: Path | str, changes: Mapping[str, Any]) -> AgentState:
+    """Store the project's engine budgets: each change sets one, 0 unsets it.
+
+    The conversation identity beside them is kept as it is.
+    """
+
+    stored = read_agent_state(project_root)
+    budgets = dict(stored.budgets)
+    for key, value in changes.items():
+        value = budget_value(key, value)
+        if value > 0:
+            budgets[key] = value
+        else:
+            budgets.pop(key, None)
+    state = AgentState(session_id=stored.session_id, model=stored.model,
+                       updated_at=_now(), budgets=budgets)
+    _write_agent_file(project_root, state)
+    return state
 
 
 def write_agent_state(
@@ -98,21 +207,10 @@ def write_agent_state(
     state = AgentState(
         session_id=str(session_id or ""),
         model=str(model or ""),
-        updated_at=_datetime.datetime.now(_datetime.timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z"),
+        updated_at=_now(),
+        budgets=stored.budgets,
     )
-    path = agent_state_path(project_root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # Written whole and renamed into place: a pipeline that kills a run
-    # mid-write must not leave a half-file that read_agent_state has to
-    # forgive.
-    scratch = path.with_name(path.name + ".partial")
-    scratch.write_text(
-        json.dumps(state.to_json(), indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    os.replace(scratch, path)
+    _write_agent_file(project_root, state)
     return state
 
 

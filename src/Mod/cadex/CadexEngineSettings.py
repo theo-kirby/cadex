@@ -68,11 +68,20 @@ def load_engine_budgets() -> dict[str, Any]:
 
 
 def resolve_budgets(raw: Mapping[str, Any] | None) -> dict[str, Any]:
-    """Caller-supplied budgets when complete, else the preference values."""
+    """Each caller-supplied budget that is positive, else its preference value.
+
+    Per field (ADR-517): a project that stores only a longer timeout keeps
+    the engine's memory ceiling rather than losing the timeout it asked for.
+    """
 
     budgets = dict(raw or {})
     timeout = _positive_float(budgets.get("timeout_seconds"), 0.0)
     memory_mb = _positive_int(budgets.get("memory_limit_mb"), 0)
     if timeout > 0.0 and memory_mb > 0:
         return {"timeout_seconds": timeout, "memory_limit_mb": memory_mb}
-    return load_engine_budgets()
+    resolved = load_engine_budgets()
+    if timeout > 0.0:
+        resolved["timeout_seconds"] = timeout
+    if memory_mb > 0:
+        resolved["memory_limit_mb"] = memory_mb
+    return resolved

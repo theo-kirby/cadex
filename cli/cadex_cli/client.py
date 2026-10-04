@@ -271,18 +271,24 @@ class CadexdClient:
 
 
 def open_project(
-    client: CadexdClient, project_root: Path, *, restore: bool = True
+    client: CadexdClient, project_root: Path, *, restore: bool = True,
+    budgets: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """``open_project``, with the failure turned into something readable.
 
     ``cadexd`` creates the root itself (``mkdir(parents=True,
     exist_ok=True)``), so ``--project`` may name a directory that does not
     exist yet — which is what makes ``cadex -p ... --project ./new`` a
-    one-liner rather than a two-step.
+    one-liner rather than a two-step. ``budgets`` are the project's engine
+    budgets for this call (ADR-517); the reply's ``budgets`` are the ones
+    in force.
     """
 
-    reply = client.request("open_project", {"project_root": str(project_root),
-                                            "restore": bool(restore)})
+    args: dict[str, Any] = {"project_root": str(project_root), "restore": bool(restore)}
+    if budgets:
+        # Only the ones set; the engine fills the rest per field (ADR-517).
+        args["budgets"] = dict(budgets)
+    reply = client.request("open_project", args)
     if reply.get("ok") is not True:
         raise CadexdError(
             f"Could not open {project_root}: "

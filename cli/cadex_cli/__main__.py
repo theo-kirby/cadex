@@ -100,13 +100,16 @@ from .report import (
     params_from_script,
 )
 from .session import (
+    BUDGET_KEYS,
     ProjectBusy,
+    effective_budgets,
     project_lock,
     read_agent_state,
     read_project_assets,
     read_script_source,
     read_script_state,
     read_working_revision,
+    write_agent_budgets,
     write_agent_state,
 )
 from .train import (
@@ -743,6 +746,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     comment_parser.add_argument("text", help="The comment, in words.")
 
+    budgets_parser = subparsers.add_parser(
+        "budgets",
+        help="Show or store the project's engine budgets (ADR-517): the "
+        "seconds and megabytes one engine script run may spend. Every later "
+        "run opens with them; --engine-timeout / --engine-memory override "
+        "them for one call. No engine, no tokens.",
+    )
+    _common(budgets_parser, inherit=True)
+    budgets_parser.add_argument(
+        "--set",
+        dest="budget_assignments",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="Repeatable. timeout_seconds=SECONDS or memory_limit_mb=MB; 0 "
+        "unsets one, leaving the engine's default in force.",
+    )
+
     revision_parser = subparsers.add_parser(
         "revision",
         help="Review the accepted revisions (ADR-506): list the trail, accept "
@@ -874,6 +895,25 @@ def _common(parser: argparse.ArgumentParser, *, inherit: bool = False) -> None:
         "then the development tree.",
     )
     parser.add_argument(
+        "--engine-timeout",
+        dest="engine_timeout",
+        type=float,
+        default=default(0.0),
+        metavar="SECONDS",
+        help="Wall-clock budget for one engine script run, this call only. "
+        "Default: the project's stored budget (`cadex budgets`), then the "
+        "engine's own.",
+    )
+    parser.add_argument(
+        "--engine-memory",
+        dest="engine_memory",
+        type=int,
+        default=default(0),
+        metavar="MB",
+        help="Memory ceiling for one engine script run, this call only. "
+        "Default: the project's stored budget, then the engine's own.",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         default=default(False),
@@ -900,11 +940,17 @@ def _engine_session(
     with project_lock(project_root, wait=bool(args.wait)):
         project_root = project_root.resolve()
         report.project_root = str(project_root)
+        # The project's engine budgets, each overridden for this call by its
+        # flag (ADR-517); a bad flag is refused before an engine starts.
+        stored = read_agent_state(project_root).budgets
+        overrides = _budget_overrides(args)
+        budgets = effective_budgets(stored, overrides)
         client = CadexdClient(engine)
         try:
             client.start()
-            opened = open_project(client, project_root, restore=restore)
+            opened = open_project(client, project_root, restore=restore, budgets=budgets)
             report.params = params_from_script(opened.get("script"))
+            report.budgets = _budgets_report(stored, overrides, opened.get("budgets"))
             # The project as a codebase (ADR-193): its three documents
             # exist from the first visit on. Plain files beside
             # script.json, like agent.json; the engine never reads them.
@@ -922,6 +968,24 @@ def _engine_session(
             yield engine, client
         finally:
             client.shutdown()
+
+
+def _budget_overrides(args: argparse.Namespace) -> dict[str, Any]:
+    """``--engine-timeout`` / ``--engine-memory``, the ones this call gives."""
+
+    overrides = {"timeout_seconds": float(getattr(args, "engine_timeout", 0.0) or 0.0),
+                 "memory_limit_mb": int(getattr(args, "engine_memory", 0) or 0)}
+    return {key: value for key, value in overrides.items() if value}
+
+
+def _budgets_report(stored: Mapping[str, Any], overrides: Mapping[str, Any],
+                    in_force: Any) -> dict[str, Any]:
+    """The envelope's ``budgets``: what is in force and where each came from."""
+
+    return {"in_force": dict(in_force) if isinstance(in_force, Mapping) else {},
+            "stored": dict(stored),
+            "source": {key: "override" if key in overrides else "project" if key in stored
+                       else "engine" for key in BUDGET_KEYS}}
 
 
 def _install_cancel(client: CadexdClient) -> None:
@@ -1258,6 +1322,35 @@ def command_comment(args: argparse.Namespace, report: RunReport) -> int:
                           revision=identity.get("revision", "") if identity.get("available") else "")
     report.comments = [comment]
     report.accepted_revision = comment["revision"]
+    report.ok = True
+    return EXIT_OK
+
+
+def command_budgets(args: argparse.Namespace, report: RunReport) -> int:
+    """``cadex budgets [--set NAME=VALUE ...]``: the project's engine budgets (ADR-517).
+
+    Stored in the project's ``agent.json`` beside the conversation, read by
+    every later run's ``open_project``. With no ``--set`` it only reports.
+    It touches no engine, so what it reports is what is *stored*; a run's
+    own envelope says what was in force.
+    """
+
+    root = Path(args.project).expanduser()
+    if not root.is_dir():
+        raise ValueError(f"no project at {root}.")
+    changes: dict[str, Any] = {}
+    for assignment in args.budget_assignments:
+        name, sep, value = str(assignment).partition("=")
+        if not sep:
+            raise ValueError(f"--set wants NAME=VALUE, not {assignment!r}.")
+        changes[name.strip()] = value.strip()
+    if changes:
+        stored = write_agent_budgets(root, changes).budgets
+        report.notes.append("stored " + ", ".join(
+            f"{key}={stored[key]:g}" if key in stored else f"{key} unset" for key in changes) + ".")
+    else:
+        stored = read_agent_state(root).budgets
+    report.budgets = {"stored": dict(stored)}
     report.ok = True
     return EXIT_OK
 
@@ -2171,6 +2264,10 @@ def _walk_common(args: argparse.Namespace) -> list[str]:
         common += ["--engine", str(args.engine)]
     if getattr(args, "wait", False):
         common.append("--wait")
+    if getattr(args, "engine_timeout", 0.0):
+        common += ["--engine-timeout", repr(float(args.engine_timeout))]
+    if getattr(args, "engine_memory", 0):
+        common += ["--engine-memory", str(int(args.engine_memory))]
     return common
 
 
@@ -2851,6 +2948,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_app(args, report)
         elif command == "comment":
             code = command_comment(args, report)
+        elif command == "budgets":
+            code = command_budgets(args, report)
         elif command == "revision":
             code = command_revision(args, report)
         else:  # argparse already refuses anything else
@@ -3068,7 +3167,7 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command in ("review", "app", "comment"):  # no run: no row, no commit (ADR-286, ADR-505)
+    if command in ("review", "app", "comment", "budgets"):  # no run: no row, no commit (ADR-286, ADR-505)
         return
     if command == "revision" and args.action in ("list", "accept"):  # a read, a verdict (ADR-506)
         return
@@ -3116,7 +3215,7 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command in ("review", "app", "comment"):
+    if command in ("review", "app", "comment", "budgets"):
         return
     if command == "revision" and args.action in ("list", "accept"):
         return

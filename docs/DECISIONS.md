@@ -33402,3 +33402,80 @@ measurements drawn), redrawn as version 2, read back from
 `blueprints.json`, listed by the page newest first with the newest shown at
 1536 px, and downloaded byte-identical. `test_project_tool_surface.py` pins
 `BRIDGE_TOOLS` and the tool's schema.
+
+## ADR-517 — Engine budgets belong to the project: `cadex budgets`, `--engine-timeout`, `--engine-memory` (2026-10-03, owner notes orun2)
+
+**Decision.** The shell kept two engine budgets in its add-on
+preferences: the wall-clock seconds and the memory ceiling one engine
+script run may spend. The parity ledger left them as "owner to confirm".
+The owner moved them to the project (orun2 owner notes, 2026-10-03), and
+this ADR does that. Nothing is copied from `v1-blender-shell`. The only
+thing taken from it is the two ranges: at most 3600 s and at most
+131072 MB.
+- **Stored** in the project's `agent.json`, the CLI's own file beside
+  `script.json`, as `budgets: {timeout_seconds, memory_limit_mb}`. A
+  budget that is not set is absent, never 0. `cadex budgets --set
+  NAME=VALUE` stores one, `=0` unsets it, and with no `--set` the command
+  reports. It uses no engine and makes no `PROGRESS.md` row or commit,
+  like `cadex comment`. A turn rewriting the conversation identity in
+  `agent.json` keeps the budgets. A hand-edited value outside its range
+  reads as unset.
+- **Overridden per call** by two shared flags, `--engine-timeout S` and
+  `--engine-memory MB`. Each wins over its stored value for that call only
+  and never changes the store. `walk` passes them to every leg. A value
+  out of range is a usage error (exit 2) before an engine starts.
+- **Sent** by `_engine_session`, the single place every engine run opens a
+  project, as `open_project`'s existing `budgets` argument. The dashboard's
+  writes are CLI children, so a slider or a turn started from the browser
+  uses the same budgets (A3). Every engine run's envelope carries
+  `budgets`: `in_force` (the engine's reply), `stored`, and each budget's
+  `source` (`override`, `project` or `engine`).
+- **Resolved per field in the engine.** `CadexEngineSettings.resolve_budgets`
+  used to take the caller's budgets only when both were set, and otherwise
+  fell back to the preferences entirely. A project that stored only a
+  longer timeout would have lost it without any sign. Now each positive
+  value the caller gives wins, and the other comes from the preferences.
+  The `OP_ARG_SPECS` argument and the reply's `budgets` shape are
+  unchanged.
+- **Shown read-only** on the dashboard as the last row of Identity
+  (`#view-budgets`), from `/api/project`'s `budgets.stored`. The page has
+  no control that edits them.
+
+**Why the project and not the machine.** A large assembly needs a longer
+rebuild wherever it is opened. Every run on it should use the same budget,
+including the dashboard's slider and a walk's legs, without anyone
+remembering a flag.
+
+**Cost.** About 110 lines in `session.py`, 90 in `__main__.py`, 10 in the
+engine, and 20 in the dashboard. No dependency, and no protocol change.
+
+**What would reverse it.** Budgets that need to differ by machine rather
+than by project (a small laptop and the 5090 box opening the same project)
+would argue for an environment override on top of this, not for removing
+it.
+
+**Test.** `cli/tests/test_project_budgets.py`:
+- storing beside the conversation and surviving its rewrite;
+- unsetting one;
+- range refusals;
+- nonsense in a hand-edited file reading as unset;
+- per-field override precedence;
+- `open_project` sending only the budgets it has;
+- `walk` passing the flags on;
+- `cadex budgets` storing, reporting and unsetting with no row and no
+  repository, and its usage errors;
+- the human summary.
+
+Against a real engine:
+- with none stored, every budget comes from the engine;
+- a stored 901 s timeout is in force, with the engine's own memory
+  ceiling filled in per field;
+- `--engine-timeout 77 --engine-memory 5000` is in force for one call and
+  leaves the store unchanged;
+- `--engine-timeout -1` is exit 2.
+
+In headless Chromium, Identity shows "engine defaults (none stored)", then
+"900 s · engine default for the other" after `cadex budgets --set`, with no
+control in the row.
+`test_engine_defaults_and_envelopes.py::test_caller_budgets_win_per_field`
+pins the engine half.

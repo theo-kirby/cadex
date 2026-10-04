@@ -193,4 +193,17 @@ class TestEngineSettingDefaults:
             {"timeout_seconds": 12.0, "memory_limit_mb": 256}
         ) == {"timeout_seconds": 12.0, "memory_limit_mb": 256}
 
+    def test_caller_budgets_win_per_field(self, monkeypatch) -> None:
+        """A project that sets one budget keeps the engine's other (ADR-517)."""
+        import CadexEngineSettings as settings
+
+        monkeypatch.setattr(settings, "load_engine_budgets",
+                            lambda: {"timeout_seconds": 300.0, "memory_limit_mb": 6144})
+        assert settings.resolve_budgets({"timeout_seconds": 900.0}) == {
+            "timeout_seconds": 900.0, "memory_limit_mb": 6144}
+        assert settings.resolve_budgets({"memory_limit_mb": 8192, "timeout_seconds": 0}) == {
+            "timeout_seconds": 300.0, "memory_limit_mb": 8192}
+        assert settings.resolve_budgets(None) == {
+            "timeout_seconds": 300.0, "memory_limit_mb": 6144}
+
 
