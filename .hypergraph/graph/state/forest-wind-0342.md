@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**The staged engine payload sheds what no payload ELF or module uses (ADR-531, ADR-532).** `package/engine/build_engine_payload.sh` prunes LLVM/clang (libLLVM 20/21, libclang-cpp, libclang 13, libLTO, libRemarks, `lib/clang` — pulled in by Qt/PySide tooling and the build compiler) [rec: mild-wood-8803], then OpenCV (libs, `cv2`), PCL, Node (libnode, npm) and Perl (`lib/perl5`) [rec: placid-ocean-8336], and its leak gate refuses each family. Staged size 3,258,031,078 B → 2,588,443,821 B → 2,213,397,834 B (−32.1% overall); packaged gate green after each [rec: mild-wood-8803] [rec: placid-ocean-8336]. The `.pixi` env is untouched; its GUI-era audit is deferred to the next run.
+
 **The live policy session leaves the engine (ADR-528).** `live_open`/`live_step`/`live_close` are gone from `OP_ARG_SPECS`, `OP_RESPONSE_SPECS` and `docs/INTEGRATION.md`; `CadexLiveSession.py` and `cadex_live_worker.py` are deleted and the payload carries neither. Engine suite 2581 passed / 56 skipped, CPU-only CLI suite 1420 / 1, packaged gate 24 / 0 [rec: icy-bramble-4392].
 
 **The engine reads no FreeCAD preference group (ADR-530).** `CadexEngineSettings` has no `PREFERENCE_GROUP`, `preferences` or `load_engine_budgets` and no FreeCAD import; sandbox budgets come from the caller (project `agent.json` or CLI flags, ADR-517) per positive field, else the engine constants 300 s and 6144 MB. `test_the_engine_reads_no_preference_group` pins the absence. Engine suite 2574 passed, packaged gate 24 passed, CPU-only `cli/tests` 1420 passed [rec: gentle-hawk-3921].
@@ -179,3 +181,5 @@ The fresh local payload's worker members match its bytes and have link count 1; 
 - icy-bramble-4392 — ADR-528: live_open/live_step/live_close leave the protocol; CadexLiveSession.py and cadex_live_worker.py deleted
 - royal-quill-2455 — ADR-529: CadexStudio's process entry deleted; CLI and dashboard load CadexStudio/CadexFitReport by path; corrects the stale shell-child-process claim
 - gentle-hawk-3921 — ADR-530: the engine reads no FreeCAD preference group; budgets from caller or engine constants
+- mild-wood-8803 — ADR-531: payload prunes LLVM/clang; leak gate refuses them; staged size -20.6%
+- placid-ocean-8336 — ADR-532: payload prunes OpenCV, PCL, Node, Perl; leak gate refuses them; staged size -32.1% cumulative
