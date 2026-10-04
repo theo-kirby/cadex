@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-03
+Verified against source: 2026-10-04
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -3149,47 +3149,19 @@ the simulation output under `clearance`, with `closest_approach` naming the
 pair, the millimetres and the frame — because refusing a dynamics result
 would delete the trace that shows the problem.
 
-## 8. Live mode: watching it, rather than reading about it
+## 8. Live mode (retired)
 
-**ADR-109.** Everything above produces a *recording*: six seconds, one drawn
-push, read back through summary statistics. That instrument is what ADR-107
-records failing twice in one day — a frame 90° out, and a foot that lifts
-5.9 mm reported as never leaving the ground. You cannot push a recording from
-the other side, cannot push it harder, and cannot push it twice.
-
-So: `live_open`, `live_step`, `live_close`, three read ops. A resident
-`--safe-mode` worker runs `evaluate_episode` — **the same one**, no fifth
-loop — with the accepted rollout's own MJCF, task and weights, all three
-re-checked by digest. The shell drives time (`live_step` grants N control
-steps and gets N frames), pushes it with the mouse, and draws the poses
-directly. Nothing is written: no trace, no store, no digest. A live session
-is a thing to watch; if it were reproducible it would be a rollout.
-
-It costs almost nothing, which is why it was worth building: **344 µs per
-control step** against a 10 ms interval — 29× real time — and a measured
-median `live_step` round trip of **1.72 ms** for the 3-step batch a 30 Hz
-pump sends, against a 33 ms bar.
-
-**It runs until the machine falls** (ADR-136). Live mode used to stop every
-six seconds, because it played the task's episode and the task's episode is
-the length a *trainer* wanted. Nothing physical happens there: an observation
-is sensor channels and carries no clock, so the policy cannot tell step 301
-from step 5, and the reset threw away the state you had just spent a minute
-of pushing to reach. So `evaluate_episode` takes `endless=True` — and
-`record_steps=False` with it, which is what keeps that bounded: the per-step
-history it otherwise accumulates is 6.1 kB a step — measured at **+553 MB
-for half an hour** of mg-legs against **+1.6 MB** with the flag, at the same
-throughput — and live mode reads none of it. A fall still holds a second so
-you can see it, then resets. The panel now reads `12.40 s this episode` over
-`trained
-on 6 s episodes`, because being well past the training horizon is the
-interesting thing about what you are watching.
-
-**Use it before you dispatch.** The cheapest thing in §7's order that is not
-in §7's order: open the last policy that trained, push it from each side by a
-known number of newtons, and find out what it actually does. Nothing else in
-this document answers "does it recover" as directly, and a `capability.py`
-sweep costs minutes where this costs a click.
+**Retired (ADR-528).** ADR-109 added a live policy session — three read ops,
+`live_open`, `live_step` and `live_close`, a resident worker playing the
+accepted rollout's policy, and a shove applied by mouse — and ADR-110 and
+ADR-136 made it calm-able and endless. Its only client was the Blender
+shell's Live editor, deleted with the shell (ADR-498), and the owner dropped
+the session on 2026-10-03. The ops, the host (`CadexLiveSession.py`), the
+worker (`cadex_live_worker.py`) and the `forces` and `endless` keywords of
+`evaluate_episode` are gone. Reviewing a policy is rollout playback in the
+dashboard plus `cadex evaluate`'s disturbance tests; `record_steps=False`
+stays, as a caller that reads only an episode's totals still asks for it.
+`docs/history/` and the ADRs keep the measurements.
 
 ### Measuring the capture point, and paying for it (ADR-112)
 

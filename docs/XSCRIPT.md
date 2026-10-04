@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-03
+Verified against source: 2026-10-04
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -1550,12 +1550,11 @@ Source is validated before any worker runs (AST policy in
 - One attempt = one windowless `FreeCADCmd --safe-mode -c …` subprocess
   (runner in `CadexScriptedProcess.py`). The project bundle stages all five
   `cadex_<domain>_{api,worker}.py` modules with entry
-  `cadex_project_worker.py` — **and fourteen more modules by filename**:
+  `cadex_project_worker.py` — **and thirteen more modules by filename**:
   `CadexSubshapeQuery.py`, `CadexRouting.py`, `CadexBundle.py`,
   `CadexTerminals.py`, `CadexSolder.py`, `CadexNets.py`, `CadexBoards.py`,
   `CadexMounts.py`, `CadexCage.py`, `CadexLinkedPart.py`,
-  `CadexDynamics.py`, `cadex_tessellation.py`, `cadex_preview_worker.py` and
-  `cadex_live_worker.py`
+  `CadexDynamics.py`, `cadex_tessellation.py` and `cadex_preview_worker.py`
   (`_DOMAIN_WORKER_BUNDLES["project"]`, `CadexScriptedRuntime.py:38`). Copied
   in rather than imported, so a worker module can `import` them inside the
   sandbox while `cadexd`'s own module closure never reaches them — which for

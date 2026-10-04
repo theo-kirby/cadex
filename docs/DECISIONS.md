@@ -33976,3 +33976,48 @@ this change. `test_cadexd_lifecycle.py`'s preview test still checks that
 previews match the accepting path.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-528 — The live policy session leaves the engine (2026-10-04, owner charter orun2 long-term subtraction)
+
+**Context.** ADR-109 gave cadexd three read ops — `live_open`, `live_step`,
+`live_close` — backed by a host (`CadexLiveSession.py`, 312 lines) and a
+resident sandboxed worker (`cadex_live_worker.py`, 614 lines) that played the
+accepted rollout's policy and took a shove from the mouse. ADR-110 added the
+calm session, ADR-111 the policy identity, and ADR-136 the `endless` horizon,
+each with a seam in `CadexDynamics.evaluate_episode` (`forces`, `endless`).
+Their one client was the Blender shell's Live editor, deleted by ADR-498.
+The owner dropped the live session on 2026-10-03 (charter owner notes):
+reviewing a policy is rollout playback plus `evaluate`'s disturbance tests.
+`docs/SHELL-PARITY.md` still said "the engine API stays". Nothing in `cli/`,
+the dashboard, `training/` or `analysis/` calls any of it.
+
+**Decision.** Remove the three ops from `OP_ARG_SPECS`, `READ_OPS` and
+`OP_RESPONSE_SPECS`, the `policy` nested response spec, their goldens and
+`docs/INTEGRATION.md`'s rows in one commit. Delete the host, the worker and
+its bundle entry, `prepare_live` and its helpers in `CadexScriptedRuntime`,
+the `forces` and `endless` keywords of `evaluate_episode`, the latency
+script's live lane, and the suites that tested only these
+(`test_cadexd_live_ops.py`, `test_dynamics_live_hook.py`, the endless half of
+`test_dynamics_endless_episode.py`). `record_steps=False` stays: other callers
+still read only an episode's totals. The surviving tests move to
+`test_dynamics_record_steps.py`.
+
+**Cost.** About 2,450 lines, net. A person can no longer push a running
+policy and watch it recover in real time; a recorded rollout with drawn
+disturbances is the only way to see that. No CLI tool, dashboard view or
+agent behaviour changes, and the agent tool surface is untouched.
+
+**What would reverse it.** The owner wanting interactive pushes back in the
+dashboard. That would be a new design over the dashboard's own transport,
+and should start from tag `v1-blender-shell` and this ADR's parent commit
+rather than from the deleted shell editor.
+
+**Test.** `test_cadexd_protocol.py` asserts the three ops and the `policy`
+spec are gone from the protocol. `test_engine_purity_guardrails.py` asserts
+neither module is back in the tree or the engine closure.
+`test_dynamics_record_steps.py` asserts `evaluate_episode` no longer accepts
+`forces` or `endless` and that `record_steps=False` keeps every number. The
+INTEGRATION op-table test holds the doc to the specs, and the packaged
+lifecycle gate runs against a rebuilt, restaged payload.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

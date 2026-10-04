@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-10-03
+Verified against source: 2026-10-04
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -118,12 +118,12 @@ from `src/` (ADR-061).
   charge does not either (ADR-418). The project bundle
   (`_DOMAIN_WORKER_BUNDLES["project"]`, `CadexScriptedRuntime.py:38`) stages
   all five domain api/worker modules with entry `cadex_project_worker.py`
-  — **and fifteen more modules by filename**, which is the pattern worth
+  — **and fourteen more modules by filename**, which is the pattern worth
   knowing: `CadexRouting.py`, `CadexBundle.py`, `CadexTerminals.py`,
   `CadexSolder.py`, `CadexNets.py`, `CadexBoards.py`, `CadexMounts.py`,
   `CadexCage.py`, `CadexLinkedPart.py`, `CadexDynamics.py`,
   `CadexStress.py`, `CadexSubshapeQuery.py`, `cadex_tessellation.py`,
-  `cadex_preview_worker.py` and `cadex_live_worker.py`
+  and `cadex_preview_worker.py`
   are copied in rather than imported, so a worker
   module can `import` them inside the sandbox while `cadexd`'s own module
   closure never reaches them. For `CadexDynamics.py` that is not a
