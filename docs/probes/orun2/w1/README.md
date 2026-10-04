@@ -47,8 +47,12 @@ the policy fails as a three-iteration policy should.
   dashboard can repair it short of editing `script.json` by hand.
 - **The Model tab opens with the robot as a speck.** A 178 mm quad sits in
   the middle of the metre grid until **Fit** is pressed, and it is drawn in
-  per-component debug colours (`w1-5-export.png`).
+  per-component debug colours (`w1-5-export.png`). Fixed since: Fit frames the robot
+  without the floor (ADR-525), and the page paints by appearance role
+  (ADR-522).
 - **A CLI turn's transcript is not on the project page.** The index lists
   the turn and its revision, but the agent's text and its `look` images
   reach the page only when the turn was started from the page (§19). Steps
-  1 and 4 are visible through their results, not their transcripts.
+  1 and 4 are visible through their results, not their transcripts. Fixed since by
+  ADR-526: `cadex -p` stores each turn's transcript and `look` images under
+  the project's `turns/<id>/`, and the page reads them.

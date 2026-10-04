@@ -1,22 +1,29 @@
 # orun2 — closing report
 
-Verified against source: 2026-10-04, at `13c660cf` (the orun2 run branch).
+Verified against source: 2026-10-04, at `37733eec` (the orun2 run branch).
+The D1 and D2 numbers were measured at `13c660cf`; no later commit touches
+the build, the setup route or the slider path.
 Charter: `.ouroboros/goal.md`, "Cadex is three things — the engine, the
 dashboard, the agent". Every number below was measured on sb1x (linux-64,
 32 cores). The owner ticks the criteria; this report claims none of them.
 
 ## Where each criterion stands
 
-| criterion | where the evidence stands | evidence |
-|---|---|---|
-| S1 the shell is gone | evidence recorded | `git ls-files shell \| wc -l` = 0; disable commit ADR-495, delete commit ADR-498, live docs ADR-499 |
-| R1 the contract | evidence recorded | ADR-500, ADR-501; `AGENTS.md` 215 lines (from 432); the frontier lists live work only |
-| D1 clone to dashboard | evidence recorded | the after column below |
-| D2 watch and steer | evidence recorded | one browser test per item against a real engine (§4) |
-| D3 runs first-class | evidence recorded | ADR-513, ADR-514, ADR-515, ADR-518, ADR-519 |
-| A1 one contract, a channel | evidence recorded | `leave_note` (ADR-512), the guidance settled (ADR-521) |
-| W1 nothing lost | **open** | walk steps 1–6 and 8 ran; step 7 ran on the CPU, because the 5090's driver was not loaded (`w1/README.md`). The ledger has no "to port" row |
-| C1 this report | this file | |
+| criterion | where the evidence stands | evidence | records |
+|---|---|---|---|
+| S1 the shell is gone | evidence recorded | `git ls-files shell \| wc -l` = 0 (re-run at `37733eec`); disable commit ADR-495, delete commit ADR-498, live docs ADR-499 | `lucky-haven-1081`, `clear-heron-4371`, `crimson-union-6659`, `calm-quartz-1493`, `mellow-pine-4848` |
+| R1 the contract | evidence recorded | ADR-500, ADR-501; `AGENTS.md` 215 lines (from 432); the frontier lists live work only | `smooth-cedar-5324`, `careful-rain-8917`, `even-clover-8953`, `light-path-5130`, `crimson-stone-9344` |
+| D1 clone to dashboard | evidence recorded | the after column below | `old-arrow-4088`, `mild-grove-9448` |
+| D2 watch and steer | evidence recorded | one browser test per item against a real engine (§4) | `morning-peak-8268`, `placid-bell-2440`, `noble-glade-0483`, `stormy-grove-7025`, `sweet-mist-9111`, `calm-falcon-6751`, `narrow-crest-4950`, `staid-wave-3739`, `polished-lodge-7956` |
+| D3 runs first-class | evidence recorded | ADR-513, ADR-514, ADR-515, ADR-518, ADR-519 | `mellow-otter-0798`, `polished-reef-4161`, `lean-star-6139`, `quiet-ivy-3898`, `amber-moon-9415` |
+| A1 one contract, a channel | evidence recorded | `leave_note` (ADR-512), the guidance settled (ADR-521) | `proud-quill-5791`, `autumn-rose-7173` |
+| W1 nothing lost | evidence recorded except the GPU half of step 7 | walk steps 1–8 ran and were seen in the dashboard; step 7 ran on the CPU because the 5090's driver is not loaded (defect 5). The ledger has no "to port" row | `red-loom-2239`, `icy-tooth-7719`, `dusty-bramble-8099`, `mellow-fjord-5906`, `neat-grove-1406`, `solemn-birch-8260` |
+| C1 this report | this file | §1–§6 below | `clear-current-6218`, `lively-beacon-5538`, `clever-sky-3211` |
+
+The owner-note units each have their own record: the blueprint composer
+(ADR-516, `sweet-arrow-0695`) and the project budgets (ADR-517,
+`curious-flint-4836`). The long-term subtractions after the W1 claim are in
+§3 (`icy-bramble-4392`, `royal-quill-2455`, `gentle-hawk-3921`).
 
 ## 1. D1 — before and after
 
@@ -166,8 +173,18 @@ Each was re-checked on 2026-10-04 while the screenshots were taken.
    already skipped traces and exports. The median is now 0.043 s, the
    first preview 0.28 s, `ok` is true, and the bar is unchanged.
    `test_preview_skips_fit.py` pins it.
-5. **W1 step 7 ran on the CPU.** The kernel had no `nvidia` module, so
-   the 5090 leg is waiting on the owner. This is a lifecycle check, not a
-   gait.
+5. **W1 step 7 ran on the CPU: still open, and the one blocker.**
+   Re-checked at `37733eec`: `lsmod` lists no `nvidia` module, and
+   `nvidia-smi` "couldn't communicate with the NVIDIA driver". Loading the
+   driver needs the owner. Once it loads, the 5090 leg is one command,
+   `cadex walk` on `orun2-w1-robin` without `JAX_PLATFORMS=cpu`. The CPU run
+   is a lifecycle check, not a gait.
 6. **The installed footprint is unchanged** (§1): the pixi GUI-era
    dependency audit is deferred to the next run.
+
+## 7. The done claim
+
+Every criterion except W1's GPU leg has recorded, measured evidence, and
+that leg waits on the driver (defect 5), not on code. This report claims
+done for the critic's review. The owner ticks the boxes, and none is ticked
+here.
