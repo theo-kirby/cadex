@@ -123,6 +123,13 @@ should say so.
   D3. `shell/` is already deleted, so read the old composer from the tag
   `v1-blender-shell` (`git show v1-blender-shell:shell/scripts/startup/mesh_agent/cadex_sheet.py`). It is
   reference only, and copying from it is still barred.
+- **The 5090 is back (added 2026-10-04, iteration 67):** the owner loaded
+  the driver, now 580.178.04. `nvidia-smi` sees the RTX 5090 and
+  `~/cadex-train-venv` reports `jax.default_backend() == "gpu"`. REPORT
+  defect 5 is cleared. W1 step 7's GPU leg comes next, before more
+  subtraction: `cadex walk` on `orun2-w1-robin` without
+  `JAX_PLATFORMS=cpu`. Record the measured result, update the report, and
+  hide the GPU from the CLI suite while it trains.
 
 ## Done criteria
 
