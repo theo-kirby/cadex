@@ -12,7 +12,7 @@ address or this machine's hostname in any of them. With a Chromium it
 renders the page at the two charter sizes, 1400×900 and 400×850 with touch
 emulation, and reads the spec back from the rendered page: the layout
 viewport is the device width, nothing overflows it, the palette tokens and
-type scale compute to §3–§4, the default layout's three areas tile the
+type scale compute to §3–§4, the default layout's one 3D area fills the
 screen at desk (§12), and on the phone one area, the 3D viewport, fills it
 above a tab bar (ADR-534).
 """
@@ -43,7 +43,7 @@ SECTIONS = ("## 1. Purpose", "## 2. Hierarchy", "## 3. Type scale", "## 4. Palet
             "## 5. Spacing and shape", "## 6. Breakpoints")
 TOKENS = ("--bg", "--surface", "--surface-2", "--surface-3", "--rule", "--rule-strong",
           "--ink", "--ink-2", "--accent", "--ok", "--warn", "--bad", "--info")
-TYPE = {"body": "14px", "h1": "17px", "h2": "14px", "#accepted-line": "12px"}
+TYPE = {"body": "14px", "h1": "17px", "#menubar summary": "14px", "#accepted-line": "12px"}
 # The charter's two sizes: (width, height, mobile emulation with touch).
 SIZES = {"desk": (1400, 900, False), "phone": (400, 850, True)}
 PHONE_GUTTER = 12
@@ -150,9 +150,9 @@ def test_the_spec_itself_names_no_private_address():
 
 # -- the rendered page ---------------------------------------------------------
 
-# §2: the three editors, in the default layout's reading order, and the
-# settings editor's panels.
-EDITORS = ["settings", "view3d", "view2d"]
+# §2: one 3D viewport over the whole screen by default, and the menu bar's
+# three menus (ADR-539).
+EDITORS = ["view3d"]
 HEADINGS = ["File", "Revisions", "View"]
 
 MEASURE = """(function () {
@@ -171,7 +171,7 @@ MEASURE = """(function () {
     fonts: Object.fromEntries(%s.map(function (s) { return [s, size(s)]; })),
     smallest_font: smallest,
     body_bg: getComputedStyle(document.body).backgroundColor,
-    headings: Array.from(document.querySelectorAll('#screen h2')).map(function (h) {
+    headings: Array.from(document.querySelectorAll('#menubar summary')).map(function (h) {
       return {text: h.textContent, transform: getComputedStyle(h).textTransform}; }),
     mode: document.getElementById('screen').dataset.mode,
     areas: Array.from(document.querySelectorAll('#screen .area')).map(function (a) {
@@ -236,7 +236,7 @@ def _assert_follows_the_spec(browser, server, size) -> None:
     # The 3D viewport's canvas fills its area's body.
     assert m["canvas"]["width"] >= 0.98 * m["model"]["width"] and m["canvas"]["height"] >= 0.98 * m["model"]["height"]
     if size == "desk":
-        # §12: the default layout tiles the screen with the three editors, none overlapping.
+        # §12: the default layout is one 3D viewport over the whole screen.
         assert m["mode"] == "areas"
         assert [a["editor"] for a in m["areas"]] == EDITORS
         assert [h["text"] for h in m["headings"]] == HEADINGS
@@ -250,7 +250,7 @@ def _assert_follows_the_spec(browser, server, size) -> None:
     # §6: on the phone one editor fills the screen, the 3D viewport first, and a tab bar picks it.
     assert m["mode"] == "tabs"
     assert [a["editor"] for a in m["areas"]] == ["view3d"]
-    assert m["tabs"] == ["view3d", "view2d", "settings"]
+    assert m["tabs"] == ["view3d", "view2d"]
     assert m["canvas"]["width"] >= width - 1
 
 

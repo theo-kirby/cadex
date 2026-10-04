@@ -1,12 +1,16 @@
 // SPDX-FileCopyrightText: 2026 Cadex Authors
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// The app (ADR-534): three editors tiled by layout.js, after Blender's areas.
+// The app (ADR-534): two editors tiled by layout.js, after Blender's areas,
+// under a menu bar (ADR-539).
 //
 //   3D viewport  the accepted model or a run's, shaded or hairline, and a
-//                run's rollout played back on a timeline;
-//   2D viewport  the project's drawings, images, documents and training plots;
-//   Settings     the project, its revisions, and the view.
+//                run's rollout played back on a timeline -- the whole screen
+//                by default;
+//   2D viewport  the project's drawings, images, documents and training plots,
+//                a split away;
+//   Menu bar     File (the project), Revisions (the trail), View (theme,
+//                render style, layout).
 //
 // Read-only (ADR-537): the agent working the project changes it, through
 // the CLI or `cadex mcp`, and the page follows. Polls /api/project for what
@@ -19,12 +23,9 @@
   // carries that prefix.
   var BASE = (location.pathname.match(/^\/p\/[^/]+(?=\/)/) || [''])[0];
   var POLL_MS = 2000;
-  var ORDER = ['view3d', 'view2d', 'settings'];
-  // Settings down the left, the two viewports stacked beside it.
-  var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.22, 0.78], children: [
-    { editor: 'settings' },
-    { dir: 'col', sizes: [0.64, 0.36], children: [{ editor: 'view3d' }, { editor: 'view2d' }] }
-  ] };
+  var ORDER = ['view3d', 'view2d'];
+  // One 3D viewport over the whole screen; split an area for the 2D one.
+  var DEFAULT_LAYOUT = { editor: 'view3d' };
   var STYLES = ['shaded', 'hairline'];
   var state = { review: null, lastOk: null, stale: false, error: null, model: null, viewer: null, layout: null };
   var pendingPoll = null;
@@ -94,7 +95,7 @@
       : 'nothing accepted yet';
   }
 
-  // -- Settings: revisions --------------------------------------------------------
+  // -- Menu bar: revisions --------------------------------------------------------
   // The trail the agent's accepted writes left, newest first.
   var revisionsKey = null;
 
@@ -104,6 +105,7 @@
     if (key === revisionsKey) return;
     revisionsKey = key;
     var list = $('revision-list');
+    $('revision-empty').hidden = trail.length > 0;
     list.textContent = '';
     // The trail comes newest first.
     trail.forEach(function (entry) {
@@ -114,7 +116,7 @@
     });
   }
 
-  // -- Settings: the project and the view -----------------------------------------
+  // -- Menu bar: the project and the view -----------------------------------------
   function loadProjects() {
     if (!BASE) {
       // `cadex review` serves one project: there is nothing to switch to.
@@ -134,6 +136,22 @@
   function openProject() {
     var name = $('project-select').value;
     if (name && name !== decodeURIComponent(BASE.slice(3))) location.href = '../' + encodeURIComponent(name) + '/';
+  }
+  // One menu open at a time; a click outside or Escape closes it.
+  function wireMenus() {
+    var menus = Array.prototype.slice.call(document.querySelectorAll('#menubar details.menu'));
+    function closeAll(except) { menus.forEach(function (menu) { if (menu !== except) menu.open = false; }); }
+    menus.forEach(function (menu) {
+      menu.addEventListener('toggle', function () { if (menu.open) closeAll(menu); });
+      // Hovering across the bar while one is open moves to the next, as a menu bar does.
+      menu.querySelector('summary').addEventListener('pointerenter', function () {
+        if (menus.some(function (other) { return other.open && other !== menu; })) menu.open = true;
+      });
+    });
+    document.addEventListener('pointerdown', function (event) {
+      if (!event.target.closest('#menubar')) closeAll(null);
+    });
+    document.addEventListener('keydown', function (event) { if (event.key === 'Escape') closeAll(null); });
   }
   function renderThemeChoice() { pressed('theme-choice', 'data-choice', window.cadexTheme.choice()); }
 
@@ -565,7 +583,7 @@
                         tools: home.querySelector('.editor-tools'), body: home.querySelector('.editor-body') };
     });
     state.layout = window.CadexLayout.create({ root: $('screen'), shelf: $('editor-shelf'), editors: editors, order: ORDER,
-                                               storageKey: 'cadex.layout.v2', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
+                                               storageKey: 'cadex.layout.v3', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
     state.viewer = window.CadexViewer.create($('viewer'));
     applyStyle(renderStyle);
 
@@ -597,6 +615,7 @@
     document.addEventListener('cadex-theme', function () { if (renderStyle === 'hairline') applyStyle('hairline'); });
     renderThemeChoice();
     $('layout-reset').addEventListener('click', function () { state.layout.reset(); });
+    wireMenus();
 
     // Each canvas follows its box; redraw whenever the box changes.
     if (window.ResizeObserver) {

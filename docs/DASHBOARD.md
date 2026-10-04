@@ -33,11 +33,13 @@ the page before and after the first spec, kept because the tests check them.
 **The project page is the app (ADR-534).** The same day the owner asked for
 the page to stop being a dashboard and be the app, in Blender's design
 language: the screen is tiled by **areas**, each showing one **editor** —
-the 3D viewport, the 2D viewport and Settings — and each area can be
+the 3D viewport and the 2D viewport — and each area can be
 resized, moved, split, maximized or closed (§12). There is a light theme
 beside the dark one (§4), and the 3D viewport draws shaded by default or as
 a hairline diagram (§10). Still no build step: `layout.js` tiles the
 screen, `theme.js` picks the theme, and both are plain scripts.
+
+**The settings are a menu bar (ADR-539).** File, Revisions and View sit in the top bar as dropdowns, and the screen is one 3D viewport by default.
 
 **The page is read-only (ADR-537).** The owner's interface is now an agent
 of their choice -- Claude Code, Codex, Pi -- driving the engine through the
@@ -78,7 +80,7 @@ the screen (`#screen[data-mode]`), which `layout.js` tiles with areas
 | **Top bar** | — | `#top`, `#home`, `#project-name`, `#accepted-line`, `#freshness[data-state]`, `#theme-toggle` | A link home (hidden under `cadex review`), the project's name, the accepted revision's ordinal and date, **live** or **offline**, and a light/dark toggle. |
 | **3D viewport** | `view3d` | `#view3d-source`, `#view3d-style button[data-style]`, `#model-fit`, `#model`, `#model-status[data-state]`, `#viewer`, `#playback`, `#play-toggle`, `#play-time`, `#play-clock` | The accepted model or a run's, shaded or hairline (§10); orbit by pointer or touch; **Fit**. A run that kept a rollout trace plays it on the timeline. |
 | **2D viewport** | `view2d` | `#view2d-source`, `#view2d-fit`, `#sheet-stage[data-kind]`, `#sheet-empty` | The project's drawings and presentation images (pan, zoom, double-click to fit), its documents (markdown, drawn as text only), and each run's training curves (reward, loss, episode length) as plots. |
-| **Settings** | `settings` | `#file-panel`, `#project-select`, `#project-open`; `#revision-panel`, `#revision-list li[data-revision][data-ordinal][data-current]`; `#view-panel`, `#theme-choice`, `#style-choice`, `#layout-reset` | Open another project; the revision trail, read-only (§18); the theme, the render style and the layout. Panels fold. |
+| **Menu bar** | — | `#menubar`; `#file-panel` (`#project-select`, `#project-open`, `#project-all`); `#revision-panel` (`#revision-list li[data-revision][data-ordinal][data-current]`, `#revision-empty`); `#view-panel` (`#theme-choice`, `#style-choice`, `#layout-reset`) | File, Revisions and View in the top bar, each a `<details class="menu">` dropdown (ADR-539): open another project; the revision trail, read-only (§18); the theme, the render style and the layout. One opens at a time; a click outside or Escape closes it, and with one open, hovering another opens that one. On a phone the dropdown spans the screen between the gutters. |
 
 The element ids and `data-*` attributes above are the hooks the CLI suite
 pins.
@@ -94,8 +96,8 @@ One family, one scale, one line height.
 | `--fs-2` | 17 px | 600 | the page title (`h1`) in the top bar |
 | `--fs-3` | 22 px | 600 | reserved; nothing uses it now |
 
-The top bar title is `--fs-2` and a Settings panel heading `--fs-1` at
-600; the scale does not change with the width.
+The top bar title is `--fs-2` at 600 and a menu name `--fs-1` at
+400; the scale does not change with the width.
 
 - **Family**: `--font: system-ui, "Segoe UI", "Helvetica Neue", Arial, sans-serif`;
   identities in `--mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace`
@@ -440,9 +442,9 @@ and the assessment are the second half of
 ## 12. The screen: areas and editors (ADR-534)
 
 After Blender's screen. The screen is a tree: a split (`row` or `col`, with
-each child's share) or an area showing one editor. The default is Settings
-down the left (22 %) and the 3D viewport over the 2D viewport beside it
-(78 %, split 64/36).
+each child's share) or an area showing one editor. The default is one 3D
+viewport over the whole screen (ADR-539); split it to bring in the 2D
+viewport. The settings live in the menu bar (§2), not in an editor.
 
 - **Resize**: drag the 4 px gutter between two areas; it moves that boundary
   only, and no area goes below 120 px.
@@ -452,12 +454,12 @@ down the left (22 %) and the 3D viewport over the 2D viewport beside it
   another area. A drop on an edge docks it on that side, splitting the target;
   a drop in the middle swaps the two. A hint shows where it will land.
 - **Split, maximize, close**: the four buttons at the right of the header.
-  A split opens an editor not shown yet beside the area, so with all three
+  A split opens an editor not shown yet beside the area, so with both
   shown there is nothing to split. Maximize (or Ctrl+Space over the area)
   gives the area the whole screen until it is pressed again. The last area
   cannot close.
 - **Kept**: the layout is this browser's (`localStorage`
-  `cadex.layout.v2`; v1 layouts had the Chat editor); Settings → View → Layout → **Reset** returns the
+  `cadex.layout.v3`; earlier keys held the Chat and Settings editors); View → Layout → **Reset** in the menu bar returns the
   default. A browser that refuses storage gets the default every visit.
 
 An editor's markup is never rebuilt by a layout change: the area moves the
@@ -537,7 +539,7 @@ The server answers GET and HEAD and nothing else: any other method, on any
 route, is 501, and the served page carries no token. The page's 2 s poll of
 `api/project` notices when the accepted revision moves -- a `cadex params`,
 a `write_script` through `cadex mcp`, a `cadex revision restore` -- and
-reloads the model then. Settings keeps `#revision-list`, the stored trail
+reloads the model then. The Revisions menu keeps `#revision-list`, the stored trail
 newest first, numbered by ordinal, **current** for the accepted one and when
 it was accepted for the rest; each row carries `data-revision`,
 `data-ordinal` and `data-current`.

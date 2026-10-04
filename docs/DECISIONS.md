@@ -34502,3 +34502,35 @@ a live engine.
 hosted service with no user agent. That would build on `cadex mcp`, not beside it.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-539 — The settings are a menu bar; the screen is one 3D viewport (2026-10-04, owner direction)
+
+**Context.** After ADR-537 the read-only page tiled three editors by default:
+- Settings down the left, holding the File, Revisions and View panels;
+- the 3D viewport and the 2D viewport stacked beside it.
+
+The owner asked for the settings in a menu bar and one 3D viewport over the whole screen by
+default.
+
+**Decision.**
+- The top bar carries `#menubar` with three `<details class="menu">` dropdowns: File,
+  Revisions and View.
+- They hold the same elements and ids as the former panels, plus `#revision-empty` for a
+  project with no trail.
+- One menu opens at a time. A click outside or Escape closes it, and with one open, hovering
+  another opens that one.
+- On a phone a dropdown spans the screen between the gutters.
+- The Settings editor is gone. The editors are the 3D and the 2D viewport, and the default
+  layout is `{editor: 'view3d'}`.
+- The layout key moves to `cadex.layout.v3`, so a saved layout that names Settings is dropped.
+- `docs/DASHBOARD.md` §2 and §12 are updated.
+
+**Test.** `test_review_design.py` checks:
+- at desk size, the default areas are `["view3d"]` and the menus are File, Revisions, View;
+- the menu names are 14 px, and nothing overflows;
+- the phone tabs are 3D and 2D.
+
+Checked by screenshot at 1400×900 and 400×850 with each menu open. On the phone the panel's
+right edge sits at 388 px of 400, with no horizontal scroll.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

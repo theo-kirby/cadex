@@ -45,7 +45,7 @@ a:hover { color: var(--ink); }
 [hidden] { display: none !important; }
 
 /* The top bar: where you are, and whether the app is live. */
-header#top { display: flex; justify-content: space-between; align-items: center; gap: var(--s3);
+header#top { display: flex; justify-content: space-between; align-items: center; gap: var(--s3); position: relative; z-index: 40;
              min-height: var(--bar); padding: var(--s1) var(--s3); background: var(--bg); }
 header#top .title { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; }
 .top-end { display: flex; align-items: center; gap: var(--s2); }
@@ -156,17 +156,20 @@ svg.plot { display: block; }
 .plot-label { fill: var(--ink-2); font: var(--fs-0) var(--font); }
 .plot-title { fill: var(--ink); font: 600 var(--fs-1) var(--font); }
 
-/* Settings: panels of fields, as the properties editor stacks them. */
-#settings { padding: var(--s2); }
-details.group { background: var(--surface-2); border-radius: var(--radius-area); padding: 0 var(--s3) var(--s2); margin-bottom: var(--s2); }
-details.group:not([open]) { padding-bottom: 0; }
-details.group > summary { list-style: none; cursor: pointer; padding: var(--s2) 0; display: flex; align-items: center; gap: var(--s2); }
-details.group > summary::-webkit-details-marker { display: none; }
-details.group > summary::before { content: ""; width: 0; height: 0; border: 4px solid transparent; border-left: 5px solid var(--ink-2); margin-left: 2px; transition: transform 80ms; transform-origin: 2px 4px; }
-details.group[open] > summary::before { transform: rotate(90deg); }
-details.group > summary h2 { margin: 0; }
-#settings button { font-size: var(--fs-0); min-height: 28px; padding: 0 var(--s3); border-radius: 6px; }
-#settings .controls { margin: var(--s1) 0 var(--s2); }
+/* The menu bar (ADR-539): File, Revisions, View, each a dropdown over the screen. */
+header#top .title { flex: none; }
+#menubar { display: flex; align-items: center; gap: 2px; margin-right: auto; }
+details.menu { position: relative; }
+details.menu > summary { list-style: none; cursor: pointer; padding: 2px var(--s2); border-radius: var(--radius-sm);
+                         font-size: var(--fs-1); color: var(--ink-2); user-select: none; }
+details.menu > summary::-webkit-details-marker { display: none; }
+details.menu > summary:hover, details.menu[open] > summary { background: var(--surface-3); color: var(--ink); }
+.menu-panel { position: absolute; top: calc(100% + 4px); left: 0; z-index: 50; min-width: 260px; max-width: min(360px, 90vw);
+              max-height: 70vh; overflow: auto; padding: var(--s2) var(--s3); background: var(--surface-2);
+              border: var(--bw) solid var(--rule); border-radius: var(--radius-area); box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }
+.menu-panel button { font-size: var(--fs-0); min-height: 28px; padding: 0 var(--s3); border-radius: 6px; }
+.menu-panel .controls { margin: var(--s1) 0 var(--s2); }
+.menu-panel p { margin: var(--s2) 0 0; }
 .field { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin: var(--s2) 0; color: var(--ink-2); font-size: var(--fs-0); }
 .field select { flex: 1; max-width: 70%; font-size: var(--fs-0); min-height: 28px; }
 .field .segmented button { font-size: var(--fs-0); min-height: 28px; padding: 0 var(--s2); }
@@ -187,4 +190,7 @@ ul.rows li .small { white-space: nowrap; }
   :root { --gutter: var(--s3); }
   ul.rows li { flex-direction: column; gap: 0; }
   header#top .title #accepted-line { display: none; }
+  /* A dropdown spans the phone between the gutters rather than run off its edge. */
+  .menu-panel { position: fixed; top: calc(var(--bar) + 4px); left: var(--gutter); right: var(--gutter);
+                min-width: 0; max-width: none; }
 }

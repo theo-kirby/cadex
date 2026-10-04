@@ -22,6 +22,54 @@
     <h1 id="project-name">loading…</h1>
     <div id="accepted-line"></div>
   </div>
+  <!-- The menu bar (ADR-539): File, Revisions and View, each a dropdown. -->
+  <nav id="menubar" aria-label="Menu">
+    <details class="menu" id="file-panel">
+      <summary>File</summary>
+      <div class="menu-panel">
+        <div class="field" id="project-field">
+          <label for="project-select">Project</label>
+          <select id="project-select"></select>
+        </div>
+        <div class="controls">
+          <button id="project-open" type="button">Open</button>
+          <a id="project-all" href="../../">All projects</a>
+        </div>
+        <p class="muted small">Every change is kept as a revision, so there is nothing to save by hand.</p>
+      </div>
+    </details>
+    <details class="menu" id="revision-panel">
+      <summary>Revisions</summary>
+      <div class="menu-panel">
+        <ol id="revision-list" reversed></ol>
+        <p id="revision-empty" class="muted small" hidden>No revisions yet: the trail starts with the first accepted build.</p>
+      </div>
+    </details>
+    <details class="menu" id="view-panel">
+      <summary>View</summary>
+      <div class="menu-panel">
+        <div class="field">
+          <span>Theme</span>
+          <span class="segmented" id="theme-choice" role="group" aria-label="Theme">
+            <button type="button" data-choice="dark">Dark</button>
+            <button type="button" data-choice="light">Light</button>
+            <button type="button" data-choice="system">System</button>
+          </span>
+        </div>
+        <div class="field">
+          <span>Render</span>
+          <span class="segmented" id="style-choice" role="group" aria-label="Render style">
+            <button type="button" data-style="shaded">Shaded</button>
+            <button type="button" data-style="hairline">Hairline</button>
+          </span>
+        </div>
+        <div class="field">
+          <span>Layout</span>
+          <button id="layout-reset" type="button">Reset</button>
+        </div>
+      </div>
+    </details>
+  </nav>
   <div class="top-end">
     <div id="freshness" data-state="loading">loading…</div>
     <button id="theme-toggle" class="icon-button" type="button" title="Light or dark" aria-label="Light or dark">
@@ -61,50 +109,6 @@
     <div class="editor-body" id="sheet">
       <p id="sheet-empty" class="empty">Nothing to show yet. Drawings, images, documents and plots appear here.</p>
       <div id="sheet-stage" hidden></div>
-    </div>
-  </section>
-
-  <section class="editor" id="editor-settings" data-editor="settings" data-title="Settings" data-short="Settings">
-    <div class="editor-tools"></div>
-    <div class="editor-body" id="settings">
-      <details class="group" id="file-panel" open>
-        <summary><h2>File</h2></summary>
-        <div class="field" id="project-field">
-          <label for="project-select">Project</label>
-          <select id="project-select"></select>
-        </div>
-        <div class="controls">
-          <button id="project-open" type="button">Open</button>
-          <a id="project-all" href="../../">All projects</a>
-        </div>
-        <p class="muted small">Every change is kept as a revision, so there is nothing to save by hand.</p>
-      </details>
-      <details class="group" id="revision-panel" open>
-        <summary><h2>Revisions</h2></summary>
-        <ol id="revision-list" reversed></ol>
-      </details>
-      <details class="group" id="view-panel" open>
-        <summary><h2>View</h2></summary>
-        <div class="field">
-          <span>Theme</span>
-          <span class="segmented" id="theme-choice" role="group" aria-label="Theme">
-            <button type="button" data-choice="dark">Dark</button>
-            <button type="button" data-choice="light">Light</button>
-            <button type="button" data-choice="system">System</button>
-          </span>
-        </div>
-        <div class="field">
-          <span>Render</span>
-          <span class="segmented" id="style-choice" role="group" aria-label="Render style">
-            <button type="button" data-style="shaded">Shaded</button>
-            <button type="button" data-style="hairline">Hairline</button>
-          </span>
-        </div>
-        <div class="field">
-          <span>Layout</span>
-          <button id="layout-reset" type="button">Reset</button>
-        </div>
-      </details>
     </div>
   </section>
 
