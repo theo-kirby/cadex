@@ -34534,3 +34534,63 @@ Checked by screenshot at 1400×900 and 400×850 with each menu open. On the phon
 right edge sits at 388 px of 400, with no horizontal scroll.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-540 — Quasi-direct-drive actuators join the catalog: `lib.qdd` (2026-10-04, owner direction)
+
+**Context.** The owner's next end-to-end test is a quadruped on Mini Cheetah-class
+BLDC actuators, trained to balance and walk. The catalog's only BLDC is a drone motor
+with no torque model (ADR-206). Its only joint actuators with a torque limit are hobby
+servos: position actuators clamped at stall, three orders of magnitude too weak.
+
+**Decision.** Add a `qdd_actuators` family and `lib.qdd(sku)` returning a `QddPart`.
+- **Two SKUs, from the manufacturer's tables and 2D drawings** (PROVENANCE §8i):
+  - CubeMars AK70-10 KV100: 10:1, 8.3/24.8 N·m rated/peak, 621 g, Ø89×50.25 mm.
+  - CubeMars AK80-9 V3.0 KV100: 9:1, 9/22 N·m, 490 g, Ø98×38.5 mm.
+
+  The original MIT actuator was never sold, so these two stand in for it.
+- **Envelope.** Coaxial cylinders, datum at the output face, +Z out. M3 stator bolt
+  circles front and rear, and the output flange's bolt circle; the stator holes are mount
+  axes for `fit.mounting`. Effective density is the catalog mass over the drilled
+  envelope. `.bay()` is the envelope grown by a clearance plus lead room behind.
+- **`.actuator(joint, control_nmm="0", rating="peak"|"rated")`** is an `assembly.actuator`
+  of `kind="motor"` at the datasheet output torque. The action is torque, which is what
+  a QDD under FOC current control takes.
+- **`.joint_dynamics(joint)`** declares three things:
+  - **Damping**: `peak torque / no-load speed`, the servo family's ADR-409 torque-speed
+    line. The line passes within about 2 N·m of each SKU's rated point.
+  - **Armature**: the motor-side rotor inertia × ratio² (9.06e-3 kg·m² for the AK80-9).
+  - **Friction loss**: the datasheet back-drive torque.
+- `qdd` joins `DRIVE_FAMILIES`, so a horn or wheel on its output counts as held.
+
+**Why the speed line is the default.** Measured on a scratch project through
+`cadex smoke` and stock MuJoCo, with an AK80-9 driving a 251 g, 200 mm steel leg flat out:
+- with no damping, the joint reached **3,260 rpm in 0.5 s**, six times the 570 rpm
+  no-load speed, a speed a policy could learn to use and no motor delivers;
+- with the line, a test pins flat out at 570 rpm ±1 %.
+
+The line is passive, so it also resists an unpowered joint, which a real driver at zero
+current does not. That error is conservative, and stated in the docstring.
+
+**Not modelled, stated in `spec`.**
+- No thermal model, and no corner speed: the real envelope is flat to a corner, then
+  falls. The AK70-10's own 48 V chart starts near 380 rpm, not the tabulated 480.
+- No rotor/stator mass split; inertia is a uniform-solid estimate.
+- Omitted details: pilots, dowels, connectors and cover screws.
+- Undimensioned AK80-9 hole depths are assumed to be 3 mm.
+- The catalog carries no 48 V pack and no CAN transceiver; the guidance tells the agent
+  to record what it assumes.
+
+**Test.** `test_library.py` covers:
+- spec pins and isolation;
+- refusal of uncatalogued SKUs;
+- the actuator's kind and limits per rating, and the dynamics values;
+- the MuJoCo flat-out speed;
+- placed mount axes and the bay;
+- a real-kernel test: one valid solid per SKU, bounds, the catalog mass reproduced from
+  the kernel volume, every stator and output hole empty, and placement.
+
+`describe_api.json` gains the family. Measured end to end: the exported MJCF carries
+`armature="0.00905842" damping="0.368569" frictionloss="0.51"`, the motor body is 0.49 kg,
+and `forcerange` is the chosen rating.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

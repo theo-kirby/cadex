@@ -431,6 +431,35 @@ drawing is redistributed. A STEP model was only measured, never copied in.
 - **Essentra 462178 screw-on foot:** Essentra's feet catalogue p.691, as
   [hosted by Farnell](https://www.farnell.com/datasheets/3110954.pdf).
 
+## 8i. Catalog QDD actuator data `[Cadex-new, ADR-540]`
+
+`lib.qdd("cubemars-ak70-10")` and `lib.qdd("cubemars-ak80-9-v3")` are
+independently authored from CubeMars's product pages, accessed 2026-10-04:
+
+- [AK70-10 KV100](https://www.cubemars.com/product/ak70-10-kv100-robotic-actuator.html):
+  10:1, 48 V, rated 8.3 N·m at 310 rpm and 7.2 A, peak 24.8 N·m at 23.2 A,
+  no-load 480 rpm, Kt 0.123 N·m/A, rotor inertia 753.4788 g·cm², back drive
+  0.48 N·m, backlash 0.2°, 621 g. Its
+  [2D drawing](https://store.tmotor.com/images/202408/141723615242833695.jpg):
+  Ø89 body, Ø77 × 6 mm output step, Ø71 × 11.2 mm rear cover, 50.25 mm
+  overall; 8-M3×10 front and 8-M3×3.5 rear on Ø83; 6-M3×7 output on Ø25.
+  Third-party listings give 521 g; the manufacturer's 621 g is used.
+- [AK80-9 V3.0 KV100](https://www.cubemars.com/product/ak80-9-v3-0-robotic-actuator.html):
+  9:1, 48 V, rated 9 N·m at 390 rpm and 12 A, peak 22 N·m at 28 A, no-load
+  570 rpm, Kt 0.095 N·m/A, rotor inertia 1118.3238 g·cm², back drive
+  0.51 N·m, backlash 15 arcmin, 490 g. Its
+  [2D drawing](https://www.cubemars.com/images/20250407/1744015272105618.png):
+  Ø98 body, Ø48 × 3 mm output hub, 38.5 mm overall; 8-M3 on Ø85 front and
+  rear; 6-M4 on Ø28 output. Hole depths are undimensioned (assumed 3 mm).
+
+Bolt-circle clocking is read off the drawings, not dimensioned on them.
+Kt and rotor inertia are taken as motor-side (Kt × ratio is near the
+rated torque over the rated current); the output sees the inertia × ratio².
+The AK70-10's 48 V speed-torque chart on the same page starts near 380 rpm,
+below its tabulated no-load figure; the catalog keeps the table's number and
+the note. No manufacturer artwork, CAD, or code is redistributed; no new
+dependency.
+
 ## 9. Where this goes
 
 ADR-025 and ADR-030 record the intended endpoint: **one application we

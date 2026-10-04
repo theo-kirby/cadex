@@ -618,7 +618,7 @@ PRINTED_FAMILIES = frozenset({"gear", "rack", "rack_and_pinion"})
 PRESS_FIT_FAMILIES = frozenset({"bearing", "bushing", "joint"})
 #: Held on the output of a drive, which must itself be held.
 OUTPUT_FAMILIES = frozenset({"servo_horn", "wheel"})
-DRIVE_FAMILIES = frozenset({"servo", "gearmotor", "bldc"})
+DRIVE_FAMILIES = frozenset({"servo", "gearmotor", "bldc", "qdd"})
 #: Held on the rim of a wheel, which must itself be held (ADR-489).
 RIM_FAMILIES = frozenset({"tyre"})
 RIM_HOLDERS = frozenset({"wheel"})

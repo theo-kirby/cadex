@@ -904,6 +904,36 @@ its test voltage; torque is unknown and no actuator helper is supplied.
 Other windings and generic `2820` identifiers are refused. Sources, duration
 limits on published current/power, and approximations: PROVENANCE §8c.
 
+#### Quasi-direct-drive actuators `[ADR-540]`
+
+`lib.qdd("cubemars-ak70-10" | "cubemars-ak80-9-v3", origin=..., direction=...,
+roll_degrees=...)` returns a `QddPart`: a CubeMars integrated joint actuator
+(motor, planetary stage, FOC driver). The datum is the output face's centre,
++Z out through the output, the case in -Z. `direction` is the joint axis.
+`.spec` carries the 48 V ratings (rated/peak torque in N·m and N·mm, rated
+and no-load speed, currents, Kt), `mount_holes` (M3 stator bolt circle at
+`front_mount_z_mm` and `rear_mount_z_mm`), `output_holes`, `mass_g`,
+`effective_density_kg_m3`, `reflected_inertia_kgmm2` and
+`speed_line_damping_nmms_per_deg`.
+
+- `.actuator(joint, control_nmm="0", rating="peak")` is a `kind="motor"`
+  actuator: the control is the output torque, bounded at the datasheet peak
+  (or `rating="rated"`, the continuous figure). A policy's action range is
+  ± that bound.
+- `.joint_dynamics(joint, damping_nmms_per_deg=None)` declares:
+  - the peak-to-no-load torque-speed line as damping, so a joint driven flat
+    out settles at the no-load speed (ADR-409's servo model);
+  - the rotor inertia × ratio² as armature;
+  - the back-drive torque as friction loss.
+
+  Pass a damping to replace the line.
+- `.bay(clearance=0.5, lead_room=15)` is the envelope grown for a printed
+  housing, with room for the leads behind.
+
+The envelope is coaxial cylinders with tapped bores. Pilots, dowels,
+connectors and the rotor/stator mass split are omitted. There is no thermal
+model and no corner speed. Sources and approximations: PROVENANCE §8i.
+
 ### Naming geometry: selectors, not indices `[Phase 10b, ADR-029]`
 
 Five part ops — `subshape`, `defeature`, `fillet`, `chamfer`, `thicken` —

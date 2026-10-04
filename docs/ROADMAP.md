@@ -1710,6 +1710,10 @@ the items below are what made that true. `AGENTS.md` describes the result.
       Code is the only harness"), ADR-512, ADR-519, ADR-523 and ADR-526.
 - [x] The engine payload stops carrying LLVM, clang, OpenCV, PCL, Node and
       Perl (ADR-531, ADR-532); see Phase 13b.
+- [x] Quasi-direct-drive joint actuators in the catalog: `lib.qdd` with the
+      CubeMars AK70-10 and AK80-9 V3.0: a torque motor at the datasheet limit,
+      and the torque-speed line, reflected inertia and back-drive friction as
+      joint dynamics (ADR-540).
 
 ## Off-phase — the harness ops, experimental (ADR-056, ADR-057, ADR-062, ADR-063, ADR-065, 2026-07-27 → 2026-08-01)
 

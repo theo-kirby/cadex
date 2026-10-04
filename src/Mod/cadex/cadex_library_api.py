@@ -517,6 +517,92 @@ class ServoPart(_BayPart):
         )
 
 
+class QddPart(_BayPart):
+    """A placed quasi-direct-drive actuator: envelope, torque and inertia.
+
+    The local frame is the output face's centre, +Z out through the output
+    and the case in -Z, so ``direction`` is the joint axis and the output
+    face is where the driven link bolts on. ``spec['mount_holes']`` are the
+    stator bolt circle's centres at ``front_mount_z_mm`` (the face the
+    output side of the case is held by) and ``rear_mount_z_mm``;
+    ``spec['output_holes']`` are the output flange's, at z = 0.
+    """
+
+    __slots__ = ()
+
+    def __init__(self, lib, part_number, body, spec, frame_placement):
+        rows = [((x, y, spec["front_mount_z_mm"]), (0.0, 0.0, 1.0))
+                for x, y in spec["mount_holes"]]
+        rows += [((x, y, spec["rear_mount_z_mm"]), (0.0, 0.0, -1.0))
+                 for x, y in spec["mount_holes"]]
+        super().__init__(lib, "qdd", part_number, body, spec, frame_placement, rows)
+
+    def bay(self, *, clearance: float = 0.5, lead_room: float = 15.0,
+            label: str = "") -> Any:
+        """The actuator's keep-out solid: grow a housing around it, then cut.
+
+        Every envelope cylinder grown by ``clearance`` radially and at both
+        ends, the output face left open (the driven link sits on it), and
+        ``lead_room`` behind the rear face at the case diameter, where the
+        power and CAN leads leave. Defaults: 0.5 mm, a printed pocket; 15 mm,
+        room for the XT30 lead to turn -- a convention, not a datasheet
+        dimension.
+        """
+        operation = "qdd.bay"
+        c = _bay_allowance(operation, "clearance", clearance)
+        room = _bay_allowance(operation, "lead_room", lead_room)
+        part = self._lib._part
+        spec = self.spec
+        pieces = [part.cylinder(dia / 2.0 + c, (high + c) - (low - c),
+                                origin=(0.0, 0.0, low - c))
+                  for dia, low, high in spec["segments"]]
+        rear = min(low for _dia, low, _high in spec["segments"])
+        if room > 0.0:
+            pieces.append(part.cylinder(spec["case_dia_mm"] / 2.0 + c, room,
+                                        origin=(0.0, 0.0, rear - c - room)))
+        cavity = part.fuse(pieces, label=label)
+        return self._housing(self._lib._place_frame(operation, cavity, self._frame_placement))
+
+    def actuator(self, joint: Any, *, control_nmm: str = "0",
+                 rating: str = "peak", label: str = "") -> Any:
+        """A torque motor on ``joint`` bounded by this actuator's output torque.
+
+        ``kind='motor'``: the control *is* the torque, which is what a QDD
+        under field-oriented current control delivers, and what a policy
+        commands. ``rating='peak'`` (default) bounds it at the datasheet
+        peak output torque, a current-limited short-duty figure;
+        ``rating='rated'`` at the continuous one, the honest choice for a
+        task that holds a load for seconds. Either way the action range a
+        policy trains on is +/- that limit, in N*mm. ``.joint_dynamics``'s
+        speed line is drawn from the peak torque, so under ``'rated'`` a
+        joint flat out tops out at rated/peak of the no-load speed:
+        conservative twice over.
+        """
+        return self._lib._qdd_actuator(self, joint, control_nmm=control_nmm,
+                                       rating=rating, label=label)
+
+    def joint_dynamics(self, joint: Any, *,
+                       damping_nmms_per_deg: float | None = None,
+                       label: str = "") -> Any:
+        """This actuator's top speed, reflected inertia and back-drive friction.
+
+        ``damping_nmms_per_deg`` defaults to ``peak torque / no-load speed``:
+        with the motor actuator clamped at the peak torque, that is the
+        straight torque-speed line from peak at rest to nothing at the
+        datasheet no-load speed, so a joint driven flat out settles at that
+        speed and never above it (the servo family's ADR-409 model). The line
+        passes within about 2 N*m of each catalogued actuator's rated point,
+        conservative at high torque. It is passive, so it also resists an
+        unpowered joint, which a real FOC driver at zero current does not.
+        Give a number (0 included) to replace it. ``armature_kgmm2`` is the
+        motor-side rotor inertia times the gear ratio squared -- often more
+        than a light limb's own inertia. ``friction_loss_nmm`` is the
+        datasheet back-drive torque, the planetary stage's dry friction.
+        """
+        return self._lib._qdd_joint_dynamics(
+            self, joint, damping_nmms_per_deg=damping_nmms_per_deg, label=label)
+
+
 class BatteryPart(_BayPart):
     """A placed pack whose ``.bay()`` houses it with room for its leads."""
 
@@ -1553,6 +1639,99 @@ class LibraryAPI:
                            self._place_frame("bldc", body, frame), spec,
                            _frame_axes(frame, [((x, y, 0.0), (0.0, 0.0, 1.0))
                                                for x, y in spec["mount_holes"]]))
+
+    def qdd(
+        self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
+        direction: Sequence[float] = _DEFAULT_DIRECTION,
+        roll_degrees: float = 0.0, label: str = "",
+    ) -> QddPart:
+        """A catalogued quasi-direct-drive joint actuator, placed by its output.
+
+        ``origin`` is the output face's centre and ``direction`` the output
+        axis (the joint's axis); the case extends behind it. Datasheet
+        envelope with tapped stator holes front and rear and the output
+        flange's bolt circle. ``.actuator(joint)`` is a torque motor at the
+        datasheet output torque; ``.joint_dynamics(joint)`` its torque-speed
+        line, reflected rotor inertia and back-drive friction; ``.bay()`` the keep-out a
+        housing is cut with. ``spec`` carries ratings, mass and the
+        effective density ``assembly.body`` wants; ``spec['approximate']``
+        and ``rating_notes`` say what is not modelled.
+        """
+        operation = "qdd"
+        spec = catalog.qdd_spec(sku)
+        part = self._part
+        segments = [part.cylinder(dia / 2.0, high - low, origin=(0.0, 0.0, low))
+                    for dia, low, high in spec["segments"]]
+
+        def circle(count, pcd, offset):
+            return [[round(pcd / 2.0 * math.cos(math.radians(offset + k * 360.0 / count)), 9),
+                     round(pcd / 2.0 * math.sin(math.radians(offset + k * 360.0 / count)), 9)]
+                    for k in range(count)]
+
+        mounts = circle(spec["mount_count"], spec["mount_pcd_mm"],
+                        spec["mount_angle_offset_degrees"])
+        outputs = circle(spec["output_count"], spec["output_pcd_mm"],
+                         spec["output_angle_offset_degrees"])
+        m_r = float(spec["mount_thread"].lstrip("Mm")) / 2.0
+        o_r = float(spec["output_thread"].lstrip("Mm")) / 2.0
+        front, rear = spec["front_mount_z_mm"], spec["rear_mount_z_mm"]
+        f_depth, r_depth = spec["front_mount_depth_mm"], spec["rear_mount_depth_mm"]
+        o_depth = spec["output_depth_mm"]
+        holes = [part.cylinder(m_r, f_depth + 1.0, origin=(x, y, front - f_depth))
+                 for x, y in mounts]
+        holes += [part.cylinder(m_r, r_depth + 1.0, origin=(x, y, rear - 1.0))
+                  for x, y in mounts]
+        holes += [part.cylinder(o_r, o_depth + 1.0, origin=(x, y, -o_depth))
+                  for x, y in outputs]
+        body = part.cut(part.fuse(segments), holes, label=label)
+        volume_mm3 = (
+            sum(math.pi * (dia / 2.0) ** 2 * (high - low)
+                for dia, low, high in spec["segments"])
+            - len(mounts) * math.pi * m_r * m_r * (f_depth + r_depth)
+            - len(outputs) * math.pi * o_r * o_r * o_depth
+        )
+        ratio = spec["gear_ratio"]
+        spec["mount_holes"] = mounts
+        spec["output_holes"] = outputs
+        spec["peak_torque_nmm"] = spec["peak_torque_nm"] * 1000.0
+        spec["rated_torque_nmm"] = spec["rated_torque_nm"] * 1000.0
+        # g*cm^2 -> kg*mm^2 is x0.1; the output sees the ratio squared.
+        spec["reflected_inertia_kgmm2"] = spec["rotor_inertia_gcm2"] * 0.1 * ratio * ratio
+        spec["back_drive_torque_nmm"] = spec["back_drive_torque_nm"] * 1000.0
+        # rpm -> deg/s is x6: the peak-to-no-load line as joint damping.
+        spec["speed_line_damping_nmms_per_deg"] = (
+            spec["peak_torque_nmm"] / (spec["no_load_speed_rpm"] * 6.0))
+        spec["effective_density_kg_m3"] = spec["mass_g"] * 1.0e6 / volume_mm3
+        frame = self._frame(operation, origin, direction, roll_degrees)
+        return QddPart(self, sku.strip().lower(),
+                       self._place_frame(operation, body, frame), spec, frame)
+
+    def _qdd_actuator(self, qdd: QddPart, joint: Any, *, control_nmm: str,
+                      rating: str, label: str) -> Any:
+        operation = "qdd.actuator"
+        if self._assembly is None:
+            raise LibraryError(f"lib.{operation}: the assembly API is not staged here.")
+        key = str(rating or "").strip().lower()
+        if key not in ("peak", "rated"):
+            raise LibraryError(
+                f"lib.{operation}: rating must be 'peak' or 'rated', got {rating!r}; "
+                f"{qdd.part_number} is rated {qdd.spec['rated_torque_nm']:g} N*m "
+                f"continuous and {qdd.spec['peak_torque_nm']:g} N*m peak.")
+        return self._assembly.actuator(
+            joint, kind="motor", control_nmm=control_nmm,
+            torque_limit_nmm=qdd.spec[f"{key}_torque_nmm"], label=label)
+
+    def _qdd_joint_dynamics(self, qdd: QddPart, joint: Any, *,
+                            damping_nmms_per_deg: float | None, label: str) -> Any:
+        operation = "qdd.joint_dynamics"
+        if self._assembly is None:
+            raise LibraryError(f"lib.{operation}: the assembly API is not staged here.")
+        if damping_nmms_per_deg is None:
+            damping_nmms_per_deg = qdd.spec["speed_line_damping_nmms_per_deg"]
+        return self._assembly.joint_dynamics(
+            joint, damping_nmms_per_deg=damping_nmms_per_deg,
+            armature_kgmm2=qdd.spec["reflected_inertia_kgmm2"],
+            friction_loss_nmm=qdd.spec["back_drive_torque_nmm"], label=label)
 
     # -- boards ------------------------------------------------------------
 

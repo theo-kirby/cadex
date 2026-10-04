@@ -183,6 +183,12 @@
      "str"
     ]
    },
+   "qdd_actuators": {
+    "notes": "str",
+    "skus": [
+     "str"
+    ]
+   },
    "servos": {
     "notes": "str",
     "rows": [

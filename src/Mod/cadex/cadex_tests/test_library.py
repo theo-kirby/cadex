@@ -1094,6 +1094,170 @@ print("BLDC-INTERFACES-OK")
     assert "BLDC-INTERFACES-OK" in completed.stdout, completed.stdout + completed.stderr
 
 
+
+# -- quasi-direct-drive actuators (ADR-540) --------------------------------
+
+
+def test_qdd_pins_manufacturer_ratings_and_isolation():
+    ak70 = _lib().qdd(" CubeMars-AK70-10 ")
+    spec = ak70.spec
+    assert (ak70.family, ak70.part_number) == ("qdd", "cubemars-ak70-10")
+    assert (spec["gear_ratio"], spec["rated_voltage_v"]) == (10, 48)
+    assert (spec["rated_torque_nm"], spec["peak_torque_nm"]) == (8.3, 24.8)
+    assert (spec["rated_speed_rpm"], spec["no_load_speed_rpm"]) == (310, 480)
+    assert (spec["back_drive_torque_nm"], spec["mass_g"]) == (0.48, 621)
+    assert spec["segments"] == [[77, -6, 0], [89, -39.05, -6], [71, -50.25, -39.05]]
+    assert spec["peak_torque_nmm"] == pytest.approx(24800)
+    assert spec["rated_torque_nmm"] == pytest.approx(8300)
+    # 753.4788 g*cm^2 at the rotor is 75.34788 kg*mm^2; x 10^2 at the output.
+    assert spec["reflected_inertia_kgmm2"] == pytest.approx(7534.788)
+    assert len(spec["mount_holes"]) == 8 and len(spec["output_holes"]) == 6
+    for x, y in spec["mount_holes"]:
+        assert math.hypot(x, y) == pytest.approx(41.5)
+    for x, y in spec["output_holes"]:
+        assert math.hypot(x, y) == pytest.approx(12.5)
+    assert spec["mount_holes"][0] == pytest.approx(
+        [41.5 * math.cos(math.radians(22.5)), 41.5 * math.sin(math.radians(22.5))])
+    assert "peak-to-no-load line" in spec["rating_notes"]
+    # 24.8 N*m at rest to none at 480 rpm (2880 deg/s).
+    assert spec["speed_line_damping_nmms_per_deg"] == pytest.approx(24800 / 2880)
+    ak80 = _lib().qdd("cubemars-ak80-9-v3").spec
+    assert (ak80["gear_ratio"], ak80["peak_torque_nm"], ak80["mass_g"]) == (9, 22, 490)
+    assert ak80["reflected_inertia_kgmm2"] == pytest.approx(1118.3238 * 0.1 * 81)
+    assert ak80["output_thread"] == "M4"
+    # The effective density reproduces the manufacturer's mass over the
+    # drilled envelope it was computed from.
+    for row in (spec, ak80):
+        envelope = sum(math.pi * (d / 2) ** 2 * (hi - lo) for d, lo, hi in row["segments"])
+        assert row["effective_density_kg_m3"] * envelope / 1e6 > row["mass_g"]
+        assert row["effective_density_kg_m3"] * envelope / 1e6 < row["mass_g"] * 1.01
+    spec["segments"][0][0] = 999
+    assert catalog.qdd_spec("cubemars-ak70-10")["segments"][0][0] == 77
+    assert _lib().catalog()["qdd_actuators"]["skus"] == [
+        "cubemars-ak70-10", "cubemars-ak80-9-v3"]
+    assert "qdd" in {row["name"] for row in library_listing()["exports"]}
+    with pytest.raises(LibraryError):
+        _lib().qdd("cubemars-ak70-10", direction=(0, 0, 0))
+
+
+@pytest.mark.parametrize("sku", ["ak70-10", "cubemars-ak80-9", "", None, 7010])
+def test_qdd_rejects_uncatalogued_actuators(sku):
+    with pytest.raises(CatalogError, match="Unknown QDD actuator"):
+        _lib().qdd(sku)
+
+
+def test_qdd_actuator_is_a_torque_motor_at_the_datasheet_limit() -> None:
+    lib = _servo_lib()
+    api = _assembly_api()
+    base = api.component({"document_uid": "doc", "object_name": "base"}, grounded=True)
+    leg = api.component({"document_uid": "doc", "object_name": "leg"})
+    joint = api.joint("revolute", api.connector(base), api.connector(leg))
+    qdd = lib.qdd("cubemars-ak80-9-v3")
+    peak = qdd.actuator(joint).properties
+    assert peak["kind"] == "motor"
+    assert peak["control_nmm"] == "0"
+    assert peak["torque_limit_nmm"] == pytest.approx(22000)
+    rated = qdd.actuator(joint, control_nmm="100", rating="rated").properties
+    assert rated["torque_limit_nmm"] == pytest.approx(9000)
+    with pytest.raises(LibraryError, match="9 N\\*m continuous"):
+        qdd.actuator(joint, rating="stall")
+    dynamics = qdd.joint_dynamics(joint).properties
+    assert dynamics["armature_kgmm2"] == pytest.approx(1118.3238 * 0.1 * 81)
+    assert dynamics["friction_loss_nmm"] == pytest.approx(510)
+    assert dynamics["damping_nmms_per_deg"] == pytest.approx(22000 / 3420)
+    damped = qdd.joint_dynamics(joint, damping_nmms_per_deg=0.0).properties
+    assert damped["damping_nmms_per_deg"] == 0.0
+    # The claim, in MuJoCo itself: a leg driven flat out at the peak torque
+    # settles at the datasheet no-load speed (570 rpm), not above it.
+    mujoco = pytest.importorskip("mujoco")
+    per_deg = 180.0 / math.pi / 1000.0  # N*mm per deg -> N*m per rad
+    model = mujoco.MjModel.from_xml_string(f"""
+<mujoco><option timestep="0.0005"/><worldbody><body>
+  <joint name="j" type="hinge" axis="0 0 1" damping="{dynamics['damping_nmms_per_deg'] * per_deg}"
+         armature="{dynamics['armature_kgmm2'] * 1e-6}"/>
+  <geom type="capsule" fromto="0 0 0 0.2 0 0" size="0.01" mass="0.25"/>
+</body></worldbody><actuator>
+  <motor joint="j" forcerange="-22 22" forcelimited="true"/>
+</actuator></mujoco>""")
+    data = mujoco.MjData(model)
+    data.ctrl[0] = 1e6
+    for _ in range(int(2.0 / model.opt.timestep)):
+        mujoco.mj_step(model, data)
+    rpm = data.qvel[0] * 60.0 / (2.0 * math.pi)
+    assert rpm == pytest.approx(570.0, rel=0.01)
+    unstaged = create_library_api(_part()).qdd("cubemars-ak80-9-v3")
+    with pytest.raises(LibraryError):
+        unstaged.actuator(joint)
+    with pytest.raises(LibraryError):
+        unstaged.joint_dynamics(joint)
+
+
+def test_qdd_bay_and_mount_axes_follow_the_placement():
+    from cadex_library_api import _MOUNT_AXES, _definition_key
+
+    qdd = _lib().qdd("cubemars-ak70-10", origin=(10, 0, 0), direction=(1, 0, 0))
+    axes = _MOUNT_AXES[_definition_key(qdd.body)]
+    assert len(axes) == 16
+    assert all(row["thread_dia_mm"] == 3.0 for row in axes)
+    # +Z maps to +X: the front stator face sits 6 mm behind the output face.
+    assert {round(row["origin"][0], 6) for row in axes} == {4.0, -29.05}
+    assert all(abs(row["axis"][0]) == pytest.approx(1.0) for row in axes)
+    bay = qdd.bay()
+    assert len(_ops(bay, "cylinder")) == 4
+    assert catalog_identity_of(bay) is None
+
+
+
+@pytest.mark.skipif(
+    __import__("test_cadexd_lifecycle", fromlist=["FREECADCMD"]).FREECADCMD is None,
+    reason="No FreeCADCmd binary available for QDD interface checks.",
+)
+def test_qdd_real_kernel_envelope_holes_and_placement(tmp_path):
+    import subprocess
+    from test_cadexd_lifecycle import CADEX_ROOT, FREECADCMD
+
+    driver = tmp_path / "qdd_interfaces.py"
+    driver.write_text('''
+import math
+import FreeCAD as App
+from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
+from cadex_domain_api import create_domain_api
+from cadex_library_api import create_library_api
+from cadex_part_worker import build_part_shape
+pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+lib = create_library_api(create_domain_api(pack.domain, pack.api_exports, pack.output_types))
+for sku, r, length in (("cubemars-ak70-10", 44.5, 50.25), ("cubemars-ak80-9-v3", 49.0, 38.5)):
+    part = lib.qdd(sku)
+    spec = part.spec
+    shape = build_part_shape(part.body.to_payload())
+    assert shape.isValid() and len(shape.Solids) == 1, sku
+    bb = shape.BoundBox
+    for actual, expected in zip((bb.XMin, bb.XMax, bb.ZMin, bb.ZMax), (-r, r, -length, 0.0)):
+        assert abs(actual - expected) < 1e-6, (sku, actual, expected)
+    mass_g = shape.Volume * spec["effective_density_kg_m3"] / 1e6
+    assert abs(mass_g - spec["mass_g"]) < 1e-6 * spec["mass_g"], (sku, mass_g)
+    front, rear = spec["front_mount_z_mm"], spec["rear_mount_z_mm"]
+    for x, y in spec["mount_holes"]:
+        assert not shape.isInside(App.Vector(x, y, front - 0.5), 1e-7, True), (sku, x, y)
+        assert not shape.isInside(App.Vector(x, y, rear + 0.5), 1e-7, True), (sku, x, y)
+        assert shape.isInside(App.Vector(x * 0.9, y * 0.9, front - 1.0), 1e-7, True), sku
+    for x, y in spec["output_holes"]:
+        assert not shape.isInside(App.Vector(x, y, -0.5), 1e-7, True), (sku, x, y)
+    assert shape.isInside(App.Vector(0, 0, -1.0), 1e-7, True), sku
+placed = build_part_shape(lib.qdd("cubemars-ak80-9-v3", origin=(100, 30, 20),
+                                  direction=(1, 0, 0)).body.to_payload())
+bb = placed.BoundBox
+assert abs(bb.XMax - 100) < 1e-6 and abs(bb.XMin - 61.5) < 1e-6, (bb.XMin, bb.XMax)
+print("QDD-INTERFACES-OK")
+''')
+    completed = subprocess.run(
+        [str(FREECADCMD), "-c",
+         f"import sys; sys.path.insert(0, {str(CADEX_ROOT)!r}); exec(open({str(driver)!r}).read())"],
+        capture_output=True, text=True, timeout=120,
+    )
+    assert "QDD-INTERFACES-OK" in completed.stdout, completed.stdout + completed.stderr
+
+
 def test_gearmotor_manufacturer_pins_and_isolation():
     motor = _lib().gearmotor(" POLOLU-2367 ")
     spec = motor.spec

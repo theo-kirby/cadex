@@ -51,6 +51,8 @@ __all__ = [
     "foot_pad_spec",
     "BLDC_MOTORS",
     "bldc_spec",
+    "QDD_ACTUATORS",
+    "qdd_spec",
     "linear_actuator_spec",
     "joint_spec",
     "GEAR_STANDARD",
@@ -1098,6 +1100,81 @@ def bldc_spec(sku: Any) -> dict[str, Any]:
     return deepcopy(BLDC_MOTORS[sku.strip().lower()])
 
 
+# Quasi-direct-drive joint actuators (ADR-540): motor, planetary stage and
+# FOC driver in one case, torque-controlled -- the Mini Cheetah class. Values
+# are the manufacturer's specification tables and 2D drawings at 48 V.
+# Datum: the output face centre; +Z out through the output, the case in -Z.
+# ``segments`` are coaxial [diameter, z_low, z_high] cylinders whose union is
+# the envelope. Kt and rotor inertia are motor-side, so the output sees
+# ``gear_ratio`` times the one and its square times the other.
+QDD_ACTUATORS = {
+    "cubemars-ak70-10": {
+        "manufacturer": "CubeMars", "manufacturer_part_number": "AK70-10 KV100",
+        "model": "AK70-10 KV100",
+        "gear_ratio": 10.0, "rated_voltage_v": 48.0,
+        "rated_torque_nm": 8.3, "peak_torque_nm": 24.8,
+        "rated_speed_rpm": 310.0, "no_load_speed_rpm": 480.0,
+        "rated_current_a": 7.2, "peak_current_a": 23.2,
+        "kt_nm_per_a": 0.123, "rotor_inertia_gcm2": 753.4788,
+        "back_drive_torque_nm": 0.48, "backlash_arcmin": 12.0,
+        "mass_g": 621.0,
+        "case_dia_mm": 89.0, "overall_length_mm": 50.25,
+        "segments": [[77.0, -6.0, 0.0], [89.0, -39.05, -6.0], [71.0, -50.25, -39.05]],
+        "mount_thread": "M3", "mount_count": 8, "mount_pcd_mm": 83.0,
+        "mount_angle_offset_degrees": 22.5,
+        "front_mount_z_mm": -6.0, "front_mount_depth_mm": 10.0,
+        "rear_mount_z_mm": -39.05, "rear_mount_depth_mm": 3.5,
+        "output_thread": "M3", "output_count": 6, "output_pcd_mm": 25.0,
+        "output_angle_offset_degrees": 30.0, "output_depth_mm": 7.0,
+        "rating_notes": "Peak torque is a current-limited short-duty rating, rated torque the continuous one. The 48 V speed-torque test chart starts near 380 rpm at zero load and falls to about 232 rpm at 26 Nm, below the tabulated 480 rpm no-load speed. lib.qdd's joint_dynamics models the straight peak-to-no-load line from the tabulated figures, which is conservative against that chart at high torque. No thermal model.",
+        "sources": ["https://www.cubemars.com/product/ak70-10-kv100-robotic-actuator.html",
+                    "https://store.tmotor.com/images/202408/141723615242833695.jpg"],
+        "approximate": [
+            "Coaxial cylinder envelope from the 2D drawing; the 0.5 mm output lip, the 20 mm output pilot recess, the two 3 mm dowel holes, cover screws and connectors are omitted.",
+            "M3 holes are major-diameter blind bores at their drawn depths; not a screw engagement limit.",
+            "Mass is the manufacturer's; the envelope is filled at the effective density that reproduces it, so the inertia is a uniform-solid estimate, not the real rotor/stator split.",
+            "Mounting-hole clocking (22.5 degrees off +X) is read from the drawing, not dimensioned on it.",
+        ],
+    },
+    "cubemars-ak80-9-v3": {
+        "manufacturer": "CubeMars", "manufacturer_part_number": "AK80-9 V3.0 KV100",
+        "model": "AK80-9 V3.0 KV100",
+        "gear_ratio": 9.0, "rated_voltage_v": 48.0,
+        "rated_torque_nm": 9.0, "peak_torque_nm": 22.0,
+        "rated_speed_rpm": 390.0, "no_load_speed_rpm": 570.0,
+        "rated_current_a": 12.0, "peak_current_a": 28.0,
+        "kt_nm_per_a": 0.095, "rotor_inertia_gcm2": 1118.3238,
+        "back_drive_torque_nm": 0.51, "backlash_arcmin": 15.0,
+        "mass_g": 490.0,
+        "case_dia_mm": 98.0, "overall_length_mm": 38.5,
+        "segments": [[48.0, -3.0, 0.0], [98.0, -38.5, -3.0]],
+        "mount_thread": "M3", "mount_count": 8, "mount_pcd_mm": 85.0,
+        "mount_angle_offset_degrees": 22.5,
+        "front_mount_z_mm": -3.0, "front_mount_depth_mm": 3.0,
+        "rear_mount_z_mm": -38.5, "rear_mount_depth_mm": 3.0,
+        "output_thread": "M4", "output_count": 6, "output_pcd_mm": 28.0,
+        "output_angle_offset_degrees": 0.0, "output_depth_mm": 3.0,
+        "rating_notes": "Peak torque is a current-limited short-duty rating, rated torque the continuous one. lib.qdd's joint_dynamics models the straight peak-to-no-load line (22 N*m at rest, none at 570 rpm), which passes 7 N*m at the 390 rpm rated speed against the rated 9 N*m. No thermal model.",
+        "sources": ["https://www.cubemars.com/product/ak80-9-v3-0-robotic-actuator.html",
+                    "https://www.cubemars.com/images/20250407/1744015272105618.png"],
+        "approximate": [
+            "Coaxial cylinder envelope from the 2D drawing; the 37 mm output pilot step, the 3 mm dowel holes, the rear cover recess and connectors are omitted.",
+            "Hole depths are undimensioned on the drawing: every M3 and M4 hole is an assumed 3 mm major-diameter blind bore, not a screw engagement limit.",
+            "Mass is the manufacturer's; the envelope is filled at the effective density that reproduces it, so the inertia is a uniform-solid estimate, not the real rotor/stator split.",
+            "Mounting-hole clocking (22.5 degrees off +X) is read from the drawing, not dimensioned on it.",
+        ],
+    },
+}
+
+
+def qdd_spec(sku: Any) -> dict[str, Any]:
+    """A catalogued quasi-direct-drive actuator's specification row."""
+    if not isinstance(sku, str) or sku.strip().lower() not in QDD_ACTUATORS:
+        raise CatalogError(f"Unknown QDD actuator {sku!r}; catalogued QDD actuators: "
+                           + ", ".join(sorted(QDD_ACTUATORS)))
+    return deepcopy(QDD_ACTUATORS[sku.strip().lower()])
+
+
 # Actuonix revision F drawing; older STEP discrepancy and local widths: PROVENANCE 8d.
 LINEAR_ACTUATORS = {
     "l12-50-210-12-s": {
@@ -1336,6 +1413,10 @@ def catalog_families() -> dict[str, Any]:
         "bldc_motors": {
             "skus": sorted(BLDC_MOTORS),
             "notes": "lib.bldc(sku): sourced rear-mount case and conservative shaft/collar envelope; spec carries kV, qualified ratings and fit limitations. No torque or inertia model.",
+        },
+        "qdd_actuators": {
+            "skus": sorted(QDD_ACTUATORS),
+            "notes": "lib.qdd(sku): quasi-direct-drive joint actuators (motor, planetary stage, FOC driver) as a sourced coaxial envelope with stator and output bolt circles; .actuator(joint) is a torque motor at the datasheet peak (or rated) output torque, .joint_dynamics(joint) the peak-to-no-load torque-speed line, reflected rotor inertia and back-drive friction. No thermal model.",
         },
         "gearmotors": {
             "skus": sorted(GEARMOTORS),
