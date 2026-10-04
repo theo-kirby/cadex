@@ -4733,9 +4733,9 @@ def _execute_policy_rollout(
 
     What leaves is a ``cadex-assembly-simulation-trace-v1`` through
     ``_retain_simulation_trace`` **unchanged** -- the same path the
-    kinematics solver and the dynamics solver reach the shell by. That is
-    the whole design: the viewport plays a learned gait without a protocol
-    change, without a ``shell/`` diff, and without a fourth dialect of the
+    kinematics solver and the dynamics solver reach a viewer by. That is
+    the whole design: a viewer plays a learned gait without a protocol
+    change, without a front-end change, and without a fourth dialect of the
     frame schema.
     """
 
@@ -6655,7 +6655,8 @@ def validate_and_solve_assembly(
     """Build, solve, and annotate one exact native assembly candidate.
 
     ``skip_derived`` drops the simulation trace and the exploded views after
-    validating their contracts, and is for previews only (ADR-055). Neither
+    validating their contracts, and the static and swept fit (ADR-527), and
+    is for previews only (ADR-055). Neither
     can move a solved component placement — a simulation poses components
     frame by frame *from* the solve and restores it, an exploded view reports
     offsets from it — so a preview that wants placements is paying for
@@ -7126,25 +7127,33 @@ def validate_and_solve_assembly(
                      **diagnostics},
         )
 
-    _cpu_stage("assembly static fit")
-    clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved",
-                                   floors=_declared_floors(assembly_properties, component_outputs))
-    world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs, raw_result,
-                                joint_data, assembly_output)
-    attachments = _check_attachments(clearance, joint_data, assembly_output)
-    sweep_steps = {key: assembly_properties[key] for key in ("sweep_step_degrees", "sweep_step_mm")
-                   if assembly_properties.get(key) is not None}
-    # Coverage is reported even when neither step is declared (ADR-367). The
-    # per-joint loop already names a limited joint whose kind's step is
-    # missing, so the assembly that declares nothing learns *which* joints
-    # went unswept instead of only that a sweep is absent. It costs nothing:
-    # with no step to sweep at, every joint short-circuits before any
-    # geometry call, and an assembly with no limited joint reports complete
-    # coverage of an empty set.
-    _cpu_stage("assembly swept fit")
-    clearance_sweep = _measure_joint_sweeps(
-        components, component_data, joint_data, clearance,
-        sweep_steps, diagnostics["status"] == "solved")
+    if skip_derived:
+        # Fit is derived too, and advisory (_check_fit never refuses), so it
+        # can neither move a solved placement nor decline a preview. It was
+        # 0.72 s of a 0.77 s warm preview on the latency bar's part: exact
+        # bounding boxes and a boolean common over BREP the preview never
+        # returns (ADR-527). The accepting run measures it, as it always did.
+        clearance = world_geometry = attachments = clearance_sweep = None
+    else:
+        _cpu_stage("assembly static fit")
+        clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved",
+                                       floors=_declared_floors(assembly_properties, component_outputs))
+        world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs,
+                                    raw_result, joint_data, assembly_output)
+        attachments = _check_attachments(clearance, joint_data, assembly_output)
+        sweep_steps = {key: assembly_properties[key] for key in ("sweep_step_degrees", "sweep_step_mm")
+                       if assembly_properties.get(key) is not None}
+        # Coverage is reported even when neither step is declared (ADR-367).
+        # The per-joint loop already names a limited joint whose kind's step
+        # is missing, so the assembly that declares nothing learns *which*
+        # joints went unswept instead of only that a sweep is absent. It
+        # costs nothing: with no step to sweep at, every joint short-circuits
+        # before any geometry call, and an assembly with no limited joint
+        # reports complete coverage of an empty set.
+        _cpu_stage("assembly swept fit")
+        clearance_sweep = _measure_joint_sweeps(
+            components, component_data, joint_data, clearance,
+            sweep_steps, diagnostics["status"] == "solved")
     _cpu_stage("assembly derived outputs")
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None

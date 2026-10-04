@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """The studio renderer: accepted tessellation to lit images, the concept sheet, and the design proxies.
 
-One implementation for every client (ADR-445). The headless CLI loads this
-file by path, as it loads ``CadexdProtocol``; the shell runs it as a separate
-process through :func:`main`, so no shell code imports it. It is **not** a
+One implementation for every client (ADR-445). The CLI and the dashboard
+load this file by path, as they load ``CadexdProtocol``; it has no process
+entry of its own (ADR-529). It is **not** a
 cadexd op: ``cadexd`` dispatches serially, and a 12 s render inside it would
 stall the slider drag queued behind it. Nothing in the service imports it.
 
@@ -30,7 +30,6 @@ import json
 import math
 from pathlib import Path
 import struct
-import sys
 import time
 import zlib
 
@@ -971,6 +970,14 @@ class Canvas:
             at = 3 * ((y + j) * self.width + x)
             self.pixels[at:at + 3 * w] = pixels[3 * j * w:3 * (j + 1) * w]
 
+    def line(self, x0, y0, x1, y1, colour, width=1):
+        """A straight mark ``width`` px thick from ``(x0, y0)`` to ``(x1, y1)``."""
+        steps = max(1, round(max(abs(x1 - x0), abs(y1 - y0))))
+        for i in range(steps + 1):
+            t = i / steps
+            self.rect(round(x0 + (x1 - x0) * t) - width // 2, round(y0 + (y1 - y0) * t) - width // 2,
+                      width, width, colour)
+
     def text(self, x, y, text, scale, colour):
         """Draws ``text`` upper-cased in the 5x7 face; returns the x after it."""
         for ch in str(text).upper():
@@ -994,7 +1001,7 @@ def fitted_scale(text, width, largest):
     return 1
 
 
-def line_view(triangles, summary, names, basis, *, size=LINE_SIZE):
+def line_view(triangles, summary, names, basis, *, size=LINE_SIZE, bounds=None):
     """An orthographic line drawing: ``(rgb pixels, details)``.
 
     Every pixel is 2x2 subsamples of the renderer's own depth pass, keyed by
@@ -1002,6 +1009,9 @@ def line_view(triangles, summary, names, basis, *, size=LINE_SIZE):
     changes object, meets the backdrop (the silhouette, drawn on both sides
     so it reads heavier), or turns by more than LINE_CREASE_DEGREES within
     one object; coverage is then box-filtered to grey, which antialiases it.
+    ``bounds`` is the square projected window to draw, framed on the
+    drawing when omitted; a blueprint passes its own so every view shares
+    one scale.
     """
     prepared = []
     for index, name in enumerate(names):
@@ -1015,7 +1025,7 @@ def line_view(triangles, summary, names, basis, *, size=LINE_SIZE):
                 prepared.append(((index, (n[0] / length, n[1] / length, n[2] / length)), tri, None))
     _require(bool(prepared), 'nothing to draw in a line view')
     samples = SUPERSAMPLE
-    owner, shading, visits = _depth_pass(prepared, basis, _frame(prepared, basis, 0.06),
+    owner, shading, visits = _depth_pass(prepared, basis, bounds or _frame(prepared, basis, 0.06),
                                                 size, samples)
     n = size * samples
     crease = math.cos(math.radians(LINE_CREASE_DEGREES))
@@ -1176,6 +1186,347 @@ def compose(hero, hero_size, lines, numbers, palette, roles, proxies, revision):
     return png(sheet.pixels, WIDTH, HEIGHT)
 
 
+# --- The blueprint sheet: a dimensioned multi-view drawing (ADR-516) ---------
+
+#: The views a blueprint may draw: the three orthographic line views and the
+#: two three-quarter views. Line drawings all, on the dark floor.
+BLUEPRINT_VIEWS = ('front', 'right', 'top', 'iso', 'iso_back')
+#: The default sheet, row-major on a 2x2 grid: top above front and right
+#: beside front is the third-angle arrangement, with the iso in the spare cell.
+BLUEPRINT_DEFAULT_VIEWS = ('top', 'iso', 'front', 'right')
+BLUEPRINT_MAX_VIEWS = 4
+BLUEPRINT_ORTHO = ('front', 'right', 'top')
+BLUEPRINT_MAX_NAME = 60
+BLUEPRINT_MAX_NOTES = 400
+#: Balloons on one sheet. More parts than this are named by size, largest first.
+BLUEPRINT_MAX_CALLOUTS = 12
+BLUEPRINT_RECIPE_SCHEMA = 'cadex-blueprint-recipe-v1'
+BLUEPRINT_RECIPE_KEYS = ('name', 'views', 'callouts', 'dimensions', 'notes')
+#: A declared measurement shorter than this on paper is not drawn in that view.
+BLUEPRINT_MIN_DIMENSION_PX = 24
+_BP_MARGIN, _BP_COLUMN, _BP_PAD = 24, 384, 64
+BLUEPRINT_APPROXIMATION = ('orthographic line drawing of the standard tessellation at the solved '
+                           'pose; overall extents are measured on that tessellation, declared '
+                           'measurements are the engine\'s own numbers')
+
+
+def blueprint_recipe(raw):
+    """The validated recipe a sheet is drawn from, refusing in sentences that carry the fix.
+
+    ``name`` is the sheet's identity and title; ``views`` 1 to 4 of
+    :data:`BLUEPRINT_VIEWS`; ``callouts`` true, false or a list of part
+    names to balloon; ``dimensions`` true or false; ``notes`` a short text.
+    The result is what the store keeps in ``meta``, so a sheet re-renders.
+    """
+    _require(isinstance(raw, dict), 'a blueprint recipe is an object')
+    unknown = sorted(set(raw) - set(BLUEPRINT_RECIPE_KEYS) - {'schema'})
+    _require(not unknown, 'unknown blueprint key(s) ' + ', '.join(unknown) + '; it takes ' +
+             ', '.join(BLUEPRINT_RECIPE_KEYS))
+    name = ' '.join(str(raw.get('name') or '').split())
+    _require(0 < len(name) <= BLUEPRINT_MAX_NAME,
+             f'a blueprint needs a name of 1 to {BLUEPRINT_MAX_NAME} characters, e.g. "gearbox overview"')
+    views = raw.get('views')
+    views = list(BLUEPRINT_DEFAULT_VIEWS) if views is None else views
+    _require(isinstance(views, list) and 0 < len(views) <= BLUEPRINT_MAX_VIEWS and
+             all(view in BLUEPRINT_VIEWS for view in views) and len(set(views)) == len(views),
+             f'views is 1 to {BLUEPRINT_MAX_VIEWS} distinct names from ' + ', '.join(BLUEPRINT_VIEWS))
+    callouts = raw.get('callouts', True)
+    _require(isinstance(callouts, bool) or isinstance(callouts, list) and
+             all(isinstance(item, str) and item for item in callouts) and
+             len(callouts) <= BLUEPRINT_MAX_CALLOUTS,
+             f'callouts is true, false or a list of at most {BLUEPRINT_MAX_CALLOUTS} part names')
+    dimensions = raw.get('dimensions', True)
+    _require(isinstance(dimensions, bool), 'dimensions is true or false')
+    notes = ' '.join(str(raw.get('notes') or '').split())
+    _require(len(notes) <= BLUEPRINT_MAX_NOTES, f'notes is at most {BLUEPRINT_MAX_NOTES} characters')
+    return {'schema': BLUEPRINT_RECIPE_SCHEMA, 'name': name, 'views': list(views),
+            'callouts': callouts if isinstance(callouts, bool) else list(callouts),
+            'dimensions': dimensions, 'notes': notes}
+
+
+def _paper_text(text):
+    """``text`` in the sheet's face: the two symbols measurements use spelled out."""
+    for sign in ('\N{LATIN CAPITAL LETTER O WITH STROKE}', '\N{DIAMETER SIGN}', '\N{EMPTY SET}'):
+        text = str(text).replace(sign, 'DIA ')
+    text = text.replace('\N{DEGREE SIGN}', ' DEG')
+    return ''.join(ch if ch.upper() in FONT else '?' for ch in text)
+
+
+def _wrap(text, scale, width):
+    lines, line = [], ''
+    for word in str(text).split():
+        trial = (line + ' ' + word).strip()
+        if line and text_width(trial, scale) > width:
+            lines.append(line)
+            line = word
+        else:
+            line = trial
+    return lines + ([line] if line else [])
+
+
+def _dimension(sheet, a, b, text, offset=(0, 0), side=None):
+    """A dimension line from ``a`` to ``b`` (pixels) with ticks and its number beside it:
+    ``side`` is ``below``, ``above``, ``right`` or ``left`` of the line, by default
+    below a horizontal one and right of a vertical one."""
+    (ax, ay), (bx, by) = a, b
+    ox, oy = offset
+    if ox or oy:  # extension lines out to an offset dimension line
+        sheet.line(ax, ay, ax + ox, ay + oy, MUTED)
+        sheet.line(bx, by, bx + ox, by + oy, MUTED)
+        ax, ay, bx, by = ax + ox, ay + oy, bx + ox, by + oy
+    sheet.line(ax, ay, bx, by, INK)
+    for x, y in ((ax, ay), (bx, by)):
+        sheet.line(x - 4, y + 4, x + 4, y - 4, INK, 2)
+    mx, my = (ax + bx) / 2, (ay + by) / 2
+    width = text_width(text, 2)
+    side = side or ('below' if abs(bx - ax) >= abs(by - ay) else 'right')
+    at = {'below': (mx - width / 2, my + 6), 'above': (mx - width / 2, my - 20),
+          'right': (mx + 8, my - 7), 'left': (mx - 8 - width, my - 7)}[side]
+    sheet.text(round(at[0]), round(at[1]), text, 2, INK)
+
+
+def _measurement_ends(record, toward, right):
+    """The two world points a declared measurement is drawn between, or ``None``."""
+    kind = record.get('kind')
+    if kind in ('diameter', 'radius'):
+        centre, radius, normal = record.get('center_mm'), record.get('radius_mm'), record.get('normal')
+        if not (isinstance(centre, list) and isinstance(radius, (int, float)) and isinstance(normal, list)):
+            return None
+        # In the circle's plane and in the paper's: its projection is true length.
+        d = (normal[1]*toward[2] - normal[2]*toward[1], normal[2]*toward[0] - normal[0]*toward[2],
+             normal[0]*toward[1] - normal[1]*toward[0])
+        d = _unit(d) if math.sqrt(sum(c * c for c in d)) > 1e-6 else tuple(right)
+        far = [centre[i] + radius * d[i] for i in range(3)]
+        near = list(centre) if kind == 'radius' else [centre[i] - radius * d[i] for i in range(3)]
+        return near, far
+    anchors = record.get('anchors_mm')
+    if kind == 'angle' or not (isinstance(anchors, list) and len(anchors) == 2):
+        return None
+    return anchors[0], anchors[1]
+
+
+def blueprint_sheet(triangles, summary, names, recipe, *, measurements=(), placed=False,
+                    project='', version=1, date=''):
+    """``(png bytes, facts)``: one dimensioned multi-view drawing sheet.
+
+    ``names`` are the objects drawn (environment left out). Every view shares
+    one scale, so a millimetre is the same length in each; orthographic views
+    carry the overall extents, and each declared measurement (``measurements``,
+    ``[(output, record)]`` from the display block) is drawn once, in the first
+    orthographic view where it reads, when ``placed`` is false -- a placed
+    design's measurement points are in its part's own frame, so they are
+    listed, never drawn somewhere they are not. Callouts are numbered
+    balloons on the first three-quarter view (else the first view), keyed in
+    the parts list. The title block names the sheet, its version, the
+    revision, the digest, the date and the scale.
+    """
+    recipe = blueprint_recipe(recipe)
+    objects = summary['objects']
+    names = [name for name in names if objects[name]['triangles']]
+    _require(bool(names), 'nothing to draw once environment geometry is left out')
+    if isinstance(recipe['callouts'], list):
+        unknown = sorted(set(recipe['callouts']) - set(names))
+        _require(not unknown, 'unknown callout ' + ', '.join(unknown) + '; drawable: ' + ', '.join(names))
+    views = recipe['views']
+    points = {name: [p for _, tri in triangles[objects[name]['first']:objects[name]['first'] +
+                                              objects[name]['triangles']] for p in tri]
+              for name in names}
+    allpoints = [p for name in names for p in points[name]]
+
+    def project_on(basis, p):
+        right, up = basis[0], basis[1]
+        return (p[0]*right[0] + p[1]*right[1] + p[2]*right[2], p[0]*up[0] + p[1]*up[1] + p[2]*up[2])
+
+    spans = {}
+    for view in views:
+        uv = [project_on(LOOK_VIEWS[view], p) for p in allpoints]
+        spans[view] = ([min(u for u, _ in uv), min(v for _, v in uv)],
+                       [max(u for u, _ in uv), max(v for _, v in uv)])
+    cols = 1 if len(views) == 1 else 2
+    rows = 1 if len(views) <= 2 else 2
+    area_w = WIDTH - 3 * _BP_MARGIN - _BP_COLUMN
+    area_h = HEIGHT - 2 * _BP_MARGIN
+    cell_w, cell_h = area_w // cols, area_h // rows
+    side = min(cell_w, cell_h) - 2 * _BP_PAD
+    extent = max(max(hi[0] - lo[0], hi[1] - lo[1]) for lo, hi in spans.values())
+    _require(extent > 0, 'zero projected extent')
+    scale = side / (extent * 1.04)  # px per mm, every view
+    sheet = Canvas(WIDTH, HEIGHT, PAPER)
+    sheet.rect(_BP_MARGIN // 2, _BP_MARGIN // 2, WIDTH - _BP_MARGIN, 2, RULE)
+    sheet.rect(_BP_MARGIN // 2, HEIGHT - _BP_MARGIN // 2 - 2, WIDTH - _BP_MARGIN, 2, RULE)
+    sheet.rect(_BP_MARGIN // 2, _BP_MARGIN // 2, 2, HEIGHT - _BP_MARGIN, RULE)
+    sheet.rect(WIDTH - _BP_MARGIN // 2 - 2, _BP_MARGIN // 2, 2, HEIGHT - _BP_MARGIN, RULE)
+
+    callout_view = next((v for v in views if v not in BLUEPRINT_ORTHO), views[0])
+    if recipe['callouts'] is False:
+        balloon = []
+    elif isinstance(recipe['callouts'], list):
+        balloon = list(recipe['callouts'])
+    else:
+        def bulk(name):
+            lo, hi = objects[name]['bounds_mm']
+            return -(hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2])
+        balloon = sorted(names, key=bulk)[:BLUEPRINT_MAX_CALLOUTS] if len(names) > 1 else []
+    drawable = [(output, record) for output, record in measurements if not placed]
+    pending = list(range(len(drawable)))
+    facts_views, dims, callouts, drawn_measurements = {}, [], [], set()
+    for index, view in enumerate(views):
+        basis = LOOK_VIEWS[view]
+        cx0 = _BP_MARGIN + (index % cols) * cell_w
+        cy0 = _BP_MARGIN + (index // cols) * cell_h
+        sheet.rect(cx0, cy0, cell_w - 8, 1, RULE)
+        sheet.text(cx0 + 6, cy0 + 8, view.replace('_', ' '), 2, MUTED)
+        x0, y0 = cx0 + (cell_w - side) // 2, cy0 + (cell_h - side) // 2
+        lo, hi = spans[view]
+        cu, cv = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
+        half = side / scale / 2
+        pixels, _ = line_view(triangles, summary, names, basis, size=side,
+                              bounds=([cu - half, cv - half], [cu + half, cv + half]))
+        sheet.paste(x0, y0, pixels, side, side)
+
+        def to_px(p, basis=basis, x0=x0, y0=y0, cu=cu, cv=cv):
+            u, v = project_on(basis, p)
+            return (x0 + side / 2 + (u - cu) * scale, y0 + side / 2 - (v - cv) * scale)
+
+        left, right = x0 + side / 2 + (lo[0] - cu) * scale, x0 + side / 2 + (hi[0] - cu) * scale
+        top, bottom = y0 + side / 2 - (hi[1] - cv) * scale, y0 + side / 2 - (lo[1] - cv) * scale
+        facts_views[view] = {'span_mm': [round(hi[0] - lo[0], 3), round(hi[1] - lo[1], 3)],
+                             'cell': [cx0, cy0, cell_w, cell_h]}
+        if recipe['dimensions'] and view in BLUEPRINT_ORTHO:
+            width_mm, height_mm = hi[0] - lo[0], hi[1] - lo[1]
+            _dimension(sheet, (left, bottom), (right, bottom), f'{width_mm:.1f}', (0, 22))
+            _dimension(sheet, (right, top), (right, bottom), f'{height_mm:.1f}', (22, 0))
+            axes = {'front': 'XZ', 'right': 'YZ', 'top': 'XY'}[view]
+            dims += [{'view': view, 'source': 'overall', 'axis': axes[0], 'mm': round(width_mm, 3)},
+                     {'view': view, 'source': 'overall', 'axis': axes[1], 'mm': round(height_mm, 3)}]
+            above, beside = top, left  # declared dimensions stack above and left of the outline
+            for k in list(pending):
+                output, record = drawable[k]
+                ends = _measurement_ends(record, basis[2], basis[0])
+                if ends is None:
+                    continue
+                a, b = to_px(ends[0]), to_px(ends[1])
+                if math.hypot(b[0] - a[0], b[1] - a[1]) < BLUEPRINT_MIN_DIMENSION_PX:
+                    continue
+                text = _paper_text(record.get('text') or '')
+                dx, dy = abs(b[0] - a[0]), abs(b[1] - a[1])
+                if record.get('kind') in ('diameter', 'radius'):
+                    # Across the circle where it is, the number above its far end.
+                    _dimension(sheet, a, b, text, side='above')
+                elif dy <= 0.05 * dx:  # horizontal on paper: lifted above the outline
+                    above -= 30
+                    _dimension(sheet, a, b, text, (0, above - min(a[1], b[1])), 'above')
+                elif dx <= 0.05 * dy:  # vertical on paper: out to the left of it
+                    beside -= 22
+                    _dimension(sheet, a, b, text, (beside - min(a[0], b[0]), 0), 'left')
+                else:
+                    _dimension(sheet, a, b, text)
+                pending.remove(k)
+                drawn_measurements.add(k)
+                dims.append({'view': view, 'source': 'declared', 'output': output,
+                             'kind': record.get('kind'), 'text': record.get('text'),
+                             'mm': record.get('value_mm')})
+        if view == callout_view and balloon:
+            anchors = []
+            for name in balloon:
+                lo3, hi3 = objects[name]['bounds_mm']
+                anchors.append((name, to_px([(lo3[i] + hi3[i]) / 2 for i in range(3)])))
+            sides = {'l': [], 'r': []}
+            for number, (name, (ax, ay)) in enumerate(anchors, 1):
+                sides['l' if ax < x0 + side / 2 else 'r'].append((ay, ax, number, name))
+            for key, column in sides.items():
+                bx = cx0 + 8 if key == 'l' else cx0 + cell_w - 8 - 8 - 26
+                floor_y = cy0 + 30
+                for ay, ax, number, name in sorted(column):
+                    by = max(floor_y, min(round(ay) - 9, cy0 + cell_h - 26))
+                    floor_y = by + 22
+                    sheet.rect(bx, by, 26, 18, RULE)
+                    sheet.rect(bx + 1, by + 1, 24, 16, PAPER)
+                    label = str(number)
+                    sheet.text(bx + 13 - text_width(label, 2) // 2, by + 2, label, 2, INK)
+                    edge = bx + 26 if key == 'l' else bx
+                    sheet.line(edge, by + 9, ax, ay, MUTED)
+                    sheet.rect(round(ax) - 2, round(ay) - 2, 5, 5, INK)
+                    callouts.append({'number': number, 'name': name, 'view': view})
+    callouts.sort(key=lambda item: item['number'])
+
+    # The right column: what the sheet is, notes, the parts list, the
+    # measurements, and the title block at the foot.
+    x, width = WIDTH - _BP_MARGIN - _BP_COLUMN, _BP_COLUMN
+    sheet.rect(x - 12, _BP_MARGIN, 2, HEIGHT - 2 * _BP_MARGIN, RULE)
+    sheet.text(x, _BP_MARGIN + 8, 'Cadex blueprint', 2, MUTED)
+    title = _paper_text(recipe['name'])
+    title_lines = _wrap(title, 4, width)[:2] if text_width(title, 4) > width else [title]
+    y = _BP_MARGIN + 36
+    for line in title_lines:
+        sheet.text(x, y, line, fitted_scale(line, width, 4), INK)
+        y += 36
+    sheet.rect(x, y, width, 2, RULE)
+    y += 14
+    if recipe['notes']:
+        sheet.text(x, y, 'notes', 2, MUTED)
+        y += 22
+        for line in _wrap(_paper_text(recipe['notes']), 2, width)[:8]:
+            sheet.text(x, y, line, 2, INK)
+            y += 18
+        y += 8
+    if callouts:
+        sheet.text(x, y, 'parts', 2, MUTED)
+        y += 22
+        for item in callouts:
+            sheet.text(x, y, f"{item['number']:>2}", 2, INK)
+            sheet.text(x + 40, y, _paper_text(item['name'])[:28], 2, INK)
+            y += 18
+        y += 8
+    listed = list(measurements)
+    if listed:
+        sheet.text(x, y, 'measurements' + ('' if not placed else '  (listed, part frame)'), 2, MUTED)
+        y += 22
+        for output, record in listed[:8]:
+            text = _paper_text(record.get('text') or '')
+            label = _paper_text(record.get('label') or output)[:30 - len(text) // 2]
+            sheet.text(x, y, label, 2, INK)
+            sheet.text(x + width - text_width(text, 2), y, text, 2, INK)
+            y += 18
+    block = [('sheet', f"{title[:22]} v{int(version)}"), ('project', _paper_text(project)[:28] or '-'),
+             ('revision', summary['revision'][:12]), ('digest', str(summary.get('digest') or '')[:12] or '-'),
+             ('date', _paper_text(date) or '-'), ('scale', f'{scale:.3f} px/mm all views'),
+             ('units', 'mm'), ('views', 'third angle' if tuple(views) == BLUEPRINT_DEFAULT_VIEWS else
+                                        'orthographic')]
+    row_h = 26
+    top = HEIGHT - _BP_MARGIN - row_h * len(block)
+    sheet.rect(x, top - 2, width, 2, INK)
+    for k, (label, value) in enumerate(block):
+        ry = top + k * row_h
+        sheet.text(x + 4, ry + 7, label, 2, MUTED)
+        sheet.text(x + 120, ry + 7, value, fitted_scale(value, width - 124, 2), INK)
+        sheet.rect(x, ry + row_h - 1, width, 1, RULE)
+    facts = {'ok': True, 'name': recipe['name'], 'version': int(version), 'revision': summary['revision'],
+             'views': views, 'scale_px_per_mm': round(scale, 4), 'view_spans': facts_views,
+             'dimensions': dims, 'callouts': callouts,
+             'measurements': {'declared': len(listed), 'drawn': len(drawn_measurements),
+                              'listed_only': len(listed) - len(drawn_measurements),
+                              'why_listed': ('the design places components, so measurement points are '
+                                             'in a part frame' if placed and listed else
+                                             'no orthographic view shows it legibly'
+                                             if len(listed) > len(drawn_measurements) else '')},
+             'size': [WIDTH, HEIGHT], 'approximation': BLUEPRINT_APPROXIMATION}
+    return png(sheet.pixels, WIDTH, HEIGHT), facts
+
+
+def blueprint_report(reply, fit, inventory, recipe, *, project='', version=1, date=''):
+    """``(png bytes, facts)``: :func:`blueprint_sheet` from an accepted reply and its blocks."""
+    triangles, summary = snapshot(reply, world(fit))
+    environment, _ = classify(summary, fit, inventory)
+    names = [name for name in summary['objects'] if name not in environment]
+    display = reply.get('display') or {}
+    measurements = sorted((str(name), entry['measurement']) for name, entry in display.items()
+                          if isinstance(entry, dict) and isinstance(entry.get('measurement'), dict))
+    placed = any(isinstance(entry, dict) and entry.get('source_output') for entry in display.values())
+    return blueprint_sheet(triangles, summary, names, recipe, measurements=measurements, placed=placed,
+                           project=project, version=version, date=date)
+
+
 # --- The two whole jobs: a review render and an agent's look -----------------
 
 #: What a look is, in one line, for the model reading it.
@@ -1250,47 +1601,6 @@ def _appearance_rows(names, looks, appearance, purchased):
 
 def _palette_hex(palette):
     return {role: '#%02X%02X%02X' % tuple(rgb) for role, rgb in {**ROLE_COLORS, **palette}.items()}
-
-
-def display_objects(display):
-    """``object -> source`` for a display map, as :func:`snapshot` names them.
-
-    Components by their own name, placing their ``source_output``; an output
-    with geometry of its own and no component placing it, by its name. No
-    buffer is read, so this is cheap enough to run on every accepted build.
-    """
-    display = {str(k): v for k, v in dict(display or {}).items() if isinstance(v, dict)}
-    sources = {str(e['source_output']) for e in display.values() if e.get('source_output')}
-    objects = {}
-    for name, entry in sorted(display.items()):
-        source = str(entry.get('source_output') or name)
-        if name in sources or source == name and not entry.get('tessellation'):
-            continue
-        objects[name] = source
-    return objects
-
-
-def role_colours(display, fit=None, inventory=None):
-    """What a viewport paints each object, by the rules the studio draws with.
-
-    ``{'objects': {object: {role, color, source}}, 'palette': {role: hex},
-    'environment': [...]}``. The same resolution as a render's
-    ``summary['appearance']`` -- declared role, else supplier -- so a part is
-    the colour in the app's viewport that it is in ``look``, the hero and the
-    sheet. World geometry the fit names is left out. With no inventory to
-    tell printed from purchased, ``objects`` holds only declared roles: the
-    studio's index colours say nothing about a design, and a viewport keeps
-    its own.
-    """
-    summary = {'objects': {name: {'source': source, 'color': (0, 0, 0)}
-                           for name, source in display_objects(display).items()}}
-    environment, purchased = classify(summary, fit, inventory)
-    appearance, palette = declared(inventory)
-    looks = materials(summary, purchased=purchased, appearance=appearance, palette=palette)
-    names = [name for name in summary['objects']
-             if name not in environment and (purchased is not None or name in appearance)]
-    return {'objects': _appearance_rows(names, looks, appearance, purchased),
-            'palette': _palette_hex(palette), 'environment': sorted(environment)}
 
 
 def render_files(triangles, source, root, fit, inventory, relative_dir):
@@ -1369,107 +1679,3 @@ def write_files(directory, files):
     except OSError as exc:
         raise StudioError('render: cannot write views: ' + str(exc)) from exc
     return written
-
-
-# --- The process entry: how a client that may not import this runs it --------
-
-REQUEST_SCHEMA = 'cadex-studio-request-v1'
-RESULT_SCHEMA = 'cadex-studio-result-v1'
-
-
-def _blocks(request):
-    """``(fit, inventory)`` from a request: given as blocks, or built from raw values.
-
-    A client that may not import engine code (the shell) sends the raw
-    ``inspect scope=clearance`` and ``scope=inventory`` values as
-    ``clearance`` and ``inventory_value``, and the blocks are built here by
-    ``CadexFitReport`` (ADR-447), exactly as the CLI builds them in process.
-    A block given directly wins over a raw value; either may be ``null``.
-    """
-    fit, inventory = request.get('fit'), request.get('inventory')
-    if fit is None and request.get('clearance') is not None or \
-            inventory is None and request.get('inventory_value') is not None:
-        import CadexFitReport  # the process entry has this module's directory on sys.path
-        try:
-            if fit is None and request.get('clearance') is not None:
-                fit = CadexFitReport.fit_summary(request['clearance'])
-            if inventory is None and request.get('inventory_value') is not None:
-                inventory = CadexFitReport.inventory_summary(request['inventory_value'])
-        except (KeyError, TypeError, ValueError, AttributeError) as exc:
-            raise StudioError(f'blocks: malformed inspect value: {type(exc).__name__}: {exc}') from exc
-    return fit, inventory
-
-
-def run_request(request):
-    """One request (``REQUEST_SCHEMA``) to one result (``RESULT_SCHEMA``); never raises.
-
-    ``kind`` is ``render`` (``render_files`` into ``out_dir``, summary paths
-    under ``relative_dir``), ``look`` (one ``<view>.png`` per view into
-    ``out_dir`` plus the look's facts) or ``blocks`` (the ``fit`` and
-    ``inventory`` blocks and their bounded model views ``fit_view`` and
-    ``inventory_view``, no drawing, no ``out_dir``; given the accepted
-    ``display`` as well, ``appearance`` is :func:`role_colours`). ``reply`` is the
-    accepted reply with its display block. The blocks come as ``fit`` and
-    ``inventory``, or raw as ``clearance`` and ``inventory_value``
-    (:func:`_blocks`); any of them may be ``null``.
-    """
-    try:
-        _require(isinstance(request, dict) and request.get('schema') == REQUEST_SCHEMA,
-                 'request schema must be ' + REQUEST_SCHEMA)
-        kind, out_dir = request.get('kind'), request.get('out_dir')
-        _require(kind in ('render', 'look', 'blocks'), "kind must be 'render', 'look' or 'blocks'")
-        fit, inventory = _blocks(request)
-        if kind == 'blocks':
-            # ...and each bounded as a build reply shows it to the model (ADR-435).
-            import CadexFitReport
-            # With the accepted ``display`` too, the colour each object is
-            # drawn in, for a viewport to paint (ADR-449).
-            display = request.get('display')
-            _require(display is None or isinstance(display, dict), 'display must be a display map')
-            return {'schema': RESULT_SCHEMA, 'ok': True, 'kind': kind, 'fit': fit, 'inventory': inventory,
-                    'fit_view': None if fit is None else CadexFitReport.fit_view(fit),
-                    'inventory_view': None if inventory is None else CadexFitReport.inventory_view(inventory),
-                    'appearance': None if display is None else role_colours(display, fit, inventory)}
-        _require(isinstance(out_dir, str) and Path(out_dir).is_absolute(), 'out_dir must be an absolute path')
-        reply = request.get('reply')
-        _require(isinstance(reply, dict), 'reply must be the accepted reply')
-        if kind == 'look':
-            facts, shots = look_report(reply, fit, inventory, request.get('views') or LOOK_DEFAULT_VIEWS,
-                                       request.get('focus') or ())
-            written = write_files(out_dir, {f'{view}.png': data for view, data, _ in shots})
-            return {'schema': RESULT_SCHEMA, 'ok': True, 'kind': kind, 'facts': facts,
-                    'fit': fit, 'inventory': inventory, 'files': [str(path) for path in written]}
-        root = request.get('project_root')
-        _require(isinstance(root, str) and root, 'project_root is required for a render')
-        triangles, source = snapshot(reply, world(fit))
-        files, summary = render_files(triangles, source, root, fit, inventory,
-                                      str(request.get('relative_dir') or 'review/render'))
-        written = write_files(out_dir, files)
-        return {'schema': RESULT_SCHEMA, 'ok': True, 'kind': kind, 'summary': summary,
-                'files': [str(path) for path in written]}
-    except StudioError as exc:
-        return {'schema': RESULT_SCHEMA, 'ok': False, 'error': str(exc)}
-
-
-def main(argv=None):
-    """``python CadexStudio.py REQUEST.json``: the result as one JSON line on stdout.
-
-    Exit 0 when the render succeeded, 1 when it was refused, 2 for a
-    request file that cannot be read at all.
-    """
-    argv = sys.argv[1:] if argv is None else argv
-    if len(argv) != 1:
-        print(json.dumps({'schema': RESULT_SCHEMA, 'ok': False, 'error': 'usage: CadexStudio.py REQUEST.json'}))
-        return 2
-    try:
-        request = json.loads(Path(argv[0]).read_text(encoding='utf-8'))
-    except (OSError, ValueError) as exc:
-        print(json.dumps({'schema': RESULT_SCHEMA, 'ok': False, 'error': f'unreadable request: {exc}'}))
-        return 2
-    result = run_request(request)
-    print(json.dumps(result, default=str))
-    return 0 if result['ok'] else 1
-
-
-if __name__ == '__main__':
-    raise SystemExit(main())

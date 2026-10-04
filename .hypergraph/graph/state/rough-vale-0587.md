@@ -7,7 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
+Status: superseded
 
 ## Current
 
@@ -30,3 +30,8 @@ None yet.
 - rapid-spark-0680 — operator directive adds A7 mid-run
 - brave-rain-8039 — ADR-443 servo `.bay()` + overlay limb wrap; read-only shroud share on 16/21 designs (quadruped hips 0.198/0.390); no confirmation turn
 - snowy-quill-0006 — owner directive: A7 deferred, does not block done; ot10 ends after A8
+- light-path-5130 — superseded in orun2's R1 frontier pruning
+
+## Superseded
+
+ot10 ended and is archived (merged d8f69d6c). A7 depends on ot10's retired rubric (ADR-479–484); the design bar moves to the shelved base-plus-styles charter after orun2. The measured results above stand as the final record; nothing about the criterion's evidence changed. Superseded through orun2 R1's frontier pruning so the frontier lists only live work [rec: light-path-5130].

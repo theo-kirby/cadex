@@ -116,7 +116,11 @@ def test_render_refuses_invalid_inputs_without_touching_training(video_project, 
     heartbeat = run / 'train/heartbeat'
     process = subprocess.Popen([sys.executable, '-c',
         'import time,pathlib,sys\np=pathlib.Path(sys.argv[1])\n'
-        'for i in range(1000):\n p.write_text(str(i)); time.sleep(.02)', str(heartbeat)])
+        'for i in range(1000):\n'
+        # Atomic, as a real trainer's heartbeat must be: a truncating write
+        # lets a reader see '' between the truncate and the write.
+        ' t=p.with_name(p.name+\'.tmp\'); t.write_text(str(i)); t.replace(p); time.sleep(.02)',
+        str(heartbeat)])
     try:
         with pytest.raises((ValueError, FileNotFoundError)):
             render(root, 'sample', style)

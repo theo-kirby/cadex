@@ -87,6 +87,50 @@ Until this section changes, the run works to these defaults:
 - **A4. Claude Code is the only harness.** Codex and pi support goes with
   the shell.
 
+## Owner notes
+
+Answers to the parity ledger's "owner to confirm" rows, given on 2026-10-03
+during the run. They settle those rows, and the ledger's text and its ADRs
+should say so.
+
+- **The live policy session is dropped.** That covers `cadex_live.py`, the
+  Live editor and pushing a running policy. Reviewing a policy means
+  rollout playback plus `evaluate`'s disturbance tests.
+- **The blueprint composer is kept, as a headless engine-side tool.**
+  - The agent can still compose dimensioned multi-view drawing sheets
+    (views, callouts, dimensions, title block). The shell's `make_blueprint`,
+    `save_blueprint` and `cadex_sheet.py` did this.
+  - Re-derive it under `cli/` or the engine. **Copy nothing from
+    `shell/`.** Read it as reference only, and do so before the shell
+    delete commit.
+  - Drawings are versioned with the project. The dashboard shows them as
+    outputs.
+  - It counts as a "ported" ledger row under W1, so it needs a test.
+  - Schedule it after D2's write paths, not before.
+- **`collision_view`'s agent half is kept.** The agent gets the contact
+  report at t=0 (which parts touch at rest) without a person looking. Fold
+  it into `inspect` or a tool and pin it with tests. The tool-surface rule
+  in AGENTS.md applies.
+- **The demo biped is dropped**, as ADR-498 already did. Nothing is
+  restored.
+- **Agent timeout and memory budgets move to the project.** They are
+  stored in the project config (for example `agent.json`), with CLI flags
+  that override them per call. The dashboard shows them read-only. Tests
+  pin both the stored values and the overrides.
+- **Next, before more D3 work (added 2026-10-03, iteration 32):** D2 is
+  complete. Land the blueprint composer and the project budgets above
+  next, each as its own unit with an ADR, tests and a record, then resume
+  D3. `shell/` is already deleted, so read the old composer from the tag
+  `v1-blender-shell` (`git show v1-blender-shell:shell/scripts/startup/mesh_agent/cadex_sheet.py`). It is
+  reference only, and copying from it is still barred.
+- **The 5090 is back (added 2026-10-04, iteration 67):** the owner loaded
+  the driver, now 580.178.04. `nvidia-smi` sees the RTX 5090 and
+  `~/cadex-train-venv` reports `jax.default_backend() == "gpu"`. REPORT
+  defect 5 is cleared. W1 step 7's GPU leg comes next, before more
+  subtraction: `cadex walk` on `orun2-w1-robin` without
+  `JAX_PLATFORMS=cpu`. Record the measured result, update the report, and
+  hide the GPU from the CLI suite while it trains.
+
 ## Done criteria
 
 Each criterion needs a causally parented record with measured evidence.

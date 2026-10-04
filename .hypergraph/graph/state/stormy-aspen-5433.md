@@ -7,7 +7,7 @@ parents:
 - mild-ledge-7157
 summary: ''
 ---
-Status: open
+Status: superseded
 
 ## Current
 
@@ -67,3 +67,8 @@ Charter criterion: **F5. The arm is designed unassisted.** Heron's ot6 create pr
 - restless-slope-6471 — ADR-382 bounds that claim in the prompt: an absent name is provenance unknown, not a printed part
 - honest-ash-4208 — cross-reference: F5's remaining catalog-identity gap is carried by ot8's G2 (`tender-bay-4302`); F5 itself stays exhausted and is not re-run
 - winter-creek-7660 — G2 measured the same ask on a fresh project and reached catalog identity for all four purchased parts, closing the count F5 left open
+- light-path-5130 — superseded in orun2's R1 frontier pruning
+
+## Superseded
+
+ot7 ended and is archived (merged fa75c531). F5 was already exhausted; no later charter re-opened it. The measured results above stand as the final record; nothing about the criterion's evidence changed. Superseded through orun2 R1's frontier pruning so the frontier lists only live work [rec: light-path-5130].

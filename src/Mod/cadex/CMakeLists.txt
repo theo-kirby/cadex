@@ -37,22 +37,18 @@ set(Cadex_Scripts
     CadexScriptedRuntime.py
     CadexScriptedDomainPublication.py
     CadexWarmWorker.py
-    CadexLiveSession.py
     cadex_assembly_api.py
     cadex_assembly_worker.py
     cadex_domain_api.py
     cadex_domain_worker.py
     cadex_mesh_api.py
     cadex_mesh_worker.py
-    cadex_blender_runner.py
-    cadex_blender_worker.py
     cadex_library_api.py
     cadex_part_api.py
     cadex_part_worker.py
     cadex_partdesign_api.py
     cadex_partdesign_worker.py
     cadex_project_api.py
-    cadex_live_worker.py
     cadex_preview_worker.py
     cadex_project_worker.py
     cadex_rebuild.py

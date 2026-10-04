@@ -7,7 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
+Status: superseded
 
 ## Current
 
@@ -24,3 +24,9 @@ None yet.
 ## Provenance
 
 - sweet-brook-2725 — orun1 operator-declared charter gap
+- light-path-5130 — superseded in orun2's R1 frontier pruning
+- snowy-beacon-2710 — impact misdirected here (orun2 C1 work); redirected by empty-heron-1077 and folded into wild-ocean-3878; no claim here changed
+
+## Superseded
+
+orun1 was stopped by the owner at iteration 33 for scope, not progress, and archived (merged 3e345fd2); its follow-on is the shelved base-plus-styles charter, not a closing report. The measured results above stand as the final record; nothing about the criterion's evidence changed. Superseded through orun2 R1's frontier pruning so the frontier lists only live work [rec: light-path-5130].

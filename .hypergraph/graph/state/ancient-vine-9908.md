@@ -7,9 +7,11 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: superseded
 
 ## Current
+
+**Superseded in orun2's R1 frontier clean-up:** run ot8 ended and merged; its G1–G6 children keep their recorded evidence (the ot6/ot7 root precedent). [rec: crimson-stone-9344]
 
 **Owner-directed work for run `ot8` (ADR-399): finish the unassisted-design evidence ot7 left measured-but-open [rec: keen-stone-1720] [rec: humble-fox-6370].** It follows the ot7 charter (ADR-341, `mild-ledge-7157`), which merged as `fa75c531` on 2026-09-20 after one correction, and it is deliberately a **bounded follow-up rather than a new leg**: ot7's own report says which of its claims are reviewable against accepted artifacts and which are not, and those three gaps are the whole scope [rec: humble-fox-6370].
 
@@ -53,3 +55,4 @@ None yet.
 - rough-ridge-4729 — G6 closing report written; every criterion evidenced, done claimed without an owner tick
 - fair-light-2080 — iteration 10: no new work under report_done; export and check clean at HEAD after the first critic acceptance
 - silver-cloud-5850 — the owner's ot9 charter takes up the balancer G4 left control-blocked
+- crimson-stone-9344 — superseded in orun2's R1 frontier clean-up

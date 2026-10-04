@@ -8,11 +8,11 @@
 #   package/app/bump_version.sh minor    0.0.5 -> 0.1.0
 #   package/app/bump_version.sh major    0.0.5 -> 1.0.0
 #
-# `VERSION` at the repo root is the single source of truth; the build stamps
-# it into the bundle (build_app.sh stamp_version), the window title reads it
-# from there, and the *build number* -- CFBundleVersion -- is the commit
-# count, which increments on its own. So this script is for the deliberate
-# bumps only, and committing the changed VERSION is the release act.
+# `VERSION` at the repo root is the product version. The shell bundle, which
+# stamped it into its window title, is disabled (ADR-495); the engine payload
+# is named from CMakeLists.txt's PACKAGE_VERSION instead. So this script is for
+# the deliberate bumps only, and committing the changed VERSION is the release
+# act.
 
 set -euo pipefail
 

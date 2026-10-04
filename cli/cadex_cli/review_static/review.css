@@ -1,6 +1,6 @@
 /* SPDX-FileCopyrightText: 2026 Cadex Authors
    SPDX-License-Identifier: LGPL-2.1-or-later */
-/* The page follows docs/REVIEW-DESIGN.md (ADR-329, ADR-342): its tokens are
+/* The page follows docs/DASHBOARD.md (ADR-329, ADR-342): its tokens are
    §3–§5, its breakpoints §6, the desk frame §12, and
    cli/tests/test_review_design.py reads them back from the rendered page.
    Change the spec and this file together.
@@ -46,7 +46,7 @@ header#top .title { min-width: 0; }
    reading order of §2 — runs, identity, model, curves, videos, record. */
 main#frame { display: flex; flex-direction: column; gap: var(--s4); padding: var(--gutter); }
 #left, #right, #stage, .stage-panels { display: contents; }
-#sidebar { order: 1; } #identity { order: 2; } #model { order: 3; } #model-settings { order: 4; }
+#sidebar { order: 1; } #turn-panel { order: 2; } #note-panel { order: 2; } #comment-panel { order: 2; } #revision-panel { order: 2; } #export-panel { order: 2; } #drawing-panel { order: 2; } #identity { order: 2; } #model { order: 3; } #model-settings { order: 4; }
 #curves { order: 5; } #videos-region { order: 6; } #evaluation { order: 6; } #record { order: 7; } #params-panel { order: 8; }
 #artifacts-panel { order: 9; } #docs-panel { order: 10; } #doc-panel { order: 11; }
 #doc-panel:has(#doc-view.hidden) { display: none; }
@@ -116,7 +116,13 @@ button:focus-visible { border-color: var(--rule-strong); }
 canvas#viewer { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; max-height: 620px; background: var(--bg);
                 border: var(--bw) solid var(--rule); border-radius: var(--radius); touch-action: none; }
 .controls .hint { margin-right: auto; }
-ul#model-components { margin: var(--s2) 0 0; padding-left: var(--s4); font-size: var(--fs-0); color: var(--ink-2); }
+/* Dimensions (§31): the engine's numbers over the solids, never occluded, in the page's ink. */
+.viewport { position: relative; }
+svg#dimension-overlay { position: absolute; inset: var(--bw); width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+svg#dimension-overlay line { stroke: var(--info); stroke-width: 1.25; }
+svg#dimension-overlay text { fill: var(--ink); font: 600 13px var(--font); paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
+ul#dimension-list { margin: var(--s2) 0 0; padding-left: var(--s4); font-size: var(--fs-0); color: var(--ink-2); }
+ul#collision-contacts, ul#model-components { margin: var(--s2) 0 0; padding-left: var(--s4); font-size: var(--fs-0); color: var(--ink-2); }
 ul#model-components li .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: var(--s2); vertical-align: middle; }
 
 /* Curves: a stat row, then the three histories. */
@@ -150,6 +156,62 @@ ul#videos .caption .video-play { flex: 0 0 auto; }
 ul#problems, ul#docs, ul#decisions, ul#disk-dirs, ul#disk-shared { margin: var(--s2) 0 0; padding-left: var(--s4); overflow-wrap: anywhere; }
 ul#problems li { color: var(--bad); }
 #params-note, #docs-note { color: var(--ink-2); margin-bottom: var(--s2); }
+/* A slider is a write (ADR-503): its status line says what ran and how it ended. */
+#params-write { color: var(--ink-2); margin-bottom: var(--s2); overflow-wrap: anywhere; }
+#params-write:empty { display: none; }
+#params-write[data-state="done"] { color: var(--ok); } #params-write[data-state="error"] { color: var(--bad); }
+/* A design turn is a write too (ADR-504): the prompt, what ran, and its stderr as it streams. */
+#turn-prompt { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; color: var(--ink);
+               background: var(--surface-2); border: var(--bw) solid var(--rule); border-radius: var(--radius-sm); padding: var(--s2); }
+#turn-panel .controls { justify-content: space-between; margin-top: var(--s2); }
+#turn-images { color: var(--accent); font-size: var(--fs-0); margin-top: var(--s2); overflow-wrap: anywhere; }
+#turn-status { color: var(--ink-2); margin-top: var(--s2); overflow-wrap: anywhere; }
+#turn-status:empty { display: none; }
+#turn-status[data-state="done"] { color: var(--ok); } #turn-status[data-state="failed"], #turn-status[data-state="error"] { color: var(--bad); }
+pre#turn-transcript { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-2); border: var(--bw) solid var(--rule); padding: var(--s2);
+                      border-radius: var(--radius-sm); max-height: 320px; overflow: auto; font-family: var(--mono); font-size: var(--fs-0); margin: var(--s2) 0 0; }
+/* What the turn's `look` tool showed the agent (ADR-526): the CLI's renders, on their own floor. */
+#turn-looks { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: var(--s1); margin-top: var(--s2); }
+#turn-looks[hidden] { display: none; }
+#turn-looks img { display: block; width: 100%; height: auto; border-radius: var(--radius-sm); border: var(--bw) solid var(--rule); }
+/* A comment is a write (ADR-505): on the whole design or a picked part, waiting for the next turn. */
+#comment-text, #note-text, #revision-note { display: block; width: 100%; box-sizing: border-box; resize: vertical; font: inherit; color: var(--ink);
+                background: var(--surface-2); border: var(--bw) solid var(--rule); border-radius: var(--radius-sm); padding: var(--s2); margin-top: var(--s2); }
+#comment-panel .controls, #note-panel .controls, #revision-panel .controls { justify-content: space-between; margin-top: var(--s2); }
+#comment-target { color: var(--ink-2); overflow-wrap: anywhere; } #comment-target:not([data-part=""]) { color: var(--accent); }
+#comment-status { color: var(--ink-2); margin-top: var(--s2); overflow-wrap: anywhere; }
+#comment-status:empty { display: none; }
+#comment-status[data-state="done"] { color: var(--ok); } #comment-status[data-state="error"] { color: var(--bad); }
+ul#comment-list { margin: var(--s2) 0 0; padding-left: var(--s4); overflow-wrap: anywhere; }
+ul#comment-list li[data-delivered="true"] { color: var(--ink-2); }
+/* A note is the agent's (ADR-512): a flag or a question it left without waiting; an answer is a comment. */
+ul#note-list { margin: var(--s2) 0 0; padding: 0; list-style: none; overflow-wrap: anywhere; }
+ul#note-list li { padding: var(--s2) 0; border-top: var(--bw) solid var(--rule); }
+ul#note-list li:first-child { border-top: 0; }
+ul#note-list li[data-type="question"][data-answered="false"] .note-type { color: var(--accent); }
+ul#note-list li[data-answered="true"] { color: var(--ink-2); }
+.note-reply { color: var(--ink); margin-top: var(--s1); } .note-artifact { display: inline-block; margin-top: var(--s1); }
+.note-reply-button { margin-top: var(--s1); }
+#note-target { color: var(--accent); overflow-wrap: anywhere; }
+#note-status { color: var(--ink-2); margin-top: var(--s2); overflow-wrap: anywhere; }
+#note-status:empty { display: none; }
+#note-status[data-state="done"] { color: var(--ok); } #note-status[data-state="error"] { color: var(--bad); }
+#revision-status { color: var(--ink-2); margin-top: var(--s2); overflow-wrap: anywhere; }
+#revision-status:empty { display: none; }
+#revision-status[data-state="done"] { color: var(--ok); } #revision-status[data-state="error"] { color: var(--bad); }
+ol#revision-list { margin: var(--s2) 0 0; padding-left: var(--s4); overflow-wrap: anywhere; }
+ol#revision-list li[data-current="true"] { font-weight: 600; }
+ol#revision-list li[data-verdict="rejected"] { color: var(--ink-2); }
+ol#revision-list .revision-restore { margin-left: var(--s2); }
+#export-status { color: var(--ink-2); margin-top: var(--s2); overflow-wrap: anywhere; }
+#export-status:empty { display: none; }
+#export-status[data-state="done"] { color: var(--ok); } #export-status[data-state="error"] { color: var(--bad); }
+ul#export-list { margin: var(--s2) 0 0; padding-left: var(--s4); overflow-wrap: anywhere; }
+ul#drawing-list { margin: var(--s2) 0 0; padding-left: var(--s4); overflow-wrap: anywhere; }
+#drawing-latest { display: block; width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 4px; margin-top: var(--s2); }
+.param-slider { display: flex; align-items: center; gap: var(--s2); }
+.param-slider input[type="range"] { width: 120px; accent-color: var(--accent); }
+.param-slider input[type="range"]:disabled { opacity: 0.5; }
 #disk { margin-bottom: var(--s3); } #disk[data-state="counted"] #disk-summary { color: var(--ink); }
 #disk[data-state="truncated"] #disk-summary, #disk[data-state="unreadable"] #disk-summary { color: var(--warn); }
 ul#disk-shared li[data-shared="true"] { color: var(--info); }
@@ -279,6 +341,7 @@ pre#doc-view { white-space: pre-wrap; overflow-wrap: anywhere; background: var(-
   /* The model fills the stage; its status and controls float over the scene. */
   #model { padding: 0; overflow: hidden; }
   #model .viewport { position: absolute; inset: 0; }
+  #model svg#dimension-overlay { inset: 0; }
   #model canvas#viewer { width: 100%; height: 100%; aspect-ratio: auto; max-height: none; border: 0; border-radius: 0; }
   #model-status, #model .viewer-controls { position: absolute; z-index: 1; margin: 0; padding: var(--s1) var(--s3); border: 1px solid var(--rule);
       border-radius: var(--radius-sm); background: color-mix(in srgb, var(--bg) 78%, transparent); backdrop-filter: blur(6px); }
@@ -332,3 +395,38 @@ pre#doc-view { white-space: pre-wrap; overflow-wrap: anywhere; background: var(-
   ul#videos { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
   ul#videos video { max-height: calc(100dvh - var(--bar) - 120px); }
 }
+
+/* The projects index (`cadex app`): a card of projects, a card of runs (ADR-513), one row each;
+   a run's charter criteria are rows of the same kind. */
+main#projects-frame { padding: var(--gutter); max-width: 960px; }
+main#projects-frame { display: flex; flex-direction: column; gap: var(--s4); }
+#projects, #runs, #turns, #charter { list-style: none; margin: 0; padding: 0; }
+#projects li, #runs li, #turns li, #charter li { padding: var(--s2) 0; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
+#projects li:last-child, #runs li:last-child, #turns li:last-child, #charter li:last-child { border-bottom: 0; }
+#turns .turn-prompt { margin-top: var(--s1); }
+
+/* A run's probe material (ADR-515): its README as a document, its images as a gallery on the dark floor. */
+article.markdown { overflow-wrap: anywhere; }
+article.markdown h2 { font-size: var(--fs-2); margin-top: var(--s4); }
+article.markdown h3, article.markdown h4 { margin: var(--s4) 0 var(--s2); }
+article.markdown pre { background: var(--surface-2); padding: var(--s2); border-radius: var(--radius-sm); overflow-x: auto; font: var(--fs-0)/1.45 var(--mono); }
+article.markdown code { font-family: var(--mono); font-size: .92em; }
+article.markdown li[data-depth="1"] { margin-left: var(--s4); }
+article.markdown blockquote { margin: 0 0 var(--s2); padding-left: var(--s3); border-left: 2px solid var(--rule); color: var(--ink-2); }
+article.markdown .md-table-wrap { overflow-x: auto; margin-bottom: var(--s2); }
+article.markdown .md-image { max-width: 100%; }
+ul.probe-gallery { list-style: none; margin: var(--s3) 0 0; padding: 0; display: grid; gap: var(--s3);
+                   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+ul.probe-gallery img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--radius-sm); background: var(--surface-2); }
+ul.probe-gallery li .small { overflow-wrap: anywhere; }
+#probe-files { list-style: none; margin: var(--s2) 0 0; padding: 0; font-size: var(--fs-0); }
+#probe-files li { padding: 2px 0; overflow-wrap: anywhere; }
+/* A run's records (ADR-518): each with the iteration it landed in and the artifacts it names. */
+#records { list-style: none; margin: 0; padding: 0; }
+#records > li { padding: var(--s2) 0; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
+#records > li:last-child { border-bottom: 0; }
+ul.record-images { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); margin-top: var(--s2); }
+ul.record-files { list-style: none; margin: var(--s2) 0 0; padding: 0; }
+ul.record-files li { padding: 2px 0; overflow-wrap: anywhere; }
+#linked-doc { border: 1px solid var(--rule); border-radius: var(--radius-sm); padding: var(--s3); margin: var(--s2) 0; }
+.linked-doc-head { display: flex; justify-content: space-between; gap: var(--s2); align-items: baseline; }

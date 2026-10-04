@@ -279,9 +279,6 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         "cadex_partdesign_worker.py",
         "cadex_mesh_api.py",
         "cadex_mesh_worker.py",
-        # ADR-185: isolated native Blender recipes and their bounded runner.
-        "cadex_blender_runner.py",
-        "cadex_blender_worker.py",
         "CadexScriptedProcess.py",
         "cadex_assembly_api.py",
         "cadex_assembly_worker.py",
@@ -297,11 +294,6 @@ def test_worker_staging_contains_only_the_project_bundle(tmp_path: Path) -> None
         # same bundle, sandboxed the same way, never importable by the
         # service (ADR-055).
         "cadex_preview_worker.py",
-        # ...and the resident live worker's (ADR-109). A third entry point,
-        # and the one that makes the pattern load-bearing rather than tidy:
-        # it imports CadexDynamics and through it mujoco, so being staged
-        # here rather than imported is what keeps physics out of cadexd.
-        "cadex_live_worker.py",
     }
     assert set(copied) == expected
     assert entry == "cadex_project_worker.py"

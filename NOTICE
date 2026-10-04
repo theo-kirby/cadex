@@ -1,13 +1,14 @@
 Cadex
 Copyright 2026 Cadex Authors
 
-Cadex is a derivative work of two free-software projects and redistributes
-several third-party components. This file carries the attribution notices
-those components require; the component-level license map is
+Cadex is a derivative work of FreeCAD and redistributes several
+third-party components. This file carries the attribution notices those
+components require; the component-level license map is
 THIRD_PARTY_LICENSES.md, and the full provenance story is
-docs/PROVENANCE.md. In a shipped bundle this file is installed at
-Cadex.app/Contents/Resources/cadex/NOTICE, beside LICENSE and a
-per-package licenses/ directory with a machine-readable MANIFEST.json.
+docs/PROVENANCE.md. A staged engine payload carries this file at its root,
+beside LICENSE and a per-package licenses/ directory with a
+machine-readable MANIFEST.json. Cadex once also carried a Blender-derived
+shell; it was deleted in 2026 (ADR-498) and no Blender code remains.
 
 --------------------------------------------------------------------------
 
@@ -50,20 +51,6 @@ Modified inherited files carry a per-file modification notice; the ledger
 is docs/FREECAD.md and the machine-readable list is
 docs/inherited-modifications.json. FreeCAD's own license is the root
 LICENSE file, unchanged.
-
---------------------------------------------------------------------------
-
-Blender
-Copyright the Blender Authors
-Licensed under the GNU General Public License version 2 or later; official
-binary releases are distributed under GPL version 3 or later terms.
-https://www.blender.org/
-
-The Cadex shell — shell/ — is a Blender fork (via the intermediate `mesh`
-fork). Blender's own COPYING file is at shell/COPYING, unchanged, and the
-license texts Blender ships are installed into the bundle at
-Resources/text/license/. Modified inherited files carry a per-file
-modification notice; the ledger is docs/BLENDER-TREE.md.
 
 --------------------------------------------------------------------------
 

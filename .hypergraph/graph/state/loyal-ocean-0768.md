@@ -7,9 +7,11 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: superseded
 
 ## Current
+
+**Superseded in orun2's R1 frontier clean-up:** orun1 is archived (`3e345fd2`); the transcript-driven catalog clause waited on D4 confirmation runs that never ran. The catalog half and mounting check below keep their recorded evidence; the base-plus-styles charter carries the design bar next. [rec: crimson-stone-9344]
 
 Open charter criterion for run orun1: **D3. The product can design with the parts these robots need, and can tell when a part is not held.** - The catalog gains, with a datasheet source, true dimensions, mounting features and a bay, as the existing servos and boards have: - a serial bus servo of the STS3215 class; - a single-board computer larger than the Pi Zero (a Pi 4 or 5 class board or a compute module carrier); - a camera module and a range sensor (time-of-flight class); - a wheel and tyre set and a rubber foot pad; - anything else the D4 transcripts show the agent reaching for and not finding, with the transcript cited. - **A mounting check.** The product reports, for every purchased part, which printed part holds it and by what (screws, a bay, a clip, a horn). A part held by nothing, or held only by being inside a shell, is reported. The product agent sees this report in every build reply. Tests pin it on a fixture that passes and one that fails. [rec: sweet-brook-2725]
 
@@ -27,6 +29,8 @@ Both D3 halves have evidence. Still open: the transcript-driven catalog clause (
 
 **The mounting check now requires thread engagement** (ADR-492, `ec6782ad`): a screw holds only if its shank shares ≥0.1 mm³ with a printed part, or the head clamps a printed part while the shank reaches the held part's tapped hole, a nut or an insert; otherwise it is listed `unthreaded`. Static and swept fit allow a `lib.bolt`/print overlap up to the thread ring π/4(d²−minor²)L, counted in `fit.threaded_count`, so a screw in a tap-drill hole passes fit while a bolt through solid still fails. Fixture: plain-bay MG90S 1 of 2, `ledge=4` 2 of 2. Engine 2596 passed / 61 skipped; CLI 1290 passed, 1 load flake [rec: icy-willow-3129]. Open candidate tightening: a tabbed servo seated by its bay with no threaded screw still counts as held [rec: icy-willow-3129]. Reconcile judgement: the 0.5 mm contact leniency named in hidden-grove-0337 is the defect ADR-492 closed.
 
+**Boards now screw down by construction** (ADR-493, `f78f1e8f`): `BoardPart.mounting(standoff=3.0, *, screw=None, diameter=None, length=None)` returns standoffs, `lib.tap_drill` pilots and seated `lib.bolt` screws per mounting hole, picking the largest metric screw the hole passes (M2 for D36V50F6/VL53L1X, M2.5 for BNO085/Pi 5) and refusing boards with no holes, oversize screws, thin walls or screws that do not pass the PCB; the overlay teaches it and forbids board holes at the screw's own diameter. Real-kernel fixture on the trial-3 rolled D36V50F6: trial 3's major-diameter bores 0 of 3 threaded (contact only), `.mounting(standoff=3)` 3 of 3 held by screws. Engine 2598 passed / 61 skipped; CLI 1291 passed. `orun1-t3-balancer` stays at 8 of 11 (accepted designs are not hand-edited) [rec: floral-horizon-1217]. Balancer trial 4 used `.mounting()` on all four screwed boards and reads mounting 12 of 12, 23 threaded — the helper works when the agent reaches for it [rec: little-shade-0096]. Transcript frictions from that turn, no missing part asked: `lib.wheel(...).bay()` does not exist, and `inspect` was asked six times for an unpublished `/facts/bounding_box` path [rec: little-shade-0096].
+
 ## Negative knowledge
 
 - [scope: library helpers that expand inline into printed parts (bays, `lib.*` geometry) | confidence: high | evidence: hidden-grove-0337] Changing a helper's default expansion changes accepted recipes, and those projects refuse to reopen; changes must be opt-in or default-byte-stable.
@@ -42,3 +46,6 @@ Both D3 halves have evidence. Still open: the transcript-driven catalog clause (
 - deep-cove-1130 — hexapod trial 1: no missing-part asks; MG90S servos held by one screw each (suspected catalog lead block)
 - hidden-grove-0337 — ADR-491: the block was the bay's lead room; opt-in servo.bay(ledge=4); default expansion must stay byte-stable
 - icy-willow-3129 — ADR-492: mounting check requires thread engagement; fit allows the thread ring
+- floral-horizon-1217 — ADR-493: board.mounting() threads every board screw; trial-3 hold 0/3 → 3/3 on the real kernel
+- little-shade-0096 — balancer t4 used .mounting() on all four screwed boards: 12/12 held; wheel .bay() and bounding_box frictions
+- crimson-stone-9344 — superseded in orun2's R1 frontier clean-up

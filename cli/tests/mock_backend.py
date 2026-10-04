@@ -58,9 +58,12 @@ class MockTurn:
         #: Every ``(tool, reply)`` the "model" saw, for assertions.
         self.tool_results: list[tuple[str, dict[str, Any]]] = []
         self.prompts: list[str] = []
+        #: The images each turn carried, in turn order (ADR-507).
+        self.images: list[list[Any]] = []
 
-    def run(self, prompt: str) -> TurnResult:
+    def run(self, prompt: str, images: Any = ()) -> TurnResult:
         self.prompts.append(prompt)
+        self.images.append(list(images))
         steps = self.script[self.turns] if self.turns < len(self.script) else []
         self.turns += 1
         result = TurnResult(ok=True, session_id=self.session_id)
@@ -69,6 +72,8 @@ class MockTurn:
             kind = step[0]
             if kind == "text":
                 result.text += step[1]
+                result.frames.append({"type": "assistant", "session_id": self.session_id,
+                                      "message": {"content": [{"type": "text", "text": step[1]}]}})
                 if self.on_text is not None:
                     self.on_text(step[1])
             elif kind == "tool":
@@ -90,6 +95,8 @@ class MockTurn:
                         "session_id": self.session_id,
                         "is_error": False,
                         "result": step[1],
+                        # The cost and usage a real result frame carries (ADR-523).
+                        **(step[2] if len(step) > 2 else {}),
                     }
                 )
             elif kind == "fail":

@@ -61,6 +61,51 @@ from CadexdProtocol import (
 )
 
 
+#: The `verify_policy` refusals that say the task moved on from the policy,
+#: not that the policy file is broken: it was trained on another bundle, model,
+#: channel list or action map than the script now declares (ADR-520). An
+#: engine change that only re-tunes the simulation (ADR-469's contact solref)
+#: produces exactly these on every policy trained before it.
+STALE_POLICY_REASONS = frozenset(
+    {
+        "policy_task_mismatch",
+        "policy_model_mismatch",
+        "policy_channels_mismatch",
+        "policy_actions_mismatch",
+        "policy_output_range_mismatch",
+    }
+)
+
+
+def _stale_policy(payload: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """The stale policy a failed restore run refused, or ``None``.
+
+    Only a `policy_model`-stage refusal whose reason is in
+    :data:`STALE_POLICY_REASONS` counts. A corrupt container, a missing
+    weights file, or any other script failure is not staleness and keeps
+    the open's hard refusal.
+    """
+
+    if not isinstance(payload, Mapping) or payload.get("ok") is not False:
+        return None
+    observed = payload.get("observed")
+    details = observed.get("details") if isinstance(observed, Mapping) else None
+    if not isinstance(details, Mapping):
+        return None
+    reason = str(details.get("reason") or "")
+    if details.get("stage") != "policy_model" or reason not in STALE_POLICY_REASONS:
+        return None
+    stale: dict[str, Any] = {
+        "output": str(details.get("simulation_output") or ""),
+        "reason": reason,
+        "error": str(payload.get("error") or ""),
+        "correction": str(details.get("correction") or ""),
+    }
+    for key, value in details.items():
+        if str(key).endswith("_sha256"):
+            stale[str(key)] = str(value)
+    return stale
+
 
 def _remembered_geometry(state: Mapping[str, Any], accepted_digest: str) -> str:
     """What this project last measured its accepted outputs to be, or ``""``.
@@ -339,45 +384,6 @@ def _declined_preview(revision: str, reason: str) -> dict[str, Any]:
     }
 
 
-def _declined_live_open(reason: str) -> dict[str, Any]:
-    """A successful ``live_open`` that declines to start a session.
-
-    Every required key is present and empty, exactly as
-    :func:`_declined_preview` fills ``placements``: the response contract is
-    pinned by op and not by outcome, so a refusal the shell can read is a
-    refusal that carries the whole shape.
-    """
-
-    return {
-        "ok": True,
-        "live": False,
-        "components": [],
-        "control_hz": 0,
-        "frames_per_second": 0,
-        "actuator_channels": [],
-        "episode_seconds": 0.0,
-        "policy": {"label": "", "weights": "", "sha256": "",
-                   "trained_label": ""},
-        "reason": reason,
-    }
-
-
-def _declined_live_step(reason: str) -> dict[str, Any]:
-    """A successful ``live_step`` with no session behind it."""
-
-    return {
-        "ok": True,
-        "live": False,
-        "frames": [],
-        "step": 0,
-        "time_s": 0.0,
-        "terminated": False,
-        "termination": "",
-        "reset_count": 0,
-        "reason": reason,
-    }
-
-
 class CadexdServer:
     """Serial dispatcher over one project's engine state.
 
@@ -406,10 +412,6 @@ class CadexdServer:
         # Spawned lazily on the first preview, so a session that never drags
         # a slider never pays for it (ADR-055).
         self._preview_worker: Any = None
-        # ...and the same for live mode (ADR-109), which is the more
-        # expensive of the two to hold: it is a *running* episode, not an
-        # idle oracle.
-        self._live_session: Any = None
         self.shutdown_requested = False
 
     # -- reader-thread side ---------------------------------------------
@@ -602,6 +604,33 @@ class CadexdServer:
                     else None
                 )
                 if retry is None or retry.get("ok") is not True:
+                    stale = _stale_policy(retry) or _stale_policy(payload)
+                    if stale is not None:
+                        # The script runs, but the policy it declares was
+                        # trained on a task this engine no longer builds
+                        # (ADR-520). Refusing the policy is right; locking
+                        # the project is not, because every way to fix it
+                        # (retrain, or a turn that sets the policy aside)
+                        # starts with an open. The failed run rolled the
+                        # working script back and left the accepted revision,
+                        # digest and attempt pinned; only its candidate record
+                        # is put back, as a refused restore does (ADR-421).
+                        # The open proceeds unrestored, naming the stale
+                        # output.
+                        store.write(
+                            state_updates={
+                                "latest_candidate": state.get("latest_candidate")
+                            }
+                        )
+                        return {
+                            "ok": True,
+                            "schema": PROTOCOL_SCHEMA,
+                            "project_root": str(root),
+                            "budgets": budgets,
+                            "manifest": manifest,
+                            "script": self._script_state(),
+                            "restore": {"performed": False, "stale_policy": stale},
+                        }
                     return failure(
                         CADEXD_RESTORE_FAILED,
                         "The restore pass could not re-run the stored script.",
@@ -730,27 +759,18 @@ class CadexdServer:
         )
 
     def _invalidate_resident_workers(self) -> None:
-        """Kill both resident workers: the preview one and the live one.
+        """Kill the resident preview worker.
 
-        Free, because both are stateless by contract: the cost of being
+        Free, because it is stateless by contract: the cost of being
         wrong is one respawn. Called by everything that can change the source,
         the parameters, the assets or the project — deliberately *not* from
         ``open_project``'s restore path, which re-runs the stored script
         through the same lifecycle without changing anything (ADR-055).
-
-        The live session (ADR-109) is invalidated on the same list and for a
-        sharper reason than the preview worker is. A preview answering from a
-        stale generation shows the wrong poses for a moment; a live session
-        answering from one keeps playing a *mechanism that no longer exists*,
-        indefinitely, while the viewport says otherwise.
         """
 
         worker, self._preview_worker = self._preview_worker, None
         if worker is not None:
             worker.invalidate()
-        session, self._live_session = self._live_session, None
-        if session is not None:
-            session.invalidate()
 
     def _lifecycle_response(
         self, request_id: str, tool_name: str, args: dict[str, Any]
@@ -1380,100 +1400,6 @@ class CadexdServer:
             "revision": revision,
             "placements": dict(answer.get("placements") or {}),
         }
-
-    def _op_live_open(
-        self, _request_id: str, args: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Start a live session on the accepted revision's rollout (ADR-109).
-
-        A **read** op: it writes nothing, publishes nothing, and moves no
-        revision or digest, so it queues behind an in-flight rebuild rather
-        than refusing one. That matters more here than for a preview — a
-        running simulation that blocked the AI from editing the script would
-        make watching the machine and changing it mutually exclusive, and
-        watching it *while* it changes is the point.
-
-        Every way this can fail answers ``live: false`` with a reason, the
-        same shape ``preview_params`` refuses in. A project with no accepted
-        rollout is a **state**, not an error: the panel says "build a rollout
-        first" rather than showing the user a failure envelope.
-
-        ``variation`` defaults **true** — play the task as the bundle
-        declares it. False is the calm session (ADR-110): one fixed machine
-        at the solved pose, with the only force acting the one the user is
-        applying. It is not a new engine state, only the unseeded episode
-        ``evaluate_episode`` has always had, finally reachable from here.
-        """
-
-        not_open = self._require_open()
-        if not_open is not None:
-            return not_open
-        from CadexScriptedRuntime import LiveBundleUnavailable, prepare_live
-
-        try:
-            prepared = prepare_live(self._project_root, str(args["output"]))
-        except (LiveBundleUnavailable, OSError, ValueError, KeyError) as exc:
-            return _declined_live_open(str(exc))
-
-        from CadexLiveSession import CadexLiveSession, LiveSessionFailure
-
-        session = self._live_session
-        if session is None:
-            session = self._live_session = CadexLiveSession(self._project_root)
-        seed = args.get("seed")
-        try:
-            opened = session.open(
-                prepared,
-                None if seed is None else int(seed),
-                bool(args.get("variation", True)),
-            )
-        except LiveSessionFailure as exc:
-            return _declined_live_open(str(exc))
-        # From the host rather than from the worker: the worker plays three
-        # staged files and has no idea what the project calls them, and this
-        # is the side that resolved and digest-checked them.
-        identity = dict(prepared.get("policy_identity") or {})
-        return {
-            "ok": True,
-            "live": True,
-            **opened,
-            "policy": {
-                "label": str(identity.get("label") or ""),
-                "weights": str(identity.get("weights") or ""),
-                "sha256": str(identity.get("sha256") or ""),
-                "trained_label": str(identity.get("trained_label") or ""),
-            },
-        }
-
-    def _op_live_step(
-        self, _request_id: str, args: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Advance the running episode and hand back the frames it made."""
-
-        not_open = self._require_open()
-        if not_open is not None:
-            return not_open
-        session = self._live_session
-        if session is None or not session.is_open:
-            return _declined_live_step("no live session is open")
-        from CadexLiveSession import LiveSessionFailure
-
-        try:
-            answer = session.step(int(args["steps"]), args.get("push"))
-        except LiveSessionFailure as exc:
-            self._live_session = None
-            return _declined_live_step(str(exc))
-        return {"ok": True, "live": True, **answer}
-
-    def _op_live_close(
-        self, _request_id: str, _args: dict[str, Any]
-    ) -> dict[str, Any]:
-        """End the session. Idempotent: closing a closed session is fine."""
-
-        session, self._live_session = self._live_session, None
-        if session is not None:
-            session.close()
-        return {"ok": True, "live": False, "closed": True}
 
     def _op_shutdown(self, _request_id: str, _args: dict[str, Any]) -> dict[str, Any]:
         self.shutdown_requested = True

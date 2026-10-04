@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-03
+Verified against source: 2026-10-04
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -116,20 +116,12 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   did: a 50% and a 90% reduction request on the same mesh both returned 7248
   facets, tolerance-bound, silently. It never repairs — the script owns the
   geometry, so the script decides what to do about the answer.
-  `mesh.blender(source, version=..., inputs={...}, values={...}, seed=0)`
-  evaluates native Blender Python in an OS-sandboxed subprocess (ADR-185).
-  The recipe assigns one mesh Object to `result`; named mesh inputs become
-  Blender objects, and finite JSON values carry dimensions and attachment
-  frames. One Blender coordinate unit is one millimetre. Modifiers and object
-  transforms are evaluated into triangles. See `docs/BLENDER-RECIPES.md` and
-  `examples/blender_enclosure.py`. Recipe source stays in this project script;
-  the live Blender scene does not author the result.
   Going the other way, `part.shape_from_mesh()` converts a mesh value
   into BREP topology (`makeShapeFromMesh`, then promoted to a solid unless
   `solid=False`) so an imported component can be cut against, assembled and
-  padded around — see ADR-043 for what that costs. Blender-derived and
-  decimated trees are refused on that path; publish them as meshes, or import
-  a fixed mesh asset when a faceted BREP is specifically needed (ADR-185).
+  padded around — see ADR-043 for what that costs. Decimated trees are
+  refused on that path; publish them as meshes, or import a fixed mesh asset
+  when a faceted BREP is specifically needed.
   `part.import_part("sensor.cxpart")` is the **lossless** counterpart of that
   last one (ADR-138): it reads a `.cxpart` container out of the same flat
   `assets/` directory and yields the exact OCCT solid another project
@@ -1558,20 +1550,19 @@ Source is validated before any worker runs (AST policy in
 - One attempt = one windowless `FreeCADCmd --safe-mode -c …` subprocess
   (runner in `CadexScriptedProcess.py`). The project bundle stages all five
   `cadex_<domain>_{api,worker}.py` modules with entry
-  `cadex_project_worker.py` — **and fourteen more modules by filename**:
+  `cadex_project_worker.py` — **and thirteen more modules by filename**:
   `CadexSubshapeQuery.py`, `CadexRouting.py`, `CadexBundle.py`,
   `CadexTerminals.py`, `CadexSolder.py`, `CadexNets.py`, `CadexBoards.py`,
   `CadexMounts.py`, `CadexCage.py`, `CadexLinkedPart.py`,
-  `CadexDynamics.py`, `cadex_tessellation.py`, `cadex_preview_worker.py` and
-  `cadex_live_worker.py`
+  `CadexDynamics.py`, `cadex_tessellation.py` and `cadex_preview_worker.py`
   (`_DOMAIN_WORKER_BUNDLES["project"]`, `CadexScriptedRuntime.py:38`). Copied
   in rather than imported, so a worker module can `import` them inside the
   sandbox while `cadexd`'s own module closure never reaches them — which for
   `CadexDynamics.py` is a test-pinned invariant rather than a convenience.
   Plus the project's flat `assets/` directory (bounded: 64 files / 128 MB,
   known suffixes only).
-- Hard bounds from preferences (`ScriptedTimeoutSeconds`,
-  `ScriptedMemoryLimitMB`); a parent-side watchdog kills over-budget
+- Hard bounds from the project's budgets (`agent.json`, ADR-517), else
+  the engine's defaults of 300 s and 6144 MB (ADR-530); a parent-side watchdog kills over-budget
   workers and reports `MEMORY_LIMIT_EXCEEDED` with observed usage.
   **The worker carries the same two numbers again as kernel limits, in
   different units**: `_resource_limits` sets `RLIMIT_CPU` to the timeout in

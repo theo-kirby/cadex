@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: LGPL-2.1-or-later
 """The review dashboard's design spec, and the ot6 evidence caps (ADR-328).
 
-``docs/REVIEW-DESIGN.md`` is the contract the page is held to (ADR-329).
+``docs/DASHBOARD.md`` is the contract the page is held to (ADR-329).
 Without a browser this suite pins the spec's required sections, its
 page-background token to the environment module's dark scene background
 (one palette across chrome and viewport), its "before" and "after"
@@ -33,7 +33,7 @@ import pytest
 from test_review_server import _model_state, _telemetry, browser, needs_browser, served  # noqa: F401
 
 REPO = Path(__file__).resolve().parents[2]
-SPEC = REPO / "docs" / "REVIEW-DESIGN.md"
+SPEC = REPO / "docs" / "DASHBOARD.md"
 STATIC = REPO / "cli" / "cadex_cli" / "review_static"
 EVIDENCE_DIRS = (REPO / "docs" / "probes" / "ot6", REPO / "docs" / "review-design")
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
@@ -156,9 +156,9 @@ def test_the_spec_itself_names_no_private_address():
 
 # §2's reading order: what a phone reads top to bottom, and what the desk
 # frame distributes between its left sidebar, stage and right sidebar.
-READING_ORDER = ("#sidebar", "#identity", "#concept", "#model", "#model-settings", "#curves", "#videos-region",
+READING_ORDER = ("#sidebar", "#turn-panel", "#note-panel", "#comment-panel", "#revision-panel", "#identity", "#concept", "#model", "#model-settings", "#curves", "#videos-region",
                  "#evaluation", "#record", "#params-panel", "#artifacts-panel", "#docs-panel")
-HEADINGS = ["Runs", "Documents and decisions", "Concept", "Model", "Curves", "Videos", "Evaluation", "Identity", "Model settings",
+HEADINGS = ["Design turn", "From the agent", "Comments", "Revisions", "Export", "Drawings", "Runs", "Documents and decisions", "Concept", "Model", "Curves", "Videos", "Evaluation", "Identity", "Model settings",
             "Training and rollout", "Parameters and specs", "Artifacts"]
 
 MEASURE = """(function () {

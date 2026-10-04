@@ -7,7 +7,7 @@ parents:
 - mild-ledge-7157
 summary: ''
 ---
-Status: open
+Status: superseded
 
 ## Current
 
@@ -99,3 +99,8 @@ Reconcile judgement: retain **`open`** [rec: slender-wolf-6623]. Every slot is s
 - weathered-fountain-7838 — F6's `continue-1` and `continue-2` collected on Opus: the sweep gap closed with a split clamp hub, a second turn that declined to edit a passing design, and the collector's smoke-directory defect that gated `continue-3`
 - slender-wolf-6623 — F6's `continue-3` collected and the attempt exhausted at four slots and zero actor edits: a refusal to edit backed by a rebuild to an identical digest, and a closing smoke that fails `support` at 102.2° and `termination` at 0.660 s while its component-pair check passes over the whole trace
 - honest-ash-4208 — cross-reference: F6's failed holding smoke is carried by ot8's G4 (`scarlet-hill-8037`); F6 itself stays exhausted and is not re-run
+- light-path-5130 — superseded in orun2's R1 frontier pruning
+
+## Superseded
+
+ot7 ended and is archived (merged fa75c531). F6 was already exhausted; no later charter re-opened it. The measured results above stand as the final record; nothing about the criterion's evidence changed. Superseded through orun2 R1's frontier pruning so the frontier lists only live work [rec: light-path-5130].

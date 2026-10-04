@@ -13,7 +13,7 @@ roadmap item. Add freely, prune ruthlessly.
   geometry-nodes UI is right there in the shell.
 
 - **RNA-like reflection for params.** Blender's DNA/RNA
-  (`shell/source/blender/makesrna/`) generates UI, animation, and
+  (`source/blender/makesrna/` upstream) generates UI, animation, and
   Python access from one property definition. Cadex params could get the
   same treatment: one declaration in the script drives slider, protocol
   schema, and inspection output. (The two vocabularies this idea wanted to
@@ -29,7 +29,7 @@ roadmap item. Add freely, prune ruthlessly.
   param values instant, and slider scrubbing across a cached range would be
   free.
 
-- **Blender scene as a second cache tier.** Post-Phase 6, the .blend file
+- **Blender scene as a second cache tier.** Post-Phase 6, the Blender file
   could persist the last tessellation so a project opens instantly and
   reconciles against a background `rebuild` digest — open fast, verify
   lazily.
@@ -52,7 +52,7 @@ roadmap item. Add freely, prune ruthlessly.
   now hides instanced raw solids and edge companions from camera renders,
   with independent ownership that preserves pre-hidden render sources.
   Actual hydration and EEVEE regression cover repeat hydration, component
-  removal and unrelated explicit hides; see `ASSEMBLY-VISIBILITY-AUDIT.md`.
+  removal and unrelated explicit hides; see `history/ASSEMBLY-VISIBILITY-AUDIT.md`.
   This does not deliver general headless review tools or rollout video.
 
 - **The CLI agent's two missing legs for the North Star** (ADR-170
@@ -64,14 +64,13 @@ roadmap item. Add freely, prune ruthlessly.
   Re-measured and ordered, with the iterate step and the project-as-codebase
   gaps beside them, in `docs/MUJOCO.md` §7c (2026-09-06).
 
-- **A bridge CLI as a third tool transport, for bash-first agents.** The
-  Mesh tool seam is the TCP bridge, and it now has two transports: MCP
-  (`mcp_shim.py`) and a native pi extension (`pi_tools.js`, ADR-175). The
-  owner's instinct behind ADR-175 goes one step further: a tiny
+- **A bridge CLI as a second tool transport, for bash-first agents.** The
+  Mesh tool seam is the TCP bridge, and its one transport is MCP. (A native
+  pi extension was a second until ADR-497 retired pi with the shell.) A tiny
   `mesh-tool` CLI (stdlib-only, like the shim — `mesh-tool list`,
   `mesh-tool call write_script --json '…'`) would let *any* agent with a
   shell drive the product with no protocol integration at all, README
-  style, which is pi's own philosophy for tools. It would also be the
+  style. It would also be the
   cheapest possible harness for scripting the bridge in tests. Costs a
   hard look at authentication (the token would have to reach the shell)
   and at losing per-tool argv validation.

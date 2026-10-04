@@ -275,6 +275,15 @@ def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, 
             "kind": scope,
             "project_root": str(service.project_scope_snapshot().get("root") or ""),
         }
+    if scope == "contacts":
+        # Which parts' collision shapes already touch at rest (ADR-508): the
+        # MJCF export's t=0 contact evidence, read from the pinned accepted
+        # attempt like every other store-backed scope.
+        return {
+            **common,
+            "kind": "contacts",
+            "project_root": str(service.project_scope_snapshot().get("root") or ""),
+        }
     if scope == "history":
         # The undo trail (ADR-045): every accepted revision's source, newest
         # last. Store-backed, so the read happens off the document thread.
@@ -540,8 +549,8 @@ def _complete_blueprint(captured: Mapping[str, Any]) -> Any:
         "note": (
             "Every stored blueprint sheet, oldest first, each recording the "
             "accepted revision it was rendered from. Inspect one with "
-            "target=<ordinal|revision|file> for its store path; make a new "
-            "one with the shell's make_blueprint tool."
+            "target=<ordinal|name|revision|file> for its store path; draw a new "
+            "one with the agent's draw_blueprint tool (ADR-516)."
         ),
     }
 
@@ -1057,6 +1066,137 @@ def _complete_output(captured: Mapping[str, Any]) -> Any:
     return detail
 
 
+#: What ``scope=contacts`` measures, said on the value so no reader takes it
+#: for the exact-solid fit: ``scope=clearance`` is that.
+CONTACTS_POSE = (
+    "the solved starting pose: the MJCF keyframe every simulation and "
+    "rollout starts from (t=0)"
+)
+CONTACTS_MEASURE = (
+    "MuJoCo contacts between the declared collision shapes, not the exact "
+    "solids; scope=clearance measures the solids"
+)
+
+
+def contact_pairs(contacts: Any) -> list[dict[str, Any]]:
+    """The listed t=0 contacts grouped by the two components they join.
+
+    MuJoCo reports a box resting on a box as up to four contact points, so a
+    reader asking "which parts touch" wants the pair, with how many points,
+    whether any of them interpenetrates and the deepest signed distance.
+    Penetrating pairs first, then by name.
+    """
+
+    pairs: dict[tuple[str, str], dict[str, Any]] = {}
+    for contact in list(contacts or []):
+        if not isinstance(contact, Mapping):
+            continue
+        names = sorted(str(name) for name in list(contact.get("component_outputs") or []))
+        if len(names) != 2:
+            continue
+        distance = contact.get("distance_mm")
+        row = pairs.setdefault(
+            (names[0], names[1]),
+            {"components": names, "points": 0, "penetrating": False, "deepest_mm": None},
+        )
+        row["points"] += 1
+        row["penetrating"] = row["penetrating"] or bool(contact.get("penetrating"))
+        if isinstance(distance, (int, float)) and (
+            row["deepest_mm"] is None or distance < row["deepest_mm"]
+        ):
+            row["deepest_mm"] = float(distance)
+    return sorted(pairs.values(), key=lambda row: (not row["penetrating"], row["components"]))
+
+
+def _complete_contacts(captured: Mapping[str, Any]) -> Any:
+    """Which parts touch at rest, from each accepted MJCF export (ADR-508).
+
+    The assembly worker already measures it: ``CadexDynamics._initial_contacts``
+    runs MuJoCo's collision pass at the solved pose and the export keeps the
+    block in the accepted attempt's ``result.json`` (ADR-087). Nothing is
+    computed here but the grouping by pair. A pair the design did not mean to
+    rest together, or any ``penetrating`` pair, is a collision shape placed
+    in the wrong frame -- the 20 mm invisible shelf ADR-087 found.
+    """
+
+    root = str(captured.get("project_root") or "")
+    if not root:
+        return {
+            "ok": False,
+            "error": "The active document has no durable Cadex project root.",
+        }
+    from CadexPinResolution import accepted_attempt_dir, load_worker_report
+    from CadexScriptStore import CadexProjectScriptStore
+
+    state = CadexProjectScriptStore(root).read_state()
+    revision = str(state.get("accepted_revision") or "")
+    if not revision:
+        return {
+            "ok": False,
+            "error": "The project has no accepted revision to read contacts of.",
+        }
+    report = load_worker_report(accepted_attempt_dir(Path(root), state))
+    exports = [
+        item
+        for item in list(report.get("outputs") or [])
+        if isinstance(item, Mapping) and str(item.get("type") or "") == "mjcf"
+    ]
+    target = str(captured.get("target") or "")
+    if target:
+        exports = [item for item in exports if str(item.get("name") or "") == target]
+        if not exports:
+            raise ValueError(
+                f"The accepted revision has no MJCF export named {target!r}."
+            )
+    models = []
+    for item in exports:
+        data = item.get("assembly_data")
+        data = data if isinstance(data, Mapping) else {}
+        dynamics = data.get("dynamics")
+        row: dict[str, Any] = {
+            "mjcf_output": str(item.get("name") or ""),
+            "assembly_output": str(data.get("assembly_output") or ""),
+        }
+        if not isinstance(dynamics, Mapping) or "initial_contact_count" not in dynamics:
+            row.update(
+                {
+                    "available": False,
+                    "reason": "this export recorded no t=0 contacts; rebuild to measure them",
+                }
+            )
+        else:
+            contacts = list(dynamics.get("initial_contacts") or [])
+            omitted = int(dynamics.get("initial_contacts_omitted") or 0)
+            row.update(
+                {
+                    "available": True,
+                    "count": int(dynamics.get("initial_contact_count") or 0),
+                    "omitted": omitted,
+                    # Grouped from the listed contacts; past the listing cap
+                    # a pair could be missing, and this says so.
+                    "pairs_complete": omitted == 0,
+                    "pairs": contact_pairs(contacts),
+                    "contact_exclusions": [
+                        list(pair) for pair in list(dynamics.get("contact_exclusions") or [])
+                    ],
+                    "contacts": contacts,
+                }
+            )
+        models.append(row)
+    value: dict[str, Any] = {
+        "revision": revision,
+        "available": any(row.get("available") for row in models),
+        "pose": CONTACTS_POSE,
+        "measures": CONTACTS_MEASURE,
+        "models": models,
+    }
+    if not models:
+        value["reason"] = (
+            "the accepted revision exports no MJCF (no assembly.mjcf output)"
+        )
+    return value
+
+
 #: What an inventory row reports about the shape a component places. Kept
 #: short on purpose: this scope answers "what is this made of", and the full
 #: measurement of any one part is one ``inspect scope="output"`` away.
@@ -1479,6 +1619,8 @@ def complete_inspection(captured: Mapping[str, Any]) -> dict[str, Any]:
             raw = _complete_wiring(captured)
         elif kind in {"inventory", "clearance"}:
             raw = _complete_inventory(captured)
+        elif kind == "contacts":
+            raw = _complete_contacts(captured)
         else:
             raise ValueError("Invalid captured core.inspect operation.")
         result = _bounded_page(raw, captured)

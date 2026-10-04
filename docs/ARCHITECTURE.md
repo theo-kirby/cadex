@@ -1,19 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-09-30
-
-**Native Blender geometry (ADR-185).** The mesh domain now includes
-`mesh.blender`: an xscript-owned recipe with named mesh inputs and JSON
-values, evaluated by a separate OS-sandboxed Blender subprocess. The new
-`cadex_blender_runner.py` and `cadex_blender_worker.py` are staged by filename
-with the project worker, never imported by cadexd. Only the Blender process
-imports `bpy`. The shell hands its executable to the engine using
-`CADEX_BLENDER_EXECUTABLE`; headless clients may set that variable themselves.
-The subprocess returns bounded triangles, independently validated before
-ordinary mesh publication. Recipe source, runtime identity and full topology
-join the output digest. Existing project acceptance, history, rollback and
-display hydration carry the result. No new protocol op, output kind or live
-scene authoring path. See `docs/BLENDER-RECIPES.md`. [Cadex-new]
+Verified against source: 2026-10-04
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -25,8 +12,8 @@ Provenance tags: `[FreeCAD-inherited]` upstream FreeCAD code we build on;
 
 ## 1. The one-paragraph picture
 
-Cadex is one application built from two forks in **one repository**
-(ADR-030). The **engine** is a FreeCAD fork at the repo root, stripped to a
+Cadex is **three things** in **one repository** (ADR-030, ADR-500): the
+engine, the dashboard and the agent. The **engine** is a FreeCAD fork at the repo root, stripped to a
 single AI-native modeling engine and building `FreeCADCmd` and
 `CadexGeometryWorker` and no application of its own (ADR-021/022). It runs
 as **cadexd** — a persistent headless `FreeCADCmd` service, one child per
@@ -45,45 +32,50 @@ accepted script and asserts digest equality, so restart determinism is
 proven on every open rather than once per audit — and where the kernel
 re-serializes one model to different bytes (`part.offset`), the two retained
 attempts are re-measured instead of refused (`CadexGeometryDigest.py`,
-ADR-389). The **shell is a Blender
-fork under `shell/`**: a protocol client that hydrates the tessellated
-results into its scene, and the thing a user actually launches. It carries
-the engine inside its own bundle as a payload it finds by manifest
-(`docs/INTEGRATION.md`, ADR-023) — a payload now built two directories away
-rather than downloaded (ADR-030).
+ADR-389). On the other side of the
+protocol is `cli/` (ADR-061), which carries the other two. **The
+dashboard** (`review_server.py` and `review_static/`, served by `./cadex
+review`) is the only UI: a standard-library server and vanilla JS over the
+project directory, where a person watches results and steps in; its spec is
+`docs/DASHBOARD.md`. **The agent** is the Claude Code CLI, which the CLI
+runs over one tool surface (`tools.py`, through an MCP stdio shim) and one
+guidance source (`CadexAgentGuidance.md` plus `agent.system_prompt`);
+Cadex has no model loop of its own (ADR-497). The CLI spawns `cadexd` per
+project and finds the engine as a payload by manifest
+(`docs/INTEGRATION.md`, ADR-023) or in the build tree. The Blender shell
+that used to sit on this side is deleted (ADR-498), and with it
+`mesh.blender` (ADR-496); the tag `v1-blender-shell` is the last tree that
+has either.
 
 The boundary between them is a **process boundary, not a repository
 boundary**, and it did not move when the repositories merged. Nothing links
 across it; nothing shares memory; the only thing that crosses is the
-protocol. That is what keeps either half replaceable (ROADMAP Phases 11 and
-12) and it is what the tests pin.
+protocol. That is what keeps either half replaceable (ROADMAP Phase 11, and
+a desktop app that copies the dashboard) and it is what the tests pin.
 
 ## 2. The xscript pipeline `[Cadex-new]`
 
 ```
- shell/  (the application)              cadexd child (per project)
+ cli/  (the dashboard and the agent)     cadexd child (per project)
  ────────────────────────────           ─────────────────────────────────────────────
- chat / sliders / picking               cadexd.py → CadexScriptedRuntime
- mesh_agent/cadex_backend.py  ══NDJSON══▶ (serial dispatch; persist source, spawn ONE
- mesh_agent/cadexd_client.py             --safe-mode worker, validate, publish into the
- mesh_agent/cadex_hydrate.py  ◀═════════ ephemeral App::Document, accept, tessellate)
- (hydrates tessellation +
-  face/edge ID maps into the scene)
+ ./cadex -p / params / review           cadexd.py → CadexScriptedRuntime
+ cadex_cli/agent.py (Claude Code) ═NDJSON═▶ (serial dispatch; persist source, spawn ONE
+ cadex_cli/client.py                     --safe-mode worker, validate, publish into the
+ cadex_cli/review_server.py  ◀══════════ ephemeral App::Document, accept, tessellate)
+ (dashboard: viewer, renders,
+  reports, in a browser)
 ```
 
-The whole left-hand column lives under `shell/scripts/startup/mesh_agent/`. What
-crosses the boundary is the protocol in `docs/INTEGRATION.md` and nothing
-else: no shared code, no shared process, no shared licence obligation — the
-shipped bundle is an aggregate of separate programs, each under its own
-licence (`docs/PROVENANCE.md` §7). Being
-in one repository does not relax that — the left column may not `import`
-anything from `src/`, and `cadexd_client.py` is deliberately a plain GPL
-NDJSON client with no cadex imports.
+The whole left-hand column lives under `cli/cadex_cli/`. What crosses the
+boundary is the protocol in `docs/INTEGRATION.md` and nothing else: no
+shared code and no shared process (`docs/PROVENANCE.md` §7). Being in one
+repository does not relax that — the left column may not `import` anything
+from `src/` (ADR-061).
 
 - **cadexd** (`src/Mod/cadex/cadexd.py`, protocol
   `src/Mod/cadex/CadexdProtocol.py`): one `FreeCADCmd` child per open
   project (no `--safe-mode` — trusted engine code), spawned/owned by the
-  shell (the Blender add-on's `cadexd_client.py`, under `shell/`);
+  CLI (`cli/cadex_cli/client.py`);
   `pixi run cadexd` for a standalone instance. Serial dispatch, `CADEXD_BUSY` refusal for a second
   modeling request, mid-run `cancel`, stdin-EOF lifetime, fd-1 hijack so
   only protocol frames reach the parent. Hosts the persistent ephemeral
@@ -115,8 +107,9 @@ NDJSON client with no cadex imports.
 - **Worker**: `FreeCADCmd --safe-mode -c <bootstrap>` subprocess launched
   via `src/Mod/cadex/CadexScriptedProcess.py` (`run_process`: no console
   window, new session, stdin closed, hard timeout + memory watchdog;
-  budgets from preferences `ScriptedTimeoutSeconds` /
-  `ScriptedMemoryLimitMB`, carried into the worker again as `RLIMIT_CPU`
+  budgets from `open_project`'s `budgets` per field, else the engine's
+  defaults, 300 s and 6144 MB (the CLI sends the project's, stored in
+  `agent.json`, ADR-517; no preference group, ADR-530), carried into the worker again as `RLIMIT_CPU`
   and `RLIMIT_AS` in different units — see `docs/XSCRIPT.md` and ADR-250).
   Its environment is a closed allowlist (`worker_environment`) that pins
   `PYTHONHASHSEED` and the BLAS thread pool, so a worker's address-space
@@ -125,12 +118,12 @@ NDJSON client with no cadex imports.
   charge does not either (ADR-418). The project bundle
   (`_DOMAIN_WORKER_BUNDLES["project"]`, `CadexScriptedRuntime.py:38`) stages
   all five domain api/worker modules with entry `cadex_project_worker.py`
-  — **and fifteen more modules by filename**, which is the pattern worth
+  — **and fourteen more modules by filename**, which is the pattern worth
   knowing: `CadexRouting.py`, `CadexBundle.py`, `CadexTerminals.py`,
   `CadexSolder.py`, `CadexNets.py`, `CadexBoards.py`, `CadexMounts.py`,
   `CadexCage.py`, `CadexLinkedPart.py`, `CadexDynamics.py`,
   `CadexStress.py`, `CadexSubshapeQuery.py`, `cadex_tessellation.py`,
-  `cadex_preview_worker.py` and `cadex_live_worker.py`
+  and `cadex_preview_worker.py`
   are copied in rather than imported, so a worker
   module can `import` them inside the sandbox while `cadexd`'s own module
   closure never reaches them. For `CadexDynamics.py` that is not a
@@ -166,17 +159,17 @@ NDJSON client with no cadex imports.
   accepted revision (ADR-434). Failed candidates stay inspectable
   without replacing the accepted revision. Since Phase 5 publication runs
   **only inside cadexd's ephemeral document** (and `cadex_rebuild`) — the
-  split is process-level, so the pipeline modules stay in-tree, but shell
-  modules must not import them (ADR-018).
-- **Display, not hydration.** The engine's side of the shell boundary ends
-  at the response: each accepted output carries a `display` block with
+  split is process-level, so the pipeline modules stay in-tree, but no
+  client may import them (ADR-018).
+- **Display, not hydration.** The engine's side of the process boundary
+  ends at the response: each accepted output carries a `display` block with
   absolute artifact paths and, on request, `cadex-tessellation-v1` buffers
   plus face/edge ID maps (`cadex_tessellation.py`, digest-neutral, quality
-  presets `draft`/`coarse`/`standard`/`fine`). What a shell does with them
-  is its own business — the Blender shell hydrates them into its scene with
-  per-triangle `cadex_face` attributes so picking round-trips through
-  `resolve_pin`. The Qt hydration that used to live here died with the Qt
-  shell (ADR-021).
+  presets `draft`/`coarse`/`standard`/`fine`). What a client does with them
+  is its own business: the dashboard's viewer draws the accepted attempt's
+  sidecars in three.js. The Qt hydration that used to live here died with
+  the Qt shell (ADR-021), and the Blender scene hydration with the Blender
+  shell (ADR-498).
 - **Geometry checks**: `src/Mod/cadex/CadexGeometryWorker.cpp` — an
   isolated C++ helper (built to `build/release/bin/CadexGeometryWorker`)
   for BREP validation (`BOPAlgo_ArgumentAnalyzer`) and exact
@@ -224,15 +217,15 @@ Ownership closure, lint, and orphan queries live in
 | `cadex_domain_api.py` / `cadex_domain_worker.py` | Shared domain API/worker plumbing (`_execute_source` is the composition substrate). `_serialize_output` is where an output type decides what it *is*: a BREP type exports an artifact, `mesh` writes a PLY, and `points`, `solver_diagnostics`, `measurement` (ADR-139) and `stress` (ADR-145) attach a dict and **no `artifact_kind` at all**; `mesh_check` (ADR-144) does the same from the mesh domain's own serializer, which is where that branch belongs. That branch is the whole cost of a non-geometric output: `compute_project_digest` keys on *having* an artifact, so an artifact-less output falls through to `payload_sha256`, the hash of its own declaration. A measurement's identity is therefore which selectors it names, not what today's parameters make it read — and a stress check's is which faces it holds and what material it declares. `[VibeCAD-era]` |
 | `CadexGeometryWorker.cpp` | Isolated C++ BREP validation / distance worker. `[VibeCAD-era]` |
 
-### The shell
+### No UI in the engine
 
-There is no shell under `src/`. `CadexGui`, `CadexSession`,
+There is no UI under `src/`. `CadexGui`, `CadexSession`,
 `CadexProvider`, `CadexCore`, `CadexAuth`, `CadexCodex`, `CadexPreferences`,
 `CadexTransactions`, `CadexEditState`, `CadexGrid`, `CadexParametersPanel`,
 `CadexScriptView`, the `tool_impl` package, `CadexdClient` and
-`CadexShellHydration` were all deleted in Phase 7 (ADR-021). The shell is
-`shell/scripts/startup/mesh_agent/`, and it speaks the protocol in
-`docs/INTEGRATION.md` — a different process, not a different import path.
+`CadexShellHydration` were all deleted in Phase 7 (ADR-021). The front end
+is `cli/`, and it speaks the protocol in `docs/INTEGRATION.md` — a different
+process, not a different import path.
 
 `test_engine_purity_guardrails.py` keeps it that way: nothing under
 `src/Mod/cadex/**` may import `PySide*`, `FreeCADGui`, `tool_impl` or
@@ -241,13 +234,12 @@ list. Phase 14 added two more invariants to the same file — **`mujoco` never
 enters that closure** (it is reachable only from the sandboxed worker), and
 **no `jax` or `mjx` appears anywhere under `src/Mod/cadex` or in a staged
 payload** (ADR-084: training is offboard, and the engine verifies a policy
-but never produces one). A third asserts that nothing in `shell/` learns
-about mujoco at all.
+but never produces one).
 
 ### The CLI `[Cadex-new — ADR-061]`
 
-`cli/` is a second front end and a third client of the same protocol: no
-Blender, no display, no shell code (`docs/CLI.md`). It is on the engine's
+`cli/` is the only front end and the client of the protocol: no display
+needed, and no code from the deleted shell (`docs/CLI.md`). It is on the engine's
 side of the licence line (LGPL) and lives outside `src/` because it is a
 *client*, not part of the engine — it spawns `cadexd` and imports nothing
 from it except `CadexdProtocol`, loaded by path out of whichever engine it
@@ -261,9 +253,9 @@ resolved. Its whole model-facing tool surface is generated from
 | `CadexdProtocol.py` | The wire protocol: NDJSON codec, op registry (`OP_ARG_SPECS`), failure codes. Its op table is asserted equal to `docs/INTEGRATION.md`'s. |
 | `cadexd.py` | The service: serial dispatch, cancel, busy, the ephemeral document, the restore pass, the per-output `display` block. |
 | `CadexTools.py` | `FAILURE_STAGES`, the `tool_failure` envelope every refusal is shaped as (and every shell parses), `unchanged_state`, `ToolSpec` as a declaration. |
-| `CadexEngineSettings.py` | The engine's own preference group and sandbox budget defaults. Split from the Qt preferences in C1. |
-| `CadexStudio.py` | The studio renderer (ADR-445): accepted tessellation to lit, antialiased review views, the 1024 px hero, the concept sheet and the agent's `look`, plus the dark scene `PALETTE` every image stands on and the design proxies P1-P3. `role_colours` resolves the same role colours from a display map alone, for the app's viewport (ADR-449). Pure standard library. **Not in the service's closure**: the CLI loads it by path and the shell runs it as a child process (`docs/INTEGRATION.md`, `cadex-studio-request-v1`), because cadexd dispatches serially and a render takes seconds. Moved from `cli/cadex_cli/{render,sheet,scene}.py`. `[Cadex-new]` |
-| `CadexFitReport.py` | The `fit` and `inventory` blocks every build reply carries (ADR-447): pure functions from the published `inspect scope=clearance` and `scope=inventory` values to the static fit, the swept fit, what the fixed joints hold, catalog identity, appearance and printed edges. Outside the service's closure, on `CadexStudio`'s terms: the CLI loads it by path, the shell reaches it through `CadexStudio`'s process entry (`kind: "blocks"`). Moved from `cli/cadex_cli/{clearance,inventory}.py`. `[Cadex-new]` |
+| `CadexEngineSettings.py` | The sandbox budget defaults and their per-field resolution against the project's (ADR-517). Reads no preference group (ADR-530). |
+| `CadexStudio.py` | The studio renderer (ADR-445): accepted tessellation to lit, antialiased review views, the 1024 px hero, the concept sheet, the agent's `look` and the dimensioned blueprint sheet its `draw_blueprint` stores (ADR-516), plus the dark scene `PALETTE` every image stands on and the design proxies P1-P3. Pure standard library. **Not in the service's closure**: the CLI and the dashboard load it by path (`docs/INTEGRATION.md`), because cadexd dispatches serially and a render takes seconds. Its child-process entry served only the shell and is gone (ADR-529). Moved from `cli/cadex_cli/{render,sheet,scene}.py`. `[Cadex-new]` |
+| `CadexFitReport.py` | The `fit` and `inventory` blocks every build reply carries (ADR-447): pure functions from the published `inspect scope=clearance` and `scope=inventory` values to the static fit, the swept fit, what the fixed joints hold, catalog identity, appearance and printed edges. Outside the service's closure, on `CadexStudio`'s terms: the CLI loads it by path. Moved from `cli/cadex_cli/{clearance,inventory}.py`. `[Cadex-new]` |
 | `CadexEvaluation.py` | **What a rollout did, as numbers** (ADR-455): a rollout trace read into behaviour metrics, none of them the reward. Three families, asked for by what the caller names and not by a task kind — *posture* (tilt, heading, drift, recovery time from a shove), *gait* (steps as opposed to chatter, step share, foot clearance, stance slip, duty factor, foot depth, commanded-speed tracking) and *reach* (final error, time to target, overshoot) — plus `check`, which holds a flat metric table against `{id, metric, min, max}` predicates, so a success spec is data, and `METRICS`, the whole vocabulary an `assembly.success` predicate may name with what measuring each needs (ADR-456) — `CadexDynamics` resolves a declared spec against it inside the worker and writes the task bundle's `success` block. Pure standard library, millimetres and degrees. The model's half arrives as plain numbers from `CadexDynamics.evaluation_rig`, the one place `mujoco` is imported and a unit converted. **Not in the service's closure**, on `CadexStudio`'s terms: a client loads it by path. Pinned metric by metric in `cadex_tests/test_evaluation_metrics.py`, with ot10's `w2-2` shuffle as a failing fixture. **`measure` and `summarise` are what an evaluation is made of** (ADR-457): `measure` reads one rollout into the one flat table a predicate may bound, choosing families by what the rig carries and never by a behaviour's name, and `summarise` folds the seeds without averaging a verdict. `CadexDynamics.evaluate_success` plays a task's `success` block with them — one rollout per frozen seed on a model compiled afresh for that seed, under the spec's own horizon, randomisation, reset variation and disturbances (ADR-458), a seed whose simulation raised a solver warning marked void — and `cadex evaluate` (`docs/CLI.md`) runs it over the retained accepted artifacts and writes `evaluation.json` into the project, then draws a filmstrip and a video of its seeds from their traces with `CadexStudio`, on the dark prototype floor (`cli/cadex_cli/film.py`, ADR-459); the review dashboard shows the report on its *Evaluation* tab. `[Cadex-new]` |
 | `CadexAgentGuidance.md` | The agent guidance every front end pastes into its system prompt (ADR-446): proof by measured facts, the design language, a complete robot, grounded policy inputs, a walking task's reward. Engine **data**, read by the CLI and the shell, with tool-name placeholders each fills. `[Cadex-new]` |
 | `CadexInspection.py` | The bounded `inspect` read surface (scopes `document`, `object`, `script`, `api`, `image`, `output`, `assets`, `history`, `wiring`, `blueprint`; `output`/`assets` added in ADR-043 — per-output facts from the pinned accepted attempt, and the importable-asset listing — `history` in ADR-045, the accepted-revision undo trail `restore_version` reads, and `blueprint` in ADR-150, the stored drawing sheets: the listing, or one entry plus its containment-checked store path, never pixels. `selection` was shell-only and is gone). |
@@ -282,7 +274,9 @@ macOS). Layout:
 <root>/projects/<slug>-<hash8>/
   project.cadex.json            project manifest
   script.py                     THE project script (sole source of truth)
-  script_history/               last 25 accepted sources + history.json (ADR-045)
+  script_history/               last 25 accepted sources + history.json (ADR-045);
+                                each entry also keeps the values and the
+                                geometry digest it was accepted with (ADR-506)
   script.json                   schema cadex-project-script-v1: param specs
                                 cache + values, net specs cache + stored
                                 connection rows (ADR-065),
@@ -320,7 +314,8 @@ macOS). Layout:
                                 blueprints.json (cadex-blueprint-v1), each
                                 entry attached to the accepted (revision,
                                 digest) pair it documents; newest 25 kept,
-                                written only by the put_blueprint op, read
+                                written only by the put_blueprint op (the
+                                agent's draw_blueprint, ADR-516), read
                                 back through inspect scope=blueprint.
                                 Since ADR-157 an entry may carry a name and
                                 a version: a name is an IDENTITY, so storing
@@ -333,7 +328,7 @@ macOS). Layout:
                                 output the CALLER named (ADR-158 -- the
                                 engine stores no marks), written off the
                                 ACCEPTED brep/mesh artifact rather than the
-                                shell's display tessellation, each at its own
+                                display tessellation, each at its own
                                 origin. Written only by the export_printable
                                 op. NOT pruned and not indexed — unlike every
                                 other directory here this one is a
@@ -343,26 +338,32 @@ macOS). Layout:
 ```
 
 **cadexd is the sole writer.** Every byte that lands in the store goes
-through an op; the shell asks the engine what is in there (`inspect`), which
-is why the store's layout is not part of the contract in
-`docs/INTEGRATION.md` — and why it must not become one now that both halves
-are in one tree.
+through an op; the agent asks the engine what is in there (`inspect`) and
+hands it files through `put_asset` (a mesh, a trained policy), which is why
+the store's layout is not part of the contract in `docs/INTEGRATION.md` —
+and why it must not become one now that both halves are in one tree.
 
-The shell reads exactly one directory of it, and only ever to hand the paths
-straight back: on Save-As it lists `assets/` in the root it is *leaving*, so
-that `put_asset` can carry the user's imported geometry — and, since ADR-138,
-the linked parts, and since ADR-188 the trained policies with their task
-bundles and MJCF — into the new project (ADR-046). The shell's carry list is
-now the engine's whole stored union, so nothing the origin holds is dropped
-on the way across. Assets are the one thing
-in the store the shell supplied in the
-first place, and the shell already chooses where the store lives (below).
-Nothing else in the store is read by the shell, and nothing at all is
-written by it.
+The dashboard reads the store and never writes it: the manifest's accepted
+attempt, that attempt's `result.json` and its `display/*.tess.json`
+sidecars, which is how the viewer shows the accepted model without asking
+an engine (`review_server.py`). When a person steers from the page — a
+parameter slider, or a design turn from a prompt — the server runs the
+`cadex params` or `cadex -p` command as a child, so the write is cadexd's,
+through the CLI, as any other (ADR-503, ADR-504); a turn's stderr is
+streamed back to the page as its live transcript. A comment on the design
+or a part clicked in the model runs `cadex comment`, which appends to the
+project's `comments.jsonl`; the next `cadex -p` receives the undelivered
+ones ahead of its prompt (ADR-505). Accept, Reject and Restore on a
+revision run `cadex revision`: a verdict is a `comments.jsonl` line the next
+turn receives, and a reject or restore writes a stored version from
+`script_history/` back through `write_script`, then its recorded values
+through `set_params` (ADR-506). Until ADR-498 the Blender shell also read
+`assets/` on Save-As to carry them into a new root through `put_asset`
+(ADR-046); a project is now copied as a directory.
 
-In practice the root is chosen by the shell, not by `$CADEX_HOME`: the
-Blender shell passes `<blend-dir>/<stem>.cadex` as `project_root`, so a
-model lives beside the file that displays it.
+In practice the root is chosen by the caller, not by `$CADEX_HOME`: the CLI
+passes its `--project` directory as `project_root`, so the store lives in
+the project directory the dashboard serves.
 
 `CadexProjectScriptStore` (`CadexScriptStore.py`, split out of
 `CadexProject.py` in C1) owns `script.py`/`script.json` with atomic,
@@ -370,9 +371,10 @@ schema-checked writes. A candidate is written before it runs and rolled back
 if it fails, so `script.py` only ever holds a source that executed; the
 accepted revision's own source stays pinned in its staging directory and is
 readable with `read_accepted_source()`, which is what the restore pass falls
-back to when the working script will not run at all (ADR-044). **Conversation history is no longer here**: it lives
-in the `.blend` with the Claude Code session id (ADR-020, decision 4), and
-the engine's conversation store died with the Qt shell. VibeCAD-era
+back to when the working script will not run at all (ADR-044). **Conversation history is no longer here**: the
+CLI keeps the Claude Code session id in the project's `agent.json`
+(`cli/cadex_cli/session.py`), Claude Code keeps the transcript, and the
+engine's conversation store died with the Qt shell (ADR-020). VibeCAD-era
 per-domain program stores are not migrated (ADR-011).
 
 ### Support
@@ -442,12 +444,13 @@ a declared list, and `docs/INTEGRATION.md`'s op table must equal
 `project_xscript_api_integration.py` (the full lifecycle),
 `tessellation_id_map_integration.py`, `pin_resolution_integration.py`,
 `cadexd_latency_integration.py` (the slider-drag bar over raw NDJSON),
-`dynamics_inertia_integration.py`, and `rollout_bake_integration.py` — the
-last one writes a rollout trace from a live `cadexd` and then bakes it
-*inside the shipped bundle*, through `mesh_agent.cadex_animate`'s own
-functions on real Blender objects. That is the evidence ADR-077's shared
-output type exists to demand: a trace the engine is happy with and the shell
-declines to bake is exactly the failure the decision prevents.
+`dynamics_inertia_integration.py`, and `rollout_review_integration.py` — the
+last one writes a rollout trace from a live `cadexd` and then reads it
+through the review dashboard's own trace reader (`review_server`'s
+`_first_frame_placements` and `_placement`, every frame). That is the
+evidence ADR-077's shared output type exists to demand: a trace the engine is
+happy with and the UI declines to read is exactly the failure the decision
+prevents. Until ADR-495 the reader was the Blender shell's bake.
 
 **The five ctests**, in `tests/CMakeLists.txt`:
 
@@ -463,9 +466,9 @@ The ones needing a binary skip themselves when no FreeCADCmd is available.
 ctest overall has ~160 pre-existing environmental failures — diff against
 `build/ctest_baseline_failures.txt`, never expect 100%.
 
-The product gate lives on the other side of the boundary:
-`pixi run gate` runs `shell/tests/python/bl_mesh_agent_cadex.py` against the
-built bundle and prints one `CADEX-BLENDER-GATE` line.
+The dashboard's and the agent's suite lives on the other side of the boundary:
+`pixi run python -m pytest cli/tests`, whose engine-needing half skips
+without a built engine.
 
 ## 4. The substrate
 
@@ -518,38 +521,16 @@ vertical rather than `main` plus a feature.
 
 ## 5. Build & run
 
-`pixi run setup && pixi run app` builds everything and launches it. What
-that runs, and why it is not one CMake project:
-
-**Two toolchains, deliberately isolated.** The engine builds inside the
-pixi/conda-forge environment — OCCT 7.8.1, Qt6, conda compilers, a conda
-sysroot. The shell builds against `shell/lib/<platform>`, Blender's own
-prebuilt library set, with Xcode and a homebrew `cmake`/`ninja`. The two
-overlap on names: zlib, libpng, OpenSSL, Python all exist in both, at
-different versions. Put `.pixi/envs/default/bin` on `PATH` during a shell
-configure and CMake silently resolves the conda ones, which fails at link
-time or, worse, produces a binary that misbehaves at runtime.
-
-`package/app/build_app.sh` is what keeps them apart. It filters the pixi and
-conda entries out of `PATH` and unsets the ~50 variables conda activation
-exports (`CONDA_PREFIX`, `CMAKE_PREFIX_PATH`, `CFLAGS`, `SDKROOT`, `CC`,
-`PKG_CONFIG_PATH`, …) before invoking `cmake` on `shell/`. That is why
-`pixi run build-shell` shells out to a script instead of being a
-`cmd = ["cmake", ...]` task: pixi would otherwise hand cmake the exact
-environment being removed. *Verified by construction:* the resulting
-`shell/build_darwin/CMakeCache.txt` is identical to a configure run from the
-old standalone shell repository apart from the source path — zero references
-to `.pixi`, Python resolved out of `shell/lib/macos_arm64`, compilers
-`/usr/bin/cc` and `/usr/bin/c++`.
-
-The steps:
+`pixi run setup-engine && pixi run build-engine` builds everything there
+is: the engine, in the pixi/conda-forge environment (OCCT 7.8.1, conda
+compilers, a conda sysroot). The dashboard and the CLI that runs the agent
+are pure Python and vanilla JS under `cli/`, and need no build step. No step needs git-lfs or Xcode (ADR-498).
 
 | Task | Builds | With |
 |---|---|---|
-| `pixi run setup` | — | `git submodule update` for `shell/lib/<platform>` (1.3 GB, git-lfs) |
+| `pixi run setup-engine` | — | `git submodule update` for `src/3rdParty/OndselSolver` |
 | `pixi run build-engine` | `build/release/bin/{FreeCADCmd,CadexGeometryWorker}` | pixi env, `BUILD_GUI=OFF` |
 | `pixi run stage-engine` | `build/engine/cadex-engine-<v>-<os>-<arch>/` + its manifest | pixi env |
-| `pixi run build-shell` | `shell/build_darwin/bin/Cadex.app`, engine inside it | **scrubbed** env, `shell/lib` |
 
 - Artifacts, engine: `build/release/bin/FreeCADCmd` and
   `build/release/bin/CadexGeometryWorker`. **There is no `FreeCAD` binary
@@ -560,8 +541,7 @@ The steps:
   FreeCAD is stubbed). Note that `pixi run test` is the *inherited FreeCAD
   ctest*, which is a different and much noisier thing.
   `pixi run python src/Mod/cadex/cadex_tests/cadexd_latency_integration.py`
-  is the slider-drag latency bar, driven over raw NDJSON. `pixi run gate`
-  is the product gate against the built bundle.
+  is the slider-drag latency bar, driven over raw NDJSON.
 - **`training/` is built by nothing and installed by nothing.** It is not a
   step in this table and never will be; it is copied to a GPU box and run
   there with its own venv (ADR-084). `test_dynamics_policy_trainer` asserts
@@ -592,20 +572,7 @@ The steps:
   where every determinism guarantee gets hard and would be its own ADR.
 - **`display` on `open_project`** (A1). Would fold the restore pass and the
   hydration rebuild into one script run; the measured cost of not having it
-  is 0.49 s, paid on the first engine request against a project rather than
-  on the file open. The shell's `ensure_open` is where both runs happen.
-- **The file-open path hydrates since ADR-186** (ADR-073 measured the gap:
-  `model_objects_on_open = 0`). `load_post` reaches
-  `cadex_backend.on_file_changed`, which drops the previous file's sessions,
-  and then `queue_open`, which — for a saved file beside an existing
-  `.cadex` — queues the open. A timer-driven pump runs `open_project`
-  (restore pass included) and the display `rebuild` on a worker thread and
-  hydrates on the main thread; `ensure_open` drains a queued open rather
-  than racing it. The read-only panel state still does not open the
-  project. A restore failure at that open caches its code on the per-root
-  state and the chat draws the re-accept box from it (ADR-187), so a
-  digest-moving engine change no longer needs a manual recovery. A1 would
-  shorten that open to one script run; it is unchanged.
+  is 0.49 s, paid on the first engine request against a project.
 - Whether `CadexModelingSurface.py`'s surface resolution collapses further
   now that one global project surface exists and no provider consumes it.
 - What remains of `CadexProject.py` once the conversation store is gone —

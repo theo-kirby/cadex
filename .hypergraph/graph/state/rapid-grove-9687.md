@@ -7,7 +7,7 @@ parents:
 - mild-ledge-7157
 summary: ''
 ---
-Status: open
+Status: superseded
 
 ## Current
 
@@ -108,3 +108,8 @@ Reconcile judgement: **`open`**. Every obstruction that ever held F7 is gone —
 - old-dew-1568 — F10's closing report gives F7 one row, claims done, and names F7's unspent continuations and off-pin smoke among the open items; the bar was met in one continuation and the other two stay unspent by policy (ADR-397)
 - honest-ash-4208 — cross-reference: F7's off-pin smoke is carried by ot8's G3 (`empty-arrow-8425`); F7 itself stays exhausted and is not re-run
 - sunny-quill-9617 — G3 took the pin-borne smoke pass on an independent copy, leaving `ot7-plover-e` untouched
+- light-path-5130 — superseded in orun2's R1 frontier pruning
+
+## Superseded
+
+ot7 ended and is archived (merged fa75c531). F7's last verdict stands as recorded; no later charter re-opened it. The measured results above stand as the final record; nothing about the criterion's evidence changed. Superseded through orun2 R1's frontier pruning so the frontier lists only live work [rec: light-path-5130].

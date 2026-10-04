@@ -50,3 +50,5 @@ ENGINE_MODULE_DIR = _default_module_dir()
 STUDIO = load_studio(ENGINE_MODULE_DIR)
 #: The fit and inventory blocks every build reply carries (ADR-447).
 FIT_REPORT = load_studio(ENGINE_MODULE_DIR, "CadexFitReport")
+#: Which outputs have a surface to print (ADR-156, ADR-158), as the export reads it.
+PRINTABLES = load_studio(ENGINE_MODULE_DIR, "CadexPrintables")

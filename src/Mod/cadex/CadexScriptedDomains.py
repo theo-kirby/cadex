@@ -259,7 +259,6 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
         (
             "from_shape",
             "import_file",
-            "blender",
             "union",
             "difference",
             "intersection",

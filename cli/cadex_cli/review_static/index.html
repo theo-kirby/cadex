@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!-- SPDX-FileCopyrightText: 2026 Cadex Authors
      SPDX-License-Identifier: LGPL-2.1-or-later
-     Layout, type and colour follow docs/REVIEW-DESIGN.md (ADR-329, ADR-342).
+     Layout, type and colour follow docs/DASHBOARD.md (ADR-329, ADR-342).
      At desk width the page is an application frame: a thin top bar, a left
      and a right sidebar that meet it in one surface, and the stage between
      them. Below 1000 px the frame dissolves (`display: contents`) and the
@@ -11,8 +11,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The server writes this launch's write token here; every POST carries it (ADR-503). -->
+<meta name="cadex-write-token" content="">
 <title>Cadex review</title>
-<link rel="stylesheet" href="/review.css">
+<link rel="stylesheet" href="review.css">
 </head>
 <body>
 <header id="top">
@@ -31,13 +33,78 @@
 <main id="frame">
   <!-- Left sidebar: what to look at — the runs, and the project's documents. -->
   <div id="left" class="rail" data-side="left">
+    <section id="turn-panel" class="card panel">
+      <h2>Design turn</h2>
+      <!-- Runs `cadex -p PROMPT --project …` (ADR-504); its stderr streams below. -->
+      <textarea id="turn-prompt" rows="3" placeholder="What to build or change, in words. Spends tokens." aria-label="Prompt"></textarea>
+      <!-- An attached image travels as `cadex -p … --image FILE` (ADR-507). -->
+      <input type="file" id="turn-image" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+      <div id="turn-images" hidden></div>
+      <div class="controls">
+        <label class="toggle" for="turn-resume"><input type="checkbox" id="turn-resume" checked> <span>continue the conversation</span></label>
+        <button id="turn-attach" type="button">Attach image</button>
+        <button id="turn-start" type="button">Start turn</button>
+      </div>
+      <div id="turn-status" data-state="idle"></div>
+      <pre id="turn-transcript" hidden></pre>
+      <div id="turn-looks" hidden></div>
+    </section>
+    <section id="note-panel" class="card panel">
+      <h2>From the agent</h2>
+      <!-- The agent's leave_note notes (ADR-512): flags and questions it left without waiting. An answer runs `cadex comment --reply NOTE_ID TEXT --project …`; the next design turn receives it. -->
+      <div id="note-empty" class="muted small">No notes from the agent.</div>
+      <ul id="note-list"></ul>
+      <div id="note-answer" hidden>
+        <div class="controls"><span id="note-target" data-note="">answering —</span></div>
+        <textarea id="note-text" rows="2" placeholder="Your answer, for the next turn." aria-label="Answer"></textarea>
+        <div class="controls"><button id="note-send" type="button">Answer</button></div>
+      </div>
+      <div id="note-status" data-state="idle"></div>
+    </section>
+    <section id="comment-panel" class="card panel">
+      <h2>Comments</h2>
+      <!-- Runs `cadex comment [--part NAME] TEXT --project …` (ADR-505); the next design turn receives them. -->
+      <div class="controls">
+        <span id="comment-target" data-part="">on the whole design · click a part in the model to pick it</span>
+        <button id="comment-whole" type="button" hidden>Whole design</button>
+      </div>
+      <textarea id="comment-text" rows="2" placeholder="A note for the next turn." aria-label="Comment"></textarea>
+      <div class="controls"><button id="comment-send" type="button">Comment</button></div>
+      <div id="comment-status" data-state="idle"></div>
+      <ul id="comment-list"></ul>
+    </section>
+    <section id="revision-panel" class="card panel">
+      <h2>Revisions</h2>
+      <!-- Runs `cadex revision accept|reject|restore … --project …` (ADR-506); the next design turn reads the verdict. -->
+      <div id="revision-current" class="muted small">no accepted revision yet</div>
+      <textarea id="revision-note" rows="1" placeholder="Why, optionally; the next turn reads it." aria-label="Verdict note"></textarea>
+      <div class="controls">
+        <button id="revision-accept" type="button" disabled>Accept</button>
+        <button id="revision-reject" type="button" disabled>Reject</button>
+      </div>
+      <div id="revision-status" data-state="idle"></div>
+      <ol id="revision-list"></ol>
+    </section>
+    <section id="export-panel" class="card panel">
+      <h2>Export</h2>
+      <!-- Runs `cadex export --project … --out review/export/<revision> --format step,stl` (ADR-509). -->
+      <div class="controls"><button id="export-run" type="button" disabled>Export STEP + STL</button></div>
+      <div id="export-status" data-state="idle"></div>
+      <ul id="export-list"></ul>
+    </section>
+    <section id="drawing-panel" class="card panel">
+      <h2>Drawings</h2>
+      <!-- Blueprint sheets the agent's draw_blueprint stored in blueprints/ (ADR-516), newest first; read-only. -->
+      <a id="drawing-latest-link" href="" target="_blank" rel="noopener" hidden><img id="drawing-latest" alt="Newest drawing sheet: dimensioned line views, callouts and title block"></a>
+      <ul id="drawing-list"></ul>
+    </section>
     <nav id="sidebar" class="card panel">
       <h2>Runs</h2>
       <details id="runs" open>
         <summary id="runs-summary">Runs</summary>
         <button id="current-run" type="button">Current run</button>
         <ul id="views"></ul>
-        <p class="muted small">Inspection only. Authoring and training stay on the CLI; this page holds no project state.</p>
+        <p class="muted small">Every write here is a <code>cadex</code> command; training stays on the CLI, and this page holds no project state.</p>
       </details>
     </nav>
     <section id="docs-panel" class="card panel">
@@ -65,14 +132,14 @@
         <h2>Concept</h2>
         <div id="concept-status" data-state="empty">no concept sheet</div>
         <figure id="concept-figure" hidden>
-          <a id="concept-open" href="/presentation/sheet.png" target="_blank" rel="noopener"><img id="concept-sheet" alt="Concept sheet: studio hero, name, key numbers, palette and orthographic line views"></a>
-          <figcaption><span id="concept-caption"></span> · <a id="concept-hero" href="/presentation/hero.png" target="_blank" rel="noopener">hero</a> · <a id="concept-download" href="/presentation/sheet.png?download=1">download sheet</a></figcaption>
+          <a id="concept-open" href="presentation/sheet.png" target="_blank" rel="noopener"><img id="concept-sheet" alt="Concept sheet: studio hero, name, key numbers, palette and orthographic line views"></a>
+          <figcaption><span id="concept-caption"></span> · <a id="concept-hero" href="presentation/hero.png" target="_blank" rel="noopener">hero</a> · <a id="concept-download" href="presentation/sheet.png?download=1">download sheet</a></figcaption>
         </figure>
       </section>
       <section id="model" class="card region stage-panel" data-stage="model" role="tabpanel">
         <h2>Model</h2>
         <div id="model-status" data-state="empty">no model loaded</div>
-        <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas></div>
+        <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas><svg id="dimension-overlay" aria-label="declared dimensions"></svg></div>
         <div class="controls viewer-controls"><span class="hint">drag or touch to orbit · wheel to zoom</span><button id="model-fit" type="button">Fit</button></div>
       </section>
       <section id="curves" class="card region stage-panel" data-stage="curves" role="tabpanel">
@@ -124,6 +191,7 @@
         <tr><th>policy origin</th><td><span id="policy-origin" class="badge"></span> <button id="check-policy-origin" type="button">Check again</button></td></tr>
         <tr><th>note</th><td id="view-note"></td></tr>
         <tr><th>policy store</th><td id="view-policy-store"></td></tr>
+        <tr><th>engine budgets</th><td id="view-budgets" class="mono"></td></tr>
       </table>
     </section>
     <section id="model-settings" class="card panel">
@@ -132,6 +200,37 @@
         <label class="toggle" for="show-collision"><input type="checkbox" id="show-collision"> <span>show collision geometry</span></label>
         <span id="collision-note" class="muted"></span>
       </div>
+      <ul id="collision-contacts"></ul>
+      <!-- Dimensions: the script's part.measurement records, drawn in screen space over the solids (§31). -->
+      <div class="controls">
+        <label class="toggle" for="show-dimensions"><input type="checkbox" id="show-dimensions" checked> <span>show declared dimensions</span></label>
+        <span id="dimension-note" class="muted"></span>
+      </div>
+      <ul id="dimension-list"></ul>
+      <!-- Explode: the engine's assembly.exploded_view stages, played 0..N with setPoses (§24). -->
+      <div class="controls">
+        <label for="explode-amount">explode</label>
+        <input type="range" id="explode-amount" min="0" max="1" step="0.01" value="0" disabled>
+        <select id="explode-view" hidden></select>
+        <span id="explode-note" class="muted small"></span>
+      </div>
+      <!-- Playback: a run's rollout trace, played in simulation seconds through setPoses (§25). -->
+      <div class="controls">
+        <button id="play-toggle" type="button" disabled>Play</button>
+        <input type="range" id="play-time" min="0" max="1" step="any" value="0" disabled aria-label="rollout time, s">
+        <span id="play-note" class="muted small"></span>
+      </div>
+      <!-- Section: runs `cadex section --plane P [--offset-mm=N]` and clips the viewer at the cut (§24). -->
+      <div class="controls">
+        <label for="section-plane">section</label>
+        <select id="section-plane"><option>XY</option><option selected>XZ</option><option>YZ</option></select>
+        <input type="number" id="section-offset" step="any" placeholder="derived" aria-label="section offset, mm">
+        <button id="section-cut" type="button" disabled>Cut</button>
+        <button id="section-clear" type="button" disabled>Clear</button>
+      </div>
+      <div id="section-status" data-state="idle"></div>
+      <ul id="section-list"></ul>
+      <figure id="section-figure" hidden><img id="section-svg" alt="Section cut drawn by cadex section"><figcaption id="section-caption" class="muted small"></figcaption></figure>
       <ul id="model-components"></ul>
     </section>
     <section id="record" class="card panel">
@@ -141,6 +240,7 @@
     <section id="params-panel" class="card panel">
       <h2>Parameters and specs</h2>
       <div id="params-note"></div>
+      <div id="params-write" data-state="idle"></div>
       <div class="scroll"><table id="params" class="grid"><thead><tr><th>name</th><th>value</th><th>default</th><th>min</th><th>max</th><th>unit</th><th>label</th></tr></thead><tbody></tbody></table></div>
     </section>
     <section id="artifacts-panel" class="card panel">
@@ -155,6 +255,6 @@
     </section>
   </aside>
 </main>
-<script type="module" src="/viewer.js"></script>
+<script type="module" src="viewer.js"></script>
 </body>
 </html>

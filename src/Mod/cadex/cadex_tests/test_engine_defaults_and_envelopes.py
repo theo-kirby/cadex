@@ -6,7 +6,7 @@
 The build123d and OpenSCAD engines were removed, so this file now only carries
 the engine-agnostic contracts that survived that teardown: stage-aware GUI
 failure rendering, the private scripted-carrier / view-attachment service
-contracts, and the XScript default-preference locks.
+contracts, and the engine's sandbox-budget defaults.
 """
 
 from __future__ import annotations
@@ -71,120 +71,49 @@ class TestFailureEnvelopeContract:
         assert envelope["observed"] == {"expected_revision": "abc"}
 
 
-
-
-class _UnsetPreferences:
-    """Stub ParamGet group where every key is unset: each getter echoes the
-    fallback default it was called with, exactly like FreeCAD does for keys
-    that were never written."""
-
-    def GetBool(self, name: str, default: bool = False) -> bool:
-        return default
-
-    def GetString(self, name: str, default: str = "") -> str:
-        return default
-
-    def GetFloat(self, name: str, default: float = 0.0) -> float:
-        return default
-
-    def GetInt(self, name: str, default: int = 0) -> int:
-        return default
-
-
-class _RecordingPreferences(_UnsetPreferences):
-    def __init__(self) -> None:
-        self.values: dict[str, object] = {}
-
-    def GetBool(self, name: str, default: bool = False) -> bool:
-        return bool(self.values.get(name, default))
-
-    def GetString(self, name: str, default: str = "") -> str:
-        return str(self.values.get(name, default))
-
-    def GetFloat(self, name: str, default: float = 0.0) -> float:
-        return float(self.values.get(name, default))
-
-    def GetInt(self, name: str, default: int = 0) -> int:
-        return int(self.values.get(name, default))
-
-    def SetBool(self, name: str, value: bool) -> None:
-        self.values[name] = bool(value)
-
-    def SetString(self, name: str, value: str) -> None:
-        self.values[name] = str(value)
-
-    def SetFloat(self, name: str, value: float) -> None:
-        self.values[name] = float(value)
-
-    def SetInt(self, name: str, value: int) -> None:
-        self.values[name] = int(value)
-
-    def RemBool(self, name: str) -> None:
-        self.values.pop(name, None)
-
-    def RemString(self, name: str) -> None:
-        self.values.pop(name, None)
-
-    def RemFloat(self, name: str) -> None:
-        self.values.pop(name, None)
-
-    def RemInt(self, name: str) -> None:
-        self.values.pop(name, None)
-
-
 class TestEngineSettingDefaults:
     """The engine's own settings, split out of the Qt preferences (ADR-021).
 
-    Phase 6 asserted an "XScript enabled" opt-in here. xscript is now the
-    only engine there is, so the defaults that still mean something are the
-    sandbox budgets a worker run is given.
+    The sandbox budgets a worker run is given: the project's when the CLI
+    sends them (ADR-517), else the engine's defaults. No FreeCAD preference
+    group sits between them any more (ADR-530).
     """
 
     def test_budget_defaults_are_positive(self) -> None:
         from CadexEngineSettings import (
             DEFAULT_SCRIPTED_MEMORY_LIMIT_MB,
             DEFAULT_SCRIPTED_TIMEOUT_SECONDS,
+            default_budgets,
         )
 
         assert DEFAULT_SCRIPTED_TIMEOUT_SECONDS > 0
         assert DEFAULT_SCRIPTED_MEMORY_LIMIT_MB > 0
-
-    def test_unset_preferences_fall_back_to_the_defaults(self, monkeypatch) -> None:
-        import CadexEngineSettings as settings
-
-        class _Unset:
-            @staticmethod
-            def GetFloat(_name, default):
-                return default
-
-            @staticmethod
-            def GetInt(_name, default):
-                return default
-
-        monkeypatch.setattr(settings, "preferences", lambda: _Unset())
-        assert settings.load_engine_budgets() == {
-            "timeout_seconds": settings.DEFAULT_SCRIPTED_TIMEOUT_SECONDS,
-            "memory_limit_mb": settings.DEFAULT_SCRIPTED_MEMORY_LIMIT_MB,
+        assert default_budgets() == {
+            "timeout_seconds": DEFAULT_SCRIPTED_TIMEOUT_SECONDS,
+            "memory_limit_mb": DEFAULT_SCRIPTED_MEMORY_LIMIT_MB,
         }
 
-    def test_a_nonsense_preference_value_falls_back(self, monkeypatch) -> None:
-        """A zero or negative budget is not a budget."""
+    def test_a_nonsense_caller_budget_falls_back(self) -> None:
+        """A zero, negative or unparsable budget is not a budget."""
+        from CadexEngineSettings import default_budgets, resolve_budgets
+
+        assert resolve_budgets(
+            {"timeout_seconds": -1.0, "memory_limit_mb": "lots"}
+        ) == default_budgets()
+
+    def test_the_engine_reads_no_preference_group(self) -> None:
+        """Nothing writes a FreeCAD preference any more, so nothing reads one
+        (ADR-530): the Qt dialog went in Phase 7, the shell in ADR-498."""
         import CadexEngineSettings as settings
 
-        class _Nonsense:
-            @staticmethod
-            def GetFloat(_name, _default):
-                return -1.0
-
-            @staticmethod
-            def GetInt(_name, _default):
-                return 0
-
-        monkeypatch.setattr(settings, "preferences", lambda: _Nonsense())
-        assert settings.load_engine_budgets() == {
-            "timeout_seconds": settings.DEFAULT_SCRIPTED_TIMEOUT_SECONDS,
-            "memory_limit_mb": settings.DEFAULT_SCRIPTED_MEMORY_LIMIT_MB,
-        }
+        for name in ("preferences", "PREFERENCE_GROUP", "load_engine_budgets"):
+            assert not hasattr(settings, name), name
+        engine = Path(__file__).resolve().parents[1]
+        readers = sorted(
+            path.name for path in engine.glob("*.py")
+            if "ParamGet" in path.read_text(encoding="utf-8")
+        )
+        assert readers == []
 
     def test_caller_budgets_win_when_complete(self) -> None:
         from CadexEngineSettings import resolve_budgets
@@ -192,5 +121,16 @@ class TestEngineSettingDefaults:
         assert resolve_budgets(
             {"timeout_seconds": 12.0, "memory_limit_mb": 256}
         ) == {"timeout_seconds": 12.0, "memory_limit_mb": 256}
+
+    def test_caller_budgets_win_per_field(self) -> None:
+        """A project that sets one budget keeps the engine's other (ADR-517)."""
+        import CadexEngineSettings as settings
+
+        assert settings.resolve_budgets({"timeout_seconds": 900.0}) == {
+            "timeout_seconds": 900.0, "memory_limit_mb": 6144}
+        assert settings.resolve_budgets({"memory_limit_mb": 8192, "timeout_seconds": 0}) == {
+            "timeout_seconds": 300.0, "memory_limit_mb": 8192}
+        assert settings.resolve_budgets(None) == {
+            "timeout_seconds": 300.0, "memory_limit_mb": 6144}
 
 

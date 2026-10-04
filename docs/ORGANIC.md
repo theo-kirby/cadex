@@ -1,17 +1,13 @@
 # ORGANIC.md — Organic Modelling, and the CAD/Mesh Interface
 
-Verified against source: 2026-09-05
+Verified against source: 2026-10-03
 Status: **O0 closed (ADR-124), O1 closed (ADR-125), O2 closed (ADR-126),
 O3 closed (ADR-127).** The phase's four slices are done; O2b and O4 are
 parked by decision.
 
-**Native Blender recipe bridge (ADR-185, 2026-09-05).** The owner approved
-using models' native Blender Python capability through xscript. This adds
-`mesh.blender`, with declared mesh inputs, values and one mesh output, under
-an OS-sandboxed worker. It does not implement O4's NURBS fitting or revive
-live scene editing. The new bounded hybrid enclosure benchmark and its
-contract are in `docs/BLENDER-RECIPES.md`; the historic wolf measurements below
-remain historical measurements, not evidence for this new path. [Cadex-new]
+**Native Blender recipe bridge (ADR-185, 2026-09-05) — retired (ADR-496).**
+`mesh.blender` went with the shell; its contract is in
+`docs/history/BLENDER-RECIPES.md`. No project used it. [Cadex-new]
 
 This is Phase 15's arc doc, and it stands to Phase 15 as `docs/MUJOCO.md`
 stands to Phase 14: the measurement the phase is sized from, the slices, the
@@ -280,7 +276,7 @@ large interaction payoff, and it needs **no new kernel math**.
   `all_objects` and would sweep a child). Grab a ring, move or scale it,
   press **Apply**, which goes through `wiring.py`'s single-slot pump
   (ADR-122). Panel in the existing parameters editor. **Adding a space type
-  would spend `docs/BLENDER-TREE.md` §2b budget; this slice must not.**
+  would spend `docs/history/BLENDER-TREE.md` §2b budget; this slice must not.**
 
 **Landed with two gestures deliberately ignored.** Dragging a ring *across*
 the spine is dropped rather than honoured — a cage is a straight spine by
@@ -351,12 +347,12 @@ stops being needed.
   on the wolf; report the number; if it costs more than a few seconds, cap
   the probe depth and **say so in the result** rather than silently doing
   less work.
-- **`shell/` diff creep.** O0 and O3 both add UI. Every line must stay inside
-  `mesh_agent/` and `shell/tests/python/`; `docs/BLENDER-TREE.md` §2a stays
+- **Shell diff creep** (while the shell existed). O0 and O3 both added UI. Every line had to stay inside
+  the shell's assistant package and its tests; `docs/history/BLENDER-TREE.md` §2a stays
   eight files, §2b and §2c unmoved (ADR-091). If a slice seems to need a
   space type, that is a decision to bring back, not a fix to slip in.
-- **Phase 12 deletes `shell/`.** O0's compositor and O3's overlay get
-  rewritten in Rust then. Keeping the pure halves `bpy`-free is what makes
+- **The shell is deleted (ADR-498).** O0's compositor and O3's overlay went
+  with it; a desktop app would rewrite them. Keeping the pure halves `bpy`-free is what makes
   that a re-binding rather than a re-design.
 - **A selector contract that cannot be satisfied is worse than a missing
   op.** §1's second failure is the case: the refusal was correct, actionable

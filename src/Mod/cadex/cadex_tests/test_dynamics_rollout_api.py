@@ -7,8 +7,8 @@
 rollout produces a ``simulation`` -- the same type ``api.simulation`` and
 ``api.dynamics`` produce -- so it lands under ADR-077's "exactly one
 simulation" rule for free, reaches the shell through a trace format that has
-not changed since ADR-050, and needs no protocol change and no ``shell/``
-diff.
+not changed since ADR-050, and needs no protocol change and no front-end
+change.
 
 What that buys, and what this file tests:
 

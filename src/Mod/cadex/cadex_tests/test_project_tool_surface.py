@@ -262,6 +262,12 @@ def test_clearance_is_a_served_inspect_scope_the_cli_offers(tmp_path) -> None:
     assert "inventory" in offered
     captured = capture_inspection(_service(tmp_path), {"scope": "inventory"})
     assert captured["kind"] == "inventory"
+    # ...and `contacts` (ADR-508): which parts' collision shapes touch at
+    # the t=0 pose, the agent half of the shell's `collision_view`, read
+    # with no person looking (owner note, orun2).
+    assert "contacts" in offered
+    captured = capture_inspection(_service(tmp_path), {"scope": "contacts"})
+    assert captured["kind"] == "contacts"
     assert "image" not in offered
     for scope in offered:
         # Every scope the CLI offers is one the engine knows: an offered
@@ -278,6 +284,36 @@ def test_clearance_is_a_served_inspect_scope_the_cli_offers(tmp_path) -> None:
     with pytest.raises(ValueError, match="Unknown core.inspect scope"):
         capture_inspection(_service(tmp_path), {"scope": "fit"})
 
+
+
+def test_the_cli_bridge_tools_are_pinned_and_the_owner_channel_never_waits() -> None:
+    """The tools the CLI's bridge answers with no engine op behind them are
+    a deliberate list (ADR-406, ADR-464), and ``leave_note`` is the
+    agent's one path to the owner (ADR-512, orun2 A1): a flag or a question,
+    optionally naming one project file, and no argument that could make the
+    turn wait for an answer. Read by path, like ``INSPECT_SCOPES`` above."""
+    from importlib.util import module_from_spec, spec_from_file_location
+
+    tools_py = MODULE_DIR.parent.parent.parent / "cli" / "cadex_cli" / "tools.py"
+    spec = spec_from_file_location("cadex_cli_tools_for_bridge_test", tools_py)
+    assert spec is not None and spec.loader is not None
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert tuple(module.BRIDGE_TOOLS) == (
+        "look", "draw_blueprint", "leave_note", "train_start", "train_status", "train_stop", "evaluate")
+    channel = module.BRIDGE_TOOLS["leave_note"]["input_schema"]
+    assert channel["properties"]["type"]["enum"] == ["flag", "question"]
+    assert set(channel["properties"]) == {"type", "text", "artifact"}
+    assert channel["required"] == ["type", "text"]
+    assert channel["additionalProperties"] is False
+    # The drawing sheet (ADR-516): a name is its identity, and it takes
+    # nothing that could name an arbitrary file to store.
+    sheet = module.BRIDGE_TOOLS["draw_blueprint"]["input_schema"]
+    assert set(sheet["properties"]) == {"name", "views", "callouts", "dimensions", "notes"}
+    assert sheet["required"] == ["name"] and sheet["additionalProperties"] is False
+    assert "put_blueprint" not in module.CLI_TOOL_OPS
+    # A bridge tool never shadows an engine op.
+    assert not set(module.BRIDGE_TOOLS) & set(module.CLI_TOOL_OPS)
 
 
 # ---------------------------------------------------------------------------

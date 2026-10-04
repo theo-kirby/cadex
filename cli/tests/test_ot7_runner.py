@@ -170,7 +170,7 @@ def test_captured_turn_keeps_every_frame_that_arrived_before_the_kill(tmp_path, 
     monkeypatch.setattr(agent.ClaudeTurn, '__init__',
                         lambda self, **kwargs: setattr(self, 'session_id', '') or setattr(self, 'on_text', None))
     frames = [{'type': 'system', 'subtype': 'init', 'session_id': 's1'}, SPOKE, SPOKE]
-    def provider(self, text, *, resume):
+    def provider(self, text, *, resume, images=()):
         result = agent.TurnResult()
         for frame in frames:
             result.frames.append(frame)
@@ -210,7 +210,7 @@ def test_unfrozen_automatic_nudge_cannot_reach_provider(tmp_path, monkeypatch):
     monkeypatch.setattr(agent, 'find_claude', lambda _: '/fixture/claude')
     monkeypatch.setattr(agent.ClaudeTurn, '__init__',
                         lambda self, **kwargs: setattr(self, 'session_id', '') or setattr(self, 'on_text', None))
-    def provider(self, text, *, resume):
+    def provider(self, text, *, resume, images=()):
         seen.append(text)
         result = agent.TurnResult(ok=True)
         for frame in [{'type': 'result'}]:  # the real loop absorbs each frame as it arrives

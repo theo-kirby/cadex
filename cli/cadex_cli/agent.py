@@ -22,8 +22,10 @@ a pipeline step that dies for nothing.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import base64
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+import hashlib
 import json
 import os
 import re
@@ -36,14 +38,8 @@ from typing import Any
 from .studio import ENGINE_MODULE_DIR
 from .tools import BRIDGE_TOOLS, CLI_TOOL_OPS
 
-#: The model a turn spends when nobody has said otherwise. This is the
-#: **CLI's** answer, not one answer for both front ends: the shell resolves
-#: its own, from a Blender preference whose default is the empty string --
-#: whichever model the agent CLI itself defaults to
-#: (``shell/scripts/startup/mesh_agent/agent.py``) -- and it reads no
-#: environment variable. Override here with ``--model``, or with
-#: ``$CADEX_MODEL`` for a whole machine; ``docs/CLI.md`` §2 says what that
-#: means with the GUI attached.
+#: The model a turn spends when nobody has said otherwise. Override with
+#: ``--model``, or with ``$CADEX_MODEL`` for a whole machine.
 DEFAULT_MODEL = "claude-fable-5"
 
 #: Name the model once for a machine, the way ``$CADEX_PROJECT`` and
@@ -188,7 +184,11 @@ a person at a shell prompt or a script in a pipeline.
 THE MODEL IS ONE SCRIPT. The whole document is a single xscript project \
 script that the engine runs to produce geometry. There is no other state. \
 Write it with write_script, change it with edit_script, change only its \
-numbers with set_params.
+numbers with set_params. Running it twice gives the same model: nothing \
+random, no clock, no network, nothing read from outside the project. +Z IS \
+UP. Name every output short and for what it is -- `left_thigh`, `deck`, \
+`hip_cap` -- because a person reading the review, a comment and the next \
+turn all refer to a part by that name.
 
 BUILD IT PARAMETRIC. This is the point of the CLI. Declare every dimension \
 a caller might want to vary as a parameter at the top of the script — \
@@ -197,7 +197,15 @@ and use `p.wall` throughout rather than repeating the literal. A later run \
 sweeps those parameters with `cadex params --set wall=6` and never calls a \
 model at all, which is thousands of times cheaper than asking you to edit \
 the script. A script whose dimensions are hard-coded throws that away. Keep \
-parameter names stable across turns: a pipeline is holding them.
+parameter names stable across turns: a pipeline is holding them. Make the \
+few primary dimensions parameters and compute the rest from them -- a bore \
+from its bearing, a wall's outside from its inside plus `p.wall`, a cap from \
+its horn -- so one slider moves a consistent design instead of breaking it.
+
+EVERY BUILD COSTS SECONDS. Each write_script, edit_script and set_params \
+call rebuilds the whole model, from half a second to several. Change every \
+value you mean to change in one set_params call, and every edit in one \
+edit_script call's `replacements`, rather than one call per number.
 
 PURCHASED HARDWARE: publish each catalog body and place purchased instances \
 as separate assembly components with `assembly.component`, separate from \
@@ -290,6 +298,26 @@ so write what that turn would need and not what this one can already see. \
 docs/inventory.md and docs/clearance.md are the CLI's own reports, not \
 note subjects.
 
+NOBODY IS WATCHING THIS TURN, AND YOU NEVER WAIT FOR A PERSON. When \
+something needs a person's judgement -- a revision or a render worth \
+their eye, or a question whose answer would change the design -- leave it \
+with leave_note (type=flag or type=question, optionally naming one \
+project file as `artifact`) and carry on in the same turn on the most \
+reversible assumption, saying in the note which one you took. The \
+dashboard shows the note to the person reviewing the design; an answer, \
+if they give one, opens a later turn as a comment answering your note. \
+Comments left since the last turn open this prompt the same way: act on \
+them. A comment `on part <name>` names the output the person clicked in \
+the viewer; that is the part they mean, so change that one and not a \
+neighbour you guess at.
+
+A HARNESS IS DECLARED, NOT DRAWN. Boards, their terminals and the nets \
+between them are rows in the script -- `boards(...)` and `nets(...)`, whose \
+row shapes describe_api gives -- and set_params can change \
+those rows without touching the source. A catalog board already carries \
+its terminals: use its rows as they are, never re-measure them. \
+inspect scope=wiring reads back what was routed.
+
 REVISION GUARDS ARE HANDLED FOR YOU. Every tool result reports the revision \
 it produced, and the next call is guarded with it automatically. You never \
 need to pass expected_revision, and you should not try.
@@ -336,6 +364,74 @@ def system_prompt(api: dict[str, Any], *, project_docs: str = "") -> str:
             if text:
                 sections.append(text)
     return "\n\n".join(section for section in sections if section is not None)
+
+
+#: What an attached image may be, by its leading bytes rather than its name:
+#: the four formats the Messages API reads.
+IMAGE_SIGNATURES = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF87a", "image/gif"),
+    (b"GIF89a", "image/gif"),
+)
+#: Bound on one attached image, in bytes: base64 grows it by a third, and
+#: the API refuses an image over 5 MB as sent.
+IMAGE_LIMIT = 3_750_000
+#: Bound on how many images one prompt carries.
+IMAGES_PER_TURN = 4
+
+
+class ImageRefused(ValueError):
+    """An attachment that is not an image a turn can carry."""
+
+
+@dataclass(frozen=True)
+class ImageAttachment:
+    """One image the owner attached to a prompt (ADR-507)."""
+
+    name: str
+    media_type: str
+    data: bytes = field(repr=False)
+
+    @property
+    def sha256(self) -> str:
+        return hashlib.sha256(self.data).hexdigest()
+
+    def summary(self) -> dict[str, Any]:
+        """What the envelope records: never the bytes."""
+
+        return {"name": self.name, "media_type": self.media_type,
+                "bytes": len(self.data), "sha256": self.sha256}
+
+    def content_block(self) -> dict[str, Any]:
+        return {"type": "image", "source": {"type": "base64", "media_type": self.media_type,
+                                            "data": base64.b64encode(self.data).decode("ascii")}}
+
+
+def image_attachment(data: bytes, name: str) -> ImageAttachment:
+    """Check ``data`` is a PNG, JPEG, GIF or WebP under the limit; raise :class:`ImageRefused`."""
+
+    label = Path(str(name)).name or "image"
+    if not data:
+        raise ImageRefused(f"{label} is empty.")
+    if len(data) > IMAGE_LIMIT:
+        raise ImageRefused(f"{label} is {len(data)} bytes; an attached image is at most {IMAGE_LIMIT}.")
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return ImageAttachment(label, "image/webp", bytes(data))
+    for signature, media_type in IMAGE_SIGNATURES:
+        if data.startswith(signature):
+            return ImageAttachment(label, media_type, bytes(data))
+    raise ImageRefused(f"{label} is not a PNG, JPEG, GIF or WebP image.")
+
+
+def read_image(path: str | Path) -> ImageAttachment:
+    """:func:`image_attachment` over a file; an unreadable one is refused too."""
+
+    try:
+        data = Path(path).expanduser().read_bytes()
+    except OSError as exc:
+        raise ImageRefused(f"cannot read {path}: {exc.strerror or exc}") from exc
+    return image_attachment(data, str(path))
 
 
 @dataclass
@@ -416,11 +512,13 @@ class ClaudeTurn:
         path.write_text(json.dumps(config, indent=2), encoding="utf-8")
         return path
 
-    def _command(self, prompt: str, *, resume: bool) -> list[str]:
-        command = [
-            self.claude_path,
-            "-p",
-            prompt,
+    def _command(self, prompt: str, *, resume: bool, stream_input: bool = False) -> list[str]:
+        # A prompt with images cannot be an argument: it goes in on stdin as
+        # one stream-json user message, text block then image blocks
+        # (ADR-507). The agent has no file tool to open a path with.
+        command = [self.claude_path, "-p"]
+        command.extend(["--input-format", "stream-json"] if stream_input else [prompt])
+        command += [
             "--output-format",
             "stream-json",
             "--verbose",
@@ -456,11 +554,11 @@ class ClaudeTurn:
 
         return {**os.environ, HARNESS_MAX_OUTPUT_TOKENS_ENV: str(self.max_output_tokens)}
 
-    def run(self, prompt: str) -> TurnResult:
+    def run(self, prompt: str, images: Sequence[ImageAttachment] = ()) -> TurnResult:
         """Run the turn, falling back to a fresh conversation if resume fails."""
 
         resuming = bool(self.session_id)
-        result = self._run_once(prompt, resume=resuming)
+        result = self._run_once(prompt, resume=resuming, images=images)
         if not resuming or result.ok or _model_spoke(result.frames):
             return result
         # The turn failed and the model never said a word, so it never
@@ -470,7 +568,7 @@ class ClaudeTurn:
         # is output.) Start over rather than report failure.
         stale = self.session_id
         self.session_id = ""
-        fresh = self._run_once(prompt, resume=False)
+        fresh = self._run_once(prompt, resume=False, images=images)
         fresh.resume_failed = True
         if not fresh.error and result.error:
             fresh.error = (
@@ -479,12 +577,13 @@ class ClaudeTurn:
             )
         return fresh
 
-    def _run_once(self, prompt: str, *, resume: bool) -> TurnResult:
+    def _run_once(self, prompt: str, *, resume: bool,
+                  images: Sequence[ImageAttachment] = ()) -> TurnResult:
         result = TurnResult()
         try:
             process = subprocess.Popen(
-                self._command(prompt, resume=resume),
-                stdin=subprocess.DEVNULL,
+                self._command(prompt, resume=resume, stream_input=bool(images)),
+                stdin=subprocess.PIPE if images else subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 cwd=self._cwd,
@@ -498,6 +597,15 @@ class ClaudeTurn:
             result.exit_code = 1
             return result
 
+        if images:
+            assert process.stdin is not None
+            message = {"type": "user", "message": {"role": "user", "content": [
+                {"type": "text", "text": prompt}, *(image.content_block() for image in images)]}}
+            try:
+                process.stdin.write(json.dumps(message) + "\n")
+                process.stdin.close()
+            except BrokenPipeError:
+                pass  # the child is gone; its exit status says why
         assert process.stdout is not None
         for line in process.stdout:
             line = line.strip()
@@ -555,6 +663,73 @@ def _python_executable() -> str:
     import sys
 
     return sys.executable or "python3"
+
+
+def turn_usage(frames: Sequence[dict[str, Any]]) -> dict[str, Any]:
+    """What a turn cost, summed over its ``result`` frames (ADR-523).
+
+    Claude Code closes every ``-p`` run with one ``result`` frame carrying
+    ``total_cost_usd``, ``duration_ms`` and the token ``usage``; a turn the
+    CLI asked once more holds two. ``{}`` when no frame reported any of it,
+    and ``cost_usd`` is ``None`` when the harness priced nothing, so a turn
+    that cost nothing is never confused with one nobody priced.
+    """
+
+    totals = {"input_tokens": 0, "cached_tokens": 0, "output_tokens": 0}
+    cost: float | None = None
+    duration_ms = 0
+    reported = 0
+    for frame in frames:
+        if frame.get("type") != "result":
+            continue
+        usage = frame.get("usage") if isinstance(frame.get("usage"), dict) else {}
+        price = frame.get("total_cost_usd")
+        if not usage and not _number(price):
+            continue
+        reported += 1
+        totals["input_tokens"] += _count(usage.get("input_tokens")) + _count(
+            usage.get("cache_creation_input_tokens"))
+        totals["cached_tokens"] += _count(usage.get("cache_read_input_tokens"))
+        totals["output_tokens"] += _count(usage.get("output_tokens"))
+        if _number(price):
+            cost = (cost or 0.0) + float(price)
+        duration_ms += _count(frame.get("duration_ms"))
+    if not reported:
+        return {}
+    return {**totals, "cost_usd": None if cost is None else round(cost, 6),
+            "duration_ms": duration_ms, "results": reported}
+
+
+def _number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _count(value: Any) -> int:
+    return int(value) if _number(value) and value > 0 else 0
+
+
+#: Markup a model writes when it means to call a tool it cannot reach. A
+#: real call arrives as a ``tool_use`` block and never as text (ADR-523).
+IMITATED_TOOL_CALL_MARKS = ("<invoke name=", "<function_calls>")
+
+
+def imitated_tool_call(frames: Sequence[dict[str, Any]]) -> bool:
+    """True when the model wrote a tool call into its prose instead of making one.
+
+    A model that cannot reach its tools rarely says so: it writes the call
+    out, imagines the reply and carries on as though the work happened. The
+    turn then reads like a working one while the engine saw nothing, so the
+    CLI names it rather than leaving the owner to notice the unchanged model.
+    """
+
+    for frame in frames:
+        if frame.get("type") != "assistant":
+            continue
+        for block in (frame.get("message") or {}).get("content") or []:
+            if isinstance(block, dict) and block.get("type") == "text" and any(
+                    mark in str(block.get("text") or "") for mark in IMITATED_TOOL_CALL_MARKS):
+                return True
+    return False
 
 
 def _model_spoke(frames: list[dict[str, Any]]) -> bool:

@@ -1,0 +1,73 @@
+{
+ "budgets": {
+  "memory_limit_mb": "int",
+  "timeout_seconds": "float"
+ },
+ "manifest": "null",
+ "ok": "bool",
+ "project_root": "str",
+ "restore": {
+  "performed": "bool",
+  "stale_policy": {
+   "correction": "str",
+   "error": "str",
+   "output": "str",
+   "policy_task_sha256": "str",
+   "reason": "str",
+   "task_sha256": "str"
+  }
+ },
+ "schema": "str",
+ "script": {
+  "accepted": {
+   "contract": [
+    {
+     "domain": "str",
+     "name": "str",
+     "type": "str"
+    }
+   ],
+   "digest": "str"
+  },
+  "cages": {
+   "cages": [],
+   "rows": []
+  },
+  "latest_candidate": {
+   "attempt_id": "str",
+   "digest": "str",
+   "output_count": "int",
+   "revision": "str",
+   "status": "str"
+  },
+  "mounts": {
+   "components": [],
+   "rows": []
+  },
+  "params": {
+   "specs": [
+    {
+     "default": "float",
+     "max": "float",
+     "min": "float",
+     "name": "str",
+     "step": "float",
+     "type": "str",
+     "unit": "str"
+    }
+   ],
+   "values": {}
+  },
+  "printable": {
+   "outputs": []
+  },
+  "revisions": {
+   "accepted_revision": "str",
+   "working_revision": "str"
+  },
+  "script_present": "bool",
+  "source": "str",
+  "source_characters": "int",
+  "updated_at": "str"
+ }
+}

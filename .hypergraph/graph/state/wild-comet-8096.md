@@ -7,9 +7,11 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: superseded
 
 ## Current
+
+**Superseded in orun2's R1 frontier clean-up:** the `hide_render` defect lived in the shell's hydration code, deleted by ADR-498. [rec: crimson-stone-9344]
 
 **The `hide_render` shell defect is fixed with a regression that fails on the old source**, meeting the declared charter criterion [rec: civic-moss-7263]. Actual hydration and headless EEVEE first reproduced raw-source leakage; the source/ordinary/posed pixel bands changed from 1024/1024/1024 to 0/1024/1024 after the fix [rec: sunny-canyon-1138] [rec: civic-moss-7263].
 
@@ -26,3 +28,4 @@ This closes the source-code criterion only: the gate reloads source application 
 - empty-wolf-3962 — operator-declared charter gap
 - sunny-canyon-1138 — reproduced camera leakage and qualified independent render ownership
 - civic-moss-7263 — landed fix, old-source-failing regression and full headless gate; criterion working with installation and visibility limits
+- crimson-stone-9344 — superseded in orun2's R1 frontier clean-up

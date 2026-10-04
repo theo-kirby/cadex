@@ -63,7 +63,7 @@ function skyGradient(bg, top) {
 }
 
 // The one environment palette (tile texture + scene chrome): the reference's near-black void, whose
-// scene background is also the review page's `--bg` (docs/REVIEW-DESIGN.md §4), so the viewport is
+// scene background is also the review page's `--bg` (docs/DASHBOARD.md §4), so the viewport is
 // a window onto the place the videos are captured in rather than a lighter card inside the chrome.
 // The light "prototype map" palette that used to sit beside it was removed under ADR-331, not kept
 // behind a switch.

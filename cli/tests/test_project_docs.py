@@ -14,12 +14,13 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from cadex_cli.__main__ import _progress_what, command_prompt, main
-from cadex_cli.agent import CLI_OVERLAY, MODEL_ENV, system_prompt
+from cadex_cli.agent import CLI_OVERLAY, system_prompt
 from cadex_cli.export import ExportedOutput
 from cadex_cli.project_docs import (
     ARCHITECTURE_NAME,
@@ -121,156 +122,164 @@ def test_the_scaffold_states_the_training_mode_and_the_walk_doc_agrees(tmp_path)
             "A leg that fails", 1)[0]
 
 
-def test_the_scaffold_states_the_gui_mode_and_the_walk_doc_agrees(tmp_path) -> None:
-    """ADR-201: the GUI-attached walk is the same commands from a terminal
-    beside the open file. The scaffold says so in one sentence, and the
-    walk's doc says which sentence, so neither can move alone -- and
-    neither may claim the shell's agent has a file tool, which it has not
-    (``--tools ""`` in the shell's ``backend.py``)."""
+def test_the_gui_attached_mode_is_retired_in_the_scaffold_and_the_walk_doc(tmp_path) -> None:
+    """ADR-201's GUI-attached walk -- the same commands from a terminal
+    beside an open Blender file -- retired with the shell (ADR-495). The
+    scaffold a new project receives must not tell it to Rebuild Model or
+    reopen a window that no longer exists, and the walk's doc says the mode
+    is gone and what replaced it, so neither can drift back alone."""
 
     scaffold_project_docs(tmp_path)
     architecture = (tmp_path / ARCHITECTURE_NAME).read_text()
-    assert "With the GUI attached the same commands" in architecture
-    assert "beside the open file" in architecture
-    assert "next Rebuild Model or reopen" in architecture
-    assert "file tools of its own" not in architecture
-    assert "before the next GUI edit" in architecture
-    assert "stale mutations are refused without replay or revision adoption" in architecture
+    for stale in ("With the GUI attached", "beside the open file",
+                  "Rebuild Model", "GUI edit", "the shell's own agent"):
+        assert stale not in architecture, stale
+    assert "so an iterate has the same shape in either mode." in architecture
 
     walk_doc = (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text()
     flat = " ".join(walk_doc.split())  # the doc wraps; the sentences do not
-    assert "**With the GUI attached, it is the same walk from a terminal" in flat
-    assert "with the GUI attached the same commands run from a terminal beside the open file" in flat
-    assert "**The shell takes no lock.**" in flat
-    assert "file tools of its own" not in flat
-    assert "without adopting its revision or replaying" in flat
-    assert "before the next GUI edit" in flat
-    assert "concurrent rebuilds are not guarded" in flat
-
-    # ADR-249 gave the machine one name for its turn model; the shell does
-    # not read it, so the GUI-attached mode's doc has to say which window
-    # resolves what. The code wins here too: `shell/.../agent.py`'s
-    # `DEFAULT_MODEL` is "" and nothing under `shell/` names `CADEX_MODEL`.
-    assert "The two windows resolve the turn model separately" in flat
-    assert "the shell reads no environment variable" in flat
-    assert "the divergence is in what is spent, not in the artifacts" in flat
-    assert "$CADEX_MODEL" in flat.split(
-        "**With the GUI attached", 1)[1].split("**The project is a codebase**", 1)[0]
+    assert "**There is no GUI-attached mode any more** (ADR-495)." in flat
+    assert "The review dashboard (`cadex review`, below) is the UI" in flat
+    for stale in ("**With the GUI attached", "| Leg | The child command |",
+                  "**The shell takes no lock.**", "Rebuild Model or reopen"):
+        assert stale not in flat, stale
 
 
+def test_no_cli_module_reaches_into_the_shell_tree() -> None:
+    """The disable commit's contract on this side (ADR-495): nothing the CLI
+    or the dashboard runs reads a path under ``shell/`` or imports
+    ``mesh_agent``. The tree is deleted (ADR-498); this keeps a revival
+    from being wired back in through the front end."""
 
-def test_the_gui_mode_doc_is_still_true_about_which_window_names_the_model() -> None:
-    """The claim above is a fact about the other front end, so pin the fact
-    rather than only the sentence: `mesh_agent` resolves its model from a
-    preference whose default is empty and names no environment variable.
-    If the shell ever learns `$CADEX_MODEL`, this fails and `docs/CLI.md`
-    §2's GUI paragraph is the thing to fix -- not this assertion."""
-
-    mesh_agent = (Path(__file__).resolve().parents[2]
-                  / "shell" / "scripts" / "startup" / "mesh_agent")
-    if not mesh_agent.is_dir():  # a checkout without the shell tree
-        pytest.skip("no shell/ tree in this checkout")
-
-    assert 'DEFAULT_MODEL = ""' in (mesh_agent / "agent.py").read_text()
-    named = [source.name for source in mesh_agent.rglob("*.py")
-             if MODEL_ENV in source.read_text()]
-    assert named == [], named
+    package = Path(__file__).resolve().parents[1] / "cadex_cli"
+    reaching = []
+    for source in sorted(package.rglob("*")):
+        if source.suffix not in {".py", ".js", ".html"}:
+            continue
+        text = source.read_text(encoding="utf-8")
+        if re.search(r"""["'/]shell/|/\s*["']shell["']|\bmesh_agent\b|CADEX_BLENDER_EXECUTABLE""", text):
+            reaching.append(source.name)
+    assert reaching == [], reaching
 
 
-# -- the GUI-attached mode, leg by leg -----------------------------------
-#
-# The doc's table is the criterion "three modes, one shape" made checkable:
-# it names every leg of the walk and what a GUI-attached run does
-# differently. These two tests hold it to the code on both sides -- the
-# CLI's `run_leg` calls, and the `mesh_agent` facts the difference column
-# rests on -- so a new leg, or a shell that learns to watch the project,
-# fails the doc rather than quietly outdating it.
-
-GUI_TABLE_HEADER = "| Leg | The child command |"
-
-
-def _gui_leg_table_rows() -> list[list[str]]:
-    """The GUI-attached leg table in `docs/CLI.md` §2, as cell lists."""
-
-    doc = (Path(__file__).resolve().parents[2] / "docs" / "CLI.md").read_text()
-    assert GUI_TABLE_HEADER in doc, "the GUI-attached leg table is gone"
-    body = doc.split(GUI_TABLE_HEADER, 1)[1].split("\n\n", 1)[0]
-    cells = [[cell.strip() for cell in line.strip().strip("|").split("|")]
-             for line in body.splitlines() if line.startswith("|")]
-    return [row for row in cells if set("".join(row)) != {"-"}]
+#: Markdown that may name the deleted shell's paths, and why (ADR-498).
+#: Everything else tracked is a live doc and describes the product as it is.
+SHELL_HISTORY_DOCS = (
+    "docs/DECISIONS.md",       # the ADR log: decisions keep their own words
+    "docs/history/",           # superseded docs, by definition
+    "docs/probes/",            # frozen run evidence, measured when it was true
+    "docs/SHELL-PARITY.md",    # the ledger of the shell, module by module
+    "docs/ROADMAP.md",         # phase history; the charter forbids hand edits
+    "STATE.md",                # generated from the state graph
+    ".hypergraph/",            # the append-only record
+    ".ouroboros/",             # run logs
+)
+SHELL_TOKEN = re.compile(
+    r"(?<![\w.-])shell/|\bmesh_agent\b|(?<![\w-])\.blend\b|CADEX_BLENDER_EXECUTABLE")
 
 
-def test_the_gui_leg_table_names_the_walks_legs_in_order() -> None:
-    """Every leg the walk spawns has a row, in the order it runs, and the
-    in-process review is last. Read off `run_leg("...")` in `__main__.py`
-    rather than a list kept beside it: adding a leg without saying what an
-    open window does about it fails here."""
+def test_no_live_doc_names_the_deleted_shell() -> None:
+    """Charter S1 (ADR-498): no live doc refers to ``shell/``,
+    ``mesh_agent``, a ``.blend`` or ``CADEX_BLENDER_EXECUTABLE``. A doc that
+    must tell the shell's history says "the shell" in words; only the
+    history kept in :data:`SHELL_HISTORY_DOCS` may name its paths."""
 
-    source = (Path(__file__).resolve().parents[1]
-              / "cadex_cli" / "__main__.py").read_text()
-    spawned = re.findall(r'run_leg\(\s*"([a-z]+)"', source)
-    assert spawned, "no run_leg calls found -- has the walk moved?"
+    root = Path(__file__).resolve().parents[2]
+    listing = subprocess.run(
+        ["git", "ls-files", "-z", "--", "*.md"], cwd=root,
+        capture_output=True, text=True, check=False)
+    if listing.returncode != 0:
+        pytest.skip("not a git checkout")
+    docs = [name for name in listing.stdout.split("\0") if name]
+    assert "SECURITY.md" in docs and "docs/ARCHITECTURE.md" in docs
+    naming = []
+    for name in docs:
+        if name.startswith(SHELL_HISTORY_DOCS):
+            continue
+        path = root / name
+        if not path.is_file():
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if SHELL_TOKEN.search(line):
+                naming.append(f"{name}:{number}")
+    assert naming == [], naming
 
-    rows = _gui_leg_table_rows()
-    documented = [row[0] for row in rows]
-    assert documented[:-1] == [f"`{name}`" for name in spawned], documented
-    assert documented[-1].startswith("review"), documented[-1]
-    assert "_engine_session" in documented[-1]
-    assert all(len(row) == 4 for row in rows), rows
 
-    # The one leg with a real difference is the digest edit, and it is the
-    # only row that asks for a refresh.
-    difference = {row[0]: row[3] for row in rows}
-    assert "STALE_PROGRAM_REVISION" in difference["`declare`"]
-    assert "Rebuild Model or reopen" in difference["`declare`"]
-    refreshing = [name for name, cell in difference.items()
-                  if "Rebuild Model" in cell and "keeps the values" not in cell]
-    assert refreshing == ["`declare`"], refreshing
+def test_agents_md_describes_the_three_part_product() -> None:
+    """ADR-500 (charter R1): the agent contract describes the engine, the
+    dashboard and the agent, at no more than half the 432 lines it had when
+    orun2 began, and no longer offers a Rust shell as the target."""
+
+    root = Path(__file__).resolve().parents[2]
+    text = (root / "AGENTS.md").read_text(encoding="utf-8")
+    assert len(text.splitlines()) <= 216, len(text.splitlines())
+    flat = " ".join(text.split())
+    for part in ("1. **The engine**", "2. **The dashboard**", "3. **The agent**"):
+        assert part in flat, part
+    vision = " ".join((root / "docs" / "VISION.md").read_text(encoding="utf-8").split())
+    for text in (flat, vision):
+        assert "wgpu" not in text and "egui" not in text
+        assert "Blender-class UX" not in text
 
 
-def test_the_gui_leg_tables_difference_column_rests_on_shell_facts() -> None:
-    """Pin the four `mesh_agent` facts the table's difference column
-    claims, not only its sentences: the shell takes no lock, watches no
-    file, writes none of the project's documents, and runs no trainer. If
-    any of them stops being true, `docs/CLI.md` §2's leg table is the thing
-    to fix -- not this assertion."""
+def test_readme_architecture_and_integration_describe_the_three_parts() -> None:
+    """ADR-500 (charter R1): the README, the architecture and the process
+    contract frame Cadex as the engine, the dashboard and the agent, and the
+    ROADMAP closes the phases the shell's deletion settled: Phase 12 is
+    superseded by a desktop app that copies the dashboard, Phase 13b's shell
+    half is closed, and Phase 6 is historical."""
 
-    mesh_agent = (Path(__file__).resolve().parents[2]
-                  / "shell" / "scripts" / "startup" / "mesh_agent")
-    if not mesh_agent.is_dir():  # a checkout without the shell tree
-        pytest.skip("no shell/ tree in this checkout")
-    sources = {source.name: source.read_text()
-               for source in mesh_agent.rglob("*.py")}
+    root = Path(__file__).resolve().parents[2]
 
-    # 1. The lock is the CLI's alone: the shell never takes it.
-    holding = [name for name, text in sources.items()
-               if "flock" in text or ".cadex-cli.lock" in text]
-    assert holding == [], holding
+    def flat(relative: str) -> str:
+        return " ".join((root / relative).read_text(encoding="utf-8").split())
 
-    # 2. It watches nothing in the project. These four are the whole set:
-    #    three about the open file and one that tags editors for redraw. A
-    #    fifth handler has to be read against the table's claim before this
-    #    line is widened -- a watcher on the project directory would make a
-    #    GUI-attached run a different shape.
-    handlers = set(re.findall(r"bpy\.app\.handlers\.(\w+)\.append",
-                              sources["__init__.py"]))
-    assert handlers == {"save_pre", "save_post", "load_post",
-                        "frame_change_post"}, handlers
+    readme = flat("README.md")
+    for part in ("1. **The engine**", "2. **The dashboard**", "3. **The agent**"):
+        assert part in readme, part
+    architecture = flat("docs/ARCHITECTURE.md")
+    assert "Cadex is **three things** in **one repository** (ADR-030, ADR-500)" in architecture
+    assert "### The shell" not in architecture
+    integration = flat("docs/INTEGRATION.md")
+    assert "the contract between the engine and its client" in integration
+    assert "Shell-side resolution order" not in integration
+    for text in (readme, architecture, integration):
+        assert "ADR-500" in text
+        assert "the product shell" not in text.split("## Options considered")[0]
 
-    # 3. The three project documents are the CLI's and a person's.
-    writing = [name for name, text in sources.items()
-               if "PROGRESS.md" in text or "DECISIONS.md" in text]
-    assert writing == [], writing
+    roadmap = (root / "docs" / "ROADMAP.md").read_text(encoding="utf-8")
+    headings = [line for line in roadmap.splitlines() if line.startswith("## Phase ")]
+    phase = {line.split(" — ")[0].removeprefix("## Phase "): line for line in headings}
+    assert "superseded by ADR-500" in phase["12"]
+    assert "historical since ADR-498" in phase["6"]
+    assert "- [ ] Shell side" not in roadmap
+    assert "- [x] Shell side — **closed by deletion (ADR-498, ADR-500)" in roadmap
+    assert "**Superseded: a desktop app that copies the dashboard.**" in roadmap
 
-    # 4. No trainer on this side, in any mode.
-    importing = [name for name, text in sources.items()
-                 if re.search(r"^\s*(?:import|from)\s+mujoco", text, re.M)]
-    assert importing == [], importing
 
-    # ...and the project root the terminal's --project names is derived
-    # from the open file every time, which is why one store has one meaning
-    # for both windows.
-    assert "never cached" in sources["cadex_backend.py"]
+def test_claude_code_is_the_only_harness() -> None:
+    """ADR-497 (charter A4): the Codex and pi backends went with the shell.
+    No CLI module names either harness, and the agent contract says Claude
+    Code is the only one rather than offering the other two as a preference."""
+
+    root = Path(__file__).resolve().parents[2]
+    package = root / "cli" / "cadex_cli"
+    naming = []
+    for source in sorted(package.rglob("*")):
+        if source.suffix not in {".py", ".js", ".html"}:
+            continue
+        text = source.read_text(encoding="utf-8")
+        if re.search(r"\bcodex\b|\bpi_tools\b|\bPiBackend\b|registerTool", text, re.IGNORECASE):
+            naming.append(source.name)
+    assert naming == [], naming
+
+    agents = " ".join((root / "AGENTS.md").read_text(encoding="utf-8").split())
+    vision = " ".join((root / "docs" / "VISION.md").read_text(encoding="utf-8").split())
+    assert "**Claude Code is the only harness** (ADR-497)" in agents
+    assert "the only harness (ADR-497" in vision
+    for text in (agents, vision):
+        assert "OpenAI Codex CLI" not in text
+        assert "Claude Code, Codex, or pi" not in text
 
 
 def test_a_train_row_names_the_mode_it_ran_in() -> None:
@@ -983,3 +992,31 @@ def test_failed_document_write_preserves_history_and_retry(
     assert path.read_text().count("new result") == (2 if kind == "decision" else 1)
     assert path.stat().st_mode & 0o777 == 0o640
     assert set(tmp_path.rglob("*")) == files
+
+
+def test_dashboard_md_replaces_review_design_as_the_ui_spec() -> None:
+    """ADR-501 (charter R1): `docs/DASHBOARD.md` is the dashboard's spec and
+    carries REVIEW-DESIGN.md's type scale, palette and dark floor; the old
+    name is gone from `docs/` and nothing live points at it; the Blender
+    docs live only under `docs/history/`."""
+
+    root = Path(__file__).resolve().parents[2]
+    docs = root / "docs"
+    spec = (docs / "DASHBOARD.md").read_text(encoding="utf-8")
+    for heading in ("## 2. Hierarchy", "## 3. Type scale", "## 4. Palette",
+                    "## 10. The viewport: dark only, shared with the capture",
+                    "## 16. One scene for every image (ADR-444)"):
+        assert heading in spec, heading
+    assert "ADR-500" in spec and "ADR-501" in spec
+    assert not (docs / "REVIEW-DESIGN.md").exists()
+    for name in ("BLENDER.md", "BLENDER-TREE.md", "BLENDER-RECIPES.md"):
+        assert not (docs / name).exists() and (docs / "history" / name).exists(), name
+
+    live = [root / "AGENTS.md", root / "README.md"]
+    live += [path for path in docs.glob("*.md") if path.name not in ("DECISIONS.md", "DASHBOARD.md")]
+    live += [path for path in (root / "cli").rglob("*")
+             if path.suffix in (".py", ".js", ".html", ".css", ".md") and path.name != "test_project_docs.py"]
+    stale = [str(path.relative_to(root)) for path in live if "REVIEW-DESIGN" in path.read_text(encoding="utf-8")]
+    assert stale == []
+    for text in (root / "README.md", docs / "ARCHITECTURE.md", root / "AGENTS.md", docs / "VISION.md"):
+        assert "DASHBOARD.md" in text.read_text(encoding="utf-8"), text.name

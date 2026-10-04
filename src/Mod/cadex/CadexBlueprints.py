@@ -3,11 +3,12 @@
 
 """The blueprint store: rendered drawing sheets, attached to accepted revisions.
 
-A blueprint sheet is a **stored deliverable** (ADR-150): the shell renders a
-four-view PNG in the drawing-office style and hands it to the engine over
+A blueprint sheet is a **stored deliverable** (ADR-150): a front end renders
+a four-view PNG in the drawing-office style and hands it to the engine over
 ``put_blueprint``, because the engine is the sole writer of the project store
 (docs/ARCHITECTURE.md) and a picture of an accepted revision belongs beside
-that revision, not inside the ``.blend`` and not inside ``script.py``. Each
+that revision, not inside the front end's own files and not inside
+``script.py``. Each
 entry records the accepted ``(revision, digest)`` pair it was rendered from —
 that pair is the whole of "attached to the script": the sheet documents a
 script state, and a rebuild that moves the model leaves the old sheet

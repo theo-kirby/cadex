@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-09-08
+Verified against source: 2026-10-03
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -9,17 +9,22 @@ in `docs/ARCHITECTURE.md`; the path from here to there is `docs/ROADMAP.md`.
 
 ## The product
 
-One ultimate agentic CAD app — **one application we own**, a derivative of
-but not dependent on FreeCAD or the Blender UI (ADR-025, ADR-185), combining:
+One agentic CAD app for robots and mechanisms, made of **three things and
+nothing else** (ADR-500): **the engine**, which builds, verifies, measures,
+renders, simulates and exports a design from its script; **the dashboard**,
+where a person watches that work and steps in; and **the agent**, Claude
+Code, which does the work through one tool surface and reaches the owner
+without ever waiting on them. It is a derivative of, but not dependent on,
+FreeCAD (ADR-025), and it combines:
 
 - **FreeCAD-class capability** — real parametric BREP modeling **on OCCT**.
   OCCT is the kernel and it stays; FreeCAD is the application layer around
   it, and that layer is being removed.
-- **Blender-class UX** — the look, feel, viewport and interaction quality of
-  the shell under `shell/`, in the long run rebuilt as our own Rust + wgpu +
-  egui shell. Blender is the UI reference, not the permanent UI host.
-  Native Blender geometry recipes are an opt-in runtime dependency retained
-  independently of that UI replacement (ADR-185).
+- **Autonomy first** — the owner uses Cadex almost entirely through
+  autonomous runs, so the interface is built for *looking, reviewing and
+  light steering* of work the agent did, not for hands-on modelling. The
+  Blender shell that held the hands-on half is deleted (ADR-498; tag
+  `v1-blender-shell`).
 - **The xscript methodology** — the AI authors a declarative Python program;
   the program is the model.
 - **Robotics-class dynamics and control on MuJoCo** — the mechanism you
@@ -28,15 +33,15 @@ but not dependent on FreeCAD or the Blender UI (ADR-025, ADR-185), combining:
   keep, like OCCT (ADR-075). This shipped on a branch of its own until
   2026-08-01 and is now simply part of the product (ADR-102).
 
-Until the replacements land, both forks remain the working substrate, and
-since ADR-030 both live **in this repository**: the engine at the root, the
-shell under `shell/`. Replacing either is unscheduled and unblocked; what is
-live is deleting from both, in place. The staging is in `docs/ROADMAP.md`;
-every resting place in it is shippable.
+The FreeCAD fork remains the engine's substrate, **in this repository**
+(ADR-030). Replacing its application layer (Phase 11) is unscheduled and
+unblocked; what is live is deleting from it, in place. A desktop app, if
+one is ever built, is built from scratch to copy the dashboard. The staging
+is in `docs/ROADMAP.md`; every resting place in it is shippable.
 
 **What the last claim buys, concretely.** "Design me a quadruped and teach it
-to walk" is a sequence of chat turns that terminates in a viewport playing a
-learned gait: the mechanism is designed through the ordinary assembly
+to walk" is a sequence of agent turns that terminates in the dashboard's
+viewer playing a learned gait: the mechanism is designed through the ordinary assembly
 surface, `assembly.mjcf` exports it, `assembly.task` defines the problem,
 `training/cadex_train.py` solves it on a machine we do not ship to,
 `assembly.policy` verifies what comes back, and `assembly.rollout` plays it.
@@ -66,18 +71,28 @@ and a gait video — and 0.1.0 roughly means that sentence works.
 
 ### The interface
 
-- **Left half: viewport. Right half: chat, parameter sliders, model tree,
-  script view.** That's the whole app. The UX north star is the working
-  shell: `shell/scripts/startup/mesh_agent/` plus the
-  `Mesh` app template (50/50 split, chat input docked at the bottom right) —
-  detailed in `docs/BLENDER.md`. That prototype is the **specification** for
-  the Rust shell, not its permanent home (ADR-025).
-- **No user-accessible modeling tools.** No fillet button, no extrude button,
-  no sketch editor toolbar. The user talks; the AI writes script; sliders
-  tweak declared parameters without the AI in the loop.
+- **The dashboard is the only UI** (`./cadex review`, ADR-500). A browser
+  page over a projects directory: the model viewer, parameter sliders, the
+  turn transcript, renders and `look` views, section, exploded and collision
+  views, rollout playback, training curves and evaluation films, drawings
+  and concept sheets as outputs, exports, and accept, reject and restore of
+  a revision. Its design spec is `docs/DASHBOARD.md`.
+- **A person steers lightly.** Start a turn from a prompt (optionally with
+  an image), move a slider, leave a comment on the design or on a part
+  picked in the viewer, accept or restore a revision. Every write goes
+  through the code path the CLI uses; the project directory is the truth,
+  and there is never a second write path.
+- **The agent reaches the owner without waiting.** It can flag a revision
+  or post a question; the dashboard shows it, and the owner's answer
+  arrives in the agent's next turn. Autonomy never blocks on a person.
+- **The dashboard stays light**: a standard-library Python server, vanilla
+  JS and the vendored three.js. No npm, no bundler, no front-end framework.
+- **No user-accessible modeling tools.** No fillet button, no extrude
+  button, no sketch editor. The agent writes script; sliders tweak declared
+  parameters without the agent in the loop.
 - **No workbench concept.** Workbenches are an implementation detail of the
-  FreeCAD substrate, not a product concept. The user never selects a mode.
-- **One undo step per chat turn.**
+  FreeCAD substrate, not a product concept.
+- **One revision per agent turn.**
 
 ### Scope
 
@@ -102,7 +117,7 @@ two that make a mechanism move (ADR-075, ADR-086):
 
 Areas 6 and 7 add **no sixth domain**: they are operations on the `assembly`
 domain, which is why they cost no protocol op, no new output type and no
-`shell/` diff. Seven capability areas, still five domain APIs.
+shell diff. Seven capability areas, still five domain APIs.
 
 **Areas 6 and 7 shipped on a separate branch until 2026-08-01** and are now
 part of the one product (ADR-102). The split existed to keep a bracket
@@ -129,17 +144,8 @@ geometry. The prediction in the paragraph above held exactly: engine ops, on
 a declared table. `docs/ORGANIC.md` is the arc, and O4 (subD) is the part
 that is still unscheduled.
 
-**Native Blender geometry is now another script-owned operation** (ADR-185).
-The owner explicitly approved revisiting the retired local bpy direction:
-`mesh.blender` declares a native Python recipe, named mesh inputs and finite
-JSON values in the project script. An OS-sandboxed Blender subprocess evaluates
-it; only its validated mesh enters the existing acceptance transaction. The
-live scene remains a cache and never executes recipe code. This supersedes
-the earlier restriction to FreeCAD mesh ops, not the single-script rule.
-Exact CAD parts and mesh-native skins compose through declared dimensions,
-frames and tessellated cutting shapes. Blender recipes do not promise analytic
-BREP recovery. Their geometry, recipe and runtime identity enter the digest;
-a rebuild that changes the accepted result is refused on restore.
+**Native Blender geometry was a script-owned operation** (ADR-185) and is
+retired with the shell (ADR-496); no project used it.
 
 Everything else FreeCAD offers (FEM, CAM, TechDraw, BIM, Draft, Points,
 Robot, Spreadsheet, …) is out of scope. Deleted in the VibeCAD teardown at
@@ -160,7 +166,7 @@ facts make that honest rather than a walk-back:
   the same physics.
 - **There is no sixth domain.** It is one operation on `part`, so by the test
   the line above sets for scope it costs no protocol op, no new
-  `artifact_kind` and no `shell/` diff. The count of domains is still five.
+  `artifact_kind` and no shell diff. The count of domains is still five.
 - **The expensive half stays offboard.** Topology optimisation, refinement
   sweeps, CalculiX as a second opinion and load cases measured off a MuJoCo
   rollout all live in `analysis/`, which is not the engine and never will be
@@ -187,43 +193,34 @@ returning it.
 - Manual CAD workflows of any kind; feature parity with FreeCAD's UI.
 - Supporting all FreeCAD workbenches, file formats, or addons.
 - Multi-engine scripting (build123d, OpenSCAD — retired in the teardown).
-- **Two of anything in the finished product**: one shell, one engine, one
-  script format, one document, one installer. The Qt/Coin3D shell was interim
-  and was deleted in Phase 7 (ADR-021). One repository since ADR-030. The
-  Blender shell is the working substrate until the Rust shell replaces it
-  (ADR-025) — the Rust shell is not a second shell, it is the first one we
-  own, and `shell/` is deleted when it lands.
+- **Two of anything**: one engine, one UI, one script format, one
+  document, one harness. The Qt/Coin3D shell was deleted in Phase 7
+  (ADR-021) and the Blender shell in ADR-498; the Rust shell once planned to
+  replace the latter is not coming (ADR-500). The CLI and the dashboard are
+  not two front ends but one client of the protocol (ADR-061): the CLI is
+  how the agent and a script drive a project, the dashboard is how a person
+  sees and steers it, and both write through the same code.
+- **Hands-on modelling UI.** Cage ring-drag, a wiring editor, an
+  interactive blueprint editor, window chrome: dropped with the shell
+  (`docs/SHELL-PARITY.md`). A shape a person wants changed is a comment or a
+  prompt, not a gesture.
+- **A second provider stack.** Cadex delegates the model loop and
+  authentication to the user's installed Claude Code CLI, the only harness
+  (ADR-497; the shell's Codex and pi backends, ADR-174/175, are retired).
+  Cadex has no API-key entry, provider SDK stack or harness selector.
 
-  **The headless CLI is the one exception, and it is deliberate** (ADR-061).
-  `cli/` is a second *front end*: no shell, no window, and no second engine,
-  script format or document — the same project script, driven from a
-  terminal. It earns the exception by doing something a window cannot,
-  which is to be scripted: one expensive turn authors a parametric model,
-  and a cheap loop then sweeps it under an external simulator with no model
-  in the loop at all. Interactive design and batch design are different
-  jobs, and one program that did both would serve neither.
-- **A second provider stack.** The shell delegates the model loop and
-  authentication to the user's installed agent CLI: Claude Code, Codex, or pi
-  (ADR-174/175). Cadex has no API-key entry or provider SDK stack. Its harness
-  and model selectors expose those CLIs' own account state and model catalogs;
-  sign-in runs through the chosen CLI (ADR-184). The headless `cli/` client
-  remains Claude-only.
-
-  The shell and the headless CLI each orchestrate their own turns (ADR-061).
-  Neither states the xscript API: both ask the engine through `describe_api`,
-  and the headless CLI generates tool schemas from `OP_ARG_SPECS`.
-- **Dependence on FreeCAD or the Blender UI.** OCCT stays as the geometry kernel,
+  The CLI orchestrates the agent's turns (ADR-061). It does not state the
+  xscript API: it asks the engine through `describe_api` and generates tool
+  schemas from `OP_ARG_SPECS`.
+- **Dependence on FreeCAD.** OCCT stays as the geometry kernel,
   and so does **MuJoCo** as the dynamics kernel — a dependency in the OCCT
   category, kept upstream and unmodified rather than forked (ADR-075).
   What we fork we intend to replace; what we keep, we keep.
   Vendored LGPL components (OCCT, planegcs, OndselSolver, `modelRefine`)
   keep their attribution obligation in the NOTICE file, as does MuJoCo's
-  Apache-2.0 (`docs/PROVENANCE.md` §4); "references to
-  neither" applies to dependencies, API names and runtime, and never to
-  attribution (ADR-025). ADR-185 makes one explicit exception: a project
-  declaring native `bpy` recipes depends on a matching Blender geometry
-  runtime, including after a future UI replacement. Projects without those
-  recipes need no Blender runtime on a headless engine machine.
+  Apache-2.0 (`docs/PROVENANCE.md` §4); "no dependence" applies to
+  dependencies, API names and runtime, and never to attribution (ADR-025).
+  Nothing depends on a Blender runtime (ADR-496, ADR-498).
 
 ## Guiding principles
 
@@ -299,8 +296,6 @@ returning it.
 - **The time shape of the FreeCAD replacement.** Not knowable before Phase
   10's enumeration probe and characterization time-box. The binding is
   weeks; the characterization corpus is the unknown that sets the scale.
-- macOS notarization of a Rust app bundling an OCCT engine that spawns
-  subprocesses (inherited open item, ADR-023).
 - ~~Whether dynamics extends `api.simulation` or becomes a sibling
   `api.dynamics`~~ — answered 2026-07-30 (ADR-077): **a sibling authoring
   surface sharing the output type**, so the "exactly one simulation" rule

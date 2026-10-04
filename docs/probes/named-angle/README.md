@@ -32,11 +32,11 @@ From the repository root, using a fresh `project` and the existing build:
 ```sh
 project=build/render-probe-11
 ./cadex script --project "$project" --set examples/lifecycle/hinged-arm/script.py --json
-MESH_CADEX_ENGINE="$PWD/build/engine/cadex-engine-0.0.0-macos-arm64" \
-  /usr/bin/time -l shell/build_darwin/bin/Cadex.app/Contents/MacOS/Cadex \
-  --background --factory-startup --python-exit-code 1 \
-  --python docs/probes/named-angle/background_probe.py -- "$project"
 ```
+
+The second half of this probe ran the shell's GPL renderer in background
+mode through `background_probe.py`. The shell is deleted (ADR-498), and the
+probe script with it; checkout `v1-blender-shell` to rerun it.
 
 Capture a fresh accepted display **after** that probe: another rebuild can
 remove the old attempt's tessellation paths. An exploratory use of the unknown

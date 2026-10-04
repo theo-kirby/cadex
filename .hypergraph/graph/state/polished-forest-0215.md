@@ -7,7 +7,7 @@ parents:
 - mild-ledge-7157
 summary: ''
 ---
-Status: open
+Status: superseded
 
 ## Current
 
@@ -71,3 +71,8 @@ The design-agnostic prompt is frozen at `docs/probes/ot7/prompts/repair.prompt.t
 - honest-sky-8719 — ADR-370: the horn gap's cause named (welded and declared a clearance in the same call) and measured by the engine; the collector and the failing-set behaviour deliberately unchanged
 - glad-wing-9845 — ADR-379 makes the welded-and-declared contradiction a failing check, naming F4's residual defect; F4's own numbers unchanged, a rebuild of `d` would report two failing pairs
 - terse-chart-0277 — ADR-380 withdraws ADR-379: the welded-and-declared pair is legitimate, a rebuild of `d` reports zero failing checks as F4 measured, and the horn gap is advisory again
+- light-path-5130 — superseded in orun2's R1 frontier pruning
+
+## Superseded
+
+ot7 ended and is archived (merged fa75c531). F4 was already exhausted, and no later charter re-opened it; the design bar it measured was replaced by orun1's owner-calibrated judge (ADR-478) and design language (ADR-479–484). The measured results above stand as the final record; nothing about the criterion's evidence changed. Superseded through orun2 R1's frontier pruning so the frontier lists only live work [rec: light-path-5130].

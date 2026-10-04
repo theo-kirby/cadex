@@ -7,9 +7,11 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: working
+Status: superseded
 
 ## Current
+
+**Superseded in orun2's R1 frontier clean-up:** orun1 is archived (`3e345fd2`) with trials only and no confirmation turn; the orun1 reconcile deferred this to orun2 R1's clean-up. [rec: crimson-stone-9344]
 
 Open charter criterion for run orun1: **D4. Plain prompts produce designs that clear the owner's bar.** - **Plain prompts, frozen before generation** in the README: one per type (quadruped, hexapod, biped, 5-axis arm, 3-axis arm, two-wheeled balancer, and one wildcard of the agent's choosing). Each names the type, its joint count, "design only" and nothing about style. The style must come from the product's guidance, not the prompt. - Each design is a fresh `orun1-*` project at the final product revision. It is accepted, its static and swept fit pass, its purchased parts are all from the catalog, and every one of them passes D3's mounting check. - **The bar, judged by D1's frozen version** that met the held-out bar: - each new design wins the majority of its pairwise comparisons against the sweep designs of the same type that the owner rated Like or Love; - the new hexapod is held to the same bar, with no exemption. - **Confirmation, not fishing.** One pre-registered confirmation turn per type at the final revision counts. Every earlier attempt is published. A second confirmation of a type needs a recorded product change between the two. - The final set (hero, concept sheet and the judge's result for each) is committed under `docs/probes/orun1/final/` for the owner to review. [rec: sweet-brook-2725]
 
@@ -31,6 +33,8 @@ Between trials 2 and 3 the M1.6 gap was closed by ADR-488 [rec: honest-ledge-902
 
 **Re-measured under ADR-492** (a screw holds only by thread engagement): hexapod trial 1 still mounting 49/49, but all 18 servo bolts are `unthreaded` — the servos are now held by their bays, not screws; balancer trial 3 goes mounting pass 11/11 → **reported 8/11** (BNO085, D36V50F6 and VL53L1X contact only, 9 unthreaded bolts; the N20s stay held by screws in their tapped faces). Fits unchanged for both. Every D4 mounting receipt published before `ec6782ad` overstates screws, so trial 3's "pass" is now "reported" [rec: icy-willow-3129].
 
+**Trial 4 (not a confirmation)** — `orun1-t4-balancer`, accepted revision `e30742e5…` at product `5c853b0e` (ADR-491–493 in), commit `4875bfd9`: static 903 pairs 0 failing; swept `pass` 2/2 at ±180°; all 12 purchased parts and 27 bolts from the catalog, first balancer with the TB6612; **mounting `pass` 12 of 12, 23 threaded**, all four screwed boards via `.mounting()`, N20s 2 of 2 screws, ESP32 and battery by bay. **Frozen v2 3 of 5, a majority** (down from t3's 4 of 5): beat d, f, h; lost to c (Love) and e (Like), both naming the plain white core with one window and the spoked wheels. Diagnosis: the ADR-489 catalog wheel is the judge's complaint two trials running, and t4 moved its regulator and driver to the rear face so the hero shows a bare core — the guidance says nothing about putting ordered electronics on shown faces. By the D4 bar t4 would pass; it is a trial and does not count. Runner tests 18 passed; no product code changed [rec: little-shade-0096]. Next named by the critic: the hexapod leg-proportion/joint-clutter change and hexapod trial 2; balancer form candidates before its confirmation are the spoke geometry and an electronics-on-shown-faces guidance line [rec: little-shade-0096]. Reconcile judgement: orun1 ended and was merged (commit `3e345fd2`) before these were folded; status stays working because no confirmation turn was recorded, and whether this criterion is superseded is left to orun2's R1 frontier clean-up, which names only orun1 C1.
+
 ## Negative knowledge
 
 - [scope: wheeled designs using the `pololu-1430` wheel on the catalog gearmotor, product revisions before 9eac2291 | confidence: high | evidence: spring-ivy-9833, calm-quill-0693] A D-bore wheel turning on the catalog gearmotor's static D-shaft cannot pass a swept fit (4.26 mm³ at ±180° in trial 1). Superseded from `9eac2291` by ADR-487's round bore; trial 2's sweep passed [rec: first-eagle-0836].
@@ -46,3 +50,5 @@ Between trials 2 and 3 the M1.6 gap was closed by ADR-488 [rec: honest-ledge-902
 - first-dew-3629 — balancer trial 3: static 0 failing, sweep pass, mounting 11/11, frozen v2 4 of 5 (loses to Love c on spoke look); a trial, not the confirmation
 - deep-cove-1130 — hexapod trial 1: static 0/3655, sweep 18/18, mounting 49/49, frozen v2 1 of 2 (loses to c on proportion/joint clutter)
 - icy-willow-3129 — re-measure under ADR-492: hexapod t1 servo bolts all unthreaded (held by bay); balancer t3 11/11 → 8/11
+- little-shade-0096 — balancer trial 4: fit pass, mounting 12/12 via .mounting(), frozen v2 3/5 (loses on plain core and spoked wheels); a trial
+- crimson-stone-9344 — superseded in orun2's R1 frontier clean-up

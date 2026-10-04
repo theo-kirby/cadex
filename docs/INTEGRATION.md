@@ -1,76 +1,69 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-10-03
+Verified against source: 2026-10-04
 
-**Optional Blender recipe runtime (ADR-185).** A shell-owned cadexd child
-receives `CADEX_BLENDER_EXECUTABLE` naming the shell's own binary. The engine
-forwards only that explicit runtime setting into its project worker. Native
-`mesh.blender` recipes execute in an OS-sandboxed subprocess and return
-ordinary mesh artifacts through the existing protocol. Headless callers can
-set the same environment variable; projects without recipes need no Blender.
-This adds no request/response field or op. See `docs/BLENDER-RECIPES.md` for
-the recipe contract, resource limits and platform support. [Cadex-new]
+**This document is the contract between the engine and its client.** Cadex
+is three things (ADR-500): the **engine** (`cadexd`, at the repo root), the
+**dashboard** and the **agent** (both under `cli/`). They live in one
+repository (ADR-030) and in two processes, and neither side is written
+against the other's source — both are written against what is written here.
 
-**This document is the contract between the two halves of the product.**
-They live in one repository (ADR-030) and in two processes, under two
-licences, and neither is written against the other's source — both are
-written against what is written here.
-
-**One repository makes this document more load-bearing, not less.** When the
-shell lived elsewhere, distance enforced the boundary; now nothing does
-except discipline and the tests below. The reason to keep the boundary
-sharp is not tidiness — it is that ROADMAP Phases 11 and 12 replace the
-engine and the shell *independently, behind this protocol*. Every shortcut
-across it (a direct import, a shared file, a peeked-at internal) is a
-Phase 11 blocker bought for an afternoon's convenience. Do not take one.
+**One repository makes this document more load-bearing, not less.** Nothing
+but discipline and the tests below keeps the boundary sharp, and it is worth
+keeping sharp because either side may be replaced *behind this protocol*:
+the engine by Phase 11's pybind11 binding, the dashboard by a desktop app
+that copies it (ADR-500). Every shortcut across it (a direct import, a shared
+file, a peeked-at internal) is a blocker for both, bought for an afternoon's
+convenience. Do not take one.
 
 Three things are therefore enforced by tests rather than trusted:
 
 - the **protocol op table** is asserted equal to
   `CadexdProtocol.OP_ARG_SPECS` by
   `cadex_tests/test_engine_purity_guardrails.py`. Nothing else notices when
-  the prose and the code disagree, and a shell calling an op the engine does
-  not serve fails at the user, not at a test.
+  the prose and the code disagree, and a client calling an op the engine
+  does not serve fails at the user, not at a test.
 - the **response shapes** are pinned by golden shape-only fixtures per op
   (`cadex_tests/test_response_schemas.py`, ADR-027). `OP_ARG_SPECS` pins
-  requests; the shell reads ~50 response keys, and without these nothing
-  asserted that half.
+  requests; these pin the half the client reads.
 - the **engine discovery manifest** (`cadex-engine.json`, ADR-020) is
-  validated by ctest `CadexEnginePayloadSmoke`, and by the `app` job's
-  bundle check in `.github/workflows/cadex-app.yml`.
+  validated by ctest `CadexEnginePayloadSmoke`.
 
-The two halves:
+The two sides of the boundary:
 
 - **the engine** (repo root) — FreeCAD fork; the xscript engine, headless.
   Builds `FreeCADCmd` and `CadexGeometryWorker` and **no application**
   (ADR-021/022). LGPL-2.1+.
-- **the shell** (`shell/`) — Blender fork; the product UI
-  (`docs/BLENDER.md`). Carries the engine payload inside its bundle.
-  GPL-2.0+.
+- **the client** (`cli/`, ADR-061) — the CLI that runs the agent (Claude
+  Code over one tool surface, ADR-497) and serves the dashboard
+  (`./cadex review`). It spawns one `cadexd` per project. LGPL-2.1+.
 
-- **vibecad** — parent fork; historical reference only (teardown history on
-  its `cadex-teardown` branch, at `github.com/theo-kirby/vibecad`).
-  **mesh** — the shell's former home; its pre-merge history is at
-  `github.com/theo-kirby/mesh` (branch `mesh-main`). Neither has a local
-  working copy any more: both were deleted 2026-07-25, remotes verified
-  first.
+Two consequences worth knowing when editing the tables below: the CLI
+validates **every** reply against `OP_RESPONSE_SPECS` as a hard error rather
+than tolerating an undeclared key, and it generates the agent's whole
+model-facing tool surface from `OP_ARG_SPECS`. An op-table change therefore
+lands in three places — `CadexdProtocol.py`, this document and the client —
+in the same PR.
 
-**There is now a third client of this contract**: `cli/`, the headless CLI
-(`docs/CLI.md`, ADR-061). It is not a half of the product and it changes
-nothing here — it was built against this document without widening it, which
-is the strongest evidence the protocol has yet produced for the Phase 11/12
-claim that either half is replaceable behind it. Two consequences worth
-knowing when editing the tables below: the CLI validates **every** reply
-against `OP_RESPONSE_SPECS` as a hard error rather than tolerating an
-undeclared key, and it generates its whole model-facing tool surface from
-`OP_ARG_SPECS`. An op-table change therefore lands in three places, not two.
+Until ADR-498 a second client sat on the other side: the Blender shell, a
+GPL fork that spoke this protocol from its own process (its account is
+`docs/history/BLENDER.md`; its pre-merge history is at
+`github.com/theo-kirby/mesh`, the parent fork's at
+`github.com/theo-kirby/vibecad`). The CLI was built against this document
+without widening it, which is why deleting the shell changed no op. With it
+went `mesh.blender` (ADR-496), whose runtime was the shell's binary; that
+removed no op or field.
 
-## Options considered
+## Options considered (historical)
+
+How the engine came to run headless behind a protocol. Option B was the
+endpoint until ADR-498 deleted the shell; ADR-500 replaced it with the
+engine, the dashboard and the agent.
 
 | Option | Shape | Assessment |
 |---|---|---|
 | **A. cadex as base** | Keep the Qt/Coin3D app; invest in its UI until it feels right. | Rejected as endpoint. Coin3D/Quarter is a dead end for Blender-level viewport feel; every hour on Qt chrome is spent on a shell we don't want. |
-| **B. Blender as shell** | Blender (mesh fork) is the UI; cadex runs headless as a geometry service. | **Confirmed endpoint.** mesh_agent already prototypes the exact target UX; BMesh solves mesh editing natively; the engine already runs headless (`FreeCADCmd`, worker subprocesses). |
+| **B. Blender as shell** | Blender (mesh fork) is the UI; cadex runs headless as a geometry service. | **Confirmed endpoint until ADR-498** deleted the shell and left the CLI and dashboard as the front end. The fork's assistant package already prototyped the target UX; BMesh solves mesh editing natively; the engine already runs headless (`FreeCADCmd`, worker subprocesses). |
 | **C. Two-app bridge** | Both apps stay full apps; a live bridge syncs geometry. | Rejected: two documents of record, two undo systems, permanent sync complexity. |
 | **D. Staged** | Keep working engine-side in cadex now; split engine from shell; then adopt a shell endpoint. | **Confirmed path**, with B as the endpoint. Near-term work stays in `src/Mod/cadex/**` and carries over unchanged. |
 
@@ -79,43 +72,27 @@ xscript geometry service; the mesh fork is the product shell. The Qt shell
 was the interim harness and was **deleted in Phase 7** (ADR-021) — options
 A and D's interim state are now history, not plan.
 
-### Why this is safe to commit to now
-
-- Near-term phases (1–4) are engine-side: source-tree reduction, the single
-  project script, a minimal mesh domain. All of it carries over to any shell.
-- The decision gate before Phase 5 (below) re-validates the endpoint with
-  measurements, not vibes.
-
 ## License reasoning
 
-- The engine is LGPL-2.1+ (FreeCAD lineage); OCCT is LGPL-2.1. The shell is
-  GPL-2+ (Blender lineage).
-- Direction of flow is LGPL engine → GPL shell, across a **process boundary**
-  (cadexd subprocess speaking a JSON protocol; no linking). This is clean:
-  the GPL shell may talk to an LGPL service; neither codebase's license
-  contaminates the other.
-- **One repository does not change this.** What matters for the GPL is
-  linking and derivation, not directory layout: the two halves are separate
-  programs communicating over a documented protocol, exactly as before. The
-  concrete rules that keep it that way — nothing under
-  `shell/scripts/startup/mesh_agent/` imports from `src/`,
-  `cadexd_client.py` stays a plain NDJSON client with no cadex imports, and
-  the payload is carried as data — are unchanged and are why they are worth
-  keeping.
-- The inverse (embedding GPL Blender code inside the LGPL engine) would not
-  be clean. The engine must never gain a `shell/` import.
-- The shipped bundle is an **aggregate** distribution: each component stays
-  under its own license, because putting separate programs in one archive
-  does not relicense any of them. The Blender-derived binary is distributed
-  under GPL-3.0-or-later terms (as Blender's own binaries are — Apache-2.0
-  components require it); the engine payload beside it stays
-  LGPL-2.1-or-later. The full argument is `docs/PROVENANCE.md` §7.
+- The engine is LGPL-2.1+ (FreeCAD lineage); OCCT is LGPL-2.1. The CLI and
+  dashboard are LGPL-2.1+ as well, and since the Blender shell was deleted
+  (ADR-498) the repository carries no GPL code. The licensing suite holds
+  that: a tracked source file with a GPL SPDX header, or any tracked file
+  where the shell tree used to be, fails it.
+- While the Blender shell existed it was GPL-2+, and the protocol was what kept the
+  two licences apart: separate programs over a documented NDJSON protocol,
+  no linking, and a client that imported no engine code. That is why the
+  deletion took no code with it. A future client under another licence
+  would sit behind the same boundary.
+- The shipped artifact is the staged engine payload, LGPL-2.1-or-later with
+  each bundled component under its own licence. The full argument is
+  `docs/PROVENANCE.md` §7.
 
 ## cadexd protocol `cadex-cadexd-v1` `[Cadex-new — implemented, ADR-017]`
 
 Transport: newline-delimited JSON over stdio, 8 MB frame cap, one cadexd
 child (`FreeCADCmd`, no `--safe-mode`) per open project, spawned/owned by
-the shell. `pixi run cadexd` starts one by hand. Binary artifacts are
+the client. `pixi run cadexd` starts one by hand. Binary artifacts are
 referenced by filesystem path, never inlined. Codec + op registry:
 `src/Mod/cadex/CadexdProtocol.py`; server: `src/Mod/cadex/cadexd.py`.
 
@@ -127,20 +104,17 @@ lifetime signal.
 
 | Op | Args | Response payload |
 |---|---|---|
-| `open_project` | `project_root`, `budgets?`, `restore?` | manifest + full script.json state; **restore pass** re-runs THE script into the fresh ephemeral document and asserts digest equality when an accepted digest exists; a digest that differs only because the kernel re-serialized the same model is re-measured and accepted, reported as `matched_by: "geometry"` (ADR-389); one whose geometry differs but whose source, settings and every output definition are the accepted ones opens as `matched_by: "recipe"` with `drifted_outputs` (ADR-476); a script that will not run at all is retried once from the accepted revision's pinned source (ADR-044) |
+| `open_project` | `project_root`, `budgets?`, `restore?` | manifest + full script.json state; `budgets` (`timeout_seconds`, `memory_limit_mb`) are resolved **per field** — each positive one given wins, the other comes from the engine's preferences — and the reply's `budgets` are the ones in force (ADR-517; the CLI sends the project's stored ones); **restore pass** re-runs THE script into the fresh ephemeral document and asserts digest equality when an accepted digest exists; a digest that differs only because the kernel re-serialized the same model is re-measured and accepted, reported as `matched_by: "geometry"` (ADR-389); one whose geometry differs but whose source, settings and every output definition are the accepted ones opens as `matched_by: "recipe"` with `drifted_outputs` (ADR-476); a script that will not run at all is retried once from the accepted revision's pinned source (ADR-044); one that will not run only because a declared policy was trained on a task the engine no longer builds opens unrestored, `restore: {performed: false, stale_policy}` (ADR-520) |
 | `describe_api` | — | `describe_project_api()` verbatim |
 | `write_script` / `edit_script` / `set_params` | today's tool args + optional `display {quality, deflection, edges}`; `write_script` also takes `replace?` (ADR-045); `set_params` also takes `nets?` — the **complete** replacement row list for the connections a script declares with `nets(...)`, each row `{name, a, b, gauge_mm, solder, enabled}` with `a`/`b` addressed `<port>.<terminal>` (ADR-065). A full list rather than a patch, so the wiring editor can add and drop rows; a nets-only edit sends `values: {}`. `set_params` also takes `boards?` — the **complete** replacement row list for the terminals a script declares with `boards(...)`, each row `{board, name, origin, axis, hole_dia, depth}` in **millimetres in that board's own frame**, `hole_dia` present meaning a hole and absent meaning a pad (ADR-120). Full list, not a patch, for the reason `nets` is. A row may also carry `frame: "world"`: a measurement taken in the viewport, which cadexd cannot convert because it has no geometry and never runs user code — the worker converts it through the inverse of that component's placement chain and the canonical board-frame row is written back into `board_values`, so a pick is converted exactly once. `set_params` also takes `mounts?` — the **complete** replacement row list for the mounts a script declares with `mounts(...)`, each row `{component, name, origin, axis, roll, fastener, clearance}` in **millimetres in that component's own frame** (ADR-126). A mount is a terminal row plus a `roll`, so the frame is fully determined rather than only aimed, plus the fastener and clearance the mating half reads. Full list not a patch, `frame: "world"` converted by the worker, drift dropped rather than refused — the board table's terms exactly, one table over. `set_params` also takes `cages?` — the **complete** replacement ring list for the cages a script declares with `cage(...)`, each row `{cage, position, half_width, half_height, roll, exponent}` in millimetres along that cage's own axis (ADR-127). `exponent` is the superellipse power: 2.0 is an ellipse, larger fills the corners out. A ring carries **no name** — its identity is its place in its cage's order, and the stored list is complete — and rows naming a cage the script no longer declares are dropped | **byte-identical** to the in-process tool payload (accept payload / `tool_failure` envelope, `STALE_PROGRAM_REVISION` guard included) + per-output `display {artifact_kind, artifact_path (abs), placement, tessellation\|null}` |
 | `rebuild` | `display?` | explicit deterministic re-run of the stored script (same payload shape) |
-| `put_asset` | `source_path`, `name?` | copies **one file the project store accepts** into `assets/` under a validated name (overwrite = re-import), returns its `{name, bytes, sha256}` plus the full listing. Accepted suffixes are `.stl`/`.obj`/`.ply` — geometry a script imports with `mesh.import_file` or `part.shape_from_mesh` — **`.cxpolicy`**, a trained control policy `assembly.policy` names by file and digest (ADR-084), the `.json`/`.xml` that policy's provenance travels as (ADR-135), and **`.cxpart`**, a part built in another project that `part.import_part` reads (ADR-138). The op performs no suffix check of its own: it passes the path through and lets the engine refuse, which is exactly why widening what the store holds cost no protocol change and no `shell/` diff. A **modeling** op: it writes the store, and exclusion against an in-flight rebuild is what stops a half-copied asset being staged. A path, not bytes — the asset budget is 128 MB against an 8 MB frame cap |
+| `put_asset` | `source_path`, `name?` | copies **one file the project store accepts** into `assets/` under a validated name (overwrite = re-import), returns its `{name, bytes, sha256}` plus the full listing. Accepted suffixes are `.stl`/`.obj`/`.ply` — geometry a script imports with `mesh.import_file` or `part.shape_from_mesh` — **`.cxpolicy`**, a trained control policy `assembly.policy` names by file and digest (ADR-084), the `.json`/`.xml` that policy's provenance travels as (ADR-135), and **`.cxpart`**, a part built in another project that `part.import_part` reads (ADR-138). The op performs no suffix check of its own: it passes the path through and lets the engine refuse, which is exactly why widening what the store holds cost no protocol change and no client diff. A **modeling** op: it writes the store, and exclusion against an in-flight rebuild is what stops a half-copied asset being staged. A path, not bytes — the asset budget is 128 MB against an 8 MB frame cap |
 | `link_part` | `source_project`, `output?`, `name?` | pulls one **accepted solid** out of another project and stores it here as a `.cxpart` — an exact OCCT solid plus the script that made it, provenance included (ADR-138). **One op, not an export/import pair**: the consuming project pulls, so the source project never opens and there is no file for a user to shuttle. Everything it reads is a file under that project's root — its pinned accepted attempt holds the exact BREP and the exact source — so this needs no FreeCAD, no worker and no OCCT call. **Refresh is this same call with the same arguments**: it ends in `store_project_asset`, where overwriting a name is re-import, and the reply's `changed` says whether the source moved. Omitting `output` is how a caller asks what is on offer — the refusal carries the source's accepted output names in `candidates`. A **modeling** op for `put_asset`'s reason exactly, being the same store write. It does **not** rebuild this project: the caller issues the ordinary `rebuild`, so new geometry lands as one normal accepted revision with one undo step |
-| `put_blueprint` | `source_path`, `label?`, `meta?`, `name?` | stores **one rendered blueprint sheet** — a PNG the shell drew — into `blueprints/`, indexed against the **accepted revision** it documents (ADR-150). The entry records the accepted `(revision, digest)` pair, the contract's output names, an optional one-line `label` and the renderer's `meta` (theme, views). A **modeling** op for `put_asset`'s reason (it writes the store), but unlike `put_asset` it invalidates **no resident worker**: a blueprint is a *record* of a run, never an input to one — no script can name it. `name` is the sheet's **identity** rather than its caption (ADR-157): storing again under a name that already exists appends the next `version` of that sheet, and `inspect scope=blueprint` resolves a name to its newest version (`name@2` pins one). A named sheet's `meta.recipe` is what the shell reads back to re-render it with edits, so a drawing is revisable without the model remembering anything. Refused before the first accepted revision, for a non-PNG (magic bytes), over 16 MB, a `label` over 120 chars, a `name` over 60 chars or `meta` over 16 KB. The index keeps the newest 25 sheets, old revisions' sheets included — history semantics, not latest-only — and additionally keeps each **name's** newest version past that bound. A path, not bytes, on `put_asset`'s reasoning exactly |
-| `export_printable` | `printable`, `conflict?`, `deflection?` | writes **one STL per named part** into `<project>.cadex/print/`, each at **its own origin**, ready for a slicer (ADR-156, ADR-158). `printable` is the whole job — the accepted output names the caller means to print, named on the call. **The engine stores no marks**: which parts a person prints is a decision about a view of the model, so whoever draws that view keeps the ticks (the shell keeps them in the scene, so they save with the .blend and cost no round trip). What the engine still owns is the refusal — a name the accepted revision does not publish as a printable output is refused with `UNKNOWN_PRINTABLE_OUTPUT`, roster in `observed.outputs`. The candidates are the `brep` and `mesh` outputs of the accepted worker report, derived on demand rather than cached anywhere, so `inspect scope="script"`'s `printable.outputs` block and what this op accepts are the same list by construction. The engine writes the files because the engine is the store's sole writer — and it is the better answer anyway: the mesh comes off the accepted BREP rather than the shell's display tessellation, and the call works headless from `./cadex`. Each part lands in its own frame for free: the staged `.brep` is written in that frame, and an assembly's placement lives in the display block the shell applies. Refused before the first accepted revision (`NO_ACCEPTED_REVISION`) and with nothing named (`NOTHING_MARKED_PRINTABLE`, roster in `observed.outputs`). Called with **no `conflict`**, an export that would overwrite anything refuses with `PRINT_FILES_EXIST` and names the files in `observed.existing` — `link_part`'s arrangement, where the refusal is what populates the dialog; then `conflict` is `"overwrite"` or `"keep_both"`, the latter taking the next free `<name>-002.stl`. `deflection` is the chord height in millimetres for a BREP output; left out, the display default sizes it off the shape. Nothing prunes `print/`: unlike `blueprints/` it is a deliverable |
+| `put_blueprint` | `source_path`, `label?`, `meta?`, `name?` | stores **one rendered blueprint sheet** — a PNG the client drew — into `blueprints/`, indexed against the **accepted revision** it documents (ADR-150). The entry records the accepted `(revision, digest)` pair, the contract's output names, an optional one-line `label` and the renderer's `meta` (theme, views). A **modeling** op for `put_asset`'s reason (it writes the store), but unlike `put_asset` it invalidates **no resident worker**: a blueprint is a *record* of a run, never an input to one — no script can name it. `name` is the sheet's **identity** rather than its caption (ADR-157): storing again under a name that already exists appends the next `version` of that sheet, and `inspect scope=blueprint` resolves a name to its newest version (`name@2` pins one). A named sheet's `meta.recipe` is what the shell reads back to re-render it with edits, so a drawing is revisable without the model remembering anything. Refused before the first accepted revision, for a non-PNG (magic bytes), over 16 MB, a `label` over 120 chars, a `name` over 60 chars or `meta` over 16 KB. The index keeps the newest 25 sheets, old revisions' sheets included — history semantics, not latest-only — and additionally keeps each **name's** newest version past that bound. A path, not bytes, on `put_asset`'s reasoning exactly |
+| `export_printable` | `printable`, `conflict?`, `deflection?` | writes **one STL per named part** into `<project>.cadex/print/`, each at **its own origin**, ready for a slicer (ADR-156, ADR-158). `printable` is the whole job — the accepted output names the caller means to print, named on the call. **The engine stores no marks**: which parts a person prints is a decision about a view of the model, so whoever draws that view keeps the ticks (the deleted Blender shell kept them in its scene file; the CLI takes them on the call). What the engine still owns is the refusal — a name the accepted revision does not publish as a printable output is refused with `UNKNOWN_PRINTABLE_OUTPUT`, roster in `observed.outputs`. The candidates are the `brep` and `mesh` outputs of the accepted worker report, derived on demand rather than cached anywhere, so `inspect scope="script"`'s `printable.outputs` block and what this op accepts are the same list by construction. The engine writes the files because the engine is the store's sole writer — and it is the better answer anyway: the mesh comes off the accepted BREP rather than a client's display tessellation, and the call works headless from `./cadex`. Each part lands in its own frame for free: the staged `.brep` is written in that frame, and an assembly's placement lives in the display block the shell applies. Refused before the first accepted revision (`NO_ACCEPTED_REVISION`) and with nothing named (`NOTHING_MARKED_PRINTABLE`, roster in `observed.outputs`). Called with **no `conflict`**, an export that would overwrite anything refuses with `PRINT_FILES_EXIST` and names the files in `observed.existing` — `link_part`'s arrangement, where the refusal is what populates the dialog; then `conflict` is `"overwrite"` or `"keep_both"`, the latter taking the next free `<name>-002.stl`. `deflection` is the chord height in millimetres for a BREP output; left out, the display default sizes it off the shape. Nothing prunes `print/`: unlike `blueprints/` it is a deliverable |
 | `resolve_pin` | `output`, `selection` (fingerprint query or `{element_type, index}`) | `{ok, output, revision, subelements, details}` against the accepted revision's staged BREP (`CadexPinResolution.py`) |
-| `inspect` | today's `core.inspect` args | same contract; `document/object` serve the ephemeral doc, `script/api/image/assets/history/wiring/inventory/blueprint` the store; `selection` rejected (shell-only). `blueprint` lists the stored drawing sheets (ADR-150), each recording the accepted revision it was rendered from; a `target` (ordinal, revision prefix or filename) answers that entry plus the sheet's resolved store path — metadata and a path, never the pixels. `wiring` is the harness as a graph (ADR-065): the terminals the accepted run resolved, joined to the connection table, with `editable: false` and `source: "derived"` for a script written before `nets(...)`. One node per **terminal set**, not per component, and its `port` is unique across the graph — a board with two headers is two sets, and while they shared a name the canvas gave one set's sockets to the other (ADR-115). On the `nets` path a row may carry `editable: false` and a `kind`: a cable or bundle the script built outside the table, drawn so the picture is complete and never sent back to `set_params(nets=...)`. Since ADR-118 a row also carries the route its run followed: `path`, the whole swept centreline, and `waypoints`, the interior of it a user may author — both read-only here, because a path is script state and `set_params(nets=)` carries editor state. An **empty** `waypoints` on a row that has a `path` is a bundle conductor, whose route belongs to the lay; the keys are **absent** entirely on a project accepted before ADR-118, which the canvas draws rather than refuses. Since ADR-120 a component also carries `board` — the name `boards(...)` gave it, or `""` — and `editable`, true when that board's terminals are a declared table rather than a selector's derived rows; each terminal carries its row fields `origin`/`axis`/`hole_dia`/`depth`, which is what `set_params(boards=...)` writes back. **A declared board is a node whether or not anything is wired to it**: a terminal set that is only assigned to a variable used to reach the canvas as nothing at all. `clearance` (ADR-237) reads all component-pair minimum distances in mm and common volumes in mm³, measured by the assembly worker at the initial solved pose before simulation. Component names, labels and catalog ids join the same accepted inventory. Since ADR-423 a pair whose exact-geometry bounding boxes are more than 10 mm apart (or more than its declared `clearances=` minimum, if larger) is bounded rather than measured: it carries `culled: true`, its distance is the box gap — a lower bound — and its common volume is 0.0; the key is absent on every measured row and on a revision accepted before ADR-423. Failed or absent measurements are null with an error, never clear; older accepted attempts require an explicit rebuild to gain measurements. No assembly gives `available=false` and empty pairs. The side table is beside the hashed definition, preserving content digests. Readers apply thresholds without rebuilding. Since ADR-347 each row also carries `intent` and `fit_failures` from the worker, and since ADR-372 a pair joined by an unsuppressed `fixed` joint carries the implied intent `{"kind": "attached", "minimum_mm": 0.0, "joints": [...]}` and is exempt from the undeclared-pair minimum — a weld is the design declaring one rigid body, so flush mounting is the declaration rather than a closed gap; overlap and unmeasured pairs still fail, and an explicit `contacts=` or `clearances=` declaration on the same pair still wins. A `clearances=` declaration on a welded pair is judged by the minimum it declares, exactly as an unwelded pair's is (ADR-380, withdrawing ADR-379's `clearance under weld` status): a fixed joint fixes a relative pose without requiring contact, and a declared minimum is a floor on a distance rather than a claim of motion. Such a row carries `{"kind": "clearance", "minimum_mm": …, "joints": [...]}`, the welding joints published as a fact a reader can join rather than a verdict; the `joints` key rides on a `clearance` intent only where an unsuppressed fixed joint welds the pair, and is absent everywhere it was absent before; `world_geometry` lists component names and reasons (collision planes, planar faces, or explicit world declarations). Since ADR-370 the value also carries `attachments`: one row per component pair joined by an unsuppressed `fixed` joint, with the joint output names, the measured distance and common volume, and `touching`, `not touching` or `unknown`. A fixed joint asserts one rigid body and a gap between the solids is a connection the geometry does not make; it is reported beside the fit checks, never counted among them. The key is **absent** on a revision accepted before ADR-370 and an empty list on an assembly with no fixed joint. Since ADR-486 the value also carries `components`, the same rows `inventory` publishes; a catalog row carries `mount_axes` (`[{origin, axis}]`, its mounting-hole lines — a bolt's own axis — in its source output's coordinates, empty for a part with none) and a row whose source output was cut with a `lib` part's `.bay()` carries `houses`, the source outputs that bay was cut for. Both are stamped beside the definition (`catalog_mount_axes`, `houses` in the attempt's report), so no digest moves, and both are absent on a revision accepted before ADR-486. Front ends read them as `fit.mounting` (`CadexFitReport.mounting_summary`). Omitted declarations retain the previous definition hash. These are advisory fields in the existing scope value; this is not a swept-motion check. `inventory` is what the accepted assembly is **made of** (ADR-236): one row per `component_link` output, carrying the `source_output` whose geometry it places (the ADR-049 stamp), that output's `catalog` `family`/`part_number` when a `lib.*` generator built it, the solved `placement`, and a short `source_facts` block — since ADR-415 including `sharp_edges`, `{threshold_deg, edge_length_mm, sharp_convex_length_mm, unresolved_edges}`: the output's solid edge length, seams left out, and how much of it is a convex corner whose faces turn by more than 60°, measured by the worker with every other shape fact and absent on a revision accepted before it. Plus a `catalog_counts` roll-up of placed instances and the `uncatalogued_sources` a hand-modelled output lands in. Since ADR-381 an uncatalogued row may also carry `catalog_derived_from` — the `family`/`part_number` of the nearest catalog body on its definition's **base operand** spine (`part.cut(base, tools)` puts the modified body first) — and the value carries the same rows as `derived_catalog_sources`, `{"source_output", "family", "part_number"}` sorted by source. It says which uncatalogued source is a purchased part the script cut rather than a printed one; a catalog body used only as a cutter is on no base spine and is named nowhere. Both keys are advisory and absent/empty where nothing derives. Repeated links count separately; generator calls do not establish purchases or missing hardware, and a catalog body fused in as a non-base operand of a boolean is still not identified (ADR-243, narrowed on the base spine only by ADR-381). Nothing is computed: it is a join over the pinned accepted attempt's `result.json`, and `catalog` rides **beside** the definition rather than inside it, so the stamp cannot move a project's content digest. `target` is optional because a project publishes at most one assembly; given, it must name it |
+| `inspect` | today's `core.inspect` args | same contract; `document/object` serve the ephemeral doc, `script/api/image/assets/history/wiring/inventory/clearance/contacts/blueprint` the store; `selection` rejected (shell-only). `blueprint` lists the stored drawing sheets (ADR-150), each recording the accepted revision it was rendered from; a `target` (ordinal, revision prefix or filename) answers that entry plus the sheet's resolved store path — metadata and a path, never the pixels. `wiring` is the harness as a graph (ADR-065): the terminals the accepted run resolved, joined to the connection table, with `editable: false` and `source: "derived"` for a script written before `nets(...)`. One node per **terminal set**, not per component, and its `port` is unique across the graph — a board with two headers is two sets, and while they shared a name the canvas gave one set's sockets to the other (ADR-115). On the `nets` path a row may carry `editable: false` and a `kind`: a cable or bundle the script built outside the table, drawn so the picture is complete and never sent back to `set_params(nets=...)`. Since ADR-118 a row also carries the route its run followed: `path`, the whole swept centreline, and `waypoints`, the interior of it a user may author — both read-only here, because a path is script state and `set_params(nets=)` carries editor state. An **empty** `waypoints` on a row that has a `path` is a bundle conductor, whose route belongs to the lay; the keys are **absent** entirely on a project accepted before ADR-118, which the canvas draws rather than refuses. Since ADR-120 a component also carries `board` — the name `boards(...)` gave it, or `""` — and `editable`, true when that board's terminals are a declared table rather than a selector's derived rows; each terminal carries its row fields `origin`/`axis`/`hole_dia`/`depth`, which is what `set_params(boards=...)` writes back. **A declared board is a node whether or not anything is wired to it**: a terminal set that is only assigned to a variable used to reach the canvas as nothing at all. `contacts` (ADR-508) reads which parts' **collision shapes** touch at the MJCF keyframe pose every simulation starts from: per `assembly.mjcf` export (`target` names one), `mjcf_output`, `assembly_output`, `count`, `omitted`, `pairs_complete`, `pairs` (`{components, points, penetrating, deepest_mm}` grouped from the listed contacts, penetrating first), `contact_exclusions` and the raw `contacts`, from the export's stored `assembly_data.dynamics` (ADR-087) — nothing is measured at read time; an export without that evidence is `available: false` with a reason, and no export gives `available: false`, `models: []`. The value carries `pose` and `measures`, which say it is MuJoCo's contact pass on collision shapes and not the exact-solid fit. `clearance` (ADR-237) reads all component-pair minimum distances in mm and common volumes in mm³, measured by the assembly worker at the initial solved pose before simulation. Component names, labels and catalog ids join the same accepted inventory. Since ADR-423 a pair whose exact-geometry bounding boxes are more than 10 mm apart (or more than its declared `clearances=` minimum, if larger) is bounded rather than measured: it carries `culled: true`, its distance is the box gap — a lower bound — and its common volume is 0.0; the key is absent on every measured row and on a revision accepted before ADR-423. Failed or absent measurements are null with an error, never clear; older accepted attempts require an explicit rebuild to gain measurements. No assembly gives `available=false` and empty pairs. The side table is beside the hashed definition, preserving content digests. Readers apply thresholds without rebuilding. Since ADR-347 each row also carries `intent` and `fit_failures` from the worker, and since ADR-372 a pair joined by an unsuppressed `fixed` joint carries the implied intent `{"kind": "attached", "minimum_mm": 0.0, "joints": [...]}` and is exempt from the undeclared-pair minimum — a weld is the design declaring one rigid body, so flush mounting is the declaration rather than a closed gap; overlap and unmeasured pairs still fail, and an explicit `contacts=` or `clearances=` declaration on the same pair still wins. A `clearances=` declaration on a welded pair is judged by the minimum it declares, exactly as an unwelded pair's is (ADR-380, withdrawing ADR-379's `clearance under weld` status): a fixed joint fixes a relative pose without requiring contact, and a declared minimum is a floor on a distance rather than a claim of motion. Such a row carries `{"kind": "clearance", "minimum_mm": …, "joints": [...]}`, the welding joints published as a fact a reader can join rather than a verdict; the `joints` key rides on a `clearance` intent only where an unsuppressed fixed joint welds the pair, and is absent everywhere it was absent before; `world_geometry` lists component names and reasons (collision planes, planar faces, or explicit world declarations). Since ADR-370 the value also carries `attachments`: one row per component pair joined by an unsuppressed `fixed` joint, with the joint output names, the measured distance and common volume, and `touching`, `not touching` or `unknown`. A fixed joint asserts one rigid body and a gap between the solids is a connection the geometry does not make; it is reported beside the fit checks, never counted among them. The key is **absent** on a revision accepted before ADR-370 and an empty list on an assembly with no fixed joint. Since ADR-486 the value also carries `components`, the same rows `inventory` publishes; a catalog row carries `mount_axes` (`[{origin, axis}]`, its mounting-hole lines — a bolt's own axis — in its source output's coordinates, empty for a part with none) and a row whose source output was cut with a `lib` part's `.bay()` carries `houses`, the source outputs that bay was cut for. Both are stamped beside the definition (`catalog_mount_axes`, `houses` in the attempt's report), so no digest moves, and both are absent on a revision accepted before ADR-486. Front ends read them as `fit.mounting` (`CadexFitReport.mounting_summary`). Omitted declarations retain the previous definition hash. These are advisory fields in the existing scope value; this is not a swept-motion check. `inventory` is what the accepted assembly is **made of** (ADR-236): one row per `component_link` output, carrying the `source_output` whose geometry it places (the ADR-049 stamp), that output's `catalog` `family`/`part_number` when a `lib.*` generator built it, the solved `placement`, and a short `source_facts` block — since ADR-415 including `sharp_edges`, `{threshold_deg, edge_length_mm, sharp_convex_length_mm, unresolved_edges}`: the output's solid edge length, seams left out, and how much of it is a convex corner whose faces turn by more than 60°, measured by the worker with every other shape fact and absent on a revision accepted before it. Plus a `catalog_counts` roll-up of placed instances and the `uncatalogued_sources` a hand-modelled output lands in. Since ADR-381 an uncatalogued row may also carry `catalog_derived_from` — the `family`/`part_number` of the nearest catalog body on its definition's **base operand** spine (`part.cut(base, tools)` puts the modified body first) — and the value carries the same rows as `derived_catalog_sources`, `{"source_output", "family", "part_number"}` sorted by source. It says which uncatalogued source is a purchased part the script cut rather than a printed one; a catalog body used only as a cutter is on no base spine and is named nowhere. Both keys are advisory and absent/empty where nothing derives. Repeated links count separately; generator calls do not establish purchases or missing hardware, and a catalog body fused in as a non-base operand of a boolean is still not identified (ADR-243, narrowed on the base spine only by ADR-381). Nothing is computed: it is a join over the pinned accepted attempt's `result.json`, and `catalog` rides **beside** the definition rather than inside it, so the stamp cannot move a project's content digest. `target` is optional because a project publishes at most one assembly; given, it must name it |
 | `preview_params` | `values`, `expected_revision` | solved component placements for a **pose-only** parameter change, from a resident read-only worker (ADR-055) — no BREP, no tessellation, no digest, no publication, **no store write**. A **read** op: it queues behind an in-flight modeling request rather than refusing one. Answers `previewable: false` with a `reason` whenever the change was not pose-only, the revision is stale, or the worker is unavailable; the debounced `set_params` behind it is the real answer either way |
-| `live_open` | `output`, `seed?`, `variation?` | starts a **live session** on the accepted revision's rollout (ADR-109): a resident `--safe-mode` worker running `CadexDynamics.evaluate_episode` with the same MJCF, task and weights that rollout played, all three re-checked by digest. Answers `live: false` with a `reason` when the project has no accepted rollout, which is a **state** and not an error. A **read** op — it writes nothing at all, so it queues behind a rebuild rather than blocking one, and watching the machine stays compatible with changing it. `variation` **defaults true** — play the task as the bundle declares it, randomisation, reset variation and drawn shoves included. False is the **calm session** (ADR-110): every episode runs unseeded, which is the state `evaluate_episode` has always had for a caller that passes no seed — one nominal machine at the pose the solve found, so the only force acting is the one the user is applying |
-| `live_step` | `steps`, `push?` | advances the episode by `steps` control steps and returns **one frame per step**, in the `component_placements` + `actuator_commands` shape `cadex-assembly-simulation-trace-v1` already carries — no fourth dialect. **The shell owns the clock**: the worker's episode blocks for this credit rather than sleeping against one of its own, so pause is the absence of a request. `push` is the user's shove — `{newtons, azimuth_rad, duration_s, body}`, applied at that component's centre of mass in the world frame, `azimuth_rad` 0 at **world +X** (ADR-107) — added on top of whatever the task's own disturbance schedule is doing. A frame also carries `applied_forces` whenever anything is pushing: `{component: {newtons: [x,y,z], at_mm: [x,y,z]}}`, read off `xfrc_applied` **after** it was applied and reported at the body's centre of mass, so it is the force that actually produced that frame rather than the one the caller asked for — and it is the **total**, because a user's shove and the task's own wind on one body are one vector (ADR-110). Absent when nothing is pushing, and inside the frame list, so it is not an `OP_RESPONSE_SPECS` key. A terminated episode holds ~1 s so the fall is visible, then resets at a fresh seed and counts `reset_count` |
-| `live_close` | — | ends the session and kills the worker. Idempotent |
 | `cancel` | `request_id?` | acks and cancels the in-flight modeling request (`RUN_CANCELLED` flows to that request) |
 | `shutdown` | — | graceful exit |
 
@@ -151,7 +125,7 @@ The table above says what an op *means*; this one says what its reply
 shape-only golden fixtures in `cadex_tests/response_schemas/`, and enforced
 by `cadex_tests/test_response_schemas.py` — which also asserts this table
 and the code agree. Added in Phase 9 (ADR-025): the request half of the
-contract was already tested, the half the shell actually consumes was
+contract was already tested, the half a client actually consumes was
 prose. Every response also carries `id` and `ok`.
 
 | Op | Response keys (success) |
@@ -166,9 +140,6 @@ prose. Every response also carries `id` and `ok`.
 | `resolve_pin` | `output`, `revision`, `subelements`, `details` |
 | `inspect` | `scope`, `target`, `path`, `value`, `page`, `document`, `surface`, `result_json_bytes` |
 | `preview_params` | `placements`, `revision`, `previewable`, `reason`? |
-| `live_open` | `live`, `components`, `control_hz`, `frames_per_second`, `actuator_channels`, `episode_seconds`, `policy`, `reason`? |
-| `live_step` | `live`, `frames`, `step`, `time_s`, `terminated`, `termination`, `reset_count`, `reason`? |
-| `live_close` | `live`, `closed` |
 | `cancel` | `cancelled` |
 | `shutdown` | `shutting_down` |
 
@@ -231,6 +202,21 @@ the outputs the kernel rebuilt differently. The accepted digest and attempt
 stay pinned, nothing is re-accepted, and missing evidence on either side
 still refuses.
 
+A script whose only failure is a stale policy does not lock the project
+(ADR-520). When the worker refuses an `assembly.policy` output at its
+`policy_model` stage for `policy_task_mismatch`, `policy_model_mismatch`,
+`policy_channels_mismatch`, `policy_actions_mismatch` or
+`policy_output_range_mismatch` — the policy was trained on another bundle,
+model, channel list or action map than the script now declares, as every
+policy trained before ADR-469's contact change was — and the accepted-source
+retry fails the same way, the open succeeds with `restore: {performed:
+false, stale_policy: {output, reason, error, correction, *_sha256}}`. The
+policy is still refused; only the lock is gone. Nothing is re-accepted, the
+accepted revision, digest and attempt stay pinned, `latest_candidate` is put
+back, and the document is not live until a write succeeds — retrain, or a
+turn that sets the policy aside. A corrupt container, a witness that
+disagrees, or any other failure still returns `CADEXD_RESTORE_FAILED`.
+
 Restore defers artifact pruning until the accepted pin is settled (ADR-398).
 The accepting lifecycle used for the replay must not collect the original
 accepted attempt while its candidate is temporarily pinned. Repeated opens,
@@ -261,10 +247,10 @@ explicit display request or changed identity publishes a new attempt.
 `stdout` is the script's own printed output. It is sent on success as well
 as on failure (ADR-044): a `print()` that only reaches the caller when the
 run breaks makes a deliberately-failing script the cheapest way to read a
-value out of a working one. It is marked optional so a shell written
+value out of a working one. It is marked optional so a client written
 against the pre-ADR-044 shape still validates.
 
-Nested shapes the shell reads by name are pinned too
+Nested shapes a client reads by name are pinned too
 (`NESTED_RESPONSE_SPECS`): `display.<output> {artifact_kind,
 artifact_path, placement, tessellation}` plus optional `source_output` and
 `measurement`, its
@@ -331,8 +317,8 @@ assembled part lands where the part is not.
 **And there are two more of that third kind, on the same terms**: `mesh_check`
 (ADR-144) and `stress` (ADR-145). Both are outputs with no artifact, no
 tessellation and no placement, whose one optional key *is* what they publish.
-Neither needs a new op, a new `artifact_kind` or a `shell/` change — the shell
-has never had to know they exist, and a client that does not know the key sees
+Neither needs a new op, a new `artifact_kind` or a client change — a client
+never has to know they exist, and a client that does not know the key sees
 exactly the shape it always saw.
 
 `mesh_check` — `mesh.check(mesh)` — carries `facets`, `points`,
@@ -391,7 +377,7 @@ artifact, whose hash would enter the restore digest and demand
 byte-reproducible native readback.
 
 **`artifact_kind` is an open set, and a client must treat it as one.** The
-kinds a shell may see today:
+kinds a client may see today:
 
 | Value of `artifact_kind` | What the file is | Since |
 |---|---|---|
@@ -404,12 +390,13 @@ kinds a shell may see today:
 
 **The rule the table exists to state:** a client selects on the kinds it
 knows and must **ignore, not fail on, an `artifact_kind` it has never heard
-of**. The shell's `cadex_animate._simulation_entries` is the worked example
-— it selects `assembly_simulation_json` and leaves the other four alone, and
-because a policy rollout reuses that kind rather than inventing one, the
-shell bakes a learned gait without knowing policies exist. Inventing a new
-kind for a rollout would have made a `shell/` change mandatory, which is the
-cost ADR-085 was avoiding.
+of**. The dashboard's trace reader (`review_server`'s
+`_first_frame_placements` and `_placement`) is the worked example — it
+selects `assembly_simulation_json` and leaves the others alone, and because
+a policy rollout reuses that kind rather than inventing one, the viewer
+plays a learned gait without knowing policies exist. Inventing a new kind
+for a rollout would have made a client change mandatory, which is the cost
+ADR-085 was avoiding.
 
 Note also that these are `artifact_kind` values, not output *types*: the
 protocol's output-type set is separate and did not grow for the rollout at
@@ -422,8 +409,7 @@ value over 1 KiB is replaced by a marker — `{"type": "array",
 "item_count": 11, "inspect_path": "/params/specs"}` — naming the JSON
 Pointer that reaches it. So `value` is a *view*, never a promise of the
 whole; read to the end of the pages and follow the markers, or accept a
-sample. The shell does the former in `cadex_backend._inspect_full()`
-(ADR-038). The bound is the point of the op — do not remove it to save a
+sample (ADR-038). The bound is the point of the op — do not remove it to save a
 caller the walk.
 
 **Failures are one envelope for every op**, because the model reads it and
@@ -435,8 +421,7 @@ one. That includes `inspect`: an exception while completing a read is an
 `target` and `path` that were asked for under `requested` and no
 `result_json_bytes` (a refusal has no page). Until ADR-195 that frame had
 a shape of its own, and the CLI's validator turned every inspect
-exception into a hard client error; the shell never validates replies and
-never saw it.
+exception into a hard client error.
 
 Server failure codes: `CADEXD_PROTOCOL_ERROR`, `CADEXD_BUSY` (one modeling
 request in flight; read-only requests queue), `CADEXD_NOT_OPEN`,
@@ -457,29 +442,29 @@ the digests that disagreed.
 Geometry responses carry the BREP artifact path **and** the opt-in
 `cadex-tessellation-v1` buffers (f32 vertices / u32 triangles / f32 edge
 polylines + sidecar `face_ranges`/`edge_polylines` mapping spans to the
-exact 1-based Face/Edge enumeration of `face_details`), so a shell can
+exact 1-based Face/Edge enumeration of `face_details`), so a client can
 draw immediately and export/measure exactly; picking round-trips
 triangle → `face_ranges` → `resolve_pin {element_type, index}`.
 
 Since Phase 10b (ADR-029) the sidecar also carries **`face_keys`**: one
 geometric fingerprint key per `face_ranges` span, same length and same
 order. The span index locates a face *in this artifact*; the key describes
-the face itself. A shell that wants a click to become something durable —
+the face itself. A client that wants a click to become something durable —
 a script argument rather than a transient highlight — reads `face_keys[i]`
 alongside the `resolve_pin` details and writes a selector, because the
 five index-taking part ops no longer accept ordinals at all. Purely
 additive: `face_ranges` and the index picking path are unchanged. Quality
 presets `draft`/`coarse`/`standard`/`fine` (relative deflection 0.05 /
 0.02 / 0.005 / 0.001 × bbox diagonal, clamped): `draft` exists for
-progressive display — the Blender shell requests it during slider drags
-and re-requests `standard` in a background `rebuild` once the drag
-settles (ADR-019).
+progressive display: a viewer may request it during a slider drag and
+re-request `standard` in a background `rebuild` once the drag settles
+(ADR-019).
 
 ## The engine payload and its discovery `cadex-engine-v1` `[Cadex-new — ADR-023]`
 
-The shell does not build the engine; it carries a payload built here
+The client does not build the engine; it finds a payload built here
 (`package/engine/build_engine_payload.sh`, ctest
-`CadexEnginePayloadSmoke`):
+`CadexEnginePayloadSmoke`) or the build tree:
 
 ```
 cadex-engine-<version>-<os>-<arch>/
@@ -493,71 +478,47 @@ cadex-engine-<version>-<os>-<arch>/
 
 **Finding the manifest is the whole of discovery.** `freecadcmd` and
 `module_dir` are manifest-relative with forward slashes on every platform,
-so no shell guesses at a layout. A manifest whose `schema` or `protocol` a
-shell does not recognise must be **refused**, not attempted: a version
+so no client guesses at a layout. A manifest whose `schema` or `protocol` a
+client does not recognise must be **refused**, not attempted: a version
 mismatch should fail at preflight with a sentence, not mid-request with a
 protocol error.
 
-Shell-side resolution order: explicit preference → `MESH_FREECADCMD` →
-bundled manifest → `PATH`. Install locations:
-`Cadex.app/Contents/Resources/cadex` on macOS, `<install>/cadex` in a
-portable install, `<install>/<version>/cadex` in a system install.
+Client-side resolution order (`cli/cadex_cli/engine.py`): `--engine <root>`
+→ `CADEX_ENGINE_ROOT` → the development tree (a built `FreeCADCmd` plus
+`src/Mod/cadex`). The first two must name a directory carrying
+`cadex-engine.json`.
 
 The payload is **built in this repository** by `pixi run stage-engine` and
-installed by the shell's own CMake (ADR-030). There is no download and no
+the CLI points at it with `--engine` (ADR-030). There is no download and no
 digest pin: both existed to guard a payload crossing a repository boundary,
 and there is no such crossing. What survives is the part that was never
 about transport — one bundle, discovery by manifest, and a payload gate that
 runs the lifecycle test against the *packaged* tree, because a source tree
 that passes proves nothing about a payload.
 
-### The studio renderer: a second program in the payload `cadex-studio-request-v1` `[Cadex-new — ADR-445]`
+### The studio renderer: engine code clients load by path `[Cadex-new — ADR-445, ADR-529]`
 
 `Mod/cadex/CadexStudio.py` draws the review views, the studio hero, the
-concept sheet and the agent's `look` from an accepted reply's display block.
-It is **not a cadexd op**: cadexd dispatches serially, and a render takes
-about 12 s, which would stall a slider drag queued behind it. Nothing in the
-service imports it (`test_studio_process.py` asserts the closure). It is pure
-standard library, and it reaches each client in the way that client's rules
-allow:
+concept sheet, the blueprint sheet and the agent's `look` from an accepted
+reply's display block. It is **not a cadexd op**: cadexd dispatches serially,
+and a render takes about 12 s, which would stall a slider drag queued behind
+it. Nothing in the service imports it (`test_studio_standing.py` asserts the
+closure). It is pure standard library, and the CLI and the dashboard load it
+by path from the engine they resolved, exactly as they load
+`CadexdProtocol`; `CadexFitReport.py` (ADR-447) reaches them the same way.
 
-- the CLI (LGPL) loads it by path from the engine it resolved, exactly as it
-  loads `CadexdProtocol`;
-- the shell (GPL, which imports no cadex code) runs it as a **child process**
-  (`mesh_agent/cadex_studio.py`, ADR-448):
-  `python Mod/cadex/CadexStudio.py REQUEST.json`, and reads one JSON line
-  from stdout.
-
-The request is `{schema: "cadex-studio-request-v1", kind: "render" | "look" |
-"blocks", reply, fit, inventory, clearance?, inventory_value?, display?, out_dir,
-project_root?, relative_dir?, views?, focus?}`: `reply` is the accepted
-modelling or `rebuild` reply with its display block, and `out_dir` is
-absolute. The fit and inventory blocks come either built, as `fit` and
-`inventory`, or raw, as the `inspect scope=clearance` and `scope=inventory`
-values in `clearance` and `inventory_value`, which the process turns into
-blocks with `CadexFitReport` (ADR-447) -- how a client that may not import
-engine code gets the same blocks the CLI builds in process. Any of the four
-may be `null`. `kind: "blocks"` draws nothing and needs no `reply` or
-`out_dir`: it returns the two blocks alone, and each bounded the way a
-build reply shows it to the model (`fit_view`, `inventory_view`, ADR-435).
-Given the accepted `display` map as well, it also returns `appearance`:
-`{objects: {name: {role, color, source}}, palette, environment}`, the role
-and colour each object is drawn in, by the same rule and in the same shape
-as a render's `summary.json` (ADR-449). No buffer is read for it, and an
-object with neither a declared role nor an inventory to judge it by is left
-out, so a viewport keeps its own colour for it. The result is `{schema: "cadex-studio-result-v1", ok, kind, files,
-facts | summary, fit?, inventory?, appearance?}` or `{ok: false, error}`; exit 0 on
-success, 1 on a refusal, 2 for an unreadable request. `facts` is exactly what
-the CLI agent's `look` returns as text, so the two agents read the same thing.
+It has **no process entry**. The child-process request
+`cadex-studio-request-v1` (`kind: render | look | blocks`) existed for the
+deleted Blender shell, which could import no engine code, and left with it
+(ADR-529); `test_studio_standing.py` fails if it returns.
 
 ### The agent guidance: engine data, not code `[Cadex-new — ADR-446]`
 
-`Mod/cadex/CadexAgentGuidance.md` is the part of every front end's system
-prompt that is about designing well rather than about the front end: proof
+`Mod/cadex/CadexAgentGuidance.md` is the part of the agent's system
+prompt that is about designing well rather than about the client: proof
 by measured facts, the design language, a complete robot, what a policy may
-read, how a walking task is rewarded. It is read as a file -- the CLI from
-the engine it resolved, the shell from its bundled payload -- so reading it
-crosses no import boundary. Everything below the `<!-- guidance -->` line is
+read, how a walking task is rewarded. It is read as a file -- the CLI reads
+it from the engine it resolved -- so reading it crosses no import boundary. Everything below the `<!-- guidance -->` line is
 the text; `{{look}}`, `{{inspect}}`, `{{write_script}}`, `{{edit_script}}`,
 `{{set_params}}` and `{{rebuild}}` are tool names each client fills with its
 own, and a placeholder a client leaves unfilled is refused by that client.
@@ -566,7 +527,7 @@ Non-GUI Qt (Core, Xml, Concurrent, Network) is unavoidable — FreeCAD's App
 layer links it and `FreeCADCmd` inherits that. Qt **GUI**, PySide and Coin
 are absent, and asserted absent by the payload build.
 
-## Decision gate (before Phase 5 commits to the split)
+## Decision gate (historical: before Phase 5 committed to the split)
 
 Measured with a real cadexd prototype streaming into Blender:
 
@@ -597,8 +558,8 @@ runs is machine load, not change, and a comparison should be made against a
 number measured the same day.
 
 Phase 6 (ADR-019) supplied the shell halves in the real Blender shell
-(then `/Users/theo/mesh`, now `shell/tests/python/bl_mesh_agent_cadex.py`,
-headless Blender 5.3.0-alpha against release cadexd):
+(its gate script, deleted with the shell in ADR-498, headless Blender
+5.3.0-alpha against release cadexd):
 
 1. **Tessellation & picking fidelity — PASSED.** ID maps land as
    `cadex_face` INT face attributes, byte-identical to the sidecar
@@ -656,19 +617,21 @@ raw NDJSON — is `cadex_tests/cadexd_latency_integration.py` today.
 
 - ~~Exact transport (stdio vs socket); per-project vs multiplexing~~ —
   decided 2026-07-25 (ADR-017): stdio NDJSON, one cadexd per project,
-  spawned/owned by the shell.
+  spawned/owned by the client.
 - ~~Where conversation history lives post-split~~ — decided 2026-07-25
-  (ADR-020, decision 4): **the `.blend`**, together with the Claude Code
-  `session_id`. This **reverses** the `$CADEX_HOME` lean recorded here
-  earlier. The conversation is shell state — the engine has no notion of a
+  (ADR-020, decision 4): **the Blender file**, together with the Claude
+  Code `session_id` — and, since the shell's deletion (ADR-498), the
+  project's `agent.json`, which the CLI writes. This **reverses** the `$CADEX_HOME` lean recorded here
+  earlier. The conversation is client state — the engine has no notion of a
   turn — and one file a user can move, copy and mail beats a second store
   beside it. The engine's conversation store was deleted with the Qt shell
   (ADR-021).
 - ~~Progressive tessellation (stream coarse then refine)~~ — shipped
   2026-07-25 (ADR-019): drag requests `draft` quality, a cancellable
   background `rebuild` restores `standard` after the drag settles.
-- The warm-standby worker for sub-100 ms slider drags (the per-drag
-  `FreeCADCmd --safe-mode` spawn still dominates the 0.548 s median).
+- ~~The warm-standby worker for sub-100 ms slider drags~~ — shipped as
+  `CadexWarmWorker.py`: one resident worker per open project, spawned on
+  the first `preview_params` (`docs/ARCHITECTURE.md`).
 
 
 ### Published joint sweeps (ADR-350, ADR-351, 2026-09-14)
@@ -729,4 +692,4 @@ To acquire measurements, explicitly build a script declaring
 `assembly.assembly(..., sweep_step_degrees=...)` and/or
 `assembly.assembly(..., sweep_step_mm=...)`. Legacy projects keep their
 accepted identity. The existing inspect arguments and generic paged response
-contract are unchanged; shell clients continue to pass the scope value through.
+contract are unchanged; clients continue to pass the scope value through.

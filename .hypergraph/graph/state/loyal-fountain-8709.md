@@ -7,7 +7,7 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
+Status: superseded
 
 ## Current
 
@@ -129,3 +129,8 @@ Declared target: `gap-a5-unassisted-designs-meet-bar`. This node tracks the crit
 - morning-tooth-4242 — ot10-hexapod-13 meets the bar at 15/21, swept 12/12, T3 2; 18 counted, 11 misses, 7 meet; hexapod retries stop
 - rich-path-1948 — C1 closing run: REPORT opens on 18 counted, 11 misses, 7 meeting; A5 unmet by its letter
 - honest-stream-0109 — long-term rung 2 started: hex's hip_pitch gap closed as an engine defect (ADR-441); no A5 turn run, nothing re-scored
+- light-path-5130 — superseded in orun2's R1 frontier pruning
+
+## Superseded
+
+ot10 ended and is archived (merged d8f69d6c). A5 is scored under ot10's frozen rubric, which orun1 retired (ADR-479–484); the design bar moves to the shelved base-plus-styles charter after orun2. The measured results above stand as the final record; nothing about the criterion's evidence changed. Superseded through orun2 R1's frontier pruning so the frontier lists only live work [rec: light-path-5130].

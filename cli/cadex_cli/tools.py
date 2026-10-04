@@ -201,6 +201,97 @@ BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
             "additionalProperties": False,
         },
     },
+    # The drawing sheet (ADR-516): the owner kept the blueprint composer as a
+    # headless tool. The engine composes it; the store versions it by name.
+    "draw_blueprint": {
+        "description": (
+            "DRAW A DIMENSIONED BLUEPRINT SHEET of the accepted design and store it "
+            "with the project, versioned by `name`; the sheet comes back to you as a "
+            "picture and the dashboard shows it under Drawings. Line drawings on one "
+            "shared scale, up to four views (default: top, iso, front, right in the "
+            "third-angle arrangement); each orthographic view carries the overall "
+            "extents in mm, and every part.measurement(...) the script declares is "
+            "drawn once where it reads (a design that places components lists them "
+            "instead). Callouts are numbered balloons on the three-quarter view, keyed "
+            "in a parts list; a title block names the sheet, version, revision, digest, "
+            "date and scale. Drawing again under a stored name stores its next version, "
+            "and any key you leave out is taken from that sheet's stored recipe. Draw "
+            "one when a design is accepted and worth documenting, not after every edit."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "The sheet's name, its identity and title, e.g. "
+                    "\"gearbox overview\". At most 60 characters.",
+                },
+                "views": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["front", "right", "top", "iso", "iso_back"]},
+                    "description": "1 to 4 distinct views, laid out row-major on a 2x2 grid.",
+                },
+                "callouts": {
+                    "type": ["boolean", "array"],
+                    "items": {"type": "string"},
+                    "description": "true (default: the largest parts, up to 12), false, or "
+                    "the component or output names to balloon.",
+                },
+                "dimensions": {
+                    "type": "boolean",
+                    "description": "Overall extents and declared measurements; default true.",
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "A short note printed on the sheet, at most 400 characters.",
+                },
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+    },
+    # The agent's way to reach the owner without waiting (ADR-512, orun2 A1):
+    # a note in the project's comments.jsonl that the dashboard shows; the
+    # owner's answer is a comment, so it arrives the way every comment does.
+    "leave_note": {
+        "description": (
+            "LEAVE A NOTE FOR THE PERSON REVIEWING THIS DESIGN, AND GO ON "
+            "WITHOUT WAITING. Nobody is watching this turn; notes are read "
+            "later, on the dashboard. "
+            "`type=flag` asks for a review of something: the accepted revision "
+            "as it stands now, or one file in the project named by `artifact` "
+            "(a render, an evaluation report). `type=question` asks a "
+            "question whose answer would change the design. This returns at "
+            "once and nothing answers it during this turn: decide the "
+            "question yourself on the most reversible assumption, say which "
+            "in the note, and carry on. An answer, when one is given, "
+            "arrives at the start of a later turn as a comment answering "
+            "your note. Use it for what only a person can judge, not for "
+            "progress reports."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": ["flag", "question"],
+                    "description": "flag: review this. question: answer this when you can.",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "The note, in a sentence or two: what to look at and "
+                    "why, or the question and the assumption you went on with.",
+                },
+                "artifact": {
+                    "type": "string",
+                    "description": "Optional: one project-relative file path the note is "
+                    "about, e.g. out/hero.png. Omit to flag the accepted revision.",
+                },
+            },
+            "required": ["type", "text"],
+            "additionalProperties": False,
+        },
+    },
     # The training loop (ADR-464): design a task, train on it, evaluate the
     # policy against the task's success spec, revise. The same four tools for
     # every behaviour; none of them knows what is being trained.
@@ -412,13 +503,17 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
         "pair's minimum distance (mm) and common volume (mm³), measured by "
         "the engine from the exact solids at the solved pose, with each "
         "pair's label and catalog identity — the evidence that parts fit, "
-        "where a script's printout is only a claim; `api` is the tool "
-        "surface."
+        "where a script's printout is only a claim; `contacts` is which "
+        "parts' COLLISION SHAPES already touch at rest, at the pose every "
+        "simulation starts from, per assembly.mjcf export — a pair you did "
+        "not mean to rest together, or any `penetrating` pair, is a "
+        "collision shape in the wrong place; `api` is the tool surface."
     ),
     ("inspect", "target"): (
         "The exact name the scope keys on — an output name for `output`, an "
         "internal object name for `object`, a revision for `history`, an "
-        "assembly output name for `inventory`."
+        "assembly output name for `inventory`, an assembly.mjcf output "
+        "name for `contacts`."
     ),
     ("inspect", "path"): (
         'A JSON-pointer-ish path into the scope\'s value, e.g. "/facts" or '
@@ -440,9 +535,9 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
 #: reference images a *shell* stored, and nothing here can put one there.
 #: `blueprint` is IN, and the asymmetry is deliberate (ADR-150): a reference
 #: image is a shell-only *input*, while a blueprint sheet is a stored
-#: *deliverable* of the project — a headless caller cannot render one
-#: (`put_blueprint` is absent from CLI_TOOL_OPS for exactly that reason),
-#: but reading and exporting what the shell stored is this client's job.
+#: *deliverable* of the project. The model draws one with the bridge's
+#: `draw_blueprint` (ADR-516), which calls `put_blueprint` itself, so that
+#: op stays out of CLI_TOOL_OPS: a path to an arbitrary PNG is not a tool.
 INSPECT_SCOPES = (
     "script",
     "output",
@@ -456,6 +551,10 @@ INSPECT_SCOPES = (
     # `cadex clearance` reports, offered to the model whole because the
     # `fit` block on a build reply is a summary of them.
     "clearance",
+    # Which parts' collision shapes touch at rest (ADR-508): the MJCF
+    # export's t=0 contacts, so the agent reads what the dashboard's
+    # collision view shows without a person looking.
+    "contacts",
     "blueprint",
     "api",
 )

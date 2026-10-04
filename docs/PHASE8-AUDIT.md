@@ -820,7 +820,7 @@ compile this source. FreeCADMainCmd, MainPy, GeometryWorker, Qt components,
 Material consumers/resources and Assembly publishers are outside this boundary.
 
 **Search and generated-state evidence.** Enumerated tracked text files outside
-shell/docs/graph/run metadata (files over 2 MB and binary files excluded),
+shell, docs, graph and run metadata (files over 2 MB and binary files excluded),
 and searched src, cMake, package, tests, tools and .github for the macro,
 launcher names and template. Only the four source conditionals mention the
 macro; only Main/CMakeLists.txt consumes the shared launcher and its retained

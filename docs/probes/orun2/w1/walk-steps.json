@@ -1,0 +1,576 @@
+{
+ "1_prompt": {
+  "index_row": {
+   "accepted": {
+    "available": true,
+    "digest": "25984e709195bced8c96fce29643143d20b074d80e57cf6b8acc70003ce1dd95",
+    "param_specs": [
+     {
+      "default": 56.0,
+      "label": "Hip axis half-spacing along X",
+      "max": 66.0,
+      "min": 56.0,
+      "name": "hip_x",
+      "step": 1.0,
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 48.0,
+      "label": "Hip-to-knee length",
+      "max": 58.0,
+      "min": 48.0,
+      "name": "thigh",
+      "step": 1.0,
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 55.0,
+      "label": "Knee-to-foot-centre length",
+      "max": 66.0,
+      "min": 48.0,
+      "name": "shin",
+      "step": 1.0,
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 30.0,
+      "label": "Standing hip angle (knee back)",
+      "max": 32.0,
+      "min": 15.0,
+      "name": "hip_pose",
+      "step": 1.0,
+      "type": "num",
+      "unit": "deg"
+     },
+     {
+      "default": -60.0,
+      "label": "Standing knee angle (shin lean = hip + knee)",
+      "max": -25.0,
+      "min": -70.0,
+      "name": "knee_pose",
+      "step": 1.0,
+      "type": "num",
+      "unit": "deg"
+     },
+     {
+      "default": 25.0,
+      "label": "Hip travel each side of stance",
+      "max": 25.0,
+      "min": 10.0,
+      "name": "hip_range",
+      "step": 1.0,
+      "type": "num",
+      "unit": "deg"
+     },
+     {
+      "default": 40.0,
+      "label": "Knee travel each side of stance",
+      "max": 40.0,
+      "min": 10.0,
+      "name": "knee_range",
+      "step": 1.0,
+      "type": "num",
+      "unit": "deg"
+     },
+     {
+      "default": 2.0,
+      "label": "Hood wall",
+      "max": 2.4,
+      "min": 1.6,
+      "name": "shell_t",
+      "step": 0.2,
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 10.0,
+      "label": "Hood edge radius",
+      "max": 12.0,
+      "min": 8.0,
+      "name": "body_r",
+      "step": 1.0,
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 10.5,
+      "label": "Joint cap radius",
+      "max": 12.0,
+      "min": 10.5,
+      "name": "cap_r",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 7.5,
+      "label": "Foot pad radius",
+      "max": 9.0,
+      "min": 6.0,
+      "name": "foot_r",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 7850.0,
+      "label": "Foot density (7850 = chrome-steel ball foot, 1150 = TPU tip)",
+      "max": 7850.0,
+      "min": 1150.0,
+      "name": "foot_density",
+      "step": 50.0,
+      "type": "num",
+      "unit": "kg/m3"
+     },
+     {
+      "default": 600.0,
+      "label": "Effective density of infilled printed parts",
+      "max": 1240.0,
+      "min": 300.0,
+      "name": "infill_density",
+      "step": 10.0,
+      "type": "num",
+      "unit": "kg/m3"
+     },
+     {
+      "default": 1240.0,
+      "label": "Solid PLA density (thin walls)",
+      "max": 1300.0,
+      "min": 1000.0,
+      "name": "pla_density",
+      "step": 10.0,
+      "type": "num",
+      "unit": "kg/m3"
+     },
+     {
+      "default": 80.0,
+      "label": "Walking target speed",
+      "max": 150.0,
+      "min": 30.0,
+      "name": "target_speed",
+      "step": 5.0,
+      "type": "num",
+      "unit": "mm/s"
+     },
+     {
+      "default": 10.0,
+      "label": "Episode length",
+      "max": 20.0,
+      "min": 4.0,
+      "name": "episode_s",
+      "step": 1.0,
+      "type": "num",
+      "unit": "s"
+     },
+     {
+      "default": 0.8,
+      "label": "Edge break radius on printed parts",
+      "max": 1.0,
+      "min": 0.4,
+      "name": "edge_r",
+      "step": 0.1,
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 3.0,
+      "label": "Max reset tilt",
+      "max": 4.0,
+      "min": 0.0,
+      "name": "reset_tilt",
+      "step": 0.5,
+      "type": "num",
+      "unit": "deg"
+     },
+     {
+      "default": 0.0,
+      "label": "Declare trained policy",
+      "max": 1.0,
+      "min": 0.0,
+      "name": "policy_on",
+      "step": 1.0,
+      "type": "num"
+     },
+     {
+      "default": -45.0,
+      "label": "Cable-tie slot centre along X (rear half of hood top)",
+      "max": -20.0,
+      "min": -60.0,
+      "name": "tie_x",
+      "step": 1.0,
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 20.0,
+      "label": "Cable-tie slot half-spacing across Y",
+      "max": 21.0,
+      "min": 12.0,
+      "name": "tie_span",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 4.0,
+      "label": "Cable-tie slot length (strap width, along X)",
+      "max": 5.0,
+      "min": 3.0,
+      "name": "tie_len",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 2.0,
+      "label": "Cable-tie slot width (strap thickness, along Y)",
+      "max": 2.5,
+      "min": 1.5,
+      "name": "tie_w",
+      "step": 0.1,
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 14.0,
+      "label": "Reward's swing-foot lift target",
+      "max": 25.0,
+      "min": 8.0,
+      "name": "swing_lift",
+      "step": 1.0,
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 0.0,
+      "label": "Retired: a contact margin voids an evaluation (ADR-470); always 0",
+      "max": 0.0,
+      "min": 0.0,
+      "name": "foot_margin",
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 10.0,
+      "label": "Constant reward per surviving control step",
+      "max": 15.0,
+      "min": 3.0,
+      "name": "alive_bonus",
+      "step": 0.5,
+      "type": "num"
+     },
+     {
+      "default": 2.2,
+      "label": "Weight of the moving-foot (slip) cost per foot",
+      "max": 3.0,
+      "min": 0.5,
+      "name": "slip_w",
+      "step": 0.1,
+      "type": "num"
+     },
+     {
+      "default": 6.0,
+      "label": "Foot lift over which the moving-foot (slip) cost fades, Gaussian width",
+      "max": 10.0,
+      "min": 3.0,
+      "name": "slip_fade",
+      "step": 0.5,
+      "type": "num",
+      "unit": "mm"
+     },
+     {
+      "default": 2.5,
+      "label": "Weight of the diagonal-pair foot-height mismatch cost (trot_sync)",
+      "max": 5.0,
+      "min": 0.5,
+      "name": "sync_w",
+      "step": 0.1,
+      "type": "num"
+     },
+     {
+      "default": 2.0,
+      "label": "Weight of the diagonal-pair joint-angle mismatch cost (diag_sym)",
+      "max": 4.0,
+      "min": 0.5,
+      "name": "diag_w",
+      "step": 0.1,
+      "type": "num"
+     },
+     {
+      "default": 8.0,
+      "label": "Weight of the convex speed-tracking cost",
+      "max": 12.0,
+      "min": 3.0,
+      "name": "speed_w",
+      "step": 0.5,
+      "type": "num"
+     },
+     {
+      "default": 2.0,
+      "label": "Weight of the diagonal-pair contact-state mismatch cost (contact_sync)",
+      "max": 5.0,
+      "min": 0.0,
+      "name": "contact_w",
+      "step": 0.1,
+      "type": "num"
+     }
+    ],
+    "param_values": {
+     "contact_w": 2.0,
+     "foot_margin": 0.0,
+     "hip_pose": 30.0,
+     "knee_pose": -60.0,
+     "policy_on": 0.0
+    },
+    "revision": "a7d487ae08b7f7a35276f56ac946d9e34ea505ff7effc58c4717257be0f163d6",
+    "updated_at": "2026-10-04T01:34:32Z",
+    "working_revision": "a7d487ae08b7f7a35276f56ac946d9e34ea505ff7effc58c4717257be0f163d6"
+   },
+   "name": "orun2-w1-quad",
+   "runs": 27,
+   "url": "/p/orun2-w1-quad/"
+  },
+  "cli_turns": [
+   {
+    "digest": "25984e70",
+    "notes": [],
+    "ordinal": 114,
+    "project": "orun2-w1-quad",
+    "prompt": "This is an accepted quadruped walker. Make one small design change: add two shallow cable-tie slots (about 4 x 2 mm) through the top of the hood, so a\u2026",
+    "revision": "a7d487ae08b7f7a35276f56ac946d9e34ea505ff7effc58c4717257be0f163d6",
+    "said": "",
+    "url": "/p/orun2-w1-quad/",
+    "verdict": "accepted",
+    "verdicts": [
+     {
+      "at": "2026-10-04T01:35:07Z",
+      "text": "The owner accepted revision a7d487ae08b7.",
+      "verdict": "accepted"
+     }
+    ],
+    "when": "2026-10-04T01:34:56Z"
+   }
+  ],
+  "listed_on_index": true
+ },
+ "2_accepted": {
+  "revision": "a7d487ae08b7f7a35276f56ac946d9e34ea505ff7effc58c4717257be0f163d6",
+  "index_revision": "a7d487ae08b7f7a35276f56ac946d9e34ea505ff7effc58c4717257be0f163d6",
+  "model_state": "loaded",
+  "components": 62,
+  "verdict": "accepted",
+  "last_revision_write": null
+ },
+ "3_params_sweep": {
+  "param": "shin",
+  "moves": [
+   {
+    "value": 52.0,
+    "ok": true,
+    "error": null,
+    "seconds": 115.96,
+    "revision_before": "a7d487ae08b7f7a35276f56ac946d9e34ea505ff7effc58c4717257be0f163d6",
+    "revision_after": "193a15a6cf9d53fe61dd76865f28db7fd129c89f0f0b9f99ea8440e89891ddf1",
+    "model_state": "loaded"
+   },
+   {
+    "value": 58.0,
+    "ok": true,
+    "error": null,
+    "seconds": 117.02,
+    "revision_before": "193a15a6cf9d53fe61dd76865f28db7fd129c89f0f0b9f99ea8440e89891ddf1",
+    "revision_after": "bde111d915a09ede57adbb3278bf07f7aa446ba615ee791fad6e5798fc9022a5",
+    "model_state": "loaded"
+   },
+   {
+    "value": 55.0,
+    "ok": true,
+    "error": null,
+    "seconds": 116.46,
+    "revision_before": "bde111d915a09ede57adbb3278bf07f7aa446ba615ee791fad6e5798fc9022a5",
+    "revision_after": "27150b47695384fdc66908602297bd0a300592c52d3428efde53b517a41174ba",
+    "model_state": "loaded"
+   }
+  ],
+  "commits_added": 3
+ },
+ "4_render": {
+  "exit": 0,
+  "seconds": 155.0,
+  "envelope_ok": true,
+  "concept": {
+   "available": true,
+   "revision": "27150b47695384fdc66908602297bd0a300592c52d3428efde53b517a41174ba",
+   "relation": "current"
+  },
+  "status": "the accepted design, drawn from revision 27150b476953"
+ },
+ "5_6_export": {
+  "state": "done",
+  "status": "exported 27150b476953 in 116.8 s",
+  "seconds": 117.1,
+  "files": [
+   "battery.step",
+   "battery.stl",
+   "caps_fl.step",
+   "caps_fl.stl",
+   "caps_fr.step",
+   "caps_fr.stl",
+   "caps_rl.step",
+   "caps_rl.stl",
+   "caps_rr.step",
+   "caps_rr.stl",
+   "deck.step",
+   "deck.stl",
+   "esp32.step",
+   "esp32.stl",
+   "floor.step",
+   "floor.stl",
+   "foot_fl.step",
+   "foot_fl.stl",
+   "foot_fr.step",
+   "foot_fr.stl",
+   "foot_rl.step",
+   "foot_rl.stl",
+   "foot_rr.step",
+   "foot_rr.stl",
+   "hip_bolt_fl_0.step",
+   "hip_bolt_fl_0.stl",
+   "hip_bolt_fl_1.step",
+   "hip_bolt_fl_1.stl",
+   "hip_bolt_fr_0.step",
+   "hip_bolt_fr_0.stl",
+   "hip_bolt_fr_1.step",
+   "hip_bolt_fr_1.stl",
+   "hip_bolt_rl_0.step",
+   "hip_bolt_rl_0.stl",
+   "hip_bolt_rl_1.step",
+   "hip_bolt_rl_1.stl",
+   "hip_bolt_rr_0.step",
+   "hip_bolt_rr_0.stl",
+   "hip_bolt_rr_1.step",
+   "hip_bolt_rr_1.stl",
+   "hip_horn_fl.step",
+   "hip_horn_fl.stl",
+   "hip_horn_fr.step",
+   "hip_horn_fr.stl",
+   "hip_horn_rl.step",
+   "hip_horn_rl.stl",
+   "hip_horn_rr.step",
+   "hip_horn_rr.stl",
+   "hip_servo_fl.step",
+   "hip_servo_fl.stl",
+   "hip_servo_fr.step",
+   "hip_servo_fr.stl",
+   "hip_servo_rl.step",
+   "hip_servo_rl.stl",
+   "hip_servo_rr.step",
+   "hip_servo_rr.stl",
+   "hood.step",
+   "hood.stl",
+   "imu.step",
+   "imu.stl",
+   "knee_bolt_fl_0.step",
+   "knee_bolt_fl_0.stl",
+   "knee_bolt_fl_1.step",
+   "knee_bolt_fl_1.stl",
+   "knee_bolt_fr_0.step",
+   "knee_bolt_fr_0.stl",
+   "knee_bolt_fr_1.step",
+   "knee_bolt_fr_1.stl",
+   "knee_bolt_rl_0.step",
+   "knee_bolt_rl_0.stl",
+   "knee_bolt_rl_1.step",
+   "knee_bolt_rl_1.stl",
+   "knee_bolt_rr_0.step",
+   "knee_bolt_rr_0.stl",
+   "knee_bolt_rr_1.step",
+   "knee_bolt_rr_1.stl",
+   "knee_horn_fl.step",
+   "knee_horn_fl.stl",
+   "knee_horn_fr.step",
+   "knee_horn_fr.stl",
+   "knee_horn_rl.step",
+   "knee_horn_rl.stl",
+   "knee_horn_rr.step",
+   "knee_horn_rr.stl",
+   "knee_servo_fl.step",
+   "knee_servo_fl.stl",
+   "knee_servo_fr.step",
+   "knee_servo_fr.stl",
+   "knee_servo_rl.step",
+   "knee_servo_rl.stl",
+   "knee_servo_rr.step",
+   "knee_servo_rr.stl",
+   "lid_fl.step",
+   "lid_fl.stl",
+   "lid_fr.step",
+   "lid_fr.stl",
+   "lid_rl.step",
+   "lid_rl.stl",
+   "lid_rr.step",
+   "lid_rr.stl",
+   "model-model.xml",
+   "pca9685.step",
+   "pca9685.stl",
+   "regulator.step",
+   "regulator.stl",
+   "shin_fl.step",
+   "shin_fl.stl",
+   "shin_fr.step",
+   "shin_fr.stl",
+   "shin_rl.step",
+   "shin_rl.stl",
+   "shin_rr.step",
+   "shin_rr.stl",
+   "thigh_fl.step",
+   "thigh_fl.stl",
+   "thigh_fr.step",
+   "thigh_fr.stl",
+   "thigh_rl.step",
+   "thigh_rl.stl",
+   "thigh_rr.step",
+   "thigh_rr.stl",
+   "tray.step",
+   "tray.stl",
+   "visor.step",
+   "visor.stl",
+   "walk_task-task.json"
+  ],
+  "downloads": {
+   ".step": {
+    "name": "battery.step",
+    "bytes": 7251,
+    "head_ok": true
+   },
+   ".stl": {
+    "name": "battery.stl",
+    "bytes": 3052,
+    "head_ok": true
+   },
+   ".xml": {
+    "name": "model-model.xml",
+    "bytes": 24828,
+    "head_ok": true
+   }
+  },
+  "step": 62,
+  "stl": 62,
+  "mjcf": [
+   "model-model.xml"
+  ]
+ },
+ "progress_tail": [
+  "| 2026-10-01T18:50:05Z | export | 7df101b0 | f5eb79bf | export \u2192 /tmp/r1c-RUXu/r1-confirm-1-reopen | total_reward 3342.6 (\u0394 \u00b10.0 vs f5eb79bf at 3342.6) |",
+  "| 2026-10-01T18:54:18Z | evaluate | 7df101b0 | f5eb79bf | evaluate walk_policy on walk_task \u2192 pass (r1-confirm-1) | evaluation pass 10/10 seeds |",
+  "| 2026-10-04T01:34:56Z | prompt | a7d487ae | 25984e70 | prompt: This is an accepted quadruped walker. Make one small design change: add two shallow cable-tie slots (about 4 x 2 mm) through the top of the hood, so a\u2026 |  |",
+  "| 2026-10-04T01:37:16Z | params | 193a15a6 | d8c36bc7 | params shin=52 |  |",
+  "| 2026-10-04T01:39:14Z | params | bde111d9 | c7bb5e3c | params shin=58 |  |",
+  "| 2026-10-04T01:41:10Z | params | 27150b47 | 25984e70 | params shin=55 |  |",
+  "| 2026-10-04T01:43:51Z | render | 27150b47 | 25984e70 | render \u2192 review/render/ (front, top, right, iso) |  |",
+  "| 2026-10-04T01:45:49Z | export | 27150b47 | 25984e70 | export \u2192 ~/cadex-projects/orun2-w1-quad/review/export/27150b47695384fdc66908602297bd0a300592c52d3428efde53b517a41174ba |  |"
+ ]
+}

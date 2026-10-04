@@ -32096,3 +32096,2120 @@ torque on a tripod. `docs/DESIGN-LANGUAGE.md` §3 and §5 carry it marked so.
 `test_the_cross_horn_the_overlay_names_is_shorter_than_the_default`
 (`cli/tests/test_turn_loop.py`) both fail on the previous overlay. ADR-440's
 test no longer asks for "both sides of the joint".
+
+## ADR-495 — The Blender shell is disabled: nothing builds, gates or reads `shell/` (2026-10-03)
+
+**Status:** accepted. orun2 S1, the **disable commit** of the two-commit
+removal protocol (`docs/FREECAD.md` §3). The delete commit is separate and
+later. Retires ADR-201's GUI-attached mode. `main` is tagged
+`v1-blender-shell`, so the old application is one checkout away. [Cadex-new]
+
+**Why.** The orun2 charter's bet: Cadex is the engine, the dashboard and the
+agent, and the owner works almost entirely through autonomous CLI runs. The
+shell is 19,446 of 25,633 tracked files, a second toolchain, the GPL half and
+a 1.3 GB library checkout per platform (`docs/probes/orun2/D1-BEFORE.md`).
+Every `mesh_agent` module, tool and editor was read and given a row in
+`docs/SHELL-PARITY.md` before this commit, so nothing is disabled unread.
+
+**What stops reaching `shell/`.**
+- `pixi.toml`: the tasks `setup`, `build-shell`, `app`, `install-app`,
+  `uninstall-app` and `gate` are removed. The setup is `setup-engine` then
+  `build-engine` (ADR-060's route, now the only one). D1 will define the
+  dashboard's one-command entry; until then there is no `app` task.
+- `package/app/build_app.sh` (the scrubbed-environment shell build, bundle
+  install and gate runner) and `package/app/make_app_icon.py` (wrote the
+  bundle's `.icns` into `shell/release/`) are deleted. The second was GPL in
+  an LGPL tree, the one `SPDX_EXEMPT` row ADR-171 flagged; the row goes with
+  it. `bump_version.sh` stays, with its comment corrected.
+- CI (`.github/workflows/cadex-app.yml`): the macOS `app` job loses the shell
+  libraries cache, the homebrew toolchain, the LFS pull, the shell build, the
+  bundle gates and the bundle upload, and becomes `engine-macos`. Both jobs
+  run `setup-engine` first. `.gitmodules` says nothing checks out `shell/lib`.
+- Tests that read `shell/` are rewritten, not weakened:
+  - `test_the_shell_never_learns_about_mujoco` becomes
+    `test_the_dashboard_never_learns_about_mujoco`: the M2 invariant
+    (ADR-075, ADR-077) moves with the UI role, over `review_server`'s whole
+    relative-import closure and `review_static/*.js`, and fails if the
+    closure shrinks to nothing.
+  - `rollout_bake_integration.py` becomes `rollout_review_integration.py`:
+    it still writes a rollout trace from a live `cadexd`, and now reads it
+    through the dashboard's own `_first_frame_placements` and `_placement`
+    on every frame instead of baking it in the bundle. Measured on sb1x: 52
+    frames, 2 components, the swing arm moved and the base did not.
+  - `cli/tests/test_project_docs.py`'s three tests that pinned facts read out
+    of `mesh_agent` (its model default, its four handlers, that it takes no
+    lock) and the GUI leg table are replaced by two: the scaffold and
+    `docs/CLI.md` say the GUI-attached mode is retired, and no file under
+    `cli/cadex_cli` names a `shell/` path, `mesh_agent` or
+    `CADEX_BLENDER_EXECUTABLE`.
+- **ADR-201's GUI-attached mode is retired.** The project scaffold no longer
+  tells a new project to Rebuild Model or reopen before a GUI edit, and
+  `docs/CLI.md` §2's GUI section and leg table become one paragraph naming
+  the dashboard. `walk.py` and `agent.py` comments follow.
+
+**Deliberately left for later units.** `test_licensing_compliance.py` still
+checks headers and the inherited-modification manifest of the shell files
+that remain on disk; that restatement is the delete commit's.
+`test_blender_recipe.py` and the `mesh.blender` op, and the Codex and pi
+backends, are S1's next unit. The ~190 live docs that still describe the
+shell are R1's. The shell's `ENABLE_TOOL_SEARCH=false` (ADR-163) is an open
+A1 item: whether the CLI turn needs it is not yet measured.
+
+**What it costs.** No pixi task produces a desktop application. macOS loses
+its only GUI until a dashboard-copying desktop app is built (not this run).
+CI no longer proves the shell builds, which is the point.
+
+## ADR-496 — `mesh.blender` is retired with the shell (2026-10-03)
+
+**Status:** accepted. orun2 S1. Supersedes ADR-185. [Cadex-new]
+
+**Why.** `mesh.blender` evaluated native bpy recipes in a sandboxed Blender
+subprocess. That subprocess's only supplier was the shell's own binary,
+passed in as `CADEX_BLENDER_EXECUTABLE`. With the shell disabled (ADR-495)
+and about to be deleted, the op has no runtime on any machine the product
+installs. Keeping it would keep a Blender dependency in a product that no
+longer ships Blender.
+
+**Who used it.** Only the example `examples/blender_enclosure.py`. A grep of
+every script and stored definition under the projects directory (284
+projects, including hex, ot5–ot11, orun1-*, sweep-* and digestbug-*) and the
+jobs directory found **no** `mesh.blender` call and no stored
+`"operation": "blender"` definition. No accepted attempt depends on it, so
+no project loses its restore path.
+
+**What is removed.**
+- the `blender` method on the mesh namespace (`cadex_mesh_api.py`), its
+  `exported_names` entry and the mesh pack's tool listing
+  (`CadexScriptedDomains.py`);
+- `contains_blender_recipe` and the recipe digest branch in
+  `cadex_mesh_worker.py`; `APPROXIMATING_OPERATIONS` is `{"decimate"}`;
+- `cadex_blender_runner.py` and `cadex_blender_worker.py`, their CMake
+  install lines, their staging by filename (`CadexScriptedRuntime.py`) and
+  the architecture test's list;
+- `CADEX_BLENDER_EXECUTABLE` from the worker's preserved environment;
+- `examples/blender_enclosure.py`, `cadex_tests/test_blender_recipe.py`
+  (10 tests, the real-worker half of which always skipped without a shell);
+- `docs/BLENDER-RECIPES.md` moves to `docs/history/`. VISION, AGENTS,
+  ARCHITECTURE, INTEGRATION, XSCRIPT, CLI and ORGANIC drop the exception.
+
+**Protocol.** `mesh.blender` was never an op: ADR-185 added "no request or
+response field or op", and `OP_ARG_SPECS` has no entry to change.
+`docs/INTEGRATION.md` drops its runtime paragraph in the same commit. The
+packaged lifecycle gate ran against a restaged payload, because the payload's
+file list changed.
+
+**What it costs.** An agent can no longer write organic geometry in bpy. The
+organic path is the `part`/`mesh` surface of `docs/ORGANIC.md`. Reversing
+this means reviving the runner from `v1-blender-shell` and naming a Blender
+runtime the product installs on its own, without a shell.
+
+## ADR-497 — Claude Code is the only harness: Codex and pi are retired (2026-10-03)
+
+**Status:** accepted. orun2 S1, charter A4. Supersedes ADR-174 and ADR-175,
+and ADR-184's harness and account selectors. [Cadex-new]
+
+**Why.** The Codex and pi backends were a shell preference (ADR-174,
+ADR-175). The headless CLI never drove either, and it is now the only agent
+front end. Keeping a second and third harness alive means keeping their event
+translators, their sandboxing rules and their sign-in flows tested against a
+UI that no longer exists. The owner runs Claude Code. The charter's
+assumption A4 makes it the only harness.
+
+**What is removed now, outside `shell/`.**
+- `AGENTS.md` no longer offers Codex and pi as a preference. It says Claude
+  Code is the only harness.
+- `docs/VISION.md`'s "second provider stack" non-goal names Claude Code
+  alone and drops the harness selector.
+- `docs/IDEAS.md`'s bridge-CLI idea no longer counts a pi extension as a
+  live transport.
+- `docs/SHELL-PARITY.md`: the `backend.py` (Codex and pi half), `harness.py`
+  and `pi_tools.js` rows, and the sandboxing note, move from *drop (proposed)*
+  to *dropped*, citing this ADR.
+- `package/rattler-build/scripts/validate_cadex_macos_runtime.py` is deleted.
+  Nothing called it. Its checks imported `CadexProvider` and `CadexCodex`,
+  the VibeCAD-era provider and Codex app-server modules that ADR-021
+  deleted, so every check that reached for a harness could only fail.
+- `cli/tests/test_project_docs.py` gains
+  `test_claude_code_is_the_only_harness`. No CLI module may name `codex`,
+  `pi_tools`, `PiBackend` or `registerTool`, and AGENTS.md and VISION must
+  state the one harness. It fails on the previous AGENTS.md.
+
+**What goes with the delete commit.** The backend code itself
+(`mesh_agent/backend.py`'s `CodexBackend` and `PiBackend`, `harness.py`,
+`pi_tools.js`, the Codex half of `mcp_shim.py`'s launch, the harness rows of
+`prefs.py`) and its shell suites. They are under `shell/`, which is already
+disabled (ADR-495), so nothing builds or runs them in the meantime.
+
+**Left for R1.** `docs/ROADMAP.md` still ticks "harness/account settings …
+for Claude Code, Codex, and pi" under Phase 6. ROADMAP is not hand-edited
+in a work unit. The R1 rewrite marks Phase 6 historical.
+`docs/BLENDER.md` still describes the three backends. It moves to
+`docs/history/` under R1, where it is a true account of the old shell.
+
+**Engine and CLI.** No change was needed. Neither ever had a harness
+switch: `cli/cadex_cli/agent.py` finds and launches `claude` only, and the
+engine guidance (`CadexAgentGuidance.md`, `agent.system_prompt`) names no
+harness.
+
+**What it costs.** A user without a Claude Code subscription cannot drive
+Cadex with another agent CLI. Reversing this means writing a backend in
+`cli/` from scratch. The shell's code is GPL and cannot be copied into
+`cli/`, but `v1-blender-shell` records how ADR-174 and ADR-175 translated
+each stream into Claude-shaped frames.
+
+## ADR-498 — `shell/` is deleted, and the repository carries no GPL code (2026-10-03)
+
+**Status:** accepted. orun2 S1, the delete commit after ADR-495's disable
+commit. Supersedes ADR-030's two-fork layout, ADR-091's `shell/` diff rule,
+ADR-171's Blender half, and ADR-183. [Cadex-new]
+
+**What is deleted.** All of `shell/`: 19,446 tracked files, about 9.3
+million lines, including the `mesh_agent` package, Blender's vendored
+`extern/`, its 111-line `.gitattributes` of LFS rules and the 6,716 LFS
+pointers they governed, and the four `shell/lib/<platform>` submodule
+gitlinks with their `.gitmodules` entries. Also:
+- the six `/shell/build_*` rules in `.gitignore`;
+- `docs/probes/named-angle/background_probe.py`, the one GPL file outside
+  `shell/`. It ran the shell's renderer through `bpy` and `mesh_agent`, so
+  it could not run any more; its README says so and names the tag;
+- `*.blend1` and `*.blend@` from the `.gitignore` the CLI writes into a new
+  project, since no front end writes a `.blend` now.
+
+Every `mesh_agent` module, tool and editor was read and described in
+`docs/SHELL-PARITY.md` before this commit (ADR-495's ledger rule). Its 29
+*drop (proposed)* rows become **dropped**, citing this ADR, for the reasons
+each row gives. Rows still marked *to port* are D2 and A1 work, not losses:
+the code they describe is at `v1-blender-shell`, read but never copied.
+
+**The licensing restatement.** An audit of every tracked file's header
+after the delete found no GPL or AGPL SPDX identifier outside Markdown
+prose. The Bison-generated parsers in `src/App` and `src/Base` carry the
+Bison exception and are LGPL. So the repository is LGPL-2.1-or-later, plus
+the permissive and LGPL third-party trees `THIRD_PARTY_LICENSES.md` maps.
+The payload's one GPL binary, conda's `readline`, is unchanged and stays
+ADR-171's counsel item: it is a dependency of the staged payload, not code
+in this repository.
+- `docs/inherited-modifications.json` drops its `blender` tree (44
+  entries). FreeCAD is the one fork it describes.
+- `test_licensing_compliance.py` drops the GPL SPDX scopes, the
+  `bl_mesh_agent*` header check, the "§2a stays eight files" test and the
+  shell-client seam test. It gains
+  `test_the_manifest_names_only_the_fork_still_in_the_tree` and
+  `test_the_repository_carries_no_gpl_source`. The second fails if anything
+  is tracked under `shell/`, if a tracked non-Markdown file declares a GPL
+  SPDX identifier in its first twelve lines, or if `NOTICE` or
+  `THIRD_PARTY_LICENSES.md` names `shell/`. `NOTICE` no longer has to name
+  Blender. Run against the unchanged `NOTICE` it fails.
+- `NOTICE` drops the Blender entry and says the shell is gone.
+  `THIRD_PARTY_LICENSES.md` has one fork row and no shell sections, and
+  maps each obligation to the staged payload's root, not to `Cadex.app`.
+- `docs/PROVENANCE.md`: §1's tables (the line counts re-measured for the
+  trees that remain), §3 as history, §7 as one licence, §8 and §9.
+  `README.md`'s Credits and License, `CONTRIBUTING.md`'s licensing rules,
+  `docs/INTEGRATION.md`'s licence reasoning, `cli/README.md` and the
+  `cli/cadex_cli` docstring say the same.
+- `tools/apply_modification_notices.py` describes the FreeCAD tree only.
+
+**Docs moved and repointed.** `docs/BLENDER.md` and `docs/BLENDER-TREE.md`
+move to `docs/history/`, each with a superseded banner, joining
+`BLENDER-RECIPES.md` (ADR-496). `AGENTS.md` loses its shell repo-map rows,
+the GPL boundary and Blender-tree change-policy bullets, the `shell/` diff
+rule in the dynamics vertical and both doc-index rows, and gains a
+`SHELL-PARITY.md` row (404 → 353 lines). `docs/FREECAD.md`, `VISION.md` and
+`ORGANIC.md` point at the history copies. Comments in four engine files and
+three dynamics suites that cited "no `shell/` diff" now say "no front-end
+change", and `_ASSET_SUFFIXES`'s "must stay exactly three" note, whose only
+reason was the shell's mirror of it, is restated without that reason.
+
+**Left for R1, named so it is not lost.** These live docs still describe
+the shell as present: `docs/ARCHITECTURE.md` (its pipeline diagram and a
+build table listing `pixi run setup` and `build-shell`), `docs/MUJOCO.md`,
+`SECURITY.md` and `PRIVACY_POLICY.md` (both describe `mesh_agent`'s data
+flows and the `.blend` transcript), `docs/VISION.md`'s interface section,
+`AGENTS.md`'s "Where this is going" paragraph, and `docs/ROADMAP.md`, which
+a work unit does not hand-edit. Each needs a rewrite for the dashboard, not
+a path fix, and R1 owns that rewrite.
+
+**What it costs.** Nothing that runs. Nothing built, gated or imported
+`shell/` since ADR-495. The old application is one checkout away at
+`v1-blender-shell`. Reversing this means restoring the tree from that tag,
+its `blender` manifest half and its licensing tests, and accepting a GPL
+half again.
+
+## ADR-499 — No live doc names the deleted shell, and a test holds it (2026-10-03)
+
+**Status:** accepted. Closes the live-doc half of charter S1 that ADR-498
+left for later.
+
+**What changed.** ADR-498 deleted `shell/` and named the live docs that
+still described it as present. Those are now rewritten for the engine,
+dashboard and agent:
+
+- `SECURITY.md`: scope is `src/Mod/cadex/**` and `cli/cadex_cli/**`; the
+  inherited-Blender scope row, the `.blend` script and transcript bullets
+  and the `shell/lib` dependency paragraph are gone. The trust boundaries
+  are restated from the CLI's code: `--tools ""` and `--strict-mcp-config`
+  (`agent.py`), a unix-socket bridge in a `0700` directory with a per-run
+  token (`bridge.py`, `mcp.py`), and a dashboard bound to `127.0.0.1` by
+  default.
+- `PRIVACY_POLICY.md`: what leaves the machine is the CLI's tool surface
+  (`tools.py`: the op tools plus `look`, `train_*` and `evaluate`), what is
+  stored is the project directory and `agent.json`, and the one tool that
+  moves data off the machine is `training/remote_train.sh`, run by hand.
+  Blender's online features and `WITH_PYTHON_SECURITY` are gone with it.
+- `docs/ARCHITECTURE.md`: §1 and §2's pipeline diagram name `cli/` as the
+  front end; §5's build table is `setup-engine`, `build-engine` and
+  `stage-engine` (no `pixi run setup`, `app`, `build-shell` or `gate`, none
+  of which exists in `pixi.toml`), and the two-toolchain section is
+  deleted; the conversation-history note points at `agent.json`; §6's
+  shell-only file-open item is deleted.
+- `docs/cadex-release-packaging.md`: retitled "The Engine Payload". The
+  bundle install section (`install-app`, no longer a task), the
+  `pixi run app` staged-path rationale and Blender's license manifest are
+  deleted; CI is described as the two engine-only jobs it is.
+- `docs/MUJOCO.md` and `docs/INTEGRATION.md` keep every historical "no
+  shell diff" claim, in words rather than as a path.
+- One-line fixes in `AGENTS.md`, `docs/VISION.md`, `docs/ORGANIC.md`,
+  `docs/IDEAS.md`, `docs/FREECAD.md`, `docs/CLI.md`, `docs/PROVENANCE.md`,
+  `training/README.md`, `analysis/README.md` and three removal audits.
+- `docs/ASSEMBLY-VISIBILITY-AUDIT.md`, a procedure run against the shell's
+  binary, moves to `docs/history/`.
+
+**The test.** `cli/tests/test_project_docs.py::
+test_no_live_doc_names_the_deleted_shell` fails if any tracked Markdown
+file names `shell/`, `mesh_agent`, a `.blend` or `CADEX_BLENDER_EXECUTABLE`,
+outside a declared history set: this log, `docs/history/`, `docs/probes/`
+(frozen run evidence), `docs/SHELL-PARITY.md` (the ledger of the shell
+itself), `docs/ROADMAP.md`, `STATE.md`, `.hypergraph/` and `.ouroboros/`.
+Run against the previous tree it names 19 files.
+
+**`docs/ROADMAP.md` is exempt, and that is an assumption.** The orun2
+charter forbids hand-editing it and also asks R1 to rewrite it. Until the
+owner resolves that, the roadmap keeps its 48 shell mentions as phase
+history and R1 decides.
+
+**Not done here.** VISION's interface section and AGENTS.md's "Where this
+is going" still describe a Rust shell as the target, and ARCHITECTURE.md's
+project-store section still describes the shell choosing the store root.
+Those are prose, not paths, and R1's rewrite owns them.
+
+## ADR-500 — Cadex is three things: the engine, the dashboard, the agent (2026-10-03, owner charter orun2)
+
+**Status:** accepted. A direction change. Supersedes ADR-025's second
+replacement (our own Rust + wgpu + egui shell, ROADMAP Phase 12) and the
+"Blender-class UX" pillar of `docs/VISION.md`. ADR-025's first replacement
+(a pybind11 binding on OCCT, Phase 11) and "OCCT stays" are untouched.
+
+**The bet.** The owner uses Cadex almost entirely through autonomous CLI
+runs. The product is therefore three things and nothing else:
+
+1. **the engine** — builds, verifies, measures, renders, simulates and
+   exports a design from its script, unchanged in role;
+2. **the dashboard** — `./cadex review`, grown from the review page into the
+   only UI, built for *looking, reviewing and light steering*: a
+   standard-library server, vanilla JS and vendored three.js, writing only
+   through the code paths the CLI uses;
+3. **the agent** — Claude Code (ADR-497) with one tool surface
+   (`cli/cadex_cli/tools.py`), one guidance source, and a non-blocking
+   channel to the owner.
+
+A desktop app may later be built from scratch to copy the dashboard. That
+is a different plan from Phase 12: it copies a page that already works
+rather than specifying a shell from a Blender prototype.
+
+**What it costs.** Measured in `docs/probes/orun2/D1-BEFORE.md` and
+ADR-495…499:
+
+- **Hands-on modelling UI is gone**, not deferred: the cage ring-drag
+  (ADR-127's gesture; the `cage(...)` and `part.loft_cage` ops stay), the
+  wiring editor, the interactive blueprint editor, Blender playback baking,
+  and the landing page, top bar and window chrome. `docs/SHELL-PARITY.md`
+  names each with its reason.
+- **A native viewport is gone.** The viewer is three.js in a browser; it
+  will not match Blender's interaction quality, and the bet is that a
+  person reviewing an autonomous result does not need it to.
+- **Other harnesses are gone** (ADR-497), and with them the option of
+  running a turn without a Claude Code login.
+- **What was bought**: 19,446 of 25,633 tracked files (75.9%), a second
+  toolchain, a GPL half (ADR-498), 6,716 LFS objects and a ~1.3 GB library
+  checkout; and a product that builds on linux, where before the documented
+  application was macOS-only.
+
+**What would make the owner reverse it.** Any one of:
+
+- the owner finds themselves wanting to model by hand — dragging a cage
+  ring, routing a wire, editing a drawing — more than occasionally, and a
+  comment or a prompt is not an adequate substitute;
+- the dashboard cannot carry review: a design the owner needs to judge
+  cannot be judged from the browser (viewer fidelity, latency, or a missing
+  view), and fixing that would need a framework, a build step or a native
+  renderer, which the light-dashboard rule (charter A2) forbids;
+- the autonomous loop stops being the main way the product is used.
+
+Reversal is a checkout away: `v1-blender-shell` holds the shell, and the
+cadexd protocol it spoke is unchanged and test-pinned.
+
+**Changed in this commit.** `AGENTS.md` is rewritten for the three-part
+product at 215 lines (from 353; the charter's bar is half of 432), and
+`cli/tests/test_project_docs.py::test_agents_md_describes_the_three_part_product`
+holds the bar and the three names. `docs/VISION.md`'s product statement,
+interface section and non-goals no longer name a Rust shell or a Blender
+UX; the hands-on modelling UI becomes an explicit non-goal. ROADMAP's
+Phase 12, `docs/DASHBOARD.md` and the rest of R1 are later units.
+
+**Applied to README, ARCHITECTURE, INTEGRATION and ROADMAP (2026-10-03,
+orun2 R1 part 2).** `README.md` and `docs/ARCHITECTURE.md` §1 name the three
+parts. `docs/INTEGRATION.md` is now the contract between the engine and its
+one client (`cli/`). It says how that client resolves an engine
+(`--engine`, `CADEX_ENGINE_ROOT`, the build tree) and how the dashboard's
+trace reader plays a rollout, and its options and decision-gate sections are
+marked historical. ARCHITECTURE's store section says the dashboard reads the
+accepted attempt and never writes. ROADMAP has exactly the three changes the
+charter's R1 names: Phase 12 superseded by a desktop app that copies the
+dashboard, Phase 13b's shell box closed by deletion, and Phase 6 marked
+historical. The charter forbids hand-editing ROADMAP.md and asks for these
+three changes; its specific request is followed, as ADR-499 assumed.
+`test_readme_architecture_and_integration_describe_the_three_parts` pins
+all of this. `docs/DASHBOARD.md` and the frontier pruning remain.
+
+## ADR-501 — `docs/DASHBOARD.md` replaces `docs/REVIEW-DESIGN.md` as the UI spec (2026-10-03, owner charter orun2 R1)
+
+**Status:** accepted. A rename with a rewritten preamble; no rule changes.
+
+**Context.** ADR-500 made the dashboard Cadex's only UI, and the orun2
+charter's R1 asks for a `docs/DASHBOARD.md` that replaces
+`docs/REVIEW-DESIGN.md` and keeps its palette, type scale and dark-floor
+rules. `docs/ARCHITECTURE.md` already linked the new name, and README's
+DASHBOARD link pointed at the old file.
+
+**Decision.** `docs/REVIEW-DESIGN.md` is moved with `git mv` to
+`docs/DASHBOARD.md`, so its history follows it. The preamble names the
+dashboard as the second of the three parts, restates charter A2 (no npm,
+no build step, no framework) and A3 (the project directory is the truth;
+writes go through the CLI's paths only), and §1 says what is true today:
+the server answers `GET` and `HEAD` only, and D2's steering controls are
+still to come. §2–§17 — hierarchy, the 12/14/17/22 px type scale, the
+dark palette whose `--bg` is the viewport's scene background, the dark
+prototype floor of §10 and §16 — are unchanged, as are the §7/§8 ot6
+measurements, which `cli/tests/test_review_design.py` still checks.
+Every live pointer (AGENTS.md, README, VISION, CLI.md, the dashboard's
+static files, `video.py` and the tests) now names `DASHBOARD.md`.
+`docs/review-design/` keeps its name: it is the ot6 evidence directory
+those measurements cite.
+
+**Deviation recorded.** The critic suggested moving REVIEW-DESIGN.md to
+`docs/history/`. It is not kept there as well: every rule in it is live,
+so a copy in `docs/history/` would be a second, stale version of the
+current spec, and `git log --follow docs/DASHBOARD.md` reaches the old
+file. `docs/BLENDER.md`, `BLENDER-TREE.md` and `BLENDER-RECIPES.md` were
+already in `docs/history/`.
+
+**Test.** `test_dashboard_md_replaces_review_design_as_the_ui_spec`
+(`cli/tests/test_project_docs.py`) pins that the spec exists with its
+type, palette and dark-floor sections, that no `docs/REVIEW-DESIGN.md`
+exists, that no live doc or `cli/` file names it, and that the Blender
+docs exist only under `docs/history/`.
+
+## ADR-502 — `cadex app`: a bare `cadex` serves the dashboard over a projects directory (2026-10-03, owner charter orun2 D1)
+
+**Status:** accepted. A new subcommand and a changed bare invocation; no
+protocol or tool-surface change.
+
+**Context.** D1 asks for one command from a clone to a running dashboard,
+with `./cadex` and no project opening or serving it. `cadex review`
+served exactly one project, and a bare `./cadex` printed help and exited
+2. The review page asked for every resource by an absolute path, so it
+could only live at a server's root.
+
+**Decision.** `cadex app [--projects DIR]` serves `ProjectsServer`
+(`review_server.py`): `/` is a small index page (`projects.html`,
+`projects.js`, sharing `review.css`) over `/api/projects`
+(`cadex-projects-v1`), which lists every non-hidden subdirectory holding a
+`script.json`, re-read per request, with its accepted identity and run
+count. Each project's unchanged review page is mounted at `/p/<name>/`;
+`index.html` now links its files relatively, and `review.js` prefixes its
+requests — and the server-absolute mesh URLs it hands the viewer — with
+the `/p/<name>` the page was loaded under, which is empty at `/`, so
+`cadex review` is byte-for-byte the same in what it requests. A bare
+`cadex` (no prompt, no subcommand) runs `cadex app`; help moved to the
+`-h` it always had. `pixi run app` is `./cadex app`. The directory is
+`--projects`, `CADEX_PROJECTS`, then `~/cadex-projects` — the convention
+every doc example already used — created if absent so a fresh clone
+reaches a first page. It binds 127.0.0.1 by default, writes nothing and
+records no `PROGRESS.md` row or commit, as `cadex review` does not.
+
+**Cost.** `review_scene.js` is untouched, so the scene-video style digest
+(`video.py`) does not move. A script that relied on bare `cadex` exiting 2
+now starts a server; `cadex -h` is the replacement.
+
+**Test.** `cli/tests/test_app.py`: the listing (projects only, live), the
+prefix mount and its 404s, the bare-invocation routing, the directory
+defaults, the shim served over loopback and stopped by SIGTERM without
+writing to a project, `pixi run app`'s task, and a headless-Chromium walk
+from the index to a project whose accepted and run models draw under the
+prefix.
+
+## ADR-503 — The dashboard's first write: a parameter slider through `cadex params`, behind a per-launch token (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. A new HTTP route on the dashboard server
+(`POST api/params`); no cadexd protocol, tool-surface or CLI-flag change.
+
+**Context.** D2 asks that a person move a parameter slider in the browser
+and see the rebuilt model, that writes be safe by default (127.0.0.1, a
+per-launch token or a same-origin check), and A3 that the dashboard never
+own a second write path. Until now the server answered GET and HEAD only.
+A3 permits a warm `cadexd` per open project; holding one would also hold
+the project lock, or else need a staleness rule against agent turns
+writing the same project, so the cold path was measured first: `cadex
+params` on a one-box plate takes 0.53 s end to end on the dev tree,
+against 0.48 s for a warm `set_params` with display in
+`cadexd_latency_integration.py`.
+
+**Decision.** `POST api/params` (under `/` for `cadex review`, under
+`/p/<name>/` for `cadex app`) takes `{"values": {name: number}}`, checks
+each name is an identifier and each value a finite number, and runs
+`cadex params --project <root> --set NAME=VALUE ... --json` through
+`walk.run_leg` — the way `cadex walk` spawns a leg, with a 300 s bound and
+no `--wait`. The reply is the child's envelope (`accepted_revision`,
+`digest`, `params`, `error`) with its exit code and seconds: 200 on
+success, 400 for a usage error, 422 for an engine refusal, 409 otherwise
+(a held project lock is this). No warm engine is kept. Every POST is
+checked before routing: `X-Cadex-Token` must equal the token
+`secrets.token_urlsafe(32)` minted per server launch and written into the
+`<meta name="cadex-write-token">` of the `index.html` that server serves,
+and an `Origin` header, when present, must equal `Host`. On the page,
+each declared number with a finite range is a slider on the accepted view;
+one release is one write; the table is not rebuilt under a write in
+flight; the following poll reloads the model because the accepted
+revision moved (`docs/DASHBOARD.md` §18).
+
+**Cost.** Each slider release is a full CLI run: a `PROGRESS.md` row and a
+project commit per move, which is A3 taken literally, and a cold engine
+start per move, which costs about 50 ms over a warm engine on a trivial
+model and more on a heavy one. The token defends against cross-site
+requests, not against DNS rebinding of a loopback name, where a page could
+read the token as same-origin; the server's 127.0.0.1 bind and `tailscale
+serve` in front for remote use are the posture, as before. `cadex review`
+and `cadex app` no longer describe themselves as read-only.
+
+**What would reverse it.** A measured slider latency on a real robot
+project far over the raw bar would justify the warm engine A3 allows,
+with its lock and staleness rule written down; owner preference for fewer
+commits per sweep would justify a coalescing rule, not a second write path.
+
+**Test.** `cli/tests/test_dashboard_writes.py`: with no engine, every POST
+without the token, with another launch's or a truncated token, or from
+another origin is refused 403 before routing and spawns nothing; a tokened
+write spawns exactly `cadex params --project <root> --set ... --json`;
+malformed bodies and unknown paths are 400 and 404; a refused child is a
+409 carrying its error; `cadex review` guards its root the same way. With
+a real engine in headless Chromium: five slider releases each yield a new
+accepted revision shown in `#model-status`, a drawn model whose x extent
+equals the width set, a `PROGRESS.md` row and a project commit, and the
+measured release-to-drawn latency (n=20 on 2026-10-03: p50 548 ms, p95
+556 ms).
+
+## ADR-504 — The dashboard's second write: a design turn through `cadex -p`, its stderr the live transcript (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. Two HTTP routes on the dashboard server (`POST
+api/turn`, `GET api/turn?since=N`) and an optional `on_stderr` relay on
+`walk.run_leg`; no cadexd protocol, tool-surface or CLI-flag change.
+
+**Context.** D2's first item is that a person start a design turn from a
+prompt in the browser and watch it live as the transcript streams and the
+model updates when a revision is accepted. A3 forbids a second write path,
+so the turn must be the CLI's `cadex -p`, which already prints every tool
+call (`· op  summary`) and the model's prose to stderr as they happen.
+`run_leg` passed a leg's stderr straight through to the server's own.
+
+**Decision.** `POST api/turn` (token and `Origin` checked as in ADR-503)
+takes `{"prompt": text, "resume": bool}` — non-empty, at most 16 000
+characters, no NUL — and runs `cadex --project <root> --prompt=<text>
+[--resume] --json` through `run_leg` in a thread, bounded at 3600 s,
+answering 202 at once. `run_leg(on_stderr=…)` gives the child a pipe for
+stderr and hands what arrives, decoded, to the callback; with no callback
+it behaves as before. The server keeps each project's last turn in memory
+— transcript capped at 4 MiB — and `GET api/turn?since=N` returns the text
+after character `N`, the state (`running`/`done`/`failed`) and, at the end,
+the child's envelope; `{"state": "idle"}` when there has been none. One
+turn per project at a time per server (409 otherwise); across servers and
+the CLI, the project lock decides. The page's `#turn-panel` starts turns,
+reads the transcript every second, and refreshes the project when a turn
+ends (`docs/DASHBOARD.md` §19).
+
+**Cost.** The transcript lives only as long as the server: it is what a
+terminal would have shown, and the project keeps what the CLI keeps (the
+`PROGRESS.md` row, the commit, decisions and notes), not the stream. A
+turn the server started is not stopped by closing the page; it ends on its
+own or at the bound, like a CLI turn left running. Attaching an image is
+not in this unit: `cadex -p` has no way to carry one into the turn yet, so
+that is the CLI's change first, then the page's.
+
+**What would reverse it.** An owner wish to keep transcripts would make the
+CLI write one into the project (then the page reads that file, and the
+memory buffer goes); a need to cancel from the page would add a stop route
+that signals the leg's process group, as `run_leg`'s timeout already does.
+
+**Test.** `cli/tests/test_dashboard_writes.py`: with no engine, `api/turn`
+without the token or with another is 403 and spawns nothing; malformed
+bodies are 400; a tokened start spawns exactly the argv above, the
+transcript reads back whole and from an offset, and a second start while
+one runs is 409 and is accepted once it ends. With a real engine in
+headless Chromium and a stand-in `claude` on `PATH`
+(`cli/tests/fake_claude.py`, which speaks `stream-json` and calls tools
+over the real bridge): the page shows the agent's first words while the
+turn is still running and before it has touched the engine, then the
+accepted revision drawn at the new width, with the CLI's `PROGRESS.md` row
+and one project commit.
+
+## ADR-505 — The dashboard's third write: a comment on the design or a picked part, received by the next turn (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. A new CLI subcommand, `cadex comment [--part NAME]
+TEXT`; a project file, `comments.jsonl`; `cadex -p` reads it; one HTTP
+route (`POST api/comment`) and a `comments` list on `/api/project`; click
+picking in the viewer. No cadexd protocol or agent tool-surface change.
+
+**Context.** D2's third item is that a person comment on the whole design
+or on a part picked in the viewer, and that the next agent turn receive
+it. The charter's A1 keeps picking "in a review form: click a part in the
+viewer to attach a comment to it". A3 forbids a second write path, and
+before this unit the CLI had no way to carry a person's note into a turn
+except by typing it into the prompt.
+
+**Decision.** `cadex comment` appends one JSON line to the project's
+`comments.jsonl` — id, time, text (at most 4,000 characters), part (empty
+for the whole design) and the accepted revision when it was left — and
+needs no engine; it writes no `PROGRESS.md` row and makes no commit, since
+a comment is input to the next run rather than a run, and the next
+accepted run's commit carries the file. `command_prompt` reads the
+undelivered comments, gives the turn its prompt with them ahead of it
+(`The owner left these comments on the design since the last turn…`, one
+line each, `(on part post)` or `(on the whole design)`), and once the turn
+has run appends a `delivered` line naming them with the session id. A
+failed turn delivers nothing. The envelope carries the delivered comments
+under `comments`. Appending, not rewriting, keeps the dashboard's write and
+a turn's delivery from losing each other's line, and the file is the
+history. The dashboard's `POST api/comment` runs `cadex comment --project
+<root> --json [--part=<name>] -- <text>` through `run_leg`, behind the
+ADR-503 token and `Origin` check. The viewer names the solid under a click
+(a press and release that moves under 5 px) by ray cast, and the page shows
+the pick and lists the comments with their delivery (`docs/DASHBOARD.md`
+§20).
+
+**Cost.** Comments travel in the user prompt, not the system prompt, so a
+resumed conversation keeps them in its history as said once. A part is
+named by the viewer's output name, which is the script's output name for
+the accepted model and a run's own output name for a historical run; a
+comment does not pin geometry, only the revision it was left at.
+
+**What would reverse it.** A1's non-blocking channel may want the agent to
+answer a comment, which would add a reply kind to the same file, not a
+second store. If comments should reach the agent mid-turn, that is a tool,
+and the tool-surface rule applies.
+
+**Test.** `cli/tests/test_comments.py`: the file round-trips, skips a torn
+line and refuses bad input; `cadex comment` writes one line and no row or
+commit; with a real engine and the mock turn, a failed turn is given the
+comments and leaves them pending, the next is given them ahead of its
+prompt and delivers them, and the one after sees only its prompt; the
+server's argv is pinned and the real CLI accepts it as a child.
+`cli/tests/test_dashboard_writes.py`: the route is 403 without the token,
+with another or cross-origin; in headless Chromium against a real engine
+on a two-part project, a whole-design comment, real mouse clicks that pick
+`plate` then `post`, a drag that picks nothing, a comment on `post`, then a
+turn from the page: `fake_claude` received both comments ahead of `go on`,
+the list shows them received, none are pending, and the pick survives the
+rebuilt model.
+
+## ADR-506 — The dashboard's fourth write: accept, reject or restore a revision, through `cadex revision` (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. A new CLI subcommand, `cadex revision
+list|accept|reject|restore [SELECTOR] [--note TEXT]`; a `verdict` field on
+`comments.jsonl` lines; the engine's history entries keep the values and
+the geometry digest each revision was accepted with; one HTTP route (`POST
+api/revision`) and a `revisions` list on `/api/project`. No cadexd
+protocol, `OP_ARG_SPECS` or agent tool-surface change.
+
+**Context.** D2's fourth item is that a person accept, reject and restore a
+revision from the browser. A3 forbids a second write path, and the CLI had
+none: the engine has kept every accepted source in `script_history/` since
+ADR-045, and reverting was "read `inspect` history, then `write_script`",
+two steps the shell's `restore_version` tool did. Measured on a scratch
+project before the engine change: rejecting a script edit that followed a
+slider move put the old *source* back with today's slider value, because a
+revision is its source **and** its stored values, and the trail kept only
+the source.
+
+**Decision.** `record_history` takes `values` (parameters and the nets,
+boards, mounts and cages rows) and `digest`, and
+`accept_project_candidate` passes both, so every new entry says what it
+was accepted with. `cadex revision` reads the trail from the project
+directory, selecting by ordinal or unique revision prefix as the engine
+does. `accept` writes a verdict line — `{"kind": "comment", …, "verdict":
+"accepted"}` — and touches no engine, row or commit. `reject` (of the
+accepted revision only) puts back the entry accepted before it; `restore
+SELECTOR` puts back the one named. Both, under the project lock, write the
+stored source through `write_script` with `replace` (going back may drop
+outputs on purpose — the ADR-045 guard is for an agent's accident), then,
+if the revision did not come back, `set_params` with its recorded values;
+a parameter the entry did not store was at its default, so it is set to
+the default. Then a `rejected` or `restored` verdict line; each is a run
+with its `PROGRESS.md` row and commit. The envelope's `revisions` names
+the target, where it came from, what was accepted, `exact` (the same
+revision id) and `same_geometry` (the same digest). The next `cadex -p`
+receives verdicts the way it receives comments, as `(a verdict on a
+revision) The owner rejected revision … and put back revision … (#2).
+<note>`. The page's `#revision-panel` holds Accept, Reject, a note and the
+trail with Restore on each row (`docs/DASHBOARD.md` §21); `POST
+api/revision` runs `cadex revision --project <root> --json [--note=<text>]
+<action> [<selector>]` behind the ADR-503 token and `Origin` check, the
+selector an ordinal or hex prefix so it is never a flag.
+
+**Cost.** A stored parameter value cannot be unset (`set_params` merges),
+so restoring a revision that left a parameter at its default lands on the
+same geometry under a different revision id, and the reply says so
+(`exact: false`, `same_geometry: true`) rather than pretending. Entries
+accepted before this ADR carry no values: restoring one keeps today's
+values and says that too. A reject or restore records the intermediate
+state between its two writes as a revision of its own in the trail. An
+accept is advisory: the agent hears it, nothing is locked.
+
+**What would reverse it.** An unset in `set_params` (a `null` value meaning
+"back to the default") would make every restore exact and would be a
+protocol change with its own ADR. If verdicts should block an agent from
+building on a rejected revision, that is policy in the turn, not this
+store.
+
+**Test.** `src/Mod/cadex/cadex_tests/test_project_store_recovery.py`: an
+accepted candidate's history entry keeps its values and digest.
+`cli/tests/test_revisions.py`: trail selection (ordinal, prefix, ambiguity,
+repeats), a verdict reaches `with_comments`, and against a real engine
+accept (no row, no commit, refused for another revision), reject (exact,
+same digest, a row), restore #1 (`same_geometry`, width back to 30), a
+repeat restore that rebuilds nothing, and every verdict in the next turn's
+prompt. `cli/tests/test_dashboard_writes.py`: the route is 403 without the
+token, with another or cross-origin, 400 on a bad action or a flag-shaped
+selector, and the argv is pinned; in headless Chromium against a real
+engine, Accept, then Reject with a note (the model redrawn 50 mm wide, 6 mm
+thick), then Restore on row #1 (redrawn 30 mm wide), then a turn from the
+page whose prompt carried all three verdicts.
+
+## ADR-507 — An image attached to a prompt: `cadex -p --image`, and the dashboard's Attach image (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. A new prompt flag, `--image PATH` (repeatable, at
+most four); an `attachments` field on the `cadex -p` envelope; an
+`images` field on the dashboard's `POST api/turn` body and its turn
+snapshot; and a remote-viewing section in `docs/DASHBOARD.md` (§22). No
+cadexd protocol, `OP_ARG_SPECS` or agent tool-surface change. No new
+dependency.
+
+**Context.** D2's first item is to start a design turn from a prompt,
+*optionally with an attached image*. The shell let a person attach one in
+its chat panel, and its `get_attached_image` tool returned it to the
+model. ADR-504 brought the turn to the browser without images, because
+the CLI had no way to carry one: the product agent runs with `--tools ""`
+(its whole world is the engine), so a file path in the prompt is a path
+it cannot open. A3 also rules out a second write path, so the browser
+cannot hand the image to the agent by any route other than the CLI's.
+
+**Decision.** The CLI checks each `--image` file by its leading bytes
+(PNG, JPEG, GIF, WebP) and size (3.75 MB, so base64 stays under the API's
+5 MB), before any engine starts. A refusal exits 2. When a turn carries
+images, `ClaudeTurn` runs `claude -p --input-format stream-json` and
+writes one user message on stdin: the prompt's text block, then one
+base64 image block for each image. A turn without images keeps the
+`-p PROMPT` argument it had. The stale-session retry resends the
+images. The "asked once more" nudge does not, because it continues the
+same conversation. The progress stream, which is the dashboard's
+transcript, gets one `· attached <name>` line per image. The envelope's
+`attachments` records each image's name, type, size and SHA-256, never
+its bytes. The image is not copied into the project.
+
+The page's **Attach image** reads the picked files as base64 and sends
+them in the turn POST, behind the ADR-503 token and `Origin` check. A
+turn's body may be up to `TURN_BODY_LIMIT` (four images at the limit,
+plus 64 KiB). Every other route keeps 64 KiB. The server checks each
+image the same way the CLI does. It writes the images to a scratch
+directory outside the project and adds `--image=<file>` to the same
+`cadex -p` child. It removes the directory when the turn ends.
+`get_attached_image` is not re-derived: the image is already in the
+model's own message.
+
+Measured once before building on it: Claude Code 2.1.288 on this machine
+took a stream-json user message with a 32×32 blue PNG on stdin, under
+`--tools ""`. Asked what colour filled it, Haiku 4.5 answered "Blue".
+
+**Cost.** An image is not kept with the project, so a later reader of a
+turn knows only its name and digest, not what it showed. A turn with
+images feeds its prompt on stdin and not as an argument. That is a
+second shape of the `claude` command line, used only when images are
+attached. A turn POST can now hold about 20 MB in server memory while it
+is checked. The token check runs before the body is read, so only a page
+the server served can send one.
+
+**What would reverse it.** If the owner wants attached images kept, the
+CLI would copy each into the project (for example `attachments/<sha>.png`)
+and the project commit would carry it. If Claude Code drops stream-json
+input, the fallback is a bridge tool that returns the image, and that
+would be a tool-surface change with its own ADR.
+
+**Test.** `cli/tests/test_prompt_images.py`: images are recognised by
+signature, and a name-only PNG, an empty image and an oversized one are
+refused. A real child process standing in for `claude` receives the
+message on stdin as text block then image block, with the exact bytes.
+A prompt without images stays an argument. A refused, unreadable or
+fifth image exits 2 with no turn made. `--image` without `-p` is a
+usage error. Against a real engine, the turn receives the image and the
+envelope records it. `cli/tests/test_dashboard_writes.py`: the route
+refuses bad image bodies with 400. A turn may exceed 64 KiB while the
+slider may not. The upload becomes `--image=<file>` with a sanitised
+name, the file holds the exact bytes, and the scratch directory is gone
+when the turn ends. In headless Chromium against a real engine, a file
+picked into `#turn-image` reaches `claude` as an image block with the
+same SHA-256. The turn lands a 48 mm plate the page redraws, and the
+attachment clears. §22's `tailscale serve` note and the loopback defaults
+it relies on are pinned there too.
+
+## ADR-508 — Touching at rest: `inspect scope=contacts` and the collision view's t=0 readout (2026-10-03, owner charter orun2 D2/A1)
+
+**Status:** accepted. A new `core.inspect` scope value, `contacts`, served
+by the engine (`CadexInspection._complete_contacts`) and offered to the
+agent (`INSPECT_SCOPES` in `cli/cadex_cli/tools.py`); a `contacts` block
+on the dashboard's model manifest (`review_server.initial_contacts`); and
+`#collision-contacts` under the collision toggle. No `OP_ARG_SPECS` change:
+`inspect` already takes `{"scope": str}`. No new dependency.
+
+**Context.** The shell's `collision_view` did two things: it drew the
+MuJoCo collision shapes over the solids, and it reported which shapes
+already touched at t=0. The dashboard drew the shapes (ADR-333) but had no
+readout. The owner's note of 2026-10-03 keeps the agent half too: the agent
+should get the t=0 contact report without a person looking, folded into
+`inspect` or a tool, under the tool-surface rule. The measurement already
+existed. Every `assembly.mjcf` export runs MuJoCo's collision pass at the
+solved pose and stores it on the export's `assembly_data.dynamics`
+(ADR-087). Nothing could read it: `scope=output` serves an output's
+facts, not its `assembly_data`.
+
+**Decision.** `scope=contacts` reads the stored block from the pinned
+accepted attempt and measures nothing. For each MJCF export it returns the
+count, how many contacts were past the 64-row listing, the raw contacts,
+the contact exclusions, and the contacts grouped by the two components
+they join: points, whether any interpenetrates, and the deepest signed
+distance. Penetrating pairs come first. The value says what it measures:
+`pose` (the keyframe every simulation starts from) and `measures` (collision
+shapes, not the exact solids, which `scope=clearance` measures). If an
+export predates the evidence, or there is no export, the scope says so
+instead of returning an empty list that looks like "nothing touches". The
+dashboard reads the same stored block from the project directory (A3: the
+project is the truth, and reads need no engine), and lists one line per
+pair under the toggle. The guidance gains one bullet: read the scope after
+an export, because a pair you did not mean to rest together, or any
+penetrating pair, is a collision shape in the wrong frame.
+
+**Cost.** The grouping exists twice, about fifteen lines in the engine and
+fifteen in `review_server.py`, because `cli/` may not import the engine.
+The browser test pins that the two agree on a real build. The readout
+covers the accepted model only: a run's retained artifacts carry the MJCF
+but not the export's evidence, so a historical run whose identity differs
+says the contacts are read from the accepted export only. Pairs are grouped
+from the listed contacts. Past 64 points a pair could be missing, and
+`pairs_complete: false` (and the page's head line) says so.
+
+**What would reverse it.** If the evidence moved off `assembly_data` (for
+example into its own artifact), both readers would follow it. If the
+owner wants the contacts on every build reply, as `fit` is, they would move
+there and the scope would stay as the full listing.
+
+**Test.** `src/Mod/cadex/cadex_tests/test_contacts_scope.py`: grouping
+and order; nothing touching; a listing cut at the cap; no export and an
+export without evidence; `target` and an unknown target; malformed rows.
+`test_project_tool_surface.py`: the CLI offers `contacts` and the engine
+serves it. `cli/tests/test_dashboard_inspect.py`: the server's reader, and
+in headless Chromium against a real engine a post sunk 2 mm into a floor
+is named as one interpenetrating pair of four points at −2.0 mm; the
+agent's `inspect scope=contacts` through cadexd returns exactly the
+page's pairs; the page's own slider (`cadex params`, ADR-503) lifts the
+post to 0 mm and both the readout and the scope empty.
+
+## ADR-509 — Export from the dashboard: `cadex export` behind the Export button (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. A fifth dashboard write, `POST api/export`
+(`review_server.write_export`), an `exports` block on `api/project`
+(`review_server.export_listing`), a download route
+`export/<revision>/<name>`, and `#export-panel` on the page. No
+`OP_ARG_SPECS` change, no tool-surface change, no new dependency.
+
+**Decision.** The Export button runs `cadex export --project <root> --out
+<root>/review/export/<revision> --format step,stl --json` as a child, the
+way the slider runs `cadex params` (ADR-503), behind the same per-launch
+token and `Origin` check. There is no second write path (A3): the rebuild,
+the BREP conversion, the `PROGRESS.md` row and the project commit are the
+CLI's. The output directory is named by the revision accepted when the
+button was pressed and sits under `/review/`, which the project's own
+`.gitignore` keeps out of its commits, because a rebuild re-makes it. If
+the child reports a different accepted revision (a write landed before it
+took the lock), the server removes what it wrote and answers 409 "export
+again", so a directory never holds another revision's files. The page
+lists the accepted revision's files only, and the server serves a file
+only when that listing names it. The concept sheet was already a download
+(`presentation/sheet.png?download=1`, ADR-430); this unit proves it in the
+browser.
+
+**Dropped.** The shell's "Export Printable Parts" filtered to the
+printable subset. The dashboard exports every output, which includes the
+printable ones. The engine's `export_printable` op stays on the protocol.
+A person reviewing a design wants the whole design's files, and a filter
+is one more control. Recorded in `docs/SHELL-PARITY.md`.
+
+**Cost.** Exports for earlier revisions stay on disk under
+`review/export/` until the project is cleaned; they are ignored by the
+project's git and not served. About 90 lines in `review_server.py` and 60
+in `review.js`.
+
+**What would reverse it.** If `export_model` becomes a protocol op (as
+`export.py`'s docstring expects), the child still runs `cadex export` and
+nothing here changes. If the owner wants the printable-only set, a
+`printable` format flag on `cadex export` would come first, and the button
+would pass it.
+
+**Test.** `cli/tests/test_dashboard_export.py`: without an engine, the
+token, `Origin` and body checks, the exact argv, the listing's suffix
+allowlist, 404s for unlisted, other-revision and traversal names, the
+moved-revision cleanup, and no accepted revision. In headless Chromium
+against a real engine, the page exports a 30×20×6 mm plate, and the
+browser downloads `plate.step` (an ISO-10303-21 file with a B-rep) and
+`plate.stl` (12 facets, extents 30×20×6 mm) through the listed links, and
+the concept sheet `cadex render` drew downloads as the very PNG on disk.
+
+## ADR-510 — Inspect from the dashboard: the engine's exploded view and `cadex section` behind Cut (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. A sixth dashboard write, `POST api/section`
+(`review_server.write_section_cut`), a `sections` block on `api/project`
+(`review_server.section_listing`), an SVG route
+`section/<revision>/<name>/section.svg`, an `exploded` block on the model
+manifest (`review_server.exploded_views`), and viewer calls `setSection`,
+`setLines` and `showLines` (`review_scene.js`). No `OP_ARG_SPECS` change,
+no tool-surface change, no new dependency.
+
+**Decision.** Neither view adds a geometry path. The explode slider plays
+the engine's own `assembly.exploded_view` record (`_exploded_display_record`:
+cumulative poses per staged move, and leader lines). The server turns it
+into whole pose frames from the assembled model, and the page interpolates
+between frames, lerping positions and slerping rotations, through the
+viewer's existing `setPoses`. The last frame is the engine's
+`final_poses`. **Cut** runs `cadex section --project <root> --plane <P>
+[--offset-mm=<N>] --json` as a child behind the per-launch token and
+`Origin` check, the way Export runs `cadex export` (ADR-509). With no
+offset, the CLI derives one (ADR-273). The page shows the CLI's SVG and
+clips the viewer's solids at the same plane and offset. The clip is a
+three.js material clipping plane on the same tessellation the CLI cut. The
+offset travels as one `--offset-mm=<N>` token, so a negative offset is
+never parsed as a flag.
+
+**Fixed on the way.** With no simulation trace, `accepted_model` placed
+each component link at its *declared* placement. A jointed assembly showed
+its parts where the script declared them, not where the solver put them.
+The engine's explosion starts from the solved pose, so it would have
+started from a pose the viewer did not show. The accepted attempt's
+`solved_placement_matrix` (row-major 4×4) now comes between the trace and
+the declaration. On the test assembly, `swing` was declared at
+[0, 0, 40] and now shows at the solved [12, 0, 4].
+
+**Dropped.** The shell's section *flip*. The clip keeps the side below
+the offset, and the other side is another offset. Recorded in
+`docs/SHELL-PARITY.md`.
+
+**Cost.** Cuts for earlier revisions stay on disk under `review/section/`
+and are not served. About 150 lines in `review_server.py`, 150 in
+`review.js` and 30 in `review_scene.js`. The SVG keeps the CLI's light
+drawing sheet on the dark page.
+
+**What would reverse it.** If a cut needs exact BREP, `section.py` changes
+and the button does not. If the owner wants the explosion in renders, the
+engine's `look` would take the frames, and the slider would stay.
+
+**Test.** `cli/tests/test_dashboard_inspect.py`. Without an engine: the
+matrix-to-quaternion branches, cumulative frames, the section token,
+`Origin` and body checks, the exact argv including a negative offset, the
+listing, and 404s for unlisted, other-revision and traversal names. In
+headless Chromium against a real engine, on a jointed assembly with two
+staged moves:
+- the assembled pose is the solved one;
+- the slider's end is the engine's `final_poses` for every component;
+- 1.5 stages is the first move plus half the second;
+- the leader lines show only while exploded;
+- a derived XZ cut matches its summary, cuts 2/2 objects and shows the
+  512 px SVG;
+- the clip removes some model pixels, keeps all of them when the cut is
+  above the model, and leaves none when it is below;
+- an explicit XY 7 mm cut typed into the page misses only the plate;
+- Clear restores every pixel.
+
+## ADR-511 — Rollout playback in the dashboard's viewer (2026-10-03, owner charter orun2 D2)
+
+**Status:** accepted. A read route `api/playback/run/<name>`
+(`review_server.run_playback`, `trace_playback`), a `playback` summary on
+the run model manifest, and Play and a time slider in *Model settings*.
+There is no write, no `OP_ARG_SPECS` change, no tool-surface change and no
+new dependency.
+
+**Decision.** The viewer plays a run's own rollout trace, the
+`assembly-simulation-trace.json` the rollout leg wrote beside its meshes,
+through the existing `setPoses`. The frame rules are re-derived from the
+shell's ledger row (`cadex_animate.py`), with nothing copied:
+- frames are timed. Only frames with `nominal_time_s` play, and the untimed
+  input frame is dropped;
+- each quaternion keeps the sign of the frame before;
+- a command holds over the interval it was applied (zero-order hold).
+
+The slider is in simulation seconds. At a frame's time the poses are the
+trace's. Between frames they are blended as Explode blends its stages.
+Play runs in real time and stops on the last frame. The frames travel on
+their own route so that the manifest, which is fetched on every identity
+change, stays small.
+
+**Dropped.** The shell's per-actuator *bars*. The command in force is
+shown as a number against its declared range in `#play-note`. Blender's
+xyzw→wxyz reorder is not needed, because three.js takes xyzw. The
+accepted attempt's own `assembly.simulation` trace is not offered for
+playback yet. Only runs are offered, which is the D2 item.
+
+**Cost.** About 90 lines in `review.js` and 80 in `review_server.py`.
+
+**What would reverse it.** If traces grow past `JSON_READ_LIMIT` (64 MB),
+the route would need to stream or decimate. Today it refuses and says why.
+
+**Test.** `cli/tests/test_dashboard_inspect.py`. Without an engine: input
+frame dropped, out-of-order frames sorted, a −q frame flipped back,
+commands `[None, …]`, and unknown schema or no timed frames are
+unavailable. In headless Chromium against a real engine and a real CPU
+walk of `examples/lifecycle/linear-carriage` (one iteration, then a
+rollout):
+- the manifest's summary matches the trace;
+- the mid-trace frame's placements are the trace's own, exactly, and the
+  command is that frame's;
+- halfway between two frames the slide sits at the mean and the command is
+  the next frame's;
+- Play runs to the last frame and stops there;
+- an unknown run is a 404.
+
+## ADR-512 — The agent reaches the owner without waiting: `leave_note` (2026-10-03, owner charter orun2 A1)
+
+**Decision.** The product agent gains one bridge-answered tool,
+`leave_note(type, text, artifact?)`. `type` is `flag` (review the
+accepted revision, or the one project file named by `artifact`) or
+`question` (an answer would change the design). It appends a note to the
+project's `comments.jsonl`, tagged with the accepted revision, and returns
+at once. Nothing in it can block: there is no wait argument and no poll.
+The dashboard lists the notes in a **From the agent** panel and links a
+flagged file it can show (`docs/DASHBOARD.md` §26). The owner answers with
+an ordinary comment carrying `reply_to`: `cadex comment --reply <id>`, or
+the panel's **Answer**, which runs that command. The next `cadex -p`
+receives the answer the way it receives every comment (ADR-505), as one
+line quoting the note it answers. `CLI_OVERLAY` tells the agent to carry
+on in the same turn with the most reversible assumption and to name it in
+the note.
+
+**Why this shape.** A3 allows one write path, and the comments path
+already reaches the next turn, is append-only and is versioned with the
+project. A note is a second record kind in the same file, and an answer is
+a comment. So the channel adds no file, no delivery mechanism and no
+second dashboard write. The tool is bridge-answered (like `look` and the
+loop tools, ADR-406, ADR-464), so `OP_ARG_SPECS` and `docs/INTEGRATION.md`
+do not change.
+
+**The name.** The tool is `leave_note`, not `notify_owner`. The agent's
+prompt is barred from saying "owner" (`test_turn_loop.py`'s leak guard,
+orun1 D2), because the owner's design ratings must reach the agent only as
+written rules. A tool named after the owner would put the word in the
+overlay, so the overlay says "the person reviewing the design" instead.
+The guard is unchanged.
+
+**Rejected.** A blocking `ask_owner` that waits for an answer, which the
+charter forbids. A separate `inbox.jsonl`, which would be a second history
+for the same conversation. Serving any project file a note names: the
+`note/<id>` route serves only the file that note names, inside the
+project, of a type the page shows.
+
+**Cost.** About 100 lines in `comments.py`/`bridge.py`/`tools.py`, 70 in
+`review.js`, 25 in `review_server.py`, one CLI flag and one overlay
+paragraph. No dependency.
+
+**What would reverse it.** If agents use notes as progress chatter rather
+than for judgement calls, the remedy is the overlay's wording, not a gate.
+If the owner wants answers mid-turn, that is a blocking channel and a
+direction change.
+
+**Test.** `cli/tests/test_owner_channel.py`: storage and validation (an
+artifact path outside the project or absent is refused), the bridge tool
+returns in under a second and refuses an unknown argument, `--reply` on
+the CLI, the server's argv and its `reply_to` check, the review listing and
+the artifact route, and, against a real engine, a question from one mock
+turn answered into the next. `test_dashboard_writes.py`, in headless
+Chromium against a real engine: a turn leaves a question and a flag
+through the real bridge, the page lists both and serves the flagged PNG,
+the owner answers in the page, and the next turn's prompt quotes the note.
+`test_project_tool_surface.py` pins `BRIDGE_TOOLS` and the tool's schema.
+
+## ADR-513 — Autonomous runs beside the projects: Ouroboros runs in `cadex app` (2026-10-03, owner charter orun2 D3)
+
+**Decision.** The dashboard's index lists the Ouroboros runs of one runs
+directory beside the projects, and each run has a read-only page at
+`/r/<run>/` showing its iterations, newest first, with the critic's
+verdict, its reason, what it saw done, its message to the next iteration,
+and the iteration's commit. The directory is `cadex app --runs`, then
+`CADEX_RUNS`, then the checkout's own `.ouroboros/runs`, so `pixi run app`
+on this repo shows this repo's runs with no flag. The server's
+`OuroborosRuns` (`review_server.py`) folds `iterations.jsonl`'s actor,
+commit and critique rows and `critic.jsonl`'s verdicts into one entry per
+iteration, and reads `status.json` and `run.yml`'s unindented scalars for
+the masthead. API: `GET /api/runs` (`cadex-ouroboros-runs-v1`) and `GET
+/r/<run>/api/run` (`cadex-ouroboros-run-v1`). Spec: `docs/DASHBOARD.md`
+§27.
+
+**Why.** D3's first half: an autonomous run is how the owner uses Cadex,
+and until now its iterations and verdicts were readable only through
+`ouroboros status` or the JSONL itself. The run directory is the truth (A3)
+in the same way the project directory is, so the page reads it and holds
+nothing.
+
+**Read-only by construction.** Four named files are read, fresh per
+request; no other file of a run directory is reachable (transcripts, logs,
+patches, pids), there is no POST route under `/r/`, and a run name must be
+a plain token naming a directory that holds `iterations.jsonl` or
+`status.json`. A malformed JSONL line is counted in `skipped_lines`, not
+fatal, because a live run may be mid-write. `run.yml` is read line by line
+for its top-level scalars rather than with a YAML parser (A2: no new
+dependency).
+
+**Rejected.** Reading the run branch's git history for this unit: the
+JSONL already carries every iteration's SHA, and the branch is the next
+unit's concern (record-linked artifacts). Serving `loop.log` or the
+transcripts: transcripts are never shown or committed. A runs page per
+project: an Ouroboros run spans the repo, not a project.
+
+**Cost.** About 150 lines in `review_server.py`, 100 in `run.js`, 30 in
+`run.html`, 35 in `projects.js`, one CLI flag and a four-file fixture run
+under `cli/tests/fixtures/ouroboros_runs/fx1/`. No dependency.
+
+**What would reverse it.** If Ouroboros changes its run-directory format,
+the reader follows it; if runs move off this machine, the directory flag
+already points anywhere.
+
+**Test.** `cli/tests/test_app.py`: the listing (newest first, verdict
+tallies, a skipped malformed line, a status-only run), the per-iteration
+fold (housekeeping, a reject's `must_fix`, a pending verdict), a verdict
+appended to a live run appearing on the next read, every non-page file of
+a run (a decoy transcript included) answering 404, the redirect, nothing
+written into the run directory, an absent directory as an empty list, the
+`--runs`/`CADEX_RUNS` defaults, and, in headless Chromium, the index's Runs
+card leading to the run page's rows, badges, reasons and folded message.
+
+## ADR-514 — A run's page shows the charter it ran to, from the run's branch (2026-10-03, owner charter orun2 D3)
+
+**Decision.** `/r/<run>/` gains a **Charter** card above its iterations:
+the checkboxes under the `## Done criteria` heading of the run's goal file
+(`run.yml`'s `goal`, default `.ouroboros/goal.md`), each with its id
+(`S1`), title, ticked or open, and its text folded under it. `GET
+/r/<run>/api/run` carries them as `charter` (`available`, `goal`,
+`source`, `reason`, `checked`, `total`, `criteria`); the listing does not.
+The text is read **from the run's branch** with `git show
+refs/heads/<branch>:<goal>`, then `origin/<branch>`, and from the working
+tree only when the run's branch is the one checked out — the live run, whose
+actor reads that file, uncommitted owner notes included. A run with no
+reachable branch says so (`reason`) rather than showing another run's
+charter.
+
+**Why.** D3 asks each run to show "the charter criteria". `.ouroboros/goal.md`
+in the working tree is always the *current* charter: orun1's six criteria
+(F1, D1–D4, C1) live only on `ouroboros/orun1`, and reading the working-tree
+file for it would show orun2's eight. The branch is the record of what that
+run ran to, as the charter's "read-only from `.ouroboros/runs/<run>/` and
+the run branch" says.
+
+**Read-only and bounded.** Only when the runs directory is a checkout's
+`.ouroboros/runs` (its grandparent is the checkout); otherwise the card says
+it is not one. The goal path must be relative with no `..`; the branch must
+be a plain ref name (no leading `-`, no `..`), and `git` is run with an
+argument list, never a shell, with a 10 s timeout. Two `git` calls per poll
+of an open run page; the result is not cached, so a tick the owner commits
+appears on the next poll. The page redraws the card only when it changed, so
+a criterion the reader opened stays open across polls. Prose and checkboxes
+outside `## Done criteria` (a mission's example, a horizon ladder's
+"later" list) are not criteria; ot4's "Later criteria" section is excluded
+for that reason.
+
+**Rejected.** Parsing the whole goal file for checkboxes (ot4 and the
+mission prose both carry ones that are not criteria). Showing the
+working-tree goal for every run with a "may be newer" warning (it is wrong
+for every finished run). A markdown renderer for the criterion text (A2:
+it is shown as written, pre-wrapped).
+
+**Cost.** About 90 lines in `review_server.py`, 45 in `run.js`, a card in
+`run.html`, three CSS selectors. No dependency: `git` is already the
+checkout's own tool and `subprocess` the standard library's.
+
+**What would reverse it.** Ouroboros snapshotting the goal into the run
+directory: then the server reads that file instead of the branch.
+
+**Test.** `cli/tests/test_app.py`: in a git checkout fixture, `fx1`'s
+charter comes from its branch and not the later one checked out beside it
+(ticked and open criteria, a criterion wrapped across lines, one with no
+bold title, prose between items and checkboxes outside the section
+excluded); the checked-out `fx2` reads the working tree's uncommitted
+edit; a deleted branch gives `available: false` and its reason; nothing is
+written and no branch moves; a non-checkout runs directory, an escaping
+goal path and an option-shaped or `..` branch are refused with reasons;
+and, in headless Chromium, the card's count, source, badges and folding,
+with an opened criterion surviving a poll's redraw.
+
+## ADR-515 — A run's probe material on its page: `docs/probes/<run>/` served read-only (2026-10-03, owner charter orun2 D3)
+
+**Decision.** `/r/<run>/` gains a **Probes** card between the charter and
+the iterations. `GET /r/<run>/api/run` carries `probes` (`available`,
+`root`, `reason`, `readme`, `files` — each `path`, `kind`, `bytes` — and
+`truncated` past 2,000 files); the listing does not. Each listed file is
+served at `/r/<run>/probes/<path>`. The page draws the directory's
+`README.md` with a new `review_static/markdown.js` (a DOM-only markdown
+subset), its images as a gallery, and every file as a link.
+
+**Guards.** The directory is `docs/probes/<run>/` of the checkout that
+holds the runs directory, and is used only when it resolves to itself (a
+symlinked probe directory is refused). A served path is plain segments
+(`[A-Za-z0-9_+-][A-Za-z0-9._+-]*`, no `..`), a suffix on an allow-list
+(`png jpg jpeg svg md txt py json jsonl csv mp4 webm` — never HTML), and
+must resolve to itself with no symlink anywhere on it. Responses carry
+`Content-Security-Policy: sandbox` and `X-Content-Type-Options: nosniff`,
+so even an SVG opened directly runs nothing with the dashboard's origin
+(whose project pages carry the write token). No write route is added.
+
+**Why.** D3 asks that orun1's review material render in the dashboard from
+the repo alone, replacing what `~/orun1-review/build.py` built by hand
+(its own small markdown subset over `git show`, written into a static
+site). The README and its 60 rated heroes are committed under
+`docs/probes/orun1/`; serving them where the run already has a page
+retires the per-run site.
+
+**Scope, stated.** Read from the checkout's **working tree**, not the run's
+branch: probe material is committed and merged, and a merged run's branch
+may be gone. The critic's message also named "the paths the run's records
+link to"; this unit serves `docs/probes/<run>/` only, and record-linked
+artifacts outside it are not yet reachable from the run page.
+
+**Rejected.** A Python markdown package (A2: no new dependency); rendering
+markdown server-side into HTML (the page would trust repo text as markup);
+`innerHTML` anywhere in the renderer. ADR-514 kept criterion text
+pre-wrapped rather than add a renderer for a few lines; a 640-line README
+with tables is the case that earns one, and it is ~170 lines of vanilla JS
+with no build step.
+
+**Cost.** ~70 lines in `review_server.py`, `markdown.js` (~170), ~70 in
+`run.js`, a card in `run.html`, ~15 CSS lines.
+
+**What would reverse it.** Probe material moving out of the repo (into the
+project store, say): then the run page reads it there and this route goes.
+
+**Test.** `cli/tests/test_app.py`: the listing names exactly the README, a
+JSON file and a nested PNG; the PNG and README are served byte-exact with
+the sandbox and nosniff headers; a dot-file, an HTML page, a `.pyc`, a
+symlinked file and directory pointing outside the checkout, literal and
+percent-encoded `..`, an encoded `/` in a segment, a directory and another
+run's probes are all 404; a symlinked probe directory is refused; nothing is
+written; a non-checkout runs directory gives its reason. In headless
+Chromium, orun1's committed `docs/probes/orun1/` copied into a checkout
+renders on `/r/orun1/`: title and section headings, the ratings table's
+header, nine rows and bold `type mean`, no comment text, and the
+`balancer-c-exposed-mechanism` hero loaded through `/r/orun1/probes/`.
+
+## ADR-516 — The blueprint composer, kept as a headless tool: `draw_blueprint` (2026-10-03, owner notes orun2)
+
+**Decision.** The owner kept the shell's blueprint composer as a headless
+engine-side tool (orun2 owner notes, 2026-10-03). It is re-derived in
+`CadexStudio.py`, the engine's pure-standard-library renderer that already
+draws `look`, the hero and the concept sheet. `blueprint_recipe` validates
+a recipe: `name`, `views` (1 to 4 of front, right, top, iso, iso_back),
+`callouts`, `dimensions` and `notes`. `blueprint_sheet` draws a
+1536×1024 PNG on the dashboard's dark floor:
+- up to four line views (`line_view`, now with explicit `bounds`) on **one
+  shared scale**. The default is top, iso, front, right row-major on a
+  2×2 grid, which is the third-angle arrangement;
+- the overall extents on every orthographic view, measured on the
+  tessellation;
+- each declared `part.measurement` record (ADR-139) drawn once, in the
+  first orthographic view where it is at least 24 px long. Axis-aligned
+  measurements are lifted outside the outline, and diameters and radii go
+  across their circle. When the design places components, the records are
+  listed and not drawn, because their points are in a part's own frame and
+  the record does not say which part;
+- numbered balloons on the first three-quarter view, keyed in a parts list
+  (the largest parts first, at most 12, or the names given);
+- notes, and a title block with the sheet's name and version, the project,
+  revision, digest, date, scale (px/mm, all views), units and arrangement.
+
+The product agent gets one bridge-answered tool, `draw_blueprint`. It draws
+from the same accepted reply `look` uses, stores the PNG through the
+existing `put_blueprint` op (ADR-150), which versions it by name in
+`blueprints/` (ADR-157), with the recipe in `meta`, and returns the facts
+and the sheet as an image. Drawing again under a stored name stores the
+next version and takes any key left out from the stored recipe. The
+dashboard lists every version newest first under **Drawings**, shows the
+newest and serves only files the index names (`docs/DASHBOARD.md` §28).
+
+**Why this shape.** The store, its versioning, `inspect scope=blueprint`
+and `export --blueprints` already existed and needed no change. Only the
+renderer was missing headlessly, and the engine already holds one, so the
+sheet uses the same palette, font and line pass as the concept sheet.
+Because the tool is bridge-answered, `OP_ARG_SPECS` and
+`docs/INTEGRATION.md` do not change. `put_blueprint` stays out of
+`CLI_TOOL_OPS`: a model tool that stores any PNG path is not wanted, and
+the bridge is the only caller. The shell module
+(`v1-blender-shell:shell/scripts/startup/mesh_agent/cadex_sheet.py`) was
+read as reference for what a sheet carries. No line was copied, and the
+layout, measurement placement and title block are new code.
+
+**Not carried over.** Per-cell explode, section and hide overrides,
+custom azimuths, params and text panels as cells, weighted per-cell
+aspect, the layout templates beyond 1, 2 and 2×2, and the four viewport
+themes. One sheet answers one question, and notes stand in for the text
+panel. `docs/SHELL-PARITY.md` names each of these.
+
+**Cost.** About 330 lines in `CadexStudio.py`, 110 in `bridge.py`, 50 in
+`tools.py`, 55 in `review_server.py`, and 30 in `review.js`, `index.html`
+and `review.css`. No dependency. A four-view sheet of a single part draws
+in under a second on sb1x.
+
+**What would reverse it.** Owners asking for interactive edits to a sheet
+would be the blueprint editor, which A1 dropped. A sheet that misplaces a
+measurement in an assembly would argue for adding the part's placement to
+the measurement record, which is an engine change of its own.
+
+**Test.** `cli/tests/test_blueprint.py`. Headless:
+- recipe defaults and refusals;
+- one shared scale and the overall extents, with the floor left out;
+- balloons on the iso view;
+- the dark floor, with ink in every cell;
+- declared measurements drawn once where they read and listed where they
+  do not;
+- a placed design lists its measurements;
+- unknown callouts are refused;
+- the bridge draws, stores through `put_blueprint` and revises by name,
+  taking omitted keys from the recipe, and its refusals store nothing;
+- the dashboard listing and its file allowlist.
+
+Against a real engine in headless Chromium: a bored plate with an extent
+and a diameter measurement is drawn (60/40/10 mm extents, both
+measurements drawn), redrawn as version 2, read back from
+`blueprints.json`, listed by the page newest first with the newest shown at
+1536 px, and downloaded byte-identical. `test_project_tool_surface.py` pins
+`BRIDGE_TOOLS` and the tool's schema.
+
+## ADR-517 — Engine budgets belong to the project: `cadex budgets`, `--engine-timeout`, `--engine-memory` (2026-10-03, owner notes orun2)
+
+**Decision.** The shell kept two engine budgets in its add-on
+preferences: the wall-clock seconds and the memory ceiling one engine
+script run may spend. The parity ledger left them as "owner to confirm".
+The owner moved them to the project (orun2 owner notes, 2026-10-03), and
+this ADR does that. Nothing is copied from `v1-blender-shell`. The only
+thing taken from it is the two ranges: at most 3600 s and at most
+131072 MB.
+- **Stored** in the project's `agent.json`, the CLI's own file beside
+  `script.json`, as `budgets: {timeout_seconds, memory_limit_mb}`. A
+  budget that is not set is absent, never 0. `cadex budgets --set
+  NAME=VALUE` stores one, `=0` unsets it, and with no `--set` the command
+  reports. It uses no engine and makes no `PROGRESS.md` row or commit,
+  like `cadex comment`. A turn rewriting the conversation identity in
+  `agent.json` keeps the budgets. A hand-edited value outside its range
+  reads as unset.
+- **Overridden per call** by two shared flags, `--engine-timeout S` and
+  `--engine-memory MB`. Each wins over its stored value for that call only
+  and never changes the store. `walk` passes them to every leg. A value
+  out of range is a usage error (exit 2) before an engine starts.
+- **Sent** by `_engine_session`, the single place every engine run opens a
+  project, as `open_project`'s existing `budgets` argument. The dashboard's
+  writes are CLI children, so a slider or a turn started from the browser
+  uses the same budgets (A3). Every engine run's envelope carries
+  `budgets`: `in_force` (the engine's reply), `stored`, and each budget's
+  `source` (`override`, `project` or `engine`).
+- **Resolved per field in the engine.** `CadexEngineSettings.resolve_budgets`
+  used to take the caller's budgets only when both were set, and otherwise
+  fell back to the preferences entirely. A project that stored only a
+  longer timeout would have lost it without any sign. Now each positive
+  value the caller gives wins, and the other comes from the preferences.
+  The `OP_ARG_SPECS` argument and the reply's `budgets` shape are
+  unchanged.
+- **Shown read-only** on the dashboard as the last row of Identity
+  (`#view-budgets`), from `/api/project`'s `budgets.stored`. The page has
+  no control that edits them.
+
+**Why the project and not the machine.** A large assembly needs a longer
+rebuild wherever it is opened. Every run on it should use the same budget,
+including the dashboard's slider and a walk's legs, without anyone
+remembering a flag.
+
+**Cost.** About 110 lines in `session.py`, 90 in `__main__.py`, 10 in the
+engine, and 20 in the dashboard. No dependency, and no protocol change.
+
+**What would reverse it.** Budgets that need to differ by machine rather
+than by project (a small laptop and the 5090 box opening the same project)
+would argue for an environment override on top of this, not for removing
+it.
+
+**Test.** `cli/tests/test_project_budgets.py`:
+- storing beside the conversation and surviving its rewrite;
+- unsetting one;
+- range refusals;
+- nonsense in a hand-edited file reading as unset;
+- per-field override precedence;
+- `open_project` sending only the budgets it has;
+- `walk` passing the flags on;
+- `cadex budgets` storing, reporting and unsetting with no row and no
+  repository, and its usage errors;
+- the human summary.
+
+Against a real engine:
+- with none stored, every budget comes from the engine;
+- a stored 901 s timeout is in force, with the engine's own memory
+  ceiling filled in per field;
+- `--engine-timeout 77 --engine-memory 5000` is in force for one call and
+  leaves the store unchanged;
+- `--engine-timeout -1` is exit 2.
+
+In headless Chromium, Identity shows "engine defaults (none stored)", then
+"900 s · engine default for the other" after `cadex budgets --set`, with no
+control in the row.
+`test_engine_defaults_and_envelopes.py::test_caller_budgets_win_per_field`
+pins the engine half.
+
+## ADR-518 — A run's page shows its records and what they point to: `/r/<run>/linked/` (2026-10-03, owner charter orun2 D3)
+
+**Decision.** `/r/<run>/` gains a **Records** card under Probes.
+`GET /r/<run>/api/run` carries `records` (`available`, `root`, `reason`,
+`records` — each `slug`, `title`, `created_at`, `iteration`, `artifacts`
+(`path`, `kind`, `bytes`) and `more`), and each iteration gains `records`,
+the slugs that landed in it; the listing carries neither.
+- **Which records.** The checkout's `.hypergraph/graph/record/*.md` whose
+  `## Repo` section says `- branch: <the run's branch>`. Read from the
+  working tree, like ADR-515's probes: records are committed and merged,
+  and a merged run's branch may be gone. Parsed by hand (frontmatter
+  `slug`, `title`, `created_at`), cached until the directory's mtime moves.
+- **Which iteration.** The first whose last logged step is not older than
+  the record. A record newer than every finished iteration is the current
+  one's (`iteration: null`, shown as **this iteration**).
+- **Which artifacts.** Every `docs/...` path the record's text names, a
+  trailing period dropped: the file, or a named directory's own files (not
+  deeper). Only ADR-515's suffixes, segments and no-symlink rule; at most 24
+  per record, the rest counted.
+- **What is served.** `/r/<run>/linked/<path>` serves a file only when one
+  of the run's records names it or its directory, or names a path in the
+  same `docs/probes/<dir>/` — so a linked README's relative images load.
+  Same `sandbox` and `nosniff` headers as the probe route; no write route.
+- **The page.** Each record row shows its iteration badge, title and slug,
+  its images as a gallery, every other file as a link; a markdown file
+  opens in place in `#linked-doc`, drawn by ADR-515's `markdown.js`. Each
+  iteration row's commit cell links its records.
+
+**Why.** D3 asks that each run show "the artifacts its records point to
+(renders, reports, probe pages)", and that orun1's review material render
+from the repo alone, replacing `~/orun1-review/build.py`. ADR-515 served
+`docs/probes/<run>/` but said plainly that record-linked artifacts outside
+it were unreachable. build.py's page had three parts beyond what ADR-515
+covered: each D4 trial's hero (from the trial *project's* render
+directory, which is outside the repo), the design language the run
+rewrote (`docs/DESIGN-LANGUAGE.md`), and the README. orun1's records name
+every committed trial hero (`docs/probes/orun1/d4/<trial>/`), the design
+language and the README, so all three are now on the run's page from the
+repo alone.
+
+**Scope, stated.** Paths outside `docs/` (project-relative paths such as
+`review/render/sheet.png`, which name a project in `~/cadex-projects`, not
+the repo) are not linked. build.py's live run status and critic log were
+already on the page (ADR-513), and its per-trial win/loss table is the
+trial's `summary.json`, linked rather than drawn.
+
+**Rejected.** Serving any file under `docs/` (wider than the records
+justify); mapping records to iterations by commit (a record's `commit:` is
+the work commit, the loop's is the one after, so the two never match);
+`git show` per record (the working tree holds them).
+
+**Cost.** ~150 lines in `review_server.py`, ~130 in `run.js`, a card in
+`run.html`, ~10 CSS lines (the markdown styles now apply to any
+`article.markdown`).
+
+**What would reverse it.** Records ceasing to name repo paths, or probe
+material leaving the repo (ADR-515's reversal).
+
+**Test.** `cli/tests/test_app.py`: a record lands in iteration 2, another
+after the last finished iteration; a named file, a named directory's own
+files (not deeper), a trailing period dropped; HTML, a symlink, a missing
+file and a path not rooted at `docs/` never listed; served byte-exact with
+the headers; files in a named probe directory served, another run's and an
+unnamed directory's 404, as are dot-files, `..` literal and encoded, a
+directory and paths outside `docs/`; a record with no `## Repo` belongs to
+no run; a new record appears on the next read; nothing is written; outside
+a checkout or with no record directory, the reason. In headless Chromium,
+orun1's 22 committed records with the probe material and design language
+they name, copied into a checkout: every record listed under its own
+iteration, the t1-hexapod hero loaded through `/r/orun1/linked/`, every
+committed d4 trial hero shown, an iteration row linking `golden-bay-7992`,
+`docs/DESIGN-LANGUAGE.md` opened in place with its title and sections, the
+orun1 README opened with its nine-row ratings table, and closed again.
+
+## ADR-519 — CLI agent turns listed as runs, read from `PROGRESS.md`: `/api/turns` (2026-10-03, owner charter orun2 D3)
+
+**Decision.** `cadex app`'s index lists the **CLI agent turns** of every
+project beside the Ouroboros runs (ADR-513), in the same **Runs** card:
+`GET /api/turns` (`cadex-agent-turns-v1`) and an **Agent turns** list in
+`projects.js`, newest first, at most 100 (`count` says how many exist).
+- **Where a turn comes from.** No new store (A3): the `prompt` rows of the
+  project's `PROGRESS.md`, which the CLI already appends for every turn it
+  accepts, whether typed at a terminal or started from the dashboard
+  (ADR-193, ADR-504). `project_docs.progress_rows` is the one reader of the
+  table, cells unescaped and dashes made empty.
+- **Its revision and verdict.** The row's 8-character revision prefix
+  finds the full revision and its ordinal in `script_history/history.json`
+  (ADR-506), the owner's verdict comments on it (`accepted`, `rejected`,
+  `restored`; the latest is the turn's `verdict`) and the notes the agent
+  left on it (ADR-512) in `comments.jsonl`. A row without a revision joins
+  nothing.
+- **Order.** By the row's time, ties (one-second resolution) to the row
+  written later within a project.
+- **Fixed with it: a turn's words.** A turn that received the owner's
+  comments wrote `→ delivered N comment(s) from the owner.` as what it
+  said, since the delivery note came first; `delivered ` joins the CLI's
+  housekeeping notes, so the row now carries the agent's own first words.
+
+**Fixed in the same unit: the dashboard-restart flake (#36).**
+`test_review_lifecycle.py`'s restart test expected the page's default view
+to be `second`, but the fixture writes four runs whose `recorded_at` has
+one-second resolution and ties fall to the run's name: `second` won only
+while all four landed in the same second. Under load `sample`, written
+last, was newest and the page opened it. Reproduced by sleeping 1.1 s
+before `sample` (fails), fixed by stamping the fixture's four records in
+the order the test means (passes with and without the sleep). No retry,
+no assertion weakened, no product code changed. The same suite run showed
+a second race of one class in `test_dashboard_writes.py`: four browser
+tests waited for `state().model.revision` to name the new revision and then
+measured the viewer, but `review.js` sets `state.model` when the manifest
+arrives and draws the meshes after, so the image-turn test read the old
+plate (30 mm for 48). Each now also waits for the model status to settle
+(`_model_state`), as the turn test already did.
+
+**Rejected.** A turn store of its own (a second write path, against A3);
+the agent's transcript (the CLI keeps none, and a full transcript is not
+committed); git log of the project repository (a project may not be its
+own repository, ADR-194, and the row is already the commit's message);
+listing the CLI's other runs (`params`, `revision reject`): they are runs,
+not agent turns, and the project's page shows them.
+
+**Cost.** ~70 lines in `review_server.py`, ~25 in `project_docs.py`, ~55 in
+`projects.js`, six lines of HTML and CSS; §29 of `docs/DASHBOARD.md`.
+
+**What would reverse it.** The CLI keeping a turn log of its own (then the
+list reads that), or `PROGRESS.md` ceasing to carry one row per accepted
+turn.
+
+**Test.** `cli/tests/test_agent_turns.py`: a hand-laid project's rows (an
+escaped pipe, a params row between, a turn with no revision) joined to the
+trail, verdicts and answered and unanswered notes, and nothing written;
+`/api/turns` across two projects, newest first, bounded at 100 with the
+count. In headless Chromium against a real engine and the real bridge (only
+the model faked): two `cadex -p` turns, `cadex revision accept` on the
+first and `reject` on the second, appear on the already-open index without
+a click, newest first, each with the revision it left, its ordinal and its
+verdict, the second with its agent note, in the card that holds the
+Ouroboros runs. `test_review_lifecycle.py` for the flake.
+
+## ADR-520 — A stale policy is refused without locking the project: `restore.stale_policy` (2026-10-03, owner charter orun2 W1)
+
+**Context.** ADR-469 moved `CONTACT_TIMECONST_S` from 0.02 to 0.004, which
+puts `solref="0.004"` on every contact geom and so moves the task bundle
+digest of every robot. Every policy trained before 2026-10-01 is therefore
+refused by `verify_policy` with `policy_task_mismatch`, which is right. But
+`open_project`'s restore pass re-runs the stored script, the script declares
+the policy, and the refusal failed the open itself: `CADEXD_RESTORE_FAILED`,
+after the accepted-source retry (ADR-044) failed the same way. No command
+could reach the project, including the design turn or `cadex params --set
+policy_on=0` that would set the policy aside. orun2's W1 walk found it on a
+copy of `ot11-robin-1`; it reaches every robot project trained before
+ADR-469 (`ot11-robin-1`, `ot9-robin`, the `ot5`/`ot6` copies).
+
+**Decision.** When the restore run fails only because the worker refused an
+`assembly.policy` output at its `policy_model` stage for one of five reasons
+that mean *the task moved on from the policy* — `policy_task_mismatch`,
+`policy_model_mismatch`, `policy_channels_mismatch`,
+`policy_actions_mismatch`, `policy_output_range_mismatch`
+(`cadexd.STALE_POLICY_REASONS`) — the open succeeds with `restore:
+{performed: false, stale_policy: {output, reason, error, correction,
+*_sha256}}`. The policy is still refused at every build that declares it.
+Nothing is re-accepted: the accepted revision, digest and attempt stay
+pinned, and `latest_candidate` is put back as a refused restore does
+(ADR-421). The CLI adds a note to the envelope naming the output and the
+two ways out (retrain, or set the policy aside). A corrupt container, a
+missing witness, a witness that disagrees, a refusal at any other stage, or
+a script that will not run for any other reason still refuses the open.
+
+**Protocol.** No request changes; `OP_ARG_SPECS` is unchanged. The
+`restore` reply gains one optional key, declared in `OP_RESPONSE_SPECS`,
+pinned by the golden `open_project.stale_policy.json`, and described in
+`docs/INTEGRATION.md`.
+
+**Rejected.** Re-running the restore with the policy skipped (a second
+script semantics just for opens, and a digest that could never match the
+accepted one); re-deriving the policy's task to accept it as equivalent
+(`trained_task` already exists for the author to declare that, and a solref
+change is a different simulation); migrating old projects in place (it
+writes projects the charter keeps read-only, and the next engine change
+would need another migration).
+
+**Cost.** ~60 lines in `cadexd.py`, one spec key, ~20 lines in the CLI.
+
+**What would reverse it.** An open that must always leave a live document,
+or a policy refusal that turns out to hide a model the user changed (then
+the five reasons narrow).
+
+**Test.** `src/Mod/cadex/cadex_tests/test_restore_stale_policy.py`: through
+the server dispatch with the lifecycle faked, each of the five reasons
+opens with the output, reason and both digests named, the reply validates
+against the pinned spec, and the accepted state and candidate record are
+unchanged; a corrupt container, a disagreeing witness, the right reason at
+another stage, and a script that will not run each still return
+`CADEXD_RESTORE_FAILED`. `cli/tests/test_stale_policy_note.py` for the
+note. Proved on a copy of `orun2-w1-robin` against the built engine: the
+open that returned `CADEXD_RESTORE_FAILED` returns `stale_policy`,
+`cadex params --set policy_on=0` then accepts a new revision, and the next
+open restores with `matches_accepted: true`.
+
+## ADR-521 — The shell's leftover agent guidance is settled point by point in `CLI_OVERLAY` (2026-10-04, owner charter orun2 A1/W1)
+
+**Context.** The parity ledger's `modes.py` row was the last "to port"
+row on the agent's guidance: nine points that the shell's overlay and its
+`SYSTEM_PROMPT` gave the model, and that neither `CLI_OVERLAY` nor
+`CadexAgentGuidance.md` carried (`docs/SHELL-PARITY.md` §4). A1 makes the
+CLI's overlay plus the engine's guidance the single source, so each point
+is either kept there or dropped with a reason.
+
+**Decision.** Re-derived in new words in `CLI_OVERLAY`, with nothing read
+off the tag beyond the ledger's own summary:
+- the script is deterministic and self-contained, +Z is up, and outputs get
+  short names for what they are, because the review, a comment and the next
+  turn name a part by its output;
+- the few primary dimensions are parameters and the rest is computed from
+  them;
+- every build costs seconds, so value changes go in one `set_params` call
+  and edits in one `edit_script` call's `replacements`;
+- a comment `on part <name>` names the output the person clicked. This is
+  the review form of the shell's face pins. Face pins themselves stay
+  "owner to confirm" with the face-ID channel, and drawing-cell pins go
+  with the blueprint editor (ADR-498);
+- a harness is declared as `boards(...)`/`nets(...)` rows that `set_params`
+  can change; a catalog board's terminal rows are used as given, and
+  `inspect scope=wiring` reads back the route. The row shapes stay in
+  `describe_api` and the tool field descriptions, the live source.
+
+Already covered: the t=0 contact check after `assembly.mjcf` is in
+`CadexAgentGuidance.md` (`inspect scope=contacts`); this ADR only pins it.
+Dropped: copying a hand-fitted terminal row, with the terminal picker that
+produced one (ADR-498).
+
+**Cost.** ~25 lines of prompt text in every turn's system prompt.
+
+**What would reverse it.** A turn transcript showing one of these
+sentences steering the model wrong, for example batching edits that should
+have been checked one at a time.
+
+**Test.** `cli/tests/test_turn_loop.py::test_the_prompt_carries_the_guidance_that_lived_only_in_the_shell`
+pins each kept point in the assembled system prompt, and that the comment
+form the overlay describes is the one `comments.with_comments` writes.
+`src/Mod/cadex/cadex_tests/test_agent_guidance.py::test_the_guidance_checks_the_rest_contacts_after_an_mjcf_export`
+pins the covered point.
+
+## ADR-522 — The viewer paints parts by appearance role and lists them printed, purchased and printable (2026-10-04, owner charter orun2 D2/W1)
+
+**Context.** A1 lists "printable-part and appearance-role display" among
+what the dashboard must port. The shell's `cadex_roles.py` painted the
+viewport shell / mechanism / accent, and its `cadex_print.py` with the
+Parameters editor kept a roster of printable parts with ticks stored in the
+`.blend`. The dashboard's viewer coloured parts by index, and its parts list
+said nothing about roles or printing. The engine already publishes every
+fact needed in the accepted `result.json`: the role a component declared
+(ADR-413), the catalog row an output came off (ADR-233), the assembly's
+palette, and the printable roster `export_printable` checks (ADR-158).
+
+**Decision.** `review_server.part_looks` reads those facts and colours each
+part with `CadexStudio.materials`, the rule `look` and the concept sheet
+already draw with: the declared role, else mechanism if purchased and shell
+if printed, in the assembly's palette. `api/model/accepted` gives each
+component `role`, `color`, `role_source`, `supplier` and `printable`, and an
+`appearance` block. The viewer uses the colour; the parts list leads with a
+count of printed, purchased and printable parts and shows each part's role
+and status (`docs/DASHBOARD.md` §30). With no assembly the viewer keeps its
+index colours and says why, as `look` does. `CadexPrintables` is loaded
+beside `CadexStudio` in `cli/cadex_cli/studio.py`; it is standard library
+only. No new dependency.
+
+**Dropped: the printable ticks.** They chose what a printable-only export
+wrote, and that filter is already dropped (ADR-509): the Export button
+writes every output. A tick would have nothing to feed, so it gets no
+project-store home. The engine's `export_printable` op stays on the
+protocol.
+
+**Cost.** ~60 lines of server and ~30 of page code; five fields per
+component in the model manifest.
+
+**What would reverse it.** The owner wanting to print a subset from the
+dashboard: then ticks return with a stored home and an export that reads
+them, under an ADR.
+
+**Test.** `cli/tests/test_dashboard_parts.py`: against a real engine, the
+roles, colours, suppliers and roster agree with `inspect scope=inventory`
+and `inspect scope=script`'s printable roster, and headless Chromium shows
+each part's role, its viewer colour as the swatch, printed or purchased and
+printable; without an engine, a design with no assembly and an unknown role
+each say why they keep index colours.
+
+## ADR-523 — A turn reports what it cost, and names a tool call written as text (2026-10-04, owner charter orun2 A1/W1)
+
+**Context.** The shell parity ledger's `agent.py` row had two points still
+to port. The shell's chat showed each turn's time, tokens and cost, and it
+said so when the model wrote a tool call into its prose instead of making
+one — the failure that hid ADR-163 for as long as it did, because such a
+turn reads like a working one while the engine sees nothing. The CLI's turn
+already receives every fact needed: Claude Code closes each `-p` run with a
+`result` frame carrying `total_cost_usd`, `duration_ms` and token `usage`,
+and the model's prose arrives as `assistant` text blocks. It threw both away.
+
+**Decision.** Two pure functions in `cli/cadex_cli/agent.py`, re-derived
+(nothing copied from the shell): `turn_usage(frames)` sums input (with cache
+writes), cached-read and output tokens, cost and duration over every
+`result` frame — two when the CLI asked once more — and `imitated_tool_call
+(frames)` looks for `<invoke name=` or `<function_calls>` in the model's
+text blocks. A real call is a `tool_use` block and never text, so the markup
+has no legitimate reading. `cadex -p` puts the first in the envelope as
+`usage` and on stderr as a ` · turn:` line; the second becomes a ` ✗ ` line
+and the run's last note. The turn is not refused for it: the engine already
+refuses or accepts on what actually reached it, and the warning says why
+nothing did. The dashboard's turn reply passes `usage` through, and the turn
+status adds the token count and price. `cost_usd` is `null` when nothing
+priced the turn, so an unpriced turn is never shown as free. No new
+dependency; no protocol or tool-surface change.
+
+**Not ported.** The shell kept a running session total; the dashboard lists
+turns from `PROGRESS.md` (ADR-519), which carries no cost column, and adding
+one changes a document the agent reads every turn. A turn's cost lives in its
+envelope and its transcript.
+
+**Cost.** ~70 lines of CLI code, ~8 of page code, one envelope field.
+
+**What would reverse it.** Claude Code dropping or renaming the result
+frame's cost fields: then `usage` goes absent rather than wrong, and this
+ADR is revisited.
+
+**Test.** `cli/tests/test_turn_usage.py` (summing, unpriced turns, markup
+detection, and against a real engine the envelope and stderr of a priced
+turn and of a turn that wrote its call as text);
+`test_dashboard_writes.py::test_browser_starts_a_turn_and_watches_it_land`
+(a real `cadex -p` child behind the fake `claude` reports a priced result,
+and headless Chromium shows its tokens and price on the turn status).
+
+## ADR-524 — The viewer draws the script's declared dimensions over the solids (2026-10-04, owner charter orun2 D2/W1)
+
+**Context.** The shell parity ledger's last "to port" row was
+`cadex_dimension.py`'s viewport overlay: it drew each declared
+`part.measurement` from the engine's two anchors, with everything else laid
+out in screen space and a leader when seen end-on. The blueprint sheet
+already draws these records (ADR-516); the dashboard's viewer drew none.
+The critic asked for this port framed as "pick two points or faces and show
+the distance". That would be a new geometry query (a face-level pick and an
+engine distance op), which is the face-ID channel the ledger still has as
+"owner to confirm", not what the shell module did. The port follows the
+module; picking two faces stays with that owner row.
+
+**Decision.** `review_server.declared_measurements` reads the records from
+the accepted `result.json` (nothing is measured or rebuilt) and attaches
+each to the component that shows its output; `api/model/accepted` carries
+them as `measurements`. The page draws them as an SVG over the canvas,
+re-derived in `review_static/dimensions.js`: anchors through the new
+`viewer.toScreen(component, point_mm)`, everything else in pixels, a leader
+under a 12 px span, the widest on-screen diameter of a circle, an angle
+with its arc. A new `setOnDraw` hook redraws it on every frame, so it
+follows the part through explode and playback. A record on an undeclared
+intermediate in a placed design is listed and not drawn, the rule the
+sheet already uses. `docs/DASHBOARD.md` §31. Read from `v1-blender-shell`
+as a description only; nothing copied. No new dependency.
+
+**Cost.** ~70 lines of server, ~100 of layout, ~60 of page code; one model
+manifest block.
+
+**What would reverse it.** Dimensions belonging only on drawings: then the
+toggle defaults off, or the overlay goes and the sheet remains.
+
+**Test.** `cli/tests/test_dashboard_dimensions.py`: without an engine,
+which component each record is drawn on and why one is not; against a real
+engine, the manifest carries the engine's own numbers in the placed part's
+frame, and headless Chromium draws them where the solid is (a part-frame
+anchor through the component lands on its world point), turns an end-on
+extent into a leader, draws a top-down bore at 6 mm on screen, and clears
+when switched off. `test_dashboard_inspect.py`'s rollout playback test now
+waits for Play to enable rather than reading it once.
+
+## ADR-525 — Fit frames the design, not the task floor (2026-10-04, owner charter orun2 D2/C1)
+
+**Context.** The closing report's defect 1: on `orun2-w1-quad` the Model
+tab showed the robot as a speck even after Fit. The task's 1.2 m floor is
+drawn as a component (`c_floor`), and the viewer's bounds were every drawn
+part's, so Fit framed a 1200 mm slab under a 178 mm robot, and
+`modelPixels()` reported the slab's box as the model's.
+
+**Decision.** The engine already decides what is world geometry — a
+component declared `world=True`, a collision plane on a design body, a bare
+planar face — and publishes it as the assembly's `world_geometry` rows
+(docs/XSCRIPT.md); `look` and the film already keep it from sizing their
+framing. `review_server.world_components` reads those rows from the
+accepted `result.json`, and each component in `api/model/accepted` carries
+`world: true|false`. The viewer leaves world parts out of the bounds Fit
+frames (unless they are all there is) and out of the model render that
+`modelPixels()` counts; it still draws them, and `stats().world` lists
+them. Nothing infers purpose from a name. A run's retained training view
+copies the accepted manifest, so new walks carry the flag; older run views,
+read from rollout meshes alone, have none and frame as before.
+
+**Cost.** ~15 lines of server, ~10 of viewer. No new dependency.
+
+**What would reverse it.** A design whose world geometry *is* the subject
+(a bench fixture): it would need a second Fit target, not this exclusion.
+
+**Test.** `cli/tests/test_dashboard_fit.py`: which rows count as world
+geometry; against a real engine, a 60 × 40 × 30 mm body on a 1200 mm
+`world=True` floor gives a manifest marking only the floor, and in headless
+Chromium Fit's bounds are the body's and the body covers 31% of the canvas
+with its box inside the frame (it fails on the old viewer). The report's
+`dashboard-model.png` was re-taken: 20.3% coverage, bounds 178 × 151 × 123 mm.
+
+
+## ADR-526 — A turn keeps its transcript and `look` images, and the project page shows them (2026-10-04, owner charter orun2 C1/D2)
+
+**Context.** The closing report's defect 3: a design turn typed at a
+terminal showed nothing on its project page. Its `PROGRESS.md` row reached
+the index (ADR-519), but the page's transcript was the dashboard's own
+in-memory copy of a child it had started (ADR-504), so a terminal turn had
+none, and the pictures the agent's `look` tool drew (ADR-406) were handed
+to the model and kept nowhere. A server restart forgot even a page turn's
+transcript.
+
+**Decision.** `cadex -p` keeps each turn under the project's
+`turns/<UTC stamp>-<hex>/` (`cli/cadex_cli/turn_store.py`): `turn.json`
+(the prompt, attachments, start and end, pid, state, and the envelope keys
+the live turn already reported), `transcript.txt` (everything the turn
+wrote to stderr — the tool lines and the model's prose — flushed as it
+goes, so a terminal turn can be watched while it runs) and one
+`look-NN-<view>.png` per picture `look` gave the model, via a new
+`Bridge(on_look=…)` hook. The CLI is the only writer. A dashboard turn is a
+`cadex -p` child, so it lands in the same store; there is no second write
+path (A3). `GET api/turn` answers a turn this server is running from
+memory, as before, and otherwise the project's newest stored turn in the
+same shape (`source: "store"`, with `looks` as URLs under `turn/<id>/`); a
+stored turn still `running` whose process is gone reads `interrupted`. The
+page shows the images under the transcript (`#turn-looks`). Only the
+store's own image names are served; the transcript is read only through
+`api/turn`.
+
+**Bounds.** A transcript stops at 4 MiB of text and says so (the bound the
+page already held), a turn keeps 24 images, a project keeps its 20 newest
+turns. `turns/` writes its own `.gitignore` of `*`, so a project's
+repository never commits a log — including projects whose top-level
+`.gitignore` predates this.
+
+**Cost.** ~200 lines of store, ~60 of server and page. No new dependency.
+The tool surface (`test_project_tool_surface.py`) is unchanged: `look`
+returns the same content; the protocol is untouched.
+
+**What would reverse it.** Transcripts that carry something a project copy
+must not (a secret pasted into a prompt): the store would then need a
+redaction step or an opt-out, not removal from the page.
+
+**Test.** `cli/tests/test_turn_store.py`: the record, transcript and
+images a turn keeps, its three bounds and the self-ignoring directory, a
+dead turn reading `interrupted`, and the server refusing every name that is
+not the store's own image or that resolves outside the project; then,
+against a real engine in headless Chromium, a turn run through `main()` as
+a terminal would — `write_script`, then `look` at `iso` and `top` — whose
+transcript, status and both decoded images the project page shows, and
+which the project's repository does not track. `test_dashboard_writes.py`'s
+page-started turns pass unchanged through the live-then-stored handover.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-527 — A preview skips static and swept fit (2026-10-04, owner charter orun2 C1)
+
+**Context.** The closing report's defect 4: the raw-NDJSON bar's preview
+lane (`cadexd_latency_integration.py`) ran at a median of 0.78 s against
+its 0.10 s bar, so the script's `ok` was false. cProfile around one warm
+preview inside the resident worker put 0.720 s of 0.767 s in
+`_measure_clearance`: 106 `optimalBoundingBox` calls (0.638 s) and two
+boolean `common`s, over a 24-hole filleted plate and a lever. A preview
+returns only solved placements (ADR-055) and discards the clearance,
+world-geometry, attachment and sweep rows it had paid for. Fit is advisory
+(`_check_fit` never refuses), so none of it can move a placement or decline
+a preview.
+
+**Decision.** `validate_and_solve_assembly(..., skip_derived=True)` — used
+only by the preview — skips the static fit, the fit and attachment checks
+and the swept fit, the same way it already skips traces, exports and
+exploded views. The accepting run measures all of them as before.
+
+**Measured** (dev tree, sb1x, two runs): preview median 0.043 s (was
+0.763–0.782 s), the first preview 0.28 s (was 1.03 s), and `ok: true`. The
+accepting lanes did not move: `set_params` 0.38 s, with draft display
+0.46–0.48 s. The bar is unchanged.
+
+**Cost.** A preview no longer notices that a pose collides; it never
+reported that anyway. No protocol or response shape changes.
+
+**What would reverse it.** A preview that reports fit (for example, a live
+collision tint while dragging) would need clearance back, and should then
+measure only the pairs whose relative pose moved.
+
+**Test.** `test_preview_skips_fit.py` runs a real preview under FreeCADCmd
+with all four fit stages patched to raise, and checks that it still poses
+the revolute joint where its parameter says. It fails on the tree before
+this change. `test_cadexd_lifecycle.py`'s preview test still checks that
+previews match the accepting path.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-528 — The live policy session leaves the engine (2026-10-04, owner charter orun2 long-term subtraction)
+
+**Context.** ADR-109 gave cadexd three read ops — `live_open`, `live_step`,
+`live_close` — backed by a host (`CadexLiveSession.py`, 312 lines) and a
+resident sandboxed worker (`cadex_live_worker.py`, 614 lines) that played the
+accepted rollout's policy and took a shove from the mouse. ADR-110 added the
+calm session, ADR-111 the policy identity, and ADR-136 the `endless` horizon,
+each with a seam in `CadexDynamics.evaluate_episode` (`forces`, `endless`).
+Their one client was the Blender shell's Live editor, deleted by ADR-498.
+The owner dropped the live session on 2026-10-03 (charter owner notes):
+reviewing a policy is rollout playback plus `evaluate`'s disturbance tests.
+`docs/SHELL-PARITY.md` still said "the engine API stays". Nothing in `cli/`,
+the dashboard, `training/` or `analysis/` calls any of it.
+
+**Decision.** Remove the three ops from `OP_ARG_SPECS`, `READ_OPS` and
+`OP_RESPONSE_SPECS`, the `policy` nested response spec, their goldens and
+`docs/INTEGRATION.md`'s rows in one commit. Delete the host, the worker and
+its bundle entry, `prepare_live` and its helpers in `CadexScriptedRuntime`,
+the `forces` and `endless` keywords of `evaluate_episode`, the latency
+script's live lane, and the suites that tested only these
+(`test_cadexd_live_ops.py`, `test_dynamics_live_hook.py`, the endless half of
+`test_dynamics_endless_episode.py`). `record_steps=False` stays: other callers
+still read only an episode's totals. The surviving tests move to
+`test_dynamics_record_steps.py`.
+
+**Cost.** About 2,450 lines, net. A person can no longer push a running
+policy and watch it recover in real time; a recorded rollout with drawn
+disturbances is the only way to see that. No CLI tool, dashboard view or
+agent behaviour changes, and the agent tool surface is untouched.
+
+**What would reverse it.** The owner wanting interactive pushes back in the
+dashboard. That would be a new design over the dashboard's own transport,
+and should start from tag `v1-blender-shell` and this ADR's parent commit
+rather than from the deleted shell editor.
+
+**Test.** `test_cadexd_protocol.py` asserts the three ops and the `policy`
+spec are gone from the protocol. `test_engine_purity_guardrails.py` asserts
+neither module is back in the tree or the engine closure.
+`test_dynamics_record_steps.py` asserts `evaluate_episode` no longer accepts
+`forces` or `endless` and that `record_steps=False` keeps every number. The
+INTEGRATION op-table test holds the doc to the specs, and the packaged
+lifecycle gate runs against a rebuilt, restaged payload.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-529 — The studio renderer's child-process entry leaves with the shell (2026-10-04, owner charter orun2 long-term subtraction)
+
+**Context.** ADR-445 moved the studio renderer into the engine as
+`CadexStudio.py` and gave it two ways in: the CLI loads it by path, and the
+Blender shell — which could import no engine code — ran it as a child process
+with a `cadex-studio-request-v1` JSON file (`run_request`, `main`). ADR-447
+added `kind: "blocks"`, which built the fit and inventory blocks from raw
+`inspect` values for the shell, and ADR-449 added `role_colours` (with
+`display_objects`) so the shell's viewport could paint each part by its
+appearance role. The shell is deleted (ADR-498). An audit of every `cli/`
+caller of the module — `render.py`, `studio.py`, `film.py`, `video.py`,
+`bridge.py`, `review_server.py`, `agent.py` — finds none that runs the
+process entry, sends a request, or calls `role_colours`: they import the
+module by path and call `snapshot`, `render_files`, `look_report`,
+`materials`, `blueprint_sheet` and the rest directly. The dashboard paints
+parts with `CadexStudio.materials` (ADR-522), not `role_colours`.
+
+**Decision.** Delete the process entry (`REQUEST_SCHEMA`, `RESULT_SCHEMA`,
+`_blocks`, `run_request`, `main`, the `__main__` guard), and `role_colours`
+and `display_objects`, from `CadexStudio.py`. `render_files` keeps its
+appearance-row helpers. `docs/INTEGRATION.md`'s "second program in the
+payload" section becomes a short statement that the module is loaded by path
+and has no process entry; `docs/ARCHITECTURE.md`, the `CadexFitReport.py`
+docstring and the `CadexAgentGuidance.md` header stop naming the shell.
+`cadex_tests/test_studio_process.py` becomes `test_studio_standing.py`: the
+closure and install facts stay, the render and look are tested in process,
+and the process tests go with what they tested.
+
+**Cost.** About 150 lines of engine code and 105 of tests, net. A client that may
+not import engine code has no way to reach the renderer; none exists. No
+cadexd op, response shape, CLI tool, dashboard view or agent behaviour
+changes, and the payload ships the same files.
+
+**What would reverse it.** A non-Python client that cannot load the module —
+a desktop app copying the dashboard, say — would need a process entry again.
+It should be designed against that client, starting from this ADR's parent
+commit.
+
+**Test.** `test_studio_standing.py::test_the_shells_process_entry_stays_gone`
+fails if any of the removed names, the schema string or a `__main__` guard
+returns. Engine and CLI suites; the packaged lifecycle gate on a restaged
+payload.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-530 — The engine stops reading a FreeCAD preference group for its budgets (2026-10-04, owner charter orun2 long-term subtraction)
+
+**Context.** `CadexEngineSettings` was split out of the Qt preferences in
+Phase 7 (ADR-021) and kept the one `App.ParamGet` call in the engine: the
+sandbox budgets fell back to `ScriptedTimeoutSeconds` and
+`ScriptedMemoryLimitMB` under `User parameter:BaseApp/Preferences/Mod/cadex`.
+`CadexScriptedRuntime` said the fallback was "preserved for the interactive
+shell and headless rebuild". An audit of writers finds none: the Qt dialog
+went with the GUI (ADR-021, ADR-214), the Blender shell kept its budgets in
+its own add-on preferences and is deleted (ADR-498), and budgets now belong
+to the project (`agent.json`, CLI flags, ADR-517). Of the readers, `cadexd`
+resolves budgets once at `open_project` from what the CLI sends, and the
+runtime's fallback only fires when a service carries none. No `cli/`,
+`training/`, `analysis/` or `package/` file names either key or the group.
+The GPU-visible half of W1 step 7 stays blocked: `nvidia-smi` could not reach
+the driver this iteration.
+
+**Decision.** `CadexEngineSettings` loses `PREFERENCE_GROUP`, `preferences`,
+`load_engine_budgets` and its `FreeCAD` import. `default_budgets()` returns
+the two constants (300 s, 6144 MB), and `resolve_budgets` takes each
+positive caller budget per field, else the default — the ADR-517 rule with
+the defaults where the preferences were. The runtime's fallback calls
+`default_budgets`. `docs/ARCHITECTURE.md` and `docs/XSCRIPT.md` say where
+the bounds come from now. Two unused `ParamGet` stub classes leave
+`test_engine_defaults_and_envelopes.py`, and the identity test stops
+asserting the group's name, which no longer exists.
+
+**Cost.** A machine whose `user.cfg` was hand-edited to change those two
+keys loses that setting; the project budget (`cadex budgets --set`) is the
+way to set one. The CLI's `budgets.source` still says `engine` for a budget
+the project did not set. No cadexd op, response shape, CLI tool or
+dashboard view changes, and the payload ships the same files.
+
+**What would reverse it.** A per-machine budget that every project on that
+machine should share — then it belongs in the CLI's own config beside the
+project's, sent the same way, not in FreeCAD's parameter tree.
+
+**Test.** `test_engine_defaults_and_envelopes.py::TestEngineSettingDefaults::
+test_the_engine_reads_no_preference_group` fails if any removed name
+returns or any engine module calls `ParamGet`; the per-field tests run
+against the real defaults with nothing patched. Engine and CLI suites; the
+packaged lifecycle gate on a restaged payload.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-531 — The staged engine payload stops carrying LLVM and clang (2026-10-04, owner charter orun2 long-term subtraction)
+
+**Context.** REPORT defect 6: the installed footprint did not move in orun2.
+The staged payload copies `.pixi/envs/default` and prunes only what a GUI
+leak gate asked about (`docs/cadex-release-packaging.md`, "What is
+accidentally in the payload"). A `readelf -d` pass over every ELF in a
+payload staged at `68b60f26` (10,127 `NEEDED` entries) finds that
+`libLLVM.so.20.1`, `libLLVM.so.21.1`, `libclang-cpp.so.20.1`,
+`libclang-cpp.so.21.1`, `libclang.so.13`, `libLTO.so.*`, `libRemarks.so.*`
+and `lib/clang/21/lib/linux/libclang_rt.*` are needed by nothing but each
+other, and no payload library names them as a string for `dlopen`. The
+environment's `conda-meta` says why they are there: `qt6-main` depends on
+`libllvm20`, `libclang-cpp20.1` and `libclang13` (its documentation and
+translation tools), `pyside6` on `libclang13` (the shiboken generator), and
+`clang` brings `libllvm21`, `libclang-cpp21.1` and compiler-rt — the
+compiler that builds the engine. None runs when the engine does. The
+`.pixi` environment itself is not touched: the owner deferred its GUI-era
+dependency audit to the next run, and LLVM 21 is the build's compiler.
+The GPU-visible half of W1 step 7 stays blocked: `nvidia-smi` could not
+reach the driver this iteration.
+
+**Decision.** `build_engine_payload.sh` deletes `lib/libLLVM*`,
+`lib/libclang*`, `lib/libLTO.so*`, `lib/libRemarks.so*` and `lib/clang`
+after its development-leftover prune, on both staging paths, and its leak
+gate refuses `libLLVM*` and `libclang*` anywhere in the payload. Its header
+stops saying the Blender shell carries the payload.
+
+**Measured.** The same tree staged with the old and new script:
+3,258,031,078 B and 40,916 files before, 2,588,443,821 B and 40,578 files
+after — −669,587,257 B, −20.6%.
+
+**Cost.** None found: the packaged lifecycle gate passes on the pruned
+payload. A future engine feature that JIT-compiles through LLVM (none
+exists) would have to un-prune it and say why.
+
+**What would reverse it.** A payload binary or Python module that links or
+`dlopen`s one of them; the leak gate then fails the stage loudly rather
+than shipping a broken import.
+
+**Test.** `test_headless_import_guardrails.py::
+test_the_payload_prunes_the_llvm_toolchain` pins the prune and the gate in
+the script; `test_a_staged_payload_carries_no_llvm` checks a staged
+payload under `CADEX_ENGINE_ROOT`. Engine suite, CLI suite CPU-only, and
+the packaged lifecycle gate on the restaged payload.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-532 — The staged engine payload stops carrying OpenCV, PCL, Node and Perl (2026-10-04, owner charter orun2 long-term subtraction)
+
+**Context.** REPORT defect 6 after ADR-531: the payload still copied node,
+perl, opencv and pcl from the development environment. The same `readelf -d`
+pass, over the 1,764 ELFs of a payload staged at `7cdf79a9`, finds that no
+ELF outside each family links `libopencv*`, `libpcl*` or `libnode.so*`,
+except OpenCV's own Python binding `cv2`, and no payload library names any
+of them as a `dlopen` string. Nothing in the payload imports `cv2`: the one
+`import cv2` in the tree is the Assembly GUI's video export
+(`src/Mod/Assembly/CommandCreateSimulation.py`, reached only from
+`InitGui.py`), which a headless engine never loads, and no `cadex` module,
+CLI, trainer or analysis module imports it. No built module links PCL.
+`conda-meta` says why each is there: `opencv` and `pcl` are direct
+`pixi.toml` dependencies left from the GUI-era tree, `nodejs` arrives with
+`pyright` and `perl` with `git` — developer tools. The payload's `bin/`
+carries no `node` or `perl` executable, so `lib/node_modules` (npm) and
+`lib/perl5` are runtimes without an interpreter. The `.pixi` environment
+is not touched (the owner deferred its audit to the next run). The
+GPU-visible half of W1 step 7 stays blocked: `nvidia-smi` could not reach
+the driver this iteration either.
+
+**Decision.** `build_engine_payload.sh` deletes `lib/libopencv*`,
+`lib/libpcl*`, `lib/libnode.*`, `lib/node_modules`, `lib/perl5`,
+`share/perl5`, `share/opencv4`, `share/pcl-*`, and `site-packages/cv2` with
+its two `opencv_python*` dist-info stubs, on both staging paths. Its leak
+gate refuses the libraries, `cv2`, `lib/node_modules` and `lib/perl5`.
+`share/licenses/opencv4` stays: carrying a licence text for something not
+shipped costs nothing.
+
+**Measured.** The same tree staged with the old and new script:
+2,588,443,821 B and 40,578 files before, 2,213,397,834 B and 36,594 files
+after — −375,045,987 B, −14.5%. Against the payload before ADR-531
+(3,258,031,078 B) the two prunes together remove 32.1%. A `NEEDED` pass on
+the new payload resolves every entry it resolved before; nine libraries
+lose their last user with this prune (`libQt6Test`, `libavif`,
+`libboost_iostreams`, `libbrotlidec`, `libbrotlienc`, `libcares`,
+`libjasper`, `libuv`, `libwebpdecoder`) and are left for a later audited
+slice rather than swept up here.
+
+**Cost.** None found: the packaged lifecycle gate, the guardrails and the
+licensing test pass on the pruned payload (41 passed). An engine feature
+that wants to write video through OpenCV would have to un-prune it and say
+why; Cadex's films are encoded by the CLI with `ffmpeg`
+(`cli/cadex_cli/video.py`), outside the payload.
+
+**What would reverse it.** A payload binary or Python module that links,
+`dlopen`s or imports one of them; the leak gate fails the stage loudly.
+
+**Test.** `test_headless_import_guardrails.py::
+test_the_payload_prunes_opencv_pcl_node_and_perl` pins the prune and the
+gate; `test_a_staged_payload_carries_no_opencv_pcl_node_or_perl` checks a
+staged payload under `CADEX_ENGINE_ROOT`.
+
+Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

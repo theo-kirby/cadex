@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-09-14
+Verified against source: 2026-10-03
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -212,7 +212,12 @@ the evidence; the boundary was pinned by
 `test_engine_purity_guardrails.py` when Phase 7 deleted the protocol seam
 it guarded — that is the file to read today.
 
-## Phase 6 — Blender shell `(landed 2026-07-25, ADR-019)`
+## Phase 6 — Blender shell `(landed 2026-07-25, ADR-019; historical since ADR-498)`
+
+*Historical.* The shell this phase built was deleted in orun2 (ADR-498);
+the tag `v1-blender-shell` is the last tree that has it, and
+`docs/SHELL-PARITY.md` says where each of its parts went. The items below
+are kept as the record of what was built, not as live status.
 
 - [x] Harness/account settings and live model discovery for Claude Code, Codex,
       and pi; native CLI sign-in, per-harness model IDs, and harness-owned
@@ -727,7 +732,14 @@ Only the publication residue is left over at the end.
 differential harness green per domain; `CADEX-BLENDER-GATE` still ok on the
 unchanged protocol.
 
-## Phase 12 — The shell becomes ours `(unscheduled since ADR-030)`
+## Phase 12 — The shell becomes ours `(superseded by ADR-500)`
+
+**Superseded: a desktop app that copies the dashboard.** ADR-500 replaced
+this phase. The Blender shell is deleted (ADR-498), so there is no shell to
+make ours; the dashboard is the only UI. If a desktop app is ever built, it
+is built from scratch to copy the dashboard, behind the unchanged protocol,
+and it is not scheduled. The Rust + wgpu + egui plan below is kept as the
+record of the superseded direction; its unticked items are not live work.
 
 **Goal:** Rust + wgpu + egui against the now-ours engine, over the
 **unchanged** protocol.
@@ -819,7 +831,10 @@ pair of commits, each independently verifiable against the same gates.
 
 Not a phase that "completes" — a standing mode of work.
 
-- [ ] Shell side (`docs/BLENDER-TREE.md` §4), where the disable commit is
+- [x] Shell side — **closed by deletion (ADR-498, ADR-500):** the whole
+      `shell/` tree went in orun2's disable and delete commits (ADR-495,
+      ADR-498), which supersedes the per-tree reduction planned here.
+      What it was (`docs/history/BLENDER-TREE.md` §4): the disable commit was
       nearly free because these are already CMake options: `WITH_CYCLES`
       (`shell/intern/cycles`) — **disabled and deleted 2026-09-06,
       ADR-196**, the first tree through both commits — `WITH_INTERNATIONAL`

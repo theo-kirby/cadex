@@ -91,7 +91,23 @@ class RunReport:
     #: ``film`` (ADR-459) is the film's state and where each sheet and
     #: video drawn from the seeds landed.
     evaluation: dict[str, Any] = field(default_factory=dict)
+    #: ``cadex comment``: the comment it left; ``cadex -p``: the owner's
+    #: comments the turn received (ADR-505).
+    comments: list[dict[str, Any]] = field(default_factory=list)
+    #: ``cadex -p --image``: each image the turn carried, by name, type,
+    #: size and SHA-256 — never the bytes (ADR-507).
+    attachments: list[dict[str, Any]] = field(default_factory=list)
+    #: ``cadex -p``: what the turn cost as Claude Code reported it --
+    #: tokens in, cached and out, ``cost_usd`` and ``duration_ms`` (ADR-523).
+    usage: dict[str, Any] = field(default_factory=dict)
     error: str = ""
+    #: ``cadex revision``: the trail it listed, or the revision it put back (ADR-506).
+    revisions: dict[str, Any] = field(default_factory=dict)
+    #: The project's engine budgets (ADR-517): after an engine run, those
+    #: ``in_force`` with each one's ``source`` (``override``, ``project`` or
+    #: ``engine``) and what the project ``stored``; ``cadex budgets``
+    #: reports ``stored`` alone.
+    budgets: dict[str, Any] = field(default_factory=dict)
     #: Free-form notes worth printing but not worth a field of their own.
     notes: list[str] = field(default_factory=list)
 
@@ -129,6 +145,16 @@ class RunReport:
             payload["smoke"] = dict(self.smoke)
         if self.evaluation:
             payload["evaluation"] = dict(self.evaluation)
+        if self.comments:
+            payload["comments"] = [dict(item) for item in self.comments]
+        if self.attachments:
+            payload["attachments"] = [dict(item) for item in self.attachments]
+        if self.usage:
+            payload["usage"] = dict(self.usage)
+        if self.revisions:
+            payload["revisions"] = dict(self.revisions)
+        if self.budgets:
+            payload["budgets"] = dict(self.budgets)
         if self.notes:
             payload["notes"] = list(self.notes)
         if self.error:
@@ -338,6 +364,14 @@ def human_lines(report: RunReport) -> list[str]:
         lines.append("review gait {:s}".format(
             "walked" if gait.get("walked")
             else "DID NOT WALK: " + "; ".join(gait.get("findings") or ())))
+    budgets = report.budgets
+    if budgets and ("in_force" not in budgets
+                    or any(source != "engine" for source in (budgets.get("source") or {}).values())):
+        shown = budgets.get("in_force") if "in_force" in budgets else budgets.get("stored")
+        sources = budgets.get("source") or {}
+        lines.append("budgets " + ("  ".join(
+            f"{key} {value:g}" + (f" ({sources[key]})" if key in sources else "")
+            for key, value in sorted((shown or {}).items())) or "none stored: the engine's defaults"))
     for note in report.notes:
         lines.append(f"note   {note}")
     if report.revision:

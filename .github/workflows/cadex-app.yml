@@ -8,28 +8,14 @@ name: Cadex
 # `mesh-build.yml` there, which downloaded that tarball, verified its SHA256
 # and installed it into a bundle. There is no repository boundary for the
 # payload to cross any more, so the download, the digest pin and the release
-# publication are all gone -- the shell job builds the engine it ships.
+# publication are all gone.
 #
-# What the `app` job proves, in order: the engine builds and its unit suite
-# passes; the CLI drives it (ADR-061); the payload stages and answers the
-# protocol when discovered through its own manifest; the shell builds against
-# that payload; and the agent suites pass headless, driven by the built
-# binary, with **no MESH_* environment variable set** -- the
-# zero-configuration criterion.
-#
-# Precisely: the suites run under the installed Blender binary and import the
-# add-on from the source tree (that is how they resolve it, and it is what
-# makes an edit testable without a reinstall). What they take from the bundle
-# is the *engine*, discovered through bpy.app.binary_path -- which is what
-# `engine_from_bundle: true` asserts and the only part that has to come from
-# the install.
-#
-# The `engine` job keeps Linux honest. We do not build a Linux shell yet
-# (ROADMAP, "Later"), but the engine is meant to build there, and losing that
-# coverage along with the release job it used to feed would be an accident
-# rather than a decision. Since ADR-061 it also carries the CLI, which is the
-# only front end Linux has -- and it runs the CLI suite twice, once against
-# the build tree and once against the staged payload.
+# The Blender shell is disabled (ADR-495), so there is no application bundle
+# to build, gate or upload. What is left is the engine on both platforms: it
+# builds, its unit suite passes, the CLI drives it (ADR-061), and the staged
+# payload answers the protocol when discovered through its own manifest. The
+# CLI suite runs twice on Linux, once against the build tree and once against
+# the staged payload.
 
 on:
   schedule:
@@ -52,15 +38,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
-  app:
-    name: Application (macOS arm64)
-    # macos-15, not macos-14: the shell's own
-    # build_files/cmake/platform/platform_apple_xcode.cmake refuses anything
-    # below Xcode 16.0, and the macos-14 image tops out at 15.4 -- there is no
-    # newer Xcode on it to select. This was the *second* wall behind the
-    # missing LFS checkout (ADR-163); the first one aborted configure before
-    # the compiler check was ever reached, so neither was visible while the
-    # other stood.
+  engine-macos:
+    name: Engine only (macOS arm64)
     runs-on: macos-15
     timeout-minutes: 240
     steps:
@@ -83,46 +62,8 @@ jobs:
               'pixi.toml',
               'package/engine/build_engine_payload.sh') }}
 
-      # 1.3 GB of prebuilt libraries, and the single slowest step on a cold
-      # runner. Keyed on the recorded gitlink so a library bump busts it.
-      - name: Cache the shell libraries
-        uses: actions/cache@v4
-        with:
-          path: shell/lib/macos_arm64
-          key: >-
-            shell-lib-macos-arm64-${{ hashFiles('.gitmodules') }}-${{
-              hashFiles('.git/modules/shell/lib/macos_arm64/HEAD') }}
-
-      - name: Install the shell's host toolchain
-        # Deliberately homebrew, deliberately not the pixi env: the shell is
-        # built with the conda environment scrubbed off PATH. See
-        # package/app/build_app.sh.
-        run: brew install cmake ninja git-lfs
-
-      # `actions/checkout` does not fetch Git LFS content, and this repository
-      # keeps ~790 MB of the shell's binary assets there. One of them is
-      # shell/release/datafiles/startup.blend, and the shell's own CMakeLists
-      # measures it: under 1 KB it is a pointer file, and the configure step
-      # aborts with "Detected incomplete startup blend". That is what has
-      # failed every run of this job for weeks (ADR-163) -- always at *Build
-      # the shell*, always for this reason, on branches that never touched the
-      # shell at all.
-      #
-      # It runs after the toolchain step because that is what installs
-      # git-lfs. Every LFS path in the repository is under shell/, so the
-      # engine job below needs none of this and does not pay for it.
-      - name: Fetch the shell's Git LFS assets
-        run: |
-          git lfs install --local
-          git lfs pull --include="shell/**"
-          size="$(wc -c < shell/release/datafiles/startup.blend)"
-          test "${size}" -gt 1024 || {
-            echo "FAIL: startup.blend is ${size} bytes -- still an LFS pointer"
-            exit 1
-          }
-
       - name: Set up
-        run: pixi run setup
+        run: pixi run setup-engine
 
       - name: Build the engine
         run: pixi run build-engine
@@ -142,67 +83,13 @@ jobs:
       - name: Gate -- the packaged engine answers the protocol
         # The same cadexd lifecycle test the source tree runs, driven against
         # the staged payload and discovered through its cadex-engine.json
-        # manifest exactly as the shell discovers it. A source tree that
+        # manifest exactly as the CLI discovers it. A source tree that
         # passes proves nothing about a payload (ADR-023).
         run: |
           payload="$(ls -d build/engine/cadex-engine-*/ | head -1)"
           CADEX_ENGINE_ROOT="$(cd "${payload}" && pwd)" \
             pixi run python -m pytest -q \
             src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
-
-      - name: Build the shell
-        run: pixi run build-shell
-
-      - name: Gate -- the bundle carries the engine
-        run: |
-          app="$(bash package/app/build_app.sh path)"
-          resources="$(dirname "$(dirname "${app}")")/Resources"
-          test -f "${resources}/cadex/cadex-engine.json" \
-            || { echo "FAIL: no engine inside the bundle"; exit 1; }
-          cat "${resources}/cadex/cadex-engine.json"
-
-      - name: Agent suite (no engine needed)
-        run: bash package/app/build_app.sh gate tests/python/bl_mesh_agent.py
-
-      # The criterion. No MESH_FREECADCMD, no MESH_CADEXD_MODULE, no
-      # MESH_CADEX_ENGINE: the add-on must find the engine inside the bundle
-      # by reading its manifest, or this fails.
-      - name: Gate -- CADEX-BLENDER-GATE with zero configuration
-        env:
-          MESH_FREECADCMD: ""
-          MESH_CADEXD_MODULE: ""
-          MESH_CADEX_ENGINE: ""
-          # The 0.65 s slider-drag bar is a parity criterion against the Qt
-          # shell, and it is an absolute wall-clock number. A shared runner is
-          # ~2.2-2.5x slower at *everything* in this gate than the developer
-          # Mac -- open, refine and rebuild all move together with the drag --
-          # so enforcing it here fails the build for the hardware rather than
-          # for the product (ADR-163). 2.6 s is 4x parity and about 2x the
-          # measured runner median: a collapse still fails, runner noise does
-          # not. The payload keeps reporting `median_within_bar` against the
-          # real 0.65 s, so the artifact never claims parity it did not meet.
-          CADEX_GATE_LATENCY_BAR: "2.6"
-        run: |
-          pixi run gate | tee gate.txt
-          grep -q '"ok": true' gate.txt
-          grep -q '"engine_from_bundle": true' gate.txt
-
-      - name: Bundle
-        run: |
-          app="$(bash package/app/build_app.sh path)"
-          bundle="$(dirname "$(dirname "$(dirname "${app}")")")"
-          tar -C "$(dirname "${bundle}")" -czf cadex-macos-arm64.tar.gz \
-            "$(basename "${bundle}")"
-          shasum -a 256 cadex-macos-arm64.tar.gz | tee cadex-macos-arm64.tar.gz.sha256
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cadex-macos-arm64
-          path: |
-            cadex-macos-arm64.tar.gz
-            cadex-macos-arm64.tar.gz.sha256
-            gate.txt
-          if-no-files-found: error
 
   engine:
     name: Engine only (Linux x64)
@@ -228,6 +115,9 @@ jobs:
               'pixi.toml',
               'package/engine/build_engine_payload.sh') }}
 
+      - name: Set up
+        run: pixi run setup-engine
+
       - name: Build the engine
         run: pixi run build-engine
 
@@ -247,8 +137,7 @@ jobs:
             pixi run python -m pytest -q \
             src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
 
-      # ...and the CLI resolves that payload through its manifest, exactly as
-      # the shell does. Same argument as the step above: a source tree that
+      # ...and the CLI resolves that payload through its manifest. Same argument as the step above: a source tree that
       # passes proves nothing about a payload (ADR-023).
       - name: Gate -- the CLI drives the packaged engine
         run: |

@@ -256,9 +256,9 @@ def test_neither_form_of_script_asks_for_the_restore_pass(
     asked: list[bool] = []
     real = main_module.open_project
 
-    def recording(client, root, *, restore=True):
+    def recording(client, root, *, restore=True, **kwargs):
         asked.append(bool(restore))
-        return real(client, root, restore=restore)
+        return real(client, root, restore=restore, **kwargs)
 
     monkeypatch.setattr(main_module, "open_project", recording)
 
@@ -304,9 +304,11 @@ def test_export_without_out_is_a_usage_error(project, capsys) -> None:
     assert "needs --out" in _envelope(capsys)["error"]
 
 
-def test_a_bare_invocation_prints_help_and_exits_two(capsys) -> None:
-    assert main([]) == EXIT_USAGE
-    assert "usage: cadex" in capsys.readouterr().err
+def test_help_is_asked_for_and_a_bare_invocation_is_the_app(capsys) -> None:
+    # A bare `cadex` serves the dashboard (cli/tests/test_app.py); help is -h.
+    with pytest.raises(SystemExit) as exit_:
+        main(["-h"])
+    assert exit_.value.code == 0 and "usage: cadex" in capsys.readouterr().out
 
 
 def test_an_engine_that_does_not_exist_is_reported_not_traced(

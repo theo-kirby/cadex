@@ -41,7 +41,7 @@ from .review_server import run_model
 FPS = 10
 MAX_BYTES = 32 * 1024 * 1024
 MAX_TRIANGLES = 500_000
-# The follow rig's declared framing (REVIEW-DESIGN.md §10, ADR-332): the subject's standing
+# The follow rig's declared framing (DASHBOARD.md §10, ADR-332): the subject's standing
 # height — its vertical extent at the first solved pose — fills this fraction of the frame
 # height, and the camera anchor is a Hann-smoothed subject track with this half-window at FPS
 # (0.4 s, the reference's 20 frames at 50 Hz). The rest of the rig's numbers are the scene

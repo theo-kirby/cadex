@@ -32,10 +32,9 @@ pasted into its system prompt instead, bounded, and what it decides comes
 back through one convention rather than a new tool: a line of its closing
 text that starts ``DECISION:`` lands in ``DECISIONS.md``. ``PROGRESS.md``
 is written by the CLI after every accepted run, so it holds what actually
-happened rather than what a model said would. The shell's own agent has
-neither a file tool nor a shell (the Mesh tools are its whole world), so
-with the GUI attached the three files are still the CLI's and a person's;
-the shape is the same in every mode because the files are (ADR-201).
+happened rather than what a model said would. The three files are the
+CLI's and a person's in every mode, local or remote, so the shape is the
+same in every mode because the files are (ADR-201).
 
 **Project-root git repositories** (ADR-194). Outside another work tree,
 the CLI initializes a repository if needed and creates its default
@@ -210,14 +209,7 @@ unavailable measurements stay unavailable. Training and rollout rows
 retain their numbers, so rows
 from either mode compare line for line. **A warm start travels (ADR-268):** the dispatcher carries the
 bundle and the model out, and `--init-from`'s policy and its parent
-bundle beside them, so an iterate has the same shape in either mode. With the GUI attached the same commands
-run from a terminal beside the open file, one at a time while no rebuild
-is in flight; the shell's own agent cannot run them, and it sees an
-accepted run on the next Rebuild Model or reopen. Rebuild Model or
-reopen **before the next GUI edit** once a command has accepted a
-script: stale mutations are refused without replay or revision adoption.
-Review the refreshed source and values before retrying. Simultaneous
-acceptance and concurrent rebuilds still require sequential use.
+bundle beside them, so an iterate has the same shape in either mode.
 
 ## Domain docs
 
@@ -529,6 +521,33 @@ def previous_numbers(root: Path | str) -> dict[str, tuple[float, str]]:
                 except ValueError:
                     pass
     return found
+
+
+def progress_rows(root: Path | str) -> list[dict[str, str]]:
+    """``PROGRESS.md``'s rows as written, oldest first (ADR-519).
+
+    Each is ``when``, ``run``, ``revision`` and ``digest`` (empty for a
+    dash), ``what`` and ``numbers``, with the cells' escaped pipes put back.
+    A person's hand-added row counts; the header, the rule and every line
+    that is not a row are skipped. Empty when there is no file.
+    """
+
+    try:
+        lines = (Path(root) / PROGRESS_NAME).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    rows: list[dict[str, str]] = []
+    for line in lines:
+        match = _ROW_RE.match(line.strip())
+        if not match or match.group(1).startswith(("When", "---")):
+            continue
+        when, run, revision, digest, what, numbers = (
+            cell.replace("\\|", "|") for cell in match.groups())
+        rows.append({"when": when, "run": run,
+                     "revision": "" if revision == "—" else revision,
+                     "digest": "" if digest == "—" else digest,
+                     "what": what, "numbers": numbers})
+    return rows
 
 
 def spelled_number(label: str, value: float) -> str:
@@ -878,8 +897,6 @@ frames/
 *-trace.json
 # What is transient:
 .cadex-cli.lock
-*.blend1
-*.blend@
 __pycache__/
 """
 

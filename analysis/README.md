@@ -418,7 +418,7 @@ agree to 4e-7 on displacement and 5e-8 on von Mises.
 
 `analysis/` is **engine-side**, and `docs/PROVENANCE.md` §1 puts the engine
 side at LGPL. `AGENTS.md` calls the GPL boundary "one-way and hard" about
-`shell/`; the reasoning transfers exactly, and a test enforces it here.
+the Blender shell it used to carry; the reasoning transfers exactly, and a test enforces it here.
 
 - **Nothing under `analysis/` may import a GPL package.** Not `gmsh` (GPL-2,
   and its linking exception runs the other way), not `pymeshlab`, `mmapy`,

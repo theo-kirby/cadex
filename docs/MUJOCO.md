@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-09-30
+Verified against source: 2026-10-04
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -52,7 +52,7 @@ same schema needs:
 - no new op in `CadexdProtocol.OP_ARG_SPECS`
 - no new response key, no new golden fixture shape
 - no row in the `docs/INTEGRATION.md` op table
-- no change to `mesh_agent` at all
+- no change to the shell's assistant package at all
 
 The entire cost of getting dynamics onto the screen is engine-side, behind
 a contract that already exists and is already test-pinned. That is an
@@ -241,7 +241,7 @@ we are *replacing* them. MuJoCo we keep.
 
 **Branch in this repo, engine-side: yes.** `mujoco-python` joins
 `pixi.toml` exactly pinned, for the same reason `occt == 7.8.1` is exactly
-pinned. Code lands under `src/Mod/cadex/`. Nothing in `shell/` ever imports
+pinned. Code lands under `src/Mod/cadex/`. Nothing in the shell ever imported
 mujoco — a physics authoring path in the shell would violate "nothing
 happens outside the script" the same way the deleted bpy modes did.
 
@@ -326,7 +326,7 @@ rotations, so the trace exercises the quaternion-hemisphere flip that
 `cadex_animate` documents as one of its five silent failure modes. A seam
 proven on a box proves much less.
 
-**Result: passed, with an empty `shell/` diff.** Both halves — the pure one
+**Result: passed, with an empty shell diff.** Both halves — the pure one
 without bpy, and `apply()` inside the built `Cadex.app` — accepted a
 MuJoCo-produced trace unmodified. 2 components, 121 frames, 1694 keyframes
 baked; the played pose matches the trace to **8e-6 mm** and **3.8e-8** on
@@ -381,14 +381,14 @@ may import `mujoco`.
 
 **Done, and closed.** The trace publishes through the path `api.simulation`
 already used — same `output_type`, same `artifact_kind`, no protocol change,
-no `shell/` diff. Engine suite **447 passed** at closure (445 at the ADR, plus
+no shell diff. Engine suite **447 passed** at closure (445 at the ADR, plus
 the two that came with the `describe_api` note and the `CadexDynamics`
 tidy), and the **packaged lifecycle gate 7 passed** against a payload
 restaged from the closing commit — which is the gate that matters, since
 ADR-023's rule is that a passing source tree proves nothing about a
 payload. `pixi run gate` passed at M2's verification commit and has not been
-re-run since, because the branch has never contained a `shell/` diff to
-invalidate it: `git diff main...MJC` names no file under `shell/`. That
+re-run since, because the branch has never contained a shell diff to
+invalidate it: `git diff main...MJC` names no file under the shell tree. That
 invariant, not a repeated run, is what the shell claim rests on.
 
 Closed 2026-07-30 with its two documentation debts paid: `docs/VISION.md`
@@ -575,13 +575,13 @@ in two different processes.
 gravity alone, slaps a floor slab it is not jointed to, rebounds through
 twenty degrees, comes back, and by 1.25 s is motionless to under a
 micro-degree — end to end through the live cadexd gate, with no protocol
-change and no `shell/` diff. The same script through two separate cadexd
+change and no shell diff. The same script through two separate cadexd
 processes writes the same artifact byte for byte. Engine suite **556
 passed** (447 at M2's close); the **packaged lifecycle gate 8 passed**
 against a payload restaged from the closing commit, and the collision and
 cross-restart suites pass against that same payload, which is what proves
 Qhull is really in it. `pixi run gate` was not re-run and did not need to
-be — `git diff main...MJC` still names no file under `shell/`.
+be — `git diff main...MJC` still names no file under the shell tree.
 
 **What the six phases learned by measuring**, and the plan's own corrections
 are in ADR-079 in full. The six that contradict a name, a default or a
@@ -666,11 +666,11 @@ settles at **30.44** — the 0.44 being the load's torque divided by the gain,
 on gravity's side, which is what a proportional servo does. The same script
 with its `actuators=` list emptied falls to 75°, which is what makes the
 first number mean anything. End to end through the live cadexd gate, with no
-protocol change and no `shell/` diff. Engine suite **684 passed** (556 at
+protocol change and no shell diff. Engine suite **684 passed** (556 at
 M3's close); the **packaged lifecycle gate 8 passed** against a payload
 restaged from the closing commit, with the actuator and cross-restart suites
 passing against that same payload. `git diff main...MJC` still names no file
-under `shell/`.
+under the shell tree.
 
 **Units are in the parameter names, and the wrong one is a refusal.** Every
 quantity whose meaning depends on whether the joint coordinate turns or
@@ -721,7 +721,7 @@ change.
 `assembly.mjcf(assembly, bodies, ...)` — a new publishable xscript output
 that writes one self-contained MJCF file carrying exact OCCT inertia and a
 keyframe at the pose the assembly solver produced. **No protocol change and
-no `shell/` diff**, which is the invariant ADR-078 says the shell claim
+no shell diff**, which is the invariant ADR-078 says the shell claim
 rests on.
 
 Two corrections to what this section used to say, both found while
@@ -836,7 +836,7 @@ the subprocess, which tries to import `CadexDynamics` and reports that it
 could not), opens in the pose it was solved at, carries the OCCT inertias
 to a stated and tested tolerance, and integrates to the same trajectory the
 engine produced within that tolerance — through the live cadexd gate, with
-no protocol change and no `shell/` diff. The packaged gate is **9 tests**.
+no protocol change and no shell diff. The packaged gate is **9 tests**.
 
 ---
 
@@ -846,7 +846,7 @@ no protocol change and no `shell/` diff. The packaged gate is **9 tests**.
 one JSON bundle describing a trainable task, beside the model it
 references. Four new intermediates compose it: `assembly.observation`,
 `assembly.reward`, `assembly.termination`, `assembly.randomise`. **No
-protocol change and no `shell/` diff**, which is the invariant ADR-078 says
+protocol change and no shell diff**, which is the invariant ADR-078 says
 the shell claim rests on.
 
 A model is not a task. Training needs observation space, action space,
@@ -1077,7 +1077,7 @@ it could not), which resets the model to the solved keyframe, acts,
 observes, accumulates reward and terminates — producing the same numbers
 the engine produced, compared step by step as `repr` text, seeded domain
 randomisation included, through the live cadexd gate, with no protocol
-change and no `shell/` diff. The packaged gate is **10 tests**.
+change and no shell diff. The packaged gate is **10 tests**.
 
 `cadex_tests/dynamics_task_episode.py` **is** the environment. M7 becomes
 dispatch rather than debugging.
@@ -1090,7 +1090,7 @@ dispatch rather than debugging.
 output that names a trained policy by file and digest, verifies it against
 the task it claims, and writes one receipt. Plus `training/cadex_train.py`,
 a Cadex-free PPO trainer at the repository root that reads an M6 bundle and
-writes one `.cxpolicy`. **No protocol change and no `shell/` diff.**
+writes one `.cxpolicy`. **No protocol change and no shell diff.**
 
 **The honest constraint, unchanged:** training does not run on the user's
 laptop. MJX needs JAX-on-GPU, JAX's Apple Silicon story in 2026 is
@@ -1108,7 +1108,7 @@ autodiff, no accelerator and — measured, see below — no numpy.
 | Question | Answer |
 |---|---|
 | Where does training run? | The user's own machine with a GPU, dispatched by the agent's shell. M7 ships a movable run directory and a trainer; it builds **no dispatch machinery, no network I/O, no new op**. |
-| Does the policy extend `put_asset` or get its own op? | **Extends `put_asset`.** A new op would cost a `shell/` diff — `cadexd_client.py` — and ADR-078 says the branch rests on there not being one. Widening the store's accepted suffixes costs none. |
+| Does the policy extend `put_asset` or get its own op? | **Extends `put_asset`.** A new op would cost a shell diff — `cadexd_client.py` — and ADR-078 says the branch rests on there not being one. Widening the store's accepted suffixes costs none. |
 | Is there a **train** button? | **No, and there is nothing to press.** The agent authors the task, dispatches with its own shell, and calls the existing `put_asset` path. VISION principle 5 is untouched: the human still only judges. |
 
 **What was measured before anything was built** (phase 0,
@@ -1272,7 +1272,7 @@ already exists; a script declares it and the engine verifies it against the
 task it was trained on — refusing a policy whose task, model, channels,
 actions, output map or witness disagree — and publishes a receipt whose
 bytes are part of the project's identity. Through the live cadexd gate, with
-no protocol change and no `shell/` diff. The packaged gate is **11 tests**.
+no protocol change and no shell diff. The packaged gate is **11 tests**.
 
 ---
 
@@ -1281,7 +1281,7 @@ no protocol change and no `shell/` diff. The packaged gate is **11 tests**.
 `assembly.rollout(policy, frames_per_second=..., seed=...)` — the verified
 policy plays against the model its task bundle names, and the rollout leaves
 as `cadex-assembly-simulation-trace-v1`. The shell bakes it with the code it
-has had since ADR-050. **No protocol change and no `shell/` diff**, for the
+has had since ADR-050. **No protocol change and no shell diff**, for the
 third slice running.
 
 **A new operation and no new output type**, which is the whole design. A
@@ -1343,9 +1343,12 @@ M6, a policy trained offboard in M7 and verified on arrival, played by the
 engine and baked by the shell. Through the live cadexd gate; the packaged
 gate is **12 tests**. The bake is real evidence rather than a formality:
 `rollout_bake_integration.py` writes a trace from a live `cadexd` and bakes
-it inside the shipped bundle through `mesh_agent.cadex_animate`'s own
+it inside the shipped bundle through the shell's own `cadex_animate`
 functions — **357 keyframes per component**, the grounded base stationary,
-the swing arm translated and rotated.
+the swing arm translated and rotated. *(Since ADR-495 the shell is disabled, and since ADR-498 deleted,
+and the file is `rollout_review_integration.py`: the same live trace — 52
+solver frames, base stationary, swing arm moved — is read through the review
+dashboard's own trace reader instead of baked.)*
 
 At which point the agent can be asked for a robot, and answer with one that
 walks.
@@ -1932,12 +1935,12 @@ Ranked by how quietly they fail.
    agent authors the task, dispatches with its own shell, and declares the
    result), and M8 needed no button at all because a rollout is a line in a
    script that produces a trace the shell was already baking. **The whole
-   arc M0–M8 landed with an empty `shell/` diff.** Still worth listing as a
+   arc M0–M8 landed with an empty shell diff.** Still worth listing as a
    hazard for whatever comes next, but the answer is now four slices of
    precedent rather than a pending ADR.
    The diff was spent afterwards, once and deliberately, on the collision
    overlay (ADR-091) — which is the counter-example worth keeping beside
-   this one: it is a `shell/` change no engine surface could have made,
+   this one: it is a shell change no engine surface could have made,
    because the thing that was wrong was invisible rather than unreported.
 8. **A collision shape and the solid it stands for are in the same frame
    and are otherwise unrelated** (ADR-087). `collision(...)`'s `offset`
@@ -1968,7 +1971,7 @@ Ranked by how quietly they fail.
    edge-only wire cage per shape, on the part it belongs to, named exactly
    what MuJoCo calls the geom, and the panel carries the initial-contact
    line above. This bug is obvious in one second and invisible in an hour of
-   reading, and that asymmetry is the whole argument. It cost a `shell/`
+   reading, and that asymmetry is the whole argument. It cost a shell
    diff, which was a decision and was taken as one rather than smuggled in.
    The gate now reproduces this exact floor and asserts the overlay draws
    its top 20.000 mm proud, then that the corrected script draws the gap as
@@ -2454,7 +2457,7 @@ Ranked by how quietly they fail.
   untouched.
 - ~~Does the policy asset extend `put_asset` (which today gates extensions
   to STL/OBJ/PLY) or get its own op?~~ — answered by M7 (ADR-084): **it
-  extends `put_asset`, and the deciding cost is a `shell/` diff.** A new op
+  extends `put_asset`, and the deciding cost is a shell diff.** A new op
   needs `OP_ARG_SPECS`, `OP_RESPONSE_SPECS`, both `docs/INTEGRATION.md`
   tables, a golden fixture, a handler — *and* `cadexd_client.py` in the
   add-on, which is exactly the diff ADR-078 says the branch rests on not
@@ -2466,7 +2469,7 @@ Ranked by how quietly they fail.
   is the union that the store actually uses. What is left is one rough edge,
   taken deliberately: the tool is called `import_geometry` and advises
   `mesh.import_file(...)` on success, which is wrong for a policy. Fixing
-  the wording is a `shell/` diff, so the engine-side refusals carry the
+  the wording is a shell diff, so the engine-side refusals carry the
   correct advice instead.
 - ~~At what frame rate is a policy rollout played?~~ — answered by M8
   (ADR-085): **any rate that divides the task's `control_hz` exactly, and by
@@ -2953,7 +2956,7 @@ row below was actually run, and the numbers are this run's.
 | 8 | **Iterate** | `cadex params --set shove_n=0.20` | **Refused, exit 3**: the task digest moved (`602d62c1…` → `369a0dd5…`) and the declared policy no longer fits. Correct by ADR-088 — and it means the refusal also never writes the new bundle, so there is nothing to retrain against. Iterating that morning was six legs: edit the script to drop or re-point the policy → rebuild → dig out the bundle → train (`--init-from … --init-from-task-change`) → `put_asset` → re-declare. Three of the six were the person's. **Closed the same day** (ADR-192) with a script convention and no new `params` flag: the policy is declared behind a numeric switch (`policy_on`), so `cadex params --set policy_on=0 --set shove_n=0.20 --out sweep` is accepted (`set_params` never refuses a dropped output) and exports the bundle at `369a0dd5…`; `cadex train --put --init-from … --init-from-parent-task … --init-from-task-change "…"` retrains warm across the change (the ADR-161 pair, now carried by the dispatcher) — 2 it × 8 envs in **17.8 s** wall, iteration 0 already at +1.52 reward/step where a cold network sits near −0.95; the digest edit and `cadex script --set`; `cadex params --set policy_on=1 --out run2` verifies and rolls out. Trace: **127.8** total reward at 0.20 N after one warm toy step, against 1729.9 at 0.12 N for the 400-iteration policy — the comparison exists; row 9 is where it gets recorded. `cli/tests/test_train.py` runs the whole chain on the toy with the real trainer | the agent for the script, a pipeline for the four commands |
 | 9 | Compare and record | On 2026-09-06 (morning): nothing — no comparison, no `PROGRESS.md`, and the project directory was not a git repository. **Closed the same day** (ADR-194, on row 10's `PROGRESS.md`): a run's `total_reward` or `reward/step` is written **with its change against the last row that carried it** — delta, that run's digest, that run's value — so the comparison is one recorded row a reader does not assemble by eye; and accepted runs attempt a commit in project-root repositories (ownership and ignore rules: `docs/CLI.md`, **Project history depends on repository ownership**). Measured on the scratch copy: `cadex train --put` (2 it × 8 envs, 4.6 s of training, 20.9 s wall) initialised the repository and landed its row and commit; `cadex script --set` re-declaring the new policy landed `total_reward -293.4 (Δ -421.2 vs 2996fb73 at 127.8)` — a fresh 2-iteration policy against the ADR-192 warm one, on the same task — and a commit of exactly `PROGRESS.md`, `script.py`, `script.json` and the history entry (`git show --stat`). Two runs, two rows, two commits. `cli/tests/test_project_docs.py` pins the delta, the repository and the nested-work-tree refusal | the CLI |
 | 10 | Project as a codebase | On 2026-09-06 (morning): nothing — no `ARCHITECTURE.md`, `DECISIONS.md` or `PROGRESS.md`, nothing scaffolds them, nothing reads them on a visit. **Closed the same day** (ADR-193): the CLI scaffolds the three on the first visit (idempotent, never overwrites), pastes them into every turn's system prompt (bounded: architecture head, decisions and progress tails; ADR-265), lands a `PROGRESS.md` row after every accepted run with the revision, digest, what was done and the numbers the run produced (the trace's `total_reward`, the trainer's `reward_per_step`, wall time, sha256), and turns a turn's closing `DECISION:` lines into numbered `DECISIONS.md` entries. Domain docs are a documented convention (`docs/<subject>.md`). `cli/tests/test_project_docs.py` drives it against the engine and a scripted turn. `docs/CLI.md` §2 | the CLI for the scaffold and the log; the agent for the decisions, by convention rather than by tool |
-| 11 | The same walk with the GUI attached | the same `cadex` commands from a terminal beside the open `.blend` — **not** the in-app agent, which has only the Mesh tools (`--tools ""`, no shell, no file tool) | **Documented 2026-09-06** (ADR-201, `docs/CLI.md` §2) from the client code, no GUI launched: the CLI's `flock` is per command and released before the `PROGRESS.md` row and the commit; the shell takes no lock, so ownership is sequential by convention; stale shell mutations return `STALE_PROGRAM_REVISION` without adopting the new guard or replaying arguments (ADR-204); Rebuild Model or reopen (`load_post` → `queue_open`), review the refreshed source/values, then retry, never through the re-accept box. Same legs, same docs, same project-relative artifacts. Concurrent rebuilds and simultaneous acceptance are not serialized; sequential use remains required. The headless shell gate covers stale refusal and refresh recovery; no GUI was launched | a person or a pipeline at the terminal; the in-app agent for design turns |
+| 11 | The same walk with the GUI attached | the same `cadex` commands from a terminal beside the open Blender file — **not** the in-app agent, which has only the Mesh tools (`--tools ""`, no shell, no file tool) | **Documented 2026-09-06** (ADR-201, `docs/CLI.md` §2) from the client code, no GUI launched: the CLI's `flock` is per command and released before the `PROGRESS.md` row and the commit; the shell takes no lock, so ownership is sequential by convention; stale shell mutations return `STALE_PROGRAM_REVISION` without adopting the new guard or replaying arguments (ADR-204); Rebuild Model or reopen (`load_post` → `queue_open`), review the refreshed source/values, then retry, never through the re-accept box. Same legs, same docs, same project-relative artifacts. Concurrent rebuilds and simultaneous acceptance are not serialized; sequential use remains required. The headless shell gate covers stale refusal and refresh recovery; no GUI was launched | a person or a pipeline at the terminal; the in-app agent for design turns |
 | 12 | The same walk with training on a remote machine | `training/remote_train.sh` (ADR-089) | **Scripted 2026-09-06** (ADR-200): `cadex train --remote` / `cadex walk --remote` run the train leg through `remote_train.sh train <bundle> <out> -- <the same flags>`, verify the returned policy against the receipt, and change nothing else — same `DIR/train` artifacts, same store, same `review.json`. Offline evidence only: `cli/tests/test_train.py` pins the command against the script's usage line and runs the leg end to end against a stand-in dispatcher (real engine, real store, three refusals). **Not executed**: no dispatch, the box's checkout untouched; B7 stays blocked. **A warm start travels since 2026-09-08** (ADR-268): the dispatcher lifts `--init-from` and `--init-from-parent-task` out of the trailing flags, copies both files into the run directory's `warm/` and re-points the flags, so an iterate has the same shape in both modes; tested against the real script with stand-in `ssh`/`rsync` | none; a person for `check` and the box's config |
 
 **One agent turn on top, to see the refusals today.** The same scratch
@@ -3043,7 +3046,7 @@ left a third, so it is every export, not one).
    (ADR-195): a `FAILURE_RESPONSE_SPEC` frame built by `tool_failure`,
    a test that runs the validator over it, and a recorded golden — so an
    inspect exception is a refusal the agent reads rather than a client
-   crash. No protocol op and no `shell/` diff.
+   crash. No protocol op and no shell diff.
 6. **The project as a codebase** (rows 9 and 10). Row 10 **done,
    2026-09-06** (ADR-193, `cli/cadex_cli/project_docs.py`, no protocol
    op, no engine change): `ARCHITECTURE.md`, `DECISIONS.md` and
@@ -3146,47 +3149,19 @@ the simulation output under `clearance`, with `closest_approach` naming the
 pair, the millimetres and the frame — because refusing a dynamics result
 would delete the trace that shows the problem.
 
-## 8. Live mode: watching it, rather than reading about it
+## 8. Live mode (retired)
 
-**ADR-109.** Everything above produces a *recording*: six seconds, one drawn
-push, read back through summary statistics. That instrument is what ADR-107
-records failing twice in one day — a frame 90° out, and a foot that lifts
-5.9 mm reported as never leaving the ground. You cannot push a recording from
-the other side, cannot push it harder, and cannot push it twice.
-
-So: `live_open`, `live_step`, `live_close`, three read ops. A resident
-`--safe-mode` worker runs `evaluate_episode` — **the same one**, no fifth
-loop — with the accepted rollout's own MJCF, task and weights, all three
-re-checked by digest. The shell drives time (`live_step` grants N control
-steps and gets N frames), pushes it with the mouse, and draws the poses
-directly. Nothing is written: no trace, no store, no digest. A live session
-is a thing to watch; if it were reproducible it would be a rollout.
-
-It costs almost nothing, which is why it was worth building: **344 µs per
-control step** against a 10 ms interval — 29× real time — and a measured
-median `live_step` round trip of **1.72 ms** for the 3-step batch a 30 Hz
-pump sends, against a 33 ms bar.
-
-**It runs until the machine falls** (ADR-136). Live mode used to stop every
-six seconds, because it played the task's episode and the task's episode is
-the length a *trainer* wanted. Nothing physical happens there: an observation
-is sensor channels and carries no clock, so the policy cannot tell step 301
-from step 5, and the reset threw away the state you had just spent a minute
-of pushing to reach. So `evaluate_episode` takes `endless=True` — and
-`record_steps=False` with it, which is what keeps that bounded: the per-step
-history it otherwise accumulates is 6.1 kB a step — measured at **+553 MB
-for half an hour** of mg-legs against **+1.6 MB** with the flag, at the same
-throughput — and live mode reads none of it. A fall still holds a second so
-you can see it, then resets. The panel now reads `12.40 s this episode` over
-`trained
-on 6 s episodes`, because being well past the training horizon is the
-interesting thing about what you are watching.
-
-**Use it before you dispatch.** The cheapest thing in §7's order that is not
-in §7's order: open the last policy that trained, push it from each side by a
-known number of newtons, and find out what it actually does. Nothing else in
-this document answers "does it recover" as directly, and a `capability.py`
-sweep costs minutes where this costs a click.
+**Retired (ADR-528).** ADR-109 added a live policy session — three read ops,
+`live_open`, `live_step` and `live_close`, a resident worker playing the
+accepted rollout's policy, and a shove applied by mouse — and ADR-110 and
+ADR-136 made it calm-able and endless. Its only client was the Blender
+shell's Live editor, deleted with the shell (ADR-498), and the owner dropped
+the session on 2026-10-03. The ops, the host (`CadexLiveSession.py`), the
+worker (`cadex_live_worker.py`) and the `forces` and `endless` keywords of
+`evaluate_episode` are gone. Reviewing a policy is rollout playback in the
+dashboard plus `cadex evaluate`'s disturbance tests; `record_steps=False`
+stays, as a caller that reads only an episode's totals still asks for it.
+`docs/history/` and the ADRs keep the measurements.
 
 ### Measuring the capture point, and paying for it (ADR-112)
 

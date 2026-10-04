@@ -8,7 +8,7 @@ import {parseStl} from './stl.js';
 export const STYLE = 'cadex-prototype-dark-v1';
 const PALETTE = [0x5b9dcd, 0xde8f47, 0x6ab270, 0xc468b4, 0xdcc85a, 0x7878c8, 0xc86e6e, 0x6ebebe];
 const FOV = 55;
-// The timer overlay (REVIEW-DESIGN.md §10): the reference's caption pill, bottom left, drawn
+// The timer overlay (DASHBOARD.md §10): the reference's caption pill, bottom left, drawn
 // INSIDE the WebGL frame so a capture's png() and the viewport bake the same pixels. Panel and
 // line are the reference's caption chip; the ink is the page's `--ink`; the type is the page's
 // `--font` at 3.2 % of the frame height (16 px in a 512 px video), never below `--fs-0`.
@@ -19,20 +19,26 @@ const CLOCK = {panel:'rgba(20,22,26,0.72)', line:'rgba(244,245,247,0.22)', ink:'
 // is a Hann-smoothed track with half-window `smooth_frames`; the subject may lead the anchor by at
 // most `max_drift` of the half-frame before the soft limiter pulls the anchor after it.
 export const FOLLOW = {fraction:.22, subject_y:-.06, max_drift:.26, smooth_frames:4};
-// Collision proxies (REVIEW-DESIGN.md §11): the simulation's contact shapes, drawn as outlines in
+// Collision proxies (DASHBOARD.md §11): the simulation's contact shapes, drawn as outlines in
 // the page's `--warn` through the solids, and only while the labelled toggle is on. Never in a
 // recording, never by default: what the viewer shows is the tessellated solid.
 const PROXY = {color:0xffe08a, opacity:.9};
+// Section and explode (DASHBOARD.md §24). A section clips the solids at the plane and offset of
+// the `cadex section` cut it shows, keeping the side below the offset; the leader lines are the
+// engine's exploded-view segments, in the page's `--muted`.
+const SECTION_NORMALS = {XY:[0,0,1], XZ:[0,1,0], YZ:[1,0,0]};
+const LEADER = {color:0x9aa3ad, opacity:.85};
 
 export function create(canvas) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, toScreen(){return null;}, setOnDraw(){}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.95;
+  renderer.localClippingEnabled = true;
   const scene = new THREE.Scene(), world = new THREE.Group(), model = new THREE.Group();
   world.rotation.x = -Math.PI/2; scene.add(world); world.add(model);
   const camera = new THREE.PerspectiveCamera(55, 1, .0001, 800);
@@ -75,6 +81,32 @@ export function create(canvas) {
       owner.add(line); proxyLines.push(line); proxiesDrawn++;
     });
   }
+  // The section: one clipping plane shared by every solid's material, in scene coordinates.
+  const clipPlane=new THREE.Plane(); let section=null;
+  function applySection() {
+    if (section) {
+      model.updateMatrixWorld(true);
+      clipPlane.set(new THREE.Vector3(...SECTION_NORMALS[section.plane]).negate(), section.offset_mm*.001).applyMatrix4(model.matrixWorld);
+    }
+    meshes.forEach(m=>{m.material.clippingPlanes=section?[clipPlane]:null; m.material.clipShadows=true; m.material.needsUpdate=true;});
+  }
+  function setSection(plane, offset) {
+    section=(plane in SECTION_NORMALS&&Number.isFinite(offset))?{plane,offset_mm:offset}:null;
+    applySection(); draw(); return section&&{...section};
+  }
+  // The leader lines: model-frame segments, hidden until showLines(true).
+  let leaders=null;
+  function setLines(segments) {
+    if (leaders) {model.remove(leaders); leaders.geometry.dispose(); leaders.material.dispose(); leaders=null;}
+    const flat=(segments||[]).flatMap(l=>[...l.start_mm,...l.end_mm]).map(v=>v*.001);
+    if (flat.length) {
+      const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(flat,3));
+      leaders=new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:LEADER.color,transparent:true,opacity:LEADER.opacity,toneMapped:false}));
+      leaders.visible=false; model.add(leaders);
+    }
+    draw(); return flat.length/6;
+  }
+  function showLines(flag) {if (leaders) leaders.visible=!!flag; draw(); return !!(leaders&&leaders.visible);}
   // The timer: one textured quad in an orthographic overlay scene, painted after the stage.
   const hud=new THREE.Scene(), hudCamera=new THREE.OrthographicCamera(0,1,1,0,-1,1);
   const clockCanvas=document.createElement('canvas'), clockTexture=new THREE.CanvasTexture(clockCanvas);
@@ -100,8 +132,10 @@ export function create(canvas) {
     }
     hudCamera.right=w; hudCamera.top=h; hudCamera.updateProjectionMatrix();
   }
+  let onDraw=null;
   function paint() {
     renderer.render(scene,camera);
+    if (onDraw) onDraw();
     if (clock===null) return;
     paintClock(canvas.clientWidth||canvas.width,canvas.clientHeight||canvas.height);
     renderer.autoClear=false; renderer.clearDepth(); renderer.render(hud,hudCamera); renderer.autoClear=true;
@@ -113,9 +147,10 @@ export function create(canvas) {
   }
   function updateBounds() {
     model.updateMatrixWorld(true);
-    // Bounds in model-local simulator coordinates, not the rotated scene.
-    const box = new THREE.Box3();
-    meshes.forEach(m=> {m.updateMatrix(); const matrix=m.matrix.clone(); matrix.elements[12]*=1000;matrix.elements[13]*=1000;matrix.elements[14]*=1000; const b=m.userData.mmBounds.clone().applyMatrix4(matrix);box.union(b);});
+    // Bounds in model-local simulator coordinates, not the rotated scene. A part the engine calls
+    // world geometry (a task floor) is the stage, not the design, so it sizes nothing unless it is all there is.
+    const box = new THREE.Box3(), design=[...meshes.values()].filter(m=>!m.userData.world);
+    (design.length?design:[...meshes.values()]).forEach(m=> {m.updateMatrix(); const matrix=m.matrix.clone(); matrix.elements[12]*=1000;matrix.elements[13]*=1000;matrix.elements[14]*=1000; const b=m.userData.mmBounds.clone().applyMatrix4(matrix);box.union(b);});
     if (box.isEmpty()) {bounds=null; return;}
     const min=box.min.toArray(), max=box.max.toArray();
     bounds={min,max,center:min.map((v,i)=>(v+max[i])/2),radius:Math.hypot(...min.map((v,i)=>max[i]-v))/2 || 1};
@@ -152,28 +187,32 @@ export function create(canvas) {
     draw();
   }
   function clear() {
-    disposeProxies(); proxyGeoms=[];
+    disposeProxies(); proxyGeoms=[]; setLines([]);
     meshes.forEach(m=> {model.remove(m); m.geometry.dispose();m.material.dispose();});
-    meshes.clear(); bounds=null;triangleCount=0;draw();
+    meshes.clear(); bounds=null;triangleCount=0;picked=null;draw();
   }
   // The proxies to offer: the manifest's `collision.geoms`, each in its component's frame.
   // They are built against the installed solids and stay hidden until showProxies(true).
   function setProxies(geoms) {proxyGeoms=Array.isArray(geoms)?geoms.map(g=>JSON.parse(JSON.stringify(g))):[]; buildProxies(); draw();}
   function showProxies(flag) {proxiesShown=!!flag; proxyLines.forEach(l=>{l.visible=proxiesShown;}); draw(); return proxiesShown;}
   function showing() {return proxiesShown&&proxiesDrawn?'tessellated solids with collision proxies':'tessellated solids';}
+  // A part's colour is its appearance role's (ADR-522) when the manifest gives one, as `look`
+  // and the concept sheet paint it; a design with no assembly keeps the index palette.
+  const colourOf=(entry,i)=>/^#[0-9A-Fa-f]{6}$/.test(entry.color||'')?parseInt(entry.color.slice(1),16):PALETTE[i%PALETTE.length];
   function install(entries) {
     clear();
     entries.forEach((entry,i)=> {
       const g=new THREE.BufferGeometry();
       g.setAttribute('position',new THREE.Float32BufferAttribute(entry.positions.map(v=>v*.001),3));
       g.computeVertexNormals();g.computeBoundingBox();
-      const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:PALETTE[i%PALETTE.length],roughness:.72,metalness:.05,side:THREE.DoubleSide}));
+      const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:colourOf(entry,i),roughness:.72,metalness:.05,side:THREE.DoubleSide}));
       m.userData.mmBounds=new THREE.Box3().setFromArray(entry.positions);
+      m.userData.world=entry.world===true;
       m.castShadow=true;m.receiveShadow=true;pose(m,entry.placement);
       meshes.set(entry.name,m);model.add(m);triangleCount+=entry.positions.length/9;
     });
-    updateBounds();if(bounds)frameBounds(bounds);fit();
-    return entries.map((e,i)=>({name:e.name,triangles:e.positions.length/9,color:[16,8,0].map(shift=>(PALETTE[i%PALETTE.length]>>shift)&255)}));
+    updateBounds();if(bounds)frameBounds(bounds);applySection();fit();
+    return entries.map((e,i)=>({name:e.name,triangles:e.positions.length/9,color:[16,8,0].map(shift=>(colourOf(e,i)>>shift)&255)}));
   }
   async function load(manifest,fetchImpl=window.fetch.bind(window)) {
     const entries=await Promise.all((manifest?.components||[]).filter(e=>e.mesh).map(async e=> {
@@ -204,7 +243,7 @@ export function create(canvas) {
   function setCamera(value) {c=JSON.parse(JSON.stringify(value));draw();}
   // Simulation seconds on the timer overlay; null hides it (the viewport's resting state).
   function setClock(seconds) {clock=(seconds===null||seconds===undefined)?null:Number(seconds);}
-  // The follow rig (REVIEW-DESIGN.md §10; the reference's `--shot follow`). `track` is the
+  // The follow rig (DASHBOARD.md §10; the reference's `--shot follow`). `track` is the
   // subject's centre per output frame, mm, sim coordinates. The camera keeps the viewer's yaw and
   // pitch and ONE standoff — the distance at which `subject_height_mm` fills `fraction` of the frame
   // height — so orientation and apparent size are fixed by construction and only the ground
@@ -247,36 +286,82 @@ export function create(canvas) {
   }
   function modelPixels() {
     // Count model pixels, and box them, against the exact same environment-only render, so
-    // a grid cannot turn an empty-model regression green and the overlay is never counted.
+    // a grid cannot turn an empty-model regression green and the overlay is never counted. World
+    // geometry is left out of the model render, so a task floor's slab is never counted as the design.
+    const world=[...meshes.values()].some(m=>!m.userData.world)?[...meshes.values()].filter(m=>m.userData.world&&m.visible):[];
+    world.forEach(m=>{m.visible=false;});
     draw();const gl=renderer.getContext(),W=canvas.width,H=canvas.height,a=new Uint8Array(W*H*4),b=new Uint8Array(a.length);
     gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,a);
     model.visible=false;paint();gl.readPixels(0,0,W,H,gl.RGBA,gl.UNSIGNED_BYTE,b);
-    model.visible=true;draw();let n=0,x0=W,y0=H,x1=-1,y1=-1;
+    model.visible=true;world.forEach(m=>{m.visible=true;});draw();let n=0,x0=W,y0=H,x1=-1,y1=-1;
     for(let i=0;i<a.length;i+=4)if(Math.abs(a[i]-b[i])+Math.abs(a[i+1]-b[i+1])+Math.abs(a[i+2]-b[i+2])>12){n++;const p=i>>2,x=p%W,y=H-1-((p-x)/W);x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y);}
     return {count:n,box:n?[x0,y0,x1,y1]:null,width:W,height:H};
   }
   function nonBackgroundPixels() {return modelPixels().count;}
   // Orbit and zoom by pointer events, so a mouse and a finger drive the same
-  // camera (REVIEW-DESIGN.md §5): one pointer orbits, two pinch, the wheel
+  // camera (DASHBOARD.md §5): one pointer orbits, two pinch, the wheel
   // zooms. The canvas captures the pointer, so a drag that leaves it still
   // orbits, and its `touch-action: none` keeps the page from scrolling.
   const pointers=new Map(); let pinch=0;
   const zoom=f=>{c.distance=Math.max((bounds?.radius||1)*.2,c.distance*f);};
   const span=()=>{const [a,b]=[...pointers.values()];return Math.hypot(a[0]-b[0],a[1]-b[1]);};
-  canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);if(pointers.size===2)pinch=span();e.preventDefault();});
+  // Picking (orun2 A1, ADR-505): a press and release that barely moved is a click, not an
+  // orbit; it names the solid under it, or null, to the page's onPick.
+  const raycaster=new THREE.Raycaster(), ndc=new THREE.Vector2(); let onPick=null, press=null, picked=null;
+  function pick(x,y) {
+    const r=canvas.getBoundingClientRect(); if(!r.width||!r.height) return null;
+    draw(); model.updateMatrixWorld(true);
+    raycaster.setFromCamera(ndc.set((x-r.left)/r.width*2-1,-((y-r.top)/r.height)*2+1),camera);
+    const hit=raycaster.intersectObjects([...meshes.values()],false)[0];
+    if (!hit) return null;
+    for (const [n,m] of meshes) if (m===hit.object) return n;
+    return null;
+  }
+  // Where a solid's box centre lands on the page, in client pixels; null when it is not drawn.
+  function screenPoint(name) {
+    const m=meshes.get(name); if(!m) return null;
+    draw(); model.updateMatrixWorld(true);
+    const p=m.geometry.boundingBox.getCenter(new THREE.Vector3()).applyMatrix4(m.matrixWorld).project(camera), r=canvas.getBoundingClientRect();
+    return [r.left+(p.x+1)/2*r.width, r.top+(1-p.y)/2*r.height];
+  }
+  // A point in mm, in a solid's own frame (or the model's, for null), as canvas pixels with
+  // [0,0] top left; null when the solid is not drawn or the point is behind the camera. The
+  // dimension overlay draws from it, so the anchors are the only thing in model space.
+  const projected=new THREE.Vector3();
+  function toScreen(name, point) {
+    const frame=name===null||name===undefined?model:meshes.get(name);
+    if (!frame||!Array.isArray(point)||point.length!==3||!point.every(Number.isFinite)) return null;
+    frame.updateMatrixWorld(true);
+    projected.fromArray(point).multiplyScalar(.001).applyMatrix4(frame.matrixWorld).project(camera);
+    if (projected.z>1||projected.z<-1) return null;
+    const w=canvas.clientWidth||canvas.width, h=canvas.clientHeight||canvas.height;
+    return [(projected.x+1)/2*w, (1-projected.y)/2*h];
+  }
+  // The picked solid glows faintly; null clears it. Never set by a capture.
+  function highlight(name) {picked=meshes.has(name)?name:null; meshes.forEach((m,n)=>m.material.emissive.setHex(n===picked?0x3a3a3a:0)); draw(); return picked;}
+  canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);press=pointers.size===1?[e.clientX,e.clientY]:null;if(pointers.size===2)pinch=span();e.preventDefault();});
   canvas.addEventListener('pointermove',e=>{
     const p=pointers.get(e.pointerId);if(!p)return;
+    if(press&&Math.hypot(e.clientX-press[0],e.clientY-press[1])>=5)press=null;
     if(pointers.size===1){c.yaw-=(e.clientX-p[0])*.01;c.pitch=Math.max(-1.5,Math.min(1.5,c.pitch+(e.clientY-p[1])*.01));}
     pointers.set(e.pointerId,[e.clientX,e.clientY]);
     if(pointers.size===2){const s=span();if(s>0&&pinch>0)zoom(pinch/s);pinch=s;}
     draw();
   });
-  const lift=e=>{pointers.delete(e.pointerId);pinch=0;};
+  const lift=e=>{
+    if (e.type==='pointerup'&&press&&pointers.size===1&&Math.hypot(e.clientX-press[0],e.clientY-press[1])<5&&onPick) onPick(pick(e.clientX,e.clientY));
+    press=null; pointers.delete(e.pointerId);pinch=0;
+  };
   canvas.addEventListener('pointerup',lift);canvas.addEventListener('pointercancel',lift);
   canvas.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(e.deltaY*.0015));draw();},{passive:false});
   window.addEventListener('resize',draw);
   return {available:true,load,install,clear,fit,draw,setPoses,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
-    camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,style:STYLE,stage,showing:showing(),
-      proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length}}),
+    setSection,setLines,showLines,
+    pick,screenPoint,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
+    camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,
+      world:[...meshes].filter(([,m])=>m.userData.world).map(([n])=>n),style:STYLE,stage,showing:showing(),
+      proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length},
+      section:section&&{...section}, leaders:{drawn:leaders?leaders.geometry.attributes.position.count/2:0,shown:!!(leaders&&leaders.visible)},
+      poses:Object.fromEntries([...meshes].map(([n,m])=>[n,{position_mm:m.position.toArray().map(v=>v*1000),rotation_xyzw:m.quaternion.toArray()}]))}),
     png:()=>{draw();return canvas.toDataURL('image/png').split(',')[1];}};
 }

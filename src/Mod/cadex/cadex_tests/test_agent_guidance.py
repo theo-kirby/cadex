@@ -44,6 +44,17 @@ def test_the_guidance_carries_the_design_language_and_the_proof_rules():
         assert shell_only not in body
 
 
+
+def test_the_guidance_checks_the_rest_contacts_after_an_mjcf_export():
+    # The shell's overlay asked for the collision shapes and the t=0 contact
+    # line after assembly.mjcf; the engine's guidance carries it for every
+    # front end (docs/SHELL-PARITY.md section 4, ADR-521).
+    body = _body()
+    assert '`{{inspect}} scope=contacts` after an `assembly.mjcf` export' in body
+    assert 'the pose every simulation starts from' in body
+    assert 'fix its `offset` before you train on it' in body
+
+
 def test_the_payload_ships_the_guidance():
     cmake = (MODULE_DIR / 'CMakeLists.txt').read_text(encoding='utf-8')
     assert '    CadexAgentGuidance.md\n' in cmake

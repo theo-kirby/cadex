@@ -1,23 +1,24 @@
 # Cadex Privacy Policy
 
-Last updated: 2026-07-25. Cadex is pre-release software under active
+Last updated: 2026-10-03. Cadex is pre-release software under active
 development. This policy describes what the code in this repository does
 today, and every claim below names the file you can check it against.
 
-Cadex is an AI-native CAD application. Part of using it is sending what you
-write, and what you are modeling, to an AI provider. This document exists to
-be specific about which part.
+Cadex is an AI-native CAD application: an engine, a dashboard, and an agent
+that is the Claude Code CLI you already use. Part of using it is sending
+what you write, and what you are modeling, to an AI provider. This document
+exists to be specific about which part.
 
 ## Summary
 
 - **Cadex itself collects nothing.** No telemetry, no analytics, no crash
   reporting, no account, no phone-home.
-- **The assistant is not local.** When you send a chat message, Cadex runs
-  the Claude Code CLI on your machine, which transmits your message — and
-  the results of the tools it calls, including viewport screenshots — to
-  Anthropic, under *your own* Claude Code login.
-- **Your conversation is stored inside your `.blend` file.** Sharing the
-  file shares the transcript.
+- **The assistant is not local.** When you run a design turn, Cadex runs
+  the Claude Code CLI on your machine, which transmits your prompt — and
+  the results of the tools it calls, including rendered images of your
+  model — to Anthropic, under *your own* Claude Code login.
+- **Your project directory records how the design was made.** Sharing the
+  directory shares that record.
 
 ## 1. What Cadex collects about you
 
@@ -27,19 +28,28 @@ accounts and no servers; the project operates no infrastructure that could
 receive your data.
 
 This is checkable rather than asserted: no file under `src/Mod/cadex/` or
-`shell/scripts/startup/mesh_agent/` opens an outbound network
-connection. The only sockets either half creates are loopback — the shell package's
-tool bridge binds `127.0.0.1` on an ephemeral port (`mesh_agent/bridge.py`)
-and the MCP shim connects back to it on `127.0.0.1`
-(`mesh_agent/mcp_shim.py`). The engine (`cadexd`) speaks NDJSON over
-stdin/stdout to a process on the same machine and opens no socket at all.
+`cli/cadex_cli/` opens an outbound network connection. The sockets Cadex
+creates are local:
+
+- the tool bridge is a unix-domain socket in a private temporary directory
+  (`cli/cadex_cli/bridge.py`), and the MCP shim Claude Code spawns connects
+  to it (`cli/cadex_cli/mcp.py`);
+- the dashboard, `./cadex review`, listens on `127.0.0.1` unless you give
+  it another `--host` (`cli/cadex_cli/review_server.py`,
+  `cli/cadex_cli/__main__.py`);
+- the engine (`cadexd`) speaks NDJSON over stdin/stdout to a process on the
+  same machine and opens no socket at all.
+
+The one tool that moves data to another machine is one you run by hand:
+`training/remote_train.sh` copies a project to the GPU machine you name, over
+your own ssh configuration (`training/SETUP.md`).
 
 ## 2. What leaves your machine when you use the assistant
 
 Cadex does not talk to any AI provider itself. It holds no API keys, no
-base URLs, and no model client. Each chat turn instead spawns the **Claude
-Code CLI** (`claude -p`) as a subprocess on your machine
-(`mesh_agent/backend.py`). Claude Code owns the model loop and the network
+base URLs, and no model client. Each design turn instead spawns the
+**Claude Code CLI** (`claude -p`) as a subprocess on your machine
+(`cli/cadex_cli/agent.py`). Claude Code owns the model loop and the network
 connection, authenticated with the Claude Code login you already have.
 
 **Cadex never sees, stores, or transmits your credentials.** If you have not
@@ -47,23 +57,22 @@ installed and signed in to Claude Code, the assistant does not run.
 
 What Claude Code sends to Anthropic during a turn:
 
-- Your chat message, and the system prompt describing the CAD tools.
+- Your prompt, and the system prompt describing the CAD tools.
 - The conversation so far — resumed across turns by session id.
 - **The result of every tool the assistant calls.** The tool surface is
-  defined in `mesh_agent/tools.py`; those that carry your data are:
+  defined in `cli/cadex_cli/tools.py`; those that carry your data are:
 
   | Tool | What it sends |
   |---|---|
-  | `get_script`, `write_script`, `edit_script` | the project script — the full source of your model |
-  | `set_params`, `inspect_model` | parameter values, geometry measurements, feature and subshape names |
-  | `describe_cad_api` | nothing of yours (static API documentation) |
-  | `scene_summary` | the names and structure of the objects in your scene |
-  | `viewport_screenshot` | **an image of your 3D viewport** |
-  | `get_attached_image` | any reference image you attach to a message |
-  | `export_stl` | mesh geometry, written out for the assistant to read back |
+  | `write_script`, `edit_script` | the project script — the full source of your model |
+  | `set_params`, `rebuild`, `inspect` | parameter values, geometry measurements, and feature, part and subshape names |
+  | `describe_api` | nothing of yours (static API documentation) |
+  | `link_part`, `put_asset` | the name and contents of the part or file you point it at |
+  | `look` | **rendered images of your model** |
+  | `train_start`, `train_status`, `train_stop`, `evaluate` | training progress and evaluation results, including rendered frames of a rollout |
 
-  Screenshots and attached images are the two worth pausing on: whatever is
-  visible in the viewport, or in a file you attach, goes to Anthropic.
+  Rendered images are the ones worth pausing on: whatever your model looks
+  like goes to Anthropic.
 
 Once that data reaches Anthropic it is governed by **Anthropic's** privacy
 policy and the terms of your Claude Code plan, not by this one — including
@@ -71,34 +80,33 @@ any question of whether it is retained or used for training. Cadex is not a
 party to that relationship. See
 <https://www.anthropic.com/legal/privacy>.
 
-Dragging a parameter slider does **not** involve the AI. Sliders re-run the
-script through the local engine directly, and nothing leaves your machine.
+Changing a parameter (`./cadex params`, or a slider on the dashboard) does
+**not** involve the AI. It re-runs the script through the local engine
+directly, and nothing leaves your machine.
 
 ## 3. What is stored on your machine
 
-- **Your `.blend` file contains the conversation.** The chat transcript and
-  the Claude Code session id are saved into the file as a text datablock
-  named `mesh_chat.json` (`mesh_agent/history.py`). This is deliberate — the
-  conversation belongs to the design — but it means **sending someone a
-  `.blend` sends them everything you and the assistant said in it.** Clear
-  the chat before sharing a file if that matters to you.
-- **The project store** sits beside the `.blend` in a `<stem>.cadex/`
-  directory: the project script and its revisions. Local only.
-- **A per-session temporary directory** (`mesh_agent_*` under your system
-  temp) holds the MCP config naming the loopback port and the bridge's
-  single-session token. No personal data, and no reason to outlive the
-  session.
+- **The project directory** is the truth of a design: the project script
+  and its revisions, the project's `ARCHITECTURE.md`, `DECISIONS.md` and
+  `PROGRESS.md`, renders, exports and run reports. It also holds
+  `agent.json`, the Claude Code session id and model of the last turn
+  (`cli/cadex_cli/session.py`). Local only — but **sending someone a project
+  sends them the record of how it was designed**, including the decisions
+  the assistant wrote down.
+- **Per-turn temporary directories** (`cadex-cli-turn-*` and
+  `cadex-cli-bridge-*` under your system temp) hold the MCP config, the
+  bridge socket and its single-run token. No personal data, and no reason
+  to outlive the turn.
 - **Claude Code keeps its own session history** on your machine, under its
-  own directory and its own policy. The session id saved in the `.blend` is
-  a pointer into that store; the stored transcript itself is Claude Code's.
-- **Inherited local storage.** Both halves keep configuration, logs, caches,
-  thumbnails, and recent-file lists in your user directories, as FreeCAD and
-  Blender always have. This may contain private data such as file paths. It
-  stays on local storage.
+  own directory and its own policy. The session id in `agent.json` is a
+  pointer into that store; the transcript itself is Claude Code's.
+- **Inherited local storage.** The engine keeps configuration, logs and
+  caches in your user directories, as FreeCAD always has. This may contain
+  private data such as file paths. It stays on local storage.
 
 ## 4. Inherited components that can reach the network
 
-Cadex is built from forks of FreeCAD and Blender (see
+Cadex's engine is built from a fork of FreeCAD (see
 [`docs/PROVENANCE.md`](docs/PROVENANCE.md)), and some inherited features
 have network behavior of their own:
 
@@ -107,23 +115,14 @@ have network behavior of their own:
   keep-list (`package/engine/build_engine_payload.sh`); the Addon Manager,
   Web, and Start modules are not on it. Neither is FreeCAD's online User
   Manual, which is part of the GUI that this product does not build.
-- **Blender's online features remain in the shell** — the extensions system
-  and its remote repositories. These are governed by Blender's own "Allow
-  Online Access" preference, a user-controlled opt-in, and by the Blender
-  Foundation's policies. Cadex does not use them and does not enable them
-  for you.
-- **Blender does not auto-run scripts embedded in `.blend` files** in this
-  build: `WITH_PYTHON_SECURITY` is `ON` (`shell/CMakeLists.txt`), which
-  disables that by default. See [`SECURITY.md`](SECURITY.md) for why that
-  matters when you open a file from someone else.
 - **Loading or saving to a remote server** — over any protocol your platform
   supports — shares your IP and whatever else that protocol's normal
   connection flow involves. That is between you and the remote host.
 
 ## 5. Files you export
 
-CAD files carry metadata. A STEP, STL, or `.blend` you export may contain
-local directory paths, and a path can reveal your username — as in
+CAD files carry metadata. A STEP or STL you export may contain local
+directory paths, and a path can reveal your username — as in
 `C:\Users\yourname\Documents\part.step`. It is worth checking exported
 metadata before sending a file to anyone. Similarly, the project script
 inside a project is a readable record of how the part was designed,
@@ -151,7 +150,7 @@ security problem, report it privately — see [`SECURITY.md`](SECURITY.md).
 
 ---
 
-*This is Cadex's privacy policy only. It is not FreeCAD's or Blender's, and
-Cadex is endorsed by neither project. Its structure is descended from the
+*This is Cadex's privacy policy only. It is not FreeCAD's, and Cadex is not
+endorsed by the FreeCAD project. Its structure is descended from the
 FreeCAD privacy policy, which was in turn based on the
 [GIMP privacy policy](https://www.gimp.org/about/privacy.html).*

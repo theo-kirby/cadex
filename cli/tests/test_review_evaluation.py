@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""The review dashboard shows an evaluation (ADR-459, REVIEW-DESIGN.md §17).
+"""The review dashboard shows an evaluation (ADR-459, DASHBOARD.md §17).
 
 The failing fixture is the real thing: ot10's ``w2-2`` shuffle as ``cadex
 evaluate`` measured it on the frozen walk contract, from the receipt

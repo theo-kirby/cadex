@@ -46,10 +46,15 @@ from .agent import (
     ClaudeTurn,
     ClaudeUnavailable,
     DEFAULT_MODEL,
+    IMAGES_PER_TURN,
+    ImageRefused,
     TurnResult,
     default_model,
     find_claude,
+    imitated_tool_call,
+    read_image,
     system_prompt,
+    turn_usage,
 )
 from .bridge import Bridge, BridgeState, ToolCall
 from .client import CadexdClient, CadexdError, open_project
@@ -58,6 +63,13 @@ from .export import ExportedOutput, ExportError, export_blueprints, export_outpu
 from .inventory import InventoryError, read_inventory, write_inventory
 from .render import acquire_snapshot, describe_proxies, write_render
 from .section import write_section
+from .comments import add_comment, mark_delivered, pending_comments, with_comments
+from .revisions import (
+    previous as previous_revision,
+    read_history as read_revision_history,
+    read_source as read_revision_source,
+    select as select_revision,
+)
 from .clearance import (
     MAXIMUM_COMMON_VOLUME_MM3,
     MINIMUM_CLEARANCE_MM,
@@ -90,13 +102,16 @@ from .report import (
     params_from_script,
 )
 from .session import (
+    BUDGET_KEYS,
     ProjectBusy,
+    effective_budgets,
     project_lock,
     read_agent_state,
     read_project_assets,
     read_script_source,
     read_script_state,
     read_working_revision,
+    write_agent_budgets,
     write_agent_state,
 )
 from .train import (
@@ -125,8 +140,8 @@ from .evaluate import (
     retained_inputs,
     run_evaluation,
 )
-from .review_record import manifest_identity, write_run_record
-from .review_server import serve as serve_review
+from .review_record import manifest_identity, read_accepted_identity, write_run_record
+from .review_server import serve as serve_review, serve_projects
 from .smoke import (
     DEFAULT_FPS,
     DEFAULT_MAX_TILT_DEGREES,
@@ -148,6 +163,7 @@ from .smoke import (
     smoke_interpreter,
 )
 from .tools import STANDARD_DISPLAY
+from .turn_store import TurnRecorder
 from .walk import (
     DEFAULT_LEG_TIMEOUT_S,
     PROGRESS_FILENAME,
@@ -177,6 +193,11 @@ from .walk import (
 #: whatever the caller is doing, so `cadex -p ... --out ./out` in an empty
 #: directory is a complete command.
 DEFAULT_PROJECT_DIRNAME = ".cadex"
+#: Where `cadex app` (and a bare `cadex`) looks for projects when neither
+#: ``--projects`` nor ``CADEX_PROJECTS`` names a directory: under home.
+DEFAULT_PROJECTS_DIRNAME = "cadex-projects"
+#: Where this checkout's Ouroboros runs live; ``cadex app`` lists them (ADR-513).
+DEFAULT_RUNS_DIR = Path(__file__).resolve().parents[2] / ".ouroboros" / "runs"
 
 
 def _progress(message: str) -> None:
@@ -198,6 +219,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--prompt",
         default=None,
         help="What to build or change, in words. Spends tokens.",
+    )
+    parser.add_argument(
+        "--image",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="Attach an image (PNG, JPEG, GIF or WebP) to the prompt; "
+        f"repeatable, at most {IMAGES_PER_TURN}. The agent sees it.",
     )
     parser.add_argument(
         "--resume",
@@ -698,6 +727,100 @@ def build_parser() -> argparse.ArgumentParser:
         default=8765,
         help="TCP port. Default 8765; 0 takes a free port and reports it.",
     )
+
+    comment_parser = subparsers.add_parser(
+        "comment",
+        help="Leave a comment on the design, or on one part, for the next "
+        "turn to receive (ADR-505). No engine, no tokens.",
+    )
+    _common(comment_parser, inherit=True)
+    comment_parser.add_argument(
+        "--part",
+        default="",
+        help="The part the comment is about, by its output name. Default: "
+        "the whole design.",
+    )
+    comment_parser.add_argument(
+        "--reply",
+        default="",
+        metavar="NOTE_ID",
+        help="Answer the agent's note with this id (ADR-512): the next turn "
+        "receives the answer quoting what it answers.",
+    )
+    comment_parser.add_argument("text", help="The comment, in words.")
+
+    budgets_parser = subparsers.add_parser(
+        "budgets",
+        help="Show or store the project's engine budgets (ADR-517): the "
+        "seconds and megabytes one engine script run may spend. Every later "
+        "run opens with them; --engine-timeout / --engine-memory override "
+        "them for one call. No engine, no tokens.",
+    )
+    _common(budgets_parser, inherit=True)
+    budgets_parser.add_argument(
+        "--set",
+        dest="budget_assignments",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="Repeatable. timeout_seconds=SECONDS or memory_limit_mb=MB; 0 "
+        "unsets one, leaving the engine's default in force.",
+    )
+
+    revision_parser = subparsers.add_parser(
+        "revision",
+        help="Review the accepted revisions (ADR-506): list the trail, accept "
+        "the current one, reject it (put back the one before), or restore "
+        "any stored one. A verdict reaches the next turn like a comment.",
+    )
+    _common(revision_parser, inherit=True)
+    revision_parser.add_argument(
+        "action", choices=("list", "accept", "reject", "restore"),
+        help="list: the stored trail. accept: record the owner's approval of "
+        "the accepted revision (no engine). reject: put back the revision "
+        "accepted before it. restore: put back the named one.",
+    )
+    revision_parser.add_argument(
+        "selector", nargs="?", default="",
+        help="An ordinal or a revision prefix. restore needs one; accept and "
+        "reject take one only to check it is the accepted revision.",
+    )
+    revision_parser.add_argument(
+        "--note", default="",
+        help="Why, in words; the next turn reads it with the verdict.",
+    )
+
+    app_parser = subparsers.add_parser(
+        "app",
+        help="Serve the dashboard over a directory of projects, read-only: "
+        "an index of every project in it, each project's review page under "
+        "/p/<name>/. What a bare `cadex` does. No engine, no tokens.",
+    )
+    _common(app_parser, inherit=True)
+    app_parser.add_argument(
+        "--projects",
+        default=None,
+        help=f"The projects directory (created if absent). Default: "
+        f"CADEX_PROJECTS, then ~/{DEFAULT_PROJECTS_DIRNAME}.",
+    )
+    app_parser.add_argument(
+        "--runs",
+        default=None,
+        help="The Ouroboros runs directory, listed read-only beside the "
+        "projects. Default: CADEX_RUNS, then this checkout's .ouroboros/runs.",
+    )
+    app_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Address to bind. Default 127.0.0.1 (this machine only); put "
+        "`tailscale serve` in front of it to view it from another device.",
+    )
+    app_parser.add_argument(
+        "--port",
+        type=int,
+        default=8765,
+        help="TCP port. Default 8765; 0 takes a free port and reports it.",
+    )
     return parser
 
 
@@ -775,6 +898,25 @@ def _common(parser: argparse.ArgumentParser, *, inherit: bool = False) -> None:
         "then the development tree.",
     )
     parser.add_argument(
+        "--engine-timeout",
+        dest="engine_timeout",
+        type=float,
+        default=default(0.0),
+        metavar="SECONDS",
+        help="Wall-clock budget for one engine script run, this call only. "
+        "Default: the project's stored budget (`cadex budgets`), then the "
+        "engine's own.",
+    )
+    parser.add_argument(
+        "--engine-memory",
+        dest="engine_memory",
+        type=int,
+        default=default(0),
+        metavar="MB",
+        help="Memory ceiling for one engine script run, this call only. "
+        "Default: the project's stored budget, then the engine's own.",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         default=default(False),
@@ -801,11 +943,20 @@ def _engine_session(
     with project_lock(project_root, wait=bool(args.wait)):
         project_root = project_root.resolve()
         report.project_root = str(project_root)
+        # The project's engine budgets, each overridden for this call by its
+        # flag (ADR-517); a bad flag is refused before an engine starts.
+        stored = read_agent_state(project_root).budgets
+        overrides = _budget_overrides(args)
+        budgets = effective_budgets(stored, overrides)
         client = CadexdClient(engine)
         try:
             client.start()
-            opened = open_project(client, project_root, restore=restore)
+            opened = open_project(client, project_root, restore=restore, budgets=budgets)
             report.params = params_from_script(opened.get("script"))
+            report.budgets = _budgets_report(stored, overrides, opened.get("budgets"))
+            stale = stale_policy_note(opened)
+            if stale:
+                report.notes.append(stale)
             # The project as a codebase (ADR-193): its three documents
             # exist from the first visit on. Plain files beside
             # script.json, like agent.json; the engine never reads them.
@@ -823,6 +974,44 @@ def _engine_session(
             yield engine, client
         finally:
             client.shutdown()
+
+
+def stale_policy_note(opened: Mapping[str, Any]) -> str:
+    """The envelope's note when the open skipped a restore for a stale policy.
+
+    ``open_project`` opens such a project unrestored rather than locking it
+    (ADR-520); the note says which output, why, and the two ways out, so a
+    pipeline reading only the notes still learns it.
+    """
+
+    restore = opened.get("restore")
+    stale = restore.get("stale_policy") if isinstance(restore, Mapping) else None
+    if not isinstance(stale, Mapping):
+        return ""
+    return (
+        f"policy output {stale.get('output')!r} is stale ({stale.get('reason')}): "
+        "it was trained on a task this engine no longer builds, so the project "
+        "opened without its restore pass (ADR-520). Retrain it, or set the "
+        "policy aside, before the next rebuild."
+    )
+
+
+def _budget_overrides(args: argparse.Namespace) -> dict[str, Any]:
+    """``--engine-timeout`` / ``--engine-memory``, the ones this call gives."""
+
+    overrides = {"timeout_seconds": float(getattr(args, "engine_timeout", 0.0) or 0.0),
+                 "memory_limit_mb": int(getattr(args, "engine_memory", 0) or 0)}
+    return {key: value for key, value in overrides.items() if value}
+
+
+def _budgets_report(stored: Mapping[str, Any], overrides: Mapping[str, Any],
+                    in_force: Any) -> dict[str, Any]:
+    """The envelope's ``budgets``: what is in force and where each came from."""
+
+    return {"in_force": dict(in_force) if isinstance(in_force, Mapping) else {},
+            "stored": dict(stored),
+            "source": {key: "override" if key in overrides else "project" if key in stored
+                       else "engine" for key in BUDGET_KEYS}}
 
 
 def _install_cancel(client: CadexdClient) -> None:
@@ -905,6 +1094,26 @@ NUDGE_PROMPT = (
     "change is warranted, answer in one line beginning 'NO CHANGE:' and "
     "stop."
 )
+
+
+#: Said when the model wrote a tool call as prose (ADR-523): the call never
+#: reached the bridge, so whatever the prose claims was not done.
+IMITATED_WARNING = (
+    "the model wrote a tool call as text instead of making one, so it did "
+    "not reach the engine tools; nothing it wrote that way was done."
+)
+
+
+def describe_usage(usage: Mapping[str, Any]) -> str:
+    """One line for a turn's cost: tokens in (cached) and out, price, time."""
+
+    parts = [f"{usage.get('input_tokens', 0):,} in", f"{usage.get('cached_tokens', 0):,} cached",
+             f"{usage.get('output_tokens', 0):,} out tokens"]
+    if usage.get("cost_usd") is not None:
+        parts.append(f"${usage['cost_usd']:.2f}")
+    if usage.get("duration_ms"):
+        parts.append(f"{usage['duration_ms'] / 1000:.1f} s")
+    return ", ".join(parts)
 
 
 def _spent_nothing(result: TurnResult, state: BridgeState) -> bool:
@@ -990,6 +1199,16 @@ def command_prompt(
     without spending a token. See ``cli/tests/mock_backend.py``.
     """
 
+    paths = list(getattr(args, "image", None) or [])
+    if len(paths) > IMAGES_PER_TURN:
+        report.error = f"a prompt carries at most {IMAGES_PER_TURN} images; {len(paths)} were given."
+        return EXIT_USAGE
+    try:
+        images = [read_image(path) for path in paths]
+    except ImageRefused as exc:
+        report.error = str(exc)
+        return EXIT_USAGE
+    report.attachments = [image.summary() for image in images]
     claude_path = find_claude(args.claude) if turn_factory is ClaudeTurn else ""
     stored = read_agent_state(Path(args.project).expanduser())
     session_id = stored.session_id if args.resume else ""
@@ -1002,102 +1221,153 @@ def command_prompt(
             report.error = f"describe_api failed: {api.get('error')}"
             return EXIT_FAILURE
 
-        # The revision the bridge starts from is the engine's own working
-        # revision, so the first write of a resumed project is guarded
-        # correctly without the model being told what it is.
-        revision = read_working_revision(client)
+        recorder = TurnRecorder(report.project_root, args.prompt, attachments=report.attachments,
+                                resume=bool(args.resume))
+        code = EXIT_FAILURE
+        try:
+            with recorder.capture():
+                code = _prompt_turn(args, report, engine, client, recorder, api=api, images=images,
+                                    turn_factory=turn_factory, claude_path=claude_path, stored=stored,
+                                    session_id=session_id, model=model)
+        finally:
+            recorder.finish(report, code)
+        return code
 
-        def on_call(call: ToolCall) -> None:
-            mark = "·" if call.ok else "✗"
-            _progress(f" {mark} {call.op}  {call.summary}")
 
-        def on_text(text: str) -> None:
-            """The model's prose is narration, so it goes to stderr too."""
+def _prompt_turn(
+    args: argparse.Namespace,
+    report: RunReport,
+    engine: Engine,
+    client: CadexdClient,
+    recorder: TurnRecorder,
+    *,
+    api: Mapping[str, Any],
+    images: Sequence[Any],
+    turn_factory: Any,
+    claude_path: str,
+    stored: Any,
+    session_id: str,
+    model: str,
+) -> int:
+    """The turn itself, once the engine answers; its stderr is the transcript."""
 
-            sys.stderr.write(text)
+    # The revision the bridge starts from is the engine's own working
+    # revision, so the first write of a resumed project is guarded
+    # correctly without the model being told what it is.
+    revision = read_working_revision(client)
 
-        with Bridge(client, on_call=on_call, initial_revision=revision,
-                    project_root=report.project_root) as bridge:
-            turn = turn_factory(
-                claude_path=claude_path,
-                model=model,
-                system_prompt_text=system_prompt(
-                    api, project_docs=read_project_docs(report.project_root)
-                ),
-                socket_path=str(bridge.socket_path),
-                token=bridge.token,
-                session_id=session_id,
-                on_text=on_text,
-                cwd=report.project_root,
-            )
-            try:
-                result = turn.run(args.prompt)
-                if _spent_nothing(result, bridge.state):
-                    _progress(
-                        " · the turn reached the engine not once; asking "
-                        "once more"
-                    )
-                    result = _merge_turns(result, turn.run(NUDGE_PROMPT))
-                    report.notes.append(
-                        "the first turn made no tool call; asked once more "
-                        "in the same conversation."
-                    )
-            finally:
-                turn.cleanup()
-            sys.stderr.write("\n")
-            sys.stderr.flush()
+    def on_call(call: ToolCall) -> None:
+        mark = "·" if call.ok else "✗"
+        _progress(f" {mark} {call.op}  {call.summary}")
 
-        # A refused override cannot replace the model of an unchanged session.
-        # New locators still persist on failure so the conversation can resume.
-        if result.session_id and (result.ok or result.session_id != stored.session_id):
-            write_agent_state(
-                report.project_root,
-                session_id=result.session_id,
-                model=model,
-            )
-        report.session_id = result.session_id
-        if result.resume_failed:
-            report.notes.append(
-                "the stored session id could not be resumed; ran a fresh "
-                "conversation."
-            )
-        if result.text.strip():
-            report.notes.append(result.text.strip())
-        # What the agent decided lands in the project's own ADR log
-        # (ADR-193): a closing line that starts `DECISION:`. A convention,
-        # not a tool, because the agent has no file access here.
-        landed = record_decisions(report.project_root, result.text)
-        if landed:
-            report.notes.append(
-                "recorded " + ", ".join(landed) + " in DECISIONS.md."
-            )
-        # ...and its longer notes land beside them, one file per subject
-        # (ADR-245): a closing line `NOTE <subject>:`. The same convention
-        # rather than a second mechanism, and read back on the next visit.
-        noted = record_notes(report.project_root, result.text)
-        if noted:
-            report.notes.append("wrote " + ", ".join(noted) + ".")
+    def on_text(text: str) -> None:
+        """The model's prose is narration, so it goes to stderr too."""
 
-        accepted = bridge.state.last_accepted
-        report.revision = bridge.state.revision or report.revision
-        if accepted is not None:
-            apply_modeling_reply(report, accepted)
-        if bridge.state.last_fit is not None:
-            report.fit = dict(bridge.state.last_fit)
-        if bridge.state.last_inventory is not None:
-            report.inventory = dict(bridge.state.last_inventory)
-        _refresh_script_state(client, report)
+        sys.stderr.write(text)
 
-        if not result.ok:
-            report.error = result.error or "the agent turn failed."
-            return EXIT_FAILURE
-        if accepted is None:
-            report.error = _rejection_reason(result.text, bridge.state.calls)
-            return EXIT_REJECTED
+    with Bridge(client, on_call=on_call, on_look=recorder.look, initial_revision=revision,
+                project_root=report.project_root) as bridge:
+        turn = turn_factory(
+            claude_path=claude_path,
+            model=model,
+            system_prompt_text=system_prompt(
+                api, project_docs=read_project_docs(report.project_root)
+            ),
+            socket_path=str(bridge.socket_path),
+            token=bridge.token,
+            session_id=session_id,
+            on_text=on_text,
+            cwd=report.project_root,
+        )
+        # The owner's comments since the last turn travel ahead of the
+        # prompt (ADR-505); they are delivered once a turn has run on them.
+        comments = pending_comments(report.project_root)
+        for image in images:
+            _progress(f" · attached {image.name}  {image.media_type}, {len(image.data)} bytes")
+        try:
+            prompt = with_comments(args.prompt, comments)
+            result = turn.run(prompt, images) if images else turn.run(prompt)
+            if _spent_nothing(result, bridge.state):
+                _progress(
+                    " · the turn reached the engine not once; asking "
+                    "once more"
+                )
+                result = _merge_turns(result, turn.run(NUDGE_PROMPT))
+                report.notes.append(
+                    "the first turn made no tool call; asked once more "
+                    "in the same conversation."
+                )
+        finally:
+            turn.cleanup()
+        sys.stderr.write("\n")
+        # What the turn cost, and whether the model only pretended to
+        # use its tools (ADR-523): both on the transcript, where a
+        # person watching the dashboard reads it.
+        report.usage = turn_usage(result.frames)
+        if report.usage:
+            _progress(" · turn: " + describe_usage(report.usage))
+        imitated = IMITATED_WARNING if imitated_tool_call(result.frames) else ""
+        if imitated:
+            _progress(" ✗ " + imitated)
+        sys.stderr.flush()
 
-        _finish(args, report, engine, accepted.get("display"))
-        report.ok = True
-        return EXIT_OK
+    # A refused override cannot replace the model of an unchanged session.
+    # New locators still persist on failure so the conversation can resume.
+    if result.session_id and (result.ok or result.session_id != stored.session_id):
+        write_agent_state(
+            report.project_root,
+            session_id=result.session_id,
+            model=model,
+        )
+    report.session_id = result.session_id
+    if result.ok and comments:
+        at = mark_delivered(report.project_root, comments, session_id=result.session_id)
+        report.comments = [dict(comment, delivered=at) for comment in comments]
+        report.notes.append(f"delivered {len(comments)} comment(s) from the owner.")
+    if result.resume_failed:
+        report.notes.append(
+            "the stored session id could not be resumed; ran a fresh "
+            "conversation."
+        )
+    if result.text.strip():
+        report.notes.append(result.text.strip())
+    if imitated:
+        report.notes.append(imitated)
+    # What the agent decided lands in the project's own ADR log
+    # (ADR-193): a closing line that starts `DECISION:`. A convention,
+    # not a tool, because the agent has no file access here.
+    landed = record_decisions(report.project_root, result.text)
+    if landed:
+        report.notes.append(
+            "recorded " + ", ".join(landed) + " in DECISIONS.md."
+        )
+    # ...and its longer notes land beside them, one file per subject
+    # (ADR-245): a closing line `NOTE <subject>:`. The same convention
+    # rather than a second mechanism, and read back on the next visit.
+    noted = record_notes(report.project_root, result.text)
+    if noted:
+        report.notes.append("wrote " + ", ".join(noted) + ".")
+
+    accepted = bridge.state.last_accepted
+    report.revision = bridge.state.revision or report.revision
+    if accepted is not None:
+        apply_modeling_reply(report, accepted)
+    if bridge.state.last_fit is not None:
+        report.fit = dict(bridge.state.last_fit)
+    if bridge.state.last_inventory is not None:
+        report.inventory = dict(bridge.state.last_inventory)
+    _refresh_script_state(client, report)
+
+    if not result.ok:
+        report.error = result.error or "the agent turn failed."
+        return EXIT_FAILURE
+    if accepted is None:
+        report.error = _rejection_reason(result.text, bridge.state.calls)
+        return EXIT_REJECTED
+
+    _finish(args, report, engine, accepted.get("display"))
+    report.ok = True
+    return EXIT_OK
 
 
 def _parse_assignments(raw: Sequence[str]) -> dict[str, Any]:
@@ -1120,6 +1390,203 @@ def _parse_assignments(raw: Sequence[str]) -> dict[str, Any]:
     if not values:
         raise ValueError("params needs at least one --set NAME=VALUE.")
     return values
+
+
+def command_comment(args: argparse.Namespace, report: RunReport) -> int:
+    """``cadex comment [--part NAME] [--reply NOTE_ID] TEXT``: one comment for the next turn.
+
+    The dashboard's comment box runs this command (A3). It touches no
+    engine: the comment is a line in ``comments.jsonl`` (ADR-505), tagged
+    with the revision accepted when it was left. ``--reply`` makes it the
+    owner's answer to an agent note (ADR-512).
+    """
+
+    root = Path(args.project).expanduser()
+    if not root.is_dir():
+        raise ValueError(f"no project at {root}.")
+    identity = read_accepted_identity(root)
+    comment = add_comment(root, args.text, part=args.part, reply_to=args.reply,
+                          revision=identity.get("revision", "") if identity.get("available") else "")
+    report.comments = [comment]
+    report.accepted_revision = comment["revision"]
+    report.ok = True
+    return EXIT_OK
+
+
+def command_budgets(args: argparse.Namespace, report: RunReport) -> int:
+    """``cadex budgets [--set NAME=VALUE ...]``: the project's engine budgets (ADR-517).
+
+    Stored in the project's ``agent.json`` beside the conversation, read by
+    every later run's ``open_project``. With no ``--set`` it only reports.
+    It touches no engine, so what it reports is what is *stored*; a run's
+    own envelope says what was in force.
+    """
+
+    root = Path(args.project).expanduser()
+    if not root.is_dir():
+        raise ValueError(f"no project at {root}.")
+    changes: dict[str, Any] = {}
+    for assignment in args.budget_assignments:
+        name, sep, value = str(assignment).partition("=")
+        if not sep:
+            raise ValueError(f"--set wants NAME=VALUE, not {assignment!r}.")
+        changes[name.strip()] = value.strip()
+    if changes:
+        stored = write_agent_budgets(root, changes).budgets
+        report.notes.append("stored " + ", ".join(
+            f"{key}={stored[key]:g}" if key in stored else f"{key} unset" for key in changes) + ".")
+    else:
+        stored = read_agent_state(root).budgets
+    report.budgets = {"stored": dict(stored)}
+    report.ok = True
+    return EXIT_OK
+
+
+def _verdict_text(verdict: str, revision: str, note: str, *, entry: Mapping[str, Any] | None = None,
+                  other: str = "") -> str:
+    short = revision[:12]
+    if verdict == "accepted":
+        said = f"The owner accepted revision {short}."
+    elif verdict == "rejected":
+        said = (f"The owner rejected revision {short} and put back revision "
+                f"{other[:12]} (#{(entry or {}).get('ordinal')}).")
+    else:
+        said = (f"The owner restored revision {short} (#{(entry or {}).get('ordinal')}) "
+                f"over revision {other[:12]}.")
+    return said + (" " + note.strip() if note.strip() else "")
+
+
+def command_revision(args: argparse.Namespace, report: RunReport) -> int:
+    """``cadex revision list|accept|reject|restore``: the owner's review of a revision.
+
+    The dashboard's Accept, Reject and Restore buttons run this command
+    (A3, ADR-506). ``list`` and ``accept`` touch no engine: the trail is a
+    file the engine keeps, and an approval is a verdict line in
+    ``comments.jsonl`` for the next turn. ``reject`` and ``restore`` put a
+    stored version back through the engine's ordinary ``write_script`` —
+    with ``replace``, since going back may drop outputs on purpose — and
+    then its recorded values through ``set_params``, so the project lands
+    on the revision named, and say so in ``exact`` when it cannot.
+    """
+
+    root = Path(args.project).expanduser()
+    if not root.is_dir():
+        raise ValueError(f"no project at {root}.")
+    action = args.action
+    if action == "list":
+        report.revisions = {"history": read_revision_history(root)}
+        identity = read_accepted_identity(root)
+        report.accepted_revision = identity.get("revision", "") if identity.get("available") else ""
+        report.ok = True
+        return EXIT_OK
+    want = str(args.selector or "").strip().lower()
+    if action == "accept":
+        identity = read_accepted_identity(root)
+        current = identity.get("revision", "") if identity.get("available") else ""
+        if not current:
+            raise ValueError("there is no accepted revision to accept.")
+        if want and not current.startswith(want):
+            raise ValueError(f"only the accepted revision ({current[:12]}) can be accepted.")
+        report.comments = [add_comment(root, _verdict_text("accepted", current, args.note),
+                                       revision=current, verdict="accepted")]
+        report.accepted_revision = current
+        report.revisions = {"action": "accept", "target": current, "accepted": current, "exact": True}
+        report.ok = True
+        return EXIT_OK
+
+    with _engine_session(args, report, restore=False) as (engine, client):
+        identity = read_accepted_identity(root)
+        current = identity.get("revision", "") if identity.get("available") else ""
+        entries = read_revision_history(root)
+        if action == "reject":
+            if not current:
+                raise ValueError("there is no accepted revision to reject.")
+            if want and not current.startswith(want):
+                raise ValueError(f"only the accepted revision ({current[:12]}) can be rejected; "
+                                 "restore an older one instead.")
+            target = previous_revision(entries, current)
+        else:
+            target = select_revision(entries, want)
+        goal = str(target.get("revision") or "")
+        report.revisions = {"action": action, "target": goal, "ordinal": target.get("ordinal"),
+                            "from": current}
+        if goal == current or (target.get("digest") and identity.get("available")
+                               and target.get("digest") == identity.get("digest")
+                               and action == "restore"):
+            report.accepted_revision = current
+            report.revisions.update(accepted=current, exact=True)
+            report.notes.append(f"nothing to {action}: revision {goal[:12]}"
+                                + (" is already accepted." if goal == current else
+                                   "'s geometry is already accepted."))
+            report.ok = True
+            return EXIT_OK
+        source = read_revision_source(root, target)
+
+        def write(op: str, request: dict[str, Any]) -> dict[str, Any] | None:
+            _progress(f" · {op}")
+            request.update(expected_revision=read_working_revision(client),
+                           display=dict(STANDARD_DISPLAY))
+            reply = client.request(op, request)
+            apply_modeling_reply(report, reply)
+            if reply.get("ok") is not True:
+                report.error = str(reply.get("error") or reply.get("failure_code") or f"{op} failed")
+                _refresh_script_state(client, report)
+                return None
+            return reply
+
+        reply = write("write_script", {"source": source, "replace": True})
+        if reply is None:
+            return EXIT_REJECTED
+        values = target.get("values")
+        if report.accepted_revision != goal and isinstance(values, dict):
+            # The source came back with today's values; put the revision's own
+            # back too. A parameter it did not store was at its default, and a
+            # stored value cannot be unset, so it is set to the default: the
+            # same model, under a revision that says the value explicitly.
+            # Rows are sent only when it had some, since an empty list is a
+            # table to clear, not a value to keep.
+            state = read_script_state(client)["params"]
+            recorded = dict(values.get("params") or {})
+            patch: dict[str, Any] = {}
+            for spec in state.get("specs") or []:
+                name = str(spec.get("name") or "") if isinstance(spec, dict) else ""
+                if not name:
+                    continue
+                want_value = recorded.get(name, spec.get("default"))
+                if want_value is not None and \
+                        (state.get("values") or {}).get(name, spec.get("default")) != want_value:
+                    patch[name] = want_value
+            request: dict[str, Any] = {"values": patch}
+            for key in ("nets", "boards", "mounts", "cages"):
+                if values.get(key):
+                    request[key] = list(values[key])
+            if patch or len(request) > 1:
+                reply = write("set_params", request)
+                if reply is None:
+                    return EXIT_REJECTED
+        _refresh_script_state(client, report)
+        exact = report.accepted_revision == goal
+        same = bool(target.get("digest")) and report.digest == target.get("digest")
+        report.revisions.update(accepted=report.accepted_revision, exact=exact,
+                                same_geometry=exact or same,
+                                values_recorded=isinstance(values, dict))
+        if not exact:
+            report.notes.append(
+                f"restored revision {goal[:12]} as {report.accepted_revision[:12]}: "
+                + ("the same geometry, with a value it left at its default now set explicitly."
+                   if same else
+                   "its values were not recorded (accepted before ADR-506), so today's are kept."
+                   if not isinstance(values, dict) else
+                   "its recorded values did not reproduce it.")
+            )
+        verdict = "rejected" if action == "reject" else "restored"
+        report.comments = [add_comment(
+            root, _verdict_text(verdict, current if action == "reject" else goal, args.note,
+                                entry=target, other=goal if action == "reject" else current),
+            revision=current if action == "reject" else goal, verdict=verdict)]
+        _finish(args, report, engine, reply.get("display"))
+        report.ok = True
+        return EXIT_OK
 
 
 def command_params(args: argparse.Namespace, report: RunReport) -> int:
@@ -1884,14 +2351,20 @@ def _walk_common(args: argparse.Namespace) -> list[str]:
         common += ["--engine", str(args.engine)]
     if getattr(args, "wait", False):
         common.append("--wait")
+    if getattr(args, "engine_timeout", 0.0):
+        common += ["--engine-timeout", repr(float(args.engine_timeout))]
+    if getattr(args, "engine_memory", 0):
+        common += ["--engine-memory", str(int(args.engine_memory))]
     return common
 
 
 def command_review(args: argparse.Namespace, report: RunReport) -> int:
     """Serve one project's review dashboard until interrupted (ADR-286).
 
-    Inspection only: the server reads the project's manifest, records and
-    retained artifacts on every request and writes nothing, so stopping it
+    The server reads the project's manifest, records and retained
+    artifacts on every request; its only write is a slider's, which runs
+    ``cadex params`` as a child and needs the page's per-launch token
+    (ADR-503). So stopping it
     — Ctrl-C, SIGTERM — changes nothing about the project, and a walk or a
     training run in progress is neither stopped nor duplicated by starting
     or restarting it. The URL is printed on stderr as soon as the socket is
@@ -1908,13 +2381,22 @@ def command_review(args: argparse.Namespace, report: RunReport) -> int:
         server, thread = serve_review(root, str(args.host), port)
     except OSError as exc:
         raise ValueError(f"review: cannot bind {args.host}:{port}: {exc}") from exc
+    _progress(f"review: serving {root.name} at {server.url} (writes need the page's token; Ctrl-C to stop)")
+    _serve_until_stopped(server, thread)
+    report.ok = True
+    report.notes.append(f"review: served {server.url}; stopped")
+    return EXIT_OK
+
+
+def _serve_until_stopped(server: Any, thread: threading.Thread) -> None:
+    """Block until Ctrl-C or SIGTERM, then stop and close ``server``."""
+
     stop = threading.Event()
 
     def _stop(_signum: int, _frame: Any) -> None:
         stop.set()
 
     previous = {sig: signal.signal(sig, _stop) for sig in (signal.SIGINT, signal.SIGTERM)}
-    _progress(f"review: serving {root.name} at {server.url} (read-only; Ctrl-C to stop)")
     try:
         while not stop.is_set() and thread.is_alive():
             stop.wait(0.5)
@@ -1923,8 +2405,48 @@ def command_review(args: argparse.Namespace, report: RunReport) -> int:
             signal.signal(sig, handler)
         server.shutdown()
         server.server_close()
+
+
+def projects_directory(args: argparse.Namespace) -> Path:
+    """``--projects``, then ``CADEX_PROJECTS``, then ``~/cadex-projects``."""
+
+    chosen = getattr(args, "projects", None) or os.environ.get("CADEX_PROJECTS", "")
+    return Path(chosen or Path.home() / DEFAULT_PROJECTS_DIRNAME).expanduser()
+
+
+def runs_directory(args: argparse.Namespace) -> Path:
+    """``--runs``, then ``CADEX_RUNS``, then this checkout's ``.ouroboros/runs``."""
+
+    chosen = getattr(args, "runs", None) or os.environ.get("CADEX_RUNS", "")
+    return Path(chosen).expanduser() if chosen else DEFAULT_RUNS_DIR
+
+
+def command_app(args: argparse.Namespace, report: RunReport) -> int:
+    """Serve the dashboard over a directory of projects until interrupted.
+
+    The same review pages as ``cadex review``, one per project
+    under ``/p/<name>/``, behind an index that lists every project in the
+    directory anew on each request. The directory is created if absent, so
+    a fresh clone reaches a first page without having made a project. The
+    URL is printed on stderr as soon as the socket is bound.
+    """
+
+    root = projects_directory(args)
+    if root.exists() and not root.is_dir():
+        raise ValueError(f"app: not a directory: {root}")
+    root.mkdir(parents=True, exist_ok=True)
+    host = str(getattr(args, "host", "127.0.0.1"))
+    port = int(getattr(args, "port", 8765))
+    if port < 0 or port > 65535:
+        raise ValueError(f"app: --port must be 0..65535, not {port}")
+    try:
+        server, thread = serve_projects(root, host, port, runs_root=runs_directory(args))
+    except OSError as exc:
+        raise ValueError(f"app: cannot bind {host}:{port}: {exc}") from exc
+    _progress(f"app: serving {root} at {server.url} (writes need the page's token; Ctrl-C to stop)")
+    _serve_until_stopped(server, thread)
     report.ok = True
-    report.notes.append(f"review: served {server.url}; stopped")
+    report.notes.append(f"app: served {server.url}; stopped")
     return EXIT_OK
 
 
@@ -2471,8 +2993,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     command = args.command or "prompt"
     if command == "prompt" and not args.prompt:
-        parser.print_help(sys.stderr)
-        return EXIT_USAGE
+        # A bare `cadex` opens the dashboard; `cadex -h` is the help.
+        command = "app"
+    if args.image and command != "prompt":
+        parser.error("--image attaches to a prompt: give it with -p PROMPT.")
 
     report = RunReport(project_root=str(Path(args.project).expanduser()))
     quiet = command == "script" and not getattr(args, "source_file", "")
@@ -2507,6 +3031,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_walk(args, report)
         elif command == "review":
             code = command_review(args, report)
+        elif command == "app":
+            code = command_app(args, report)
+        elif command == "comment":
+            code = command_comment(args, report)
+        elif command == "budgets":
+            code = command_budgets(args, report)
+        elif command == "revision":
+            code = command_revision(args, report)
         else:  # argparse already refuses anything else
             return EXIT_USAGE
     except (ValueError, ExportError, InventoryError, TrainError, SmokeError, EvaluateError,
@@ -2539,6 +3071,7 @@ _HOUSEKEEPING_NOTES = (
     "no git on",
     "git init",
     "committed ",
+    "delivered ",
 )
 
 
@@ -2560,6 +3093,11 @@ def _progress_what(command: str, args: argparse.Namespace, report: RunReport) ->
         )
     if command == "script":
         return f"script --set {Path(args.source_file).name}"
+    if command == "revision":
+        change = report.revisions
+        return "revision {:s} → {:s} (#{}) from {:s}".format(
+            args.action, str(change.get("target") or "")[:12], change.get("ordinal"),
+            str(change.get("from") or "")[:12])
     if command == "export":
         return f"export → {args.out}"
     if command == "section":
@@ -2717,7 +3255,9 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command == "review":  # inspection only: no row, no commit (ADR-286)
+    if command in ("review", "app", "comment", "budgets"):  # no run: no row, no commit (ADR-286, ADR-505)
+        return
+    if command == "revision" and args.action in ("list", "accept"):  # a read, a verdict (ADR-506)
         return
     # Read once, before the row is appended: both branches compare against
     # the last row that carried each number, and the walk branch is why
@@ -2763,7 +3303,9 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command == "review":
+    if command in ("review", "app", "comment", "budgets"):
+        return
+    if command == "revision" and args.action in ("list", "accept"):
         return
     # A walk's legs each committed; what is left is its review.json, when
     # --out lies under the project, plus generated project review artifacts.
