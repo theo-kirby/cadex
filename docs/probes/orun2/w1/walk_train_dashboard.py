@@ -9,7 +9,7 @@ drives it in headless Chromium, and writes what the page showed to
 nothing: training stays on the CLI, and the page only shows it.
 
     PYTHONPATH=cli pixi run python docs/probes/orun2/w1/walk_train_dashboard.py \
-        --projects ~/cadex-projects --project orun2-w1-robin --run w1-cpu-2 \
+        --projects ~/cadex-projects --project orun2-w1-robin --run w1-gpu-1 \
         --out /tmp/w1/evidence
 """
 

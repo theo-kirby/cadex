@@ -4,7 +4,7 @@ Verified against source: 2026-10-04, at `37733eec` (the orun2 run branch).
 The D1 and D2 numbers were measured at `13c660cf`; no later commit touches
 the build, the setup route or the slider path.
 ADR-531 and ADR-532 (the payload's LLVM, then OpenCV/PCL/Node/Perl prunes)
-landed after; §3 and defect 6 carry them.
+landed after; §3 and defect 6 carry them. W1's GPU leg (defect 5) was measured at `50442820`.
 Charter: `.ouroboros/goal.md`, "Cadex is three things — the engine, the
 dashboard, the agent". Every number below was measured on sb1x (linux-64,
 32 cores). The owner ticks the criteria; this report claims none of them.
@@ -19,7 +19,7 @@ dashboard, the agent". Every number below was measured on sb1x (linux-64,
 | D2 watch and steer | evidence recorded | one browser test per item against a real engine (§4) | `morning-peak-8268`, `placid-bell-2440`, `noble-glade-0483`, `stormy-grove-7025`, `sweet-mist-9111`, `calm-falcon-6751`, `narrow-crest-4950`, `staid-wave-3739`, `polished-lodge-7956` |
 | D3 runs first-class | evidence recorded | ADR-513, ADR-514, ADR-515, ADR-518, ADR-519 | `mellow-otter-0798`, `polished-reef-4161`, `lean-star-6139`, `quiet-ivy-3898`, `amber-moon-9415` |
 | A1 one contract, a channel | evidence recorded | `leave_note` (ADR-512), the guidance settled (ADR-521) | `proud-quill-5791`, `autumn-rose-7173` |
-| W1 nothing lost | evidence recorded except the GPU half of step 7 | walk steps 1–8 ran and were seen in the dashboard; step 7 ran on the CPU because the 5090's driver is not loaded (defect 5). The ledger has no "to port" row | `red-loom-2239`, `icy-tooth-7719`, `dusty-bramble-8099`, `mellow-fjord-5906`, `neat-grove-1406`, `solemn-birch-8260` |
+| W1 nothing lost | evidence recorded | walk steps 1–8 ran and were seen in the dashboard; step 7 trained on the 5090 (300 it × 1024 envs, 331 s) and `evaluate` passed 10 of 10 seeds (defect 5, cleared). The ledger has no "to port" row | `red-loom-2239`, `icy-tooth-7719`, `dusty-bramble-8099`, `mellow-fjord-5906`, `neat-grove-1406`, `solemn-birch-8260` |
 | C1 this report | this file | §1–§6 below | `clear-current-6218`, `lively-beacon-5538`, `clever-sky-3211` |
 
 The owner-note units each have their own record: the blueprint composer
@@ -179,12 +179,14 @@ Each was re-checked on 2026-10-04 while the screenshots were taken.
    already skipped traces and exports. The median is now 0.043 s, the
    first preview 0.28 s, `ok` is true, and the bar is unchanged.
    `test_preview_skips_fit.py` pins it.
-5. **W1 step 7 ran on the CPU: still open, and the one blocker.**
-   Re-checked at `37733eec`: `lsmod` lists no `nvidia` module, and
-   `nvidia-smi` "couldn't communicate with the NVIDIA driver". Loading the
-   driver needs the owner. Once it loads, the 5090 leg is one command,
-   `cadex walk` on `orun2-w1-robin` without `JAX_PLATFORMS=cpu`. The CPU run
-   is a lifecycle check, not a gait.
+5. **W1 step 7 ran on the CPU: cleared.** The owner loaded driver
+   580.178.04 on 2026-10-04; `nvidia-smi` sees the RTX 5090 and
+   `~/cadex-train-venv` reports `jax.default_backend() == "gpu"`. The leg
+   ran again without `JAX_PLATFORMS=cpu`: `cadex walk --iterations 300
+   --envs 1024 --seed 1001` exited 0 in 517.5 s, with receipt `device: gpu`,
+   331.1 s of training, reward/step 0.950, and a rollout upright over all
+   501 frames. `cadex evaluate` then passed **10 of 10 seeds**. Both are on
+   the dashboard (`w1/w1-7-training.png`, `w1/w1-8-evaluate.png`).
 6. **The installed footprint shrank by two slices; the pixi environment
    did not.** The staged payload no longer carries LLVM and clang (ADR-531)
    or OpenCV, PCL, Node and Perl (ADR-532), none of which any ELF or module
@@ -196,7 +198,7 @@ Each was re-checked on 2026-10-04 while the screenshots were taken.
 
 ## 7. The done claim
 
-Every criterion except W1's GPU leg has recorded, measured evidence, and
-that leg waits on the driver (defect 5), not on code. This report claims
+Every criterion has recorded, measured evidence, W1's GPU leg included
+(defect 5, cleared). This report claims
 done for the critic's review. The owner ticks the boxes, and none is ticked
 here.

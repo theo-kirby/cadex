@@ -15,11 +15,13 @@ aside. Then `cadex walk` trained, stored and declared a new policy, and
 `walk_train_dashboard.py` drives the page and only reads. `walk-train-steps.json`
 holds what the page showed.
 
-**The training ran on the CPU, not the 5090.** On 2026-10-04 the running
-kernel (7.0.0-34) had no `nvidia` module, and `nvidia-smi` could not reach
-the driver. The leg ran as `training/SETUP.md` §b allows, for lifecycle
-verification: 3 iterations × 8 envs. That proves the path, not a gait, and
-the policy fails as a three-iteration policy should.
+**The training ran on the 5090.** A first pass on 2026-10-04 ran on the CPU
+(run `w1-cpu-2`, 3 iterations × 8 envs, policy `d2556f70`, evaluate fail 0 of
+10), because the running kernel had no `nvidia` module. Once the owner loaded
+driver 580.178.04, the leg ran again without `JAX_PLATFORMS=cpu` at the
+budget that trained Robin's earlier passing policy (300 iterations × 1024
+envs, training seed 1001). Rows 7–8 and both screenshots are that GPU run.
+The CPU run stays listed in the dashboard as a historical run.
 
 | Step | How it ran | Measured | Seen in the dashboard |
 |---|---|---|---|
@@ -29,8 +31,8 @@ the policy fails as a three-iteration policy should.
 | 4. `look` and render | `look` inside the step 1 turn; `cadex render` (CLI) | render exit 0 in 155.0 s | Concept tab: "the accepted design, drawn from revision 27150b476953", 0.51 kg, 8 servos, 178 × 151 × 123 mm (`w1-4-render.png`) |
 | 5. STEP/STL | **Export STEP + STL** on the page (`cadex export`) | done in 116.8 s; 62 `.step` + 62 `.stl` offered; `battery.step` starts `ISO-10303-21;`, `battery.stl` downloads | export list (`w1-5-export.png`) |
 | 6. MJCF | the same export stages the model beside them | `model-model.xml` (24,828 bytes, `<mujoco`, 8 actuators) and `walk_task-task.json` offered and downloaded | export list |
-| 7. Training | `JAX_PLATFORMS=cpu cadex walk --iterations 3 --envs 8` (CLI), after `params --set policy_on=0` accepted `bab6fa28` | exit 0; train 81.3 s, declare 9.1 s, rollout 18.8 s; receipt `device: cpu`, 5058 parameters, policy `d2556f70`, task `d50e953b`; accepted `bda7c1c9`; rollout tipped at step 19, total reward 8.82 | run `w1-cpu-2` listed and **current**, Curves tab: iteration 2 of 3, three samples in each of the three histories, checkpoints from the run's own `train/`; the policy stored with its recorded digest (`w1-7-training.png`) |
-| 8. `evaluate` | `cadex evaluate` (CLI) | exit 0; **fail, 0 of 10 seeds**: B1, B2 and B5 fail on all 10, while B3 and B4 pass on all 10; seed 1101 filmed (2 filmstrips and a video) | Evaluation tab: the verdict, the predicate and seed tables, the film, and the earlier 10/10 evaluation listed as historical (`w1-8-evaluate.png`) |
+| 7. Training | `cadex walk --iterations 300 --envs 1024 --seed 1001 --name w1-gpu-1.cxpolicy` (CLI), GPU visible, no `JAX_PLATFORMS` | exit 0 in 517.5 s wall; legs: train 465.9 s (trainer wall time 331.1 s), declare 10.4 s, rollout 19.9 s; receipt `device: gpu`, 5058 parameters, reward/step 0.950 at iteration 299 (best 1.049 at 222), policy `dbd3913e`, task `d50e953b`; accepted `bf914476`; rollout upright over all 501 frames, max tilt 6.8°, total reward 672.6 | run `w1-gpu-1` listed and **current**, Curves tab: iteration 299 of 300, 300 samples in each of the three histories, checkpoints from the run's own `train/`; the policy stored with its recorded digest (`w1-7-training.png`) |
+| 8. `evaluate` | `cadex evaluate` (CLI) | exit 0 in 194.9 s; **pass, 10 of 10 seeds**: B1–B5 pass on all 10 (max tilt ≤ 6.35° against 30°, recovery ≤ 1.80 s against 2 s); seed 1101 filmed (2 filmstrips and a video) | Evaluation tab: the verdict, the predicate and seed tables, the film; the CPU run's 0/10 and the earlier 10/10 evaluations listed as historical (`w1-8-evaluate.png`) |
 
 ## Defects found on the way
 
