@@ -34313,4 +34313,43 @@ against the new shell.
 **What would reverse it.** The owner, after trying it. Each of the layout engine, the theme and
 the hairline style is one file or one function, so any of them can go alone.
 
+## ADR-535 — The model is cached, tagged and compressed on the way to the page (2026-10-04, owner report)
+
+**Context.** The owner tried the app over Tailscale and said it was "suuuuper slow, to load, to switch
+things, to rebuild" and that "a lot of times the model fails to load". Measured:
+- A 45-part accepted model is 28 MB of binary STL. It was served uncompressed with `no-store`,
+  so every open, source switch or rebuild downloaded all of it again.
+- Each mesh request re-derived the whole model manifest, hashing every BREP of the attempt:
+  about 2 s of server CPU per load, even on the server's own loopback.
+- The page's 2 s poll waited on the model download, so the page went quiet during a slow load.
+  Nothing retried a dropped request, and a superseded load kept downloading.
+
+**Decision.** `review_server.py`:
+- remembers `accepted_model` until its inputs move;
+- keeps each converted mesh by the tessellation's content hash, which is also the mesh's
+  `ETag` under `Cache-Control: no-cache`, answering 304 to a match;
+- gzips JSON, text and STL of 1 KB or more for a client that accepts it.
+
+`review.js` aborts a superseded load, retries a failed request twice, retries a failed load on
+later polls with backoff, and no longer holds the project poll on the model. `docs/DASHBOARD.md` §22.
+
+**Measured.** At 30 Mbit/s and 40 ms, emulated in Chromium:
+- first load 9.1 s → 3.9 s;
+- reopening the same model 8.2 s → 0.8 s;
+- the model on the wire 28 MB → 9.3 MB;
+- the projects listing 1.1 MB → 100 KB;
+- server time for the 45 meshes, loopback, warm: 2.1 s → 0.13 s.
+
+**Not addressed: the rebuild itself.** A slider move on the same arm is a full
+`cadex params` run of 80–150 s. The parts build in about 10 s. The worker then spends about
+60 s on what follows the build (the static and swept fit checks of ADR-346 and the assembly
+pass), and tessellation is about 4 s. That is engine work under its own ADRs and is left for
+the owner to direct.
+
+**Test.** `test_review_server.py::test_an_accepted_mesh_is_tagged_by_content_compressed_and_revalidated`
+checks:
+- the mesh's ETag, and a 304 for a matching tag;
+- the gzip bytes against the plain ones;
+- that the remembered manifest is rebuilt when the project manifest changes.
+
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).

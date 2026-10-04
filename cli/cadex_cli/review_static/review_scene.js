@@ -137,55 +137,74 @@ export function create(canvas) {
     }
     hudCamera.right=w; hudCamera.top=h; hudCamera.updateProjectionMatrix();
   }
-  // The hairline pass: the solids' view normals and depth go to an offscreen target, and one
-  // full-screen pass draws ink wherever either jumps between neighbouring pixels -- the
-  // silhouettes against depth, the creases against the normals -- on flat paper. A tessellated
-  // fillet's facets turn by less than the crease threshold, so a curved face stays clean.
-  let style='shaded', target=null;
+  // The hairline pass: the solids' view normals and depth go to an offscreen target at twice
+  // the canvas's resolution, an edge pass marks ink wherever either jumps between neighbouring
+  // pixels -- the silhouettes against depth, the creases against the normals -- with a hard
+  // threshold, and the canvas takes the average of each 2x2 block. So a line is crisp and one
+  // pixel wide and its stair-steps are smoothed, rather than a soft threshold's grey halo. A
+  // tessellated fillet's facets turn by less than the crease threshold, so a curved face stays clean.
+  const SUPERSAMPLE=2;
+  let style='shaded', target=null, edges=null;
   const paper=new THREE.Color(), ink=new THREE.Color();
   const normals=new THREE.MeshNormalMaterial({side:THREE.DoubleSide});
+  const fullscreen='varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }';
   const edgePass=new THREE.ShaderMaterial({
-    uniforms:{tNormal:{value:null}, tDepth:{value:null}, texel:{value:new THREE.Vector2()}, near:{value:.01}, far:{value:100},
-              paper:{value:new THREE.Vector3()}, ink:{value:new THREE.Vector3()}},
-    vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }',
+    uniforms:{tNormal:{value:null}, tDepth:{value:null}, texel:{value:new THREE.Vector2()}, near:{value:.01}, far:{value:100}},
+    vertexShader:fullscreen,
     fragmentShader:`uniform sampler2D tNormal; uniform sampler2D tDepth; uniform vec2 texel; uniform float near, far;
-      uniform vec3 paper, ink; varying vec2 vUv;
+      varying vec2 vUv;
       float lin(vec2 uv){ float z=texture2D(tDepth,uv).x*2.-1.; return 2.*near*far/(far+near-z*(far-near)); }
       vec3 nrm(vec2 uv){ return texture2D(tNormal,uv).xyz*2.-1.; }
       void main(){
         vec3 n0=nrm(vUv); float d0=lin(vUv), e=0.;
-        vec2 o[3]; o[0]=vec2(1.,0.); o[1]=vec2(0.,1.); o[2]=vec2(1.,1.);
-        for (int i=0;i<3;i++) {
+        vec2 o[4]; o[0]=vec2(1.,0.); o[1]=vec2(-1.,0.); o[2]=vec2(0.,1.); o[3]=vec2(0.,-1.);
+        for (int i=0;i<4;i++) {
           vec2 uv=vUv+o[i]*texel; float d=lin(uv);
-          e=max(e, smoothstep(.12,.3,1.-dot(n0,nrm(uv))));
-          e=max(e, smoothstep(.015,.04,abs(d-d0)/min(d,d0)));
+          // Only the nearer side of a depth jump is inked, so a silhouette is one line, not two.
+          if (1.-dot(n0,nrm(uv))>.2) e=1.;
+          if (d>d0 && (d-d0)/d0>.025) e=1.;
         }
-        gl_FragColor=vec4(mix(paper,ink,e),1.);
+        gl_FragColor=vec4(e,e,e,1.);
       }`,
     depthTest:false, depthWrite:false, toneMapped:false});
+  const resolvePass=new THREE.ShaderMaterial({
+    uniforms:{tEdges:{value:null}, paper:{value:new THREE.Vector3()}, ink:{value:new THREE.Vector3()}},
+    vertexShader:fullscreen,
+    fragmentShader:`uniform sampler2D tEdges; uniform vec3 paper, ink; varying vec2 vUv;
+      void main(){ gl_FragColor=vec4(mix(paper,ink,texture2D(tEdges,vUv).r),1.); }`,
+    depthTest:false, depthWrite:false, toneMapped:false});
   const passScene=new THREE.Scene(), passCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
-  passScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),edgePass));
+  const passQuad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),edgePass);
+  passScene.add(passQuad);
   function srgb(colour, vector) {const c=colour.clone().convertLinearToSRGB(); vector.set(c.r,c.g,c.b);}
   function setColours({paper:p=null, ink:k=null}={}) {paper.set(p||HAIRLINE.paper); ink.set(k||HAIRLINE.ink);}
   setColours();
   function paintHairline() {
     const size=renderer.getDrawingBufferSize(new THREE.Vector2());
-    if (!target||target.width!==size.x||target.height!==size.y) {
-      if (target) {target.depthTexture.dispose(); target.dispose();}
-      target=new THREE.WebGLRenderTarget(size.x,size.y,{depthTexture:new THREE.DepthTexture(size.x,size.y)});
+    // At most 16 Mpx offscreen, so a large high-DPI canvas does not run a small GPU out of memory.
+    const limit=renderer.capabilities.maxTextureSize;
+    const scale=Math.max(1,Math.min(SUPERSAMPLE,limit/size.x,limit/size.y,Math.sqrt(16e6/(size.x*size.y))));
+    const w=Math.floor(size.x*scale), h=Math.floor(size.y*scale);
+    if (!target||target.width!==w||target.height!==h) {
+      if (target) {target.depthTexture.dispose(); target.dispose(); edges.dispose();}
+      target=new THREE.WebGLRenderTarget(w,h,{depthTexture:new THREE.DepthTexture(w,h),minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter});
+      // Linear filtering at each canvas pixel's centre is the mean of its 2x2 block.
+      edges=new THREE.WebGLRenderTarget(w,h,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,depthBuffer:false});
     }
     const background=scene.background, fog=scene.fog, shown=world.children.map(o=>o.visible);
     scene.background=null; scene.fog=null; scene.overrideMaterial=normals;
     world.children.forEach(o=>{if(o!==model)o.visible=false;});
     renderer.setRenderTarget(target); renderer.setClearColor(0x000000,0); renderer.clear(); renderer.render(scene,camera);
-    renderer.setRenderTarget(null);
     scene.background=background; scene.fog=fog; scene.overrideMaterial=null;
     world.children.forEach((o,i)=>{o.visible=shown[i];});
     const u=edgePass.uniforms;
     u.tNormal.value=target.texture; u.tDepth.value=target.depthTexture;
-    u.texel.value.set(1/size.x,1/size.y); u.near.value=camera.near; u.far.value=camera.far;
-    srgb(paper,u.paper.value); srgb(ink,u.ink.value);
-    renderer.render(passScene,passCamera);
+    u.texel.value.set(1/w,1/h); u.near.value=camera.near; u.far.value=camera.far;
+    passQuad.material=edgePass; renderer.setRenderTarget(edges); renderer.render(passScene,passCamera);
+    renderer.setRenderTarget(null);
+    resolvePass.uniforms.tEdges.value=edges.texture;
+    srgb(paper,resolvePass.uniforms.paper.value); srgb(ink,resolvePass.uniforms.ink.value);
+    passQuad.material=resolvePass; renderer.render(passScene,passCamera);
   }
   function setStyle(name, colours={}) {
     if (STYLES.includes(name)) style=name;

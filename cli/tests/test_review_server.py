@@ -378,6 +378,36 @@ def test_a_run_before_its_rollout_borrows_the_accepted_model_only_when_it_is_tha
     assert not model["available"] and model["relation"] == "historical"
 
 
+def test_an_accepted_mesh_is_tagged_by_content_compressed_and_revalidated(served, monkeypatch) -> None:
+    """A mesh carries its tessellation's content hash as its ETag and is
+    revalidated, not refetched: a matching If-None-Match is 304 with no body.
+    A client that accepts gzip gets the same bytes compressed; one that does
+    not gets them plain. The manifest it is read from is remembered and is
+    rebuilt when the manifest changes."""
+
+    import gzip
+    from cadex_cli import review_server
+    root, server = served
+    monkeypatch.setattr(review_server, "GZIP_MIN_BYTES", 0)  # the fixture's mesh is 684 bytes
+    _stage_accepted(root, REVISION_B)
+    status, headers, plain = _get(server.url + "mesh/accepted/torso.stl")
+    assert status == 200 and "content-encoding" not in headers
+    assert headers["cache-control"] == "no-cache" and headers["etag"].startswith('"')
+    status, packed_headers, packed = _get(server.url + "mesh/accepted/torso.stl", {"Accept-Encoding": "gzip"})
+    assert status == 200 and packed_headers["content-encoding"] == "gzip" and gzip.decompress(packed) == plain
+    assert packed_headers["etag"] == headers["etag"]
+    status, _h, body = _get(server.url + "mesh/accepted/torso.stl", {"If-None-Match": headers["etag"]})
+    assert status == 304 and body == b""
+    status, _h, body = _get(server.url + "mesh/accepted/torso.stl", {"If-None-Match": '"stale"'})
+    assert status == 200 and body == plain
+    first = _json(server.url + "api/model/accepted")
+    assert _json(server.url + "api/model/accepted") == first
+    manifest = json.loads((root / "script.json").read_text())
+    manifest.pop("accepted_attempt")
+    (root / "script.json").write_text(json.dumps(manifest))
+    assert _json(server.url + "api/model/accepted")["available"] is False
+
+
 def test_the_accepted_model_comes_from_the_accepted_attempt_only(served) -> None:
     root, server = served
     model = _json(server.url + "api/model/accepted")

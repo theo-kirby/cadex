@@ -45,6 +45,8 @@ from __future__ import annotations
 from array import array
 import base64
 import binascii
+from collections import OrderedDict
+import copy
 import datetime as _datetime
 import hashlib
 from http import HTTPStatus
@@ -63,6 +65,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import zlib
 from typing import Any, Callable, Mapping
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 from xml.etree import ElementTree
@@ -1123,7 +1126,65 @@ def world_components(result: Mapping[str, Any]) -> set[str]:
             if isinstance(row, Mapping) and row.get("status") == "world geometry" and row.get("component")}
 
 
+#: What :func:`accepted_model` read last, per project: an attempt's staging
+#: is written once, so the model is a function of the manifest that names it
+#: and of the few staging files it reads, and is rebuilt only when one of
+#: their stats moves. Rebuilding hashes every BREP of the attempt, which a
+#: page loading forty meshes did forty times over.
+_MODEL_MEMO: "OrderedDict[str, tuple[tuple[Any, ...], dict[str, Any]]]" = OrderedDict()
+_MODEL_MEMO_SIZE = 64
+_MEMO_LOCK = threading.Lock()
+
+
+def _stat_key(path: Path) -> tuple[int, int] | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
+def _content_key(path: Path) -> str | None:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _model_inputs(root: Path) -> tuple[Any, ...]:
+    """What the accepted model is a function of: the manifest and the
+    attempt's result by content (a rewrite inside one clock tick keeps its
+    mtime), the tessellation directory and the trace by stat."""
+
+    manifest = root / PROJECT_SCRIPT_FILENAME
+    staging = ((_load_json(manifest) or {}).get("accepted_attempt") or {}).get("staging")
+    inputs: tuple[Any, ...] = (_content_key(manifest), staging)
+    if isinstance(staging, str):
+        base = root / staging
+        inputs += (_content_key(base / "result.json"), _stat_key(base / "display"),
+                   _stat_key(base / "outputs" / "assembly-simulation-trace.json"))
+    return inputs
+
+
 def accepted_model(project_root: Path | str) -> dict[str, Any]:
+    """:func:`accepted_model_uncached`, remembered until its inputs move."""
+
+    root = Path(project_root).expanduser()
+    key, inputs = str(root.resolve()), _model_inputs(root)
+    with _MEMO_LOCK:
+        held = _MODEL_MEMO.get(key)
+        if held is not None and held[0] == inputs:
+            _MODEL_MEMO.move_to_end(key)
+            return copy.deepcopy(held[1])
+    model = accepted_model_uncached(root)
+    with _MEMO_LOCK:
+        _MODEL_MEMO[key] = (inputs, copy.deepcopy(model))
+        while len(_MODEL_MEMO) > _MODEL_MEMO_SIZE:
+            _MODEL_MEMO.popitem(last=False)
+    return model
+
+
+def accepted_model_uncached(project_root: Path | str) -> dict[str, Any]:
     """The accepted model now, from the accepted attempt's own tessellation.
 
     The attempt's ``result.json`` lists the outputs in order with their
@@ -1876,6 +1937,17 @@ class ReviewProject:
         return path
 
     def accepted_mesh(self, output: str) -> bytes | None:
+        found = self.accepted_mesh_entry(output)
+        return None if found is None else found[1]
+
+    def accepted_mesh_entry(self, output: str) -> tuple[str, bytes] | None:
+        """``(etag, stl)`` for one accepted output, converted once per tessellation.
+
+        The tag is the tessellation's own content hash, so a part a rebuild
+        left as it was keeps its tag across revisions and a browser that has
+        it is answered 304.
+        """
+
         model = accepted_model(self.root)
         artifact = (model.get("meshes") or {}).get(output)
         if not model["available"] or not artifact:
@@ -1884,15 +1956,41 @@ class ReviewProject:
         if staging is None:
             return None
         sidecar_path = staging / "display" / (Path(artifact).name.replace(".tess.bin", ".tess.json"))
-        sidecar = _load_json(sidecar_path)
         artifact_path = staging / artifact
-        if not sidecar or not artifact_path.is_file():
-            return None
         try:
-            return tessellation_to_stl(sidecar, artifact_path.read_bytes())
+            sidecar_bytes, data = sidecar_path.read_bytes(), artifact_path.read_bytes()
+        except OSError:
+            return None
+        etag = '"' + hashlib.sha256(sidecar_bytes + b"\0" + data).hexdigest()[:40] + '"'
+        with _MEMO_LOCK:
+            held = _STL_MEMO.get(etag)
+            if held is not None:
+                _STL_MEMO.move_to_end(etag)
+                return etag, held
+        try:
+            sidecar = json.loads(sidecar_bytes)
+            body = tessellation_to_stl(sidecar, data)
         except (ValueError, OSError):
             return None
+        with _MEMO_LOCK:
+            global _STL_MEMO_BYTES
+            _STL_MEMO[etag] = body
+            _STL_MEMO_BYTES += len(body)
+            while _STL_MEMO_BYTES > STL_MEMO_LIMIT and len(_STL_MEMO) > 1:
+                _STL_MEMO_BYTES -= len(_STL_MEMO.popitem(last=False)[1])
+        return etag, body
 
+
+#: Converted meshes by content tag, newest kept, at most this many bytes.
+_STL_MEMO: "OrderedDict[str, bytes]" = OrderedDict()
+_STL_MEMO_BYTES = 0
+STL_MEMO_LIMIT = 512 * 1024 * 1024
+#: A response at least this long, of a type that compresses, is gzipped for
+#: a client that accepts it; a mesh's compressed form is kept beside it.
+GZIP_MIN_BYTES = 1024
+GZIP_TYPES = ("application/json", "text/", "model/stl", "image/svg+xml")
+_GZIP_MEMO: "OrderedDict[str, bytes]" = OrderedDict()
+_GZIP_MEMO_SIZE = 512
 
 #: The page's write token, as the served ``index.html`` carries it: the
 #: placeholder is replaced, per response, with the launch's own token.
@@ -2459,17 +2557,42 @@ class ReviewHandler(BaseHTTPRequestHandler):
     # -- responses ---------------------------------------------------------
 
     def _send_bytes(self, body: bytes, content_type: str, status: HTTPStatus = HTTPStatus.OK,
-                    extra: Mapping[str, str] | None = None) -> None:
+                    extra: Mapping[str, str] | None = None, memo: str | None = None) -> None:
         self.close_connection = True
+        headers = {"Cache-Control": "no-store", **(extra or {})}
+        compressible = len(body) >= GZIP_MIN_BYTES and content_type.startswith(GZIP_TYPES)
+        if compressible:
+            headers["Vary"] = "Accept-Encoding"
+        if compressible and "gzip" in self.headers.get("Accept-Encoding", ""):
+            body = self._gzip(body, memo)
+            headers["Content-Encoding"] = "gzip"
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        for key, value in (extra or {}).items():
+        for key, value in headers.items():
             self.send_header(key, value)
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
+
+    @staticmethod
+    def _gzip(body: bytes, memo: str | None) -> bytes:
+        """``body`` gzipped; a body with a content tag is compressed once."""
+
+        if memo is not None:
+            with _MEMO_LOCK:
+                held = _GZIP_MEMO.get(memo)
+                if held is not None:
+                    _GZIP_MEMO.move_to_end(memo)
+                    return held
+        packer = zlib.compressobj(6 if memo is not None else 5, zlib.DEFLATED, 31)
+        packed = packer.compress(body) + packer.flush()
+        if memo is not None:
+            with _MEMO_LOCK:
+                _GZIP_MEMO[memo] = packed
+                while len(_GZIP_MEMO) > _GZIP_MEMO_SIZE:
+                    _GZIP_MEMO.popitem(last=False)
+        return packed
 
     def _send_json(self, payload: Any, status: HTTPStatus = HTTPStatus.OK) -> None:
         self._send_bytes(json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n",
@@ -2756,11 +2879,17 @@ class ReviewHandler(BaseHTTPRequestHandler):
             return
         path: Path | None = None
         if head == "mesh" and rest[:1] == ["accepted"] and len(rest) == 2 and rest[1].endswith(".stl"):
-            body = project.accepted_mesh(rest[1][:-4])
-            if body is None:
+            found = project.accepted_mesh_entry(rest[1][:-4])
+            if found is None:
                 self._not_found("/".join(segments))
                 return
-            self._send_bytes(body, CONTENT_TYPES[".stl"])
+            etag, body = found
+            # Revalidated on every use, so a rebuild's changed part is never stale.
+            cache = {"Cache-Control": "no-cache", "ETag": etag}
+            if etag in [tag.strip() for tag in self.headers.get("If-None-Match", "").split(",")]:
+                self._send_bytes(b"", CONTENT_TYPES[".stl"], HTTPStatus.NOT_MODIFIED, cache)
+                return
+            self._send_bytes(body, CONTENT_TYPES[".stl"], extra=cache, memo=etag)
             return
         if head == "mesh" and rest[:1] == ["run"] and len(rest) == 3 and rest[2].endswith(".stl"):
             path = project.run_mesh(rest[1], rest[2][:-4])

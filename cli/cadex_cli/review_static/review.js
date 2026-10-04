@@ -257,7 +257,9 @@
   // -- 3D viewport -------------------------------------------------------------------
   // The source is the accepted model or one run's; a run's model plays its
   // rollout when the run kept one.
-  var source = 'accepted', sourcesKey = null, modelKey = null, modelLoad = 0;
+  var source = 'accepted', sourcesKey = null, modelKey = null, modelLoad = 0, modelAbort = null;
+  // A failed load is tried again on a later poll, waiting longer each time.
+  var modelFailures = 0, modelRetryAt = 0;
   var renderStyle = readPref('cadex.render', STYLES, 'shaded');
 
   function renderSources() {
@@ -280,16 +282,33 @@
   function setSource(value) {
     source = value;
     $('view3d-source').value = value;
-    modelKey = null;
+    modelKey = null; modelFailures = 0; modelRetryAt = 0;
     return loadModel();
+  }
+
+  // A request that fails on the way (a dropped connection, a 5xx) is tried
+  // twice more; one superseded by a newer load is aborted, not finished.
+  function fetchRetry(url, signal, tries) {
+    return fetch(url, { signal: signal }).then(function (response) {
+      if (response.status >= 500) throw new Error('HTTP ' + response.status);
+      return response;
+    }).catch(function (error) {
+      if (signal.aborted || tries <= 0) throw error;
+      return new Promise(function (resolve) { setTimeout(resolve, 700); }).then(function () { return fetchRetry(url, signal, tries - 1); });
+    });
   }
 
   function loadModel() {
     var status = $('model-status'), ticket = ++modelLoad;
     var path = source === 'accepted' ? '/api/model/accepted' : '/api/model/run/' + encodeURIComponent(source.slice(4));
+    if (modelAbort) modelAbort.abort();
+    var controller = modelAbort = new AbortController(), signal = controller.signal;
     status.dataset.state = 'loading'; status.textContent = 'loading model…';
     stopPlayback(); playback = null; $('playback').hidden = true;
-    return json(BASE + path).then(function (manifest) {
+    return fetchRetry(BASE + path, signal, 2).then(function (response) {
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      return response.json();
+    }).then(function (manifest) {
       if (ticket !== modelLoad) return;
       state.model = manifest;
       if (!manifest.available) {
@@ -303,17 +322,23 @@
         status.textContent = 'WebGL is unavailable in this browser';
         return;
       }
-      // Mesh URLs in the manifest are server-absolute; BASE mounts them.
-      return state.viewer.load(manifest, function (url, options) { return window.fetch(BASE + url, options); }).then(function () {
+      // Mesh URLs in the manifest are server-absolute; BASE mounts them. Until
+      // every mesh is in, the model drawn is the one before.
+      return state.viewer.load(manifest, function (url) { return fetchRetry(BASE + url, signal, 2); }).then(function () {
         if (ticket !== modelLoad) return;
+        modelFailures = 0;
         status.dataset.state = 'loaded';
         status.textContent = '';
         return loadPlayback(manifest, ticket);
       });
     }).catch(function (error) {
+      if (ticket !== modelLoad) return;
+      modelFailures += 1;
+      modelKey = null;
+      modelRetryAt = Date.now() + Math.min(30000, 2000 * Math.pow(2, modelFailures - 1));
       status.dataset.state = 'error';
-      status.textContent = 'model failed to load: ' + error.message;
-    });
+      status.textContent = 'model failed to load (' + error.message + '); trying again';
+    }).finally(function () { if (modelAbort === controller) modelAbort = null; });
   }
 
   function applyStyle(name) {
@@ -735,10 +760,13 @@
     renderHeader(); renderParams(); renderRevisions(); renderSources(); renderSheetSources();
   }
 
+  // The poll is the project read alone: a model it starts loading is
+  // handed back to the caller (a write waits for it) but never holds up the
+  // next poll, so the page stays live while a large model comes in.
   function poll() {
     if (pendingPoll) return pendingPoll;
-    var started = performance.now();
-    pendingPoll = fetch(BASE + '/api/project', { cache: 'no-store' }).then(function (response) {
+    var started = performance.now(), model = null;
+    var read = fetch(BASE + '/api/project', { cache: 'no-store' }).then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.text();
     }).then(function (body) {
@@ -749,12 +777,13 @@
       lastPoll.ms = performance.now() - started;
       // A run's model is fixed; the accepted one moves with every write.
       var key = source === 'accepted' ? JSON.stringify([review.accepted.revision, review.accepted.digest]) : source;
-      if (key !== modelKey) { modelKey = key; return loadModel(); }
+      if (key !== modelKey && Date.now() >= modelRetryAt) { modelKey = key; model = loadModel(); }
     }).catch(function (error) {
       state.stale = true; state.error = error.message;
       renderFreshness();
-    }).finally(function () { pendingPoll = null; });
-    return pendingPoll;
+    }).finally(function () { if (pendingPoll === whole) pendingPoll = null; });
+    var whole = pendingPoll = read.then(function () { return model; });
+    return whole;
   }
 
   function onLayout() {

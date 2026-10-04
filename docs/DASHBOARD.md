@@ -378,8 +378,11 @@ the lit stage below, the one every capture uses — or **hairline**: a
 diagram of silhouettes and creases in `--paper-ink` on flat `--paper`, with
 no floor, shadow or fog. The hairline is one screen-space pass in
 `review_scene.js` (`setStyle`): the solids' view normals and depth are drawn
-offscreen, and ink goes wherever either jumps between neighbouring pixels —
-depth for silhouettes, a normal turn of more than about 30° for creases — so a
+offscreen at twice the canvas's resolution (at most 16 Mpx), ink goes
+wherever either jumps between neighbouring pixels — depth for silhouettes,
+inked on the nearer side only, and a normal turn of more than about 37° for
+creases — with a hard threshold, and the canvas takes the mean of each 2×2
+block, so a line is one crisp pixel with its stair-steps smoothed. A
 tessellated fillet, whose facets turn by less, stays clean. The choice is the
 browser's (`cadex.render`); a capture never uses it.
 
@@ -671,6 +674,30 @@ pass `--host 0.0.0.0`.
 `--host <tailscale address>` (`docs/CLI.md`) binds the tailnet address
 directly without TLS, and is the older path. Cadex's own runs never start
 `tailscale serve`. It is a step the owner takes.
+
+**Over a remote link the model is the weight (ADR-535).** An accepted model
+is one binary STL per component, 28 MB for a 45-part arm, and each one was
+sent uncompressed with `no-store` and rebuilt per request. That request
+re-derived the whole model manifest, hashing every BREP of the attempt, so
+one load cost about 2 s of server CPU and 28 MB on the wire, every time the
+model was opened or moved. Now:
+- the manifest is remembered until the project manifest, the attempt's
+  `result.json` (both by content) or its tessellation and trace (by stat)
+  move;
+- each converted mesh is kept by its tessellation's content hash, and that
+  hash is its `ETag` (`Cache-Control: no-cache`), so a browser revalidates and
+  a part a rebuild did not touch answers 304;
+- any JSON, text or STL response of 1 KB or more is gzipped for a client
+  that accepts it. That arm is 9.3 MB, and the projects listing 100 KB
+  instead of 1.1 MB.
+
+The page aborts a load a newer one supersedes, tries a failed request twice
+more, keeps the last model drawn until the next is complete, and retries a
+failed load on later polls with a growing wait. A slow model never holds up
+the 2 s project poll.
+
+Measured on a link emulated at 30 Mbit/s and 40 ms (Chromium, the 45-part
+arm): first load 9.1 s → 3.9 s, reopening the same model 8.2 s → 0.8 s.
 
 ## 27. Autonomous runs beside the projects (ADR-513)
 
