@@ -146,11 +146,16 @@ Each was re-checked on 2026-10-04 while the screenshots were taken.
 2. **Debug colours: fixed.** The page paints by appearance role. Its parts
    line reads "colours by role: accent #FF6A1A, mechanism #2A2C31, shell
    #ECE8DF", and the model is white and orange in the shot (ADR-522).
-3. **A CLI turn's transcript and its `look` images are not on the project
-   page.** Confirmed: the index lists the turn (1 CLI turn on this
-   project), but the page's transcript is hidden and it shows 0 `look`
-   images. The agent's words reach the page only for turns started from
-   the page.
+3. **A CLI turn's transcript and its `look` images: fixed (ADR-526).**
+   The index listed a terminal turn, but the page's transcript was hidden
+   and showed 0 `look` images: the transcript was the dashboard's own
+   in-memory copy of a child it had started. `cadex -p` now keeps each turn
+   under the project's self-ignoring `turns/<id>/` (record, transcript,
+   one PNG per `look`), the CLI stays the only writer (A3), and the page
+   reads the newest stored turn. `test_turn_store.py` pins it against a
+   real engine in headless Chromium: a turn run through the CLI's `main()`,
+   not from the page, shows its transcript, status and both decoded `look`
+   images, and the project's repository tracks none of it.
 4. **The raw-NDJSON bar's preview lane misses its own bar**: median
    0.763 s against 0.10 s, so the script's overall `ok` is false. The
    same was recorded before this run. It is not the slider's path.
