@@ -1,5 +1,7 @@
 # L3 coverage and evidence audit `[Cadex-new]`
 
+*Dated record (2026-09-07). Re-checked 2026-10-04: the N20, BLDC, linear-actuator and joint tables still hold one SKU each and there is still no solenoid, so its residual gaps stand; the planetary failed its mesh (ADR-235).*
+
 Verified against source: 2026-09-07
 
 The original remaining-scope audit requested by `true-fox-1464`, against

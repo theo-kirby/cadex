@@ -22,7 +22,7 @@ replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
   policies `.cxpolicy` (ADR-084) with the `.json`/`.xml` their provenance
   travels as (ADR-135), and parts built in another project, `.cxpart`
   (ADR-138). Nothing outside cadexd writes that
-  directory: the `put_asset` op copies a file the user picked into it and
+  directory: the `put_asset` op copies a file the caller names into it and
   returns the name the script may then reference, the `link_part` op writes
   a `.cxpart` by reading another project's accepted attempt, and
   `inspect scope="assets"` lists what is there.
@@ -33,7 +33,7 @@ replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
   names/types/domains), `accepted_digest`, latest candidate/failure.
   Writes are atomic; unknown fields are rejected.
 - **The two parameter caches move together** (ADR-039). `param_specs` is what
-  the script declares; `param_values` is what the sliders were last set to.
+  the script declares; `param_values` is what `set_params` last set.
   Every accepted run prunes `param_values` to the declared names
   (`validate_project_result`), and `set_params` narrows the stored base to
   those names before merging its patch over them
@@ -220,7 +220,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `assembly.body(component, density_kg_m3=...)` and the mechanism falls,
   swings and settles under gravity on MuJoCo. It produces the same
   `simulation` output type `assembly.simulation` does — a script has one
-  simulation whichever solver ran it, and two would leave the shell baking
+  simulation whichever solver ran it, and two would leave a viewer playing
   neither. **Three things now produce one** — `assembly.simulation`
   (kinematics), `assembly.dynamics` (MuJoCo) and `assembly.rollout` (a
   trained policy, ADR-085) — and a script carries **exactly one of the
@@ -511,7 +511,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   and this is the one that reaches the viewport. It produces the same
   `simulation` output `assembly.simulation` and `assembly.dynamics` produce,
   so a script has exactly one of the three, a rollout cannot sit beside
-  `assembly.motion`, and the shell bakes it with code that never learned a
+  `assembly.motion`, and the dashboard plays it with code that never learned a
   third kind of producer exists. The policy it names must also be **returned
   as an output**, because an unpublished policy is one the engine never
   verified. The model is reloaded from the file the task bundle names rather
@@ -559,7 +559,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   radial control: displacement along the assembly-centre→component-centre
   direction, scaled by four times the distance over the assembly diagonal,
   so components near the centre barely move. Moves are **staged**: a
-  component may appear again in a later move, and the shell animates move
+  component may appear again in a later move, and the dashboard animates move
   *i* of *N* over its own window of the 0→1 explosion factor. Preconditions
   and refusals: the assembly graph must be cleanly **solved** (even under
   `require_solved=False`); a move whose components do not all actually
@@ -668,9 +668,11 @@ Browse before modelling standard hardware by hand: `describe_api`'s
 (`lib.catalog()` serves the same thing inside a script). Catalogued today:
 metric fasteners m2–m8 and m1.6 (socket/countersunk bolts, hex/nyloc nuts,
 flat washers; m1.6 is socket bolts, hex nuts and washers only, ADR-488), heat-set inserts m2–m5, the common ball bearings plus a
-parametric `lib.bushing`, and the four servo classes — SG90, MG90S,
-MG996R, DS3218 — with measured micro horns; and the three board variants
-below. The 25T horns and the servo
+parametric `lib.bushing`, five servos — SG90, MG90S, MG996R, DS3218 and
+the STS3215 bus servo — with measured micro horns, the nine boards below,
+the 2S pack, the N20 gearmotor with its press-on `lib.wheel` and tyre, a
+screw-on `lib.foot_pad`, and the families that have their own headings
+below. `describe_api section=library` is the authoritative list. The 25T horns and the servo
 pigtail terminals are deliberately absent until a dimensioned source
 exists.
 
@@ -678,7 +680,11 @@ exists.
 
 `lib.board(sku, origin=..., direction=..., roll_degrees=...)` accepts
 `esp32-devkitc-v4` (WROOM-32E), `pi-zero-2-w` and
-`pca9685-adafruit-rev-c` (Adafruit 815 revision C). The datum is the PCB's
+`pca9685-adafruit-rev-c` (Adafruit 815 revision C), the three this section
+was written for, and since then `pi-5`, `bno085-adafruit-4754`,
+`tb6612-adafruit-2448`, `pololu-d36v50f6`, `pololu-vl53l1x-3415` and
+`rpi-camera-module-3`; each one's `.spec` and `approximate` list say what
+is dimensioned. The datum is the PCB's
 lower-left corner on its bottom face, +X across the width, +Y along the
 length, +Z towards components. Dimensions are mm; holes in
 `.spec["mount_holes"]` are XY pairs in that canonical frame. The ESP32
@@ -1053,9 +1059,10 @@ Rings are perpendicular to the cage's `axis` and stationed at their
 points, defaulting to world +Z (or +Y for a cage that runs along Z). A
 **curved** spine is `part.sweep(scale_law=...)`'s job instead.
 
-The user can grab a ring in the viewport and drag it, so a silhouette stops
-costing a chat turn — which is the whole reason to spell a section table
-this way rather than as literals. `set_params(cages=[...])` replaces a
+A ring is a row, so a silhouette changes through `set_params` without a
+script rewrite — which is the whole reason to spell a section table
+this way rather than as literals. (The viewport ring-drag that once wrote
+these rows went with the Blender shell, ADR-500.) `set_params(cages=[...])` replaces a
 cage's rings wholesale; a ring carries **no name**, because its identity is
 its place in its cage's order.
 
@@ -1094,8 +1101,8 @@ The table is `boards(...)`'s in every other respect: millimetres in the
 component's own frame, `units="m"` a declaration-time convenience,
 `set_params(mounts=[...])` replacing the whole list, a row naming a
 component the script no longer declares **dropped** rather than refused, and
-a row measured in the viewport carried into the component's frame by the
-worker — roll included.
+a row given in world coordinates (`frame: "world"`) carried into the
+component's frame by the worker — roll included.
 
 ### Clearance over the whole travel `[ADR-130]`
 
@@ -1147,7 +1154,7 @@ and make a trained gait unpublishable.
 
 `part.cable` and `part.bundle` (ADR-056, ADR-057) route a wire between two
 ports. A port used to be a literal `(point, direction)` pair, which is wrong
-by construction for a through-hole, goes stale the moment a slider moves the
+by construction for a through-hole, goes stale the moment a parameter moves the
 component it was measured off, and does not say which signal it is. A
 **terminal** is a port derived from geometry and looked up by name:
 
@@ -1305,11 +1312,12 @@ it as it stands and `b["fc"]["batt_pos"]` is the same `Terminal` every harness
 operation already took. Nothing downstream learns that a board is now
 declared.
 
-**Declare boards this way whenever the wiring editor is going to be used.** A
+**Declare boards this way whenever the wiring is going to change.** A
 `TerminalSet` assigned to a variable and never consumed by a `part.cable` and
-never named in `nets(ports=...)` is an inert handle: it reaches the canvas as
-*nothing at all*. A board declared here is a node whether or not anything is
-wired to it — which is what makes it possible to wire onto it in the editor.
+never named in `nets(ports=...)` is an inert handle: it reaches the wiring
+graph (`inspect scope="wiring"`) as *nothing at all*. A board declared here is
+a node whether or not anything is wired to it — which is what makes it
+possible to wire onto it with `set_params(nets=[...])`.
 
 `term(name, origin=..., axis=..., hole_dia=None, depth=None)` is one row.
 `origin` is where the wire lands and `axis` is the direction it is drilled
@@ -1337,28 +1345,28 @@ and one project can no longer carry two.
 | `units`, the selector, the component | no | the script |
 
 Stored rows **replace** the declared table wholesale, the `nets()` property
-and for the same reason: it is what lets the editor add and delete terminals.
+and for the same reason: it is what lets `set_params` add and delete terminals.
 A stored row naming a board a rewritten script no longer declares is pruned,
 not raised on. A selector board's rows are never overridden — they come back
 from the geometry every run.
 
-**A terminal measured in the viewport is written straight into this table**
-(ADR-121), which is why Define Terminal no longer costs a chat turn. The row
-arrives in world coordinates marked `frame: "world"` and the engine carries it
+**A terminal measured in world coordinates can be written straight into this
+table** (ADR-121; the viewport tool that measured one went with the Blender
+shell). The row arrives marked `frame: "world"` and the engine carries it
 into the board's own frame through the inverse of the placement chain it
 resolved; a non-uniform scale on that chain refuses that one row by name.
 
 ### Declaring a harness: `nets()` and `wire()` `[ADR-065]`
 
 Terminals name the ends of a wire; `nets()` names the wire. It is to a
-connection exactly what `params()` is to a slider — **a declaration in the
+connection exactly what `params()` is to a number — **a declaration in the
 script whose current values live outside it**:
 
 **Any harness of two or more wires is written this way.** A set of bare
-`part.cable` calls builds the same geometry and is *read-only* in the wiring
-editor: nothing outside the script text names a row, so changing what
-connects to what, a gauge, or whether an end is soldered costs a chat turn —
-and converting the script later costs another one. A single one-off wire is
+`part.cable` calls builds the same geometry and is *read-only* to
+`set_params`: nothing outside the script text names a row, so changing what
+connects to what, a gauge, or whether an end is soldered costs a script
+rewrite — and converting the script later costs another one. A single one-off wire is
 the only case where calling `part.cable` directly is the right shape.
 
 ```python
@@ -1408,15 +1416,15 @@ for w in n.enabled():
             pad_dia_mm=JOINT_MM[address.split(".")[0]])
 ```
 
-Both follow the *stored* row rather than the declaration, so a wire rewired in
-the editor takes its joints with it.
+Both follow the *stored* row rather than the declaration, so a wire rewired
+through `set_params` takes its joints with it.
 
 An endpoint is **`"<port>.<terminal>"`**, validated at declaration against the
 actual `TerminalSet`s — a typo is a refusal, not a silent miswire. Port names
 are lower_snake_case and carry no dot, so the split is on the first dot and a
 terminal name may contain more.
 
-**The table carries exactly what the wiring editor can edit.**
+**The table carries exactly what `set_params(nets=[...])` can edit.**
 
 | column | overridable | lives where |
 |---|---|---|
@@ -1430,8 +1438,8 @@ naming a port or terminal that does not exist, and both ends the same.
 
 `part.bundle` is deliberately **not** a table concept. Changing a bundle's
 membership changes the conductor count, the lay radius and every other
-conductor's position; that is a script edit. Bundles draw in the editor and
-stay read-only.
+conductor's position; that is a script edit. Bundles appear in the wiring
+graph and stay read-only to `set_params`.
 
 #### Routing a run: `avoid` and `slack` `[ADR-056, ADR-113]`
 
@@ -1472,7 +1480,7 @@ kernel (`BRepOffsetAPI_MakePipeShell::MakeSolid`).
 
 ### The wiring path `[ADR-065]`
 
-The peer of *The slider path* below, through the same op. `script.json`
+The peer of *The parameter path* below, through the same op. `script.json`
 carries `net_specs` (the declaration the worker collected) beside
 `net_values` (the stored rows), exactly as it carries `param_specs` beside
 `param_values`, and `set_params` takes an optional `nets` argument alongside
@@ -1480,15 +1488,15 @@ carries `net_specs` (the declaration the worker collected) beside
 
 Two properties are worth stating because they are not the parameter path's:
 
-- **`nets` is a full row list, not a patch.** That is what lets the editor
+- **`nets` is a full row list, not a patch.** That is what lets a caller
   add and delete wires. An empty list means "no overrides", never "no
   wires" — deleting the last wire is expressed by disabling it.
 - **Strict on the request, lenient on the store.** A request naming an
   endpoint the declared ports do not have is refused with
   `UNKNOWN_PROJECT_NET_ENDPOINT`. A *stored* row a rewritten script no longer
   supports is dropped rather than raised on, in `validate_project_result` —
-  ADR-039's rule, for ADR-039's reason: raising would wedge the editor
-  forever the moment the AI renamed a port.
+  ADR-039's rule, for ADR-039's reason: raising would wedge every later
+  `set_params` the moment the AI renamed a port.
 
 `net_specs`/`net_values` join `project_script_revision` **only when
 non-empty**, so every project written before ADR-065 keeps a byte-identical
@@ -1505,11 +1513,14 @@ reconstructed from the `cable`/`bundle`/`solder` calls it made, marked
 
 ### Lifecycle tools
 
-The tool surface the AI sees is exactly four operations
+The engine's project tool surface is exactly four operations
 (`PROJECT_LIFECYCLE_OPERATIONS` in `CadexScriptedDomains.py`, pinned by
 `cadex_tests/test_project_tool_surface.py`; ADR-013). They reach the engine
-as cadexd ops of the same name (`docs/INTEGRATION.md`), served to Claude
-Code over MCP by the shell:
+as cadexd ops of the same name (`docs/INTEGRATION.md`), and `cadex mcp`
+serves them to whatever agent the person brings (ADR-538), beside `rebuild`,
+`inspect`, `link_part`, `put_asset` and the tools the CLI answers itself
+(`look`, `draw_blueprint`, `train_start`, `train_status`, `train_stop`,
+`evaluate`; `cli/cadex_cli/tools.py`):
 
 ```
 xscript.project.describe_api   composed API description for all domains
@@ -1523,14 +1534,15 @@ The dissolved per-domain operations (`create_program`, `edit_source`,
 `delete_program`, `inspect_program`) stay gone — the guardrail test
 asserts no registered tool may carry them again. Reads go through the
 bounded **`core.inspect`** tool (`CadexInspection.py`; scopes `document`,
-`object`, `script`, `api`, `image`, `output`, `assets`, `history` — `script`
+`object`, `script`, `api`, `image`, `output`, `assets`, `history`, `wiring`,
+`inventory`, `clearance`, `contacts`, `blueprint` — `script`
 pages the source and reports specs/values, revisions, accepted contract +
 digest, and the latest candidate; `output` serves any accepted output's
 measured facts from the pinned accepted attempt, so they are readable long
 after the rebuild that produced them; `assets` lists what a script can name
 by filename; the first two added in ADR-043, and `history` in ADR-045 — the
-accepted-revision undo trail that `restore_version` reads before writing the
-result back through `write_script`). There was one more scope, `selection`; it read the
+accepted-revision undo trail that `cadex revision reject|restore` reads
+before writing the result back through `write_script`). There was one more scope, `selection`; it read the
 Qt shell's selection and died with it (ADR-021), and the engine rejects it.
 
 ### Sandbox rules
@@ -1597,9 +1609,9 @@ Source is validated before any worker runs (AST policy in
 ### Publication, ownership, lint, GC
 
 Since Phase 5 (ADR-017/018) publication runs inside **cadexd's ephemeral
-document** (and the headless rebuild driver); the shell receives the
+document** (and the headless rebuild driver); a client receives the
 accepted artifacts as a `display` block and draws them however it likes
-(the Blender shell hydrates tessellation + ID maps into its scene).
+(the dashboard draws the tessellation sidecars in three.js).
 `publish_project_candidate` (`CadexScriptedDomainPublication.py`) applies
 one validated candidate under **ONE** document transaction. Undo is on for
 that transaction only and its history is cleared after it (ADR-434), so a
@@ -1656,75 +1668,61 @@ document back to the accepted revision, and a commit keeps no undo history:
   it, deletes the document, rebuilds twice, and asserts
   rebuild-vs-accepted AND rebuild-vs-rebuild digest equality.
 
-### The slider path
+### The parameter path
 
 The engine's half is `set_params`: a values-only patch, guarded by the
 working revision, that re-runs the script without touching source. It is the
-same lifecycle the assistant drives — there is no faster private path, and
-no AI turn.
+same lifecycle the agent drives — there is no faster private path, and
+no model call. Its client today is `cadex params --set k=v` and the agent's
+`set_params` tool; a failed run leaves the accepted geometry untouched, and
+`rebuild` re-runs the stored script (ADR-039).
 
-The shell's half is `scene.mesh_params`, a PropertyGroup registered from the
-engine's `param_specs` (`cadex_backend._bridge_params`). A drag debounces
-150 ms (`model._schedule_rebuild`), sends one `set_params` with a `draft`
-tessellation preset, and schedules a background `standard` refine at rest.
-A failed rebuild leaves the accepted geometry untouched — and says so in the
-parameters panel, with a **Rebuild Model** button beside it (`rebuild_model`,
-the `rebuild` op re-run over the stored script; ADR-039). The debounce timer
-runs outside any operator, so before that a failed drag reached the console
-and nowhere else.
+There is no slider UI now. The Qt parameters panel (ADR-014) died in Phase 7
+(ADR-021), the Blender shell's sliders and its **Apply as Defaults** (ADR-040)
+with that shell (ADR-498), and the dashboard's parameter slider with ADR-537.
+The contract they all committed through — `set_params` plus the revision
+guard — is unchanged, which is why none of those swaps touched the engine.
 
-The sliders are an override layer, and the shell can collapse it: **Apply as
-Defaults** rewrites each `num()` default in the script to the value its slider
-is sitting at (ADR-040). That is a `write_script` like any other — the shell
-splices the source and sends it whole — so the script stays the single source of
-truth rather than gaining a second place where a value can live. The stored
-values are left in place, and go on shadowing the defaults they were written
-from, so the operation does not move the geometry or its digest.
-
-*(ADR-014's `CadexParametersPanel.py` implemented this in the Qt shell and
-was deleted with it in Phase 7, ADR-021. The contract it committed
-through — `set_params` plus the revision guard — is unchanged, which is why
-the shell swap did not touch the engine.)*
-
-**In front of that path, for the sliders that drive motion**, sits
-`preview_params` (ADR-055). A resident `--safe-mode` worker inside cadexd
+**In front of that path, for the parameters that drive motion**, sits
+`preview_params` (ADR-055), an engine op no current client calls. A resident `--safe-mode` worker inside cadexd
 answers a **pose-only** parameter change — one where every non-assembly
 output's canonical definition is byte-identical and only placements moved —
 with solved component matrices and nothing else: no BREP, no tessellation, no
 digest, no publication, **no store write**. Measured at **33 ms** against the
 same model's 0.59 s accepting run.
 
-It is a fast path for *some* sliders, not all, and that is structural rather
+It is a fast path for *some* parameters, not all, and that is structural rather
 than an unfinished edge. A parameter feeding `part.box(p.width, …)` changes
 that box's definition, so it is never pose-only — correctly, because the
 geometry really did change. What a preview serves is exactly the class the
 `set_params` lifecycle is worst at and the user notices most: a component
 placement, a joint offset, a motion formula. Everything else falls back to
-the debounced `set_params` above, which remains the only thing that makes a
+`set_params` above, which remains the only thing that makes a
 change real: the preview never accepts, so the revision it was guarded by is
 still the revision when it is done.
 
 ### Reference pins
 
-`CadexReferenceContracts.py`: a click in the viewport becomes `@face-2` on
-the next chat message. A pin carries the shared handle, owning object,
+`CadexReferenceContracts.py`, behind the `resolve_pin` op: a pin names
+geometry a front end picked, such as `@face-2`. No current client captures
+one (the shells that did are deleted, ADR-021 and ADR-498). A pin carries the shared handle, owning object,
 subelement hint, and a **geometric fingerprint** (center of mass,
 direction/normal/radius/length). The fingerprint is authoritative: when the
 revision has moved since capture, the pin is re-resolved by fingerprint
 search rather than trusting the stored subelement name — so pins survive
 rebuilds that churn object names.
 
-Pins are the *chat* vocabulary. Scripts do not use them: since ADR-029 a
+Pins are a front end's vocabulary. Scripts do not use them: since ADR-029 a
 script argument names geometry with a **selector** (above), resolved through
 the same `CadexSubshapeQuery.py` vocabulary. Click and script therefore mean
 the same thing by "that face" — but only the selector is durable in a saved
-script, which is the point of the split. Nothing in the shell yet *writes* a
-selector into a script from a click; that round trip is half built
-(`docs/ROADMAP.md` Phase 10b).
+script, which is the point of the split. Nothing *writes* a selector into a
+script from a click; that round trip was half built when the shell that
+would have done it was deleted (`docs/ROADMAP.md` Phase 10b).
 
 **A pin is not a terminal.** The two words mean different things here and
-must not be swapped. A *pin* is this: a click-captured geometry reference,
-in chat (`CadexPinResolution.py`, `resolve_pin`, `pick_pin`). A *terminal*
+must not be swapped. A *pin* is this: a click-captured geometry reference
+(`CadexPinResolution.py`, `resolve_pin`). A *terminal*
 is an electrical attachment point on a component, named in a script and
 resolved from geometry (ADR-062, above). `resolve_pin`'s answer —
 `center_mm` plus `normal` — happens to be exactly the shape of a literal
@@ -1752,9 +1750,8 @@ is a coincidence of shape, not the same concept.
   to have been the right answer rather than a limitation to route around.
 - **Interactive mesh editing**: still unscheduled, and still a decision
   rather than an oversight. The plan used to be that it would arrive via
-  BMesh in the Blender shell. It has not, and the route narrowed rather than
-  widened: ADR-030 deleted the local bpy modes, which were the only code in
-  the shell that authored geometry with BMesh. Editing a mesh interactively
+  BMesh in the Blender shell. It did not, and the route closed: ADR-030
+  deleted the local bpy modes, and ADR-498 the shell itself. Editing a mesh interactively
   would now mean either a new engine op or re-opening a second authoring
   path — and the second is a direct contradiction of "nothing happens
   outside the script".

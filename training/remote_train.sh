@@ -750,8 +750,8 @@ PY
 # what else is on the terminal.
 
 # The local directory a run mirrors into. Defaults to ./<run-id> so two runs
-# cannot land on each other, and takes a project directory when you want the
-# shell to see it -- the panel polls <dir>/training-progress.json.
+# cannot land on each other, and takes a project directory when `cadex walk
+# --complete` should read its <dir>/training-progress.json.
 run_destination() {
     if [ -n "${2:-}" ]; then printf %s "$2"; else printf %s "./$1"; fi
 }

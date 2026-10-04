@@ -1,6 +1,6 @@
 # Two mechanisms through the same lifecycle walk
 
-Verified against source: 2026-09-08. [Cadex-new]. ADR-203, ADR-257, ADR-260.
+Verified against source: 2026-10-04. [Cadex-new]. ADR-203, ADR-257, ADR-260.
 
 The hinged arm and vertical linear carriage are synthetic mechanisms with
 different joint and actuator types. Both passed the unchanged headless
@@ -30,7 +30,7 @@ JAX_PLATFORMS=cpu ./cadex walk --project "$project" \
 ```
 
 No `--trainer-python` is needed: the CLI discovers `<repo>/.venv`, then
-`~/cadex-train-venv` (`training/SETUP.md` §"Which interpreter"). Pass the flag
+`~/cadex-train-venv` (`training/SETUP.md` §(b)). Pass the flag
 only to override that, and pass a path that exists on *this* machine — an
 earlier revision of this file hard-coded `$PWD/.venv/bin/python`, which is not
 where every machine keeps the trainer venv.

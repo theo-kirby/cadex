@@ -1,5 +1,7 @@
 # Manufacturer STEP horn and pigtail audit
 
+*Dated record (2026-09-07, ADR-231). No manufacturer STEP horn or pigtail has shipped since; the library's horns are the measured micro horns (ADR-181).*
+
 Verified against source: 2026-09-07
 
 [Cadex-new] ADR-231; executes the bounded bet `narrow-pebble-8020`.

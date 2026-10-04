@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-10-03
+Verified against source: 2026-10-04
 
 Cadex is not written from scratch. It is a **derivative work of a large
 free-software project, FreeCAD**, carrying the design lessons of two more
@@ -29,17 +29,17 @@ you do not count its suites:
 
 | Ours | Lines | Where |
 |---|---|---|
-| the engine, Python | 73,048 | `src/Mod/cadex/**/*.py`, suites excluded |
-| the engine's suites | 66,311 | `src/Mod/cadex/cadex_tests/*.py` |
+| the engine, Python | 72,119 | `src/Mod/cadex/**/*.py`, suites excluded |
+| the engine's suites | 65,696 | `src/Mod/cadex/cadex_tests/*.py` |
 | the engine, C++ | 1,032 | `CadexGeometryWorker.cpp` |
-| the CLI and dashboard server | 16,831 | `cli/cadex_cli/*.py` (ADR-061) |
-| the CLI's suites | 29,464 | `cli/tests/*.py` |
-| the dashboard pages | 2,298 | `cli/cadex_cli/review_static/` JS, CSS and HTML, vendored three.js excluded |
+| the CLI, the MCP server and the dashboard server | 17,411 | `cli/cadex_cli/*.py` (ADR-061) |
+| the CLI's suites | 25,578 | `cli/tests/*.py` |
+| the dashboard pages | 2,393 | `cli/cadex_cli/review_static/` JS, CSS and HTML, vendored three.js excluded |
 | the offboard trainer | 4,234 | `training/` — **not part of the product** (§5) |
 | the offboard analysis | 6,986 | `analysis/` — **not part of the product** (§5) |
 
 Everything else in this repository, which is the overwhelming majority of
-it, belongs to FreeCAD. Measured 2026-10-03 with `wc -l` over the tracked
+it, belongs to FreeCAD. Measured 2026-10-04 with `wc -l` over the tracked
 files `git ls-files` lists for each row; these numbers drift as the trees
 grow, so treat the date as part of the claim.
 
@@ -110,7 +110,7 @@ tree that carries the shell, and its ledger is
 the repository is LGPL, so nothing of it was ever copied out; what the
 dashboard and the CLI do in its place is re-derived (ADR-061). Ideas
 survive — the review dashboard's dark palette, the appearance roles, the
-turn transcript — and they are ours to carry because ideas are not code.
+rollout playback — and they are ours to carry because ideas are not code.
 
 **Credit.** For two and a half months the interface Cadex presented —
 viewport, navigation, tools, theming — was Blender's, built by the Blender
@@ -243,8 +243,9 @@ and the removals are the design of Cadex:
 - **One script, not eight lifecycle calls per domain.** The per-domain
   multi-program surface became a single project script (ADR-011, ADR-013).
 - **No provider stack.** The Qt shell and the whole API-key model loop were
-  deleted (ADR-021); the AI is now the Claude Code CLI, running under the
-  user's own login. The screenshot of a provider settings page in
+  deleted (ADR-021). Cadex now runs no model loop at all (ADR-538): the AI
+  is whichever agent the person brings — Claude Code, Codex, Pi — under its
+  own login, driving the engine through `cadex mcp`. The screenshot of a provider settings page in
   `docs/images/` is a photograph of something that no longer exists.
 - **No GUI in the engine.** The engine became headless; the shell became a
   separate process across a protocol (ADR-017, ADR-018, ADR-022).
@@ -296,7 +297,9 @@ legal advice; if you are redistributing Cadex, read the licences.
   ~330 more, pinned in `pixi.lock`) **do not stay on the build machine —
   they are the payload.** The engine payload is a relocated copy of the
   pixi environment, so every conda package that survives the prune ships
-  inside it. An earlier revision of this bullet claimed the
+  inside it. The prune drops the GUI toolkit and, since ADR-531 and
+  ADR-532, LLVM, clang, OpenCV, PCL, Node and Perl, which the development
+  environment carries and the engine never loads. An earlier revision of this bullet claimed the
   opposite. What each shipped package's licence is, and where its text
   landed, is recorded per-package in the payload's
   `licenses/MANIFEST.json`, written by `package/engine/collect_licenses.py`
@@ -304,10 +307,11 @@ legal advice; if you are redistributing Cadex, read the licences.
 - **The one pypi wheel that ships** is `mujoco == 3.10.0` —
   §4. It is neither vendored source nor a build-only dependency, which is why
   it has a section of its own rather than a bullet here.
-- **The CadexLight, CadexDark and CadexMono themes** are based on
+- **The CadexLight, CadexDark and CadexMono themes**, based on
   [OpenTheme by Obelisk79](https://github.com/obelisk79/OpenTheme)
-  (LGPL-2.1); the derived `.qss` files say so in their headers, and NOTICE
-  carries the entry.
+  (LGPL-2.1), were Qt stylesheets under `src/Gui` and were deleted with it
+  (ADR-214); no `.qss` file is tracked now. `NOTICE` still carries their
+  entry.
 
 ## 8a. Catalog board data `[Cadex-new, ADR-202]`
 

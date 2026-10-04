@@ -27,9 +27,9 @@ program. Reports held hostage for payment will not be entertained.
 
 - The engine we wrote: `src/Mod/cadex/**`, including the xscript sandbox,
   the `cadexd` service, and the worker isolation described below.
-- The CLI, the agent and the dashboard we wrote: `cli/cadex_cli/**`,
-  including the tool bridge, the MCP shim, the Claude Code integration and
-  the review server.
+- The CLI, the agent bindings and the dashboard we wrote:
+  `cli/cadex_cli/**`, including `cadex mcp`, the tool bridge and the review
+  server.
 - The cadexd protocol itself (`docs/INTEGRATION.md`) — anything that lets
   one side of the process boundary compromise the other.
 - Packaging and the shipped bundle: `package/**`, the engine payload, and
@@ -42,8 +42,9 @@ program. Reports held hostage for payment will not be entertained.
   <https://github.com/FreeCAD/FreeCAD/security/advisories/new>
 - **OCCT, Python, three.js, MuJoCo and other dependencies** → their own
   projects.
-- **The Claude Code CLI or the Anthropic API** →
-  <https://www.anthropic.com/responsible-disclosure-policy>
+- **The agent you connect to Cadex** (Claude Code, Codex or another) and
+  its model provider → that agent's own project. For Claude Code and the
+  Anthropic API: <https://www.anthropic.com/responsible-disclosure-policy>
 
 If a vulnerability is inherited but Cadex's use of it makes the impact
 materially worse, tell us too — that combination is ours.
@@ -74,27 +75,29 @@ and enforces size and syntax limits (`CadexScriptedRuntime.py`,
 parent-side watchdog. The worker produces detached geometry and never
 touches the live document; only a validated candidate is published.
 
-**The assistant's tools are the only surface it gets.** Claude Code is
-launched with its built-in tools disabled (`--tools ""`) and with
-`--strict-mcp-config`, allowed to call only the enumerated Cadex tools
-(`cli/cadex_cli/agent.py`, `cli/cadex_cli/tools.py`). It has no shell, no
-filesystem access, and no route into the project except through that list.
+**Cadex runs no agent; the agent's own permissions are its own.** The
+person brings an agent and registers `cadex mcp --project DIR` with it
+(ADR-538). That server speaks MCP over the stdin and stdout of the agent
+that started it, opens no socket, serves only the enumerated tools in
+`cli/cadex_cli/tools.py`, and refuses an unknown tool or method
+(`cli/cadex_cli/mcp.py`). Its bridge is a plain object called in process
+(`cli/cadex_cli/bridge.py`). Whatever else the agent can do on the machine
+(its shell, its file access, running `cadex` commands) is granted by that
+agent and its own permission system, not by Cadex. The boundary Cadex
+enforces is the engine's sandbox above: whichever route a script arrives
+by, it runs only in the worker.
 
-**The tool bridge is a private socket, authenticated per run.** The CLI owns
-a unix-domain socket in a `0700` temporary directory, and the MCP shim that
-Claude Code spawns relays every tool call down it with a per-run token
-(`cli/cadex_cli/bridge.py`, `cli/cadex_cli/mcp.py`). The filesystem
-enforces what the token asserts; the token is written nowhere but the
-per-run MCP config in that directory.
-
-**The dashboard binds loopback by default.** `./cadex review` binds
-`127.0.0.1` unless given `--host` (`cli/cadex_cli/__main__.py`). Binding it
+**The dashboard is read-only and binds loopback by default.** `./cadex app`
+and `./cadex review` bind `127.0.0.1` unless given `--host`
+(`cli/cadex_cli/__main__.py`), and the server answers only `GET` and
+`HEAD`; any other method is 501 (`cli/cadex_cli/review_server.py`,
+ADR-537). Binding it
 to another address exposes the project to whoever can reach that address;
 reaching it from another device is meant to go through a private network
 such as Tailscale in front of a loopback bind.
 
 **No credentials pass through Cadex.** There are no API keys in the product;
-authentication is Claude Code's, under the user's own login. See
+authentication is your agent's, under your own login with it. See
 [`PRIVACY_POLICY.md`](PRIVACY_POLICY.md).
 
 **The engine and its clients are separate processes on purpose.** The
@@ -116,8 +119,8 @@ behavior itself is intentional:
   the product. The sandbox is what makes it acceptable; the sandbox is
   therefore where the interesting bugs are.
 - **A project directory records how it was designed** — the script, its
-  revision history, the project's `DECISIONS.md` and `PROGRESS.md`, and the
-  Claude Code session id (`PRIVACY_POLICY.md` §3). It is a disclosure risk
+  revision history, and the project's `ARCHITECTURE.md`, `DECISIONS.md`
+  and `PROGRESS.md` (`PRIVACY_POLICY.md` §3). It is a disclosure risk
   when sharing a project, and a documented one.
 
 ## Dependencies

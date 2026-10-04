@@ -1,5 +1,7 @@
 # Test harness Tk runner removal audit
 
+*Dated record (2026-09-07): `unittestgui.py` is disabled and deleted (ADR-230). The Blender manifest counts below predate the shell's deletion (ADR-498).*
+
 Verified against source: 2026-09-07
 
 [Cadex-new] ADR-230, source baseline `c8d99e61`. This audit qualifies only

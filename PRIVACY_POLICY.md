@@ -69,7 +69,7 @@ What your agent sends to its provider while it works a Cadex project
   | `set_params`, `rebuild`, `inspect` | parameter values, geometry measurements, and feature, part and subshape names |
   | `describe_api` | nothing of yours (static API documentation) |
   | `link_part`, `put_asset` | the name and contents of the part or file you point it at |
-  | `look` | **rendered images of your model** |
+  | `look`, `draw_blueprint` | **rendered images of your model**, and a dimensioned drawing sheet of it |
   | `train_start`, `train_status`, `train_stop`, `evaluate` | training progress and evaluation results, including rendered frames of a rollout |
 
   Rendered images are the ones worth pausing on: whatever your model looks

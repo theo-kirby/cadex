@@ -1,5 +1,7 @@
 # Translation updater dependency audit
 
+*Dated record (2026-09-07) of the ADR-232 audit and its disable. The Blender manifest counts below predate the shell's deletion (ADR-498).*
+
 Verified against source: 2026-09-07
 
 [Cadex-new] Offline audit of [FreeCAD-inherited] `src/Tools/updatecrowdin.py`

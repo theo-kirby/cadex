@@ -88,7 +88,7 @@ is gone (ADR-495), so committing a changed `VERSION` is the release act.
 **Non-GUI Qt.** FreeCAD's App layer links **Qt6Core and Qt6Xml**, and
 `FreeCADCmd` inherits that — verifiable with `otool -L`. The keep list is
 five, not four: `qt_keep="Core Xml Concurrent Network DBus"`
-(`build_engine_payload.sh:125`). "Zero Qt" is not achievable and is not the
+(`build_engine_payload.sh`, `qt_keep`). "Zero Qt" is not achievable and is not the
 goal. The goal, and what the build asserts, is:
 
 - no widget toolkit — no `Qt6Gui`, `Qt6Widgets`, `Qt6Quick`, `Qt6Qml`,
@@ -110,7 +110,7 @@ relocated path carries it only because `CARRIED_PYPI_PACKAGES` names it in
 stage-only path only because it copies `lib/` wholesale.
 
 So the build **hard-fails** rather than trusting either
-(`build_engine_payload.sh:244`):
+(`build_engine_payload.sh`, `mujoco_version`):
 
 ```
 mujoco_version="$("${payload}/bin/python" -c 'import mujoco; print(mujoco.__version__)' ...)"
@@ -135,8 +135,8 @@ worth doing, and it wants its own gate run rather than riding along with
 something else (ADR-082 §4, ADR-102 §5).
 ## What deliberately does *not* ship
 
-The **CLI** (`cli/`, ADR-061). It is a third client of the protocol, not a
-part of the engine: it spawns `cadexd` and imports nothing from it but
+The **CLI** (`cli/`, ADR-061), with `cadex mcp` and the dashboard. It is a
+client of the protocol, not a part of the engine: it spawns `cadexd` and imports nothing from it but
 `CadexdProtocol`, so shipping it inside the payload would put a *consumer*
 of the manifest inside the thing the manifest describes. It runs from the
 repository, against a built engine or against a staged payload through
@@ -195,11 +195,13 @@ files). Still copied from the development environment: the compiler's own
 
 Two honest consequences:
 
-- The **"no GUI" gate is narrower than it reads.** It greps for `*Gui.so`
-  under `Mod/` and `libFreeCADGui*` under `lib/`, so stale
-  `lib/FreeCADGui.so`, `FemGui.so` and `InspectionGui.so` left in the pixi
-  env by older installs are copied and pass. Pre-existing, unrelated to any
-  recent work, and on the Phase 13b list.
+- **Stale FreeCAD GUI modules are pruned, not gated.** The prune deletes
+  `libFreeCADGui*`, the `FreeCADGui.so` binding and every `*Gui.so` under
+  `Mod/`, which once survived a re-stage from a pixi env older installs had
+  left them in (ADR-047). The leak gate itself checks Qt GUI, Coin, PySide,
+  pivy and the toolchain libraries, not those names. `build-engine` now
+  installs a `BUILD_GUI=OFF` build into the env, which carries no
+  `FreeCADGui.so` (checked 2026-10-04).
 - **A release payload has never been measured.** Relocation builds from a
   rattler package environment, which would not contain the toolchain at all,
   so the shipped size is probably far smaller — but that path has not been
@@ -220,10 +222,11 @@ manifest exactly as the CLI discovers it: open, `describe_api`,
 `kill -9`, respawn, restore-digest equality, `rebuild`, mid-run `cancel`,
 `shutdown`.
 
-**It is 12 tests, up from 6 at M0**, because every slice of the
-dynamics arc added the one thing a source-tree run cannot prove: that the
-capability works out of a *packaged* engine. `12 passed` is the expected
-result; anything less is a payload problem, not a test problem.
+**It is 21 test functions (more cases once parametrized), up from 6 at
+M0**, because every slice of the dynamics arc, and the restore and sweep
+work after it, added the one thing a source-tree run cannot prove: that the
+capability works out of a *packaged* engine. Every case passing is the
+expected result; anything less is a payload problem, not a test problem.
 
 **This gate is not ceremonial.** The first payload it ran against could not
 model at all — `No module named 'PySide'`, because
@@ -254,18 +257,21 @@ not a quality setting.
 
 ## Building and releasing
 
-`.github/workflows/cadex-app.yml` runs on a nightly schedule, on manual
-dispatch, on `main`, and on tags matching `v*` or `cadex-*`. It has two
+`.github/workflows/cadex-app.yml` runs on a schedule (Sundays and
+Wednesdays, 08:00 UTC), on manual dispatch, on `main`, and on tags matching `v*` or `cadex-*`. It has two
 engine-only jobs, macOS arm64 and Linux x64. Each sets up and builds the
 engine, runs the engine and CLI suites, stages the payload, and gates it
 through `test_cadexd_lifecycle` against the *packaged* tree; the Linux job
 also drives the packaged engine through the CLI.
 
 **Both jobs have been red since at least 2026-07-25, and neither has ever
-reached its gate** (ADR-060). They fail at `Engine unit suite` — `pixi run
+reached its gate** (ADR-060). They failed at `Engine unit suite` — `pixi run
 python -m pytest src/Mod/cadex/cadex_tests` — with `No module named pytest`,
 because `pytest` was not declared in `pixi.toml` until ADR-060, and every
-later step is skipped. So the sentence above describes an intent, not an
+later step was skipped. Declaring it did not turn them green: the runs of
+2026-10-04 (`gh run list --workflow cadex-app.yml`) still fail at `Engine
+unit suite` on both platforms, with every later step skipped; why has not
+been read from their logs here. So the sentence above describes an intent, not an
 observation: the packaged gate has never run in CI on either platform, which
 is how a payload that broke every assembly joint shipped on both. Verified
 locally on Linux; what the macOS gates say when they first run is not yet
@@ -276,10 +282,11 @@ known.
 - **macOS notarization of the embedded engine.** Hardened runtime plus
   per-binary entitlements: `freecadcmd` spawns subprocesses and dlopens
   OCCT. Not yet exercised end to end.
-- **The first green CI run.** ADR-060 removes the step that stopped every
-  run before its gate. Nothing downstream of that step has ever executed on
-  either platform, so the next run is the first real report either job has
-  made — treat its output as new information, not as a regression.
+- **The first green CI run.** ADR-060 removed the `pytest` failure that
+  stopped every run before its gate, and the engine suite still fails in CI
+  (above). Nothing downstream of that step has ever executed on either
+  platform, so the first run past it is the first real report either job
+  has made — treat its output as new information, not as a regression.
 - **Windows.** The payload builds for it; no CI job gates it.
 - **A relocated payload has never been built on this machine.** The
   relocating path needs a rattler build, so every payload verified during

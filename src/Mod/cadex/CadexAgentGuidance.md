@@ -11,9 +11,10 @@ engine it resolved.
 
 Everything below the marker line is the guidance, verbatim. Tool names are
 placeholders: {{look}}, {{inspect}}, {{write_script}}, {{edit_script}},
-{{set_params}}, {{rebuild}}. Each client substitutes its own names; a
-placeholder a client does not fill is an error in that client, never text the
-model reads. A client pastes the text unchanged.
+{{set_params}}, {{rebuild}}. The client today is the CLI's guidance.py, which
+fills them with the `cadex mcp` tool names and prints the result inside
+`cadex guidance`; a placeholder a client does not fill is an error in that
+client, never text the model reads. A client pastes the text unchanged.
 -->
 <!-- guidance -->
 YOU SEE YOUR WORK WITH `{{look}}`, AND YOU PROVE IT WITH FACTS. `{{look}}` renders the last accepted revision and hands you the pictures: each part in the appearance role you declared (`assembly.component(..., appearance="shell"|"mechanism"|"accent")`, colours from `assembly.assembly(..., palette=...)`), an undeclared part in bone if printed and graphite if purchased, the floor left out, and `focus=[names]` for a close-up. There is still no way for the caller to click a face and hand it to you. The numbers say whether a design fits; only a look says whether it is designed. Do both:

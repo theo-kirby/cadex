@@ -1,6 +1,6 @@
 # Structural analysis, topology optimisation and shape search
 
-Verified against source: 2026-08-11. Provenance: `[Cadex-new]`.
+Verified against source: 2026-10-04. Provenance: `[Cadex-new]`.
 Slices **S0–S4, all closed.** ADR-141 authorises the tree, ADR-142 closes S1,
 ADR-143 closes S2, ADR-144/ADR-145 close S3 — the two halves that earned their
 way in-engine — and ADR-146/ADR-147 close S4, which is where the loop stops
@@ -65,11 +65,12 @@ costs **zero new payload bytes** if it ever moves in-engine.
 
 **CalculiX is in the pixi environment and pruned out of the payload.**
 `pixi.toml:12` has `calculix = "*"`; `.pixi/envs/default/bin/ccx` is 5.7 MB
-and reports 2.23. `package/engine/build_engine_payload.sh:82` keeps exactly
+and reports 2.23. `package/engine/build_engine_payload.sh` keeps exactly
 four binaries — `freecadcmd`, `FreeCADCmd`, `CadexGeometryWorker`, `python`
 — so `ccx` is dropped. **Leave it dropped.**
 
-**The `Fem` tree is deleted, not disabled.** `docs/FREECAD.md:106-114`:
+**The `Fem` tree is deleted, not disabled.** `docs/FREECAD.md` §3 (Phase 1
+workbench trees):
 `Fem` went in Phase 1 batch A (ADR-007), and commit `e85fe5ea` removed 3,589
 files including the NETGEN find logic. There is nothing to re-enable.
 
@@ -78,7 +79,7 @@ files including the NETGEN find logic. There is nothing to re-enable.
 rigid by construction and `assembly.body` carries **density only**.
 
 **An STL already comes home with zero engine change.**
-`_ASSET_SUFFIXES = {".stl", ".obj", ".ply"}` (`CadexScriptedRuntime.py:120`),
+`_ASSET_SUFFIXES = {".stl", ".obj", ".ply"}` (`CadexScriptedRuntime.py`),
 so an S2 result arrives through `put_asset` and is read by
 `mesh.import_file` — the path an imported STL always travelled.
 
@@ -533,10 +534,11 @@ In the order it catches things:
   Recorded as an open question rather than built. Run the extracted shape
   back through `cadex_stress.py` — that is a real second measurement rather
   than a number the loop produced about itself.
-* **No new asset suffix**, so Save-As cannot silently drop anything. A
-  `.cxdensity` or a sidecar receipt would be dropped — the exact bug ADR-046
-  recorded and ADR-138 fixed for `.cxpart`, still open today for
-  `.cxpolicy`. The density field and the receipt stay offboard, in the run
+* **No new asset suffix**, so nothing can be silently dropped. A
+  `.cxdensity` or a sidecar receipt would have been dropped by the shell's
+  Save-As — the bug ADR-046 recorded and ADR-138 fixed for `.cxpart` — and
+  the project store today stages only the suffixes it knows
+  (`_STORED_ASSET_SUFFIXES`). The density field and the receipt stay offboard, in the run
   directory. And since `compute_project_digest` does not walk `assets/`,
   **nothing verifies an STL's bytes** unless the script publishes the
   imported mesh as an output — which carries `geometry_sha256`, the sorted
@@ -667,7 +669,7 @@ End to end, with everything above in the tree:
 
 1. Declare a blank and a load case; `analysis/topology.py` carves it.
 2. A watertight STL comes home through `put_asset` — no new suffix, so
-   Save-As cannot drop it.
+   the project store keeps and stages it.
 3. `mesh.check` says whether what arrived is sound, in the script, where the
    script can act on it.
 4. The agent reads the shape and **rewrites the script parametrically**. The

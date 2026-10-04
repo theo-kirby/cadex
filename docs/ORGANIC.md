@@ -1,6 +1,6 @@
 # ORGANIC.md — Organic Modelling, and the CAD/Mesh Interface
 
-Verified against source: 2026-10-03
+Verified against source: 2026-10-04
 Status: **O0 closed (ADR-124), O1 closed (ADR-125), O2 closed (ADR-126),
 O3 closed (ADR-127).** The phase's four slices are done; O2b and O4 are
 parked by decision.
@@ -19,7 +19,9 @@ hazards, and a benchmark log that says what actually changed.
 The question this phase answers — `docs/VISION.md`'s open question about
 whether interactive mesh editing ever arrives, and if so as engine ops or as
 shell tools — is answered by O3: **as engine ops, on a declared table, with
-the shell supplying only the gesture.**
+the shell supplying only the gesture.** The shell is deleted (ADR-498) and the
+dashboard is read-only (ADR-537), so today nothing supplies the gesture: the
+table is edited as numbers, in the script or through `set_params`.
 
 ---
 
@@ -138,6 +140,10 @@ feature.
   `viewport_screenshot`: that one answers "what does the user see", which is
   a different question. Read-only, so it is in neither `_ENGINE_TOOLS` nor
   `MUTATING_TOOLS` — the classification `collision_view` got in ADR-091.
+
+*(Since ADR-498, `render_views`, `viewport_screenshot` and `capture.py`
+are gone with the shell. An agent sees what it built through `look`
+(ADR-412): the engine's studio render of the accepted revision.)*
 
 What ADR-124 measured, and what it could not: see the ADR. The short form is
 that the composite is real (1024×1024, four distinct quadrants, verified by
@@ -351,8 +357,9 @@ stops being needed.
   the shell's assistant package and its tests; `docs/history/BLENDER-TREE.md` §2a stays
   eight files, §2b and §2c unmoved (ADR-091). If a slice seems to need a
   space type, that is a decision to bring back, not a fix to slip in.
-- **The shell is deleted (ADR-498).** O0's compositor and O3's overlay went
-  with it; a desktop app would rewrite them. Keeping the pure halves `bpy`-free is what makes
+- **The shell is deleted (ADR-498).** O0's compositor, O2's *Define Mount*
+  pick and O3's overlay went with it, and the dashboard that replaced it is
+  read-only (ADR-537); a desktop app would rewrite them. Keeping the pure halves `bpy`-free is what makes
   that a re-binding rather than a re-design.
 - **A selector contract that cannot be satisfied is worse than a missing
   op.** §1's second failure is the case: the refusal was correct, actionable
@@ -367,10 +374,11 @@ stops being needed.
 record what changed: does the blend land, does the silhouette hold, how many
 turns did it take. Copy `~/arch/woof.cadex` to a scratch directory first —
 **never build or probe in `~/arch`, those projects are live.** Drive
-rebuilds through the `test_project_rebuild` driver rather than hand-editing
-`script.py`, which breaks `cadex params`; back the script up before every
-rebuild, because a refused `write_script` silently restores the last
-accepted one.
+rebuilds through the agent's `write_script` (`cadex mcp`) or `./cadex params`
+rather than hand-editing `script.py`, which breaks `cadex params` (the
+`test_project_rebuild` driver this log was first measured with went with
+the shell); back the script up before every rebuild, because a refused
+`write_script` silently restores the last accepted one.
 
 | Slice | Date | What changed |
 |---|---|---|

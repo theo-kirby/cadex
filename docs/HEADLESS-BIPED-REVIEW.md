@@ -1,5 +1,7 @@
 # Fresh biped review evidence
 
+*Dated record of the ot5 fresh-project runs (2026-09); commands are as they ran. The product agent and `cadex -p` that authored and revised these projects are gone (ADR-538): an agent now drives Cadex through `cadex mcp`.*
+
 Verified against source: 2026-09-28. [Cadex-new]
 
 The project is `ot5-biped` under the operator's `cadex-projects` directory,

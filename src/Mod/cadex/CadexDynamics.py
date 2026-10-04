@@ -10406,8 +10406,8 @@ def rollout_policy(
         # ``actuator_channels`` advertises, in that list's order. Absent
         # rather than zero-filled on the reset frame: no action has been
         # taken there, and a row of zeros is a real command a policy can
-        # issue. The shell reads frames with ``.get()``, so every consumer
-        # that predates this key ignores it.
+        # issue. Consumers read frames with ``.get()``, so every one that
+        # predates this key ignores it.
         if action is not None:
             record["actuator_commands"] = [float(value) for value in action]
         return record

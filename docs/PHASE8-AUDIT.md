@@ -1,5 +1,7 @@
 # Phase 8 deletion-readiness audit
 
+*Dated record (2026-09-07). The audited GUI directories are deleted (ADR-214) and `src/Gui` stays deleted; the Blender manifest counts below predate the shell's deletion (ADR-498).*
+
 Verified against source: 2026-09-07
 
 [Cadex-new] Audit of [FreeCAD-inherited] source at

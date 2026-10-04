@@ -1,6 +1,6 @@
 # THIRD_PARTY_LICENSES.md — the component-level license map
 
-Verified against source: 2026-10-03
+Verified against source: 2026-10-04
 
 What third-party material this repository contains and redistributes, under
 which license, and where each obligation is satisfied in the staged
@@ -24,7 +24,7 @@ vendored code and its library submodules (ADR-498); the tag
 
 ## 2. Vendored source — `src/3rdParty/`
 
-Fourteen directories. Where the directory carries no license file, the
+Thirteen directories. Where the directory carries no license file, the
 license is stated in the source headers and named here — that is the
 record for them.
 
@@ -70,14 +70,26 @@ Highlights and elections:
   is mirrored under `licenses/`; `NOTICE` carries the attribution.
 
 What is *not* in the payload, by prune or by contract: Qt GUI libraries,
-PySide/shiboken, Coin3D, CalculiX (`ccx`, GPL-2 — development-only,
+PySide/shiboken, Coin3D, LLVM and clang (ADR-531), OpenCV, PCL, Node and
+Perl (ADR-532; OpenCV's licence text under `share/licenses/` is left in
+place), CalculiX (`ccx`, GPL-2 — development-only,
 subprocess-only, never redistributed), and everything in `training/` and
 `analysis/`.
 
-## 4. Fonts
+## 4. The dashboard's vendored scripts, and fonts
 
-The engine payload carries no fonts of its own. The review dashboard's
-pages use the browser's system fonts.
+The dashboard (`cli/cadex_cli/review_static/`) is not in the engine
+payload; it runs from this repository. It carries two third-party files,
+each with its full notice beside it (`docs/PROVENANCE.md`, "Headless review
+rendering"):
+
+| File | Upstream | License | License text |
+|---|---|---|---|
+| `three.module.js` | [three.js](https://github.com/mrdoob/three.js) r160 | MIT | `THREE-LICENSE.txt` |
+| `environment.js`, `floor.js` (adapted) | `neural-whoop` studio environment | MIT | `REFERENCE-LICENSE.txt` |
+
+The engine payload carries no fonts of its own. The dashboard's pages use
+the browser's system fonts.
 
 ## 5. Where each obligation is satisfied in the payload
 

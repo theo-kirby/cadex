@@ -24,7 +24,8 @@ every panel removed that watching and steering a design does not need, to be
 added back one at a time as the need shows. What is left is two pages: the
 index of projects and a project. The server's read routes are unchanged, so
 every API the removed panels read — runs, telemetry, videos, evaluations,
-comments, notes, exports, sections, drawings, documents — still answers, and
+exports, sections, drawings, documents — still answers (comments and notes
+went with the owner channel, ADR-538), and
 the CLI and the agent still use them; adding a panel back is page work only. The sections the cut emptied are gone from this file and
 kept in its history; the ones that remain keep their numbers, so a `§`
 reference elsewhere still lands. §7 and §8 are the measured ot6 record of
@@ -203,8 +204,7 @@ One.
 | **≥ 700 px** (desk; 1400 is the reference width) | A 40 px top bar over the screen, tiled by areas (§12). The page never scrolls; each editor scrolls on its own. |
 | **< 700 px** (phone; 400 × 850 is the reference size) | One editor fills the screen, the 3D viewport first, and a tab bar at the bottom picks it. `--s3` gutters below 600 px. |
 
-The index and a run's page are one column, at most 760 px wide, at every
-width.
+The index is one column, at most 760 px wide, at every width.
 
 Invariants at every width, and the ones the design test asserts on the
 rendered page at 1400 × 900 and at 400 × 850 with touch emulation:
@@ -215,8 +215,8 @@ rendered page at 1400 × 900 and at 400 × 850 with touch emulation:
 2. **The layout viewport is the device width**: `innerWidth === 400` at phone
    size. §7 shows what happens when it is not.
 3. **The screen fills the window**: below the bar to the bottom edge, and the
-   page does not scroll. At desk the default layout's four areas tile it
-   without overlapping; on a phone the one area is the 3D viewport and the
+   page does not scroll. At desk the default layout's one area fills it,
+   and a split layout's areas tile it without overlapping; on a phone the one area is the 3D viewport and the
    canvas is the full `innerWidth`.
 4. **The palette tokens of §4 are the computed values** on the rendered page,
    in the default dark theme; the light theme survives a reload.
@@ -500,7 +500,7 @@ major line — and the sheet's chrome is this page's `--ink`, `--ink-2` and
 `--rule`.
 
 **One source.** The engine's `CadexStudio.PALETTE` (ADR-445) is the table
-every image is drawn with, in the CLI and in the shell. A browser cannot
+every image is drawn with, in the CLI and the dashboard's server. A browser cannot
 import Python, so `review_static/environment.js` (`PALETTE`) and
 `review_static/review.css` (`:root`) carry the same colours, and
 `cli/tests/test_scene_palette.py` fails when either drifts from the engine.
@@ -545,11 +545,12 @@ it was accepted for the rest; each row carries `data-revision`,
 `data-ordinal` and `data-current`.
 
 What the page once wrote is the CLI's alone now, where an agent reaches it:
-`cadex params --set` for the slider (ADR-503), `cadex mcp` or the agent's
-own session for the chat (ADR-504), `cadex comment` (ADR-505), `cadex
-revision accept|reject|restore` (ADR-506), `cadex export` (ADR-509) and
-`cadex section`. The listings those commands leave -- exports, sections,
-comments, notes -- still answer under `api/project`.
+`cadex params --set` for the slider (ADR-503), the person's own agent
+through `cadex mcp` for the chat (ADR-504, ADR-538), `cadex revision
+reject|restore` (ADR-506), `cadex export` (ADR-509) and `cadex section`.
+The comment channel (ADR-505) and `cadex revision accept` are gone with the
+owner channel (ADR-538). The listings those commands leave -- exports and
+sections -- still answer under `api/project`.
 
 ## 22. Remote viewing: `tailscale serve` in front of 127.0.0.1
 

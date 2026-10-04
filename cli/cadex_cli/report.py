@@ -28,7 +28,7 @@ from .export import ExportedOutput
 
 #: Exit codes, so a pipeline can branch on *why* rather than on stderr.
 EXIT_OK = 0
-EXIT_FAILURE = 1  # the engine or the agent could not do it
+EXIT_FAILURE = 1  # the engine, the trainer or a walk leg could not do it
 EXIT_USAGE = 2  # the command was wrong
 EXIT_REJECTED = 3  # the engine refused the script it was given
 

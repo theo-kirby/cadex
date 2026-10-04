@@ -1,5 +1,7 @@
 # Fifth servo source qualification
 
+*Dated record (2026-09-07, ADR-229). Neither Hitec candidate was delivered; a fifth servo landed later as the Feetech STS3215 bus servo (ADR-485).*
+
 Verified against source: 2026-09-07
 
 [Cadex-new] ADR-229. **Neither of the two candidates qualifies for delivery

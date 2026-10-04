@@ -65,7 +65,8 @@ and a gait video — and 0.1.0 roughly means that sentence works.
   testable (Phase 2 exit criterion in `docs/ROADMAP.md`).
 - **One project script** is THE user-visible artifact and sole source of
   truth. It composes all five domain APIs (partdesign, sketcher, part, mesh,
-  assembly); parameters are declared at the top and surface as sliders. This
+  assembly); parameters are declared at the top, and `cadex params` sets
+  them without the agent. This
   is what the runtime does today — it landed in Phase 2 (ADR-011…014) and the
   per-domain multi-program surface it replaced is gone. See
   `docs/XSCRIPT.md`.
@@ -115,14 +116,14 @@ two that make a mechanism move (ADR-075, ADR-086):
 
 Areas 6 and 7 add **no sixth domain**: they are operations on the `assembly`
 domain, which is why they cost no protocol op, no new output type and no
-shell diff. Seven capability areas, still five domain APIs.
+front-end change. Seven capability areas, still five domain APIs.
 
 **Areas 6 and 7 shipped on a separate branch until 2026-08-01** and are now
 part of the one product (ADR-102). The split existed to keep a bracket
 modeller from paying for a physics engine; measured, that cost is 53.5 MB on
 a 3.3 GB application and nothing at all at runtime, which did not justify a
 second branch. What the merge did *not* dissolve is the boundary underneath
-it: dynamics is engine-side, the shell never learns MuJoCo exists, and
+it: dynamics is engine-side, no front end ever learned MuJoCo exists, and
 training happens on a machine we do not ship to.
 
 **Correction worth stating plainly:** this list used to promise "real mesh
@@ -136,9 +137,10 @@ as shell tools.
 **And that is how it arrived** (ADR-127, 2026-08-05). Not as BMesh, and not
 as editing: a shape is a `cage(...)` of superellipse rings the script
 declares, `part.loft_cage` builds, and `set_params(cages=[...])` sets. The
-shell draws those rings as an overlay and supplies the *gesture* — drag a
-ring, press Apply — while the script stays the only thing that authors
-geometry. The prediction in the paragraph above held exactly: engine ops, on
+shell drew those rings as an overlay and supplied the *gesture* — drag a
+ring, press Apply — while the script stayed the only thing that authors
+geometry. The gesture went with the shell (ADR-500); the ops stay, and the
+agent sets the rings. The prediction in the paragraph above held exactly: engine ops, on
 a declared table. `docs/ORGANIC.md` is the arc, and O4 (subD) is the part
 that is still unscheduled.
 
@@ -275,40 +277,44 @@ returning it.
   has to run to find out what the other one means. Sub-scripts would have made
   a rebuild here depend on another project's current state; a container makes
   it deterministic from this project's own `assets/` alone.
-- Where the boundary between "parameter" (slider, no AI) and "change request"
-  (chat turn) sits for things like suppressing a feature.
+- Where the boundary between "parameter" (`cadex params`, no AI) and "change
+  request" (asked of the agent) sits for things like suppressing a feature.
 - ~~Whether the Qt shell is retired outright or kept headless-only as an
   engineering harness after Phase 7~~ — answered 2026-07-25 (ADR-020/021):
   **retired outright**, together with the provider stack it served. (What
   followed: for three months this repository built no application at all;
-  since ADR-030 it builds the whole one, engine and shell.)
+  from ADR-030 it built the whole one, engine and shell, and since ADR-498
+  the engine and the dashboard.)
 - ~~How far the local (mesh-native) modes and the one-project-script model
   should converge~~ — answered 2026-07-25 (ADR-025 decision 3): **the local
   modes are deleted.** Decided there, *done* in ADR-030: `cad_api.py`,
   `validation.py`, `scene_graph.py`, the mode registry and the dropdown are
   gone. One script format, one source of truth.
 - ~~Whether parameter sliders count as "human edit controls"~~ — answered
-  2026-07-25 (ADR-025): **no.** Principle 5 has humans steer via chat *and*
-  sliders; sliders move declared parameters, they do not author geometry.
+  2026-07-25 (ADR-025): **no.** Sliders moved declared parameters; they did
+  not author geometry. The dashboard has none since ADR-537; `cadex params`
+  is the same no-AI path.
 - **The time shape of the FreeCAD replacement.** Not knowable before Phase
   10's enumeration probe and characterization time-box. The binding is
   weeks; the characterization corpus is the unknown that sets the scale.
 - ~~Whether dynamics extends `api.simulation` or becomes a sibling
   `api.dynamics`~~ — answered 2026-07-30 (ADR-077): **a sibling authoring
   surface sharing the output type**, so the "exactly one simulation" rule
-  covers both solvers and the shell never has to choose between two bakes.
+  covers both solvers and a viewer never has to choose between two bakes.
 - ~~Whether there is a **train** button~~ — answered 2026-07-31 (ADR-084):
   **no, and there is nothing to press.** Recorded in principle 5 above.
 - ~~How a project migrates when the solver moves~~ — answered 2026-09-06
-  (ADR-187): restore refuses a changed accepted digest. The chat panel's
-  **Re-accept Stored Script** action explicitly accepts what the engine-stored
-  script builds now, via `open_project restore=false` then `write_script`.
-  This also accepts any external edits to that stored script.
+  (ADR-187): restore refuses a changed accepted digest. The shell's chat
+  panel had a **Re-accept Stored Script** action for this (`open_project
+  restore=false` then `write_script`); today `cadex script --set FILE` takes
+  the same path, opening without the restore pass and accepting what the
+  given script builds now.
 - ~~Whether interactive mesh editing ever arrives, and if so as engine ops
   rather than shell tools~~ — answered 2026-08-05 (ADR-127): **as engine ops,
-  on a declared table, with the shell supplying only the gesture.** A shape
+  on a declared table, with the shell supplying only the gesture** (the
+  gesture went with the shell, ADR-500). A shape
   is a `cage(...)` of rings the script declares, `part.loft_cage` builds and
-  `set_params(cages=[...])` sets; the shell draws those rings as an overlay
-  and sends them on one button. Nothing is edited outside the script, the
+  `set_params(cages=[...])` sets; the shell drew those rings as an overlay
+  and sent them on one button. Nothing is edited outside the script, the
   mesh domain gained no editing surface, and the rule under Scope stands
   unchanged. `docs/ORGANIC.md` is the arc.

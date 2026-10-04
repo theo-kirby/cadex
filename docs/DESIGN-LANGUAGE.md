@@ -1,12 +1,13 @@
 # The Cadex design language — small printed robots that look engineered
 
-Verified against source: 2026-10-03. Provenance: `[Cadex-new]`.
+Verified against source: 2026-10-04. Provenance: `[Cadex-new]`.
 
 This is how a robot that Cadex designs should look: a small legged,
 wheeled or fixed machine, 3D-printed around hobby servos, gearmotors,
-boards, a battery and sensors. It is what the product agent is taught,
-through the engine's overlay `Mod/cadex/CadexAgentGuidance.md`, and what
-the renderer presents.
+boards, a battery and sensors. It is what the agent driving Cadex is
+taught, through the engine's overlay `Mod/cadex/CadexAgentGuidance.md`
+(which `cadex guidance` prints and `cadex mcp` points the agent at;
+Cadex has no agent of its own, ADR-538), and what the renderer presents.
 
 **Where it comes from (orun1, ADR-479).** ot10 wrote this language from a
 set of reference images (ADR-411). The owner's verdict on what it produced
@@ -147,8 +148,8 @@ Three **appearance roles**, and every part has exactly one:
 xscript declares the role per part and the palette per assembly
 (`assembly.component(..., appearance=)`, `assembly.assembly(..., palette=)`,
 `docs/XSCRIPT.md`, ADR-413). Inventory, `render`, `look` and review carry
-them, and the app's viewport paints them (ADR-449) by the same rule the
-studio draws with. A part with no declared role is drawn by supplier until
+them, and the dashboard's viewport paints them (ADR-449, ADR-522) by the
+same rule the studio draws with. A part with no declared role is drawn by supplier until
 it declares one.
 
 ## 3. Joints are features

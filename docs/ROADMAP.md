@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-10-03
+Verified against source: 2026-10-04
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -8,8 +8,8 @@ in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
 
 Phases 0–7 built the engine/shell split on two forks. Phases 8–13 reduce
 both forks toward one application we own, keeping OCCT (ADR-025). **Phase 14
-is the dynamics and control vertical** — closed, and the reason this branch
-exists (ADR-086). **Phase 15 is the organic-modelling vertical**, opened by
+is the dynamics and control vertical** — closed, built on a branch of its
+own (ADR-086) and on the one branch since ADR-102. **Phase 15 is the organic-modelling vertical**, opened by
 the measurement ADR-123 asked for (`docs/ORGANIC.md`). **Phase 16 is the
 structural vertical** — stress, topology optimisation and shape search
 (`docs/STRUCTURAL.md`), whose first slice is offboard by construction.
@@ -46,6 +46,17 @@ a separable vertical rather than a fork in the roadmap.
 **Every resting place is shippable.** A stall anywhere after 13a leaves a
 working, buildable, launchable product; that ordering is the point
 (ADR-025, ADR-030).
+
+**Since 2026-10-03 there is one fork, not two.** The Blender shell is
+deleted (ADR-498), and Cadex is the engine, the dashboard and the agent
+bindings (ADR-500): Phase 6 is historical, Phase 12 is superseded, and
+13b's shell half is closed by deletion. Since 2026-10-04 the dashboard is
+read-only (ADR-537) and Cadex runs no agent of its own: any agent drives it
+through `cadex mcp` and `cadex guidance` (ADR-538). Checked items below
+that name the shell, a chat turn, the slider, `cadex -p`, `walk --prompt`,
+comments or a dashboard write are the record of what was built then, not
+of what exists now; the *Off-phase — the three-part product* section lists
+what replaced them. The diagram above predates all of this.
 
 ---
 
@@ -127,6 +138,9 @@ from facts instead of re-exploration.
 concept remains.
 
 ## Phase 3 — UX convergence (capped Qt investment)
+
+*Historical: the Qt shell this phase shaped was deleted in Phase 7
+(ADR-021).*
 
 **Goal:** the interim Qt shell approximates the product layout. **No Coin3D
 rendering work** — this shell is disposable (`docs/INTEGRATION.md`).
@@ -363,8 +377,8 @@ this phase.
 **Exit criteria:** the tree contains no GUI source, `pixi run configure`
 (debug) still configures, and both cadex ctests stay green.
 
-**Not in scope:** re-adding a GUI of any kind. The product's interface is
-the Blender shell.
+**Not in scope:** re-adding a GUI of any kind. The product's interface was
+the Blender shell, and since ADR-500 it is the dashboard.
 
 ## Phase 9 — One surface, and make the contract real
 
@@ -401,8 +415,10 @@ depends on. Independent of Phase 8.
       independently" true rather than assumed. *Engine side landed
       2026-07-25 (ADR-027); wiring the validator into the live lifecycle
       found three shapes the recording missed.*
-- [ ] **Assert the same fixtures from the shell side**
-      (`shell/tests/python/`) — the other half of "asserted at both ends".
+- [x] ~~**Assert the same fixtures from the shell side**~~ — **closed by
+      deletion (ADR-498)**: there is no shell side; the CLI is the engine's
+      one client. Was (`shell/tests/python/`): the other half of "asserted
+      at both ends".
       More valuable since ADR-030, not less: one repository removed the
       distance that used to enforce the boundary, so the tests are now the
       only thing that does.
@@ -884,8 +900,10 @@ Not a phase that "completes" — a standing mode of work.
 - [x] Remove only the qualified Preferences guard (2026-09-07, ADR-227);
       retain headless solver dispatch and all Qt/Coin guards. Verification
       and separate surviving-diff measures: `SURVIVING-DIFF-AUDIT.md`.
-- [ ] Remove that qualified guard and run fresh implementation gates;
+- [x] Remove that qualified guard and run fresh implementation gates;
       expected saving is three inserted lines, with no file-count change.
+      *Landed 2026-09-07: the item above; ADR-227's implementation note
+      carries the gates.*
 - [x] Audit Test's standalone Tk runner (2026-09-07, ADR-230,
       `docs/TEST-TK-AUDIT.md`); qualify only unittestgui.py and preserve the
       MainCmd/TestSources text-runner dependency.
@@ -917,13 +935,18 @@ Not a phase that "completes" — a standing mode of work.
       boundary (ADR-230), with the rest still needing dependency audits.
       Test builds and installs, with `Mod/Test`
       pruned from the payload. Start no longer installs or stages
-      (`docs/START-AUDIT.md`), and the staged payload is **2.4 GB**
-      of which ~2.1 GB is development environment — two copies of LLVM,
-      node, clang, CMake's docs (`docs/cadex-release-packaging.md`). The
+      (`docs/START-AUDIT.md`). The staged payload was **2.4 GB**, most of
+      it development environment; ADR-531 pruned LLVM and clang and
+      ADR-532 OpenCV, PCL, Node and Perl, leaving it at **2.2 GB**
+      (2,213,397,834 B, 32.1% less than before ADR-531), with more of the
+      development environment still in it
+      (`docs/cadex-release-packaging.md`). The
       payload's "no GUI" gate also has a hole: it greps `Mod/` for
       `*Gui.so` and misses stale ones in `lib/`.
 - [ ] One installer, one name; NOTICE file carries the vendored LGPL
-      attributions (ADR-025).
+      attributions (ADR-025). *The application installer went with the
+      shell (ADR-498); what ships is the engine payload, and a clone of this
+      repository is the product (ADR-500).*
 - [x] Delete `/Users/theo/vibecad` — the dead predecessor of cadex
       (5.9 GB), together with `/Users/theo/mesh` (5.4 GB) now that the shell
       is in-tree. Both branch tips were pushed and verified against their
@@ -1087,7 +1110,7 @@ new trainer capability and a re-rated mechanism.
       bakes a rollout trace into 357 keyframes a component.
 
 **Exit criteria (the arc's, not a slice's) — met at M8.** "Design me a
-quadruped and teach it to walk" is a sequence of chat turns that terminates
+quadruped and teach it to walk" is a sequence of agent turns that terminates
 in a viewport playing a learned gait: the mechanism is designed through the
 ordinary assembly surface, `assembly.mjcf` exports it, `assembly.task`
 defines the problem, `training/cadex_train.py` solves it on a machine we do
@@ -1422,7 +1445,9 @@ the order they had to happen:
       plot, and the first draw handler on a Cadex space type. A separate
       module because the gate pins `cadex_training.py`'s imports to
       exactly `{json, os, bpy}`; no operator classes, because there is
-      still no train button.
+      still no train button. *The Training editor went with the shell
+      (ADR-498); the dashboard's 2D viewport plots the same `curve`
+      (ADR-534).*
 - [x] **The whole arc runs locally on CPU** (ADR-170, 2026-08-29;
       `docs/MUJOCO.md` §7b). A venv per `training/SETUP.md` §b on an M4
       Mac Mini, the agent-authored balance toy at `~/cadex-balance`,
@@ -1560,11 +1585,11 @@ pixi run stage-engine && \
   pixi run python -m pytest -q \
   src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
 
-# new in Phase 13a — the whole thing, from one place
-pixi run setup && pixi run app       # builds engine + payload + shell, launches
-pixi run gate                        # CADEX-BLENDER-GATE against the built bundle
-#   -> {"ok":true, "engine_from_bundle":true, picking>=0.99, median<=0.65}
-#   and no MESH_FREECADCMD / MESH_CADEXD_MODULE / MESH_CADEX_ENGINE set
+# new in Phase 13a — the whole thing, from one place. Until ADR-498 this was
+#   `pixi run setup && pixi run app` plus `pixi run gate` (CADEX-BLENDER-GATE);
+#   neither task exists with the shell gone. Today:
+pixi run setup-engine && pixi run build-engine   # the engine, headless
+pixi run python -m pytest cli/tests              # the CLI, agent bindings, dashboard
 
 # new in Phase 9  (also ctest CadexResponseSchemas / CadexSubshapeEnumeration)
 pytest src/Mod/cadex/cadex_tests/test_response_schemas.py      # golden per-op response shapes
@@ -1608,12 +1633,17 @@ pytest src/Mod/cadex/cadex_tests/differential/ --domain=<mesh|part|sketcher|part
 | Response shape is unpinned | Golden fixtures in Phase 9 |
 | Assembly is the biggest single item | Scheduled last; oracle on joint residuals, not placements |
 | OCCT version drift re-indexes saved scripts | Pin the version; gate the enumeration |
-| Stall midway | Order chosen so every resting place is shippable: engine done + Blender shell is a product |
+| Stall midway | Order chosen so every resting place is shippable: engine + dashboard + agent bindings is a product (ADR-500; it was engine + Blender shell until ADR-498) |
 
 ## Off-phase — `cli/`, a headless CLI (ADR-061, 2026-07-31)
 
 A second front end landed on **no phase**, for the same reason `part.cable`
 did: it is new scope, not a work item any phase declared.
+
+*Since ADR-538 the CLI spends no tokens at all: `-p` and the harness it ran
+are gone, and `cadex mcp --project DIR` serves the same tools to whichever
+agent the person uses. Since ADR-498 the CLI is the engine's only client, and
+it carries the dashboard (ADR-500). The record below is as it landed.*
 
 What shipped: `cli/` plus a `./cadex` shim — a third client of the cadexd
 protocol, no Blender and no display, with four subcommands
@@ -1635,8 +1665,8 @@ evidence against the contract. Documented in `docs/CLI.md`; suite in
       build tree and staged payload — on the ADR-023 argument.
 - [ ] macOS: never run there **by hand**. Nothing in it is macOS-hostile —
       POSIX `flock`, a short unix socket path, `FreeCADCmd` — but "should
-      work" is not evidence, and the `app` job above is where the evidence
-      will first appear. Expect that job to be the one that finds anything.
+      work" is not evidence, and the `engine-macos` CI job, which runs
+      `cli/tests`, is where the evidence will first appear. Expect that job to be the one that finds anything.
 
 **What it is for, and what it is not.** The point is a cost asymmetry, not a
 GUI-less GUI: one expensive turn authors a parametric script, and a cheap
@@ -1650,6 +1680,36 @@ with mesh and component outputs reported `skipped`; no `resolve_pin`, no
 offscreen rendering, so the agent verifies through `inspect` facts and
 script stdout and is told so in its prompt; the CLI does not ship inside the
 engine payload; Windows is not supported.
+
+## Off-phase — the three-part product (ADR-500, 2026-10-03 → 2026-10-04)
+
+Landed on no phase: a direction change, not a work item any phase declared.
+Cadex is the engine, the dashboard and the agent bindings (ADR-500), and
+the items below are what made that true. `AGENTS.md` describes the result.
+
+- [x] The Blender shell is disabled, then deleted, and the repository
+      carries no GPL code (ADR-495, ADR-498); no live doc names its paths,
+      and a test holds that (ADR-499). Tag `v1-blender-shell` keeps it.
+- [x] `docs/DASHBOARD.md` is the UI spec (ADR-501); `cadex app`, or a bare
+      `cadex`, serves the dashboard over a projects directory (ADR-502).
+- [x] The dashboard is cut to its minimum and becomes the app: areas, a 3D
+      and a 2D viewport, a dark default with a light theme, a hairline
+      style (ADR-533, ADR-534); the model is cached, tagged and compressed
+      on the way to the page (ADR-535); the settings are a menu bar and the
+      default screen is one 3D viewport (ADR-539).
+- [x] The dashboard reads no autonomous-run directories (ADR-536).
+- [x] **The dashboard is read-only** (ADR-537): any method but `GET` and
+      `HEAD` is 501. This reverses its writes — the slider, the design
+      turn, the comment, the revision verdicts, export and the section cut
+      (ADR-503 to ADR-507, ADR-509). `cadex params`, `cadex revision`,
+      `cadex export` and `cadex section` remain the CLI paths.
+- [x] **Cadex has no agent of its own** (ADR-538): `cadex mcp --project DIR`
+      serves the tool surface to any MCP client, and `cadex guidance` prints
+      what the agent is told. `cadex -p`, `walk --prompt`, the turn store,
+      `leave_note` and `cadex comment` are gone, superseding ADR-497 ("Claude
+      Code is the only harness"), ADR-512, ADR-519, ADR-523 and ADR-526.
+- [x] The engine payload stops carrying LLVM, clang, OpenCV, PCL, Node and
+      Perl (ADR-531, ADR-532); see Phase 13b.
 
 ## Off-phase — the harness ops, experimental (ADR-056, ADR-057, ADR-062, ADR-063, ADR-065, 2026-07-27 → 2026-08-01)
 
@@ -1938,7 +1998,9 @@ What makes them experimental, and what would settle it:
   warm start), by `cli/tests/test_walk.py` with the real engine and trainer.
   The domain-doc convention is exercised by the caller (`docs/sensors.md`),
   not generated. The second mechanism is qualified below; the GUI-attached
-  mode is documented in ADR-201, below.
+  mode is documented in ADR-201, below. *Since ADR-538 the walk runs no
+  design turns (`walk --prompt` is gone); the agent designs, and the walk
+  runs the tokenless legs.*
 - [x] **Portable walk output labels** (ADR-246). `PROGRESS.md` and the
   project commit subject use a project-relative output path, or its basename
   outside the project; absolute `--out` no longer records a machine path.

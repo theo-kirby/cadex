@@ -1,5 +1,7 @@
 # Help whole-tree removal audit
 
+*Dated record (2026-09-07): Help was disabled (ADR-217), then deleted (ADR-218). The Blender manifest counts below predate the shell's deletion (ADR-498).*
+
 Verified against source: 2026-09-07
 
 [Cadex-new] Audit at `0e1497b1`, following the completed Measure shim

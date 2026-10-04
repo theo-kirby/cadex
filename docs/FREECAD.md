@@ -1,6 +1,6 @@
 # FREECAD.md — Inherited Substrate Inventory
 
-Verified against source: 2026-10-03
+Verified against source: 2026-10-04
 
 Cadex's **engine** is a FreeCAD fork. This is the ledger of what we keep,
 what is slated for removal, and what is already gone. It is the only
@@ -43,9 +43,10 @@ Everything in this file is `[FreeCAD-inherited]` unless noted.
 | `src/Mod/Mesh`, `src/Mod/MeshPart` | Substrate for the minimal `mesh` domain (landed, Phase 4 / ADR-016): import, tessellate, boolean, decimate, export. |
 | `src/Mod/cadex` | `[Cadex-new]` — the engine itself (`docs/ARCHITECTURE.md`). |
 
-**Built but not shipped.** Three trees still build and are not in the engine
-payload's keep-list (`package/engine/build_engine_payload.sh`), so nothing
-the product installs contains them:
+**Built but not shipped.** One tree, `src/Mod/Test`, still builds and is not
+in the engine payload's keep-list (`package/engine/build_engine_payload.sh`),
+so nothing the product installs contains it. The other two this table
+listed, Start and Help, are deleted and stay here as the record:
 
 | Tree | Status |
 |---|---|
@@ -55,8 +56,11 @@ the product installs contains them:
 
 ## 2. Kept elsewhere
 
-- `src/3rdParty`, `cMake`, `pixi.toml` — build substrate (OCCT, Coin3D, Qt6
-  come from pixi/conda deps).
+- `src/3rdParty`, `cMake`, `pixi.toml` — build substrate (OCCT and Qt6
+  come from pixi/conda deps). `pixi.toml` still lists GUI-era packages the
+  headless build does not use (`coin3d`, `pivy`, `pyside6`, `opencv`,
+  `pcl`); the payload prunes what reaches it (ADR-531, ADR-532), and the
+  environment's own audit is deferred.
 - **One shipping pypi wheel**: `mujoco == 3.10.0`, the
   dynamics kernel. It is not inherited FreeCAD substrate and it is not a
   build-only dependency — it is redistributed **inside the engine payload**,
@@ -259,8 +263,12 @@ itself, in the Phase 7 Qt-shell deletion (ADR-021).
   it. The publisher (`CadexScriptedDomainPublication.py`) still imports it
   to build the native `ExplodedView` document object — that is what a
   published view *is* — and that import is not a Phase 8 obstacle.
-- The engines we test with are not the engine that ships. `.pixi/envs/default`
-  carries a `FreeCADGui.so`; `build/release` (`BUILD_GUI=OFF`) does not.
-  `test_cadexd_lifecycle.py` prefers the former, so a GUI-coupling break can
-  pass every source-tree run and only appear in the payload — ADR-047 was
-  exactly that. Should the default flip to `build/release`?
+- The engines we test with are not the engine that ships. When this was
+  asked, `.pixi/envs/default` carried a `FreeCADGui.so` and `build/release`
+  (`BUILD_GUI=OFF`) did not, and `test_cadexd_lifecycle.py` prefers the
+  former, so a GUI-coupling break could pass every source-tree run and only
+  appear in the payload — ADR-047 was exactly that. **Narrowed:** `pixi run
+  build-engine` now installs the `BUILD_GUI=OFF` build into that
+  environment (ADR-060), and it carries no `FreeCADGui.so` (checked
+  2026-10-04). The environment still differs from the payload in what the
+  prune removes, so the packaged gate (ADR-023) stays the proof.

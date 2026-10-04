@@ -1,6 +1,6 @@
 # analysis/ — offboard structural analysis
 
-Verified against source: 2026-08-11. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-04. Provenance: `[Cadex-new]`. See
 `docs/STRUCTURAL.md` slices S0–S4, ADR-141, ADR-142, ADR-143, ADR-146 and
 ADR-147.
 
@@ -213,8 +213,9 @@ written before them carves the same field (ADR-146):
 
 What comes out of `--out DIR`: `<name>.stl` (the surface),
 `<name>-density.npy` (the field) and `report.json` (the receipt). Only the
-STL comes home — `put_asset` accepts it and Save-As carries it. The other two
-stay here, because a suffix the store does not know is a file Save-As drops.
+STL comes home — `put_asset` accepts it. The other two stay here, because
+a suffix the project store does not know is never staged into a worker
+(`_STORED_ASSET_SUFFIXES` in `CadexScriptedRuntime.py`).
 
 ## Fitting a script to the carve (S4)
 
@@ -416,9 +417,10 @@ agree to 4e-7 on displacement and 5e-8 on von Mises.
 
 ## Licences — the one real constraint this tree has
 
-`analysis/` is **engine-side**, and `docs/PROVENANCE.md` §1 puts the engine
-side at LGPL. `AGENTS.md` calls the GPL boundary "one-way and hard" about
-the Blender shell it used to carry; the reasoning transfers exactly, and a test enforces it here.
+`analysis/` is **engine-side**, and the repository is LGPL with no GPL code
+in it (`docs/PROVENANCE.md` §7, ADR-498). The GPL boundary was "one-way and
+hard" while the repository carried the Blender shell; the shell is gone,
+the reasoning still holds for this tree, and a test enforces it here.
 
 - **Nothing under `analysis/` may import a GPL package.** Not `gmsh` (GPL-2,
   and its linking exception runs the other way), not `pymeshlab`, `mmapy`,
@@ -477,6 +479,7 @@ It looks like reinventing a wheel. The reasons it is not, measured:
   a shell of triangle faces, not something you can edit. TO informs the
   redesign, and the redesign is authored.
 - It invents **no new asset suffix**. `.stl` already comes home through
-  `put_asset` and is already carried by Save-As; a `.cxdensity` would be
-  silently dropped, which is the bug ADR-046 recorded. The density field and
+  `put_asset`; a `.cxdensity` would be silently dropped. ADR-046 recorded
+  that bug against the shell's Save-As, which is gone; today the project
+  store would not stage it into a worker either. The density field and
   the run receipt stay here, in the run directory.

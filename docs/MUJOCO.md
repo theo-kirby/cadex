@@ -39,9 +39,9 @@ unmodified — not a tree we fork. See "Why not a fork" below.
 Cadex already simulates. `assembly.simulation(...)` runs native
 kinematics in the worker, retains a time-series trace under the schema
 `cadex-assembly-simulation-trace-v1`, and publishes it as
-`simulation_trace_preview` (ADR-048). The shell bakes that trace to
-F-Curves in `cadex_animate.py` and plays it in the Simulation panel
-(ADR-050).
+`simulation_trace_preview` (ADR-048). The Blender shell baked that trace
+to F-Curves in `cadex_animate.py` and played it in the Simulation panel
+(ADR-050); since ADR-498 the dashboard plays it from its own trace reader.
 
 That trace is a list of frames, and each frame is nothing but
 `{frame_index, nominal_time_s, component_placements{name: placement}}`.
@@ -236,8 +236,9 @@ new repo recreates precisely what was just removed and buys nothing.
 
 **Fork MuJoCo: no.** Apache-2.0, actively developed, and its extension
 points (`mjSpec`, the plugin system for custom sensors/actuators/forces)
-are exactly what a fork would be for. We fork FreeCAD and Blender because
-we are *replacing* them. MuJoCo we keep.
+are exactly what a fork would be for. We fork FreeCAD because we are
+*replacing* it (Blender was forked too, until ADR-498 deleted the shell).
+MuJoCo we keep.
 
 **Branch in this repo, engine-side: yes.** `mujoco-python` joins
 `pixi.toml` exactly pinned, for the same reason `occt == 7.8.1` is exactly
@@ -1975,7 +1976,12 @@ Ranked by how quietly they fail.
    diff, which was a decision and was taken as one rather than smuggled in.
    The gate now reproduces this exact floor and asserts the overlay draws
    its top 20.000 mm proud, then that the corrected script draws the gap as
-   0.000.
+   0.000. *(The overlay and its gate went with the shell, ADR-498; the
+   dashboard's port of the toggle was cut from the page by ADR-533. What
+   stands today is the contact line: the agent reads it with `inspect
+   scope=contacts` after an `assembly.mjcf` export, and the server still
+   computes `collision_proxies` the page no longer draws —
+   `docs/SHELL-PARITY.md`.)*
    **What is still not done**, and is kept honest here rather than implied
    away: a `mesh` or `hull` shape draws a fixed-size frame cross, not its
    geometry, because the evidence deliberately strips the vertices. So the
@@ -2187,8 +2193,10 @@ Ranked by how quietly they fail.
     a reward term and it was not expensive enough to matter, and the
     feasibility gate had passed because it asked about the *reset* pose and
     the policy settled somewhere else.
-    **What to do:** read the commands, not only the trajectory — the panel
-    is one toggle away from the sliders, and this took one glance. Treat
+    **What to do:** read the commands, not only the trajectory — each
+    rollout frame's `actuator_commands`, or `compare.py`'s torque columns
+    (the shell's panel that took one glance went with the shell, ADR-498).
+    Treat
     "the reward went up" and "the mechanism is doing something a machine
     could do" as two separate claims, and check the second one before
     spending GPU time on a harder version of the first. A policy pinned at
@@ -2305,7 +2313,7 @@ Ranked by how quietly they fail.
     always honoured `max_steps`.
     **What to watch from now on:** mean episode length, reported beside
     `reward/step` in the trainer's stderr, in `progress.json`, in the policy
-    header's curve rows and in the shell's Training panel (ADR-101). A
+    header's curve rows and in the dashboard's training plots (ADR-101). A
     reward that climbs while episode length falls is this hazard happening
     live, and M9b's 170 → 30 would have been visible while it happened.
     **What to do:** never install, rank or stop on the trainer's reward.
@@ -2470,7 +2478,9 @@ Ranked by how quietly they fail.
   taken deliberately: the tool is called `import_geometry` and advises
   `mesh.import_file(...)` on success, which is wrong for a policy. Fixing
   the wording is a shell diff, so the engine-side refusals carry the
-  correct advice instead.
+  correct advice instead. (That edge went with the shell, ADR-498: the
+  agent's tool is now `put_asset` itself, and its description names
+  `.cxpolicy`.)
 - ~~At what frame rate is a policy rollout played?~~ — answered by M8
   (ADR-085): **any rate that divides the task's `control_hz` exactly, and by
   default that rate itself.** It is `simulate`'s solver-step rule one level
@@ -2632,11 +2642,14 @@ model file.
    prints the margin — **if that margin is under 100x, stop and read hazard
    13 rather than continuing.**
 
-   While it runs, the shell's **Training panel** shows state, iteration,
-   elapsed, ETA, reward, best-so-far and where it happened, and the
-   checkpoints pulled — it polls the `training-progress.json` that `watch`
-   writes beside the project. The gap between the best iteration and the
-   current one is the stopping decision.
+   While it runs, `watch` prints state, iteration, elapsed, ETA, reward,
+   best-so-far and where it happened, and the checkpoints pulled, one line
+   per change. (The Blender shell's Training panel, which polled the
+   `training-progress.json` `watch` writes, went with the shell, ADR-498;
+   the dashboard plots the curves of a run under the project's `runs/<run>/`
+   — a `cadex walk --out <project>/runs/<name>` or the `train_start` tool.)
+   The gap between the best iteration and the current one is the stopping
+   decision.
 
 8b. **Before dispatching, check that the box's trainer is the one the tests
    pinned.** `remote_train.sh` copies a bundle and a model and runs the
@@ -2664,8 +2677,8 @@ model file.
    this many steps it looks like this", and the torque columns are what
    catch hazard 15 without a rebuild. Watching two policies *animate* at
    once is not available and should not be faked: ADR-077 is exactly one
-   simulation per script and the shell has one timeline, so the numbers
-   compare side by side and the animations do not.
+   simulation per script, so the numbers compare side by side and the
+   animations do not.
 
 11. **Bring it home through `put_asset`.** The digest is required and never
    inferred: `assembly.policy` names a policy by file *and* SHA-256 because
@@ -2680,14 +2693,17 @@ model file.
    length says whether it terminated early, and pelvis height, tilt and drift
    over the episode say what "it stands" actually meant.
 
-13. **Open the Policy Outputs panel before you believe any of it**
-    (ADR-096). It sits behind the same toggle as the sliders and draws each
-    actuator's command against its own limit, at the current frame. The
+13. **Read the commands before you believe any of it** (ADR-096). The
+    Blender shell's Policy Outputs panel drew each actuator's command
+    against its own limit; it went with the shell (ADR-498) and the
+    dashboard has no counterpart, so read each rollout frame's
+    `actuator_commands` against the actuator's limit, or `compare.py`'s
+    peak/mean torque columns. The
     trajectory says what the mechanism did; this says what the policy
     decided, and the two can disagree in a way only this one shows —
     hazard 15 is a policy that plays as a clean stand while holding three
-    motors at 98 % of stall for the whole episode. A bar pinned at an end is
-    the finding.
+    motors at 98 % of stall for the whole episode. A command pinned at an
+    end is the finding.
 
 ### What a good result looks like
 
@@ -2711,7 +2727,7 @@ balancing, not merely stable.
 **And the last row is why this table has one.** Every number above it says
 the run went well, and they are all true. The commands say the machine is
 bracing at the edge of its actuators (hazard 15), which no trajectory
-measurement would have surfaced and which the panel showed in one glance.
+measurement would have surfaced and which the commands showed in one glance.
 Calibrate against the whole table, not the top of it: a good result is one
 where the reward is high *and* the mechanism is doing something a machine
 could actually do.
@@ -2779,7 +2795,7 @@ baseline for anything measured after the fix**. The rule in the quote box is
 unchanged; what is new is a second number to read beside the reward:
 
 > **Mean episode length**, on the stderr line, in `progress.json`, in the
-> policy header's curve rows and in the shell's Training panel. A reward
+> policy header's curve rows and in the dashboard's training plots. A reward
 > climbing while episode length falls is hazard 19 happening in front of
 > you. M9b's fell 170 → 30 over 400 iterations with nothing recording it.
 
@@ -2859,8 +2875,9 @@ what is recorded here is the method and the numbers.
 **The loop, and what each leg cost.** Venv per `training/SETUP.md` §b
 (Homebrew 3.13, the four pins). Bundle out of the accepted attempt's
 `outputs/`. Train with `--progress <project>/training-progress.json`, which
-lights the Training panel *and* the reward-curve plot live with no `watch`
-leg and nothing else running. Policy home through `put_asset` +
+lit the shell's Training panel *and* the reward-curve plot live with no
+`watch` leg and nothing else running (both went with the shell, ADR-498;
+the dashboard plots a run under `<project>/runs/<run>/`). Policy home through `put_asset` +
 `assembly.policy` + `assembly.rollout`, exactly §7's steps 11–12:
 
 - **Training**: 300 iterations × 64 envs in **61.6 s**, then 500 more
@@ -2929,8 +2946,10 @@ sign-changing, not pinned. What the rehearsal measured:
   guessed a wrong flag shape for the command it handed back); and no
   `put_asset`, so it cannot bring a policy home. Both refusals were
   clean, precise and resumable. Closing the North Star arc as one CLI
-  prompt therefore needs either those tools or a dispatcher; the in-app
-  agent has a shell and does not share the first gap.
+  prompt therefore needed either those tools or a dispatcher; the in-app
+  agent had a shell and did not share the first gap. (Both since closed:
+  `put_asset`, `train_start` and `evaluate` are in the tool surface, and
+  since ADR-538 the agent is one a person brings, with its own shell.)
 - **It would not claim success without the engine.** "I will not claim it
   holds inverted until the engine's own trace says so" — and it didn't.
 
@@ -2955,8 +2974,8 @@ row below was actually run, and the numbers are this run's.
 | 7 | Review | the agent: `inspect scope=output`; a pipeline: the `policy` block of `assembly-simulation-trace.json`, which `cadex export` now copies into `--out` (row 3) | Works for the agent — asked to report the rollout, it read total reward 1719.23 and the five per-term totals through `inspect` unaided. A pipeline reads the same numbers from the exported trace: `total_reward` 1729.95 and the five `reward_totals` on the scratch copy, no staging path read | the agent, or a pipeline |
 | 8 | **Iterate** | `cadex params --set shove_n=0.20` | **Refused, exit 3**: the task digest moved (`602d62c1…` → `369a0dd5…`) and the declared policy no longer fits. Correct by ADR-088 — and it means the refusal also never writes the new bundle, so there is nothing to retrain against. Iterating that morning was six legs: edit the script to drop or re-point the policy → rebuild → dig out the bundle → train (`--init-from … --init-from-task-change`) → `put_asset` → re-declare. Three of the six were the person's. **Closed the same day** (ADR-192) with a script convention and no new `params` flag: the policy is declared behind a numeric switch (`policy_on`), so `cadex params --set policy_on=0 --set shove_n=0.20 --out sweep` is accepted (`set_params` never refuses a dropped output) and exports the bundle at `369a0dd5…`; `cadex train --put --init-from … --init-from-parent-task … --init-from-task-change "…"` retrains warm across the change (the ADR-161 pair, now carried by the dispatcher) — 2 it × 8 envs in **17.8 s** wall, iteration 0 already at +1.52 reward/step where a cold network sits near −0.95; the digest edit and `cadex script --set`; `cadex params --set policy_on=1 --out run2` verifies and rolls out. Trace: **127.8** total reward at 0.20 N after one warm toy step, against 1729.9 at 0.12 N for the 400-iteration policy — the comparison exists; row 9 is where it gets recorded. `cli/tests/test_train.py` runs the whole chain on the toy with the real trainer | the agent for the script, a pipeline for the four commands |
 | 9 | Compare and record | On 2026-09-06 (morning): nothing — no comparison, no `PROGRESS.md`, and the project directory was not a git repository. **Closed the same day** (ADR-194, on row 10's `PROGRESS.md`): a run's `total_reward` or `reward/step` is written **with its change against the last row that carried it** — delta, that run's digest, that run's value — so the comparison is one recorded row a reader does not assemble by eye; and accepted runs attempt a commit in project-root repositories (ownership and ignore rules: `docs/CLI.md`, **Project history depends on repository ownership**). Measured on the scratch copy: `cadex train --put` (2 it × 8 envs, 4.6 s of training, 20.9 s wall) initialised the repository and landed its row and commit; `cadex script --set` re-declaring the new policy landed `total_reward -293.4 (Δ -421.2 vs 2996fb73 at 127.8)` — a fresh 2-iteration policy against the ADR-192 warm one, on the same task — and a commit of exactly `PROGRESS.md`, `script.py`, `script.json` and the history entry (`git show --stat`). Two runs, two rows, two commits. `cli/tests/test_project_docs.py` pins the delta, the repository and the nested-work-tree refusal | the CLI |
-| 10 | Project as a codebase | On 2026-09-06 (morning): nothing — no `ARCHITECTURE.md`, `DECISIONS.md` or `PROGRESS.md`, nothing scaffolds them, nothing reads them on a visit. **Closed the same day** (ADR-193): the CLI scaffolds the three on the first visit (idempotent, never overwrites), pastes them into every turn's system prompt (bounded: architecture head, decisions and progress tails; ADR-265), lands a `PROGRESS.md` row after every accepted run with the revision, digest, what was done and the numbers the run produced (the trace's `total_reward`, the trainer's `reward_per_step`, wall time, sha256), and turns a turn's closing `DECISION:` lines into numbered `DECISIONS.md` entries. Domain docs are a documented convention (`docs/<subject>.md`). `cli/tests/test_project_docs.py` drives it against the engine and a scripted turn. `docs/CLI.md` §2 | the CLI for the scaffold and the log; the agent for the decisions, by convention rather than by tool |
-| 11 | The same walk with the GUI attached | the same `cadex` commands from a terminal beside the open Blender file — **not** the in-app agent, which has only the Mesh tools (`--tools ""`, no shell, no file tool) | **Documented 2026-09-06** (ADR-201, `docs/CLI.md` §2) from the client code, no GUI launched: the CLI's `flock` is per command and released before the `PROGRESS.md` row and the commit; the shell takes no lock, so ownership is sequential by convention; stale shell mutations return `STALE_PROGRAM_REVISION` without adopting the new guard or replaying arguments (ADR-204); Rebuild Model or reopen (`load_post` → `queue_open`), review the refreshed source/values, then retry, never through the re-accept box. Same legs, same docs, same project-relative artifacts. Concurrent rebuilds and simultaneous acceptance are not serialized; sequential use remains required. The headless shell gate covers stale refusal and refresh recovery; no GUI was launched | a person or a pipeline at the terminal; the in-app agent for design turns |
+| 10 | Project as a codebase | On 2026-09-06 (morning): nothing — no `ARCHITECTURE.md`, `DECISIONS.md` or `PROGRESS.md`, nothing scaffolds them, nothing reads them on a visit. **Closed the same day** (ADR-193): the CLI scaffolds the three on the first visit (idempotent, never overwrites), pastes them into every turn's system prompt (bounded: architecture head, decisions and progress tails; ADR-265), lands a `PROGRESS.md` row after every accepted run with the revision, digest, what was done and the numbers the run produced (the trace's `total_reward`, the trainer's `reward_per_step`, wall time, sha256), and turns a turn's closing `DECISION:` lines into numbered `DECISIONS.md` entries. Domain docs are a documented convention (`docs/<subject>.md`). `cli/tests/test_project_docs.py` drives it against the engine and a scripted turn. `docs/CLI.md` §2. **Since ADR-538** nothing pastes the documents into a prompt or scrapes `DECISION:` lines — Cadex runs no turn; the agent a person brings reads them and writes `DECISIONS.md` and `docs/<subject>.md` itself | the CLI for the scaffold and the log; the agent for the decisions and notes, with its own file tools |
+| 11 | The same walk with the GUI attached | the same `cadex` commands from a terminal beside the open Blender file — **not** the in-app agent, which has only the Mesh tools (`--tools ""`, no shell, no file tool) | **Documented 2026-09-06** (ADR-201, `docs/CLI.md` §2) from the client code, no GUI launched: the CLI's `flock` is per command and released before the `PROGRESS.md` row and the commit; the shell takes no lock, so ownership is sequential by convention; stale shell mutations return `STALE_PROGRAM_REVISION` without adopting the new guard or replaying arguments (ADR-204); Rebuild Model or reopen (`load_post` → `queue_open`), review the refreshed source/values, then retry, never through the re-accept box. Same legs, same docs, same project-relative artifacts. Concurrent rebuilds and simultaneous acceptance are not serialized; sequential use remains required. The headless shell gate covers stale refusal and refresh recovery; no GUI was launched. **Moot since ADR-498**: there is no Blender file to attach; the dashboard beside a walk is read-only (ADR-537) and writes nothing | a person or a pipeline at the terminal; the in-app agent for design turns (today: the agent a person brings, through `cadex mcp`) |
 | 12 | The same walk with training on a remote machine | `training/remote_train.sh` (ADR-089) | **Scripted 2026-09-06** (ADR-200): `cadex train --remote` / `cadex walk --remote` run the train leg through `remote_train.sh train <bundle> <out> -- <the same flags>`, verify the returned policy against the receipt, and change nothing else — same `DIR/train` artifacts, same store, same `review.json`. Offline evidence only: `cli/tests/test_train.py` pins the command against the script's usage line and runs the leg end to end against a stand-in dispatcher (real engine, real store, three refusals). **Not executed**: no dispatch, the box's checkout untouched; B7 stays blocked. **A warm start travels since 2026-09-08** (ADR-268): the dispatcher lifts `--init-from` and `--init-from-parent-task` out of the trailing flags, copies both files into the run directory's `warm/` and re-points the flags, so an iterate has the same shape in both modes; tested against the real script with stand-in `ssh`/`rsync` | none; a person for `check` and the box's config |
 
 **One agent turn on top, to see the refusals today.** The same scratch
@@ -3028,6 +3047,8 @@ left a third, so it is every export, not one).
    command. The agent itself still cannot run it — it has no shell — so
    the leg is the caller's or a pipeline's; making it the agent's is a
    tool that spawns a fifteen-minute subprocess, which is not taken here.
+   (Since taken: ADR-464's `train_start`; and since ADR-538 the agent has
+   its own shell and runs `cadex train --wait` itself.)
 4. ~~**An iterate shape** (row 8).~~ **Done, 2026-09-06** (ADR-192): the
    script convention, not the flag. The policy sits behind a numeric
    switch parameter the sweep blanks; a blanked sweep is an ordinary
@@ -3054,7 +3075,9 @@ left a third, so it is every export, not one).
    turn's prompt; one `PROGRESS.md` row per accepted run, written by
    the CLI with the numbers; a turn's `DECISION:` lines as numbered
    entries in `DECISIONS.md`; `docs/<subject>.md` for domain notes, by
-   convention. What row 10 deliberately did not take: a file tool for
+   convention. (The pasting and the `DECISION:` lines went with Cadex's
+   own turn, ADR-538: the agent a person brings writes `DECISIONS.md`
+   and the notes with its own file tools.) What row 10 deliberately did not take: a file tool for
    the agent (a convention first, a tool only if reading proves
    insufficient) and a git repository. Row 9 **done, 2026-09-06**
    (ADR-194, the same file, no protocol op, no engine change): the
@@ -3114,8 +3137,9 @@ The repeated arm baseline was −27.1093842209 in 15.22 s. Both projects'
 `PROGRESS.md` explain the identical height term, different force/torque
 units, training versus rollout means, and sub-1-GB sampled memory peaks.
 The carriage does not hold height after one iteration; this closes pipeline
-generality at toy scale, not control performance. GUI attachment remains
-documented and unexercised (ADR-201). **Remote training is scripted, not run**
+generality at toy scale, not control performance. GUI attachment remained
+documented and unexercised (ADR-201), and is moot since ADR-498 deleted
+the GUI. **Remote training is scripted, not run**
 (ADR-200, the same
 day): `--remote` on `train` and `walk` puts the one leg on the box through
 `remote_train.sh` and leaves every artifact where the local walk puts it;

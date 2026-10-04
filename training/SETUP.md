@@ -1,6 +1,6 @@
 # Training a policy: the four ways
 
-Verified against source: 2026-09-08. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-04. Provenance: `[Cadex-new]`. See
 ADR-084 (training is offboard) and ADR-089
 (remote dispatch).
 
@@ -137,10 +137,15 @@ Keep toy environment counts small: the default 256 is sized for a GPU.
 Checkpoints are complete, playable policies; `--checkpoint-every 50`
 costs about one extra iteration per checkpoint.
 
-**`--progress` is how a local run lights up the shell.** The Training
-panel polls `<project>/training-progress.json`; on paths (c) and (d) it is
-`remote_train.sh watch` that writes that file, but a local trainer can
-just write it there itself — no `watch` leg, no ssh, nothing else running.
+**`--progress` names where the run's snapshot goes.** On paths (c) and
+(d) it is `remote_train.sh watch` that writes `training-progress.json` into
+its destination, but a local trainer can just write it there itself — no
+`watch` leg, no ssh, nothing else running. The dashboard plots training
+only for a run under `<project>/runs/<run>/` (what `cadex walk --out
+<project>/runs/<name>` and the agent's `train_start` tool make), from its
+`train/progress.json`; a hand-run trainer is read from its file. (The
+Blender shell's Training panel, which polled
+`<project>/training-progress.json`, was deleted with the shell, ADR-498.)
 Note the redirect is total: with `--progress` the trainer writes *only*
 the file you named, not also the default `progress.json` beside `--out`.
 
@@ -348,9 +353,9 @@ atomically every iteration. Nothing parses its stderr.
 episode length**, best-so-far and where it happened, elapsed, ETA,
 checkpoints), rsyncs new
 `.cxpolicy` files back as they land, and writes **`training-progress.json`**
-into the destination. Point that destination at your `.cadex` project
-directory and the shell's **Training panel** picks it up — no ssh in the
-shell, no protocol change, no engine change. It exits `0` when the run
+into the destination — the file `cadex walk --complete` reads to decide
+whether a detached run finished. No ssh in Cadex, no protocol change, no
+engine change. It exits `0` when the run
 finishes and `1` when it reports `failed`, with the reason.
 
 **`stop`** sends `TERM` and then *verifies* the process went. Whatever the
@@ -372,10 +377,11 @@ not be faked (ADR-077: exactly one simulation per script).
 
 ## Bringing it home
 
-Identical on all four paths. Put the file in the project store with the tool
-that already exists — `import_geometry` / `put_asset`, which pass the path
-through and let the engine's `_STORED_ASSET_SUFFIXES` accept `.cxpolicy`
-alongside the three mesh formats — then reference it by digest:
+Identical on all four paths. Put the file in the project store with the path
+that already exists — the agent's `put_asset` tool, `cadex asset --put`, or
+`cadex train --put`, all of which pass the path through and let the
+engine's `_STORED_ASSET_SUFFIXES` accept `.cxpolicy` alongside the three
+mesh formats — then reference it by digest:
 
 ```python
 task   = assembly.task(model, actions=[...], reward=[...],

@@ -1,6 +1,6 @@
 # Contributing to Cadex
 
-Verified against source: 2026-08-29
+Verified against source: 2026-10-04
 
 Cadex is an experimental side project (see the author's note in
 `README.md`). Contributions are welcome, and the bar for them is the same
@@ -19,8 +19,10 @@ was the same class of error ADR-031 fixed for `SECURITY.md`.
 2. One logical change per pull request. State the user-visible outcome,
    the risk, and the test evidence in the description.
 3. Verify by running: `pixi run test-engine` for engine changes,
-   `pixi run gate` for shell changes, `pixi run python -m pytest cli/tests`
-   for CLI changes. Report failures honestly, with output.
+   `pixi run python -m pytest cli/tests` for CLI, agent-binding and
+   dashboard changes, and `pixi run build-release` with ctest diffed
+   against `build/ctest_baseline_failures.txt` for C++/CMake changes
+   (`AGENTS.md`, Methodology). Report failures honestly, with output.
 4. Removals are normal work here — the philosophy is *remove more than we
    add* — but every removal gets a `docs/DECISIONS.md` entry and is proven
    by build + tests in the same PR.

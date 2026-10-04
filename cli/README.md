@@ -16,6 +16,7 @@ Full documentation: [`../docs/CLI.md`](../docs/CLI.md).
 ./cadex mcp --project ./b          # register with your agent's MCP client
 ./cadex guidance                   # the text that server gives the agent
 ./cadex params --project ./b --set bore=8 --out ./b/v2
+./cadex app                        # the read-only dashboard (docs/DASHBOARD.md)
 pixi run python -m pytest cli/tests
 ```
 

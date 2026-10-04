@@ -1,5 +1,7 @@
 # Surviving FreeCAD diff audit
 
+*Dated record (2026-09-07): ADR-227's one change landed. The Blender manifest counts below predate the shell's deletion (ADR-498); `docs/FREECAD.md` is the live ledger.*
+
 Verified against source: 2026-09-07
 
 [Cadex-new] ADR-227; audit baseline `870150b8`, after the Material and Main

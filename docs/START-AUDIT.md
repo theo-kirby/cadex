@@ -1,5 +1,7 @@
 # Start whole-tree removal audit
 
+*Dated record (2026-09-07): Start is deleted (ADR-221). The Blender manifest counts below predate the shell's deletion (ADR-498).*
+
 Verified against source: 2026-09-07
 
 [Cadex-new] Audit at `6761304e`, after the Help sequence (ADR-216, ADR-217,

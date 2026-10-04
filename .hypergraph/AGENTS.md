@@ -1,6 +1,6 @@
 # Hypergraph onboarding — cadex
 
-Verified against source: 2026-09-08
+Verified against source: 2026-10-04
 
 This repository keeps its memory in **two graphs**, committed as markdown node
 files under `.hypergraph/graph/`. They are storage, not a cache: they travel
@@ -14,7 +14,7 @@ with the repo, work offline and merge through git.
 
 Every state node cites the record nodes it derives from. That cross-graph
 citation structure is the hypergraph, and it is why a fresh agent can orient in
-a handful of reads instead of traversing 136 ADRs.
+a handful of reads instead of traversing more than 500 ADRs.
 
 ## This project
 
@@ -26,6 +26,7 @@ a handful of reads instead of traversing 136 ADRs.
 | Adoption mode | **B (ground-up)** — no legacy graph existed |
 | Archive | **none.** There was no hosted graph to import, so config carries no `archive:` block. That is correct, not an omission. |
 | Generated snapshot | `STATE.md` at the repo root |
+| Views | `plan` (root `fond-ember-4937`), generated into `PLAN.md` at the repo root |
 
 **Prehistory.** The 14 record nodes before the marker are *era and workstream
 summaries*, distilled from the repository and from an author interview on

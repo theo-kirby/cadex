@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-01. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-04. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -23,13 +23,14 @@ rather than a temporary state (ADR-075, restated by ADR-084):
   days.
 
 This turns out to be a clean boundary rather than a compromise. The engine
-stays a geometry-and-dynamics service, the shell stays a viewer, and M7
+stays a geometry-and-dynamics service, the dashboard stays a viewer, and M7
 builds **no dispatch machinery, no network I/O and no new op**: you copy two
 files out, run this, and copy one file back.
 
 **There is no train button and there is nothing to press.** The agent
-authors the task, dispatches the run with its own shell, and brings the
-weights home through the `put_asset` path that already exists. VISION
+authors the task, dispatches the run with its own shell (`cadex train`,
+or the `train_start` tool `cadex mcp` serves), and brings the weights home
+through the `put_asset` path that already exists. VISION
 principle 5 is untouched — the human still only judges.
 
 ## What it reads and what it writes
@@ -86,9 +87,10 @@ them: (a) one machine with a GPU, (b) CPU only, (c) a separate GPU box, and
 *what the trainer is*; that one is *how to run it*. Duplicating the commands
 here is how the two drift.
 
-The short form: any machine with a CUDA GPU and Python 3.11+, a venv built
-from `requirements.txt` with `jax[cuda12]==0.7.2` installed over the pinned
-CPU jax, the `outputs/` pair copied across, and one command.
+The short form: any machine with a CUDA GPU and Python 3.12+ (the pinned
+`numpy==2.5.1` has no wheels below cp312), a venv built from
+`requirements.txt` with `jax[cuda12]==0.7.2` installed over the pinned CPU
+jax, the `outputs/` pair copied across, and one command.
 
 `mujoco` must match the release that wrote the model. The bundle records it
 as `mujoco_version`; a mismatch is a run whose numbers cannot be compared
@@ -111,23 +113,21 @@ policy = assembly.policy(task, weights="walk.cxpolicy",
 result = {"job_model": model, "job_task": task, "job_policy": policy}
 ```
 
-Bring the file into the project store with the tool that already exists —
-`import_geometry` / `put_asset`. Those two perform no suffix check *of their
-own*: they pass the path through and let the engine decide, and the engine's
-list (`_STORED_ASSET_SUFFIXES`, `CadexScriptedRuntime.py:361`) is what
-accepts `.cxpolicy` alongside the three mesh formats. That is the whole
+Bring the file into the project store with the path that already exists —
+the `put_asset` tool, `cadex asset --put`, or `cadex train --put`. None
+performs a suffix check *of its own*: each passes the path through and lets
+the engine decide, and the engine's list (`_STORED_ASSET_SUFFIXES`,
+`CadexScriptedRuntime.py:177`) is what accepts `.cxpolicy` alongside the
+three mesh formats. That is the whole
 mechanism by which a policy reaches the store through a tool named for
 geometry, and why it cost no protocol change. Then rebuild. The engine verifies the policy against the task it was trained
 on and publishes a receipt.
 
-> One rough edge, stated rather than papered over: the tool the shell offers
-> is called **`import_geometry`**, and on success it advises
-> `mesh.import_file(...)`, which is wrong for a policy. Fixing that wording
-> was a shell diff, and every line of one is a future merge conflict
-> against upstream Blender (ADR-091), so it wants to be a change somebody
-> makes on purpose rather than one that rides along. ADR-086 §4 named it
-> available-and-not-taken and ADR-102 §4 left it that way; the engine-side
-> refusals carry the correct advice in the meantime.
+> The rough edge this paragraph once carried went with the Blender shell
+> (ADR-498): its tool was called **`import_geometry`** and advised
+> `mesh.import_file(...)` on success, which is wrong for a policy (ADR-086
+> §4, ADR-102 §4). The agent's tool is now the op itself, `put_asset`, and
+> its description names `.cxpolicy` and `assembly.policy`.
 
 ## The actor reads what the robot can; the critic reads everything (ADR-408)
 
@@ -212,14 +212,15 @@ iteration:
 `CURVE_POINTS_CAP` (512) points with the first and last always kept —
 about 12 KB at the cap, which is what makes rewriting it every iteration
 free. Additive under the same schema, on the same terms as the two rows
-below; it is what the shell's Training editor draws as a curve.
+below; it is what the dashboard's 2D viewport plots, for a run under the
+project's `runs/<run>/train/`.
 
 `episode_steps` is the row to actually watch (ADR-101): mean episode length,
 steps in the batch over episodes that ended in it. **A reward that climbs
 while this falls is a policy failing sooner and being paid more for it** —
 which is what two runs did, unnoticed, before there was a number for it. It
 is additive under the same schema, so a `progress.json` from before ADR-101
-still reads; the panel draws it as a dash.
+still reads; the dashboard just has no episode-length curve to plot.
 
 **The trainer now watches it too (ADR-410).** When every one of the last 50
 iterations averaged under both 5% of the horizon and half of the run's own
@@ -242,7 +243,8 @@ curve and a local replay disagree. Additive on the same terms as
 action, as the top-level `exploration` key.
 
 This is the one artifact everything downstream reads —
-`remote_train.sh watch` over rsync, and the shell's Training panel locally.
+`remote_train.sh watch` over rsync, `train_status`, `cadex walk`, and the
+dashboard's training plots locally.
 Nothing parses this program's stderr, deliberately: ADR-093 measured what
 happens when a receipt is taken from a stream something else can write into.
 

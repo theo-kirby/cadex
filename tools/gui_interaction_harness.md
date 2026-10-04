@@ -1,5 +1,14 @@
 # FreeCAD GUI Interaction Harness
 
+Verified against source: 2026-10-04
+
+**Inherited tooling with nothing to drive in this repository.** It needs a
+FreeCAD GUI binary, and Cadex builds none: `src/Gui` is deleted (ADR-214),
+every preset is headless and `BUILD_GUI=ON` is refused at configure
+(ADR-022), so `build/release` has no `bin/FreeCAD`. The examples below run
+only against an upstream FreeCAD build. Cadex's one UI is the dashboard,
+`./cadex app` (`docs/DASHBOARD.md`).
+
 `tools/gui_interaction_harness.py` launches a FreeCAD GUI binary with an
 isolated user profile, optionally under `xvfb-run`, and runs
 `tools/gui_interaction_driver.py` inside FreeCAD.
@@ -7,7 +16,8 @@ isolated user profile, optionally under `xvfb-run`, and runs
 The driver enumerates registered workbenches, switches through them, records
 menus, toolbars, actions, and Qt widgets, and exercises common controls:
 buttons, menu actions, combo boxes, line edits, spin boxes, sliders, tabs, and
-item views. It writes `summary.json` and `events.jsonl`.
+item views. It writes `summary.json` and `events.jsonl`. `--mode` is `exercise` (the
+default), `survey` or `workflows`.
 
 Example:
 

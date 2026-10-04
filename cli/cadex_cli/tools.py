@@ -490,9 +490,10 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
 }
 
 #: Scopes a headless client can serve. `image` is left out: it lists the
-#: reference images a *shell* stored, and nothing here can put one there.
+#: reference images the deleted shell stored (ADR-498), and nothing here can
+#: put one there.
 #: `blueprint` is IN, and the asymmetry is deliberate (ADR-150): a reference
-#: image is a shell-only *input*, while a blueprint sheet is a stored
+#: image was a shell-only *input*, while a blueprint sheet is a stored
 #: *deliverable* of the project. The model draws one with the bridge's
 #: `draw_blueprint` (ADR-516), which calls `put_blueprint` itself, so that
 #: op stays out of CLI_TOOL_OPS: a path to an arbitrary PNG is not a tool.
