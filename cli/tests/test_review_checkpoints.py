@@ -531,3 +531,67 @@ def test_both_scrubbers_keep_their_width_at_390px_in_either_theme(tmp_path, brow
         for server in servers:
             server.shutdown()
             server.server_close()
+
+
+#: The model's own status line at phone width, against the expanded overlay.
+MODEL_STATUS = """(function () {
+  function rect(e) { var b = e.getBoundingClientRect(); return {x: b.x, y: b.y, right: b.right, bottom: b.bottom, w: b.width, h: b.height}; }
+  function token(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  var s = document.getElementById('model-status'), style = getComputedStyle(s);
+  return {theme: document.documentElement.dataset.theme, state: s.dataset.state, text: s.textContent,
+          page_width: document.documentElement.scrollWidth, status: rect(s), clipped: s.scrollWidth > s.clientWidth,
+          model: rect(document.getElementById('model')), overlay: rect(document.getElementById('overlay')),
+          color: style.color, background: style.backgroundColor, warn: token('--warn')};
+})()"""
+
+
+def _rgba(css: str) -> tuple[float, float, float, float]:
+    parts = [float(p) for p in css[css.index("(") + 1:css.index(")")].replace("/", ",").replace(" ", ",").split(",") if p]
+    return (parts + [1.0])[:4] if len(parts) == 3 else tuple(parts)  # type: ignore[return-value]
+
+
+def _contrast(fg: str, bg: str) -> float:
+    def luminance(rgb):
+        lin = [(c / 255) / 12.92 if c / 255 <= 0.03928 else ((c / 255 + 0.055) / 1.055) ** 2.4 for c in rgb[:3]]
+        return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+    a, b = sorted((luminance(_rgba(fg)), luminance(_rgba(bg))), reverse=True)
+    return (a + 0.05) / (b + 0.05)
+
+
+@needs_browser
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_the_model_status_line_reads_on_the_dark_floor_below_the_overlay_at_390px(tmp_path, browser, theme) -> None:
+    """ADR-557: the viewport's floor is dark in both themes (ADR-331), so the
+    light theme's ``--warn`` #8a6100 once sat on it at about 2:1, at the top
+    left, partly under the expanded overlay. The line now carries its own
+    ``--surface`` behind it and sits with the scrubbers at the bottom."""
+
+    from test_review_revisions import _biped_store
+
+    history = tmp_path / "orun3-biped-history"
+    _biped_store(history)
+    server = _served(history)
+    page = None
+    try:
+        page = _phone(browser, server.url, theme)
+        page.evaluate("window.cadexReview.setSource('revisions')", await_promise=True)
+        page.evaluate("window.cadexReview.pickRevision(0)")
+        page.wait_for("document.getElementById('model-status').dataset.state === 'missing'", timeout=10)
+        m = page.evaluate(MODEL_STATUS)
+        assert m["theme"] == theme and m["text"].startswith("no model: ")
+        assert m["page_width"] <= 390
+        status, model, overlay = m["status"], m["model"], m["overlay"]
+        assert model["x"] <= status["x"] and status["right"] <= model["right"] and status["bottom"] <= model["bottom"]
+        assert status["y"] >= overlay["bottom"], (status, overlay)
+        assert not m["clipped"]
+        assert m["color"] == _hex_rgb(m["warn"])
+        assert _rgba(m["background"])[3] == 1, m["background"]  # opaque: the floor never shows through
+        ratio = _contrast(m["color"], m["background"])
+        assert ratio >= 4.5, (m["color"], m["background"], ratio)
+        print(json.dumps({"model_status_390": {"theme": theme, "contrast": round(ratio, 2),
+                                               "gap_below_overlay_px": round(status["y"] - overlay["bottom"])}}))
+    finally:
+        if page is not None:
+            page.evaluate("window.cadexTheme.set('dark')")  # the module's browser is shared
+        server.shutdown()
+        server.server_close()

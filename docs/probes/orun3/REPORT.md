@@ -124,6 +124,7 @@ required.
 | ADR-554 | a run's model is re-read when the walk lands its export or rollout, so a page left open adds the `final policy` stop |
 | ADR-555 | the evaluating line names the agent's `evaluate` call, never an evaluation directory's id |
 | ADR-556 | at phone width a scrubber's slider keeps a 160 px floor and its label wraps under it, in either theme |
+| ADR-557 | the model's status line heads the viewport's bottom column on an opaque `--surface`, readable on the dark floor and below the overlay |
 
 ## 5. Remaining defects
 
@@ -166,10 +167,14 @@ Also open, though not defects of this run's views:
   checkpoint slider to 0 px (a failed newest checkpoint), and the revision
   slider was 53 px. Both sliders now keep a 160 px floor (287 px and 303 px
   measured at 390 px, in both themes), with their labels wrapping beneath.
-  `test_review_checkpoints.py` pins this in both themes. Still open: at
+  `test_review_checkpoints.py` pins this in both themes. **Since then, ADR-557:** at
   390 px in the light theme the model's own status line
-  (`#model-status`, `--warn` `#8a6100`) sits on the dark viewport floor
-  and partly under the expanded overlay. Binary meshes are not started.
+  (`#model-status`, `--warn` `#8a6100`) sat on the dark viewport floor at
+  about 3.3:1, and partly under the expanded overlay. It now heads the
+  bottom column on an opaque `--surface`: 5.04:1 in the light theme and
+  13.35:1 in the dark, 457 px below the expanded overlay, pinned by
+  `test_review_checkpoints.py` in both themes. Binary meshes are not
+  started.
 
 ## 6. Done claim
 

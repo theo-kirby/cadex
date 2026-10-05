@@ -91,7 +91,6 @@
       <button id="model-fit" type="button">Fit</button>
     </div>
     <div class="editor-body" id="model">
-      <div id="model-status" data-state="empty">no model loaded</div>
       <!-- What the project is doing, and how training is going (ADR-542): read from /api/project's stage on the page's poll. -->
       <aside id="overlay" data-stage="idle" data-collapsed="false" aria-label="Project stage">
         <button id="overlay-toggle" type="button" aria-expanded="true" aria-controls="overlay-detail" title="Show or hide the detail">
@@ -120,6 +119,8 @@
       </aside>
       <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas></div>
       <div class="timelines">
+        <!-- The model's own status, on its own surface below the overlay (ADR-557). -->
+        <div id="model-status" data-state="empty">no model loaded</div>
         <!-- The design's history (ADR-547): each stored revision's retained model (ADR-546), the one
              before it as a ghost and the parts whose digest changed tinted. Shown while the 3D
              viewport's source is the revision history; at the newest end it follows new revisions. -->

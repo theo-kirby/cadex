@@ -35384,3 +35384,26 @@ them. Measured: 287 px for the checkpoint slider and 303 px for the revision sli
 this change the test fails on the checkpoint slider's 0.03 px.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-557 — The model's status line reads on the dark floor, below the overlay (2026-10-05, orun3 long-term rung)
+
+**Context.** The viewport's floor is dark in both themes (ADR-331). `#model-status`, the line
+that says why no model is drawn, was a transparent line at the viewport's top left. In the
+light theme its `--warn` (#8a6100) sat on the #141414 floor at about 3.3:1. At 390 × 844, with
+the overlay expanded, the overlay reached from y 80 to 149 and from x 102, and the line ran
+from y 84 under it. REPORT §5 named both after ADR-556.
+
+**Decision.** The line moves into the viewport's bottom column (`.timelines`) as its first item,
+above the scrubbers. It sizes to its text and wraps, and it has an opaque `--surface` behind
+it. Each theme's own `--ink-2`, `--warn` and `--bad` read on that surface, whatever the floor is.
+There is one markup move and no script, route or key change. At desk width the line sits at
+the bottom left instead of the top left.
+
+**Test.** `cli/tests/test_review_checkpoints.py`, in the light and dark themes at 390 px, on a
+revision whose model was not kept: a Chromium driven through `browser.py` checks these things
+about the `missing` line. It is inside the viewport and not clipped. Its top is below the
+expanded overlay's bottom. It is `--warn` on an opaque background, at ≥ 4.5:1. Measured: 5.04:1
+in the light theme and 13.35:1 in the dark, 457 px below the overlay. Before the change the
+test fails, with the line's top at 84 px against the overlay's bottom at 149 px.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
