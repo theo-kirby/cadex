@@ -7,24 +7,22 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
-Open orun3 charter criterion: **V1. The 3D viewport has a training and stage overlay.** [rec: golden-snow-6627]
+Charter criterion for run orun3: **V1. The 3D viewport has a training and stage overlay.** It shows stage (idle / designing / training with iteration, total and ETA / evaluating / failed), reward and loss sparklines from `progress.json`, the best reward and its iteration, `progress.json`'s `warning`, and which run it is reading. It updates on the existing poll, collapses per browser, covers ≤ ¼ of the viewport at 390 px, has hooks in `docs/DASHBOARD.md` §2 pinned by `test_review_design.py`, and an ADR as the first panel back after ADR-533 [rec: golden-snow-6627]. The human owns the checkbox.
 
-- The overlay is a new element in the 3D viewport's area, with stable hooks listed in `docs/DASHBOARD.md` §2 and pinned by `test_review_design.py`. [rec: golden-snow-6627]
-- It shows: [rec: golden-snow-6627]
-  - the project's stage: idle, designing (a revision accepted recently), training (the iteration out of the total, and the ETA), evaluating, or failed; [rec: golden-snow-6627]
-  - reward-per-step and loss sparklines from `progress.json`'s curves; [rec: golden-snow-6627]
-  - the best reward and its iteration; [rec: golden-snow-6627]
-  - `progress.json`'s `warning`, styled as a warning; [rec: golden-snow-6627]
-  - which run it is reading, when there is more than one. [rec: golden-snow-6627]
-- It updates on the page's existing poll, with no new polling loop. A browser test driven through `cli/cadex_cli/browser.py` shows it changing as a fixture's `progress.json` is rewritten. [rec: golden-snow-6627]
-- It collapses to one line, and the collapsed state is a per-browser convenience. Measured at 390 px wide, it covers no more than a quarter of the viewport when expanded. [rec: golden-snow-6627]
-- An ADR records it as the first panel brought back after ADR-533. [rec: golden-snow-6627]
+**Met on fixture evidence; live 5090 demonstration is W1's** [rec: snowy-lodge-1033] (ADR-542, commit `e3b1ffa4`). Reconcile judgement: status `working`, because every listed criterion has evidence. The live run on the 5090 is the charter's W1, not part of V1.
 
-Declared target: `gap-v1-3d-viewport-has-training`. This node tracks the criterion as a gap; it becomes working only with measured evidence, in a causally parented record, that the criterion is met. The owner ticks the charter box; roles do not. Truncated impact wording is resolved from the full charter in the same record [rec: golden-snow-6627].
+- `/api/project` gains one bounded `stage` block, on the same request and the same poll. This departs from "reads only what /api/project already carries", because the run summary had no curves, best reward, ETA or warning (ADR-321), and `/api/run/<name>` hashes every checkpoint per call [rec: snowy-lodge-1033].
+- Stage precedence: evaluating > training (incl. stale) > failed (only if no revision accepted since) > designing > idle. The read run is the newest running/pending run with telemetry `starting`/`training`/`stale`, else `default_run` [rec: snowy-lodge-1033].
+- A Chromium test follows `progress.json` rewrites on the page's 2 s poll with no reload. It covers the iteration line (40/240 → 160/240), the reward sparkline, the best reward, the ETA, and the warning in `--warn`. When the run finishes, the run line reads `· done` [rec: snowy-lodge-1033].
+- **390 px: expanded 280 × 171 on 390 × 724 = 16.95%** (bound 25%). Collapsed it is 40 px tall and survives a reload [rec: snowy-lodge-1033].
+- Suites with the GPU hidden: `test-engine` 2585 passed, 58 skipped; `cli/tests` 1129 passed, 1 skipped [rec: snowy-lodge-1033].
+- `docs/CLI.md` §`/api/project` now describes the ADR-542 overlay reading `stage`, not ADR-533's removed telemetry panel. `/api/run/<name>` is fetched only for the 2D viewport's curve [rec: forest-jasper-1180].
+
+**Open ends** [rec: snowy-lodge-1033]: at phone width with no model loaded, the overlay covers part of `#model-status` (cosmetic, phone/light rung). The light theme is unmeasured (tokens only). A dead walk whose record stays `running` keeps the stage at `training`, with the stale warning showing.
 
 ## Negative knowledge
 
@@ -33,3 +31,5 @@ None yet.
 ## Provenance
 
 - golden-snow-6627 — operator-declared orun3 charter gap (gap-v1-3d-viewport-has-training)
+- snowy-lodge-1033 — stage overlay landed (ADR-542); fixture browser test, 16.95% at 390 px, suites green
+- forest-jasper-1180 — docs/CLI.md stage paragraph corrected to the ADR-542 overlay
