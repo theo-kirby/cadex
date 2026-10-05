@@ -355,3 +355,59 @@ def test_a_source_picked_by_hand_is_not_taken_over_by_training(tmp_path, browser
     finally:
         server.shutdown()
         server.server_close()
+
+
+@needs_browser
+def test_a_never_reloaded_page_adds_the_final_policy_stop_when_the_walk_lands_its_rollout(
+        tmp_path, browser) -> None:
+    """ADR-554: the walk's own rollout lands after its last checkpoint, and
+    the page that watched the checkpoints adds it as the newest stop on the
+    next poll, without a reload (orun3 remaining defect 1)."""
+
+    root = _project(tmp_path)
+    _manifest(root, REVISION_B)
+    _stage_accepted(root, REVISION_B)
+    run = _training_run(root)
+    train = run / "train"
+    (train / "walk.000020.rollout-trace.json").write_text(json.dumps(_trace("000020", 19, 0.5)))
+    server = _served(root)
+    try:
+        page = _open(browser, server.url)
+        page.evaluate(f"window.cadexReview.setSource('run:{RUN}')", await_promise=True)
+        page.wait_for(PLAYING + " === 'walk.000020'", timeout=10)
+        label = "document.getElementById('checkpoint-label').textContent"
+        assert page.evaluate(label) == "iteration 20 · reward 0.5 · 1/1 · newest"
+        # Polls settle on the run's model before the walk finishes.
+        page.evaluate("window.cadexReview.refresh()", await_promise=True)
+        page.evaluate("window.cadexReview.refresh()", await_promise=True)
+        page.wait_for(PLAYING + " === 'walk.000020'", timeout=10)
+        assert page.evaluate(label) == "iteration 20 · reward 0.5 · 1/1 · newest"
+
+        # The walk finishes: its rollout leg leaves a trace and the parts
+        # beside it, and the record names the trace.
+        rollout = run / "rollout"
+        rollout.mkdir()
+        (rollout / "torso.stl").write_text(_cube_stl(12.0))
+        trace = _trace("final", 59, 1.0, frames=4)
+        del trace["checkpoint"]
+        trace["simulation_output"] = "rollout"
+        (rollout / "trace.json").write_text(json.dumps(trace))
+        _progress(train, 59, [], state="completed")
+        view = json.loads((run / "training-view.json").read_text())
+        view.update(project_docs={"dir": None, "files": {}, "skipped": [], "note": "not snapshotted"},
+                    identity={"available": False})
+        (run / "training-view.json").write_text(json.dumps(view))
+        write_run_record(run, project_root=root, status="ok", mode="blocking",
+                         accepted_revision=REVISION_B, digest=DIGEST,
+                         requested={"iterations": 60, "seed": 7}, trace=rollout / "trace.json")
+
+        page.evaluate("window.cadexReview.refresh()", await_promise=True)
+        page.wait_for(label + " === 'final policy · 2/2 · newest'", timeout=10)
+        page.wait_for(PLAYING + " === 'final'", timeout=10)
+        assert page.evaluate("document.getElementById('checkpoints').dataset.follow") == "true"
+        # The older checkpoint is still a stop.
+        assert page.evaluate("window.cadexReview.pickCheckpoint(0)") == "walk.000020"
+        page.wait_for(PLAYING + " === 'walk.000020'", timeout=10)
+    finally:
+        server.shutdown()
+        server.server_close()

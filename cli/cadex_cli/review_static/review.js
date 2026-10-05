@@ -882,6 +882,12 @@
     renderHeader(); renderRevisions(); renderOverlay(); renderSources(); followTraining(); renderCheckpoints(); renderRevisionTimeline(); renderSheetSources();
   }
 
+  function runModelKey(review, name) {
+    var run = (review.runs || []).filter(function (r) { return r.run === name; })[0] || {};
+    var artifacts = (run.resolved && run.resolved.artifacts) || {};
+    return JSON.stringify(['run:' + name, run.status, artifacts.trace || null, artifacts.model_xml || null]);
+  }
+
   // The poll is the project read alone: a model it starts loading is
   // handed back to the caller but never holds up the next poll, so the page stays live while a large model comes in.
   function poll() {
@@ -896,9 +902,11 @@
       state.review = review; state.lastOk = new Date(); state.stale = false; state.error = null;
       render();
       lastPoll.ms = performance.now() - started;
-      // A run's model is fixed; the accepted one moves with every write.
+      // The accepted model moves with every write; a run's moves when the
+      // walk lands its export or its own rollout, which adds the final
+      // policy's stop (ADR-554).
       var key = source === 'accepted' ? JSON.stringify([review.accepted.revision, review.accepted.digest])
-              : source === 'revisions' ? revisionKey() : source;
+              : source === 'revisions' ? revisionKey() : runModelKey(review, source.slice(4));
       if (key !== modelKey && Date.now() >= modelRetryAt) { modelKey = key; model = loadModel(); }
     }).catch(function (error) {
       state.stale = true; state.error = error.message;

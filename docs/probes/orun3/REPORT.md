@@ -15,7 +15,7 @@ criteria; this report claims none of them.
 | V3 design history | evidence recorded | ADR-546, ADR-547, ADR-548; bytes per revision in §2; `test_revision_meshes.py` (real engine), `test_review_revisions.py` (browser scrubber across revisions) | `honest-jasper-7877`, `scarlet-wood-2990`, `brisk-dune-8872` |
 | V4 agent activity | evidence recorded | ADR-549, ADR-550, ADR-553; `test_activity.py` pins the 64 KiB bound and reads a real `cadex mcp` call back from `/api/project`; `test_project_tool_surface.py` unchanged | `forest-walrus-2370`, `early-crow-5889`, `tiny-bloom-2937` |
 | P1 portability | evidence recorded | ADR-551, ADR-552; `test_dashboard_prefix.py` loads a project through a rewriting-free proxy under `/some/prefix/`; `test_http_api.py` holds `docs/CLI.md`'s route table equal to the router's | `sunny-oak-9772`, `little-cloud-9989` |
-| W1 watchable lifecycle | evidence recorded | §3 and the seven `w1-*.png` below | `solemn-fox-1118`, `tiny-bloom-2937`, `soft-comet-8840` |
+| W1 watchable lifecycle | evidence recorded | §3 and the ten `w1-*.png` below | `solemn-fox-1118`, `tiny-bloom-2937`, `soft-comet-8840` |
 | C1 this report | this file; done claimed for critic review (§6) | §1–§5 | the record that adds this file |
 
 ## 1. V2 — what a checkpoint rollout costs
@@ -121,6 +121,7 @@ required.
 | ADR-551 | every dashboard URL is relative to the page, so it mounts under a prefix |
 | ADR-552 | the HTTP API is one table that the router dispatches from and `docs/CLI.md` lists |
 | ADR-553 | a `cadex mcp` call is logged in flight as it starts, so a running `evaluate` reads as evaluating |
+| ADR-554 | a run's model is re-read when the walk lands its export or rollout, so a page left open adds the `final policy` stop |
 
 ## 5. Remaining defects
 
@@ -128,8 +129,11 @@ required.
    W1 walk exited, the run's scrubber still read `iteration 100 · 5/5 ·
    newest`, with no `final policy` stop (`soft-comet-8840`). On a fresh page
    in `solemn-fox-1118`, the same kind of run did show `final policy ·
-   6/6`. So the page does not add the stop on a poll after the run
-   finishes. Not yet investigated.
+   6/6`. **Fixed after this report by ADR-554:** the poll keyed a run's
+   model on its name alone, so the manifest carrying the run's own rollout
+   was never re-read; it is now keyed on the run's status, trace and export,
+   and `test_review_checkpoints.py` watches a never-reloaded page add the
+   stop. Not yet re-walked on `orun3-biped`.
 2. **The evaluating line names the evaluation directory.** During the W1
    `evaluate`, the stage line read "evaluation dc0af1158165-d3a4… is running
    · 1 s", not ADR-553's "the agent's evaluate call is running"

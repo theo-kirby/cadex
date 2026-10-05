@@ -35302,3 +35302,31 @@ shows `evaluating` with `the agent's evaluate call is running · 7 min` and the 
 turn back on the page's own poll when it returns.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-554 — A run's model is re-read when the walk lands its export or its own rollout, so a page left open adds the final-policy stop (2026-10-05, orun3 remaining defect 1)
+
+**Context.** The W1 walk on `orun3-biped` (`soft-comet-8840`) ended with the never-reloaded
+page's checkpoint scrubber still reading `iteration 100 · 5/5 · newest`, with no
+`final policy` stop, while a fresh page on the same kind of run showed `final policy · 6/6`
+(`solemn-fox-1118`). `docs/probes/orun3/REPORT.md` §5 listed it as remaining defect 1. The
+cause: the poll keyed a run's model on the source name alone ("a run's model is fixed"), so
+`/api/model/run/<run>` was fetched once. While the run trains, that manifest is the frozen
+training view with no `playback`; the run's own rollout, which ADR-545 appends as the
+`final policy` stop, only appears in the manifest re-read after the walk's rollout leg.
+
+**Decision.** For a run source the poll's model key is the run's `status` and its record's
+resolved `trace` and `model_xml` artifacts, all already in `/api/project`'s `runs`. When the
+walk lands its export or its rollout, the key changes and the manifest is re-read once on
+the page's existing poll; the checkpoint scrubber then lists the run's own rollout last and,
+if it was following, plays it. While a run trains, none of the three moves, so the model is
+not re-fetched per poll. No route, hook, poll loop or write is added; the page stays GET-only
+(ADR-537).
+
+**Test.** `cli/tests/test_review_checkpoints.py`: a Chromium driven through `browser.py`
+watches a training run's checkpoint loop as `iteration 20 · reward 0.5 · 1/1 · newest` over
+several polls; the walk then writes its rollout trace and parts and a finished record, and
+on the next poll, with no reload, the label reads `final policy · 2/2 · newest` and the final
+rollout loops, with the earlier checkpoint still pickable. Without this change the same test
+times out waiting for the `final policy` label.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
