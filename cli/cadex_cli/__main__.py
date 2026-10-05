@@ -107,9 +107,11 @@ from .train import (
     training_plan,
     resolve_trainer_python,
     verify_returned_policy,
+    resolve_bundle_model,
     run_trainer,
     trainer_command,
 )
+from .checkpoints import CheckpointRollouts
 from .evaluate import (
     DEFAULT_TIMEOUT_S as EVALUATE_TIMEOUT_S,
     MAXIMUM_TIMEOUT_S as EVALUATE_MAXIMUM_TIMEOUT_S,
@@ -458,6 +460,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _remote_flags(train_parser)
     _grounding_flag(train_parser)
+    _checkpoint_flag(train_parser)
     train_parser.add_argument(
         "--stop-on-collapse", dest="stop_on_collapse", action="store_true",
         default=False,
@@ -627,6 +630,7 @@ def build_parser() -> argparse.ArgumentParser:
         "bounds the trainer inside the train leg and nothing else; "
         "--leg-timeout bounds the legs themselves.",
     )
+    _checkpoint_flag(walk_parser)
     walk_parser.add_argument(
         "--leg-timeout", dest="leg_timeout", type=float,
         default=DEFAULT_LEG_TIMEOUT_S, metavar="SECONDS",
@@ -755,6 +759,16 @@ def _grounding_flag(parser: argparse.ArgumentParser) -> None:
         help="Train even though a policy channel names no onboard sensor that "
         "measures it. Without this the leg refuses: the policy would learn "
         "from an input the robot it deploys to cannot read.",
+    )
+
+
+def _checkpoint_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--checkpoint-every", dest="checkpoint_every", type=int, default=0,
+        metavar="N",
+        help="Write a checkpoint every N iterations (0: none). A local run "
+        "rolls each one out through the engine on the CPU while it trains, "
+        "and leaves its trace beside it (ADR-544).",
     )
 
 
@@ -1509,6 +1523,9 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
     if args.iterations < 1 or args.envs < 1:
         report.error = "--iterations and --envs must be at least 1."
         return EXIT_USAGE
+    if args.checkpoint_every < 0:
+        report.error = "--checkpoint-every must be 0 (none) or a number of iterations."
+        return EXIT_USAGE
     policy_name = str(args.policy_name or "")
     if policy_name and not policy_name.endswith(".cxpolicy"):
         report.error = "--name must end in .cxpolicy."
@@ -1604,6 +1621,7 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
         init_from_parent_task=args.init_from_parent_task,
         init_from_task_change=args.init_from_task_change,
         stop_on_collapse=args.stop_on_collapse,
+        checkpoint_every=args.checkpoint_every,
     )
     if args.remote:
         # Blocking dispatch returns a policy; detached dispatch returns
@@ -1648,14 +1666,34 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
     if args.remote:
         report.training = run_trainer(command, timeout=args.timeout)
     else:
+        # Each checkpoint is rolled out through the engine on the CPU while
+        # the trainer runs, and the stragglers after it (ADR-544).
+        rollouts = None
+        if args.checkpoint_every > 0:
+            bundle = Path(task.files["json"])
+            rollouts = CheckpointRollouts(
+                out_dir, output=policy_path.stem, bundle=bundle,
+                model=resolve_bundle_model(bundle), python=smoke_interpreter(engine),
+                module_dir=engine.module_dir)
         # A local trainer is this machine's one training run while it lives,
         # the same slot `train_start`'s supervisor holds (ADR-543).
         try:
             with machine_slot():
-                report.training = run_trainer(command, timeout=args.timeout)
+                report.training = run_trainer(
+                    command, timeout=args.timeout,
+                    on_poll=rollouts.poll if rollouts else None)
         except LoopError as exc:
             report.error = str(exc)
             return EXIT_REJECTED
+        finally:
+            if rollouts is not None:
+                rollouts.drain()
+                summary = rollouts.summary()
+                report.notes.append(
+                    "rolled out {:d} checkpoint(s) beside them{:s}{:s}.".format(
+                        summary["written"],
+                        f", {summary['failed']} failed with a reason" if summary["failed"] else "",
+                        f"; {summary['error']}" if summary.get("error") else ""))
     if args.detach:
         if report.training.get("state") != "pending" or not all(
             report.training.get(key) for key in ("run_id", "target", "remote_dir", "pid")
@@ -2152,6 +2190,9 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     if args.iterations < 1 or args.envs < 1:
         report.error = "--iterations and --envs must be at least 1."
         return EXIT_USAGE
+    if args.checkpoint_every < 0:
+        report.error = "--checkpoint-every must be 0 (none) or a number of iterations."
+        return EXIT_USAGE
     if args.policy_name and not str(args.policy_name).endswith(".cxpolicy"):
         report.error = "--name must end in .cxpolicy."
         return EXIT_USAGE
@@ -2327,6 +2368,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             ("--init-from", args.init_from),
             ("--init-from-parent-task", args.init_from_parent_task),
             ("--init-from-task-change", args.init_from_task_change),
+            ("--checkpoint-every", args.checkpoint_every),
         ):
             if value:
                 argv += [flag, str(value)]

@@ -202,10 +202,11 @@ def test_the_dispatcher_emits_flags_the_trainer_declares() -> None:
         "python", "b/t-task.json", "b/t.cxpolicy",
         iterations=3, envs=4, seed=7, label="x", init_from="p.cxpolicy",
         init_from_parent_task="b0/t-task.json",
-        init_from_task_change="a harder band",
+        init_from_task_change="a harder band", checkpoint_every=5,
         script="train.py",
     )
     used = {item for item in command if item.startswith("--")}
+    assert command[command.index("--checkpoint-every") + 1] == "5"
     assert used <= declared, used - declared
     assert {"--init-from-parent-task", "--init-from-task-change"} <= used
     assert command[:3] == ["python", "train.py", "b/t-task.json"]

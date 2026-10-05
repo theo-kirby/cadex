@@ -1996,6 +1996,8 @@ cli/cadex_cli/
   train.py             the offboard trainer as a subprocess, local or remote
   loop.py              the training loop's run registry and its detached
                        supervisor (ADR-464): register, launch, read, stop
+  checkpoints.py       each checkpoint rolled out while the run trains
+                       (ADR-544); checkpoint_runner.py is its child
   walk.py              the lifecycle walk's leg plan (ADR-199)
   section.py           `cadex section`: named world-plane cuts of the accepted tessellation
   smoke.py             `cadex smoke` (ADR-352); smoke_runner.py and
@@ -2117,6 +2119,44 @@ always passes it, so an unattended walk fails at iteration ~60 rather than
 spending hours on a policy that has learned to fall over.
 The build is not where this bites: a task written before ADR-408 still
 builds, and the policies trained on it still verify.
+
+### Each checkpoint is rolled out while the run trains (ADR-544)
+
+`cadex train --checkpoint-every N` and `cadex walk --checkpoint-every N`
+pass the trainer's flag of that name, and a `train_start` run does the
+same with the `checkpoint_every` setting. For a **local** trainer, a
+watcher (`cli/cadex_cli/checkpoints.py`) then rolls each numbered
+checkpoint `<out>.<tag>.cxpolicy` out through the engine, on the CPU, while
+training goes on. The watcher is the same object in both places: `cadex
+train` polls it from `run_trainer`'s wait, and the supervisor polls it from
+its own loop.
+
+- The child is `checkpoint_runner.py`, run by path under the engine's
+  interpreter, `nice`d, with the GPU hidden. It plays one **nominal**
+  episode (no seed: no randomisation, reset variation or shove), so every
+  checkpoint of a run plays the same episode, at the largest frame rate
+  that divides the control rate and is at most 30.
+- It writes `<out>.<tag>.rollout-trace.json`, a
+  `cadex-assembly-simulation-trace-v1` document whose `checkpoint` block
+  gives the file, tag, iteration, reward per step and sha256. The iteration
+  and reward come from the `progress.json` row whose digest is the file's.
+  If the trainer has ended without listing it, the tag names the
+  iteration and the reward is `null`.
+- A checkpoint that cannot be played leaves
+  `<out>.<tag>.rollout-failed.json` (`cadex-checkpoint-rollout-failure-v1`)
+  with the reason, and no trace. A rollout past five minutes is killed and
+  recorded as `rollout_timeout`. A watcher that fails is switched off with
+  its reason in the envelope's notes. It never stops the trainer.
+- One child runs at a time, newest pending checkpoint first. `best` (it is
+  rewritten in place) and the final policy are not rolled out.
+- After the trainer exits, the remaining checkpoints are rolled out with
+  the machine's slot already released. The envelope's notes count the
+  traces and the failures. An interrupted supervisor stops its child and
+  rolls out nothing more.
+- The traces end in `-trace.json`, which a project repository ignores.
+  They are run outputs.
+- A `--remote` trainer's checkpoints stay on the box, and nothing is
+  rolled out for them here.
 
 ### `look`: the agent sees its design (ADR-406)
 

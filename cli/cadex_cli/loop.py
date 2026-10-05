@@ -49,8 +49,10 @@ import sys
 import time
 from typing import Any, Iterator, Mapping, Sequence
 
+from .checkpoints import CheckpointRollouts
+from .engine import EngineError, resolve_engine
 from .review_record import RUNS_DIRNAME, write_run_record
-from .smoke import SmokeError, retained_attempt
+from .smoke import SmokeError, retained_attempt, smoke_interpreter
 from .train import (
     TASK_KIND, TrainError, last_json_line, resolve_trainer_python, trainer_command,
     ungrounded_channels, verify_returned_policy,
@@ -731,6 +733,29 @@ def _stop_trainer(process: "subprocess.Popen[bytes]") -> None:
         process.wait()
 
 
+def _checkpoint_rollouts(run_dir: Path, registration: Mapping[str, Any]) -> CheckpointRollouts | None:
+    """The run's checkpoint watcher, when it writes checkpoints and an engine
+    is there to roll them out (ADR-544); otherwise None, and the run trains
+    exactly as it would have."""
+
+    command = [str(item) for item in registration.get("command") or []]
+    try:
+        every = int(command[command.index("--checkpoint-every") + 1])
+    except (ValueError, IndexError):
+        return None
+    if every <= 0:
+        return None
+    try:
+        engine = resolve_engine(None)
+    except EngineError as exc:
+        print(f"{run_dir}: no checkpoint rollouts: {exc}", file=sys.stderr)
+        return None
+    return CheckpointRollouts(
+        run_dir / TRAIN_DIRNAME, output=Path(str(registration["policy"])).stem,
+        bundle=run_dir / str(registration["bundle"]), model=run_dir / str(registration["model"]),
+        python=smoke_interpreter(engine), module_dir=engine.module_dir)
+
+
 def supervise(run_dir: Path) -> int:
     """Run one registered training run to its end. The detached process's main."""
 
@@ -774,72 +799,82 @@ def supervise(run_dir: Path) -> int:
     budget = float(registration["budget_s"])
     base["started_at"] = started
     _write_json(status_path, {**base, "state": "running"})
-    with open(train_dir / LOG_NAME, "ab") as log, open(train_dir / STDOUT_NAME, "wb") as out:
-        try:
-            process = subprocess.Popen(
-                [str(item) for item in registration["command"]],
-                stdin=subprocess.DEVNULL, stdout=out, stderr=log)
-        except OSError as exc:
-            end("failed", f"could not run the trainer: {exc}", wall_time_s=0.0)
+    rollouts = _checkpoint_rollouts(run_dir, registration)
+    try:
+        with open(train_dir / LOG_NAME, "ab") as log, open(train_dir / STDOUT_NAME, "wb") as out:
+            try:
+                process = subprocess.Popen(
+                    [str(item) for item in registration["command"]],
+                    stdin=subprocess.DEVNULL, stdout=out, stderr=log)
+            except OSError as exc:
+                end("failed", f"could not run the trainer: {exc}", wall_time_s=0.0)
+                return 1
+            verdict = ("", "")
+            while process.poll() is None:
+                if told:
+                    verdict = ("interrupted",
+                               f"the supervisor was told to terminate (signal {told[0]}). "
+                               "This is an interruption, not an attempt.")
+                elif (run_dir / STOP_NAME).is_file():
+                    asked = _read_json(run_dir / STOP_NAME)
+                    verdict = ("stopped", "stop requested: " + str(asked.get("reason") or "no reason given"))
+                elif time.monotonic() - clock > budget:
+                    verdict = ("budget_exhausted",
+                               f"the wall-clock budget of {budget:g} s ran out before the last iteration.")
+                if verdict[0]:
+                    _stop_trainer(process)
+                    break
+                if rollouts is not None:
+                    rollouts.poll()
+                time.sleep(POLL_S)
+        wall = round(time.monotonic() - clock, 2)
+        progress = _read_json(train_dir / "progress.json")
+        common = {"wall_time_s": wall, "exit": process.returncode,
+                  "iterations_run": int(progress.get("iteration", -1)) + 1}
+        if verdict[0]:
+            end(verdict[0], verdict[1], **common)
+            return 0 if verdict[0] != "interrupted" else 1
+        if process.returncode != 0:
+            collapse = str(progress.get("warning") or "")
+            if collapse and "Stopped at" in str(progress.get("error") or ""):
+                end("collapsed", collapse, **common)
+            else:
+                tail = _log_tail(train_dir / LOG_NAME)
+                end("failed", f"the trainer exited {process.returncode}"
+                    + (": " + tail[-1] if tail else "."), **common)
             return 1
-        verdict = ("", "")
-        while process.poll() is None:
-            if told:
-                verdict = ("interrupted",
-                           f"the supervisor was told to terminate (signal {told[0]}). "
-                           "This is an interruption, not an attempt.")
-            elif (run_dir / STOP_NAME).is_file():
-                asked = _read_json(run_dir / STOP_NAME)
-                verdict = ("stopped", "stop requested: " + str(asked.get("reason") or "no reason given"))
-            elif time.monotonic() - clock > budget:
-                verdict = ("budget_exhausted",
-                           f"the wall-clock budget of {budget:g} s ran out before the last iteration.")
-            if verdict[0]:
-                _stop_trainer(process)
-                break
-            time.sleep(POLL_S)
-    wall = round(time.monotonic() - clock, 2)
-    progress = _read_json(train_dir / "progress.json")
-    common = {"wall_time_s": wall, "exit": process.returncode,
-              "iterations_run": int(progress.get("iteration", -1)) + 1}
-    if verdict[0]:
-        end(verdict[0], verdict[1], **common)
-        return 0 if verdict[0] != "interrupted" else 1
-    if process.returncode != 0:
-        collapse = str(progress.get("warning") or "")
-        if collapse and "Stopped at" in str(progress.get("error") or ""):
-            end("collapsed", collapse, **common)
-        else:
-            tail = _log_tail(train_dir / LOG_NAME)
-            end("failed", f"the trainer exited {process.returncode}"
-                + (": " + tail[-1] if tail else "."), **common)
-        return 1
-    try:
-        stdout = (train_dir / STDOUT_NAME).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        stdout = ""
-    receipt = last_json_line(stdout)
-    policy_path = run_dir / str(registration["policy"])
-    if receipt is None:
-        end("failed", "the trainer exited 0 but printed no receipt.", **common)
-        return 1
-    try:
-        verify_returned_policy(policy_path, receipt)
-    except TrainError as exc:
-        end("failed", str(exc), **common)
-        return 1
-    if receipt.get("task_sha256") not in (None, "", registration["task_sha256"]):
-        end("failed", "the trainer's receipt names another task than the one registered.",
-            **common)
-        return 1
-    keep = ("sha256", "bytes", "reward_per_step", "best_reward_per_step", "best_iteration",
-            "episode_steps", "action_std", "wall_time_s", "device", "task_sha256",
-            "model_sha256", "witness_error", "witness_tolerance", "parameters")
-    end("finished", "the trainer ran every iteration and its policy hashes to its receipt.",
-        policy={"path": str(policy_path), "sha256": str(receipt["sha256"]),
-                "bytes": receipt.get("bytes")},
-        receipt={key: receipt[key] for key in keep if key in receipt}, **common)
-    return 0
+        try:
+            stdout = (train_dir / STDOUT_NAME).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            stdout = ""
+        receipt = last_json_line(stdout)
+        policy_path = run_dir / str(registration["policy"])
+        if receipt is None:
+            end("failed", "the trainer exited 0 but printed no receipt.", **common)
+            return 1
+        try:
+            verify_returned_policy(policy_path, receipt)
+        except TrainError as exc:
+            end("failed", str(exc), **common)
+            return 1
+        if receipt.get("task_sha256") not in (None, "", registration["task_sha256"]):
+            end("failed", "the trainer's receipt names another task than the one registered.",
+                **common)
+            return 1
+        keep = ("sha256", "bytes", "reward_per_step", "best_reward_per_step", "best_iteration",
+                "episode_steps", "action_std", "wall_time_s", "device", "task_sha256",
+                "model_sha256", "witness_error", "witness_tolerance", "parameters")
+        end("finished", "the trainer ran every iteration and its policy hashes to its receipt.",
+            policy={"path": str(policy_path), "sha256": str(receipt["sha256"]),
+                    "bytes": receipt.get("bytes")},
+            receipt={key: receipt[key] for key in keep if key in receipt}, **common)
+        return 0
+    finally:
+        if rollouts is not None:
+            # The rollouts left over are CPU work: the slot is the GPU's, so
+            # it is given back before they run (ADR-544).
+            machine.close()
+            rollouts.drain(finish=not told)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

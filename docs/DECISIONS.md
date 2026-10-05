@@ -34736,3 +34736,97 @@ polling.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
 
+
+## ADR-544 — Each checkpoint is rolled out through the engine while the run trains (2026-10-05, orun3 V2)
+
+**Context.** orun3's V2 asks for training to show up as motion: each
+checkpoint becomes a rollout the 3D viewport can loop, made while training
+continues and without slowing it. The trainer already writes complete
+`.cxpolicy` checkpoints every `--checkpoint-every` iterations, atomically,
+and lists each one in `progress.json` with its iteration, reward and sha256
+(ADR-466). Nothing turned them into motion. A local trainer has two
+callers. `loop.supervise` is behind `train_start`. `train.run_trainer` is
+behind `cadex train` and so behind `cadex walk`'s train leg, and it had no
+`--checkpoint-every` flag at all. ADR-543 left both callers on the same
+machine slot so that one watcher could serve both.
+
+**Decision.**
+- `cli/cadex_cli/checkpoints.py` holds one watcher, `CheckpointRollouts`.
+  Its `poll()` never blocks and never raises: it reaps a finished child,
+  then starts the newest pending numbered checkpoint. The supervisor calls
+  it from its poll loop. `run_trainer` calls it through a new `on_poll`
+  hook, about once a second, while it waits for the trainer.
+- The child is `checkpoint_runner.py`, run by path under the engine's
+  interpreter (the `evaluate_runner.py` pattern). It calls
+  `CadexDynamics.rollout_policy` once, with **no seed**: the nominal
+  episode, so every checkpoint plays the same episode. Frames are sampled
+  at the largest divisor of the control rate that is ≤ 30. Every named
+  MJCF body is a component, which gives the same names the walk's rollout
+  trace uses. The child runs `nice 10`, with `CUDA_VISIBLE_DEVICES=""`,
+  one at a time, and is killed after 300 s.
+- The output is `<out>.<tag>.rollout-trace.json`
+  (`cadex-assembly-simulation-trace-v1`, `simulation_output: "checkpoint"`)
+  beside the checkpoint. Its `checkpoint` block names the file, tag,
+  iteration, reward per step and sha256. The iteration and reward come
+  from the progress row whose digest is the file's. A checkpoint the
+  progress has not yet listed waits for the next poll. After the trainer
+  ends, the tag names the iteration and the reward is `null`, never
+  borrowed. A failure writes `<out>.<tag>.rollout-failed.json` with the
+  reason instead, and never a partial trace.
+- `best` (it is rewritten in place) and the final policy are not rolled
+  out. After the trainer exits, the remaining checkpoints are drained. The
+  supervisor first releases the machine slot, because that slot is the
+  GPU's and the drain is CPU work. An interrupted supervisor drains
+  nothing.
+- `cadex train` and `cadex walk` gain `--checkpoint-every N`, which
+  `trainer_flags` passes through. `train_start` already had
+  `checkpoint_every`. A remote trainer's checkpoints stay on the box.
+
+**Measured** on the orun3 biped's bundle (`reed_walk`, from
+`orun3-biped/runs/probe3`) on the RTX 5090: 60 iterations, 256 envs,
+seed 7, a checkpoint every 5 iterations, 11 checkpoints. The runs went
+off, on, off, on, each under the machine slot. Iteration wall time was
+taken from the trainer's stderr lines, from iteration 2 on (57
+iterations each):
+
+| run | rollouts | mean s/it | median s/it | trainer wall s |
+|---|---|---|---|---|
+| off-1 | off | 9.435 | 0.9166 | 657.0 |
+| on-1 | on | 9.045 | 0.9176 | 634.8 |
+| off-2 | off | 9.061 | 0.9170 | 635.7 |
+| on-2 | on | 9.068 | 0.9169 | 636.3 |
+
+The adjacent pair off-2/on-2 differs by +0.08 % in the mean and −0.01 %
+in the median. Across both pairs, on is 2.1 % *faster* in the mean, which
+is the first run's warm-up and is noise. The cost is under the charter's
+5 % bar and is not measurable here. The mean is ~10× the median because a
+few iterations each take tens of seconds, about 460 s per run in all.
+That happens with rollouts off as well, so it is the trainer's own. Which
+iterations stall was not recorded, so it is not attributed here. Every one of the 22
+rollouts was written; none failed. **Disk**: a trace is 38.7–329.5 KB,
+and its size follows the episode's length. The full 8 s horizon at
+25 fps is 329.5 KB. The mean is 224.7 KB per checkpoint, and 2.47 MB for
+the run's 11. Same-seed GPU runs did not produce byte-identical policies
+(four different digests), so "same seed" here means the same task and
+settings, not the same weights.
+
+**Consequences.** The dashboard still serves no checkpoint playback. The
+route, the viewport loop, the scrubber and the browser test against a
+live run are the next V2 units. The traces are run outputs, ignored by
+`*-trace.json`. Nothing under `training/` changed (ADR-084).
+
+**Test.** `cli/tests/test_checkpoint_rollouts.py`. Its fixture is the
+biped's own model and task bundle; checkpoints are generated with the
+engine suite's policy fixture, because no policy binary is committed.
+- Each numbered checkpoint becomes a trace, newest first, tagged and
+  labelled from progress. An unlisted checkpoint waits. `best` and the
+  final policy are skipped.
+- An unplayable checkpoint leaves a failure record with its reason, and a
+  hung child is killed and recorded as such.
+- Through `run_trainer` and through the detached supervisor, a fake
+  trainer **waits for each checkpoint's trace before going on**, so each
+  test passes only if the rollout lands while the trainer is still
+  running.
+- `--checkpoint-every -1` is a usage error for `train` and `walk`.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).

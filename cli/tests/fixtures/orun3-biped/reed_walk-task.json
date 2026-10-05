@@ -1,0 +1,352 @@
+{
+  "actions": [
+    {
+      "actuator": "hip_l/motor",
+      "fallback": "0",
+      "high": 200.0,
+      "index": 0,
+      "joint": "hip_l",
+      "kind": "motor",
+      "low": -200.0,
+      "motion_type": "angular",
+      "scale": 0.001,
+      "source": "torque_limit_nmm",
+      "unit": "nmm"
+    },
+    {
+      "actuator": "knee_l/motor",
+      "fallback": "0",
+      "high": 200.0,
+      "index": 1,
+      "joint": "knee_l",
+      "kind": "motor",
+      "low": -200.0,
+      "motion_type": "angular",
+      "scale": 0.001,
+      "source": "torque_limit_nmm",
+      "unit": "nmm"
+    },
+    {
+      "actuator": "hip_r/motor",
+      "fallback": "0",
+      "high": 200.0,
+      "index": 2,
+      "joint": "hip_r",
+      "kind": "motor",
+      "low": -200.0,
+      "motion_type": "angular",
+      "scale": 0.001,
+      "source": "torque_limit_nmm",
+      "unit": "nmm"
+    },
+    {
+      "actuator": "knee_r/motor",
+      "fallback": "0",
+      "high": 200.0,
+      "index": 3,
+      "joint": "knee_r",
+      "kind": "motor",
+      "low": -200.0,
+      "motion_type": "angular",
+      "scale": 0.001,
+      "source": "torque_limit_nmm",
+      "unit": "nmm"
+    }
+  ],
+  "disturbance": [],
+  "episode": {
+    "control_hz": 50,
+    "control_interval_s": 0.02,
+    "episode_seconds": 8.0,
+    "max_steps": 400,
+    "reset_keyframe": "solved",
+    "reward_stage": "after_step",
+    "solver_step_s": 0.002,
+    "solver_steps_per_action": 10
+  },
+  "functions": [
+    "abs",
+    "arcsin",
+    "arctan",
+    "asin",
+    "cos",
+    "exp",
+    "sin",
+    "sqrt",
+    "tanh"
+  ],
+  "label": "reed_walk",
+  "model": {
+    "bytes": 5045,
+    "mujoco_version": "3.10.0",
+    "output": "reed_model",
+    "path": "outputs/reed_model-model.xml",
+    "sha256": "973dbfc260a4268a1e97817d7846a8302325b7a6b823f70f274bb8723e557756"
+  },
+  "mujoco_version": "3.10.0",
+  "observations": [
+    {
+      "adr": 0,
+      "channels": [
+        "q_hip_l"
+      ],
+      "dim": 1,
+      "kind": "position",
+      "name": "q_hip_l",
+      "scale": 57.29577951308232,
+      "sensor": "obs/0",
+      "target": "hip_l",
+      "unit": "deg"
+    },
+    {
+      "adr": 1,
+      "channels": [
+        "dq_hip_l"
+      ],
+      "dim": 1,
+      "kind": "velocity",
+      "name": "dq_hip_l",
+      "scale": 57.29577951308232,
+      "sensor": "obs/1",
+      "target": "hip_l",
+      "unit": "deg/s"
+    },
+    {
+      "adr": 2,
+      "channels": [
+        "tau_hip_l"
+      ],
+      "dim": 1,
+      "kind": "actuator_force",
+      "name": "tau_hip_l",
+      "scale": 1000.0,
+      "sensor": "obs/2",
+      "target": "hip_l",
+      "unit": "nmm"
+    },
+    {
+      "adr": 3,
+      "channels": [
+        "q_knee_l"
+      ],
+      "dim": 1,
+      "kind": "position",
+      "name": "q_knee_l",
+      "scale": 57.29577951308232,
+      "sensor": "obs/3",
+      "target": "knee_l",
+      "unit": "deg"
+    },
+    {
+      "adr": 4,
+      "channels": [
+        "dq_knee_l"
+      ],
+      "dim": 1,
+      "kind": "velocity",
+      "name": "dq_knee_l",
+      "scale": 57.29577951308232,
+      "sensor": "obs/4",
+      "target": "knee_l",
+      "unit": "deg/s"
+    },
+    {
+      "adr": 5,
+      "channels": [
+        "tau_knee_l"
+      ],
+      "dim": 1,
+      "kind": "actuator_force",
+      "name": "tau_knee_l",
+      "scale": 1000.0,
+      "sensor": "obs/5",
+      "target": "knee_l",
+      "unit": "nmm"
+    },
+    {
+      "adr": 6,
+      "channels": [
+        "q_hip_r"
+      ],
+      "dim": 1,
+      "kind": "position",
+      "name": "q_hip_r",
+      "scale": 57.29577951308232,
+      "sensor": "obs/6",
+      "target": "hip_r",
+      "unit": "deg"
+    },
+    {
+      "adr": 7,
+      "channels": [
+        "dq_hip_r"
+      ],
+      "dim": 1,
+      "kind": "velocity",
+      "name": "dq_hip_r",
+      "scale": 57.29577951308232,
+      "sensor": "obs/7",
+      "target": "hip_r",
+      "unit": "deg/s"
+    },
+    {
+      "adr": 8,
+      "channels": [
+        "tau_hip_r"
+      ],
+      "dim": 1,
+      "kind": "actuator_force",
+      "name": "tau_hip_r",
+      "scale": 1000.0,
+      "sensor": "obs/8",
+      "target": "hip_r",
+      "unit": "nmm"
+    },
+    {
+      "adr": 9,
+      "channels": [
+        "q_knee_r"
+      ],
+      "dim": 1,
+      "kind": "position",
+      "name": "q_knee_r",
+      "scale": 57.29577951308232,
+      "sensor": "obs/9",
+      "target": "knee_r",
+      "unit": "deg"
+    },
+    {
+      "adr": 10,
+      "channels": [
+        "dq_knee_r"
+      ],
+      "dim": 1,
+      "kind": "velocity",
+      "name": "dq_knee_r",
+      "scale": 57.29577951308232,
+      "sensor": "obs/10",
+      "target": "knee_r",
+      "unit": "deg/s"
+    },
+    {
+      "adr": 11,
+      "channels": [
+        "tau_knee_r"
+      ],
+      "dim": 1,
+      "kind": "actuator_force",
+      "name": "tau_knee_r",
+      "scale": 1000.0,
+      "sensor": "obs/11",
+      "target": "knee_r",
+      "unit": "nmm"
+    },
+    {
+      "adr": 12,
+      "channels": [
+        "torso_com_x",
+        "torso_com_y",
+        "torso_com_z"
+      ],
+      "dim": 3,
+      "kind": "centre_of_mass",
+      "name": "torso_com",
+      "scale": 1000.0,
+      "sensor": "obs/12",
+      "target": "torso_link",
+      "unit": "mm"
+    },
+    {
+      "adr": 15,
+      "channels": [
+        "torso_vel_x",
+        "torso_vel_y",
+        "torso_vel_z"
+      ],
+      "dim": 3,
+      "kind": "centre_of_mass_velocity",
+      "name": "torso_vel",
+      "scale": 1000.0,
+      "sensor": "obs/13",
+      "target": "torso_link",
+      "unit": "mm/s"
+    },
+    {
+      "adr": 18,
+      "channels": [
+        "torso_rot_qw",
+        "torso_rot_qx",
+        "torso_rot_qy",
+        "torso_rot_qz"
+      ],
+      "dim": 4,
+      "kind": "component_orientation",
+      "name": "torso_rot",
+      "scale": 1.0,
+      "sensor": "obs/14",
+      "target": "torso_link",
+      "unit": "quat"
+    },
+    {
+      "adr": 22,
+      "channels": [
+        "torso_avel_x",
+        "torso_avel_y",
+        "torso_avel_z"
+      ],
+      "dim": 3,
+      "kind": "component_angular_velocity",
+      "name": "torso_avel",
+      "scale": 57.29577951308232,
+      "sensor": "obs/15",
+      "target": "torso_link",
+      "unit": "deg/s"
+    }
+  ],
+  "randomisation": [],
+  "reset_variation": [
+    {
+      "angular_velocity_high_rad_s": 0.0,
+      "angular_velocity_low_rad_s": 0.0,
+      "body": "torso_link",
+      "body_id": 2,
+      "clearance_mm": -0.0,
+      "height_high_m": 0.015,
+      "height_low_m": 0.005,
+      "label": "reset_variation",
+      "linear_velocity_high_m_s": 0.04,
+      "linear_velocity_low_m_s": 0.0,
+      "qpos_adr": 0,
+      "qvel_adr": 0,
+      "tilt_high_rad": 0.05235987755982989,
+      "tilt_low_rad": 0.0
+    }
+  ],
+  "reward": [
+    {
+      "expression": "torso_vel_x",
+      "label": "forward_progress",
+      "weight": 0.02
+    },
+    {
+      "expression": "torso_com_z",
+      "label": "stay_tall",
+      "weight": 0.005
+    },
+    {
+      "expression": "tau_hip_l**2 + tau_knee_l**2 + tau_hip_r**2 + tau_knee_r**2",
+      "label": "control_cost",
+      "weight": -2e-06
+    }
+  ],
+  "schema": "cadex-training-task-v1",
+  "termination": [
+    {
+      "above": null,
+      "below": 120.0,
+      "expression": "torso_com_z",
+      "label": "fell"
+    }
+  ],
+  "variation_algorithm": "random.Random(seed) continuing in bundle order after the randomisation draws: for each reset_variation entry uniform(tilt_low_rad, tilt_high_rad), uniform(0, 2*pi) for the azimuth, uniform(height_low_m, height_high_m), three uniform(angular_velocity_low_rad_s, angular_velocity_high_rad_s), then uniform(linear_velocity_low_m_s, linear_velocity_high_m_s) and uniform(0, 2*pi) for its azimuth -- always eight; then for each disturbance entry uniform(newtons_low, newtons_high), uniform(0, 2*pi) mapped onto the declared arc by azimuth_low_rad + drawn * ((azimuth_high_rad - azimuth_low_rad) / (2*pi)) -- the ratio first, so that the full circle multiplies by exactly 1.0 -- and read as an azimuth when horizontal and as a sign when vertical, and uniform(at_low_s, at_high_s) -- always three, the last ignored when sustained"
+}
