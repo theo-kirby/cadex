@@ -411,3 +411,123 @@ def test_a_never_reloaded_page_adds_the_final_policy_stop_when_the_walk_lands_it
     finally:
         server.shutdown()
         server.server_close()
+
+
+#: Each scrubber row at phone width: its slider, label and status, the
+#: viewport, the expanded overlay, and the theme's tokens to compare against.
+SCRUBBER = """(function (box) {
+  function q(s) { return document.querySelector(s); }
+  function rect(e) { var b = e.getBoundingClientRect(); return {x: b.x, y: b.y, right: b.right, bottom: b.bottom, w: b.width, h: b.height}; }
+  function token(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  var row = q('#' + box), pick = row.querySelector('input[type="range"]'), label = row.querySelector('output'),
+      status = row.querySelector('p'), name = row.querySelector('.timeline-name');
+  return {theme: document.documentElement.dataset.theme, state: row.dataset.state, page_width: document.documentElement.scrollWidth,
+          row: rect(row), pick: rect(pick), label: rect(label), name: rect(name), text: label.textContent,
+          label_clipped: label.scrollWidth > label.clientWidth, label_color: getComputedStyle(label).color,
+          status_color: status.hidden ? null : getComputedStyle(status).color,
+          model: rect(q('#model')), overlay: rect(q('#overlay')),
+          ink: token('--ink'), bad: token('--bad'), warn: token('--warn')};
+})(%s)"""
+
+
+#: ``--scrub``: the narrowest a scrubber's slider gets (docs/DASHBOARD.md §5).
+SCRUB_PX = 160
+
+
+def _phone(browser, url: str, theme: str):
+    page = browser.page("about:blank")
+    page.send("Emulation.setDeviceMetricsOverride",
+              {"width": 390, "height": 844, "deviceScaleFactor": 1, "mobile": True})
+    page.send("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
+    page.send("Page.navigate", {"url": url})
+    page.wait_for("document.readyState === 'complete' && !!window.cadexReview")
+    page.evaluate("window.cadexReview.ready", await_promise=True)
+    page.evaluate(f"window.cadexTheme.set({json.dumps(theme)})")
+    page.evaluate("window.cadexReview.setOverlayCollapsed(false)")
+    return page
+
+
+def _hex_rgb(value: str) -> str:
+    return "rgb(%d, %d, %d)" % tuple(int(value[i:i + 2], 16) for i in (1, 3, 5))
+
+
+def _assert_scrubber(m: dict, status_token: str | None) -> None:
+    """The row is in the viewport, under the overlay, its slider at least
+    ``SCRUB_PX`` wide and a touch target tall, beside nothing it covers, and
+    its words in the theme's own colours."""
+
+    row, pick, label, name, model = m["row"], m["pick"], m["label"], m["name"], m["model"]
+    assert m["page_width"] <= 390
+    assert model["x"] <= row["x"] and row["right"] <= model["right"] and row["bottom"] <= model["bottom"]
+    assert row["y"] >= m["overlay"]["bottom"], (row, m["overlay"])
+    assert pick["w"] >= SCRUB_PX, (m["text"], pick)
+    assert pick["h"] >= 32  # the touch --tool height
+    assert pick["x"] >= name["right"] and pick["right"] <= row["right"]
+    # The label sits after the slider on its row, or under it on the next.
+    assert label["x"] >= pick["right"] or label["y"] >= pick["bottom"], (label, pick)
+    assert label["right"] <= row["right"] and not m["label_clipped"]
+    assert m["label_color"] == _hex_rgb(m["ink"])
+    assert m["status_color"] == (None if status_token is None else _hex_rgb(m[status_token]))
+
+
+@needs_browser
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_both_scrubbers_keep_their_width_at_390px_in_either_theme(tmp_path, browser, theme) -> None:
+    """ADR-556: at 390 px a long checkpoint label once squeezed the slider to
+    0 px, so a phone could not step back to an older checkpoint; the
+    revision slider was 53 px. Each slider now keeps ``--scrub`` and the
+    label wraps under it, in the light theme as in the dark."""
+
+    from test_review_revisions import _biped_store
+
+    root = _project(tmp_path)
+    _manifest(root, REVISION_B)
+    _stage_accepted(root, REVISION_B)
+    train = _training_run(root) / "train"
+    (train / "walk.000020.rollout-trace.json").write_text(json.dumps(_trace("000020", 19, 0.5)))
+    (train / "walk.000040.rollout-trace.json").write_text(json.dumps(_trace("000040", 39, 1.25)))
+    (train / "walk.000060.rollout-failed.json").write_text(json.dumps({
+        "schema": "cadex-checkpoint-rollout-failure-v1", "checkpoint": "walk.000060.cxpolicy",
+        "tag": "000060", "iteration": 59, "reason": "child_failed",
+        "error": "the rollout exited 1: the policy's observation size does not match the task's"}))
+    history = tmp_path / "orun3-biped-history"
+    _biped_store(history)
+    servers = [_served(root), _served(history)]
+    page = None
+    try:
+        page = _phone(browser, servers[0].url, theme)
+        page.evaluate(f"window.cadexReview.setSource('run:{RUN}')", await_promise=True)
+        newest = "document.getElementById('checkpoint-label').textContent"
+        page.wait_for(newest + " === 'iteration 60 · reward — · 3/3 · newest'", timeout=10)
+        failed = page.evaluate(SCRUBBER % json.dumps("checkpoints"))
+        assert failed["theme"] == theme and failed["state"] == "failed"
+        _assert_scrubber(failed, "bad")
+        assert page.evaluate("window.cadexReview.pickCheckpoint(1)") == "walk.000040"
+        page.wait_for(PLAYING + " === 'walk.000040'", timeout=10)
+        ready = page.evaluate(SCRUBBER % json.dumps("checkpoints"))
+        _assert_scrubber(ready, None)
+        # The playback row below it is still inside the viewport.
+        play = page.evaluate("(function(){var b=document.getElementById('playback').getBoundingClientRect();"
+                             "return [b.bottom, document.getElementById('model').getBoundingClientRect().bottom];})()")
+        assert play[0] <= play[1]
+
+        page = _phone(browser, servers[1].url, theme)
+        page.evaluate("window.cadexReview.setSource('revisions')", await_promise=True)
+        page.evaluate("window.cadexReview.pickRevision(0)")
+        page.wait_for("document.getElementById('revision-timeline').dataset.state === 'missing'", timeout=10)
+        missing = page.evaluate(SCRUBBER % json.dumps("revision-timeline"))
+        _assert_scrubber(missing, "warn")
+        page.evaluate("window.cadexReview.pickRevision(2)")
+        page.wait_for("document.getElementById('revision-timeline').dataset.state === 'retained'", timeout=10)
+        retained = page.evaluate(SCRUBBER % json.dumps("revision-timeline"))
+        _assert_scrubber(retained, None)
+        measured = {name: round(m["pick"]["w"]) for name, m in
+                    (("checkpoint_failed", failed), ("checkpoint_ready", ready),
+                     ("revision_missing", missing), ("revision_retained", retained))}
+        print(json.dumps({"scrubbers_390": {"theme": theme, "slider_px": measured}}))
+    finally:
+        if page is not None:
+            page.evaluate("window.cadexTheme.set('dark')")  # the module's browser is shared
+        for server in servers:
+            server.shutdown()
+            server.server_close()

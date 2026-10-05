@@ -35355,3 +35355,32 @@ this change the test fails on the line naming `dc0af1158165-…`. The server-sid
 directory-only reason exactly.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-556 — At phone width a scrubber's slider keeps a 160 px floor and its label wraps under it (2026-10-05, orun3 long-term rung)
+
+**Context.** The charter's long-term rung asks for the overlay and both scrubbers to work well
+at phone width and in the light theme. Measured at 390 × 844 with touch emulation, in both
+themes: each `.timeline` row is a wrapping flex row, and its label is `white-space: nowrap`.
+The only part that could shrink was the slider (`flex: 1`, with the page's global
+`min-width: 0`). When the newest checkpoint's rollout had failed, the label read
+`iteration 60 · reward — · 3/3 · newest` and took 275 px. That squeezed `#checkpoint-pick` to
+0 px, so a phone could not step back to an older checkpoint at all. A ready checkpoint left the
+slider at 43 px, and the revision timeline's at 53 px. Both were 16 px tall. The colours were
+already right: every label and status line reads its theme's tokens.
+
+**Decision.** A new spacing token, `--scrub: 160px`. A `.timeline` slider is `flex: 1 1
+var(--scrub)` with `min-width: var(--scrub)`, so where the label does not fit beside it, the
+row wraps and the label goes onto its own line. The slider is `--tool` tall (32 px on a coarse
+pointer). That is CSS only. No markup, script, route or key changes. At desk width the slider
+grows as it did before.
+
+**Test.** `cli/tests/test_review_checkpoints.py`, in the light and dark themes at 390 px: a
+Chromium driven through `browser.py` measures the checkpoint row with its newest rollout failed
+and then with a ready one picked, and the revision row on a revision that was not retained and
+then on one that was. In every case the slider is ≥ 160 px and ≥ 32 px tall, the label is after
+it or under it and not clipped, and the row is inside the viewport and below the expanded
+overlay. The label is `--ink` and the status line is `--bad` or `--warn`, as the theme defines
+them. Measured: 287 px for the checkpoint slider and 303 px for the revision slider. Without
+this change the test fails on the checkpoint slider's 0.03 px.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).

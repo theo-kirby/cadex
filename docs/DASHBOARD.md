@@ -185,6 +185,11 @@ A 4 px base: `--s1` 4, `--s2` 8, `--s3` 12, `--s4` 16, `--s5` 24, `--s6` 32.
 - **Controls**: minimum 40 × 40 px hit area on touch (`@media (pointer:
   coarse)`), 32 px on desk; `--surface-2` fill, `--rule` border, `--surface-3`
   on hover, `--rule-strong` on focus. No native chrome on buttons.
+- **Scrubbers** (the checkpoint, revision and playback rows in the 3D
+  viewport): a slider never gets narrower than `--scrub`, 160 px, and is a
+  `--tool` touch target tall. Where its label does not fit beside it, the
+  label wraps under it on its own line (ADR-556). The rows read the same
+  tokens in both themes.
 - **Areas** have a 6 px radius (`--radius-area`) and a 4 px gap (`--gap`)
   between them on `--bg`; an area's header is 32 px on `--surface-2`, its
   controls 24 px.

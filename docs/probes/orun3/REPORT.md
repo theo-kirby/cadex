@@ -123,6 +123,7 @@ required.
 | ADR-553 | a `cadex mcp` call is logged in flight as it starts, so a running `evaluate` reads as evaluating |
 | ADR-554 | a run's model is re-read when the walk lands its export or rollout, so a page left open adds the `final policy` stop |
 | ADR-555 | the evaluating line names the agent's `evaluate` call, never an evaluation directory's id |
+| ADR-556 | at phone width a scrubber's slider keeps a 160 px floor and its label wraps under it, in either theme |
 
 ## 5. Remaining defects
 
@@ -158,9 +159,17 @@ Also open, though not defects of this run's views:
 - **Four of `orun3-biped`'s thirteen original revisions have no model**
   (§2). The engine refuses their stale policy output (ADR-520), and the
   page says so.
-- **The long-term rungs were not worked:** phone width and the light
-  theme for the overlay and both scrubbers, and binary meshes for the
-  timeline. Only V1's 390 px bound was measured.
+- **The long-term rungs were not worked when this report landed:** phone
+  width and the light theme for the overlay and both scrubbers, and binary
+  meshes for the timeline. Only V1's 390 px bound was measured. **Since
+  then, ADR-556:** at 390 px a long checkpoint label squeezed the
+  checkpoint slider to 0 px (a failed newest checkpoint), and the revision
+  slider was 53 px. Both sliders now keep a 160 px floor (287 px and 303 px
+  measured at 390 px, in both themes), with their labels wrapping beneath.
+  `test_review_checkpoints.py` pins this in both themes. Still open: at
+  390 px in the light theme the model's own status line
+  (`#model-status`, `--warn` `#8a6100`) sits on the dark viewport floor
+  and partly under the expanded overlay. Binary meshes are not started.
 
 ## 6. Done claim
 
