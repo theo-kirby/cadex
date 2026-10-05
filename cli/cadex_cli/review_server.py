@@ -54,6 +54,8 @@ from typing import Any, Callable, Mapping
 from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
 
+from .checkpoints import FAILURE_SUFFIX as CHECKPOINT_FAILURE_SUFFIX
+from .checkpoints import TRACE_SUFFIX as CHECKPOINT_TRACE_SUFFIX
 from .revisions import read_history as read_revision_history
 from .session import read_agent_state
 from .studio import PRINTABLES, STUDIO
@@ -393,6 +395,137 @@ def run_playback(project_root: Path | str, record: Mapping[str, Any]) -> dict[st
     playback = trace_playback(_load_json(path)) if path is not None else {"available": False, "reason": reason}
     playback.update(run=str(record.get("run")),
                     source=path.relative_to(root).as_posix() if path is not None else None)
+    return playback
+
+
+# -- checkpoint rollouts: training as motion (ADR-544 writes them, ADR-545 shows them) --
+
+#: ``walk.000040.rollout-trace.json`` and its siblings: the output, the
+#: numbered tag, and which of the three files it is.
+_CHECKPOINT_FILE = re.compile(r"(?P<stem>(?P<output>.+)\.(?P<tag>\d+))"
+                              r"(?P<kind>\.cxpolicy|" + re.escape(CHECKPOINT_TRACE_SUFFIX)
+                              + "|" + re.escape(CHECKPOINT_FAILURE_SUFFIX) + ")")
+#: The newest checkpoints the stage lists; older ones stay on disk.
+CHECKPOINTS_LISTED = 64
+#: What one checkpoint's trace says of itself, kept per file identity so
+#: a poll reparses no trace that did not change.
+_CHECKPOINT_MEMO: "OrderedDict[str, tuple[tuple[int, int] | None, dict[str, Any]]]" = OrderedDict()
+_CHECKPOINT_MEMO_SIZE = 512
+
+
+def _checkpoint_dir(root: Path, run: str) -> Path | None:
+    """``runs/<run>/train`` when it resolves inside the project, else ``None``."""
+
+    ref = resolve_reference(root, f"{RUNS_DIRNAME}/{run}/train")
+    if ref["error"] or not ref["exists"] or not (root / ref["path"]).is_dir():
+        return None
+    return root / ref["path"]
+
+
+def _checkpoint_head(path: Path) -> dict[str, Any]:
+    """A trace's ``checkpoint`` block and its length, or a failure record's
+    reason, read once per file identity."""
+
+    key = _stat_key(path)
+    with _MEMO_LOCK:
+        held = _CHECKPOINT_MEMO.get(str(path))
+        if held is not None and held[0] == key:
+            _CHECKPOINT_MEMO.move_to_end(str(path))
+            return held[1]
+    data = _load_json(path) or {}
+    if path.name.endswith(CHECKPOINT_FAILURE_SUFFIX):
+        head = {"state": "failed", "iteration": data.get("iteration"), "reward_per_step": None,
+                "sha256": None, "reason": str(data.get("reason") or "unreadable failure record")[:120],
+                "error": str(data.get("error") or "")[:300]}
+    else:
+        block = data.get("checkpoint") if isinstance(data.get("checkpoint"), Mapping) else {}
+        playback = trace_playback(data)
+        head = {"state": "ready" if playback["available"] else "failed",
+                "iteration": block.get("iteration"), "reward_per_step": block.get("reward_per_step"),
+                "sha256": block.get("sha256"),
+                "reason": "" if playback["available"] else "unplayable_trace",
+                "error": "" if playback["available"] else playback["reason"],
+                "duration_s": playback.get("duration_s")}
+    for name in ("iteration", "reward_per_step", "duration_s"):
+        value = head.get(name)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
+                                  or not math.isfinite(value)):
+            head[name] = None
+    with _MEMO_LOCK:
+        _CHECKPOINT_MEMO[str(path)] = (key, head)
+        _CHECKPOINT_MEMO.move_to_end(str(path))
+        while len(_CHECKPOINT_MEMO) > _CHECKPOINT_MEMO_SIZE:
+            _CHECKPOINT_MEMO.popitem(last=False)
+    return head
+
+
+def checkpoint_rollouts(project_root: Path | str, run: str) -> dict[str, Any]:
+    """A run's checkpoints as the 3D viewport scrubs them (ADR-545).
+
+    One item per numbered checkpoint that has been rolled out, oldest
+    first: ``ready`` with the URL of its playback, or ``failed`` with the
+    reason its failure record (or an unplayable trace) gives. ``pending``
+    counts the checkpoints on disk with neither yet -- the watcher has not
+    reached them. Only regular files in the run's own ``train/`` are read;
+    a checkpoint is never borrowed from another run.
+    """
+
+    root = Path(project_root).expanduser()
+    train = _checkpoint_dir(root, run)
+    if train is None:
+        return {"run": run, "items": [], "pending": 0, "listed_of": 0,
+                "reason": "the run has no train directory"}
+    found: dict[str, dict[str, Any]] = {}
+    for path in train.iterdir():
+        match = _CHECKPOINT_FILE.fullmatch(path.name)
+        if match is None or path.is_symlink() or not path.is_file():
+            continue
+        entry = found.setdefault(match["stem"], {"stem": match["stem"], "tag": match["tag"],
+                                                 "kinds": set()})
+        entry["kinds"].add(match["kind"])
+    items, pending = [], 0
+    for stem, entry in found.items():
+        kinds = entry.pop("kinds")
+        if CHECKPOINT_TRACE_SUFFIX in kinds:
+            head = _checkpoint_head(train / (stem + CHECKPOINT_TRACE_SUFFIX))
+        elif CHECKPOINT_FAILURE_SUFFIX in kinds:
+            head = _checkpoint_head(train / (stem + CHECKPOINT_FAILURE_SUFFIX))
+        else:
+            pending += 1
+            continue
+        item = {**entry, **head}
+        if item["iteration"] is None:
+            item["iteration"] = int(entry["tag"]) - 1
+        item["url"] = (f"/api/playback/checkpoint/{quote(run, safe='')}/{quote(stem, safe='')}"
+                       if head["state"] == "ready" else None)
+        items.append(item)
+    items.sort(key=lambda item: (int(item["tag"]), item["stem"]))
+    return {"run": run, "items": items[-CHECKPOINTS_LISTED:], "pending": pending,
+            "listed_of": len(items), "reason": "" if items or pending else "no checkpoint rolled out yet"}
+
+
+def checkpoint_playback(project_root: Path | str, run: str, stem: str) -> dict[str, Any] | None:
+    """``/api/playback/checkpoint/<run>/<stem>``: one checkpoint's rollout
+    as playback frames, with what the trainer said of it; ``None`` when
+    the name is not a checkpoint this run's ``train/`` holds."""
+
+    root = Path(project_root).expanduser()
+    match = _CHECKPOINT_FILE.fullmatch(stem + CHECKPOINT_TRACE_SUFFIX)
+    train = _checkpoint_dir(root, run)
+    if match is None or match["stem"] != stem or train is None:
+        return None
+    path = train / (stem + CHECKPOINT_TRACE_SUFFIX)
+    if path.is_symlink() or not path.is_file():
+        failure = train / (stem + CHECKPOINT_FAILURE_SUFFIX)
+        if failure.is_symlink() or not failure.is_file():
+            return None
+        head = _checkpoint_head(failure)
+        return {"available": False, "reason": f"{head['reason']}: {head['error']}", "run": run,
+                "stem": stem, "checkpoint": head, "source": failure.relative_to(root).as_posix()}
+    trace = _load_json(path)
+    playback = trace_playback(trace)
+    playback.update(run=run, stem=stem, checkpoint=_checkpoint_head(path),
+                    source=path.relative_to(root).as_posix())
     return playback
 
 
@@ -1745,6 +1878,7 @@ def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
     training, a quiet one included, else the one :func:`default_run`
     picks, and ``training`` its telemetry with the
     reward and loss sparklines, or ``None`` when no run has telemetry.
+    ``checkpoints`` is that run's :func:`checkpoint_rollouts` (ADR-545).
     Everything is read from the project directory; nothing is inferred
     about a process the files do not describe.
     """
@@ -1779,7 +1913,10 @@ def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
                      since=_iso(recorded_at) if recorded_at else None)
     elif accepted_at is not None and now - accepted_at <= DESIGNING_WINDOW_S:
         stage.update(state="designing", reason=f"revision {trail[0].get('ordinal')} accepted")
-    return {**stage, "run": None if record is None else name, "runs": len(runs), "training": training}
+    # The read run's checkpoint rollouts, for the 3D viewport's scrubber (ADR-545).
+    checkpoints = checkpoint_rollouts(root, name) if record is not None else None
+    return {**stage, "run": None if record is None else name, "runs": len(runs), "training": training,
+            "checkpoints": checkpoints}
 
 
 class ReviewProject:
@@ -2396,6 +2533,14 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     self._not_found(f"run {rest[2]!r}")
                     return
                 self._send_json(run_playback(project.root, record))
+                return
+            if rest[:2] == ["playback", "checkpoint"] and len(rest) == 4:
+                played = (checkpoint_playback(project.root, rest[2], rest[3])
+                          if project.run(rest[2]) is not None else None)
+                if played is None:
+                    self._not_found("/".join(segments))
+                    return
+                self._send_json(played)
                 return
             self._not_found("/".join(segments))
             return

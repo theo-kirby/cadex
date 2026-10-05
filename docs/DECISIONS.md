@@ -34830,3 +34830,62 @@ engine suite's policy fixture, because no policy binary is committed.
 - `--checkpoint-every -1` is a usage error for `train` and `walk`.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-545 — The 3D viewport loops each checkpoint's rollout, with a scrubber (2026-10-05, orun3 V2)
+
+**Context.** ADR-544 rolls each checkpoint out through the engine while the run trains and
+writes `<out>.<tag>.rollout-trace.json` beside it, or a `.rollout-failed.json` with the
+reason. Nothing on the page read them, so the owner still saw training only as numbers.
+orun3's V2 asks the viewport to loop the newest checkpoint, labelled with its iteration
+and reward, to let a scrubber pick older ones, to follow newer ones unless one was picked,
+and to show a failed rollout with its reason.
+
+**Decision.**
+- **The list rides the stage.** `GET /api/project`'s `stage` (ADR-542) gains
+  `checkpoints`, built by `checkpoint_rollouts` for the run the overlay reads. Each item is
+  one numbered checkpoint that has a trace or a failure record, oldest first, at most the
+  newest 64. It carries the iteration, reward and sha256 from the trace's `checkpoint`
+  block, or the failure's `reason` and `error`. `pending` counts checkpoints with neither.
+  A trace is parsed once per file identity (mtime, size), so a poll on an unchanged run
+  parses nothing. Only regular files in the run's own `train/` count, and nothing is
+  borrowed from another run.
+- **One read route**, `GET /api/playback/checkpoint/<run>/<stem>`. It serves the trace
+  through the existing `trace_playback`, so a checkpoint plays exactly the way a run's own
+  rollout does. For a failed checkpoint it answers `available: false` with the reason. For
+  any other name it answers 404. The page stays read-only (ADR-537).
+- **The scrubber**, `#checkpoints`, sits above the playback timeline. Its stops are the
+  checkpoints, then the run's own rollout once it has one. The newest loops. Picking an
+  older stop keeps that stop while newer ones land. Back at the newest end, the page
+  follows again (`data-follow`). A failed stop plays nothing, puts the model at rest and
+  shows the reason in `--bad`. Pausing holds across a switch.
+- **The viewport turns to the training run on its own.** It does this while that run is
+  training and has a ready rollout, and only if no source was picked by hand this visit.
+  The poses go onto that run's frozen model (`training-view.json`), whose links carry the
+  same names as the traces.
+
+**Assumption, reversible.** The automatic turn happens once, and the page does not turn
+back to the accepted model when training ends. The run stays the source until the owner
+picks another. A later revision's model is one select away, and flipping the source under
+the owner at the end of a run would hide the result they were watching.
+
+**Measured** on the orun3 biped's 11 real checkpoint traces (`probe3`, rolled out under
+ADR-544): the `stage.checkpoints` block is 3,357 bytes. Listing it takes 10.2 ms the first
+time and 0.17 ms on a poll with nothing changed. The newest checkpoint's playback is
+22,107 bytes for a 24,225-byte trace.
+
+**Test.** `cli/tests/test_review_checkpoints.py`:
+- The server half has no engine. It covers the order, failures and pending, the route's
+  playback and refusals (pending, `best`, a file name, traversal, another run), the
+  64-item bound, no reparse on an unchanged poll, and absence (no run, no rollouts yet).
+- The browser half runs against the real engine. A stepped trainer writes the biped's
+  checkpoints through `run_trainer` with the watcher polling, and holds after each one.
+  While it is still running, the page:
+  1. turns to the run and loops `walk.000020`;
+  2. replaces it with `walk.000040` when that lands;
+  3. keeps a hand-picked `walk.000020` while a third checkpoint lands;
+  4. back at the newest end, shows that third checkpoint's real engine failure
+     (`policy_not_a_container`) with its reason and no playback;
+  5. then follows to `walk.000080`.
+- A source picked by hand is not taken over by training.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).

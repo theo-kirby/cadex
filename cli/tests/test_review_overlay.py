@@ -163,7 +163,8 @@ def test_a_project_with_no_runs_has_a_stage_and_no_training(tmp_path):
     root = _project(tmp_path)
     _manifest(root, REVISION_B)
     stage = _stage(root)
-    assert stage == {"state": "idle", "reason": "", "since": None, "run": None, "runs": 0, "training": None}
+    assert stage == {"state": "idle", "reason": "", "since": None, "run": None, "runs": 0, "training": None,
+                     "checkpoints": None}
 
 
 # -- the page --------------------------------------------------------------------

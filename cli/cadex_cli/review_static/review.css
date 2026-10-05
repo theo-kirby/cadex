@@ -152,11 +152,16 @@ canvas#viewer { display: block; width: 100%; height: 100%; touch-action: none; }
 #overlay svg { display: block; width: 100%; height: 24px; background: var(--surface-2); border-radius: 3px; }
 #overlay polyline { fill: none; stroke: var(--info); stroke-width: 1.4; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
 #overlay-warning { margin: var(--s1) 0 0; color: var(--warn); }
-.timeline { position: absolute; z-index: 1; left: var(--s2); right: var(--s2); bottom: var(--s2); display: flex; align-items: center; gap: var(--s2);
+.timelines { position: absolute; z-index: 1; left: var(--s2); right: var(--s2); bottom: var(--s2); display: flex; flex-direction: column; gap: var(--s1); }
+.timeline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2);
             padding: var(--s1) var(--s2); background: color-mix(in srgb, var(--surface-2) 88%, transparent); border-radius: var(--radius-area); font-size: var(--fs-0); }
 .timeline button { min-height: var(--tool); height: var(--tool); font-size: var(--fs-0); padding: 0 var(--s2); }
 .timeline input[type="range"] { flex: 1; accent-color: var(--accent); }
 .timeline output { min-width: 56px; text-align: right; }
+.timeline-name { color: var(--ink-2); }
+#checkpoint-label { min-width: 0; white-space: nowrap; font-family: var(--mono); }
+#checkpoint-status { flex-basis: 100%; margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+#checkpoints[data-state="failed"] #checkpoint-status { color: var(--bad); }
 
 /* 2D viewport. */
 #sheet { overflow: hidden; }

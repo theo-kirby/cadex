@@ -1477,7 +1477,19 @@ report was written in the last 120 s, `training` when the run read is
 `since`, `run` (the newest run training, else the run a fresh visit opens),
 `runs` (how many), and `training`: that run's telemetry with `spark`, its
 reward and loss histories cut to at most 64 points each, or `null` when no
-run has telemetry. It is one bounded block whatever the history. The page
+run has telemetry. It is one bounded block whatever the history. `stage`
+also carries **`checkpoints`** (ADR-545): that run's numbered checkpoints
+rolled out by ADR-544's watcher, at most the newest 64 (`listed_of` says
+how many), oldest first. Each item is its `stem` (`walk.000040`), `tag`,
+`state` (`ready`, or `failed` from its `.rollout-failed.json` or an
+unplayable trace), `iteration`, `reward_per_step`, `sha256`, `reason` and
+`error`, and for a ready one `duration_s` and `url`,
+`/api/playback/checkpoint/<run>/<stem>`: that trace through the same
+`trace_playback` as a run's own rollout, with the trace's `checkpoint`
+block. `pending` counts checkpoints with neither file yet. Only regular
+files in the run's own `train/` are read, and each trace is parsed once
+per file identity, so an idle poll reparses nothing; `null` when there is
+no run. The page
 has no telemetry panel (ADR-533 removed it): the 3D viewport's stage overlay
 (ADR-542) is drawn from `/api/project`'s `stage` alone, on the page's existing
 poll, and is rebuilt only when that block changes, so the overlay reads the

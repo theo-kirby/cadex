@@ -5,7 +5,8 @@
 // under a menu bar (ADR-539).
 //
 //   3D viewport  the accepted model or a run's, shaded or hairline, a
-//                run's rollout played back on a timeline, and the stage
+//                run's rollout played back on a timeline, a training run's
+//                checkpoints looped as they land (ADR-545), and the stage
 //                overlay (what the project is doing, how training is going;
 //                ADR-542) -- the whole screen by default;
 //   2D viewport  the project's drawings, images, documents, evaluation films and training plots,
@@ -206,7 +207,7 @@
     if (modelAbort) modelAbort.abort();
     var controller = modelAbort = new AbortController(), signal = controller.signal;
     status.dataset.state = 'loading'; status.textContent = 'loading model…';
-    stopPlayback(); playback = null; $('playback').hidden = true;
+    stopPlayback(); playback = null; looping = false; ckpt.shown = null; $('playback').hidden = true;
     return fetchRetry(BASE + path, signal, 2).then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.json();
@@ -231,6 +232,8 @@
         modelFailures = 0;
         status.dataset.state = 'loaded';
         status.textContent = '';
+        // A run with checkpoint rollouts plays them, its own rollout last.
+        if (checkpointItems().items.length) { renderCheckpoints(); return null; }
         return loadPlayback(manifest, ticket);
       });
     }).catch(function (error) {
@@ -255,19 +258,22 @@
 
   // Playback: the trace's own placements, blended between the two frames
   // either side of the time shown. Nothing is simulated here.
-  var playback = null, playT = 0, playing = null;
+  var playback = null, playT = 0, playing = null, looping = false;
 
   function loadPlayback(manifest, ticket) {
     var info = manifest.playback;
     if (!info || !info.url) return null;
     return json(BASE + info.url).then(function (served) {
       if (ticket !== modelLoad || !served.available || !served.times_s || served.times_s.length < 2) return;
-      playback = served;
-      var slider = $('play-time'), times = served.times_s;
-      slider.min = String(times[0]); slider.max = String(times[times.length - 1]);
-      $('playback').hidden = false;
-      seek(times[0]);
+      showPlayback(served);
     }).catch(function () { /* the model stands without its rollout */ });
+  }
+  function showPlayback(served) {
+    playback = served;
+    var slider = $('play-time'), times = served.times_s;
+    slider.min = String(times[0]); slider.max = String(times[times.length - 1]);
+    $('playback').hidden = false;
+    seek(times[0]);
   }
   function blend(a, b, f) {
     var out = {};
@@ -304,11 +310,104 @@
     $('play-toggle').textContent = 'Pause';
     function step(now) {
       var t = from + (now - origin) / 1000;
+      if (t >= end && looping) { from = times[0]; origin = now; t = from; }
       seek(t);
       if (t >= end) { stopPlayback(); return; }
       playing = requestAnimationFrame(step);
     }
     playing = requestAnimationFrame(step);
+  }
+
+  // -- 3D viewport: checkpoint rollouts (ADR-545) -------------------------------------
+  // The run the overlay reads lists its checkpoints in `stage.checkpoints`,
+  // each rolled out by the engine as it landed (ADR-544). While that run is
+  // the model shown, the newest one loops; the scrubber picks an older one,
+  // and moving it back to the newest end follows new ones again. While the
+  // run trains, the viewport turns to it unless a source was picked by hand.
+  var ckpt = { items: [], pending: 0, pinned: null, shown: null, playing: null, paused: false, chosenSource: false };
+
+  function checkpointItems() {
+    var stage = (state.review && state.review.stage) || {}, block = stage.checkpoints;
+    if (!block || !stage.run || source !== 'run:' + stage.run) return { items: [], pending: 0 };
+    var items = (block.items || []).slice(), own = state.model && state.model.available && state.model.playback;
+    // The run's own rollout, once it has one, is its newest policy.
+    if (items.length && own && own.available && own.url) {
+      items.push({ stem: 'final', tag: 'final', state: 'ready', url: own.url, iteration: null, reward_per_step: null, final: true });
+    }
+    return { items: items, pending: block.pending || 0 };
+  }
+  function followTraining() {
+    var stage = state.review.stage || {}, block = stage.checkpoints;
+    if (ckpt.chosenSource || stage.state !== 'training' || !block || !stage.run || source === 'run:' + stage.run) return;
+    if (!(block.items || []).some(function (item) { return item.state === 'ready'; })) return;
+    source = 'run:' + stage.run;
+    $('view3d-source').value = source;
+  }
+  function checkpointName(item) {
+    if (item.final) return 'final policy';
+    return 'iteration ' + (item.iteration + 1) + ' · reward ' + (item.reward_per_step == null ? '—' : fmt(item.reward_per_step));
+  }
+  function restPoses() {
+    var poses = {};
+    ((state.model && state.model.components) || []).forEach(function (c) { if (c.placement) poses[c.name] = c.placement; });
+    return poses;
+  }
+  function renderCheckpoints() {
+    var got = checkpointItems(), items = got.items, box = $('checkpoints');
+    ckpt.items = items; ckpt.pending = got.pending;
+    setHidden('checkpoints', !items.length);
+    if (!items.length) { ckpt.shown = null; ckpt.playing = null; return; }
+    var stems = items.map(function (item) { return item.stem; });
+    if (ckpt.pinned && stems.indexOf(ckpt.pinned) < 0) ckpt.pinned = null;
+    var index = ckpt.pinned ? stems.indexOf(ckpt.pinned) : items.length - 1, item = items[index];
+    var pick = $('checkpoint-pick');
+    if (pick.max !== String(items.length - 1)) pick.max = String(items.length - 1);
+    if (pick.value !== String(index)) pick.value = String(index);
+    if (box.dataset.follow !== String(!ckpt.pinned)) box.dataset.follow = String(!ckpt.pinned);
+    if (box.dataset.state !== item.state) box.dataset.state = item.state;
+    setText('checkpoint-label', checkpointName(item) + ' · ' + (index + 1) + '/' + items.length + (ckpt.pinned ? '' : ' · newest'));
+    var note = item.state === 'failed' ? 'rollout failed: ' + item.reason + (item.error ? ' — ' + item.error : '')
+             : got.pending ? got.pending + ' newer checkpoint' + (got.pending > 1 ? 's' : '') + ' rolling out' : '';
+    setText('checkpoint-status', note).title = note;
+    setHidden('checkpoint-status', !note);
+    var key = item.stem + ':' + item.state + ':' + (item.sha256 || item.url || '');
+    // Poses go onto that run's own model, once it is drawn.
+    var drawn = state.model && state.model.run === source.slice(4) && $('model-status').dataset.state === 'loaded';
+    if (key === ckpt.shown || !drawn) return;
+    ckpt.shown = key;
+    showCheckpoint(item, key);
+  }
+  function showCheckpoint(item, key) {
+    var ticket = modelLoad;
+    stopPlayback(); playback = null; ckpt.playing = null;
+    if (item.state !== 'ready') {
+      $('playback').hidden = true;
+      state.viewer.setPoses(restPoses());
+      return null;
+    }
+    return json(BASE + item.url).then(function (served) {
+      if (ticket !== modelLoad || ckpt.shown !== key) return;
+      if (!served.available || !served.times_s || served.times_s.length < 2) {
+        $('playback').hidden = true;
+        setText('checkpoint-status', 'rollout unplayable: ' + (served.reason || 'no frames')).hidden = false;
+        return;
+      }
+      looping = true; ckpt.playing = item.stem;
+      showPlayback(served);
+      if (!ckpt.paused) togglePlayback();
+    }).catch(function (error) {
+      if (ckpt.shown !== key) return;
+      ckpt.shown = null;  // tried again on the next poll
+      setText('checkpoint-status', 'rollout failed to load (' + error.message + '); trying again').hidden = false;
+    });
+  }
+  function pickCheckpoint(index) {
+    var items = ckpt.items;
+    if (!items.length) return null;
+    index = Math.max(0, Math.min(items.length - 1, Math.round(index)));
+    ckpt.pinned = index === items.length - 1 ? null : items[index].stem;
+    renderCheckpoints();
+    return ckpt.pinned;
   }
 
   // -- 3D viewport: the stage overlay (ADR-542) ---------------------------------------
@@ -639,7 +738,7 @@
   function render() {
     renderFreshness();
     if (!state.review) return;
-    renderHeader(); renderRevisions(); renderOverlay(); renderSources(); renderSheetSources();
+    renderHeader(); renderRevisions(); renderOverlay(); renderSources(); followTraining(); renderCheckpoints(); renderSheetSources();
   }
 
   // The poll is the project read alone: a model it starts loading is
@@ -687,7 +786,7 @@
     applyStyle(renderStyle);
 
     $('model-fit').addEventListener('click', function () { state.viewer.fit(); });
-    $('view3d-source').addEventListener('change', function () { setSource($('view3d-source').value); });
+    $('view3d-source').addEventListener('change', function () { ckpt.chosenSource = true; setSource($('view3d-source').value); });
     [$('view3d-style'), $('style-choice')].forEach(function (group) {
       group.addEventListener('click', function (event) {
         var button = event.target.closest('button');
@@ -696,7 +795,8 @@
     });
     setOverlayCollapsed(overlayCollapsed);
     $('overlay-toggle').addEventListener('click', function () { setOverlayCollapsed(!overlayCollapsed); });
-    $('play-toggle').addEventListener('click', togglePlayback);
+    $('play-toggle').addEventListener('click', function () { ckpt.paused = !!playing; togglePlayback(); });
+    $('checkpoint-pick').addEventListener('input', function () { pickCheckpoint(Number($('checkpoint-pick').value)); });
     $('play-time').addEventListener('input', function () { stopPlayback(); seek(Number($('play-time').value)); });
 
     $('view2d-source').addEventListener('change', function () { setSheet($('view2d-source').value); });
@@ -735,10 +835,15 @@
     layout: function () { return state.layout; },
     setStyle: applyStyle,
     renderStyle: function () { return renderStyle; },
-    setSource: setSource,
+    setSource: function (value) { ckpt.chosenSource = true; return setSource(value); },
     setSheet: setSheet,
     sheets: function () { return sheet.list.map(function (item) { return { key: item.key, group: item.group, kind: item.kind, label: item.label }; }); },
-    playback: function () { return playback && { times_s: playback.times_s, t: playT, playing: !!playing }; },
+    playback: function () { return playback && { times_s: playback.times_s, t: playT, playing: !!playing, looping: looping, checkpoint: ckpt.playing }; },
+    checkpoints: function () {
+      return { items: ckpt.items.map(function (item) { return { stem: item.stem, state: item.state, iteration: item.iteration, reward_per_step: item.reward_per_step }; }),
+               pending: ckpt.pending, pinned: ckpt.pinned, playing: ckpt.playing, source: source };
+    },
+    pickCheckpoint: pickCheckpoint,
     seek: seek,
     setOverlayCollapsed: setOverlayCollapsed,
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, ms: lastPoll.ms }; },
