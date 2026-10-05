@@ -53,6 +53,7 @@ from .export import ExportedOutput, ExportError, export_blueprints, export_outpu
 from .inventory import InventoryError, read_inventory, write_inventory
 from .render import acquire_snapshot, describe_proxies, write_render
 from .section import write_section
+from .revision_meshes import retain as retain_revision_meshes, revision_models
 from .revisions import (
     previous as previous_revision,
     read_history as read_revision_history,
@@ -904,10 +905,21 @@ def _engine_session(
             repo_note = ensure_project_repo(project_root)
             if repo_note:
                 report.notes.append(repo_note)
+            # The revision accepted when the session opened is kept too: its
+            # attempt is the one the engine still holds, and the first write
+            # of this session would leave it to be pruned (ADR-546).
+            retain_revision_meshes(project_root)
             _install_cancel(client)
             yield engine, client
         finally:
             client.shutdown()
+            # Whatever this session accepted, its model is kept under the
+            # revision's ordinal, so the timeline can play it (ADR-546).
+            retained = retain_revision_meshes(project_root)
+            if retained.get("status") == "retained":
+                report.notes.append(
+                    f"kept revision {retained['ordinal']}'s model: "
+                    f"{retained['added_bytes']} new bytes of tessellation (ADR-546).")
 
 
 def stale_policy_note(opened: Mapping[str, Any]) -> str:
@@ -1063,7 +1075,9 @@ def command_revision(args: argparse.Namespace, report: RunReport) -> int:
         raise ValueError(f"no project at {root}.")
     action = args.action
     if action == "list":
-        report.revisions = {"history": read_revision_history(root)}
+        report.revisions = {"history": read_revision_history(root),
+                            "models": [{key: row.get(key) for key in ("ordinal", "retained", "reason")}
+                                       for row in revision_models(root)]}
         identity = read_accepted_identity(root)
         report.accepted_revision = identity.get("revision", "") if identity.get("available") else ""
         report.ok = True

@@ -34889,3 +34889,67 @@ time and 0.17 ms on a poll with nothing changed. The newest checkpoint's playbac
 - A source picked by hand is not taken over by training.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-546 — Each accepted revision's model is kept by content hash per part (2026-10-05, orun3 V3)
+
+**Context.** orun3's V3 asks the 3D viewport to play the design's history. The engine
+keeps every accepted *source* (`script_history/`, ADR-045) but only the newest few
+attempt directories (`ATTEMPT_KEEP`), so a replaced revision's geometry is gone within a
+few writes. Something has to keep it at the moment it is accepted, and the page cannot,
+because it is read-only (ADR-537).
+
+**Decision.**
+- **The CLI keeps it, in a store it owns:** `review/revisions/` in the project, which the
+  project's own git already ignores (ADR-194). `parts/<sha256>.tess.bin` and `.tess.json`
+  hold one part's tessellation, named by the sha256 of its buffer. A part that did not
+  change between revisions is the same file and adds no bytes, and so is a mirrored pair.
+  `index.json` (`cadex-revision-meshes-v1`) maps each history ordinal to its revision, its
+  digest, which blob each output is, and the components' placements, as the dashboard's
+  `accepted_model` read them at that moment.
+- **Where it is written.** `revision_meshes.retain` runs on every engine session's open
+  and close, and in `cadex mcp` after each successful modelling call. It keeps the
+  accepted attempt under the ordinal the engine gave it in the trail, and only when the
+  trail's latest entry for that revision agrees on the digest. It is idempotent: an
+  ordinal already kept is not rewritten. It never fails the call that triggered it. Open
+  is included because the revision accepted when a session starts is still on disk then,
+  and the session's first write would leave it to be pruned.
+- **Bounded by the trail it shadows.** A row whose ordinal has left `script_history/`
+  (`HISTORY_LIMIT`, 25) is dropped, and so is every blob that only it named.
+- **Absence is said, never filled.** `revision_models` gives one row per stored revision.
+  A revision with no row reads `retained: false` with the reason (accepted before this
+  store). A row naming another revision, or a blob missing from disk, also reads as not
+  retained, with that reason. No other revision's geometry is offered in its place.
+  `cadex revision list` carries this as `revisions.models`. Rebuilding old revisions to
+  fill the gap is left to an explicit command, not a side effect.
+- No route, no page change and no tool change in this unit. The timeline, the ghost and
+  the tint read this store in the next.
+
+**Measured** on `orun3-biped-v3meas`, a copy of `orun3-biped`. Every one of the biped's
+13 stored revisions was restored in turn, then the foot was changed twice through
+`cadex params`. The pre-ADR-506 revisions recorded no values, so they came back with
+today's values, and the 13 collapsed to 7 distinct accepted revisions sharing one
+geometry. Then:
+
+- A full copy of one revision's tessellation is 11,400 bytes (8 outputs, 4 distinct
+  buffers).
+- The first revision kept added 5,704 bytes of blobs.
+- Each of the six restores added 0 bytes of blobs and 2,906 bytes of index row.
+- Each foot change added 1,419 or 1,421 bytes of blobs (one part) and 2,909 bytes of
+  index row.
+- After 9 kept revisions the store was 8,544 bytes of blobs and a 26,854-byte index,
+  against 102,596 bytes for nine full copies.
+
+On this box-built biped the index row, mostly placements, outweighs the meshes. On a
+finer model the blobs dominate and the dedupe is what matters.
+
+**Test.** `cli/tests/test_revision_meshes.py`:
+- Against the real engine, a four-part biped is written and then its foot changed. The
+  torso and both legs keep their blobs, and only the foot's bytes are added. A second
+  `retain` rewrites nothing. `revision list` reports both as retained. The same holds
+  through `Bridge.call`, which is the `cadex mcp` path.
+- With no engine: an absent row reads `NOT_RETAINED`, a row naming another revision reads
+  "not shown", a missing blob is named, and none of them carries parts. Nothing accepted
+  writes nothing. Pruning drops the rows that left the trail and the blobs only they
+  named.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).

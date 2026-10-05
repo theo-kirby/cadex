@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-10-04
+Verified against source: 2026-10-05
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -308,6 +308,13 @@ macOS). Layout:
                                 *having an artifact* rather than on a roster
                                 of kinds — which is why M5's and M7's
                                 artifacts joined without a line of code
+  review/revisions/             the CLI's, not the engine's (ADR-546): each
+                                accepted revision's tessellation, kept after
+                                the engine prunes its attempt. parts/ holds
+                                <sha256>.tess.bin/.tess.json, one per
+                                distinct part buffer; index.json maps each
+                                history ordinal to its part digests and
+                                placements. Bounded by script_history/
   assets/                       flat .stl/.obj/.ply the script imports by
                                 name (mesh.import_file, part.shape_from_mesh)
                                 plus .cxpolicy trained policies

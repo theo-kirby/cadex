@@ -30,6 +30,7 @@ from . import loop
 from .clearance import read_fit
 from .client import CadexdClient
 from .inventory import InventoryError, read_inventory, read_inventory_summary
+from .revision_meshes import retain as retain_revision_meshes
 from .studio import FIT_REPORT, STUDIO
 from .tools import (
     BRIDGE_TOOLS, STANDARD_DISPLAY, VIEW_ARGS, injects_display, injects_revision,
@@ -191,6 +192,10 @@ class Bridge:
             inventory = (
                 self._read_inventory() if ok and tool in MODELLING_OPS else None
             )
+            # ...and the accepted model is kept under its revision's
+            # ordinal, for the timeline (ADR-546). Never fails the call.
+            if ok and tool in MODELLING_OPS and self.project_root is not None:
+                retain_revision_meshes(self.project_root)
 
         summary = _summarize(tool, reply)
         if fit is not None:
