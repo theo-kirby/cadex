@@ -81,7 +81,7 @@ def test_a_revision_model_carries_its_ghost_and_the_parts_that_changed(tmp_path)
     assert three["changed"] == ["foot_l"] and three["compare"] == "against revision 2"
     by_name = {c["name"]: c for c in three["components"]}
     assert by_name["foot_l"]["changed"] and not by_name["torso"]["changed"]
-    assert by_name["foot_l"]["mesh"] == f"/mesh/revision/{shas['foot_b']}.stl"
+    assert by_name["foot_l"]["mesh"] == f"mesh/revision/{shas['foot_b']}.stl"
     assert {c["name"]: c["sha256"] for c in three["previous"]["components"]}["foot_l"] == shas["foot_a"]
     # A part moved but not rebuilt is not a changed part.
     assert revision_model(root, 4)["changed"] == []

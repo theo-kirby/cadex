@@ -50,8 +50,8 @@ def test_each_record_is_drawn_on_the_component_that_shows_its_output() -> None:
         {"name": "free", "type": "measurement", "measurement": {**record, "subject": ""}},
         {"name": "gone", "type": "measurement", "measurement": {**record, "subject": "hidden"}},
     ]}
-    entries = [{"name": "a", "output": "left", "mesh": "/mesh/accepted/left.stl"},
-               {"name": "b", "output": "left", "mesh": "/mesh/accepted/left.stl"}]
+    entries = [{"name": "a", "output": "left", "mesh": "mesh/accepted/left.stl"},
+               {"name": "b", "output": "left", "mesh": "mesh/accepted/left.stl"}]
     block = declared_measurements(result, entries)
     assert block["available"] is True and "exact BREP" in block["source"]
     rows = {row["name"]: row for row in block["records"]}

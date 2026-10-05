@@ -35154,3 +35154,49 @@ activity, the expanded overlay measures 280 × 210 px, 20.8% of the viewport (ba
 The §2 hooks are pinned in `test_review_design.py`.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-551 — Every dashboard URL is relative to the page, so it can be mounted under a prefix (2026-10-05, orun3 P1)
+
+**Context.** The page worked out where it was from `location.pathname` matched against
+`^/p/<name>/` and prefixed `/api/...` with that, and the server built root-absolute URLs
+into its responses: each component's `mesh` (`/mesh/accepted/…`, `/mesh/run/…`,
+`/mesh/revision/…`), each playback `url` (`/api/playback/…`), each project's `url` in
+`/api/projects` (`/p/<name>/`), and the `Location` of the redirect from `/p/<name>` to
+`/p/<name>/`. Behind a proxy that mounts the dashboard at a sub-path, every one of those
+escapes the mount. `docs/DASHBOARD.md` §22 said so: "a sub-path mount is not tested". A
+desktop wrapper or a reverse proxy should be able to host the page without rewriting
+paths.
+
+**Decision.**
+- **The server builds relative URLs.** `mesh` is `mesh/…`, playback is `api/playback/…`,
+  a project is `p/<name>/`, and the redirect's `Location` is `<name>/`. Each resolves
+  against the page that asked for it, which is the project page (`p/<name>/` under
+  `cadex app`, the root under `cadex review`), or the index for `/api/projects`.
+- **The page fetches relative URLs.** `review.js` drops its `BASE` prefix: it asks for
+  `api/project`, `api/model/…`, `api/run/…`, and the manifests' URLs as given. It tells
+  `cadex app` from `cadex review` by whether its own path ends in `/p/<name>/`, anywhere in
+  the path, so a prefix in front does not change the answer. The links it already had
+  (`../../`, `doc/…`, `evaluation/…`, `presentation/…`) were relative.
+- **No stray request.** Both pages declare `<link rel="icon" href="data:,">`, so not even
+  the browser's own `/favicon.ico` probe leaves the mount.
+- No route, response key or polling changes. The page stays GET-only (ADR-537).
+
+**Test.** `cli/tests/test_dashboard_prefix.py`. No `url` or `mesh` in `/api/projects`,
+`/api/project`, `/api/model/accepted` or any run's `/api/model/run/<name>` starts with `/`,
+and the `p/biped` redirect's `Location` is `biped/`. A standard-library proxy forwards
+`/some/prefix/<rest>` to the server's `/<rest>`, copying the body and headers unchanged,
+and records every request outside the prefix. Through it, Chromium driven by `browser.py`
+opens the index, follows the bare `p/biped` redirect to `/some/prefix/p/biped/`, draws the
+biped fixture's model, lists both projects in the File menu, and points Home at
+`/some/prefix/`. A `cadex review` page loads and draws through it as well. Both runs end
+with no request outside the prefix. All three tests fail against the code before this
+change: the URLs start with `/`, the index's project link leaves the prefix, and so does the
+`cadex review` page's own poll. The tests that pinned the absolute forms
+(`test_app.py`, `test_review_server.py`, `test_review_checkpoints.py`,
+`test_review_revisions.py`, `test_dashboard_dimensions.py`) now pin the relative ones.
+
+**Not here.** The route-and-key contract (every `GET /api/...` route and its top-level
+keys listed in `docs/CLI.md` and pinned by a test, `activity` included) is P1's second
+unit.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).

@@ -58,7 +58,7 @@ def _training_run(root: Path) -> Path:
         mesh = run / "training-view" / f"{output}.stl"
         mesh.write_text(_cube_stl(10.0 + index))
         components.append({
-            "name": link, "output": output, "mesh": f"/mesh/run/{RUN}/{output}.stl",
+            "name": link, "output": output, "mesh": f"mesh/run/{RUN}/{output}.stl",
             "mesh_status": "retained", "sha256": hashlib.sha256(mesh.read_bytes()).hexdigest(),
             "placement": {"position_mm": [0.0, 0.0, 30.0 * index], "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]},
             "placement_source": "accepted assembly placement"})
@@ -122,7 +122,7 @@ def test_the_stage_lists_the_read_runs_checkpoints_oldest_first_with_failures_an
         assert block["pending"] == 1 and block["listed_of"] == 3
         ready, failed = block["items"][1], block["items"][2]
         assert ready["reward_per_step"] == 1.25 and ready["duration_s"] == pytest.approx(0.08)
-        assert ready["url"] == f"/api/playback/checkpoint/{RUN}/walk.000040"
+        assert ready["url"] == f"api/playback/checkpoint/{RUN}/walk.000040"
         assert failed["url"] is None
         assert (failed["reason"], failed["error"]) == ("child_failed", "the rollout exited 1")
 

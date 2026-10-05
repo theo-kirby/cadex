@@ -463,7 +463,7 @@ def _load(path: Path) -> dict[str, Any] | None:
 
 
 #: Where the page fetches one retained part, by the sha256 of its buffer.
-MESH_ROUTE = "/mesh/revision/{sha}.stl"
+MESH_ROUTE = "mesh/revision/{sha}.stl"
 
 
 def _drawn(row: Mapping[str, Any]) -> list[dict[str, Any]]:

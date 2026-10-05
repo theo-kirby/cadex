@@ -70,7 +70,7 @@ accepted first, 20 to a page. Each row is the name, linking to its page, and
 a muted date; **Newer** and **Older** page through them, and the page number
 is kept in the URL (`?page=N`).
 
-**Project** (`/p/<name>/`, or `/` under `cadex review`): the top bar over
+**Project** (`p/<name>/` under the index, or the root under `cadex review`; every URL it uses is relative to it, ADR-551): the top bar over
 the screen (`#screen[data-mode]`), which `layout.js` tiles with areas
 (`.area[data-area][data-editor]`, §12). Each editor's markup is parked in
 `#editor-shelf`; an area takes its `.editor-tools` into its header and its
@@ -569,8 +569,14 @@ tailscale serve status           # what is being served
 ```
 
 Only devices on your tailnet can open that URL, and Tailscale terminates TLS.
-Mount it at the root as shown: the page's URLs are relative to the project page, but
-a sub-path mount is not tested. There is nothing to write behind the proxy
+It may be mounted at a sub-path too (ADR-551): every URL the pages fetch or
+link, every URL the server builds into a response (`mesh`, `url`, a project's
+`p/<name>/`) and the redirect from `p/<name>` to `p/<name>/` is relative to
+the page, so a proxy that forwards `/some/prefix/<rest>` to `/<rest>` and
+rewrites nothing serves the whole dashboard; `test_dashboard_prefix.py` loads
+a project through one and fails on any request that leaves the prefix. Both
+pages declare an empty icon, so not even the browser's own `/favicon.ico`
+probe escapes it. There is nothing to write behind the proxy
 (§18), but the page still shows the whole project to whoever opens it. Do not use `tailscale funnel`, which publishes to the internet, and do not
 pass `--host 0.0.0.0`.
 `--host <tailscale address>` (`docs/CLI.md`) binds the tailnet address

@@ -21,10 +21,11 @@
 (function () {
   'use strict';
 
-  // Served alone (`cadex review`) the page is at `/`; served from a projects
-  // directory (`cadex app`) it is at `/p/<name>/`, and every request it makes
-  // carries that prefix.
-  var BASE = (location.pathname.match(/^\/p\/[^/]+(?=\/)/) || [''])[0];
+  // Every URL the page fetches or links is relative to the page itself, so
+  // the page works unchanged under any path prefix (ADR-551). Served alone
+  // (`cadex review`) it is a project's root; served from a projects directory
+  // (`cadex app`) it is `p/<name>/` under the index, and NAME is that project.
+  var NAME = (location.pathname.match(/\/p\/([^/]+)\/(?:index\.html)?$/) || [null, null])[1];
   var POLL_MS = 2000;
   var ORDER = ['view3d', 'view2d'];
   // One 3D viewport over the whole screen; split an area for the 2D one.
@@ -125,13 +126,13 @@
 
   // -- Menu bar: the project and the view -----------------------------------------
   function loadProjects() {
-    if (!BASE) {
+    if (NAME == null) {
       // `cadex review` serves one project: there is nothing to switch to.
       ['project-field', 'project-open', 'project-all'].forEach(function (id) { $(id).hidden = true; });
       return Promise.resolve();
     }
     return json('../../api/projects').then(function (listing) {
-      var select = $('project-select'), here = decodeURIComponent(BASE.slice(3));
+      var select = $('project-select'), here = decodeURIComponent(NAME);
       var stamp = function (p) { return (p.accepted && p.accepted.updated_at) || ''; };
       select.textContent = '';
       listing.projects.slice().sort(function (a, b) {
@@ -142,7 +143,7 @@
   }
   function openProject() {
     var name = $('project-select').value;
-    if (name && name !== decodeURIComponent(BASE.slice(3))) location.href = '../' + encodeURIComponent(name) + '/';
+    if (name && name !== decodeURIComponent(NAME)) location.href = '../' + encodeURIComponent(name) + '/';
   }
   // One menu open at a time; a click outside or Escape closes it.
   function wireMenus() {
@@ -210,14 +211,14 @@
 
   function loadModel() {
     var status = $('model-status'), ticket = ++modelLoad;
-    var path = source === 'accepted' ? '/api/model/accepted'
-             : source === 'revisions' ? '/api/model/revision/' + revisionShown()
-             : '/api/model/run/' + encodeURIComponent(source.slice(4));
+    var path = source === 'accepted' ? 'api/model/accepted'
+             : source === 'revisions' ? 'api/model/revision/' + revisionShown()
+             : 'api/model/run/' + encodeURIComponent(source.slice(4));
     if (modelAbort) modelAbort.abort();
     var controller = modelAbort = new AbortController(), signal = controller.signal;
     status.dataset.state = 'loading'; status.textContent = 'loading model…';
     stopPlayback(); playback = null; looping = false; ckpt.shown = null; $('playback').hidden = true;
-    return fetchRetry(BASE + path, signal, 2).then(function (response) {
+    return fetchRetry(path, signal, 2).then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.json();
     }).then(function (manifest) {
@@ -235,9 +236,9 @@
         status.textContent = 'WebGL is unavailable in this browser';
         return;
       }
-      // Mesh URLs in the manifest are server-absolute; BASE mounts them. Until
-      // every mesh is in, the model drawn is the one before.
-      var fetchMesh = function (url) { return fetchRetry(BASE + url, signal, 2); };
+      // Mesh URLs in the manifest are relative to the page. Until every mesh
+      // is in, the model drawn is the one before.
+      var fetchMesh = function (url) { return fetchRetry(url, signal, 2); };
       if (manifest.view === 'revision') manifest = tintRevision(manifest);
       return state.viewer.load(manifest, fetchMesh).then(function () {
         if (ticket !== modelLoad) return;
@@ -278,7 +279,7 @@
   function loadPlayback(manifest, ticket) {
     var info = manifest.playback;
     if (!info || !info.url) return null;
-    return json(BASE + info.url).then(function (served) {
+    return json(info.url).then(function (served) {
       if (ticket !== modelLoad || !served.available || !served.times_s || served.times_s.length < 2) return;
       showPlayback(served);
     }).catch(function () { /* the model stands without its rollout */ });
@@ -400,7 +401,7 @@
       state.viewer.setPoses(restPoses());
       return null;
     }
-    return json(BASE + item.url).then(function (served) {
+    return json(item.url).then(function (served) {
       if (ticket !== modelLoad || ckpt.shown !== key) return;
       if (!served.available || !served.times_s || served.times_s.length < 2) {
         $('playback').hidden = true;
@@ -722,7 +723,7 @@
         if (sheet.shownKey === shownKey) stage.appendChild(markdown(text));
       }).catch(function (error) { stage.appendChild(el('p', { className: 'empty', text: item.label + ': ' + error.message })); });
     }
-    return json(BASE + '/api/run/' + encodeURIComponent(item.run)).then(function (record) {
+    return json('api/run/' + encodeURIComponent(item.run)).then(function (record) {
       if (sheet.shownKey !== shownKey) return;
       sheet.points = ((record.telemetry || {})[item.curve] || []).filter(function (p) { return Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]); });
       sheet.plotLabel = item.label;
@@ -878,7 +879,7 @@
   function poll() {
     if (pendingPoll) return pendingPoll;
     var started = performance.now(), model = null;
-    var read = fetch(BASE + '/api/project', { cache: 'no-store' }).then(function (response) {
+    var read = fetch('api/project', { cache: 'no-store' }).then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.text();
     }).then(function (body) {
@@ -906,7 +907,7 @@
   }
 
   function initialize() {
-    if (!BASE) $('home').hidden = true;
+    if (NAME == null) $('home').hidden = true;
     var editors = {};
     ORDER.forEach(function (type) {
       var home = $('editor-' + type);

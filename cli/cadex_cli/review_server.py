@@ -498,7 +498,7 @@ def checkpoint_rollouts(project_root: Path | str, run: str) -> dict[str, Any]:
         item = {**entry, **head}
         if item["iteration"] is None:
             item["iteration"] = int(entry["tag"]) - 1
-        item["url"] = (f"/api/playback/checkpoint/{quote(run, safe='')}/{quote(stem, safe='')}"
+        item["url"] = (f"api/playback/checkpoint/{quote(run, safe='')}/{quote(stem, safe='')}"
                        if head["state"] == "ready" else None)
         items.append(item)
     items.sort(key=lambda item: (int(item["tag"]), item["stem"]))
@@ -798,7 +798,7 @@ def retain_training_view(project_root: Path | str, run_dir: Path | str) -> None:
         mesh_path = mesh_dir / f"{output}.stl"
         mesh_path.write_bytes(data)
         entry["sha256"] = _sha256(mesh_path)
-        entry["mesh"] = f"/mesh/run/{destination.name}/{output}.stl"
+        entry["mesh"] = f"mesh/run/{destination.name}/{output}.stl"
     model.pop("meshes", None)
     payload = {"schema": "cadex-training-view-v1", "model": model,
                "identity": read_accepted_identity(root),
@@ -895,7 +895,7 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
                 "placement_source": "assembly placements not recorded: individual parts at identity",
                 "components": [{
                     "name": p.stem, "output": p.stem,
-                    "mesh": f"/mesh/run/{run_name}/{p.stem}.stl",
+                    "mesh": f"mesh/run/{run_name}/{p.stem}.stl",
                     "mesh_status": "retained", "placement": None,
                     "placement_source": "individual exported part: identity",
                 } for p in meshes],
@@ -929,7 +929,7 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
             used.add(output)
         entries.append({
             "name": name, "output": output,
-            "mesh": f"/mesh/run/{run_name}/{output}.stl" if output in meshes else None,
+            "mesh": f"mesh/run/{run_name}/{output}.stl" if output in meshes else None,
             "mesh_status": "retained" if output in meshes else "missing",
             "placement": placements.get(name),
             "placement_source": ("rollout trace, first frame" if name in placements
@@ -940,7 +940,7 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
             continue
         entries.append({
             "name": output, "output": output,
-            "mesh": f"/mesh/run/{run_name}/{output}.stl", "mesh_status": "retained",
+            "mesh": f"mesh/run/{run_name}/{output}.stl", "mesh_status": "retained",
             "placement": None, "placement_source": "no component placement recorded: identity",
         })
     model.update({
@@ -959,7 +959,7 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
     playback = trace_playback(trace)
     model["playback"] = ({"available": True, "frames": len(playback["frames"]),
                           "duration_s": playback["duration_s"],
-                          "url": f"/api/playback/run/{run_name}"}
+                          "url": f"api/playback/run/{run_name}"}
                          if playback["available"] else {"available": False, "reason": playback["reason"]})
     return model
 
@@ -1339,7 +1339,7 @@ def accepted_model_uncached(project_root: Path | str) -> dict[str, Any]:
             used.add(source)
         entries.append({
             "name": name, "output": source,
-            "mesh": f"/mesh/accepted/{source}.stl" if source in tess_by_output else None,
+            "mesh": f"mesh/accepted/{source}.stl" if source in tess_by_output else None,
             "mesh_status": "retained" if source in tess_by_output else "missing",
             "placement": placement, "placement_source": placement_source,
             "world": name in world,
@@ -1348,7 +1348,7 @@ def accepted_model_uncached(project_root: Path | str) -> dict[str, Any]:
         if output in used:
             continue
         entries.append({
-            "name": output, "output": output, "mesh": f"/mesh/accepted/{output}.stl",
+            "name": output, "output": output, "mesh": f"mesh/accepted/{output}.stl",
             "mesh_status": "retained", "placement": None,
             "placement_source": "no component placement recorded: identity",
         })
@@ -2092,7 +2092,7 @@ class ReviewProject:
         if record is None:
             return None
         model = run_model(self.root, record)
-        wanted = f"/mesh/run/{name}/{output}.stl"
+        wanted = f"mesh/run/{name}/{output}.stl"
         if not any(entry.get("mesh") == wanted for entry in model["components"]):
             return None
         if model.get("source") == "assembled model retained before training":
@@ -2516,9 +2516,10 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 self._not_found(f"project {rest[0]!r}")
                 return
             if len(rest) == 1 and not path.endswith("/"):
-                # The page's URLs are relative to its own directory.
+                # The page's URLs are relative to its own directory; so is
+                # this Location, which keeps a path prefix in front (ADR-551).
                 self._send_bytes(b"", "text/plain; charset=utf-8", HTTPStatus.MOVED_PERMANENTLY,
-                                 {"Location": "/p/" + quote(rest[0], safe="") + "/"})
+                                 {"Location": quote(rest[0], safe="") + "/"})
                 return
             self._route(project, rest[1:], download)
             return
@@ -2695,7 +2696,7 @@ class ProjectsDirectory:
             runs = root / RUNS_DIRNAME
             projects.append({
                 "name": name,
-                "url": "/p/" + quote(name, safe="") + "/",
+                "url": "p/" + quote(name, safe="") + "/",
                 "accepted": read_accepted_identity(root),
                 "runs": sum(1 for child in runs.iterdir() if child.is_dir()) if runs.is_dir() else 0,
             })

@@ -249,7 +249,7 @@ def test_a_run_model_is_its_own_meshes_placed_by_its_own_trace(served) -> None:
     assert by_name["body"]["output"] == "torso" and by_name["shin"]["output"] == "leg"
     assert by_name["shin"]["placement"]["position_mm"] == [0.0, 0.0, -40.0]
     assert by_name["shin"]["placement_source"] == "rollout trace, first frame"
-    assert by_name["body"]["mesh"] == "/mesh/run/first/torso.stl"
+    assert by_name["body"]["mesh"] == "mesh/run/first/torso.stl"
     status, headers, body = _get(server.url + "mesh/run/first/torso.stl")
     assert status == 200 and headers["content-type"] == "model/stl"
     assert body == (root / "runs" / "first" / "rollout" / "torso.stl").read_bytes()
@@ -361,7 +361,7 @@ def test_a_run_before_its_rollout_borrows_the_accepted_model_only_when_it_is_tha
     assert model["available"] and model["relation"] == "current"
     assert model["revision"] == REVISION_B and model["digest"] == "d" * 64
     assert "borrowed" in model["source"] and "retained no rollout" in model["source"]
-    assert [c["mesh"] for c in model["components"]] == ["/mesh/accepted/torso.stl"]
+    assert [c["mesh"] for c in model["components"]] == ["mesh/accepted/torso.stl"]
     status, _headers, body = _get(server.url + "mesh/accepted/torso.stl")
     assert status == 200 and body.startswith(b"cadex tessellation as binary STL")
     # Nothing is served under the run's own mesh route: it retained none.
@@ -521,7 +521,7 @@ def _escaped_run(root: Path, tmp_path: Path, name: str = "escaped") -> Path:
         "schema": "cadex-training-view-v1",
         "model": {"available": True, "placement_source": "fixture", "reason": None,
                   "components": [{"name": "leaked", "output": "leaked",
-                                  "mesh": f"/mesh/run/{name}/leaked.stl",
+                                  "mesh": f"mesh/run/{name}/leaked.stl",
                                   "sha256": hashlib.sha256(stl.read_bytes()).hexdigest(),
                                   "placement": None}]}}))
     (outside / "run.json").write_text(json.dumps({"schema": "cadex-run-record-v1", "run": name}))
