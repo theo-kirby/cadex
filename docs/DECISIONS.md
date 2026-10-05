@@ -35175,7 +35175,8 @@ paths.
 - **The page fetches relative URLs.** `review.js` drops its `BASE` prefix: it asks for
   `api/project`, `api/model/…`, `api/run/…`, and the manifests' URLs as given. It tells
   `cadex app` from `cadex review` by whether its own path ends in `/p/<name>/`, anywhere in
-  the path, so a prefix in front does not change the answer. The links it already had
+  the path, so a prefix in front does not change the answer. The one case it misreads is
+  a `cadex review` mounted under a prefix that itself ends in `/p/<x>/`. The links it already had
   (`../../`, `doc/…`, `evaluation/…`, `presentation/…`) were relative.
 - **No stray request.** Both pages declare `<link rel="icon" href="data:,">`, so not even
   the browser's own `/favicon.ico` probe leaves the mount.
