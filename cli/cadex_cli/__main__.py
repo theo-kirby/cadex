@@ -154,6 +154,7 @@ from .smoke import (
     smoke_interpreter,
 )
 from .guidance import brief as guidance_brief, instructions as guidance_text
+from .activity import append_activity, reply_error
 from .mcp import serve as serve_mcp
 from .tools import STANDARD_DISPLAY, tool_definitions
 from .walk import (
@@ -2065,7 +2066,23 @@ class McpSession:
         return tool_definitions(self.engine.protocol)
 
     def call(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        return self._open().call(tool, arguments)
+        """Run one tool, and write it to the project's activity log (ADR-549)."""
+
+        started = time.monotonic()
+        before = len(self._bridge.state.calls) if self._bridge is not None else 0
+        try:
+            reply = self._open().call(tool, arguments)
+        except Exception as exc:
+            append_activity(self.args.project, tool, arguments, ok=False, detail=str(exc),
+                            ms=(time.monotonic() - started) * 1000)
+            raise
+        ok = not reply.get("is_error", False)
+        calls = self._bridge.state.calls if self._bridge is not None else []
+        # The bridge's own line for the call when it kept one; else the error it answered.
+        detail = calls[-1].summary if len(calls) > before else ("" if ok else reply_error(reply))
+        append_activity(self.args.project, tool, arguments, ok=ok, detail=detail,
+                        ms=(time.monotonic() - started) * 1000)
+        return reply
 
     def idle(self) -> None:
         self.close()

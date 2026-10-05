@@ -54,6 +54,7 @@ from typing import Any, Callable, Mapping
 from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
 
+from .activity import read_activity
 from .checkpoints import FAILURE_SUFFIX as CHECKPOINT_FAILURE_SUFFIX
 from .checkpoints import TRACE_SUFFIX as CHECKPOINT_TRACE_SUFFIX
 from .revision_meshes import revision_mesh_paths, revision_model, revision_models
@@ -1951,6 +1952,8 @@ class ReviewProject:
         review["drawings"] = blueprint_listing(self.root)
         # Read-only; `cadex budgets --set` is how they change (ADR-517).
         review["budgets"] = {"stored": dict(read_agent_state(self.root).budgets)}
+        # What the agent's tool calls were, newest first (ADR-549).
+        review["activity"] = read_activity(self.root)
         review["served_at"] = _now()
         return review
 

@@ -35074,3 +35074,44 @@ time:
     Revision 2 draws its own foot, tinted, over revision 1's ghost.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-549 — `cadex mcp` writes one bounded line per tool call to a project activity log (2026-10-05, orun3 V4)
+
+**Context.** The dashboard shows what the design and the training are doing, but not
+what the owner's agent is doing between them. Every call that agent makes to the engine
+passes through `cadex mcp` (ADR-538), so the MCP server is the one place that can write
+it down. The page stays read-only (ADR-537), so the write belongs to the CLI, on a path
+it already owns.
+
+**Decision.**
+- **Where.** `McpSession.call` appends one JSON line per tool call to
+  `review/activity.jsonl` in the project (`cli/cadex_cli/activity.py`). The project's
+  own git already ignores `/review/` (ADR-194), so the log is never committed there.
+  A failed call is logged too, including one where the engine could not open.
+- **What.** `t` (UTC, to the second), `tool`, `args`, `outcome` (`ok` or `error`),
+  `detail` and `ms`. `args` is a summary, never the arguments: a scalar is shown, a
+  string over 40 characters or with a newline only by its length (`source=<3000 chars>`),
+  a list only by its size, an object only by its keys (`values={width,thickness}`). Both
+  `args` and `detail` are cut at 160 characters. `detail` is the bridge's own one-line
+  summary of the call (the line the server already prints on stderr), else the error
+  the reply carries.
+- **Bounded.** Once an append takes the file past 64 KiB, it is rewritten atomically,
+  keeping the newest whole lines within 32 KiB. A typical line is 130 to 230 bytes, so
+  the log holds roughly the last 150 to 500 calls. Writing never fails the call.
+- **Read.** `GET /api/project` carries `activity`: the newest ten entries, newest first,
+  or `available: false` with the `reason` (no call logged yet). A line still being
+  appended is skipped.
+- **No tool-surface change.** No tool, argument or result field is added;
+  `test_project_tool_surface.py` is unchanged.
+- **Not yet on the page.** The overlay's activity line is its own change.
+
+**Test.** `cli/tests/test_activity.py`:
+- Arguments are summarised and never logged whole.
+- 2,000 calls with 500-character sources leave the file at most 64 KiB, every line under
+  600 bytes, the newest call last, and no scratch file behind.
+- A missing log and a torn last line are reported, not filled in.
+- Against the real engine, a `cadex mcp` process builds a plate and is refused an
+  unknown tool. `/api/project` then carries both, newest first, with the source shown
+  only by its length, and the project's git tracks no activity file.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).

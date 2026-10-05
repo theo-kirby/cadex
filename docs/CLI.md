@@ -47,7 +47,7 @@ The agent's two requests cost tokens. The loop between them does not.
 
 | Command | What it does | Spends tokens |
 |---|---|---|
-| `cadex mcp [--idle S]` | Serve the project's tools to an agent over MCP stdio (ADR-538; §2a below). The engine opens on the first tool call and closes after `--idle` quiet seconds (default 30; 0 holds it), releasing the project for the agent's own `cadex … --wait` commands; a session that accepted a build lands one `PROGRESS.md` row and one project commit as it closes. | no (the agent's own) |
+| `cadex mcp [--idle S]` | Serve the project's tools to an agent over MCP stdio (ADR-538; §2a below). The engine opens on the first tool call and closes after `--idle` quiet seconds (default 30; 0 holds it), releasing the project for the agent's own `cadex … --wait` commands; a session that accepted a build lands one `PROGRESS.md` row and one project commit as it closes. Every tool call appends one line to the project's activity log, `review/activity.jsonl` (ADR-549): `t`, `tool`, `args` (a summary — a long or multi-line string only by its length, a list only by its size, an object only by its keys, 160 characters at most), `outcome` (`ok` or `error`), `detail` (the call's one-line summary or its error) and `ms`. The log is capped at 64 KiB: past that it is rewritten keeping the newest lines within 32 KiB. The project's git ignores it (`/review/`), and `GET /api/project`'s `activity` carries its newest ten entries, newest first, or `available: false` and the `reason`. | no (the agent's own) |
 | `cadex guidance` | Print the whole guidance an agent driving Cadex follows. `cadex mcp`'s `instructions` are a short brief that tells the agent to run this (§2a). No engine. | no |
 | `cadex params --set k=v` | Set declared parameters and rebuild. | no |
 | `cadex script` | Print the project script. | no |
@@ -2013,6 +2013,8 @@ cli/cadex_cli/
   bridge.py            runs a tool call against cadexd; injects what the agent
                        is never asked for; records every call
   mcp.py               `cadex mcp`'s wire: JSON-RPC over stdio, idle callback
+  activity.py          the project activity log every `cadex mcp` tool call
+                       appends to, bounded; read into /api/project (ADR-549)
   guidance.py          the guidance an agent is given (ADR-538)
   export.py            STEP/STL/BREP out of the display block; the rest copied
   render.py            `cadex render` as a job: rebuild, read fit/inventory, write the files
@@ -2790,6 +2792,7 @@ Fast, and honest about what it did not run.
 |---|---|
 | `test_engine_resolution.py` | Hand-built payload directories; no engine needed. |
 | `test_mcp_protocol.py` | `cadex mcp`'s wire, the stdio loop and its idle callback, and the bridge against `fake_cadexd.py`; no engine needed. |
+| `test_activity.py` | The activity log (ADR-549): arguments summarised never whole, the 64 KiB cap keeping the newest calls, a torn line skipped; and a real `cadex mcp` process's calls read back from `/api/project` — that half **skips** without a built engine. |
 | `test_agent_guidance.py` | The guidance: the engine's text carried verbatim, nothing left from the CLI's own turns, and `cadex guidance` printing exactly what `cadex mcp` sends. |
 | `test_dashboard_read_only.py` | The read-only dashboard (ADR-537): every former write route refused for every method with the project unchanged, and in Chromium an open page following a `cadex params` run outside it. |
 | `test_client.py` | A real `cadexd`. **Skips** without a built engine. |
