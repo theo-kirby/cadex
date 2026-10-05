@@ -35002,3 +35002,75 @@ menu. The page stays read-only (ADR-537).
   ADR-546, its stop draws nothing and says why, and revision 2 draws with no ghost.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-548 — `cadex revision backfill` rebuilds the models the store never kept (2026-10-05, orun3 V3)
+
+**Context.** ADR-546 keeps each accepted revision's model from the moment the store
+existed. Every revision accepted before it reads `retained: false`, and ADR-546 left
+filling that gap to an explicit command, never to a side effect of opening the page. On
+`orun3-biped` none of its thirteen revisions had a model, so the timeline (ADR-547) drew
+nothing for any of them.
+
+**Decision.**
+- **One explicit command:** `cadex revision backfill [SELECTOR] --project DIR`. Nothing
+  that reads the store calls it: not the dashboard, not `revision list`, not a session.
+- **The accepted revision first, from disk.** Its attempt is still staged, so ADR-546's
+  `retain` keeps it, with no rebuild.
+- **Every other revision is rebuilt in a scratch project.** The engine opens a temporary
+  directory, never the project, so nothing accepted moves, no row is written and nothing
+  is committed. The stored source is written with `replace`, then values are set. The
+  values are tried in this order:
+  1. the values the trail stored with the revision (ADR-506);
+  2. else the values the project's own repository (ADR-194) recorded in `script.json`
+     at the earliest commit that names the revision as accepted, with that commit's
+     `assets/` (the revision id does not bind asset bytes);
+  3. else no values at all, every parameter at its default.
+- **Kept only when it is the revision.** The engine's revision id binds the source and
+  every stored value, so an equal id is the same model. A rebuild is kept only when it
+  lands on exactly the trail's revision id, and on its digest when the trail records one.
+  A revision whose id another kept ordinal already has is copied, not rebuilt.
+- **A failure is said, never filled.** A rebuild that lands on another id, or that the
+  engine refuses, is a `failed` row with each try's reason. Nothing is stored in its
+  place. The store's index remembers the reason under `unrebuilt`, bounded by the trail
+  like its rows, so `revision_models` and the timeline say why the revision is missing
+  instead of suggesting a backfill again. A later backfill retries it.
+
+**Measured** on `orun3-biped` (13 stored revisions, a box-built biped of 8 outputs and 4
+distinct buffers; one full copy is about 11,400 bytes). One backfill took 12 s of wall
+time:
+- Revision 13 was kept from disk, adding 5,704 bytes of blobs.
+- Revision 1 was rebuilt and added 1,422 bytes (its foot). Revisions 2, 4, 5, 8, 11 and
+  12 were rebuilt and added 0 bytes each. Each rebuild took 0.5 to 1.0 s, and each used
+  the values its acceptance commit recorded. Revision 7 is revision 5's id and was
+  copied.
+- **9 of 13 are kept.** The store is 7,126 bytes of blobs (5 distinct part buffers) and
+  a 28,201-byte index, against 102,612 bytes for nine full copies. With the four failure
+  reasons the index is 30,876 bytes.
+- **The other four (3, 6, 9 and 10) cannot be rebuilt by today's engine.** Each set
+  `policy_on=1`, and the engine refuses the policy output: it was trained on a task
+  bundle whose digest the current engine no longer produces. This is ADR-520's stale
+  policy, and today's engine refuses the live accepted revision 13 the same way when it
+  reopens the project. Their pages say so. This settles ADR-546's "9 kept" figure, which
+  was taken on another copy (`orun3-biped-v3meas`): those 9 were restores of the 13
+  under today's values plus two foot changes, not the 13 originals. Of the 13 originals,
+  9 are kept here and 4 cannot be rebuilt by any current build.
+- `script.json` and `script_history/history.json` hash the same before and after.
+
+**Test.**
+- `cli/tests/test_revision_meshes.py`, against the real engine:
+  - A biped is written and its foot changed twice. Then the trail's values are stripped
+    (as before ADR-506) and the store deleted. Backfill keeps revision 3 from disk and
+    rebuilds 1 and 2 with the values from the project's repository.
+  - With the store and the repository both deleted, revision 2's foot=55 is recorded
+    nowhere. Its rebuild lands on revision 1's id, so it is reported as failed, it stays
+    unkept, and its reason reaches `revision_models`.
+  - `script.json`, `script.py`, `PROGRESS.md` and the trail are byte-identical
+    afterwards, and no repository is created.
+  - A second run with a selector rebuilds nothing.
+- `cli/tests/test_review_revisions.py`, in the browser against the real engine:
+  - With the store deleted, all three stops of the timeline read missing, revision 1
+    says why and names the command, and scrubbing the timeline creates no store.
+  - After `cadex revision backfill`, a refresh draws revision 1 with its four parts.
+    Revision 2 draws its own foot, tinted, over revision 1's ghost.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).

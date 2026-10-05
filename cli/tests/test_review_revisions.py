@@ -219,3 +219,60 @@ def test_the_timeline_scrubs_three_real_revisions_with_a_ghost_and_a_tint(engine
     finally:
         server.shutdown()
         server.server_close()
+
+
+@needs_browser
+def test_a_backfill_turns_an_unkept_revision_into_one_the_timeline_draws(engine, tmp_path, browser, capsys) -> None:
+    """Revisions accepted before ADR-546 have no model until ``cadex revision
+    backfill`` rebuilds them (ADR-548); the page only ever reads the result."""
+
+    root = tmp_path / "orun3-biped-backfill"
+    (tmp_path / "biped.py").write_text(BIPED, encoding="utf-8")
+    project = ["--project", str(root)]
+    _run(capsys, "script", "--set", str(tmp_path / "biped.py"), *project)
+    _run(capsys, "params", "--set", "foot=55", *project)
+    _run(capsys, "params", "--set", "foot=70", *project)
+    # A project from before the store: nothing kept at all.
+    import shutil
+    shutil.rmtree(store_root(root))
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        page.evaluate("window.cadexReview.setSource('revisions')", await_promise=True)
+        page.wait_for("document.getElementById('model-status').dataset.state === 'missing'", timeout=30)
+        stops = page.evaluate("window.cadexReview.revisions().stops")
+        assert [(s["ordinal"], s["retained"]) for s in stops] == [(1, False), (2, False), (3, False)]
+        assert page.evaluate("window.cadexReview.pickRevision(0)") == 1
+        page.wait_for(SHOWN + " === 1", timeout=30)
+        assert page.evaluate("document.getElementById('revision-status').textContent") == "not shown: " + NOT_RETAINED
+        assert "cadex revision backfill" in NOT_RETAINED
+        # Watching the timeline rebuilt nothing and kept nothing.
+        assert not store_root(root).exists()
+
+        out = _run(capsys, "revision", "backfill", *project)
+        rows = {row["ordinal"]: row for row in out["revisions"]["backfill"]}
+        assert [row["ordinal"] for row in out["revisions"]["backfill"]] == [3, 1, 2]
+        assert rows[3]["values"].startswith("none rebuilt: the accepted attempt still on disk")
+        for ordinal in (1, 2):
+            assert rows[ordinal]["status"] == "retained", rows[ordinal]
+            assert rows[ordinal]["values"] == "the values the trail stored with it (ADR-506)"
+        # The torso and legs are the same parts in every revision: only the feet were new bytes.
+        assert rows[1]["added_bytes"] < rows[1]["full_bytes"] and rows[2]["added_bytes"] < rows[2]["full_bytes"]
+        assert [m["retained"] for m in out["revisions"]["models"]] == [True, True, True]
+
+        page.evaluate("window.cadexReview.refresh()", await_promise=True)
+        page.evaluate("window.cadexReview.pickRevision(0)")
+        page.wait_for(SHOWN + " === 1 && " + LOADED, timeout=30)
+        assert page.evaluate("window.cadexReview.viewer().stats().components") == 4
+        foot_1 = page.evaluate("window.cadexReview.revisions().model.parts.foot_l")
+        page.evaluate("window.cadexReview.pickRevision(1)")
+        page.wait_for(SHOWN + " === 2 && " + LOADED, timeout=30)
+        # Revision 2's own 55 mm foot, tinted against revision 1's ghost.
+        stats = page.evaluate("window.cadexReview.viewer().stats()")
+        assert stats["components"] == 4 and stats["ghost"] == ["foot_l"]
+        assert page.evaluate("window.cadexReview.revisions().model.parts.foot_l") != foot_1
+        assert "changed: foot_l · against revision 1" in page.evaluate(
+            "document.getElementById('revision-status').textContent")
+    finally:
+        server.shutdown()
+        server.server_close()

@@ -27,12 +27,21 @@ ordinal is already kept. It never fails the call that triggered it.
 its parts, or why it has none. A revision accepted before this store
 existed reads as not retained, with that reason; another revision's
 geometry is never offered in its place.
+
+:func:`backfill` fills that gap, and only when asked (``cadex revision
+backfill``, ADR-548): it rebuilds an old revision's stored source in a
+scratch project and keeps the result only if the engine lands on exactly
+that revision id. Nothing that reads the store ever calls it.
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import json
+import shutil
+import subprocess
+import tarfile
 import time
 from pathlib import Path
 from typing import Any, Mapping
@@ -44,9 +53,12 @@ PARTS_DIR = "parts"
 INDEX_NAME = "index.json"
 SCHEMA = "cadex-revision-meshes-v1"
 
+#: Why a stored revision has no retained model, when a backfill could not rebuild it.
+UNREBUILT = "accepted before this project retained revision meshes, and `cadex revision backfill` could not rebuild it: "
+
 #: Why a stored revision has no retained model, when it predates this store.
 NOT_RETAINED = ("accepted before this project retained revision meshes (ADR-546); "
-                "its geometry was not kept")
+                "its geometry was not kept. `cadex revision backfill` rebuilds it (ADR-548)")
 
 
 def store_root(project_root: Path | str) -> Path:
@@ -62,9 +74,11 @@ def read_index(project_root: Path | str) -> dict[str, Any]:
     except (OSError, ValueError):
         data = None
     if not isinstance(data, dict) or data.get("schema") != SCHEMA:
-        return {"schema": SCHEMA, "revisions": {}}
+        return {"schema": SCHEMA, "revisions": {}, "unrebuilt": {}}
     if not isinstance(data.get("revisions"), dict):
         data["revisions"] = {}
+    if not isinstance(data.get("unrebuilt"), dict):
+        data["unrebuilt"] = {}
     return data
 
 
@@ -104,7 +118,7 @@ def _retain(root: Path) -> dict[str, Any]:
     # The dashboard's own reading of the accepted attempt: the same
     # sha256 link from each output's BREP to its tessellation, and the same
     # placements, so the store holds exactly what the page drew.
-    from .review_server import _accepted_staging, accepted_model_uncached
+    from .review_server import accepted_model_uncached
 
     model = accepted_model_uncached(root)
     revision, digest = str(model.get("revision") or ""), str(model.get("digest") or "")
@@ -120,9 +134,21 @@ def _retain(root: Path) -> dict[str, Any]:
     if isinstance(held, Mapping) and held.get("revision") == revision:
         return {"status": "kept", "ordinal": int(ordinal), "added_bytes": 0}
 
-    staging, _manifest, reason = _accepted_staging(root)
+    return _store(root, root, model, ordinal)
+
+
+def _store(root: Path, built: Path, model: Mapping[str, Any], ordinal: str,
+           provenance: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Keep ``model`` — the accepted model of the project at ``built`` — in
+    ``root``'s store under ``ordinal``. ``built`` is ``root`` itself when
+    retaining, and a scratch rebuild when backfilling."""
+
+    from .review_server import _accepted_staging
+
+    staging, _manifest, reason = _accepted_staging(built)
     if staging is None:
         return {"status": "skipped", "reason": str(reason)}
+    index = read_index(root)
     parts_dir = store_root(root) / PARTS_DIR
     parts: dict[str, dict[str, Any]] = {}
     added = full = 0
@@ -143,10 +169,10 @@ def _retain(root: Path) -> dict[str, Any]:
         parts[output] = {"sha256": sha, "bytes": len(data),
                          "triangles": (sidecar.get("counts") or {}).get("triangles")}
 
-    index["revisions"][ordinal] = {
+    row = {
         "ordinal": int(ordinal),
-        "revision": revision,
-        "digest": digest,
+        "revision": str(model.get("revision") or ""),
+        "digest": str(model.get("digest") or ""),
         "retained_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "attempt": staging.name,
         "parts": parts,
@@ -158,13 +184,20 @@ def _retain(root: Path) -> dict[str, Any]:
         "full_bytes": full,
         "added_bytes": added,
     }
+    if provenance:
+        row["backfilled"] = dict(provenance)
+    index["revisions"][ordinal] = row
+    index["unrebuilt"].pop(ordinal, None)
+    return {**_write_index(root, index), "ordinal": int(ordinal), "added_bytes": added, "full_bytes": full}
+
+
+def _write_index(root: Path, index: dict[str, Any]) -> dict[str, Any]:
     _prune(root, index)
-    before = (store_root(root) / INDEX_NAME)
-    old_size = before.stat().st_size if before.is_file() else 0
+    path = store_root(root) / INDEX_NAME
+    old_size = path.stat().st_size if path.is_file() else 0
     payload = json.dumps(index, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    _write_atomic(before, payload)
-    return {"status": "retained", "ordinal": int(ordinal), "added_bytes": added,
-            "index_bytes_delta": len(payload) - old_size, "full_bytes": full}
+    _write_atomic(path, payload)
+    return {"status": "retained", "index_bytes_delta": len(payload) - old_size}
 
 
 def _prune(root: Path, index: dict[str, Any]) -> None:
@@ -174,6 +207,7 @@ def _prune(root: Path, index: dict[str, Any]) -> None:
 
     alive = {str(entry.get("ordinal")) for entry in read_history(root)}
     index["revisions"] = {key: row for key, row in index["revisions"].items() if key in alive}
+    index["unrebuilt"] = {key: row for key, row in index.get("unrebuilt", {}).items() if key in alive}
     named = {part.get("sha256") for row in index["revisions"].values()
              for part in (row.get("parts") or {}).values()}
     parts_dir = store_root(root) / PARTS_DIR
@@ -189,14 +223,18 @@ def revision_models(project_root: Path | str) -> list[dict[str, Any]]:
     same revision and every blob it names is on disk."""
 
     root = Path(project_root).expanduser()
-    index = read_index(root)["revisions"]
+    stored = read_index(root)
+    index, unrebuilt = stored["revisions"], stored["unrebuilt"]
     parts_dir = store_root(root) / PARTS_DIR
     rows: list[dict[str, Any]] = []
     for entry in read_history(root):
         ordinal, revision = entry.get("ordinal"), str(entry.get("revision") or "")
         row: dict[str, Any] = {"ordinal": ordinal, "revision": revision, "retained": False}
         held = index.get(str(ordinal))
-        if not isinstance(held, Mapping):
+        failed = unrebuilt.get(str(ordinal))
+        if not isinstance(held, Mapping) and isinstance(failed, Mapping) and failed.get("revision") == revision:
+            row["reason"] = UNREBUILT + str(failed.get("reason") or "")
+        elif not isinstance(held, Mapping):
             row["reason"] = NOT_RETAINED
         elif held.get("revision") != revision:
             row["reason"] = (f"the store's row for ordinal {ordinal} names revision "
@@ -211,6 +249,208 @@ def revision_models(project_root: Path | str) -> list[dict[str, Any]]:
                 row.update(retained=True, digest=held.get("digest"), parts=parts,
                            components=list(held.get("components") or []))
         rows.append(row)
+    return rows
+
+
+# -- backfill ----------------------------------------------------------------
+#
+# A revision accepted before this store existed has its source in the trail
+# but no geometry anywhere. ``cadex revision backfill`` rebuilds it through
+# the engine, in a scratch project so the project's own acceptance never
+# moves, and keeps the result only when the rebuild *is* that revision: the
+# engine's revision id binds the source and every stored value, so an equal
+# id is the same model, and a different one is said, never stored.
+
+
+def _acceptances(root: Path) -> dict[str, dict[str, Any]]:
+    """Per accepted revision, what the project's own repository (ADR-194)
+    recorded with it: the earliest commit whose ``script.json`` names it as
+    accepted, and the values that ``script.json`` held. Empty when the
+    project keeps no history."""
+
+    from .project_docs import _git
+
+    if not (root / ".git").exists():
+        return {}
+    log = _git(root, "log", "--format=%H", "--", "script.json")
+    found: dict[str, dict[str, Any]] = {}
+    for commit in log.stdout.split() if log.returncode == 0 else []:
+        shown = _git(root, "show", f"{commit}:script.json")
+        try:
+            state = json.loads(shown.stdout) if shown.returncode == 0 else None
+        except ValueError:
+            state = None
+        if not isinstance(state, dict) or not state.get("accepted_revision"):
+            continue
+        # Newest first, so the last write per revision is its earliest commit.
+        found[str(state["accepted_revision"])] = {"commit": commit, "values": {
+            "params": dict(state.get("param_values") or {}),
+            **{key: list(state.get(f"{key[:-1]}_values") or [])
+               for key in ("nets", "boards", "mounts", "cages")}}}
+    return found
+
+
+def _candidates(entry: Mapping[str, Any], recorded: Mapping[str, Any] | None) -> list[tuple[str, dict[str, Any]]]:
+    """The values to try a revision's source with, most trusted first: those
+    the trail stored with it (ADR-506), those the project's repository
+    recorded at its acceptance, then none at all (every parameter at its
+    default). The revision check decides which, if any, is right."""
+
+    out: list[tuple[str, dict[str, Any]]] = []
+    if isinstance(entry.get("values"), Mapping):
+        out.append(("the values the trail stored with it (ADR-506)", dict(entry["values"])))
+    if recorded is not None:
+        out.append((f"the values script.json held at its acceptance (project commit "
+                    f"{recorded['commit'][:12]})", dict(recorded["values"])))
+    out.append(("no stored values: every parameter at its default", {}))
+    seen, unique = set(), []
+    for label, values in out:
+        key = json.dumps(values, sort_keys=True)
+        if key not in seen:
+            seen.add(key)
+            unique.append((label, values))
+    return unique
+
+
+def _scratch_assets(root: Path, scratch: Path, commit: str | None) -> str:
+    """Give the scratch project the assets the revision was built with: the
+    ones the repository held at its acceptance commit, else today's. The
+    revision id does not bind asset bytes, so this is what keeps an imported
+    mesh replaced since from passing for the old one."""
+
+    target = scratch / "assets"
+    target.mkdir(parents=True, exist_ok=True)
+    if commit:
+        archive = subprocess.run(
+            ["git", "-C", str(root), "archive", "--format=tar", commit, "--", "assets"],
+            capture_output=True, check=False)
+        if archive.returncode != 0:
+            # `git archive` refuses a pathspec the commit does not have.
+            return f"no assets at project commit {commit[:12]}"
+        with tarfile.open(fileobj=io.BytesIO(archive.stdout)) as tar:
+            for member in tar.getmembers():
+                name = Path(member.name)
+                handle = tar.extractfile(member) if member.isfile() else None
+                if handle is not None and name.parent == Path("assets"):
+                    (target / name.name).write_bytes(handle.read())
+        return f"assets as of project commit {commit[:12]}"
+    source = root / "assets"
+    if source.is_dir():
+        for path in source.iterdir():
+            if path.is_file() and not path.is_symlink():
+                shutil.copy2(path, target / path.name)
+    return "today's assets: no project commit recorded its acceptance"
+
+
+def backfill(project_root: Path | str, client: Any, *, display: Mapping[str, Any],
+             selector: str = "", progress: Any = None) -> list[dict[str, Any]]:
+    """Rebuild every stored revision without a retained model, and keep each
+    one whose rebuild reproduces its revision id exactly.
+
+    ``client`` is a started cadexd; it opens one scratch project per try and
+    never the project itself, so nothing the project accepted moves. One row
+    per revision attempted, the accepted one first when it was not yet kept:
+    ``retained`` (with what it was built from and
+    the bytes it added), ``copied`` (another ordinal of the same revision was
+    already kept), or ``failed`` with the reason — a rebuild that lands on
+    another revision is reported, never stored. ``selector`` limits it to
+    one ordinal.
+    """
+
+    import tempfile
+    from .client import open_project
+    from .review_server import accepted_model_uncached
+    from .revisions import read_source
+    from .session import read_working_revision
+
+    root = Path(project_root).expanduser().resolve()
+    say = progress or (lambda _text: None)
+    rows: list[dict[str, Any]] = []
+    # The accepted revision's attempt is still on disk: keep it from there,
+    # as any session would, rather than ask today's engine to rebuild it.
+    kept = retain(root)
+    if kept.get("status") == "retained":
+        rows.append({"ordinal": kept["ordinal"], "revision": str(read_index(root)["revisions"]
+                     [str(kept["ordinal"])]["revision"]), "status": "retained",
+                     "values": "none rebuilt: the accepted attempt still on disk (ADR-546)",
+                     "added_bytes": kept["added_bytes"], "full_bytes": kept["full_bytes"]})
+    acceptances: dict[str, dict[str, Any]] | None = None
+    for model_row in revision_models(root):
+        ordinal, revision = model_row["ordinal"], str(model_row["revision"])
+        if model_row["retained"] or (selector and str(ordinal) != str(selector)):
+            continue
+        entry = next(e for e in read_history(root) if e.get("ordinal") == ordinal)
+        result: dict[str, Any] = {"ordinal": ordinal, "revision": revision}
+        rows.append(result)
+        index = read_index(root)
+        twin = next((row for key, row in index["revisions"].items()
+                     if key != str(ordinal) and isinstance(row, Mapping) and row.get("revision") == revision
+                     and not row.get("backfilled", {}).get("copied_from")), None)
+        if twin is not None:
+            index["revisions"][str(ordinal)] = {
+                **twin, "ordinal": ordinal, "added_bytes": 0,
+                "backfilled": {"copied_from": twin["ordinal"],
+                               "why": "the same revision id: the same source and values"}}
+            _write_index(root, index)
+            result.update(status="copied", copied_from=twin["ordinal"], added_bytes=0)
+            continue
+        try:
+            source = read_source(root, entry)
+        except ValueError as exc:
+            result.update(status="failed", reason=str(exc))
+            continue
+        if acceptances is None:
+            acceptances = _acceptances(root)
+        recorded = acceptances.get(revision)
+        tries: list[str] = []
+        for label, values in _candidates(entry, recorded):
+            say(f" · revision {ordinal}: rebuilding with {label}")
+            started = time.monotonic()
+            with tempfile.TemporaryDirectory(prefix="cadex-backfill-") as scratch_dir:
+                scratch = Path(scratch_dir)
+                assets = _scratch_assets(root, scratch, recorded["commit"] if recorded else None)
+                open_project(client, scratch, restore=False)
+                reply = client.request("write_script", {
+                    "source": source, "replace": True, "display": dict(display),
+                    "expected_revision": read_working_revision(client)})
+                patch = {key: value for key, value in values.items()
+                         if value and key in ("nets", "boards", "mounts", "cages")}
+                if reply.get("ok") is True and (values.get("params") or patch):
+                    reply = client.request("set_params", {
+                        "values": dict(values.get("params") or {}), **patch,
+                        "display": dict(display), "expected_revision": read_working_revision(client)})
+                if reply.get("ok") is not True:
+                    tries.append(f"with {label}: the engine refused it: "
+                                 f"{reply.get('error') or reply.get('failure_code') or 'no reason given'}")
+                    continue
+                model = accepted_model_uncached(scratch)
+                got, digest = str(model.get("revision") or ""), str(model.get("digest") or "")
+                if got != revision:
+                    tries.append(f"with {label}: rebuilt as revision {got[:12]}, not {revision[:12]}")
+                    continue
+                if entry.get("digest") and digest != entry["digest"]:
+                    tries.append(f"with {label}: the revision matched but the digest "
+                                 f"{digest[:12]} is not the trail's {str(entry['digest'])[:12]}")
+                    continue
+                if not model.get("available"):
+                    tries.append(f"with {label}: {model.get('reason') or 'no model to keep'}")
+                    continue
+                stored = _store(root, scratch, model, str(ordinal), provenance={
+                    "values": label, "assets": assets,
+                    "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())})
+                result.update(status="retained", values=label, assets=assets,
+                              added_bytes=stored.get("added_bytes", 0),
+                              full_bytes=stored.get("full_bytes", 0),
+                              seconds=round(time.monotonic() - started, 1))
+                break
+        else:
+            result.update(status="failed", reason="no rebuild reproduced it: " + "; ".join(tries))
+            # Remembered, so the page says why rather than suggest a backfill again.
+            index = read_index(root)
+            index["unrebuilt"][str(ordinal)] = {
+                "revision": revision, "reason": result["reason"],
+                "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+            _write_index(root, index)
     return rows
 
 

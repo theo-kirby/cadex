@@ -53,7 +53,9 @@ from .export import ExportedOutput, ExportError, export_blueprints, export_outpu
 from .inventory import InventoryError, read_inventory, write_inventory
 from .render import acquire_snapshot, describe_proxies, write_render
 from .section import write_section
-from .revision_meshes import retain as retain_revision_meshes, revision_models
+from .revision_meshes import (
+    backfill as backfill_revision_meshes, retain as retain_revision_meshes, revision_models,
+)
 from .revisions import (
     previous as previous_revision,
     read_history as read_revision_history,
@@ -707,18 +709,23 @@ def build_parser() -> argparse.ArgumentParser:
     revision_parser = subparsers.add_parser(
         "revision",
         help="Review the accepted revisions (ADR-506): list the trail, reject "
-        "the current one (put back the one before), or restore any stored one.",
+        "the current one (put back the one before), restore any stored one, "
+        "or backfill the models of revisions accepted before they were kept "
+        "(ADR-548).",
     )
     _common(revision_parser, inherit=True)
     revision_parser.add_argument(
-        "action", choices=("list", "reject", "restore"),
+        "action", choices=("list", "reject", "restore", "backfill"),
         help="list: the stored trail. reject: put back the revision accepted "
-        "before it. restore: put back the named one.",
+        "before it. restore: put back the named one. backfill: rebuild, in a "
+        "scratch project, every stored revision whose model was not kept, "
+        "and keep each one that reproduces its revision exactly.",
     )
     revision_parser.add_argument(
         "selector", nargs="?", default="",
         help="An ordinal or a revision prefix. restore needs one; reject "
-        "takes one only to check it is the accepted revision.",
+        "takes one only to check it is the accepted revision; backfill takes "
+        "one to rebuild only that revision.",
     )
 
     app_parser = subparsers.add_parser(
@@ -1082,6 +1089,8 @@ def command_revision(args: argparse.Namespace, report: RunReport) -> int:
         report.accepted_revision = identity.get("revision", "") if identity.get("available") else ""
         report.ok = True
         return EXIT_OK
+    if action == "backfill":
+        return _revision_backfill(args, report, root)
     want = str(args.selector or "").strip().lower()
     with _engine_session(args, report, restore=False) as (engine, client):
         identity = read_accepted_identity(root)
@@ -1171,6 +1180,50 @@ def command_revision(args: argparse.Namespace, report: RunReport) -> int:
         _finish(args, report, engine, reply.get("display"))
         report.ok = True
         return EXIT_OK
+
+
+def _revision_backfill(args: argparse.Namespace, report: RunReport, root: Path) -> int:
+    """``cadex revision backfill``: rebuild the models the store never kept (ADR-548).
+
+    Not an ``_engine_session``: that would open the project and retain its
+    accepted model, and this command must leave the project exactly as it
+    found it apart from ``review/revisions/``. The engine opens only
+    scratch projects; the project is locked so no other run moves the trail
+    under it. No row and no commit: the store is ignored by the project's
+    git (ADR-194) and nothing accepted changed.
+    """
+
+    selector = str(args.selector or "").strip().lower()
+    entries = read_revision_history(root)
+    ordinal = select_revision(entries, selector).get("ordinal") if selector else ""
+    engine = resolve_engine(args.engine or None)
+    report.engine = engine.describe()
+    with project_lock(root, wait=bool(args.wait)):
+        report.project_root = str(root.resolve())
+        client = CadexdClient(engine)
+        try:
+            client.start()
+            _install_cancel(client)
+            rows = backfill_revision_meshes(root, client, display=STANDARD_DISPLAY,
+                                            selector=str(ordinal or ""), progress=_progress)
+        finally:
+            client.shutdown()
+    report.revisions = {
+        "action": "backfill", "backfill": rows,
+        "models": [{key: row.get(key) for key in ("ordinal", "retained", "reason")}
+                   for row in revision_models(root)]}
+    identity = read_accepted_identity(root)
+    report.accepted_revision = identity.get("revision", "") if identity.get("available") else ""
+    kept = [row for row in rows if row.get("status") in ("retained", "copied")]
+    failed = [row for row in rows if row.get("status") == "failed"]
+    report.notes.append(
+        f"backfilled {len(kept)} of {len(rows)} revision(s) without a kept model"
+        + (f": {sum(int(row.get('added_bytes') or 0) for row in kept)} new bytes of tessellation."
+           if rows else ": nothing to do, every revision asked for already has one."))
+    for row in failed:
+        report.notes.append(f"revision {row['ordinal']} not backfilled: {row['reason']}")
+    report.ok = True
+    return EXIT_OK
 
 
 def command_params(args: argparse.Namespace, report: RunReport) -> int:
@@ -2959,7 +3012,7 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
         return
     if command in ("review", "app", "budgets"):  # no run: no row, no commit (ADR-286)
         return
-    if command == "revision" and args.action == "list":  # a read (ADR-506)
+    if command == "revision" and args.action in ("list", "backfill"):  # a read; a store fill (ADR-548)
         return
     # Read once, before the row is appended: both branches compare against
     # the last row that carried each number, and the walk branch is why
@@ -3007,7 +3060,7 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
         return
     if command in ("review", "app", "budgets"):
         return
-    if command == "revision" and args.action == "list":
+    if command == "revision" and args.action in ("list", "backfill"):
         return
     # A walk's legs each committed; what is left is its review.json, when
     # --out lies under the project, plus generated project review artifacts.

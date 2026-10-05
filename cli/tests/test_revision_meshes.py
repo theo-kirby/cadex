@@ -19,7 +19,7 @@ from cadex_cli.bridge import Bridge
 from cadex_cli.client import CadexdClient, open_project
 from cadex_cli.report import EXIT_OK
 from cadex_cli.revision_meshes import (
-    INDEX_NAME, NOT_RETAINED, PARTS_DIR, SCHEMA, _prune, read_index, retain, revision_models, store_root,
+    INDEX_NAME, NOT_RETAINED, PARTS_DIR, SCHEMA, UNREBUILT, _prune, read_index, retain, revision_models, store_root,
 )
 
 # A biped, as small as one gets: a torso on two legs, the feet a parameter.
@@ -152,7 +152,70 @@ def test_the_store_is_bounded_by_the_trail_it_shadows(tmp_path) -> None:
     index = {"schema": SCHEMA, "revisions": {
         "0": {"revision": "a" * 64, "parts": {"torso": {"sha256": shared}, "foot_l": {"sha256": gone}}},
         "1": {"revision": "b" * 64, "parts": {"torso": {"sha256": shared}}},
-    }}
+    }, "unrebuilt": {"0": {"revision": "a" * 64, "reason": "x"}}}
     _prune(root, index)
-    assert list(index["revisions"]) == ["1"]
+    assert list(index["revisions"]) == ["1"] and index["unrebuilt"] == {}
     assert sorted(os.listdir(store_root(root) / PARTS_DIR)) == [f"{shared}.tess.bin", f"{shared}.tess.json"]
+
+
+def test_a_backfill_keeps_only_a_rebuild_that_is_the_revision(engine, tmp_path, capsys) -> None:
+    """``cadex revision backfill`` (ADR-548) rebuilds in a scratch project:
+    the project's acceptance never moves, and a rebuild that lands on another
+    revision id is reported, never stored in that revision's place."""
+
+    import shutil
+
+    root = tmp_path / "orun3-biped-nohistory"
+    (tmp_path / "biped.py").write_text(BIPED, encoding="utf-8")
+    project = ["--project", str(root)]
+    for argv in (["script", "--set", str(tmp_path / "biped.py")], ["params", "--set", "foot=55"],
+                 ["params", "--set", "foot=70"]):
+        code, out = _run(capsys, *argv, *project)
+        assert code == EXIT_OK, out
+    # A trail from before ADR-506 stores no values; the project's own
+    # repository (ADR-194) still recorded script.json at each acceptance.
+    history = json.loads((root / "script_history" / "history.json").read_text())
+    for entry in history["entries"]:
+        entry.pop("values", None)
+        entry.pop("digest", None)
+    (root / "script_history" / "history.json").write_text(json.dumps(history), encoding="utf-8")
+    shutil.rmtree(store_root(root))
+    code, out = _run(capsys, "revision", "backfill", *project)
+    assert code == EXIT_OK, out
+    assert [(row["ordinal"], row["status"]) for row in out["revisions"]["backfill"]] == \
+        [(3, "retained"), (1, "retained"), (2, "retained")]
+    assert out["revisions"]["backfill"][2]["values"].startswith("the values script.json held at its acceptance")
+    assert read_index(root)["revisions"]["2"]["backfilled"]["assets"].startswith("no assets at project commit")
+
+    # Before the store, and with no repository to say what foot=55 was:
+    # revision 2's values are recorded nowhere.
+    shutil.rmtree(store_root(root))
+    shutil.rmtree(root / ".git")
+    before = {name: (root / name).read_bytes() for name in ("script.json", "script.py", "PROGRESS.md")}
+    trail = (root / "script_history" / "history.json").read_bytes()
+
+    code, out = _run(capsys, "revision", "backfill", *project)
+    assert code == EXIT_OK, out
+    rows = {row["ordinal"]: row for row in out["revisions"]["backfill"]}
+    assert rows[3]["status"] == "retained" and rows[1]["status"] == "retained"
+    assert rows[1]["values"] == "no stored values: every parameter at its default"
+    # foot=55 is not the default: the rebuild is revision 1, so 2 stays unkept.
+    first = history["entries"][0]["revision"]
+    assert rows[2]["status"] == "failed" and f"rebuilt as revision {first[:12]}" in rows[2]["reason"]
+    models = revision_models(root)
+    assert [row["retained"] for row in models] == [True, False, True]
+    # The page is told why, rather than told to backfill again.
+    assert models[1]["reason"].startswith(UNREBUILT) and "rebuilt as revision" in models[1]["reason"]
+    assert models[0].get("reason") is None
+    assert any("revision 2 not backfilled" in note for note in out["notes"])
+    # Nothing the project accepted moved, and the trail is as it was.
+    assert {name: (root / name).read_bytes() for name in before} == before
+    assert (root / "script_history" / "history.json").read_bytes() == trail
+    assert read_index(root)["revisions"]["1"]["backfilled"]["assets"].startswith("today's assets")
+
+    # Run again: nothing left that can be rebuilt is rebuilt twice, and a
+    # selector limits it to one revision.
+    code, again = _run(capsys, "revision", "backfill", "1", *project)
+    assert code == EXIT_OK and again["revisions"]["backfill"] == []
+    # It opened only scratch projects: no repository was made, no row written.
+    assert not (root / ".git").exists()
