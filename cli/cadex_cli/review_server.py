@@ -50,10 +50,14 @@ import struct
 import sys
 import threading
 import zlib
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
 
+from .activity import read_activity
+from .checkpoints import FAILURE_SUFFIX as CHECKPOINT_FAILURE_SUFFIX
+from .checkpoints import TRACE_SUFFIX as CHECKPOINT_TRACE_SUFFIX
+from .revision_meshes import revision_mesh_paths, revision_model, revision_models
 from .revisions import read_history as read_revision_history
 from .session import read_agent_state
 from .studio import PRINTABLES, STUDIO
@@ -110,6 +114,82 @@ CONTENT_TYPES = {
     ".jsonl": "text/plain; charset=utf-8",
     ".csv": "text/plain; charset=utf-8",
 }
+#: The HTTP API (ADR-552): every ``GET /api/<route>`` a project's page
+#: answers, a ``<name>`` segment standing for one path segment. The router
+#: dispatches from this table and nothing else, ``docs/CLI.md`` §2c lists
+#: the same routes, and ``test_http_api.py`` holds the two together.
+API_ROUTES = (
+    "project",
+    "run/<run>",
+    "policy-origin/<run>",
+    "evaluation/<name>",
+    "model/accepted",
+    "model/revision/<ordinal>",
+    "model/run/<run>",
+    "playback/run/<run>",
+    "playback/checkpoint/<run>/<stem>",
+)
+#: What ``cadex app`` answers at its own root, beside each project's routes.
+APP_API_ROUTES = ("projects",)
+_MODEL_KEYS = frozenset({
+    "schema", "view", "run", "relation", "revision", "digest", "available", "reason", "source",
+    "placement_source", "components", "collision", "contacts", "exploded", "appearance",
+    "measurements"})
+_PLAYBACK_KEYS = frozenset({"reason", "times_s", "frames", "commands", "channels", "duration_s",
+                            "frames_per_second"})
+#: Each route's top-level reply keys: those every 200 reply carries, and
+#: those only some do (an unavailable model has no ``meshes``, a playback
+#: no ``frames``). A ``run/<run>`` reply is the run record as written, so
+#: its optional keys are what ``write_run_record`` writes. Every 404 is
+#: ``{"error": "not found", "what": ...}``.
+API_RESPONSE_KEYS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    "projects": (frozenset({"schema", "root", "projects", "served_at"}), frozenset()),
+    "project": (frozenset({
+        "schema", "project", "accepted", "docs", "decisions", "runs", "presentation", "evaluations",
+        "revisions", "stage", "exports", "sections", "drawings", "budgets", "activity", "served_at"}),
+        frozenset()),
+    "run/<run>": (frozenset({
+        "run", "status", "error", "artifacts", "project_artifacts", "videos", "legs", "outcome",
+        "resolved", "problems", "relation", "telemetry", "disk"}),
+        frozenset({"schema", "recorded_at", "mode", "walk_seconds", "model", "params", "task",
+                   "training", "policy", "rollout", "project_docs", "policy_store",
+                   "video_render"})),
+    "policy-origin/<run>": (frozenset({
+        "schema", "run", "policy_sha256", "origin", "reason", "recorded_source_run",
+        "source_agrees", "playbacks"}), frozenset()),
+    "evaluation/<name>": (frozenset({"name", "relation", "stamp", "files", "report"}), frozenset()),
+    "model/accepted": (_MODEL_KEYS, frozenset({"meshes"})),
+    "model/revision/<ordinal>": (frozenset({
+        "view", "ordinal", "revision", "digest", "available", "reason", "components", "previous",
+        "changed", "source"}), frozenset({"compare"})),
+    # A run with no rollout yet at the accepted revision borrows its model.
+    "model/run/<run>": (_MODEL_KEYS, frozenset({"playback", "meshes"})),
+    "playback/run/<run>": (frozenset({"available", "run", "source"}), _PLAYBACK_KEYS),
+    "playback/checkpoint/<run>/<stem>": (frozenset({"available", "run", "stem", "checkpoint", "source"}),
+                                         _PLAYBACK_KEYS),
+}
+_API_HANDLERS = {
+    "project": "project", "run/<run>": "run", "policy-origin/<run>": "policy_origin",
+    "evaluation/<name>": "evaluation", "model/accepted": "model_accepted",
+    "model/revision/<ordinal>": "model_revision", "model/run/<run>": "model_run",
+    "playback/run/<run>": "playback_run",
+    "playback/checkpoint/<run>/<stem>": "playback_checkpoint",
+}
+
+
+def match_api_route(routes: Sequence[str], segments: Sequence[str]) -> tuple[str, list[str]] | None:
+    """The route ``segments`` (the path after ``api/``) names, and its
+    ``<name>`` segments in order; ``None`` when no route matches."""
+
+    for route in routes:
+        pattern = route.split("/")
+        if len(pattern) != len(segments):
+            continue
+        if all(p.startswith("<") or p == s for p, s in zip(pattern, segments)):
+            return route, [s for p, s in zip(pattern, segments) if p.startswith("<")]
+    return None
+
+
 TESSELLATION_SCHEMA = "cadex-tessellation-v1"
 TRACE_SCHEMA = "cadex-assembly-simulation-trace-v1"
 #: Bound on any single file the server will read into memory to serve; a
@@ -396,6 +476,137 @@ def run_playback(project_root: Path | str, record: Mapping[str, Any]) -> dict[st
     return playback
 
 
+# -- checkpoint rollouts: training as motion (ADR-544 writes them, ADR-545 shows them) --
+
+#: ``walk.000040.rollout-trace.json`` and its siblings: the output, the
+#: numbered tag, and which of the three files it is.
+_CHECKPOINT_FILE = re.compile(r"(?P<stem>(?P<output>.+)\.(?P<tag>\d+))"
+                              r"(?P<kind>\.cxpolicy|" + re.escape(CHECKPOINT_TRACE_SUFFIX)
+                              + "|" + re.escape(CHECKPOINT_FAILURE_SUFFIX) + ")")
+#: The newest checkpoints the stage lists; older ones stay on disk.
+CHECKPOINTS_LISTED = 64
+#: What one checkpoint's trace says of itself, kept per file identity so
+#: a poll reparses no trace that did not change.
+_CHECKPOINT_MEMO: "OrderedDict[str, tuple[tuple[int, int] | None, dict[str, Any]]]" = OrderedDict()
+_CHECKPOINT_MEMO_SIZE = 512
+
+
+def _checkpoint_dir(root: Path, run: str) -> Path | None:
+    """``runs/<run>/train`` when it resolves inside the project, else ``None``."""
+
+    ref = resolve_reference(root, f"{RUNS_DIRNAME}/{run}/train")
+    if ref["error"] or not ref["exists"] or not (root / ref["path"]).is_dir():
+        return None
+    return root / ref["path"]
+
+
+def _checkpoint_head(path: Path) -> dict[str, Any]:
+    """A trace's ``checkpoint`` block and its length, or a failure record's
+    reason, read once per file identity."""
+
+    key = _stat_key(path)
+    with _MEMO_LOCK:
+        held = _CHECKPOINT_MEMO.get(str(path))
+        if held is not None and held[0] == key:
+            _CHECKPOINT_MEMO.move_to_end(str(path))
+            return held[1]
+    data = _load_json(path) or {}
+    if path.name.endswith(CHECKPOINT_FAILURE_SUFFIX):
+        head = {"state": "failed", "iteration": data.get("iteration"), "reward_per_step": None,
+                "sha256": None, "reason": str(data.get("reason") or "unreadable failure record")[:120],
+                "error": str(data.get("error") or "")[:300]}
+    else:
+        block = data.get("checkpoint") if isinstance(data.get("checkpoint"), Mapping) else {}
+        playback = trace_playback(data)
+        head = {"state": "ready" if playback["available"] else "failed",
+                "iteration": block.get("iteration"), "reward_per_step": block.get("reward_per_step"),
+                "sha256": block.get("sha256"),
+                "reason": "" if playback["available"] else "unplayable_trace",
+                "error": "" if playback["available"] else playback["reason"],
+                "duration_s": playback.get("duration_s")}
+    for name in ("iteration", "reward_per_step", "duration_s"):
+        value = head.get(name)
+        if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float))
+                                  or not math.isfinite(value)):
+            head[name] = None
+    with _MEMO_LOCK:
+        _CHECKPOINT_MEMO[str(path)] = (key, head)
+        _CHECKPOINT_MEMO.move_to_end(str(path))
+        while len(_CHECKPOINT_MEMO) > _CHECKPOINT_MEMO_SIZE:
+            _CHECKPOINT_MEMO.popitem(last=False)
+    return head
+
+
+def checkpoint_rollouts(project_root: Path | str, run: str) -> dict[str, Any]:
+    """A run's checkpoints as the 3D viewport scrubs them (ADR-545).
+
+    One item per numbered checkpoint that has been rolled out, oldest
+    first: ``ready`` with the URL of its playback, or ``failed`` with the
+    reason its failure record (or an unplayable trace) gives. ``pending``
+    counts the checkpoints on disk with neither yet -- the watcher has not
+    reached them. Only regular files in the run's own ``train/`` are read;
+    a checkpoint is never borrowed from another run.
+    """
+
+    root = Path(project_root).expanduser()
+    train = _checkpoint_dir(root, run)
+    if train is None:
+        return {"run": run, "items": [], "pending": 0, "listed_of": 0,
+                "reason": "the run has no train directory"}
+    found: dict[str, dict[str, Any]] = {}
+    for path in train.iterdir():
+        match = _CHECKPOINT_FILE.fullmatch(path.name)
+        if match is None or path.is_symlink() or not path.is_file():
+            continue
+        entry = found.setdefault(match["stem"], {"stem": match["stem"], "tag": match["tag"],
+                                                 "kinds": set()})
+        entry["kinds"].add(match["kind"])
+    items, pending = [], 0
+    for stem, entry in found.items():
+        kinds = entry.pop("kinds")
+        if CHECKPOINT_TRACE_SUFFIX in kinds:
+            head = _checkpoint_head(train / (stem + CHECKPOINT_TRACE_SUFFIX))
+        elif CHECKPOINT_FAILURE_SUFFIX in kinds:
+            head = _checkpoint_head(train / (stem + CHECKPOINT_FAILURE_SUFFIX))
+        else:
+            pending += 1
+            continue
+        item = {**entry, **head}
+        if item["iteration"] is None:
+            item["iteration"] = int(entry["tag"]) - 1
+        item["url"] = (f"api/playback/checkpoint/{quote(run, safe='')}/{quote(stem, safe='')}"
+                       if head["state"] == "ready" else None)
+        items.append(item)
+    items.sort(key=lambda item: (int(item["tag"]), item["stem"]))
+    return {"run": run, "items": items[-CHECKPOINTS_LISTED:], "pending": pending,
+            "listed_of": len(items), "reason": "" if items or pending else "no checkpoint rolled out yet"}
+
+
+def checkpoint_playback(project_root: Path | str, run: str, stem: str) -> dict[str, Any] | None:
+    """``/api/playback/checkpoint/<run>/<stem>``: one checkpoint's rollout
+    as playback frames, with what the trainer said of it; ``None`` when
+    the name is not a checkpoint this run's ``train/`` holds."""
+
+    root = Path(project_root).expanduser()
+    match = _CHECKPOINT_FILE.fullmatch(stem + CHECKPOINT_TRACE_SUFFIX)
+    train = _checkpoint_dir(root, run)
+    if match is None or match["stem"] != stem or train is None:
+        return None
+    path = train / (stem + CHECKPOINT_TRACE_SUFFIX)
+    if path.is_symlink() or not path.is_file():
+        failure = train / (stem + CHECKPOINT_FAILURE_SUFFIX)
+        if failure.is_symlink() or not failure.is_file():
+            return None
+        head = _checkpoint_head(failure)
+        return {"available": False, "reason": f"{head['reason']}: {head['error']}", "run": run,
+                "stem": stem, "checkpoint": head, "source": failure.relative_to(root).as_posix()}
+    trace = _load_json(path)
+    playback = trace_playback(trace)
+    playback.update(run=run, stem=stem, checkpoint=_checkpoint_head(path),
+                    source=path.relative_to(root).as_posix())
+    return playback
+
+
 def _render_sources(root: Path, record: Mapping[str, Any]) -> dict[str, str]:
     """``component -> output`` from the run's render summary, when it resolves."""
 
@@ -663,7 +874,7 @@ def retain_training_view(project_root: Path | str, run_dir: Path | str) -> None:
         mesh_path = mesh_dir / f"{output}.stl"
         mesh_path.write_bytes(data)
         entry["sha256"] = _sha256(mesh_path)
-        entry["mesh"] = f"/mesh/run/{destination.name}/{output}.stl"
+        entry["mesh"] = f"mesh/run/{destination.name}/{output}.stl"
     model.pop("meshes", None)
     payload = {"schema": "cadex-training-view-v1", "model": model,
                "identity": read_accepted_identity(root),
@@ -760,7 +971,7 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
                 "placement_source": "assembly placements not recorded: individual parts at identity",
                 "components": [{
                     "name": p.stem, "output": p.stem,
-                    "mesh": f"/mesh/run/{run_name}/{p.stem}.stl",
+                    "mesh": f"mesh/run/{run_name}/{p.stem}.stl",
                     "mesh_status": "retained", "placement": None,
                     "placement_source": "individual exported part: identity",
                 } for p in meshes],
@@ -794,7 +1005,7 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
             used.add(output)
         entries.append({
             "name": name, "output": output,
-            "mesh": f"/mesh/run/{run_name}/{output}.stl" if output in meshes else None,
+            "mesh": f"mesh/run/{run_name}/{output}.stl" if output in meshes else None,
             "mesh_status": "retained" if output in meshes else "missing",
             "placement": placements.get(name),
             "placement_source": ("rollout trace, first frame" if name in placements
@@ -805,7 +1016,7 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
             continue
         entries.append({
             "name": output, "output": output,
-            "mesh": f"/mesh/run/{run_name}/{output}.stl", "mesh_status": "retained",
+            "mesh": f"mesh/run/{run_name}/{output}.stl", "mesh_status": "retained",
             "placement": None, "placement_source": "no component placement recorded: identity",
         })
     model.update({
@@ -824,7 +1035,7 @@ def run_model(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, 
     playback = trace_playback(trace)
     model["playback"] = ({"available": True, "frames": len(playback["frames"]),
                           "duration_s": playback["duration_s"],
-                          "url": f"/api/playback/run/{run_name}"}
+                          "url": f"api/playback/run/{run_name}"}
                          if playback["available"] else {"available": False, "reason": playback["reason"]})
     return model
 
@@ -1204,7 +1415,7 @@ def accepted_model_uncached(project_root: Path | str) -> dict[str, Any]:
             used.add(source)
         entries.append({
             "name": name, "output": source,
-            "mesh": f"/mesh/accepted/{source}.stl" if source in tess_by_output else None,
+            "mesh": f"mesh/accepted/{source}.stl" if source in tess_by_output else None,
             "mesh_status": "retained" if source in tess_by_output else "missing",
             "placement": placement, "placement_source": placement_source,
             "world": name in world,
@@ -1213,7 +1424,7 @@ def accepted_model_uncached(project_root: Path | str) -> dict[str, Any]:
         if output in used:
             continue
         entries.append({
-            "name": output, "output": output, "mesh": f"/mesh/accepted/{output}.stl",
+            "name": output, "output": output, "mesh": f"mesh/accepted/{output}.stl",
             "mesh_status": "retained", "placement": None,
             "placement_source": "no component placement recorded: identity",
         })
@@ -1297,13 +1508,34 @@ def tessellation_to_stl(sidecar: Mapping[str, Any], data: bytes) -> bytes:
 HISTORY_KEYS = ("curve", "loss_curve", "episode_steps_curve")
 
 
-def _telemetry_summary(result: dict[str, Any], reported: int) -> dict[str, Any]:
+#: The most points a sparkline in the stage overlay carries (ADR-542).
+SPARK_POINTS = 64
+#: The histories the stage overlay draws as sparklines.
+SPARK_KEYS = ("curve", "loss_curve")
+
+
+def _spark(points: list[list[float]], limit: int = SPARK_POINTS) -> list[list[float]]:
+    """At most ``limit`` evenly spaced points of a history, its last one
+    always kept, each value to five significant figures: the shape of a
+    curve in a sparkline's width, at a cost that never grows."""
+
+    if len(points) > limit:
+        step = (len(points) - 1) / (limit - 1)
+        points = [points[round(i * step)] for i in range(limit)]
+    return [[int(i), float(f"{v:.5g}")] for i, v in points]
+
+
+def _telemetry_summary(result: dict[str, Any], reported: int, *, spark: bool = False) -> dict[str, Any]:
     """The run-list form of a telemetry result (ADR-321): the same state,
     reason and latest metrics, with each history replaced by its sample
     count and the checkpoint list by how many entries it reports. Nothing
     here is hashed and nothing grows with training length, so a poll of the
-    whole run list costs a bounded amount per run however long the history."""
+    whole run list costs a bounded amount per run however long the history.
+    ``spark`` keeps a :data:`SPARK_POINTS` sketch of the reward and loss
+    histories, for the one run the stage overlay reads (ADR-542)."""
 
+    if spark:
+        result["spark"] = {key: _spark(result.get(key) or []) for key in SPARK_KEYS}
     result["samples"] = {key: len(result.pop(key, []) or []) for key in HISTORY_KEYS}
     result.pop("checkpoints", None)
     result["checkpoints_reported"] = reported
@@ -1311,7 +1543,8 @@ def _telemetry_summary(result: dict[str, Any], reported: int) -> dict[str, Any]:
     return result
 
 
-def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = True) -> dict[str, Any]:
+def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = True,
+                       spark: bool = False) -> dict[str, Any]:
     """Observe the run-local trainer snapshot; never infer process success.
 
     ``detail=True`` is the ``/api/run/<name>`` form: full histories (at
@@ -1328,7 +1561,7 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
                               "episode_steps_curve": []}
 
     def finish(value: dict[str, Any], reported: int = 0) -> dict[str, Any]:
-        return value if detail else _telemetry_summary(value, reported)
+        return value if detail else _telemetry_summary(value, reported, spark=spark)
 
     run_ref = resolve_reference(root, f"runs/{record['run']}")
     if run_ref["error"] or not run_ref["exists"]:
@@ -1361,11 +1594,14 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
             result[key] = [[int(i), float(v)] for i, v in points]
             if any(not math.isfinite(v) for i, v in result[key]):
                 raise ValueError("nonfinite history")
-        for key in ("iteration", "total", "reward_per_step", "loss", "episode_steps"):
+        for key in ("iteration", "total", "reward_per_step", "loss", "episode_steps",
+                    "eta_s", "wall_time_s", "best_iteration", "best_reward_per_step"):
             value = data.get(key)
             if value is not None and (not isinstance(value, (int, float)) or not math.isfinite(value)):
                 raise ValueError("invalid metric")
             result[key] = value
+        # The collapse the trainer has detected (ADR-410), as it said it.
+        result["warning"] = str(data.get("warning") or "")[:300]
     except (OSError, TypeError, ValueError, OverflowError):
         return finish({"state": "invalid", "reason": "training telemetry has invalid metrics",
                        "checkpoints": [], "curve": [], "loss_curve": [], "episode_steps_curve": []})
@@ -1386,7 +1622,7 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
     source = _checkpoint_source(root, record)
     result["checkpoint_source"] = source
     if not detail:
-        return _telemetry_summary(result, reported)
+        return _telemetry_summary(result, reported, spark=spark)
     if source["state"] == "resolved":
         bases.append((source["run"], root / source["path"]))
     for item in checkpoints[:512]:
@@ -1650,6 +1886,135 @@ def default_run(review: Mapping[str, Any]) -> str:
     return str(candidates[-1]["run"]) if candidates else "accepted"
 
 
+#: How long after a revision is accepted the project counts as being designed.
+DESIGNING_WINDOW_S = 600
+#: How long an evaluation directory with no report yet, written to that
+#: recently, counts as an evaluation running; past it, it was abandoned.
+EVALUATING_WINDOW_S = 120
+#: Entries of one evaluation directory read to find its newest write.
+EVALUATING_ENTRY_LIMIT = 256
+#: The telemetry fields the stage overlay shows for the run it reads.
+STAGE_TELEMETRY_KEYS = ("state", "reason", "age_s", "iteration", "total", "eta_s", "wall_time_s",
+                        "reward_per_step", "loss", "best_iteration", "best_reward_per_step",
+                        "warning", "spark")
+
+
+def _stamp(value: Any) -> float | None:
+    """An ISO 8601 time as epoch seconds, or ``None``."""
+
+    try:
+        parsed = _datetime.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=_datetime.timezone.utc)
+    return parsed.timestamp()
+
+
+def _iso(stamp: float) -> str:
+    return _datetime.datetime.fromtimestamp(stamp, _datetime.timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _evaluation_running(root: Path, now: float) -> tuple[str, float] | None:
+    """The newest evaluation directory that has no report yet and was
+    written to inside :data:`EVALUATING_WINDOW_S`: an evaluation writes its
+    report last (``evaluate.run_evaluation``), so until then the directory
+    holds only its seeds' traces."""
+
+    directory_name, report_name, _schema, _failing = _evaluation_constants()
+    base = root / directory_name
+    if not base.is_dir() or base.is_symlink():
+        return None
+    newest: tuple[str, float] | None = None
+    for entry in base.iterdir():
+        directory = _evaluation_dir(root, entry.name)
+        if directory is None or (directory / report_name).exists():
+            continue
+        try:
+            stamps = [directory.stat().st_mtime]
+            for i, child in enumerate(directory.iterdir()):
+                if i >= EVALUATING_ENTRY_LIMIT:
+                    break
+                stamps.append(child.stat().st_mtime)
+        except OSError:
+            continue
+        written = max(stamps)
+        if now - written <= EVALUATING_WINDOW_S and (newest is None or written > newest[1]):
+            newest = (entry.name, written)
+    return newest
+
+
+def _evaluate_in_flight(activity: Mapping[str, Any]) -> str | None:
+    """When the newest ``evaluate`` call through ``cadex mcp`` started, if it
+    has not returned (ADR-553). Most of such a call is the session building
+    the design, before any evaluation directory exists to read."""
+
+    for entry in activity.get("entries") or []:
+        if entry.get("tool") == "evaluate":
+            if entry.get("outcome") != "running":
+                return None
+            return str(entry.get("t") or "") or None
+    return None
+
+
+def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
+    """What the project is doing now, for the 3D viewport's overlay (ADR-542).
+
+    ``state`` is the first that holds of: ``evaluating`` (an evaluation is
+    writing, or an ``evaluate`` call through ``cadex mcp`` is in flight in
+    ``review["activity"]``, ADR-553; the call's reason wins, ADR-555), ``training`` (the run the page reads is training, or its
+    telemetry has gone quiet -- ``stale``), ``failed`` (the newest run failed
+    and no revision was accepted after it), ``designing`` (a revision was
+    accepted inside :data:`DESIGNING_WINDOW_S`), else ``idle``. ``since`` is
+    when that state's evidence was written. ``run`` is the newest run
+    training, a quiet one included, else the one :func:`default_run`
+    picks, and ``training`` its telemetry with the
+    reward and loss sparklines, or ``None`` when no run has telemetry.
+    ``checkpoints`` is that run's :func:`checkpoint_rollouts` (ADR-545).
+    Everything is read from the project directory; nothing is inferred
+    about a process the files do not describe.
+    """
+
+    now = _datetime.datetime.now(_datetime.timezone.utc).timestamp()
+    runs = list(review.get("runs") or [])
+    trail = list(review.get("revisions") or [])
+    accepted_at = _stamp(trail[0].get("saved_at")) if trail else None
+    # The run training now, a quiet one included; else the one a fresh visit opens.
+    active = [run for run in runs if run.get("status") in ("running", "pending")
+              and (run.get("telemetry") or {}).get("state") in ("starting", "training", "stale")]
+    name = str(active[-1]["run"]) if active else default_run(review)
+    record = next((run for run in runs if run.get("run") == name), None)
+    training = None
+    if record is not None:
+        telemetry = training_telemetry(root, record, detail=False, spark=True)
+        if telemetry.get("state") not in ("missing", None):
+            training = {key: telemetry.get(key) for key in STAGE_TELEMETRY_KEYS}
+    stage: dict[str, Any] = {"state": "idle", "reason": "", "since": _iso(accepted_at) if accepted_at else None}
+    evaluating = _evaluation_running(root, now)
+    calling = _evaluate_in_flight(review.get("activity") or {})
+    recorded_at = _stamp(record.get("recorded_at")) if record else None
+    # The agent's call names what the owner can act on and started first, so
+    # it wins; a directory's name is an internal id and never shown (ADR-555).
+    if calling:
+        stage.update(state="evaluating", reason="the agent's evaluate call is running", since=calling)
+    elif evaluating:
+        stage.update(state="evaluating", reason="an evaluation is running", since=_iso(evaluating[1]))
+    elif record is not None and record.get("status") in ("running", "pending") and training \
+            and training["state"] in ("starting", "training", "stale"):
+        stage.update(state="training", reason=training["reason"] if training["state"] == "stale" else "",
+                     since=_iso(recorded_at) if recorded_at else None)
+    elif record is not None and (record.get("status") == "failed" or (training or {}).get("state") == "failed") \
+            and (accepted_at is None or (recorded_at or 0) >= accepted_at):
+        stage.update(state="failed", reason=str(record.get("error") or (training or {}).get("reason") or "the run failed"),
+                     since=_iso(recorded_at) if recorded_at else None)
+    elif accepted_at is not None and now - accepted_at <= DESIGNING_WINDOW_S:
+        stage.update(state="designing", reason=f"revision {trail[0].get('ordinal')} accepted")
+    # The read run's checkpoint rollouts, for the 3D viewport's scrubber (ADR-545).
+    checkpoints = checkpoint_rollouts(root, name) if record is not None else None
+    return {**stage, "run": None if record is None else name, "runs": len(runs), "training": training,
+            "checkpoints": checkpoints}
+
+
 class ReviewProject:
     """What the server knows how to serve for one project, resolved per request.
 
@@ -1675,6 +2040,10 @@ class ReviewProject:
         review["presentation"] = presentation(self.root, review["accepted"])
         review["evaluations"] = evaluations(self.root, review["accepted"])
         review["revisions"] = revision_trail(self.root)
+        # What the agent's tool calls were, newest first (ADR-549); the stage reads
+        # an in-flight evaluate from it (ADR-553).
+        review["activity"] = read_activity(self.root)
+        review["stage"] = project_stage(self.root, review)
         review["exports"] = export_listing(self.root)
         review["sections"] = section_listing(self.root)
         review["drawings"] = blueprint_listing(self.root)
@@ -1818,7 +2187,7 @@ class ReviewProject:
         if record is None:
             return None
         model = run_model(self.root, record)
-        wanted = f"/mesh/run/{name}/{output}.stl"
+        wanted = f"mesh/run/{name}/{output}.stl"
         if not any(entry.get("mesh") == wanted for entry in model["components"]):
             return None
         if model.get("source") == "assembled model retained before training":
@@ -1863,23 +2232,45 @@ class ReviewProject:
         except OSError:
             return None
         etag = '"' + hashlib.sha256(sidecar_bytes + b"\0" + data).hexdigest()[:40] + '"'
-        with _MEMO_LOCK:
-            held = _STL_MEMO.get(etag)
-            if held is not None:
-                _STL_MEMO.move_to_end(etag)
-                return etag, held
-        try:
-            sidecar = json.loads(sidecar_bytes)
-            body = tessellation_to_stl(sidecar, data)
-        except (ValueError, OSError):
+        return _stl_entry(etag, sidecar_bytes, data)
+
+    def revision_mesh_entry(self, sha: str) -> tuple[str, bytes] | None:
+        """``(etag, stl)`` for one part a retained revision kept (ADR-546),
+        by the sha256 of its tessellation buffer."""
+
+        paths = revision_mesh_paths(self.root, sha)
+        if paths is None:
             return None
-        with _MEMO_LOCK:
-            global _STL_MEMO_BYTES
-            _STL_MEMO[etag] = body
-            _STL_MEMO_BYTES += len(body)
-            while _STL_MEMO_BYTES > STL_MEMO_LIMIT and len(_STL_MEMO) > 1:
-                _STL_MEMO_BYTES -= len(_STL_MEMO.popitem(last=False)[1])
-        return etag, body
+        try:
+            data, sidecar_bytes = paths[0].read_bytes(), paths[1].read_bytes()
+        except OSError:
+            return None
+        if hashlib.sha256(data).hexdigest() != sha:
+            return None
+        etag = '"' + hashlib.sha256(sidecar_bytes + b"\0" + data).hexdigest()[:40] + '"'
+        return _stl_entry(etag, sidecar_bytes, data)
+
+
+def _stl_entry(etag: str, sidecar_bytes: bytes, data: bytes) -> tuple[str, bytes] | None:
+    """A tessellation as STL, converted once per content tag and remembered."""
+
+    with _MEMO_LOCK:
+        held = _STL_MEMO.get(etag)
+        if held is not None:
+            _STL_MEMO.move_to_end(etag)
+            return etag, held
+    try:
+        sidecar = json.loads(sidecar_bytes)
+        body = tessellation_to_stl(sidecar, data)
+    except (ValueError, OSError):
+        return None
+    with _MEMO_LOCK:
+        global _STL_MEMO_BYTES
+        _STL_MEMO[etag] = body
+        _STL_MEMO_BYTES += len(body)
+        while _STL_MEMO_BYTES > STL_MEMO_LIMIT and len(_STL_MEMO) > 1:
+            _STL_MEMO_BYTES -= len(_STL_MEMO.popitem(last=False)[1])
+    return etag, body
 
 
 #: Converted meshes by content tag, newest kept, at most this many bytes.
@@ -2020,10 +2411,23 @@ def section_listing(root: Path) -> dict[str, Any]:
 
 
 def revision_trail(root: Path) -> list[dict[str, Any]]:
-    """The stored trail for the page, newest first, without sources or values."""
+    """The stored trail for the page, newest first, without sources or values.
+
+    Each entry says whether its model was retained (ADR-546), and if not,
+    why: the revision timeline shows that reason rather than a model.
+    """
 
     keep = ("ordinal", "revision", "saved_at", "outputs")
-    return [{key: entry.get(key) for key in keep} for entry in reversed(read_revision_history(root))]
+    models = {row["ordinal"]: row for row in revision_models(root)}
+    trail = []
+    for entry in reversed(read_revision_history(root)):
+        item = {key: entry.get(key) for key in keep}
+        row = models.get(entry.get("ordinal")) or {}
+        item["retained"] = bool(row.get("retained"))
+        if not item["retained"]:
+            item["retained_reason"] = str(row.get("reason") or "")
+        trail.append(item)
+    return trail
 
 
 # The two ways Linux reports a peer that went away mid-write: EPIPE, or
@@ -2198,7 +2602,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             content_type, file = PROJECTS_STATIC_FILES[head]
             self._send_bytes(file.read_bytes(), content_type)
             return
-        if segments == ["api", "projects"]:
+        if head == "api" and match_api_route(APP_API_ROUTES, rest) is not None:
             self._send_json(projects.listing())
             return
         if head == "p" and rest:
@@ -2207,9 +2611,10 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 self._not_found(f"project {rest[0]!r}")
                 return
             if len(rest) == 1 and not path.endswith("/"):
-                # The page's URLs are relative to its own directory.
+                # The page's URLs are relative to its own directory; so is
+                # this Location, which keeps a path prefix in front (ADR-551).
                 self._send_bytes(b"", "text/plain; charset=utf-8", HTTPStatus.MOVED_PERMANENTLY,
-                                 {"Location": "/p/" + quote(rest[0], safe="") + "/"})
+                                 {"Location": quote(rest[0], safe="") + "/"})
                 return
             self._route(project, rest[1:], download)
             return
@@ -2224,47 +2629,16 @@ class ReviewHandler(BaseHTTPRequestHandler):
             self._send_bytes(path.read_bytes(), content_type)
             return
         if head == "api":
-            if rest == ["project"]:
-                self._send_json(project.review())
+            matched = match_api_route(API_ROUTES, rest)
+            if matched is None:
+                self._not_found("/".join(segments))
                 return
-            if rest[:1] == ["run"] and len(rest) == 2:
-                record = project.detail(rest[1])
-                if record is None:
-                    self._not_found(f"run {rest[1]!r}")
-                    return
-                self._send_json(record)
+            route, args = matched
+            payload = getattr(self, "_api_" + _API_HANDLERS[route])(project, *args)
+            if payload is None:
+                self._not_found("/".join(segments))
                 return
-            if rest[:1] == ["policy-origin"] and len(rest) == 2:
-                if project.run(rest[1]) is None:
-                    self._not_found(f"run {rest[1]!r}")
-                    return
-                self._send_json(policy_lineage(project.root, rest[1]))
-                return
-            if rest[:1] == ["evaluation"] and len(rest) == 2:
-                detail = evaluation_detail(project.root, rest[1], read_accepted_identity(project.root))
-                if detail is None:
-                    self._not_found(f"evaluation {rest[1]!r}")
-                    return
-                self._send_json(detail)
-                return
-            if rest == ["model", "accepted"]:
-                self._send_json(accepted_model(project.root))
-                return
-            if rest[:2] == ["model", "run"] and len(rest) == 3:
-                record = project.run(rest[2])
-                if record is None:
-                    self._not_found(f"run {rest[2]!r}")
-                    return
-                self._send_json(run_model(project.root, record))
-                return
-            if rest[:2] == ["playback", "run"] and len(rest) == 3:
-                record = project.run(rest[2])
-                if record is None:
-                    self._not_found(f"run {rest[2]!r}")
-                    return
-                self._send_json(run_playback(project.root, record))
-                return
-            self._not_found("/".join(segments))
+            self._send_json(payload)
             return
         path: Path | None = None
         if head == "mesh" and rest[:1] == ["accepted"] and len(rest) == 2 and rest[1].endswith(".stl"):
@@ -2274,6 +2648,19 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 return
             etag, body = found
             # Revalidated on every use, so a rebuild's changed part is never stale.
+            cache = {"Cache-Control": "no-cache", "ETag": etag}
+            if etag in [tag.strip() for tag in self.headers.get("If-None-Match", "").split(",")]:
+                self._send_bytes(b"", CONTENT_TYPES[".stl"], HTTPStatus.NOT_MODIFIED, cache)
+                return
+            self._send_bytes(body, CONTENT_TYPES[".stl"], extra=cache, memo=etag)
+            return
+        if head == "mesh" and rest[:1] == ["revision"] and len(rest) == 2 and rest[1].endswith(".stl"):
+            found = project.revision_mesh_entry(rest[1][:-4])
+            if found is None:
+                self._not_found("/".join(segments))
+                return
+            etag, body = found
+            # Named by its own content: the same part is the same bytes in every revision.
             cache = {"Cache-Control": "no-cache", "ETag": etag}
             if etag in [tag.strip() for tag in self.headers.get("If-None-Match", "").split(",")]:
                 self._send_bytes(b"", CONTENT_TYPES[".stl"], HTTPStatus.NOT_MODIFIED, cache)
@@ -2306,6 +2693,40 @@ class ReviewHandler(BaseHTTPRequestHandler):
             self._not_found("/".join(segments))
             return
         self._send_file(path, download=download)
+
+
+    # -- the HTTP API, one method per API_ROUTES entry (ADR-552) -----------
+
+    def _api_project(self, project: ReviewProject) -> dict[str, Any]:
+        return project.review()
+
+    def _api_run(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
+        return project.detail(run)
+
+    def _api_policy_origin(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
+        return policy_lineage(project.root, run) if project.run(run) is not None else None
+
+    def _api_evaluation(self, project: ReviewProject, name: str) -> dict[str, Any] | None:
+        return evaluation_detail(project.root, name, read_accepted_identity(project.root))
+
+    def _api_model_accepted(self, project: ReviewProject) -> dict[str, Any]:
+        return accepted_model(project.root)
+
+    def _api_model_revision(self, project: ReviewProject, ordinal: str) -> dict[str, Any] | None:
+        return revision_model(project.root, int(ordinal)) if ordinal.isdigit() else None
+
+    def _api_model_run(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
+        record = project.run(run)
+        return run_model(project.root, record) if record is not None else None
+
+    def _api_playback_run(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
+        record = project.run(run)
+        return run_playback(project.root, record) if record is not None else None
+
+    def _api_playback_checkpoint(self, project: ReviewProject, run: str,
+                                 stem: str) -> dict[str, Any] | None:
+        return (checkpoint_playback(project.root, run, stem)
+                if project.run(run) is not None else None)
 
 
 class ReviewServer(ThreadingHTTPServer):
@@ -2358,7 +2779,7 @@ class ProjectsDirectory:
             runs = root / RUNS_DIRNAME
             projects.append({
                 "name": name,
-                "url": "/p/" + quote(name, safe="") + "/",
+                "url": "p/" + quote(name, safe="") + "/",
                 "accepted": read_accepted_identity(root),
                 "runs": sum(1 for child in runs.iterdir() if child.is_dir()) if runs.is_dir() else 0,
             })

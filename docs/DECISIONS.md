@@ -34626,3 +34626,784 @@ decodes at 512×512 for 7.1 s.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
 
+
+## ADR-542 — The 3D viewport's stage overlay, the first panel back after ADR-533 (2026-10-05, orun3 V1)
+
+**Context.** ADR-533 cut the page to the model and asked for panels to come back one at a
+time, as the need shows. The owner works in their own agent with the dashboard open beside
+it, and the page's one job is to show what is happening so they know when to step in
+(orun3 charter). The trainer already publishes `runs/<run>/train/progress.json` while it
+runs, but the page showed training only as plots in the 2D viewport, and nothing told the
+reader whether the project was being designed, trained or evaluated.
+
+**Decision.**
+- The 3D viewport gains an **overlay**, top right over the model. It shows:
+  - a stage chip: `idle`, `designing`, `training`, `evaluating` or `failed`;
+  - one line: for training, the iteration out of the total and the ETA;
+  - expanded, the run it reads (named when there are several), reward per step, the best
+    reward and its iteration, loss, ETA, reward and loss sparklines, and the trainer's
+    `warning` (ADR-410) in `--warn`.
+- **The data is one bounded block, `stage`, on `GET /api/project`**, computed by
+  `project_stage` in `review_server.py` from the project directory alone. The rules are in
+  `docs/CLI.md`: an evaluation is running when its directory has no report and was written
+  in the last 120 s, since `evaluate` writes its report last; designing is the 600 s after an
+  accepted revision. `stage.training` is the read run's telemetry summary with a `spark` of
+  at most 64 points per curve, so its size does not grow with training length or with the
+  number of runs (ADR-321). The per-run summary gains five scalars: `eta_s`, `wall_time_s`,
+  `best_iteration`, `best_reward_per_step` and `warning`.
+- **No new polling loop.** The overlay renders on the page's existing 2 s poll of
+  `/api/project`. It writes text only when it changes, so an idle poll adds no nodes.
+- **Collapsed is a per-browser convenience** (`localStorage` `cadex.overlay`). One tap
+  collapses the overlay to its one line.
+- **No data is shown as absence.** A project with no runs gets one line: `idle`, with its
+  last revision. A run without telemetry shows no numbers. The page stays read-only
+  (ADR-537): the overlay is a view, and its toggle changes only this browser's layout.
+
+**Deviation from the critic's brief.** The brief said "only what `/api/project` already
+carries". The run summary carried no curves, best reward, ETA or warning. The other way to
+get them was fetching `/api/run/<name>` on every poll, which re-hashes every retained
+checkpoint each time. So `/api/project` gained the bounded `stage` block instead. It is
+still one request on the same poll.
+
+**Measured.** At 390 × 844 with touch emulation, the expanded overlay is 280 × 171 px on a
+390 × 724 viewport, which is 16.95% of the viewport against the charter's 25% bound. It is
+40 px tall collapsed.
+
+**Test.** `test_review_overlay.py`:
+- the stage rules for training, stale, warning, failed, then designing after a newer
+  revision, designing turning idle, evaluating and abandoned evaluations, and a project
+  with no runs;
+- a Chromium test rewrites the biped fixture's `progress.json` (`fixtures/
+  biped-progress.json`, the real `ot5-biped` curves) under an open page, and sees the line,
+  the sparkline, the best reward, the ETA and the warning follow on the page's own poll;
+- a Chromium test makes the 390 px measurement and checks that a reload keeps the
+  collapsed state.
+
+`test_review_design.py` now fails when an id in DASHBOARD.md §2's table is missing from
+the page.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-543 — `cadex train` takes the machine's training slot, so a walk's train leg does too (2026-10-05, orun3 V2 prerequisite)
+
+**Context.** The machine has one training slot, a `flock` on
+`~/.cache/cadex/training.lock` (ADR-464), and the orun3 charter makes it the
+arbiter: one training run at a time on the 5090, and nothing works around
+it. Only the `train_start` path used it (`loop.register` checks it,
+`loop.supervise` holds it). `cadex walk`'s train leg runs `cadex train`,
+which reaches `train.run_trainer` and never touched the lock
+[rec: forest-jasper-1180]. On 2026-10-05, while the owner's `quad-qdd`
+run held the slot, a `cadex walk` would have started a second trainer on
+the same GPU. That breaks the one-run rule, and it would also have spoilt
+the timing V2's baseline needs.
+
+**Decision.**
+- `loop.machine_slot()` is a context manager over the same lock that
+  `register` and `supervise` use. `cadex train` holds it around a **local**
+  trainer only: not during the rebuild, and not during the `put`.
+- `cadex train` refuses with exit 3 (`another training run holds this
+  machine's one training slot; wait for it to end.`) before its rebuild
+  when the slot is held. `cadex walk` refuses the same way before its first
+  leg, so an iterate walk's sweep never moves the accepted revision for a
+  run that cannot train.
+- `--remote`, `train --dry-run` and `walk --complete` take no slot. They do
+  not train on this machine.
+- The CLI suite gives every test a slot of its own (`conftest.py`'s
+  autouse `private_training_slot`). The suite can then run beside a live
+  training job without being refused by it, and without holding the slot
+  against it.
+
+**Deviation from the critic's brief.** The brief asked for the walk's
+train leg to go through `loop.register`/`launch`/`supervise`. That was not
+done. Registration trains the task retained at the accepted revision, under
+`runs/<run>/` with its own budget and reason, and refuses an evaluation
+seed. The walk's train leg trains the bundle its own rebuild exports, into
+`--out/train`, after an optional sweep, and lands its own record and
+`PROGRESS.md` row. Re-hosting it would change the walk's artifacts and its
+tests, and that is a direction change, not a lock fix. The lock is the
+rule the charter states, and it is now shared. A checkpoint watcher will
+need two call sites, `supervise`'s poll loop and `run_trainer`'s wait. It
+will still be one implementation, because `run_trainer` can wait by
+polling.
+
+**Test.**
+- `test_walk.py::test_a_local_walk_or_train_is_refused_while_another_run_holds_the_slot`:
+  with a fake lock held, `walk --set` runs no leg, `train` is refused, and
+  a `--remote` walk still runs. After release, the walk runs.
+- `test_loop.py::test_the_slot_is_one_lock_for_the_supervisor_and_cadex_train`:
+  inside `machine_slot()`, `register` is refused, a second holder is
+  refused, and the slot is released on the way out.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+
+## ADR-544 — Each checkpoint is rolled out through the engine while the run trains (2026-10-05, orun3 V2)
+
+**Context.** orun3's V2 asks for training to show up as motion: each
+checkpoint becomes a rollout the 3D viewport can loop, made while training
+continues and without slowing it. The trainer already writes complete
+`.cxpolicy` checkpoints every `--checkpoint-every` iterations, atomically,
+and lists each one in `progress.json` with its iteration, reward and sha256
+(ADR-466). Nothing turned them into motion. A local trainer has two
+callers. `loop.supervise` is behind `train_start`. `train.run_trainer` is
+behind `cadex train` and so behind `cadex walk`'s train leg, and it had no
+`--checkpoint-every` flag at all. ADR-543 left both callers on the same
+machine slot so that one watcher could serve both.
+
+**Decision.**
+- `cli/cadex_cli/checkpoints.py` holds one watcher, `CheckpointRollouts`.
+  Its `poll()` never blocks and never raises: it reaps a finished child,
+  then starts the newest pending numbered checkpoint. The supervisor calls
+  it from its poll loop. `run_trainer` calls it through a new `on_poll`
+  hook, about once a second, while it waits for the trainer.
+- The child is `checkpoint_runner.py`, run by path under the engine's
+  interpreter (the `evaluate_runner.py` pattern). It calls
+  `CadexDynamics.rollout_policy` once, with **no seed**: the nominal
+  episode, so every checkpoint plays the same episode. Frames are sampled
+  at the largest divisor of the control rate that is ≤ 30. Every named
+  MJCF body is a component, which gives the same names the walk's rollout
+  trace uses. The child runs `nice 10`, with `CUDA_VISIBLE_DEVICES=""`,
+  one at a time, and is killed after 300 s.
+- The output is `<out>.<tag>.rollout-trace.json`
+  (`cadex-assembly-simulation-trace-v1`, `simulation_output: "checkpoint"`)
+  beside the checkpoint. Its `checkpoint` block names the file, tag,
+  iteration, reward per step and sha256. The iteration and reward come
+  from the progress row whose digest is the file's. A checkpoint the
+  progress has not yet listed waits for the next poll. After the trainer
+  ends, the tag names the iteration and the reward is `null`, never
+  borrowed. A failure writes `<out>.<tag>.rollout-failed.json` with the
+  reason instead, and never a partial trace.
+- `best` (it is rewritten in place) and the final policy are not rolled
+  out. After the trainer exits, the remaining checkpoints are drained. The
+  supervisor first releases the machine slot, because that slot is the
+  GPU's and the drain is CPU work. An interrupted supervisor drains
+  nothing.
+- `cadex train` and `cadex walk` gain `--checkpoint-every N`, which
+  `trainer_flags` passes through. `train_start` already had
+  `checkpoint_every`. A remote trainer's checkpoints stay on the box.
+
+**Measured** on the orun3 biped's bundle (`reed_walk`, from
+`orun3-biped/runs/probe3`) on the RTX 5090: 60 iterations, 256 envs,
+seed 7, a checkpoint every 5 iterations, 11 checkpoints. The runs went
+off, on, off, on, each under the machine slot. Iteration wall time was
+taken from the trainer's stderr lines, from iteration 2 on (57
+iterations each):
+
+| run | rollouts | mean s/it | median s/it | trainer wall s |
+|---|---|---|---|---|
+| off-1 | off | 9.435 | 0.9166 | 657.0 |
+| on-1 | on | 9.045 | 0.9176 | 634.8 |
+| off-2 | off | 9.061 | 0.9170 | 635.7 |
+| on-2 | on | 9.068 | 0.9169 | 636.3 |
+
+The adjacent pair off-2/on-2 differs by +0.08 % in the mean and −0.01 %
+in the median. Across both pairs, on is 2.1 % *faster* in the mean, which
+is the first run's warm-up and is noise. The cost is under the charter's
+5 % bar and is not measurable here. The mean is ~10× the median because a
+few iterations each take tens of seconds, about 460 s per run in all.
+That happens with rollouts off as well, so it is the trainer's own. Which
+iterations stall was not recorded, so it is not attributed here. Every one of the 22
+rollouts was written; none failed. **Disk**: a trace is 38.7–329.5 KB,
+and its size follows the episode's length. The full 8 s horizon at
+25 fps is 329.5 KB. The mean is 224.7 KB per checkpoint, and 2.47 MB for
+the run's 11. Same-seed GPU runs did not produce byte-identical policies
+(four different digests), so "same seed" here means the same task and
+settings, not the same weights.
+
+**Consequences.** The dashboard still serves no checkpoint playback. The
+route, the viewport loop, the scrubber and the browser test against a
+live run are the next V2 units. The traces are run outputs, ignored by
+`*-trace.json`. Nothing under `training/` changed (ADR-084).
+
+**Test.** `cli/tests/test_checkpoint_rollouts.py`. Its fixture is the
+biped's own model and task bundle; checkpoints are generated with the
+engine suite's policy fixture, because no policy binary is committed.
+- Each numbered checkpoint becomes a trace, newest first, tagged and
+  labelled from progress. An unlisted checkpoint waits. `best` and the
+  final policy are skipped.
+- An unplayable checkpoint leaves a failure record with its reason, and a
+  hung child is killed and recorded as such.
+- Through `run_trainer` and through the detached supervisor, a fake
+  trainer **waits for each checkpoint's trace before going on**, so each
+  test passes only if the rollout lands while the trainer is still
+  running.
+- `--checkpoint-every -1` is a usage error for `train` and `walk`.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-545 — The 3D viewport loops each checkpoint's rollout, with a scrubber (2026-10-05, orun3 V2)
+
+**Context.** ADR-544 rolls each checkpoint out through the engine while the run trains and
+writes `<out>.<tag>.rollout-trace.json` beside it, or a `.rollout-failed.json` with the
+reason. Nothing on the page read them, so the owner still saw training only as numbers.
+orun3's V2 asks the viewport to loop the newest checkpoint, labelled with its iteration
+and reward, to let a scrubber pick older ones, to follow newer ones unless one was picked,
+and to show a failed rollout with its reason.
+
+**Decision.**
+- **The list rides the stage.** `GET /api/project`'s `stage` (ADR-542) gains
+  `checkpoints`, built by `checkpoint_rollouts` for the run the overlay reads. Each item is
+  one numbered checkpoint that has a trace or a failure record, oldest first, at most the
+  newest 64. It carries the iteration, reward and sha256 from the trace's `checkpoint`
+  block, or the failure's `reason` and `error`. `pending` counts checkpoints with neither.
+  A trace is parsed once per file identity (mtime, size), so a poll on an unchanged run
+  parses nothing. Only regular files in the run's own `train/` count, and nothing is
+  borrowed from another run.
+- **One read route**, `GET /api/playback/checkpoint/<run>/<stem>`. It serves the trace
+  through the existing `trace_playback`, so a checkpoint plays exactly the way a run's own
+  rollout does. For a failed checkpoint it answers `available: false` with the reason. For
+  any other name it answers 404. The page stays read-only (ADR-537).
+- **The scrubber**, `#checkpoints`, sits above the playback timeline. Its stops are the
+  checkpoints, then the run's own rollout once it has one. The newest loops. Picking an
+  older stop keeps that stop while newer ones land. Back at the newest end, the page
+  follows again (`data-follow`). A failed stop plays nothing, puts the model at rest and
+  shows the reason in `--bad`. Pausing holds across a switch.
+- **The viewport turns to the training run on its own.** It does this while that run is
+  training and has a ready rollout, and only if no source was picked by hand this visit.
+  The poses go onto that run's frozen model (`training-view.json`), whose links carry the
+  same names as the traces.
+
+**Assumption, reversible.** The automatic turn happens once, and the page does not turn
+back to the accepted model when training ends. The run stays the source until the owner
+picks another. A later revision's model is one select away, and flipping the source under
+the owner at the end of a run would hide the result they were watching.
+
+**Measured** on the orun3 biped's 11 real checkpoint traces (`probe3`, rolled out under
+ADR-544): the `stage.checkpoints` block is 3,357 bytes. Listing it takes 10.2 ms the first
+time and 0.17 ms on a poll with nothing changed. The newest checkpoint's playback is
+22,107 bytes for a 24,225-byte trace.
+
+**Test.** `cli/tests/test_review_checkpoints.py`:
+- The server half has no engine. It covers the order, failures and pending, the route's
+  playback and refusals (pending, `best`, a file name, traversal, another run), the
+  64-item bound, no reparse on an unchanged poll, and absence (no run, no rollouts yet).
+- The browser half runs against the real engine. A stepped trainer writes the biped's
+  checkpoints through `run_trainer` with the watcher polling, and holds after each one.
+  While it is still running, the page:
+  1. turns to the run and loops `walk.000020`;
+  2. replaces it with `walk.000040` when that lands;
+  3. keeps a hand-picked `walk.000020` while a third checkpoint lands;
+  4. back at the newest end, shows that third checkpoint's real engine failure
+     (`policy_not_a_container`) with its reason and no playback;
+  5. then follows to `walk.000080`.
+- A source picked by hand is not taken over by training.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-546 — Each accepted revision's model is kept by content hash per part (2026-10-05, orun3 V3)
+
+**Context.** orun3's V3 asks the 3D viewport to play the design's history. The engine
+keeps every accepted *source* (`script_history/`, ADR-045) but only the newest few
+attempt directories (`ATTEMPT_KEEP`), so a replaced revision's geometry is gone within a
+few writes. Something has to keep it at the moment it is accepted, and the page cannot,
+because it is read-only (ADR-537).
+
+**Decision.**
+- **The CLI keeps it, in a store it owns:** `review/revisions/` in the project, which the
+  project's own git already ignores (ADR-194). `parts/<sha256>.tess.bin` and `.tess.json`
+  hold one part's tessellation, named by the sha256 of its buffer. A part that did not
+  change between revisions is the same file and adds no bytes, and so is a mirrored pair.
+  `index.json` (`cadex-revision-meshes-v1`) maps each history ordinal to its revision, its
+  digest, which blob each output is, and the components' placements, as the dashboard's
+  `accepted_model` read them at that moment.
+- **Where it is written.** `revision_meshes.retain` runs on every engine session's open
+  and close, and in `cadex mcp` after each successful modelling call. It keeps the
+  accepted attempt under the ordinal the engine gave it in the trail, and only when the
+  trail's latest entry for that revision agrees on the digest. It is idempotent: an
+  ordinal already kept is not rewritten. It never fails the call that triggered it. Open
+  is included because the revision accepted when a session starts is still on disk then,
+  and the session's first write would leave it to be pruned.
+- **Bounded by the trail it shadows.** A row whose ordinal has left `script_history/`
+  (`HISTORY_LIMIT`, 25) is dropped, and so is every blob that only it named.
+- **Absence is said, never filled.** `revision_models` gives one row per stored revision.
+  A revision with no row reads `retained: false` with the reason (accepted before this
+  store). A row naming another revision, or a blob missing from disk, also reads as not
+  retained, with that reason. No other revision's geometry is offered in its place.
+  `cadex revision list` carries this as `revisions.models`. Rebuilding old revisions to
+  fill the gap is left to an explicit command, not a side effect.
+- No route, no page change and no tool change in this unit. The timeline, the ghost and
+  the tint read this store in the next.
+
+**Measured** on `orun3-biped-v3meas`, a copy of `orun3-biped`. Every one of the biped's
+13 stored revisions was restored in turn, then the foot was changed twice through
+`cadex params`. The pre-ADR-506 revisions recorded no values, so they came back with
+today's values, and the 13 collapsed to 7 distinct accepted revisions sharing one
+geometry. Then:
+
+- A full copy of one revision's tessellation is 11,400 bytes (8 outputs, 4 distinct
+  buffers).
+- The first revision kept added 5,704 bytes of blobs.
+- Each of the six restores added 0 bytes of blobs and 2,906 bytes of index row.
+- Each foot change added 1,419 or 1,421 bytes of blobs (one part) and 2,909 bytes of
+  index row.
+- After 9 kept revisions the store was 8,544 bytes of blobs and a 26,854-byte index,
+  against 102,596 bytes for nine full copies.
+
+On this box-built biped the index row, mostly placements, outweighs the meshes. On a
+finer model the blobs dominate and the dedupe is what matters.
+
+**Test.** `cli/tests/test_revision_meshes.py`:
+- Against the real engine, a four-part biped is written and then its foot changed. The
+  torso and both legs keep their blobs, and only the foot's bytes are added. A second
+  `retain` rewrites nothing. `revision list` reports both as retained. The same holds
+  through `Bridge.call`, which is the `cadex mcp` path.
+- With no engine: an absent row reads `NOT_RETAINED`, a row naming another revision reads
+  "not shown", a missing blob is named, and none of them carries parts. Nothing accepted
+  writes nothing. Pruning drops the rows that left the trail and the blobs only they
+  named.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-547 — The 3D viewport plays the design's history on a revision timeline (2026-10-05, orun3 V3)
+
+**Context.** ADR-546 keeps each accepted revision's model by content hash per part, but
+nothing on the page reads it. orun3's V3 asks for a timeline in the 3D viewport that
+scrubs through the retained revisions, draws the previous one as a ghost, tints the parts
+whose digest changed, says when a revision was not kept, and agrees with the Revisions
+menu. The page stays read-only (ADR-537).
+
+**Decision.**
+- **Two GET routes, both reads of the store.** `GET /api/model/revision/<ordinal>` is one
+  stored revision's model in the accepted model's shape, plus `previous` (the stored
+  revision before it, with components only when it too was retained), `changed` (the
+  outputs whose part digest differs, `null` when there is nothing retained to compare)
+  and `compare` (against what, or why not). `GET /mesh/revision/<sha256>.stl` is one kept
+  part as STL, served only when the store holds that digest and its bytes still hash to
+  it, tagged by content and converted once (the accepted mesh's memo). `/api/project`'s
+  `revisions` entries say `retained`, or give `retained_reason`.
+- **A source, not a mode.** The 3D viewport's source picker offers **Revision history**
+  once anything is accepted. With it chosen, `#revision-timeline` has one stop per stored
+  revision, oldest to newest. The newest is shown and followed. Picking an older one keeps
+  it, and the newest end follows again, as the checkpoint scrubber does (ADR-545). A row
+  in the Revisions menu opens that revision on the timeline: a view, never a restore. The
+  accepted model view is unchanged.
+- **The diff is drawn, not described.** Unchanged parts are drawn in `--paper-ink` and
+  changed ones in `--info`. The previous revision is a ghost in `--ink-2` at 22% opacity,
+  unlit and beside the model group, so it sizes, picks and outlines nothing, and the
+  hairline style leaves it out. It is drawn only where it differs (another part digest,
+  another placement, or a part since removed), because a part kept where it was would
+  only lie on top of its own copy. "Changed" means the part's digest: a part that only
+  moved is ghosted at its old place but not tinted.
+- **Absence is said, never filled.** A revision with no retained model draws nothing,
+  turns the timeline's state to `missing` and names the reason in `--warn`. The revision
+  after it draws with no ghost and says there is nothing to compare with.
+
+**Test.** `cli/tests/test_review_revisions.py`:
+- With no engine, a hand-written four-revision biped store: the changed foot and its
+  ghost, a moved-only torso not counted as changed, an unretained first revision and a
+  successor with nothing to compare, and the routes' 404s (unknown ordinal, unknown or
+  malformed digest, a path escape, a blob whose bytes no longer match its name) and 304.
+- In the browser against the real engine, a biped written once and its foot changed
+  twice, the third revision landing while the page is open. The timeline scrubs across
+  all three: each stop draws its own foot, the newest tints the foot in `--info` and
+  ghosts the old one, and the first has no ghost and no tint. The timeline's ordinals and
+  current revision equal the Revisions menu's, a menu row opens its revision, and the
+  newest end follows again. With revision 1's row removed, as in a store from before
+  ADR-546, its stop draws nothing and says why, and revision 2 draws with no ghost.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-548 — `cadex revision backfill` rebuilds the models the store never kept (2026-10-05, orun3 V3)
+
+**Context.** ADR-546 keeps each accepted revision's model from the moment the store
+existed. Every revision accepted before it reads `retained: false`, and ADR-546 left
+filling that gap to an explicit command, never to a side effect of opening the page. On
+`orun3-biped` none of its thirteen revisions had a model, so the timeline (ADR-547) drew
+nothing for any of them.
+
+**Decision.**
+- **One explicit command:** `cadex revision backfill [SELECTOR] --project DIR`. Nothing
+  that reads the store calls it: not the dashboard, not `revision list`, not a session.
+- **The accepted revision first, from disk.** Its attempt is still staged, so ADR-546's
+  `retain` keeps it, with no rebuild.
+- **Every other revision is rebuilt in a scratch project.** The engine opens a temporary
+  directory, never the project, so nothing accepted moves, no row is written and nothing
+  is committed. The stored source is written with `replace`, then values are set. The
+  values are tried in this order:
+  1. the values the trail stored with the revision (ADR-506);
+  2. else the values the project's own repository (ADR-194) recorded in `script.json`
+     at the earliest commit that names the revision as accepted, with that commit's
+     `assets/` (the revision id does not bind asset bytes);
+  3. else no values at all, every parameter at its default.
+- **Kept only when it is the revision.** The engine's revision id binds the source and
+  every stored value, so an equal id is the same model. A rebuild is kept only when it
+  lands on exactly the trail's revision id, and on its digest when the trail records one.
+  A revision whose id another kept ordinal already has is copied, not rebuilt.
+- **A failure is said, never filled.** A rebuild that lands on another id, or that the
+  engine refuses, is a `failed` row with each try's reason. Nothing is stored in its
+  place. The store's index remembers the reason under `unrebuilt`, bounded by the trail
+  like its rows, so `revision_models` and the timeline say why the revision is missing
+  instead of suggesting a backfill again. A later backfill retries it.
+
+**Measured** on `orun3-biped` (13 stored revisions, a box-built biped of 8 outputs and 4
+distinct buffers; one full copy is about 11,400 bytes). One backfill took 12 s of wall
+time:
+- Revision 13 was kept from disk, adding 5,704 bytes of blobs.
+- Revision 1 was rebuilt and added 1,422 bytes (its foot). Revisions 2, 4, 5, 8, 11 and
+  12 were rebuilt and added 0 bytes each. Each rebuild took 0.5 to 1.0 s, and each used
+  the values its acceptance commit recorded. Revision 7 is revision 5's id and was
+  copied.
+- **9 of 13 are kept.** The store is 7,126 bytes of blobs (5 distinct part buffers) and
+  a 28,201-byte index, against 102,612 bytes for nine full copies. With the four failure
+  reasons the index is 30,876 bytes.
+- **The other four (3, 6, 9 and 10) cannot be rebuilt by today's engine.** Each set
+  `policy_on=1`, and the engine refuses the policy output: it was trained on a task
+  bundle whose digest the current engine no longer produces. This is ADR-520's stale
+  policy, and today's engine refuses the live accepted revision 13 the same way when it
+  reopens the project. Their pages say so. This settles ADR-546's "9 kept" figure, which
+  was taken on another copy (`orun3-biped-v3meas`): those 9 were restores of the 13
+  under today's values plus two foot changes, not the 13 originals. Of the 13 originals,
+  9 are kept here and 4 cannot be rebuilt by any current build.
+- `script.json` and `script_history/history.json` hash the same before and after.
+
+**Test.**
+- `cli/tests/test_revision_meshes.py`, against the real engine:
+  - A biped is written and its foot changed twice. Then the trail's values are stripped
+    (as before ADR-506) and the store deleted. Backfill keeps revision 3 from disk and
+    rebuilds 1 and 2 with the values from the project's repository.
+  - With the store and the repository both deleted, revision 2's foot=55 is recorded
+    nowhere. Its rebuild lands on revision 1's id, so it is reported as failed, it stays
+    unkept, and its reason reaches `revision_models`.
+  - `script.json`, `script.py`, `PROGRESS.md` and the trail are byte-identical
+    afterwards, and no repository is created.
+  - A second run with a selector rebuilds nothing.
+- `cli/tests/test_review_revisions.py`, in the browser against the real engine:
+  - With the store deleted, all three stops of the timeline read missing, revision 1
+    says why and names the command, and scrubbing the timeline creates no store.
+  - After `cadex revision backfill`, a refresh draws revision 1 with its four parts.
+    Revision 2 draws its own foot, tinted, over revision 1's ghost.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-549 — `cadex mcp` writes one bounded line per tool call to a project activity log (2026-10-05, orun3 V4)
+
+**Context.** The dashboard shows what the design and the training are doing, but not
+what the owner's agent is doing between them. Every call that agent makes to the engine
+passes through `cadex mcp` (ADR-538), so the MCP server is the one place that can write
+it down. The page stays read-only (ADR-537), so the write belongs to the CLI, on a path
+it already owns.
+
+**Decision.**
+- **Where.** `McpSession.call` appends one JSON line per tool call to
+  `review/activity.jsonl` in the project (`cli/cadex_cli/activity.py`). The project's
+  own git already ignores `/review/` (ADR-194), so the log is never committed there.
+  A failed call is logged too, including one where the engine could not open.
+- **What.** `t` (UTC, to the second), `tool`, `args`, `outcome` (`ok` or `error`),
+  `detail` and `ms`. `args` is a summary, never the arguments: a scalar is shown, a
+  string over 40 characters or with a newline only by its length (`source=<3000 chars>`),
+  a list only by its size, an object only by its keys (`values={width,thickness}`). Both
+  `args` and `detail` are cut at 160 characters. `detail` is the bridge's own one-line
+  summary of the call (the line the server already prints on stderr), else the error
+  the reply carries.
+- **Bounded.** Once an append takes the file past 64 KiB, it is rewritten atomically,
+  keeping the newest whole lines within 32 KiB. A typical line is 130 to 230 bytes, so
+  the log holds roughly the last 150 to 500 calls. Writing never fails the call.
+- **Read.** `GET /api/project` carries `activity`: the newest ten entries, newest first,
+  or `available: false` with the `reason` (no call logged yet). A line still being
+  appended is skipped.
+- **No tool-surface change.** No tool, argument or result field is added;
+  `test_project_tool_surface.py` is unchanged.
+- **Not yet on the page.** The overlay's activity line is its own change.
+
+**Test.** `cli/tests/test_activity.py`:
+- Arguments are summarised and never logged whole.
+- 2,000 calls with 500-character sources leave the file at most 64 KiB, every line under
+  600 bytes, the newest call last, and no scratch file behind.
+- A missing log and a torn last line are reported, not filled in.
+- Against the real engine, a `cadex mcp` process builds a plate and is refused an
+  unknown tool. `/api/project` then carries both, newest first, with the source shown
+  only by its length, and the project's git tracks no activity file.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-550 — The stage overlay says what the agent last did, and says idle once it goes quiet (2026-10-05, orun3 V4)
+
+**Context.** ADR-549 writes one line per `cadex mcp` tool call to `review/activity.jsonl`
+and serves the newest ten in `/api/project`'s `activity`. The owner keeps the dashboard
+beside their agent; what is missing is that one line on the page.
+
+**Decision.**
+- **Where.** In the stage overlay's expanded detail (ADR-542), under the run it reads:
+  `#overlay-activity-line`, the newest call (tool, ADR-549's argument summary, `failed:
+  <detail>` when it failed) and how long ago, timed against the server's `served_at` so a
+  browser's clock does not skew it. The collapsed overlay stays one line, the stage's.
+- **A short list.** `#overlay-activity-log`, a closed `recent calls` disclosure, lists
+  the newest five with their UTC clock times, so the list changes only when the log
+  does. It is hidden until there are two entries.
+- **Idle after 300 s.** Once the newest call returned more than 5 minutes ago, the line
+  reads `agent idle · last call <tool> <ago>` in `--ink-2` rather than showing the action
+  as current. Why 5 minutes: an agent working a design returns a tool call every few
+  seconds to a minute or two, since its own thinking between calls is the gap; 5 minutes
+  is past that, and half of the overlay's 10-minute `designing` window, so the line goes
+  idle before the stage does. The cost is that a call is logged when it **returns**
+  (ADR-549), so one tool call running longer than 5 minutes reads as idle until it
+  returns. The line names the last returned call, so it is never wrong about what was
+  done, only about whether something is still running.
+- **No data.** With no log, the line is the server's `reason`, in `--ink-2`, and the
+  list is empty. No other data takes its place.
+- **No new poll, no write.** It is redrawn by `renderOverlay` on the page's existing poll;
+  the page stays GET-only (ADR-537).
+
+**Test.** `cli/tests/test_review_overlay.py`. A Chromium driven through `browser.py`
+starts with no log and reads the reason. It then appends calls through `append_activity`
+while the page polls: the line follows each call, a failed call turns it `--bad`, and the
+list shows outcomes in order and stops at five. Rewriting the log with calls 7 and 60
+minutes old turns the line `idle`. Deleting the log brings back the absence. A
+second test pins the test's threshold to the page's `ACTIVITY_IDLE_S`. At 390 px with
+activity, the expanded overlay measures 280 × 210 px, 20.8% of the viewport (bar: 25%).
+The §2 hooks are pinned in `test_review_design.py`.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-551 — Every dashboard URL is relative to the page, so it can be mounted under a prefix (2026-10-05, orun3 P1)
+
+**Context.** The page worked out where it was from `location.pathname` matched against
+`^/p/<name>/` and prefixed `/api/...` with that, and the server built root-absolute URLs
+into its responses: each component's `mesh` (`/mesh/accepted/…`, `/mesh/run/…`,
+`/mesh/revision/…`), each playback `url` (`/api/playback/…`), each project's `url` in
+`/api/projects` (`/p/<name>/`), and the `Location` of the redirect from `/p/<name>` to
+`/p/<name>/`. Behind a proxy that mounts the dashboard at a sub-path, every one of those
+escapes the mount. `docs/DASHBOARD.md` §22 said so: "a sub-path mount is not tested". A
+desktop wrapper or a reverse proxy should be able to host the page without rewriting
+paths.
+
+**Decision.**
+- **The server builds relative URLs.** `mesh` is `mesh/…`, playback is `api/playback/…`,
+  a project is `p/<name>/`, and the redirect's `Location` is `<name>/`. Each resolves
+  against the page that asked for it, which is the project page (`p/<name>/` under
+  `cadex app`, the root under `cadex review`), or the index for `/api/projects`.
+- **The page fetches relative URLs.** `review.js` drops its `BASE` prefix: it asks for
+  `api/project`, `api/model/…`, `api/run/…`, and the manifests' URLs as given. It tells
+  `cadex app` from `cadex review` by whether its own path ends in `/p/<name>/`, anywhere in
+  the path, so a prefix in front does not change the answer. The one case it misreads is
+  a `cadex review` mounted under a prefix that itself ends in `/p/<x>/`. The links it already had
+  (`../../`, `doc/…`, `evaluation/…`, `presentation/…`) were relative.
+- **No stray request.** Both pages declare `<link rel="icon" href="data:,">`, so not even
+  the browser's own `/favicon.ico` probe leaves the mount.
+- No route, response key or polling changes. The page stays GET-only (ADR-537).
+
+**Test.** `cli/tests/test_dashboard_prefix.py`. No `url` or `mesh` in `/api/projects`,
+`/api/project`, `/api/model/accepted` or any run's `/api/model/run/<name>` starts with `/`,
+and the `p/biped` redirect's `Location` is `biped/`. A standard-library proxy forwards
+`/some/prefix/<rest>` to the server's `/<rest>`, copying the body and headers unchanged,
+and records every request outside the prefix. Through it, Chromium driven by `browser.py`
+opens the index, follows the bare `p/biped` redirect to `/some/prefix/p/biped/`, draws the
+biped fixture's model, lists both projects in the File menu, and points Home at
+`/some/prefix/`. A `cadex review` page loads and draws through it as well. Both runs end
+with no request outside the prefix. All three tests fail against the code before this
+change: the URLs start with `/`, the index's project link leaves the prefix, and so does the
+`cadex review` page's own poll. The tests that pinned the absolute forms
+(`test_app.py`, `test_review_server.py`, `test_review_checkpoints.py`,
+`test_review_revisions.py`, `test_dashboard_dimensions.py`) now pin the relative ones.
+
+**Not here.** The route-and-key contract (every `GET /api/...` route and its top-level
+keys listed in `docs/CLI.md` and pinned by a test, `activity` included) is P1's second
+unit.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-552 — The dashboard's HTTP API is a table the router dispatches from and the docs list (2026-10-05, orun3 P1)
+
+**Context.** P1 asks that the dashboard's HTTP API be a documented contract: every
+`GET /api/...` route and its top-level reply keys listed in one place, and a test that
+fails when a route or key changes without that list changing, as `OP_ARG_SPECS` is held to
+`docs/INTEGRATION.md`. `ReviewHandler._route` was a chain of `if rest == [...]` branches,
+and `_route_projects` matched `["api", "projects"]` on its own, so there was nothing to
+enumerate but source text, and no list of keys anywhere.
+
+**Decision.**
+- **One route table.** `review_server.API_ROUTES` lists the nine project routes as
+  patterns (`project`, `run/<run>`, `policy-origin/<run>`, `evaluation/<name>`,
+  `model/accepted`, `model/revision/<ordinal>`, `model/run/<run>`, `playback/run/<run>`,
+  `playback/checkpoint/<run>/<stem>`), `APP_API_ROUTES` the one `cadex app` route
+  (`projects`). Both routers resolve an `api/` path with `match_api_route` against those
+  tables and call one `_api_<name>` method per route; a route that names nothing, and any
+  path not in the table, is the same `404` as before. The replies, their status codes and
+  the URLs are unchanged.
+- **One key table.** `review_server.API_RESPONSE_KEYS` gives each route the keys every
+  `200` reply carries and those only some do (an unavailable model has no `meshes`, a
+  playback without frames has a `reason`). A `run/<run>` reply is the run record as
+  `write_run_record` writes it, with the reader's keys added, so its optional keys are
+  that writer's.
+- **The doc.** `docs/CLI.md` "The HTTP API (ADR-552)" lists the same routes and keys, and
+  says which files the replies point to are served and which are not part of the table.
+- **What the browser keeps** (P1's third bullet, audited here): `localStorage` holds four
+  per-viewer conveniences, `cadex.theme`, `cadex.layout.v3`, `cadex.render` and
+  `cadex.overlay`. There is no `sessionStorage`, IndexedDB or cookie. A picked checkpoint, a
+  scrubbed revision and a selected run last only as long as the page, and everything the
+  page shows is read from the routes on each poll. The doc names the four keys.
+
+**Test.** `cli/tests/test_http_api.py`: the doc table equals `API_ROUTES ∪ APP_API_ROUTES`
+and, row by row, `API_RESPONSE_KEYS`; there is one `_api_` method per route and no other,
+and the only lines of the two routers that mention `"api"` go through `match_api_route`.
+A fixture biped reaches every route in each of its shapes: an accepted model, a walk
+training with a ready and a failed checkpoint, a run with its rollout and one without, a
+run symlinked out of the project, a revision trail whose first revision was not retained,
+and an evaluation. It is served by `cadex review` and by `cadex app`. Every reply carries
+its route's always-keys and no key outside the table; every key the table promises was
+seen in some reply, except `video_render`, which a run record has only when a video
+status was written. Unknown `api/` paths 404. The page's scripts store exactly the four
+keys and use no other browser storage. Three mutations each fail it: an added `/api/project`
+key, a removed doc row, and a fifth `localStorage` key. A key survey of every `200` `/api`
+reply sent during a full `cli/tests` run (222 replies over eight routes) found one key the
+first table missed: a run with no rollout yet at the accepted revision borrows the accepted
+model, `meshes` and all. The table and the fixture now carry that case.
+
+**Not here.** No route, reply, status or URL changes. Non-`api/` file routes (`mesh/…`,
+`artifact/…`, `video/…`, and the rest) are served only when a reply offers them, and stay
+outside the table.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-553 — A `cadex mcp` call is logged in flight as it starts, so a running `evaluate` reads as evaluating (2026-10-05, orun3 V4/W1)
+
+**Context.** W1's first attempt on `orun3-biped` (record `solemn-fox-1118`) ran `evaluate`
+through `cadex mcp`. The call took about 68 s, almost all of it the session opening the engine
+and building the design; the evaluation itself took 0.23 s. The stage read `evaluating` only
+from an evaluation directory without its report, which existed for the last ≈0.3 s, so the
+page's 2 s poll never saw it. And ADR-549 logged a call only when it **returned**, so for the
+whole minute the activity line still showed the previous call. ADR-550 named that cost: a call
+running longer than 5 minutes reads as idle until it returns.
+
+**Decision.**
+- **Two lines a call.** `McpSession.call` writes an in-flight line before it opens the engine
+  (`begin_activity`): `outcome: running`, `t` the start, the ADR-549 argument summary, a
+  `call` id (`<pid>-<n>`) and the server's `pid`. When the call returns, or raises, the finished
+  line (ADR-549's fields) carries the same `call`. Both go through the same append, so ADR-549's
+  bound is unchanged: past 64 KiB the file keeps its newest lines within 32 KiB. A call now costs
+  two lines, so the log holds roughly half as many calls (about 75 to 250).
+- **One entry on read.** `read_activity` reads newest first, and a finished line hides its
+  in-flight line, so a call is one entry in `/api/project`'s `activity`. An in-flight line
+  whose `pid` is no longer a process on this machine is read as `lost` ("the cadex mcp process
+  ended before this call returned"), since it will never return; a `pid` that cannot be checked
+  reads as alive.
+- **The stage.** `project_stage` reads `evaluating` from an evaluation directory as before, or
+  else from the newest `evaluate` entry in the activity when it is `running`: reason "the
+  agent's evaluate call is running", `since` its start. A `lost` or finished one does not count.
+  `activity` is now read before `stage`; the reply's keys are unchanged.
+- **The page.** A `running` newest entry sets `#overlay-activity[data-state="running"]` and the
+  line `<tool> <args> · running <how long>` in `--info`, however long it has run, so ADR-550's
+  idle rule now applies only when nothing is in flight. A `lost` one reads `· did not return`
+  in `--bad`. The stage line for `evaluating` adds how long it has run. No new hook, poll or
+  write; the page stays GET-only (ADR-537).
+- **No tool-surface change.** No tool, argument or result field; `test_project_tool_surface.py`
+  is unchanged. An `evaluate` the agent runs as `cadex evaluate` outside `cadex mcp` still reads
+  only through its evaluation directory.
+
+**Test.** `cli/tests/test_activity.py`: a call is `running` until it returns and then one
+finished entry; a gone `pid` reads `lost`; 2,000 two-line calls stay within 64 KiB and read
+back as ten finished entries. Against the real engine, a `cadex mcp` process answers
+`evaluate` on a plate project while `/api/project` is polled over HTTP: the call is seen
+`running` with the stage `evaluating` and `since` its start, then finished under the same
+`call` with the stage moved on. `cli/tests/test_review_overlay.py`: the stage reads an in-flight
+`evaluate` and not a finished, other or lost one; and a Chromium driven through `browser.py`
+shows `evaluating` with `the agent's evaluate call is running · 7 min` and the activity line
+`evaluate · running 7 min` in `--info` for a call started past the idle threshold, then both
+turn back on the page's own poll when it returns.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-554 — A run's model is re-read when the walk lands its export or its own rollout, so a page left open adds the final-policy stop (2026-10-05, orun3 remaining defect 1)
+
+**Context.** The W1 walk on `orun3-biped` (`soft-comet-8840`) ended with the never-reloaded
+page's checkpoint scrubber still reading `iteration 100 · 5/5 · newest`, with no
+`final policy` stop, while a fresh page on the same kind of run showed `final policy · 6/6`
+(`solemn-fox-1118`). `docs/probes/orun3/REPORT.md` §5 listed it as remaining defect 1. The
+cause: the poll keyed a run's model on the source name alone ("a run's model is fixed"), so
+`/api/model/run/<run>` was fetched once. While the run trains, that manifest is the frozen
+training view with no `playback`; the run's own rollout, which ADR-545 appends as the
+`final policy` stop, only appears in the manifest re-read after the walk's rollout leg.
+
+**Decision.** For a run source the poll's model key is the run's `status` and its record's
+resolved `trace` and `model_xml` artifacts, all already in `/api/project`'s `runs`. When the
+walk lands its export or its rollout, the key changes and the manifest is re-read once on
+the page's existing poll; the checkpoint scrubber then lists the run's own rollout last and,
+if it was following, plays it. While a run trains, none of the three moves, so the model is
+not re-fetched per poll. No route, hook, poll loop or write is added; the page stays GET-only
+(ADR-537).
+
+**Test.** `cli/tests/test_review_checkpoints.py`: a Chromium driven through `browser.py`
+watches a training run's checkpoint loop as `iteration 20 · reward 0.5 · 1/1 · newest` over
+several polls; the walk then writes its rollout trace and parts and a finished record, and
+on the next poll, with no reload, the label reads `final policy · 2/2 · newest` and the final
+rollout loops, with the earlier checkpoint still pickable. Without this change the same test
+times out waiting for the `final policy` label.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-555 — The evaluating line names the agent's `evaluate` call, never an evaluation directory's id (2026-10-05, orun3 remaining defect 2)
+
+**Context.** During the W1 `evaluate` on `orun3-biped` (`soft-comet-8840`), the overlay's
+stage line read "evaluation dc0af1158165-d3a4… is running · 1 s", not ADR-553's "the agent's
+evaluate call is running". `project_stage` checked the evaluation directory first, so once the
+evaluation wrote its directory part-way through the call, the directory's reason won, and its
+`since` reset the clock to the directory's last write. `docs/probes/orun3/REPORT.md` §5 listed
+it as remaining defect 2: the stage was right, but the line named an internal id the owner
+cannot act on.
+
+**Decision.** An in-flight `evaluate` call in the activity log (ADR-553) is checked first: its
+reason and its start as `since`, for the whole call. An evaluation directory without its report
+is still `evaluating` when no such call is in flight (a `cadex walk` or `cadex evaluate` run
+from a shell), and its reason is "an evaluation is running", with no id. The page is unchanged;
+no route, key or poll is added.
+
+**Test.** `cli/tests/test_review_overlay.py`: a Chromium driven through `browser.py` watches an
+`evaluate` call in flight for 65 s read "the agent's evaluate call is running · 1 min". The
+evaluation's directory then appears, and the line stays the same over two polls, with no id. When
+the call returns, the line reads "an evaluation is running" while the directory is fresh. Without
+this change the test fails on the line naming `dc0af1158165-…`. The server-side test now pins the
+directory-only reason exactly.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-556 — At phone width a scrubber's slider keeps a 160 px floor and its label wraps under it (2026-10-05, orun3 long-term rung)
+
+**Context.** The charter's long-term rung asks for the overlay and both scrubbers to work well
+at phone width and in the light theme. Measured at 390 × 844 with touch emulation, in both
+themes: each `.timeline` row is a wrapping flex row, and its label is `white-space: nowrap`.
+The only part that could shrink was the slider (`flex: 1`, with the page's global
+`min-width: 0`). When the newest checkpoint's rollout had failed, the label read
+`iteration 60 · reward — · 3/3 · newest` and took 275 px. That squeezed `#checkpoint-pick` to
+0 px, so a phone could not step back to an older checkpoint at all. A ready checkpoint left the
+slider at 43 px, and the revision timeline's at 53 px. Both were 16 px tall. The colours were
+already right: every label and status line reads its theme's tokens.
+
+**Decision.** A new spacing token, `--scrub: 160px`. A `.timeline` slider is `flex: 1 1
+var(--scrub)` with `min-width: var(--scrub)`, so where the label does not fit beside it, the
+row wraps and the label goes onto its own line. The slider is `--tool` tall (32 px on a coarse
+pointer). That is CSS only. No markup, script, route or key changes. At desk width the slider
+grows as it did before.
+
+**Test.** `cli/tests/test_review_checkpoints.py`, in the light and dark themes at 390 px: a
+Chromium driven through `browser.py` measures the checkpoint row with its newest rollout failed
+and then with a ready one picked, and the revision row on a revision that was not retained and
+then on one that was. In every case the slider is ≥ 160 px and ≥ 32 px tall, the label is after
+it or under it and not clipped, and the row is inside the viewport and below the expanded
+overlay. The label is `--ink` and the status line is `--bad` or `--warn`, as the theme defines
+them. Measured: 287 px for the checkpoint slider and 303 px for the revision slider. Without
+this change the test fails on the checkpoint slider's 0.03 px.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-557 — The model's status line reads on the dark floor, below the overlay (2026-10-05, orun3 long-term rung)
+
+**Context.** The viewport's floor is dark in both themes (ADR-331). `#model-status`, the line
+that says why no model is drawn, was a transparent line at the viewport's top left. In the
+light theme its `--warn` (#8a6100) sat on the #141414 floor at about 3.3:1. At 390 × 844, with
+the overlay expanded, the overlay reached from y 80 to 149 and from x 102, and the line ran
+from y 84 under it. REPORT §5 named both after ADR-556.
+
+**Decision.** The line moves into the viewport's bottom column (`.timelines`) as its first item,
+above the scrubbers. It sizes to its text and wraps, and it has an opaque `--surface` behind
+it. Each theme's own `--ink-2`, `--warn` and `--bad` read on that surface, whatever the floor is.
+There is one markup move and no script, route or key change. At desk width the line sits at
+the bottom left instead of the top left.
+
+**Test.** `cli/tests/test_review_checkpoints.py`, in the light and dark themes at 390 px, on a
+revision whose model was not kept: a Chromium driven through `browser.py` checks these things
+about the `missing` line. It is inside the viewport and not clipped. Its top is below the
+expanded overlay's bottom. It is `--warn` on an opaque background, at ≥ 4.5:1. Measured: 5.04:1
+in the light theme and 13.35:1 in the dark, 457 px below the overlay. Before the change the
+test fails, with the line's top at 84 px against the overlay's bottom at 149 px.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).

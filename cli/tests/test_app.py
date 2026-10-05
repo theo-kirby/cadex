@@ -67,7 +67,7 @@ def test_the_index_lists_only_projects_and_finds_new_ones_live(app) -> None:
     assert listing["schema"] == "cadex-projects-v1" and listing["root"] == "projects"
     by_name = {entry["name"]: entry for entry in listing["projects"]}
     assert list(by_name) == ["biped", "empty"]
-    assert by_name["biped"]["url"] == "/p/biped/"
+    assert by_name["biped"]["url"] == "p/biped/"
     assert by_name["biped"]["accepted"]["revision"] == REVISION_B and by_name["biped"]["runs"] == 3
     assert by_name["empty"]["accepted"]["available"] is False and by_name["empty"]["runs"] == 0
     (projects / "notes" / "script.json").write_text("{}")
@@ -162,7 +162,7 @@ def test_browser_goes_from_the_index_to_a_drawn_project(tmp_path, browser) -> No
         page.wait_for("document.querySelectorAll('#projects li').length === 2")
         # Newest accepted first, each a link and a date; one page, so no pager.
         assert page.evaluate("[...document.querySelectorAll('#projects li')].map(l => l.dataset.project)")[0] == "biped"
-        assert page.attribute("#projects li[data-project='biped'] a", "href") == "/p/biped/"
+        assert page.attribute("#projects li[data-project='biped'] a", "href") == "p/biped/"
         assert page.text("#projects-count") == "2"
         assert page.evaluate("document.getElementById('pager').hidden") is True
         project = _open(browser, server.url + "p/biped/")

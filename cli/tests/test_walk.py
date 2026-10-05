@@ -807,6 +807,45 @@ def test_the_remote_walk_carries_the_flags_to_the_train_leg_only(
         assert "--init-from" not in other
 
 
+def test_a_local_walk_or_train_is_refused_while_another_run_holds_the_slot(
+    fake_cadex, toy_root, capsys, monkeypatch
+) -> None:
+    """The machine's one training slot is the arbiter (ADR-543): a local walk
+    is refused before any leg runs -- before a sweep could move the accepted
+    revision -- and so is a bare ``cadex train``, before its rebuild."""
+
+    from cadex_cli import loop
+    from cadex_cli import train as train_module
+
+    monkeypatch.setenv(train_module.TRAINER_PYTHON_ENV, sys.executable)
+    with loop.machine_slot():
+        code, envelope = _run(
+            capsys, "--project", str(toy_root), "walk", "--out", str(toy_root / "runs" / "w"),
+            "--set", "bore=8",
+        )
+        assert code == EXIT_REJECTED, envelope
+        assert loop.SLOT_BUSY in envelope["error"]
+        assert not fake_cadex.exists()  # no leg ran, not even the sweep
+        code, envelope = _run(
+            capsys, "--project", str(toy_root), "train", "--out", str(toy_root / "t"),
+        )
+        assert code == EXIT_REJECTED, envelope
+        assert loop.SLOT_BUSY in envelope["error"]
+        assert not (toy_root / "t").exists() or not any((toy_root / "t").iterdir())
+        # A remote walk trains on the box, not here: the slot does not apply.
+        code, envelope = _run(
+            capsys, "--project", str(toy_root), "walk", "--out", str(toy_root / "runs" / "r"),
+            "--remote", "--iterations", "1", "--envs", "2",
+        )
+        assert code == EXIT_OK, envelope
+    # Released, the same walk runs.
+    code, envelope = _run(
+        capsys, "--project", str(toy_root), "walk", "--out", str(toy_root / "runs" / "w2"),
+        "--iterations", "1", "--envs", "2",
+    )
+    assert code == EXIT_OK, envelope
+
+
 def test_a_leg_that_refuses_stops_the_walk_there_with_its_name(
     fake_cadex, toy_root, capsys, monkeypatch
 ) -> None:

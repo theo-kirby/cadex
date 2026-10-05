@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -47,7 +47,7 @@ The agent's two requests cost tokens. The loop between them does not.
 
 | Command | What it does | Spends tokens |
 |---|---|---|
-| `cadex mcp [--idle S]` | Serve the project's tools to an agent over MCP stdio (ADR-538; §2a below). The engine opens on the first tool call and closes after `--idle` quiet seconds (default 30; 0 holds it), releasing the project for the agent's own `cadex … --wait` commands; a session that accepted a build lands one `PROGRESS.md` row and one project commit as it closes. | no (the agent's own) |
+| `cadex mcp [--idle S]` | Serve the project's tools to an agent over MCP stdio (ADR-538; §2a below). The engine opens on the first tool call and closes after `--idle` quiet seconds (default 30; 0 holds it), releasing the project for the agent's own `cadex … --wait` commands; a session that accepted a build lands one `PROGRESS.md` row and one project commit as it closes. Every tool call appends one line to the project's activity log, `review/activity.jsonl` (ADR-549): `t`, `tool`, `args` (a summary — a long or multi-line string only by its length, a list only by its size, an object only by its keys, 160 characters at most), `outcome` (`ok` or `error`), `detail` (the call's one-line summary or its error), `ms` and `call`. A call also writes an in-flight line as it starts (ADR-553): `outcome: running`, `t` its start, and the server's `pid`; its finished line, with the same `call`, hides it on read, and an in-flight line whose process has gone reads `lost`. An in-flight `evaluate` makes `/api/project`'s `stage` `evaluating`. The log is capped at 64 KiB: past that it is rewritten keeping the newest lines within 32 KiB. The project's git ignores it (`/review/`), and `GET /api/project`'s `activity` carries its newest ten entries, newest first, or `available: false` and the `reason`. | no (the agent's own) |
 | `cadex guidance` | Print the whole guidance an agent driving Cadex follows. `cadex mcp`'s `instructions` are a short brief that tells the agent to run this (§2a). No engine. | no |
 | `cadex params --set k=v` | Set declared parameters and rebuild. | no |
 | `cadex script` | Print the project script. | no |
@@ -65,8 +65,8 @@ The agent's two requests cost tokens. The loop between them does not.
 | `cadex walk --out DIR` | The lifecycle walk as one command: an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command, each bounded by `--leg-timeout` (default 3600 s); `review.json` lands in `--out`. | no |
 | `cadex review --host ADDR --port N` | Serve **this one project's** dashboard to a browser, read-only (ADR-286): the model in an orbit/zoom WebGL viewport — the accepted attempt's tessellation, or a run's own rollout meshes at its own revision — its drawings, documents and training plots in a 2D viewport, and the revision trail in the menu bar (ADR-539); its `GET /api/...` routes also serve every recorded run labelled current/historical, its parameters and specs as recorded, rollout figures and retained artifacts. Opens no engine, rebuilds nothing and writes nothing: it answers GET and HEAD only, and follows what the agent changes (ADR-537, `docs/DASHBOARD.md` §18). Default `127.0.0.1:8765`; `--host` the machine's Tailscale address to reach it from another device. Ctrl-C stops it. How the page is laid out, typed and coloured is `docs/DASHBOARD.md`. | no |
 | `cadex budgets [--set NAME=VALUE ...]` | The project's engine budgets (ADR-517): `timeout_seconds`, the wall-clock seconds one engine script run may take (at most 3600), and `memory_limit_mb`, its memory ceiling (at most 131072). Stored in the project's `agent.json`; every later run — an MCP session, a `params`, a revision, each leg of a walk — sends them as `open_project`'s `budgets`, and the engine fills one that is not set from its own default (300 s and 6144 MB unless its preferences say otherwise). `--set NAME=0` unsets one. With no `--set` it reports. The envelope's `budgets.stored` is what is stored. `--engine-timeout` / `--engine-memory` override them for one call. `GET /api/project` carries them read-only. No engine, no row, no commit. | no |
-| `cadex revision list\|reject\|restore [SELECTOR]` | Going back through the revisions (ADR-506). `list`: the stored trail (`script_history/`, ADR-045), oldest first, with the values and digest each was accepted with — no engine, no row, no commit. `reject`: put back the revision accepted before the current one; `restore SELECTOR` (an ordinal or a revision prefix): put back that one. Both write the stored source through `write_script` with `replace` (going back may drop outputs on purpose), then its recorded values through `set_params`; each is a run with its row and commit. The envelope's `revisions` says the `target`, where it came `from`, what was `accepted`, whether that is `exact`ly the target, and whether it is the `same_geometry` — a parameter the target left at its default cannot be unset once stored, so it is set to the default and the revision id differs. A selector that is not the accepted revision is a usage error for `reject`. | no |
-| `cadex app [--projects DIR] [--host ADDR] [--port N]` | Serve the dashboard over a **directory of projects** (orun2 D1, ADR-502): `/` lists every subdirectory holding a `script.json` — re-read on each request, so a project made while the page is open appears — with when it was last accepted (`/api/projects` also carries its revision and run count), and each project's review page (the one `cadex review` serves) is under `/p/<name>/`. **A bare `cadex`, with no subcommand, is this command** (`cadex -h` is the help), and so is `pixi run app`. The directory is `--projects`, then `CADEX_PROJECTS`, then `~/cadex-projects`, created if absent. Default `127.0.0.1:8765`; for another device put `tailscale serve` in front of it. Read-only, as `cadex review` is (ADR-537). From a fresh clone: `pixi run setup-engine && pixi run build-engine && pixi run app`. | no |
+| `cadex revision list\|reject\|restore\|backfill [SELECTOR]` | Going back through the revisions (ADR-506). `list`: the stored trail (`script_history/`, ADR-045), oldest first, with the values and digest each was accepted with, and `models`: per ordinal, whether its model is `retained` in `review/revisions/` or the `reason` it is not (ADR-546) — no engine, no row, no commit. Every engine session keeps the accepted revision's model on open and on close, and `cadex mcp` keeps each accepted build's as it lands. `reject`: put back the revision accepted before the current one; `restore SELECTOR` (an ordinal or a revision prefix): put back that one. Both write the stored source through `write_script` with `replace` (going back may drop outputs on purpose), then its recorded values through `set_params`; each is a run with its row and commit. The envelope's `revisions` says the `target`, where it came `from`, what was `accepted`, whether that is `exact`ly the target, and whether it is the `same_geometry` — a parameter the target left at its default cannot be unset once stored, so it is set to the default and the revision id differs. A selector that is not the accepted revision is a usage error for `reject`. `backfill` (ADR-548): keep a model for every stored revision that has none, which is every revision accepted before ADR-546. The accepted one is kept from its attempt on disk; each other one has its stored source rebuilt in a scratch project, with the values the trail stored with it, else the values the project's own repository recorded in `script.json` at its acceptance (and that commit's `assets/`), else none. It is kept only when the engine lands on exactly its revision id (and its digest, when the trail has one). Another revision of the same id is copied rather than rebuilt. A rebuild that lands elsewhere or is refused is a `failed` row with every try's reason; nothing is stored in its place, and the store remembers the reason so the dashboard shows it. The engine never opens the project itself, so nothing accepted moves. `SELECTOR` limits it to one revision. The envelope's `revisions.backfill` has one row per revision tried. No row, no commit: the store is ignored by the project's git. Never run by the dashboard. | no |
+| `cadex app [--projects DIR] [--host ADDR] [--port N]` | Serve the dashboard over a **directory of projects** (orun2 D1, ADR-502): `/` lists every subdirectory holding a `script.json` — re-read on each request, so a project made while the page is open appears — with when it was last accepted (`/api/projects` also carries its revision and run count), and each project's review page (the one `cadex review` serves) is under `/p/<name>/`. Every URL the pages use and the server builds is relative to the page (ADR-551), so the whole dashboard also works mounted under a path prefix by a proxy that rewrites nothing. **A bare `cadex`, with no subcommand, is this command** (`cadex -h` is the help), and so is `pixi run app`. The directory is `--projects`, then `CADEX_PROJECTS`, then `~/cadex-projects`, created if absent. Default `127.0.0.1:8765`; for another device put `tailscale serve` in front of it. Read-only, as `cadex review` is (ADR-537). From a fresh clone: `pixi run setup-engine && pixi run build-engine && pixi run app`. | no |
 
 Flags, valid on either side of the subcommand:
 
@@ -1465,15 +1465,58 @@ The cost of that poll is bounded per run, however long the history (ADR-321):
 reason, latest metrics, the sample count of each history, the number of
 checkpoints reported and the checkpoint-source state — and reads no
 checkpoint bytes; `GET /api/run/<name>` carries the one selected run's
-histories and its digest-verified checkpoint list. The page fetches both on
-each poll (the list, then the selected run's detail) and renders the panel
-from one response, so iteration and sample counts never come from different
-snapshots; until the detail arrives after a selection the panel says
-`loading history…` with the summary's counts and a `pending` checkpoint line.
-The run list in the sidebar is rebuilt only when a run's name, status,
-relation, record time or revision changes, and the telemetry panel only when
-the shown telemetry changes, so an idle poll adds a constant number of DOM
-nodes whatever the run count. `window.cadexReview.lastPoll()` reports the last
+histories and its digest-verified checkpoint list. The summary also carries
+the trainer's `eta_s`, `wall_time_s`, `best_iteration`,
+`best_reward_per_step` and `warning` (ADR-542). `GET /api/project`'s
+**`stage`** is what the project is doing, for the 3D viewport's overlay
+(ADR-542): `state` (`evaluating` when an `evaluations/<name>/` without its
+report was written in the last 120 s, `training` when the run read is
+`running`/`pending` with telemetry `starting`, `training` or `stale`,
+`failed` when the newest run failed and no revision was accepted after it,
+`designing` within 600 s of an accepted revision, else `idle`), `reason`
+(for `evaluating`, "the agent's evaluate call is running" while a `cadex mcp`
+`evaluate` is in flight, which wins, else "an evaluation is running"; never
+the evaluation directory's name, ADR-555),
+`since`, `run` (the newest run training, else the run a fresh visit opens),
+`runs` (how many), and `training`: that run's telemetry with `spark`, its
+reward and loss histories cut to at most 64 points each, or `null` when no
+run has telemetry. It is one bounded block whatever the history. `stage`
+also carries **`checkpoints`** (ADR-545): that run's numbered checkpoints
+rolled out by ADR-544's watcher, at most the newest 64 (`listed_of` says
+how many), oldest first. Each item is its `stem` (`walk.000040`), `tag`,
+`state` (`ready`, or `failed` from its `.rollout-failed.json` or an
+unplayable trace), `iteration`, `reward_per_step`, `sha256`, `reason` and
+`error`, and for a ready one `duration_s` and `url`,
+`/api/playback/checkpoint/<run>/<stem>`: that trace through the same
+`trace_playback` as a run's own rollout, with the trace's `checkpoint`
+block. `pending` counts checkpoints with neither file yet. Only regular
+files in the run's own `train/` are read, and each trace is parsed once
+per file identity, so an idle poll reparses nothing; `null` when there is
+no run.
+
+`/api/project`'s `revisions` (the stored trail, newest first) marks each
+entry `retained` when its model is kept in `review/revisions/` (ADR-546),
+and otherwise carries `retained_reason`. `GET /api/model/revision/<ordinal>`
+(ADR-547) is that revision's retained model in the shape of
+`/api/model/accepted` — `view: "revision"`, `ordinal`, `revision`,
+`digest`, `available`, `reason`, `components` (each with its part's
+`sha256`, its `mesh` and `changed`) — plus `previous` (the stored revision
+before it, with components only when it was retained), `changed` (the
+outputs whose part digest differs from it, `null` with nothing retained to
+compare) and `compare` (what it was compared against, or why not). An
+unretained revision is `available: false` with the reason and no
+components; another revision's geometry is never offered in its place. A
+trail with no such ordinal is a 404. `GET /mesh/revision/<sha256>.stl` (its `mesh`, relative to the page like
+every URL the server builds, ADR-551) is one kept part as binary STL, served only when the store holds that digest
+and its bytes still hash to it, tagged by content so a browser revalidates
+it with a 304. The page
+has no telemetry panel (ADR-533 removed it): the 3D viewport's stage overlay
+(ADR-542) is drawn from `/api/project`'s `stage` alone, on the page's existing
+poll, and is rebuilt only when that block changes, so the overlay reads the
+stage, the iteration, the ETA, the sparklines and the warning from one
+snapshot. The page fetches `/api/run/<name>` only when the 2D viewport
+plots one of a run's curves, never for the overlay, so an idle poll adds a
+constant number of DOM nodes whatever the run count. `window.cadexReview.lastPoll()` reports the last
 poll's list bytes, detail bytes and wall time. The `test_review_history_scale.py`
 suite pins this over sixty-three runs with 512-sample histories and three
 checkpoints each, then grows the history by twenty runs under a deliberately
@@ -1713,6 +1756,54 @@ running during that real-project check. The subsequent
 the same persistent service during Wren GPU training: one unchanged trainer,
 automatic telemetry recovery within five seconds, historical playback and
 download preserved, and a fresh page selecting the active attempt.
+
+### The HTTP API (ADR-552)
+
+The dashboard's data is an HTTP API, and this table is its contract: every
+`GET /api/...` route a project page answers, and the top-level keys of its
+`200` reply. A route is relative to the project page — the root under
+`cadex review`, `p/<name>/` under `cadex app` — except `api/projects`, which
+is `cadex app`'s own. `<run>`, `<name>`, `<ordinal>` and `<stem>` are one
+path segment each. **Always** keys are in every `200` reply; **when they
+apply** keys are in some (an unavailable model has no `meshes`, a playback no
+`frames`, an unreadable run record few of its own). A `run/<run>` reply is
+the run record as `write_run_record` writes it, with the reader's keys added.
+A route that names nothing answers `404` with `{"error": "not found", "what":
+...}`, and so does any `api/` path not in this table. The server answers GET
+and HEAD only (ADR-537).
+
+`ReviewHandler` dispatches from `review_server.API_ROUTES` and nothing else,
+and `review_server.API_RESPONSE_KEYS` holds the keys.
+`cli/tests/test_http_api.py` fails when this table, those two and the replies
+of a fixture biped that reaches every route disagree, in the way
+`docs/INTEGRATION.md`'s op table is held to `OP_ARG_SPECS`.
+
+| Route | Answers | Always | When they apply |
+|---|---|---|---|
+| `GET api/projects` | `cadex app` only: every project under the directory | `schema`, `root`, `projects`, `served_at` | |
+| `GET api/project` | the page's one poll: accepted identity, runs with telemetry summaries, the stage, revisions, evaluations, exports, sections, drawings, budgets, agent activity | `schema`, `project`, `accepted`, `docs`, `decisions`, `runs`, `presentation`, `evaluations`, `revisions`, `stage`, `exports`, `sections`, `drawings`, `budgets`, `activity`, `served_at` | |
+| `GET api/run/<run>` | one run's record with full telemetry and disk use | `run`, `status`, `error`, `artifacts`, `project_artifacts`, `videos`, `legs`, `outcome`, `resolved`, `problems`, `relation`, `telemetry`, `disk` | `schema`, `recorded_at`, `mode`, `walk_seconds`, `model`, `params`, `task`, `training`, `policy`, `rollout`, `project_docs`, `policy_store`, `video_render` |
+| `GET api/policy-origin/<run>` | which run trained the run's policy, and its other playbacks | `schema`, `run`, `policy_sha256`, `origin`, `reason`, `recorded_source_run`, `source_agrees`, `playbacks` | |
+| `GET api/evaluation/<name>` | one evaluation report, and what of its film is on disk | `name`, `relation`, `stamp`, `files`, `report` | |
+| `GET api/model/accepted` | the accepted attempt's model | `schema`, `view`, `run`, `relation`, `revision`, `digest`, `available`, `reason`, `source`, `placement_source`, `components`, `collision`, `contacts`, `exploded`, `appearance`, `measurements` | `meshes` |
+| `GET api/model/revision/<ordinal>` | one retained revision's model, its ghost and changed parts | `view`, `ordinal`, `revision`, `digest`, `available`, `reason`, `components`, `previous`, `changed`, `source` | `compare` |
+| `GET api/model/run/<run>` | the model a run retained | `schema`, `view`, `run`, `relation`, `revision`, `digest`, `available`, `reason`, `source`, `placement_source`, `components`, `collision`, `contacts`, `exploded`, `appearance`, `measurements` | `playback`, `meshes` |
+| `GET api/playback/run/<run>` | the run's rollout trace as playback frames | `available`, `run`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second` |
+| `GET api/playback/checkpoint/<run>/<stem>` | one checkpoint's rollout as playback frames | `available`, `run`, `stem`, `checkpoint`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second` |
+
+The files the replies point to — `mesh/...`, `artifact/...`, `video/...`,
+`doc/...`, `evaluation/...`, `presentation/...`, `export/...`,
+`blueprint/...`, `section/...` — are served only when a reply offers them,
+and are not part of this table.
+
+**What the browser keeps.** The page keeps no project state of its own:
+everything it shows is read from these routes on each poll. What it keeps in
+`localStorage` is four per-viewer conveniences — `cadex.theme` (dark, light
+or system), `cadex.layout.v3` (the screen's areas), `cadex.render` (the
+viewport's render style) and `cadex.overlay` (the stage overlay collapsed or
+not) — and the test fails if the page stores any other key. A picked
+checkpoint, a scrubbed revision or a selected run lasts only as long as the
+page.
 
 ### Exit codes
 
@@ -1973,6 +2064,8 @@ cli/cadex_cli/
   bridge.py            runs a tool call against cadexd; injects what the agent
                        is never asked for; records every call
   mcp.py               `cadex mcp`'s wire: JSON-RPC over stdio, idle callback
+  activity.py          the project activity log every `cadex mcp` tool call
+                       appends to, bounded; read into /api/project (ADR-549)
   guidance.py          the guidance an agent is given (ADR-538)
   export.py            STEP/STL/BREP out of the display block; the rest copied
   render.py            `cadex render` as a job: rebuild, read fit/inventory, write the files
@@ -1985,6 +2078,8 @@ cli/cadex_cli/
   train.py             the offboard trainer as a subprocess, local or remote
   loop.py              the training loop's run registry and its detached
                        supervisor (ADR-464): register, launch, read, stop
+  checkpoints.py       each checkpoint rolled out while the run trains
+                       (ADR-544); checkpoint_runner.py is its child
   walk.py              the lifecycle walk's leg plan (ADR-199)
   section.py           `cadex section`: named world-plane cuts of the accepted tessellation
   smoke.py             `cadex smoke` (ADR-352); smoke_runner.py and
@@ -2107,6 +2202,44 @@ spending hours on a policy that has learned to fall over.
 The build is not where this bites: a task written before ADR-408 still
 builds, and the policies trained on it still verify.
 
+### Each checkpoint is rolled out while the run trains (ADR-544)
+
+`cadex train --checkpoint-every N` and `cadex walk --checkpoint-every N`
+pass the trainer's flag of that name, and a `train_start` run does the
+same with the `checkpoint_every` setting. For a **local** trainer, a
+watcher (`cli/cadex_cli/checkpoints.py`) then rolls each numbered
+checkpoint `<out>.<tag>.cxpolicy` out through the engine, on the CPU, while
+training goes on. The watcher is the same object in both places: `cadex
+train` polls it from `run_trainer`'s wait, and the supervisor polls it from
+its own loop.
+
+- The child is `checkpoint_runner.py`, run by path under the engine's
+  interpreter, `nice`d, with the GPU hidden. It plays one **nominal**
+  episode (no seed: no randomisation, reset variation or shove), so every
+  checkpoint of a run plays the same episode, at the largest frame rate
+  that divides the control rate and is at most 30.
+- It writes `<out>.<tag>.rollout-trace.json`, a
+  `cadex-assembly-simulation-trace-v1` document whose `checkpoint` block
+  gives the file, tag, iteration, reward per step and sha256. The iteration
+  and reward come from the `progress.json` row whose digest is the file's.
+  If the trainer has ended without listing it, the tag names the
+  iteration and the reward is `null`.
+- A checkpoint that cannot be played leaves
+  `<out>.<tag>.rollout-failed.json` (`cadex-checkpoint-rollout-failure-v1`)
+  with the reason, and no trace. A rollout past five minutes is killed and
+  recorded as `rollout_timeout`. A watcher that fails is switched off with
+  its reason in the envelope's notes. It never stops the trainer.
+- One child runs at a time, newest pending checkpoint first. `best` (it is
+  rewritten in place) and the final policy are not rolled out.
+- After the trainer exits, the remaining checkpoints are rolled out with
+  the machine's slot already released. The envelope's notes count the
+  traces and the failures. An interrupted supervisor stops its child and
+  rolls out nothing more.
+- The traces end in `-trace.json`, which a project repository ignores.
+  They are run outputs.
+- A `--remote` trainer's checkpoints stay on the box, and nothing is
+  rolled out for them here.
+
 ### `look`: the agent sees its design (ADR-406)
 
 `look` is listed after the op-named tools and is answered by the bridge
@@ -2204,7 +2337,9 @@ a status still saying `running` under a lock nobody holds is reported
 `interrupted`, **an interruption and not an attempt**. The machine's lock
 (`~/.cache/cadex/training.lock`, or `$CADEX_TRAIN_LOCK`) is the one
 training slot: a second run is refused at registration, and again by the
-supervisor if two were registered at once.
+supervisor if two were registered at once. `cadex train` holds the same slot
+around a local trainer, so `cadex walk`'s train leg is refused while a
+`train_start` run trains, and the other way round (ADR-543).
 
 **What registration refuses**, each with a sentence the agent can act on: a
 missing, zero or over-long budget (six hours is the bound on a typo); a
@@ -2666,6 +2801,17 @@ instead. A command holds it for its one run and releases it before the
 engine open, lands its row and commit, then releases it, and opens again
 waiting for it (§4).
 
+The machine's **training slot** (`~/.cache/cadex/training.lock`, or
+`$CADEX_TRAIN_LOCK`) is a second advisory `flock`, one per machine rather
+than per project: one training run at a time (ADR-543). A `train_start`
+supervisor holds it while it lives (§4), and `cadex train` holds it while
+its local trainer runs, not during the rebuild or the `put`. While another
+run holds it, `cadex train` and `cadex walk` exit 3 before doing anything:
+`train` before its rebuild, and `walk` before its first leg, so a refused
+iterate walk has not moved the accepted revision. `--remote` trains on the
+box and takes no slot here, and neither does `train --dry-run` or
+`walk --complete`. There is no `--wait` for the slot.
+
 ## 6. Which engine
 
 In order: `--engine`, then `CADEX_ENGINE_ROOT`, then the development tree
@@ -2697,7 +2843,10 @@ Fast, and honest about what it did not run.
 |---|---|
 | `test_engine_resolution.py` | Hand-built payload directories; no engine needed. |
 | `test_mcp_protocol.py` | `cadex mcp`'s wire, the stdio loop and its idle callback, and the bridge against `fake_cadexd.py`; no engine needed. |
+| `test_activity.py` | The activity log (ADR-549): arguments summarised never whole, the 64 KiB cap keeping the newest calls (with two lines a call too), a torn line skipped; a call in flight until it returns and then one entry, and `lost` once its server is gone (ADR-553); and a real `cadex mcp` process's calls read back from `/api/project`, including a slow `evaluate` seen in flight with the stage `evaluating` — that half **skips** without a built engine. |
 | `test_agent_guidance.py` | The guidance: the engine's text carried verbatim, nothing left from the CLI's own turns, and `cadex guidance` printing exactly what `cadex mcp` sends. |
+| `test_dashboard_prefix.py` | Portability (ADR-551): no `url` or `mesh` the server builds is root-absolute, the `p/<name>` redirect is relative, and in Chromium the index and a project page, and a `cadex review` page, load and draw through a non-rewriting proxy at `/some/prefix/` with no request leaving it. |
+| `test_http_api.py` | The HTTP API contract (ADR-552): the "HTTP API" table above, `API_ROUTES` and `API_RESPONSE_KEYS` agree; the router dispatches from the table alone; every route's replies on a fixture biped that reaches each shape carry their always-keys and nothing unlisted, and every unknown `api/` path is a `404`; the page stores only the four per-viewer `localStorage` keys. |
 | `test_dashboard_read_only.py` | The read-only dashboard (ADR-537): every former write route refused for every method with the project unchanged, and in Chromium an open page following a `cadex params` run outside it. |
 | `test_client.py` | A real `cadexd`. **Skips** without a built engine. |
 | `test_export.py` | Plan-building directly; conversion against a real engine. |

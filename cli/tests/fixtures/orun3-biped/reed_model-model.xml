@@ -1,0 +1,92 @@
+<mujoco model="cadex-assembly">
+  <compiler angle="radian" autolimits="false"/>
+
+  <option integrator="implicitfast">
+    <flag island="disable"/>
+  </option>
+
+  <size nkey="1"/>
+
+  <worldbody>
+    <body name="ground_link">
+      <inertial pos="0 0 -0.005" quat="0 0.707107 0 0.707107" mass="1.5" diaginertia="0.03125 0.0200125 0.0112625"/>
+      <geom name="ground_link/collision0" size="0.2 0.15 0.05" type="plane" conaffinity="2147483647"/>
+    </body>
+    <body name="torso_link" pos="0 0 0.203">
+      <inertial pos="0 0 0" quat="0.707107 0.707107 0 0" mass="0.4725" diaginertia="0.000511875 0.000460688 0.000334688"/>
+      <joint name="torso_link/free" type="free"/>
+      <geom name="torso_link/collision0" size="0.03 0.045 0.035" type="box" conaffinity="2147483647"/>
+      <body name="thigh_l_link" pos="0 0.025 -0.075">
+        <inertial pos="0 0 0" mass="0.0324" diaginertia="1.81548e-05 1.81548e-05 1.7496e-06"/>
+        <joint name="hip_l" pos="0 0 0.04" axis="0 1 0" limited="true" range="-1.0472 1.0472" armature="2e-05" damping="0.0458366" frictionloss="0.008"/>
+        <geom name="thigh_l_link/collision0" size="0.009 0.009 0.04" type="box" conaffinity="2147483647"/>
+        <body name="shin_l_link" pos="0 0 -0.08">
+          <inertial pos="0 0 0" mass="0.0324" diaginertia="1.81548e-05 1.81548e-05 1.7496e-06"/>
+          <joint name="knee_l" pos="0 0 0.04" axis="0 1 0" limited="true" range="0 1.91986" armature="2e-05" damping="0.0458366" frictionloss="0.008"/>
+          <geom name="shin_l_link/collision0" size="0.009 0.009 0.04" type="box" conaffinity="2147483647"/>
+          <body name="foot_l_link" pos="0 0 -0.044">
+            <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.0245" diaginertia="1.25052e-05 1.01348e-05 2.63171e-06"/>
+            <geom name="foot_l_link/collision0" size="0.035 0.0175 0.004" type="box" conaffinity="2147483647"/>
+          </body>
+        </body>
+      </body>
+      <body name="thigh_r_link" pos="0 -0.025 -0.075">
+        <inertial pos="0 0 0" mass="0.0324" diaginertia="1.81548e-05 1.81548e-05 1.7496e-06"/>
+        <joint name="hip_r" pos="0 0 0.04" axis="0 1 0" limited="true" range="-1.0472 1.0472" armature="2e-05" damping="0.0458366" frictionloss="0.008"/>
+        <geom name="thigh_r_link/collision0" size="0.009 0.009 0.04" type="box" conaffinity="2147483647"/>
+        <body name="shin_r_link" pos="0 0 -0.08">
+          <inertial pos="0 0 0" mass="0.0324" diaginertia="1.81548e-05 1.81548e-05 1.7496e-06"/>
+          <joint name="knee_r" pos="0 0 0.04" axis="0 1 0" limited="true" range="0 1.91986" armature="2e-05" damping="0.0458366" frictionloss="0.008"/>
+          <geom name="shin_r_link/collision0" size="0.009 0.009 0.04" type="box" conaffinity="2147483647"/>
+          <body name="foot_r_link" pos="0 0 -0.044">
+            <inertial pos="0 0 0" quat="0 0.707107 0 0.707107" mass="0.0245" diaginertia="1.25052e-05 1.01348e-05 2.63171e-06"/>
+            <geom name="foot_r_link/collision0" size="0.035 0.0175 0.004" type="box" conaffinity="2147483647"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <contact>
+    <exclude name="thigh_l_link|torso_link" body1="torso_link" body2="thigh_l_link"/>
+    <exclude name="thigh_r_link|torso_link" body1="torso_link" body2="thigh_r_link"/>
+    <exclude name="shin_l_link|thigh_l_link" body1="thigh_l_link" body2="shin_l_link"/>
+    <exclude name="foot_l_link|shin_l_link" body1="shin_l_link" body2="foot_l_link"/>
+    <exclude name="shin_r_link|thigh_r_link" body1="thigh_r_link" body2="shin_r_link"/>
+    <exclude name="foot_r_link|shin_r_link" body1="shin_r_link" body2="foot_r_link"/>
+  </contact>
+
+  <actuator>
+    <general name="hip_l/motor" joint="hip_l" ctrllimited="false" forcelimited="true" forcerange="-0.2 0.2"/>
+    <general name="knee_l/motor" joint="knee_l" ctrllimited="false" forcelimited="true" forcerange="-0.2 0.2"/>
+    <general name="hip_r/motor" joint="hip_r" ctrllimited="false" forcelimited="true" forcerange="-0.2 0.2"/>
+    <general name="knee_r/motor" joint="knee_r" ctrllimited="false" forcelimited="true" forcerange="-0.2 0.2"/>
+  </actuator>
+
+  <sensor>
+    <jointpos joint="hip_l" name="obs/0"/>
+    <jointvel joint="hip_l" name="obs/1"/>
+
+    <actuatorfrc actuator="hip_l/motor" name="obs/2"/>
+    <jointpos joint="knee_l" name="obs/3"/>
+    <jointvel joint="knee_l" name="obs/4"/>
+
+    <actuatorfrc actuator="knee_l/motor" name="obs/5"/>
+    <jointpos joint="hip_r" name="obs/6"/>
+    <jointvel joint="hip_r" name="obs/7"/>
+
+    <actuatorfrc actuator="hip_r/motor" name="obs/8"/>
+    <jointpos joint="knee_r" name="obs/9"/>
+    <jointvel joint="knee_r" name="obs/10"/>
+
+    <actuatorfrc actuator="knee_r/motor" name="obs/11"/>
+    <subtreecom body="torso_link" name="obs/12"/>
+    <subtreelinvel body="torso_link" name="obs/13"/>
+    <framequat objtype="xbody" objname="torso_link" name="obs/14"/>
+    <frameangvel objtype="xbody" objname="torso_link" name="obs/15"/>
+  </sensor>
+
+  <keyframe>
+    <key name="solved"/>
+  </keyframe>
+</mujoco>

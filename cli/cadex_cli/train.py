@@ -46,7 +46,8 @@ from pathlib import Path
 import subprocess
 import sys
 import threading
-from typing import Any, Sequence
+import time
+from typing import Any, Callable, Sequence
 
 from .engine import REPO_ROOT
 from .export import ExportedOutput
@@ -174,6 +175,7 @@ def trainer_flags(
     init_from_parent_task: str = "",
     init_from_task_change: str = "",
     stop_on_collapse: bool = False,
+    checkpoint_every: int = 0,
 ) -> list[str]:
     """The trainer's flags, by their real names, without the bundle or
     ``--out`` — the part of the command that is the same wherever the
@@ -205,6 +207,8 @@ def trainer_flags(
         flags += ["--init-from-task-change", init_from_task_change]
     if stop_on_collapse:
         flags.append("--stop-on-collapse")
+    if int(checkpoint_every) > 0:
+        flags += ["--checkpoint-every", str(int(checkpoint_every))]
     return flags
 
 
@@ -481,7 +485,8 @@ def _tee_stderr(stream, keep: collections.deque) -> None:
 
 
 def run_trainer(
-    command: Sequence[str], *, timeout: float = 0.0
+    command: Sequence[str], *, timeout: float = 0.0,
+    on_poll: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     """Run the trainer and return its receipt.
 
@@ -499,6 +504,9 @@ def run_trainer(
     that actually stopped the leg. The stream is therefore *teed* — written
     through as before, and its last lines kept — so the machine-readable
     error carries what the terminal showed.
+
+    ``on_poll`` is called about once a second while the trainer runs: the
+    checkpoint watcher's hook (ADR-544). It must not block.
     """
 
     try:
@@ -524,8 +532,19 @@ def run_trainer(
     ]
     for pump in pumps:
         pump.start()
+    deadline = time.monotonic() + timeout if timeout else None
     try:
-        process.wait(timeout=timeout or None)
+        while True:
+            left = None if deadline is None else max(deadline - time.monotonic(), 0.0)
+            step = left if on_poll is None else min(left if left is not None else 1.0, 1.0)
+            try:
+                process.wait(timeout=step)
+                break
+            except subprocess.TimeoutExpired:
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise
+                if on_poll is not None:
+                    on_poll()
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait()

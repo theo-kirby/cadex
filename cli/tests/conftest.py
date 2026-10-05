@@ -73,3 +73,14 @@ def protocol():
 def cpu_training(monkeypatch):
     """Select CPU for requested toy runs, including child dispatchers."""
     monkeypatch.setenv("JAX_PLATFORMS", "cpu")
+
+
+@pytest.fixture(autouse=True)
+def private_training_slot(tmp_path, monkeypatch):
+    """Every test gets a machine training slot of its own (ADR-543).
+
+    ``cadex train`` and ``cadex walk`` refuse while another run holds the
+    machine's slot, so a suite run beside a live training job would
+    otherwise be refused by it -- or, worse, hold it against that job.
+    """
+    monkeypatch.setenv("CADEX_TRAIN_LOCK", str(tmp_path / "machine-training.lock"))

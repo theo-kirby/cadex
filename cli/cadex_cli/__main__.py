@@ -53,6 +53,9 @@ from .export import ExportedOutput, ExportError, export_blueprints, export_outpu
 from .inventory import InventoryError, read_inventory, write_inventory
 from .render import acquire_snapshot, describe_proxies, write_render
 from .section import write_section
+from .revision_meshes import (
+    backfill as backfill_revision_meshes, retain as retain_revision_meshes, revision_models,
+)
 from .revisions import (
     previous as previous_revision,
     read_history as read_revision_history,
@@ -107,9 +110,11 @@ from .train import (
     training_plan,
     resolve_trainer_python,
     verify_returned_policy,
+    resolve_bundle_model,
     run_trainer,
     trainer_command,
 )
+from .checkpoints import CheckpointRollouts
 from .evaluate import (
     DEFAULT_TIMEOUT_S as EVALUATE_TIMEOUT_S,
     MAXIMUM_TIMEOUT_S as EVALUATE_MAXIMUM_TIMEOUT_S,
@@ -125,6 +130,7 @@ from .evaluate import (
     retained_inputs,
     run_evaluation,
 )
+from .loop import SLOT_BUSY, LoopError, lock_held, machine_lock_path, machine_slot
 from .review_record import manifest_identity, read_accepted_identity, write_run_record
 from .review_server import serve as serve_review, serve_projects
 from .smoke import (
@@ -148,6 +154,7 @@ from .smoke import (
     smoke_interpreter,
 )
 from .guidance import brief as guidance_brief, instructions as guidance_text
+from .activity import append_activity, begin_activity, reply_error
 from .mcp import serve as serve_mcp
 from .tools import STANDARD_DISPLAY, tool_definitions
 from .walk import (
@@ -457,6 +464,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _remote_flags(train_parser)
     _grounding_flag(train_parser)
+    _checkpoint_flag(train_parser)
     train_parser.add_argument(
         "--stop-on-collapse", dest="stop_on_collapse", action="store_true",
         default=False,
@@ -626,6 +634,7 @@ def build_parser() -> argparse.ArgumentParser:
         "bounds the trainer inside the train leg and nothing else; "
         "--leg-timeout bounds the legs themselves.",
     )
+    _checkpoint_flag(walk_parser)
     walk_parser.add_argument(
         "--leg-timeout", dest="leg_timeout", type=float,
         default=DEFAULT_LEG_TIMEOUT_S, metavar="SECONDS",
@@ -701,18 +710,23 @@ def build_parser() -> argparse.ArgumentParser:
     revision_parser = subparsers.add_parser(
         "revision",
         help="Review the accepted revisions (ADR-506): list the trail, reject "
-        "the current one (put back the one before), or restore any stored one.",
+        "the current one (put back the one before), restore any stored one, "
+        "or backfill the models of revisions accepted before they were kept "
+        "(ADR-548).",
     )
     _common(revision_parser, inherit=True)
     revision_parser.add_argument(
-        "action", choices=("list", "reject", "restore"),
+        "action", choices=("list", "reject", "restore", "backfill"),
         help="list: the stored trail. reject: put back the revision accepted "
-        "before it. restore: put back the named one.",
+        "before it. restore: put back the named one. backfill: rebuild, in a "
+        "scratch project, every stored revision whose model was not kept, "
+        "and keep each one that reproduces its revision exactly.",
     )
     revision_parser.add_argument(
         "selector", nargs="?", default="",
         help="An ordinal or a revision prefix. restore needs one; reject "
-        "takes one only to check it is the accepted revision.",
+        "takes one only to check it is the accepted revision; backfill takes "
+        "one to rebuild only that revision.",
     )
 
     app_parser = subparsers.add_parser(
@@ -754,6 +768,16 @@ def _grounding_flag(parser: argparse.ArgumentParser) -> None:
         help="Train even though a policy channel names no onboard sensor that "
         "measures it. Without this the leg refuses: the policy would learn "
         "from an input the robot it deploys to cannot read.",
+    )
+
+
+def _checkpoint_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--checkpoint-every", dest="checkpoint_every", type=int, default=0,
+        metavar="N",
+        help="Write a checkpoint every N iterations (0: none). A local run "
+        "rolls each one out through the engine on the CPU while it trains, "
+        "and leaves its trace beside it (ADR-544).",
     )
 
 
@@ -889,10 +913,21 @@ def _engine_session(
             repo_note = ensure_project_repo(project_root)
             if repo_note:
                 report.notes.append(repo_note)
+            # The revision accepted when the session opened is kept too: its
+            # attempt is the one the engine still holds, and the first write
+            # of this session would leave it to be pruned (ADR-546).
+            retain_revision_meshes(project_root)
             _install_cancel(client)
             yield engine, client
         finally:
             client.shutdown()
+            # Whatever this session accepted, its model is kept under the
+            # revision's ordinal, so the timeline can play it (ADR-546).
+            retained = retain_revision_meshes(project_root)
+            if retained.get("status") == "retained":
+                report.notes.append(
+                    f"kept revision {retained['ordinal']}'s model: "
+                    f"{retained['added_bytes']} new bytes of tessellation (ADR-546).")
 
 
 def stale_policy_note(opened: Mapping[str, Any]) -> str:
@@ -1048,11 +1083,15 @@ def command_revision(args: argparse.Namespace, report: RunReport) -> int:
         raise ValueError(f"no project at {root}.")
     action = args.action
     if action == "list":
-        report.revisions = {"history": read_revision_history(root)}
+        report.revisions = {"history": read_revision_history(root),
+                            "models": [{key: row.get(key) for key in ("ordinal", "retained", "reason")}
+                                       for row in revision_models(root)]}
         identity = read_accepted_identity(root)
         report.accepted_revision = identity.get("revision", "") if identity.get("available") else ""
         report.ok = True
         return EXIT_OK
+    if action == "backfill":
+        return _revision_backfill(args, report, root)
     want = str(args.selector or "").strip().lower()
     with _engine_session(args, report, restore=False) as (engine, client):
         identity = read_accepted_identity(root)
@@ -1142,6 +1181,50 @@ def command_revision(args: argparse.Namespace, report: RunReport) -> int:
         _finish(args, report, engine, reply.get("display"))
         report.ok = True
         return EXIT_OK
+
+
+def _revision_backfill(args: argparse.Namespace, report: RunReport, root: Path) -> int:
+    """``cadex revision backfill``: rebuild the models the store never kept (ADR-548).
+
+    Not an ``_engine_session``: that would open the project and retain its
+    accepted model, and this command must leave the project exactly as it
+    found it apart from ``review/revisions/``. The engine opens only
+    scratch projects; the project is locked so no other run moves the trail
+    under it. No row and no commit: the store is ignored by the project's
+    git (ADR-194) and nothing accepted changed.
+    """
+
+    selector = str(args.selector or "").strip().lower()
+    entries = read_revision_history(root)
+    ordinal = select_revision(entries, selector).get("ordinal") if selector else ""
+    engine = resolve_engine(args.engine or None)
+    report.engine = engine.describe()
+    with project_lock(root, wait=bool(args.wait)):
+        report.project_root = str(root.resolve())
+        client = CadexdClient(engine)
+        try:
+            client.start()
+            _install_cancel(client)
+            rows = backfill_revision_meshes(root, client, display=STANDARD_DISPLAY,
+                                            selector=str(ordinal or ""), progress=_progress)
+        finally:
+            client.shutdown()
+    report.revisions = {
+        "action": "backfill", "backfill": rows,
+        "models": [{key: row.get(key) for key in ("ordinal", "retained", "reason")}
+                   for row in revision_models(root)]}
+    identity = read_accepted_identity(root)
+    report.accepted_revision = identity.get("revision", "") if identity.get("available") else ""
+    kept = [row for row in rows if row.get("status") in ("retained", "copied")]
+    failed = [row for row in rows if row.get("status") == "failed"]
+    report.notes.append(
+        f"backfilled {len(kept)} of {len(rows)} revision(s) without a kept model"
+        + (f": {sum(int(row.get('added_bytes') or 0) for row in kept)} new bytes of tessellation."
+           if rows else ": nothing to do, every revision asked for already has one."))
+    for row in failed:
+        report.notes.append(f"revision {row['ordinal']} not backfilled: {row['reason']}")
+    report.ok = True
+    return EXIT_OK
 
 
 def command_params(args: argparse.Namespace, report: RunReport) -> int:
@@ -1508,6 +1591,9 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
     if args.iterations < 1 or args.envs < 1:
         report.error = "--iterations and --envs must be at least 1."
         return EXIT_USAGE
+    if args.checkpoint_every < 0:
+        report.error = "--checkpoint-every must be 0 (none) or a number of iterations."
+        return EXIT_USAGE
     policy_name = str(args.policy_name or "")
     if policy_name and not policy_name.endswith(".cxpolicy"):
         report.error = "--name must end in .cxpolicy."
@@ -1537,6 +1623,11 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
             report.error = "--detach needs --out inside the project for its run receipt."
             return EXIT_USAGE
     python = None if args.remote else resolve_trainer_python(args.trainer_python or None)
+    if not args.remote and not args.dry_run and lock_held(machine_lock_path()):
+        # Refused before the rebuild; the slot itself is taken around the
+        # trainer below (ADR-543).
+        report.error = f"{SLOT_BUSY}; wait for it to end."
+        return EXIT_REJECTED
 
     with _engine_session(args, report) as (engine, client):
         _progress(" · rebuild")
@@ -1598,6 +1689,7 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
         init_from_parent_task=args.init_from_parent_task,
         init_from_task_change=args.init_from_task_change,
         stop_on_collapse=args.stop_on_collapse,
+        checkpoint_every=args.checkpoint_every,
     )
     if args.remote:
         # Blocking dispatch returns a policy; detached dispatch returns
@@ -1639,7 +1731,37 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
         f" · train  {task.name}  {args.iterations} it × {args.envs} envs"
         f"  ({where})"
     )
-    report.training = run_trainer(command, timeout=args.timeout)
+    if args.remote:
+        report.training = run_trainer(command, timeout=args.timeout)
+    else:
+        # Each checkpoint is rolled out through the engine on the CPU while
+        # the trainer runs, and the stragglers after it (ADR-544).
+        rollouts = None
+        if args.checkpoint_every > 0:
+            bundle = Path(task.files["json"])
+            rollouts = CheckpointRollouts(
+                out_dir, output=policy_path.stem, bundle=bundle,
+                model=resolve_bundle_model(bundle), python=smoke_interpreter(engine),
+                module_dir=engine.module_dir)
+        # A local trainer is this machine's one training run while it lives,
+        # the same slot `train_start`'s supervisor holds (ADR-543).
+        try:
+            with machine_slot():
+                report.training = run_trainer(
+                    command, timeout=args.timeout,
+                    on_poll=rollouts.poll if rollouts else None)
+        except LoopError as exc:
+            report.error = str(exc)
+            return EXIT_REJECTED
+        finally:
+            if rollouts is not None:
+                rollouts.drain()
+                summary = rollouts.summary()
+                report.notes.append(
+                    "rolled out {:d} checkpoint(s) beside them{:s}{:s}.".format(
+                        summary["written"],
+                        f", {summary['failed']} failed with a reason" if summary["failed"] else "",
+                        f"; {summary['error']}" if summary.get("error") else ""))
     if args.detach:
         if report.training.get("state") != "pending" or not all(
             report.training.get(key) for key in ("run_id", "target", "remote_dir", "pid")
@@ -1944,7 +2066,25 @@ class McpSession:
         return tool_definitions(self.engine.protocol)
 
     def call(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        return self._open().call(tool, arguments)
+        """Run one tool, and write it to the project's activity log (ADR-549):
+        in flight as it starts, finished as it returns (ADR-553)."""
+
+        started = time.monotonic()
+        call = begin_activity(self.args.project, tool, arguments)
+        before = len(self._bridge.state.calls) if self._bridge is not None else 0
+        try:
+            reply = self._open().call(tool, arguments)
+        except Exception as exc:
+            append_activity(self.args.project, tool, arguments, ok=False, detail=str(exc),
+                            ms=(time.monotonic() - started) * 1000, call=call)
+            raise
+        ok = not reply.get("is_error", False)
+        calls = self._bridge.state.calls if self._bridge is not None else []
+        # The bridge's own line for the call when it kept one; else the error it answered.
+        detail = calls[-1].summary if len(calls) > before else ("" if ok else reply_error(reply))
+        append_activity(self.args.project, tool, arguments, ok=ok, detail=detail,
+                        ms=(time.monotonic() - started) * 1000, call=call)
+        return reply
 
     def idle(self) -> None:
         self.close()
@@ -2136,6 +2276,9 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     if args.iterations < 1 or args.envs < 1:
         report.error = "--iterations and --envs must be at least 1."
         return EXIT_USAGE
+    if args.checkpoint_every < 0:
+        report.error = "--checkpoint-every must be 0 (none) or a number of iterations."
+        return EXIT_USAGE
     if args.policy_name and not str(args.policy_name).endswith(".cxpolicy"):
         report.error = "--name must end in .cxpolicy."
         return EXIT_USAGE
@@ -2168,6 +2311,11 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     if remote_error:
         report.error = remote_error
         return EXIT_USAGE
+    if not args.remote and not args.complete and lock_held(machine_lock_path()):
+        # Refused before the sweep moves the accepted revision, not at the
+        # train leg after it (ADR-543).
+        report.error = f"{SLOT_BUSY}; wait for it to end."
+        return EXIT_REJECTED
     assignments = _parse_assignments(args.assignments) if args.assignments else {}
     if POLICY_SWITCH in assignments:
         report.error = f"--set {POLICY_SWITCH}: the walk owns the switch; set the change only."
@@ -2306,6 +2454,7 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             ("--init-from", args.init_from),
             ("--init-from-parent-task", args.init_from_parent_task),
             ("--init-from-task-change", args.init_from_task_change),
+            ("--checkpoint-every", args.checkpoint_every),
         ):
             if value:
                 argv += [flag, str(value)]
@@ -2882,7 +3031,7 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
         return
     if command in ("review", "app", "budgets"):  # no run: no row, no commit (ADR-286)
         return
-    if command == "revision" and args.action == "list":  # a read (ADR-506)
+    if command == "revision" and args.action in ("list", "backfill"):  # a read; a store fill (ADR-548)
         return
     # Read once, before the row is appended: both branches compare against
     # the last row that carried each number, and the walk branch is why
@@ -2930,7 +3079,7 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
         return
     if command in ("review", "app", "budgets"):
         return
-    if command == "revision" and args.action == "list":
+    if command == "revision" and args.action in ("list", "backfill"):
         return
     # A walk's legs each committed; what is left is its review.json, when
     # --out lies under the project, plus generated project review artifacts.

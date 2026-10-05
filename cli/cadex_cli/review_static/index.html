@@ -14,6 +14,7 @@
 <title>Cadex</title>
 <script src="theme.js"></script>
 <link rel="stylesheet" href="review.css">
+<link rel="icon" href="data:,">
 </head>
 <body class="app">
 <header id="top">
@@ -90,13 +91,59 @@
       <button id="model-fit" type="button">Fit</button>
     </div>
     <div class="editor-body" id="model">
-      <div id="model-status" data-state="empty">no model loaded</div>
+      <!-- What the project is doing, and how training is going (ADR-542): read from /api/project's stage on the page's poll. -->
+      <aside id="overlay" data-stage="idle" data-collapsed="false" aria-label="Project stage">
+        <button id="overlay-toggle" type="button" aria-expanded="true" aria-controls="overlay-detail" title="Show or hide the detail">
+          <span id="overlay-stage" class="chip">idle</span>
+          <span id="overlay-line"></span>
+        </button>
+        <div id="overlay-detail">
+          <div id="overlay-run" hidden></div>
+          <!-- What the agent last did through cadex mcp (ADR-550): review/activity.jsonl, read in /api/project's activity. -->
+          <div id="overlay-activity" data-state="none">
+            <p id="overlay-activity-line">no agent activity logged</p>
+            <details id="overlay-activity-log" hidden><summary>recent calls</summary><ol id="overlay-activity-list"></ol></details>
+          </div>
+          <dl id="overlay-stats" hidden>
+            <div><dt>Reward/step</dt><dd id="overlay-reward-now">—</dd></div>
+            <div><dt>Best</dt><dd id="overlay-best">—</dd></div>
+            <div><dt>Loss</dt><dd id="overlay-loss-now">—</dd></div>
+            <div><dt>ETA</dt><dd id="overlay-eta">—</dd></div>
+          </dl>
+          <div class="sparks" id="overlay-sparks" hidden>
+            <figure><figcaption>reward</figcaption><svg id="overlay-reward" viewBox="0 0 100 24" preserveAspectRatio="none" aria-label="Reward per step by iteration"><polyline/></svg></figure>
+            <figure><figcaption>loss</figcaption><svg id="overlay-loss" viewBox="0 0 100 24" preserveAspectRatio="none" aria-label="Loss by iteration"><polyline/></svg></figure>
+          </div>
+          <p id="overlay-warning" hidden></p>
+        </div>
+      </aside>
       <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas></div>
-      <!-- A run's rollout trace plays here (orun2 D2.5); nothing is simulated in the page. -->
-      <div id="playback" class="timeline" hidden>
-        <button id="play-toggle" type="button">Play</button>
-        <input id="play-time" type="range" min="0" max="1" step="any" value="0" aria-label="Time">
-        <output id="play-clock">0.00 s</output>
+      <div class="timelines">
+        <!-- The model's own status, on its own surface below the overlay (ADR-557). -->
+        <div id="model-status" data-state="empty">no model loaded</div>
+        <!-- The design's history (ADR-547): each stored revision's retained model (ADR-546), the one
+             before it as a ghost and the parts whose digest changed tinted. Shown while the 3D
+             viewport's source is the revision history; at the newest end it follows new revisions. -->
+        <div id="revision-timeline" class="timeline" data-follow="true" data-state="retained" hidden>
+          <span class="timeline-name">Revision</span>
+          <input id="revision-pick" type="range" min="0" max="0" step="1" value="0" aria-label="Revision">
+          <output id="revision-label"></output>
+          <p id="revision-status" hidden></p>
+        </div>
+        <!-- A training run's checkpoints, each rolled out by the engine as it lands (ADR-544, ADR-545):
+             the newest loops; the scrubber picks an older one, and back at the newest end it follows again. -->
+        <div id="checkpoints" class="timeline" data-follow="true" data-state="ready" hidden>
+          <span class="timeline-name">Checkpoint</span>
+          <input id="checkpoint-pick" type="range" min="0" max="0" step="1" value="0" aria-label="Checkpoint">
+          <output id="checkpoint-label"></output>
+          <p id="checkpoint-status" hidden></p>
+        </div>
+        <!-- A run's rollout trace plays here (orun2 D2.5); nothing is simulated in the page. -->
+        <div id="playback" class="timeline" hidden>
+          <button id="play-toggle" type="button">Play</button>
+          <input id="play-time" type="range" min="0" max="1" step="any" value="0" aria-label="Time">
+          <output id="play-clock">0.00 s</output>
+        </div>
       </div>
     </div>
   </section>

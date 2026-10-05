@@ -1,6 +1,6 @@
 # DASHBOARD.md — The dashboard, Cadex's only UI
 
-Verified against source: 2026-10-04. [Cadex-new]
+Verified against source: 2026-10-05. [Cadex-new]
 
 This is the design specification for the dashboard: the pages `cadex app`
 and `cadex review` serve (`cli/cadex_cli/review_server.py` and
@@ -70,7 +70,7 @@ accepted first, 20 to a page. Each row is the name, linking to its page, and
 a muted date; **Newer** and **Older** page through them, and the page number
 is kept in the URL (`?page=N`).
 
-**Project** (`/p/<name>/`, or `/` under `cadex review`): the top bar over
+**Project** (`p/<name>/` under the index, or the root under `cadex review`; every URL it uses is relative to it, ADR-551): the top bar over
 the screen (`#screen[data-mode]`), which `layout.js` tiles with areas
 (`.area[data-area][data-editor]`, §12). Each editor's markup is parked in
 `#editor-shelf`; an area takes its `.editor-tools` into its header and its
@@ -79,12 +79,14 @@ the screen (`#screen[data-mode]`), which `layout.js` tiles with areas
 | Editor | `data-editor` | Element hooks (stable) | What it is for |
 |---|---|---|---|
 | **Top bar** | — | `#top`, `#home`, `#project-name`, `#accepted-line`, `#freshness[data-state]`, `#theme-toggle` | A link home (hidden under `cadex review`), the project's name, the accepted revision's ordinal and date, **live** or **offline**, and a light/dark toggle. |
-| **3D viewport** | `view3d` | `#view3d-source`, `#view3d-style button[data-style]`, `#model-fit`, `#model`, `#model-status[data-state]`, `#viewer`, `#playback`, `#play-toggle`, `#play-time`, `#play-clock` | The accepted model or a run's, shaded or hairline (§10); orbit by pointer or touch; **Fit**. A run that kept a rollout trace plays it on the timeline. |
+| **3D viewport** | `view3d` | `#view3d-source`, `#view3d-style button[data-style]`, `#model-fit`, `#model`, `#model-status[data-state]`, `#viewer`, `#playback`, `#play-toggle`, `#play-time`, `#play-clock`, `#checkpoints[data-follow][data-state]`, `#checkpoint-pick`, `#checkpoint-label`, `#checkpoint-status`, `#revision-timeline[data-follow][data-state][data-ordinal]`, `#revision-pick`, `#revision-label`, `#revision-status` | The accepted model or a run's, shaded or hairline (§10); orbit by pointer or touch; **Fit**. `#model-status` says why no model is drawn (loading, missing with its reason in `--warn`, an error in `--bad`). It sits at the bottom left, above the scrubbers and below the overlay, on an opaque `--surface`, because the floor is dark in both themes (ADR-557). A run that kept a rollout trace plays it on the timeline. **Checkpoints** (ADR-545): while the run the stage overlay reads is the model shown, each of its checkpoints the engine rolled out (ADR-544) is a stop on a scrubber above the timeline, oldest to newest, with the run's own rollout last once it has one; a page left open adds that `final policy` stop on the poll after the walk lands its rollout, with no reload (ADR-554). The newest loops, labelled with its iteration (one-based, as the overlay counts) and reward per step; `data-follow="true"` while it follows new ones. Picking an older one keeps it while newer ones land; moving back to the newest end follows again. A failed rollout plays nothing, leaves the model at rest and says why in `#checkpoint-status` in `--bad`; the same line counts checkpoints still rolling out. While that run is training the viewport turns to it on its own, unless a source was picked by hand this visit. **Revision history** (ADR-547), a source offered once anything is accepted: each stored revision is a stop on `#revision-timeline`, oldest to newest, drawn from the model kept when it was accepted (ADR-546). The newest is shown and followed (`data-follow="true"`); picking an older one keeps it, and the newest end follows again. Unchanged parts are drawn in `--paper-ink`, parts whose digest changed against the revision before in `--info`, and that previous revision is a ghost in `--ink-2` at 22% opacity wherever it differs (a part kept as it was, where it was, is not drawn twice; a hairline diagram leaves the ghost out). `#revision-status` names the changed parts and the revision compared against. A revision whose model was not kept (`data-state="missing"`) draws nothing and says why in `--warn`; the revision after it draws with no ghost and says there is nothing to compare with. |
+| **Stage overlay** (in the 3D viewport) | — | `#overlay[data-stage][data-collapsed]`, `#overlay-toggle`, `#overlay-stage`, `#overlay-line`, `#overlay-detail`, `#overlay-run`, `#overlay-stats`, `#overlay-reward-now`, `#overlay-best`, `#overlay-loss-now`, `#overlay-eta`, `#overlay-sparks`, `#overlay-reward`, `#overlay-loss`, `#overlay-warning`, `#overlay-activity[data-state]`, `#overlay-activity-line`, `#overlay-activity-log`, `#overlay-activity-list` | What the project is doing and how training is going, top right over the model (ADR-542, the first panel back after ADR-533): a stage chip — **idle**, **designing** (a revision accepted in the last 10 min), **training** (iteration of total and ETA), **evaluating** or **failed** — and one line; expanded, the run it reads (named when there are several), reward per step, the best reward and its iteration, loss, ETA, reward and loss sparklines, and the trainer's collapse `warning` in `--warn`. Read from `/api/project`'s `stage` on the page's own poll. **The agent's activity** (ADR-550), from `/api/project`'s `activity` (ADR-549): expanded, one mono line under the run with the newest `cadex mcp` call, its argument summary and how long ago (`data-state="active"`), or `failed: <detail>` in `--bad` (`"error"`); a call still in flight reads `<tool> <args> · running <how long>` in `--info` (`"running"`, ADR-553), never idle, and an in-flight `evaluate` makes the stage **evaluating**, its line `the agent's evaluate call is running` for the whole call, never an evaluation directory's id (ADR-555); a call whose server died before it returned reads `did not return` in `--bad`; once no call has returned for 5 min and none is in flight it reads `agent idle · last call <tool> <ago>` in `--ink-2` (`"idle"`); with no log it shows the reason (`"none"`). `recent calls` opens the newest five, each with its UTC clock time, failures in `--bad`. One tap collapses it to one line; collapsed or not is this browser's. At 390 px it is 280 × 210 px expanded with activity, 21% of the viewport, and 40 px tall collapsed. With no runs it is one line, `idle`. |
 | **2D viewport** | `view2d` | `#view2d-source`, `#view2d-fit`, `#sheet-stage[data-kind]`, `#sheet-empty` | The project's drawings and presentation images (pan, zoom, double-click to fit), its documents (markdown, drawn as text only), each evaluation's film, newest first (each filmed seed's rollout video, which plays in place with controls, muted and looping, and its filmstrip and detail sheets as images; ADR-541), and each run's training curves (reward, loss, episode length) as plots. |
-| **Menu bar** | — | `#menubar`; `#file-panel` (`#project-select`, `#project-open`, `#project-all`); `#revision-panel` (`#revision-list li[data-revision][data-ordinal][data-current]`, `#revision-empty`); `#view-panel` (`#theme-choice`, `#style-choice`, `#layout-reset`) | File, Revisions and View in the top bar, each a `<details class="menu">` dropdown (ADR-539): open another project; the revision trail, read-only (§18); the theme, the render style and the layout. One opens at a time; a click outside or Escape closes it, and with one open, hovering another opens that one. On a phone the dropdown spans the screen between the gutters. |
+| **Menu bar** | — | `#menubar`; `#file-panel` (`#project-select`, `#project-open`, `#project-all`); `#revision-panel` (`#revision-list li[data-revision][data-ordinal][data-current]`, `#revision-empty`); `#view-panel` (`#theme-choice`, `#style-choice`, `#layout-reset`) | File, Revisions and View in the top bar, each a `<details class="menu">` dropdown (ADR-539): open another project; the revision trail, read-only (§18), where a row (`data-retained` says whether its model was kept) opens that revision on the 3D viewport's revision timeline — a view, never a restore; the theme, the render style and the layout. One opens at a time; a click outside or Escape closes it, and with one open, hovering another opens that one. On a phone the dropdown spans the screen between the gutters. |
 
 The element ids and `data-*` attributes above are the hooks the CLI suite
-pins.
+pins: `test_review_design.py` fails if an id in this table is missing from
+the page.
 
 ## 3. Type scale
 
@@ -183,6 +185,11 @@ A 4 px base: `--s1` 4, `--s2` 8, `--s3` 12, `--s4` 16, `--s5` 24, `--s6` 32.
 - **Controls**: minimum 40 × 40 px hit area on touch (`@media (pointer:
   coarse)`), 32 px on desk; `--surface-2` fill, `--rule` border, `--surface-3`
   on hover, `--rule-strong` on focus. No native chrome on buttons.
+- **Scrubbers** (the checkpoint, revision and playback rows in the 3D
+  viewport): a slider never gets narrower than `--scrub`, 160 px, and is a
+  `--tool` touch target tall. Where its label does not fit beside it, the
+  label wraps under it on its own line (ADR-556). The rows read the same
+  tokens in both themes.
 - **Areas** have a 6 px radius (`--radius-area`) and a 4 px gap (`--gap`)
   between them on `--bg`; an area's header is 32 px on `--surface-2`, its
   controls 24 px.
@@ -567,8 +574,14 @@ tailscale serve status           # what is being served
 ```
 
 Only devices on your tailnet can open that URL, and Tailscale terminates TLS.
-Mount it at the root as shown: the page's URLs are relative to the project page, but
-a sub-path mount is not tested. There is nothing to write behind the proxy
+It may be mounted at a sub-path too (ADR-551): every URL the pages fetch or
+link, every URL the server builds into a response (`mesh`, `url`, a project's
+`p/<name>/`) and the redirect from `p/<name>` to `p/<name>/` is relative to
+the page, so a proxy that forwards `/some/prefix/<rest>` to `/<rest>` and
+rewrites nothing serves the whole dashboard; `test_dashboard_prefix.py` loads
+a project through one and fails on any request that leaves the prefix. Both
+pages declare an empty icon, so not even the browser's own `/favicon.ico`
+probe escapes it. There is nothing to write behind the proxy
 (§18), but the page still shows the whole project to whoever opens it. Do not use `tailscale funnel`, which publishes to the internet, and do not
 pass `--host 0.0.0.0`.
 `--host <tailscale address>` (`docs/CLI.md`) binds the tailnet address

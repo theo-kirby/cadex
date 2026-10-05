@@ -19,7 +19,7 @@
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
   --radius: 10px; --radius-sm: 8px; --radius-area: 6px; --bw: 1.5px;
   --gutter: var(--s5); --pad: var(--s4); --control: 32px; --tool: 24px;
-  --bar: 40px; --area-bar: 32px; --gap: 4px;
+  --bar: 40px; --area-bar: 32px; --gap: 4px; --scrub: 160px;
 }
 :root[data-theme="light"] {
   color-scheme: light;
@@ -126,14 +126,59 @@ nav.tabs .tab { flex: 1; }
 #model { overflow: hidden; background: var(--bg); }
 #model .viewport, canvas#viewer { position: absolute; inset: 0; }
 canvas#viewer { display: block; width: 100%; height: 100%; touch-action: none; }
-#model-status { position: absolute; z-index: 1; top: var(--s3); left: var(--s3); font-size: var(--fs-0); color: var(--ink-2); }
+/* The model's status line heads the bottom column, on an opaque --surface: the floor is dark in both themes (ADR-557). */
+#model-status { align-self: flex-start; max-width: 100%; padding: var(--s1) var(--s2); border-radius: var(--radius-area);
+                background: var(--surface); font-size: var(--fs-0); color: var(--ink-2); overflow-wrap: anywhere; }
 #model-status[data-state="loaded"] { display: none; }
 #model-status[data-state="missing"] { color: var(--warn); } #model-status[data-state="error"] { color: var(--bad); }
-.timeline { position: absolute; z-index: 1; left: var(--s2); right: var(--s2); bottom: var(--s2); display: flex; align-items: center; gap: var(--s2);
+/* The stage overlay (ADR-542): top right of the 3D viewport, one line when collapsed. */
+#overlay { position: absolute; z-index: 2; top: var(--s2); right: var(--s2); width: min(280px, calc(100% - 2 * var(--s2)));
+           background: color-mix(in srgb, var(--surface-2) 90%, transparent); border-radius: var(--radius-area);
+           font-size: var(--fs-0); color: var(--ink); font-variant-numeric: tabular-nums; }
+#overlay-toggle { display: flex; align-items: center; gap: var(--s2); width: 100%; min-height: var(--control); padding: var(--s1) var(--s2);
+                  background: none; border: 0; color: inherit; font-size: var(--fs-0); text-align: left; cursor: pointer; }
+#overlay-line { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+#overlay .chip { flex: none; padding: 0 var(--s2); border-radius: 999px; color: var(--ink-2);
+                 background: color-mix(in srgb, var(--ink-2) 18%, var(--surface-2)); }
+#overlay[data-stage="training"] .chip, #overlay[data-stage="evaluating"] .chip { color: var(--info); background: color-mix(in srgb, var(--info) 18%, var(--surface-2)); }
+#overlay[data-stage="designing"] .chip { color: var(--ok); background: color-mix(in srgb, var(--ok) 18%, var(--surface-2)); }
+#overlay[data-stage="failed"] .chip { color: var(--bad); background: color-mix(in srgb, var(--bad) 18%, var(--surface-2)); }
+#overlay-detail { padding: 0 var(--s2) var(--s2); }
+#overlay[data-collapsed="true"] #overlay-detail { display: none; }
+#overlay-run { color: var(--ink-2); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#overlay-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--s3); margin: var(--s1) 0 0; }
+#overlay-stats div { display: flex; justify-content: space-between; gap: var(--s1); min-width: 0; }
+#overlay-stats dt { color: var(--ink-2); } #overlay-stats dd { margin: 0; white-space: nowrap; }
+#overlay .sparks { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); margin-top: var(--s1); }
+#overlay figure { margin: 0; min-width: 0; } #overlay figcaption { color: var(--ink-2); }
+#overlay svg { display: block; width: 100%; height: 24px; background: var(--surface-2); border-radius: 3px; }
+#overlay polyline { fill: none; stroke: var(--info); stroke-width: 1.4; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+#overlay-warning { margin: var(--s1) 0 0; color: var(--warn); }
+/* The agent's activity (ADR-550): its newest call and how long ago; idle once it has been quiet. */
+#overlay-activity-line { margin: var(--s1) 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
+#overlay-activity[data-state="none"] #overlay-activity-line, #overlay-activity[data-state="idle"] #overlay-activity-line { color: var(--ink-2); }
+#overlay-activity[data-state="error"] #overlay-activity-line { color: var(--bad); }
+#overlay-activity[data-state="running"] #overlay-activity-line { color: var(--info); }
+#overlay-activity-log > summary { color: var(--ink-2); cursor: pointer; }
+#overlay-activity-list { margin: 0; padding: 0; list-style: none; font-family: var(--mono); }
+#overlay-activity-list li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+#overlay-activity-list li[data-outcome="error"], #overlay-activity-list li[data-outcome="lost"] { color: var(--bad); }
+#overlay-activity-list li[data-outcome="running"] { color: var(--info); }
+.timelines { position: absolute; z-index: 1; left: var(--s2); right: var(--s2); bottom: var(--s2); display: flex; flex-direction: column; gap: var(--s1); }
+.timeline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2);
             padding: var(--s1) var(--s2); background: color-mix(in srgb, var(--surface-2) 88%, transparent); border-radius: var(--radius-area); font-size: var(--fs-0); }
 .timeline button { min-height: var(--tool); height: var(--tool); font-size: var(--fs-0); padding: 0 var(--s2); }
-.timeline input[type="range"] { flex: 1; accent-color: var(--accent); }
+/* A scrubber never yields its width to a long label: below its floor the label wraps under it (ADR-556). */
+.timeline input[type="range"] { flex: 1 1 var(--scrub); min-width: var(--scrub); height: var(--tool); margin: 0; accent-color: var(--accent); }
 .timeline output { min-width: 56px; text-align: right; }
+.timeline-name { color: var(--ink-2); }
+#checkpoint-label { min-width: 0; white-space: nowrap; font-family: var(--mono); }
+#checkpoint-status { flex-basis: 100%; margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+#checkpoints[data-state="failed"] #checkpoint-status { color: var(--bad); }
+#revision-label { min-width: 0; white-space: nowrap; font-family: var(--mono); }
+#revision-status { flex-basis: 100%; margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+#revision-timeline[data-state="missing"] #revision-status { color: var(--warn); }
+#revision-list li[data-retained] { cursor: pointer; }
 
 /* 2D viewport. */
 #sheet { overflow: hidden; }

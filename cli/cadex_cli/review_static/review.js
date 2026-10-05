@@ -4,9 +4,12 @@
 // The app (ADR-534): two editors tiled by layout.js, after Blender's areas,
 // under a menu bar (ADR-539).
 //
-//   3D viewport  the accepted model or a run's, shaded or hairline, and a
-//                run's rollout played back on a timeline -- the whole screen
-//                by default;
+//   3D viewport  the accepted model or a run's, shaded or hairline, a
+//                run's rollout played back on a timeline, a training run's
+//                checkpoints looped as they land (ADR-545), the design's
+//                revisions on a timeline with a ghost and a tint (ADR-547), and the stage
+//                overlay (what the project is doing, how training is going;
+//                ADR-542) -- the whole screen by default;
 //   2D viewport  the project's drawings, images, documents, evaluation films and training plots,
 //                a split away;
 //   Menu bar     File (the project), Revisions (the trail), View (theme,
@@ -18,10 +21,11 @@
 (function () {
   'use strict';
 
-  // Served alone (`cadex review`) the page is at `/`; served from a projects
-  // directory (`cadex app`) it is at `/p/<name>/`, and every request it makes
-  // carries that prefix.
-  var BASE = (location.pathname.match(/^\/p\/[^/]+(?=\/)/) || [''])[0];
+  // Every URL the page fetches or links is relative to the page itself, so
+  // the page works unchanged under any path prefix (ADR-551). Served alone
+  // (`cadex review`) it is a project's root; served from a projects directory
+  // (`cadex app`) it is `p/<name>/` under the index, and NAME is that project.
+  var NAME = (location.pathname.match(/\/p\/([^/]+)\/(?:index\.html)?$/) || [null, null])[1];
   var POLL_MS = 2000;
   var ORDER = ['view3d', 'view2d'];
   // One 3D viewport over the whole screen; split an area for the 2D one.
@@ -110,21 +114,25 @@
     // The trail comes newest first.
     trail.forEach(function (entry) {
       var here = entry.revision === current;
-      list.appendChild(el('li', { value: entry.ordinal, 'data-revision': entry.revision, 'data-ordinal': String(entry.ordinal), 'data-current': String(here) }, [
-        el('span', { text: here ? 'current' : brief(entry.saved_at), title: when(entry.saved_at) + ' · ' + entry.revision })
-      ]));
+      var item = el('li', { value: entry.ordinal, 'data-revision': entry.revision, 'data-ordinal': String(entry.ordinal), 'data-current': String(here) }, [
+        el('span', { text: here ? 'current' : brief(entry.saved_at),
+                     title: when(entry.saved_at) + ' · ' + entry.revision + (entry.retained ? '' : ' · ' + (entry.retained_reason || 'model not retained')) })
+      ]);
+      // A row opens that revision on the 3D viewport's timeline: a view, never a restore.
+      item.setAttribute('data-retained', String(!!entry.retained));
+      list.appendChild(item);
     });
   }
 
   // -- Menu bar: the project and the view -----------------------------------------
   function loadProjects() {
-    if (!BASE) {
+    if (NAME == null) {
       // `cadex review` serves one project: there is nothing to switch to.
       ['project-field', 'project-open', 'project-all'].forEach(function (id) { $(id).hidden = true; });
       return Promise.resolve();
     }
     return json('../../api/projects').then(function (listing) {
-      var select = $('project-select'), here = decodeURIComponent(BASE.slice(3));
+      var select = $('project-select'), here = decodeURIComponent(NAME);
       var stamp = function (p) { return (p.accepted && p.accepted.updated_at) || ''; };
       select.textContent = '';
       listing.projects.slice().sort(function (a, b) {
@@ -135,7 +143,7 @@
   }
   function openProject() {
     var name = $('project-select').value;
-    if (name && name !== decodeURIComponent(BASE.slice(3))) location.href = '../' + encodeURIComponent(name) + '/';
+    if (name && name !== decodeURIComponent(NAME)) location.href = '../' + encodeURIComponent(name) + '/';
   }
   // One menu open at a time; a click outside or Escape closes it.
   function wireMenus() {
@@ -165,18 +173,20 @@
 
   function renderSources() {
     var runs = (state.review.runs || []).map(function (run) { return run.run; });
-    var key = JSON.stringify(runs);
+    var history = (state.review.revisions || []).length > 0;
+    var key = JSON.stringify([runs, history]);
     if (key === sourcesKey) return;
     sourcesKey = key;
     var select = $('view3d-source');
     select.textContent = '';
     select.appendChild(el('option', { value: 'accepted', text: 'Accepted model' }));
+    if (history) select.appendChild(el('option', { value: 'revisions', text: 'Revision history' }));
     if (runs.length) {
       var group = el('optgroup', { label: 'Runs' });
       runs.forEach(function (run) { group.appendChild(el('option', { value: 'run:' + run, text: run })); });
       select.appendChild(group);
     }
-    if (source !== 'accepted' && runs.indexOf(source.slice(4)) < 0) { source = 'accepted'; modelKey = null; }
+    if (source === 'revisions' ? !history : source !== 'accepted' && runs.indexOf(source.slice(4)) < 0) { source = 'accepted'; modelKey = null; }
     select.value = source;
   }
 
@@ -201,17 +211,20 @@
 
   function loadModel() {
     var status = $('model-status'), ticket = ++modelLoad;
-    var path = source === 'accepted' ? '/api/model/accepted' : '/api/model/run/' + encodeURIComponent(source.slice(4));
+    var path = source === 'accepted' ? 'api/model/accepted'
+             : source === 'revisions' ? 'api/model/revision/' + revisionShown()
+             : 'api/model/run/' + encodeURIComponent(source.slice(4));
     if (modelAbort) modelAbort.abort();
     var controller = modelAbort = new AbortController(), signal = controller.signal;
     status.dataset.state = 'loading'; status.textContent = 'loading model…';
-    stopPlayback(); playback = null; $('playback').hidden = true;
-    return fetchRetry(BASE + path, signal, 2).then(function (response) {
+    stopPlayback(); playback = null; looping = false; ckpt.shown = null; $('playback').hidden = true;
+    return fetchRetry(path, signal, 2).then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.json();
     }).then(function (manifest) {
       if (ticket !== modelLoad) return;
       state.model = manifest;
+      if (manifest.view === 'revision') renderRevisionTimeline();
       if (!manifest.available) {
         state.viewer.clear();
         status.dataset.state = 'missing';
@@ -223,13 +236,20 @@
         status.textContent = 'WebGL is unavailable in this browser';
         return;
       }
-      // Mesh URLs in the manifest are server-absolute; BASE mounts them. Until
-      // every mesh is in, the model drawn is the one before.
-      return state.viewer.load(manifest, function (url) { return fetchRetry(BASE + url, signal, 2); }).then(function () {
+      // Mesh URLs in the manifest are relative to the page. Until every mesh
+      // is in, the model drawn is the one before.
+      var fetchMesh = function (url) { return fetchRetry(url, signal, 2); };
+      if (manifest.view === 'revision') manifest = tintRevision(manifest);
+      return state.viewer.load(manifest, fetchMesh).then(function () {
+        if (ticket !== modelLoad) return;
+        if (manifest.view === 'revision') return state.viewer.loadGhost(ghostOf(manifest), fetchMesh, parseInt(token('--ink-2').slice(1), 16), 0.22);
+      }).then(function () {
         if (ticket !== modelLoad) return;
         modelFailures = 0;
         status.dataset.state = 'loaded';
         status.textContent = '';
+        // A run with checkpoint rollouts plays them, its own rollout last.
+        if (checkpointItems().items.length) { renderCheckpoints(); return null; }
         return loadPlayback(manifest, ticket);
       });
     }).catch(function (error) {
@@ -254,19 +274,22 @@
 
   // Playback: the trace's own placements, blended between the two frames
   // either side of the time shown. Nothing is simulated here.
-  var playback = null, playT = 0, playing = null;
+  var playback = null, playT = 0, playing = null, looping = false;
 
   function loadPlayback(manifest, ticket) {
     var info = manifest.playback;
     if (!info || !info.url) return null;
-    return json(BASE + info.url).then(function (served) {
+    return json(info.url).then(function (served) {
       if (ticket !== modelLoad || !served.available || !served.times_s || served.times_s.length < 2) return;
-      playback = served;
-      var slider = $('play-time'), times = served.times_s;
-      slider.min = String(times[0]); slider.max = String(times[times.length - 1]);
-      $('playback').hidden = false;
-      seek(times[0]);
+      showPlayback(served);
     }).catch(function () { /* the model stands without its rollout */ });
+  }
+  function showPlayback(served) {
+    playback = served;
+    var slider = $('play-time'), times = served.times_s;
+    slider.min = String(times[0]); slider.max = String(times[times.length - 1]);
+    $('playback').hidden = false;
+    seek(times[0]);
   }
   function blend(a, b, f) {
     var out = {};
@@ -303,11 +326,306 @@
     $('play-toggle').textContent = 'Pause';
     function step(now) {
       var t = from + (now - origin) / 1000;
+      if (t >= end && looping) { from = times[0]; origin = now; t = from; }
       seek(t);
       if (t >= end) { stopPlayback(); return; }
       playing = requestAnimationFrame(step);
     }
     playing = requestAnimationFrame(step);
+  }
+
+  // -- 3D viewport: checkpoint rollouts (ADR-545) -------------------------------------
+  // The run the overlay reads lists its checkpoints in `stage.checkpoints`,
+  // each rolled out by the engine as it landed (ADR-544). While that run is
+  // the model shown, the newest one loops; the scrubber picks an older one,
+  // and moving it back to the newest end follows new ones again. While the
+  // run trains, the viewport turns to it unless a source was picked by hand.
+  var ckpt = { items: [], pending: 0, pinned: null, shown: null, playing: null, paused: false, chosenSource: false };
+
+  function checkpointItems() {
+    var stage = (state.review && state.review.stage) || {}, block = stage.checkpoints;
+    if (!block || !stage.run || source !== 'run:' + stage.run) return { items: [], pending: 0 };
+    var items = (block.items || []).slice(), own = state.model && state.model.available && state.model.playback;
+    // The run's own rollout, once it has one, is its newest policy.
+    if (items.length && own && own.available && own.url) {
+      items.push({ stem: 'final', tag: 'final', state: 'ready', url: own.url, iteration: null, reward_per_step: null, final: true });
+    }
+    return { items: items, pending: block.pending || 0 };
+  }
+  function followTraining() {
+    var stage = state.review.stage || {}, block = stage.checkpoints;
+    if (ckpt.chosenSource || stage.state !== 'training' || !block || !stage.run || source === 'run:' + stage.run) return;
+    if (!(block.items || []).some(function (item) { return item.state === 'ready'; })) return;
+    source = 'run:' + stage.run;
+    $('view3d-source').value = source;
+  }
+  function checkpointName(item) {
+    if (item.final) return 'final policy';
+    return 'iteration ' + (item.iteration + 1) + ' · reward ' + (item.reward_per_step == null ? '—' : fmt(item.reward_per_step));
+  }
+  function restPoses() {
+    var poses = {};
+    ((state.model && state.model.components) || []).forEach(function (c) { if (c.placement) poses[c.name] = c.placement; });
+    return poses;
+  }
+  function renderCheckpoints() {
+    var got = checkpointItems(), items = got.items, box = $('checkpoints');
+    ckpt.items = items; ckpt.pending = got.pending;
+    setHidden('checkpoints', !items.length);
+    if (!items.length) { ckpt.shown = null; ckpt.playing = null; return; }
+    var stems = items.map(function (item) { return item.stem; });
+    if (ckpt.pinned && stems.indexOf(ckpt.pinned) < 0) ckpt.pinned = null;
+    var index = ckpt.pinned ? stems.indexOf(ckpt.pinned) : items.length - 1, item = items[index];
+    var pick = $('checkpoint-pick');
+    if (pick.max !== String(items.length - 1)) pick.max = String(items.length - 1);
+    if (pick.value !== String(index)) pick.value = String(index);
+    if (box.dataset.follow !== String(!ckpt.pinned)) box.dataset.follow = String(!ckpt.pinned);
+    if (box.dataset.state !== item.state) box.dataset.state = item.state;
+    setText('checkpoint-label', checkpointName(item) + ' · ' + (index + 1) + '/' + items.length + (ckpt.pinned ? '' : ' · newest'));
+    var note = item.state === 'failed' ? 'rollout failed: ' + item.reason + (item.error ? ' — ' + item.error : '')
+             : got.pending ? got.pending + ' newer checkpoint' + (got.pending > 1 ? 's' : '') + ' rolling out' : '';
+    setText('checkpoint-status', note).title = note;
+    setHidden('checkpoint-status', !note);
+    var key = item.stem + ':' + item.state + ':' + (item.sha256 || item.url || '');
+    // Poses go onto that run's own model, once it is drawn.
+    var drawn = state.model && state.model.run === source.slice(4) && $('model-status').dataset.state === 'loaded';
+    if (key === ckpt.shown || !drawn) return;
+    ckpt.shown = key;
+    showCheckpoint(item, key);
+  }
+  function showCheckpoint(item, key) {
+    var ticket = modelLoad;
+    stopPlayback(); playback = null; ckpt.playing = null;
+    if (item.state !== 'ready') {
+      $('playback').hidden = true;
+      state.viewer.setPoses(restPoses());
+      return null;
+    }
+    return json(item.url).then(function (served) {
+      if (ticket !== modelLoad || ckpt.shown !== key) return;
+      if (!served.available || !served.times_s || served.times_s.length < 2) {
+        $('playback').hidden = true;
+        setText('checkpoint-status', 'rollout unplayable: ' + (served.reason || 'no frames')).hidden = false;
+        return;
+      }
+      looping = true; ckpt.playing = item.stem;
+      showPlayback(served);
+      if (!ckpt.paused) togglePlayback();
+    }).catch(function (error) {
+      if (ckpt.shown !== key) return;
+      ckpt.shown = null;  // tried again on the next poll
+      setText('checkpoint-status', 'rollout failed to load (' + error.message + '); trying again').hidden = false;
+    });
+  }
+  function pickCheckpoint(index) {
+    var items = ckpt.items;
+    if (!items.length) return null;
+    index = Math.max(0, Math.min(items.length - 1, Math.round(index)));
+    ckpt.pinned = index === items.length - 1 ? null : items[index].stem;
+    renderCheckpoints();
+    return ckpt.pinned;
+  }
+
+  // -- 3D viewport: the revision timeline (ADR-547) -----------------------------------
+  // While the source is the revision history, each stored revision is a stop,
+  // oldest to newest, drawn from the model kept when it was accepted
+  // (ADR-546). The newest is shown and followed; picking an older one keeps
+  // it, and back at the newest end it follows again. The revision before the
+  // one shown is a ghost where it differs, and parts whose digest changed are
+  // tinted. A revision whose model was not kept says why and draws nothing.
+  var rev = { pinned: null };
+
+  function revisionStops() { return ((state.review && state.review.revisions) || []).slice().reverse(); }
+  function revisionShown() {
+    var stops = revisionStops();
+    if (rev.pinned != null && stops.some(function (s) { return s.ordinal === rev.pinned; })) return rev.pinned;
+    rev.pinned = null;
+    return stops.length ? stops[stops.length - 1].ordinal : null;
+  }
+  // Unchanged parts in the diagram's ink, changed ones in --info.
+  function tintRevision(manifest) {
+    var same = token('--paper-ink'), changed = token('--info');
+    return Object.assign({}, manifest, { components: manifest.components.map(function (c) {
+      return Object.assign({}, c, { color: c.changed ? changed : same });
+    }) });
+  }
+  // The previous revision where it is not the model itself: a part kept as
+  // it was, where it was, would only lie on top of its own copy.
+  function ghostOf(manifest) {
+    var prev = manifest.previous;
+    if (!prev || !prev.available) return [];
+    var now = {};
+    manifest.components.forEach(function (c) { now[c.name] = c; });
+    return prev.components.filter(function (c) {
+      var here = now[c.name];
+      return !here || here.sha256 !== c.sha256 || JSON.stringify(here.placement) !== JSON.stringify(c.placement);
+    });
+  }
+  function renderRevisionTimeline() {
+    var box = $('revision-timeline'), stops = revisionStops(), on = source === 'revisions' && stops.length > 0;
+    setHidden('revision-timeline', !on);
+    if (!on) return;
+    var ordinal = revisionShown(), index = 0, current = state.review.accepted && state.review.accepted.revision;
+    stops.forEach(function (s, i) { if (s.ordinal === ordinal) index = i; });
+    var stop = stops[index], pick = $('revision-pick');
+    if (pick.max !== String(stops.length - 1)) pick.max = String(stops.length - 1);
+    if (pick.value !== String(index)) pick.value = String(index);
+    if (box.dataset.follow !== String(rev.pinned == null)) box.dataset.follow = String(rev.pinned == null);
+    var retained = !!stop.retained, stateName = retained ? 'retained' : 'missing';
+    if (box.dataset.state !== stateName) box.dataset.state = stateName;
+    box.dataset.ordinal = String(stop.ordinal);
+    setText('revision-label', 'revision ' + stop.ordinal + (stop.revision === current ? ' · current' : ' · ' + brief(stop.saved_at)) +
+            ' · ' + (index + 1) + '/' + stops.length + (rev.pinned == null ? ' · newest' : ''));
+    var model = state.model && state.model.view === 'revision' && state.model.ordinal === stop.ordinal ? state.model : null, note;
+    if (!retained) note = 'not shown: ' + (stop.retained_reason || 'its model was not retained');
+    else if (!model) note = '';
+    else if (model.changed) {
+      note = (model.changed.length ? 'changed: ' + model.changed.join(', ') : 'no part changed') + ' · ' + model.compare;
+      if (model.changed.length || ghostOf(model).length) note += ' · ghost: revision ' + model.previous.ordinal;
+    } else note = model.compare || '';
+    setText('revision-status', note).title = note;
+    setHidden('revision-status', !note);
+  }
+  function pickRevision(index) {
+    var stops = revisionStops();
+    if (!stops.length) return null;
+    index = Math.max(0, Math.min(stops.length - 1, Math.round(index)));
+    rev.pinned = index === stops.length - 1 ? null : stops[index].ordinal;
+    if (source !== 'revisions') { source = 'revisions'; $('view3d-source').value = source; }
+    renderRevisionTimeline();
+    modelKey = revisionKey(); modelFailures = 0; modelRetryAt = 0;
+    loadModel();
+    return rev.pinned;
+  }
+  function showRevision(ordinal) {
+    var stops = revisionStops(), index = -1;
+    stops.forEach(function (s, i) { if (s.ordinal === ordinal) index = i; });
+    return index < 0 ? undefined : pickRevision(index);
+  }
+  function revisionKey() {
+    var ordinal = revisionShown(), stop = revisionStops().filter(function (s) { return s.ordinal === ordinal; })[0];
+    return JSON.stringify(['revisions', ordinal, !!(stop && stop.retained)]);
+  }
+
+  // -- 3D viewport: the stage overlay (ADR-542) ---------------------------------------
+  // What the project is doing and how training is going, from /api/project's
+  // `stage` on the page's own poll. Collapsed or not is this browser's.
+  var overlayCollapsed = readPref('cadex.overlay', ['expanded', 'collapsed'], 'expanded') === 'collapsed';
+  var STAGE_LABELS = { idle: 'idle', designing: 'designing', training: 'training', evaluating: 'evaluating', failed: 'failed' };
+
+  // Text and attributes are written only when they change, so an idle poll adds no nodes.
+  function setText(id, value) { var node = $(id); if (node.textContent !== value) node.textContent = value; return node; }
+  function setHidden(id, hidden) { var node = $(id); if (node.hidden !== hidden) node.hidden = hidden; }
+  function ago(stamp, now) {
+    var t = stamp ? Date.parse(stamp) : NaN;
+    if (isNaN(t)) return '';
+    var s = Math.max(0, (now - t) / 1000);
+    return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago'
+         : s < 86400 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' d ago';
+  }
+  function duration(seconds) {
+    if (seconds == null || !isFinite(seconds)) return '—';
+    var s = Math.round(seconds);
+    return s < 60 ? s + ' s' : s < 3600 ? Math.round(s / 60) + ' min' : (s / 3600).toFixed(1) + ' h';
+  }
+  function spark(id, points) {
+    var line = $(id).querySelector('polyline'), values = (points || []).map(function (p) { return p[1]; });
+    var out = '';
+    if (values.length > 1) {
+      var lo = Math.min.apply(null, values), hi = Math.max.apply(null, values), span = hi - lo || 1;
+      out = values.map(function (v, i) {
+        return (i / (values.length - 1) * 100).toFixed(1) + ',' + (22 - (v - lo) / span * 20).toFixed(1);
+      }).join(' ');
+    }
+    if (line.getAttribute('points') !== out) line.setAttribute('points', out);
+  }
+
+  function renderOverlay() {
+    var review = state.review, stage = review.stage || { state: 'idle', training: null, runs: 0 };
+    var t = stage.training, now = Date.parse(review.served_at) || Date.now();
+    var node = $('overlay'), name = STAGE_LABELS[stage.state] ? stage.state : 'idle';
+    if (node.dataset.stage !== name) node.dataset.stage = name;
+    setText('overlay-stage', STAGE_LABELS[name]);
+    var trail = review.revisions || [], line;
+    if (name === 'training' && t) {
+      line = t.iteration != null && t.iteration >= 0
+        ? 'iteration ' + (t.iteration + 1) + ' / ' + fmt(t.total) + (t.eta_s ? ' · ETA ' + duration(t.eta_s) : '')
+        : 'starting';
+      if (t.state === 'stale') line += ' · no update ' + duration(t.age_s);
+    } else if (name === 'designing') {
+      line = (stage.reason || 'revision accepted') + ' · ' + ago(stage.since, now);
+    } else if (name === 'evaluating') {
+      var began = Date.parse(stage.since);
+      line = (stage.reason || 'evaluating') + (isNaN(began) ? '' : ' · ' + duration(Math.max(0, (now - began) / 1000)));
+    } else if (name === 'idle') {
+      line = trail.length ? 'revision ' + trail[0].ordinal + ' accepted ' + ago(trail[0].saved_at, now) : 'nothing accepted yet';
+    } else {
+      line = stage.reason || '';
+    }
+    setText('overlay-line', line).title = line;
+    renderActivity(review, now);
+    // The run it reads, named when there is more than one to choose from.
+    setHidden('overlay-run', !(stage.run && stage.runs > 1));
+    setText('overlay-run', stage.run ? 'run ' + stage.run + (t && name !== 'training' ? ' · ' + t.state : '') : '');
+    setHidden('overlay-stats', !t);
+    setHidden('overlay-sparks', !t);
+    var warning = t ? (t.warning || (t.state === 'stale' ? t.reason : '')) : '';
+    setHidden('overlay-warning', !warning);
+    setText('overlay-warning', warning);
+    if (!t) return;
+    setText('overlay-reward-now', fmt(t.reward_per_step));
+    setText('overlay-best', t.best_reward_per_step == null ? '—' : fmt(t.best_reward_per_step) + ' @ ' + (t.best_iteration + 1));
+    setText('overlay-loss-now', fmt(t.loss));
+    setText('overlay-eta', name === 'training' && t.eta_s ? duration(t.eta_s) : '—');
+    spark('overlay-reward', (t.spark || {}).curve);
+    spark('overlay-loss', (t.spark || {}).loss_curve);
+  }
+  // The agent's newest call through cadex mcp (ADR-550), timed against the server's
+  // clock. A call still running is logged as such (ADR-553) and is never idle; past
+  // ACTIVITY_IDLE_S with no call in flight, the line reads as idle.
+  var ACTIVITY_IDLE_S = 300, ACTIVITY_LIST = 5, activityKey = null;
+  function activityText(e) {
+    return e.tool + (e.args ? ' ' + e.args : '')
+      + (e.outcome === 'error' ? ' · failed' + (e.detail ? ': ' + e.detail : '')
+         : e.outcome === 'lost' ? ' · did not return' : e.outcome === 'running' ? ' · running' : '');
+  }
+  function renderActivity(review, now) {
+    var activity = review.activity || {}, entries = activity.available ? activity.entries || [] : [];
+    var newest = entries[0], node = $('overlay-activity'), name, line;
+    if (!newest) {
+      name = 'none'; line = activity.reason || 'no agent activity logged';
+    } else {
+      var t = Date.parse(newest.t), quiet = isNaN(t) ? Infinity : (now - t) / 1000;
+      if (newest.outcome === 'running') {
+        name = 'running'; line = activityText(newest) + ' ' + duration(isFinite(quiet) ? Math.max(0, quiet) : null);
+      } else if (quiet > ACTIVITY_IDLE_S) {
+        name = 'idle'; line = 'agent idle · last call ' + newest.tool + ' ' + ago(newest.t, now);
+      } else {
+        name = newest.outcome === 'error' || newest.outcome === 'lost' ? 'error' : 'active'; line = activityText(newest) + ' · ' + ago(newest.t, now);
+      }
+    }
+    if (node.dataset.state !== name) node.dataset.state = name;
+    setText('overlay-activity-line', line).title = line;
+    setHidden('overlay-activity-log', entries.length < 2);
+    var shown = entries.slice(0, ACTIVITY_LIST), key = JSON.stringify(shown);
+    if (key === activityKey) return;
+    activityKey = key;
+    var list = $('overlay-activity-list');
+    list.textContent = '';
+    shown.forEach(function (e) {
+      var item = document.createElement('li'), clock = (e.t || '').slice(11, 19);
+      item.dataset.outcome = e.outcome;
+      item.textContent = (clock ? clock + ' ' : '') + activityText(e);
+      item.title = item.textContent;
+      list.appendChild(item);
+    });
+  }
+  function setOverlayCollapsed(collapsed) {
+    overlayCollapsed = !!collapsed;
+    writePref('cadex.overlay', overlayCollapsed ? 'collapsed' : 'expanded');
+    $('overlay').dataset.collapsed = String(overlayCollapsed);
+    $('overlay-toggle').setAttribute('aria-expanded', String(!overlayCollapsed));
+    return overlayCollapsed;
   }
 
   // -- 2D viewport -------------------------------------------------------------------
@@ -413,7 +731,7 @@
         if (sheet.shownKey === shownKey) stage.appendChild(markdown(text));
       }).catch(function (error) { stage.appendChild(el('p', { className: 'empty', text: item.label + ': ' + error.message })); });
     }
-    return json(BASE + '/api/run/' + encodeURIComponent(item.run)).then(function (record) {
+    return json('api/run/' + encodeURIComponent(item.run)).then(function (record) {
       if (sheet.shownKey !== shownKey) return;
       sheet.points = ((record.telemetry || {})[item.curve] || []).filter(function (p) { return Array.isArray(p) && isFinite(p[0]) && isFinite(p[1]); });
       sheet.plotLabel = item.label;
@@ -561,7 +879,13 @@
   function render() {
     renderFreshness();
     if (!state.review) return;
-    renderHeader(); renderRevisions(); renderSources(); renderSheetSources();
+    renderHeader(); renderRevisions(); renderOverlay(); renderSources(); followTraining(); renderCheckpoints(); renderRevisionTimeline(); renderSheetSources();
+  }
+
+  function runModelKey(review, name) {
+    var run = (review.runs || []).filter(function (r) { return r.run === name; })[0] || {};
+    var artifacts = (run.resolved && run.resolved.artifacts) || {};
+    return JSON.stringify(['run:' + name, run.status, artifacts.trace || null, artifacts.model_xml || null]);
   }
 
   // The poll is the project read alone: a model it starts loading is
@@ -569,7 +893,7 @@
   function poll() {
     if (pendingPoll) return pendingPoll;
     var started = performance.now(), model = null;
-    var read = fetch(BASE + '/api/project', { cache: 'no-store' }).then(function (response) {
+    var read = fetch('api/project', { cache: 'no-store' }).then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.text();
     }).then(function (body) {
@@ -578,8 +902,11 @@
       state.review = review; state.lastOk = new Date(); state.stale = false; state.error = null;
       render();
       lastPoll.ms = performance.now() - started;
-      // A run's model is fixed; the accepted one moves with every write.
-      var key = source === 'accepted' ? JSON.stringify([review.accepted.revision, review.accepted.digest]) : source;
+      // The accepted model moves with every write; a run's moves when the
+      // walk lands its export or its own rollout, which adds the final
+      // policy's stop (ADR-554).
+      var key = source === 'accepted' ? JSON.stringify([review.accepted.revision, review.accepted.digest])
+              : source === 'revisions' ? revisionKey() : runModelKey(review, source.slice(4));
       if (key !== modelKey && Date.now() >= modelRetryAt) { modelKey = key; model = loadModel(); }
     }).catch(function (error) {
       state.stale = true; state.error = error.message;
@@ -596,7 +923,7 @@
   }
 
   function initialize() {
-    if (!BASE) $('home').hidden = true;
+    if (NAME == null) $('home').hidden = true;
     var editors = {};
     ORDER.forEach(function (type) {
       var home = $('editor-' + type);
@@ -609,14 +936,25 @@
     applyStyle(renderStyle);
 
     $('model-fit').addEventListener('click', function () { state.viewer.fit(); });
-    $('view3d-source').addEventListener('change', function () { setSource($('view3d-source').value); });
+    $('view3d-source').addEventListener('change', function () { ckpt.chosenSource = true; setSource($('view3d-source').value); });
     [$('view3d-style'), $('style-choice')].forEach(function (group) {
       group.addEventListener('click', function (event) {
         var button = event.target.closest('button');
         if (button) applyStyle(button.dataset.style);
       });
     });
-    $('play-toggle').addEventListener('click', togglePlayback);
+    setOverlayCollapsed(overlayCollapsed);
+    $('overlay-toggle').addEventListener('click', function () { setOverlayCollapsed(!overlayCollapsed); });
+    $('play-toggle').addEventListener('click', function () { ckpt.paused = !!playing; togglePlayback(); });
+    $('checkpoint-pick').addEventListener('input', function () { pickCheckpoint(Number($('checkpoint-pick').value)); });
+    $('revision-pick').addEventListener('input', function () { pickRevision(Number($('revision-pick').value)); });
+    $('revision-list').addEventListener('click', function (event) {
+      var row = event.target.closest('li[data-ordinal]');
+      if (!row) return;
+      ckpt.chosenSource = true;
+      showRevision(Number(row.dataset.ordinal));
+      $('revision-panel').open = false;
+    });
     $('play-time').addEventListener('input', function () { stopPlayback(); seek(Number($('play-time').value)); });
 
     $('view2d-source').addEventListener('change', function () { setSheet($('view2d-source').value); });
@@ -655,11 +993,27 @@
     layout: function () { return state.layout; },
     setStyle: applyStyle,
     renderStyle: function () { return renderStyle; },
-    setSource: setSource,
+    setSource: function (value) { ckpt.chosenSource = true; return setSource(value); },
     setSheet: setSheet,
     sheets: function () { return sheet.list.map(function (item) { return { key: item.key, group: item.group, kind: item.kind, label: item.label }; }); },
-    playback: function () { return playback && { times_s: playback.times_s, t: playT, playing: !!playing }; },
+    playback: function () { return playback && { times_s: playback.times_s, t: playT, playing: !!playing, looping: looping, checkpoint: ckpt.playing }; },
+    checkpoints: function () {
+      return { items: ckpt.items.map(function (item) { return { stem: item.stem, state: item.state, iteration: item.iteration, reward_per_step: item.reward_per_step }; }),
+               pending: ckpt.pending, pinned: ckpt.pinned, playing: ckpt.playing, source: source };
+    },
+    pickCheckpoint: pickCheckpoint,
+    revisions: function () {
+      var current = state.review && state.review.accepted.revision, model = state.model && state.model.view === 'revision' ? state.model : null;
+      return { stops: revisionStops().map(function (s) { return { ordinal: s.ordinal, revision: s.revision, retained: !!s.retained, current: s.revision === current }; }),
+               pinned: rev.pinned, shown: source === 'revisions' ? revisionShown() : null, source: source,
+               model: model && { ordinal: model.ordinal, available: model.available, changed: model.changed,
+                                 previous: model.previous && model.previous.ordinal,
+                                 parts: model.components.reduce(function (o, c) { o[c.name] = c.sha256; return o; }, {}) } };
+    },
+    pickRevision: pickRevision,
+    showRevision: showRevision,
     seek: seek,
+    setOverlayCollapsed: setOverlayCollapsed,
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, ms: lastPoll.ms }; },
     state: function () {
       return { stale: state.stale, error: state.error,
