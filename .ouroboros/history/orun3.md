@@ -6,11 +6,11 @@ ended: 2026-10-05T17:47:36+00:00
 hours: 8.4
 state: killed
 iterations: 27
-commits: 43
+commits: 44
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 7
-merged: no
+merged: 806c01cd8fa8a5754184f8e8e51bc36a88d4a598
 branch: ouroboros/orun3
 memory: hypergraph
 actor: claude:claude-opus-5-5
@@ -18,14 +18,14 @@ actor: claude:claude-opus-5-5
 
 # Run orun3
 
-27 iterations in 8.4h on `sb1x`, killed (-). Branch `ouroboros/orun3`, not merged.
+27 iterations in 8.4h on `sb1x`, killed (-). Branch `ouroboros/orun3`, merged as `806c01cd`.
 
 ## The numbers
 
 | | |
 |---|---|
 | iterations | 27 (changed 27, recorded 17) |
-| commits | 43 — 79 files changed, 8670 insertions(+), 241 deletions(-) |
+| commits | 44 — 81 files changed, 8741 insertions(+), 242 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 7 checked at the tip |
 | reverts | 0 |
 | verdicts | continue 24, done_accepted 1, done_rejected 2 |
