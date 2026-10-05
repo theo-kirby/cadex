@@ -1,282 +1,187 @@
-# Goal: Cadex is three things — the engine, the dashboard, the agent
+# Goal: Watch the design and the training as they happen
 
-Verified against source: 2026-10-03. Operator charter for orun2, following
-orun1 (`.ouroboros/history/orun1.md`). The human owns this file; unattended
-roles never edit it. The base-plus-styles design charter that was drafted
-under this name was shelved, unlaunched, for this run; it runs next, on the
-product this one leaves behind.
+Verified against source: 2026-10-05. Operator charter for orun3, following
+orun2 (`.ouroboros/history/orun2.md`) and the owner's own ADR-533 to
+ADR-541 work on the dashboard. The human owns this file; unattended roles
+never edit it. The base-plus-styles design charter stays shelved and runs
+after this one, on the views this run builds.
 
 ## Mission
 
-The owner uses Cadex almost entirely through autonomous CLI runs. The
-Blender shell is 19,000 tracked files, a second toolchain, a GPL half, and
-a 1.3 GB library checkout, and it is the part of Cadex the owner uses least.
-This run is a bet on autonomy. **Cadex becomes three things and nothing
-else:**
+Cadex is three things: the engine, the read-only dashboard, and the
+owner's own agent driving the engine through `cadex mcp` (ADR-500,
+ADR-537, ADR-538). The owner works in their agent and keeps the dashboard
+open beside it. The page has one job: **show what is happening, so the
+owner knows when to step in.** Today it shows the accepted model well, but
+it shows a design's *history* and a training run's *progress* only after
+the fact, or as plots in a different viewport.
 
-1. **The engine** builds, verifies, measures, renders, simulates and exports
-   a design from its script. It is unchanged in role. It loses only what
-   existed for the shell.
-2. **The dashboard** is how a person sees results and steps in when needed.
-   It grows from today's review page (`cli/cadex_cli/review_server.py` and
-   `review_static/`), takes in the parts of the Blender UX that serve
-   *looking, reviewing and light steering*, and becomes the only UI.
-   A desktop app may later be built from scratch to copy it. That is not
-   this run.
-3. **The agent** is how Claude Code works with the engine and the dashboard:
-   - one tool surface;
-   - one guidance source;
-   - one path for the agent to show the owner something or ask for
-     something, without ever stopping to wait for an answer.
+This run makes the 3D viewport tell the story while it is happening:
 
-Preserve every idea, theme and capability that is not purely about the
-Blender UI. Anything removed is recorded and justified. This run is also the
-moment to reset the contract: the docs, the agent entry point and the state
-graph should describe this three-part product as if it had always been the
-plan.
+1. **An overlay over the model** says what stage the project is in, and
+   how training is going: iteration, ETA, reward and loss sparklines, the
+   best reward, and the collapse warning.
+2. **Training is visible as motion.** Each checkpoint is rolled out
+   through the engine as soon as it lands. The viewport loops the newest
+   one, and a scrubber steps through the older ones, so the owner can
+   watch a gait go from flailing to walking.
+3. **The design is visible as change.** Each accepted revision's model is
+   kept. A revision timeline scrubs through them in the 3D viewport, with
+   the previous revision shown as a ghost and the changed parts tinted.
+4. **The agent's current activity is one line on the page.** The MCP
+   server appends every tool call to a project activity log, and the
+   overlay shows the latest entry.
 
-If the run achieves only one thing, it is this: **`shell/` is deleted,
-both suites and the packaged gate are green, and a person can watch an
-autonomous design turn from a browser and steer it.**
+The data for (1) is already on disk (`runs/<run>/train/progress.json`,
+served in `/api/project`). (2), (3) and (4) each need a small write on
+the CLI side, and the page stays read-only.
 
-Priority, in order: S1 (delete), R1 (contract), D1–D3 (dashboard), A1
-(agent), W1 (nothing lost), C1 (report).
+While the run adds routes, it also makes the dashboard **portable**: URLs
+relative to the page, and an HTTP API pinned by tests. Then a desktop
+wrapper or a reverse proxy can host it without rewriting paths.
 
-Before launch, the operator tags `main` as `v1-blender-shell`. The old
-application is always one checkout away, so nothing here needs to be kept
-"just in case".
+If the run achieves only one thing, it is this: **on a copy of the biped `ot5-biped`, while
+a short training run is going on the 5090, the 3D viewport shows the
+overlay updating and the newest checkpoint's rollout playing.**
+
+Priority, in order: V1 (overlay), V2 (checkpoints), V3 (revisions), V4
+(activity), P1 (portability), W1 (walk), C1 (report).
 
 ## Owner-revisable assumptions
 
 Until this section changes, the run works to these defaults:
-- **A1. Port what serves looking and light steering. Drop hands-on
-  modelling UI.**
-  - **Port** (or confirm the dashboard already covers):
-    - the model viewer;
-    - parameter sliders;
-    - accept, reject and restore a revision;
-    - `look`/render views, section and exploded views, and the collision
-      overlay;
-    - simulation and rollout playback in the viewer;
-    - training curves and evaluation films;
-    - drawings and concept sheets, as rendered outputs;
-    - exports;
-    - the turn transcript;
-    - attaching an image to a prompt;
-    - printable-part and appearance-role display.
-  - **Drop:**
-    - the cage ring-drag;
-    - the wiring editor UI;
-    - the interactive blueprint *editor* (drawings stay as outputs);
-    - Blender playback baking;
-    - the landing page, top bar and window chrome;
-    - the Blender-side transcript store.
-  - **Picking survives in a review form:** click a part in the viewer to
-    attach a comment to it.
-- **A2. The dashboard stays light:**
-  - a standard-library Python server;
-  - vanilla JS and the vendored three.js;
-  - no npm, no bundler, no build step, no front-end framework;
-  - no new Python dependency unless an ADR measures its weight.
-- **A3. The project directory is the truth:**
-  - The dashboard reads it.
-  - The dashboard writes only through the same code paths the CLI uses
-    (params, prompt turns, accept/restore, comments). There is never a
-    second write path.
-  - Live rebuilds may hold a warm `cadexd` per open project.
-- **A4. Claude Code is the only harness.** Codex and pi support goes with
-  the shell.
 
-## Owner notes
-
-Answers to the parity ledger's "owner to confirm" rows, given on 2026-10-03
-during the run. They settle those rows, and the ledger's text and its ADRs
-should say so.
-
-- **The live policy session is dropped.** That covers `cadex_live.py`, the
-  Live editor and pushing a running policy. Reviewing a policy means
-  rollout playback plus `evaluate`'s disturbance tests.
-- **The blueprint composer is kept, as a headless engine-side tool.**
-  - The agent can still compose dimensioned multi-view drawing sheets
-    (views, callouts, dimensions, title block). The shell's `make_blueprint`,
-    `save_blueprint` and `cadex_sheet.py` did this.
-  - Re-derive it under `cli/` or the engine. **Copy nothing from
-    `shell/`.** Read it as reference only, and do so before the shell
-    delete commit.
-  - Drawings are versioned with the project. The dashboard shows them as
-    outputs.
-  - It counts as a "ported" ledger row under W1, so it needs a test.
-  - Schedule it after D2's write paths, not before.
-- **`collision_view`'s agent half is kept.** The agent gets the contact
-  report at t=0 (which parts touch at rest) without a person looking. Fold
-  it into `inspect` or a tool and pin it with tests. The tool-surface rule
-  in AGENTS.md applies.
-- **The demo biped is dropped**, as ADR-498 already did. Nothing is
-  restored.
-- **Agent timeout and memory budgets move to the project.** They are
-  stored in the project config (for example `agent.json`), with CLI flags
-  that override them per call. The dashboard shows them read-only. Tests
-  pin both the stored values and the overrides.
-- **Next, before more D3 work (added 2026-10-03, iteration 32):** D2 is
-  complete. Land the blueprint composer and the project budgets above
-  next, each as its own unit with an ADR, tests and a record, then resume
-  D3. `shell/` is already deleted, so read the old composer from the tag
-  `v1-blender-shell` (`git show v1-blender-shell:shell/scripts/startup/mesh_agent/cadex_sheet.py`). It is
-  reference only, and copying from it is still barred.
-- **The 5090 is back (added 2026-10-04, iteration 67):** the owner loaded
-  the driver, now 580.178.04. `nvidia-smi` sees the RTX 5090 and
-  `~/cadex-train-venv` reports `jax.default_backend() == "gpu"`. REPORT
-  defect 5 is cleared. W1 step 7's GPU leg comes next, before more
-  subtraction: `cadex walk` on `orun2-w1-robin` without
-  `JAX_PLATFORMS=cpu`. Record the measured result, update the report, and
-  hide the GPU from the CLI suite while it trains.
+- **B1. The page stays read-only (ADR-537).** The server answers GET and
+  HEAD only. Everything new on the page is read from the project
+  directory. The writes this run needs (checkpoint traces, retained
+  revision meshes, the activity log) happen in the CLI, on paths the CLI
+  already owns: `cadex walk`/`loop.py` supervision, revision acceptance in
+  `revisions.py`, and the MCP server.
+- **B2. Panels come back one at a time (ADR-533).** V1–V4 each land as
+  their own change with their own ADR, test and record, in priority order.
+  None of them is a redesign of the page.
+- **B3. The dashboard stays light.** It is a standard-library server,
+  vanilla JS and the vendored three.js. There is no npm, bundler, build
+  step or framework, and no new Python dependency unless an ADR measures
+  its weight.
+- **B4. Training runs locally on the 5090 through `cadex walk`.** The
+  checkpoint rollouts run in the CLI's supervision of the trainer (or a
+  sibling process it starts), through the engine on the CPU. They never
+  run in `training/`. A checkpoint is any file on disk under
+  `runs/<run>/train/`, whoever put it there, so a run synced back by
+  `remote_train.sh` works the same way.
+- **B5. Snapshots, not a live stream.** The owner accepted that a 1:1
+  live view of training is not worth it. A deterministic rollout per
+  checkpoint is the view. Do not stream poses out of the trainer.
+- **B6. The overlay is the 3D viewport's, and it gets out of the way.**
+  It collapses to one line. It reads at phone width. It follows
+  `docs/DASHBOARD.md`'s palette and type scale in both themes. The page
+  must still render with no overlay data at all (an old project, a run
+  without checkpoints).
 
 ## Done criteria
 
 Each criterion needs a causally parented record with measured evidence.
 The human owns the checkboxes. Roles report results and do not tick them.
 
-- [ ] **S1. The shell is gone and nothing reaches for it.**
-  - `git ls-files shell | wc -l` is 0.
-  - No pixi task, `package/` script, CMake rule, test, `.gitattributes`
-    LFS rule or live doc refers to `shell/`, `mesh_agent`, a `.blend`, or
-    `CADEX_BLENDER_EXECUTABLE`. ADRs and `docs/history/` are the exception.
-  - The removal follows the two-commit protocol: a disable commit, then a
-    delete commit, each green.
-  - The licensing posture is restated without the GPL half:
-    - `test_licensing_compliance.py`, `docs/inherited-modifications.json`
-      and `docs/PROVENANCE.md` say what is now true;
-    - an ADR records that the repo no longer carries GPL code, if that is
-      what the audit finds.
-  - **`mesh.blender` is retired**, with an ADR naming every project and
-    example that used it:
-    - the op, its runner, worker and adapters, `examples/blender_enclosure.py`,
-      its tests and `docs/BLENDER-RECIPES.md` are all removed;
-    - `OP_ARG_SPECS` and `docs/INTEGRATION.md` change in the same commit.
-  - Codex and pi support is removed.
-  - Shell-only tests are gone. Tests that only *mention* the shell are
-    rewritten:
-    - purity guardrails;
-    - `rollout_bake_integration.py`;
-    - `test_project_docs.py`.
-- [ ] **R1. The contract describes the three-part product.**
-  - Rewrite these for engine + dashboard + agent:
-    - `docs/VISION.md`: the interface section, and the non-goals that named
-      the Rust shell;
-    - `AGENTS.md`, at **no more than half its current 432 lines**;
-    - `README.md`, `docs/ARCHITECTURE.md`, `docs/INTEGRATION.md`;
-    - `docs/ROADMAP.md`:
-      - Phase 12 is superseded by "a desktop app that copies the
-        dashboard";
-      - Phase 13b's shell half is closed;
-      - Phase 6 is marked historical.
-  - One direction-change ADR states the bet, what it costs, and what would
-    make the owner reverse it.
-  - `docs/BLENDER.md`, `docs/BLENDER-TREE.md` and `docs/BLENDER-RECIPES.md`
-    move to `docs/history/`.
-  - A new `docs/DASHBOARD.md` replaces `docs/REVIEW-DESIGN.md` as the UI
-    spec. It keeps that document's palette, type scale and dark-floor rules.
-  - **The state graph's frontier lists only live work.** Every stale open
-    criterion is superseded through a record that gives its reason:
-    - ot7: F4–F7, F10;
-    - ot10: A5, A7;
-    - orun1: C1;
-    - anything else the shell made moot.
-
-    `STATE.md` regenerates clean, and `hypergraph check` exits 0.
-- [ ] **D1. One command from a clone to a running dashboard.**
-  - On a fresh clone on linux (sb1x), a documented, short command sequence
-    builds the engine and serves the dashboard over a projects directory:
-    - for example `pixi run setup-engine && pixi run app`;
-    - `./cadex` with no project should open or serve the dashboard.
-  - No step needs git-lfs, Xcode or `shell/lib`.
-  - **Measured before and after:**
-    - tracked files;
-    - working-tree size;
-    - Python and JS LOC by tree;
-    - the number of setup steps;
-    - wall time from clone to the dashboard's first page;
-    - installed footprint.
-- [ ] **D2. From a browser alone, a person can watch and steer a design.**
-  - Each of the following is proven by a test driven through the existing
-    headless Chromium path (`cli/cadex_cli/browser.py`) against a real
-    engine:
-    1. **Start a turn.** Start a design turn from a prompt, optionally with
-       an attached image. Watch it live as the transcript streams and the
-       renders and model update as revisions are accepted.
-    2. **Move a slider.** Move a parameter slider and see the rebuilt model.
-       Report p50 and p95 latency on a warm project beside the raw-NDJSON
-       bar (`cadexd_latency_integration.py`).
-    3. **Leave a comment.** Comment on the whole design or on a picked
-       part. The next agent turn receives it.
-    4. **Manage revisions.** Accept, reject and restore a revision.
-    5. **Inspect.** Use the section, exploded and collision views, and play
-       a rollout in the viewer.
-    6. **Export.** Export STEP and STL, and download a concept sheet.
-  - Write endpoints are safe by default:
-    - the server binds 127.0.0.1;
-    - writes need a per-launch token or a same-origin check;
-    - remote viewing is documented as `tailscale serve` in front of it.
-- [ ] **D3. Autonomous runs are first-class in the dashboard.**
-  - The dashboard lists runs beside projects:
-    - CLI agent turns;
-    - Ouroboros runs (read-only from `.ouroboros/runs/<run>/` and the run
-      branch).
-  - Each run shows:
-    - its iterations and critic verdicts;
-    - the charter criteria;
-    - the artifacts its records point to (renders, reports, probe pages).
-  - orun1's review material (`docs/probes/orun1/`) renders in the dashboard
-    from the repo alone. It replaces what `~/orun1-review/build.py` built
-    by hand, which proves the per-run review pages are no longer needed.
-- [ ] **A1. The agent has one contract, and a way to reach the owner
-  without waiting.**
-  - The product agent's tools (`cli/cadex_cli/tools.py`, pinned by
-    `test_project_tool_surface.py`) and its guidance
-    (`CadexAgentGuidance.md` plus `agent.system_prompt`) are the single
-    source. Nothing that was only in the shell's `modes.py` is lost:
-    - re-derive anything worth keeping, because the shell's code is GPL
-      and must not be copied;
-    - record what was not kept.
-  - **The agent gains a non-blocking channel to the dashboard:**
-    - it can flag a revision or artifact for the owner's review, or post a
-      question;
-    - the dashboard shows these;
-    - the owner's answers and comments arrive in the agent's next turn;
-    - the agent never stops to wait for an answer.
-  - Tests pin the channel at the protocol or tool surface. Changing the
-    surface follows AGENTS.md's tool-surface rule.
-- [ ] **W1. Nothing the product could do headlessly was lost.**
-  - On a copy of an existing robot project, the whole walk runs and every
-    step is visible in the dashboard:
-    1. prompt;
-    2. accepted design;
-    3. params sweep;
-    4. `look` and render;
-    5. STEP/STL export;
-    6. MJCF export;
-    7. a short training run on the 5090;
-    8. `evaluate`.
-  - Both full suites pass, and so does the packaged lifecycle gate.
-  - The CLI and dashboard have no feature the shell parity ledger below
-    marks "ported" without a test.
-  - **The parity ledger is complete:** `docs/SHELL-PARITY.md` gives each
-    of these one row:
-    - every `mesh_agent` module;
-    - each of its 23 tools;
-    - each of the seven Cadex editors.
-
-    Each row says one of three things: **ported** (where, and the test),
-    **already covered** (where), or **dropped** (why, and the ADR). No
-    row is blank.
+- [ ] **V1. The 3D viewport has a training and stage overlay.**
+  - The overlay is a new element in the 3D viewport's area, with stable
+    hooks listed in `docs/DASHBOARD.md` §2 and pinned by
+    `test_review_design.py`.
+  - It shows:
+    - the project's stage: idle, designing (a revision accepted recently),
+      training (the iteration out of the total, and the ETA), evaluating,
+      or failed;
+    - reward-per-step and loss sparklines from `progress.json`'s curves;
+    - the best reward and its iteration;
+    - `progress.json`'s `warning`, styled as a warning;
+    - which run it is reading, when there is more than one.
+  - It updates on the page's existing poll, with no new polling loop. A
+    browser test driven through `cli/cadex_cli/browser.py` shows it
+    changing as a fixture's `progress.json` is rewritten.
+  - It collapses to one line, and the collapsed state is a per-browser
+    convenience. Measured at 390 px wide, it covers no more than a quarter
+    of the viewport when expanded.
+  - An ADR records it as the first panel brought back after ADR-533.
+- [ ] **V2. Each checkpoint becomes motion in the viewport.**
+  - When a new checkpoint lands during a `cadex walk` training leg, the
+    CLI rolls it out through the engine. It writes a
+    `cadex-assembly-simulation-trace-v1` trace beside the checkpoint,
+    tagged with the checkpoint's iteration, reward and sha256.
+  - The rollout happens while training continues. **Measured:** mean
+    iteration wall time with checkpoint rollouts on, against off, on the
+    same task and seed. The cost is reported, and it is under 5% or an ADR
+    explains why the owner should accept more.
+  - The server serves each checkpoint's playback through the existing
+    `trace_playback`. The 3D viewport loops the newest one, labelled with
+    its iteration and reward. A checkpoint scrubber selects older ones,
+    and switching to a newer checkpoint is automatic unless the owner has
+    picked one.
+  - A browser test against a real engine shows a second checkpoint's
+    playback replacing the first one while the run is still training.
+  - A failed rollout is shown with its reason. It never stops or slows
+    the training run.
+  - The traces are run outputs. They are never committed, and their disk
+    cost per checkpoint is measured and reported.
+- [ ] **V3. The design's history plays in the viewport.**
+  - When a revision is accepted, its tessellation is kept, stored by
+    content hash per part. A part that did not change between revisions
+    costs no new bytes. **Measured:** bytes added per revision across
+    `orun3-biped`'s thirteen revisions, against the size of a full copy.
+  - Revisions accepted before this change have no retained meshes. The
+    page says so, and it never shows another revision's geometry in
+    their place. Rebuilding old revisions to fill the gap is an explicit
+    CLI command, not a side effect of opening the page.
+  - The 3D viewport gets a revision timeline. Scrubbing it shows each
+    retained revision's model. The previous revision is drawn as a ghost,
+    and parts whose digest changed are tinted. A browser test drives the
+    scrubber across at least three revisions.
+  - The Revisions menu and the timeline agree on ordinals and on which
+    revision is current.
+- [ ] **V4. The page says what the agent is doing.**
+  - The MCP server appends one line per tool call to a project activity
+    log: time, tool name, a short summary of the arguments, and the
+    outcome. Arguments are never logged in full. The log is bounded
+    (rotated or capped), and that bound is tested.
+  - `test_project_tool_surface.py` is unchanged: this adds no tool, no
+    argument and no result field. If that turns out to be impossible, the
+    tool-surface rule in AGENTS.md applies.
+  - The overlay shows the latest activity and how long ago it happened. An
+    expanded view lists the last few entries. When nothing has happened
+    for a while, the line says the agent is idle rather than showing a
+    stale action as current.
+  - A test drives a tool call through `cadex mcp` and reads the entry back
+    from `/api/project`, or from a route the HTTP API pins.
+- [ ] **P1. The dashboard is portable.**
+  - No page script or server-built URL is root-absolute. Every fetch and
+    every link resolves relative to the page, or through one API base. The
+    page works unchanged behind a path prefix: a test serves it under
+    `/some/prefix/` through a rewriting-free proxy and loads a project.
+  - The HTTP API is a documented contract. Every `GET /api/...` route and
+    its top-level response keys are listed in `docs/CLI.md`, or in one
+    file it points to. A test fails if a route is added, removed or
+    renamed without the doc changing too, in the same way the
+    `OP_ARG_SPECS` test works.
+  - No page state lives only in the browser, except per-viewer
+    conveniences such as the layout, the theme and a collapsed overlay.
+- [ ] **W1. The whole lifecycle is watchable, on a real robot.**
+  - On `orun3-biped`, a copy of `~/cadex-projects/ot5-biped`:
+    1. the agent accepts at least two new design revisions through
+       `cadex mcp`;
+    2. a short `cadex walk` training leg runs on the 5090 with checkpoints
+       on;
+    3. `evaluate` runs on the result.
+  - The dashboard, opened before step 1 and never reloaded, shows each
+    stage in the overlay, the revisions on the timeline, and at least
+    three checkpoint rollouts. Screenshots are taken at each stage.
+  - Both full suites pass, and so does the packaged lifecycle gate if the
+    run touched the protocol or the payload.
 - [ ] **C1. Closing report.**
-  - `docs/probes/orun2/REPORT.md` covers:
-    - D1's before and after numbers;
-    - the parity ledger summary;
-    - every removal and its ADR;
-    - D2's latencies;
-    - screenshots of the dashboard (PNG, ≤300 KB each, on the dark
-      floor);
+  - `docs/probes/orun3/REPORT.md` covers:
+    - V2's training-cost and disk measurements;
+    - V3's bytes-per-revision measurement;
+    - every ADR the run added;
+    - W1's screenshots (PNG, ≤300 KB each, on the dark floor);
     - the remaining defects.
   - Reconcile, then claim done for critic review without ticking the owner
     boxes.
@@ -284,96 +189,108 @@ The human owns the checkboxes. Roles report results and do not tick them.
 ## Horizon ladder
 
 - **short-term:**
-  1. Measure the "before" numbers for D1 and write the parity ledger
-     skeleton. Read every `mesh_agent` module once, so that nothing is
-     deleted unread.
-  2. The disable commit for `shell/`: pixi tasks, package scripts and
-     tests stop reaching it, and both suites stay green.
-  3. Retire `mesh.blender` and the Codex/pi backends (S1), each with its
-     ADR.
+  1. Read `docs/DASHBOARD.md`, `review.js`, `layout.js`, the
+     `training_telemetry` path in `review_server.py`, and `loop.py`'s
+     `supervise`. Write down the overlay's hooks and data sources before
+     writing any code.
+  2. V1: the overlay, reading only what `/api/project` already carries.
+     Use a fixture `progress.json`, a browser test, the DASHBOARD.md
+     rows, and an ADR.
+  3. Measure the baseline V2 needs: a `cadex walk` leg on `orun3-biped`
+     with checkpoints on, and its mean iteration wall time with no
+     rollouts.
+  4. P1's first cut: make every URL in `review.js`, `projects.js` and the
+     server's built URLs relative, behind the existing tests.
 - **medium-term:**
-  1. The delete commit for `shell/`, with the licensing restatement.
-  2. The dashboard's write paths:
-     - params;
-     - prompt turns with live transcript streaming;
-     - comments and part-picks;
-     - accept, reject and restore;
-
-     then the inspection views and rollout playback (D2).
-  3. The agent channel (A1) and runs as first-class (D3), with orun1's
-     probes as the fixture.
-  4. The contract rewrite (R1): docs, AGENTS.md, ROADMAP, and pruning the
-     state-graph frontier.
+  1. V2: checkpoint rollouts in the walk's supervision, then playback and
+     the scrubber in the viewport, then the cost measurement against the
+     baseline.
+  2. V3: retain meshes on acceptance, the timeline, the ghost and the
+     tint, then the explicit backfill command.
+  3. V4: the activity log in the MCP server and its line in the overlay.
+  4. P1's API contract test and its doc table.
 - **long-term:**
-  1. W1's full walk, then the closing report (C1).
-  2. The dashboard's design pass against `docs/DASHBOARD.md`: hierarchy,
-     the dark palette shared with renders, and phone-width review. This is
-     a direction, not a bar.
-  3. Further subtraction now the shell is gone: anything in `src/Mod/cadex`,
-     `cli/` or `package/` that existed only to serve it, such as the
-     shell-only bridge answers and payload staging into a bundle. Every
-     removal gets an ADR.
-  4. Keep every gate green and every doc true. Keep `STATE.md` reconciled.
+  1. W1's full walk on `orun3-biped`, then the closing report (C1).
+  2. Make the overlay and both scrubbers good at phone width and in the
+     light theme. Read `docs/DASHBOARD.md` against the page and close any
+     gaps. This is a direction, not a bar.
+  3. Cheaper meshes on the way to the page: binary or glTF meshes, where a
+     measurement shows STL is the bottleneck for the timeline. Add an ADR
+     if the format changes.
+  4. Keep every gate green and every doc true. Keep `STATE.md`
+     reconciled.
 
 ## Constraints
 
 **Standing:**
-- Obey AGENTS.md, the licensing rules and the process boundaries. `cli/` is
-  LGPL: **copy nothing from `shell/`**. Read it as reference and re-derive
-  what you need. This matters most in this run, because it is deleting the
-  code it is porting.
+- Obey AGENTS.md, the licensing rules and the process boundaries. The
+  repository carries no GPL code. The tag `v1-blender-shell` may be read
+  but never copied from.
 - Training stays offboard in `training/`. JAX and MJX never enter the
-  engine or a payload. `analysis/` imports no GPL package.
+  engine or a payload, and `training/cadex_train.py` imports only the
+  standard library at module scope. `analysis/` imports no GPL package.
 - Never commit any of the following:
   - secrets, machine paths, private hostnames;
   - build outputs;
-  - full transcripts;
-  - policy binaries or rollout traces.
+  - full transcripts or full activity logs;
+  - policy binaries, checkpoints or rollout traces.
 - Do not hand-edit `STATE.md`, `PLAN.md`, `ROADMAP.md` or state nodes.
-- Keep earlier projects read-only: hex, ot5–ot11, orun1-*, every `sweep-*`
-  and `digestbug-*`. Work on copies named `orun2-*`.
+- **Every fixture, test project, measurement and screenshot in this run is
+  a biped.** The working copy is `orun3-biped`, copied from
+  `~/cadex-projects/ot5-biped`; other biped copies are named `orun3-biped-*`.
+  Hexapods and other robots are not used, not even as a second fixture.
+- Keep earlier projects read-only: hex, hex1–hex3, ot5–ot11, orun1-*,
+  orun2-*, every `sweep-*` and `digestbug-*`. Work on copies named
+  `orun3-*`.
 
 **This run:**
-- **Do not start a replacement engine or a desktop app.** The FreeCAD
-  application layer stays (Phase 11 is not this run). The dashboard is the
-  only UI.
+- **The page stays read-only.** No write route, no form that posts, no
+  slider. A change that needs one is out of scope: record it as a
+  question for the owner and move on.
+- **Do not start a replacement engine or a desktop app.** P1 makes a
+  wrapper possible. It does not build one.
 - **Do not rewrite the dashboard from scratch.** Grow `review_server.py`
-  and `review_static/`. A2 holds: no npm, no build step, no framework.
+  and `review_static/`.
 - **The protocol stays a contract.** Every `OP_ARG_SPECS` change updates
-  `docs/INTEGRATION.md` in the same commit, as AGENTS.md requires.
-- The run branch builds and both suites pass at every accepted commit. The
-  disable commit and the delete commit are separate commits.
+  `docs/INTEGRATION.md` in the same commit. The agent's tool surface
+  changes only under AGENTS.md's tool-surface rule.
+- The run branch builds and both suites pass at every accepted commit.
+  The CLI suite runs with the GPU hidden whenever a training run is live.
+- One training run at a time on the 5090. The machine lock in `loop.py`
+  is the arbiter, and nothing works around it.
 - The actor may serve the dashboard on 127.0.0.1 for its own browser
   tests. It never runs `tailscale serve` and never binds a public address.
-- Committed images are PNG, ≤300 KB each, under `docs/probes/orun2/`.
+- Committed images are PNG, ≤300 KB each, under `docs/probes/orun3/`.
 - No role starts, stops or restarts the loop or signals its process.
 
 ## Question policy
 
 - Resolve reversible choices autonomously, using the smallest measured step
   towards the highest-ranked open criterion.
-- **Port or drop?** If a shell feature helps a person *look at, review,
-  or lightly steer* an autonomous result, port it. If it exists for
-  hands-on modelling, drop it and record why in the ledger. When still
-  unsure, drop it and mark the row "owner to confirm".
-- Where A1–A4 and a measurement disagree, record both and follow A1–A4.
+- **Is it a view or a control?** If it helps the owner see what is
+  happening, it may go on the page. If it changes anything, it belongs in
+  the agent's tools or the CLI, never the page.
+- Where B1–B6 and a measurement disagree, record both and follow B1–B6.
   They are the owner's to change.
-- Deleting is cheap because `v1-blender-shell` exists. Being *unread* is
-  not: never delete a module the parity ledger has not described.
+- When the page has no data for something (an old project, a missing
+  checkpoint trace, a revision accepted before V3), show the absence with
+  its reason. Never substitute other data.
 - Code and accepted artifacts outrank docs. Update the docs with the
   behaviour they describe.
+- A pre-existing test failure is recorded and left alone, unless the
+  unit's own change touches it.
 - A harness or usage limit is not an attempt: keep the receipt and wait for
   capacity.
-- Never invent a measurement, never weaken a test to pass, and never mark
-  a parity row "ported" without a test.
+- Never invent a measurement, never weaken a test to pass, and never wait
+  for a human.
 
 ## Exhaustion policy
 
 `report_done`.
-- Once S1, R1, D1–D3, A1, W1 and C1 have evidence, write the closing
-  report, reconcile and claim done. Two consecutive critic acceptances stop
-  the run.
-- Do not claim done while any criterion is unmet unless the 72-hour ceiling
+- Once V1–V4, P1, W1 and C1 have evidence, write the closing report,
+  reconcile and claim done. Two consecutive critic acceptances stop the
+  run.
+- Do not claim done while any criterion is unmet unless the 24-hour ceiling
   has arrived. Until then, work the highest-ranked open criterion, then the
   long-term rung.
 - If the ceiling arrives first, report how far each criterion got and what
@@ -387,12 +304,13 @@ The human owns the checkboxes. Roles report results and do not tick them.
 - For protocol or payload changes, rebuild and stage, then run the packaged
   lifecycle gate. Report skips and failures as such. Engine-needing CLI
   tests that skip on a bare build do not count as passes.
-- Every dashboard feature D2 counts has a browser-driven test against a
-  real engine.
-- Every removal has an ADR, and is verified by a build and tests in the
-  same commit series.
-- Record each unit with its State Impact. Direction changes, new APIs and
-  removals also earn ADR entries.
+- Every new page feature has a browser-driven test through
+  `cli/cadex_cli/browser.py`. V2 and W1's tests run against a real engine.
+- The page and `docs/DASHBOARD.md` change in the same commit, as
+  `test_review_design.py` requires. Every new route is in the P1 contract
+  once that exists.
+- Every new panel, write path and route has an ADR, starting at ADR-542.
+- Record each unit with its State Impact.
 
 ## Reconcile
 
