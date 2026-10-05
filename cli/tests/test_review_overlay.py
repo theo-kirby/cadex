@@ -23,6 +23,7 @@ from pathlib import Path
 
 import pytest
 
+from cadex_cli.activity import activity_path, append_activity
 from cadex_cli.review_server import (DESIGNING_WINDOW_S, EVALUATING_WINDOW_S, SPARK_POINTS,
                                      serve)
 from test_review_record import REVISION_B
@@ -31,6 +32,7 @@ from test_review_server import (_json, _mesh_run, _open, _review_project, _rewri
 
 BIPED = json.loads((Path(__file__).parent / "fixtures" / "biped-progress.json").read_text())
 RUN = "biped-train"
+ACTIVITY_IDLE_S = 300  # review.js's ACTIVITY_IDLE_S (ADR-550)
 
 
 def _biped_progress(root: Path, iteration: int, *, state: str = "training", **changes) -> Path:
@@ -227,6 +229,8 @@ def test_the_overlay_follows_progress_json_on_the_pages_own_poll(tmp_path, brows
 def test_the_overlay_collapses_per_browser_and_covers_a_quarter_at_390px(tmp_path, browser) -> None:
     root = _training_project(tmp_path)
     _biped_progress(root, 120, warning="episode_collapse: mean episode 3 steps")
+    for tool in ("build", "inspect", "measure"):
+        append_activity(root, tool, {"scope": "clearance"}, ok=True, detail="", ms=900.0)
     server, _thread = serve(root, "127.0.0.1", 0)
     try:
         page = browser.page("about:blank")
@@ -246,6 +250,7 @@ def test_the_overlay_collapses_per_browser_and_covers_a_quarter_at_390px(tmp_pat
         share = o["width"] * o["height"] / (v["width"] * v["height"])
         assert share <= 0.25, share
         assert m["warning"] and m["reward"]
+        assert page.evaluate("document.getElementById('overlay-activity').dataset.state") == "active"
         assert page.evaluate("document.documentElement.scrollWidth") <= 390
         # One tap collapses it to one line, and this browser keeps that.
         page.evaluate("document.getElementById('overlay-toggle').click()")
@@ -263,3 +268,73 @@ def test_the_overlay_collapses_per_browser_and_covers_a_quarter_at_390px(tmp_pat
     finally:
         server.shutdown()
         server.server_close()
+
+
+ACTIVITY = """(function () {
+  function q(s) { return document.querySelector(s); }
+  return {state: q('#overlay-activity').dataset.state, line: q('#overlay-activity-line').textContent,
+          log_hidden: q('#overlay-activity-log').hidden,
+          items: Array.from(document.querySelectorAll('#overlay-activity-list li')).map(function (li) {
+            return [li.dataset.outcome, li.textContent]; }),
+          line_color: getComputedStyle(q('#overlay-activity-line')).color,
+          bad: getComputedStyle(document.documentElement).getPropertyValue('--bad').trim()};
+})()"""
+
+
+@needs_browser
+def test_the_overlay_says_what_the_agent_is_doing_and_when_it_went_quiet(tmp_path, browser) -> None:
+    """V4's line (ADR-550): the newest call and how long ago, a short list of the
+    ones before it, ``idle`` past :data:`ACTIVITY_IDLE_S`, and a page that
+    renders with no log at all, all on the page's own poll."""
+
+    root = _review_project(tmp_path)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        page.evaluate("window.cadexReview.setOverlayCollapsed(false)")
+        none = page.evaluate(ACTIVITY)
+        assert none["state"] == "none" and none["log_hidden"] and none["items"] == []
+        assert none["line"] == "no tool call through cadex mcp has been logged in this project"
+        # The agent works: each call lands in the log and the poll carries it.
+        append_activity(root, "build", {"source": "x" * 3000}, ok=True, detail="built 4 parts", ms=2100.0)
+        page.wait_for("document.getElementById('overlay-activity').dataset.state === 'active'", timeout=10)
+        first = page.evaluate(ACTIVITY)
+        assert first["line"] == "build source=<3000 chars> · just now" and first["log_hidden"]
+        append_activity(root, "inspect", {"scope": "clearance"}, ok=True, detail="", ms=400.0)
+        append_activity(root, "set_params", {"values": {"bore": 8}}, ok=False,
+                        detail="unknown parameter: bore", ms=12.0)
+        page.wait_for("document.getElementById('overlay-activity').dataset.state === 'error'", timeout=10)
+        failed = page.evaluate(ACTIVITY)
+        assert failed["line"] == "set_params values={bore} · failed: unknown parameter: bore · just now"
+        assert failed["line_color"] == _hex_rgb(failed["bad"])
+        assert not failed["log_hidden"]
+        assert [outcome for outcome, _ in failed["items"]] == ["error", "ok", "ok"]
+        assert failed["items"][1][1].endswith("inspect scope=\"clearance\"")
+        # Only the newest few are listed.
+        for n in range(6):
+            append_activity(root, "measure", {"n": n}, ok=True, detail="", ms=5.0)
+        page.wait_for("document.querySelectorAll('#overlay-activity-list li').length === 5 && "
+                      "document.getElementById('overlay-activity-line').textContent.indexOf('measure n=5') === 0",
+                      timeout=10)
+        # Quiet past the threshold: the line says idle, not a stale action as current.
+        log = activity_path(root)
+        log.unlink()
+        append_activity(root, "build", {}, ok=True, detail="", ms=10.0, now=time.time() - 3600)
+        append_activity(root, "evaluate", {"seeds": [1, 2]}, ok=True, detail="", ms=10.0,
+                        now=time.time() - ACTIVITY_IDLE_S - 120)
+        page.wait_for("document.getElementById('overlay-activity').dataset.state === 'idle'", timeout=10)
+        idle = page.evaluate(ACTIVITY)
+        assert idle["line"] == "agent idle · last call evaluate 7 min ago"
+        assert [text.split(" ", 1)[1] for _, text in idle["items"]] == ["evaluate seeds=[2]", "build"]
+        # The log goes away (a fresh copy): the page shows the absence, not the old line.
+        log.unlink()
+        page.wait_for("document.getElementById('overlay-activity').dataset.state === 'none'", timeout=10)
+        assert page.evaluate(ACTIVITY)["items"] == []
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_the_idle_threshold_here_is_the_pages():
+    page = (Path(__file__).resolve().parents[1] / "cadex_cli" / "review_static" / "review.js").read_text()
+    assert f"var ACTIVITY_IDLE_S = {ACTIVITY_IDLE_S}," in page

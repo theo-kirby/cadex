@@ -35115,3 +35115,42 @@ it already owns.
   only by its length, and the project's git tracks no activity file.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-550 — The stage overlay says what the agent last did, and says idle once it goes quiet (2026-10-05, orun3 V4)
+
+**Context.** ADR-549 writes one line per `cadex mcp` tool call to `review/activity.jsonl`
+and serves the newest ten in `/api/project`'s `activity`. The owner keeps the dashboard
+beside their agent; what is missing is that one line on the page.
+
+**Decision.**
+- **Where.** In the stage overlay's expanded detail (ADR-542), under the run it reads:
+  `#overlay-activity-line`, the newest call (tool, ADR-549's argument summary, `failed:
+  <detail>` when it failed) and how long ago, timed against the server's `served_at` so a
+  browser's clock does not skew it. The collapsed overlay stays one line, the stage's.
+- **A short list.** `#overlay-activity-log`, a closed `recent calls` disclosure, lists
+  the newest five with their UTC clock times, so the list changes only when the log
+  does. It is hidden until there are two entries.
+- **Idle after 300 s.** Once the newest call returned more than 5 minutes ago, the line
+  reads `agent idle · last call <tool> <ago>` in `--ink-2` rather than showing the action
+  as current. Why 5 minutes: an agent working a design returns a tool call every few
+  seconds to a minute or two, since its own thinking between calls is the gap; 5 minutes
+  is past that, and half of the overlay's 10-minute `designing` window, so the line goes
+  idle before the stage does. The cost is that a call is logged when it **returns**
+  (ADR-549), so one tool call running longer than 5 minutes reads as idle until it
+  returns. The line names the last returned call, so it is never wrong about what was
+  done, only about whether something is still running.
+- **No data.** With no log, the line is the server's `reason`, in `--ink-2`, and the
+  list is empty. No other data takes its place.
+- **No new poll, no write.** It is redrawn by `renderOverlay` on the page's existing poll;
+  the page stays GET-only (ADR-537).
+
+**Test.** `cli/tests/test_review_overlay.py`. A Chromium driven through `browser.py`
+starts with no log and reads the reason. It then appends calls through `append_activity`
+while the page polls: the line follows each call, a failed call turns it `--bad`, and the
+list shows outcomes in order and stops at five. Rewriting the log with calls 7 and 60
+minutes old turns the line `idle`. Deleting the log brings back the absence. A
+second test pins the test's threshold to the page's `ACTIVITY_IDLE_S`. At 390 px with
+activity, the expanded overlay measures 280 × 210 px, 20.8% of the viewport (bar: 25%).
+The §2 hooks are pinned in `test_review_design.py`.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).

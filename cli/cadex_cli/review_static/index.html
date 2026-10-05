@@ -99,6 +99,11 @@
         </button>
         <div id="overlay-detail">
           <div id="overlay-run" hidden></div>
+          <!-- What the agent last did through cadex mcp (ADR-550): review/activity.jsonl, read in /api/project's activity. -->
+          <div id="overlay-activity" data-state="none">
+            <p id="overlay-activity-line">no agent activity logged</p>
+            <details id="overlay-activity-log" hidden><summary>recent calls</summary><ol id="overlay-activity-list"></ol></details>
+          </div>
           <dl id="overlay-stats" hidden>
             <div><dt>Reward/step</dt><dd id="overlay-reward-now">—</dd></div>
             <div><dt>Best</dt><dd id="overlay-best">—</dd></div>

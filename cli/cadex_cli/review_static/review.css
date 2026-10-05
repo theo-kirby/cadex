@@ -152,6 +152,14 @@ canvas#viewer { display: block; width: 100%; height: 100%; touch-action: none; }
 #overlay svg { display: block; width: 100%; height: 24px; background: var(--surface-2); border-radius: 3px; }
 #overlay polyline { fill: none; stroke: var(--info); stroke-width: 1.4; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
 #overlay-warning { margin: var(--s1) 0 0; color: var(--warn); }
+/* The agent's activity (ADR-550): its newest call and how long ago; idle once it has been quiet. */
+#overlay-activity-line { margin: var(--s1) 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
+#overlay-activity[data-state="none"] #overlay-activity-line, #overlay-activity[data-state="idle"] #overlay-activity-line { color: var(--ink-2); }
+#overlay-activity[data-state="error"] #overlay-activity-line { color: var(--bad); }
+#overlay-activity-log > summary { color: var(--ink-2); cursor: pointer; }
+#overlay-activity-list { margin: 0; padding: 0; list-style: none; font-family: var(--mono); }
+#overlay-activity-list li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+#overlay-activity-list li[data-outcome="error"] { color: var(--bad); }
 .timelines { position: absolute; z-index: 1; left: var(--s2); right: var(--s2); bottom: var(--s2); display: flex; flex-direction: column; gap: var(--s1); }
 .timeline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2);
             padding: var(--s1) var(--s2); background: color-mix(in srgb, var(--surface-2) 88%, transparent); border-radius: var(--radius-area); font-size: var(--fs-0); }

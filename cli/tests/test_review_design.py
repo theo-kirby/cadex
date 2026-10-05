@@ -84,7 +84,8 @@ def test_every_hook_in_the_hierarchy_table_is_on_the_page():
     rows = [line for line in section.splitlines() if line.startswith("| **")]
     hooks = {hook for row in rows for cell in re.findall(r"`([^`]+)`", row)
              for hook in re.findall(r"#([a-z][a-z0-9-]*)", cell)}
-    assert {"overlay", "overlay-toggle", "overlay-line", "overlay-warning", "overlay-reward"} <= hooks
+    assert {"overlay", "overlay-toggle", "overlay-line", "overlay-warning", "overlay-reward",
+            "overlay-activity", "overlay-activity-line", "overlay-activity-list"} <= hooks
     page = (STATIC / "index.html").read_text()
     ids = set(re.findall(r'\bid="([^"]+)"', page))
     assert hooks <= ids, sorted(hooks - ids)

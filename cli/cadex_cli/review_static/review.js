@@ -559,6 +559,7 @@
       line = stage.reason || '';
     }
     setText('overlay-line', line).title = line;
+    renderActivity(review, now);
     // The run it reads, named when there is more than one to choose from.
     setHidden('overlay-run', !(stage.run && stage.runs > 1));
     setText('overlay-run', stage.run ? 'run ' + stage.run + (t && name !== 'training' ? ' · ' + t.state : '') : '');
@@ -574,6 +575,41 @@
     setText('overlay-eta', name === 'training' && t.eta_s ? duration(t.eta_s) : '—');
     spark('overlay-reward', (t.spark || {}).curve);
     spark('overlay-loss', (t.spark || {}).loss_curve);
+  }
+  // The agent's newest call through cadex mcp (ADR-550), timed against the server's
+  // clock. A call is logged when it returns, so quiet past ACTIVITY_IDLE_S reads as idle.
+  var ACTIVITY_IDLE_S = 300, ACTIVITY_LIST = 5, activityKey = null;
+  function activityText(e) {
+    return e.tool + (e.args ? ' ' + e.args : '') + (e.outcome === 'error' ? ' · failed' + (e.detail ? ': ' + e.detail : '') : '');
+  }
+  function renderActivity(review, now) {
+    var activity = review.activity || {}, entries = activity.available ? activity.entries || [] : [];
+    var newest = entries[0], node = $('overlay-activity'), name, line;
+    if (!newest) {
+      name = 'none'; line = activity.reason || 'no agent activity logged';
+    } else {
+      var t = Date.parse(newest.t), quiet = isNaN(t) ? Infinity : (now - t) / 1000;
+      if (quiet > ACTIVITY_IDLE_S) {
+        name = 'idle'; line = 'agent idle · last call ' + newest.tool + ' ' + ago(newest.t, now);
+      } else {
+        name = newest.outcome === 'error' ? 'error' : 'active'; line = activityText(newest) + ' · ' + ago(newest.t, now);
+      }
+    }
+    if (node.dataset.state !== name) node.dataset.state = name;
+    setText('overlay-activity-line', line).title = line;
+    setHidden('overlay-activity-log', entries.length < 2);
+    var shown = entries.slice(0, ACTIVITY_LIST), key = JSON.stringify(shown);
+    if (key === activityKey) return;
+    activityKey = key;
+    var list = $('overlay-activity-list');
+    list.textContent = '';
+    shown.forEach(function (e) {
+      var item = document.createElement('li'), clock = (e.t || '').slice(11, 19);
+      item.dataset.outcome = e.outcome;
+      item.textContent = (clock ? clock + ' ' : '') + activityText(e);
+      item.title = item.textContent;
+      list.appendChild(item);
+    });
   }
   function setOverlayCollapsed(collapsed) {
     overlayCollapsed = !!collapsed;
