@@ -1477,15 +1477,14 @@ report was written in the last 120 s, `training` when the run read is
 `since`, `run` (the newest run training, else the run a fresh visit opens),
 `runs` (how many), and `training`: that run's telemetry with `spark`, its
 reward and loss histories cut to at most 64 points each, or `null` when no
-run has telemetry. It is one bounded block whatever the history. The page fetches both on
-each poll (the list, then the selected run's detail) and renders the panel
-from one response, so iteration and sample counts never come from different
-snapshots; until the detail arrives after a selection the panel says
-`loading history…` with the summary's counts and a `pending` checkpoint line.
-The run list in the sidebar is rebuilt only when a run's name, status,
-relation, record time or revision changes, and the telemetry panel only when
-the shown telemetry changes, so an idle poll adds a constant number of DOM
-nodes whatever the run count. `window.cadexReview.lastPoll()` reports the last
+run has telemetry. It is one bounded block whatever the history. The page
+has no telemetry panel (ADR-533 removed it): the 3D viewport's stage overlay
+(ADR-542) is drawn from `/api/project`'s `stage` alone, on the page's existing
+poll, and is rebuilt only when that block changes, so the overlay reads the
+stage, the iteration, the ETA, the sparklines and the warning from one
+snapshot. The page fetches `/api/run/<name>` only when the 2D viewport
+plots one of a run's curves, never for the overlay, so an idle poll adds a
+constant number of DOM nodes whatever the run count. `window.cadexReview.lastPoll()` reports the last
 poll's list bytes, detail bytes and wall time. The `test_review_history_scale.py`
 suite pins this over sixty-three runs with 512-sample histories and three
 checkpoints each, then grows the history by twenty runs under a deliberately
