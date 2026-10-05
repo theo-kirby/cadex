@@ -11,6 +11,8 @@ Status: working
 
 ## Current
 
+**The living docs describe today's three-part product (commit `e5fe978f`) [rec: warm-shore-1092].** A whole-repository pass after ADR-536 to ADR-539 corrected about 45 docs. They no longer present the Blender shell, its Training and Policy Outputs panels, `cadex -p`, `walk --prompt`, or dashboard chat, comments and writes as current; dated history stays and is marked as history. Ten point-in-time audits carry a dated-record line, and the PR template is Cadex's own. Paragraphs below that describe the shell's toolchain are history (ADR-498). Open for the owner: `PLAN.md` claims a generator that does not exist; SECURITY says there has been "no release", while `docs/releases/v0.0.1.md` exists; NOTICE still credits the deleted OpenTheme themes; the guidance's "looks engineered" contradicts the owner's taste; and CI's engine unit suite has been red since about 2026-09-29 [rec: warm-shore-1092].
+
 **Read this before touching anything.** The author's answer to "what would waste a fresh agent's whole day" was immediate and was not about code: **not knowing which stack a thing is in** — C++ versus Python, the Blender shell versus the FreeCAD engine versus Blender's own engine, what `pixi` covers, **what needs a build versus what needs an install**, and what runs on this machine versus the remote GPU box [rec: western-badger-3023].
 
 - **Two toolchains that must not see each other.** The engine builds inside the pixi/conda-forge environment; the shell builds against `shell/lib/<platform>` with Xcode and a homebrew `cmake`/`ninja`. Both supply zlib, libpng, OpenSSL and Python at different versions. `package/app/build_app.sh` scrubs pixi and conda off `PATH` and unsets ~50 conda variables before invoking cmake on `shell/` — which is why `build-shell` is a script and not a `cmd = ["cmake", …]` task. Do not route the shell build around it [rec: merry-eagle-4093].
@@ -81,3 +83,4 @@ Status: working
 - nimble-basin-8423 — isolated hardlink mutation reproduces mismatch; tested CMake copy/install preserve cache; historical cause unknown
 - weathered-trail-0874 — onboarding version guidance uses the configuration as the project-copy source; documentation checks passed
 - curious-badger-6887 — stale engine-suite count removed from command guidance; full-directory task and no-build instruction retained, documentation checks passed
+- warm-shore-1092 — stale-doc pass after ADR-536 to ADR-539: about 45 docs corrected, ten audits marked as dated records, owner items listed
