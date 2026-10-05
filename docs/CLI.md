@@ -2215,7 +2215,9 @@ a status still saying `running` under a lock nobody holds is reported
 `interrupted`, **an interruption and not an attempt**. The machine's lock
 (`~/.cache/cadex/training.lock`, or `$CADEX_TRAIN_LOCK`) is the one
 training slot: a second run is refused at registration, and again by the
-supervisor if two were registered at once.
+supervisor if two were registered at once. `cadex train` holds the same slot
+around a local trainer, so `cadex walk`'s train leg is refused while a
+`train_start` run trains, and the other way round (ADR-543).
 
 **What registration refuses**, each with a sentence the agent can act on: a
 missing, zero or over-long budget (six hours is the bound on a typo); a
@@ -2676,6 +2678,17 @@ instead. A command holds it for its one run and releases it before the
 `PROGRESS.md` row and the commit; `cadex mcp` holds it while it has the
 engine open, lands its row and commit, then releases it, and opens again
 waiting for it (§4).
+
+The machine's **training slot** (`~/.cache/cadex/training.lock`, or
+`$CADEX_TRAIN_LOCK`) is a second advisory `flock`, one per machine rather
+than per project: one training run at a time (ADR-543). A `train_start`
+supervisor holds it while it lives (§4), and `cadex train` holds it while
+its local trainer runs, not during the rebuild or the `put`. While another
+run holds it, `cadex train` and `cadex walk` exit 3 before doing anything:
+`train` before its rebuild, and `walk` before its first leg, so a refused
+iterate walk has not moved the accepted revision. `--remote` trains on the
+box and takes no slot here, and neither does `train --dry-run` or
+`walk --complete`. There is no `--wait` for the slot.
 
 ## 6. Which engine
 

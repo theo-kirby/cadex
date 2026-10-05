@@ -34,6 +34,7 @@ Nothing here knows what behaviour is being trained. A task is a task.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 import fcntl
 import glob
 import hashlib
@@ -46,7 +47,7 @@ import signal
 import subprocess
 import sys
 import time
-from typing import Any, Mapping, Sequence
+from typing import Any, Iterator, Mapping, Sequence
 
 from .review_record import RUNS_DIRNAME, write_run_record
 from .smoke import SmokeError, retained_attempt
@@ -175,6 +176,28 @@ def lock_held(path: Path) -> bool:
         return True
     handle.close()
     return False
+
+
+#: What every refusal of the machine's slot says, the supervisor's and
+#: ``cadex train``'s alike.
+SLOT_BUSY = "another training run holds this machine's one training slot"
+
+
+@contextmanager
+def machine_slot() -> Iterator[None]:
+    """Hold the machine's one training slot for the block, or raise LoopError.
+
+    The supervisor holds it for its whole life; ``cadex train``, and every
+    command that trains through it, holds it around a local trainer (ADR-543).
+    """
+
+    handle = _try_lock(machine_lock_path())
+    if handle is None:
+        raise LoopError(f"{SLOT_BUSY}; wait for it to end.")
+    try:
+        yield
+    finally:
+        handle.close()
 
 
 def append_ledger(root: Path, kind: str, **fields: Any) -> None:
@@ -341,8 +364,7 @@ def register(root: Path, *, run: str, budget_s: float, reason: str,
     if busy:
         raise LoopError(f"run {busy} of this project is still live; wait for it or stop it.")
     if lock_held(machine_lock_path()):
-        raise LoopError("another training run holds this machine's one training slot; "
-                        "wait for it to end.")
+        raise LoopError(f"{SLOT_BUSY}; wait for it to end.")
     task = retained_task(root, task_name)
     if chosen["seed"] in task["evaluation_seeds"]:
         raise LoopError(f"seed {chosen['seed']} is one of the task's evaluation seeds; "
@@ -739,7 +761,7 @@ def supervise(run_dir: Path) -> int:
         return 2
     machine = _try_lock(machine_lock_path())
     if machine is None:
-        end("refused", "another training run holds this machine's one training slot.")
+        end("refused", f"{SLOT_BUSY}.")
         return 3
 
     told: list[int] = []

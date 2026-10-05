@@ -125,6 +125,7 @@ from .evaluate import (
     retained_inputs,
     run_evaluation,
 )
+from .loop import SLOT_BUSY, LoopError, lock_held, machine_lock_path, machine_slot
 from .review_record import manifest_identity, read_accepted_identity, write_run_record
 from .review_server import serve as serve_review, serve_projects
 from .smoke import (
@@ -1537,6 +1538,11 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
             report.error = "--detach needs --out inside the project for its run receipt."
             return EXIT_USAGE
     python = None if args.remote else resolve_trainer_python(args.trainer_python or None)
+    if not args.remote and not args.dry_run and lock_held(machine_lock_path()):
+        # Refused before the rebuild; the slot itself is taken around the
+        # trainer below (ADR-543).
+        report.error = f"{SLOT_BUSY}; wait for it to end."
+        return EXIT_REJECTED
 
     with _engine_session(args, report) as (engine, client):
         _progress(" · rebuild")
@@ -1639,7 +1645,17 @@ def command_train(args: argparse.Namespace, report: RunReport) -> int:
         f" · train  {task.name}  {args.iterations} it × {args.envs} envs"
         f"  ({where})"
     )
-    report.training = run_trainer(command, timeout=args.timeout)
+    if args.remote:
+        report.training = run_trainer(command, timeout=args.timeout)
+    else:
+        # A local trainer is this machine's one training run while it lives,
+        # the same slot `train_start`'s supervisor holds (ADR-543).
+        try:
+            with machine_slot():
+                report.training = run_trainer(command, timeout=args.timeout)
+        except LoopError as exc:
+            report.error = str(exc)
+            return EXIT_REJECTED
     if args.detach:
         if report.training.get("state") != "pending" or not all(
             report.training.get(key) for key in ("run_id", "target", "remote_dir", "pid")
@@ -2168,6 +2184,11 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     if remote_error:
         report.error = remote_error
         return EXIT_USAGE
+    if not args.remote and not args.complete and lock_held(machine_lock_path()):
+        # Refused before the sweep moves the accepted revision, not at the
+        # train leg after it (ADR-543).
+        report.error = f"{SLOT_BUSY}; wait for it to end."
+        return EXIT_REJECTED
     assignments = _parse_assignments(args.assignments) if args.assignments else {}
     if POLICY_SWITCH in assignments:
         report.error = f"--set {POLICY_SWITCH}: the walk owns the switch; set the change only."

@@ -212,6 +212,25 @@ def test_a_run_is_registered_whole_before_anything_is_launched(project) -> None:
     assert [row["kind"] for row in loop.read_ledger(project)] == ["train_registered"]
 
 
+def test_the_slot_is_one_lock_for_the_supervisor_and_cadex_train(project) -> None:
+    """``machine_slot`` (ADR-543) is the lock ``register`` and ``supervise``
+    read: while ``cadex train`` holds it, ``train_start`` is refused, and
+    a second holder is refused rather than queued."""
+
+    with loop.machine_slot():
+        assert loop.lock_held(loop.machine_lock_path())
+        with pytest.raises(loop.LoopError, match=loop.SLOT_BUSY):
+            with loop.machine_slot():
+                pass
+        with pytest.raises(loop.LoopError, match=loop.SLOT_BUSY):
+            _register(project)
+        assert not (project / "runs" / "r1").exists()
+    assert not loop.lock_held(loop.machine_lock_path())
+    with loop.machine_slot():  # released on the way out, even after a refusal
+        pass
+    _register(project)
+
+
 @pytest.mark.parametrize("overrides, said", [
     ({"budget_s": None}, "budget_s must be a number"),
     ({"budget_s": 0}, "a run with no budget is not started"),

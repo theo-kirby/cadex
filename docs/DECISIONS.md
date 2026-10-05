@@ -34683,3 +34683,56 @@ still one request on the same poll.
 the page.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-543 — `cadex train` takes the machine's training slot, so a walk's train leg does too (2026-10-05, orun3 V2 prerequisite)
+
+**Context.** The machine has one training slot, a `flock` on
+`~/.cache/cadex/training.lock` (ADR-464), and the orun3 charter makes it the
+arbiter: one training run at a time on the 5090, and nothing works around
+it. Only the `train_start` path used it (`loop.register` checks it,
+`loop.supervise` holds it). `cadex walk`'s train leg runs `cadex train`,
+which reaches `train.run_trainer` and never touched the lock
+[rec: forest-jasper-1180]. On 2026-10-05, while the owner's `quad-qdd`
+run held the slot, a `cadex walk` would have started a second trainer on
+the same GPU. That breaks the one-run rule, and it would also have spoilt
+the timing V2's baseline needs.
+
+**Decision.**
+- `loop.machine_slot()` is a context manager over the same lock that
+  `register` and `supervise` use. `cadex train` holds it around a **local**
+  trainer only: not during the rebuild, and not during the `put`.
+- `cadex train` refuses with exit 3 (`another training run holds this
+  machine's one training slot; wait for it to end.`) before its rebuild
+  when the slot is held. `cadex walk` refuses the same way before its first
+  leg, so an iterate walk's sweep never moves the accepted revision for a
+  run that cannot train.
+- `--remote`, `train --dry-run` and `walk --complete` take no slot. They do
+  not train on this machine.
+- The CLI suite gives every test a slot of its own (`conftest.py`'s
+  autouse `private_training_slot`). The suite can then run beside a live
+  training job without being refused by it, and without holding the slot
+  against it.
+
+**Deviation from the critic's brief.** The brief asked for the walk's
+train leg to go through `loop.register`/`launch`/`supervise`. That was not
+done. Registration trains the task retained at the accepted revision, under
+`runs/<run>/` with its own budget and reason, and refuses an evaluation
+seed. The walk's train leg trains the bundle its own rebuild exports, into
+`--out/train`, after an optional sweep, and lands its own record and
+`PROGRESS.md` row. Re-hosting it would change the walk's artifacts and its
+tests, and that is a direction change, not a lock fix. The lock is the
+rule the charter states, and it is now shared. A checkpoint watcher will
+need two call sites, `supervise`'s poll loop and `run_trainer`'s wait. It
+will still be one implementation, because `run_trainer` can wait by
+polling.
+
+**Test.**
+- `test_walk.py::test_a_local_walk_or_train_is_refused_while_another_run_holds_the_slot`:
+  with a fake lock held, `walk --set` runs no leg, `train` is refused, and
+  a `--remote` walk still runs. After release, the walk runs.
+- `test_loop.py::test_the_slot_is_one_lock_for_the_supervisor_and_cadex_train`:
+  inside `machine_slot()`, `register` is refused, a second holder is
+  refused, and the slot is released on the way out.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
