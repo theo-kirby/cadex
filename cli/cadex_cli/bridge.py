@@ -20,6 +20,7 @@ import base64
 from dataclasses import dataclass, field
 import json
 from pathlib import Path
+import sys
 import tempfile
 import threading
 import time
@@ -413,6 +414,14 @@ class Bridge:
             self.project_root, run=str(arguments.get("run") or ""),
             budget_s=arguments.get("budget_s"), reason=str(arguments.get("reason") or ""),
             settings=settings, task_name=str(arguments.get("task") or ""))
+        # Freeze the model the run trains, as `cadex walk` does, so the
+        # dashboard can pose its checkpoint rollouts on it. A view that
+        # cannot be kept never stops the run; the page says why.
+        from .review_server import retain_training_view
+        try:
+            retain_training_view(self.project_root, run_dir)
+        except (OSError, ValueError, KeyError) as exc:
+            print(f"train_start: training view not retained: {exc}", file=sys.stderr)
         return self._run_reply("train_start", arguments, loop.launch(run_dir))
 
     def _train_status(self, arguments: dict[str, Any]) -> dict[str, Any]:

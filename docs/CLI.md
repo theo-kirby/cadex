@@ -495,7 +495,10 @@ then `ok`, `failed` (with the leg and its error) or `pending` (a detached
 train leg launched, nothing collected) when it ends. Each write replaces
 the file. Before training starts, the walk freezes the accepted assembled view,
 parameter values/specs and project documents in `training-view.json`,
-`training-view/*.stl` and `project-docs/` (ADR-291). Subsequent status writes
+`training-view/*.stl` and `project-docs/` (ADR-291). The agent's `train_start`
+freezes the same view between registering a run and launching it, so a run
+the agent starts poses its checkpoint rollouts on its own model too; a view
+that cannot be kept is reported on stderr and never stops the run. Subsequent status writes
 reuse these documents and specs; design changes do not replace them. Retain
 and copy these files with the entire run directory. If another design is
 accepted between retention and the train leg, training refuses and asks for

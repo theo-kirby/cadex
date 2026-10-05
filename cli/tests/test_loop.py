@@ -432,6 +432,11 @@ def test_the_agent_starts_watches_and_stops_runs_through_the_bridge(project, mon
         waited = _payload(bridge.call("train_status", {"run": "r1", "wait_s": 30}))
         assert waited["state"] == "finished" and waited["registered_for"] == REASON
         assert Path(waited["policy"]["path"]).is_file()
+        # The model it trained is frozen beside it, as a walk's is, so the
+        # dashboard can pose its checkpoint rollouts on it.
+        view = json.loads((project / "runs" / "r1" / "training-view.json").read_text())
+        assert view["schema"] == "cadex-training-view-v1"
+        assert view["identity"]["revision"] == REVISION
         assert bridge.state.calls[-1].summary.startswith("r1  finished  iteration 3 of 3")
 
         monkeypatch.setenv("FAKE_TRAIN_MODE", "slow")
