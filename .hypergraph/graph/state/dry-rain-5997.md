@@ -7,34 +7,29 @@ parents:
 - nimble-pine-0740
 summary: ''
 ---
-Status: open
+Status: working
 
 ## Current
 
-Open orun3 charter criterion: **V2. Each checkpoint becomes motion in the viewport.** [rec: golden-snow-6627]
+Charter criterion for run orun3: **V2. Each checkpoint becomes motion in the viewport.** Each checkpoint landing in a training leg is rolled out through the engine while training continues, with the cost (< 5% iteration time) and disk measured. The viewport loops the newest one labelled with iteration and reward. A scrubber selects older ones and follows the newest unless pinned. A failed rollout shows its reason and never stops training. A browser test against a real engine shows a second checkpoint replacing the first while training runs. Traces are uncommitted run outputs [rec: golden-snow-6627]. The human owns the checkbox.
 
-- When a new checkpoint lands during a `cadex walk` training leg, the CLI rolls it out through the engine. It writes a `cadex-assembly-simulation-trace-v1` trace beside the checkpoint, tagged with the checkpoint's iteration, reward and sha256. [rec: golden-snow-6627]
-- The rollout runs while training continues. **Measured:** mean iteration wall time with rollouts on against off, on the same task and seed. The cost is under 5%, or an ADR explains why the owner should accept more. [rec: golden-snow-6627]
-- The server serves each checkpoint's playback through the existing `trace_playback`. The viewport loops the newest one, labelled with its iteration and reward. A scrubber selects older ones, and the view moves to a newer checkpoint automatically unless the owner has picked one. [rec: golden-snow-6627]
-- A browser test against a real engine shows a second checkpoint's playback replacing the first one while the run is still training. [rec: golden-snow-6627]
-- A failed rollout is shown with its reason. It never stops or slows training. [rec: golden-snow-6627]
-- Traces are run outputs. They are never committed, and their disk cost per checkpoint is measured. [rec: golden-snow-6627]
+**Met on evidence; the live 5090 walk in a browser is W1's** [rec: forest-mist-3382]. Reconcile judgement: status `working`, because every V2 bullet now has evidence, following the precedent V1 set (`vast-ivy-6277`).
 
-**Progress** [rec: forest-jasper-1180] [rec: nimble-moss-4028]:
+- **Write half (ADR-544, commit `025417e7`).** There is one watcher, `cli/cadex_cli/checkpoints.py` `CheckpointRollouts`, polled from `loop.supervise` and from `train.run_trainer` via an `on_poll` hook, so `cadex train` and `cadex walk`'s train leg both use it. `checkpoint_runner.py` runs on the engine interpreter, on the CPU, `nice`d, one checkpoint at a time, newest first. It writes `<out>.<tag>.rollout-trace.json` (`cadex-assembly-simulation-trace-v1` plus a `checkpoint` block: file, tag, iteration, reward_per_step, sha256), or `<out>.<tag>.rollout-failed.json` with the reason. `cadex train`/`walk` gain `--checkpoint-every N`. `test_checkpoint_rollouts.py` has 7 real-engine tests on a committed biped fixture [rec: snowy-water-3502].
+- **Cost: none measurable.** Measured on the 5090 with 60 iterations, 256 envs and seed 7, run in the order off/on/off/on. The clean pair has median 0.9170 s/it off and 0.9169 on, a mean difference of +0.08%. The first pair (warm-up) is median +0.11%. The runs went through `run_trainer` under `machine_slot()` on a `/tmp` copy of orun3-biped's `reed_walk` bundle, not as a `cadex walk` leg, so nothing was written into the project [rec: snowy-water-3502].
+- **Disk:** 38.7–329.5 KB per trace (it follows episode length), 224.7 KB mean, 2.47 MB for 11 checkpoints [rec: snowy-water-3502].
+- **Page half (ADR-545, commit `802b265e`).** `/api/project` carries `stage.checkpoints`, and `/api/playback/checkpoint/<run>/<stem>` serves through `trace_playback`. The 3D viewport loops the newest checkpoint on the run's frozen model, labelled with iteration and reward. A scrubber pins an older checkpoint and follows the newest at its right end. A failed rollout shows its reason. A Chromium test against the real engine shows `walk.000040` replacing `walk.000020` while a stepped trainer runs [rec: forest-mist-3382].
 
-- **Baseline unmeasured.** Two attempts found the 5090 slot (`~/.cache/cadex/training.lock`) held by the owner's `quad-qdd/runs/walk-r25`. The refusal receipt is kept, and `runs/baseline-probe` was never created [rec: forest-jasper-1180] [rec: nimble-moss-4028].
-- Fixture ready: `~/cadex-projects/orun3-biped` is an untouched `cp -a` of `ot5-biped`. `loop.retained_task` resolves `reed_walk` at revision `0596013572c6…` with `evaluation_seeds: []`, so seed 7 is legal. Planned settings: 120 iterations, `checkpoint_every` 10, timing from `progress.json` rewrite timestamps [rec: forest-jasper-1180].
-- The walk's train leg previously bypassed the machine lock [rec: forest-jasper-1180]. It is now fixed (ADR-543, commit `0c1b9cb8`). `cadex train` holds the slot around a local trainer, and `cadex walk` refuses before its first leg while the slot is held, so a walk leg can host the baseline without sharing the 5090. Tests use private slots, so the CLI suite neither refuses on nor holds the owner's run [rec: nimble-moss-4028].
-- **Watcher design constraint:** one implementation with two call sites: `loop.supervise`'s 0.25 s poll loop (`loop.py:712`), and `train.run_trainer` (`train.py:483`). `run_trainer` currently blocks in `process.wait(timeout)` and must wait by polling [rec: forest-jasper-1180] [rec: nimble-moss-4028].
-
-Declared target: `gap-v2-each-checkpoint-becomes-motion`. This node becomes working only with measured evidence that the criterion is met. The owner ticks the charter box [rec: golden-snow-6627].
+**Open ends** [rec: snowy-water-3502]: a few iterations stall for tens of seconds whether rollouts are on or off, which pushes the mean to about 10× the median, and which iterations stall was not recorded. Same-seed GPU runs give different policy digests. Checkpoints synced from a remote run are not rolled out. The playback route is to enter P1's pinned API contract.
 
 ## Negative knowledge
 
-- [scope: cadex walk / cadex train before ADR-543 | confidence: high | evidence: forest-jasper-1180, nimble-moss-4028] Neither `walk.py` nor `train.py` took the machine lock. Only MCP `train_start` did, via `loop.register` → `loop.launch` → supervise. ADR-543 closes the gap; before timing anything on a training path, confirm that it holds the slot.
+- [scope: cadex walk / cadex train before ADR-543 | confidence: high | evidence: forest-jasper-1180, nimble-moss-4028] Neither `walk.py` nor `train.py` took the machine lock. Only MCP `train_start` did. ADR-543 closes the gap. Before timing anything on a training path, confirm that it holds the slot.
 
 ## Provenance
 
 - golden-snow-6627 — operator-declared orun3 charter gap (gap-v2-each-checkpoint-becomes-motion)
-- forest-jasper-1180 — baseline blocked by the owner's walk-r25 holding the slot; orun3-biped fixture prepared; found the walk train leg bypassed the lock
-- nimble-moss-4028 — cadex train/walk take the machine training slot (ADR-543); baseline still blocked; watcher call sites named
+- forest-jasper-1180 — baseline blocked by the owner's walk-r25 holding the slot; orun3-biped fixture prepared; found that the walk train leg bypassed the lock
+- nimble-moss-4028 — cadex train/walk take the machine training slot (ADR-543); watcher call sites named
+- snowy-water-3502 — ADR-544 watcher in both call sites; 5090 on/off cost not measurable; 224.7 KB/trace
+- forest-mist-3382 — ADR-545 page half: playback route, viewport loop, scrubber, failure reason, Chromium test against the real engine
