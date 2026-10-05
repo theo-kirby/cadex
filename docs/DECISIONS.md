@@ -35330,3 +35330,28 @@ rollout loops, with the earlier checkpoint still pickable. Without this change t
 times out waiting for the `final policy` label.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-555 — The evaluating line names the agent's `evaluate` call, never an evaluation directory's id (2026-10-05, orun3 remaining defect 2)
+
+**Context.** During the W1 `evaluate` on `orun3-biped` (`soft-comet-8840`), the overlay's
+stage line read "evaluation dc0af1158165-d3a4… is running · 1 s", not ADR-553's "the agent's
+evaluate call is running". `project_stage` checked the evaluation directory first, so once the
+evaluation wrote its directory part-way through the call, the directory's reason won, and its
+`since` reset the clock to the directory's last write. `docs/probes/orun3/REPORT.md` §5 listed
+it as remaining defect 2: the stage was right, but the line named an internal id the owner
+cannot act on.
+
+**Decision.** An in-flight `evaluate` call in the activity log (ADR-553) is checked first: its
+reason and its start as `since`, for the whole call. An evaluation directory without its report
+is still `evaluating` when no such call is in flight (a `cadex walk` or `cadex evaluate` run
+from a shell), and its reason is "an evaluation is running", with no id. The page is unchanged;
+no route, key or poll is added.
+
+**Test.** `cli/tests/test_review_overlay.py`: a Chromium driven through `browser.py` watches an
+`evaluate` call in flight for 65 s read "the agent's evaluate call is running · 1 min". The
+evaluation's directory then appears, and the line stays the same over two polls, with no id. When
+the call returns, the line reads "an evaluation is running" while the directory is fresh. Without
+this change the test fails on the line naming `dc0af1158165-…`. The server-side test now pins the
+directory-only reason exactly.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).

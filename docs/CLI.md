@@ -1473,7 +1473,10 @@ the trainer's `eta_s`, `wall_time_s`, `best_iteration`,
 report was written in the last 120 s, `training` when the run read is
 `running`/`pending` with telemetry `starting`, `training` or `stale`,
 `failed` when the newest run failed and no revision was accepted after it,
-`designing` within 600 s of an accepted revision, else `idle`), `reason`,
+`designing` within 600 s of an accepted revision, else `idle`), `reason`
+(for `evaluating`, "the agent's evaluate call is running" while a `cadex mcp`
+`evaluate` is in flight, which wins, else "an evaluation is running"; never
+the evaluation directory's name, ADR-555),
 `since`, `run` (the newest run training, else the run a fresh visit opens),
 `runs` (how many), and `training`: that run's telemetry with `spark`, its
 reward and loss histories cut to at most 64 points each, or `null` when no

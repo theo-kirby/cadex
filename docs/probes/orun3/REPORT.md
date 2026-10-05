@@ -122,6 +122,7 @@ required.
 | ADR-552 | the HTTP API is one table that the router dispatches from and `docs/CLI.md` lists |
 | ADR-553 | a `cadex mcp` call is logged in flight as it starts, so a running `evaluate` reads as evaluating |
 | ADR-554 | a run's model is re-read when the walk lands its export or rollout, so a page left open adds the `final policy` stop |
+| ADR-555 | the evaluating line names the agent's `evaluate` call, never an evaluation directory's id |
 
 ## 5. Remaining defects
 
@@ -139,8 +140,12 @@ required.
    · 1 s", not ADR-553's "the agent's evaluate call is running"
    (`soft-comet-8840`). The directory-based reason wins once the evaluation
    directory exists. It was sampled only once, at 1 s, in the 74 s call.
-   The stage was right; the reason names an internal id the owner cannot
-   act on.
+   The stage was right; the reason named an internal id the owner cannot
+   act on. **Fixed after this report by ADR-555:** an in-flight `evaluate`
+   call now wins over the directory, for the whole call, and a directory
+   alone reads "an evaluation is running" with no id;
+   `test_review_overlay.py` watches the directory appear mid-call with the
+   line unchanged. Not yet re-walked on `orun3-biped`.
 3. **Progress stalls for 37–39 s before each checkpoint.** Before each
    checkpoint in the W1 walk (at iterations 39, 59, 79 and 99), the
    overlay read "no update 37–39 s" (`soft-comet-8840`). This matches the

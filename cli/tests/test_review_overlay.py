@@ -152,7 +152,7 @@ def test_an_evaluation_without_its_report_is_the_stage_while_it_writes(tmp_path)
     trace = directory / "seed-1101-trace.json"
     trace.write_text("{}")
     stage = _stage(root)
-    assert stage["state"] == "evaluating" and "bbbbbbbbbbbb-cccccccccccc" in stage["reason"]
+    assert stage["state"] == "evaluating" and stage["reason"] == "an evaluation is running"
     # Abandoned: nothing written inside the window.
     old = time.time() - EVALUATING_WINDOW_S - 30
     for path in (trace, directory):
@@ -391,6 +391,41 @@ def test_an_in_flight_evaluate_reads_evaluating_and_running_never_idle(tmp_path,
         assert done["overlay"]["stage"] != "evaluating"
         assert done["line"] == "evaluate · just now"
         assert [outcome for outcome, _ in done["items"]] == ["ok", "ok"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
+def test_the_evaluate_call_names_the_stage_once_its_directory_exists(tmp_path, browser) -> None:
+    """W1's ``evaluate`` wrote its evaluation directory part-way through the
+    call, and the line then named that directory's id. The agent's call wins,
+    and a directory alone reads without its id (ADR-555)."""
+
+    root = _training_project(tmp_path)
+    _biped_progress(root, 239, state="done")
+    _rewrite_record(root / "runs" / RUN, status="ok")
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        call = begin_activity(root, "evaluate", {}, now=time.time() - 65)
+        page.wait_for("document.getElementById('overlay').dataset.stage === 'evaluating'", timeout=10)
+        assert page.evaluate(OVERLAY)["line"] == "the agent's evaluate call is running · 1 min"
+        # The evaluation's own directory appears; the call is still in flight.
+        directory = root / "evaluations" / "dc0af1158165-d3a4c0ffee00"
+        directory.mkdir(parents=True)
+        (directory / "seed-1101-trace.json").write_text("{}")
+        assert _json(server.url + "api/project")["stage"]["reason"] == "the agent's evaluate call is running"
+        time.sleep(5)  # two of the page's polls with the directory on disk
+        during = page.evaluate(OVERLAY)
+        assert during["stage"] == "evaluating"
+        assert during["line"] == "the agent's evaluate call is running · 1 min"
+        assert "dc0af1158165" not in during["line"]
+        # The call returns while the directory is still fresh: it alone reads without its id.
+        append_activity(root, "evaluate", {}, ok=True, detail="evaluate: pass", ms=66000.0, call=call)
+        page.wait_for("document.getElementById('overlay-line').textContent.indexOf('an evaluation is running') === 0",
+                      timeout=10)
+        assert "dc0af1158165" not in page.evaluate(OVERLAY)["line"]
     finally:
         server.shutdown()
         server.server_close()

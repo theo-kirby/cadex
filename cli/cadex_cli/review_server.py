@@ -1962,7 +1962,7 @@ def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
 
     ``state`` is the first that holds of: ``evaluating`` (an evaluation is
     writing, or an ``evaluate`` call through ``cadex mcp`` is in flight in
-    ``review["activity"]``, ADR-553), ``training`` (the run the page reads is training, or its
+    ``review["activity"]``, ADR-553; the call's reason wins, ADR-555), ``training`` (the run the page reads is training, or its
     telemetry has gone quiet -- ``stale``), ``failed`` (the newest run failed
     and no revision was accepted after it), ``designing`` (a revision was
     accepted inside :data:`DESIGNING_WINDOW_S`), else ``idle``. ``since`` is
@@ -1993,11 +1993,12 @@ def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
     evaluating = _evaluation_running(root, now)
     calling = _evaluate_in_flight(review.get("activity") or {})
     recorded_at = _stamp(record.get("recorded_at")) if record else None
-    if evaluating:
-        stage.update(state="evaluating", reason=f"evaluation {evaluating[0]} is running",
-                     since=_iso(evaluating[1]))
-    elif calling:
+    # The agent's call names what the owner can act on and started first, so
+    # it wins; a directory's name is an internal id and never shown (ADR-555).
+    if calling:
         stage.update(state="evaluating", reason="the agent's evaluate call is running", since=calling)
+    elif evaluating:
+        stage.update(state="evaluating", reason="an evaluation is running", since=_iso(evaluating[1]))
     elif record is not None and record.get("status") in ("running", "pending") and training \
             and training["state"] in ("starting", "training", "stale"):
         stage.update(state="training", reason=training["reason"] if training["state"] == "stale" else "",
