@@ -91,6 +91,27 @@
     </div>
     <div class="editor-body" id="model">
       <div id="model-status" data-state="empty">no model loaded</div>
+      <!-- What the project is doing, and how training is going (ADR-542): read from /api/project's stage on the page's poll. -->
+      <aside id="overlay" data-stage="idle" data-collapsed="false" aria-label="Project stage">
+        <button id="overlay-toggle" type="button" aria-expanded="true" aria-controls="overlay-detail" title="Show or hide the detail">
+          <span id="overlay-stage" class="chip">idle</span>
+          <span id="overlay-line"></span>
+        </button>
+        <div id="overlay-detail">
+          <div id="overlay-run" hidden></div>
+          <dl id="overlay-stats" hidden>
+            <div><dt>Reward/step</dt><dd id="overlay-reward-now">—</dd></div>
+            <div><dt>Best</dt><dd id="overlay-best">—</dd></div>
+            <div><dt>Loss</dt><dd id="overlay-loss-now">—</dd></div>
+            <div><dt>ETA</dt><dd id="overlay-eta">—</dd></div>
+          </dl>
+          <div class="sparks" id="overlay-sparks" hidden>
+            <figure><figcaption>reward</figcaption><svg id="overlay-reward" viewBox="0 0 100 24" preserveAspectRatio="none" aria-label="Reward per step by iteration"><polyline/></svg></figure>
+            <figure><figcaption>loss</figcaption><svg id="overlay-loss" viewBox="0 0 100 24" preserveAspectRatio="none" aria-label="Loss by iteration"><polyline/></svg></figure>
+          </div>
+          <p id="overlay-warning" hidden></p>
+        </div>
+      </aside>
       <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas></div>
       <!-- A run's rollout trace plays here (orun2 D2.5); nothing is simulated in the page. -->
       <div id="playback" class="timeline" hidden>

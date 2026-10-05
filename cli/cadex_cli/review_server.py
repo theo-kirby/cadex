@@ -1297,13 +1297,34 @@ def tessellation_to_stl(sidecar: Mapping[str, Any], data: bytes) -> bytes:
 HISTORY_KEYS = ("curve", "loss_curve", "episode_steps_curve")
 
 
-def _telemetry_summary(result: dict[str, Any], reported: int) -> dict[str, Any]:
+#: The most points a sparkline in the stage overlay carries (ADR-542).
+SPARK_POINTS = 64
+#: The histories the stage overlay draws as sparklines.
+SPARK_KEYS = ("curve", "loss_curve")
+
+
+def _spark(points: list[list[float]], limit: int = SPARK_POINTS) -> list[list[float]]:
+    """At most ``limit`` evenly spaced points of a history, its last one
+    always kept, each value to five significant figures: the shape of a
+    curve in a sparkline's width, at a cost that never grows."""
+
+    if len(points) > limit:
+        step = (len(points) - 1) / (limit - 1)
+        points = [points[round(i * step)] for i in range(limit)]
+    return [[int(i), float(f"{v:.5g}")] for i, v in points]
+
+
+def _telemetry_summary(result: dict[str, Any], reported: int, *, spark: bool = False) -> dict[str, Any]:
     """The run-list form of a telemetry result (ADR-321): the same state,
     reason and latest metrics, with each history replaced by its sample
     count and the checkpoint list by how many entries it reports. Nothing
     here is hashed and nothing grows with training length, so a poll of the
-    whole run list costs a bounded amount per run however long the history."""
+    whole run list costs a bounded amount per run however long the history.
+    ``spark`` keeps a :data:`SPARK_POINTS` sketch of the reward and loss
+    histories, for the one run the stage overlay reads (ADR-542)."""
 
+    if spark:
+        result["spark"] = {key: _spark(result.get(key) or []) for key in SPARK_KEYS}
     result["samples"] = {key: len(result.pop(key, []) or []) for key in HISTORY_KEYS}
     result.pop("checkpoints", None)
     result["checkpoints_reported"] = reported
@@ -1311,7 +1332,8 @@ def _telemetry_summary(result: dict[str, Any], reported: int) -> dict[str, Any]:
     return result
 
 
-def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = True) -> dict[str, Any]:
+def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = True,
+                       spark: bool = False) -> dict[str, Any]:
     """Observe the run-local trainer snapshot; never infer process success.
 
     ``detail=True`` is the ``/api/run/<name>`` form: full histories (at
@@ -1328,7 +1350,7 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
                               "episode_steps_curve": []}
 
     def finish(value: dict[str, Any], reported: int = 0) -> dict[str, Any]:
-        return value if detail else _telemetry_summary(value, reported)
+        return value if detail else _telemetry_summary(value, reported, spark=spark)
 
     run_ref = resolve_reference(root, f"runs/{record['run']}")
     if run_ref["error"] or not run_ref["exists"]:
@@ -1361,11 +1383,14 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
             result[key] = [[int(i), float(v)] for i, v in points]
             if any(not math.isfinite(v) for i, v in result[key]):
                 raise ValueError("nonfinite history")
-        for key in ("iteration", "total", "reward_per_step", "loss", "episode_steps"):
+        for key in ("iteration", "total", "reward_per_step", "loss", "episode_steps",
+                    "eta_s", "wall_time_s", "best_iteration", "best_reward_per_step"):
             value = data.get(key)
             if value is not None and (not isinstance(value, (int, float)) or not math.isfinite(value)):
                 raise ValueError("invalid metric")
             result[key] = value
+        # The collapse the trainer has detected (ADR-410), as it said it.
+        result["warning"] = str(data.get("warning") or "")[:300]
     except (OSError, TypeError, ValueError, OverflowError):
         return finish({"state": "invalid", "reason": "training telemetry has invalid metrics",
                        "checkpoints": [], "curve": [], "loss_curve": [], "episode_steps_curve": []})
@@ -1386,7 +1411,7 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
     source = _checkpoint_source(root, record)
     result["checkpoint_source"] = source
     if not detail:
-        return _telemetry_summary(result, reported)
+        return _telemetry_summary(result, reported, spark=spark)
     if source["state"] == "resolved":
         bases.append((source["run"], root / source["path"]))
     for item in checkpoints[:512]:
@@ -1650,6 +1675,113 @@ def default_run(review: Mapping[str, Any]) -> str:
     return str(candidates[-1]["run"]) if candidates else "accepted"
 
 
+#: How long after a revision is accepted the project counts as being designed.
+DESIGNING_WINDOW_S = 600
+#: How long an evaluation directory with no report yet, written to that
+#: recently, counts as an evaluation running; past it, it was abandoned.
+EVALUATING_WINDOW_S = 120
+#: Entries of one evaluation directory read to find its newest write.
+EVALUATING_ENTRY_LIMIT = 256
+#: The telemetry fields the stage overlay shows for the run it reads.
+STAGE_TELEMETRY_KEYS = ("state", "reason", "age_s", "iteration", "total", "eta_s", "wall_time_s",
+                        "reward_per_step", "loss", "best_iteration", "best_reward_per_step",
+                        "warning", "spark")
+
+
+def _stamp(value: Any) -> float | None:
+    """An ISO 8601 time as epoch seconds, or ``None``."""
+
+    try:
+        parsed = _datetime.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=_datetime.timezone.utc)
+    return parsed.timestamp()
+
+
+def _iso(stamp: float) -> str:
+    return _datetime.datetime.fromtimestamp(stamp, _datetime.timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _evaluation_running(root: Path, now: float) -> tuple[str, float] | None:
+    """The newest evaluation directory that has no report yet and was
+    written to inside :data:`EVALUATING_WINDOW_S`: an evaluation writes its
+    report last (``evaluate.run_evaluation``), so until then the directory
+    holds only its seeds' traces."""
+
+    directory_name, report_name, _schema, _failing = _evaluation_constants()
+    base = root / directory_name
+    if not base.is_dir() or base.is_symlink():
+        return None
+    newest: tuple[str, float] | None = None
+    for entry in base.iterdir():
+        directory = _evaluation_dir(root, entry.name)
+        if directory is None or (directory / report_name).exists():
+            continue
+        try:
+            stamps = [directory.stat().st_mtime]
+            for i, child in enumerate(directory.iterdir()):
+                if i >= EVALUATING_ENTRY_LIMIT:
+                    break
+                stamps.append(child.stat().st_mtime)
+        except OSError:
+            continue
+        written = max(stamps)
+        if now - written <= EVALUATING_WINDOW_S and (newest is None or written > newest[1]):
+            newest = (entry.name, written)
+    return newest
+
+
+def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
+    """What the project is doing now, for the 3D viewport's overlay (ADR-542).
+
+    ``state`` is the first that holds of: ``evaluating`` (an evaluation is
+    writing), ``training`` (the run the page reads is training, or its
+    telemetry has gone quiet -- ``stale``), ``failed`` (the newest run failed
+    and no revision was accepted after it), ``designing`` (a revision was
+    accepted inside :data:`DESIGNING_WINDOW_S`), else ``idle``. ``since`` is
+    when that state's evidence was written. ``run`` is the newest run
+    training, a quiet one included, else the one :func:`default_run`
+    picks, and ``training`` its telemetry with the
+    reward and loss sparklines, or ``None`` when no run has telemetry.
+    Everything is read from the project directory; nothing is inferred
+    about a process the files do not describe.
+    """
+
+    now = _datetime.datetime.now(_datetime.timezone.utc).timestamp()
+    runs = list(review.get("runs") or [])
+    trail = list(review.get("revisions") or [])
+    accepted_at = _stamp(trail[0].get("saved_at")) if trail else None
+    # The run training now, a quiet one included; else the one a fresh visit opens.
+    active = [run for run in runs if run.get("status") in ("running", "pending")
+              and (run.get("telemetry") or {}).get("state") in ("starting", "training", "stale")]
+    name = str(active[-1]["run"]) if active else default_run(review)
+    record = next((run for run in runs if run.get("run") == name), None)
+    training = None
+    if record is not None:
+        telemetry = training_telemetry(root, record, detail=False, spark=True)
+        if telemetry.get("state") not in ("missing", None):
+            training = {key: telemetry.get(key) for key in STAGE_TELEMETRY_KEYS}
+    stage: dict[str, Any] = {"state": "idle", "reason": "", "since": _iso(accepted_at) if accepted_at else None}
+    evaluating = _evaluation_running(root, now)
+    recorded_at = _stamp(record.get("recorded_at")) if record else None
+    if evaluating:
+        stage.update(state="evaluating", reason=f"evaluation {evaluating[0]} is running",
+                     since=_iso(evaluating[1]))
+    elif record is not None and record.get("status") in ("running", "pending") and training \
+            and training["state"] in ("starting", "training", "stale"):
+        stage.update(state="training", reason=training["reason"] if training["state"] == "stale" else "",
+                     since=_iso(recorded_at) if recorded_at else None)
+    elif record is not None and (record.get("status") == "failed" or (training or {}).get("state") == "failed") \
+            and (accepted_at is None or (recorded_at or 0) >= accepted_at):
+        stage.update(state="failed", reason=str(record.get("error") or (training or {}).get("reason") or "the run failed"),
+                     since=_iso(recorded_at) if recorded_at else None)
+    elif accepted_at is not None and now - accepted_at <= DESIGNING_WINDOW_S:
+        stage.update(state="designing", reason=f"revision {trail[0].get('ordinal')} accepted")
+    return {**stage, "run": None if record is None else name, "runs": len(runs), "training": training}
+
+
 class ReviewProject:
     """What the server knows how to serve for one project, resolved per request.
 
@@ -1675,6 +1807,7 @@ class ReviewProject:
         review["presentation"] = presentation(self.root, review["accepted"])
         review["evaluations"] = evaluations(self.root, review["accepted"])
         review["revisions"] = revision_trail(self.root)
+        review["stage"] = project_stage(self.root, review)
         review["exports"] = export_listing(self.root)
         review["sections"] = section_listing(self.root)
         review["drawings"] = blueprint_listing(self.root)

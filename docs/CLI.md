@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -1465,7 +1465,19 @@ The cost of that poll is bounded per run, however long the history (ADR-321):
 reason, latest metrics, the sample count of each history, the number of
 checkpoints reported and the checkpoint-source state — and reads no
 checkpoint bytes; `GET /api/run/<name>` carries the one selected run's
-histories and its digest-verified checkpoint list. The page fetches both on
+histories and its digest-verified checkpoint list. The summary also carries
+the trainer's `eta_s`, `wall_time_s`, `best_iteration`,
+`best_reward_per_step` and `warning` (ADR-542). `GET /api/project`'s
+**`stage`** is what the project is doing, for the 3D viewport's overlay
+(ADR-542): `state` (`evaluating` when an `evaluations/<name>/` without its
+report was written in the last 120 s, `training` when the run read is
+`running`/`pending` with telemetry `starting`, `training` or `stale`,
+`failed` when the newest run failed and no revision was accepted after it,
+`designing` within 600 s of an accepted revision, else `idle`), `reason`,
+`since`, `run` (the newest run training, else the run a fresh visit opens),
+`runs` (how many), and `training`: that run's telemetry with `spark`, its
+reward and loss histories cut to at most 64 points each, or `null` when no
+run has telemetry. It is one bounded block whatever the history. The page fetches both on
 each poll (the list, then the selected run's detail) and renders the panel
 from one response, so iteration and sample counts never come from different
 snapshots; until the detail arrives after a selection the panel says

@@ -4,9 +4,10 @@
 // The app (ADR-534): two editors tiled by layout.js, after Blender's areas,
 // under a menu bar (ADR-539).
 //
-//   3D viewport  the accepted model or a run's, shaded or hairline, and a
-//                run's rollout played back on a timeline -- the whole screen
-//                by default;
+//   3D viewport  the accepted model or a run's, shaded or hairline, a
+//                run's rollout played back on a timeline, and the stage
+//                overlay (what the project is doing, how training is going;
+//                ADR-542) -- the whole screen by default;
 //   2D viewport  the project's drawings, images, documents, evaluation films and training plots,
 //                a split away;
 //   Menu bar     File (the project), Revisions (the trail), View (theme,
@@ -310,6 +311,83 @@
     playing = requestAnimationFrame(step);
   }
 
+  // -- 3D viewport: the stage overlay (ADR-542) ---------------------------------------
+  // What the project is doing and how training is going, from /api/project's
+  // `stage` on the page's own poll. Collapsed or not is this browser's.
+  var overlayCollapsed = readPref('cadex.overlay', ['expanded', 'collapsed'], 'expanded') === 'collapsed';
+  var STAGE_LABELS = { idle: 'idle', designing: 'designing', training: 'training', evaluating: 'evaluating', failed: 'failed' };
+
+  // Text and attributes are written only when they change, so an idle poll adds no nodes.
+  function setText(id, value) { var node = $(id); if (node.textContent !== value) node.textContent = value; return node; }
+  function setHidden(id, hidden) { var node = $(id); if (node.hidden !== hidden) node.hidden = hidden; }
+  function ago(stamp, now) {
+    var t = stamp ? Date.parse(stamp) : NaN;
+    if (isNaN(t)) return '';
+    var s = Math.max(0, (now - t) / 1000);
+    return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago'
+         : s < 86400 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' d ago';
+  }
+  function duration(seconds) {
+    if (seconds == null || !isFinite(seconds)) return '—';
+    var s = Math.round(seconds);
+    return s < 60 ? s + ' s' : s < 3600 ? Math.round(s / 60) + ' min' : (s / 3600).toFixed(1) + ' h';
+  }
+  function spark(id, points) {
+    var line = $(id).querySelector('polyline'), values = (points || []).map(function (p) { return p[1]; });
+    var out = '';
+    if (values.length > 1) {
+      var lo = Math.min.apply(null, values), hi = Math.max.apply(null, values), span = hi - lo || 1;
+      out = values.map(function (v, i) {
+        return (i / (values.length - 1) * 100).toFixed(1) + ',' + (22 - (v - lo) / span * 20).toFixed(1);
+      }).join(' ');
+    }
+    if (line.getAttribute('points') !== out) line.setAttribute('points', out);
+  }
+
+  function renderOverlay() {
+    var review = state.review, stage = review.stage || { state: 'idle', training: null, runs: 0 };
+    var t = stage.training, now = Date.parse(review.served_at) || Date.now();
+    var node = $('overlay'), name = STAGE_LABELS[stage.state] ? stage.state : 'idle';
+    if (node.dataset.stage !== name) node.dataset.stage = name;
+    setText('overlay-stage', STAGE_LABELS[name]);
+    var trail = review.revisions || [], line;
+    if (name === 'training' && t) {
+      line = t.iteration != null && t.iteration >= 0
+        ? 'iteration ' + (t.iteration + 1) + ' / ' + fmt(t.total) + (t.eta_s ? ' · ETA ' + duration(t.eta_s) : '')
+        : 'starting';
+      if (t.state === 'stale') line += ' · no update ' + duration(t.age_s);
+    } else if (name === 'designing') {
+      line = (stage.reason || 'revision accepted') + ' · ' + ago(stage.since, now);
+    } else if (name === 'idle') {
+      line = trail.length ? 'revision ' + trail[0].ordinal + ' accepted ' + ago(trail[0].saved_at, now) : 'nothing accepted yet';
+    } else {
+      line = stage.reason || '';
+    }
+    setText('overlay-line', line).title = line;
+    // The run it reads, named when there is more than one to choose from.
+    setHidden('overlay-run', !(stage.run && stage.runs > 1));
+    setText('overlay-run', stage.run ? 'run ' + stage.run + (t && name !== 'training' ? ' · ' + t.state : '') : '');
+    setHidden('overlay-stats', !t);
+    setHidden('overlay-sparks', !t);
+    var warning = t ? (t.warning || (t.state === 'stale' ? t.reason : '')) : '';
+    setHidden('overlay-warning', !warning);
+    setText('overlay-warning', warning);
+    if (!t) return;
+    setText('overlay-reward-now', fmt(t.reward_per_step));
+    setText('overlay-best', t.best_reward_per_step == null ? '—' : fmt(t.best_reward_per_step) + ' @ ' + (t.best_iteration + 1));
+    setText('overlay-loss-now', fmt(t.loss));
+    setText('overlay-eta', name === 'training' && t.eta_s ? duration(t.eta_s) : '—');
+    spark('overlay-reward', (t.spark || {}).curve);
+    spark('overlay-loss', (t.spark || {}).loss_curve);
+  }
+  function setOverlayCollapsed(collapsed) {
+    overlayCollapsed = !!collapsed;
+    writePref('cadex.overlay', overlayCollapsed ? 'collapsed' : 'expanded');
+    $('overlay').dataset.collapsed = String(overlayCollapsed);
+    $('overlay-toggle').setAttribute('aria-expanded', String(!overlayCollapsed));
+    return overlayCollapsed;
+  }
+
   // -- 2D viewport -------------------------------------------------------------------
   // Everything flat the project has: its drawings, its presentation images,
   // its documents, its evaluations' films, and each run's training curves.
@@ -561,7 +639,7 @@
   function render() {
     renderFreshness();
     if (!state.review) return;
-    renderHeader(); renderRevisions(); renderSources(); renderSheetSources();
+    renderHeader(); renderRevisions(); renderOverlay(); renderSources(); renderSheetSources();
   }
 
   // The poll is the project read alone: a model it starts loading is
@@ -616,6 +694,8 @@
         if (button) applyStyle(button.dataset.style);
       });
     });
+    setOverlayCollapsed(overlayCollapsed);
+    $('overlay-toggle').addEventListener('click', function () { setOverlayCollapsed(!overlayCollapsed); });
     $('play-toggle').addEventListener('click', togglePlayback);
     $('play-time').addEventListener('input', function () { stopPlayback(); seek(Number($('play-time').value)); });
 
@@ -660,6 +740,7 @@
     sheets: function () { return sheet.list.map(function (item) { return { key: item.key, group: item.group, kind: item.kind, label: item.label }; }); },
     playback: function () { return playback && { times_s: playback.times_s, t: playT, playing: !!playing }; },
     seek: seek,
+    setOverlayCollapsed: setOverlayCollapsed,
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, ms: lastPoll.ms }; },
     state: function () {
       return { stale: state.stale, error: state.error,

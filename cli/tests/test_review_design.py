@@ -75,6 +75,21 @@ def test_spec_has_every_required_section_and_a_verified_date():
         assert section in text, section
 
 
+def test_every_hook_in_the_hierarchy_table_is_on_the_page():
+    """§2's element hooks are the ones the page carries: an id the table
+    names and the page lacks is a failing test, the overlay's included
+    (ADR-542)."""
+
+    section = SPEC.read_text().split("## 2. Hierarchy", 1)[1].split("## 3. ", 1)[0]
+    rows = [line for line in section.splitlines() if line.startswith("| **")]
+    hooks = {hook for row in rows for cell in re.findall(r"`([^`]+)`", row)
+             for hook in re.findall(r"#([a-z][a-z0-9-]*)", cell)}
+    assert {"overlay", "overlay-toggle", "overlay-line", "overlay-warning", "overlay-reward"} <= hooks
+    page = (STATIC / "index.html").read_text()
+    ids = set(re.findall(r'\bid="([^"]+)"', page))
+    assert hooks <= ids, sorted(hooks - ids)
+
+
 def test_page_background_is_the_environment_scene_background():
     """One palette across chrome and viewport: ``--bg`` is the mat's ``scene.bg``."""
 

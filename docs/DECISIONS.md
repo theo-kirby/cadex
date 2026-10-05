@@ -34626,3 +34626,60 @@ decodes at 512×512 for 7.1 s.
 
 Verified against source: 2026-10-04. Provenance: [Cadex-new] (ADR-061).
 
+
+## ADR-542 — The 3D viewport's stage overlay, the first panel back after ADR-533 (2026-10-05, orun3 V1)
+
+**Context.** ADR-533 cut the page to the model and asked for panels to come back one at a
+time, as the need shows. The owner works in their own agent with the dashboard open beside
+it, and the page's one job is to show what is happening so they know when to step in
+(orun3 charter). The trainer already publishes `runs/<run>/train/progress.json` while it
+runs, but the page showed training only as plots in the 2D viewport, and nothing told the
+reader whether the project was being designed, trained or evaluated.
+
+**Decision.**
+- The 3D viewport gains an **overlay**, top right over the model. It shows:
+  - a stage chip: `idle`, `designing`, `training`, `evaluating` or `failed`;
+  - one line: for training, the iteration out of the total and the ETA;
+  - expanded, the run it reads (named when there are several), reward per step, the best
+    reward and its iteration, loss, ETA, reward and loss sparklines, and the trainer's
+    `warning` (ADR-410) in `--warn`.
+- **The data is one bounded block, `stage`, on `GET /api/project`**, computed by
+  `project_stage` in `review_server.py` from the project directory alone. The rules are in
+  `docs/CLI.md`: an evaluation is running when its directory has no report and was written
+  in the last 120 s, since `evaluate` writes its report last; designing is the 600 s after an
+  accepted revision. `stage.training` is the read run's telemetry summary with a `spark` of
+  at most 64 points per curve, so its size does not grow with training length or with the
+  number of runs (ADR-321). The per-run summary gains five scalars: `eta_s`, `wall_time_s`,
+  `best_iteration`, `best_reward_per_step` and `warning`.
+- **No new polling loop.** The overlay renders on the page's existing 2 s poll of
+  `/api/project`. It writes text only when it changes, so an idle poll adds no nodes.
+- **Collapsed is a per-browser convenience** (`localStorage` `cadex.overlay`). One tap
+  collapses the overlay to its one line.
+- **No data is shown as absence.** A project with no runs gets one line: `idle`, with its
+  last revision. A run without telemetry shows no numbers. The page stays read-only
+  (ADR-537): the overlay is a view, and its toggle changes only this browser's layout.
+
+**Deviation from the critic's brief.** The brief said "only what `/api/project` already
+carries". The run summary carried no curves, best reward, ETA or warning. The other way to
+get them was fetching `/api/run/<name>` on every poll, which re-hashes every retained
+checkpoint each time. So `/api/project` gained the bounded `stage` block instead. It is
+still one request on the same poll.
+
+**Measured.** At 390 × 844 with touch emulation, the expanded overlay is 280 × 171 px on a
+390 × 724 viewport, which is 16.95% of the viewport against the charter's 25% bound. It is
+40 px tall collapsed.
+
+**Test.** `test_review_overlay.py`:
+- the stage rules for training, stale, warning, failed, then designing after a newer
+  revision, designing turning idle, evaluating and abandoned evaluations, and a project
+  with no runs;
+- a Chromium test rewrites the biped fixture's `progress.json` (`fixtures/
+  biped-progress.json`, the real `ot5-biped` curves) under an open page, and sees the line,
+  the sparkline, the best reward, the ETA and the warning follow on the page's own poll;
+- a Chromium test makes the 390 px measurement and checks that a reload keeps the
+  collapsed state.
+
+`test_review_design.py` now fails when an id in DASHBOARD.md §2's table is missing from
+the page.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).

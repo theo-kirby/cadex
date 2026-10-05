@@ -1,6 +1,6 @@
 # DASHBOARD.md — The dashboard, Cadex's only UI
 
-Verified against source: 2026-10-04. [Cadex-new]
+Verified against source: 2026-10-05. [Cadex-new]
 
 This is the design specification for the dashboard: the pages `cadex app`
 and `cadex review` serve (`cli/cadex_cli/review_server.py` and
@@ -80,11 +80,13 @@ the screen (`#screen[data-mode]`), which `layout.js` tiles with areas
 |---|---|---|---|
 | **Top bar** | — | `#top`, `#home`, `#project-name`, `#accepted-line`, `#freshness[data-state]`, `#theme-toggle` | A link home (hidden under `cadex review`), the project's name, the accepted revision's ordinal and date, **live** or **offline**, and a light/dark toggle. |
 | **3D viewport** | `view3d` | `#view3d-source`, `#view3d-style button[data-style]`, `#model-fit`, `#model`, `#model-status[data-state]`, `#viewer`, `#playback`, `#play-toggle`, `#play-time`, `#play-clock` | The accepted model or a run's, shaded or hairline (§10); orbit by pointer or touch; **Fit**. A run that kept a rollout trace plays it on the timeline. |
+| **Stage overlay** (in the 3D viewport) | — | `#overlay[data-stage][data-collapsed]`, `#overlay-toggle`, `#overlay-stage`, `#overlay-line`, `#overlay-detail`, `#overlay-run`, `#overlay-stats`, `#overlay-reward-now`, `#overlay-best`, `#overlay-loss-now`, `#overlay-eta`, `#overlay-sparks`, `#overlay-reward`, `#overlay-loss`, `#overlay-warning` | What the project is doing and how training is going, top right over the model (ADR-542, the first panel back after ADR-533): a stage chip — **idle**, **designing** (a revision accepted in the last 10 min), **training** (iteration of total and ETA), **evaluating** or **failed** — and one line; expanded, the run it reads (named when there are several), reward per step, the best reward and its iteration, loss, ETA, reward and loss sparklines, and the trainer's collapse `warning` in `--warn`. Read from `/api/project`'s `stage` on the page's own poll. One tap collapses it to one line; collapsed or not is this browser's. At 390 px it is 280 × 171 px expanded, 17% of the viewport, and 40 px tall collapsed. With no runs it is one line, `idle`. |
 | **2D viewport** | `view2d` | `#view2d-source`, `#view2d-fit`, `#sheet-stage[data-kind]`, `#sheet-empty` | The project's drawings and presentation images (pan, zoom, double-click to fit), its documents (markdown, drawn as text only), each evaluation's film, newest first (each filmed seed's rollout video, which plays in place with controls, muted and looping, and its filmstrip and detail sheets as images; ADR-541), and each run's training curves (reward, loss, episode length) as plots. |
 | **Menu bar** | — | `#menubar`; `#file-panel` (`#project-select`, `#project-open`, `#project-all`); `#revision-panel` (`#revision-list li[data-revision][data-ordinal][data-current]`, `#revision-empty`); `#view-panel` (`#theme-choice`, `#style-choice`, `#layout-reset`) | File, Revisions and View in the top bar, each a `<details class="menu">` dropdown (ADR-539): open another project; the revision trail, read-only (§18); the theme, the render style and the layout. One opens at a time; a click outside or Escape closes it, and with one open, hovering another opens that one. On a phone the dropdown spans the screen between the gutters. |
 
 The element ids and `data-*` attributes above are the hooks the CLI suite
-pins.
+pins: `test_review_design.py` fails if an id in this table is missing from
+the page.
 
 ## 3. Type scale
 
