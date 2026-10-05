@@ -1754,6 +1754,54 @@ the same persistent service during Wren GPU training: one unchanged trainer,
 automatic telemetry recovery within five seconds, historical playback and
 download preserved, and a fresh page selecting the active attempt.
 
+### The HTTP API (ADR-552)
+
+The dashboard's data is an HTTP API, and this table is its contract: every
+`GET /api/...` route a project page answers, and the top-level keys of its
+`200` reply. A route is relative to the project page — the root under
+`cadex review`, `p/<name>/` under `cadex app` — except `api/projects`, which
+is `cadex app`'s own. `<run>`, `<name>`, `<ordinal>` and `<stem>` are one
+path segment each. **Always** keys are in every `200` reply; **when they
+apply** keys are in some (an unavailable model has no `meshes`, a playback no
+`frames`, an unreadable run record few of its own). A `run/<run>` reply is
+the run record as `write_run_record` writes it, with the reader's keys added.
+A route that names nothing answers `404` with `{"error": "not found", "what":
+...}`, and so does any `api/` path not in this table. The server answers GET
+and HEAD only (ADR-537).
+
+`ReviewHandler` dispatches from `review_server.API_ROUTES` and nothing else,
+and `review_server.API_RESPONSE_KEYS` holds the keys.
+`cli/tests/test_http_api.py` fails when this table, those two and the replies
+of a fixture biped that reaches every route disagree, in the way
+`docs/INTEGRATION.md`'s op table is held to `OP_ARG_SPECS`.
+
+| Route | Answers | Always | When they apply |
+|---|---|---|---|
+| `GET api/projects` | `cadex app` only: every project under the directory | `schema`, `root`, `projects`, `served_at` | |
+| `GET api/project` | the page's one poll: accepted identity, runs with telemetry summaries, the stage, revisions, evaluations, exports, sections, drawings, budgets, agent activity | `schema`, `project`, `accepted`, `docs`, `decisions`, `runs`, `presentation`, `evaluations`, `revisions`, `stage`, `exports`, `sections`, `drawings`, `budgets`, `activity`, `served_at` | |
+| `GET api/run/<run>` | one run's record with full telemetry and disk use | `run`, `status`, `error`, `artifacts`, `project_artifacts`, `videos`, `legs`, `outcome`, `resolved`, `problems`, `relation`, `telemetry`, `disk` | `schema`, `recorded_at`, `mode`, `walk_seconds`, `model`, `params`, `task`, `training`, `policy`, `rollout`, `project_docs`, `policy_store`, `video_render` |
+| `GET api/policy-origin/<run>` | which run trained the run's policy, and its other playbacks | `schema`, `run`, `policy_sha256`, `origin`, `reason`, `recorded_source_run`, `source_agrees`, `playbacks` | |
+| `GET api/evaluation/<name>` | one evaluation report, and what of its film is on disk | `name`, `relation`, `stamp`, `files`, `report` | |
+| `GET api/model/accepted` | the accepted attempt's model | `schema`, `view`, `run`, `relation`, `revision`, `digest`, `available`, `reason`, `source`, `placement_source`, `components`, `collision`, `contacts`, `exploded`, `appearance`, `measurements` | `meshes` |
+| `GET api/model/revision/<ordinal>` | one retained revision's model, its ghost and changed parts | `view`, `ordinal`, `revision`, `digest`, `available`, `reason`, `components`, `previous`, `changed`, `source` | `compare` |
+| `GET api/model/run/<run>` | the model a run retained | `schema`, `view`, `run`, `relation`, `revision`, `digest`, `available`, `reason`, `source`, `placement_source`, `components`, `collision`, `contacts`, `exploded`, `appearance`, `measurements` | `playback`, `meshes` |
+| `GET api/playback/run/<run>` | the run's rollout trace as playback frames | `available`, `run`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second` |
+| `GET api/playback/checkpoint/<run>/<stem>` | one checkpoint's rollout as playback frames | `available`, `run`, `stem`, `checkpoint`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second` |
+
+The files the replies point to — `mesh/...`, `artifact/...`, `video/...`,
+`doc/...`, `evaluation/...`, `presentation/...`, `export/...`,
+`blueprint/...`, `section/...` — are served only when a reply offers them,
+and are not part of this table.
+
+**What the browser keeps.** The page keeps no project state of its own:
+everything it shows is read from these routes on each poll. What it keeps in
+`localStorage` is four per-viewer conveniences — `cadex.theme` (dark, light
+or system), `cadex.layout.v3` (the screen's areas), `cadex.render` (the
+viewport's render style) and `cadex.overlay` (the stage overlay collapsed or
+not) — and the test fails if the page stores any other key. A picked
+checkpoint, a scrubbed revision or a selected run lasts only as long as the
+page.
+
 ### Exit codes
 
 | Code | Meaning |
@@ -2795,6 +2843,7 @@ Fast, and honest about what it did not run.
 | `test_activity.py` | The activity log (ADR-549): arguments summarised never whole, the 64 KiB cap keeping the newest calls, a torn line skipped; and a real `cadex mcp` process's calls read back from `/api/project` — that half **skips** without a built engine. |
 | `test_agent_guidance.py` | The guidance: the engine's text carried verbatim, nothing left from the CLI's own turns, and `cadex guidance` printing exactly what `cadex mcp` sends. |
 | `test_dashboard_prefix.py` | Portability (ADR-551): no `url` or `mesh` the server builds is root-absolute, the `p/<name>` redirect is relative, and in Chromium the index and a project page, and a `cadex review` page, load and draw through a non-rewriting proxy at `/some/prefix/` with no request leaving it. |
+| `test_http_api.py` | The HTTP API contract (ADR-552): the "HTTP API" table above, `API_ROUTES` and `API_RESPONSE_KEYS` agree; the router dispatches from the table alone; every route's replies on a fixture biped that reaches each shape carry their always-keys and nothing unlisted, and every unknown `api/` path is a `404`; the page stores only the four per-viewer `localStorage` keys. |
 | `test_dashboard_read_only.py` | The read-only dashboard (ADR-537): every former write route refused for every method with the project unchanged, and in Chromium an open page following a `cadex params` run outside it. |
 | `test_client.py` | A real `cadexd`. **Skips** without a built engine. |
 | `test_export.py` | Plan-building directly; conversion against a real engine. |

@@ -50,7 +50,7 @@ import struct
 import sys
 import threading
 import zlib
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
 
@@ -114,6 +114,82 @@ CONTENT_TYPES = {
     ".jsonl": "text/plain; charset=utf-8",
     ".csv": "text/plain; charset=utf-8",
 }
+#: The HTTP API (ADR-552): every ``GET /api/<route>`` a project's page
+#: answers, a ``<name>`` segment standing for one path segment. The router
+#: dispatches from this table and nothing else, ``docs/CLI.md`` §2c lists
+#: the same routes, and ``test_http_api.py`` holds the two together.
+API_ROUTES = (
+    "project",
+    "run/<run>",
+    "policy-origin/<run>",
+    "evaluation/<name>",
+    "model/accepted",
+    "model/revision/<ordinal>",
+    "model/run/<run>",
+    "playback/run/<run>",
+    "playback/checkpoint/<run>/<stem>",
+)
+#: What ``cadex app`` answers at its own root, beside each project's routes.
+APP_API_ROUTES = ("projects",)
+_MODEL_KEYS = frozenset({
+    "schema", "view", "run", "relation", "revision", "digest", "available", "reason", "source",
+    "placement_source", "components", "collision", "contacts", "exploded", "appearance",
+    "measurements"})
+_PLAYBACK_KEYS = frozenset({"reason", "times_s", "frames", "commands", "channels", "duration_s",
+                            "frames_per_second"})
+#: Each route's top-level reply keys: those every 200 reply carries, and
+#: those only some do (an unavailable model has no ``meshes``, a playback
+#: no ``frames``). A ``run/<run>`` reply is the run record as written, so
+#: its optional keys are what ``write_run_record`` writes. Every 404 is
+#: ``{"error": "not found", "what": ...}``.
+API_RESPONSE_KEYS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
+    "projects": (frozenset({"schema", "root", "projects", "served_at"}), frozenset()),
+    "project": (frozenset({
+        "schema", "project", "accepted", "docs", "decisions", "runs", "presentation", "evaluations",
+        "revisions", "stage", "exports", "sections", "drawings", "budgets", "activity", "served_at"}),
+        frozenset()),
+    "run/<run>": (frozenset({
+        "run", "status", "error", "artifacts", "project_artifacts", "videos", "legs", "outcome",
+        "resolved", "problems", "relation", "telemetry", "disk"}),
+        frozenset({"schema", "recorded_at", "mode", "walk_seconds", "model", "params", "task",
+                   "training", "policy", "rollout", "project_docs", "policy_store",
+                   "video_render"})),
+    "policy-origin/<run>": (frozenset({
+        "schema", "run", "policy_sha256", "origin", "reason", "recorded_source_run",
+        "source_agrees", "playbacks"}), frozenset()),
+    "evaluation/<name>": (frozenset({"name", "relation", "stamp", "files", "report"}), frozenset()),
+    "model/accepted": (_MODEL_KEYS, frozenset({"meshes"})),
+    "model/revision/<ordinal>": (frozenset({
+        "view", "ordinal", "revision", "digest", "available", "reason", "components", "previous",
+        "changed", "source"}), frozenset({"compare"})),
+    # A run with no rollout yet at the accepted revision borrows its model.
+    "model/run/<run>": (_MODEL_KEYS, frozenset({"playback", "meshes"})),
+    "playback/run/<run>": (frozenset({"available", "run", "source"}), _PLAYBACK_KEYS),
+    "playback/checkpoint/<run>/<stem>": (frozenset({"available", "run", "stem", "checkpoint", "source"}),
+                                         _PLAYBACK_KEYS),
+}
+_API_HANDLERS = {
+    "project": "project", "run/<run>": "run", "policy-origin/<run>": "policy_origin",
+    "evaluation/<name>": "evaluation", "model/accepted": "model_accepted",
+    "model/revision/<ordinal>": "model_revision", "model/run/<run>": "model_run",
+    "playback/run/<run>": "playback_run",
+    "playback/checkpoint/<run>/<stem>": "playback_checkpoint",
+}
+
+
+def match_api_route(routes: Sequence[str], segments: Sequence[str]) -> tuple[str, list[str]] | None:
+    """The route ``segments`` (the path after ``api/``) names, and its
+    ``<name>`` segments in order; ``None`` when no route matches."""
+
+    for route in routes:
+        pattern = route.split("/")
+        if len(pattern) != len(segments):
+            continue
+        if all(p.startswith("<") or p == s for p, s in zip(pattern, segments)):
+            return route, [s for p, s in zip(pattern, segments) if p.startswith("<")]
+    return None
+
+
 TESSELLATION_SCHEMA = "cadex-tessellation-v1"
 TRACE_SCHEMA = "cadex-assembly-simulation-trace-v1"
 #: Bound on any single file the server will read into memory to serve; a
@@ -2507,7 +2583,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             content_type, file = PROJECTS_STATIC_FILES[head]
             self._send_bytes(file.read_bytes(), content_type)
             return
-        if segments == ["api", "projects"]:
+        if head == "api" and match_api_route(APP_API_ROUTES, rest) is not None:
             self._send_json(projects.listing())
             return
         if head == "p" and rest:
@@ -2534,62 +2610,16 @@ class ReviewHandler(BaseHTTPRequestHandler):
             self._send_bytes(path.read_bytes(), content_type)
             return
         if head == "api":
-            if rest == ["project"]:
-                self._send_json(project.review())
+            matched = match_api_route(API_ROUTES, rest)
+            if matched is None:
+                self._not_found("/".join(segments))
                 return
-            if rest[:1] == ["run"] and len(rest) == 2:
-                record = project.detail(rest[1])
-                if record is None:
-                    self._not_found(f"run {rest[1]!r}")
-                    return
-                self._send_json(record)
+            route, args = matched
+            payload = getattr(self, "_api_" + _API_HANDLERS[route])(project, *args)
+            if payload is None:
+                self._not_found("/".join(segments))
                 return
-            if rest[:1] == ["policy-origin"] and len(rest) == 2:
-                if project.run(rest[1]) is None:
-                    self._not_found(f"run {rest[1]!r}")
-                    return
-                self._send_json(policy_lineage(project.root, rest[1]))
-                return
-            if rest[:1] == ["evaluation"] and len(rest) == 2:
-                detail = evaluation_detail(project.root, rest[1], read_accepted_identity(project.root))
-                if detail is None:
-                    self._not_found(f"evaluation {rest[1]!r}")
-                    return
-                self._send_json(detail)
-                return
-            if rest == ["model", "accepted"]:
-                self._send_json(accepted_model(project.root))
-                return
-            if rest[:2] == ["model", "revision"] and len(rest) == 3:
-                model = revision_model(project.root, int(rest[2])) if rest[2].isdigit() else None
-                if model is None:
-                    self._not_found(f"revision {rest[2]!r}")
-                    return
-                self._send_json(model)
-                return
-            if rest[:2] == ["model", "run"] and len(rest) == 3:
-                record = project.run(rest[2])
-                if record is None:
-                    self._not_found(f"run {rest[2]!r}")
-                    return
-                self._send_json(run_model(project.root, record))
-                return
-            if rest[:2] == ["playback", "run"] and len(rest) == 3:
-                record = project.run(rest[2])
-                if record is None:
-                    self._not_found(f"run {rest[2]!r}")
-                    return
-                self._send_json(run_playback(project.root, record))
-                return
-            if rest[:2] == ["playback", "checkpoint"] and len(rest) == 4:
-                played = (checkpoint_playback(project.root, rest[2], rest[3])
-                          if project.run(rest[2]) is not None else None)
-                if played is None:
-                    self._not_found("/".join(segments))
-                    return
-                self._send_json(played)
-                return
-            self._not_found("/".join(segments))
+            self._send_json(payload)
             return
         path: Path | None = None
         if head == "mesh" and rest[:1] == ["accepted"] and len(rest) == 2 and rest[1].endswith(".stl"):
@@ -2644,6 +2674,40 @@ class ReviewHandler(BaseHTTPRequestHandler):
             self._not_found("/".join(segments))
             return
         self._send_file(path, download=download)
+
+
+    # -- the HTTP API, one method per API_ROUTES entry (ADR-552) -----------
+
+    def _api_project(self, project: ReviewProject) -> dict[str, Any]:
+        return project.review()
+
+    def _api_run(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
+        return project.detail(run)
+
+    def _api_policy_origin(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
+        return policy_lineage(project.root, run) if project.run(run) is not None else None
+
+    def _api_evaluation(self, project: ReviewProject, name: str) -> dict[str, Any] | None:
+        return evaluation_detail(project.root, name, read_accepted_identity(project.root))
+
+    def _api_model_accepted(self, project: ReviewProject) -> dict[str, Any]:
+        return accepted_model(project.root)
+
+    def _api_model_revision(self, project: ReviewProject, ordinal: str) -> dict[str, Any] | None:
+        return revision_model(project.root, int(ordinal)) if ordinal.isdigit() else None
+
+    def _api_model_run(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
+        record = project.run(run)
+        return run_model(project.root, record) if record is not None else None
+
+    def _api_playback_run(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
+        record = project.run(run)
+        return run_playback(project.root, record) if record is not None else None
+
+    def _api_playback_checkpoint(self, project: ReviewProject, run: str,
+                                 stem: str) -> dict[str, Any] | None:
+        return (checkpoint_playback(project.root, run, stem)
+                if project.run(run) is not None else None)
 
 
 class ReviewServer(ThreadingHTTPServer):

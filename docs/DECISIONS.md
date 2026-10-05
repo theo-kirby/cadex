@@ -35201,3 +35201,56 @@ keys listed in `docs/CLI.md` and pinned by a test, `activity` included) is P1's 
 unit.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-552 — The dashboard's HTTP API is a table the router dispatches from and the docs list (2026-10-05, orun3 P1)
+
+**Context.** P1 asks that the dashboard's HTTP API be a documented contract: every
+`GET /api/...` route and its top-level reply keys listed in one place, and a test that
+fails when a route or key changes without that list changing, as `OP_ARG_SPECS` is held to
+`docs/INTEGRATION.md`. `ReviewHandler._route` was a chain of `if rest == [...]` branches,
+and `_route_projects` matched `["api", "projects"]` on its own, so there was nothing to
+enumerate but source text, and no list of keys anywhere.
+
+**Decision.**
+- **One route table.** `review_server.API_ROUTES` lists the nine project routes as
+  patterns (`project`, `run/<run>`, `policy-origin/<run>`, `evaluation/<name>`,
+  `model/accepted`, `model/revision/<ordinal>`, `model/run/<run>`, `playback/run/<run>`,
+  `playback/checkpoint/<run>/<stem>`), `APP_API_ROUTES` the one `cadex app` route
+  (`projects`). Both routers resolve an `api/` path with `match_api_route` against those
+  tables and call one `_api_<name>` method per route; a route that names nothing, and any
+  path not in the table, is the same `404` as before. The replies, their status codes and
+  the URLs are unchanged.
+- **One key table.** `review_server.API_RESPONSE_KEYS` gives each route the keys every
+  `200` reply carries and those only some do (an unavailable model has no `meshes`, a
+  playback without frames has a `reason`). A `run/<run>` reply is the run record as
+  `write_run_record` writes it, with the reader's keys added, so its optional keys are
+  that writer's.
+- **The doc.** `docs/CLI.md` "The HTTP API (ADR-552)" lists the same routes and keys, and
+  says which files the replies point to are served and which are not part of the table.
+- **What the browser keeps** (P1's third bullet, audited here): `localStorage` holds four
+  per-viewer conveniences, `cadex.theme`, `cadex.layout.v3`, `cadex.render` and
+  `cadex.overlay`. There is no `sessionStorage`, IndexedDB or cookie. A picked checkpoint, a
+  scrubbed revision and a selected run last only as long as the page, and everything the
+  page shows is read from the routes on each poll. The doc names the four keys.
+
+**Test.** `cli/tests/test_http_api.py`: the doc table equals `API_ROUTES ∪ APP_API_ROUTES`
+and, row by row, `API_RESPONSE_KEYS`; there is one `_api_` method per route and no other,
+and the only lines of the two routers that mention `"api"` go through `match_api_route`.
+A fixture biped reaches every route in each of its shapes: an accepted model, a walk
+training with a ready and a failed checkpoint, a run with its rollout and one without, a
+run symlinked out of the project, a revision trail whose first revision was not retained,
+and an evaluation. It is served by `cadex review` and by `cadex app`. Every reply carries
+its route's always-keys and no key outside the table; every key the table promises was
+seen in some reply, except `video_render`, which a run record has only when a video
+status was written. Unknown `api/` paths 404. The page's scripts store exactly the four
+keys and use no other browser storage. Three mutations each fail it: an added `/api/project`
+key, a removed doc row, and a fifth `localStorage` key. A key survey of every `200` `/api`
+reply sent during a full `cli/tests` run (222 replies over eight routes) found one key the
+first table missed: a run with no rollout yet at the accepted revision borrows the accepted
+model, `meshes` and all. The table and the fixture now carry that case.
+
+**Not here.** No route, reply, status or URL changes. Non-`api/` file routes (`mesh/…`,
+`artifact/…`, `video/…`, and the rest) are served only when a reply offers them, and stay
+outside the table.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
