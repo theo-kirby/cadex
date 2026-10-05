@@ -35254,3 +35254,51 @@ model, `meshes` and all. The table and the fixture now carry that case.
 outside the table.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-553 — A `cadex mcp` call is logged in flight as it starts, so a running `evaluate` reads as evaluating (2026-10-05, orun3 V4/W1)
+
+**Context.** W1's first attempt on `orun3-biped` (record `solemn-fox-1118`) ran `evaluate`
+through `cadex mcp`. The call took about 68 s, almost all of it the session opening the engine
+and building the design; the evaluation itself took 0.23 s. The stage read `evaluating` only
+from an evaluation directory without its report, which existed for the last ≈0.3 s, so the
+page's 2 s poll never saw it. And ADR-549 logged a call only when it **returned**, so for the
+whole minute the activity line still showed the previous call. ADR-550 named that cost: a call
+running longer than 5 minutes reads as idle until it returns.
+
+**Decision.**
+- **Two lines a call.** `McpSession.call` writes an in-flight line before it opens the engine
+  (`begin_activity`): `outcome: running`, `t` the start, the ADR-549 argument summary, a
+  `call` id (`<pid>-<n>`) and the server's `pid`. When the call returns, or raises, the finished
+  line (ADR-549's fields) carries the same `call`. Both go through the same append, so ADR-549's
+  bound is unchanged: past 64 KiB the file keeps its newest lines within 32 KiB. A call now costs
+  two lines, so the log holds roughly half as many calls (about 75 to 250).
+- **One entry on read.** `read_activity` reads newest first, and a finished line hides its
+  in-flight line, so a call is one entry in `/api/project`'s `activity`. An in-flight line
+  whose `pid` is no longer a process on this machine is read as `lost` ("the cadex mcp process
+  ended before this call returned"), since it will never return; a `pid` that cannot be checked
+  reads as alive.
+- **The stage.** `project_stage` reads `evaluating` from an evaluation directory as before, or
+  else from the newest `evaluate` entry in the activity when it is `running`: reason "the
+  agent's evaluate call is running", `since` its start. A `lost` or finished one does not count.
+  `activity` is now read before `stage`; the reply's keys are unchanged.
+- **The page.** A `running` newest entry sets `#overlay-activity[data-state="running"]` and the
+  line `<tool> <args> · running <how long>` in `--info`, however long it has run, so ADR-550's
+  idle rule now applies only when nothing is in flight. A `lost` one reads `· did not return`
+  in `--bad`. The stage line for `evaluating` adds how long it has run. No new hook, poll or
+  write; the page stays GET-only (ADR-537).
+- **No tool-surface change.** No tool, argument or result field; `test_project_tool_surface.py`
+  is unchanged. An `evaluate` the agent runs as `cadex evaluate` outside `cadex mcp` still reads
+  only through its evaluation directory.
+
+**Test.** `cli/tests/test_activity.py`: a call is `running` until it returns and then one
+finished entry; a gone `pid` reads `lost`; 2,000 two-line calls stay within 64 KiB and read
+back as ten finished entries. Against the real engine, a `cadex mcp` process answers
+`evaluate` on a plate project while `/api/project` is polled over HTTP: the call is seen
+`running` with the stage `evaluating` and `since` its start, then finished under the same
+`call` with the stage moved on. `cli/tests/test_review_overlay.py`: the stage reads an in-flight
+`evaluate` and not a finished, other or lost one; and a Chromium driven through `browser.py`
+shows `evaluating` with `the agent's evaluate call is running · 7 min` and the activity line
+`evaluate · running 7 min` in `--info` for a call started past the idle threshold, then both
+turn back on the page's own poll when it returns.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).

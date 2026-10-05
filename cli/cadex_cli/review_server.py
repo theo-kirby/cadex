@@ -1944,11 +1944,25 @@ def _evaluation_running(root: Path, now: float) -> tuple[str, float] | None:
     return newest
 
 
+def _evaluate_in_flight(activity: Mapping[str, Any]) -> str | None:
+    """When the newest ``evaluate`` call through ``cadex mcp`` started, if it
+    has not returned (ADR-553). Most of such a call is the session building
+    the design, before any evaluation directory exists to read."""
+
+    for entry in activity.get("entries") or []:
+        if entry.get("tool") == "evaluate":
+            if entry.get("outcome") != "running":
+                return None
+            return str(entry.get("t") or "") or None
+    return None
+
+
 def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
     """What the project is doing now, for the 3D viewport's overlay (ADR-542).
 
     ``state`` is the first that holds of: ``evaluating`` (an evaluation is
-    writing), ``training`` (the run the page reads is training, or its
+    writing, or an ``evaluate`` call through ``cadex mcp`` is in flight in
+    ``review["activity"]``, ADR-553), ``training`` (the run the page reads is training, or its
     telemetry has gone quiet -- ``stale``), ``failed`` (the newest run failed
     and no revision was accepted after it), ``designing`` (a revision was
     accepted inside :data:`DESIGNING_WINDOW_S`), else ``idle``. ``since`` is
@@ -1977,10 +1991,13 @@ def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
             training = {key: telemetry.get(key) for key in STAGE_TELEMETRY_KEYS}
     stage: dict[str, Any] = {"state": "idle", "reason": "", "since": _iso(accepted_at) if accepted_at else None}
     evaluating = _evaluation_running(root, now)
+    calling = _evaluate_in_flight(review.get("activity") or {})
     recorded_at = _stamp(record.get("recorded_at")) if record else None
     if evaluating:
         stage.update(state="evaluating", reason=f"evaluation {evaluating[0]} is running",
                      since=_iso(evaluating[1]))
+    elif calling:
+        stage.update(state="evaluating", reason="the agent's evaluate call is running", since=calling)
     elif record is not None and record.get("status") in ("running", "pending") and training \
             and training["state"] in ("starting", "training", "stale"):
         stage.update(state="training", reason=training["reason"] if training["state"] == "stale" else "",
@@ -2022,14 +2039,15 @@ class ReviewProject:
         review["presentation"] = presentation(self.root, review["accepted"])
         review["evaluations"] = evaluations(self.root, review["accepted"])
         review["revisions"] = revision_trail(self.root)
+        # What the agent's tool calls were, newest first (ADR-549); the stage reads
+        # an in-flight evaluate from it (ADR-553).
+        review["activity"] = read_activity(self.root)
         review["stage"] = project_stage(self.root, review)
         review["exports"] = export_listing(self.root)
         review["sections"] = section_listing(self.root)
         review["drawings"] = blueprint_listing(self.root)
         # Read-only; `cadex budgets --set` is how they change (ADR-517).
         review["budgets"] = {"stored": dict(read_agent_state(self.root).budgets)}
-        # What the agent's tool calls were, newest first (ADR-549).
-        review["activity"] = read_activity(self.root)
         review["served_at"] = _now()
         return review
 

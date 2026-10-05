@@ -8,14 +8,23 @@ through, so it is where they are written down: ``review/activity.jsonl`` in
 the project, a directory the CLI already owns and the project's own git
 ignores (ADR-194). Each line is one JSON object:
 
-- ``t`` -- when the call finished, UTC, to the second;
+- ``t`` -- when the call finished, UTC, to the second (when it started, on
+  an in-flight line);
 - ``tool`` -- the tool's name;
 - ``args`` -- a short summary of the arguments, never the arguments: a
   scalar is shown, a long or multi-line string only by its length, a list
   only by its size, an object only by its keys (:func:`summarize_arguments`);
-- ``outcome`` -- ``ok`` or ``error``;
+- ``outcome`` -- ``ok`` or ``error``, or ``running`` on an in-flight line;
 - ``detail`` -- the bridge's one-line summary of the reply, or the error;
-- ``ms`` -- how long the call took.
+- ``ms`` -- how long the call took;
+- ``call`` -- which call the line belongs to.
+
+A call writes two lines (ADR-553): :func:`begin_activity` an in-flight one
+(``outcome: running``, with the server's ``pid``) when it starts, and
+:func:`append_activity` the finished one, with the same ``call``, when it
+returns. Reading newest first, a finished line hides its in-flight line, so
+a call is one entry; an in-flight line whose process has gone is read as
+``lost``, since that call will never return.
 
 Every field is bounded, so a line is too. The file is bounded as well: once
 an append takes it past :data:`MAX_BYTES`, it is rewritten in place
@@ -30,6 +39,7 @@ from __future__ import annotations
 
 import datetime as _datetime
 import json
+import itertools
 import os
 from pathlib import Path
 from typing import Any, Mapping
@@ -43,6 +53,8 @@ READ_LIMIT = 10
 FIELD_CHARS = 160
 #: A string argument longer than this is shown only by its length.
 VALUE_CHARS = 40
+
+_CALLS = itertools.count(1)
 
 
 def activity_path(project_root: Path | str) -> Path:
@@ -94,20 +106,41 @@ def reply_error(reply: Mapping[str, Any]) -> str:
     return ""
 
 
-def append_activity(project_root: Path | str, tool: str, arguments: Mapping[str, Any], *,
-                    ok: bool, detail: str, ms: float, now: float | None = None) -> None:
-    """Append one call's line and keep the file under :data:`MAX_BYTES`. Never raises."""
-
+def _stamp(now: float | None) -> str:
     stamp = _datetime.datetime.fromtimestamp(
         now if now is not None else _datetime.datetime.now().timestamp(), _datetime.timezone.utc)
+    return stamp.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def begin_activity(project_root: Path | str, tool: str, arguments: Mapping[str, Any], *,
+                   now: float | None = None) -> str:
+    """Write a call's in-flight line as it starts, and return the ``call`` that
+    :func:`append_activity` finishes it with (ADR-553). Never raises."""
+
+    call = f"{os.getpid()}-{next(_CALLS)}"
+    _write(project_root, {"t": _stamp(now), "tool": _clip(tool, 64), "args": summarize_arguments(arguments),
+                          "outcome": "running", "detail": "", "ms": 0, "call": call, "pid": os.getpid()})
+    return call
+
+
+def append_activity(project_root: Path | str, tool: str, arguments: Mapping[str, Any], *,
+                    ok: bool, detail: str, ms: float, now: float | None = None, call: str = "") -> None:
+    """Append one call's line and keep the file under :data:`MAX_BYTES`. Never raises."""
+
     entry = {
-        "t": stamp.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "t": _stamp(now),
         "tool": _clip(tool, 64),
         "args": summarize_arguments(arguments),
         "outcome": "ok" if ok else "error",
         "detail": _clip(detail),
         "ms": int(round(max(ms, 0.0))),
     }
+    if call:
+        entry["call"] = _clip(call, 32)
+    _write(project_root, entry)
+
+
+def _write(project_root: Path | str, entry: Mapping[str, Any]) -> None:
     line = (json.dumps(entry, ensure_ascii=False) + "\n").encode("utf-8")
     path = activity_path(project_root)
     try:
@@ -119,6 +152,20 @@ def append_activity(project_root: Path | str, tool: str, arguments: Mapping[str,
             _rotate(path)
     except OSError:
         pass
+
+
+def _alive(pid: Any) -> bool:
+    """Whether ``pid`` is a running process on this machine; unsure reads as alive."""
+
+    if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0:
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+    return True
 
 
 def _rotate(path: Path) -> None:
@@ -149,12 +196,22 @@ def read_activity(project_root: Path | str, limit: int = READ_LIMIT) -> dict[str
     except OSError as exc:
         return {"available": False, "entries": [], "reason": f"the activity log could not be read: {exc}"}
     entries: list[dict[str, Any]] = []
+    finished: set[str] = set()
     for line in reversed(raw.splitlines()):
         try:
             entry = json.loads(line.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):
             continue  # a line still being appended
         if isinstance(entry, dict) and entry.get("tool"):
+            call = entry.get("call")
+            if entry.get("outcome") == "running":
+                if call in finished:
+                    continue  # its finished line, newer, already stands for the call
+                if not _alive(entry.get("pid")):
+                    entry["outcome"] = "lost"
+                    entry["detail"] = "the cadex mcp process ended before this call returned"
+            elif isinstance(call, str):
+                finished.add(call)
             entries.append(entry)
             if len(entries) >= limit:
                 break

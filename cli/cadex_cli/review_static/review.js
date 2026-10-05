@@ -554,6 +554,9 @@
       if (t.state === 'stale') line += ' · no update ' + duration(t.age_s);
     } else if (name === 'designing') {
       line = (stage.reason || 'revision accepted') + ' · ' + ago(stage.since, now);
+    } else if (name === 'evaluating') {
+      var began = Date.parse(stage.since);
+      line = (stage.reason || 'evaluating') + (isNaN(began) ? '' : ' · ' + duration(Math.max(0, (now - began) / 1000)));
     } else if (name === 'idle') {
       line = trail.length ? 'revision ' + trail[0].ordinal + ' accepted ' + ago(trail[0].saved_at, now) : 'nothing accepted yet';
     } else {
@@ -578,10 +581,13 @@
     spark('overlay-loss', (t.spark || {}).loss_curve);
   }
   // The agent's newest call through cadex mcp (ADR-550), timed against the server's
-  // clock. A call is logged when it returns, so quiet past ACTIVITY_IDLE_S reads as idle.
+  // clock. A call still running is logged as such (ADR-553) and is never idle; past
+  // ACTIVITY_IDLE_S with no call in flight, the line reads as idle.
   var ACTIVITY_IDLE_S = 300, ACTIVITY_LIST = 5, activityKey = null;
   function activityText(e) {
-    return e.tool + (e.args ? ' ' + e.args : '') + (e.outcome === 'error' ? ' · failed' + (e.detail ? ': ' + e.detail : '') : '');
+    return e.tool + (e.args ? ' ' + e.args : '')
+      + (e.outcome === 'error' ? ' · failed' + (e.detail ? ': ' + e.detail : '')
+         : e.outcome === 'lost' ? ' · did not return' : e.outcome === 'running' ? ' · running' : '');
   }
   function renderActivity(review, now) {
     var activity = review.activity || {}, entries = activity.available ? activity.entries || [] : [];
@@ -590,10 +596,12 @@
       name = 'none'; line = activity.reason || 'no agent activity logged';
     } else {
       var t = Date.parse(newest.t), quiet = isNaN(t) ? Infinity : (now - t) / 1000;
-      if (quiet > ACTIVITY_IDLE_S) {
+      if (newest.outcome === 'running') {
+        name = 'running'; line = activityText(newest) + ' ' + duration(isFinite(quiet) ? Math.max(0, quiet) : null);
+      } else if (quiet > ACTIVITY_IDLE_S) {
         name = 'idle'; line = 'agent idle · last call ' + newest.tool + ' ' + ago(newest.t, now);
       } else {
-        name = newest.outcome === 'error' ? 'error' : 'active'; line = activityText(newest) + ' · ' + ago(newest.t, now);
+        name = newest.outcome === 'error' || newest.outcome === 'lost' ? 'error' : 'active'; line = activityText(newest) + ' · ' + ago(newest.t, now);
       }
     }
     if (node.dataset.state !== name) node.dataset.state = name;

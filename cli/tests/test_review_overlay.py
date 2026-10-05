@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from cadex_cli.activity import activity_path, append_activity
+from cadex_cli.activity import activity_path, append_activity, begin_activity
 from cadex_cli.review_server import (DESIGNING_WINDOW_S, EVALUATING_WINDOW_S, SPARK_POINTS,
                                      serve)
 from test_review_record import REVISION_B
@@ -160,6 +160,32 @@ def test_an_evaluation_without_its_report_is_the_stage_while_it_writes(tmp_path)
     assert _stage(root)["state"] != "evaluating"
 
 
+def test_an_in_flight_evaluate_call_is_the_stage_until_it_returns(tmp_path):
+    """Most of an ``evaluate`` through ``cadex mcp`` is the session building the
+    design, before any evaluation directory exists; its in-flight activity line
+    is what says it is evaluating (ADR-553)."""
+
+    root = _training_project(tmp_path)
+    _biped_progress(root, 239, state="done")
+    _rewrite_record(root / "runs" / RUN, status="ok")
+    started = time.time() - 40
+    call = begin_activity(root, "evaluate", {}, now=started)
+    stage = _stage(root)
+    assert stage["state"] == "evaluating" and stage["reason"] == "the agent's evaluate call is running"
+    assert stage["since"] == time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(started)))
+    append_activity(root, "evaluate", {}, ok=True, detail="evaluate: fail", ms=41000.0, call=call)
+    assert _stage(root)["state"] != "evaluating"
+    # Another call in flight is not an evaluation.
+    begin_activity(root, "render", {"views": ["iso"]})
+    assert _stage(root)["state"] != "evaluating"
+    # An evaluate whose server is gone will never return: not evaluating.
+    log = activity_path(root)
+    gone = json.loads(log.read_text().splitlines()[-1]) | {"tool": "evaluate", "pid": 2 ** 22 + 7, "call": "x-1"}
+    with open(log, "a") as handle:
+        handle.write(json.dumps(gone) + "\n")
+    assert _stage(root)["state"] != "evaluating"
+
+
 def test_a_project_with_no_runs_has_a_stage_and_no_training(tmp_path):
     from test_review_record import _manifest, _project
     root = _project(tmp_path)
@@ -277,7 +303,8 @@ ACTIVITY = """(function () {
           items: Array.from(document.querySelectorAll('#overlay-activity-list li')).map(function (li) {
             return [li.dataset.outcome, li.textContent]; }),
           line_color: getComputedStyle(q('#overlay-activity-line')).color,
-          bad: getComputedStyle(document.documentElement).getPropertyValue('--bad').trim()};
+          bad: getComputedStyle(document.documentElement).getPropertyValue('--bad').trim(),
+          info: getComputedStyle(document.documentElement).getPropertyValue('--info').trim()};
 })()"""
 
 
@@ -330,6 +357,40 @@ def test_the_overlay_says_what_the_agent_is_doing_and_when_it_went_quiet(tmp_pat
         log.unlink()
         page.wait_for("document.getElementById('overlay-activity').dataset.state === 'none'", timeout=10)
         assert page.evaluate(ACTIVITY)["items"] == []
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
+def test_an_in_flight_evaluate_reads_evaluating_and_running_never_idle(tmp_path, browser) -> None:
+    """ADR-553 on the page: an ``evaluate`` call in flight turns the stage
+    ``evaluating`` and the activity line ``running``, however long it has run;
+    its return turns both back, on the page's own poll."""
+
+    root = _review_project(tmp_path)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        page.evaluate("window.cadexReview.setOverlayCollapsed(false)")
+        append_activity(root, "set_params", {"values": {"foot_w": 38}}, ok=True, detail="", ms=900.0)
+        page.wait_for("document.getElementById('overlay-activity').dataset.state === 'active'", timeout=10)
+        # Started longer ago than the idle threshold, and still running.
+        call = begin_activity(root, "evaluate", {}, now=time.time() - ACTIVITY_IDLE_S - 100)
+        page.wait_for("document.getElementById('overlay').dataset.stage === 'evaluating'", timeout=10)
+        running = page.evaluate(ACTIVITY) | {"overlay": page.evaluate(OVERLAY)}
+        assert running["overlay"]["chip"] == "evaluating"
+        assert running["overlay"]["line"] == "the agent's evaluate call is running · 7 min"
+        assert running["state"] == "running" and running["line"] == "evaluate · running 7 min"
+        assert running["line_color"] == _hex_rgb(running["info"])
+        assert running["items"][0][0] == "running" and running["items"][0][1].endswith("evaluate · running")
+        assert [outcome for outcome, _ in running["items"]] == ["running", "ok"]
+        append_activity(root, "evaluate", {}, ok=True, detail="evaluate: fail", ms=480000.0, call=call)
+        page.wait_for("document.getElementById('overlay-activity').dataset.state === 'active'", timeout=10)
+        done = page.evaluate(ACTIVITY) | {"overlay": page.evaluate(OVERLAY)}
+        assert done["overlay"]["stage"] != "evaluating"
+        assert done["line"] == "evaluate · just now"
+        assert [outcome for outcome, _ in done["items"]] == ["ok", "ok"]
     finally:
         server.shutdown()
         server.server_close()

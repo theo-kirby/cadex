@@ -10,12 +10,15 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import threading
+import time
 import urllib.request
 
 from cadex_cli import activity
 from cadex_cli.activity import (
     activity_path,
     append_activity,
+    begin_activity,
     read_activity,
     reply_error,
     summarize_arguments,
@@ -74,6 +77,112 @@ def test_no_log_and_a_torn_line_are_said_not_filled(tmp_path) -> None:
         handle.write(b'{"t": "2026-')  # an append in flight
     read = read_activity(tmp_path)
     assert [entry["tool"] for entry in read["entries"]] == ["inspect"]
+
+
+def _gone_pid() -> int:
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait()
+    return child.pid
+
+
+def test_a_call_is_in_flight_until_it_returns_and_then_one_entry(tmp_path) -> None:
+    first = begin_activity(tmp_path, "evaluate", {"seeds": [1, 2]}, now=1_800_000_000)
+    running = read_activity(tmp_path)["entries"]
+    assert running == [{"t": "2027-01-15T08:00:00Z", "tool": "evaluate", "args": "seeds=[2]",
+                        "outcome": "running", "detail": "", "ms": 0, "call": first, "pid": os.getpid()}]
+    append_activity(tmp_path, "evaluate", {"seeds": [1, 2]}, ok=True, detail="evaluate: fail",
+                    ms=68000.0, now=1_800_000_068, call=first)
+    second = begin_activity(tmp_path, "render", {}, now=1_800_000_070)
+    assert second != first
+    entries = read_activity(tmp_path)["entries"]
+    assert [(e["tool"], e["outcome"]) for e in entries] == [("render", "running"), ("evaluate", "ok")]
+    assert entries[1]["t"] == "2027-01-15T08:01:08Z" and entries[1]["call"] == first
+    assert len(activity_path(tmp_path).read_text().splitlines()) == 3
+
+
+def test_an_in_flight_line_whose_server_is_gone_reads_lost(tmp_path) -> None:
+    begin_activity(tmp_path, "evaluate", {})
+    log = activity_path(tmp_path)
+    entry = json.loads(log.read_text()) | {"pid": _gone_pid(), "call": "gone-1"}
+    log.write_text(json.dumps(entry) + "\n")
+    lost = read_activity(tmp_path)["entries"][0]
+    assert lost["outcome"] == "lost" and "ended before this call returned" in lost["detail"]
+
+
+def test_two_lines_a_call_stay_inside_the_bound(tmp_path) -> None:
+    for i in range(2000):
+        call = begin_activity(tmp_path, "write_script", {"source": "s" * 500, "i": i},
+                              now=1_800_000_000 + i)
+        append_activity(tmp_path, "write_script", {"source": "s" * 500, "i": i},
+                        ok=True, detail="d" * 400, ms=12.4, now=1_800_000_000 + i, call=call)
+    path = activity_path(tmp_path)
+    assert path.stat().st_size <= activity.MAX_BYTES
+    assert all(len(line) < 600 for line in path.read_bytes().splitlines())
+    entries = read_activity(tmp_path)["entries"]
+    assert len(entries) == activity.READ_LIMIT and {e["outcome"] for e in entries} == {"ok"}
+    assert entries[0]["args"] == "i=1999, source=<500 chars>"
+
+
+def test_a_slow_evaluate_through_cadex_mcp_is_in_flight_on_api_project(engine, tmp_path) -> None:
+    """ADR-553 end to end: while a real ``cadex mcp`` process is still answering
+    an ``evaluate`` -- most of it the session opening the engine and building
+    the design -- ``/api/project`` carries the call as running and the stage as
+    ``evaluating``; once it returns, the same entry is finished."""
+
+    root = tmp_path / "orun3-biped-inflight"
+    cli_dir = Path(__file__).resolve().parents[1]
+    env = {**os.environ, "PYTHONPATH": str(cli_dir) + os.pathsep + os.environ.get("PYTHONPATH", "")}
+
+    def session(calls):
+        mcp = subprocess.Popen(
+            [sys.executable, "-m", "cadex_cli", "mcp", "--project", str(root)],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, env=env)
+        replies = []
+        try:
+            for ident, (name, arguments) in enumerate(calls, start=1):
+                mcp.stdin.write(json.dumps({"jsonrpc": "2.0", "id": ident, "method": "tools/call",
+                                            "params": {"name": name, "arguments": arguments}}) + "\n")
+                mcp.stdin.flush()
+                replies.append(json.loads(mcp.stdout.readline()))
+        finally:
+            mcp.stdin.close()
+            assert mcp.wait(timeout=180) == 0
+            mcp.stdout.close()
+        return replies
+
+    assert session([("write_script", {"source": PLATE})])[0]["result"]["isError"] is False
+    server, _thread = serve(root, "127.0.0.1", 0)
+    seen: list[dict] = []
+    replies: list = []
+    try:
+        caller = threading.Thread(target=lambda: replies.extend(session([("evaluate", {})])))
+        caller.start()
+        while caller.is_alive():
+            with urllib.request.urlopen(server.url.rstrip("/") + "/api/project", timeout=10) as response:
+                project = json.loads(response.read())
+            newest = (project["activity"].get("entries") or [None])[0]
+            if newest and newest["tool"] == "evaluate" and newest["outcome"] == "running":
+                seen.append({"stage": project["stage"], "entry": newest})
+            time.sleep(0.05)
+        caller.join()
+        with urllib.request.urlopen(server.url.rstrip("/") + "/api/project", timeout=10) as response:
+            after = json.loads(response.read())
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert replies and "result" in replies[0], replies
+    assert seen, "the evaluate call was never seen in flight"
+    first = seen[0]
+    assert first["stage"]["state"] == "evaluating"
+    assert first["stage"]["reason"] == "the agent's evaluate call is running"
+    assert first["stage"]["since"] == first["entry"]["t"] and first["entry"]["args"] == ""
+    assert isinstance(first["entry"]["pid"], int) and first["entry"]["call"]
+    entries = after["activity"]["entries"]
+    finished = entries[0]
+    assert finished["tool"] == "evaluate" and finished["outcome"] in ("ok", "error")
+    assert finished["call"] == first["entry"]["call"] and finished["ms"] > 0
+    assert [e["tool"] for e in entries] == ["evaluate", "write_script"]
+    assert after["stage"]["state"] != "evaluating"
 
 
 def test_a_tool_call_through_cadex_mcp_reaches_api_project(engine, tmp_path) -> None:
