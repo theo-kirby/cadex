@@ -220,3 +220,80 @@ def _load(path: Path) -> dict[str, Any] | None:
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
+
+
+#: Where the page fetches one retained part, by the sha256 of its buffer.
+MESH_ROUTE = "/mesh/revision/{sha}.stl"
+
+
+def _drawn(row: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """A retained row's components as the viewer draws them: each with the
+    route of its own part's blob, or none when that part was not kept."""
+
+    parts = row.get("parts") or {}
+    out = []
+    for component in row.get("components") or []:
+        part = parts.get(component.get("output")) or {}
+        sha = part.get("sha256")
+        out.append({**component, "sha256": sha,
+                    "mesh": MESH_ROUTE.format(sha=sha) if sha else None,
+                    "mesh_status": "retained" if sha else "missing"})
+    return out
+
+
+def revision_model(project_root: Path | str, ordinal: int) -> dict[str, Any] | None:
+    """``/api/model/revision/<ordinal>``: one stored revision's retained model,
+    the one before it as a ghost, and which parts changed between them.
+
+    ``None`` when the trail holds no such ordinal. A revision that was not
+    retained is ``available: false`` with :func:`revision_models`' reason
+    and no components. ``previous`` is the stored revision before it,
+    drawn only when it was retained too; ``changed`` names the outputs
+    whose part digest differs from it (or that it did not have), and is
+    ``None`` when there is nothing retained to compare with.
+    """
+
+    rows = revision_models(project_root)
+    index = next((i for i, row in enumerate(rows) if row.get("ordinal") == ordinal), None)
+    if index is None:
+        return None
+    row = rows[index]
+    model: dict[str, Any] = {
+        "view": "revision", "ordinal": row["ordinal"], "revision": row["revision"],
+        "digest": row.get("digest"), "available": bool(row["retained"]),
+        "reason": row.get("reason", ""), "components": [], "previous": None, "changed": None,
+        "source": "the store of retained revision meshes (review/revisions/, ADR-546)",
+    }
+    if not row["retained"]:
+        return model
+    model["components"] = _drawn(row)
+    if index == 0:
+        model["compare"] = "the first stored revision: nothing before it to compare with"
+        return model
+    before = rows[index - 1]
+    model["previous"] = {"ordinal": before["ordinal"], "revision": before["revision"],
+                         "available": bool(before["retained"]), "reason": before.get("reason", ""),
+                         "components": _drawn(before) if before["retained"] else []}
+    if not before["retained"]:
+        model["compare"] = f"revision {before['ordinal']} was not retained: nothing to compare with"
+        return model
+    old = {name: part.get("sha256") for name, part in (before.get("parts") or {}).items()}
+    model["changed"] = sorted(name for name, part in (row.get("parts") or {}).items()
+                              if old.get(name) != part.get("sha256"))
+    model["compare"] = f"against revision {before['ordinal']}"
+    for component in model["components"]:
+        component["changed"] = component.get("output") in model["changed"]
+    return model
+
+
+def revision_mesh_paths(project_root: Path | str, sha: str) -> tuple[Path, Path] | None:
+    """The kept ``.tess.bin`` and ``.tess.json`` for one part digest, or
+    ``None`` unless ``sha`` is a sha256 the store holds."""
+
+    if len(sha) != 64 or any(ch not in "0123456789abcdef" for ch in sha):
+        return None
+    parts = store_root(project_root) / PARTS_DIR
+    blob, meta = parts / f"{sha}.tess.bin", parts / f"{sha}.tess.json"
+    if not blob.is_file() or not meta.is_file() or blob.is_symlink() or meta.is_symlink():
+        return None
+    return blob, meta

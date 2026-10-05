@@ -314,7 +314,9 @@ macOS). Layout:
                                 <sha256>.tess.bin/.tess.json, one per
                                 distinct part buffer; index.json maps each
                                 history ordinal to its part digests and
-                                placements. Bounded by script_history/
+                                placements. Bounded by script_history/.
+                                The dashboard's revision timeline reads it
+                                (ADR-547)
   assets/                       flat .stl/.obj/.ply the script imports by
                                 name (mesh.import_file, part.shape_from_mesh)
                                 plus .cxpolicy trained policies

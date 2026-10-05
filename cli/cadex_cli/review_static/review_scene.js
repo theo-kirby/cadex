@@ -37,7 +37,7 @@ const HAIRLINE = {paper:'#fbfbf9', ink:'#1c1c1c'};
 export function create(canvas) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, draw(){}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, draw(){}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -271,7 +271,7 @@ export function create(canvas) {
     meshes.forEach(m=> {
       model.remove(m); m.geometry.dispose(); m.material.dispose();
     });
-    meshes.clear(); bounds=null;triangleCount=0;picked=null;draw();
+    meshes.clear(); clearGhost(); bounds=null;triangleCount=0;picked=null;draw();
   }
   // The proxies to offer: the manifest's `collision.geoms`, each in its component's frame.
   // They are built against the installed solids and stay hidden until showProxies(true).
@@ -304,6 +304,29 @@ export function create(canvas) {
     return install(entries);
   }
   function setPoses(poses) {meshes.forEach((m,n)=>pose(m,poses[n]));draw();}
+  // A ghost (the revision timeline's previous revision, ADR-547): translucent, unlit and
+  // unshadowed, beside the model rather than in it, so it sizes, picks and outlines nothing
+  // and a hairline diagram leaves it out. setGhost([]) removes it.
+  const ghost=new THREE.Group(); world.add(ghost);
+  function clearGhost() {ghost.children.slice().forEach(m=>{ghost.remove(m);m.geometry.dispose();m.material.dispose();});}
+  function setGhost(entries, colour=0x9a9a9a, opacity=.2) {
+    clearGhost();
+    (entries||[]).forEach(entry=>{
+      const g=new THREE.BufferGeometry();
+      g.setAttribute('position',new THREE.Float32BufferAttribute(entry.positions.map(v=>v*.001),3));
+      const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:colour,transparent:true,opacity,depthWrite:false,side:THREE.DoubleSide}));
+      m.name=entry.name; m.renderOrder=1; pose(m,entry.placement); ghost.add(m);
+    });
+    draw();
+    return ghost.children.length;
+  }
+  async function loadGhost(components,fetchImpl=window.fetch.bind(window),colour,opacity) {
+    const entries=await Promise.all((components||[]).filter(e=>e.mesh).map(async e=> {
+      const r=await fetchImpl(e.mesh);if(!r.ok)throw new Error('mesh HTTP '+r.status);
+      return {...e, positions:parseStl(await r.arrayBuffer())};
+    }));
+    return setGhost(entries,colour,opacity);
+  }
   // Exact bounds of the installed solids, in mm simulator coordinates, at each pose set in
   // `frames` (a list of {name: placement}): every vertex of every solid is transformed, so a
   // rotated part's box is its own and not its rotated box's. Leaves the last poses applied.
@@ -437,12 +460,13 @@ export function create(canvas) {
   canvas.addEventListener('pointerup',lift);canvas.addEventListener('pointercancel',lift);
   canvas.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(e.deltaY*.0015));draw();},{passive:false});
   window.addEventListener('resize',draw);
-  return {available:true,load,install,clear,fit,draw,setPoses,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
+  return {available:true,load,install,clear,fit,draw,setPoses,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
     setSection,setLines,showLines,setStyle,style:()=>style,
     pick,screenPoint,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,
       world:[...meshes].filter(([,m])=>m.userData.world).map(([n])=>n),style:STYLE,render_style:style,stage,showing:showing(),
-      proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length},
+      proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length}, ghost:ghost.children.map(m=>m.name),
+      colours:Object.fromEntries([...meshes].map(([n,m])=>[n,'#'+m.material.color.getHexString()])),
       section:section&&{...section}, leaders:{drawn:leaders?leaders.geometry.attributes.position.count/2:0,shown:!!(leaders&&leaders.visible)},
       poses:Object.fromEntries([...meshes].map(([n,m])=>[n,{position_mm:m.position.toArray().map(v=>v*1000),rotation_xyzw:m.quaternion.toArray()}]))}),
     png:()=>{draw();return canvas.toDataURL('image/png').split(',')[1];}};

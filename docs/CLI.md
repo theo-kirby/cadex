@@ -1489,7 +1489,24 @@ unplayable trace), `iteration`, `reward_per_step`, `sha256`, `reason` and
 block. `pending` counts checkpoints with neither file yet. Only regular
 files in the run's own `train/` are read, and each trace is parsed once
 per file identity, so an idle poll reparses nothing; `null` when there is
-no run. The page
+no run.
+
+`/api/project`'s `revisions` (the stored trail, newest first) marks each
+entry `retained` when its model is kept in `review/revisions/` (ADR-546),
+and otherwise carries `retained_reason`. `GET /api/model/revision/<ordinal>`
+(ADR-547) is that revision's retained model in the shape of
+`/api/model/accepted` — `view: "revision"`, `ordinal`, `revision`,
+`digest`, `available`, `reason`, `components` (each with its part's
+`sha256`, its `mesh` and `changed`) — plus `previous` (the stored revision
+before it, with components only when it was retained), `changed` (the
+outputs whose part digest differs from it, `null` with nothing retained to
+compare) and `compare` (what it was compared against, or why not). An
+unretained revision is `available: false` with the reason and no
+components; another revision's geometry is never offered in its place. A
+trail with no such ordinal is a 404. `GET /mesh/revision/<sha256>.stl` is
+one kept part as binary STL, served only when the store holds that digest
+and its bytes still hash to it, tagged by content so a browser revalidates
+it with a 304. The page
 has no telemetry panel (ADR-533 removed it): the 3D viewport's stage overlay
 (ADR-542) is drawn from `/api/project`'s `stage` alone, on the page's existing
 poll, and is rebuilt only when that block changes, so the overlay reads the

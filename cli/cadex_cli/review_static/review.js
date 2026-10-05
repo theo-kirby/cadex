@@ -6,7 +6,8 @@
 //
 //   3D viewport  the accepted model or a run's, shaded or hairline, a
 //                run's rollout played back on a timeline, a training run's
-//                checkpoints looped as they land (ADR-545), and the stage
+//                checkpoints looped as they land (ADR-545), the design's
+//                revisions on a timeline with a ghost and a tint (ADR-547), and the stage
 //                overlay (what the project is doing, how training is going;
 //                ADR-542) -- the whole screen by default;
 //   2D viewport  the project's drawings, images, documents, evaluation films and training plots,
@@ -112,9 +113,13 @@
     // The trail comes newest first.
     trail.forEach(function (entry) {
       var here = entry.revision === current;
-      list.appendChild(el('li', { value: entry.ordinal, 'data-revision': entry.revision, 'data-ordinal': String(entry.ordinal), 'data-current': String(here) }, [
-        el('span', { text: here ? 'current' : brief(entry.saved_at), title: when(entry.saved_at) + ' · ' + entry.revision })
-      ]));
+      var item = el('li', { value: entry.ordinal, 'data-revision': entry.revision, 'data-ordinal': String(entry.ordinal), 'data-current': String(here) }, [
+        el('span', { text: here ? 'current' : brief(entry.saved_at),
+                     title: when(entry.saved_at) + ' · ' + entry.revision + (entry.retained ? '' : ' · ' + (entry.retained_reason || 'model not retained')) })
+      ]);
+      // A row opens that revision on the 3D viewport's timeline: a view, never a restore.
+      item.setAttribute('data-retained', String(!!entry.retained));
+      list.appendChild(item);
     });
   }
 
@@ -167,18 +172,20 @@
 
   function renderSources() {
     var runs = (state.review.runs || []).map(function (run) { return run.run; });
-    var key = JSON.stringify(runs);
+    var history = (state.review.revisions || []).length > 0;
+    var key = JSON.stringify([runs, history]);
     if (key === sourcesKey) return;
     sourcesKey = key;
     var select = $('view3d-source');
     select.textContent = '';
     select.appendChild(el('option', { value: 'accepted', text: 'Accepted model' }));
+    if (history) select.appendChild(el('option', { value: 'revisions', text: 'Revision history' }));
     if (runs.length) {
       var group = el('optgroup', { label: 'Runs' });
       runs.forEach(function (run) { group.appendChild(el('option', { value: 'run:' + run, text: run })); });
       select.appendChild(group);
     }
-    if (source !== 'accepted' && runs.indexOf(source.slice(4)) < 0) { source = 'accepted'; modelKey = null; }
+    if (source === 'revisions' ? !history : source !== 'accepted' && runs.indexOf(source.slice(4)) < 0) { source = 'accepted'; modelKey = null; }
     select.value = source;
   }
 
@@ -203,7 +210,9 @@
 
   function loadModel() {
     var status = $('model-status'), ticket = ++modelLoad;
-    var path = source === 'accepted' ? '/api/model/accepted' : '/api/model/run/' + encodeURIComponent(source.slice(4));
+    var path = source === 'accepted' ? '/api/model/accepted'
+             : source === 'revisions' ? '/api/model/revision/' + revisionShown()
+             : '/api/model/run/' + encodeURIComponent(source.slice(4));
     if (modelAbort) modelAbort.abort();
     var controller = modelAbort = new AbortController(), signal = controller.signal;
     status.dataset.state = 'loading'; status.textContent = 'loading model…';
@@ -214,6 +223,7 @@
     }).then(function (manifest) {
       if (ticket !== modelLoad) return;
       state.model = manifest;
+      if (manifest.view === 'revision') renderRevisionTimeline();
       if (!manifest.available) {
         state.viewer.clear();
         status.dataset.state = 'missing';
@@ -227,7 +237,12 @@
       }
       // Mesh URLs in the manifest are server-absolute; BASE mounts them. Until
       // every mesh is in, the model drawn is the one before.
-      return state.viewer.load(manifest, function (url) { return fetchRetry(BASE + url, signal, 2); }).then(function () {
+      var fetchMesh = function (url) { return fetchRetry(BASE + url, signal, 2); };
+      if (manifest.view === 'revision') manifest = tintRevision(manifest);
+      return state.viewer.load(manifest, fetchMesh).then(function () {
+        if (ticket !== modelLoad) return;
+        if (manifest.view === 'revision') return state.viewer.loadGhost(ghostOf(manifest), fetchMesh, parseInt(token('--ink-2').slice(1), 16), 0.22);
+      }).then(function () {
         if (ticket !== modelLoad) return;
         modelFailures = 0;
         status.dataset.state = 'loaded';
@@ -408,6 +423,87 @@
     ckpt.pinned = index === items.length - 1 ? null : items[index].stem;
     renderCheckpoints();
     return ckpt.pinned;
+  }
+
+  // -- 3D viewport: the revision timeline (ADR-547) -----------------------------------
+  // While the source is the revision history, each stored revision is a stop,
+  // oldest to newest, drawn from the model kept when it was accepted
+  // (ADR-546). The newest is shown and followed; picking an older one keeps
+  // it, and back at the newest end it follows again. The revision before the
+  // one shown is a ghost where it differs, and parts whose digest changed are
+  // tinted. A revision whose model was not kept says why and draws nothing.
+  var rev = { pinned: null };
+
+  function revisionStops() { return ((state.review && state.review.revisions) || []).slice().reverse(); }
+  function revisionShown() {
+    var stops = revisionStops();
+    if (rev.pinned != null && stops.some(function (s) { return s.ordinal === rev.pinned; })) return rev.pinned;
+    rev.pinned = null;
+    return stops.length ? stops[stops.length - 1].ordinal : null;
+  }
+  // Unchanged parts in the diagram's ink, changed ones in --info.
+  function tintRevision(manifest) {
+    var same = token('--paper-ink'), changed = token('--info');
+    return Object.assign({}, manifest, { components: manifest.components.map(function (c) {
+      return Object.assign({}, c, { color: c.changed ? changed : same });
+    }) });
+  }
+  // The previous revision where it is not the model itself: a part kept as
+  // it was, where it was, would only lie on top of its own copy.
+  function ghostOf(manifest) {
+    var prev = manifest.previous;
+    if (!prev || !prev.available) return [];
+    var now = {};
+    manifest.components.forEach(function (c) { now[c.name] = c; });
+    return prev.components.filter(function (c) {
+      var here = now[c.name];
+      return !here || here.sha256 !== c.sha256 || JSON.stringify(here.placement) !== JSON.stringify(c.placement);
+    });
+  }
+  function renderRevisionTimeline() {
+    var box = $('revision-timeline'), stops = revisionStops(), on = source === 'revisions' && stops.length > 0;
+    setHidden('revision-timeline', !on);
+    if (!on) return;
+    var ordinal = revisionShown(), index = 0, current = state.review.accepted && state.review.accepted.revision;
+    stops.forEach(function (s, i) { if (s.ordinal === ordinal) index = i; });
+    var stop = stops[index], pick = $('revision-pick');
+    if (pick.max !== String(stops.length - 1)) pick.max = String(stops.length - 1);
+    if (pick.value !== String(index)) pick.value = String(index);
+    if (box.dataset.follow !== String(rev.pinned == null)) box.dataset.follow = String(rev.pinned == null);
+    var retained = !!stop.retained, stateName = retained ? 'retained' : 'missing';
+    if (box.dataset.state !== stateName) box.dataset.state = stateName;
+    box.dataset.ordinal = String(stop.ordinal);
+    setText('revision-label', 'revision ' + stop.ordinal + (stop.revision === current ? ' · current' : ' · ' + brief(stop.saved_at)) +
+            ' · ' + (index + 1) + '/' + stops.length + (rev.pinned == null ? ' · newest' : ''));
+    var model = state.model && state.model.view === 'revision' && state.model.ordinal === stop.ordinal ? state.model : null, note;
+    if (!retained) note = 'not shown: ' + (stop.retained_reason || 'its model was not retained');
+    else if (!model) note = '';
+    else if (model.changed) {
+      note = (model.changed.length ? 'changed: ' + model.changed.join(', ') : 'no part changed') + ' · ' + model.compare;
+      if (model.changed.length || ghostOf(model).length) note += ' · ghost: revision ' + model.previous.ordinal;
+    } else note = model.compare || '';
+    setText('revision-status', note).title = note;
+    setHidden('revision-status', !note);
+  }
+  function pickRevision(index) {
+    var stops = revisionStops();
+    if (!stops.length) return null;
+    index = Math.max(0, Math.min(stops.length - 1, Math.round(index)));
+    rev.pinned = index === stops.length - 1 ? null : stops[index].ordinal;
+    if (source !== 'revisions') { source = 'revisions'; $('view3d-source').value = source; }
+    renderRevisionTimeline();
+    modelKey = revisionKey(); modelFailures = 0; modelRetryAt = 0;
+    loadModel();
+    return rev.pinned;
+  }
+  function showRevision(ordinal) {
+    var stops = revisionStops(), index = -1;
+    stops.forEach(function (s, i) { if (s.ordinal === ordinal) index = i; });
+    return index < 0 ? undefined : pickRevision(index);
+  }
+  function revisionKey() {
+    var ordinal = revisionShown(), stop = revisionStops().filter(function (s) { return s.ordinal === ordinal; })[0];
+    return JSON.stringify(['revisions', ordinal, !!(stop && stop.retained)]);
   }
 
   // -- 3D viewport: the stage overlay (ADR-542) ---------------------------------------
@@ -738,7 +834,7 @@
   function render() {
     renderFreshness();
     if (!state.review) return;
-    renderHeader(); renderRevisions(); renderOverlay(); renderSources(); followTraining(); renderCheckpoints(); renderSheetSources();
+    renderHeader(); renderRevisions(); renderOverlay(); renderSources(); followTraining(); renderCheckpoints(); renderRevisionTimeline(); renderSheetSources();
   }
 
   // The poll is the project read alone: a model it starts loading is
@@ -756,7 +852,8 @@
       render();
       lastPoll.ms = performance.now() - started;
       // A run's model is fixed; the accepted one moves with every write.
-      var key = source === 'accepted' ? JSON.stringify([review.accepted.revision, review.accepted.digest]) : source;
+      var key = source === 'accepted' ? JSON.stringify([review.accepted.revision, review.accepted.digest])
+              : source === 'revisions' ? revisionKey() : source;
       if (key !== modelKey && Date.now() >= modelRetryAt) { modelKey = key; model = loadModel(); }
     }).catch(function (error) {
       state.stale = true; state.error = error.message;
@@ -797,6 +894,14 @@
     $('overlay-toggle').addEventListener('click', function () { setOverlayCollapsed(!overlayCollapsed); });
     $('play-toggle').addEventListener('click', function () { ckpt.paused = !!playing; togglePlayback(); });
     $('checkpoint-pick').addEventListener('input', function () { pickCheckpoint(Number($('checkpoint-pick').value)); });
+    $('revision-pick').addEventListener('input', function () { pickRevision(Number($('revision-pick').value)); });
+    $('revision-list').addEventListener('click', function (event) {
+      var row = event.target.closest('li[data-ordinal]');
+      if (!row) return;
+      ckpt.chosenSource = true;
+      showRevision(Number(row.dataset.ordinal));
+      $('revision-panel').open = false;
+    });
     $('play-time').addEventListener('input', function () { stopPlayback(); seek(Number($('play-time').value)); });
 
     $('view2d-source').addEventListener('change', function () { setSheet($('view2d-source').value); });
@@ -844,6 +949,16 @@
                pending: ckpt.pending, pinned: ckpt.pinned, playing: ckpt.playing, source: source };
     },
     pickCheckpoint: pickCheckpoint,
+    revisions: function () {
+      var current = state.review && state.review.accepted.revision, model = state.model && state.model.view === 'revision' ? state.model : null;
+      return { stops: revisionStops().map(function (s) { return { ordinal: s.ordinal, revision: s.revision, retained: !!s.retained, current: s.revision === current }; }),
+               pinned: rev.pinned, shown: source === 'revisions' ? revisionShown() : null, source: source,
+               model: model && { ordinal: model.ordinal, available: model.available, changed: model.changed,
+                                 previous: model.previous && model.previous.ordinal,
+                                 parts: model.components.reduce(function (o, c) { o[c.name] = c.sha256; return o; }, {}) } };
+    },
+    pickRevision: pickRevision,
+    showRevision: showRevision,
     seek: seek,
     setOverlayCollapsed: setOverlayCollapsed,
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, ms: lastPoll.ms }; },

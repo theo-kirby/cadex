@@ -114,6 +114,15 @@
       </aside>
       <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas></div>
       <div class="timelines">
+        <!-- The design's history (ADR-547): each stored revision's retained model (ADR-546), the one
+             before it as a ghost and the parts whose digest changed tinted. Shown while the 3D
+             viewport's source is the revision history; at the newest end it follows new revisions. -->
+        <div id="revision-timeline" class="timeline" data-follow="true" data-state="retained" hidden>
+          <span class="timeline-name">Revision</span>
+          <input id="revision-pick" type="range" min="0" max="0" step="1" value="0" aria-label="Revision">
+          <output id="revision-label"></output>
+          <p id="revision-status" hidden></p>
+        </div>
         <!-- A training run's checkpoints, each rolled out by the engine as it lands (ADR-544, ADR-545):
              the newest loops; the scrubber picks an older one, and back at the newest end it follows again. -->
         <div id="checkpoints" class="timeline" data-follow="true" data-state="ready" hidden>

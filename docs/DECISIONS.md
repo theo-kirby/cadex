@@ -34953,3 +34953,52 @@ finer model the blobs dominate and the dedupe is what matters.
   named.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-547 — The 3D viewport plays the design's history on a revision timeline (2026-10-05, orun3 V3)
+
+**Context.** ADR-546 keeps each accepted revision's model by content hash per part, but
+nothing on the page reads it. orun3's V3 asks for a timeline in the 3D viewport that
+scrubs through the retained revisions, draws the previous one as a ghost, tints the parts
+whose digest changed, says when a revision was not kept, and agrees with the Revisions
+menu. The page stays read-only (ADR-537).
+
+**Decision.**
+- **Two GET routes, both reads of the store.** `GET /api/model/revision/<ordinal>` is one
+  stored revision's model in the accepted model's shape, plus `previous` (the stored
+  revision before it, with components only when it too was retained), `changed` (the
+  outputs whose part digest differs, `null` when there is nothing retained to compare)
+  and `compare` (against what, or why not). `GET /mesh/revision/<sha256>.stl` is one kept
+  part as STL, served only when the store holds that digest and its bytes still hash to
+  it, tagged by content and converted once (the accepted mesh's memo). `/api/project`'s
+  `revisions` entries say `retained`, or give `retained_reason`.
+- **A source, not a mode.** The 3D viewport's source picker offers **Revision history**
+  once anything is accepted. With it chosen, `#revision-timeline` has one stop per stored
+  revision, oldest to newest. The newest is shown and followed. Picking an older one keeps
+  it, and the newest end follows again, as the checkpoint scrubber does (ADR-545). A row
+  in the Revisions menu opens that revision on the timeline: a view, never a restore. The
+  accepted model view is unchanged.
+- **The diff is drawn, not described.** Unchanged parts are drawn in `--paper-ink` and
+  changed ones in `--info`. The previous revision is a ghost in `--ink-2` at 22% opacity,
+  unlit and beside the model group, so it sizes, picks and outlines nothing, and the
+  hairline style leaves it out. It is drawn only where it differs (another part digest,
+  another placement, or a part since removed), because a part kept where it was would
+  only lie on top of its own copy. "Changed" means the part's digest: a part that only
+  moved is ghosted at its old place but not tinted.
+- **Absence is said, never filled.** A revision with no retained model draws nothing,
+  turns the timeline's state to `missing` and names the reason in `--warn`. The revision
+  after it draws with no ghost and says there is nothing to compare with.
+
+**Test.** `cli/tests/test_review_revisions.py`:
+- With no engine, a hand-written four-revision biped store: the changed foot and its
+  ghost, a moved-only torso not counted as changed, an unretained first revision and a
+  successor with nothing to compare, and the routes' 404s (unknown ordinal, unknown or
+  malformed digest, a path escape, a blob whose bytes no longer match its name) and 304.
+- In the browser against the real engine, a biped written once and its foot changed
+  twice, the third revision landing while the page is open. The timeline scrubs across
+  all three: each stop draws its own foot, the newest tints the foot in `--info` and
+  ghosts the old one, and the first has no ghost and no tint. The timeline's ordinals and
+  current revision equal the Revisions menu's, a menu row opens its revision, and the
+  newest end follows again. With revision 1's row removed, as in a store from before
+  ADR-546, its stop draws nothing and says why, and revision 2 draws with no ghost.
+
+Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).

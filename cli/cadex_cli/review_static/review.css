@@ -162,6 +162,10 @@ canvas#viewer { display: block; width: 100%; height: 100%; touch-action: none; }
 #checkpoint-label { min-width: 0; white-space: nowrap; font-family: var(--mono); }
 #checkpoint-status { flex-basis: 100%; margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
 #checkpoints[data-state="failed"] #checkpoint-status { color: var(--bad); }
+#revision-label { min-width: 0; white-space: nowrap; font-family: var(--mono); }
+#revision-status { flex-basis: 100%; margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+#revision-timeline[data-state="missing"] #revision-status { color: var(--warn); }
+#revision-list li[data-retained] { cursor: pointer; }
 
 /* 2D viewport. */
 #sheet { overflow: hidden; }

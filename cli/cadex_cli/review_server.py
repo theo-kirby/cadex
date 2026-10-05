@@ -56,6 +56,7 @@ from xml.etree import ElementTree
 
 from .checkpoints import FAILURE_SUFFIX as CHECKPOINT_FAILURE_SUFFIX
 from .checkpoints import TRACE_SUFFIX as CHECKPOINT_TRACE_SUFFIX
+from .revision_meshes import revision_mesh_paths, revision_model, revision_models
 from .revisions import read_history as read_revision_history
 from .session import read_agent_state
 from .studio import PRINTABLES, STUDIO
@@ -2133,23 +2134,45 @@ class ReviewProject:
         except OSError:
             return None
         etag = '"' + hashlib.sha256(sidecar_bytes + b"\0" + data).hexdigest()[:40] + '"'
-        with _MEMO_LOCK:
-            held = _STL_MEMO.get(etag)
-            if held is not None:
-                _STL_MEMO.move_to_end(etag)
-                return etag, held
-        try:
-            sidecar = json.loads(sidecar_bytes)
-            body = tessellation_to_stl(sidecar, data)
-        except (ValueError, OSError):
+        return _stl_entry(etag, sidecar_bytes, data)
+
+    def revision_mesh_entry(self, sha: str) -> tuple[str, bytes] | None:
+        """``(etag, stl)`` for one part a retained revision kept (ADR-546),
+        by the sha256 of its tessellation buffer."""
+
+        paths = revision_mesh_paths(self.root, sha)
+        if paths is None:
             return None
-        with _MEMO_LOCK:
-            global _STL_MEMO_BYTES
-            _STL_MEMO[etag] = body
-            _STL_MEMO_BYTES += len(body)
-            while _STL_MEMO_BYTES > STL_MEMO_LIMIT and len(_STL_MEMO) > 1:
-                _STL_MEMO_BYTES -= len(_STL_MEMO.popitem(last=False)[1])
-        return etag, body
+        try:
+            data, sidecar_bytes = paths[0].read_bytes(), paths[1].read_bytes()
+        except OSError:
+            return None
+        if hashlib.sha256(data).hexdigest() != sha:
+            return None
+        etag = '"' + hashlib.sha256(sidecar_bytes + b"\0" + data).hexdigest()[:40] + '"'
+        return _stl_entry(etag, sidecar_bytes, data)
+
+
+def _stl_entry(etag: str, sidecar_bytes: bytes, data: bytes) -> tuple[str, bytes] | None:
+    """A tessellation as STL, converted once per content tag and remembered."""
+
+    with _MEMO_LOCK:
+        held = _STL_MEMO.get(etag)
+        if held is not None:
+            _STL_MEMO.move_to_end(etag)
+            return etag, held
+    try:
+        sidecar = json.loads(sidecar_bytes)
+        body = tessellation_to_stl(sidecar, data)
+    except (ValueError, OSError):
+        return None
+    with _MEMO_LOCK:
+        global _STL_MEMO_BYTES
+        _STL_MEMO[etag] = body
+        _STL_MEMO_BYTES += len(body)
+        while _STL_MEMO_BYTES > STL_MEMO_LIMIT and len(_STL_MEMO) > 1:
+            _STL_MEMO_BYTES -= len(_STL_MEMO.popitem(last=False)[1])
+    return etag, body
 
 
 #: Converted meshes by content tag, newest kept, at most this many bytes.
@@ -2290,10 +2313,23 @@ def section_listing(root: Path) -> dict[str, Any]:
 
 
 def revision_trail(root: Path) -> list[dict[str, Any]]:
-    """The stored trail for the page, newest first, without sources or values."""
+    """The stored trail for the page, newest first, without sources or values.
+
+    Each entry says whether its model was retained (ADR-546), and if not,
+    why: the revision timeline shows that reason rather than a model.
+    """
 
     keep = ("ordinal", "revision", "saved_at", "outputs")
-    return [{key: entry.get(key) for key in keep} for entry in reversed(read_revision_history(root))]
+    models = {row["ordinal"]: row for row in revision_models(root)}
+    trail = []
+    for entry in reversed(read_revision_history(root)):
+        item = {key: entry.get(key) for key in keep}
+        row = models.get(entry.get("ordinal")) or {}
+        item["retained"] = bool(row.get("retained"))
+        if not item["retained"]:
+            item["retained_reason"] = str(row.get("reason") or "")
+        trail.append(item)
+    return trail
 
 
 # The two ways Linux reports a peer that went away mid-write: EPIPE, or
@@ -2520,6 +2556,13 @@ class ReviewHandler(BaseHTTPRequestHandler):
             if rest == ["model", "accepted"]:
                 self._send_json(accepted_model(project.root))
                 return
+            if rest[:2] == ["model", "revision"] and len(rest) == 3:
+                model = revision_model(project.root, int(rest[2])) if rest[2].isdigit() else None
+                if model is None:
+                    self._not_found(f"revision {rest[2]!r}")
+                    return
+                self._send_json(model)
+                return
             if rest[:2] == ["model", "run"] and len(rest) == 3:
                 record = project.run(rest[2])
                 if record is None:
@@ -2552,6 +2595,19 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 return
             etag, body = found
             # Revalidated on every use, so a rebuild's changed part is never stale.
+            cache = {"Cache-Control": "no-cache", "ETag": etag}
+            if etag in [tag.strip() for tag in self.headers.get("If-None-Match", "").split(",")]:
+                self._send_bytes(b"", CONTENT_TYPES[".stl"], HTTPStatus.NOT_MODIFIED, cache)
+                return
+            self._send_bytes(body, CONTENT_TYPES[".stl"], extra=cache, memo=etag)
+            return
+        if head == "mesh" and rest[:1] == ["revision"] and len(rest) == 2 and rest[1].endswith(".stl"):
+            found = project.revision_mesh_entry(rest[1][:-4])
+            if found is None:
+                self._not_found("/".join(segments))
+                return
+            etag, body = found
+            # Named by its own content: the same part is the same bytes in every revision.
             cache = {"Cache-Control": "no-cache", "ETag": etag}
             if etag in [tag.strip() for tag in self.headers.get("If-None-Match", "").split(",")]:
                 self._send_bytes(b"", CONTENT_TYPES[".stl"], HTTPStatus.NOT_MODIFIED, cache)
