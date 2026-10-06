@@ -838,12 +838,13 @@ def _task_digest(bundle: Path) -> str:
     REAL_TRAINER_PYTHON is None,
     reason="No training venv with jax and mujoco (training/SETUP.md).",
 )
-def test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares(
+def test_iterate_refuses_a_task_change_under_a_declared_policy_until_it_is_blanked(
     engine, tmp_path, capsys, cpu_training
 ) -> None:
-    """Blank policy, sweep, warm retrain and re-declare (ADR-192).
+    """Blank policy, then sweep (ADR-192): the change is refused while the
+    declared policy no longer fits its task, and accepted once blanked.
 
-    Two bounded 1 × 4 CPU runs verify the changed task and rollout.
+    One bounded 1 × 4 CPU run trains the policy the change is refused against.
     """
 
     root = tmp_path / "project"
@@ -906,45 +907,9 @@ def test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares(
     digest2 = _task_digest(sweep / "job-task.json")
     assert digest2 != digest1
 
-    # Retrain, warm-started across the change: the curriculum pair.
-    run2 = tmp_path / "run2"
-    code, envelope = _run(
-        capsys, "train", "--project", str(root), "--out", str(run2),
-        "--iterations", "1", "--envs", "4", "--put", "--timeout", "600",
-        "--name", "job2.cxpolicy",
-        "--init-from", str(run1 / "job.cxpolicy"),
-        "--init-from-parent-task", str(run1 / "job-task.json"),
-        "--init-from-task-change", "lift weight doubled",
-    )
-    assert code == EXIT_OK, envelope
-    assert envelope["training"]["device"] == "cpu"
-    sha2 = envelope["training"]["sha256"]
-    assert sha2 != sha1
-    assert envelope["training"]["task_sha256"] == digest2
-    assert {row["name"] for row in envelope["assets"]} == {
-        "job.cxpolicy", "job2.cxpolicy"
-    }
-
-    # Re-declare and switch back on: the rollout is the new policy's.
-    code, envelope = _run(
-        capsys, "script", "--set",
-        str(_iterate_script(tmp_path, "job2.cxpolicy", sha2)),
-        "--project", str(root),
-    )
-    assert code == EXIT_OK, envelope
-    out2 = tmp_path / "out2"
-    code, envelope = _run(
-        capsys, "params", "--project", str(root), "--set", "policy_on=1",
-        "--out", str(out2),
-    )
-    assert code == EXIT_OK, envelope
-    assert envelope["params"] == {"policy_on": 1.0, "lift_weight": 2.0e-4}
-    trace2 = json.loads((out2 / "assembly-simulation-trace.json").read_text())
-    assert trace2["policy"]["policy_sha256"] == sha2
-    reward2 = float(trace2["policy"]["total_reward"])
-    # Both numbers exist and are the comparison; which is larger is the
-    # toy's business after one iteration each, not this test's.
-    assert reward1 == reward1 and reward2 == reward2  # not NaN
+    # The warm retrain across this change, its re-declare and the new
+    # policy's rollout are test_walk's real iterate walk (ADR-563).
+    assert reward1 == reward1  # not NaN
 
 
 # -- the dispatcher itself, offline (ADR-268) -------------------------------

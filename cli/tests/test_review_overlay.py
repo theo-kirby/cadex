@@ -91,6 +91,12 @@ def _stage(root: Path) -> dict:
         server.server_close()
 
 
+def _refresh(page) -> None:
+    """Run the page's own ``poll`` now rather than wait up to ``POLL_MS`` for
+    its timer: the same code path, without the wait (ADR-563)."""
+    page.evaluate("window.cadexReview.refresh()", await_promise=True)
+
+
 def _iso(seconds_ago: float) -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - seconds_ago))
 
@@ -381,7 +387,8 @@ ACTIVITY = """(function () {
 def test_the_overlay_says_what_the_agent_is_doing_and_when_it_went_quiet(tmp_path, browser) -> None:
     """V4's line (ADR-550): the newest call and how long ago, a short list of the
     ones before it, ``idle`` past :data:`ACTIVITY_IDLE_S`, and a page that
-    renders with no log at all, all on the page's own poll."""
+    renders with no log at all, each read by the page's own ``poll`` (the
+    timer's tick is pinned by the progress test above)."""
 
     root = _review_project(tmp_path)
     server, _thread = serve(root, "127.0.0.1", 0)
@@ -393,12 +400,14 @@ def test_the_overlay_says_what_the_agent_is_doing_and_when_it_went_quiet(tmp_pat
         assert none["line"] == "no tool call through cadex mcp has been logged in this project"
         # The agent works: each call lands in the log and the poll carries it.
         append_activity(root, "build", {"source": "x" * 3000}, ok=True, detail="built 4 parts", ms=2100.0)
+        _refresh(page)
         page.wait_for("document.getElementById('overlay-activity').dataset.state === 'active'", timeout=10)
         first = page.evaluate(ACTIVITY)
         assert first["line"] == "build source=<3000 chars> · just now" and first["log_hidden"]
         append_activity(root, "inspect", {"scope": "clearance"}, ok=True, detail="", ms=400.0)
         append_activity(root, "set_params", {"values": {"bore": 8}}, ok=False,
                         detail="unknown parameter: bore", ms=12.0)
+        _refresh(page)
         page.wait_for("document.getElementById('overlay-activity').dataset.state === 'error'", timeout=10)
         failed = page.evaluate(ACTIVITY)
         assert failed["line"] == "set_params values={bore} · failed: unknown parameter: bore · just now"
@@ -409,6 +418,7 @@ def test_the_overlay_says_what_the_agent_is_doing_and_when_it_went_quiet(tmp_pat
         # Only the newest few are listed.
         for n in range(6):
             append_activity(root, "measure", {"n": n}, ok=True, detail="", ms=5.0)
+        _refresh(page)
         page.wait_for("document.querySelectorAll('#overlay-activity-list li').length === 5 && "
                       "document.getElementById('overlay-activity-line').textContent.indexOf('measure n=5') === 0",
                       timeout=10)
@@ -418,12 +428,14 @@ def test_the_overlay_says_what_the_agent_is_doing_and_when_it_went_quiet(tmp_pat
         append_activity(root, "build", {}, ok=True, detail="", ms=10.0, now=time.time() - 3600)
         append_activity(root, "evaluate", {"seeds": [1, 2]}, ok=True, detail="", ms=10.0,
                         now=time.time() - ACTIVITY_IDLE_S - 120)
+        _refresh(page)
         page.wait_for("document.getElementById('overlay-activity').dataset.state === 'idle'", timeout=10)
         idle = page.evaluate(ACTIVITY)
         assert idle["line"] == "agent idle · last call evaluate 7 min ago"
         assert [text.split(" ", 1)[1] for _, text in idle["items"]] == ["evaluate seeds=[2]", "build"]
         # The log goes away (a fresh copy): the page shows the absence, not the old line.
         log.unlink()
+        _refresh(page)
         page.wait_for("document.getElementById('overlay-activity').dataset.state === 'none'", timeout=10)
         assert page.evaluate(ACTIVITY)["items"] == []
     finally:
@@ -435,7 +447,7 @@ def test_the_overlay_says_what_the_agent_is_doing_and_when_it_went_quiet(tmp_pat
 def test_an_in_flight_evaluate_reads_evaluating_and_running_never_idle(tmp_path, browser) -> None:
     """ADR-553 on the page: an ``evaluate`` call in flight turns the stage
     ``evaluating`` and the activity line ``running``, however long it has run;
-    its return turns both back, on the page's own poll."""
+    its return turns both back, each read by the page's own ``poll``."""
 
     root = _review_project(tmp_path)
     server, _thread = serve(root, "127.0.0.1", 0)
@@ -443,9 +455,11 @@ def test_an_in_flight_evaluate_reads_evaluating_and_running_never_idle(tmp_path,
         page = _open(browser, server.url)
         page.evaluate("window.cadexReview.setOverlayCollapsed(false)")
         append_activity(root, "set_params", {"values": {"foot_w": 38}}, ok=True, detail="", ms=900.0)
+        _refresh(page)
         page.wait_for("document.getElementById('overlay-activity').dataset.state === 'active'", timeout=10)
         # Started longer ago than the idle threshold, and still running.
         call = begin_activity(root, "evaluate", {}, now=time.time() - ACTIVITY_IDLE_S - 100)
+        _refresh(page)
         page.wait_for("document.getElementById('overlay').dataset.stage === 'evaluating'", timeout=10)
         running = page.evaluate(ACTIVITY) | {"overlay": page.evaluate(OVERLAY)}
         assert running["overlay"]["chip"] == "evaluating"
@@ -455,6 +469,7 @@ def test_an_in_flight_evaluate_reads_evaluating_and_running_never_idle(tmp_path,
         assert running["items"][0][0] == "running" and running["items"][0][1].endswith("evaluate · running")
         assert [outcome for outcome, _ in running["items"]] == ["running", "ok"]
         append_activity(root, "evaluate", {}, ok=True, detail="evaluate: fail", ms=480000.0, call=call)
+        _refresh(page)
         page.wait_for("document.getElementById('overlay-activity').dataset.state === 'active'", timeout=10)
         done = page.evaluate(ACTIVITY) | {"overlay": page.evaluate(OVERLAY)}
         assert done["overlay"]["stage"] != "evaluating"
@@ -478,6 +493,7 @@ def test_the_evaluate_call_names_the_stage_once_its_directory_exists(tmp_path, b
     try:
         page = _open(browser, server.url)
         call = begin_activity(root, "evaluate", {}, now=time.time() - 65)
+        _refresh(page)
         page.wait_for("document.getElementById('overlay').dataset.stage === 'evaluating'", timeout=10)
         assert page.evaluate(OVERLAY)["line"] == "the agent's evaluate call is running · 1 min"
         # The evaluation's own directory appears; the call is still in flight.
@@ -485,13 +501,15 @@ def test_the_evaluate_call_names_the_stage_once_its_directory_exists(tmp_path, b
         directory.mkdir(parents=True)
         (directory / "seed-1101-trace.json").write_text("{}")
         assert _json(server.url + "api/project")["stage"]["reason"] == "the agent's evaluate call is running"
-        time.sleep(5)  # two of the page's polls with the directory on disk
+        _refresh(page)  # two of the page's polls with the directory on disk
+        _refresh(page)
         during = page.evaluate(OVERLAY)
         assert during["stage"] == "evaluating"
         assert during["line"] == "the agent's evaluate call is running · 1 min"
         assert "dc0af1158165" not in during["line"]
         # The call returns while the directory is still fresh: it alone reads without its id.
         append_activity(root, "evaluate", {}, ok=True, detail="evaluate: pass", ms=66000.0, call=call)
+        _refresh(page)
         page.wait_for("document.getElementById('overlay-line').textContent.indexOf('an evaluation is running') === 0",
                       timeout=10)
         assert "dc0af1158165" not in page.evaluate(OVERLAY)["line"]

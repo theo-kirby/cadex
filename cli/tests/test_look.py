@@ -445,7 +445,7 @@ def test_proxies_do_not_depend_on_the_size_look_draws_at(tmp_path):
     assert first['view'] == 'hero' and first['size'] == render.PROXY_SIZE
 
 
-def test_render_and_bridge_look_report_the_proxies(tmp_path, monkeypatch):
+def test_render_and_bridge_look_report_the_proxies(tmp_path, monkeypatch, small_renders):
     (tmp_path / 'mesh').mkdir()
     reply = _reply(tmp_path / 'mesh')
 

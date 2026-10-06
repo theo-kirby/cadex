@@ -35663,3 +35663,52 @@ is a first cut, not the target: the suite is not yet under 8 minutes, and the ne
 are listed there.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-563 — The CLI suite gets lighter: second cuts, renders drawn small where pixels are not the claim (2026-10-06, orun4 owner note)
+
+**Context.** ADR-562 took the suite from 1017 s to 793 s and listed the next cuts. This
+ADR makes them, on the same keep list.
+
+**Decision.** No test file loses a claim that is not made elsewhere:
+
+1. A `small_renders` fixture (`cli/tests/conftest.py`) draws the review views at 64 px
+   and the hero at 64 px scaled up to 1024 px, so every file is still written at its
+   real size and the sheet still composes. Used by `test_walk.py`'s `fake_cadex` (its
+   claims are the legs, not the render), by `test_sheet.py`'s four render tests (the
+   sheet's numbers, palette swatches, line views and the hero-equals-left-half
+   identity, none of which is the hero's pixels), and by
+   `test_look.py::test_render_and_bridge_look_report_the_proxies` (the proxies come
+   from their own depth pass, not the hero). The full-size hero stays pinned by
+   `test_look.py::test_render_writes_a_1024_px_studio_hero` and
+   `test_render_draws_the_declared_role_in_the_declared_palette`, and the 512 px views
+   by `test_render.py`.
+2. `test_video.py`'s `test_dashboard_serves_the_studio_video_it_lists` and
+   `test_studio_video_leaves_the_environment_out_and_puts_the_floor_on_top_of_it` film
+   at 128 px: their claims are the listing and bytes served, and the floor height and
+   omitted part. The 512 px film stays pinned by
+   `test_studio_video_pins_its_identity_and_bound_with_no_browser` and the declared
+   materials test.
+3. `test_review_overlay.py`'s three activity and evaluate browser tests call the page's
+   own `poll` (`window.cadexReview.refresh`) instead of waiting up to 2 s for its timer,
+   and the 5 s sleep "two polls with the directory on disk" is two such calls. That the
+   timer carries a change with no reload stays pinned by
+   `test_the_overlay_follows_progress_json_on_the_pages_own_poll`, and orun4's two fix
+   tests (killed walk to failed, stopped run to stopped) are untouched.
+4. `test_train.py::test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares`
+   is **renamed and cut** to
+   `test_iterate_refuses_a_task_change_under_a_declared_policy_until_it_is_blanked`: it
+   keeps the trained policy, the refusal of a task change naming the old task digest,
+   and the blanked sweep with its new digest. Its second real CPU training, warm-started
+   across the change, the re-declare and the new policy's rollout are **removed**:
+   `test_walk.py::test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates` makes
+   the same claim with real legs (sweep, warm train, declare, rollout; new sha, new task
+   digest, comparable reward).
+
+**Evidence (per file, before → after, same machine, `CUDA_VISIBLE_DEVICES=`).**
+`test_walk.py` 211.8 s → 144.3 s (fake-leg tests 2.7 s → 0.3 s, 5.4 s → 0.5 s);
+`test_sheet.py` four tests 25.0 s → under 1 s each; `test_review_overlay.py` the three
+tests 25.9 s → 2.9 s; `test_train.py` 62.1 s → 48.9 s (the iterate 29.3 s → 16.0 s);
+`test_look.py` proxies 7.8 s → under 3 s; `test_video.py` the two films 15.5 s → under
+3 s each. Whole-suite timing is in the record.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

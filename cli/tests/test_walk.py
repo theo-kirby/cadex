@@ -544,12 +544,8 @@ def fake_cadex(tmp_path, monkeypatch, request) -> Path:
     monkeypatch.delenv("FAKE_CADEX_FAIL", raising=False)
     monkeypatch.delenv("FAKE_CADEX_TRAIN", raising=False)
     monkeypatch.setattr(walk_module, "cadex_command", lambda: [sys.executable, str(script)])
-    # The walk's claims are about its legs, not the render's resolution,
-    # which test_look and test_render pin at full size: draw the four
-    # review views small. The hero stays 1024 px, the size the sheet and
-    # the silhouette measures are laid out for.
-    from cadex_cli.studio import STUDIO
-    monkeypatch.setattr(STUDIO, "SIZE", 64)
+    # The walk's claims are about its legs, not the render's pixels.
+    request.getfixturevalue("small_renders")
     from contextlib import contextmanager
     from cadex_cli import __main__ as main_module
 

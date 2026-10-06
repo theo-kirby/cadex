@@ -69,7 +69,7 @@ def _render(tmp_path, monkeypatch, *, inventory=None, **accepted):
     return root, path.parent, summary
 
 
-def test_render_writes_the_concept_sheet_with_the_hero_numbers_palette_and_line_views(tmp_path, monkeypatch):
+def test_render_writes_the_concept_sheet_with_the_hero_numbers_palette_and_line_views(tmp_path, monkeypatch, small_renders):
     root, directory, summary = _render(tmp_path, monkeypatch, inventory=_inventory())
     data = (directory / 'sheet.png').read_bytes()
     width, height, rows = _decode(data)
@@ -104,7 +104,7 @@ def test_render_writes_the_concept_sheet_with_the_hero_numbers_palette_and_line_
     assert _pixel(rows, sheet.WIDTH - 5, sheet.HEIGHT - 5) == sheet.PAPER
 
 
-def test_sheet_says_why_a_number_is_missing_rather_than_inventing_it(tmp_path, monkeypatch):
+def test_sheet_says_why_a_number_is_missing_rather_than_inventing_it(tmp_path, monkeypatch, small_renders):
     _, _, summary = _render(tmp_path, monkeypatch, inventory=None, inertials=False)
     numbers = summary['sheet']['numbers']
     assert numbers['mass_kg'] is None and 'no dynamics model' in numbers['mass_reason']
@@ -115,7 +115,7 @@ def test_sheet_says_why_a_number_is_missing_rather_than_inventing_it(tmp_path, m
     ({'attempt_revision': 'b' * 64}, 'not the revision drawn'),
     ({'digest': 'e' * 64}, 'does not carry the accepted digest'),
 ])
-def test_mass_is_refused_from_an_attempt_that_is_not_the_one_drawn(tmp_path, monkeypatch, pin, reason):
+def test_mass_is_refused_from_an_attempt_that_is_not_the_one_drawn(tmp_path, monkeypatch, small_renders, pin, reason):
     _, _, summary = _render(tmp_path, monkeypatch, inventory=_inventory(), **pin)
     assert summary['sheet']['numbers']['mass_kg'] is None
     assert reason in summary['sheet']['numbers']['mass_reason']
