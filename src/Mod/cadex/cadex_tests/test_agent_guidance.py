@@ -145,9 +145,27 @@ def test_the_style_bounds_the_foot_scopes_the_level_thigh_and_derives_the_roll_l
     for rule in ('COMPACT HAS A NUMBER', 'no longer than a quarter of it and no wider than an eighth of it',
                  'never from the foot\'s area',
                  'A SPRAWLED LEG', 'An UPRIGHT LEG under the body', 'the level-thigh rule is not for it',
-                 'MEASURE WHERE THE FEET MEET', "first_contact", 'short of that measured angle',
+                 'MEASURE WHERE THE FEET MEET', "first_contact",
                  'write both angles in DECISIONS.md'):
         assert rule in style, rule
         assert rule not in _body(), rule
     # The level thigh is only ever asked of a sprawled leg.
     assert style.index('A SPRAWLED LEG') < style.index('thigh running out level') < style.index('An UPRIGHT LEG')
+
+
+def test_the_roll_limit_is_bracketed_outward_from_the_standing_pose():
+    # ADR-567: the sweep's first_contact is the first contacting sample counted
+    # from the range's lower limit (docs/INTEGRATION.md), so on an inward side
+    # that runs negative it is the deepest contact, not the onset. The second
+    # fresh session (docs/probes/orun4/FRESH-SESSION-2.md) found that reading it
+    # off a range opened wide, as ADR-566 worded the style, puts the limit
+    # inside the collision. The style brackets the angle outward instead.
+    style = " ".join(_body(MODULE_DIR / 'CadexAgentStyle.printed-legged-robot.md').split())
+    for rule in ('bracket it outward from the standing pose', 'the last clear angle',
+                 'the first contact angle', 'deepest contact, not where contact starts',
+                 'short of the first contact by at least two sweep steps'):
+        assert rule in style, rule
+        assert rule not in _body(), rule
+    # The procedure that set a limit inside the collision is gone.
+    assert 'inward limit opened wide' not in style
+    assert 'read that joint row' not in style

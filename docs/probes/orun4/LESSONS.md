@@ -52,7 +52,7 @@ instance, never a default.
 
 | # | Lesson, as a general rule | Evidence (change → effect) | Destination |
 |---|---|---|---|
-| L7 | Sweep each joint through its full range and check that moving parts clear each other; set the spacing *and* the joint limit from the sweep, asymmetric where the geometry is. | Hip half-spacing 46 mm: the sweep showed the feet meeting at 10° inward roll → spacing 50 mm and inward roll limited to 8° (outward 20°), per side (`hinge("roll_…", …, -8/20)` in `script.py`). P-ADR-003. | **base** (MOTION FIT: limits from the sweep), with the legged instance in the **style** (HIPS WIDE ENOUGH FOR THE FEET TO PASS; since ADR-566, MEASURE WHERE THE FEET MEET: the inward limit is set short of the sweep's measured `first_contact`, both angles recorded). |
+| L7 | Sweep each joint through its full range and check that moving parts clear each other; set the spacing *and* the joint limit from the sweep, asymmetric where the geometry is. | Hip half-spacing 46 mm: the sweep showed the feet meeting at 10° inward roll → spacing 50 mm and inward roll limited to 8° (outward 20°), per side (`hinge("roll_…", …, -8/20)` in `script.py`). P-ADR-003. | **base** (MOTION FIT: limits from the sweep), with the legged instance in the **style** (HIPS WIDE ENOUGH FOR THE FEET TO PASS; since ADR-566, MEASURE WHERE THE FEET MEET: the inward limit is set at least two sweep steps short of the first contact; since ADR-567 that contact is bracketed outward from the standing pose, never read off a wide range's `first_contact`, with the last clear angle and the first contact recorded). |
 | L8 | When a part that sits beside its mirror grows, re-check the clearance and move the spacing with it. | Twin-keel feet widened 28 → 32 mm beam → `hip_y` 50 → 52 so they clear at 8° inward roll (run params r9–r13 carry `hip_y` 52). P-ADR-009. | **base** (MOTION FIT: spacing and limit move with the parts), folded into L7's rule. |
 
 ### 4. Training practice
@@ -127,5 +127,9 @@ inside both bounds, and it stands on a lean thigh. It derived the roll limit
 only after its first robot, and found that `first_contact` reports the
 first contact from the range's low end, not the onset nearest the rest
 pose. Read literally, the style's roll procedure therefore sets a limit
-inside the collision when inward is the negative direction. That defect is
-open.
+inside the collision when inward is the negative direction. ADR-567
+rewrote the procedure: bracket the meeting angle outward from the standing
+pose one sweep step at a time, record the last clear angle and the first
+contact, and set the limit two steps short of the first contact. The
+engine's `first_contact` semantics are unchanged and documented in
+`docs/INTEGRATION.md`.

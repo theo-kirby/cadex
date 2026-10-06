@@ -218,5 +218,5 @@ def test_the_style_s_foot_thigh_and_roll_rules_reach_a_project_that_chose_it(tmp
     chosen = " ".join(capsys.readouterr().out.split())
     base = " ".join(instructions().split())
     for rule in ('COMPACT HAS A NUMBER', 'no wider than an eighth of it', 'A SPRAWLED LEG',
-                 'MEASURE WHERE THE FEET MEET'):
+                 'MEASURE WHERE THE FEET MEET', 'bracket it outward from the standing pose'):
         assert rule in chosen and rule not in base, rule

@@ -283,7 +283,10 @@ it declares one.
   wider than an eighth of it; stability on one foot comes from the flat
   strip and where it sits under the centre of mass, not from the foot's
   area. The inward hip-roll limit is set short of the angle where the
-  sweep finds the feet first meet, with that angle recorded. Evidence: the
+  feet first meet, bracketed outward from the standing pose one sweep
+  step at a time, with the last clear angle and the first contact
+  recorded (ADR-567): a range opened wide reports its `first_contact`
+  from the lower limit, the deepest contact on a negative inward side. Evidence: the
   reference legged robot's passing feet were about 0.21 and 0.10 of its
   height, and its roll limit came from the feet meeting at a swept angle;
   G2's fresh-session check (`docs/probes/orun4/FRESH-SESSION.md`) built a

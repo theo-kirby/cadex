@@ -35862,3 +35862,35 @@ the same rules. Whether a fresh agent now meets the foot rule is the next unit: 
 fresh session on a new `orun4-*` project.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-567 — The printed-legged-robot style brackets the roll limit outward from the standing pose (2026-10-06, orun4 G2)
+
+**Context.** ADR-566 told an agent to sweep the hip roll with the inward limit opened
+wide and read the joint row's `first_contact`. G2's second fresh session
+(`docs/probes/orun4/FRESH-SESSION-2.md`) found that the number does not mean that.
+`first_contact` is the first contacting sample counted from the range's **lower** limit
+(`docs/INTEGRATION.md`, the sweep section), so when inward roll is the negative
+direction it reports the deepest contact, not the onset nearest the standing pose. On
+that session's robot the feet met at −20° and a wide range opened to −45° reported about
+−35°; the style's rule, taken literally, would have put the limit near −25°, inside the
+collision. The agent noticed and bracketed instead.
+
+**Decision.** Reword the style's MEASURE WHERE THE FEET MEET procedure only. Bracket the
+meeting angle outward from the standing pose: set the inward limit one sweep step past
+it, sweep, and while the hip roll's row is clear move the limit out one step and sweep
+again, until a foot or shin meets the other leg. Record the last clear angle, the first
+contact and the pair that met; set the limit at least two sweep steps short of the first
+contact. The style now says why a wide range's `first_contact` must not be read for this.
+
+The engine's sweep semantics are **not** changed: `first_contact` stays the lowest-first
+contacting sample, which is documented and pinned, and a direction-aware onset field
+would be a protocol change of its own. The tool surface, the protocol and the base
+guidance are unchanged.
+
+**Consequences.** `test_the_roll_limit_is_bracketed_outward_from_the_standing_pose`
+(engine suite) pins the bracketing wording, the deepest-contact warning and the absence
+of the opened-wide procedure; it fails on the style as ADR-566 left it. The CLI suite
+pins that a project which chose the style receives it. `docs/DESIGN-LANGUAGE.md` §5 and
+ledger row L7 carry the same procedure.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
