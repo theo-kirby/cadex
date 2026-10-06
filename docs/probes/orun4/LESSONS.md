@@ -112,3 +112,9 @@ a style as **taste** (the owner liked the result) rather than as a rule.
 `cli/tests/test_agent_guidance.py` and
 `src/Mod/cadex/cadex_tests/test_agent_guidance.py` pin each adopted rule
 in the file it went to, and that no style rule leaks into the base.
+
+The proof: a fresh agent session given only the guidance and this style,
+`FRESH-SESSION.md`. Its first accepted robot carried the twin-keel strip,
+the horn-sized joint caps, the actuators inside the limb and the tighter
+inward roll limit unprompted. It missed foot compactness, and it showed
+that the style's level-thigh rule does not fit an upright biped.
