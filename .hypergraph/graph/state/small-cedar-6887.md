@@ -21,9 +21,9 @@ Charter criterion for run orun4: **F1. Evaluation applies the command filter the
 
 ## Negative knowledge
 
-- [scope: test_review_overlay.py::test_designing_turns_idle_once_the_window_passes | confidence: high | evidence: loyal-path-4209] It flakes across a minute boundary, because it compares a `since` minute prefix against a timestamp recomputed later. It predates F1, passes on rerun, and was left alone.
 
 ## Provenance
 
 - light-mist-9160 — operator-declared orun4 charter gap (gap-f1-evaluation-applies-command-filter)
 - loyal-path-4209 — ADR-558 recorded and measured end to end; evidence complete pending the owner's tick
+- light-dusk-7651 — the minute-boundary flake entry removed: ADR-578 fixed and pinned it (reconcile judgement; see early-arbor-7123)

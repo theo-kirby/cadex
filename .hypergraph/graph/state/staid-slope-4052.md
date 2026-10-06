@@ -21,9 +21,9 @@ Charter criterion for run orun4: **D2. Status is its own editor.** The stage ove
 
 ## Negative knowledge
 
-- [scope: `test_designing_turns_idle_once_the_window_passes` in `test_review_status.py` | confidence: medium | evidence: neat-isle-1523] A known minute-boundary flake moved with the rename from `test_review_overlay.py`; left alone.
 
 ## Provenance
 
 - light-mist-9160 — operator-declared orun4 charter gap (gap-d2-status-own-editor-stage)
 - neat-isle-1523 — ADR-572: Status editor beside the 3D viewport, tab on a phone, Chromium-measured; suites green
+- light-dusk-7651 — the minute-boundary flake entry removed: ADR-578 fixed and pinned it (reconcile judgement; see early-arbor-7123)
