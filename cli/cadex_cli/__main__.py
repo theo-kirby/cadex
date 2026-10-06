@@ -131,7 +131,7 @@ from .evaluate import (
     run_evaluation,
 )
 from .loop import SLOT_BUSY, LoopError, lock_held, machine_lock_path, machine_slot
-from .review_record import manifest_identity, read_accepted_identity, write_run_record
+from .review_record import hold_walk_lock, manifest_identity, read_accepted_identity, write_run_record
 from .review_server import serve as serve_review, serve_projects
 from .smoke import (
     DEFAULT_FPS,
@@ -2250,7 +2250,42 @@ def command_app(args: argparse.Namespace, report: RunReport) -> int:
     return EXIT_OK
 
 
+class _WalkStopped(Exception):
+    """A walk told to stop by ``SIGTERM``: raised from the handler so the
+    walk lands its verdict before it ends (ADR-559)."""
+
+
 def command_walk(args: argparse.Namespace, report: RunReport) -> int:
+    """:func:`_command_walk`, ended on purpose by Ctrl-C or ``SIGTERM``.
+
+    A walk told to stop stops its leg (``walk.run_leg`` relays the signal),
+    then lands its record as ``stopped``, with the signal as the reason,
+    before it lets go of its lock: a stop asked for reads as stopped, never
+    as failed. ``SIGKILL`` gives it no chance; that leaves ``running`` under
+    a free lock, which reads as failed (ADR-559).
+    """
+
+    held: dict[str, Any] = {}
+
+    def stop(_number: int, _frame: Any) -> None:
+        raise _WalkStopped()
+
+    main = threading.current_thread() is threading.main_thread()
+    previous = signal.signal(signal.SIGTERM, stop) if main else None
+    try:
+        return _command_walk(args, report, held)
+    except (KeyboardInterrupt, _WalkStopped) as exc:
+        name = "SIGTERM" if isinstance(exc, _WalkStopped) else "SIGINT (Ctrl-C)"
+        report.error = f"the walk was stopped on request: {name} reached it before it finished."
+        if "land" in held:
+            held["land"]("stopped")
+        return EXIT_FAILURE
+    finally:
+        if main:
+            signal.signal(signal.SIGTERM, previous)
+
+
+def _command_walk(args: argparse.Namespace, report: RunReport, held: dict[str, Any]) -> int:
     """The lifecycle walk as one command (ADR-199).
 
     The iterate change (``--set``,
@@ -2324,6 +2359,15 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     out_dir = Path(args.out).expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)
     report.out_dir = str(out_dir)
+    # Held until the walk's process ends, before its record first says
+    # `running`: the kernel drops it if the walk is killed, and the
+    # dashboard reads a `running` record under a free lock as failed
+    # (ADR-559). Kept in `held`, so it lives until the walk has landed
+    # its last record, a stopped one included.
+    walk_lock = held["lock"] = hold_walk_lock(out_dir)
+    if walk_lock is None:
+        report.notes.append("walk lock not taken: another process holds "
+                            f"{out_dir.name}/walk.lock; the dashboard cannot tell this walk is alive")
     common = _walk_common(args)
     legs: list[dict[str, Any]] = []
     # The walk's own wall-clock bound, in the envelope beside the legs it
@@ -2381,6 +2425,8 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             report.notes.append(f"run record not written: {exc}")
             return
         report.walk["run_record"] = str(path)
+
+    held["land"] = land_record
 
     def learned(leg: Any) -> None:
         """A finished leg's envelope identity is the record's, from here on.

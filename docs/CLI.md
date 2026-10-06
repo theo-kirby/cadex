@@ -491,8 +491,12 @@ belongs to without rebuilding anything. Schema `cadex-run-record-v1`,
 written by `cadex walk` as `running` when the walk starts, so a walk that
 is killed leaves a file saying it never finished; as `running` again before
 the train leg when the sweep has moved the accepted revision;
-then `ok`, `failed` (with the leg and its error) or `pending` (a detached
-train leg launched, nothing collected) when it ends. Each write replaces
+then `ok`, `failed` (with the leg and its error), `stopped` (the walk was
+told to stop by Ctrl-C or `SIGTERM`: it stops its leg and lands the
+record, the signal in `error`; a training-loop run stopped through
+`train_stop` lands the same, its reason in `error`, ADR-559) or `pending`
+(a detached train leg launched, nothing collected) when it ends. A stopped
+walk exits 1. Each write replaces
 the file. Before training starts, the walk freezes the accepted assembled view,
 parameter values/specs and project documents in `training-view.json`,
 `training-view/*.stl` and `project-docs/` (ADR-291). The agent's `train_start`
@@ -565,7 +569,12 @@ no engine, no rebuild, no re-acceptance. Each run carries `relation`
 (`current` when its recorded revision is the accepted one now,
 `historical` otherwise, `unknown` when either side is unavailable),
 `outcome` in words (a `running` record reads `started and never finished:
-still running, or interrupted`, because the reader cannot tell which), and
+still running, or interrupted` when the reader cannot tell which; when it
+can, because `cadex walk` holds `runs/<name>/walk.lock` for its whole life
+(or the loop's supervisor its `supervisor.lock`) and nobody holds it now,
+the record reads as `failed` with `recorded_status: "running"` and the
+error `the process that wrote this run is gone and left no verdict`, the file
+left as written, ADR-559; a `stopped` record reads `stopped on request`), and
 `problems`: references that are recorded but missing, snapshot pages whose
 digest no longer matches, references that **escape their base** by
 `..`, by an absolute path or by a symlink — those are reported and never
@@ -1785,7 +1794,7 @@ of a fixture biped that reaches every route disagree, in the way
 |---|---|---|---|
 | `GET api/projects` | `cadex app` only: every project under the directory | `schema`, `root`, `projects`, `served_at` | |
 | `GET api/project` | the page's one poll: accepted identity, runs with telemetry summaries, the stage, revisions, evaluations, exports, sections, drawings, budgets, agent activity | `schema`, `project`, `accepted`, `docs`, `decisions`, `runs`, `presentation`, `evaluations`, `revisions`, `stage`, `exports`, `sections`, `drawings`, `budgets`, `activity`, `served_at` | |
-| `GET api/run/<run>` | one run's record with full telemetry and disk use | `run`, `status`, `error`, `artifacts`, `project_artifacts`, `videos`, `legs`, `outcome`, `resolved`, `problems`, `relation`, `telemetry`, `disk` | `schema`, `recorded_at`, `mode`, `walk_seconds`, `model`, `params`, `task`, `training`, `policy`, `rollout`, `project_docs`, `policy_store`, `video_render` |
+| `GET api/run/<run>` | one run's record with full telemetry and disk use | `run`, `status`, `error`, `artifacts`, `project_artifacts`, `videos`, `legs`, `outcome`, `resolved`, `problems`, `relation`, `telemetry`, `disk` | `schema`, `recorded_at`, `mode`, `walk_seconds`, `model`, `params`, `task`, `training`, `policy`, `rollout`, `project_docs`, `policy_store`, `video_render`, `recorded_status` |
 | `GET api/policy-origin/<run>` | which run trained the run's policy, and its other playbacks | `schema`, `run`, `policy_sha256`, `origin`, `reason`, `recorded_source_run`, `source_agrees`, `playbacks` | |
 | `GET api/evaluation/<name>` | one evaluation report, and what of its film is on disk | `name`, `relation`, `stamp`, `files`, `report` | |
 | `GET api/model/accepted` | the accepted attempt's model | `schema`, `view`, `run`, `relation`, `revision`, `digest`, `available`, `reason`, `source`, `placement_source`, `components`, `collision`, `contacts`, `exploded`, `appearance`, `measurements` | `meshes` |
@@ -2308,7 +2317,7 @@ beside the op-named tools.
 |---|---|
 | `train_start` | Pre-registers one bounded run on the task **as accepted now** and launches it. Takes `run` (a new name), `budget_s` (wall clock, required — a run with no budget is not started), `reason` (the measurement that motivated the run) and optional `task` and `settings`. Returns at once. |
 | `train_status` | Reads a run: its state, the trainer's progress (iteration, reward per step, mean episode length, exploration sigma, a thinned curve), its checkpoints, and when it finished the policy's path and sha256. It names the run's `task_bundle` (path and sha256), the file a warm start passes as `init_from_parent_task`, and says how to warm-start once there is a policy or a checkpoint. `wait_s` (at most 900) blocks until the run ends. Without `run`: every run of the project and the loop's ledger. |
-| `train_stop` | Asks a live run's supervisor to stop it, with the reason. Checkpoints already written stay, and each is a complete policy. |
+| `train_stop` | Asks a live run's supervisor to stop it, with the reason. Checkpoints already written stay, and each is a complete policy. The run's `run.json` lands `stopped` with that reason, and the dashboard's stage reads **stopped**, never failed (ADR-559). |
 | `evaluate` | `cadex evaluate` for the agent: the accepted policy on every frozen seed, then the verdict, pass or fail per seed and per predicate, the behaviour metrics, the reward by term and how each episode ended in one bounded text block, followed by the overview and detail filmstrips of up to two filmed seeds as `image` blocks. The full report is the same `evaluation.json`, with its video, in `evaluations/`. |
 
 **A run is a directory**, `runs/<run>/` in the project, where the review

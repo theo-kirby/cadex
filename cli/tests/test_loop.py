@@ -322,7 +322,9 @@ def test_a_running_run_is_read_stopped_and_leaves_its_checkpoint(project, monkey
     assert "policy" not in view and "checkpoint" in view["next"]
     assert view["log_tail"] == ["iteration 0  reward/step +0.5"]
     assert not loop.lock_held(loop.machine_lock_path())
-    assert json.loads((run_dir / "run.json").read_text())["status"] == "failed"
+    # A stop asked for is not a failure (ADR-559).
+    record = json.loads((run_dir / "run.json").read_text())
+    assert record["status"] == "stopped" and "the reward is flat" in record["error"]
     # Stopping a run that has ended changes nothing.
     assert loop.request_stop(run_dir, "again")["state"] == "stopped"
     assert [row["kind"] for row in loop.read_ledger(project)].count("train_stop_requested") == 1
@@ -454,6 +456,53 @@ def test_the_agent_starts_watches_and_stops_runs_through_the_bridge(project, mon
             "train_registered", "train_ended", "train_registered", "train_stop_requested",
             "train_ended"]
         assert listing["ledger"][2]["reason"] == second["reason"]
+
+
+def test_each_ending_of_a_started_run_reads_on_the_page_as_what_happened(
+        project, monkeypatch) -> None:
+    """Finished, stopped through ``train_stop``, killed, crashed: each run
+    started through ``train_start`` is, in ``/api/project``'s stage, what
+    happened to it. Before ADR-559 a stop read as failed, and a killed
+    supervisor's run as training for ever."""
+
+    from cadex_cli.review_record import read_run_record
+    from cadex_cli.review_server import ReviewProject
+
+    def shown(run: str) -> tuple[str, str, str]:
+        # Records are stamped to the second, and the stage reads the newest:
+        # the next run's must not tie with this one's.
+        stage = ReviewProject(project).review()["stage"]
+        time.sleep(1.1)
+        assert stage["run"] == run, stage
+        record = read_run_record(project / "runs" / run, project)
+        return stage["state"], stage["reason"], record["status"]
+
+    start = {"budget_s": 60, "reason": REASON, "settings": {"iterations": 3}}
+    with Bridge(FakeCadexd(), project_root=project) as bridge:
+        assert bridge.call("train_start", {"run": "done", **start})["is_error"] is False
+        assert _payload(bridge.call("train_status", {"run": "done", "wait_s": 30}))["state"] == "finished"
+        state, _reason, status = shown("done")
+        assert status == "ok" and state not in ("stopped", "failed")
+
+        monkeypatch.setenv("FAKE_TRAIN_MODE", "slow")
+        assert _payload(bridge.call("train_start", {"run": "asked", **start}))["state"] == "running"
+        assert _payload(bridge.call("train_stop", {"run": "asked", "reason": "the reward is flat"}))[
+            "state"] == "stopped"
+        state, reason, status = shown("asked")
+        assert (state, status) == ("stopped", "stopped") and "the reward is flat" in reason
+
+        assert _payload(bridge.call("train_start", {"run": "killed", **start}))["state"] == "running"
+        os.kill(int(loop.read_run(project / "runs" / "killed")["status"]["supervisor_pid"]),
+                signal.SIGKILL)
+        _until(project / "runs" / "killed", leaves=("running",))
+        state, reason, status = shown("killed")
+        assert (state, status) == ("failed", "failed") and "killed or crashed" in reason
+
+        monkeypatch.setenv("FAKE_TRAIN_MODE", "crash")
+        bridge.call("train_start", {"run": "crashed", **start})
+        assert _payload(bridge.call("train_status", {"run": "crashed", "wait_s": 30}))["state"] == "failed"
+        state, reason, status = shown("crashed")
+        assert (state, status) == ("failed", "failed") and "MJX cannot build this model" in reason
 
 
 def test_a_refused_tool_call_is_an_error_the_agent_can_act_on(project, tmp_path) -> None:

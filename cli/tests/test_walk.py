@@ -41,7 +41,8 @@ from cadex_cli.walk import (
     train_leg_timeout,
 )
 
-from cadex_cli.review_record import RUN_RECORD_FILENAME, read_project_review
+from cadex_cli.review_record import (RUN_RECORD_FILENAME, read_project_review, read_run_record,
+                                     run_process)
 from test_train import ITERATE_SCRIPT, REAL_TRAINER_PYTHON, _run
 
 PLACEHOLDER = "0" * 64
@@ -427,7 +428,32 @@ FAKE_CADEX = textwrap.dedent(
         # writes its first telemetry sample beside it -- kept for the test.
         if (out.parent / "run.json").exists():
             shutil.copy(out.parent / "run.json", out.parent / "run.json.at-train")
+        # Whether the walk held its lock while training (ADR-559).
+        lock = out.parent / "walk.lock"
+        if lock.exists():
+            import fcntl
+            with open(lock, "rb") as handle:
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                    held = "free"
+                except OSError:
+                    held = "held"
+            (out.parent / "walk-lock.at-train").write_text(held)
         refuse("train")
+        # How the training ends, when not as a policy (ADR-559): the walk
+        # told to stop mid-leg, hung until it is killed, or the trainer
+        # crashing under the leg.
+        ending = os.environ.get("FAKE_CADEX_TRAIN", "")
+        if ending.startswith("signal:"):
+            import signal, time
+            os.kill(os.getppid(), getattr(signal, "SIG" + ending[len("signal:"):]))
+            time.sleep(30)
+        elif ending == "hang":
+            import time
+            (out.parent / "train.started").write_text("1")
+            time.sleep(120)
+        elif ending == "crash":
+            raise RuntimeError("the trainer crashed")
         out.mkdir(parents=True, exist_ok=True)
         blob = b"policy for " + script.read_bytes()
         name = (after("--name") or Path("job.cxpolicy")).name
@@ -516,6 +542,7 @@ def fake_cadex(tmp_path, monkeypatch, request) -> Path:
     log = tmp_path / "legs.log"
     monkeypatch.setenv("FAKE_CADEX_LOG", str(log))
     monkeypatch.delenv("FAKE_CADEX_FAIL", raising=False)
+    monkeypatch.delenv("FAKE_CADEX_TRAIN", raising=False)
     monkeypatch.setattr(walk_module, "cadex_command", lambda: [sys.executable, str(script)])
     from contextlib import contextmanager
     from cadex_cli import __main__ as main_module
@@ -903,6 +930,12 @@ def test_a_walk_names_its_training_input_before_training_and_keeps_it_on_failure
     assert code == EXIT_REJECTED and "leg train" in envelope["error"]
     at_train = json.loads((out / "run.json.at-train").read_text())
     assert at_train["status"] == "running"
+    # The walk held its lock while its record said `running`, and let go
+    # when it ended, after its verdict landed (ADR-559).
+    assert (out / "walk-lock.at-train").read_text() == "held"
+    assert run_process(out) == "gone"
+    assert read_run_record(out, toy_root)["status"] == "failed"
+    assert "recorded_status" not in read_run_record(out, toy_root)
     assert at_train["model"] == {"accepted_revision": "t" * 64, "digest": "m" * 64,
                                 "identity_source": "project manifest (script.json) at walk start"}
     assert at_train["params"]["specs"] == [{"name": "arm_len", "default": 40.0, "unit": "mm"}]
@@ -2069,3 +2102,90 @@ def test_the_two_detached_modes_refuse_before_any_leg_runs(
     assert code == EXIT_USAGE, envelope
     assert named in envelope["error"]
     assert not fake_cadex.exists(), "a leg ran before the usage error"
+
+
+# -- a walk reads as what happened to it (ADR-559) -----------------------------
+
+
+def _walk_stage(root: Path) -> dict:
+    from cadex_cli.review_server import ReviewProject
+    return ReviewProject(root).review()["stage"]
+
+
+@pytest.mark.parametrize("ending, status, stage, said", [
+    ("", "ok", None, None),
+    ("signal:TERM", "stopped", "stopped", "stopped on request: SIGTERM"),
+    ("signal:INT", "stopped", "stopped", "stopped on request: SIGINT (Ctrl-C)"),
+    ("crash", "failed", "failed", "training did not produce a policy"),
+])
+def test_a_walk_that_finished_was_stopped_or_crashed_reads_as_that(
+    fake_cadex, toy_root, capsys, monkeypatch, ending, status, stage, said
+) -> None:
+    """A walk told to stop -- Ctrl-C, or ``SIGTERM`` -- stops its leg and
+    lands ``stopped`` with the signal as its reason; before ADR-559 it died
+    with ``running`` on disk. A crashed trainer is a failure; a finished
+    walk is ``ok``. The stage overlay says the same."""
+
+    out = toy_root / "runs" / "walk-end"
+    monkeypatch.setenv("FAKE_CADEX_TRAIN", ending)
+    code, envelope = _run(capsys, "--project", str(toy_root), "walk", "--out", str(out))
+    assert code == (EXIT_OK if status == "ok" else EXIT_FAILURE), envelope
+    record = read_run_record(out, toy_root)
+    assert record["status"] == status and "recorded_status" not in record
+    assert json.loads((out / RUN_RECORD_FILENAME).read_text())["status"] == status
+    assert run_process(out) == "gone"
+    shown = _walk_stage(toy_root)
+    if stage is None:
+        assert shown["state"] not in ("stopped", "failed"), shown
+    else:
+        assert (shown["state"], shown["run"]) == (stage, "walk-end") and said in shown["reason"]
+    if status == "stopped":
+        assert record["outcome"] == "stopped on request"
+        assert said in envelope["error"]
+
+
+#: ``cadex walk`` in a process of its own, its legs answered by the fake.
+WALK_DRIVER = """
+import sys
+from cadex_cli import walk
+walk.cadex_command = lambda: [sys.executable, sys.argv[1]]
+from cadex_cli.__main__ import main
+sys.exit(main(sys.argv[2:]))
+"""
+
+
+def test_a_walk_killed_mid_training_reads_as_failed(fake_cadex, toy_root, tmp_path) -> None:
+    """``SIGKILL`` gives the walk no chance to say anything: its record
+    still says ``running``, and the lock it held is free, so it reads as
+    failed -- never as a stop, and never as training for ever."""
+
+    out = toy_root / "runs" / "walk-killed"
+    env = {**os.environ, "FAKE_CADEX_TRAIN": "hang",
+           "PYTHONPATH": str(Path(walk_module.__file__).resolve().parents[1])}
+    walk = subprocess.Popen(
+        [sys.executable, "-c", WALK_DRIVER, str(tmp_path / "fake_cadex.py"),
+         "--project", str(toy_root), "walk", "--out", str(out), "--json"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+    try:
+        deadline = time.monotonic() + 60
+        while not (out / "train.started").exists() and time.monotonic() < deadline:
+            assert walk.poll() is None, "the walk ended before its train leg"
+            time.sleep(0.05)
+        assert run_process(out) == "alive"
+        assert read_run_record(out, toy_root)["status"] == "running"
+        walk.send_signal(signal.SIGKILL)
+        walk.wait(timeout=10)
+    finally:
+        walk.kill()
+        walk.wait(timeout=10)
+        # The hung leg is in a session of its own; it goes too.
+        for line in subprocess.run(["pgrep", "-f", str(out / "train")], capture_output=True,
+                                   text=True).stdout.split():
+            os.kill(int(line), signal.SIGKILL)
+    assert run_process(out) == "gone"
+    record = read_run_record(out, toy_root)
+    assert (record["status"], record["recorded_status"]) == ("failed", "running")
+    assert json.loads((out / RUN_RECORD_FILENAME).read_text())["status"] == "running"
+    shown = _walk_stage(toy_root)
+    assert (shown["state"], shown["run"]) == ("failed", "walk-killed")
+    assert "killed or crashed" in shown["reason"]

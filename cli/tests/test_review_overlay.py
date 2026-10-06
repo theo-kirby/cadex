@@ -18,12 +18,16 @@ from __future__ import annotations
 
 import json
 import os
+import signal
+import subprocess
+import sys
 import time
 from pathlib import Path
 
 import pytest
 
 from cadex_cli.activity import activity_path, append_activity, begin_activity
+from cadex_cli.review_record import RUN_GONE_ERROR, hold_walk_lock, run_process
 from cadex_cli.review_server import (DESIGNING_WINDOW_S, EVALUATING_WINDOW_S, SPARK_POINTS,
                                      serve)
 from test_review_record import REVISION_B
@@ -211,6 +215,71 @@ OVERLAY = """(function () {
           overlay: {width: box.width, height: box.height, x: box.x, y: box.y, right: box.right, bottom: box.bottom},
           model: {width: model.width, height: model.height, x: model.x, y: model.y, right: model.right, bottom: model.bottom}};
 })()"""
+
+
+#: A walk's process as far as its lock goes: takes the run's walk lock the
+#: way ``cadex walk`` does, says so, and sleeps until it is killed.
+WALK_HOLDER = """
+import sys, time
+from cadex_cli.review_record import hold_walk_lock
+handle = hold_walk_lock(sys.argv[1])
+print("held" if handle else "busy", flush=True)
+time.sleep(600)
+"""
+
+
+def _walk_process(run_dir: Path) -> subprocess.Popen:
+    process = subprocess.Popen([sys.executable, "-c", WALK_HOLDER, str(run_dir)],
+                               stdout=subprocess.PIPE, text=True,
+                               env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)})
+    assert process.stdout.readline().strip() == "held"
+    return process
+
+
+def test_a_killed_walk_is_failed_not_training_forever(tmp_path):
+    """The open end ``snowy-lodge-1033`` named: a walk killed mid-training
+    leaves ``run.json`` saying ``running``, so the stage read ``training``
+    (quiet) for ever. Its lock dies with it (ADR-559)."""
+
+    root = _training_project(tmp_path)
+    run = root / "runs" / RUN
+    # Before ADR-559 there is no lock to read: what the files say stands.
+    _biped_progress(root, 60, updated_at=time.time() - 120)
+    assert run_process(run) == "unknown" and _stage(root)["state"] == "training"
+    walk = _walk_process(run)
+    try:
+        assert run_process(run) == "alive"
+        stage = _stage(root)
+        assert stage["state"] == "training" and stage["training"]["state"] == "stale"
+        walk.send_signal(signal.SIGKILL)
+        walk.wait(timeout=10)
+    finally:
+        walk.kill()
+        walk.stdout.close()
+    assert run_process(run) == "gone"
+    stage = _stage(root)
+    assert stage["state"] == "failed" and stage["reason"] == RUN_GONE_ERROR
+    assert stage["run"] == RUN and stage["training"]["iteration"] == 60
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        record = _json(server.url + "api/run/" + RUN)
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert (record["status"], record["recorded_status"], record["error"]) == ("failed", "running", RUN_GONE_ERROR)
+    # The file is left as the walk wrote it: the page reads, never writes.
+    assert json.loads((run / "run.json").read_text())["status"] == "running"
+
+
+def test_a_walk_that_finished_under_its_lock_reads_as_it_wrote(tmp_path):
+    root = _training_project(tmp_path)
+    run = root / "runs" / RUN
+    handle = hold_walk_lock(run)
+    _biped_progress(root, 239, state="done")
+    _rewrite_record(run, status="ok", recorded_at=_iso(5))
+    handle.close()
+    assert run_process(run) == "gone"
+    assert _stage(root)["state"] != "failed"
 
 
 def _hex_rgb(value: str) -> str:
@@ -434,3 +503,52 @@ def test_the_evaluate_call_names_the_stage_once_its_directory_exists(tmp_path, b
 def test_the_idle_threshold_here_is_the_pages():
     page = (Path(__file__).resolve().parents[1] / "cadex_cli" / "review_static" / "review.js").read_text()
     assert f"var ACTIVITY_IDLE_S = {ACTIVITY_IDLE_S}," in page
+
+
+@needs_browser
+def test_the_overlay_turns_a_killed_walk_from_training_to_failed(tmp_path, browser) -> None:
+    root = _training_project(tmp_path)
+    walk = _walk_process(root / "runs" / RUN)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        page.evaluate("window.cadexReview.setOverlayCollapsed(false)")
+        page.wait_for("document.getElementById('overlay').dataset.stage === 'training'")
+        walk.send_signal(signal.SIGKILL)
+        walk.wait(timeout=10)
+        # The page's own poll, not a reload, carries the death.
+        page.wait_for("document.getElementById('overlay').dataset.stage === 'failed'", timeout=10)
+        shown = page.evaluate(OVERLAY)
+        assert shown["chip"] == "failed" and RUN_GONE_ERROR in shown["line"]
+    finally:
+        walk.kill()
+        walk.stdout.close()
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
+def test_the_overlay_reads_a_stopped_run_as_stopped_with_its_reason(tmp_path, browser) -> None:
+    """A run ended through ``train_stop``: its record lands ``stopped`` with
+    the reason, while the trainer it ended says ``failed`` in its progress.
+    The chip turns from training to **stopped**, in ``--warn``, on the page's
+    own poll -- never to failed (ADR-559)."""
+
+    root = _training_project(tmp_path)
+    run = root / "runs" / RUN
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        page.evaluate("window.cadexReview.setOverlayCollapsed(false)")
+        page.wait_for("document.getElementById('overlay').dataset.stage === 'training'")
+        _biped_progress(root, 41, state="failed", error="KeyboardInterrupt: ")
+        _rewrite_record(run, status="stopped", recorded_at=_iso(0),
+                        error="stop requested: the reward is flat")
+        page.wait_for("document.getElementById('overlay').dataset.stage === 'stopped'", timeout=10)
+        shown = page.evaluate(OVERLAY)
+        assert shown["chip"] == "stopped" and shown["line"] == "stop requested: the reward is flat"
+        chip = page.evaluate("getComputedStyle(document.getElementById('overlay-stage')).color")
+        assert chip == _hex_rgb(shown["warn"])
+    finally:
+        server.shutdown()
+        server.server_close()

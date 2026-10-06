@@ -37,6 +37,10 @@ permitted artifacts and nothing else.
 from __future__ import annotations
 
 import datetime as _datetime
+try:
+    import fcntl
+except ImportError:  # no advisory locks: every run's process reads as unknown
+    fcntl = None  # type: ignore[assignment]
 from functools import lru_cache
 import hashlib
 import json
@@ -44,6 +48,7 @@ import os
 from pathlib import Path
 import shutil
 import threading
+import time
 from typing import Any, Mapping, Sequence
 
 RUN_RECORD_FILENAME = "run.json"
@@ -63,7 +68,19 @@ PROJECT_SCRIPT_FILENAME = "script.json"
 PROJECT_SCRIPT_SCHEMA = "cadex-project-script-v1"
 #: What a run may be in. ``running`` is written when the walk starts and is
 #: what an interrupted walk leaves behind; the reader names it as such.
-RUN_STATES = ("running", "ok", "failed", "pending")
+#: ``stopped`` is a run ended on purpose -- ``train_stop``, or a walk told to
+#: stop -- with the stop's reason in ``error``; it is not a failure (ADR-559).
+RUN_STATES = ("running", "ok", "failed", "stopped", "pending")
+#: The locks a live run's process holds in its run directory for its whole
+#: life: ``cadex walk``'s, and the training loop's supervisor's
+#: (``loop.LOCK_NAME``). The kernel drops a lock when its holder dies, so a
+#: ``running`` record under locks nobody holds is a run whose process is
+#: gone (ADR-559).
+WALK_LOCK_FILENAME = "walk.lock"
+RUN_LOCK_FILENAMES = (WALK_LOCK_FILENAME, "supervisor.lock")
+#: What a ``running`` record whose process is gone is read as.
+RUN_GONE_ERROR = ("the process that wrote this run is gone and left no verdict: "
+                  "it was killed or crashed before it finished")
 
 #: The retained artifacts a record names, and the base each resolves against.
 #: ``artifacts.policy`` is the trainer's own output under the run's
@@ -269,7 +286,8 @@ def write_run_record(
     Written by a walk as ``running`` when it starts (so an interrupted walk
     leaves a record that says it never finished), again as ``running``
     before its train leg when a design turn or sweep moved the accepted
-    revision, then ``ok``, ``failed`` or ``pending`` when it ends. Every
+    revision, then ``ok``, ``failed``, ``stopped`` or ``pending`` when it
+    ends; a ``stopped`` record's ``error`` is why it was stopped. Every
     path is relative to the run directory or the project root; anything
     outside either is recorded as null rather than as an absolute path, so
     the file reads the same from a copy of the project.
@@ -490,6 +508,57 @@ def policy_store(project_root: Path | str, record: Mapping[str, Any],
     return result
 
 
+def hold_walk_lock(run_dir: Path | str, attempts: int = 20) -> Any:
+    """Take ``run_dir``'s walk lock for the caller's life: the open, locked
+    file, or ``None`` when another process holds it. A reader's probe holds
+    it for microseconds, so a few short retries outlast one (ADR-559)."""
+
+    if fcntl is None:
+        return None
+    path = Path(run_dir) / WALK_LOCK_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(path, "a+", encoding="utf-8")
+    for attempt in range(max(1, attempts)):
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return handle
+        except OSError:
+            if attempt + 1 < attempts:
+                time.sleep(0.05)
+    handle.close()
+    return None
+
+
+def run_process(run_dir: Path | str) -> str:
+    """Whether the process that writes ``run_dir``'s record still lives.
+
+    ``alive`` when a live process holds one of :data:`RUN_LOCK_FILENAMES`,
+    ``gone`` when at least one exists and nobody holds any, ``unknown``
+    when there is none (a run from before ADR-559, or a copy that came
+    without its locks). Read-only: a lock file is opened for reading and
+    probed with a shared, non-blocking lock, never created or written.
+    """
+
+    if fcntl is None:
+        return "unknown"
+    found = False
+    for name in RUN_LOCK_FILENAMES:
+        path = Path(run_dir) / name
+        if path.is_symlink() or not path.is_file():
+            continue
+        found = True
+        try:
+            with open(path, "rb") as handle:
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_SH | fcntl.LOCK_NB)
+                except OSError:
+                    return "alive"
+                fcntl.flock(handle, fcntl.LOCK_UN)
+        except OSError:
+            return "unknown"
+    return "gone" if found else "unknown"
+
+
 def _load_json(path: Path) -> tuple[dict[str, Any] | None, str | None]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -631,9 +700,11 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
     does not hold, with the command that stores it: an ``ok`` run whose
     result lives only under its own ``train/`` is a retention gap, not a
     finished run, ADR-327), and marks a ``running`` record as
-    ``interrupted``-looking without claiming it: the reader cannot tell a
-    live walk from one that died, so it says which two it could be and
-    leaves the CLI action to the caller.
+    ``interrupted``-looking without claiming it when the reader cannot
+    tell a live walk from one that died. When it can -- the record's run
+    directory has a run lock (:func:`run_process`) and nobody holds it --
+    the record is read as ``failed`` with :data:`RUN_GONE_ERROR` and
+    ``recorded_status: "running"``, the file left as written (ADR-559).
     """
 
     directory = Path(run_dir).expanduser()
@@ -670,6 +741,14 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
         record = {"run": directory.name, "status": "empty",
                   "error": "no run.json and no review.json", "artifacts": {},
                   "project_artifacts": {}, "videos": [], "legs": []}
+    if record.get("status") == "running" and run_process(directory) == "gone":
+        # Read twice: a walk writes its verdict and then lets go (ADR-559).
+        payload, _error = _load_json(record_path)
+        if payload and payload.get("schema") == RUN_RECORD_SCHEMA:
+            record = payload
+        if record.get("status") == "running":
+            record = {**record, "status": "failed", "recorded_status": "running",
+                      "error": record.get("error") or RUN_GONE_ERROR}
     video_status = resolve_reference(directory, "video.json")
     if video_status["exists"] and not video_status["error"]:
         payload, error = _load_json(directory / "video.json")
@@ -729,6 +808,7 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
     outcome = {
         "ok": "completed",
         "failed": "failed",
+        "stopped": "stopped on request",
         "pending": "pending (detached training not collected)",
         "running": "started and never finished: still running, or interrupted",
         "unrecorded": "legacy run: review.json only",

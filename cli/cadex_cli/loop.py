@@ -444,7 +444,7 @@ def _record(root: Path, run_dir: Path, registration: Mapping[str, Any], status: 
     try:
         write_run_record(
             run_dir, project_root=root, status=status, mode="loop",
-            error=str(state.get("reason") or "") if status == "failed" else None,
+            error=str(state.get("reason") or "") if status in ("failed", "stopped") else None,
             accepted_revision=str(registration["accepted_revision"]),
             digest=str(registration["accepted_digest"]),
             identity_source="accepted attempt retained when the run was registered",
@@ -771,8 +771,10 @@ def supervise(run_dir: Path) -> int:
     def end(state: str, reason: str, **fields: Any) -> None:
         payload = {**base, "state": state, "reason": reason, "ended_at": _now(), **fields}
         _write_json(status_path, payload)
+        # A stop that was asked for is not a failure; the page says which
+        # it was, with the reason given (ADR-559).
         _record(root, run_dir, registration,
-                "ok" if state == "finished" else "failed", payload)
+                {"finished": "ok", "stopped": "stopped"}.get(state, "failed"), payload)
         append_ledger(root, "train_ended", run=run_dir.name, state=state, reason=reason,
                       policy_sha256=(fields.get("policy") or {}).get("sha256"),
                       wall_time_s=fields.get("wall_time_s"))

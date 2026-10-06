@@ -35456,3 +35456,61 @@ refused. Without the change the filtered cases fail with 99 of 100 commands
 off the recurrence.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-559 — A run reads as what happened to it: stopped on request, or failed when killed (2026-10-06, orun4 F2)
+
+**Context.** Two endings read wrong on the dashboard. *A stop read as a failure:* the training
+loop's supervisor ended a run stopped through `train_stop` with the verdict `stopped` and the
+agent's reason, then wrote the dashboard's `run.json` as `failed`, because `loop._record` mapped
+every ending other than `finished` to `failed` (and `test_loop.py` pinned it). The owner's
+session stopped a run on purpose and the page called it failed. A walk told to stop (Ctrl-C,
+`SIGTERM`) relayed the signal to its leg and died with `running` on disk. *A kill read as
+training for ever:* `cadex walk` writes `run.json` as `running` when it starts and rewrites it
+when it ends (ADR-285); a walk that is killed leaves `running` behind, its trainer's
+`progress.json` goes quiet, and the stage overlay read **training** with "no telemetry update
+for over 30 s" with no end (`snowy-lodge-1033`). This finishes the unaccepted orun3 draft of the
+second half (branch `orun3-wip-adr558`, renumbered: ADR-558 is the command filter).
+
+**Decision.** `stopped` is a run status beside `running`, `ok`, `failed` and `pending`
+(`review_record.RUN_STATES`): a run ended on purpose, the stop's reason in `error`, its
+`outcome` "stopped on request". The supervisor writes it for its `stopped` verdict, the
+reason being `stop requested: <the reason given>`. `cadex walk` catches Ctrl-C and `SIGTERM`
+(`walk.run_leg` has already relayed the signal to the leg), lands its record as `stopped`
+with the signal named, and exits 1. The stage (`review_server.project_stage`) gains
+**stopped**, its line the reason, its chip in `--warn`, ahead of the `failed` branch, so a
+trainer that reports `failed` because it was terminated does not override the stop. A
+supervisor told to terminate by a signal is still `interrupted` in `train_status`, and
+`failed` on the page: no reason was given. *Killed:* `cadex walk` takes an exclusive `flock`
+on `<out>/walk.lock` (`review_record.hold_walk_lock`) before its record first says
+`running`, and holds it until it has landed its last record; the kernel drops it if the
+walk is killed. The reader (`review_record.run_process`) probes `walk.lock` and the
+supervisor's `supervisor.lock` with a shared, non-blocking lock on a read-only handle:
+`alive` when one is held, `gone` when one exists and none is, `unknown` when there is none
+(a run from before this ADR, or a copy without its locks). `read_run_record` reads a
+`running` record whose process is `gone` (re-read once, since a writer lands its verdict
+and then lets go) as `failed`, with `recorded_status: "running"` and the error "the process
+that wrote this run is gone and left no verdict: it was killed or crashed before it
+finished". The file is not rewritten; the page stays read-only (ADR-537). `recorded_status`
+is a new optional key of `GET api/run/<run>`. A PID was not used: it is reused after the
+process dies, and means nothing on a copy.
+
+*Assumption, owner to revise:* a walk has no `train_stop`, so for a walk a stop request is
+Ctrl-C or `SIGTERM` delivered to it, and its reason is the signal's name. `SIGKILL` is a
+kill, not a stop.
+
+**Test.** Each fails without its half of the change (measured by reverting each half alone:
+5 tests fail each time). `test_loop.py`: four runs started through `train_start`, one
+finished, one stopped through `train_stop` with a reason, one whose supervisor is
+`SIGKILL`ed, one whose trainer crashes, each read through `ReviewProject`'s stage as
+`ok`/not failed, **stopped** with the reason, **failed** "killed or crashed", **failed**
+with the trainer's error; the stopped run's `run.json` says `stopped`. `test_walk.py`: a
+walk that finishes, one sent `SIGTERM`, one sent `SIGINT` mid-train-leg, and one whose
+trainer crashes read `ok`, `stopped`, `stopped`, `failed`, on disk and in the stage; a
+`cadex walk` in its own process `SIGKILL`ed mid-training reads `failed` with
+`recorded_status: "running"` and the file untouched. `test_review_overlay.py`: a lock
+holder `SIGKILL`ed turns the stage from training to failed; with no lock file the old
+reading stands; a Chromium through `browser.py` watches the chip turn from training to
+**failed** on the page's own poll, and, for a run whose record lands `stopped` while its
+progress says `failed`, from training to **stopped** in `--warn` with the reason.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

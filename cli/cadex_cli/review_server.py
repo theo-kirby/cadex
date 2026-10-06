@@ -153,7 +153,7 @@ API_RESPONSE_KEYS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         "resolved", "problems", "relation", "telemetry", "disk"}),
         frozenset({"schema", "recorded_at", "mode", "walk_seconds", "model", "params", "task",
                    "training", "policy", "rollout", "project_docs", "policy_store",
-                   "video_render"})),
+                   "video_render", "recorded_status"})),
     "policy-origin/<run>": (frozenset({
         "schema", "run", "policy_sha256", "origin", "reason", "recorded_source_run",
         "source_agrees", "playbacks"}), frozenset()),
@@ -1963,8 +1963,9 @@ def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
     ``state`` is the first that holds of: ``evaluating`` (an evaluation is
     writing, or an ``evaluate`` call through ``cadex mcp`` is in flight in
     ``review["activity"]``, ADR-553; the call's reason wins, ADR-555), ``training`` (the run the page reads is training, or its
-    telemetry has gone quiet -- ``stale``), ``failed`` (the newest run failed
-    and no revision was accepted after it), ``designing`` (a revision was
+    telemetry has gone quiet -- ``stale``), ``stopped`` (the newest run was
+    stopped on request, ``reason`` the request's, ADR-559), ``failed`` (the
+    newest run failed and no revision was accepted after it), ``designing`` (a revision was
     accepted inside :data:`DESIGNING_WINDOW_S`), else ``idle``. ``since`` is
     when that state's evidence was written. ``run`` is the newest run
     training, a quiet one included, else the one :func:`default_run`
@@ -2002,6 +2003,11 @@ def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
     elif record is not None and record.get("status") in ("running", "pending") and training \
             and training["state"] in ("starting", "training", "stale"):
         stage.update(state="training", reason=training["reason"] if training["state"] == "stale" else "",
+                     since=_iso(recorded_at) if recorded_at else None)
+    elif record is not None and record.get("status") == "stopped" \
+            and (accepted_at is None or (recorded_at or 0) >= accepted_at):
+        # Asked for, so not a failure, though the trainer it ended may say so (ADR-559).
+        stage.update(state="stopped", reason=str(record.get("error") or "the run was stopped"),
                      since=_iso(recorded_at) if recorded_at else None)
     elif record is not None and (record.get("status") == "failed" or (training or {}).get("state") == "failed") \
             and (accepted_at is None or (recorded_at or 0) >= accepted_at):

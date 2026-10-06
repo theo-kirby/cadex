@@ -511,7 +511,7 @@
   // What the project is doing and how training is going, from /api/project's
   // `stage` on the page's own poll. Collapsed or not is this browser's.
   var overlayCollapsed = readPref('cadex.overlay', ['expanded', 'collapsed'], 'expanded') === 'collapsed';
-  var STAGE_LABELS = { idle: 'idle', designing: 'designing', training: 'training', evaluating: 'evaluating', failed: 'failed' };
+  var STAGE_LABELS = { idle: 'idle', designing: 'designing', training: 'training', evaluating: 'evaluating', stopped: 'stopped', failed: 'failed' };
 
   // Text and attributes are written only when they change, so an idle poll adds no nodes.
   function setText(id, value) { var node = $(id); if (node.textContent !== value) node.textContent = value; return node; }
