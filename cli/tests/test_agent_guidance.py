@@ -207,3 +207,16 @@ def test_the_training_lessons_are_in_the_base_and_reach_every_project():
                  "Never tighten action_filter_alpha on a warm start",
                  "start cold after any change to the model"):
         assert rule in text, rule
+
+
+def test_the_style_s_foot_thigh_and_roll_rules_reach_a_project_that_chose_it(tmp_path, capsys):
+    # ADR-566: the three rules the fresh-session check found too loose reach
+    # the agent through `cadex guidance --project`, and never the base.
+    assert main(['style', '--project', str(tmp_path), STYLE]) == 0
+    capsys.readouterr()
+    assert main(['guidance', '--project', str(tmp_path)]) == 0
+    chosen = " ".join(capsys.readouterr().out.split())
+    base = " ".join(instructions().split())
+    for rule in ('COMPACT HAS A NUMBER', 'no wider than an eighth of it', 'A SPRAWLED LEG',
+                 'MEASURE WHERE THE FEET MEET'):
+        assert rule in chosen and rule not in base, rule

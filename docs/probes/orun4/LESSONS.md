@@ -39,7 +39,7 @@ instance, never a default.
 | L1 | A support whose cross-section is a single round edge gives no base in the direction across it; when a mechanism must stand on one support at a time, give that support a flat strip (two contact lines) across the direction it must not tip. | r5 and r7 plateaued in a 16–24 mm shuffle whatever the reward (counted steps 0–2; r7 stop: "single-keel foot gives no sideways base on one foot"). Twin-keel hull (flat 8 mm strip between round bilges, rev `17810396`) → r9 5/6 seeds survive 10 s with yaw ≤ 11°, and r11 (with L5) gave the first real gait, ~40 mm counted steps. P-ADR-009. | **style** (FEET). Standing on one support at a time is legged; a crane or a wheeled base never balances on one contact line. |
 | L2 | Centre the resting support under the centre of mass, measured on the model, not estimated. | MuJoCo probe: stance fell in 0.75 s from an 80 mm/s nudge with the keel 6 mm behind the COM; `foot_fwd` = 6 mm → survives 80 mm/s pushes. Ranked 2nd in "what made it work". P-ADR-008, P-ADR-011. | **base** (THE SIMULATED BODY IS THE BUILT BODY). A crane over its outriggers and a wheeled base over its axles tip the same way. |
 | L3 | Make the printed contact surface exactly a union of the simulator's primitive collision shapes, so the physics walks on the part that is printed. | Half-ellipsoid foot (rev `26ca52da`) rejected: no primitive matches it, so step metrics would have measured a different foot. Half-capsule, then two-capsule hull, collide exactly as printed; final evaluation passes on that geometry. P-ADR-004, P-ADR-009. | **base** (THE SIMULATED BODY IS THE BUILT BODY). Any simulated contact — a wheel, a gripper pad — is measured on its collision shapes. |
-| L4 | Contact parts stay compact: the feet that passed are 64 × 32 × 12 mm hulls on a ~31 cm, 0.65 kg robot; widening the base came from a flat strip, not from a bigger foot. | Owner request "no large or flat feet" (P-ADR-004) honoured through every revision, and the 10/10 pass (P-ADR-011) was on the compact hull. The size is an owner constraint that held, not a measured optimum. | **style** (FEET), *owner to confirm* the phrasing: the owner's constraint, held through the pass; no size given, only "compact, never large or flat". |
+| L4 | Contact parts stay compact: the feet that passed are 64 × 32 × 12 mm hulls on a ~31 cm, 0.65 kg robot; widening the base came from a flat strip, not from a bigger foot. | Owner request "no large or flat feet" (P-ADR-004) honoured through every revision, and the 10/10 pass (P-ADR-011) was on the compact hull. The size is an owner constraint that held, not a measured optimum. | **style** (FEET), *owner to confirm* the bound: "compact" alone let the fresh session build a 0.34 × 0.19 slab, so since ADR-566 the sole is at most a quarter of the standing height long and an eighth wide (the passing feet were about 0.21 and 0.10), with stability credited to the strip, not the area. |
 
 ### 2. Target speed against the actuator
 
@@ -52,7 +52,7 @@ instance, never a default.
 
 | # | Lesson, as a general rule | Evidence (change → effect) | Destination |
 |---|---|---|---|
-| L7 | Sweep each joint through its full range and check that moving parts clear each other; set the spacing *and* the joint limit from the sweep, asymmetric where the geometry is. | Hip half-spacing 46 mm: the sweep showed the feet meeting at 10° inward roll → spacing 50 mm and inward roll limited to 8° (outward 20°), per side (`hinge("roll_…", …, -8/20)` in `script.py`). P-ADR-003. | **base** (MOTION FIT: limits from the sweep), with the legged instance in the **style** (HIPS WIDE ENOUGH FOR THE FEET TO PASS). |
+| L7 | Sweep each joint through its full range and check that moving parts clear each other; set the spacing *and* the joint limit from the sweep, asymmetric where the geometry is. | Hip half-spacing 46 mm: the sweep showed the feet meeting at 10° inward roll → spacing 50 mm and inward roll limited to 8° (outward 20°), per side (`hinge("roll_…", …, -8/20)` in `script.py`). P-ADR-003. | **base** (MOTION FIT: limits from the sweep), with the legged instance in the **style** (HIPS WIDE ENOUGH FOR THE FEET TO PASS; since ADR-566, MEASURE WHERE THE FEET MEET: the inward limit is set short of the sweep's measured `first_contact`, both angles recorded). |
 | L8 | When a part that sits beside its mirror grows, re-check the clearance and move the spacing with it. | Twin-keel feet widened 28 → 32 mm beam → `hip_y` 50 → 52 so they clear at 8° inward roll (run params r9–r13 carry `hip_y` 52). P-ADR-009. | **base** (MOTION FIT: spacing and limit move with the parts), folded into L7's rule. |
 
 ### 4. Training practice
@@ -107,7 +107,7 @@ a style as **taste** (the owner liked the result) rather than as a rule.
 | `printed-legged-robot` style | L1, L4, L7 (hips), L11, L13 (symmetry); W1, W2; W3, W5 already there |
 | tool | L18 (F1, ADR-558) |
 | not adopted | W6 |
-| owner to confirm | L4 (phrasing), L5 (direction of the move), W1 (taste) |
+| owner to confirm | L4 (the ADR-566 bound), L5 (direction of the move), W1 (taste) |
 
 `cli/tests/test_agent_guidance.py` and
 `src/Mod/cadex/cadex_tests/test_agent_guidance.py` pin each adopted rule
@@ -118,3 +118,7 @@ The proof: a fresh agent session given only the guidance and this style,
 the horn-sized joint caps, the actuators inside the limb and the tighter
 inward roll limit unprompted. It missed foot compactness, and it showed
 that the style's level-thigh rule does not fit an upright biped.
+ADR-566 revised the style on those findings: the sole has a bound against
+the standing height, the level-thigh rule is limited to sprawled legs, and
+the inward roll limit is derived from the measured angle where the feet
+meet. A second fresh session checks the revision.

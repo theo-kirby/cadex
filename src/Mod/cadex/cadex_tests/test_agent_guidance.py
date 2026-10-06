@@ -133,3 +133,21 @@ def test_the_reference_lessons_are_in_the_base_and_the_style_they_belong_to():
     # Lessons enter as rules, never as the reference robot's numbers made defaults.
     for number in ('160 mm/s', '52 mm', '64 mm', '0.65 kg', '8 degrees'):
         assert number not in base + style, number
+
+
+def test_the_style_bounds_the_foot_scopes_the_level_thigh_and_derives_the_roll_limit():
+    # ADR-566: the fresh-session check (docs/probes/orun4/FRESH-SESSION.md)
+    # met every rule but these three as worded. "Compact" without a number
+    # let a 72 x 40 mm slab under a 210 mm robot through; the level-thigh rule
+    # was written for a sprawled leg; and an inward roll limit picked first
+    # and found clear by the sweep was taken for one derived from it.
+    style = " ".join(_body(MODULE_DIR / 'CadexAgentStyle.printed-legged-robot.md').split())
+    for rule in ('COMPACT HAS A NUMBER', 'no longer than a quarter of it and no wider than an eighth of it',
+                 'never from the foot\'s area',
+                 'A SPRAWLED LEG', 'An UPRIGHT LEG under the body', 'the level-thigh rule is not for it',
+                 'MEASURE WHERE THE FEET MEET', "first_contact", 'short of that measured angle',
+                 'write both angles in DECISIONS.md'):
+        assert rule in style, rule
+        assert rule not in _body(), rule
+    # The level thigh is only ever asked of a sprawled leg.
+    assert style.index('A SPRAWLED LEG') < style.index('thigh running out level') < style.index('An UPRIGHT LEG')

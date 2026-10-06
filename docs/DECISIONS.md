@@ -35814,3 +35814,51 @@ G2 unit and not claimed here. Three rows wait for the owner: the foot rule's phr
 direction of the target-speed move (it went up, not down), and the knee placement.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-566 — The printed-legged-robot style bounds the foot, scopes the level thigh, and derives the roll limit (2026-10-06, orun4 G2)
+
+**Context.** G2's fresh-session check (`docs/probes/orun4/FRESH-SESSION.md`) gave a new
+agent only the base guidance and the `printed-legged-robot` style (ADR-560, ADR-565). Its
+first accepted robot met most of the style unprompted, and missed it in three places, each
+traceable to the wording rather than to the agent:
+
+1. *"Compact, never large or flat"* carried no proportion. The agent built a 72 × 40 mm
+   sole under a 210 mm robot, about 0.34 and 0.19 of its standing height, which reads as
+   the large flat plate the rule names. The reference robot's passing feet were about
+   0.21 and 0.10 of its height.
+2. *"At the standing pose the thigh runs out level"* is a rule for a sprawled leg. The
+   agent declined it for an upright biped, rightly.
+3. *"Set the hip spacing and an inward roll limit together from where they meet"* let
+   the agent pick 10° inward first and accept it when the sweep passed. The limit was
+   checked by the sweep, never derived from the angle where the feet meet, which the
+   reference robot measured and set its limit short of.
+
+**Decision.** Three edits to `CadexAgentStyle.printed-legged-robot.md` only. The base is
+untouched.
+
+- **COMPACT HAS A NUMBER.** Each sole is no longer than a quarter of the robot's standing
+  height and no wider than an eighth of it, with the height and both ratios recorded in
+  the project's `DECISIONS.md`. Stability on one foot is credited to the strip (its two
+  contact lines and their spacing) and its place under the centre of mass, never to the
+  foot's area. The look checklist names a sole past either bound. The fractions are an
+  upper bound the passing robot met with margin, not a measured optimum: *owner to
+  confirm*.
+- **A sprawled leg and an upright leg.** The level-thigh pose is asked of a sprawled leg
+  (a spider's, a hexapod's) only. An upright leg stands with the thigh coming down to a
+  slightly bent knee. Both keep the one-line, uncrowded-joints rule.
+- **MEASURE WHERE THE FEET MEET.** Sweep the hip roll with the inward limit opened wide,
+  read the joint row's `first_contact` from `inspect scope=clearance
+  path=/clearance_sweep/joints`, set the inward limit at least two sweep steps short of
+  it, and record both angles. A limit picked first and found clear is named as not
+  derived.
+
+No number from the reference robot becomes a default; the bound is a ratio to the robot's
+own height. The tool surface and the protocol are unchanged.
+
+**Consequences.** Tests in both guidance suites pin each edit in the style and its absence
+from the base, and that the level thigh is asked only of a sprawled leg; both fail on the
+style as ADR-565 left it. `docs/DESIGN-LANGUAGE.md` §5 and the ledger rows L4 and L7 carry
+the same rules. Whether a fresh agent now meets the foot rule is the next unit: a second
+fresh session on a new `orun4-*` project.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

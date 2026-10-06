@@ -49,7 +49,7 @@ is in a style.
 | a learned task: speed bounded both ways, a target the intended motion reaches most easily, command range centred on the rest pose, progress only while upright, a ceiling on anti-degenerate charges | base | true of any learned motion (ADR-565) |
 | training practice: checkpoints on, keep the policy `evaluate` passes, when to warm-start, never tighten the filter on one | base (CLI guidance) | true of any task (ADR-565) |
 | tapered limb plates with a lightening window and round bosses; the knee actuator inside the thigh | style | a legged look; the actuator placement is the owner's taste, *owner to confirm* (ADR-565) |
-| compact hull feet with a flat strip between twin keels; hips wide enough, inward roll limited, for the feet to pass; pay for the step | style | legged only (ADR-565) |
+| compact hull feet with a flat strip between twin keels; hips wide enough, inward roll limited, for the feet to pass; pay for the step; a sole bounded by the standing height; the roll limit from where the feet meet | style | legged only (ADR-565, ADR-566) |
 
 **The rest of this document is the `printed-legged-robot` style's
 evidence**, from orun1's ratings, together with the base rules that came
@@ -263,8 +263,10 @@ it declares one.
   held-out) are the failure.
 - **Legs are long against their joints.** Thigh and shin each at least
   2.5 joint-cap diameters between axes, the shin the longest segment, the
-  hip link no longer than its servos need, the thigh level or a little above
-  at the standing pose (ADR-494). Evidence: hexapod trial 1's 48 mm thigh
+  hip link no longer than its servos need, and, for a sprawled leg only, the
+  thigh level or a little above at the standing pose (ADR-494). An upright
+  leg under the body, a biped's, stands with the thigh coming down to a
+  slightly bent knee (ADR-566). Evidence: hexapod trial 1's 48 mm thigh
   and 70 mm shin under 35 mm caps (1.4 and 2.0 diameters, knee raised)
   drew "upturned segments … cluttered" from frozen judge v2. **[judgement]**
   on the 2.5 figure: it is the run's own ratio, not a rated measurement.
@@ -276,6 +278,18 @@ it declares one.
   designed parts, not leftovers. A ball on the end of a stick is mixed
   evidence: it appears on `hexapod-g-minimal` (No) and also on
   `quadruped-c-exposed-mechanism` (Like).
+- **Compact has a number, and the roll limit is measured (ADR-566).** A
+  sole is no longer than a quarter of the robot's standing height and no
+  wider than an eighth of it; stability on one foot comes from the flat
+  strip and where it sits under the centre of mass, not from the foot's
+  area. The inward hip-roll limit is set short of the angle where the
+  sweep finds the feet first meet, with that angle recorded. Evidence: the
+  reference legged robot's passing feet were about 0.21 and 0.10 of its
+  height, and its roll limit came from the feet meeting at a swept angle;
+  G2's fresh-session check (`docs/probes/orun4/FRESH-SESSION.md`) built a
+  0.34 × 0.19 slab under "compact" with no number, and picked a limit the
+  sweep then found clear. **[judgement]** on the two fractions: an upper
+  bound the passing robot met with margin, not a measured optimum.
 - **Mass low and central.** The battery is the heaviest part and goes
   low and between the hips or axles **[judgement]**: this is an engineering
   rule, not a rated one. The Loves follow it
