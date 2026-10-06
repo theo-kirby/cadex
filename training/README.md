@@ -194,7 +194,8 @@ against the actuator rather than deriving it — ADR-162 carries the numbers.
 not a weight dump: pull it off the box mid-run, paste its digest into
 `assembly.policy`, rebuild, and watch it. Cost is about one iteration each —
 a rollout for the witness observations plus 32 forward passes — so every
-hundredth of two thousand is 1 %.
+hundredth of two thousand is 1 %. The first checkpoint also pays one compile
+of that rollout; later ones reuse it (ADR-576).
 
 The witness is checked on checkpoints too. That error is *relative* and grows
 with the activations a policy learns (ADR-094), so a checkpoint that fails it

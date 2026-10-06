@@ -36288,3 +36288,48 @@ it still 404. It fails without the change. `docs/CLI.md`'s `cadex app` row says 
 same. No route, response schema, engine module, protocol op or tool changed.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-576 — A checkpoint costs a rollout, not a compile: the witness rollout is jitted once (2026-10-06, orun4 long-term)
+
+**Context.** orun3 left a defect: the trainer stalls 37–39 s before each
+checkpoint. The charter asked for the time to be measured before anything
+changed. An instrumented copy of `training/cadex_train.py`, run on the
+reference biped's 4096-env walk task (`--unroll 24 --epochs 4 --hidden 256 128`,
+`--checkpoint-every 2`, 7 iterations, holding the machine lock), timed every
+step of a checkpoint:
+
+| step | per checkpoint |
+|---|---|
+| `snapshot`'s `rollout()` (the witness observations) | **42.5–45.4 s** |
+| device-to-host copy of the traces | 0.002 s |
+| witness forward passes at `highest` precision | 0.002–0.25 s |
+| `policy_header` | < 0.001 s |
+| `checked_policy` (witness check and encoding) | 0.033 s |
+| `write_atomically` (176 KB) | < 0.001 s |
+| a training iteration, for scale | 1.9 s |
+
+A checkpoint that also wrote a new `best` paid it twice. The cause was one
+step: `snapshot` called `rollout` bare, outside the jitted `iterate`, so its
+`jax.lax.scan` was traced and compiled again on every call. With
+`JAX_LOG_COMPILES=1` on the swing-up fixture, six iterations at
+`--checkpoint-every 1` compiled `jit(scan)` 16 times and three iterations
+compiled it 10 times.
+
+**Decision.** `train()` jits the rollout once, `witness_rollout =
+jax.jit(rollout)`, and `snapshot` calls that. Nothing else changes: the
+rollout's result is still discarded, so a run with checkpoints takes the same
+trajectory as one without, and the witness, the container and the files are as
+before.
+
+**Consequences.** On the same task and seed, the first checkpoint pays one
+compile (42.5 s) and every later one takes 1.9 s; seven iterations with four
+checkpoint writes went from 274.0 s to 144.6 s of trainer wall time.
+`test_dynamics_policy_trainer.py::test_a_checkpoint_does_not_recompile_the_rollout`
+counts JAX compiles for a three- and a six-iteration run with a checkpoint every
+iteration and asserts they are equal; it fails on the old trainer (more compiles
+with more checkpoints) and passes now. Like the file's other trainer runs it
+needs the `training/requirements.txt` venv and skips under pixi. No dependency,
+CLI flag, file format, engine module, protocol op or tool changed.
+`training/README.md` notes the one compile.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
