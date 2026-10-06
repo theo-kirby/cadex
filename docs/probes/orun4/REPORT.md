@@ -11,7 +11,7 @@ only read. The owner ticks the criteria; this report claims none of them.
 | criterion | where the evidence stands | evidence | records |
 |---|---|---|---|
 | F1 command filter in evaluation | evidence recorded | ADR-558; §1; 9 tests that fail without the fix; packaged lifecycle gate 24 passed | `loyal-path-4209` |
-| F2 a run reads as what happened | evidence recorded | ADR-559; stopped, killed, finished and crashed tested through `train_start` and `cadex walk`; fails without the fix. ADR-574: a run stopped before ADR-559 reads stopped too | `true-ridge-9252`, the ADR-574 record |
+| F2 a run reads as what happened | evidence recorded | ADR-559; stopped, killed, finished and crashed tested through `train_start` and `cadex walk`; fails without the fix. ADR-574: a run stopped before ADR-559 reads stopped too | `true-ridge-9252`, `candid-walrus-1021` |
 | G1 base plus styles | evidence recorded | ADR-560; `agent.json` `style`, `cadex style`; `test_agent_guidance.py` pins that the base names no robot type, no style text without a choice, and no guidance file names a project | `lucky-peak-7846` |
 | G2 the lessons in Cadex | evidence recorded, three rows *owner to confirm* | ADR-565, ADR-566, ADR-567; `LESSONS.md`; two fresh sessions (§2) | `civic-stream-8050`, `northern-stream-2677`, `ancient-trail-9417`, `nimble-garden-9555`, `wandering-dune-8500`, `witty-bay-1622` |
 | H1 one normal font | evidence recorded | ADR-568; Noto Sans; six before/after images (§3) | `tiny-ash-6709` |
