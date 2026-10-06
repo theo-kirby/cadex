@@ -48,7 +48,7 @@ The agent's two requests cost tokens. The loop between them does not.
 | Command | What it does | Spends tokens |
 |---|---|---|
 | `cadex mcp [--idle S]` | Serve the project's tools to an agent over MCP stdio (ADR-538; §2a below). The engine opens on the first tool call and closes after `--idle` quiet seconds (default 30; 0 holds it), releasing the project for the agent's own `cadex … --wait` commands; a session that accepted a build lands one `PROGRESS.md` row and one project commit as it closes. Every tool call appends one line to the project's activity log, `review/activity.jsonl` (ADR-549): `t`, `tool`, `args` (a summary — a long or multi-line string only by its length, a list only by its size, an object only by its keys, 160 characters at most), `outcome` (`ok` or `error`), `detail` (the call's one-line summary or its error), `ms` and `call`. A call also writes an in-flight line as it starts (ADR-553): `outcome: running`, `t` its start, and the server's `pid`; its finished line, with the same `call`, hides it on read, and an in-flight line whose process has gone reads `lost`. An in-flight `evaluate` makes `/api/project`'s `stage` `evaluating`. The log is capped at 64 KiB: past that it is rewritten keeping the newest lines within 32 KiB. The project's git ignores it (`/review/`), and `GET /api/project`'s `activity` carries its newest ten entries, newest first, or `available: false` and the `reason`. | no (the agent's own) |
-| `cadex guidance` | Print the whole guidance an agent driving Cadex follows. `cadex mcp`'s `instructions` are a short brief that tells the agent to run this (§2a). No engine. | no |
+| `cadex guidance [--project DIR]` | Print the whole guidance an agent driving Cadex follows: the domain-neutral base, and the project's chosen style after it when it chose one (`cadex style`, ADR-560). `cadex mcp`'s `instructions` are a short brief that tells the agent to run this (§2a). A stored style the engine does not carry is a usage error. No engine. | no |
 | `cadex params --set k=v` | Set declared parameters and rebuild. | no |
 | `cadex script` | Print the project script. | no |
 | `cadex script --set FILE` | Replace the script from a file and rebuild. | no |
@@ -64,6 +64,7 @@ The agent's two requests cost tokens. The loop between them does not.
 | `cadex evaluate` | Hold the accepted policy against its task's success spec (`assembly.success`, ADR-456): one rollout per frozen seed under the spec's conditions, then pass or fail per seed and per predicate, the behaviour metrics, the reward by term and how each episode ended, written to `evaluations/<revision>-<policy>/evaluation.json` in the project, with a filmstrip and a rollout video drawn from the seeds' traces on the dark prototype floor (ADR-457, ADR-459; details below). No rebuild or acceptance, and no trainer. | no |
 | `cadex walk --out DIR` | The lifecycle walk as one command: an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command, each bounded by `--leg-timeout` (default 3600 s); `review.json` lands in `--out`. | no |
 | `cadex review --host ADDR --port N` | Serve **this one project's** dashboard to a browser, read-only (ADR-286): the model in an orbit/zoom WebGL viewport — the accepted attempt's tessellation, or a run's own rollout meshes at its own revision — its drawings, documents and training plots in a 2D viewport, and the revision trail in the menu bar (ADR-539); its `GET /api/...` routes also serve every recorded run labelled current/historical, its parameters and specs as recorded, rollout figures and retained artifacts. Opens no engine, rebuilds nothing and writes nothing: it answers GET and HEAD only, and follows what the agent changes (ADR-537, `docs/DASHBOARD.md` §18). Default `127.0.0.1:8765`; `--host` the machine's Tailscale address to reach it from another device. Ctrl-C stops it. How the page is laid out, typed and coloured is `docs/DASHBOARD.md`. | no |
+| `cadex style [NAME \| --clear]` | The project's design style (ADR-560): one named, optional set of guidance rules for a kind of machine and its look, which `cadex guidance --project` prints after the base. With no NAME it reports; NAME chooses one the engine carries (a `Mod/cadex/CadexAgentStyle.<NAME>.md`) and refuses any other; `--clear` returns to none, the base alone. Stored in the project's `agent.json`. The envelope's `style` is `chosen` (empty for none) and `available`. No engine, no row, no commit. | no |
 | `cadex budgets [--set NAME=VALUE ...]` | The project's engine budgets (ADR-517): `timeout_seconds`, the wall-clock seconds one engine script run may take (at most 3600), and `memory_limit_mb`, its memory ceiling (at most 131072). Stored in the project's `agent.json`; every later run — an MCP session, a `params`, a revision, each leg of a walk — sends them as `open_project`'s `budgets`, and the engine fills one that is not set from its own default (300 s and 6144 MB unless its preferences say otherwise). `--set NAME=0` unsets one. With no `--set` it reports. The envelope's `budgets.stored` is what is stored. `--engine-timeout` / `--engine-memory` override them for one call. `GET /api/project` carries them read-only. No engine, no row, no commit. | no |
 | `cadex revision list\|reject\|restore\|backfill [SELECTOR]` | Going back through the revisions (ADR-506). `list`: the stored trail (`script_history/`, ADR-045), oldest first, with the values and digest each was accepted with, and `models`: per ordinal, whether its model is `retained` in `review/revisions/` or the `reason` it is not (ADR-546) — no engine, no row, no commit. Every engine session keeps the accepted revision's model on open and on close, and `cadex mcp` keeps each accepted build's as it lands. `reject`: put back the revision accepted before the current one; `restore SELECTOR` (an ordinal or a revision prefix): put back that one. Both write the stored source through `write_script` with `replace` (going back may drop outputs on purpose), then its recorded values through `set_params`; each is a run with its row and commit. The envelope's `revisions` says the `target`, where it came `from`, what was `accepted`, whether that is `exact`ly the target, and whether it is the `same_geometry` — a parameter the target left at its default cannot be unset once stored, so it is set to the default and the revision id differs. A selector that is not the accepted revision is a usage error for `reject`. `backfill` (ADR-548): keep a model for every stored revision that has none, which is every revision accepted before ADR-546. The accepted one is kept from its attempt on disk; each other one has its stored source rebuilt in a scratch project, with the values the trail stored with it, else the values the project's own repository recorded in `script.json` at its acceptance (and that commit's `assets/`), else none. It is kept only when the engine lands on exactly its revision id (and its digest, when the trail has one). Another revision of the same id is copied rather than rebuilt. A rebuild that lands elsewhere or is refused is a `failed` row with every try's reason; nothing is stored in its place, and the store remembers the reason so the dashboard shows it. The engine never opens the project itself, so nothing accepted moves. `SELECTOR` limits it to one revision. The envelope's `revisions.backfill` has one row per revision tried. No row, no commit: the store is ignored by the project's git. Never run by the dashboard. | no |
 | `cadex app [--projects DIR] [--host ADDR] [--port N]` | Serve the dashboard over a **directory of projects** (orun2 D1, ADR-502): `/` lists every subdirectory holding a `script.json` — re-read on each request, so a project made while the page is open appears — with when it was last accepted (`/api/projects` also carries its revision and run count), and each project's review page (the one `cadex review` serves) is under `/p/<name>/`. Every URL the pages use and the server builds is relative to the page (ADR-551), so the whole dashboard also works mounted under a path prefix by a proxy that rewrites nothing. **A bare `cadex`, with no subcommand, is this command** (`cadex -h` is the help), and so is `pixi run app`. The directory is `--projects`, then `CADEX_PROJECTS`, then `~/cadex-projects`, created if absent. Default `127.0.0.1:8765`; for another device put `tailscale serve` in front of it. Read-only, as `cadex review` is (ADR-537). From a fresh clone: `pixi run setup-engine && pixi run build-engine && pixi run app`. | no |
@@ -113,7 +114,8 @@ claude mcp add cadex -- /path/to/cadex/cadex mcp --project /path/to/bracket
 
 The server answers `initialize` with a **brief** as its `instructions`, a
 paragraph under 2,000 characters that names the project and tells the agent
-to run `<repo>/cadex guidance` in its shell before its first tool call.
+to run `<repo>/cadex guidance --project <project>` in its shell before its
+first tool call, and says which design style the project chose, if any.
 Claude Code cuts a server's instructions at 2,048 characters unless
 `CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH` says otherwise, and the whole
 guidance is about 34,000, so it travels through the agent's shell, which
@@ -2071,7 +2073,7 @@ cli/cadex_cli/
   engine.py            --engine / CADEX_ENGINE_ROOT / dev tree -> an Engine
   protocol.py          loads THAT engine's own CadexdProtocol
   client.py            spawn cadexd, ready banner, request, cancel, shutdown
-  session.py           agent.json (the engine budgets) and the project lockfile
+  session.py           agent.json (the engine budgets, the style) and the project lockfile
   tools.py             the tool surface, generated from OP_ARG_SPECS
   bridge.py            runs a tool call against cadexd; injects what the agent
                        is never asked for; records every call
@@ -2721,7 +2723,14 @@ parameter prose — which is what keeps one contract from becoming two.
 Most of the text -- from *you see your work with `look`* through *when a
 call is refused* -- is the engine's agent guidance,
 `Mod/cadex/CadexAgentGuidance.md` (ADR-446), read from the engine the CLI
-resolved, with the tool names filled in. Around it is the situation: the
+resolved, with the tool names filled in. That is the **base**, and it is
+domain-neutral: form follows function, and nothing in it assumes a kind of
+machine or a look (ADR-560). A **style** is a named, optional
+`Mod/cadex/CadexAgentStyle.<name>.md` beside it — today
+`printed-legged-robot` — and a project chooses at most one with `cadex
+style`. `cadex guidance --project` then appends that style's rules after the
+whole base; with none chosen it prints the base alone, and no style is on by
+default. The base tells the agent how to choose one. Around it is the situation: the
 person watches the read-only dashboard and talks to the agent directly,
 *build it parametric*, purchased hardware, `describe_api` first, the CLI
 for the legs the tools do not cover (with `--wait`), assets and policies,
@@ -2788,11 +2797,11 @@ The overlay says:
 ## 5. Sessions, locks and state
 
 `<project_root>/agent.json` is the CLI's own file, holding the project's
-engine budgets (ADR-517):
+engine budgets (ADR-517) and its design style (ADR-560), when it chose one:
 
 ```json
 {"schema": "cadex-cli-agent-v1", "updated_at": "2026-10-04T12:36:31Z",
- "budgets": {"timeout_seconds": 900.0}}
+ "budgets": {"timeout_seconds": 900.0}, "style": "printed-legged-robot"}
 ```
 
 It is a **sibling** of the engine's `script.json`, never a replacement: the
@@ -2856,7 +2865,7 @@ Fast, and honest about what it did not run.
 | `test_engine_resolution.py` | Hand-built payload directories; no engine needed. |
 | `test_mcp_protocol.py` | `cadex mcp`'s wire, the stdio loop and its idle callback, and the bridge against `fake_cadexd.py`; no engine needed. |
 | `test_activity.py` | The activity log (ADR-549): arguments summarised never whole, the 64 KiB cap keeping the newest calls (with two lines a call too), a torn line skipped; a call in flight until it returns and then one entry, and `lost` once its server is gone (ADR-553); and a real `cadex mcp` process's calls read back from `/api/project`, including a slow `evaluate` seen in flight with the stage `evaluating` — that half **skips** without a built engine. |
-| `test_agent_guidance.py` | The guidance: the engine's text carried verbatim, nothing left from the CLI's own turns, and `cadex guidance` printing exactly what `cadex mcp` sends. |
+| `test_agent_guidance.py` | The guidance: the engine's text carried verbatim, nothing left from the CLI's own turns, and `cadex guidance` printing exactly what `cadex mcp` sends. The base and styles (ADR-560): the base names no kind of machine, no style's text appears unless the project chose it, `cadex style` chooses, lists, refuses and clears, and no text an agent is given names a project. |
 | `test_dashboard_prefix.py` | Portability (ADR-551): no `url` or `mesh` the server builds is root-absolute, the `p/<name>` redirect is relative, and in Chromium the index and a project page, and a `cadex review` page, load and draw through a non-rewriting proxy at `/some/prefix/` with no request leaving it. |
 | `test_http_api.py` | The HTTP API contract (ADR-552): the "HTTP API" table above, `API_ROUTES` and `API_RESPONSE_KEYS` agree; the router dispatches from the table alone; every route's replies on a fixture biped that reaches each shape carry their always-keys and nothing unlisted, and every unknown `api/` path is a `404`; the page stores only the four per-viewer `localStorage` keys. |
 | `test_dashboard_read_only.py` | The read-only dashboard (ADR-537): every former write route refused for every method with the project unchanged, and in Chromium an open page following a `cadex params` run outside it. |

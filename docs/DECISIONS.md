@@ -35514,3 +35514,70 @@ reading stands; a Chromium through `browser.py` watches the chip turn from train
 progress says `failed`, from training to **stopped** in `--warn` with the reason.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-560 — The agent guidance is a domain-neutral base plus named, optional styles a project chooses (2026-10-06, orun4 G1)
+
+**Context.** The engine's guidance (`Mod/cadex/CadexAgentGuidance.md`, ADR-446) taught every
+agent one design language, orun1's (ADR-479): a small printed robot that "looks
+engineered", with two finishes, horn caps, no face, tapered legs and designed feet. The owner
+asked (2026-10-03, charter B1) for design to be *form follows function*, never "look
+engineered", and for Cadex's guidance to hold for cranes, vacuum robots and whole
+mechanisms as well as small printed robots: a domain-neutral **base**, plus named,
+**optional** styles a project chooses, none on by default. It also named a past project
+(`hex3`) as a training anecdote.
+
+**Decision.** The base is `CadexAgentGuidance.md`. Its design section is rewritten around
+*form follows function*: the six inside-out steps stay, phrased for any machine (the
+concept fixes what it does, its scale, how its parts are made, its proportions and palette;
+the heaviest parts go low and central; the structure is a frame, spine, deck, column or
+hull), and the mechanical rules stay as they were (hold every part, nothing stuck on, mirror
+what has sides, a printed part is printable, hardware that shows is ordered, detail is
+real, finished edges, colour follows role). The legged rules become one general rule,
+*members follow the load*, with whatever meets the ground or the work a designed part.
+*A robot is a complete machine* becomes *a self-moving machine is complete*; the QDD line
+names a dynamic machine of several kilograms rather than a robot type; the `hex3` anecdote
+becomes its general lesson. A **style** is `Mod/cadex/CadexAgentStyle.<name>.md`, the same
+shape as the base (header comment, marker, tool placeholders), installed beside it by
+`src/Mod/cadex/CMakeLists.txt`. The first is `printed-legged-robot`, carrying what left the
+base: one of two finishes, two materials and one small accent, not the mascot box, no face,
+joints as horn caps, legs tapering both ways to designed feet, and long against their
+joints. G2's lessons from the reference project go into it and the base next.
+
+A project chooses a style in its `agent.json` (`"style": NAME`), written by a new CLI
+command, `cadex style --project DIR [NAME | --clear]`, which lists the styles the engine
+carries, refuses a name it does not, and touches no engine, row or commit. `cadex guidance`
+takes `--project` and prints the base, then the chosen style's rules after a blank line;
+with none chosen, the base alone. `cadex mcp`'s brief points at `cadex guidance --project
+<project>` and names the chosen style. A stored style the engine no longer carries makes
+`cadex guidance` a usage error rather than silently dropping it. The base tells the agent
+how to choose one, and to choose only when the person asks for it or for the kind of
+machine it describes. **No new tool**: the MCP tool surface is unchanged.
+
+*Assumption, owner to revise:* one style, not two. orun1's small-printed-robot rules
+(finishes, accent, no face) and the legged rules live together in `printed-legged-robot`,
+because the reference project the owner liked is that kind of machine, and splitting a
+`small-printed-robot` style out would invent a boundary no owner evidence draws.
+
+**Rejected.** A style chosen through the page: it is read-only (ADR-537). A new MCP tool
+to choose one: the charter asks for none, and `cadex style` is reachable from the agent's
+shell like every other leg. Styles as sections of one file: a file per style is what a
+later style adds without touching the base.
+
+**Test.** `src/Mod/cadex/cadex_tests/test_agent_guidance.py`: the base names no kind of
+machine or look (biped, quadruped, hexapod, legged, mascot, look engineered, face words,
+leg segment names) and says *form follows function*; every style is well-formed, shipped by
+CMake, and restates no base rule; the moved rules are in the style and not in the base; no
+guidance file names a project. `cli/tests/test_agent_guidance.py`: the base text is the
+whole of `cadex guidance` with no style chosen, with or without stored budgets; no style
+line appears in it; `cadex style` lists, chooses, refuses an unknown name and clears; the
+chosen style's every line follows the base; a stored budget keeps the style; a stored
+style the engine lacks is refused; the brief names the style; no text an agent is given
+names a project. Each of the base tests fails on the pre-change guidance (it says "looks
+engineered", "walking leg" and `hex3`).
+
+**Docs.** `docs/DESIGN-LANGUAGE.md` is retitled *a base, and named styles*, opens with the
+two layers and a table of which rule is where and why, and marks each evidence section
+base or style; "look engineered" is gone. `docs/CLI.md` lists `cadex style`, `cadex guidance
+--project`, the `style` envelope key and `agent.json`'s `style`.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

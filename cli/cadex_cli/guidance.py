@@ -12,6 +12,12 @@ names filled in. ``cadex mcp`` hands it to the client as the server's
 ``instructions``; ``cadex guidance`` prints it for a client that reads a
 file instead.
 
+The engine's guidance is a domain-neutral **base** and named, optional
+**styles** (ADR-560): one ``CadexAgentStyle.<name>.md`` per style beside the
+base. A project chooses at most one, stored in its ``agent.json`` by ``cadex
+style``; ``cadex guidance --project`` then prints the base and that style,
+and with none chosen the base alone. No style is ever on by default.
+
 Nothing here states the xscript API: ``describe_api`` serves it live from
 the engine, so this text cannot become a second, staler copy of it.
 """
@@ -28,6 +34,8 @@ from .studio import ENGINE_MODULE_DIR
 #: Engine data, read from the engine the CLI resolved.
 GUIDANCE_FILE = "CadexAgentGuidance.md"
 GUIDANCE_MARKER = "<!-- guidance -->\n"
+#: A style's file is ``<STYLE_PREFIX><name>.md`` beside the base (ADR-560).
+STYLE_PREFIX = "CadexAgentStyle."
 #: The tool name for each placeholder the guidance uses.
 TOOL_NAMES = {
     "look": "look",
@@ -39,10 +47,11 @@ TOOL_NAMES = {
 }
 
 
-def agent_guidance(module_dir: Path | str, names: dict[str, str]) -> str:
+def agent_guidance(module_dir: Path | str, names: dict[str, str],
+                   file_name: str = GUIDANCE_FILE) -> str:
     """The guidance below the marker, with every ``{{placeholder}}`` filled from ``names``."""
 
-    source = Path(module_dir) / GUIDANCE_FILE
+    source = Path(module_dir) / file_name
     text = source.read_text(encoding="utf-8")
     head, marker, body = text.partition(GUIDANCE_MARKER)
     if not marker:
@@ -53,6 +62,23 @@ def agent_guidance(module_dir: Path | str, names: dict[str, str]) -> str:
     if left:
         raise RuntimeError(f"{source} uses placeholders this client does not fill: {left}")
     return body
+
+
+def styles(module_dir: Path | str = ENGINE_MODULE_DIR) -> list[str]:
+    """The names of the styles the engine carries, sorted."""
+
+    return sorted(path.name[len(STYLE_PREFIX):-len(".md")]
+                  for path in Path(module_dir).glob(STYLE_PREFIX + "*.md"))
+
+
+def style_guidance(style: str, module_dir: Path | str = ENGINE_MODULE_DIR) -> str:
+    """One style's guidance, placeholders filled; an unknown name is a ValueError."""
+
+    known = styles(module_dir)
+    if style not in known:
+        raise ValueError(f"no style named {style!r}; the engine carries: "
+                         + (", ".join(known) or "none"))
+    return agent_guidance(module_dir, TOOL_NAMES, f"{STYLE_PREFIX}{style}.md")
 
 
 #: The situation, before the engine's guidance. Everything about the *API*
@@ -109,6 +135,17 @@ to, so it is the truth about this version. Do not write an xscript API \
 from memory.
 
 """ + agent_guidance(ENGINE_MODULE_DIR, TOOL_NAMES) + """\
+A PROJECT MAY CHOOSE ONE STYLE. The design rules above hold for any \
+machine. A style is a named, optional set of rules for one kind of \
+machine and its look, added to them. `cadex style --project <the project>` \
+lists the styles and says which one the project chose; `cadex style \
+--project <the project> NAME` chooses one, and `--clear` goes back to \
+none. Choose one only when the person asks for it, or asks for the kind of \
+machine it describes, and record the choice in DECISIONS.md. Then run \
+`cadex guidance --project <the project>` again: it prints these rules with \
+the chosen style's after them. With no style chosen, this text is the \
+whole of the design guidance.
+
 THE CLI COVERS WHAT THE TOOLS DO NOT. `cadex <command> --project <the \
 project> --wait --json` runs one leg and prints a machine-readable \
 envelope: `render` and `section` draw the accepted design, `export --out \
@@ -206,10 +243,13 @@ paragraph what you built and which parameters can now be swept.
 """
 
 
-def instructions() -> str:
-    """The whole guidance, as ``cadex guidance`` prints it."""
+def instructions(style: str = "") -> str:
+    """The whole guidance, as ``cadex guidance`` prints it: the base, and the
+    project's chosen style after it when there is one (ADR-560)."""
 
-    return OVERLAY
+    if not style:
+        return OVERLAY
+    return OVERLAY + "\n" + style_guidance(style)
 
 
 #: The repository's ``cadex`` shim, which is how an agent's shell reaches the
@@ -222,7 +262,7 @@ CADEX_COMMAND = str(Path(__file__).resolve().parents[2] / "cadex")
 BRIEF_LIMIT = 2_000
 
 
-def brief(project: str = "<the project>", command: str = CADEX_COMMAND) -> str:
+def brief(project: str = "<the project>", command: str = CADEX_COMMAND, style: str = "") -> str:
     """What ``cadex mcp`` sends as its ``instructions``: short enough that no
     client cuts it, and the one step that gets the agent the rest."""
 
@@ -230,7 +270,8 @@ def brief(project: str = "<the project>", command: str = CADEX_COMMAND) -> str:
         "You are driving Cadex, a CAD engine for robots and mechanisms, through "
         "this server's tools; the person watches every revision you land in the "
         "read-only Cadex dashboard. BEFORE YOUR FIRST TOOL CALL, run "
-        f"`{command} guidance` in your shell and follow what it prints: it is "
+        f"`{command} guidance --project {project}` in your shell and follow what "
+        "it prints: it is "
         "how to author, prove, design and train with these tools, and it is too "
         "long to arrive here whole. The short of it: the design is one "
         "parametric xscript (write_script, edit_script, set_params); call "
@@ -240,6 +281,8 @@ def brief(project: str = "<the project>", command: str = CADEX_COMMAND) -> str:
         "and +Z is up; record decisions in the project's DECISIONS.md; run "
         f"other legs as `{command} <command> --project {project} --wait "
         "--json`."
+        + (f" This project chose the design style `{style}`, and the guidance "
+           "carries it." if style else "")
     )
     assert len(text) <= BRIEF_LIMIT, len(text)
     return text

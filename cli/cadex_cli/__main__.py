@@ -101,6 +101,7 @@ from .session import (
     read_script_state,
     read_working_revision,
     write_agent_budgets,
+    write_agent_style,
 )
 from .train import (
     TrainError,
@@ -153,7 +154,7 @@ from .smoke import (
     smoke_command,
     smoke_interpreter,
 )
-from .guidance import brief as guidance_brief, instructions as guidance_text
+from .guidance import brief as guidance_brief, instructions as guidance_text, styles as guidance_styles
 from .activity import append_activity, begin_activity, reply_error
 from .mcp import serve as serve_mcp
 from .tools import STANDARD_DISPLAY, tool_definitions
@@ -224,11 +225,30 @@ def build_parser() -> argparse.ArgumentParser:
         "goes). The next call reopens it.",
     )
 
-    subparsers.add_parser(
+    guidance_parser = subparsers.add_parser(
         "guidance",
-        help="Print the whole guidance an agent driving Cadex follows; "
-        "`cadex mcp`'s instructions are a short brief that tells the agent "
-        "to run this. No engine.",
+        help="Print the whole guidance an agent driving Cadex follows: the "
+        "domain-neutral base, and the project's chosen style after it when it "
+        "chose one (`cadex style`, ADR-560). `cadex mcp`'s instructions are a "
+        "short brief that tells the agent to run this. No engine.",
+    )
+    _common(guidance_parser, inherit=True)
+
+    style_parser = subparsers.add_parser(
+        "style",
+        help="Show or choose the project's design style (ADR-560): one named, "
+        "optional set of guidance rules for a kind of machine, which `cadex "
+        "guidance --project` adds to the base. With no NAME it lists the "
+        "styles and the one chosen. No engine, no tokens.",
+    )
+    _common(style_parser, inherit=True)
+    style_parser.add_argument(
+        "style_name", nargs="?", default="", metavar="NAME",
+        help="The style to choose; `cadex style` lists them.",
+    )
+    style_parser.add_argument(
+        "--clear", action="store_true",
+        help="Choose no style: the base guidance alone.",
     )
 
     params_parser = subparsers.add_parser(
@@ -1063,6 +1083,37 @@ def command_budgets(args: argparse.Namespace, report: RunReport) -> int:
     else:
         stored = read_agent_state(root).budgets
     report.budgets = {"stored": dict(stored)}
+    report.ok = True
+    return EXIT_OK
+
+
+def command_style(args: argparse.Namespace, report: RunReport) -> int:
+    """``cadex style [NAME | --clear]``: the project's design style (ADR-560).
+
+    Stored in the project's ``agent.json``; ``cadex guidance --project`` and
+    ``cadex mcp``'s brief read it. A name the engine carries no style for is
+    refused rather than stored, so a project never names a style its
+    guidance cannot print.
+    """
+
+    root = Path(args.project).expanduser()
+    if not root.is_dir():
+        raise ValueError(f"no project at {root}.")
+    available = guidance_styles()
+    if args.style_name and args.clear:
+        raise ValueError("give a style NAME or --clear, not both.")
+    if args.style_name:
+        if args.style_name not in available:
+            raise ValueError(f"no style named {args.style_name!r}; the engine carries: "
+                             + (", ".join(available) or "none") + ".")
+        chosen = write_agent_style(root, args.style_name).style
+        report.notes.append(f"chose the style {chosen}; `cadex guidance --project` now carries it.")
+    elif args.clear:
+        chosen = write_agent_style(root, "").style
+        report.notes.append("chose no style; `cadex guidance --project` carries the base alone.")
+    else:
+        chosen = read_agent_state(root).style
+    report.style = {"chosen": chosen, "available": available}
     report.ok = True
     return EXIT_OK
 
@@ -2060,7 +2111,8 @@ class McpSession:
         self._report: RunReport | None = None
 
     def instructions(self) -> str:
-        return guidance_brief(str(Path(self.args.project).expanduser().resolve()))
+        root = Path(self.args.project).expanduser().resolve()
+        return guidance_brief(str(root), style=read_agent_state(root).style)
 
     def tools(self) -> list[dict[str, Any]]:
         return tool_definitions(self.engine.protocol)
@@ -2833,7 +2885,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     # A bare `cadex` opens the dashboard; `cadex -h` is the help.
     command = args.command or "app"
     if command == "guidance":
-        sys.stdout.write(guidance_text())
+        style = read_agent_state(Path(args.project).expanduser()).style
+        try:
+            text = guidance_text(style)
+        except ValueError as error:
+            print(f"cadex guidance: {error}", file=sys.stderr)
+            return EXIT_USAGE
+        sys.stdout.write(text)
         return EXIT_OK
 
     report = RunReport(project_root=str(Path(args.project).expanduser()))
@@ -2874,6 +2932,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_app(args, report)
         elif command == "budgets":
             code = command_budgets(args, report)
+        elif command == "style":
+            code = command_style(args, report)
         elif command == "revision":
             code = command_revision(args, report)
         else:  # argparse already refuses anything else
@@ -3075,7 +3135,7 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command in ("review", "app", "budgets"):  # no run: no row, no commit (ADR-286)
+    if command in ("review", "app", "budgets", "style"):  # no run: no row, no commit (ADR-286)
         return
     if command == "revision" and args.action in ("list", "backfill"):  # a read; a store fill (ADR-548)
         return
@@ -3123,7 +3183,7 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command in ("review", "app", "budgets"):
+    if command in ("review", "app", "budgets", "style"):
         return
     if command == "revision" and args.action in ("list", "backfill"):
         return
