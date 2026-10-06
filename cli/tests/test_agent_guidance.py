@@ -156,3 +156,43 @@ def test_no_text_an_agent_is_given_names_a_project():
     for name, text in texts.items():
         found = re.findall(PROJECT_NAME, text, re.I)
         assert not found, (name, found)
+
+
+#: A project directory's name, as distinct from a run's (``ot10``, ``orun1``):
+#: the read-only projects and the run families' scratch copies.
+PROJECT_DIR = (r'biped-sts|biped-mg90|quad-qdd|mg-legs|\bhex\d|\bot\d+-|\borun\d-|'
+               r'\bsweep-|digestbug|cadex-projects')
+REPO = Path(__file__).resolve().parents[2]
+
+
+def test_no_guidance_file_names_a_project_and_the_doc_lost_look_engineered():
+    """Every file the guidance is made of -- the engine's base and styles, the
+    CLI's module, and the doc they are cited from -- names no project, and the
+    doc no longer asks for a machine that looks engineered (ADR-560)."""
+
+    files = [REPO / 'cli/cadex_cli/guidance.py', REPO / 'docs/DESIGN-LANGUAGE.md',
+             ENGINE_MODULE_DIR / 'CadexAgentGuidance.md',
+             *sorted(ENGINE_MODULE_DIR.glob('CadexAgentStyle.*.md'))]
+    for path in files:
+        text = path.read_text(encoding='utf-8')
+        found = re.findall(PROJECT_DIR, text, re.I)
+        assert not found, (path.name, found)
+    doc = (REPO / 'docs/DESIGN-LANGUAGE.md').read_text(encoding='utf-8').lower()
+    assert re.search(r'looks? engineered', doc) is None
+
+
+def test_the_mcp_server_instructions_follow_the_projects_style(tmp_path):
+    """What ``cadex mcp`` sends at ``initialize`` reads the project's
+    ``agent.json``: no style named when none is chosen, the chosen one when
+    it is, and the command it sends the agent to prints exactly that."""
+
+    from argparse import Namespace
+    from cadex_cli.__main__ import McpSession
+
+    session = McpSession.__new__(McpSession)
+    session.args = Namespace(project=str(tmp_path))
+    plain = session.instructions()
+    assert 'style' not in plain and f'guidance --project {tmp_path.resolve()}' in plain
+    assert main(['style', '--project', str(tmp_path), STYLE]) == 0
+    chosen = session.instructions()
+    assert f'design style `{STYLE}`' in chosen and len(chosen) <= BRIEF_LIMIT

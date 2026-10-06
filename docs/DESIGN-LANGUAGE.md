@@ -216,7 +216,7 @@ it declares one.
   shortest horn that carries the link (the cross horn on a micro servo), at
   reach plus wall and no larger, and no second disc on the servo's far face
   (ADR-494, which removes that half of ADR-440). Evidence: hexapod trial 1
-  (`orun1-t1-hexapod`, rev `35193b3e`) built a 35 mm disc on both faces of
+  (orun1, rev `35193b3e`) built a 35 mm disc on both faces of
   every servo and lost under frozen judge v2 on "crowded clusters of
   joints". **[judgement]** on the size: no rating isolates cap diameter.
 

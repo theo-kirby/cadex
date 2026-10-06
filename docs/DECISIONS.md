@@ -35572,7 +35572,9 @@ whole of `cadex guidance` with no style chosen, with or without stored budgets; 
 line appears in it; `cadex style` lists, chooses, refuses an unknown name and clears; the
 chosen style's every line follows the base; a stored budget keeps the style; a stored
 style the engine lacks is refused; the brief names the style; no text an agent is given
-names a project. Each of the base tests fails on the pre-change guidance (it says "looks
+names a project; neither does `guidance.py` or `docs/DESIGN-LANGUAGE.md`, which no
+longer says "look engineered"; and `cadex mcp`'s `initialize` instructions, read from the
+project's `agent.json`, name the chosen style or none. Each of the base tests fails on the pre-change guidance (it says "looks
 engineered", "walking leg" and `hex3`).
 
 **Docs.** `docs/DESIGN-LANGUAGE.md` is retitled *a base, and named styles*, opens with the

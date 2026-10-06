@@ -412,7 +412,7 @@ export function create(canvas) {
   const zoom=f=>{c.distance=Math.max((bounds?.radius||1)*.2,c.distance*f);};
   const span=()=>{const [a,b]=[...pointers.values()];return Math.hypot(a[0]-b[0],a[1]-b[1]);};
   const centre=()=>{const [a,b]=[...pointers.values()];return [(a[0]+b[0])/2,(a[1]+b[1])/2];};
-  // Pan (ADR-560): slide the target in the view plane so the point under the
+  // Pan (ADR-561): slide the target in the view plane so the point under the
   // pointer follows it, one canvas pixel being the field of view's mm per pixel at
   // the target's distance. Right and up are the camera's, in the model's z-up frame.
   function pan(dx,dy) {
