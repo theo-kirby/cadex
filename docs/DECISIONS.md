@@ -35580,4 +35580,26 @@ two layers and a table of which rule is where and why, and marks each evidence s
 base or style; "look engineered" is gone. `docs/CLI.md` lists `cadex style`, `cadex guidance
 --project`, the `style` envelope key and `agent.json`'s `style`.
 
+## ADR-561 — The 3D viewport pans: shift- or middle-drag, two fingers on touch (2026-10-06, orun4 D1)
+
+**Context.** The viewport orbited about a fixed target and zoomed (ADR-330); there was no
+way to move the target, so a detail away from the bounding sphere's centre could only be
+zoomed past. The owner asked for pan by name (charter D1).
+
+**Decision.** `review_scene.js` pans by sliding the camera target in the view plane:
+shift-drag or middle-drag with one pointer, and on touch the midpoint of two fingers, whose
+spread still zooms in the same gesture. One canvas pixel moves the target by the field of
+view's millimetres per pixel at the target's distance, so the point under the pointer
+follows it. Middle-click autoscroll is suppressed on the canvas. **Fit** already rebuilt the
+whole camera, target included, so it resets a pan with no change. The gesture contract is
+listed in `docs/DASHBOARD.md` §5. No route, no protocol and no tool change.
+
+**Evidence.** `test_browser_pans_by_shift_middle_and_two_fingers_and_fit_resets` drives a
+real headless Chromium through `cli/cadex_cli/browser.py` (whose `drag` now takes a button
+and modifiers, and which gains `two_finger_drag`): a shift-drag of (120, 40) px moves the
+target, keeps yaw, pitch and distance, and moves the model's screen point by that drag
+within 12 px; a middle-drag pans back; Fit restores the fitted camera exactly; under touch
+emulation a two-finger drag pans without zooming and a pinch zooms. It fails on the
+pre-change page (`assert [15, 10, 20] != [15, 10, 20]`).
+
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

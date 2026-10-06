@@ -306,14 +306,18 @@ class Page:
         params.update(extra)
         self.send("Input.dispatchMouseEvent", params)
 
-    def drag(self, x0: float, y0: float, x1: float, y1: float, steps: int = 8) -> None:
-        """A real left-button drag: press, moves, release, as the OS would send."""
+    def drag(self, x0: float, y0: float, x1: float, y1: float, steps: int = 8, *,
+             button: str = "left", modifiers: int = 0) -> None:
+        """A real drag: press, moves, release, as the OS would send. ``button``
+        is CDP's (``left``, ``middle``); ``modifiers`` its bit mask (8 is Shift)."""
 
-        self.mouse("mousePressed", x0, y0, clickCount=1)
+        held = {"left": 1, "right": 2, "middle": 4}[button]
+        self.mouse("mousePressed", x0, y0, clickCount=1, button=button, buttons=held, modifiers=modifiers)
         for step in range(1, steps + 1):
             t = step / steps
-            self.mouse("mouseMoved", x0 + (x1 - x0) * t, y0 + (y1 - y0) * t)
-        self.mouse("mouseReleased", x1, y1, clickCount=1)
+            self.mouse("mouseMoved", x0 + (x1 - x0) * t, y0 + (y1 - y0) * t,
+                       button=button, buttons=held, modifiers=modifiers)
+        self.mouse("mouseReleased", x1, y1, clickCount=1, button=button, modifiers=modifiers)
 
     def wheel(self, x: float, y: float, delta_y: float) -> None:
         self.send("Input.dispatchMouseEvent", {"type": "mouseWheel", "x": x, "y": y,
@@ -344,6 +348,19 @@ class Page:
         self.touch("touchStart", fingers(start))
         for step in range(1, steps + 1):
             self.touch("touchMove", fingers(start + (end - start) * step / steps))
+        self.touch("touchEnd", [])
+
+    def two_finger_drag(self, x0: float, y0: float, x1: float, y1: float, gap: float = 80,
+                        steps: int = 8) -> None:
+        """Two fingers ``gap`` px apart, their midpoint moving from ``(x0, y0)``
+        to ``(x1, y1)`` with the gap held: a pan, not a pinch."""
+
+        def fingers(x: float, y: float) -> list[tuple[float, float]]:
+            return [(x - gap / 2, y), (x + gap / 2, y)]
+        self.touch("touchStart", fingers(x0, y0))
+        for step in range(1, steps + 1):
+            t = step / steps
+            self.touch("touchMove", fingers(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t))
         self.touch("touchEnd", [])
 
     def tap(self, x: float, y: float) -> None:
