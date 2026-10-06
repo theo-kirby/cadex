@@ -35945,3 +35945,58 @@ licence text, the provenance entry and that no other font file is tracked under 
 engine module. The tool surface and the protocol are unchanged.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-569 — The print-bed hero: printed parts laid flat on as many beds as it takes, beside the purchased hardware (2026-10-06, orun4 H2)
+
+**Context.** The orun4 charter's H2 asks for a second hero when a policy passes
+evaluation: every printable part laid flat on a print bed, oriented as it would print and
+labelled, with a parts list of the purchased hardware beside it, on the dark floor. B3
+rules out slicing: every capable open slicer is AGPL, so Cadex neither vendors, imports
+nor runs one. This ADR is the picture; hooking it to a passing `evaluate`, `/api/project`
+and the 2D viewport is the next unit.
+
+**Decision.** `CadexStudio.print_bed(triangles, summary, fit, inventory, *, name, bed,
+gap)` returns the PNG and JSON-ready facts. Pure standard library, in the studio renderer
+beside the hero and sheets; nothing in `cadexd` imports it.
+
+- **Which parts.** A part is printed when the inventory calls its source uncatalogued and
+  no catalog part was cut to make it (`derived_catalog_sources`, a modified purchase).
+  World geometry the fit names is never a part. With no readable inventory it refuses;
+  with no printed part it refuses.
+- **How a part lies.** `lay_flat` seats it on its largest flat face it can rest on:
+  triangles grouped by normal (1/400 bins) and plane (0.2 mm bins), largest first, the
+  first whose plane has every vertex on one side, turned to face the bed. Winding is not
+  trusted, so either side counts. A part with no such face among the 64 largest keeps its
+  assembled attitude and says so. It is then turned about the vertical to its smallest
+  footprint rectangle (an edge of the footprint's hull lies along it), long side along X.
+  This is a slicer's "lay on face" default, not a judgment of strength, supports or
+  overhang. A declared print orientation is not modelled. If a script ever needs one,
+  that is a separate decision.
+- **How parts are packed.** `pack_beds` is MaxRects, best short-side fit, largest part
+  first, a quarter turn allowed. Each footprint grows by the gap on its far sides inside a
+  bed shrunk by the gap on its near ones, so parts are at least the gap apart and the gap
+  inside every edge. A part that fits no bed gets one of its own and is named under
+  `not_fitting`, as is a part taller than the bed. Default bed 256 × 256 × 256 mm (a
+  common desktop printer), gap 6 mm. Both are parameters, and the picture states the bed
+  it assumed.
+- **The picture.** 1536 × 1024, on the sheet's layout. A 1024 px studio shot (front
+  three-quarter, 20° round and 50° up) of the beds as dark 3 mm plates on the prototype
+  mat, beds in a grid, every part in its own appearance colour, its number on its
+  footprint centre (nudged clear of an earlier badge), and `bed n` under each bed when
+  there are several. The right-hand column has the project name, the revision and
+  `n beds, W x D mm`, then the numbered printed parts with footprint × height, then the
+  purchased hardware as `count x family part`, all from the inventory's catalog roll-up.
+  It is lettered in the H1 face (ADR-568).
+
+**Measured** on the scratch copy `orun4-biped-sts`, accepted revision `14b7223ee485`:
+10 printed parts on 2 beds at 256 mm (the first is 89% covered once grown by the gap;
+`foot_r` spills to the second), 1 bed at 300 mm, 10 hardware rows, 6.0 s per render,
+223 KB. Example: `docs/probes/orun4/h2-print-bed.png`.
+
+**Consequences.** `cadex_tests/test_studio_print_bed.py` (engine suite, 9 tests) pins the
+seat on a tilted plate, the refusal of a face with material beyond it, the no-seat
+fallback, non-overlap and bounds over 40 random packings, the multi-bed and oversize
+cases, the printed/purchased/cut/world split, the hardware rows and both refusals. The
+tool surface and the protocol are unchanged.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
