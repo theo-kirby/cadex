@@ -110,3 +110,19 @@ def small_renders(monkeypatch):
 
     monkeypatch.setattr(STUDIO, "SIZE", small)
     monkeypatch.setattr(STUDIO, "studio", studio)
+
+
+@pytest.fixture
+def small_presentation(small_renders, monkeypatch):
+    """Draw a pass's videos at 128 px and its heroes at 64 px scaled up.
+
+    For tests whose claims are which files a pass and a fail leave, the
+    blocks the report and the envelope carry, and the pushes read from the
+    shove episode -- never their pixels. Full-size drawing stays pinned
+    where it is the claim: the 512 px studio video by ``test_video``, the
+    1024 px hero by ``test_look``, the print bed by the engine suite's
+    ``test_studio_print_bed`` (ADR-579).
+    """
+    from cadex_cli.video import STUDIO as VIDEO
+
+    monkeypatch.setitem(VIDEO, "size", 128)

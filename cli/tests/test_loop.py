@@ -148,12 +148,13 @@ def project(tmp_path, monkeypatch) -> Path:
     yield root
     # No supervisor outlives its test: ask every live run to stop. A run
     # only registered, with no supervisor holding its lock, gets the stop
-    # file a late supervisor will read, and a short wait rather than 20 s.
+    # file a late supervisor will read, and a half-second wait rather than
+    # 20 s (ADR-562, ADR-579).
     for run in loop.list_runs(root):
         if run["state"] in loop.LIVE_STATES:
             run_dir = Path(run["dir"])
             held = run["state"] == "running" or loop.lock_held(run_dir / loop.LOCK_NAME)
-            loop.request_stop(run_dir, "the test ended", wait_s=20.0 if held else 2.0)
+            loop.request_stop(run_dir, "the test ended", wait_s=20.0 if held else 0.5)
 
 
 def _until(run_dir: Path, *, leaves=loop.LIVE_STATES, seconds: float = 30.0) -> dict:
@@ -666,7 +667,8 @@ def _payload(reply: dict) -> dict:
 
 
 @pytest.mark.skipif(not HAS_MUJOCO, reason="mujoco is not importable here")
-def test_one_round_of_the_loop_runs_through_the_product_path(engine, tmp_path, monkeypatch) -> None:
+def test_one_round_of_the_loop_runs_through_the_product_path(engine, tmp_path, monkeypatch,
+                                                            small_presentation) -> None:
     """Design, train, evaluate: two agent sessions over a live engine. The
     run started in the first is read in the second, which declares its
     policy and evaluates it."""

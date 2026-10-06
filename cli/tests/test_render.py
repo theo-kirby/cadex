@@ -182,7 +182,9 @@ result = {"block": block, "rod": rod, "a": a, "b": b, "asm": asm, "diag": diag}
     assert 'render → review/render/' in (root / 'PROGRESS.md').read_text()
 
 
-def test_real_part_only_and_empty_refusal(engine, tmp_path, capsys):
+def test_real_part_only_and_empty_refusal(engine, tmp_path, capsys, small_renders):
+    # The claims are the refusal, the objects, the revision and a repeat that
+    # is byte-identical, not pixels; full-size views stay pinned below (ADR-579).
     root = tmp_path / 'solo'
     assert main(['render', '--project', str(root), '--json']) != 0
     assert not json.loads(capsys.readouterr().out)['ok']

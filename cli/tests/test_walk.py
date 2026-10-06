@@ -1028,6 +1028,9 @@ def test_a_leg_that_runs_out_of_time_fails_the_walk_and_kills_its_subtree(
     marker = tmp_path / "grandchild.pid"
     monkeypatch.setenv("HANG_MARKER", str(marker))
     monkeypatch.setattr(walk_module, "cadex_command", lambda: [sys.executable, str(script)])
+    # The claim is the bound and the subtree kill, not the grace's length,
+    # which test_stopped_leg_preserves_descendant_cleanup_grace pins (ADR-579).
+    monkeypatch.setattr(walk_module, "LEG_TERMINATION_GRACE_S", 1.0)
 
     out = toy_root / "runs" / "hang"
     started = time.monotonic()
@@ -1096,6 +1099,9 @@ def test_a_stopped_leg_kills_the_grandchild_that_ignored_the_term(
     marker = tmp_path / "stubborn.pid"
     monkeypatch.setenv("HANG_MARKER", str(marker))
     monkeypatch.setattr(walk_module, "cadex_command", lambda: [sys.executable, str(script)])
+    # The claim is the bound and the subtree kill, not the grace's length,
+    # which test_stopped_leg_preserves_descendant_cleanup_grace pins (ADR-579).
+    monkeypatch.setattr(walk_module, "LEG_TERMINATION_GRACE_S", 1.0)
 
     out = toy_root / "runs" / "stubborn"
     started = time.monotonic()

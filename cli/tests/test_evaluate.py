@@ -692,7 +692,7 @@ def test_a_usage_error_comes_before_any_engine(tmp_path, capsys) -> None:
 
 
 @needs_mujoco
-def test_an_accepted_policy_is_evaluated_as_one_command(engine, tmp_path, capsys) -> None:
+def test_an_accepted_policy_is_evaluated_as_one_command(engine, tmp_path, capsys, small_presentation) -> None:
     project = _project(tmp_path, capsys, "stands", _source())
     # An edited working script is neither run, restored nor accepted: the
     # evaluation reads the accepted artifacts only.
@@ -786,7 +786,7 @@ def test_an_accepted_policy_is_evaluated_as_one_command(engine, tmp_path, capsys
 
 
 @needs_mujoco
-def test_the_film_is_chosen_skipped_and_drawn_again_without_measuring(engine, tmp_path, capsys) -> None:
+def test_the_film_is_chosen_skipped_and_drawn_again_without_measuring(engine, tmp_path, capsys, small_presentation) -> None:
     """ADR-459: ``--film none`` measures and draws nothing; ``--film-only``
     draws another seed from the traces on disk and measures nothing; a film
     that cannot be drawn is a failure that leaves the measurement."""

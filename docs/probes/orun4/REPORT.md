@@ -163,10 +163,14 @@ shots reads **stopped**, with the stop's reason, for the scratch copy's
 
 The owner asked for the suite in under 8 minutes as one command. Measured
 whole, it went 1017 s → 793 s (ADR-562) → 647 s (ADR-563) → 614 s
-(ADR-564). **The target is not met.** What remains is keep-listed
-real-engine end-to-end tests, so the cuts stopped there, and the owner's
-three interleaved thirds stay the gate of record. Each removed test and
-its reason are listed in those ADRs.
+(ADR-564). H2 and H3 then pushed it back up to 722 s in thirds. ADR-579 draws
+a pass's heroes and shove video small in the tests that do not check their
+pixels, and brings it to **566 s as one foreground command** (1210 passed,
+1 skipped). It runs inside the shell's limit, so the thirds are no longer
+needed. **The target is not met.** The six slowest tests are keep-listed
+real-engine or real-trainer tests and take 142 s together. The other 1200
+tests share about 425 s. Each removed test and its reason are listed in
+ADR-562 to ADR-564; ADR-579 removes none.
 
 ## ADRs added by this run
 
@@ -193,6 +197,7 @@ its reason are listed in those ADRs.
 | ADR-576 | a checkpoint costs a rollout, not a compile: the witness rollout is jitted once |
 | ADR-577 | the checkpoint rule says what a checkpoint does and what it costs, not when the owner is watching |
 | ADR-578 | the idle-stage test compares the one timestamp it wrote, not a second reading of the clock |
+| ADR-579 | the CLI suite gets lighter again: a passed evaluation's presentation drawn small where pixels are not the claim |
 
 ## 7. Remaining defects
 
@@ -206,8 +211,8 @@ its reason are listed in those ADRs.
    exact-geometry pre-check refuses a distance mismatch under 1e-5 mm on a
    pair 70 mm apart, threaded screw engagement counts as overlap, and the
    exact-geometry stage timed out on 64+ components.
-3. **The CLI suite is 614 s as one command**, over the 8-minute target
-   (§6), and over the shell's 600 s limit once `pixi` overhead is added.
+3. **The CLI suite is 566 s as one command** (ADR-579), inside the shell's
+   limit but over the 8-minute target (§6).
 4. **A flake, now fixed (ADR-578)**: `test_designing_turns_idle_once_the_window_passes`
    compared a minute prefix against a timestamp recomputed later, and failed
    across a minute boundary. It now compares the one timestamp it wrote, and

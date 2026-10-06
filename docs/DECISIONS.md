@@ -36390,3 +36390,52 @@ the `wall` case is the test as it ran before. Nothing else in the suite or the
 product moves.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-579 — The CLI suite gets lighter again: a passed evaluation's presentation drawn small where pixels are not the claim (2026-10-06, orun4 owner note)
+
+**Context.** ADR-564 left the suite at 614 s as one command. Since then H2 and H3
+(ADR-570, ADR-571) made a passed evaluation also draw two 1024 px heroes and a 512 px
+shove video, and the suite regressed. Measured again with `--durations=40` in the
+GPU-hidden thirds: `NR%3==0` 150 s (395 passed), `NR%3==1` 341 s (324 passed,
+1 skipped), `NR%3==2` 231 s (491 passed). That is **722 s** in all. The two evaluation command tests had
+gone from about 30 s to **74.0 s**
+(`test_the_film_is_chosen_skipped_and_drawn_again_without_measuring`) and **61.3 s**
+(`test_an_accepted_policy_is_evaluated_as_one_command`). Under a profiler about two thirds of
+that was the studio frames of the shove video and the seed video, and a quarter was
+the two heroes. Neither test asserts a pixel of them.
+
+**Decision.** No test is removed and no assertion changes:
+
+1. A `small_presentation` fixture (`cli/tests/conftest.py`) builds on `small_renders`
+   (ADR-563). It films at 128 px and draws the heroes at 64 px, scaled up to their real
+   1024 px. The two evaluation command tests and
+   `test_loop.py::test_one_round_of_the_loop_runs_through_the_product_path` use it.
+   Their claims are the files a pass and a fail leave, the report and envelope blocks,
+   the pushes read back from the shove episode and the marked-frame count, which still
+   holds at 128 px. Full-size drawing stays pinned where it is the claim: the 512 px
+   studio video in `test_video.py`, the 1024 px hero in `test_look.py`, and the print
+   bed in the engine suite's `test_studio_print_bed.py`. No test now draws the shove
+   video at 512 px.
+2. `test_walk.py`'s two leg-timeout tests (`…runs_out_of_time…`,
+   `…kills_the_grandchild_that_ignored_the_term`) set `LEG_TERMINATION_GRACE_S` to 1 s.
+   Their claim is the bound and the subtree kill. The grace's own length is pinned by
+   `test_stopped_leg_preserves_descendant_cleanup_grace`.
+3. `test_loop.py`'s `project` fixture waits 0.5 s, not 2 s, on a run that was only
+   registered (ADR-562). The stop file it writes is what a late supervisor reads.
+4. `test_render.py::test_real_part_only_and_empty_refusal` uses `small_renders`. Its
+   claims are the refusal, the object set, the revision and a byte-identical repeat.
+   The 512 px real views stay pinned by `test_real_render_revision_images_pose_and_project_commit`.
+
+**Evidence.** Per test, before → after: the two evaluation command tests 74.0 s → 11.7 s
+and 61.3 s → 11.0 s; the loop round 22.0 s → 7.3 s; the two leg-timeout tests
+7.0 s → 3.0 s each; the five registered-run teardowns 2.0 s → 0.5 s; the render
+refusal 10.8 s → under 3 s. **The whole suite as one foreground command**
+(`CUDA_VISIBLE_DEVICES= pixi run python -m pytest -q -p no:cacheprovider cli/tests`):
+**565.7 s (9.4 min)**, 1210 passed, 1 skipped, inside the shell's limit. It no longer
+needs splitting into thirds. **The 8-minute target is still not met.** The slowest
+tests left are on the keep list or claim a real leg: the real-CPU walk lifecycle 59.8 s, the
+loop's real trainer 20.9 s, the remote-walk parity 18.6 s, the second-mechanism walk
+17.5 s, the iterate refusal 14.6 s and the real trainer's digests 10.7 s. Together that is 142 s. The
+other 1200 tests share about 425 s.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
