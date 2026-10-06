@@ -131,40 +131,34 @@ canvas#viewer { display: block; width: 100%; height: 100%; touch-action: none; }
                 background: var(--surface); font-size: var(--fs-0); color: var(--ink-2); overflow-wrap: anywhere; }
 #model-status[data-state="loaded"] { display: none; }
 #model-status[data-state="missing"] { color: var(--warn); } #model-status[data-state="error"] { color: var(--bad); }
-/* The stage overlay (ADR-542): top right of the 3D viewport, one line when collapsed. */
-#overlay { position: absolute; z-index: 2; top: var(--s2); right: var(--s2); width: min(280px, calc(100% - 2 * var(--s2)));
-           background: color-mix(in srgb, var(--surface-2) 90%, transparent); border-radius: var(--radius-area);
-           font-size: var(--fs-0); color: var(--ink); font-variant-numeric: tabular-nums; }
-#overlay-toggle { display: flex; align-items: center; gap: var(--s2); width: 100%; min-height: var(--control); padding: var(--s1) var(--s2);
-                  background: none; border: 0; color: inherit; font-size: var(--fs-0); text-align: left; cursor: pointer; }
-#overlay-line { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
-#overlay .chip { flex: none; padding: 0 var(--s2); border-radius: 999px; color: var(--ink-2);
-                 background: color-mix(in srgb, var(--ink-2) 18%, var(--surface-2)); }
-#overlay[data-stage="training"] .chip, #overlay[data-stage="evaluating"] .chip { color: var(--info); background: color-mix(in srgb, var(--info) 18%, var(--surface-2)); }
-#overlay[data-stage="designing"] .chip { color: var(--ok); background: color-mix(in srgb, var(--ok) 18%, var(--surface-2)); }
-#overlay[data-stage="stopped"] .chip { color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, var(--surface-2)); }
-#overlay[data-stage="failed"] .chip { color: var(--bad); background: color-mix(in srgb, var(--bad) 18%, var(--surface-2)); }
-#overlay-detail { padding: 0 var(--s2) var(--s2); }
-#overlay[data-collapsed="true"] #overlay-detail { display: none; }
-#overlay-run { color: var(--ink-2); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#overlay-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--s3); margin: var(--s1) 0 0; }
-#overlay-stats div { display: flex; justify-content: space-between; gap: var(--s1); min-width: 0; }
-#overlay-stats dt { color: var(--ink-2); } #overlay-stats dd { margin: 0; white-space: nowrap; }
-#overlay .sparks { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); margin-top: var(--s1); }
-#overlay figure { margin: 0; min-width: 0; } #overlay figcaption { color: var(--ink-2); }
-#overlay svg { display: block; width: 100%; height: 24px; background: var(--surface-2); border-radius: 3px; }
-#overlay polyline { fill: none; stroke: var(--info); stroke-width: 1.4; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
-#overlay-warning { margin: var(--s1) 0 0; color: var(--warn); }
+/* Status (ADR-542; an editor since ADR-572): the stage chip in the area's header, the detail in its body. */
+#status { padding: var(--s2); overflow: auto; font-size: var(--fs-0); color: var(--ink); font-variant-numeric: tabular-nums; }
+#status-line { margin: 0; overflow-wrap: anywhere; color: var(--ink-2); }
+#status-stage { flex: none; padding: 0 var(--s2); border-radius: 999px; font-size: var(--fs-0); color: var(--ink-2);
+                background: color-mix(in srgb, var(--ink-2) 18%, var(--surface-2)); }
+#status-stage[data-stage="training"], #status-stage[data-stage="evaluating"] { color: var(--info); background: color-mix(in srgb, var(--info) 18%, var(--surface-2)); }
+#status-stage[data-stage="designing"] { color: var(--ok); background: color-mix(in srgb, var(--ok) 18%, var(--surface-2)); }
+#status-stage[data-stage="stopped"] { color: var(--warn); background: color-mix(in srgb, var(--warn) 18%, var(--surface-2)); }
+#status-stage[data-stage="failed"] { color: var(--bad); background: color-mix(in srgb, var(--bad) 18%, var(--surface-2)); }
+#status-run { margin-top: var(--s1); color: var(--ink-2); font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#status-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--s3); margin: var(--s1) 0 0; }
+#status-stats div { display: flex; justify-content: space-between; gap: var(--s1); min-width: 0; }
+#status-stats dt { color: var(--ink-2); } #status-stats dd { margin: 0; white-space: nowrap; }
+#status .sparks { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s3); margin-top: var(--s1); }
+#status figure { margin: 0; min-width: 0; } #status figcaption { color: var(--ink-2); }
+#status svg { display: block; width: 100%; height: 24px; background: var(--surface-2); border-radius: 3px; }
+#status polyline { fill: none; stroke: var(--info); stroke-width: 1.4; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+#status-warning { margin: var(--s1) 0 0; color: var(--warn); }
 /* The agent's activity (ADR-550): its newest call and how long ago; idle once it has been quiet. */
-#overlay-activity-line { margin: var(--s1) 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
-#overlay-activity[data-state="none"] #overlay-activity-line, #overlay-activity[data-state="idle"] #overlay-activity-line { color: var(--ink-2); }
-#overlay-activity[data-state="error"] #overlay-activity-line { color: var(--bad); }
-#overlay-activity[data-state="running"] #overlay-activity-line { color: var(--info); }
-#overlay-activity-log > summary { color: var(--ink-2); cursor: pointer; }
-#overlay-activity-list { margin: 0; padding: 0; list-style: none; font-family: var(--mono); }
-#overlay-activity-list li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
-#overlay-activity-list li[data-outcome="error"], #overlay-activity-list li[data-outcome="lost"] { color: var(--bad); }
-#overlay-activity-list li[data-outcome="running"] { color: var(--info); }
+#status-activity-line { margin: var(--s1) 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
+#status-activity[data-state="none"] #status-activity-line, #status-activity[data-state="idle"] #status-activity-line { color: var(--ink-2); }
+#status-activity[data-state="error"] #status-activity-line { color: var(--bad); }
+#status-activity[data-state="running"] #status-activity-line { color: var(--info); }
+#status-activity-log > summary { color: var(--ink-2); cursor: pointer; }
+#status-activity-list { margin: 0; padding: 0; list-style: none; font-family: var(--mono); }
+#status-activity-list li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
+#status-activity-list li[data-outcome="error"], #status-activity-list li[data-outcome="lost"] { color: var(--bad); }
+#status-activity-list li[data-outcome="running"] { color: var(--info); }
 .timelines { position: absolute; z-index: 1; left: var(--s2); right: var(--s2); bottom: var(--s2); display: flex; flex-direction: column; gap: var(--s1); }
 .timeline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2);
             padding: var(--s1) var(--s2); background: color-mix(in srgb, var(--surface-2) 88%, transparent); border-radius: var(--radius-area); font-size: var(--fs-0); }

@@ -36138,4 +36138,48 @@ films nothing. `test_loop.py`: the agent's tool reports heroes and shove skipped
 fail. `test_review_evaluation.py`: the row, the allowlist, and in Chromium the
 captioned video after the heroes. No engine module, protocol op or tool schema changed.
 
+## ADR-572 — Status is an editor of its own, beside the 3D viewport, not an overlay on its model (2026-10-06, orun4 D2)
+
+**Context.** ADR-542 put what the project is doing — the stage chip and line, the run
+it reads, its numbers and sparklines, the trainer's warning, and since ADR-550 the
+agent's activity — in a box over the top right of the 3D viewport, collapsible to one
+line, the choice kept in `localStorage` `cadex.overlay`. It was the only part of the
+page that could not be placed: it covered the model, it rode with the 3D viewport into
+whatever area that went, and on a phone it took a fifth of the one screen. The orun4
+charter's D2 asks for it as an editor, `data-editor="status"`, shown as **Status**,
+placeable like the 3D and 2D viewports, with an area of its own beside the 3D viewport
+by default at a desk and a tab on a phone; the 3D viewport keeps the checkpoint
+scrubber and the revision timeline, which drive what it plays.
+
+**Decision.**
+- **One more editor.** `index.html` parks `#editor-status` in the shelf with the other
+  two; `review.js`'s editor order is 3D viewport, Status, 2D viewport, so a phone's tabs
+  read **3D**, **Status**, **2D**. The stage chip, `#status-stage[data-stage]`, is the
+  editor's tool and sits in its area's header; the body, `#status[data-stage]`, holds
+  the line and everything below it. Every `#overlay-*` hook is now `#status-*` with the
+  same content and rules; `renderOverlay` is `renderStatus`.
+- **The default layout** is the 3D viewport over three quarters of the width with
+  Status to its right. The layout key moves to `cadex.layout.v4`, so a browser holding a
+  v3 layout (which has no Status) starts from the new default instead of hiding Status.
+- **Collapse is removed.** An area is sized by its edges and a tab by the phone, so
+  the toggle, `setOverlayCollapsed` and the `cadex.overlay` key go; the page now keeps
+  three `localStorage` keys, not four.
+- **Nothing is drawn over the model** but the 3D viewport's own scrubbers, timeline and
+  model-status line, which stay where they were.
+
+**Consequences.** `test_review_overlay.py` becomes `test_review_status.py`, with every
+test kept on the renamed hooks. Its collapse-and-quarter-at-390-px test is replaced by
+one Chromium test: at the default desk layout Status is an area to the right of the 3D
+viewport, the same height, under half its width, with the chip in the header and
+nothing of it inside `#model` while the three timelines are; dragging Status's grip
+onto the middle of the 3D viewport swaps the two; Reset restores the default; at
+390 px the tabs are `3D`, `Status`, `2D`, the 3D tab carries no status, and the Status
+tab fills the width with the training stage and its warning. Measured at 1400 × 900:
+Status 317 × 769 px beside a 951 × 769 px 3D viewport; at 390 × 844, 390 × 756 px.
+`test_review_checkpoints.py` drops its "below the overlay" assertions (nothing is above
+the scrubbers now); `test_review_design.py` pins the Status hooks, the two-area default
+and the three tabs; `test_http_api.py` pins the three keys. `docs/DASHBOARD.md` §1, §2,
+§6 and §12 and `docs/CLI.md` say the same. No route, API key, engine module, protocol
+op or tool schema changed.
+
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

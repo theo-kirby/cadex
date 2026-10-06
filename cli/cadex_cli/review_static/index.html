@@ -91,35 +91,9 @@
       <button id="model-fit" type="button">Fit</button>
     </div>
     <div class="editor-body" id="model">
-      <!-- What the project is doing, and how training is going (ADR-542): read from /api/project's stage on the page's poll. -->
-      <aside id="overlay" data-stage="idle" data-collapsed="false" aria-label="Project stage">
-        <button id="overlay-toggle" type="button" aria-expanded="true" aria-controls="overlay-detail" title="Show or hide the detail">
-          <span id="overlay-stage" class="chip">idle</span>
-          <span id="overlay-line"></span>
-        </button>
-        <div id="overlay-detail">
-          <div id="overlay-run" hidden></div>
-          <!-- What the agent last did through cadex mcp (ADR-550): review/activity.jsonl, read in /api/project's activity. -->
-          <div id="overlay-activity" data-state="none">
-            <p id="overlay-activity-line">no agent activity logged</p>
-            <details id="overlay-activity-log" hidden><summary>recent calls</summary><ol id="overlay-activity-list"></ol></details>
-          </div>
-          <dl id="overlay-stats" hidden>
-            <div><dt>Reward/step</dt><dd id="overlay-reward-now">—</dd></div>
-            <div><dt>Best</dt><dd id="overlay-best">—</dd></div>
-            <div><dt>Loss</dt><dd id="overlay-loss-now">—</dd></div>
-            <div><dt>ETA</dt><dd id="overlay-eta">—</dd></div>
-          </dl>
-          <div class="sparks" id="overlay-sparks" hidden>
-            <figure><figcaption>reward</figcaption><svg id="overlay-reward" viewBox="0 0 100 24" preserveAspectRatio="none" aria-label="Reward per step by iteration"><polyline/></svg></figure>
-            <figure><figcaption>loss</figcaption><svg id="overlay-loss" viewBox="0 0 100 24" preserveAspectRatio="none" aria-label="Loss by iteration"><polyline/></svg></figure>
-          </div>
-          <p id="overlay-warning" hidden></p>
-        </div>
-      </aside>
       <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas></div>
       <div class="timelines">
-        <!-- The model's own status, on its own surface below the overlay (ADR-557). -->
+        <!-- The model's own status, on its own surface above the scrubbers (ADR-557). -->
         <div id="model-status" data-state="empty">no model loaded</div>
         <!-- The design's history (ADR-547): each stored revision's retained model (ADR-546), the one
              before it as a ghost and the parts whose digest changed tinted. Shown while the 3D
@@ -145,6 +119,34 @@
           <output id="play-clock">0.00 s</output>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- What the project is doing, and how training is going (ADR-542), as an editor of its own
+       (ADR-572): read from /api/project's stage on the page's poll. -->
+  <section class="editor" id="editor-status" data-editor="status" data-title="Status" data-short="Status">
+    <div class="editor-tools">
+      <span id="status-stage" class="chip">idle</span>
+    </div>
+    <div class="editor-body" id="status" data-stage="idle" aria-label="Project stage">
+      <p id="status-line"></p>
+      <div id="status-run" hidden></div>
+      <!-- What the agent last did through cadex mcp (ADR-550): review/activity.jsonl, read in /api/project's activity. -->
+      <div id="status-activity" data-state="none">
+        <p id="status-activity-line">no agent activity logged</p>
+        <details id="status-activity-log" hidden><summary>recent calls</summary><ol id="status-activity-list"></ol></details>
+      </div>
+      <dl id="status-stats" hidden>
+        <div><dt>Reward/step</dt><dd id="status-reward-now">—</dd></div>
+        <div><dt>Best</dt><dd id="status-best">—</dd></div>
+        <div><dt>Loss</dt><dd id="status-loss-now">—</dd></div>
+        <div><dt>ETA</dt><dd id="status-eta">—</dd></div>
+      </dl>
+      <div class="sparks" id="status-sparks" hidden>
+        <figure><figcaption>reward</figcaption><svg id="status-reward" viewBox="0 0 100 24" preserveAspectRatio="none" aria-label="Reward per step by iteration"><polyline/></svg></figure>
+        <figure><figcaption>loss</figcaption><svg id="status-loss" viewBox="0 0 100 24" preserveAspectRatio="none" aria-label="Loss by iteration"><polyline/></svg></figure>
+      </div>
+      <p id="status-warning" hidden></p>
     </div>
   </section>
 

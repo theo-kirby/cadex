@@ -1508,9 +1508,9 @@ def tessellation_to_stl(sidecar: Mapping[str, Any], data: bytes) -> bytes:
 HISTORY_KEYS = ("curve", "loss_curve", "episode_steps_curve")
 
 
-#: The most points a sparkline in the stage overlay carries (ADR-542).
+#: The most points a sparkline in Status carries (ADR-542, ADR-572).
 SPARK_POINTS = 64
-#: The histories the stage overlay draws as sparklines.
+#: The histories Status draws as sparklines.
 SPARK_KEYS = ("curve", "loss_curve")
 
 
@@ -1532,7 +1532,7 @@ def _telemetry_summary(result: dict[str, Any], reported: int, *, spark: bool = F
     here is hashed and nothing grows with training length, so a poll of the
     whole run list costs a bounded amount per run however long the history.
     ``spark`` keeps a :data:`SPARK_POINTS` sketch of the reward and loss
-    histories, for the one run the stage overlay reads (ADR-542)."""
+    histories, for the one run Status reads (ADR-542)."""
 
     if spark:
         result["spark"] = {key: _spark(result.get(key) or []) for key in SPARK_KEYS}
@@ -1933,7 +1933,7 @@ DESIGNING_WINDOW_S = 600
 EVALUATING_WINDOW_S = 120
 #: Entries of one evaluation directory read to find its newest write.
 EVALUATING_ENTRY_LIMIT = 256
-#: The telemetry fields the stage overlay shows for the run it reads.
+#: The telemetry fields Status shows for the run it reads.
 STAGE_TELEMETRY_KEYS = ("state", "reason", "age_s", "iteration", "total", "eta_s", "wall_time_s",
                         "reward_per_step", "loss", "best_iteration", "best_reward_per_step",
                         "warning", "spark")
@@ -1998,7 +1998,7 @@ def _evaluate_in_flight(activity: Mapping[str, Any]) -> str | None:
 
 
 def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
-    """What the project is doing now, for the 3D viewport's overlay (ADR-542).
+    """What the project is doing now, for the Status editor (ADR-542, ADR-572).
 
     ``state`` is the first that holds of: ``evaluating`` (an evaluation is
     writing, or an ``evaluate`` call through ``cadex mcp`` is in flight in

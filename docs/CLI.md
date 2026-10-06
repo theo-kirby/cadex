@@ -1524,12 +1524,12 @@ trail with no such ordinal is a 404. `GET /mesh/revision/<sha256>.stl` (its `mes
 every URL the server builds, ADR-551) is one kept part as binary STL, served only when the store holds that digest
 and its bytes still hash to it, tagged by content so a browser revalidates
 it with a 304. The page
-has no telemetry panel (ADR-533 removed it): the 3D viewport's stage overlay
-(ADR-542) is drawn from `/api/project`'s `stage` alone, on the page's existing
-poll, and is rebuilt only when that block changes, so the overlay reads the
+has no telemetry panel (ADR-533 removed it): the Status editor (ADR-542,
+ADR-572) is drawn from `/api/project`'s `stage` alone, on the page's existing
+poll, and is rebuilt only when that block changes, so Status reads the
 stage, the iteration, the ETA, the sparklines and the warning from one
 snapshot. The page fetches `/api/run/<name>` only when the 2D viewport
-plots one of a run's curves, never for the overlay, so an idle poll adds a
+plots one of a run's curves, never for Status, so an idle poll adds a
 constant number of DOM nodes whatever the run count. `window.cadexReview.lastPoll()` reports the last
 poll's list bytes, detail bytes and wall time. The `test_review_history_scale.py`
 suite pins this over sixty-three runs with 512-sample histories and three
@@ -1812,10 +1812,9 @@ and are not part of this table.
 
 **What the browser keeps.** The page keeps no project state of its own:
 everything it shows is read from these routes on each poll. What it keeps in
-`localStorage` is four per-viewer conveniences — `cadex.theme` (dark, light
-or system), `cadex.layout.v3` (the screen's areas), `cadex.render` (the
-viewport's render style) and `cadex.overlay` (the stage overlay collapsed or
-not) — and the test fails if the page stores any other key. A picked
+`localStorage` is three per-viewer conveniences — `cadex.theme` (dark, light
+or system), `cadex.layout.v4` (the screen's areas) and `cadex.render` (the
+viewport's render style) — and the test fails if the page stores any other key. A picked
 checkpoint, a scrubbed revision or a selected run lasts only as long as the
 page.
 

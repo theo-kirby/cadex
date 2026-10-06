@@ -1,13 +1,15 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""The 3D viewport's stage overlay (ADR-542, orun3 V1).
+"""The Status editor: the stage overlay of ADR-542 (orun3 V1), an editor of
+its own since ADR-572 (orun4 D2).
 
 ``/api/project`` carries ``stage``: what the project is doing (idle,
 designing, training, evaluating, failed), the run the page reads, and that
 run's telemetry with bounded reward and loss sparklines. The server half is
 pinned here without a browser; with a Chromium the page is driven while the
 biped fixture's ``progress.json`` is rewritten under it, on the page's own
-poll, and the expanded overlay is measured at 390 px wide.
+poll, and Status is placed: an area beside the 3D viewport at a desk, a tab
+on a phone, and an area that docks and swaps like the others.
 
 The fixture is the real biped's curves (``fixtures/biped-progress.json``,
 from ``ot5-biped``'s ``probe3-final``), written a prefix at a time as a
@@ -207,19 +209,25 @@ def test_a_project_with_no_runs_has_a_stage_and_no_training(tmp_path):
 
 # -- the page --------------------------------------------------------------------
 
-OVERLAY = """(function () {
+STATUS = """(function () {
   function q(s) { return document.querySelector(s); }
-  var box = q('#overlay').getBoundingClientRect(), model = q('#model').getBoundingClientRect();
-  return {stage: q('#overlay').dataset.stage, collapsed: q('#overlay').dataset.collapsed,
-          line: q('#overlay-line').textContent, chip: q('#overlay-stage').textContent,
-          run: q('#overlay-run').hidden ? null : q('#overlay-run').textContent,
-          best: q('#overlay-best').textContent, eta: q('#overlay-eta').textContent,
-          reward: q('#overlay-reward polyline').getAttribute('points') || '',
-          warning: q('#overlay-warning').hidden ? null : q('#overlay-warning').textContent,
-          warning_color: getComputedStyle(q('#overlay-warning')).color,
+  function rect(e) { var b = e.getBoundingClientRect(); return {width: b.width, height: b.height, x: b.x, y: b.y, right: b.right, bottom: b.bottom}; }
+  var area = q('#status').closest('.area'), model = q('#model').closest('.area');
+  return {stage: q('#status').dataset.stage,
+          line: q('#status-line').textContent, chip: q('#status-stage').textContent,
+          chip_in_header: !!q('#status-stage').closest('.area-header'),
+          run: q('#status-run').hidden ? null : q('#status-run').textContent,
+          best: q('#status-best').textContent, eta: q('#status-eta').textContent,
+          reward: q('#status-reward polyline').getAttribute('points') || '',
+          warning: q('#status-warning').hidden ? null : q('#status-warning').textContent,
+          warning_color: getComputedStyle(q('#status-warning')).color,
           warn: getComputedStyle(document.documentElement).getPropertyValue('--warn').trim(),
-          overlay: {width: box.width, height: box.height, x: box.x, y: box.y, right: box.right, bottom: box.bottom},
-          model: {width: model.width, height: model.height, x: model.x, y: model.y, right: model.right, bottom: model.bottom}};
+          status: area && rect(area), model: model && rect(model),
+          in_model: !!q('#model').querySelector('#status, #status-stage'),
+          areas: Array.from(document.querySelectorAll('#screen .area')).map(function (a) { return a.dataset.editor; }),
+          tabs: Array.from(document.querySelectorAll('#screen .tab')).map(function (t) { return t.textContent; }),
+          timelines_in_model: ['checkpoints', 'revision-timeline', 'playback'].every(function (id) {
+            return !!q('#model').querySelector('#' + id); })};
 })()"""
 
 
@@ -293,79 +301,91 @@ def _hex_rgb(value: str) -> str:
 
 
 @needs_browser
-def test_the_overlay_follows_progress_json_on_the_pages_own_poll(tmp_path, browser) -> None:
+def test_status_follows_progress_json_on_the_pages_own_poll(tmp_path, browser) -> None:
     root = _training_project(tmp_path)
     server, _thread = serve(root, "127.0.0.1", 0)
     try:
         page = _open(browser, server.url)
-        page.evaluate("window.cadexReview.setOverlayCollapsed(false)")
-        page.wait_for("document.getElementById('overlay').dataset.stage === 'training'")
-        first = page.evaluate(OVERLAY)
+        page.wait_for("document.getElementById('status').dataset.stage === 'training'")
+        first = page.evaluate(STATUS)
         assert first["chip"] == "training" and first["line"].startswith("iteration 40 / 240")
         assert first["run"] == "run " + RUN  # four runs: it says which it reads
         assert first["reward"] and first["warning"] is None
         # The trainer writes on; the page's 2 s poll, not a reload, carries it.
         _biped_progress(root, 159)
-        page.wait_for("document.getElementById('overlay-line').textContent.indexOf('iteration 160 / 240') === 0",
+        page.wait_for("document.getElementById('status-line').textContent.indexOf('iteration 160 / 240') === 0",
                       timeout=10)
-        second = page.evaluate(OVERLAY)
+        second = page.evaluate(STATUS)
         assert second["reward"] != first["reward"] and second["best"] != first["best"]
         assert second["eta"] == "5 min"
         _biped_progress(root, 170, warning="episode_collapse: mean episode 3 steps")
-        page.wait_for("!document.getElementById('overlay-warning').hidden", timeout=10)
-        warned = page.evaluate(OVERLAY)
+        page.wait_for("!document.getElementById('status-warning').hidden", timeout=10)
+        warned = page.evaluate(STATUS)
         assert warned["warning"] == "episode_collapse: mean episode 3 steps"
         assert warned["warning_color"] == _hex_rgb(warned["warn"])
         # Done: the run's numbers stay, the stage moves on.
         _biped_progress(root, 239, state="done")
         _rewrite_record(root / "runs" / RUN, status="ok")
-        page.wait_for("document.getElementById('overlay').dataset.stage !== 'training'", timeout=10)
-        assert page.evaluate(OVERLAY)["run"] == "run " + RUN + " · done"
+        page.wait_for("document.getElementById('status').dataset.stage !== 'training'", timeout=10)
+        assert page.evaluate(STATUS)["run"] == "run " + RUN + " · done"
     finally:
         server.shutdown()
         server.server_close()
 
 
 @needs_browser
-def test_the_overlay_collapses_per_browser_and_covers_a_quarter_at_390px(tmp_path, browser) -> None:
+def test_status_is_an_area_at_a_desk_a_tab_on_a_phone_and_docks_like_the_others(tmp_path, browser) -> None:
+    """ADR-572: Status is an editor beside the 3D viewport, never over the
+    model; the scrubbers and the timeline stay in the 3D viewport they drive."""
+
     root = _training_project(tmp_path)
     _biped_progress(root, 120, warning="episode_collapse: mean episode 3 steps")
     for tool in ("build", "inspect", "measure"):
         append_activity(root, tool, {"scope": "clearance"}, ok=True, detail="", ms=900.0)
     server, _thread = serve(root, "127.0.0.1", 0)
     try:
-        page = browser.page("about:blank")
-        page.send("Emulation.setDeviceMetricsOverride",
-                  {"width": 390, "height": 844, "deviceScaleFactor": 1, "mobile": True})
-        page.send("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
-        page.send("Page.navigate", {"url": server.url})
-        page.wait_for("document.readyState === 'complete' && !!window.cadexReview")
-        page.evaluate("window.cadexReview.ready", await_promise=True)
-        page.evaluate("window.cadexReview.setOverlayCollapsed(false)")
-        page.wait_for("document.getElementById('overlay').dataset.stage === 'training'")
-        m = page.evaluate(OVERLAY)
-        o, v = m["overlay"], m["model"]
-        assert v["width"] == 390
-        # Inside the viewport, and at most a quarter of it, with every row showing.
-        assert o["x"] >= v["x"] and o["right"] <= v["right"] and o["y"] >= v["y"] and o["bottom"] <= v["bottom"]
-        share = o["width"] * o["height"] / (v["width"] * v["height"])
-        assert share <= 0.25, share
-        assert m["warning"] and m["reward"]
-        assert page.evaluate("document.getElementById('overlay-activity').dataset.state") == "active"
-        assert page.evaluate("document.documentElement.scrollWidth") <= 390
-        # One tap collapses it to one line, and this browser keeps that.
-        page.evaluate("document.getElementById('overlay-toggle').click()")
-        collapsed = page.evaluate(OVERLAY)
-        assert collapsed["collapsed"] == "true" and collapsed["overlay"]["height"] <= 48
-        page.send("Page.reload", {})
-        page.wait_for("document.readyState === 'complete' && !!window.cadexReview")
-        page.evaluate("window.cadexReview.ready", await_promise=True)
-        assert page.evaluate(OVERLAY)["collapsed"] == "true"
-        page.evaluate("window.cadexReview.setOverlayCollapsed(false)")
-        print(json.dumps({"overlay_390": {"expanded_px": [round(o["width"]), round(o["height"])],
-                                          "viewport_px": [round(v["width"]), round(v["height"])],
-                                          "share": round(share, 4),
-                                          "collapsed_height_px": round(collapsed["overlay"]["height"])}}))
+        page = _open(browser, server.url)
+        page.evaluate("window.cadexReview.layout().reset()")
+        page.wait_for("document.getElementById('status').dataset.stage === 'training'")
+        desk = page.evaluate(STATUS)
+        # The default: the 3D viewport, Status to its right, side by side and not overlapping.
+        assert desk["areas"] == ["view3d", "status"], desk["areas"]
+        s, v = desk["status"], desk["model"]
+        assert s["x"] >= v["right"] - 1 and abs(s["y"] - v["y"]) <= 1 and abs(s["height"] - v["height"]) <= 1
+        assert v["width"] > 2 * s["width"]
+        assert desk["chip_in_header"] and desk["chip"] == "training"
+        assert desk["warning"] and desk["reward"] and not desk["in_model"] and desk["timelines_in_model"]
+        assert page.evaluate("document.getElementById('status-activity').dataset.state") == "active"
+        # Like any area: dragged by its grip onto the middle of the 3D viewport, the two swap.
+        grip = page.evaluate("(function () { var b = document.querySelector('.area[data-editor=status] .area-grip')"
+                             ".getBoundingClientRect(); return [b.x + b.width / 2, b.y + b.height / 2]; })()")
+        page.drag(grip[0], grip[1], v["x"] + v["width"] / 2, v["y"] + v["height"] / 2)
+        page.wait_for("document.querySelector('#screen .area').dataset.editor === 'status'", timeout=5)
+        swapped = page.evaluate(STATUS)
+        assert swapped["areas"] == ["status", "view3d"] and swapped["status"]["x"] < swapped["model"]["x"]
+        # Its own header picks it in any area, and Reset puts the default back.
+        page.evaluate("window.cadexReview.layout().reset()")
+        assert page.evaluate(STATUS)["areas"] == ["view3d", "status"]
+
+        phone = browser.page("about:blank")
+        phone.send("Emulation.setDeviceMetricsOverride",
+                   {"width": 390, "height": 844, "deviceScaleFactor": 1, "mobile": True})
+        phone.send("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
+        phone.send("Page.navigate", {"url": server.url})
+        phone.wait_for("document.readyState === 'complete' && !!window.cadexReview")
+        phone.evaluate("window.cadexReview.ready", await_promise=True)
+        first = phone.evaluate(STATUS)
+        # A phone has a tab per editor; the 3D one is first and nothing sits over its model.
+        assert first["tabs"] == ["3D", "Status", "2D"] and first["areas"] == ["view3d"], first
+        assert not first["in_model"] and first["timelines_in_model"]
+        phone.click("#screen .tab[data-editor=status]")
+        shown = phone.evaluate(STATUS)
+        assert shown["areas"] == ["status"] and shown["stage"] == "training" and shown["warning"]
+        assert shown["status"]["width"] == 390
+        assert phone.evaluate("document.documentElement.scrollWidth") <= 390
+        print(json.dumps({"status_editor": {"desk_px": [round(s["width"]), round(s["height"])],
+                                            "model_px": [round(v["width"]), round(v["height"])],
+                                            "phone_px": [round(shown["status"]["width"]), round(shown["status"]["height"])]}}))
     finally:
         server.shutdown()
         server.server_close()
@@ -373,18 +393,18 @@ def test_the_overlay_collapses_per_browser_and_covers_a_quarter_at_390px(tmp_pat
 
 ACTIVITY = """(function () {
   function q(s) { return document.querySelector(s); }
-  return {state: q('#overlay-activity').dataset.state, line: q('#overlay-activity-line').textContent,
-          log_hidden: q('#overlay-activity-log').hidden,
-          items: Array.from(document.querySelectorAll('#overlay-activity-list li')).map(function (li) {
+  return {state: q('#status-activity').dataset.state, line: q('#status-activity-line').textContent,
+          log_hidden: q('#status-activity-log').hidden,
+          items: Array.from(document.querySelectorAll('#status-activity-list li')).map(function (li) {
             return [li.dataset.outcome, li.textContent]; }),
-          line_color: getComputedStyle(q('#overlay-activity-line')).color,
+          line_color: getComputedStyle(q('#status-activity-line')).color,
           bad: getComputedStyle(document.documentElement).getPropertyValue('--bad').trim(),
           info: getComputedStyle(document.documentElement).getPropertyValue('--info').trim()};
 })()"""
 
 
 @needs_browser
-def test_the_overlay_says_what_the_agent_is_doing_and_when_it_went_quiet(tmp_path, browser) -> None:
+def test_status_says_what_the_agent_is_doing_and_when_it_went_quiet(tmp_path, browser) -> None:
     """V4's line (ADR-550): the newest call and how long ago, a short list of the
     ones before it, ``idle`` past :data:`ACTIVITY_IDLE_S`, and a page that
     renders with no log at all, each read by the page's own ``poll`` (the
@@ -394,21 +414,20 @@ def test_the_overlay_says_what_the_agent_is_doing_and_when_it_went_quiet(tmp_pat
     server, _thread = serve(root, "127.0.0.1", 0)
     try:
         page = _open(browser, server.url)
-        page.evaluate("window.cadexReview.setOverlayCollapsed(false)")
         none = page.evaluate(ACTIVITY)
         assert none["state"] == "none" and none["log_hidden"] and none["items"] == []
         assert none["line"] == "no tool call through cadex mcp has been logged in this project"
         # The agent works: each call lands in the log and the poll carries it.
         append_activity(root, "build", {"source": "x" * 3000}, ok=True, detail="built 4 parts", ms=2100.0)
         _refresh(page)
-        page.wait_for("document.getElementById('overlay-activity').dataset.state === 'active'", timeout=10)
+        page.wait_for("document.getElementById('status-activity').dataset.state === 'active'", timeout=10)
         first = page.evaluate(ACTIVITY)
         assert first["line"] == "build source=<3000 chars> · just now" and first["log_hidden"]
         append_activity(root, "inspect", {"scope": "clearance"}, ok=True, detail="", ms=400.0)
         append_activity(root, "set_params", {"values": {"bore": 8}}, ok=False,
                         detail="unknown parameter: bore", ms=12.0)
         _refresh(page)
-        page.wait_for("document.getElementById('overlay-activity').dataset.state === 'error'", timeout=10)
+        page.wait_for("document.getElementById('status-activity').dataset.state === 'error'", timeout=10)
         failed = page.evaluate(ACTIVITY)
         assert failed["line"] == "set_params values={bore} · failed: unknown parameter: bore · just now"
         assert failed["line_color"] == _hex_rgb(failed["bad"])
@@ -419,8 +438,8 @@ def test_the_overlay_says_what_the_agent_is_doing_and_when_it_went_quiet(tmp_pat
         for n in range(6):
             append_activity(root, "measure", {"n": n}, ok=True, detail="", ms=5.0)
         _refresh(page)
-        page.wait_for("document.querySelectorAll('#overlay-activity-list li').length === 5 && "
-                      "document.getElementById('overlay-activity-line').textContent.indexOf('measure n=5') === 0",
+        page.wait_for("document.querySelectorAll('#status-activity-list li').length === 5 && "
+                      "document.getElementById('status-activity-line').textContent.indexOf('measure n=5') === 0",
                       timeout=10)
         # Quiet past the threshold: the line says idle, not a stale action as current.
         log = activity_path(root)
@@ -429,14 +448,14 @@ def test_the_overlay_says_what_the_agent_is_doing_and_when_it_went_quiet(tmp_pat
         append_activity(root, "evaluate", {"seeds": [1, 2]}, ok=True, detail="", ms=10.0,
                         now=time.time() - ACTIVITY_IDLE_S - 120)
         _refresh(page)
-        page.wait_for("document.getElementById('overlay-activity').dataset.state === 'idle'", timeout=10)
+        page.wait_for("document.getElementById('status-activity').dataset.state === 'idle'", timeout=10)
         idle = page.evaluate(ACTIVITY)
         assert idle["line"] == "agent idle · last call evaluate 7 min ago"
         assert [text.split(" ", 1)[1] for _, text in idle["items"]] == ["evaluate seeds=[2]", "build"]
         # The log goes away (a fresh copy): the page shows the absence, not the old line.
         log.unlink()
         _refresh(page)
-        page.wait_for("document.getElementById('overlay-activity').dataset.state === 'none'", timeout=10)
+        page.wait_for("document.getElementById('status-activity').dataset.state === 'none'", timeout=10)
         assert page.evaluate(ACTIVITY)["items"] == []
     finally:
         server.shutdown()
@@ -453,26 +472,25 @@ def test_an_in_flight_evaluate_reads_evaluating_and_running_never_idle(tmp_path,
     server, _thread = serve(root, "127.0.0.1", 0)
     try:
         page = _open(browser, server.url)
-        page.evaluate("window.cadexReview.setOverlayCollapsed(false)")
         append_activity(root, "set_params", {"values": {"foot_w": 38}}, ok=True, detail="", ms=900.0)
         _refresh(page)
-        page.wait_for("document.getElementById('overlay-activity').dataset.state === 'active'", timeout=10)
+        page.wait_for("document.getElementById('status-activity').dataset.state === 'active'", timeout=10)
         # Started longer ago than the idle threshold, and still running.
         call = begin_activity(root, "evaluate", {}, now=time.time() - ACTIVITY_IDLE_S - 100)
         _refresh(page)
-        page.wait_for("document.getElementById('overlay').dataset.stage === 'evaluating'", timeout=10)
-        running = page.evaluate(ACTIVITY) | {"overlay": page.evaluate(OVERLAY)}
-        assert running["overlay"]["chip"] == "evaluating"
-        assert running["overlay"]["line"] == "the agent's evaluate call is running · 7 min"
+        page.wait_for("document.getElementById('status').dataset.stage === 'evaluating'", timeout=10)
+        running = page.evaluate(ACTIVITY) | {"status": page.evaluate(STATUS)}
+        assert running["status"]["chip"] == "evaluating"
+        assert running["status"]["line"] == "the agent's evaluate call is running · 7 min"
         assert running["state"] == "running" and running["line"] == "evaluate · running 7 min"
         assert running["line_color"] == _hex_rgb(running["info"])
         assert running["items"][0][0] == "running" and running["items"][0][1].endswith("evaluate · running")
         assert [outcome for outcome, _ in running["items"]] == ["running", "ok"]
         append_activity(root, "evaluate", {}, ok=True, detail="evaluate: fail", ms=480000.0, call=call)
         _refresh(page)
-        page.wait_for("document.getElementById('overlay-activity').dataset.state === 'active'", timeout=10)
-        done = page.evaluate(ACTIVITY) | {"overlay": page.evaluate(OVERLAY)}
-        assert done["overlay"]["stage"] != "evaluating"
+        page.wait_for("document.getElementById('status-activity').dataset.state === 'active'", timeout=10)
+        done = page.evaluate(ACTIVITY) | {"status": page.evaluate(STATUS)}
+        assert done["status"]["stage"] != "evaluating"
         assert done["line"] == "evaluate · just now"
         assert [outcome for outcome, _ in done["items"]] == ["ok", "ok"]
     finally:
@@ -494,8 +512,8 @@ def test_the_evaluate_call_names_the_stage_once_its_directory_exists(tmp_path, b
         page = _open(browser, server.url)
         call = begin_activity(root, "evaluate", {}, now=time.time() - 65)
         _refresh(page)
-        page.wait_for("document.getElementById('overlay').dataset.stage === 'evaluating'", timeout=10)
-        assert page.evaluate(OVERLAY)["line"] == "the agent's evaluate call is running · 1 min"
+        page.wait_for("document.getElementById('status').dataset.stage === 'evaluating'", timeout=10)
+        assert page.evaluate(STATUS)["line"] == "the agent's evaluate call is running · 1 min"
         # The evaluation's own directory appears; the call is still in flight.
         directory = root / "evaluations" / "dc0af1158165-d3a4c0ffee00"
         directory.mkdir(parents=True)
@@ -503,16 +521,16 @@ def test_the_evaluate_call_names_the_stage_once_its_directory_exists(tmp_path, b
         assert _json(server.url + "api/project")["stage"]["reason"] == "the agent's evaluate call is running"
         _refresh(page)  # two of the page's polls with the directory on disk
         _refresh(page)
-        during = page.evaluate(OVERLAY)
+        during = page.evaluate(STATUS)
         assert during["stage"] == "evaluating"
         assert during["line"] == "the agent's evaluate call is running · 1 min"
         assert "dc0af1158165" not in during["line"]
         # The call returns while the directory is still fresh: it alone reads without its id.
         append_activity(root, "evaluate", {}, ok=True, detail="evaluate: pass", ms=66000.0, call=call)
         _refresh(page)
-        page.wait_for("document.getElementById('overlay-line').textContent.indexOf('an evaluation is running') === 0",
+        page.wait_for("document.getElementById('status-line').textContent.indexOf('an evaluation is running') === 0",
                       timeout=10)
-        assert "dc0af1158165" not in page.evaluate(OVERLAY)["line"]
+        assert "dc0af1158165" not in page.evaluate(STATUS)["line"]
     finally:
         server.shutdown()
         server.server_close()
@@ -524,19 +542,18 @@ def test_the_idle_threshold_here_is_the_pages():
 
 
 @needs_browser
-def test_the_overlay_turns_a_killed_walk_from_training_to_failed(tmp_path, browser) -> None:
+def test_status_turns_a_killed_walk_from_training_to_failed(tmp_path, browser) -> None:
     root = _training_project(tmp_path)
     walk = _walk_process(root / "runs" / RUN)
     server, _thread = serve(root, "127.0.0.1", 0)
     try:
         page = _open(browser, server.url)
-        page.evaluate("window.cadexReview.setOverlayCollapsed(false)")
-        page.wait_for("document.getElementById('overlay').dataset.stage === 'training'")
+        page.wait_for("document.getElementById('status').dataset.stage === 'training'")
         walk.send_signal(signal.SIGKILL)
         walk.wait(timeout=10)
         # The page's own poll, not a reload, carries the death.
-        page.wait_for("document.getElementById('overlay').dataset.stage === 'failed'", timeout=10)
-        shown = page.evaluate(OVERLAY)
+        page.wait_for("document.getElementById('status').dataset.stage === 'failed'", timeout=10)
+        shown = page.evaluate(STATUS)
         assert shown["chip"] == "failed" and RUN_GONE_ERROR in shown["line"]
     finally:
         walk.kill()
@@ -546,7 +563,7 @@ def test_the_overlay_turns_a_killed_walk_from_training_to_failed(tmp_path, brows
 
 
 @needs_browser
-def test_the_overlay_reads_a_stopped_run_as_stopped_with_its_reason(tmp_path, browser) -> None:
+def test_status_reads_a_stopped_run_as_stopped_with_its_reason(tmp_path, browser) -> None:
     """A run ended through ``train_stop``: its record lands ``stopped`` with
     the reason, while the trainer it ended says ``failed`` in its progress.
     The chip turns from training to **stopped**, in ``--warn``, on the page's
@@ -557,15 +574,14 @@ def test_the_overlay_reads_a_stopped_run_as_stopped_with_its_reason(tmp_path, br
     server, _thread = serve(root, "127.0.0.1", 0)
     try:
         page = _open(browser, server.url)
-        page.evaluate("window.cadexReview.setOverlayCollapsed(false)")
-        page.wait_for("document.getElementById('overlay').dataset.stage === 'training'")
+        page.wait_for("document.getElementById('status').dataset.stage === 'training'")
         _biped_progress(root, 41, state="failed", error="KeyboardInterrupt: ")
         _rewrite_record(run, status="stopped", recorded_at=_iso(0),
                         error="stop requested: the reward is flat")
-        page.wait_for("document.getElementById('overlay').dataset.stage === 'stopped'", timeout=10)
-        shown = page.evaluate(OVERLAY)
+        page.wait_for("document.getElementById('status').dataset.stage === 'stopped'", timeout=10)
+        shown = page.evaluate(STATUS)
         assert shown["chip"] == "stopped" and shown["line"] == "stop requested: the reward is flat"
-        chip = page.evaluate("getComputedStyle(document.getElementById('overlay-stage')).color")
+        chip = page.evaluate("getComputedStyle(document.getElementById('status-stage')).color")
         assert chip == _hex_rgb(shown["warn"])
     finally:
         server.shutdown()
