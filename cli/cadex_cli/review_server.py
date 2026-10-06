@@ -1744,14 +1744,32 @@ def _hero_names(report: Mapping[str, Any]) -> dict[str, str | None]:
     return names
 
 
+#: The longest shove caption a row carries; the report's is far shorter.
+_SHOVE_CAPTION_CHARS = 600
+
+
+def _shove(report: Mapping[str, Any]) -> dict[str, Any]:
+    """A pass's shove video (ADR-571): its file and the caption written
+    beside it from the episode, or nothing when the report names none."""
+
+    shove = report.get("shove") if isinstance(report.get("shove"), dict) else {}
+    video = shove.get("video") if isinstance(shove.get("video"), dict) else {}
+    name = video.get("file")
+    caption = shove.get("caption")
+    return {"state": str(shove.get("state") or "none"),
+            "video": name if isinstance(name, str) and name and set(name) <= _EVALUATION_NAME else None,
+            "caption": caption[:_SHOVE_CAPTION_CHARS] if isinstance(caption, str) else None}
+
+
 def _film_files(directory: Path, report: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    """Every file the report's film and heroes blocks name, resolved inside the evaluation."""
+    """Every file the report's film, heroes and shove blocks name, resolved inside the evaluation."""
 
     files: dict[str, dict[str, Any]] = {}
     film = report.get("film") if isinstance(report.get("film"), dict) else {}
     named = [row.get(key) if isinstance(row, dict) else None
              for row in film.get("seeds") or [] for key in ("overview", "detail", "video")]
     named += [{"file": name} for name in _hero_names(report).values() if name]
+    named += [{"file": _shove(report)["video"]}]
     for item in named:
         name = item.get("file") if isinstance(item, dict) else None
         if not isinstance(name, str) or not name or not set(name) <= _EVALUATION_NAME:
@@ -1846,6 +1864,8 @@ def evaluations(project_root: Path | str, accepted: Mapping[str, Any]) -> list[d
                 # A pass's two heroes (ADR-570), named only when the
                 # report names them; a fail has neither.
                 "heroes": _hero_names(report),
+                # A pass's shove video and its caption (ADR-571).
+                "shove": _shove(report),
                 "stamp": "-".join(str(part) for part in stamp[1:]),
                 "evaluated_at": _datetime.datetime.fromtimestamp(
                     stamp[2] / 1e9, _datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

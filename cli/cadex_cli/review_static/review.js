@@ -665,6 +665,13 @@
                     url: 'evaluation/' + encodeURIComponent(e.name) + '/' + encodeURIComponent(heroes[part[0]]) + '?v=' + e.stamp,
                     label: title + ' · ' + part[1] });
       });
+      // ...and its shove video, with the pushes and the ending beside it (ADR-571).
+      var shove = e.shove || {};
+      if (e.verdict === 'pass' && shove.video) {
+        list.push({ key: 'shove:' + e.name + ':' + shove.video, group: 'Evaluations', kind: 'video',
+                    url: 'evaluation/' + encodeURIComponent(e.name) + '/' + encodeURIComponent(shove.video) + '?v=' + e.stamp,
+                    label: title + ' · shoves', caption: shove.caption || '' });
+      }
       if (film.state !== 'ready') return;
       (film.sheets || []).forEach(function (s) {
         [['video', 'video', 'video'], ['overview', 'image', 'filmstrip'], ['detail', 'image', 'detail']].forEach(function (part) {
@@ -728,6 +735,7 @@
     if (item.kind === 'video') {
       stage.appendChild(el('video', { src: item.url, controls: true, loop: true, muted: true, playsInline: true,
                                       autoplay: true, id: 'sheet-video', ariaLabel: item.label }));
+      if (item.caption) stage.appendChild(el('p', { id: 'sheet-caption', text: item.caption }));
       return Promise.resolve();
     }
     if (item.kind === 'doc') {

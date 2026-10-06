@@ -61,7 +61,7 @@ The agent's two requests cost tokens. The loop between them does not.
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
 | `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. With `--remote`, the trainer runs on the box through `training/remote_train.sh`; the artifacts do not move. With `--dry-run`, report the plan — the files the leg would touch and the steps it would take, in either mode — and train nothing. | no |
 | `cadex smoke --out DIR` | Simulate retained accepted artifacts with zero action or held position actuators, check finite state, exact component overlaps and floor support, and write `smoke.json` (ADR-352; details below). No rebuild or acceptance. | no |
-| `cadex evaluate` | Hold the accepted policy against its task's success spec (`assembly.success`, ADR-456): one rollout per frozen seed under the spec's conditions, then pass or fail per seed and per predicate, the behaviour metrics, the reward by term and how each episode ended, written to `evaluations/<revision>-<policy>/evaluation.json` in the project, with a filmstrip and a rollout video drawn from the seeds' traces on the dark prototype floor, and, when it passes, the studio hero and the print-bed hero of the design that passed (ADR-457, ADR-459, ADR-570; details below). No rebuild or acceptance, and no trainer. | no |
+| `cadex evaluate` | Hold the accepted policy against its task's success spec (`assembly.success`, ADR-456): one rollout per frozen seed under the spec's conditions, then pass or fail per seed and per predicate, the behaviour metrics, the reward by term and how each episode ended, written to `evaluations/<revision>-<policy>/evaluation.json` in the project, with a filmstrip and a rollout video drawn from the seeds' traces on the dark prototype floor, and, when it passes, the studio hero and the print-bed hero of the design that passed and a video of the policy taking the task's shoves (ADR-457, ADR-459, ADR-570, ADR-571; details below). No rebuild or acceptance, and no trainer. | no |
 | `cadex walk --out DIR` | The lifecycle walk as one command: an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command, each bounded by `--leg-timeout` (default 3600 s); `review.json` lands in `--out`. | no |
 | `cadex review --host ADDR --port N` | Serve **this one project's** dashboard to a browser, read-only (ADR-286): the model in an orbit/zoom WebGL viewport — the accepted attempt's tessellation, or a run's own rollout meshes at its own revision — its drawings, documents and training plots in a 2D viewport, and the revision trail in the menu bar (ADR-539); its `GET /api/...` routes also serve every recorded run labelled current/historical, its parameters and specs as recorded, rollout figures and retained artifacts. Opens no engine, rebuilds nothing and writes nothing: it answers GET and HEAD only, and follows what the agent changes (ADR-537, `docs/DASHBOARD.md` §18). Default `127.0.0.1:8765`; `--host` the machine's Tailscale address to reach it from another device. Ctrl-C stops it. How the page is laid out, typed and coloured is `docs/DASHBOARD.md`. | no |
 | `cadex style [NAME \| --clear]` | The project's design style (ADR-560): one named, optional set of guidance rules for a kind of machine and its look, which `cadex guidance --project` prints after the base. With no NAME it reports; NAME chooses one the engine carries (a `Mod/cadex/CadexAgentStyle.<NAME>.md`) and refuses any other; `--clear` returns to none, the base alone. Stored in the project's `agent.json`. The envelope's `style` is `chosen` (empty for none) and `available`. No engine, no row, no commit. | no |
@@ -2877,10 +2877,10 @@ Fast, and honest about what it did not run.
 | `test_review_server.py` | The review dashboard (ADR-286): the API, the allowlist and its refusals, the CLI command, and the page in a headless Chromium over its DevTools pipe (`cdp_browser.py`) — **skips** the browser half without a Chromium (`CADEX_BROWSER` names one); the private-address smoke runs only with `CADEX_REVIEW_HOST` set. |
 | `test_review_lifecycle.py` | The dashboard across restart and copy (D6/D7): the real `cadex review` command stopped and restarted on the same port while an independent telemetry producer keeps writing; the open page recovers without reloading, a fresh page reads the same project, the producer is neither stopped nor duplicated, and no project file changes. Whole-directory copy coverage checks independent accepted fixtures and historical model/curves/video access with the original path unavailable. **Skips** without a Chromium or FFmpeg. Fixture coverage, not the required fresh-biped pass. |
 | `test_review_history_scale.py` | Bounded operation over a long run history (ADR-321): sixty-three runs with 512-sample histories and three verified checkpoints each. Over HTTP, the run list carries a telemetry summary under 1.5 KB per run with no histories and no checkpoint hashing, the per-run detail carries both, and missing/invalid/mismatched states survive the summary. In the browser, a deliberately selected historical run keeps its selection, histories and playing video while twenty runs are added and the newest run's telemetry grows; an idle poll adds no more DOM nodes after the growth than before; a fresh visit selects the training run and the current-run button reaches it with its growing history within five seconds. **Skips** the browser half without a Chromium or FFmpeg. |
-| `test_evaluate.py` | `cadex evaluate` (ADR-457) in three layers: what it reads from a hand-built retained attempt (no engine); the child run for real on the engine suite's own fixtures, which needs `mujoco` here and **skips** without it; and the command against a script a live engine accepted with a policy it verified — **skips** without a built engine. |
+| `test_evaluate.py` | `cadex evaluate` (ADR-457) in three layers: what it reads from a hand-built retained attempt, and the shove episode's slices, pushes, ending and skips (ADR-571) (no engine); the child run for real on the engine suite's own fixtures, which needs `mujoco` here and **skips** without it; and the command against a script a live engine accepted with a policy it verified — **skips** without a built engine. |
 | `test_loop.py` | The training loop (ADR-464) in three layers: the registry and the supervisor against a hand-built retained attempt and a fake trainer, with the supervisor really detached — registration whole before launch and each refusal, a run outliving the process that started it, stop, budget, collapse against crash, SIGTERM and SIGKILL as interruptions, one run at a time per project and per machine; the four tools through `Bridge.call`; and whole rounds through the `cadex mcp` session host against a live engine — a run started in one session, its policy declared and evaluated in the next — which **skip** without a built engine, the real-trainer round also without the training venv. It also refuses behaviour words in the loop, its tools and its guidance paragraph. |
 | `test_film.py` | The evaluation's film (ADR-459) on a hand-built retained attempt and hand-written traces, with no engine: which seeds `--film` picks; the solids read from the attempt's own tessellation and refused outside it; materials from the inventory; both sheets' frame times, views, floor and dark backdrop read back from the PNGs; the detail window centred on the evaluation's base while a part is left behind, fixed for a mechanism with no floating base, and refused for a base that is not drawn (ADR-460); the early-ending and no-disturbance windows; the target marker (ADR-463): a ring read back from both sheets' pixels at the projected target of each frame's own time, hollow, drawn over the solids, jumping where the target does, held in a fixed window and in the video's, absent from a trace with no point goal, and refused for a point goal the trace cannot place; the trace digest check; the report rewritten with its film; `--film-only`'s refusals. The video tests need FFmpeg and **skip** without it. |
-| `test_review_evaluation.py` | The dashboard's view of an evaluation (ADR-459; its page panel was removed by ADR-533, the API still serves it). The failing fixture is ot10's `w2-2` shuffle, from the receipt under `docs/probes/ot11/retained/`; a passing one is written in the test. Over HTTP: the bounded summary list, the whole report, the file allowlist and its refusals, one parse per file identity. In headless Chromium at 1400×900 and 400×850: every predicate's tally, every seed's verdict, ending and per-predicate values, the metrics and reward tables, the film, the reader's pick; a pass's two heroes listed, served under the allowlist and shown in the 2D viewport before its film (ADR-570). The page half **skips** without a Chromium. |
+| `test_review_evaluation.py` | The dashboard's view of an evaluation (ADR-459; its page panel was removed by ADR-533, the API still serves it). The failing fixture is ot10's `w2-2` shuffle, from the receipt under `docs/probes/ot11/retained/`; a passing one is written in the test. Over HTTP: the bounded summary list, the whole report, the file allowlist and its refusals, one parse per file identity. In headless Chromium at 1400×900 and 400×850: every predicate's tally, every seed's verdict, ending and per-predicate values, the metrics and reward tables, the film, the reader's pick; a pass's two heroes listed, served under the allowlist and shown in the 2D viewport before its film (ADR-570); its shove video after them, served, with its caption below it (ADR-571). The page half **skips** without a Chromium. |
 | `test_video.py` | Rollout video rendering (D4) on synthetic fixtures: decoded frames and timing, retained identity, the failed-rerender record, and in the same headless Chromium inline playback across polls and a download the browser wrote, checked byte for byte. **Skips** rendering/playback without both Chromium and FFmpeg. Fixture coverage, not fresh-biped evidence. |
 
 `tests/fake_cadexd.py` is a scripted engine, not a loose mock: its replies
@@ -3242,6 +3242,8 @@ sha256; `--out DIR` names another place):
   for the first, named with their digests in the report's `film` block.
 - the **heroes** of a pass (ADR-570, below): `hero.png` and `print-bed.png`,
   named in the report's `heroes` block.
+- the **shove video** of a pass (ADR-571, below): `shove.webm` and the
+  episode's `shove-trace.json`, named in the report's `shove` block.
 
 **A void seed.** MuJoCo answers a bad acceleration by resetting the state
 and counting a warning, so the frames after it are finite and are not the
@@ -3272,8 +3274,9 @@ Exit zero means a complete measurement on every seed, **not a passing
 policy**: read `evaluation.verdict`. The envelope's `evaluation` block
 carries the verdict, the digests, the summary, `report`, the path of the
 full file, and `film`, the state of the film with the path of each sheet
-and video drawn, and `heroes`, the state of the heroes with each one's
-path or `null` and why one is missing; the per-seed rows stay in the file. The `PROGRESS.md` row names
+and video drawn, `heroes`, the state of the heroes with each one's
+path or `null` and why one is missing, and `shove`, the shove video's state,
+path, caption, pushes and ending, or why there is none; the per-seed rows stay in the file. The `PROGRESS.md` row names
 the verdict and the failing predicates, which is how a failed evaluation
 reaches the agent's next session.
 
@@ -3396,8 +3399,47 @@ retained snapshot reads in 0.8 s and the hero and the print bed take 5.8 s
 and 5.9 s, and the print bed is byte-identical to one drawn from a rebuild
 snapshot of the same revision.
 
+### The shove video: the passed policy pushed (ADR-571)
+
+When the verdict is `pass`, `cadex evaluate` (and `--film-only`, and the
+agent's `evaluate` tool) plays **one more episode** and films it: the spec's
+first seed under the spec's own conditions, with the shoves the task was
+trained against in place of the spec's. Each of the task's non-sustained
+disturbances becomes three pushes: its start window is cut into three equal
+slices no shorter than the push, and one push is drawn in each from the
+entry's own force range, direction and duration, so the pushes land in order
+and never overlap (a window past the spec's horizon is cut back to it; at most
+eight disturbances in all, the engine's cap). The episode is the engine's own
+`evaluate_success` on that narrowed spec, so the draws, the frames and the
+recovery from each push are the engine's reading, and the policy plays under
+its recorded command filter (ADR-558).
+
+`shove.webm` is drawn by `cli/cadex_cli/shoves.py` (kept out of `film.py`,
+which names no behaviour) as the evaluation's video is (the studio look, the
+dark floor, ten frames a second) with each push **marked when it lands**: an
+arrow in `--warn` ending at the pushed body's centre, in the push's direction,
+longer for a harder push, with its force beside it, held for 0.6 s; top
+left, one line per push that has landed, `recovered in <s>` once the design
+has settled (the engine's rest: tilt ≤ 10°, speed ≤ one COM height a second,
+held for 1 s), and on the last frame how the episode ended. **A design that
+falls is filmed falling** and the video ends where the episode did.
+
+The report's `shove` block (`cadex-shove-film-v1`) carries `state`
+(`ready`, `failed` or `skipped`), `seed`, `pushes` (each one's `newtons`,
+`azimuth_deg`, `force_n`, `start_s`, `duration_s`, `recovery_s` and
+`recovered`, read from the episode), `outcome` (`stayed_up`, `termination`,
+`duration_s`, `horizon_s`, `pushes_landed`, `recovered`), `caption` (the
+same as one line), `failing` (the spec's predicates the shoved episode did
+not hold, for reading only: the verdict is the evaluation's), `drawn_from`
+(the slices each push was drawn from), `trace` and `video`. A failed
+evaluation, `--no-video` and a task trained against no shove film nothing
+(`skipped`, with the reason), and an earlier pass's video is removed. On the
+55-part printed biped (2026-10-06) the episode took 0.5 s and the video
+100 s; the walker took 0.33 N at 3.12 s and 0.90 N at 5.75 s and tipped at
+6.30 s, and the video and the caption say so.
+
 The film is not the record. The evaluation's directory gets a `.gitignore`
-naming the three film patterns and the two heroes, so the project's own repository (ADR-194)
+naming the three film patterns, the two heroes and `*.webm` (the shove video), so the project's own repository (ADR-194)
 commits `evaluation.json` with the run's `PROGRESS.md` row and leaves the
 sheets, the video and the heroes on disk, where `--film-only` can draw them again.
 
@@ -3406,11 +3448,12 @@ sheets, the video and the heroes on disk, where `--film-only` can draw them agai
 `evaluations` as a bounded summary: verdict, seed tally, what failed, the
 policy and task, `relation` to the accepted revision now, which seeds were
 filmed, the `heroes` its report names (`hero` and `print_bed`, each a file
-name or `null`), and a `stamp` that changes when the file does. Reports are parsed
+name or `null`), `shove` (`state`, `video`, a file name or `null`, and
+`caption`), and a `stamp` that changes when the file does. Reports are parsed
 once per file identity. `GET /api/evaluation/<name>` carries one report
 whole, with `files` saying which of its film is on disk.
-`GET /evaluation/<name>/<file>` serves `evaluation.json` and the film and
-hero files that report names, and nothing else in the directory: a trace, an unnamed
+`GET /evaluation/<name>/<file>` serves `evaluation.json` and the film,
+hero and shove video files that report names, and nothing else in the directory: a trace, an unnamed
 file or a link out of the evaluation is a 404. The page's **Evaluation**
 tab was removed by ADR-533. Only evaluations under `evaluations/`
 are listed; one written elsewhere with `--out` is not.

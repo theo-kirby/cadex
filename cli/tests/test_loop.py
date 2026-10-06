@@ -728,6 +728,9 @@ def test_one_round_of_the_loop_runs_through_the_product_path(engine, tmp_path, m
     assert [picture["type"] for picture in pictures] == ["image", "image"]
     assert all(base64.b64decode(picture["data"])[:4] == b"\x89PNG" for picture in pictures)
     assert len(text["text"]) < 21_500
+    # A fail presents nothing through the agent's tool either (ADR-570, ADR-571).
+    assert view["heroes"]["state"] == "skipped" and view["shove"]["state"] == "skipped"
+    assert view["shove"]["video"] is None
     report = Path(view["report"])
     assert report.is_file() and report.is_relative_to(root / "evaluations")
     # The ledger is the round, in order, and the next session can read it.

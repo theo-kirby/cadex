@@ -15,6 +15,13 @@ the accepted revision retained (model, task bundle, policy weights), the
 component names a trace carries, and where to write. It writes one
 ``seed-<n>-trace.json`` per seed and the measured report, and prints one
 line per seed on stderr.
+
+A plan with ``shove`` set plays the **shove episode** a passed evaluation is
+filmed taking (ADR-571) instead: the spec's first seed, under the spec's
+conditions, with the shoves the task was trained against (:func:`shove_task`)
+in place of the spec's own. It is the same engine call on a narrowed spec, so
+the pushes, the recovery from each and how the episode ended are the engine's
+own reading, and its one trace is the file the plan names.
 """
 
 from __future__ import annotations
@@ -30,6 +37,50 @@ from typing import Any
 #: The per-seed trace's name. ``*-trace.json`` is what a project's own
 #: repository ignores, so an evaluation's frames never enter it.
 TRACE_NAME = "seed-{seed}-trace.json"
+#: How many pushes each of the task's shoves becomes in the shove episode:
+#: its start window cut into this many equal slices, one push drawn in each.
+SHOVES_PER_ENTRY = 3
+
+
+def shove_task(task: dict[str, Any], maximum: int) -> dict[str, Any]:
+    """``task`` with its spec narrowed to the shove episode (ADR-571).
+
+    The spec keeps its predicates, horizon, randomisation, reset variation,
+    goals and sustained disturbances, and its first seed only. Its own
+    shoves are replaced by the **task's**: each shove the policy was trained
+    against, its start window cut into :data:`SHOVES_PER_ENTRY` equal slices
+    no shorter than the push, one push drawn from the entry's own force,
+    direction and duration in each, so the pushes land in order and never
+    overlap. A window that runs past the spec's horizon is cut back to it.
+    At most ``maximum`` disturbances in all, the engine's own cap. A task
+    that trained against no shove has none to film: ``ValueError``.
+    """
+
+    spec = dict(task["success"])
+    horizon = float(spec["episode"]["episode_seconds"])
+    kept = [dict(entry) for entry in spec.get("disturbance") or () if entry.get("sustained")]
+    pushes: list[dict[str, Any]] = []
+    for entry in task.get("disturbance") or ():
+        if entry.get("sustained"):
+            continue
+        duration = float(entry["duration_s"])
+        low = float(entry["at_low_s"])
+        high = min(float(entry["at_high_s"]), horizon - duration)
+        if high < low:
+            continue
+        slices = max(1, min(SHOVES_PER_ENTRY, math.floor((high - low + duration) / duration + 1e-9)))
+        span = (high - low + duration) / slices
+        for at in range(slices):
+            start = low + at * span
+            pushes.append({**entry, "label": f"{entry['label']} {at + 1}",
+                           "at_low_s": start, "at_high_s": max(start, start + span - duration)})
+    if not pushes:
+        raise ValueError("the task trained against no shove inside the evaluation's horizon, "
+                         "so there is no shove to film")
+    room = max(0, int(maximum) - len(kept))
+    spec["disturbance"] = kept + pushes[:room]
+    spec["seeds"] = [int(spec["seeds"][0])]
+    return {**task, "success": spec}
 
 
 def _sha256(data: bytes) -> str:
@@ -57,6 +108,13 @@ def evaluate(plan: dict[str, Any]) -> dict[str, Any]:
     task_bytes = Path(plan["task"]).read_bytes()
     policy_bytes = Path(plan["policy"]).read_bytes()
     task = json.loads(task_bytes.decode("utf-8"))
+    semantic = CadexDynamics.task_semantic_digest(task)
+    shove = bool(plan.get("shove"))
+    if shove:
+        try:
+            task = shove_task(task, CadexDynamics.MAXIMUM_DISTURBANCES)
+        except ValueError as exc:
+            raise CadexDynamics.DynamicsError(str(exc), reason="no_shove_to_film") from exc
     digests = {
         "policy_sha256": _sha256(policy_bytes),
         "task_sha256": _sha256(task_bytes),
@@ -77,7 +135,7 @@ def evaluate(plan: dict[str, Any]) -> dict[str, Any]:
     def retain(seed: int, document: dict[str, Any]) -> None:
         encoded = json.dumps(document, ensure_ascii=True, sort_keys=True,
                              separators=(",", ":"), allow_nan=False).encode("utf-8")
-        name = TRACE_NAME.format(seed=seed)
+        name = str(plan["trace"]) if shove else TRACE_NAME.format(seed=seed)
         (out / name).write_bytes(encoded)
         traces[seed] = {"file": name, "sha256": _sha256(encoded), "bytes": len(encoded)}
         sys.stderr.write(f" · seed {seed}  {time.monotonic() - started:.1f} s\n")
@@ -85,14 +143,15 @@ def evaluate(plan: dict[str, Any]) -> dict[str, Any]:
 
     measured = CadexDynamics.evaluate_success(
         model_bytes, task, container, components=list(plan["components"]),
-        identity=digests, on_trace=retain, context="the evaluation",
+        identity=digests, on_trace=retain,
+        context="the shove episode" if shove else "the evaluation",
     )
     for row in measured["seeds"]:
         row["trace"] = traces[row["seed"]]
     header = container["header"]
     measured.update({
         **digests,
-        "task_semantic_sha256": CadexDynamics.task_semantic_digest(task),
+        "task_semantic_sha256": semantic,
         "policy_label": str(header.get("label") or ""),
         "mujoco_version": str(task.get("mujoco_version") or ""),
         "wall_time_s": time.monotonic() - started,

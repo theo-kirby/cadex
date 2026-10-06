@@ -77,6 +77,9 @@ DETAIL_NAME = "seed-{seed}-detail.png"
 VIDEO_NAME = "seed-{seed}-rollout.webm"
 #: What a re-run removes before it draws.
 FILM_GLOBS = ("seed-*-overview.png", "seed-*-detail.png", "seed-*-rollout.webm")
+#: Every video drawn beside the report, the evaluation's and any other a
+#: pass presents (ADR-571): drawn again, so kept out of the history.
+VIDEOS = "*.webm"
 #: Written beside the film. A project is a git repository that commits what
 #: a command changed (ADR-194); the report belongs in its history and the
 #: film, which the traces can draw again, does not.
@@ -84,9 +87,9 @@ IGNORE_NAME = ".gitignore"
 #: The two heroes a passed evaluation presents (ADR-570), drawn again by
 #: ``--film-only`` like the film, so kept out of the history like it.
 HERO_NAMES = ("hero.png", "print-bed.png")
-IGNORE = ("# Written by cadex evaluate (ADR-459, ADR-570). The film and the heroes are drawn from\n"
-          "# this evaluation and can be drawn again with --film-only; evaluation.json is the record.\n"
-          + "".join(pattern + "\n" for pattern in FILM_GLOBS + HERO_NAMES))
+IGNORE = ("# Written by cadex evaluate (ADR-459, ADR-570, ADR-571). The film, the heroes and the\n"
+          "# videos are drawn again with --film-only; evaluation.json is the record.\n"
+          + "".join(pattern + "\n" for pattern in FILM_GLOBS + HERO_NAMES + (VIDEOS,)))
 
 
 class FilmError(RuntimeError):
@@ -565,11 +568,14 @@ def detail_start(row: Mapping[str, Any], times: Sequence[float], given: float | 
 
 
 def _video(stage_names, looks, source, meshes, frames, times, out: Path, seed: int,
-           floor: float, points: Sequence[Sequence[float]] | None = None) -> dict[str, Any]:
+           floor: float, points: Sequence[Sequence[float]] | None = None, *,
+           name: str | None = None, draw=None) -> dict[str, Any]:
     """The seed's rollout as a studio video, encoded and decoded back before it is kept.
 
     With ``points``, each frame's target is kept inside the window and
-    marked as the sheets mark it.
+    marked as the sheets mark it. ``draw(index, pixels, size, bounds)``
+    marks a frame instead and says whether it marked anything; ``name`` is
+    the file kept, the seed's rollout unless given.
     """
 
     started = time.monotonic()
@@ -577,7 +583,8 @@ def _video(stage_names, looks, source, meshes, frames, times, out: Path, seed: i
     marked = []
 
     def overlay(at: int, pixels: bytearray, size: int, bounds) -> None:
-        marked.append(mark(pixels, size, studio_render.HERO, bounds, points[at]))
+        marked.append(draw(at, pixels, size, bounds) if draw is not None else
+                      mark(pixels, size, studio_render.HERO, bounds, points[at]))
 
     def sample(i: int) -> int:
         return len(frames) - 1 if i == count - 1 else max(
@@ -588,11 +595,12 @@ def _video(stage_names, looks, source, meshes, frames, times, out: Path, seed: i
         try:
             drawn = studio_video._studio_frames(looks, source, list(stage_names), meshes, frames,
                                                 times, count, sample, work, started, floor=floor,
-                                                held=points, overlay=overlay if points else None)
+                                                held=points,
+                                                overlay=overlay if points or draw else None)
             studio_video.encode(work, count)
         except ValueError as exc:
             raise FilmError(f"video: {exc}") from exc
-        target = out / VIDEO_NAME.format(seed=seed)
+        target = out / (name or VIDEO_NAME.format(seed=seed))
         (work / "rollout.webm").replace(target)
     return {"file": target.name, "sha256": _sha256(target), "bytes": target.stat().st_size,
             "frames": count, "fps": studio_video.FPS, "sim_seconds": times[-1],
@@ -751,3 +759,4 @@ def failed(error: Exception | str) -> dict[str, Any]:
     """The ``film`` block of an evaluation whose film could not be drawn."""
 
     return {"schema": FILM_SCHEMA, "state": "failed", "error": str(error), "seeds": []}
+

@@ -125,6 +125,7 @@ from .evaluate import (
     EvaluateRefused,
     add_film,
     add_heroes,
+    add_shove,
     check_out,
     default_out,
     evaluation_cell,
@@ -133,6 +134,7 @@ from .evaluate import (
     read_report,
     retained_inputs,
     run_evaluation,
+    shove_files,
 )
 from .loop import SLOT_BUSY, LoopError, lock_held, machine_lock_path, machine_slot
 from .review_record import hold_walk_lock, manifest_identity, read_accepted_identity, write_run_record
@@ -2029,6 +2031,11 @@ def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
             fit = None
         measured = add_heroes(root, out, measured, fit=fit,
                               inventory=inventory_summary(inventory) if inventory else None)
+        # ...and films the passed policy taking the task's shoves (ADR-571).
+        if measured["verdict"] == "pass" and not args.no_video:
+            _progress(" · shoves  one more episode under the task's shoves, filmed")
+        measured = add_shove(engine, root, out, measured, inputs, inventory=inventory,
+                             video=not args.no_video, timeout=float(args.timeout))
         path = out / EVALUATION_NAME
         report.evaluation = {
             key: measured[key] for key in (
@@ -2049,6 +2056,11 @@ def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
                 heroes["state"], ", ".join(str(heroes[key]) for key in ("hero", "print_bed")
                                            if heroes[key]) or "none drawn",
                 "".join(f"; {key}: {text}" for key, text in heroes["errors"].items())))
+        report.evaluation["shove"] = shove_files(measured, out)
+        shove = report.evaluation["shove"]
+        if shove["state"] in ("ready", "failed"):
+            report.notes.append("shove video {:s}: {:s}.".format(
+                shove["state"], str(shove["caption"] if shove["state"] == "ready" else shove["error"])))
         failing = failing_predicates(measured)
         report.notes.append(
             "evaluation {:s}: {:d} of {:d} seeds pass{:s}; {:s}.".format(

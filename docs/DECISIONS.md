@@ -36058,3 +36058,84 @@ report's block and the envelope's view. `test_review_evaluation.py`: the row's
 bed before its film and loading each. The tool surface and the protocol are unchanged.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-571 — A passed evaluation is filmed taking the task's shoves, each push marked, the outcome read from the episode (2026-10-06, orun4 H3)
+
+**Context.** The orun4 charter's H3 (and B2) asks that a policy passing evaluation be
+filmed taking horizontal pushes drawn from the task's disturbance model, each marked
+on screen when it lands, in the H1 font and the existing film pipeline, shown in the
+2D viewport beside the evaluation films, with the push magnitudes and the recovery
+outcome written beside it from the rollout itself: a robot that falls is filmed
+falling. An evaluation's own episodes are played under the **spec's** disturbances,
+and a spec may declare none: the printed biped's walk spec declares `disturbance=[]`,
+so none of its ten passing episodes was pushed, though its task trained against one
+0.3–1.5 N shove per episode.
+
+**Decision.**
+
+- **The episode.** After the heroes, `evaluate.add_shove` runs the evaluation's child
+  once more with `shove` set. `evaluate_runner.shove_task` narrows the spec: its first
+  seed only (a frozen evaluation seed, never the training seed); its predicates,
+  horizon, randomisation, reset variation, goals and sustained disturbances kept; its
+  shoves replaced by the **task's**. Each non-sustained task disturbance becomes
+  `SHOVES_PER_ENTRY = 3` pushes: its start window (cut back to the spec's horizon) is
+  cut into three equal slices no shorter than the push, each slice an entry with the
+  original force range, direction, arc, body and duration, so the pushes land in
+  order and never overlap; at most `MAXIMUM_DISTURBANCES` in all. The child then calls
+  the engine's own `evaluate_success` on that task, so the draws, the frames, the
+  recovery from each push (`CadexEvaluation.recovery`) and the ending are the engine's
+  reading, and the policy plays under its recorded command filter (ADR-558). Its trace
+  is `shove-trace.json`. Three pushes rather than the task's one, because one push in a
+  ten-second film is a single moment; the magnitudes are never raised past the
+  trained band.
+- **The film.** `shoves.film_shoves`, a module of its own because `film.py` names no
+  behaviour (`test_film.py` pins that), draws `shove.webm` with `film._video` (the studio
+  look, the dark floor, 10 fps, the H1 face) and a `draw` overlay, `shove_marks`: from
+  when a push lands, for 0.6 s or the push, an arrow in `--warn` (#FFE08A) ending at the
+  pushed body's centre, in the push's projected direction, longer for a harder push,
+  with its force beside it; top left, a line per landed push with `recovered in <s>`
+  once the engine reads the design as settled; on the last frame `stayed up` or
+  `fell: <termination>`. A fall ends the video where the episode ended. The
+  evaluation's `.gitignore` names `*.webm`, so the video stays out of the project's
+  history with the film.
+- **Beside it.** The report's `shove` block (`cadex-shove-film-v1`): `state`, `seed`,
+  `pushes` (newtons, azimuth, force, start, duration, recovery, recovered — read from
+  the episode's draws and measurement), `outcome`, `caption`, `failing` (the spec's
+  predicates the pushed episode missed, for reading; the verdict is untouched),
+  `drawn_from`, `trace`, `video`. "Settled" is said rather than "recovered" where the
+  engine's rest (tilt ≤ 10°, speed ≤ one COM height/s for 1 s) was never reached, since
+  a walker that keeps walking may never rest.
+- **When not.** A failed evaluation, `--no-video` and a task trained against no shove
+  film nothing (`skipped`, with the reason) and remove an earlier pass's video. A
+  child or film failure is `failed` with the reason and does not change the exit code.
+- **Everywhere a pass is presented.** `cadex evaluate`, `--film-only` and the agent's
+  `evaluate` tool. **Fixed with it:** the tool's bridge never called ADR-570's
+  `add_heroes`, so an agent's passing evaluation drew no heroes, though ADR-570 said it
+  did; the bridge now calls `add_heroes` and `add_shove` after `add_film`, and its
+  bounded view names `shove` beside `heroes`. The tool's schema and description are
+  unchanged.
+- **The page.** Each `/api/project` evaluation row carries `shove`: `state`, `video` (the
+  file the report names, or `null`) and `caption` (bounded to 600 characters). The
+  file allowlist serves the video. The 2D viewport lists a pass's `· shoves` video
+  after its heroes and before its film, and draws the caption under the video in
+  `#sheet-caption`.
+
+**Measured** on the scratch copy `orun4-biped-sts` (accepted `14b7223ee485`, policy
+`235b65eba72d`, which passed 10/10 unpushed): the shove episode on seed 9101 took 0.5 s
+and its 64-frame video 100 s. Pushes drawn: 0.33 N at 3.12 s, 0.90 N at 5.75 s, 0.55 N
+due at 6.95 s; the walker **tipped at 6.30 s**, after the second, and neither push was
+followed by a settled second. The video shows the fall, the third push is reported as
+never landing, and the caption says `fell: tipped at 6.30 s`. That is a finding about
+the reference policy, not the film: it passes its walk spec and does not hold three
+pushes from its own training band.
+
+**Consequences.** `test_evaluate.py`: the slices (order, no overlap, horizon, cap, no
+shove), the pushes, outcome and caption read from an episode including a fall and an
+unread recovery, the three skips with a stale video removed; on the live engine a pass
+films three pushes of the fixture's 2–4 N shove inside their slices with the trace's
+draws equal to the report's, `--film-only --no-video` skips and removes it, and a fail
+films nothing. `test_loop.py`: the agent's tool reports heroes and shove skipped on a
+fail. `test_review_evaluation.py`: the row, the allowlist, and in Chromium the
+captioned video after the heroes. No engine module, protocol op or tool schema changed.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
