@@ -121,4 +121,11 @@ that the style's level-thigh rule does not fit an upright biped.
 ADR-566 revised the style on those findings: the sole has a bound against
 the standing height, the level-thigh rule is limited to sprawled legs, and
 the inward roll limit is derived from the measured angle where the feet
-meet. A second fresh session checks the revision.
+meet. The second fresh session, `FRESH-SESSION-2.md`, checked the
+revision. Its first robot's sole is 0.239 × 0.120 of the standing height,
+inside both bounds, and it stands on a lean thigh. It derived the roll limit
+only after its first robot, and found that `first_contact` reports the
+first contact from the range's low end, not the onset nearest the rest
+pose. Read literally, the style's roll procedure therefore sets a limit
+inside the collision when inward is the negative direction. That defect is
+open.
