@@ -36264,4 +36264,27 @@ without the change. On `orun4-biped-sts` the stage now reads stopped for `walk-r
 with its reason. `docs/DASHBOARD.md`'s Status row says the same. No route, schema,
 engine module, protocol op or tool changed.
 
+## ADR-575 — A project is on the dashboard from its agent's first tool call, not its first script (2026-10-06, orun4 long-term)
+
+**Context.** `cadex app` counted a directory as a project only once it held the
+engine's `script.json`, and the engine writes that file with the first accepted
+script. An agent working a fresh project through `cadex mcp` writes the activity log
+(`review/activity.jsonl`, ADR-549) at its first tool call and takes the CLI lock
+(`.cadex-cli.lock`) when the engine opens, minutes before its first script lands.
+Until then the index left the project out and `/p/<name>/api/project` answered
+`{"error": "not found"}` — the defect orun3 left (orun4 report, §7).
+
+**Decision.** `ProjectsDirectory` counts a subdirectory as a project when it holds
+any of `PROJECT_MARKERS`: `script.json`, `review/activity.jsonl`, `.cadex-cli.lock`
+or `agent.json` — the engine's manifest and the files the CLI writes into a project
+before it. The project reads as it already did with no manifest: nothing accepted
+(`accepted.available: false`, "no script.json"), no runs. A directory the CLI never
+touched is still not a project. The server still writes nothing.
+
+**Consequences.** `test_app.py::test_a_project_being_worked_on_is_listed_before_its_first_script`
+covers each marker on an `orun4-*` directory with no `script.json`: listed by
+`/api/projects`, a 200 `/api/project`, the page served, and a plain directory beside
+it still 404. It fails without the change. `docs/CLI.md`'s `cadex app` row says the
+same. No route, response schema, engine module, protocol op or tool changed.
+
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

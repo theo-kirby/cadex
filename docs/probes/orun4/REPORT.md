@@ -1,6 +1,6 @@
 # orun4 — closing report
 
-Verified against source: 2026-10-06, at `5b460c99` (the orun4 run branch), with §5 and §7 retaken after ADR-574.
+Verified against source: 2026-10-06, at `5b460c99` (the orun4 run branch), with §5 and §7 retaken after ADR-574, and §7 after ADR-575.
 Charter: `.ouroboros/goal.md`, "What worked, made the default — and a page
 arranged like Blender". Every number below was measured on sb1x (linux-64,
 RTX 5090), on scratch projects named `orun4-*`; the reference project was
@@ -189,6 +189,7 @@ its reason are listed in those ADRs.
 | ADR-572 | Status is an editor of its own, beside the 3D viewport, not an overlay on its model |
 | ADR-573 | layouts come from one-click presets; an area may be empty; a drag previews where it lands |
 | ADR-574 | a run stopped on request before ADR-559 reads stopped; an ended run is never a quiet trainer |
+| ADR-575 | a project is on the dashboard from its agent's first tool call, not its first script |
 
 ## 7. Remaining defects
 
@@ -211,10 +212,10 @@ its reason are listed in those ADRs.
 5. **ADR-559's assumption**: a supervisor terminated by a signal with no
    stop request reads `interrupted` in `train_status` and failed on the
    page. The owner may revise this.
-6. **The long-term rungs from orun3 were not worked**: a project reads "not
-   found" until its first script, the trainer stalls 37–39 s before each
-   checkpoint, and the guidance tells the agent to set `checkpoint_every`
-   whenever the owner is watching.
+6. **Two of orun3's long-term defects are still open**: the trainer stalls
+   37–39 s before each checkpoint, and the guidance tells the agent to set
+   `checkpoint_every` whenever the owner is watching. The third, a project
+   reading "not found" until its first script, is fixed (ADR-575).
 
 ## Done claim
 

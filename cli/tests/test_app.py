@@ -94,6 +94,36 @@ def test_each_project_is_its_review_page_under_its_own_prefix(app) -> None:
         assert _get(server.url + missing)[0] == 404, missing
 
 
+@pytest.mark.parametrize("marker", ["activity", "lock", "agent"])
+def test_a_project_being_worked_on_is_listed_before_its_first_script(app, marker) -> None:
+    """orun3's defect (ADR-575): an MCP session's first tool call writes the
+    activity log and takes the CLI lock long before the agent's first script
+    makes ``script.json``, and until then the page read the project as "not
+    found". Any file the CLI writes into a project makes it one."""
+
+    from cadex_cli.activity import begin_activity
+    from cadex_cli.session import project_lock, write_agent_budgets
+
+    projects, server = app
+    root = projects / "orun4-fresh"
+    if marker == "activity":
+        begin_activity(root, "describe_api", {})
+    elif marker == "lock":
+        with project_lock(root):
+            pass
+    else:
+        write_agent_budgets(root, {"timeout_seconds": 900})
+    assert not (root / "script.json").exists()
+    names = [entry["name"] for entry in _json(server.url + "api/projects")["projects"]]
+    assert "orun4-fresh" in names
+    review = _json(server.url + "p/orun4-fresh/api/project")
+    assert review["project"] == "orun4-fresh"
+    assert review["accepted"]["available"] is False
+    assert _get(server.url + "p/orun4-fresh/")[0] == 200
+    # A directory the CLI never touched is still not a project.
+    assert _get(server.url + "p/notes/api/project")[0] == 404
+
+
 def test_a_bare_cadex_is_the_app(monkeypatch) -> None:
     seen = []
     monkeypatch.setattr(cli, "command_app", lambda args, report: seen.append(args) or EXIT_OK)

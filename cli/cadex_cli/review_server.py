@@ -54,12 +54,12 @@ from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
 
-from .activity import read_activity
+from .activity import ACTIVITY_PATH, read_activity
 from .checkpoints import FAILURE_SUFFIX as CHECKPOINT_FAILURE_SUFFIX
 from .checkpoints import TRACE_SUFFIX as CHECKPOINT_TRACE_SUFFIX
 from .revision_meshes import revision_mesh_paths, revision_model, revision_models
 from .revisions import read_history as read_revision_history
-from .session import read_agent_state
+from .session import AGENT_STATE_NAME, LOCK_NAME, read_agent_state
 from .studio import PRINTABLES, STUDIO
 from .review_record import (
     policy_lineage,
@@ -2800,12 +2800,20 @@ class ReviewServer(ThreadingHTTPServer):
         return f"http://{shown}:{port}/"
 
 
+#: Files whose presence makes a directory a project (ADR-575): the engine's
+#: manifest, and what the CLI writes before the first script exists.
+PROJECT_MARKERS = (PROJECT_SCRIPT_FILENAME, ACTIVITY_PATH, LOCK_NAME, AGENT_STATE_NAME)
+
+
 class ProjectsDirectory:
     """Every project directly under one directory, found anew per request.
 
     A project is a subdirectory holding the project manifest
-    (``script.json``); a project created while the page is open appears on
-    its next poll. Listing reads each manifest and counts ``runs/`` entries,
+    (``script.json``), or any file the CLI writes into a project before the
+    first script makes that manifest: the activity log, the lock, or
+    ``agent.json`` (ADR-575). An agent's session is on the page from its
+    first tool call, not its first script. A project created while the page
+    is open appears on its next poll. Listing reads each manifest and counts ``runs/`` entries,
     and nothing else, so a directory of many projects stays cheap to list.
     """
 
@@ -2817,7 +2825,7 @@ class ProjectsDirectory:
             return []
         return sorted(child.name for child in self.root.iterdir()
                       if child.is_dir() and not child.name.startswith(".")
-                      and (child / PROJECT_SCRIPT_FILENAME).is_file())
+                      and any((child / marker).is_file() for marker in PROJECT_MARKERS))
 
     def project(self, name: str) -> ReviewProject | None:
         if name not in self._names():
