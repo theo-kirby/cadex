@@ -1486,7 +1486,9 @@ the trainer's `eta_s`, `wall_time_s`, `best_iteration`,
 (ADR-542): `state` (`evaluating` when an `evaluations/<name>/` without its
 report was written in the last 120 s, `training` when the run read is
 `running`/`pending` with telemetry `starting`, `training` or `stale`,
-`failed` when the newest run failed and no revision was accepted after it,
+`stopped` when the newest run was stopped on request (its record says so,
+ADR-559, or a pre-ADR-559 `failed` record's `training-status.json` says
+`stopped`, ADR-574), `failed` when the newest run failed and no revision was accepted after it,
 `designing` within 600 s of an accepted revision, else `idle`), `reason`
 (for `evaluating`, "the agent's evaluate call is running" while a `cadex mcp`
 `evaluate` is in flight, which wins, else "an evaluation is running"; never

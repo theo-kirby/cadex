@@ -36230,3 +36230,38 @@ say the same. No route, API key, `localStorage` key, engine module, protocol op 
 tool schema changed.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-574 — A run stopped on request before ADR-559 reads stopped; an ended run is never a quiet trainer (2026-10-06, orun4 F2)
+
+**Context.** ADR-559 made a stop request write a `stopped` record, but only for
+endings written after it. A loop run stopped through `train_stop` before it has a
+`run.json` that the old `loop._record` wrote as `failed`, while its supervisor's
+`training-status.json` says `stopped` with the stop's reason. The reader only looked
+at `run.json`, so the Status editor and `/api/project`'s stage said **failed** for a
+run that was asked to stop (orun4's closing report, §7 defect 1). Under the same run
+it also warned "no telemetry update for over 30 s; process state unknown", because the
+trainer was killed mid-run and its `progress.json` still says `training`.
+
+**Decision.**
+- `read_run_record` reads a `failed` record as `stopped` when the run directory's
+  `training-status.json` (schema `cadex-training-status-v1`, same run) says
+  `stopped`. Its `error` is that file's reason, and `recorded_status: "failed"`
+  says what the file holds. The file is left as written: the page reads and never
+  writes or migrates. A run killed with no stop request has a supervisor that wrote
+  `interrupted` or `failed`, or nothing, and still reads **failed**.
+- `training_telemetry` marks a trainer snapshot `stale` only while the run's record
+  is live. When the record has ended (`ok`, `failed`, `stopped`) and the snapshot
+  still says `starting` or `training`, its state is `ended`, with the reason "the
+  run ended <status>; its trainer's last snapshot says it was still training". The
+  Status editor's run line reads `run <name> · ended`, with no quiet-trainer warning
+  under it.
+
+**Consequences.** `test_review_status.py::test_a_run_stopped_before_adr559_reads_stopped_and_a_killed_one_failed`
+covers both: the stage reads `stopped` with the reason, `/api/run` gives `stopped` and
+`recorded_status: "failed"`, the file still says `failed`, the telemetry is
+`ended`, not `stale`, and the same run with an `interrupted` supervisor reads `failed`. It fails
+without the change. On `orun4-biped-sts` the stage now reads stopped for `walk-r13`,
+with its reason. `docs/DASHBOARD.md`'s Status row says the same. No route, schema,
+engine module, protocol op or tool changed.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

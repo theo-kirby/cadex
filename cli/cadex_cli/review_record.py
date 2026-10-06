@@ -81,6 +81,10 @@ RUN_LOCK_FILENAMES = (WALK_LOCK_FILENAME, "supervisor.lock")
 #: What a ``running`` record whose process is gone is read as.
 RUN_GONE_ERROR = ("the process that wrote this run is gone and left no verdict: "
                   "it was killed or crashed before it finished")
+#: The training supervisor's own account of how a run ended (``loop.STATUS_NAME``,
+#: ``loop.STATUS_SCHEMA``); named here because ``loop`` imports this module.
+TRAINING_STATUS_FILENAME = "training-status.json"
+TRAINING_STATUS_SCHEMA = "cadex-training-status-v1"
 
 #: The retained artifacts a record names, and the base each resolves against.
 #: ``artifacts.policy`` is the trainer's own output under the run's
@@ -705,6 +709,9 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
     directory has a run lock (:func:`run_process`) and nobody holds it --
     the record is read as ``failed`` with :data:`RUN_GONE_ERROR` and
     ``recorded_status: "running"``, the file left as written (ADR-559).
+    A ``failed`` record whose supervisor's ``training-status.json`` says
+    ``stopped`` is read as ``stopped`` with that reason and
+    ``recorded_status: "failed"`` (ADR-574).
     """
 
     directory = Path(run_dir).expanduser()
@@ -749,6 +756,15 @@ def read_run_record(run_dir: Path | str, project_root: Path | str) -> dict[str, 
         if record.get("status") == "running":
             record = {**record, "status": "failed", "recorded_status": "running",
                       "error": record.get("error") or RUN_GONE_ERROR}
+    if record.get("status") == "failed":
+        # A run stopped on request before ADR-559 has a ``failed`` record but a
+        # supervisor that wrote ``stopped`` with the reason: the request is what
+        # happened, so it is read as stopped, the file left as written (ADR-574).
+        ended, _error = _load_json(directory / TRAINING_STATUS_FILENAME)
+        if ended and ended.get("schema") == TRAINING_STATUS_SCHEMA \
+                and ended.get("state") == "stopped" and ended.get("run") in (None, directory.name):
+            record = {**record, "status": "stopped", "recorded_status": "failed",
+                      "error": str(ended.get("reason") or record.get("error") or "")}
     video_status = resolve_reference(directory, "video.json")
     if video_status["exists"] and not video_status["error"]:
         payload, error = _load_json(directory / "video.json")

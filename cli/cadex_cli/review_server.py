@@ -1608,7 +1608,13 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
     reported = data.get("state")
     result.update(state=reported if reported in ("starting", "training", "done", "failed") else "unknown",
                   reported_state=reported, age_s=age, reason=str(data.get("error") or ""))
-    if reported in ("starting", "training") and age > 30:
+    ended = record.get("status") in ("ok", "failed", "stopped")
+    if reported in ("starting", "training") and ended:
+        # The record says how the run ended; a trainer killed mid-run never
+        # wrote its own end, so its snapshot is not a quiet process (ADR-574).
+        result.update(state="ended", reason=f"the run ended {record.get('status')}; "
+                      "its trainer's last snapshot says it was still training")
+    elif reported in ("starting", "training") and age > 30:
         result.update(state="stale", reason="no telemetry update for over 30 s; process state unknown")
     checkpoints = data.get("checkpoints", [])
     if not isinstance(checkpoints, list):

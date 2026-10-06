@@ -296,6 +296,41 @@ def test_a_walk_that_finished_under_its_lock_reads_as_it_wrote(tmp_path):
     assert _stage(root)["state"] != "failed"
 
 
+def _supervisor_status(run: Path, state: str, reason: str) -> None:
+    (run / "training-status.json").write_text(json.dumps({
+        "schema": "cadex-training-status-v1", "run": run.name, "state": state,
+        "reason": reason, "exit": -15}))
+
+
+def test_a_run_stopped_before_adr559_reads_stopped_and_a_killed_one_failed(tmp_path):
+    """A loop run stopped on request before ADR-559 has a ``failed`` record
+    and a supervisor that wrote ``stopped``: the request is what happened,
+    with no quiet-trainer warning under it. One killed with no stop request
+    still reads failed (ADR-574)."""
+
+    root = _training_project(tmp_path)
+    run = root / "runs" / RUN
+    reason = "stop requested: iteration 140 passed the evaluation"
+    _rewrite_record(run, status="failed", mode="loop", error=reason, recorded_at=_iso(30))
+    _biped_progress(root, 60, updated_at=time.time() - 3600)
+    _supervisor_status(run, "stopped", reason)
+    stage = _stage(root)
+    assert (stage["state"], stage["reason"], stage["run"]) == ("stopped", reason, RUN)
+    assert stage["training"]["state"] == "ended" and stage["training"]["iteration"] == 60
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        record = _json(server.url + "api/run/" + RUN)
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert (record["status"], record["recorded_status"], record["outcome"]) == (
+        "stopped", "failed", "stopped on request")
+    assert json.loads((run / "run.json").read_text())["status"] == "failed"
+    _supervisor_status(run, "interrupted", "")
+    stage = _stage(root)
+    assert stage["state"] == "failed" and stage["training"]["state"] == "ended"
+
+
 def _hex_rgb(value: str) -> str:
     return "rgb(%d, %d, %d)" % tuple(int(value[i:i + 2], 16) for i in (1, 3, 5))
 

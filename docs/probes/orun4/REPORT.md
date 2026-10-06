@@ -1,6 +1,6 @@
 # orun4 — closing report
 
-Verified against source: 2026-10-06, at `5b460c99` (the orun4 run branch).
+Verified against source: 2026-10-06, at `5b460c99` (the orun4 run branch), with §5 and §7 retaken after ADR-574.
 Charter: `.ouroboros/goal.md`, "What worked, made the default — and a page
 arranged like Blender". Every number below was measured on sb1x (linux-64,
 RTX 5090), on scratch projects named `orun4-*`; the reference project was
@@ -11,7 +11,7 @@ only read. The owner ticks the criteria; this report claims none of them.
 | criterion | where the evidence stands | evidence | records |
 |---|---|---|---|
 | F1 command filter in evaluation | evidence recorded | ADR-558; §1; 9 tests that fail without the fix; packaged lifecycle gate 24 passed | `loyal-path-4209` |
-| F2 a run reads as what happened | evidence recorded | ADR-559; stopped, killed, finished and crashed tested through `train_start` and `cadex walk`; fails without the fix. One legacy defect in §7 | `true-ridge-9252` |
+| F2 a run reads as what happened | evidence recorded | ADR-559; stopped, killed, finished and crashed tested through `train_start` and `cadex walk`; fails without the fix. ADR-574: a run stopped before ADR-559 reads stopped too | `true-ridge-9252`, the ADR-574 record |
 | G1 base plus styles | evidence recorded | ADR-560; `agent.json` `style`, `cadex style`; `test_agent_guidance.py` pins that the base names no robot type, no style text without a choice, and no guidance file names a project | `lucky-peak-7846` |
 | G2 the lessons in Cadex | evidence recorded, three rows *owner to confirm* | ADR-565, ADR-566, ADR-567; `LESSONS.md`; two fresh sessions (§2) | `civic-stream-8050`, `northern-stream-2677`, `ancient-trail-9417`, `nimble-garden-9555`, `wandering-dune-8500`, `witty-bay-1622` |
 | H1 one normal font | evidence recorded | ADR-568; Noto Sans; six before/after images (§3) | `tiny-ash-6709` |
@@ -145,18 +145,19 @@ View → Layout and screenshotted 2.5 s later.
 | preset | areas, in reading order | screenshot |
 |---|---|---|
 | single | 3D viewport | `d3-preset-single.png` (234,107 B) |
-| side by side | 3D, Status | `d3-preset-side.png` (187,109 B) |
-| stacked | 3D, Status | `d3-preset-stacked.png` (210,671 B) |
-| 2 over 1 | 3D, Status, 2D | `d3-preset-two_over_one.png` (211,237 B) |
-| 1 over 2 | 3D, Status, 2D | `d3-preset-one_over_two.png` (273,640 B) |
-| three columns | 3D, Status, 2D | `d3-preset-columns.png` (254,793 B) |
-| three rows | 3D, Status, 2D | `d3-preset-rows.png` (204,710 B) |
-| quad | 3D, Status, 2D, empty | `d3-preset-quad.png` (211,990 B) |
+| side by side | 3D, Status | `d3-preset-side.png` (182,984 B) |
+| stacked | 3D, Status | `d3-preset-stacked.png` (206,867 B) |
+| 2 over 1 | 3D, Status, 2D | `d3-preset-two_over_one.png` (207,625 B) |
+| 1 over 2 | 3D, Status, 2D | `d3-preset-one_over_two.png` (269,706 B) |
+| three columns | 3D, Status, 2D | `d3-preset-columns.png` (251,068 B) |
+| three rows | 3D, Status, 2D | `d3-preset-rows.png` (200,789 B) |
+| quad | 3D, Status, 2D, empty | `d3-preset-quad.png` (208,348 B) |
 
 Quad's fourth area is empty, with only its editor picker. There are three
 editors, and each shows at most once (ADR-573). The Status editor in these
-shots reads **failed** for the reference's stopped run, which is defect 1
-in §7.
+shots reads **stopped**, with the stop's reason, for the scratch copy's
+`walk-r13`. It was stopped on request before ADR-559, and the first shots read
+**failed** until ADR-574; the shots were retaken after that fix.
 
 ## 6. The CLI suite, lighter
 
@@ -187,17 +188,16 @@ its reason are listed in those ADRs.
 | ADR-571 | a passed evaluation is filmed taking the task's shoves, each push marked, the outcome read from the episode |
 | ADR-572 | Status is an editor of its own, beside the 3D viewport, not an overlay on its model |
 | ADR-573 | layouts come from one-click presets; an area may be empty; a drag previews where it lands |
+| ADR-574 | a run stopped on request before ADR-559 reads stopped; an ended run is never a quiet trainer |
 
 ## 7. Remaining defects
 
-1. **A run recorded before ADR-559 still reads failed.** `walk-r13` in
-   `orun4-biped-sts` was stopped on request before F2 landed. Its
-   `training-status.json` says `stopped`, with the reason, but its
-   `run.json` was written by the old `loop._record` as `failed`, and the
-   Status editor shows **failed** (§5's screenshots). ADR-559 fixes how
-   new endings are written; old records are not re-read or migrated. The
-   same editor also shows "no telemetry update for over 30 s; process state
-   unknown" under that long-ended run.
+1. **Fixed: a run recorded before ADR-559 read failed.** `walk-r13` in
+   `orun4-biped-sts` was stopped on request before F2 landed. Its `run.json`
+   says `failed` and its `training-status.json` says `stopped`. Since ADR-574
+   the reader takes the supervisor's `stopped` and reads the run as stopped,
+   with the reason, leaving the file as written. The "no telemetry update for
+   over 30 s" warning is no longer shown under a run whose record has ended.
 2. **`cadex smoke` false positives**, found by the fresh sessions: an
    exact-geometry pre-check refuses a distance mismatch under 1e-5 mm on a
    pair 70 mm apart, threaded screw engagement counts as overlap, and the
@@ -218,10 +218,8 @@ its reason are listed in those ADRs.
 
 ## Done claim
 
-Not made by this file. All ten build criteria, F1 to D3, have evidence
-recorded. Two things are still due before C1 is claimed done for critic
-review:
-
-- the reconcile that folds `neat-isle-1523`, `cold-mist-9459` and this
-  report's record, which work iterations are forbidden to run;
-- a choice on defect 1: fix it, or leave it named.
+All ten build criteria, F1 to D3, and this report have evidence recorded,
+and the reconcile of `650d9e0b` folded D2, D3 and this report's first record.
+Defect 1 is fixed (ADR-574). **Done is claimed for critic review.** No owner
+box is ticked. ADR-574's record still waits for the next reconcile pass, which
+work iterations are forbidden to run.
