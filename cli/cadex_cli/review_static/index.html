@@ -68,6 +68,17 @@
           <span>Layout</span>
           <button id="layout-reset" type="button">Reset</button>
         </div>
+        <!-- One click lays the screen out afresh (ADR-573): the editors fill the areas in order. -->
+        <div id="layout-presets" class="presets" role="group" aria-label="Layout presets">
+            <button type="button" data-preset="single" title="Single" aria-label="Single"><svg viewBox="0 0 20 18" aria-hidden="true"><rect x="1.5" y="2.5" width="17" height="13" rx="1.5"/></svg></button>
+            <button type="button" data-preset="side" title="Side by side" aria-label="Side by side"><svg viewBox="0 0 20 18" aria-hidden="true"><rect x="1.5" y="2.5" width="17" height="13" rx="1.5"/><path d="M10 2.5v13"/></svg></button>
+            <button type="button" data-preset="stacked" title="Stacked" aria-label="Stacked"><svg viewBox="0 0 20 18" aria-hidden="true"><rect x="1.5" y="2.5" width="17" height="13" rx="1.5"/><path d="M1.5 9h17"/></svg></button>
+            <button type="button" data-preset="two_over_one" title="2 over 1" aria-label="2 over 1"><svg viewBox="0 0 20 18" aria-hidden="true"><rect x="1.5" y="2.5" width="17" height="13" rx="1.5"/><path d="M1.5 9h17M10 2.5V9"/></svg></button>
+            <button type="button" data-preset="one_over_two" title="1 over 2" aria-label="1 over 2"><svg viewBox="0 0 20 18" aria-hidden="true"><rect x="1.5" y="2.5" width="17" height="13" rx="1.5"/><path d="M1.5 9h17M10 9v6.5"/></svg></button>
+            <button type="button" data-preset="columns" title="Three columns" aria-label="Three columns"><svg viewBox="0 0 20 18" aria-hidden="true"><rect x="1.5" y="2.5" width="17" height="13" rx="1.5"/><path d="M7.17 2.5v13M12.83 2.5v13"/></svg></button>
+            <button type="button" data-preset="rows" title="Three rows" aria-label="Three rows"><svg viewBox="0 0 20 18" aria-hidden="true"><rect x="1.5" y="2.5" width="17" height="13" rx="1.5"/><path d="M1.5 6.83h17M1.5 11.17h17"/></svg></button>
+            <button type="button" data-preset="quad" title="Quad" aria-label="Quad"><svg viewBox="0 0 20 18" aria-hidden="true"><rect x="1.5" y="2.5" width="17" height="13" rx="1.5"/><path d="M1.5 9h17M10 2.5v13"/></svg></button>
+        </div>
       </div>
     </details>
   </nav>

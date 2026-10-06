@@ -36183,3 +36183,50 @@ and the three tabs; `test_http_api.py` pins the three keys. `docs/DASHBOARD.md` 
 op or tool schema changed.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-573 — Layouts come from one-click presets; an area may be empty; a drag previews where it lands (2026-10-06, orun4 D3)
+
+**Context.** Since ADR-534 the screen is a tree of areas a reader splits, resizes,
+docks and swaps one gesture at a time, with View → Layout → Reset as the only way
+back. Getting from the default to, say, three rows took four or five gestures, and
+the dock hint was an unlabelled tint over a ten-pixel grip at 60 % opacity. The orun4
+charter's D3 asks for one-click presets — single, side by side, stacked, 2 over 1,
+1 over 2, three columns, three rows, quad — with a visible drag handle and a drop
+preview, the layout still the browser's own (B5).
+
+**Decision.**
+- **Presets.** `layout.js` gains `preset(name)` over eight shapes (`single`, `side`,
+  `stacked`, `two_over_one`, `one_over_two`, `columns`, `rows`, `quad`). It replaces
+  the tree with that shape, every area an equal share, filled in reading order with the
+  editors in the page's order (3D viewport, Status, 2D viewport), un-maximizes, and
+  saves. View → Layout shows them as eight icon buttons, `#layout-presets
+  button[data-preset]`, under Reset; a click applies one and closes the menu.
+- **Quad's fourth area is empty.** The critic asked for the smallest reversible rule:
+  a second 2D viewport if the layout can show an editor twice cheaply, else an empty
+  area with the picker. It cannot: an area *moves* its editor's own elements so a
+  canvas keeps its WebGL context (ADR-534), and a second 2D viewport would need a
+  second sheet stage, source list and fit state in `review.js`. So `empty` is a
+  pseudo-editor that may appear any number of times. It has the editor picker
+  (listing `Empty` only while it is current) and a line, "Empty area: pick an editor
+  from the menu at the top left"; picking an editor there swaps it in and leaves the
+  editor's old area empty. It docks, swaps, maximizes and closes like any area, is
+  kept in `cadex.layout.v4` (the stored form is a superset of v4's, so the key
+  stays), and `show(type)` fills an empty area before it splits one. Undoing the rule
+  later is one shape: give quad a fourth editor when one exists.
+- **A discoverable drag.** The grip is a dotted strip at 80 % opacity with a grab
+  cursor, at full opacity over a tinted chip when the header is hovered; the drop
+  preview names where the area will land: **Swap**, **Dock left**, **Dock right**,
+  **Dock above** or **Dock below**.
+
+**Consequences.** `cli/tests/test_review_layout.py` (Chromium, 1280 × 900): every
+preset is applied through the View menu by one click and its areas' editors and
+geometry checked against the shape within 2.5 % of the screen per side (1, 2, 2, 3, 3,
+3, 3 and 4 areas), each with a picker, the menu closed and the tree kept; quad's empty
+area offers the picker and the line, picking the 2D viewport there moves it in, and
+the layout survives a reload; on side by side the 3D viewport's grip is dragged to
+Status's right edge, the preview covers that half and reads "Dock right", and the drop
+puts Status first; Reset restores the default tree. `docs/DASHBOARD.md` §2 and §12
+say the same. No route, API key, `localStorage` key, engine module, protocol op or
+tool schema changed.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

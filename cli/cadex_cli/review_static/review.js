@@ -15,7 +15,7 @@
 //   2D viewport  the project's drawings, images, documents, evaluation films and training plots,
 //                a split away;
 //   Menu bar     File (the project), Revisions (the trail), View (theme,
-//                render style, layout).
+//                render style, layout presets and reset, ADR-573).
 //
 // Read-only (ADR-537): the agent working the project changes it, through
 // the CLI or `cadex mcp`, and the page follows. Polls /api/project for what
@@ -981,6 +981,12 @@
     document.addEventListener('cadex-theme', function () { if (renderStyle === 'hairline') applyStyle('hairline'); });
     renderThemeChoice();
     $('layout-reset').addEventListener('click', function () { state.layout.reset(); });
+    $('layout-presets').addEventListener('click', function (event) {
+      var button = event.target.closest('button[data-preset]');
+      if (!button) return;
+      state.layout.preset(button.dataset.preset);
+      $('view-panel').open = false;
+    });
     wireMenus();
 
     // Each canvas follows its box; redraw whenever the box changes.
