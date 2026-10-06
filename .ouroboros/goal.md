@@ -1,187 +1,253 @@
-# Goal: Watch the design and the training as they happen
+# Goal: What worked, made the default — and a page arranged like Blender
 
-Verified against source: 2026-10-05. Operator charter for orun3, following
-orun2 (`.ouroboros/history/orun2.md`) and the owner's own ADR-533 to
-ADR-541 work on the dashboard. The human owns this file; unattended roles
-never edit it. The base-plus-styles design charter stays shelved and runs
-after this one, on the views this run builds.
+Verified against source: 2026-10-06. Operator charter for orun4, following
+orun3 (`.ouroboros/history/orun3.md`) and the owner's first full lifecycle
+on the new views: a printed biped driven by Feetech STS3215 bus servos,
+designed, trained and passed 10/10 by an agent in one session. The human
+owns this file; unattended roles never edit it.
 
 ## Mission
 
-Cadex is three things: the engine, the read-only dashboard, and the
-owner's own agent driving the engine through `cadex mcp` (ADR-500,
-ADR-537, ADR-538). The owner works in their agent and keeps the dashboard
-open beside it. The page has one job: **show what is happening, so the
-owner knows when to step in.** Today it shows the accepted model well, but
-it shows a design's *history* and a training run's *progress* only after
-the fact, or as plots in a different viewport.
+The owner's last design session worked. The agent produced a robot the
+owner liked: a good style, well-placed mechanics, and a walk that passed
+every check. That success came from one agent's choices in one project.
+This run makes it **the system's**: Cadex's own guidance, its renders and
+its dashboard carry what worked, so the next agent, on a different kind of
+robot, starts there.
 
-This run makes the 3D viewport tell the story while it is happening:
+In priority order:
 
-1. **An overlay over the model** says what stage the project is in, and
-   how training is going: iteration, ETA, reward and loss sparklines, the
-   best reward, and the collapse warning.
-2. **Training is visible as motion.** Each checkpoint is rolled out
-   through the engine as soon as it lands. The viewport loops the newest
-   one, and a scrubber steps through the older ones, so the owner can
-   watch a gait go from flailing to walking.
-3. **The design is visible as change.** Each accepted revision's model is
-   kept. A revision timeline scrubs through them in the 3D viewport, with
-   the previous revision shown as a ghost and the changed parts tinted.
-4. **The agent's current activity is one line on the page.** The MCP
-   server appends every tool call to a project activity log, and the
-   overlay shows the latest entry.
+1. **Fix the two bugs the session found.** Evaluation ignores the command
+   filter a policy was trained with. A run that was stopped on purpose
+   reads as failed.
+2. **Put the lessons into Cadex.** Read that project (below) for what made
+   it work. Write the lessons into the agent guidance, split the way the
+   owner asked: general mechanical and process lessons go in the
+   domain-neutral **base**; the look goes in a named, optional **style**.
+   Nothing in Cadex names or points at that project.
+3. **Present a finished design.** When a policy passes evaluation, Cadex
+   makes:
+   - a hero image in a normal font;
+   - a second hero with the printable parts laid out on a print bed, and a
+     parts list;
+   - a video of the walking policy taking shoves.
 
-The data for (1) is already on disk (`runs/<run>/train/progress.json`,
-served in `/api/project`). (2), (3) and (4) each need a small write on
-the CLI side, and the page stays read-only.
+   The blocky 5×7 pixel font leaves every image and video.
+4. **Make the page arrangeable like Blender.** Pan in the 3D viewport.
+   The status overlay becomes its own editor. Layouts come from one-click
+   presets: side by side, stacked, 2 over 1, 3 rows, quad.
 
-While the run adds routes, it also makes the dashboard **portable**: URLs
-relative to the page, and an HTTP API pinned by tests. Then a desktop
-wrapper or a reverse proxy can host it without rewriting paths.
+If the run achieves only one thing, it is this: **a fresh agent session,
+given only Cadex's guidance and the chosen style, can see what the
+reference session learned the hard way: compact twin-keel feet, a target
+speed the servos can actually hold, hips wide enough for the feet to
+clear.**
 
-If the run achieves only one thing, it is this: **on a copy of the biped `ot5-biped`, while
-a short training run is going on the 5090, the 3D viewport shows the
-overlay updating and the newest checkpoint's rollout playing.**
+Priority, in order: F1, F2 (bugs), G1, G2 (guidance), H1–H3
+(presentation), D1–D3 (page), C1 (report).
 
-Priority, in order: V1 (overlay), V2 (checkpoints), V3 (revisions), V4
-(activity), P1 (portability), W1 (walk), C1 (report).
+## The reference project
+
+`~/cadex-projects/biped-sts` is the reference. It has 26 revisions, 13
+training runs, 11 ADRs in its `DECISIONS.md`, three evaluations, and a
+passing policy (`walk-r13`, iteration 140). Read all of it:
+- `script.py`, the final design;
+- `DECISIONS.md`, the why of every change, including the dead ends;
+- `PROGRESS.md` and `script_history/`, how the design moved;
+- `runs/*/` and `evaluations/*/`, what each change did to the walk.
+
+It is read-only (see Constraints). It is a source of evidence, never a
+dependency. Lessons enter Cadex as general rules with their reasons. They
+never enter as "do what biped-sts did", or with its numbers presented as
+if they held for every robot.
 
 ## Owner-revisable assumptions
 
 Until this section changes, the run works to these defaults:
 
-- **B1. The page stays read-only (ADR-537).** The server answers GET and
-  HEAD only. Everything new on the page is read from the project
-  directory. The writes this run needs (checkpoint traces, retained
-  revision meshes, the activity log) happen in the CLI, on paths the CLI
-  already owns: `cadex walk`/`loop.py` supervision, revision acceptance in
-  `revisions.py`, and the MCP server.
-- **B2. Panels come back one at a time (ADR-533).** V1–V4 each land as
-  their own change with their own ADR, test and record, in priority order.
-  None of them is a redesign of the page.
-- **B3. The dashboard stays light.** It is a standard-library server,
-  vanilla JS and the vendored three.js. There is no npm, bundler, build
-  step or framework, and no new Python dependency unless an ADR measures
-  its weight.
-- **B4. Training runs locally on the 5090 through `cadex walk`.** The
-  checkpoint rollouts run in the CLI's supervision of the trainer (or a
-  sibling process it starts), through the engine on the CPU. They never
-  run in `training/`. A checkpoint is any file on disk under
-  `runs/<run>/train/`, whoever put it there, so a run synced back by
-  `remote_train.sh` works the same way.
-- **B5. Snapshots, not a live stream.** The owner accepted that a 1:1
-  live view of training is not worth it. A deterministic rollout per
-  checkpoint is the view. Do not stream poses out of the trainer.
-- **B6. The overlay is the 3D viewport's, and it gets out of the way.**
-  It collapses to one line. It reads at phone width. It follows
-  `docs/DASHBOARD.md`'s palette and type scale in both themes. The page
-  must still render with no overlay data at all (an old project, a run
-  without checkpoints).
+- **B1. Base plus styles (owner, 2026-10-03).** Design is *form follows
+  function*. Guidance never tells an agent to make something "look
+  engineered"; to the owner that reads as fake, and it invites decoration.
+  - **The base is domain-neutral.** Cadex designs cranes, vacuum robots
+    and whole mechanisms, not only small printed legged robots. A base rule
+    must hold across those, or it belongs in a style.
+  - **A style is named and optional.** A project chooses it, and it is
+    never on by default. The first new style is the reference project's
+    look: the printed legged robot.
+  - `docs/DESIGN-LANGUAGE.md` today is titled "small printed robots that
+    look engineered". It is restructured into this base-plus-styles form,
+    and that wording goes.
+- **B2. Heroes and the shove video come when a policy passes
+  evaluation.** They are not made on every revision, and the agent does not
+  have to ask for them. They are made from the design and policy that
+  passed, on the dark floor, and the 2D viewport shows them.
+- **B3. No G-code.** The print-bed hero is a render of the printable
+  parts laid out flat on a bed, with a parts list. Every capable open
+  slicer is AGPL, so Cadex does not slice: it neither vendors nor imports
+  one, and it does not run one as a subprocess this run.
+- **B4. A normal font.** Images and videos use a plain sans-serif in the
+  dashboard's type scale (`docs/DASHBOARD.md`). Everything else about the
+  renders stays the same: palette, floor, framing, layout. The font is
+  open-licensed and compatible with the repo's LGPL posture. It is shipped
+  as a font file under `docs/PROVENANCE.md`, never as a prebuilt library,
+  with an ADR recording its licence.
+- **B5. The page stays read-only and light (ADR-537, charter A2).** It is
+  a standard-library server, vanilla JS and the vendored three.js, with no
+  npm, build step or framework. Layouts are per-viewer conveniences, kept
+  in the browser.
 
 ## Done criteria
 
 Each criterion needs a causally parented record with measured evidence.
 The human owns the checkboxes. Roles report results and do not tick them.
 
-- [ ] **V1. The 3D viewport has a training and stage overlay.**
-  - The overlay is a new element in the 3D viewport's area, with stable
-    hooks listed in `docs/DASHBOARD.md` §2 and pinned by
-    `test_review_design.py`.
-  - It shows:
-    - the project's stage: idle, designing (a revision accepted recently),
-      training (the iteration out of the total, and the ETA), evaluating,
-      or failed;
-    - reward-per-step and loss sparklines from `progress.json`'s curves;
-    - the best reward and its iteration;
-    - `progress.json`'s `warning`, styled as a warning;
-    - which run it is reading, when there is more than one.
-  - It updates on the page's existing poll, with no new polling loop. A
-    browser test driven through `cli/cadex_cli/browser.py` shows it
-    changing as a fixture's `progress.json` is rewritten.
-  - It collapses to one line, and the collapsed state is a per-browser
-    convenience. Measured at 390 px wide, it covers no more than a quarter
-    of the viewport when expanded.
-  - An ADR records it as the first panel brought back after ADR-533.
-- [ ] **V2. Each checkpoint becomes motion in the viewport.**
-  - When a new checkpoint lands during a `cadex walk` training leg, the
-    CLI rolls it out through the engine. It writes a
-    `cadex-assembly-simulation-trace-v1` trace beside the checkpoint,
-    tagged with the checkpoint's iteration, reward and sha256.
-  - The rollout happens while training continues. **Measured:** mean
-    iteration wall time with checkpoint rollouts on, against off, on the
-    same task and seed. The cost is reported, and it is under 5% or an ADR
-    explains why the owner should accept more.
-  - The server serves each checkpoint's playback through the existing
-    `trace_playback`. The 3D viewport loops the newest one, labelled with
-    its iteration and reward. A checkpoint scrubber selects older ones,
-    and switching to a newer checkpoint is automatic unless the owner has
-    picked one.
-  - A browser test against a real engine shows a second checkpoint's
-    playback replacing the first one while the run is still training.
-  - A failed rollout is shown with its reason. It never stops or slows
-    the training run.
-  - The traces are run outputs. They are never committed, and their disk
-    cost per checkpoint is measured and reported.
-- [ ] **V3. The design's history plays in the viewport.**
-  - When a revision is accepted, its tessellation is kept, stored by
-    content hash per part. A part that did not change between revisions
-    costs no new bytes. **Measured:** bytes added per revision across
-    `orun3-biped`'s thirteen revisions, against the size of a full copy.
-  - Revisions accepted before this change have no retained meshes. The
-    page says so, and it never shows another revision's geometry in
-    their place. Rebuilding old revisions to fill the gap is an explicit
-    CLI command, not a side effect of opening the page.
-  - The 3D viewport gets a revision timeline. Scrubbing it shows each
-    retained revision's model. The previous revision is drawn as a ghost,
-    and parts whose digest changed are tinted. A browser test drives the
-    scrubber across at least three revisions.
-  - The Revisions menu and the timeline agree on ordinals and on which
-    revision is current.
-- [ ] **V4. The page says what the agent is doing.**
-  - The MCP server appends one line per tool call to a project activity
-    log: time, tool name, a short summary of the arguments, and the
-    outcome. Arguments are never logged in full. The log is bounded
-    (rotated or capped), and that bound is tested.
-  - `test_project_tool_surface.py` is unchanged: this adds no tool, no
-    argument and no result field. If that turns out to be impossible, the
-    tool-surface rule in AGENTS.md applies.
-  - The overlay shows the latest activity and how long ago it happened. An
-    expanded view lists the last few entries. When nothing has happened
-    for a while, the line says the agent is idle rather than showing a
-    stale action as current.
-  - A test drives a tool call through `cadex mcp` and reads the entry back
-    from `/api/project`, or from a route the HTTP API pins.
-- [ ] **P1. The dashboard is portable.**
-  - No page script or server-built URL is root-absolute. Every fetch and
-    every link resolves relative to the page, or through one API base. The
-    page works unchanged behind a path prefix: a test serves it under
-    `/some/prefix/` through a rewriting-free proxy and loads a project.
-  - The HTTP API is a documented contract. Every `GET /api/...` route and
-    its top-level response keys are listed in `docs/CLI.md`, or in one
-    file it points to. A test fails if a route is added, removed or
-    renamed without the doc changing too, in the same way the
-    `OP_ARG_SPECS` test works.
-  - No page state lives only in the browser, except per-viewer
-    conveniences such as the layout, the theme and a collapsed overlay.
-- [ ] **W1. The whole lifecycle is watchable, on a real robot.**
-  - On `orun3-biped`, a copy of `~/cadex-projects/ot5-biped`:
-    1. the agent accepts at least two new design revisions through
-       `cadex mcp`;
-    2. a short `cadex walk` training leg runs on the 5090 with checkpoints
-       on;
-    3. `evaluate` runs on the result.
-  - The dashboard, opened before step 1 and never reloaded, shows each
-    stage in the overlay, the revisions on the timeline, and at least
-    three checkpoint rollouts. Screenshots are taken at each stage.
-  - Both full suites pass, and so does the packaged lifecycle gate if the
-    run touched the protocol or the payload.
+- [ ] **F1. Evaluation applies the command filter the policy was trained
+  with.**
+  - The trainer writes `action_filter_alpha` into the `.cxpolicy`. The
+    engine's rollout and evaluation read it from the policy and filter
+    commands the same way the trainer does (`training/cadex_train.py`,
+    about line 1597).
+  - **The test:** a policy trained with a filter is evaluated and
+    replayed, and both apply the same filter. A policy with no filter
+    recorded behaves exactly as today (alpha 1.0). Old `.cxpolicy` files
+    still load.
+  - The checkpoint rollouts (ADR-544) and the evaluation film use the
+    same path, so what the viewport plays is what was evaluated.
+  - The packaged lifecycle gate passes if the change reaches the payload.
+- [ ] **F2. A run reads as what happened to it.**
+  - A run stopped through `train_stop`, or through `loop.request_stop`
+    with a reason, reads as **stopped**, with that reason, in
+    `/api/project`'s stage and on the page. It never reads as failed.
+  - A walk killed without a stop request reads as **failed** (the
+    unaccepted ADR-558 work on branch `orun3-wip-adr558` is the starting
+    point; finish it, test it, and give it its ADR).
+  - Tests cover stopped, killed, finished and crashed, through both
+    `train_start` and `cadex walk`.
+- [ ] **G1. The guidance is a base plus styles, and the agent can choose
+  a style.**
+  - The agent's guidance (`src/Mod/cadex/CadexAgentGuidance.md`,
+    `cli/cadex_cli/guidance.py`, `docs/DESIGN-LANGUAGE.md`) is
+    restructured into a domain-neutral base and named styles.
+  - A project chooses a style through its project config (for example
+    `agent.json`). `cadex guidance` and the MCP server's instructions
+    carry the base plus that style only. With no style chosen, they carry
+    the base alone.
+  - Tests pin it:
+    - the base names no robot type as the default;
+    - no style text appears when none is chosen;
+    - **no guidance file names `biped-sts` or any other project.**
+  - The agent's tool surface changes only under AGENTS.md's rule. Choosing
+    a style should need no new tool.
+- [ ] **G2. The reference project's lessons are in Cadex.**
+  - A ledger, `docs/probes/orun4/LESSONS.md`, lists every lesson drawn
+    from the reference project. Each row gives:
+    - the lesson as a general rule;
+    - its evidence (the reference project's ADR, revision or run);
+    - where it went: base, the printed-legged-robot style, a tool
+      default, or *not adopted*, with the reason.
+  - At the least, the ledger weighs:
+    - **contact geometry:** a round single keel balanced on a knife edge,
+      and a twin keel with a flat strip walked;
+    - **the target speed against the actuator:** at 100 mm/s every run
+      found a shuffle, and at a speed the servos could hold it walked;
+    - **lateral clearance:** wider hips and a limit on inward hip roll, so
+      the feet stop colliding;
+    - **where the actuators sit:** the knee servo hung inside the thigh;
+    - **training practice:** checkpoints on, the reward shaped against
+      shuffling, warm starts;
+    - **the look:** tapered plates with a lightening window, round bosses
+      at the joints, a shin tapering in two directions, and compact
+      hull-shaped feet that are never large or flat.
+  - **The printed-legged-robot style** carries the look and the
+    legged-specific rules. The base carries only what holds for any
+    mechanism, phrased that way.
+  - **The proof:** a fresh agent session on a scratch project
+    (`orun4-*`), with the style chosen, is asked for a printed legged
+    robot. Its first accepted design must show the style's foot, joint and
+    clearance rules without being told them. The transcript excerpt and a
+    render go in the record. This is a check of the guidance, not a full
+    training run.
+- [ ] **H1. One normal font in every image and video.**
+  - The 5×7 glyph face in `src/Mod/cadex/CadexStudio.py` (`_FONT_ROWS`)
+    is gone. Every caption, label and timestamp the engine or CLI draws is
+    a plain sans-serif (B4). That covers the hero, the concept and detail
+    sheets, the evaluation film's overview and detail images, and the
+    rollout videos.
+  - Nothing else about those renders changes. **Measured:** before and
+    after images of each kind, side by side in the record, with only the
+    text differing.
+  - The font's licence and its source are in `docs/PROVENANCE.md`, with
+    an ADR.
+- [ ] **H2. A passed evaluation produces two heroes.**
+  - When `evaluate` passes, Cadex renders the accepted design that
+    passed, on the dark floor:
+    1. **the hero**, the existing studio shot in the H1 font;
+    2. **the print-bed hero**: every printable part laid flat on a print
+       bed, oriented as it would print, and labelled, with a parts list of
+       the purchased hardware (from the inventory) beside it.
+  - The purchased parts are not on the bed. Parts that cannot fit one bed
+    go on more beds in the same image, or the image says how many beds it
+    needs.
+  - Both are shown in the 2D viewport and listed in `/api/project`. A
+    failed evaluation makes neither.
+  - Tests cover a passing and a failing evaluation, and the bed layout's
+    non-overlap and bounds.
+- [ ] **H3. A passed evaluation produces a shove video.**
+  - The passing policy is filmed taking shoves: horizontal pushes drawn
+    from the task's disturbance model (`CadexDynamics` disturbances), each
+    one marked on screen when it lands. The film shows whether it
+    recovers.
+  - The video uses the H1 font and the existing film pipeline
+    (`cli/cadex_cli/film.py`, `video.py`). It plays in the 2D viewport
+    beside the evaluation films.
+  - The push magnitudes and the recovery outcome are written beside the
+    video, from the rollout itself. A robot that falls is filmed falling;
+    the outcome is never faked.
+- [ ] **D1. The 3D viewport pans.**
+  - Shift-drag pans, as does middle-drag. On touch, a two-finger drag
+    pans and a pinch zooms. **Fit** resets it.
+  - The gesture is listed in `docs/DASHBOARD.md` and covered by a browser
+    test through `cli/cadex_cli/browser.py`.
+- [ ] **D2. Status is its own editor.**
+  - The stage overlay (ADR-542) becomes an editor, `data-editor="status"`,
+    shown as **Status**, beside the 3D and 2D viewports. It can be put in
+    any area like the others.
+  - The default layout gives it an area of its own beside the 3D viewport
+    on a desktop, and a tab on a phone. The 3D viewport keeps the
+    checkpoint scrubber and the revision timeline, because those drive
+    what it plays.
+  - All of ADR-542's content moves with it: stage, training,
+    checkpoints, the activity line and the warning. Its tests and the
+    `docs/DASHBOARD.md` rows move too.
+- [ ] **D3. Layouts come from one-click presets, and areas move like
+  Blender's.**
+  - A layout control (in the View menu or the top bar) offers at least
+    these presets:
+    - single;
+    - side by side;
+    - stacked;
+    - 2 over 1, and 1 over 2;
+    - three columns;
+    - three rows;
+    - quad.
+
+    Each fills its areas with the editors in a sensible order. One click
+    applies it.
+  - Areas can still be dragged to dock and swap, and resized by their
+    edges (`layout.js`). The run makes this discoverable: a visible drag
+    handle, and a drop preview showing where the area will land.
+  - A browser test applies every preset and asserts the area count and
+    geometry, then drags one area onto another.
+  - The layout stays per-browser (B5). A reset returns to the default.
 - [ ] **C1. Closing report.**
-  - `docs/probes/orun3/REPORT.md` covers:
-    - V2's training-cost and disk measurements;
-    - V3's bytes-per-revision measurement;
+  - `docs/probes/orun4/REPORT.md` covers:
+    - F1's before and after on a filtered policy;
+    - the G2 ledger summary and the fresh-session check;
+    - H1's before and after images;
+    - one example each of H2's heroes and H3's shove video (a still);
+    - D3's presets, as one screenshot each (PNG, ≤300 KB each, on the
+      dark floor);
     - every ADR the run added;
-    - W1's screenshots (PNG, ≤300 KB each, on the dark floor);
     - the remaining defects.
   - Reconcile, then claim done for critic review without ticking the owner
     boxes.
@@ -189,34 +255,35 @@ The human owns the checkboxes. Roles report results and do not tick them.
 ## Horizon ladder
 
 - **short-term:**
-  1. Read `docs/DASHBOARD.md`, `review.js`, `layout.js`, the
-     `training_telemetry` path in `review_server.py`, and `loop.py`'s
-     `supervise`. Write down the overlay's hooks and data sources before
-     writing any code.
-  2. V1: the overlay, reading only what `/api/project` already carries.
-     Use a fixture `progress.json`, a browser test, the DASHBOARD.md
-     rows, and an ADR.
-  3. Measure the baseline V2 needs: a `cadex walk` leg on `orun3-biped`
-     with checkpoints on, and its mean iteration wall time with no
-     rollouts.
-  4. P1's first cut: make every URL in `review.js`, `projects.js` and the
-     server's built URLs relative, behind the existing tests.
+  1. Read the reference project end to end, and write the G2 ledger's
+     skeleton: every lesson, with its evidence, before deciding where any
+     of them goes.
+  2. F1: find where the engine rolls out a policy, apply the recorded
+     filter there, then add the test and the ADR.
+  3. F2: rebase `orun3-wip-adr558` onto main, finish it, and test
+     stopped, killed, finished and crashed.
+  4. D1: pan in the 3D viewport. It is small and self-contained, and the
+     owner asked for it by name.
 - **medium-term:**
-  1. V2: checkpoint rollouts in the walk's supervision, then playback and
-     the scrubber in the viewport, then the cost measurement against the
-     baseline.
-  2. V3: retain meshes on acceptance, the timeline, the ghost and the
-     tint, then the explicit backfill command.
-  3. V4: the activity log in the MCP server and its line in the overlay.
-  4. P1's API contract test and its doc table.
+  1. G1, then G2: the base-plus-styles structure, then the lessons folded
+     in, then the fresh-session check.
+  2. H1: the font, everywhere at once, with the before and after images.
+  3. H2 and H3, both on a passing policy. To produce one, use a
+     scratch copy of the reference project (`orun4-biped-sts`) with its
+     passing policy.
+  4. D2, then D3: status as an editor, then the presets and a
+     discoverable drag.
 - **long-term:**
-  1. W1's full walk on `orun3-biped`, then the closing report (C1).
-  2. Make the overlay and both scrubbers good at phone width and in the
-     light theme. Read `docs/DASHBOARD.md` against the page and close any
-     gaps. This is a direction, not a bar.
-  3. Cheaper meshes on the way to the page: binary or glTF meshes, where a
-     measurement shows STL is the bottleneck for the timeline. Add an ADR
-     if the format changes.
+  1. The closing report (C1).
+  2. The small defects orun3 left:
+     - a project being worked on reads "not found" until its first
+       script;
+     - the trainer stalls 37–39 s before each checkpoint (measure where
+       the time goes before changing anything);
+     - the guidance tells the agent to set `checkpoint_every` whenever
+       the owner is watching.
+  3. More styles, but only from reference images or projects the owner
+     supplies. Never invent one.
   4. Keep every gate green and every doc true. Keep `STATE.md`
      reconciled.
 
@@ -224,57 +291,55 @@ The human owns the checkboxes. Roles report results and do not tick them.
 
 **Standing:**
 - Obey AGENTS.md, the licensing rules and the process boundaries. The
-  repository carries no GPL code. The tag `v1-blender-shell` may be read
-  but never copied from.
+  repository carries no GPL or AGPL code, and that covers fonts and
+  slicers too. The tag `v1-blender-shell` may be read but never copied
+  from.
 - Training stays offboard in `training/`. JAX and MJX never enter the
   engine or a payload, and `training/cadex_train.py` imports only the
   standard library at module scope. `analysis/` imports no GPL package.
 - Never commit any of the following:
   - secrets, machine paths, private hostnames;
   - build outputs;
-  - full transcripts or full activity logs;
+  - full transcripts or activity logs;
   - policy binaries, checkpoints or rollout traces.
 - Do not hand-edit `STATE.md`, `PLAN.md`, `ROADMAP.md` or state nodes.
-- **Every fixture, test project, measurement and screenshot in this run is
-  a biped.** The working copy is `orun3-biped`, copied from
-  `~/cadex-projects/ot5-biped`; other biped copies are named `orun3-biped-*`.
-  Hexapods and other robots are not used, not even as a second fixture.
-- Keep earlier projects read-only: hex, hex1–hex3, ot5–ot11, orun1-*,
-  orun2-*, every `sweep-*` and `digestbug-*`. Work on copies named
-  `orun3-*`.
+- **Keep earlier projects read-only:** biped-sts, biped-mg90, quad-qdd,
+  hex*, ot5–ot11, orun1-*, orun2-*, orun3-*, every `sweep-*` and
+  `digestbug-*`. Work on copies named `orun4-*`.
 
 **This run:**
-- **The page stays read-only.** No write route, no form that posts, no
-  slider. A change that needs one is out of scope: record it as a
-  question for the owner and move on.
-- **Do not start a replacement engine or a desktop app.** P1 makes a
-  wrapper possible. It does not build one.
-- **Do not rewrite the dashboard from scratch.** Grow `review_server.py`
-  and `review_static/`.
+- **No guidance, doc, test or default in Cadex names the reference
+  project**, or reads files from it at run time. Records and the G2 ledger
+  may cite it as evidence.
+- **The page stays read-only.** It gets no write route. Choosing a
+  style is the agent's job (project config) or the CLI's, never the
+  page's.
+- **Do not rewrite the dashboard from scratch.** Grow `review_server.py`,
+  `review_static/` and `layout.js`.
 - **The protocol stays a contract.** Every `OP_ARG_SPECS` change updates
-  `docs/INTEGRATION.md` in the same commit. The agent's tool surface
-  changes only under AGENTS.md's tool-surface rule.
+  `docs/INTEGRATION.md` in the same commit. The tool surface changes only
+  under AGENTS.md's rule.
 - The run branch builds and both suites pass at every accepted commit.
   The CLI suite runs with the GPU hidden whenever a training run is live.
-- One training run at a time on the 5090. The machine lock in `loop.py`
-  is the arbiter, and nothing works around it.
+- One training run at a time on the 5090. The machine lock is the
+  arbiter.
 - The actor may serve the dashboard on 127.0.0.1 for its own browser
   tests. It never runs `tailscale serve` and never binds a public address.
-- Committed images are PNG, ≤300 KB each, under `docs/probes/orun3/`.
+- Committed images are PNG, ≤300 KB each, under `docs/probes/orun4/`.
 - No role starts, stops or restarts the loop or signals its process.
 
 ## Question policy
 
 - Resolve reversible choices autonomously, using the smallest measured step
   towards the highest-ranked open criterion.
-- **Is it a view or a control?** If it helps the owner see what is
-  happening, it may go on the page. If it changes anything, it belongs in
-  the agent's tools or the CLI, never the page.
-- Where B1–B6 and a measurement disagree, record both and follow B1–B6.
+- **Base or style?** If a lesson would be wrong for a crane, a wheeled
+  base or a fixed arm, it goes in a style. When unsure, put it in the
+  style and mark the ledger row "owner to confirm".
+- **Is it a lesson or a coincidence?** A lesson needs evidence in the
+  reference project: a change, and what it did to the walk or the fit. A
+  choice the agent made once, with no recorded effect, is not a lesson.
+- Where B1–B5 and a measurement disagree, record both and follow B1–B5.
   They are the owner's to change.
-- When the page has no data for something (an old project, a missing
-  checkpoint trace, a revision accepted before V3), show the absence with
-  its reason. Never substitute other data.
 - Code and accepted artifacts outrank docs. Update the docs with the
   behaviour they describe.
 - A pre-existing test failure is recorded and left alone, unless the
@@ -287,9 +352,9 @@ The human owns the checkboxes. Roles report results and do not tick them.
 ## Exhaustion policy
 
 `report_done`.
-- Once V1–V4, P1, W1 and C1 have evidence, write the closing report,
-  reconcile and claim done. Two consecutive critic acceptances stop the
-  run.
+- Once F1, F2, G1, G2, H1–H3, D1–D3 and C1 have evidence, write the
+  closing report, reconcile and claim done. Two consecutive critic
+  acceptances stop the run.
 - Do not claim done while any criterion is unmet unless the 24-hour ceiling
   has arrived. Until then, work the highest-ranked open criterion, then the
   long-term rung.
@@ -301,16 +366,19 @@ The human owns the checkboxes. Roles report results and do not tick them.
 - Run `pixi run test-engine` and `pixi run python -m pytest cli/tests` at
   every accepted commit that touches code. Run the CLI suite with the GPU
   hidden.
-- For protocol or payload changes, rebuild and stage, then run the packaged
-  lifecycle gate. Report skips and failures as such. Engine-needing CLI
-  tests that skip on a bare build do not count as passes.
+- Python changes under `src/Mod/cadex/` need `pixi run build-engine`
+  before the CLI's engine-needing tests count. For protocol or payload
+  changes, rebuild and stage, then run the packaged lifecycle gate.
+  Engine-needing tests that skip on a bare build do not count as passes.
 - Every new page feature has a browser-driven test through
-  `cli/cadex_cli/browser.py`. V2 and W1's tests run against a real engine.
-- The page and `docs/DASHBOARD.md` change in the same commit, as
-  `test_review_design.py` requires. Every new route is in the P1 contract
-  once that exists.
-- Every new panel, write path and route has an ADR, starting at ADR-542.
-- Record each unit with its State Impact.
+  `cli/cadex_cli/browser.py`. The page and `docs/DASHBOARD.md` change in
+  the same commit.
+- Every bug fix has a test that fails without it.
+- Every new behaviour, route, style mechanism and font has an ADR,
+  starting at ADR-558. Number them in the order they land, whatever the
+  orun3 branch called its draft.
+- Every iteration that changes code leaves a record. orun3 had three that
+  did not; the critic rejects a fourth.
 
 ## Reconcile
 

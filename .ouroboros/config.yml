@@ -1,4 +1,4 @@
-run: orun3
+run: orun4
 goal: .ouroboros/goal.md
 memory: auto            # -> hypergraph (config + CLI present)
 backend: headless       # tmux: one streaming window per harness call in the run session
@@ -12,7 +12,7 @@ maintainer: false       # true: a separate maintainer call instead of actor hous
 planner: false          # true: a planner writes bets after each reconcile
 idle_interval: 30m
 roles:
-  # Owner-directed launch (ot11, kept for orun1, orun2 and orun3): Opus 5.5 for every role, with no fallback.
+  # Owner-directed launch (ot11, kept for orun1 through orun4): Opus 5.5 for every role, with no fallback.
   actor:
     harness: claude
     model: claude-opus-5-5
@@ -35,7 +35,7 @@ roles:
     model: claude-opus-5-5
     timeout: 10m
 git:
-  branch: null            # -> ouroboros/orun3
+  branch: null            # -> ouroboros/orun4
   tag_on_accept: true
   revert_on_reject: false # fix forward: the charter forbids reverting this run's own
                           # commits. A rejected commit stays, gets no ok tag, and the
@@ -96,7 +96,7 @@ report:                   # the reporter: an observer outside the loop (ouroboro
   silent_after: 150m      # the actor's timeout is 120m, so quiet for longer than that is a call
                           # that outlived its own kill, not a long iteration
   poll: 30s
-  max_chars: 1000         # one notification; the whole digest is kept in runs/orun3/reports/
+  max_chars: 1000         # one notification; the whole digest is kept in runs/orun4/reports/
 plan:                     # only with planner: true
   every: 5
   view: plan
