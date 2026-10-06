@@ -1,6 +1,6 @@
 # orun4 — closing report
 
-Verified against source: 2026-10-06, at `5b460c99` (the orun4 run branch), with §5 and §7 retaken after ADR-574, and §7 after ADR-575 and ADR-576.
+Verified against source: 2026-10-06, at `5b460c99` (the orun4 run branch), with §5 and §7 retaken after ADR-574, and §7 and the done claim after ADR-575, ADR-576 and ADR-577 (at `195921c2`).
 Charter: `.ouroboros/goal.md`, "What worked, made the default — and a page
 arranged like Blender". Every number below was measured on sb1x (linux-64,
 RTX 5090), on scratch projects named `orun4-*`; the reference project was
@@ -191,6 +191,7 @@ its reason are listed in those ADRs.
 | ADR-574 | a run stopped on request before ADR-559 reads stopped; an ended run is never a quiet trainer |
 | ADR-575 | a project is on the dashboard from its agent's first tool call, not its first script |
 | ADR-576 | a checkpoint costs a rollout, not a compile: the witness rollout is jitted once |
+| ADR-577 | the checkpoint rule says what a checkpoint does and what it costs, not when the owner is watching |
 
 ## 7. Remaining defects
 
@@ -213,18 +214,26 @@ its reason are listed in those ADRs.
 5. **ADR-559's assumption**: a supervisor terminated by a signal with no
    stop request reads `interrupted` in `train_status` and failed on the
    page. The owner may revise this.
-6. **One of orun3's long-term defects is still open**: the guidance tells
-   the agent to set `checkpoint_every` whenever the owner is watching. A
-   project reading "not found" until its first script is fixed (ADR-575).
-   The trainer's stall before each checkpoint is fixed (ADR-576): the
-   witness rollout recompiled its scan on every snapshot, measured at
-   42.5–45.4 s against a 1.9 s iteration on the biped's 4096-env task; it is
-   now compiled once and later checkpoints take 1.9 s.
+6. **orun3's three long-term defects are fixed.** A project reading "not
+   found" until its first script now reads found from its agent's first
+   tool call (ADR-575). The trainer's stall before each checkpoint is fixed
+   (ADR-576): the witness rollout recompiled its scan on every snapshot,
+   measured at 42.5–45.4 s against a 1.9 s iteration on the biped's
+   4096-env task; it is now compiled once and later checkpoints take 1.9 s.
+   The guidance no longer ties `checkpoint_every` to the owner watching
+   (ADR-577): it states what a checkpoint keeps and what it costs, from
+   ADR-576's measurement, and `checkpoint_every` still defaults to 0.
+   What is left of this rung is the third item, more styles, which waits
+   on reference images or projects from the owner; none was supplied, so
+   no style was invented.
 
 ## Done claim
 
 All ten build criteria, F1 to D3, and this report have evidence recorded,
-and the reconcile of `650d9e0b` folded D2, D3 and this report's first record.
-Defect 1 is fixed (ADR-574). **Done is claimed for critic review.** No owner
-box is ticked. ADR-574's record still waits for the next reconcile pass, which
-work iterations are forbidden to run.
+and the reconcile of `650d9e0b` folded D2, D3 and this report's first record;
+the reconcile at `32810ecb` folded ADR-574 to ADR-576. Defect 1 is fixed
+(ADR-574), and orun3's three long-term defects are fixed (ADR-575 to
+ADR-577). Defects 2 to 5 are open and stay listed above. **Done is claimed
+for critic review.** No owner box is ticked. ADR-577's record and this
+report's update wait for the next reconcile pass, which work iterations are
+forbidden to run.
