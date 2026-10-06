@@ -36333,3 +36333,35 @@ CLI flag, file format, engine module, protocol op or tool changed.
 `training/README.md` notes the one compile.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-577 — The checkpoint rule says what a checkpoint does and what it costs (2026-10-06, orun4 long-term)
+
+**Context.** orun3 left a defect: the guidance told the agent to set
+`checkpoint_every` whenever the owner was watching, a ritual rather than a
+rule. ADR-565 had since reworded it to "Set checkpoint_every on every run",
+still with no cost attached, written when a checkpoint stalled the trainer
+about 40 s. ADR-576 measured and removed that stall: the first checkpoint pays
+one compile of the witness rollout (42.5 s on the reference legged task) and
+every later one about one training iteration (1.9 s there).
+
+**Decision.** The base guidance's TRAIN SO A GOOD POLICY CAN BE KEPT
+paragraph (`cli/cadex_cli/guidance.py`) states the rule as a trade. *What it
+does:* every N iterations a complete, witness-checked policy and the best so
+far, so a run's best policy survives when it is not its last and a stopped run
+still leaves one; on a local run each checkpoint is also played in the
+viewport, on the CPU beside training (ADR-544). *What it costs:* one compile at
+the first checkpoint, tens of seconds on a large task, then about one training
+iteration each, plus one policy file. Every 10 to 25 iterations adds a tenth of
+the run's time or less after that compile, so it is left off only for a run the
+agent will throw away. The rest of the paragraph (choose by evaluating
+checkpoints, warm and cold starts, the filter on a warm start) is unchanged.
+
+**Consequences.**
+`test_agent_guidance.py::test_the_checkpoint_rule_says_what_it_does_and_what_it_costs`
+pins both halves and that the rule says neither "on every run" nor "watching";
+it and the updated ADR-565 test fail on the old text. The paragraph is in the
+base, so it reaches every project with or without a style. No tool, setting,
+default, protocol op or trainer behaviour changed; `checkpoint_every` still
+defaults to 0.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

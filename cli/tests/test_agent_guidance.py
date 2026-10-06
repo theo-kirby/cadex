@@ -202,11 +202,27 @@ def test_the_training_lessons_are_in_the_base_and_reach_every_project():
     # ADR-565: training practice the reference legged robot learned the hard
     # way, phrased for any task, so it is in the base with no style chosen.
     text = " ".join(instructions().split())
-    for rule in ("TRAIN SO A GOOD POLICY CAN BE KEPT", "Set checkpoint_every on every run",
+    for rule in ("TRAIN SO A GOOD POLICY CAN BE KEPT", "Set checkpoint_every on any run",
                  "never by taking the last iteration",
                  "Never tighten action_filter_alpha on a warm start",
                  "start cold after any change to the model"):
         assert rule in text, rule
+
+
+def test_the_checkpoint_rule_says_what_it_does_and_what_it_costs():
+    # ADR-577: a rule, not a ritual. The agent is told what a checkpoint
+    # buys and what it costs since ADR-576 (one compile, then about one
+    # iteration each), and no longer to set it on every run or because
+    # someone is watching.
+    text = " ".join(instructions().split())
+    start = text.index("TRAIN SO A GOOD POLICY CAN BE KEPT")
+    rule = text[start:text.index("Choose the policy to keep", start)]
+    for claim in ("What it does:", "witness-checked policy", "a stopped run still leaves one",
+                  "plays each checkpoint in the dashboard's viewport", "What it costs:",
+                  "compiles the witness rollout once", "about one training iteration",
+                  "leave it off only for a run you will throw away"):
+        assert claim in rule, claim
+    assert "on every run" not in rule and "watching" not in rule
 
 
 def test_the_style_s_foot_thigh_and_roll_rules_reach_a_project_that_chose_it(tmp_path, capsys):

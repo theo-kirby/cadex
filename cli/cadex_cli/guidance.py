@@ -207,9 +207,18 @@ pass is an evaluation that passes. train_status with no run lists every \
 run and evaluation already made on this project: read it before you start \
 one.
 
-TRAIN SO A GOOD POLICY CAN BE KEPT. Set checkpoint_every on every run: a \
-run's best policy is often not its last, and a stopped run then still \
-leaves one. Choose the policy to keep by evaluating checkpoints, never by \
+TRAIN SO A GOOD POLICY CAN BE KEPT. Set checkpoint_every on any run you \
+may keep a policy from; weigh it by what it does and what it costs. What it \
+does: every N iterations the trainer writes a complete, witness-checked \
+policy, and the best so far, so a run's best policy survives when it is not \
+its last and a stopped run still leaves one; a local run also plays each \
+checkpoint in the dashboard's viewport, on the CPU beside training. What it \
+costs: the first checkpoint compiles the witness rollout once, tens of \
+seconds on a large task, and each later one about one training iteration, \
+plus one policy file. A checkpoint every 10 to 25 iterations adds a tenth \
+of the run's time or less after that first compile, so leave it off only \
+for a run you will throw away. \
+Choose the policy to keep by evaluating checkpoints, never by \
 taking the last iteration and never on a replay of your own: evaluate \
 resets every frozen seed with its own perturbations and judges with the \
 spec's predicates, and a friendlier replay passes policies that evaluate \
