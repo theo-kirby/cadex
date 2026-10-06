@@ -35894,3 +35894,54 @@ pins that a project which chose the style receives it. `docs/DESIGN-LANGUAGE.md`
 ledger row L7 carry the same procedure.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-568 — Every render and video is lettered in Noto Sans, read from a shipped font file; the 5×7 face is deleted (2026-10-06, orun4 H1)
+
+**Context.** Every caption, label and clock Cadex draws into an image or video went
+through one routine, `CadexStudio.Canvas.text`, which drew a 5×7 bitmap face defined in
+the module (`_FONT_ROWS`), upper-casing everything. The charter (H1, B4) retires it for a
+plain sans-serif that is open-licensed, compatible with the repository's LGPL posture and
+shipped as a font file, never a prebuilt library, with nothing else about the renders
+changing.
+
+**Decision.** The face is **Noto Sans Regular 2.004** (Copyright 2015 Google LLC, SIL
+Open Font License 1.1, no Reserved Font Name), subset with fontTools to printable ASCII
+plus 17 symbols, hinting and layout tables dropped, outlines unchanged:
+`src/Mod/cadex/NotoSans-Regular-subset.ttf` (9,712 bytes), its licence beside it as
+`NotoSans-OFL.txt`, both installed with the module (`CMakeLists.txt`), recorded in
+`docs/PROVENANCE.md` §8j and `THIRD_PARTY_LICENSES.md` §4. Noto Sans is the sans most
+Linux desktops resolve `system-ui` to, the first family in the dashboard's `--font`
+stack. DejaVu Sans (also in the environment) was the alternative; it is wider and its
+licence carries renaming terms, so it was not chosen.
+
+`CadexStudio` reads the TrueType file in the standard library (`Face`: `cmap` format 4,
+`loca`, `glyf` simple and offset-placed composite glyphs, `hmtx`, `OS/2` cap height),
+flattens each quadratic curve into six segments, and rasterises with nonzero winding:
+each pixel's ink is the outline's exact horizontal coverage averaged over five
+scanlines, cached per glyph and size, alpha-blended over the image. No font or image
+library enters the engine or the payload. A text `scale` keeps its meaning: capitals are
+`7 × scale` px tall with their top at `y`, as the 5×7 face drew them, so every layout
+keeps its rows. Text is drawn in the case written; widths are proportional, and the
+blueprint's part numbers are right-aligned by measured width. A character the face lacks
+draws as `?`, as before; a diameter sign is drawn as the face's `Ø` instead of being
+spelled `DIA`, and a degree sign as `°` instead of `DEG`. The film's and the video's
+clocks read `0.90 s` instead of `T 0.90 S`. `film_digest` and `studio_digest` now hash
+the font file too, so a different face re-renders a cached film.
+
+**Measured** (`docs/probes/orun4/h1-*-before-after.png`, from one scratch copy of the
+reference project, accepted revision `14b7223ee485`, rendered before and after with the
+same harness): the hero has 0 changed pixels; the concept sheet 0 outside its lettered
+panel; the evaluation film's overview and detail sheets 0 outside the twelve clock boxes;
+the blueprint's views and lines are unchanged and its text column re-flows (the notes
+fit one line in the narrower face). The video frame differs outside its clock by at most
+32 grey levels, which is VP9's lossy coding responding to different clock pixels: the
+frames themselves are drawn by the same renderer the film sheets measure unchanged.
+
+**Consequences.** `_FONT_ROWS` and `FONT` are gone. `test_the_face_is_a_plain_antialiased_sans_and_marks_what_it_lacks`
+(CLI suite) pins the face file, the capital height, antialiasing, case, descenders,
+proportional widths and the `?` fallback, replacing the 5×7 face's test;
+`test_the_render_font_ships_with_its_licence` (engine suite) pins the install list, the
+licence text, the provenance entry and that no other font file is tracked under the
+engine module. The tool surface and the protocol are unchanged.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

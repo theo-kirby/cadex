@@ -1976,8 +1976,9 @@ view is the renderer's own depth pass at 204 px and 2×2 subsamples, keyed by
 object and flat face normal: a subsample is ink where the nearest surface
 changes object, meets the backdrop (drawn on both sides, so the silhouette
 reads heavier), or turns by more than 35° within one object, and the box
-filter turns coverage to grey. Lettering is a 5×7 bitmap face in the same
-module; no font or image library. `summary.sheet` records its path, size,
+filter turns coverage to grey. Lettering is Noto Sans Regular (SIL OFL 1.1,
+ADR-568), read from `NotoSans-Regular-subset.ttf` beside the module and
+rasterised there with antialiasing; no font or image library. `summary.sheet` records its path, size,
 revision, digest, views, seconds and `numbers`: `name` (the project
 directory), `mass_kg` (the sum of the accepted MJCF output's per-component
 inertials, the environment left out, read from the pinned accepted

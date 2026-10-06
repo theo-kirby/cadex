@@ -466,7 +466,7 @@ def overview(stage: _Stage, frames, times, floor: float, deadline: float,
     for at in picked:
         _require(time.monotonic() < deadline, f"the filmstrip ran past {STRIP_SECONDS} seconds")
         drawn.append(stage.draw(frames[at]["component_placements"], basis, bounds, floor,
-                                f"T {times[at]:.2f} S", target=points[at] if points else None))
+                                f"{times[at]:.2f} s", target=points[at] if points else None))
     return _sheet(drawn), {
         "frames": len(drawn), "times_s": [times[at] for at in picked],
         "view": "hero: 35 degrees round from the front, 20 above the floor; one window on the whole path",
@@ -535,7 +535,7 @@ def detail(stage: _Stage, frames, times, floor: float, deadline: float, *,
     for at, bounds in zip(picked, windows):
         _require(time.monotonic() < deadline, f"the filmstrip ran past {STRIP_SECONDS} seconds")
         drawn.append(stage.draw(frames[at]["component_placements"], basis, bounds, floor,
-                                f"T {times[at]:.2f} S", target=points[at] if points else None))
+                                f"{times[at]:.2f} s", target=points[at] if points else None))
     view = ("side-on to the direction the base travelled, {:g} degrees above the floor; "
             "the window follows the base".format(DETAIL_ELEVATION_DEGREES) if base is not None else
             "side-on to the direction the design travelled, {:g} degrees above the floor; "
@@ -605,7 +605,8 @@ def film_digest() -> str:
     the video's drawing and this module's framing and layout."""
 
     digest = hashlib.sha256()
-    for path in (Path(studio_render.__file__), Path(studio_video.__file__), Path(__file__)):
+    for path in (Path(studio_render.__file__), Path(studio_render.FONT_FILE), Path(studio_video.__file__),
+                 Path(__file__)):
         digest.update(path.name.encode())
         digest.update(path.read_bytes())
     return digest.hexdigest()

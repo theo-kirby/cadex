@@ -22,6 +22,8 @@ set(Cadex_Scripts
     CadexPrintables.py
     CadexBlueprints.py
     CadexStudio.py
+    NotoSans-Regular-subset.ttf
+    NotoSans-OFL.txt
     CadexFitReport.py
     CadexEvaluation.py
     CadexAgentGuidance.md

@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-10-04
+Verified against source: 2026-10-06
 
 Cadex is not written from scratch. It is a **derivative work of a large
 free-software project, FreeCAD**, carrying the design lessons of two more
@@ -459,6 +459,27 @@ The AK70-10's 48 V speed-torque chart on the same page starts near 380 rpm,
 below its tabulated no-load figure; the catalog keeps the table's number and
 the note. No manufacturer artwork, CAD, or code is redistributed; no new
 dependency.
+
+## 8j. The render font `[third-party, OFL-1.1, ADR-568]`
+
+Every caption, label and clock Cadex draws into an image or video
+(`CadexStudio.Canvas.text`: the concept sheet, the blueprint sheet, the
+evaluation film's overview and detail sheets, the rollout and evaluation
+videos) is set in **Noto Sans Regular**, from one file beside the module:
+
+| | |
+|---|---|
+| File | `src/Mod/cadex/NotoSans-Regular-subset.ttf` (9,712 bytes, sha256 `34b27ebe80768130e765e7c26e014abf5c459b0268e5fab5dcacbaeb35acfc45`) |
+| Upstream | Noto Sans Regular, version 2.004 (`NotoSans-Regular.ttf`, sha256 `89c3c497…0ced2909d`), as packaged by Debian `fonts-noto-core` 20201225-2 from [notofonts](https://github.com/notofonts/latin-greek-cyrillic) |
+| Copyright | Copyright 2015 Google LLC. All Rights Reserved. |
+| Licence | SIL Open Font License 1.1 (`OFL-1.1`), text in `src/Mod/cadex/NotoSans-OFL.txt`; the font declares no Reserved Font Name |
+| Modification | Subset with fontTools `pyftsubset` to printable ASCII and 17 symbols (° ± µ · × Ø – — ‘ ’ “ ” … − Ω Δ →), hinting and layout tables dropped. The glyph outlines are unchanged. |
+
+The OFL lets the font be bundled and redistributed with any software; the
+font stays under the OFL and the LGPL code that reads it is unaffected. It
+is a font file, not a library: `CadexStudio` reads its outlines and
+rasterises them in the standard library, so no font or image library enters
+the engine or the payload. The 5×7 bitmap face it replaces is deleted.
 
 ## 9. Where this goes
 

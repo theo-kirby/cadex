@@ -309,3 +309,20 @@ def test_the_repository_carries_no_gpl_source():
     assert not gpl, f"GPL-declared source is back in the tree: {gpl}"
     for doc in ("NOTICE", "THIRD_PARTY_LICENSES.md"):
         assert "shell/" not in (REPO / doc).read_text(), f"{doc} still points at shell/"
+
+
+def test_the_render_font_ships_with_its_licence():
+    """ADR-568: the renders' one face is Noto Sans (SIL OFL 1.1), installed
+    with the module beside its licence and recorded in PROVENANCE.md; no
+    other font file is tracked under the engine module."""
+    module = REPO / "src" / "Mod" / "cadex"
+    cmake = (module / "CMakeLists.txt").read_text(encoding="utf-8")
+    for name in ("NotoSans-Regular-subset.ttf", "NotoSans-OFL.txt"):
+        assert (module / name).is_file(), name
+        assert f"    {name}\n" in cmake, f"{name} is not installed with the module"
+    licence = (module / "NotoSans-OFL.txt").read_text(encoding="utf-8")
+    assert "SIL OPEN FONT LICENSE Version 1.1" in licence and "Google LLC" in licence
+    fonts = sorted(p.name for p in module.rglob("*") if p.suffix.lower() in {".ttf", ".otf", ".woff", ".woff2"})
+    assert fonts == ["NotoSans-Regular-subset.ttf"], fonts
+    provenance = (REPO / "docs" / "PROVENANCE.md").read_text(encoding="utf-8")
+    assert "NotoSans-Regular-subset.ttf" in provenance and "OFL-1.1" in provenance

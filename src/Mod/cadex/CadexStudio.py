@@ -16,7 +16,7 @@ draws.
 - Review views and ``look``: orthographic, studio-lit, 2x2 supersampled, on the
   review viewport's dark prototype mat, with a measured contact shadow.
 - The concept sheet: the hero, key numbers, palette, three line views and A1's
-  proxies, lettered in a 5x7 bitmap face defined here.
+  proxies, lettered in Noto Sans, read from the TrueType file beside this module.
 - :data:`PALETTE`: the dark scene every presented image stands on. The review
   dashboard's ``environment.js`` and ``review.css`` carry the same colours for
   the browser, and ``cli/tests/test_scene_palette.py`` holds them equal to
@@ -893,60 +893,262 @@ RULE = PALETTE['rule']
 #: The catalog family whose placed components the sheet counts as servos.
 SERVO_FAMILY = 'servo'
 
-# A 5x7 face: each glyph is seven rows, most significant bit leftmost.
-_FONT_ROWS = {
-    'A': '.###. #...# #...# ##### #...# #...# #...#',
-    'B': '####. #...# #...# ####. #...# #...# ####.',
-    'C': '.###. #...# #.... #.... #.... #...# .###.',
-    'D': '####. #...# #...# #...# #...# #...# ####.',
-    'E': '##### #.... #.... ####. #.... #.... #####',
-    'F': '##### #.... #.... ####. #.... #.... #....',
-    'G': '.###. #...# #.... #.### #...# #...# .####',
-    'H': '#...# #...# #...# ##### #...# #...# #...#',
-    'I': '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
-    'J': '..### ...#. ...#. ...#. ...#. #..#. .##..',
-    'K': '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
-    'L': '#.... #.... #.... #.... #.... #.... #####',
-    'M': '#...# ##.## #.#.# #.#.# #...# #...# #...#',
-    'N': '#...# #...# ##..# #.#.# #..## #...# #...#',
-    'O': '.###. #...# #...# #...# #...# #...# .###.',
-    'P': '####. #...# #...# ####. #.... #.... #....',
-    'Q': '.###. #...# #...# #...# #.#.# #..#. .##.#',
-    'R': '####. #...# #...# ####. #.#.. #..#. #...#',
-    'S': '.#### #.... #.... .###. ....# ....# ####.',
-    'T': '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
-    'U': '#...# #...# #...# #...# #...# #...# .###.',
-    'V': '#...# #...# #...# #...# #...# .#.#. ..#..',
-    'W': '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
-    'X': '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
-    'Y': '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
-    'Z': '##### ....# ...#. ..#.. .#... #.... #####',
-    '0': '.###. #...# #..## #.#.# ##..# #...# .###.',
-    '1': '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
-    '2': '.###. #...# ....# ...#. ..#.. .#... #####',
-    '3': '##### ...#. ..#.. ...#. ....# #...# .###.',
-    '4': '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
-    '5': '##### #.... ####. ....# ....# #...# .###.',
-    '6': '..##. .#... #.... ####. #...# #...# .###.',
-    '7': '##### ....# ...#. ..#.. .#... .#... .#...',
-    '8': '.###. #...# #...# .###. #...# #...# .###.',
-    '9': '.###. #...# #...# .#### ....# ...#. .##..',
-    '.': '..... ..... ..... ..... ..... .##.. .##..',
-    ',': '..... ..... ..... ..... .##.. ..#.. .#...',
-    '-': '..... ..... ..... .###. ..... ..... .....',
-    '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
-    '=': '..... ..... ##### ..... ##### ..... .....',
-    '/': '....# ....# ...#. ..#.. .#... #.... #....',
-    ':': '..... .##.. .##.. ..... .##.. .##.. .....',
-    '%': '##..# ##..# ...#. ..#.. .#... #..## #..##',
-    '(': '...#. ..#.. .#... .#... .#... ..#.. ...#.',
-    ')': '.#... ..#.. ...#. ...#. ...#. ..#.. .#...',
-    '_': '..... ..... ..... ..... ..... ..... #####',
-    '#': '.#.#. .#.#. ##### .#.#. ##### .#.#. .#.#.',
-    '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
-    ' ': '..... ..... ..... ..... ..... ..... .....',
-}
-FONT = {ch: tuple(row for row in rows.split()) for ch, rows in _FONT_ROWS.items()}
+# --- The type face (orun4 H1, ADR-568) ---------------------------------------
+#
+# Every caption, label and clock the renders draw is set in Noto Sans Regular,
+# a plain open sans-serif (SIL OFL 1.1, docs/PROVENANCE.md), shipped beside
+# this module as a TrueType file cut down to the characters drawn. It is read
+# and rasterised here in the standard library: the outlines' quadratic curves
+# are flattened, and each pixel's ink is the outline's exact horizontal
+# coverage averaged over FONT_ROWS_PER_PIXEL scanlines.
+
+FONT_FILE = Path(__file__).resolve().with_name('NotoSans-Regular-subset.ttf')
+#: A text ``scale`` sets capitals ``CAP_UNITS * scale`` px tall, the height the
+#: retired 5x7 face drew them, so every layout keeps its rows.
+CAP_UNITS = 7
+FONT_ROWS_PER_PIXEL = 5
+#: Straight segments per quadratic curve: enough at the sizes drawn here.
+CURVE_STEPS = 6
+
+
+class Face:
+    """A TrueType face: character map, advances and glyph outlines."""
+
+    def __init__(self, data):
+        self.data = data
+        count = struct.unpack_from('>H', data, 4)[0]
+        self.tables = {}
+        for i in range(count):
+            tag, _sum, offset, length = struct.unpack_from('>4sIII', data, 12 + 16 * i)
+            self.tables[tag.decode('latin-1')] = (offset, length)
+        head = self.tables['head'][0]
+        self.units_per_em = struct.unpack_from('>H', data, head + 18)[0]
+        long_loca = struct.unpack_from('>h', data, head + 50)[0] == 1
+        glyphs = struct.unpack_from('>H', data, self.tables['maxp'][0] + 4)[0]
+        metrics = struct.unpack_from('>H', data, self.tables['hhea'][0] + 34)[0]
+        loca = self.tables['loca'][0]
+        if long_loca:
+            self.loca = struct.unpack_from('>%dI' % (glyphs + 1), data, loca)
+        else:
+            self.loca = tuple(2 * v for v in struct.unpack_from('>%dH' % (glyphs + 1), data, loca))
+        hmtx = self.tables['hmtx'][0]
+        advances = [struct.unpack_from('>H', data, hmtx + 4 * i)[0] for i in range(metrics)]
+        self.advances = advances + [advances[-1]] * (glyphs - metrics)
+        self.cap_height = struct.unpack_from('>h', data, self.tables['OS/2'][0] + 88)[0]
+        self.cmap = self._cmap()
+        self._outlines = {}
+
+    def _cmap(self):
+        data, base = self.data, self.tables['cmap'][0]
+        found = {}
+        for i in range(struct.unpack_from('>H', data, base + 2)[0]):
+            platform, encoding, offset = struct.unpack_from('>HHI', data, base + 4 + 8 * i)
+            at = base + offset
+            if (platform, encoding) not in ((3, 1), (0, 3)) or struct.unpack_from('>H', data, at)[0] != 4:
+                continue
+            segments = struct.unpack_from('>H', data, at + 6)[0] // 2
+            ends = struct.unpack_from('>%dH' % segments, data, at + 14)
+            starts = struct.unpack_from('>%dH' % segments, data, at + 16 + 2 * segments)
+            deltas = struct.unpack_from('>%dh' % segments, data, at + 16 + 4 * segments)
+            ranges_at = at + 16 + 6 * segments
+            ranges = struct.unpack_from('>%dH' % segments, data, ranges_at)
+            for k in range(segments):
+                for code in range(starts[k], min(ends[k], 0xFFFE) + 1):
+                    if ranges[k] == 0:
+                        glyph = (code + deltas[k]) & 0xFFFF
+                    else:
+                        where = ranges_at + 2 * k + ranges[k] + 2 * (code - starts[k])
+                        glyph = struct.unpack_from('>H', data, where)[0]
+                        glyph = (glyph + deltas[k]) & 0xFFFF if glyph else 0
+                    if glyph:
+                        found[chr(code)] = glyph
+            return found
+        raise StudioError('the type face has no Unicode character map')
+
+    def outline(self, glyph):
+        """The glyph's closed contours as polylines in font units, y up."""
+        if glyph not in self._outlines:
+            self._outlines[glyph] = self._read(glyph)
+        return self._outlines[glyph]
+
+    def _read(self, glyph):
+        data = self.data
+        start, end = self.loca[glyph], self.loca[glyph + 1]
+        if start == end:
+            return []
+        at = self.tables['glyf'][0] + start
+        contours = struct.unpack_from('>h', data, at)[0]
+        at += 10
+        if contours < 0:
+            return self._composite(at)
+        ends = struct.unpack_from('>%dH' % contours, data, at)
+        at += 2 * contours
+        at += 2 + struct.unpack_from('>H', data, at)[0]
+        count = ends[-1] + 1 if contours else 0
+        flags = []
+        while len(flags) < count:
+            flag = data[at]
+            at += 1
+            repeat = 1
+            if flag & 8:
+                repeat += data[at]
+                at += 1
+            flags.extend([flag] * repeat)
+        coordinates = []
+        for short, same in ((2, 16), (4, 32)):
+            value, values = 0, []
+            for flag in flags[:count]:
+                if flag & short:
+                    step = data[at]
+                    at += 1
+                    value += step if flag & same else -step
+                elif not flag & same:
+                    value += struct.unpack_from('>h', data, at)[0]
+                    at += 2
+                values.append(value)
+            coordinates.append(values)
+        points = [(x, y, bool(f & 1)) for x, y, f in zip(coordinates[0], coordinates[1], flags)]
+        result, first = [], 0
+        for last in ends:
+            result.append(_flatten(points[first:last + 1]))
+            first = last + 1
+        return result
+
+    def _composite(self, at):
+        data, result = self.data, []
+        while True:
+            flags, glyph = struct.unpack_from('>HH', data, at)
+            at += 4
+            if flags & 1:
+                dx, dy = struct.unpack_from('>hh', data, at)
+                at += 4
+            else:
+                dx, dy = struct.unpack_from('>bb', data, at)
+                at += 2
+            a, b, c, d = 1.0, 0.0, 0.0, 1.0
+            if flags & 8:
+                a = d = struct.unpack_from('>h', data, at)[0] / 16384
+                at += 2
+            elif flags & 0x40:
+                a, d = (v / 16384 for v in struct.unpack_from('>hh', data, at))
+                at += 4
+            elif flags & 0x80:
+                a, b, c, d = (v / 16384 for v in struct.unpack_from('>hhhh', data, at))
+                at += 8
+            _require(flags & 2, 'the type face has a composite glyph placed by point, which is not read')
+            for contour in self.outline(glyph):
+                result.append([(a * x + c * y + dx, b * x + d * y + dy) for x, y in contour])
+            if not flags & 0x20:
+                return result
+
+    def glyph(self, ch):
+        return self.cmap.get(ch) or self.cmap['?']
+
+
+def _flatten(points):
+    """A closed TrueType contour, on- and off-curve points, as a polyline."""
+    if not points:
+        return []
+    n = len(points)
+    start = next((i for i, p in enumerate(points) if p[2]), None)
+    if start is None:  # every point off the curve: begin between the first two
+        (x0, y0, _), (x1, y1, _) = points[0], points[1 % n]
+        points, start = [((x0 + x1) / 2, (y0 + y1) / 2, True)] + list(points), 0
+        n += 1
+    ring = points[start:] + points[:start]
+    line = [ring[0][:2]]
+    control = None
+    for x, y, on in ring[1:] + ring[:1]:
+        if on:
+            if control is None:
+                line.append((x, y))
+            else:
+                line.extend(_curve(line[-1], control, (x, y)))
+                control = None
+        elif control is None:
+            control = (x, y)
+        else:
+            middle = ((control[0] + x) / 2, (control[1] + y) / 2)
+            line.extend(_curve(line[-1], control, middle))
+            control = (x, y)
+    return line
+
+
+def _curve(p0, p1, p2):
+    out = []
+    for k in range(1, CURVE_STEPS + 1):
+        t = k / CURVE_STEPS
+        u = 1 - t
+        out.append((u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0],
+                    u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1]))
+    return out
+
+
+FACE = Face(FONT_FILE.read_bytes())
+_GLYPHS = {}
+
+
+def _em_px(scale):
+    return CAP_UNITS * scale * FACE.units_per_em / FACE.cap_height
+
+
+def _coverage(glyph, scale):
+    """``(left, top, width, height, alpha)``: the glyph's ink at ``scale``, relative to
+    its pen position on the capital line; alpha is one byte per pixel."""
+    key = (glyph, scale)
+    if key in _GLYPHS:
+        return _GLYPHS[key]
+    k = _em_px(scale) / FACE.units_per_em
+    cap = CAP_UNITS * scale
+    contours = [[(x * k, cap - y * k) for x, y in c] for c in FACE.outline(glyph) if len(c) > 1]
+    if not contours:
+        _GLYPHS[key] = (0, 0, 0, 0, b'')
+        return _GLYPHS[key]
+    xs = [x for c in contours for x, _ in c]
+    ys = [y for c in contours for _, y in c]
+    left, top = math.floor(min(xs)), math.floor(min(ys))
+    width, height = math.ceil(max(xs)) - left + 1, math.ceil(max(ys)) - top
+    edges = []
+    for c in contours:
+        for (x0, y0), (x1, y1) in zip(c, c[1:] + c[:1]):
+            if y0 != y1:
+                edges.append((x0 - left, y0 - top, x1 - left, y1 - top))
+    ink = [0.0] * (width * height)
+    share = 1.0 / FONT_ROWS_PER_PIXEL
+    for row in range(height):
+        base = row * width
+        for sub in range(FONT_ROWS_PER_PIXEL):
+            y = row + (sub + 0.5) * share
+            crossings = []
+            for x0, y0, x1, y1 in edges:
+                if (y0 <= y < y1) or (y1 <= y < y0):
+                    crossings.append((x0 + (y - y0) * (x1 - x0) / (y1 - y0), 1 if y1 > y0 else -1))
+            crossings.sort()
+            winding = 0
+            for (xa, step), (xb, _) in zip(crossings, crossings[1:]):
+                winding += step
+                if winding and xb > xa:
+                    _span(ink, base, width, xa, xb, share)
+    alpha = bytes(min(255, round(255 * v)) for v in ink)
+    _GLYPHS[key] = (left, top, width, height, alpha)
+    return _GLYPHS[key]
+
+
+def _span(ink, base, width, xa, xb, weight):
+    """Adds ``weight`` times the exact cover of ``[xa, xb)`` to one pixel row."""
+    xa, xb = max(0.0, xa), min(float(width), xb)
+    i = int(xa)
+    while i < width and i < xb:
+        cover = min(xb, i + 1) - max(xa, i)
+        if cover > 0:
+            ink[base + i] += cover * weight
+        i += 1
+
+
+def advance_px(text, scale):
+    """The pen's travel across ``text`` at ``scale``, in px."""
+    k = _em_px(scale) / FACE.units_per_em
+    return sum(FACE.advances[FACE.glyph(ch)] for ch in str(text)) * k
 
 
 class Canvas:
@@ -979,18 +1181,31 @@ class Canvas:
                       width, width, colour)
 
     def text(self, x, y, text, scale, colour):
-        """Draws ``text`` upper-cased in the 5x7 face; returns the x after it."""
-        for ch in str(text).upper():
-            for j, row in enumerate(FONT.get(ch, FONT['?'])):
-                for i, bit in enumerate(row):
-                    if bit == '#':
-                        self.rect(x + i * scale, y + j * scale, scale, scale, colour)
-            x += 6 * scale
-        return x
+        """Draws ``text`` in the face, capitals ``CAP_UNITS * scale`` px tall with
+        their top at ``y``; returns the x after it."""
+        pen = float(x)
+        k = _em_px(scale) / FACE.units_per_em
+        for ch in str(text):
+            glyph = FACE.glyph(ch)
+            left, top, w, h, alpha = _coverage(glyph, scale)
+            ox, oy = round(pen) + left, y + top
+            for j in range(h):
+                yy = oy + j
+                if not 0 <= yy < self.height:
+                    continue
+                for i in range(w):
+                    a = alpha[j * w + i]
+                    xx = ox + i
+                    if a and 0 <= xx < self.width:
+                        at = 3 * (yy * self.width + xx)
+                        for c in range(3):
+                            self.pixels[at + c] = (self.pixels[at + c] * (255 - a) + colour[c] * a + 127) // 255
+            pen += FACE.advances[glyph] * k
+        return round(pen)
 
 
 def text_width(text, scale):
-    return max(0, 6 * scale * len(str(text)) - scale)
+    return round(advance_px(text, scale))
 
 
 def fitted_scale(text, width, largest):
@@ -1245,11 +1460,10 @@ def blueprint_recipe(raw):
 
 
 def _paper_text(text):
-    """``text`` in the sheet's face: the two symbols measurements use spelled out."""
-    for sign in ('\N{LATIN CAPITAL LETTER O WITH STROKE}', '\N{DIAMETER SIGN}', '\N{EMPTY SET}'):
-        text = str(text).replace(sign, 'DIA ')
-    text = text.replace('\N{DEGREE SIGN}', ' DEG')
-    return ''.join(ch if ch.upper() in FONT else '?' for ch in text)
+    """``text`` in the sheet's face: a diameter is written as the face's slashed O."""
+    for sign in ('\N{DIAMETER SIGN}', '\N{EMPTY SET}'):
+        text = str(text).replace(sign, '\N{LATIN CAPITAL LETTER O WITH STROKE}')
+    return ''.join(ch if ch in FACE.cmap else '?' for ch in text)
 
 
 def _wrap(text, scale, width):
@@ -1474,7 +1688,8 @@ def blueprint_sheet(triangles, summary, names, recipe, *, measurements=(), place
         sheet.text(x, y, 'parts', 2, MUTED)
         y += 22
         for item in callouts:
-            sheet.text(x, y, f"{item['number']:>2}", 2, INK)
+            number = str(item['number'])
+            sheet.text(x + text_width('00', 2) - text_width(number, 2), y, number, 2, INK)
             sheet.text(x + 40, y, _paper_text(item['name'])[:28], 2, INK)
             y += 18
         y += 8
