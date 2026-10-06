@@ -35709,6 +35709,14 @@ ADR makes them, on the same keep list.
 `test_sheet.py` four tests 25.0 s → under 1 s each; `test_review_overlay.py` the three
 tests 25.9 s → 2.9 s; `test_train.py` 62.1 s → 48.9 s (the iterate 29.3 s → 16.0 s);
 `test_look.py` proxies 7.8 s → under 3 s; `test_video.py` the two films 15.5 s → under
-3 s each. Whole-suite timing is in the record.
+3 s each.
+
+**Evidence (whole suite).** As one command under `timeout 590` it was still killed at
+590 s. In thirds: `NR%3==0` 185 s → 166 s (400 passed), `NR%3==1` 467 s → 352 s (353
+passed, 1 skipped), `NR%3==2` 141 s → 129 s (441 passed). Suite **647 s (10.8 min)**,
+from 793 s (ADR-562) and 1017 s at the start; 1195 tests, no test file removed. Not yet
+the 8-minute target: what is left is mostly real-engine end-to-end walks
+(`test_walk.py` 63 s, 39 s, 19 s), real evaluations and real trainer runs, which the
+keep list protects at least one of.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
