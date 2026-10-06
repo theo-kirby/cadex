@@ -35407,3 +35407,52 @@ in the light theme and 13.35:1 in the dark, 457 px below the overlay. Before the
 test fails, with the line's top at 84 px against the overlay's bottom at 149 px.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-558 — The engine plays a policy under the command filter it was trained with (2026-10-06, orun4 F1)
+
+**Context.** The trainer has written `training.action_filter_alpha` (ADR-160)
+and `training.command_slew_deg` (ADR-162) into every `.cxpolicy` header since
+those flags landed, with a comment saying why: a policy trained with a filter
+has to be *played* with it. Nothing under `src/Mod/cadex` read either key.
+ADR-160 assumed evaluation needed nothing because `evaluate_episode` takes
+its commands from a caller-owned callable, and the caller that grew up around
+it, `rollout_policy`, passed the network's raw output straight through. So
+every rollout, checkpoint rollout (ADR-544) and evaluation played a filtered
+policy under a controller it had never seen. An owner session found it the
+hard way: a policy trained at α 0.5 failed evaluation that a filtered replay
+passed, and the session fell back to training unfiltered.
+
+**Decision.** `CadexDynamics.recorded_command_filter(header)` reads the two
+values (absent means 1.0 and 0.0, which is what a pre-flag policy was trained
+with; a value the trainer would refuse is refused, reason
+`policy_command_filter_invalid`). `rollout_policy`, the one path the worker's
+rollout op, `evaluate_success` and `cli/cadex_cli/checkpoint_runner.py` all
+take, applies them in the trainer's order: clamp to the action box, EMA, slew
+limit, with the first command of the episode passed through. At α 1.0 and no
+slew the callable returns the network's output untouched, so an unfiltered
+policy plays bit for bit as before. The rollout's result, the evaluation
+report and each evaluation and checkpoint trace's `policy` block carry
+`command_filter`, so what was played is on the record. No op argument, tool
+or protocol shape changes; the trainer is untouched.
+
+**Measured.** The reference session's policy `walk_r11_i300` (α 0.5),
+evaluated by `evaluate_success` on its own task bundle and model (digests
+match the project's recorded evaluation) on the spec's ten seeds:
+
+| | seeds passing | W1 survives | W2 tilt | W3 speed | W4 heading | W6 steps | W7 clearance |
+|---|---|---|---|---|---|---|---|
+| filter ignored (before) | **0/10** | 7 | 7 | 8 | 0 (37–59°) | 2 | 8 |
+| filter as recorded (after) | **9/10** | 10 | 10 | 10 | 9 (16–36°) | 10 | 10 |
+
+The "before" row reproduces that project's recorded evaluation exactly.
+
+**Test.** `src/Mod/cadex/cadex_tests/test_dynamics_policy_command_filter.py`:
+a rollout's issued commands equal a reference recurrence written in the test
+over the network's recorded raw output, for α alone and α plus slew; an
+evaluation's per-seed traces do the same and the report names the filter; a
+header with neither key, or with no training block, plays exactly as before
+and its frames equal those of an explicit 1.0/0.0; out-of-range values are
+refused. Without the change the filtered cases fail with 99 of 100 commands
+off the recurrence.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

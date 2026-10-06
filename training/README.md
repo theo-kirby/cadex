@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-04. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-06. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -174,6 +174,13 @@ can still move 32.5° in one control step — more than the box's own half-width
 Turning alpha further down does not turn it into a rate limit; that is what
 `--command-slew-deg` is for, and the two compose in that order because the
 playback harness composes them in that order.
+
+**The engine plays a policy under the filter it recorded** (ADR-558). Both
+values go into the `.cxpolicy` header at `training.action_filter_alpha` and
+`training.command_slew_deg`, and every rollout, checkpoint rollout and
+evaluation (`CadexDynamics.rollout_policy`) applies them in the same order,
+first command of the episode unfiltered. A header that records neither plays
+unfiltered, as it was trained. There is no flag to set at evaluation.
 
 A slew limit at or below the joint's own physical reach in one control step is
 worse than none: it forbids commands the servo *can* execute. Measure it

@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -3236,6 +3236,12 @@ episodes are played and measured, the report lists the geoms with their
 margin and gap in millimetres in `contact_offsets`, every seed's `void`
 names them, and the progress cell, the prose and the agent's view lead with
 them.
+
+**The command filter is the policy's own** (ADR-558). Every seed is played
+under the filter the `.cxpolicy` header records (`training.action_filter_alpha`,
+`training.command_slew_deg`), the way the trainer applied it, and the report's
+`command_filter` and each trace's `policy.command_filter` say which. A header
+that records none plays unfiltered.
 
 **Refusals.** A spec seed that is the policy's own training seed is refused:
 evaluation seeds are never training seeds. A model that is not the one the

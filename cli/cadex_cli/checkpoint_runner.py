@@ -121,6 +121,7 @@ def roll_out(plan: dict[str, Any]) -> dict[str, Any]:
             "task_sha256": _sha256(task_bytes),
             "model_sha256": _sha256(model_bytes),
             "seed": None,
+            "command_filter": dict(run["command_filter"]),
             "label": str(episode["label"]),
             "total_reward": float(episode["total_reward"]),
             "step_count": int(episode["step_count"]),

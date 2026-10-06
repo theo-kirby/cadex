@@ -10223,6 +10223,44 @@ MAXIMUM_TRACE_FRAMES = 10_000
 MAXIMUM_TRACE_POSES = 100_000
 
 
+def recorded_command_filter(
+    header: Mapping[str, Any], *, context: str = "this policy"
+) -> dict[str, float]:
+    """The command filter a policy was trained under, as its header records it.
+
+    The trainer writes ``training.action_filter_alpha`` (ADR-160) and
+    ``training.command_slew_deg`` (ADR-162) because a policy trained with a
+    filter has to be *played* with it (ADR-558). A header from before either
+    flag records neither, and was trained with neither: alpha 1.0 is no
+    filter and a slew of 0.0 is no limit. A value the trainer would have
+    refused is refused here rather than played as something else.
+    """
+
+    training = header.get("training") or {}
+    alpha = training.get("action_filter_alpha", 1.0)
+    slew = training.get("command_slew_deg", 0.0)
+    problems = []
+    if (isinstance(alpha, bool) or not isinstance(alpha, (int, float))
+            or not math.isfinite(alpha) or not 0.0 < alpha <= 1.0):
+        problems.append(f"action_filter_alpha {alpha!r} is outside (0, 1]")
+    if (isinstance(slew, bool) or not isinstance(slew, (int, float))
+            or not math.isfinite(slew) or slew < 0.0):
+        problems.append(f"command_slew_deg {slew!r} is not a non-negative number")
+    if problems:
+        raise DynamicsError(
+            f"{context} records a command filter the trainer never writes: "
+            + "; ".join(problems) + ".",
+            reason="policy_command_filter_invalid",
+            correction=(
+                "The header's training block states the controller the policy "
+                "was trained under, and the engine plays it under the same "
+                "one. Retrain, or restore the header the trainer wrote."
+            ),
+            observed={"action_filter_alpha": alpha, "command_slew_deg": slew},
+        )
+    return {"action_filter_alpha": float(alpha), "command_slew_deg": float(slew)}
+
+
 def rollout_policy(
     model: Any,
     task: Mapping[str, Any],
@@ -10351,9 +10389,34 @@ def rollout_policy(
 
     header = container["header"]
     weights = container["weights"]
+    played_filter = recorded_command_filter(header, context=context)
+    alpha = played_filter["action_filter_alpha"]
+    slew = played_filter["command_slew_deg"]
+    bounds = [(float(action["low"]), float(action["high"])) for action in task["actions"]]
+    issued: list[float] = []
 
-    def _actions(_step: int, observation: Mapping[str, float]) -> list[float]:
-        return policy_forward(header, weights, observation, context=context)
+    def _actions(step: int, observation: Mapping[str, float]) -> list[float]:
+        raw = policy_forward(header, weights, observation, context=context)
+        if alpha >= 1.0 and slew <= 0.0:
+            return raw
+        # ADR-558: the trainer's controller, in the trainer's order (ADR-160
+        # then ADR-162). Clamp first, so the memory only holds a command the
+        # actuator could have been given; the first command of the episode
+        # passes through unfiltered. The episode loop's own clamp then finds
+        # every value already in box.
+        command = [
+            min(max(float(value), low), high)
+            for value, (low, high) in zip(raw, bounds, strict=True)
+        ]
+        if step > 0 and issued:
+            if alpha < 1.0:
+                command = [alpha * now + (1.0 - alpha) * then
+                           for now, then in zip(command, issued)]
+            if slew > 0.0:
+                command = [min(max(now, then - slew), then + slew)
+                           for now, then in zip(command, issued)]
+        issued[:] = command
+        return command
 
     def _placements(data: Any) -> dict[str, dict[str, list[float]]]:
         poses = {
@@ -10459,6 +10522,9 @@ def rollout_policy(
         "frames": frames,
         "frames_per_second": rate,
         "steps_per_frame": steps_per_frame,
+        # The controller the commands went through (ADR-558): what the
+        # policy's header recorded, 1.0 and 0.0 when it recorded nothing.
+        "command_filter": dict(played_filter),
         "frame_interval_s": steps_per_frame * control_interval,
         # What ``actuator_commands`` means, declared once instead of per
         # frame: the name, the mechanism it drives, and the range the bundle
@@ -10664,6 +10730,9 @@ def evaluate_success(
     names += [name for name in wanted if name is not None and name not in names]
     control_hz = int(played["episode"]["control_hz"])
     stamp = dict(identity or {})
+    # Every seed is played under the controller the policy was trained with
+    # (ADR-558), and the report says which.
+    played_filter = recorded_command_filter(container.get("header") or {}, context=context)
 
     rows: list[dict[str, Any]] = []
     for seed in spec["seeds"]:
@@ -10790,6 +10859,7 @@ def evaluate_success(
                 },
                 "policy": {
                     **stamp,
+                    "command_filter": dict(run["command_filter"]),
                     "label": str(episode["label"]),
                     "total_reward": float(episode["total_reward"]),
                     "reward_totals": list(episode["reward_totals"]),
@@ -10819,6 +10889,7 @@ def evaluate_success(
         },
         "rig": {key: value for key, value in rig.items() if key != "feet"},
         "contact_offsets": offsets,
+        "command_filter": played_filter,
         "seeds": rows,
         "summary": CadexEvaluation.summarise(rows, spec["predicates"]),
     }
