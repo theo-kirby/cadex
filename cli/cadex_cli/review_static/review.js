@@ -653,12 +653,19 @@
     (Array.isArray(docs.domain) ? docs.domain : []).forEach(function (path) {
       list.push({ key: 'doc:' + path, group: 'Documents', kind: 'doc', label: path.replace(/^docs\//, ''), url: 'doc/current/' + path });
     });
-    // Newest first: each filmed seed's rollout video and its two sheets (ADR-541).
+    // Newest first: a pass's two heroes (ADR-570), then each filmed seed's
+    // rollout video and its two sheets (ADR-541).
     (review.evaluations || []).slice().reverse().forEach(function (e) {
-      var film = e.film || {};
-      if (film.state !== 'ready') return;
+      var film = e.film || {}, heroes = e.heroes || {};
       var title = (e.task_label || e.task_output || e.name) + ' ' + e.verdict + ' ' + e.passed + '/' + e.seeds +
                   (e.relation === 'historical' ? ' (earlier)' : '');
+      [['hero', 'hero'], ['print_bed', 'print bed']].forEach(function (part) {
+        if (e.verdict !== 'pass' || !heroes[part[0]]) return;
+        list.push({ key: 'hero:' + e.name + ':' + heroes[part[0]], group: 'Evaluations', kind: 'image',
+                    url: 'evaluation/' + encodeURIComponent(e.name) + '/' + encodeURIComponent(heroes[part[0]]) + '?v=' + e.stamp,
+                    label: title + ' · ' + part[1] });
+      });
+      if (film.state !== 'ready') return;
       (film.sheets || []).forEach(function (s) {
         [['video', 'video', 'video'], ['overview', 'image', 'filmstrip'], ['detail', 'image', 'detail']].forEach(function (part) {
           if (!s[part[0]]) return;

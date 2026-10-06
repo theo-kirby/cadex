@@ -1728,23 +1728,40 @@ def _evaluation_report(directory: Path) -> tuple[dict[str, Any], tuple[int, ...]
     return report, (stat.st_ino, stat.st_size, stat.st_mtime_ns)
 
 
+#: The heroes a passed evaluation presents (ADR-570), as its report keys them.
+HERO_KEYS = ("hero", "print_bed")
+
+
+def _hero_names(report: Mapping[str, Any]) -> dict[str, str | None]:
+    """Per hero, the file the report's ``heroes`` block names, or None."""
+
+    heroes = report.get("heroes") if isinstance(report.get("heroes"), dict) else {}
+    names: dict[str, str | None] = {}
+    for key in HERO_KEYS:
+        item = heroes.get(key)
+        name = item.get("file") if isinstance(item, dict) else None
+        names[key] = name if isinstance(name, str) and name and set(name) <= _EVALUATION_NAME else None
+    return names
+
+
 def _film_files(directory: Path, report: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    """Every file the report's film block names, resolved inside the evaluation."""
+    """Every file the report's film and heroes blocks name, resolved inside the evaluation."""
 
     files: dict[str, dict[str, Any]] = {}
     film = report.get("film") if isinstance(report.get("film"), dict) else {}
-    for row in film.get("seeds") or []:
-        for key in ("overview", "detail", "video"):
-            item = row.get(key) if isinstance(row, dict) else None
-            name = item.get("file") if isinstance(item, dict) else None
-            if not isinstance(name, str) or not name or not set(name) <= _EVALUATION_NAME:
-                continue
-            resolved = resolve_reference(directory, name)
-            path = directory / name
-            present = bool(resolved["exists"] and not resolved["error"]
-                           and path.is_file() and not path.is_symlink())
-            files[name] = {"exists": present, "error": resolved["error"],
-                           "bytes": path.stat().st_size if present else None}
+    named = [row.get(key) if isinstance(row, dict) else None
+             for row in film.get("seeds") or [] for key in ("overview", "detail", "video")]
+    named += [{"file": name} for name in _hero_names(report).values() if name]
+    for item in named:
+        name = item.get("file") if isinstance(item, dict) else None
+        if not isinstance(name, str) or not name or not set(name) <= _EVALUATION_NAME:
+            continue
+        resolved = resolve_reference(directory, name)
+        path = directory / name
+        present = bool(resolved["exists"] and not resolved["error"]
+                       and path.is_file() and not path.is_symlink())
+        files[name] = {"exists": present, "error": resolved["error"],
+                       "bytes": path.stat().st_size if present else None}
     return files
 
 
@@ -1826,6 +1843,9 @@ def evaluations(project_root: Path | str, accepted: Mapping[str, Any]) -> list[d
                          "seeds": [row.get("seed") for row in film.get("seeds") or []
                                    if isinstance(row, dict)],
                          "sheets": _film_sheets(film)},
+                # A pass's two heroes (ADR-570), named only when the
+                # report names them; a fail has neither.
+                "heroes": _hero_names(report),
                 "stamp": "-".join(str(part) for part in stamp[1:]),
                 "evaluated_at": _datetime.datetime.fromtimestamp(
                     stamp[2] / 1e9, _datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),

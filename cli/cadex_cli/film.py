@@ -81,9 +81,12 @@ FILM_GLOBS = ("seed-*-overview.png", "seed-*-detail.png", "seed-*-rollout.webm")
 #: a command changed (ADR-194); the report belongs in its history and the
 #: film, which the traces can draw again, does not.
 IGNORE_NAME = ".gitignore"
-IGNORE = ("# Written by cadex evaluate (ADR-459). The film is drawn from this evaluation's\n"
-          "# traces and can be drawn again with --film-only; evaluation.json is the record.\n"
-          + "".join(pattern + "\n" for pattern in FILM_GLOBS))
+#: The two heroes a passed evaluation presents (ADR-570), drawn again by
+#: ``--film-only`` like the film, so kept out of the history like it.
+HERO_NAMES = ("hero.png", "print-bed.png")
+IGNORE = ("# Written by cadex evaluate (ADR-459, ADR-570). The film and the heroes are drawn from\n"
+          "# this evaluation and can be drawn again with --film-only; evaluation.json is the record.\n"
+          + "".join(pattern + "\n" for pattern in FILM_GLOBS + HERO_NAMES))
 
 
 class FilmError(RuntimeError):
@@ -612,6 +615,12 @@ def film_digest() -> str:
     return digest.hexdigest()
 
 
+def write_ignore(out: Path) -> None:
+    """Keep what is drawn beside ``evaluation.json`` out of the project's history."""
+
+    (out / IGNORE_NAME).write_text(IGNORE, encoding="utf-8")
+
+
 def clear(out: Path) -> None:
     """Remove a previous film from ``out``."""
 
@@ -639,7 +648,7 @@ def film_evaluation(root: Path, out: Path, report: Mapping[str, Any], *, seeds: 
     _require(start is None or (math.isfinite(start) and start >= 0),
              "the detail start must be a time in the episode, in seconds")
     clear(out)
-    (out / IGNORE_NAME).write_text(IGNORE, encoding="utf-8")
+    write_ignore(out)
     rows = {int(row["seed"]): row for row in report.get("seeds") or []}
     revision = str(report.get("accepted_revision") or "")
     flats, sources, world = retained_solids(root, str(report.get("model_output") or ""))

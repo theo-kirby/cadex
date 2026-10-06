@@ -28,6 +28,13 @@ The report's ``film`` block names what was drawn from the seeds' traces
 on the dark prototype floor, beside ``evaluation.json``. The measurement is
 written before anything is drawn, so a film that could not be made leaves a
 complete report that says so.
+
+A passed evaluation also presents the design that passed (ADR-570): the
+report's ``heroes`` block names ``hero.png``, the studio hero, and
+``print-bed.png``, the printed parts laid flat on print beds beside the
+purchased hardware, both drawn from the accepted attempt's retained
+geometry. A failed evaluation presents nothing, and removes what an earlier
+pass in the same directory left.
 """
 
 from __future__ import annotations
@@ -317,6 +324,64 @@ def add_film(root: Path, out: Path, report: Mapping[str, Any], *, choice: str = 
     return filmed
 
 
+HEROES_SCHEMA = "cadex-heroes-v1"
+#: Report key -> file, beside ``evaluation.json``.
+HERO_FILES = dict(zip(("hero", "print_bed"), film_module.HERO_NAMES))
+
+
+def add_heroes(root: Path, out: Path, report: Mapping[str, Any], *,
+               fit: Mapping[str, Any] | None = None,
+               inventory: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Draw the two heroes of a passed evaluation and write the report again
+    with its ``heroes`` block.
+
+    Drawn from the accepted attempt's retained geometry, never a rebuild, and
+    only when that is the revision evaluated. Each hero stands alone: one
+    that cannot be drawn (no printed part, no inventory) is named under
+    ``errors`` and the other is still made. The measurement is untouched.
+    """
+
+    from .inventory import InventoryError
+    from .render import retained_snapshot
+    from .studio import STUDIO
+
+    for name in HERO_FILES.values():
+        (out / name).unlink(missing_ok=True)
+    block: dict[str, Any] = {"schema": HEROES_SCHEMA, "state": "skipped",
+                             "revision": report.get("accepted_revision"),
+                             "hero": None, "print_bed": None, "errors": {}}
+    if report.get("verdict") != "pass":
+        block["errors"]["evaluation"] = "the evaluation did not pass: a failed evaluation presents nothing"
+    else:
+        try:
+            triangles, summary = retained_snapshot(root, fit)
+            if summary["revision"] != report.get("accepted_revision"):
+                raise InventoryError("the retained accepted attempt is not the revision evaluated")
+        except InventoryError as exc:
+            block["errors"]["geometry"] = str(exc)
+        else:
+            film_module.write_ignore(out)
+            drawers = {
+                "hero": lambda: STUDIO.hero(triangles, summary, fit, inventory),
+                "print_bed": lambda: STUDIO.print_bed(triangles, summary, fit, inventory,
+                                                      name=Path(root).name),
+            }
+            for key, draw in drawers.items():
+                try:
+                    image, facts = draw()
+                except STUDIO.StudioError as exc:
+                    block["errors"][key] = str(exc)
+                    continue
+                (out / HERO_FILES[key]).write_bytes(image)
+                block[key] = {"file": HERO_FILES[key], "bytes": len(image), **facts}
+        made = [key for key in HERO_FILES if block[key]]
+        block["state"] = ("ready" if len(made) == len(HERO_FILES) else
+                          "partial" if made else "failed")
+    presented = {**report, "heroes": block}
+    write_report(out, presented)
+    return presented
+
+
 def failing_predicates(report: Mapping[str, Any]) -> list[str]:
     """``id (n of m)`` for every predicate a seed failed, worst first.
 
@@ -389,8 +454,19 @@ def agent_view(report: Mapping[str, Any], out: Path) -> dict[str, Any]:
         } for row in report.get("seeds") or []],
         "film": {"state": film.get("state"), "error": film.get("error"),
                  "seeds": [row.get("seed") for row in film.get("seeds") or []]},
+        "heroes": hero_files(report, out),
         "report": str(Path(out) / REPORT_NAME),
     })
+
+
+def hero_files(report: Mapping[str, Any], out: Path) -> dict[str, Any]:
+    """The ``heroes`` block as a caller reads it: its state, each hero's path, why one is missing."""
+
+    heroes = report.get("heroes") or {}
+    return {"state": heroes.get("state") or "none",
+            **{key: str(Path(out) / heroes[key]["file"]) if heroes.get(key) else None
+               for key in HERO_FILES},
+            "errors": dict(heroes.get("errors") or {})}
 
 
 def evaluation_cell(report: Mapping[str, Any]) -> str:
@@ -444,5 +520,14 @@ def human_lines(report: Mapping[str, Any]) -> list[str]:
                                if row.get("video")))
     elif film.get("state") == "failed":
         lines.append("  film: not drawn: " + str(film.get("error")))
+    heroes = report.get("heroes") or {}
+    if heroes.get("state") in ("ready", "partial", "failed"):
+        made = [key.replace("_", "-") for key in HERO_FILES if heroes.get(key)]
+        # The report's block carries the bed's facts; the envelope's, its path.
+        bed = heroes.get("print_bed")
+        lines.append("  heroes: " + (" and ".join(made) if made else "none drawn")
+                     + (f" ({bed['beds']} bed(s), {len(bed.get('parts') or [])} printed part(s))"
+                        if isinstance(bed, Mapping) else "")
+                     + "".join(f"; {key}: {text}" for key, text in (heroes.get("errors") or {}).items()))
     return lines
 

@@ -42,6 +42,7 @@ from cadex_cli.evaluate import (
     default_out,
     evaluation_cell,
     failing_predicates,
+    hero_files,
     human_lines,
     retained_inputs,
     run_evaluation,
@@ -243,6 +244,27 @@ def test_the_prose_block_tallies_every_predicate_and_every_ending() -> None:
     report = RunReport(evaluation=REPORT)
     assert report.to_json()["evaluation"] == REPORT
     assert [line for line in report_lines(report) if line.startswith("evaluate ")] == [lines[0]]
+
+
+def test_the_heroes_line_reads_the_report_and_the_envelope_alike(tmp_path) -> None:
+    """ADR-570: the report's block carries the bed's facts, the envelope's view
+    (:func:`hero_files`) only paths; the prose line reads either."""
+
+    block = {"state": "partial", "hero": {"file": "hero.png"}, "print_bed": None,
+             "errors": {"print_bed": "the inventory names no printed part to lay on a bed"}}
+    expected = "  heroes: hero; print_bed: the inventory names no printed part to lay on a bed"
+    assert human_lines({**REPORT, "heroes": block})[-1] == expected
+    view = hero_files({**REPORT, "heroes": block}, tmp_path)
+    assert view == {"state": "partial", "hero": str(tmp_path / "hero.png"), "print_bed": None,
+                    "errors": block["errors"]}
+    assert human_lines({**REPORT, "heroes": view})[-1] == expected
+    ready = {"state": "ready", "hero": {"file": "hero.png"}, "errors": {},
+             "print_bed": {"file": "print-bed.png", "beds": 2, "parts": [{}] * 10}}
+    assert human_lines({**REPORT, "heroes": ready})[-1] == (
+        "  heroes: hero and print-bed (2 bed(s), 10 printed part(s))")
+    assert human_lines({**REPORT, "heroes": hero_files({**REPORT, "heroes": ready}, tmp_path)})[-1] == (
+        "  heroes: hero and print-bed")
+    assert not [line for line in human_lines(REPORT) if "heroes" in line]
 
 
 # -- the child --------------------------------------------------------------
@@ -604,6 +626,23 @@ def test_an_accepted_policy_is_evaluated_as_one_command(engine, tmp_path, capsys
         assert evaluation["film"]["seeds"][0][key] == str(path.parent / filmed[key]["file"])
     assert filmed["detail"]["start_source"] == "the seed's first disturbance"
     assert any(note.startswith("evaluation pass: 3 of 3 seeds pass") for note in envelope["notes"])
+    # A pass presents the design that passed (ADR-570): the studio hero and
+    # the printed parts on a bed, drawn from the attempt evaluated, beside
+    # the report and out of the history with the film.
+    heroes = report["heroes"]
+    assert heroes["state"] == "ready" and heroes["errors"] == {}, heroes
+    assert heroes["revision"] == state["accepted_revision"]
+    for key, name in (("hero", "hero.png"), ("print_bed", "print-bed.png")):
+        image = (path.parent / name).read_bytes()
+        assert image.startswith(b"\x89PNG") and heroes[key]["file"] == name
+        assert heroes[key]["bytes"] == len(image)
+        assert evaluation["heroes"][key] == str(path.parent / name)
+    assert heroes["hero"]["revision"] == state["accepted_revision"]
+    bed = heroes["print_bed"]
+    # Both drawn parts are hand-modelled, so both are printed; one bed holds them.
+    assert sorted(row["component"] for row in bed["parts"]) == ["block", "paddle"]
+    assert bed["beds"] == 1 and bed["not_fitting"] == [] and bed["hardware"] == []
+    assert any(note.startswith("heroes ready:") for note in envelope["notes"])
 
 
 @needs_mujoco
@@ -621,7 +660,9 @@ def test_the_film_is_chosen_skipped_and_drawn_again_without_measuring(engine, tm
         "state": "skipped", "error": None, "seeds": []}, envelope
     path = Path(envelope["evaluation"]["report"])
     measured = json.loads(path.read_text(encoding="utf-8"))
-    assert measured["film"]["state"] == "skipped" and not list(path.parent.glob("*.png"))
+    assert measured["film"]["state"] == "skipped" and not list(path.parent.glob("seed-*.png"))
+    # No film is not no presentation: the pass still has its heroes (ADR-570).
+    assert sorted(p.name for p in path.parent.glob("*.png")) == ["hero.png", "print-bed.png"]
     traces = {p.name: p.stat().st_mtime_ns for p in path.parent.glob("seed-*-trace.json")}
     assert len(traces) == 3
 
@@ -663,6 +704,18 @@ def test_a_policy_that_fails_its_spec_exits_zero_with_the_verdict(engine, tmp_pa
     assert Path(envelope["evaluation"]["report"]) == out / REPORT_NAME
     progress = (project / "PROGRESS.md").read_text(encoding="utf-8")
     assert "evaluation fail 0/3 seeds: brief (3 of 3)" in progress
+    # A failed evaluation presents nothing (ADR-570), and a hero an earlier
+    # pass left in the same directory goes.
+    report = json.loads((out / REPORT_NAME).read_text(encoding="utf-8"))
+    assert report["heroes"]["state"] == "skipped"
+    assert (report["heroes"]["hero"], report["heroes"]["print_bed"]) == (None, None)
+    assert envelope["evaluation"]["heroes"]["hero"] is None
+    assert not (out / "hero.png").exists() and not (out / "print-bed.png").exists()
+    (out / "hero.png").write_bytes(b"left by a pass")
+    code, envelope = _run(capsys, "evaluate", "--project", str(project), "--out", str(out),
+                          "--film-only", "--film", "none")
+    assert code == EXIT_OK and envelope["evaluation"]["heroes"]["state"] == "skipped", envelope
+    assert not (out / "hero.png").exists()
 
 
 def test_nothing_to_evaluate_is_rejected_and_runs_no_child(engine, tmp_path, capsys,

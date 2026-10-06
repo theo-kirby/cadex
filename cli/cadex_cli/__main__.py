@@ -50,7 +50,7 @@ from .bridge import MODELLING_OPS, Bridge, ToolCall
 from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine, source_comparison
 from .export import ExportedOutput, ExportError, export_blueprints, export_outputs, parse_formats
-from .inventory import InventoryError, read_inventory, write_inventory
+from .inventory import InventoryError, inventory_summary, read_inventory, write_inventory
 from .render import acquire_snapshot, describe_proxies, write_render
 from .section import write_section
 from .revision_meshes import (
@@ -66,6 +66,7 @@ from .clearance import (
     MAXIMUM_COMMON_VOLUME_MM3,
     MINIMUM_CLEARANCE_MM,
     bounds_agreement,
+    read_fit,
     write_clearance,
 )
 from .project_docs import (
@@ -123,10 +124,12 @@ from .evaluate import (
     EvaluateError,
     EvaluateRefused,
     add_film,
+    add_heroes,
     check_out,
     default_out,
     evaluation_cell,
     failing_predicates,
+    hero_files,
     read_report,
     retained_inputs,
     run_evaluation,
@@ -2017,6 +2020,15 @@ def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
             root, out, measured, choice=args.film, inventory=inventory,
             start=args.detail_start, step=args.detail_step, video=not args.no_video,
             progress=_progress)
+        # A pass presents the design that passed (ADR-570): the hero and the
+        # print bed, from the same pinned attempt. The fit names the floor;
+        # the summarised inventory tells printed parts from purchased ones.
+        try:
+            fit = read_fit(_client)
+        except Exception:  # noqa: BLE001 - as cadex render: an unreadable fit leaves every part drawn
+            fit = None
+        measured = add_heroes(root, out, measured, fit=fit,
+                              inventory=inventory_summary(inventory) if inventory else None)
         path = out / EVALUATION_NAME
         report.evaluation = {
             key: measured[key] for key in (
@@ -2030,6 +2042,13 @@ def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
             "seeds": [{"seed": row["seed"],
                        **{key: str(out / row[key]["file"]) for key in ("overview", "detail", "video")
                           if row.get(key)}} for row in film["seeds"]]}
+        report.evaluation["heroes"] = hero_files(measured, out)
+        heroes = report.evaluation["heroes"]
+        if heroes["state"] != "skipped":
+            report.notes.append("heroes {:s}: {:s}{:s}.".format(
+                heroes["state"], ", ".join(str(heroes[key]) for key in ("hero", "print_bed")
+                                           if heroes[key]) or "none drawn",
+                "".join(f"; {key}: {text}" for key, text in heroes["errors"].items())))
         failing = failing_predicates(measured)
         report.notes.append(
             "evaluation {:s}: {:d} of {:d} seeds pass{:s}; {:s}.".format(

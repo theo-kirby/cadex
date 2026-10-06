@@ -1773,7 +1773,8 @@ FLAT_PLANE_MM = 0.05
 FLAT_CANDIDATES = 64
 BED_APPROXIMATION = ('each printed part seated on its largest flat face (the face it can rest '
                      'on with nothing below it) and turned to its smallest footprint, then '
-                     'packed in rows with a fixed gap; a picture of a layout, not a slicer\'s '
+                     'packed onto as many beds as it takes by MaxRects with a fixed gap; a '
+                     'picture of a layout, not a slicer\'s '
                      'plate: no supports, brim or orientation for strength are considered')
 
 
@@ -2207,13 +2208,12 @@ def _palette_hex(palette):
     return {role: '#%02X%02X%02X' % tuple(rgb) for role, rgb in {**ROLE_COLORS, **palette}.items()}
 
 
-def render_files(triangles, source, root, fit, inventory, relative_dir):
-    """``(files, summary)``: the review render of one snapshot, not yet written.
+def _scene(triangles, source, fit, inventory):
+    """The drawn scene of a snapshot, as every studio image of it sees it.
 
-    Four studio SVG views, the 1024 px hero, the concept sheet and
-    ``summary.json``, keyed by file name; paths inside the summary are under
-    ``relative_dir``. ``root`` is the project root, read only for the sheet's
-    mass. Nothing is written, so a refusal leaves no partial views.
+    ``(summary, names, environment, purchased, appearance, palette,
+    prepared, shadow)``: ``summary`` is ``source`` with its environment,
+    appearance rows and palette added; ``names`` the objects drawn.
     """
     summary = dict(source)
     environment, purchased = classify(summary, fit, inventory)
@@ -2225,9 +2225,39 @@ def render_files(triangles, source, root, fit, inventory, relative_dir):
     summary['environment'] = sorted(environment)
     summary['appearance'] = _appearance_rows(names, looks, appearance, purchased)
     summary['palette'] = _palette_hex(palette)
-    start = time.perf_counter()
     prepared = _prepare(_studio_parts(triangles, summary, names, looks))
-    shadow = _contact_shadow(prepared)
+    return summary, names, environment, purchased, appearance, palette, prepared, _contact_shadow(prepared)
+
+
+def _hero(prepared, shadow):
+    return studio(prepared, HERO, bounds=_frame(prepared, HERO, 0.10), size=HERO_SIZE, shadow=shadow)
+
+
+def hero(triangles, source, fit, inventory):
+    """``(png bytes, facts)``: the studio hero of one snapshot alone.
+
+    The same picture :func:`render_files` draws as ``hero.png``, without the
+    review views and the sheet around it: what a passed evaluation presents.
+    """
+    summary, _names, _env, _purchased, _appearance, _palette, prepared, shadow = _scene(
+        triangles, source, fit, inventory)
+    pixels, details = _hero(prepared, shadow)
+    return png(pixels, HERO_SIZE), {'revision': summary['revision'], 'basis': HERO, 'size': HERO_SIZE,
+                                    'environment': summary['environment'],
+                                    'projection_bounds_mm': details['projection_bounds_mm']}
+
+
+def render_files(triangles, source, root, fit, inventory, relative_dir):
+    """``(files, summary)``: the review render of one snapshot, not yet written.
+
+    Four studio SVG views, the 1024 px hero, the concept sheet and
+    ``summary.json``, keyed by file name; paths inside the summary are under
+    ``relative_dir``. ``root`` is the project root, read only for the sheet's
+    mass. Nothing is written, so a refusal leaves no partial views.
+    """
+    start = time.perf_counter()
+    summary, names, environment, purchased, appearance, palette, prepared, shadow = _scene(
+        triangles, source, fit, inventory)
     files, summary['views'] = {}, {}
     paper, caption = hex_colour(PALETTE['bg']), hex_colour(PALETTE['ink_2'])
     for name, basis in BASES.items():
@@ -2243,7 +2273,7 @@ def render_files(triangles, source, root, fit, inventory, relative_dir):
     # The studio hero (DESIGN-LANGUAGE.md section 7): one PNG, the design's
     # presented image rather than a review view.
     hero_start = time.perf_counter()
-    pixels, details = studio(prepared, HERO, bounds=_frame(prepared, HERO, 0.10), size=HERO_SIZE, shadow=shadow)
+    pixels, details = _hero(prepared, shadow)
     files['hero.png'] = png(pixels, HERO_SIZE)
     summary['hero'] = {**details, 'basis': HERO, 'size': HERO_SIZE, 'path': f'{relative_dir}/hero.png',
                        'seconds': time.perf_counter() - hero_start}

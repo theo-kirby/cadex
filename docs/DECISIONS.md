@@ -36000,3 +36000,61 @@ cases, the printed/purchased/cut/world split, the hardware rows and both refusal
 tool surface and the protocol are unchanged.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-570 — A passed evaluation presents the design that passed: the hero and the print bed, beside its report (2026-10-06, orun4 H2)
+
+**Context.** The orun4 charter's H2 (and B2) asks that a policy passing evaluation
+produce two heroes of the design that passed, on the dark floor, shown in the 2D
+viewport and listed in `/api/project`, with a failed evaluation making neither.
+ADR-569 drew the print-bed picture; nothing called it, and the studio hero was drawn
+only by `cadex render`, which rebuilds. `cadex evaluate` must never rebuild, restore or
+accept a script (ADR-457).
+
+**Decision.**
+
+- **When.** After the measurement and the film, `cadex evaluate` (and `--film-only`)
+  calls `evaluate.add_heroes`. A `pass` verdict draws both heroes; any other verdict
+  draws neither and removes `hero.png` and `print-bed.png` left in the directory by an
+  earlier pass. No new flag, no new tool: the agent's `evaluate` tool gets them by the
+  same call, and its bounded view names their paths under `heroes`.
+- **From what.** `render.retained_snapshot` builds the display block a rebuild reply
+  carries (`cadexd._display_block`: each output's solved placement and its
+  tessellation, paths made absolute) from the accepted attempt's retained
+  `result.json`, and reads it with `CadexStudio.snapshot`. It is refused when the
+  attempt is not the revision evaluated. The fit (for the floor) and the inventory
+  (printed or purchased, declared looks) are read from the pinned attempt through
+  `inspect`, and the inventory the film already read is summarised rather than read
+  again.
+- **What.** `CadexStudio.hero` draws the studio hero alone; `render_files` and it now
+  share `_scene` and `_hero`, so `hero.png` here is the picture `cadex render` draws.
+  `CadexStudio.print_bed` is ADR-569's. Both are written beside `evaluation.json` and
+  named in the report's `heroes` block (`cadex-heroes-v1`): `state` (`ready`, `partial`,
+  `failed`, `skipped`), `revision`, per hero its `file`, size and facts, and `errors`.
+  Each hero stands alone: a design with no printed part gets a hero and an error for
+  the print bed. A hero that cannot be drawn is reported and does not change the exit
+  code. The measurement is never touched.
+- **Kept out of history.** The evaluation's `.gitignore` names the two heroes beside the
+  film patterns: `--film-only` draws them again.
+- **The page.** Each `/api/project` evaluation row carries `heroes`: `hero` and
+  `print_bed`, the file names its report names, or `null`. `GET /evaluation/<name>/<file>`
+  serves them under the same allowlist as the film, so a hero file the report does not
+  name is a 404. The 2D viewport lists a pass's `hero` and `print bed` as images in the
+  Evaluations group, before that evaluation's film.
+- **Fixed with it.** `BED_APPROXIMATION` said parts are "packed in rows"; packing is
+  MaxRects (ADR-569), and it now says so.
+
+**Measured** on the scratch copy `orun4-biped-sts` (accepted `14b7223ee485`, 55 drawn
+objects, 259,437 triangles), `cadex evaluate --film-only` on its passing evaluation:
+the retained snapshot reads in 0.8 s, the hero takes 5.8 s and the print bed 5.9 s.
+The print bed is **byte-identical** to `docs/probes/orun4/h2-print-bed.png`, which
+ADR-569 drew from a rebuild snapshot of the same revision, so the retained-geometry
+path and the rebuild path agree.
+
+**Consequences.** `test_evaluate.py`: on the live engine a pass writes both heroes of
+the evaluated revision (both hand-modelled parts on one bed), `--film none` still makes
+them, and a fail makes neither and removes a stale one; the prose line reads the
+report's block and the envelope's view. `test_review_evaluation.py`: the row's
+`heroes`, the allowlist, and in Chromium the 2D viewport listing a pass's hero and print
+bed before its film and loading each. The tool surface and the protocol are unchanged.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
