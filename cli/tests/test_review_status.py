@@ -99,8 +99,24 @@ def _refresh(page) -> None:
     page.evaluate("window.cadexReview.refresh()", await_promise=True)
 
 
+_clock = time.time  # the test's own clock, replaced to cross a minute boundary
+
+
 def _iso(seconds_ago: float) -> str:
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - seconds_ago))
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(_clock() - seconds_ago))
+
+
+def _ticking_across_a_minute():
+    """A clock a second on per reading, whose second and third readings fall
+    either side of a minute: the boundary between writing ``saved_at`` and
+    any later reading, every time."""
+
+    reading = [(time.time() // 60) * 60 - 1.5]
+
+    def clock() -> float:
+        reading[0] += 1.0
+        return reading[0] - 1.0
+    return clock
 
 
 def test_a_training_run_is_the_stage_with_its_numbers_and_bounded_sparklines(tmp_path):
@@ -146,13 +162,22 @@ def test_a_failed_run_is_the_stage_until_a_revision_is_accepted_after_it(tmp_pat
     assert stage["run"] == RUN and stage["training"]["state"] == "failed"
 
 
-def test_designing_turns_idle_once_the_window_passes(tmp_path):
+@pytest.mark.parametrize("clock", ["wall", "across_a_minute"])
+def test_designing_turns_idle_once_the_window_passes(tmp_path, monkeypatch, clock):
+    """``since`` is the accepted revision's own ``saved_at``, compared with the
+    one string written rather than a second reading of the clock, which
+    failed whenever a minute turned between the two (ADR-578)."""
+
+    if clock == "across_a_minute":
+        monkeypatch.setattr(sys.modules[__name__], "_clock", _ticking_across_a_minute())
     root = _review_project(tmp_path)
-    _history(root, _iso(DESIGNING_WINDOW_S - 60))
+    _history(root, _iso(DESIGNING_WINDOW_S - 120))
     assert _stage(root)["state"] == "designing"
-    _history(root, _iso(DESIGNING_WINDOW_S + 60))
+    saved_at = _iso(DESIGNING_WINDOW_S + 120)
+    _history(root, saved_at)
     stage = _stage(root)
-    assert stage["state"] == "idle" and stage["since"].startswith(_iso(DESIGNING_WINDOW_S + 60)[:16])
+    assert stage["state"] == "idle"
+    assert stage["since"] == saved_at.replace("Z", "+00:00")
 
 
 def test_an_evaluation_without_its_report_is_the_stage_while_it_writes(tmp_path):

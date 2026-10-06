@@ -192,6 +192,7 @@ its reason are listed in those ADRs.
 | ADR-575 | a project is on the dashboard from its agent's first tool call, not its first script |
 | ADR-576 | a checkpoint costs a rollout, not a compile: the witness rollout is jitted once |
 | ADR-577 | the checkpoint rule says what a checkpoint does and what it costs, not when the owner is watching |
+| ADR-578 | the idle-stage test compares the one timestamp it wrote, not a second reading of the clock |
 
 ## 7. Remaining defects
 
@@ -207,10 +208,11 @@ its reason are listed in those ADRs.
    exact-geometry stage timed out on 64+ components.
 3. **The CLI suite is 614 s as one command**, over the 8-minute target
    (§6), and over the shell's 600 s limit once `pixi` overhead is added.
-4. **A known flake**: `test_designing_turns_idle_once_the_window_passes`
-   compares a minute prefix against a timestamp recomputed later, and fails
-   across a minute boundary. It was left alone, as the question policy
-   says.
+4. **A flake, now fixed (ADR-578)**: `test_designing_turns_idle_once_the_window_passes`
+   compared a minute prefix against a timestamp recomputed later, and failed
+   across a minute boundary. It now compares the one timestamp it wrote, and
+   runs again under a clock that crosses a minute, which fails the old
+   assertion every time.
 5. **ADR-559's assumption**: a supervisor terminated by a signal with no
    stop request reads `interrupted` in `train_status` and failed on the
    page. The owner may revise this.
@@ -233,7 +235,8 @@ All ten build criteria, F1 to D3, and this report have evidence recorded,
 and the reconcile of `650d9e0b` folded D2, D3 and this report's first record;
 the reconcile at `32810ecb` folded ADR-574 to ADR-576. Defect 1 is fixed
 (ADR-574), and orun3's three long-term defects are fixed (ADR-575 to
-ADR-577). Defects 2 to 5 are open and stay listed above. **Done is claimed
-for critic review.** No owner box is ticked. ADR-577's record and this
-report's update wait for the next reconcile pass, which work iterations are
-forbidden to run.
+ADR-577), and so is defect 4 (ADR-578). Defects 2, 3 and 5 are open and
+stay listed above. **Done is withdrawn until** defect 3 is fixed (the CLI
+suite under 480 s, the owner's target) and a reconcile pass has folded the
+records since `32810ecb`, which work iterations are forbidden to run. No
+owner box is ticked.

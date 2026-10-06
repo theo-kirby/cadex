@@ -36365,3 +36365,28 @@ default, protocol op or trainer behaviour changed; `checkpoint_every` still
 defaults to 0.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-578 — The idle-stage test compares the one timestamp it wrote, not a second reading of the clock (2026-10-06, orun4 long-term)
+
+**Context.** `test_review_status.py::test_designing_turns_idle_once_the_window_passes`
+wrote a revision's `saved_at` from one reading of the clock, then asserted
+that the stage's `since` started with the minute of a *second* reading. When a
+minute turned between the two readings the test failed, though the server was
+right: `since` is the accepted revision's own `saved_at` (ADR-542). The orun4
+report listed it as a known flake, and a flaky test means a green gate is
+not reliably green.
+
+**Decision.** The test reads the clock once for the timestamp it asserts on,
+and compares `since` with that string exactly, to the second, rather than a
+minute prefix. The test's helper reads a module-level `_clock`, and the test
+also runs with that clock replaced by one that ticks across a minute
+boundary between writing `saved_at` and any later reading. Its windows sit
+120 s either side of `DESIGNING_WINDOW_S`, so a clock up to a minute behind
+the server's still lands each case on the same side. The server is unchanged.
+
+**Consequences.** The `across_a_minute` case fails on the old assertion every
+time (`'…T22:45:59+00:00'.startswith('…T22:46')`) and passes on the new one;
+the `wall` case is the test as it ran before. Nothing else in the suite or the
+product moves.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
