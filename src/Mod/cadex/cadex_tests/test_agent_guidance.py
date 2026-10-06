@@ -106,3 +106,30 @@ def test_no_guidance_file_names_a_project():
     for source in [SOURCE, *STYLES]:
         found = re.findall(PROJECT_NAME, source.read_text(encoding='utf-8'), re.I)
         assert not found, (source.name, found)
+
+
+#: What the reference legged robot taught, by the paragraph that carries it
+#: (ADR-565, docs/probes/orun4/LESSONS.md). The base rules hold for any machine.
+BASE_LESSONS = ('A SOLID BUILT FROM TANGENT PRIMITIVES IS MEASURED', 'SET A LIMIT FROM THE SWEEP',
+                'THE SIMULATED BODY IS THE BUILT BODY', 'under its centre of mass, measured on the model',
+                'Bound it on both sides', 'THE TARGET SPEED MAKES THE INTENDED MOTION THE EASY ONE',
+                'CENTRE THE COMMAND RANGE ON THE REST POSE', 'PAY FOR PROGRESS ONLY WHILE UPRIGHT',
+                'A CHARGE AGAINST A DEGENERATE MOTION HAS A CEILING')
+STYLE_LESSONS = ('THE LOOK OF A LIMB', 'lightening window', 'ACTUATORS INSIDE THE LIMB',
+                 'FEET ARE COMPACT HULLS WITH A FLAT STRIP', 'never a large or flat plate',
+                 'two keels with a flat strip between them', 'HIPS WIDE ENOUGH FOR THE FEET TO PASS',
+                 'inward much tighter than outward', 'THE STEP IS WHAT IS PAID')
+
+
+def test_the_reference_lessons_are_in_the_base_and_the_style_they_belong_to():
+    base = _body()
+    style = _body(MODULE_DIR / 'CadexAgentStyle.printed-legged-robot.md')
+    for rule in BASE_LESSONS:
+        assert rule in base, rule
+        assert rule not in style, rule
+    for rule in STYLE_LESSONS:
+        assert rule in style, rule
+        assert rule not in base, rule
+    # Lessons enter as rules, never as the reference robot's numbers made defaults.
+    for number in ('160 mm/s', '52 mm', '64 mm', '0.65 kg', '8 degrees'):
+        assert number not in base + style, number

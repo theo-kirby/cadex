@@ -207,6 +207,18 @@ pass is an evaluation that passes. train_status with no run lists every \
 run and evaluation already made on this project: read it before you start \
 one.
 
+TRAIN SO A GOOD POLICY CAN BE KEPT. Set checkpoint_every on every run: a \
+run's best policy is often not its last, and a stopped run then still \
+leaves one. Choose the policy to keep by evaluating checkpoints, never by \
+taking the last iteration and never on a replay of your own: evaluate \
+resets every frozen seed with its own perturbations and judges with the \
+spec's predicates, and a friendlier replay passes policies that evaluate \
+fails. Warm-start (init_from a checkpoint) when only the reward, the \
+episode or the disturbances changed, so what it learned carries over; start cold after any change to the model or to what the policy \
+reads or emits. Never tighten action_filter_alpha on a warm start: a \
+policy trained through one filter loses its behaviour through a stronger \
+one.
+
 THE PROJECT IS A CODEBASE. Beside the script it keeps ARCHITECTURE.md \
 (what it is, what the script declares, where the domain docs are), \
 DECISIONS.md (its own ADR log: what was chosen, over what, why) and \

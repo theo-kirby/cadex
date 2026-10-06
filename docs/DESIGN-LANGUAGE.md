@@ -44,12 +44,18 @@ is in a style.
 | joints are horn caps, one design for the robot (§3) | style | servo-horn specific |
 | no face, and not the mascot box (§1, §4) | style | a robot's look; a crane has neither risk |
 | legs taper both ways, are long against their joints, end in a designed foot (§5) | style | legged only |
+| a solid of tangent primitives is measured; a joint's limit and spacing come from its sweep | base | true of any mechanism (ADR-565) |
+| the simulated body is the built body: contacts are unions of collision primitives, the support under the measured centre of mass | base | a crane on outriggers tips the same way (ADR-565) |
+| a learned task: speed bounded both ways, a target the intended motion reaches most easily, command range centred on the rest pose, progress only while upright, a ceiling on anti-degenerate charges | base | true of any learned motion (ADR-565) |
+| training practice: checkpoints on, keep the policy `evaluate` passes, when to warm-start, never tighten the filter on one | base (CLI guidance) | true of any task (ADR-565) |
+| tapered limb plates with a lightening window and round bosses; the knee actuator inside the thigh | style | a legged look; the actuator placement is the owner's taste, *owner to confirm* (ADR-565) |
+| compact hull feet with a flat strip between twin keels; hips wide enough, inward roll limited, for the feet to pass; pay for the step | style | legged only (ADR-565) |
 
 **The rest of this document is the `printed-legged-robot` style's
 evidence**, from orun1's ratings, together with the base rules that came
 out of the same work (marked *base* where they appear). The ledger of what
-the reference legged-robot project adds to the style is
-`docs/probes/orun4/LESSONS.md`.
+the reference legged-robot project added to the base and the style, row by
+row with its evidence, is `docs/probes/orun4/LESSONS.md` (ADR-565).
 
 **Where it comes from (orun1, ADR-479).** ot10 wrote this language from a
 set of reference images (ADR-411). The owner's verdict on what it produced

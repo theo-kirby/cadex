@@ -35761,3 +35761,56 @@ trainer 25 s and fixture round 22 s). The thirds stay the way to run the suite i
 foreground. No further cuts are taken under this owner note; the run moves to G2.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-565 — The reference legged robot's lessons enter the base and the printed-legged-robot style as general rules (2026-10-06, orun4 G2)
+
+**Context.** The owner's last design session produced a printed biped on bus servos that
+passed its evaluation 10/10 after 26 revisions and 13 training runs. Its `DECISIONS.md`
+records what each change did to the walk and the fit. orun4's charter (G2) asks that what
+worked become the system's: written into Cadex's own guidance as general rules with their
+reasons, the domain-neutral ones in the base and the legged ones and the look in the
+`printed-legged-robot` style (ADR-560), with nothing in Cadex naming that project. The
+ledger `docs/probes/orun4/LESSONS.md` lists nineteen lessons (a change with a recorded
+effect) and six choices weighed with no recorded effect, each with its evidence.
+
+**Decision.** Every ledger row has a destination, with the reason. The test for base
+against style is the charter's: a rule that would be wrong for a crane, a wheeled base or a
+fixed arm goes in the style; where unsure, the row says *owner to confirm*.
+
+- **Base, engine guidance** (`CadexAgentGuidance.md`): a solid built from tangent primitives
+  is measured against its computed volume and a rounded hull is built as a filleted slab;
+  a joint's limit and its spacing are set together from the sweep, asymmetric where the
+  geometry is, and re-read when a neighbouring part grows; *the simulated body is the
+  built body* (contact surfaces are unions of collision primitives, the support sits under
+  the measured centre of mass); in the walking task, speed bounded on both sides, a target
+  speed that makes the intended motion the easy one, the command range centred on the
+  rest pose through `command_limits_degrees`, progress paid only while upright, a ceiling
+  on charges against degenerate motion, and heading charged from the first run when the
+  spec bounds it.
+- **Base, CLI guidance** (`cli/cadex_cli/guidance.py`, *train so a good policy can be
+  kept*): checkpoints on every run; keep the checkpoint `evaluate` passes, not the last
+  iteration or a friendlier replay; warm-start only across reward, episode or disturbance
+  changes; never tighten `action_filter_alpha` on a warm start.
+- **Style** (`CadexAgentStyle.printed-legged-robot.md`): the look of a limb (tapered plate,
+  lightening window, round bosses); the knee actuator inside the thigh (*owner to confirm*:
+  taste, no measured effect); compact hull feet with a flat strip between twin keels,
+  centred under the centre of mass; hips wide enough, with inward roll limited, for the
+  feet to pass; pay for the step (a target speed full steps reach most easily, swing and
+  slip terms, a common-mode hip charge).
+- **Tool**: the ignored command filter is fixed by ADR-558, so its workaround enters no
+  guidance. **Not adopted**: a missing hip yaw as the cause of residual heading drift, an
+  observation never tested.
+
+No guidance file gives the reference project's numbers as defaults or names it; the
+existing test that no guidance file names a project still holds. The tool surface is
+unchanged.
+
+**Consequences.** An agent reading only the base now hears the mechanical and training
+lessons phrased for any machine; one in a project that chose the style also hears the
+legged rules and the look. Tests in both guidance suites pin each adopted rule in the file
+it went to and that no style rule leaked into the base. The fresh-session check, whether an
+agent given the style follows the foot, joint and clearance rules unprompted, is the next
+G2 unit and not claimed here. Three rows wait for the owner: the foot rule's phrasing, the
+direction of the target-speed move (it went up, not down), and the knee placement.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

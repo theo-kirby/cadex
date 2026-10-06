@@ -196,3 +196,14 @@ def test_the_mcp_server_instructions_follow_the_projects_style(tmp_path):
     assert main(['style', '--project', str(tmp_path), STYLE]) == 0
     chosen = session.instructions()
     assert f'design style `{STYLE}`' in chosen and len(chosen) <= BRIEF_LIMIT
+
+
+def test_the_training_lessons_are_in_the_base_and_reach_every_project():
+    # ADR-565: training practice the reference legged robot learned the hard
+    # way, phrased for any task, so it is in the base with no style chosen.
+    text = " ".join(instructions().split())
+    for rule in ("TRAIN SO A GOOD POLICY CAN BE KEPT", "Set checkpoint_every on every run",
+                 "never by taking the last iteration",
+                 "Never tighten action_filter_alpha on a warm start",
+                 "start cold after any change to the model"):
+        assert rule in text, rule
