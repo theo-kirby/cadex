@@ -35720,3 +35720,44 @@ the 8-minute target: what is left is mostly real-engine end-to-end walks
 keep list protects at least one of.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-564 — The CLI suite gets lighter: last cut, the remote-walk parity test trains with the fixture trainer (2026-10-06, orun4 owner note)
+
+**Context.** ADR-563 left the suite at 647 s. The critic named one last cut: the 39 s
+remote-walk parity test trained twice with the real CPU trainer, though its claim is
+the remote leg's parity with the local one, and real CPU training through the walk is
+already pinned by `test_walk.py::test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates`.
+
+**Decision.**
+
+1. `test_walk.py::test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher`
+   trains both walks with `test_loop.py`'s `FIXTURE_TRAINER` (a `.cxpolicy` from
+   `dynamics_policy_fixtures.policy_container`), locally through `train.TRAINER_SCRIPT`
+   and remotely through the stand-in dispatcher. Every other leg is still the real
+   engine: declare, rollout, render, section, clearance and inventory, and every parity
+   assertion stays, including the dispatcher's pinned argv. It now needs only mujoco,
+   not a training venv. Its device assertion reads the fixture's `"fixture"`.
+2. `dynamics_policy_fixtures.policy_container` builds its network over
+   `CadexDynamics.policy_channels` (ADR-408), not every task channel. A task with a
+   privileged channel (the hinged arm's `com` and `effort`) got a fixture policy the
+   engine rightly refused (`observes 5 channels where this task's policy reads 1`); a
+   task with none is unchanged.
+3. **Not merged:** `test_loop.py` has one real-trainer test, not two.
+   `test_one_round_of_the_loop_runs_through_the_product_path` already uses the fixture
+   trainer and pins the MCP evaluate round; the real-trainer test pins checkpoints and
+   the supervisor's digest. They do not duplicate each other.
+
+**Evidence.** The parity test 39 s → 18.6 s. The whole suite as **one** foreground
+command (`CUDA_VISIBLE_DEVICES= timeout 590 pixi run python -m pytest -q cli/tests`):
+**613.9 s (10.2 min)**, 1193 passed, 1 skipped, 1 failed. The failure was the timeout
+itself: `timeout` sent SIGTERM at 590 s while
+`test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates` was running (`the walk
+was stopped on request: SIGTERM reached it`); pixi did not exit, so the run finished
+past the limit. Alone, that test passed in 63.9 s. The suite went 1017 s → 793 s → 647 s
+(thirds) → 614 s (one command) over ADR-562–564. **The 8-minute target is not met**:
+what is left is real-engine end-to-end walks, evaluations and trainer runs the keep list
+protects (slowest: the real-CPU walk 53 s, the one-command evaluate 31 s, the loop's real
+trainer 25 s and fixture round 22 s). The thirds stay the way to run the suite in the
+foreground. No further cuts are taken under this owner note; the run moves to G2.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

@@ -11,6 +11,7 @@ artifacts and comparison history (one iteration × four environments per run).
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -1613,21 +1614,29 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
         assert (out1 / video["path"]).is_file()
 
 
-@pytest.mark.skipif(
-    REAL_TRAINER_PYTHON is None,
-    reason="No training venv with jax and mujoco (training/SETUP.md).",
-)
+@pytest.mark.skipif(importlib.util.find_spec("mujoco") is None,
+                    reason="mujoco is not importable here")
 def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
-    engine, tmp_path, capsys, monkeypatch, cpu_training
+    engine, tmp_path, capsys, monkeypatch
 ) -> None:
-    """Real CPU legs through the pinned remote argv; no SSH or remote run.
+    """Real engine legs through the pinned remote argv; no SSH or remote run.
 
-    One mechanism: the remote leg's parity with the local one does not
-    depend on it, and the carriage's own walk is
-    ``test_the_same_walk_handles_a_linear_carriage``."""
+    Both walks train with the fixture trainer (ADR-564): the claim is the
+    remote leg's parity with the local one, and real CPU training through
+    the walk is ``test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates``.
+    One mechanism: the parity does not depend on it, and the carriage's own
+    walk is ``test_the_same_walk_handles_a_linear_carriage``."""
 
     mechanism = "hinged-arm"
-    from test_train import TRAINER_SOURCE
+    from cadex_cli import train as train_module
+    from conftest import SOURCE_MODULE_DIR
+    from test_loop import FIXTURE_TRAINER
+
+    trainer = tmp_path / "fixture_train.py"
+    trainer.write_text(FIXTURE_TRAINER.format(
+        module_dir=str(SOURCE_MODULE_DIR), tests_dir=str(SOURCE_MODULE_DIR / "cadex_tests")),
+        encoding="utf-8")
+    monkeypatch.setenv(train_module.TRAINER_PYTHON_ENV, sys.executable)
 
     dispatcher = tmp_path / "dispatch.py"
     dispatch_log = tmp_path / "dispatch.json"
@@ -1638,8 +1647,8 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
         "args = sys.argv[1:]\n"
         "assert args[0] == 'train' and args[3:5] == ['--allow-cpu', '--'], args\n"
         f"Path({str(dispatch_log)!r}).write_text(json.dumps(args))\n"
-        f"result = subprocess.run([{str(REAL_TRAINER_PYTHON)!r}, "
-        f"{str(TRAINER_SOURCE)!r}, args[1], '--out', args[2], *args[5:]])\n"
+        f"result = subprocess.run([{sys.executable!r}, "
+        f"{str(trainer)!r}, args[1], '--out', args[2], *args[5:]])\n"
         "if result.returncode: sys.exit(result.returncode)\n"
         "print('==> ' + args[2])\n",
         encoding="utf-8",
@@ -1649,6 +1658,7 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
     bootstrap = (
         "from pathlib import Path; from cadex_cli import train; "
         f"train.REMOTE_SCRIPT = Path({str(dispatcher)!r}); "
+        f"train.TRAINER_SCRIPT = Path({str(trainer)!r}); "
         "from cadex_cli.__main__ import main; raise SystemExit(main())"
     )
     monkeypatch.setattr(walk_module, "cadex_command",
@@ -1670,7 +1680,7 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
         )
         assert code == EXIT_OK, report
         review = json.loads((out / REVIEW_FILENAME).read_text())
-        assert review["training"]["device"] == "cpu"
+        assert review["training"]["device"] == "fixture"
         assert [leg["leg"] for leg in review["legs"]] == ["train", "declare", "rollout"]
         assert all(leg["exit"] == 0 for leg in review["legs"])
         assert review["sha256"] == report["walk"]["review"]["policy_sha256"]
