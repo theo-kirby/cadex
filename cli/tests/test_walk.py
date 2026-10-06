@@ -544,6 +544,12 @@ def fake_cadex(tmp_path, monkeypatch, request) -> Path:
     monkeypatch.delenv("FAKE_CADEX_FAIL", raising=False)
     monkeypatch.delenv("FAKE_CADEX_TRAIN", raising=False)
     monkeypatch.setattr(walk_module, "cadex_command", lambda: [sys.executable, str(script)])
+    # The walk's claims are about its legs, not the render's resolution,
+    # which test_look and test_render pin at full size: draw the four
+    # review views small. The hero stays 1024 px, the size the sheet and
+    # the silhouette measures are laid out for.
+    from cadex_cli.studio import STUDIO
+    monkeypatch.setattr(STUDIO, "SIZE", 64)
     from contextlib import contextmanager
     from cadex_cli import __main__ as main_module
 
@@ -1615,11 +1621,16 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
     REAL_TRAINER_PYTHON is None,
     reason="No training venv with jax and mujoco (training/SETUP.md).",
 )
-@pytest.mark.parametrize("mechanism", ["hinged-arm", "linear-carriage"])
 def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
-    engine, tmp_path, capsys, monkeypatch, mechanism, cpu_training
+    engine, tmp_path, capsys, monkeypatch, cpu_training
 ) -> None:
-    """Real CPU legs through the pinned remote argv; no SSH or remote run."""
+    """Real CPU legs through the pinned remote argv; no SSH or remote run.
+
+    One mechanism: the remote leg's parity with the local one does not
+    depend on it, and the carriage's own walk is
+    ``test_the_same_walk_handles_a_linear_carriage``."""
+
+    mechanism = "hinged-arm"
     from test_train import TRAINER_SOURCE
 
     dispatcher = tmp_path / "dispatch.py"
@@ -1673,7 +1684,7 @@ def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
         assert (out / review["trace"]).is_file()
         tracked = set(_git(root, "ls-files").splitlines())
         _assert_inventory(root, review)
-        _assert_clearance(root, review, "below clearance" if mechanism == "hinged-arm" else "clear")
+        _assert_clearance(root, review, "below clearance")
         expected = {"docs/inventory.md", "assets/job.cxpolicy", "runs/baseline/review.json",
                     "runs/baseline/train/job-task.json", "runs/baseline/script.py",
                     "ARCHITECTURE.md", "DECISIONS.md", "PROGRESS.md"}

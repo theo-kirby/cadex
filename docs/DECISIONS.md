@@ -35605,3 +35605,61 @@ emulation a two-finger drag pans without zooming and a pinch zooms. It fails on 
 pre-change page (`assert [15, 10, 20] != [15, 10, 20]`).
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-562 — The CLI suite gets lighter: first cuts, measured (2026-10-06, orun4 owner note)
+
+**Context.** The owner finds the CLI suite too heavy: about 18 minutes whole, run in
+three interleaved thirds because one command passes the shell's 10-minute limit. The
+owner's note sets the target at under 8 minutes as one foreground command with the GPU
+hidden, and a keep list: every contract test (tool surface, protocol and
+`docs/INTEGRATION.md`, the HTTP API, licensing, engine purity, the page against
+`docs/DASHBOARD.md`), at least one real-engine end-to-end lifecycle test, and every test
+orun4 added for a fix.
+
+**Measurement (before).** `--durations=40` over the thirds, `CUDA_VISIBLE_DEVICES=`,
+1197 tests: third `NR%3==0` 185 s; third `NR%3==1` passed the 10-minute limit and was
+re-run as two sixths, 450 s (`NR%6==1`) and 241 s (`NR%6==4`); third `NR%3==2` 141 s.
+Sum **1017 s (17.0 min)**. The heaviest single costs, by cause:
+
+- `test_loop.py` teardown: five tests spent **20.05 s each** in the `project` fixture's
+  teardown, which asked a run that was only registered — no supervisor, no lock — to
+  stop and waited the full 20 s for an answer nobody could give (100 s).
+- `test_walk.py`: about 30 fake-leg tests had a **~4.1 s floor**, three-quarters of it
+  pure-Python studio rendering of four 512 px review views and the 1024 px hero.
+- `test_evaluate.py`: each real-engine evaluation took ~30 s, of which ~28 s is the
+  evaluation film; two of the three tests assert nothing about the film.
+- `test_walk.py::test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher` ran
+  its local and remote real CPU walks once per mechanism (38 s + 37 s).
+
+**Decision.** Cut only what a faster or sibling test already claims:
+
+1. `test_loop.py`'s fixture waits 20 s only for a run whose supervisor is running or
+   holds its lock; a merely registered run gets the stop file (which a late supervisor
+   still reads) and a 2 s wait. No test removed.
+2. `test_walk.py`'s `fake_cadex` fixture draws the four review views at 64 px. The hero
+   stays 1024 px: the concept sheet is laid out for it and the silhouette measures read
+   it. Full-size views stay pinned by `test_look.py` and `test_render.py`. No test removed.
+3. **Removed** `test_evaluate.py::test_evaluate_never_restores_or_accepts_an_edited_working_script`:
+   its claim — an edited working script is neither executed, restored nor accepted — is
+   now asserted inside `test_an_accepted_policy_is_evaluated_as_one_command`, which
+   already ran the same evaluation and already checked `script.json` was unchanged.
+4. `test_evaluate.py::test_a_policy_that_fails_its_spec_exits_zero_with_the_verdict`
+   passes `--film none`: its claim is the verdict, the exit code and the `PROGRESS.md`
+   row, not the film, which `test_an_accepted_policy_…` and
+   `test_the_film_is_chosen_skipped_and_drawn_again_without_measuring` pin.
+5. **Removed** the `linear-carriage` parametrisation of
+   `test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher`: remote/local parity
+   is the dispatcher's argv and the artifact set, independent of the mechanism, and the
+   carriage's own real walk stays as `test_the_same_walk_handles_a_linear_carriage`.
+
+Nothing on the keep list is touched: no contract test changed, the real-engine lifecycle
+tests (`test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates`, the real-trainer
+tests in `test_loop.py` and `test_train.py`) stay whole, and no orun4 fix test changed.
+
+**Evidence (after).** Third `NR%3==1` (the three files changed) runs whole again, **467 s**
+(353 passed, 1 skipped), down from 691 s in two sixths; the other thirds are unchanged at
+185 s and 141 s. Suite **793 s (13.2 min)**, from 1017 s; 1195 tests, from 1197. This
+is a first cut, not the target: the suite is not yet under 8 minutes, and the next cuts
+are listed there.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

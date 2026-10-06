@@ -554,9 +554,14 @@ def test_a_usage_error_comes_before_any_engine(tmp_path, capsys) -> None:
 @needs_mujoco
 def test_an_accepted_policy_is_evaluated_as_one_command(engine, tmp_path, capsys) -> None:
     project = _project(tmp_path, capsys, "stands", _source())
+    # An edited working script is neither run, restored nor accepted: the
+    # evaluation reads the accepted artifacts only.
+    changed = b'raise RuntimeError("the evaluate command must not execute me")\n'
+    (project / "script.py").write_bytes(changed)
     before = (project / "script.json").read_bytes()
     code, envelope = _run(capsys, "evaluate", "--project", str(project))
     assert code == EXIT_OK, envelope
+    assert (project / "script.py").read_bytes() == changed
 
     evaluation = envelope["evaluation"]
     assert evaluation["verdict"] == "pass" and evaluation["label"] == "stays up"
@@ -650,7 +655,7 @@ def test_a_policy_that_fails_its_spec_exits_zero_with_the_verdict(engine, tmp_pa
     project = _project(tmp_path, capsys, "fails", _source(extra))
     out = project / "evaluations" / "named"
     code, envelope = _run(capsys, "evaluate", "--project", str(project), "--out", str(out),
-                          "--policy", "pol", "--task", "job")
+                          "--policy", "pol", "--task", "job", "--film", "none")
     # Reported, never refused: a failed evaluation is a measurement.
     assert code == EXIT_OK, envelope
     assert envelope["evaluation"]["verdict"] == "fail"
@@ -676,19 +681,6 @@ def test_nothing_to_evaluate_is_rejected_and_runs_no_child(engine, tmp_path, cap
         code, envelope = _run(capsys, "evaluate", "--project", str(project))
         assert code == EXIT_REJECTED and word in envelope["error"], envelope
         assert not (project / "evaluations").exists()
-
-
-@needs_mujoco
-def test_evaluate_never_restores_or_accepts_an_edited_working_script(engine, tmp_path,
-                                                                     capsys) -> None:
-    project = _project(tmp_path, capsys, "retained", _source())
-    changed = b'raise RuntimeError("the evaluate command must not execute me")\n'
-    (project / "script.py").write_bytes(changed)
-    before = (project / "script.json").read_bytes()
-    code, envelope = _run(capsys, "evaluate", "--project", str(project))
-    assert code == EXIT_OK and envelope["evaluation"]["verdict"] == "pass", envelope
-    assert (project / "script.py").read_bytes() == changed
-    assert (project / "script.json").read_bytes() == before
 
 
 def test_the_report_block_is_documented() -> None:

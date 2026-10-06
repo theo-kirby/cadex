@@ -146,10 +146,14 @@ def project(tmp_path, monkeypatch) -> Path:
     root.mkdir()
     _retained(root)
     yield root
-    # No supervisor outlives its test: ask every live run to stop.
+    # No supervisor outlives its test: ask every live run to stop. A run
+    # only registered, with no supervisor holding its lock, gets the stop
+    # file a late supervisor will read, and a short wait rather than 20 s.
     for run in loop.list_runs(root):
         if run["state"] in loop.LIVE_STATES:
-            loop.request_stop(Path(run["dir"]), "the test ended", wait_s=20.0)
+            run_dir = Path(run["dir"])
+            held = run["state"] == "running" or loop.lock_held(run_dir / loop.LOCK_NAME)
+            loop.request_stop(run_dir, "the test ended", wait_s=20.0 if held else 2.0)
 
 
 def _until(run_dir: Path, *, leaves=loop.LIVE_STATES, seconds: float = 30.0) -> dict:
