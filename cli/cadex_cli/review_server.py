@@ -2862,12 +2862,19 @@ class ProjectsServer(ThreadingHTTPServer):
     url = ReviewServer.url
 
 
+#: How often the serving thread looks for ``shutdown()`` while idle, in
+#: seconds. The standard library's 0.5 s made every stop wait half a second
+#: (ADR-580).
+SHUTDOWN_POLL_S = 0.05
+
+
 def serve_projects(projects_root: Path | str, host: str = "127.0.0.1", port: int = 0,
                    log: Callable[[str], None] | None = None) -> tuple[ProjectsServer, threading.Thread]:
     """As :func:`serve`, over a directory of projects (``cadex app``)."""
 
     server = ProjectsServer(projects_root, host, port, log=log)
-    thread = threading.Thread(target=server.serve_forever, name="cadex-app", daemon=True)
+    thread = threading.Thread(target=server.serve_forever, args=(SHUTDOWN_POLL_S,),
+                              name="cadex-app", daemon=True)
     thread.start()
     return server, thread
 
@@ -2881,6 +2888,7 @@ def serve(project_root: Path | str, host: str = "127.0.0.1", port: int = 0,
     """
 
     server = ReviewServer(project_root, host, port, log=log)
-    thread = threading.Thread(target=server.serve_forever, name="cadex-review", daemon=True)
+    thread = threading.Thread(target=server.serve_forever, args=(SHUTDOWN_POLL_S,),
+                              name="cadex-review", daemon=True)
     thread.start()
     return server, thread

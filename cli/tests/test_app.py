@@ -61,6 +61,27 @@ def app(tmp_path):
         server.server_close()
 
 
+def test_a_served_page_and_the_app_stop_promptly(tmp_path) -> None:
+    """ADR-580: ``shutdown()`` returns in a tenth of a second, not the
+    standard library's half second of idle polling."""
+
+    import time
+    from cadex_cli.review_server import serve
+
+    projects = _projects(tmp_path)
+    for start in (lambda: serve_projects(projects, "127.0.0.1", 0),
+                  lambda: serve(projects / "biped", "127.0.0.1", 0)):
+        server, thread = start()
+        _get(server.url + "/")
+        time.sleep(0.2)  # idle, inside a poll
+        began = time.monotonic()
+        server.shutdown()
+        took = time.monotonic() - began
+        server.server_close()
+        thread.join(1.0)
+        assert took < 0.15 and not thread.is_alive(), took
+
+
 def test_the_index_lists_only_projects_and_finds_new_ones_live(app) -> None:
     projects, server = app
     listing = _json(server.url + "api/projects")

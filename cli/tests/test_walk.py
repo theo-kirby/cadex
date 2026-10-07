@@ -1353,15 +1353,34 @@ def test_the_digest_edit_treats_both_example_mechanisms_alike() -> None:
 # -- real lifecycle walks ---------------------------------------------------
 
 
-@pytest.mark.skipif(
-    REAL_TRAINER_PYTHON is None,
-    reason="No training venv with jax and mujoco (training/SETUP.md).",
-)
-def test_the_same_walk_handles_a_linear_carriage(engine, tmp_path, capsys) -> None:
-    """Exercise a translational DOF through the unchanged public entry point."""
+@pytest.mark.skipif(importlib.util.find_spec("mujoco") is None,
+                    reason="mujoco is not importable here")
+def test_the_same_walk_handles_a_linear_carriage(engine, tmp_path, capsys, monkeypatch,
+                                                small_renders) -> None:
+    """Exercise a translational DOF through the unchanged public entry point.
+
+    The fixture trainer writes the policy (ADR-580): the claim is the slide
+    joint through export, declare and rollout, and real CPU training through
+    the walk is ``test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates``."""
     import math
     import xml.etree.ElementTree as ET
+    from cadex_cli import train as train_module
+    from conftest import SOURCE_MODULE_DIR
+    from test_loop import FIXTURE_TRAINER
 
+    trainer = tmp_path / "fixture_train.py"
+    trainer.write_text(FIXTURE_TRAINER.format(
+        module_dir=str(SOURCE_MODULE_DIR), tests_dir=str(SOURCE_MODULE_DIR / "cadex_tests")),
+        encoding="utf-8")
+    monkeypatch.setenv(train_module.TRAINER_PYTHON_ENV, sys.executable)
+    # Each leg is a fresh CLI process, so the stand-in is injected there.
+    bootstrap = (
+        "from pathlib import Path; from cadex_cli import train; "
+        f"train.TRAINER_SCRIPT = Path({str(trainer)!r}); "
+        "from cadex_cli.__main__ import main; raise SystemExit(main())"
+    )
+    monkeypatch.setattr(walk_module, "cadex_command",
+                        lambda: [sys.executable, "-c", bootstrap])
     source = Path(__file__).resolve().parents[2] / "examples/lifecycle/linear-carriage/script.py"
     root = tmp_path / "carriage"
     code, envelope = _run(capsys, "script", "--set", str(source), "--project", str(root))
@@ -1408,7 +1427,7 @@ actuator force, N·mm). Written by the walk's caller, by the convention
     reason="No training venv with jax and mujoco (training/SETUP.md).",
 )
 def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
-    engine, tmp_path, capsys, cpu_training
+    engine, tmp_path, capsys, cpu_training, small_presentation
 ) -> None:
     """Verify, iterate, fail, recover: real CPU legs preserve project history."""
 
@@ -1623,7 +1642,7 @@ def test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates(
 @pytest.mark.skipif(importlib.util.find_spec("mujoco") is None,
                     reason="mujoco is not importable here")
 def test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher(
-    engine, tmp_path, capsys, monkeypatch
+    engine, tmp_path, capsys, monkeypatch, small_renders
 ) -> None:
     """Real engine legs through the pinned remote argv; no SSH or remote run.
 

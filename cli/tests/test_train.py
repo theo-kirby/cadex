@@ -10,6 +10,7 @@ Fake trainers cover dispatch contracts; real CPU tests skip without a venv.
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -834,19 +835,28 @@ def _task_digest(bundle: Path) -> str:
     return hashlib.sha256(bundle.read_bytes()).hexdigest()
 
 
-@pytest.mark.skipif(
-    REAL_TRAINER_PYTHON is None,
-    reason="No training venv with jax and mujoco (training/SETUP.md).",
-)
+@pytest.mark.skipif(importlib.util.find_spec("mujoco") is None,
+                    reason="mujoco is not importable here")
 def test_iterate_refuses_a_task_change_under_a_declared_policy_until_it_is_blanked(
-    engine, tmp_path, capsys, cpu_training
+    engine, tmp_path, capsys, monkeypatch
 ) -> None:
     """Blank policy, then sweep (ADR-192): the change is refused while the
     declared policy no longer fits its task, and accepted once blanked.
 
-    One bounded 1 × 4 CPU run trains the policy the change is refused against.
+    The fixture trainer writes the policy the change is refused against
+    (ADR-580): the claim is the refusal, and real CPU training is
+    ``test_the_real_trainer_trains_the_toy_and_the_engine_digests_agree``.
     """
 
+    from conftest import SOURCE_MODULE_DIR
+    from test_loop import FIXTURE_TRAINER
+
+    trainer = tmp_path / "fixture_train.py"
+    trainer.write_text(FIXTURE_TRAINER.format(
+        module_dir=str(SOURCE_MODULE_DIR), tests_dir=str(SOURCE_MODULE_DIR / "cadex_tests")),
+        encoding="utf-8")
+    monkeypatch.setattr(train_module, "TRAINER_SCRIPT", trainer)
+    monkeypatch.setenv(train_module.TRAINER_PYTHON_ENV, sys.executable)
     root = tmp_path / "project"
     placeholder = "0" * 64
     code, envelope = _run(
@@ -864,7 +874,7 @@ def test_iterate_refuses_a_task_change_under_a_declared_policy_until_it_is_blank
         "--iterations", "1", "--envs", "4", "--put", "--timeout", "600",
     )
     assert code == EXIT_OK, envelope
-    assert envelope["training"]["device"] == "cpu"
+    assert envelope["training"]["device"] == "fixture"
     sha1 = envelope["training"]["sha256"]
     digest1 = _task_digest(run1 / "job-task.json")
     assert envelope["training"]["task_sha256"] == digest1

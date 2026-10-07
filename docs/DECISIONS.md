@@ -36439,3 +36439,47 @@ loop's real trainer 20.9 s, the remote-walk parity 18.6 s, the second-mechanism 
 other 1200 tests share about 425 s.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-580 — The CLI suite under eight minutes: a served page stops promptly, and the walks draw small where pixels are not the claim (2026-10-06, orun4 owner note)
+
+**Context.** ADR-579 left the suite at **566.3 s** as one command (measured again before
+this change: 566.3 s, 1210 passed, 1 skipped). The owner's target is under 480 s. Two
+things were left. First, the walks: `cadex walk` draws its review render (four views and
+a 1024 px hero) in the calling process, and four real-engine tests drew it at full size
+while asserting only files, covered pixels, bounds and byte-identity. Two of them also
+trained a real CPU policy whose training was not their claim. Second, the dashboard's
+serving thread used `serve_forever()`'s standard-library 0.5 s idle poll, so every
+`shutdown()` waited about half a second. About 150 test servers stop in one suite run,
+and a person restarting `cadex app` waited the same half second.
+
+**Decision.** No test is removed and no assertion is weakened:
+
+1. `review_server.serve` and `serve_projects` poll for shutdown every
+   `SHUTDOWN_POLL_S = 0.05` s. `test_app.py::test_a_served_page_and_the_app_stop_promptly`
+   pins a stop under 0.15 s for both servers, and it fails at 0.5 s.
+2. `test_walk.py`'s real lifecycle walk uses `small_presentation`. Its claims are the
+   legs, the reviews, git history, preserved artifacts and a D4 video that decodes, not
+   pixels. The remote-walk parity and the linear-carriage walk use `small_renders`.
+   Byte-identity across local and remote still holds at 64 px. The full-size review
+   views stay pinned by `test_render.py::test_real_render_revision_images_pose_and_project_commit`.
+3. The linear-carriage walk (`test_the_same_walk_handles_a_linear_carriage`) and the
+   iterate refusal (`test_train.py::test_iterate_refuses_a_task_change_under_a_declared_policy_until_it_is_blanked`)
+   train with the fixture trainer (`test_loop.FIXTURE_TRAINER`, as the remote-walk parity
+   has since ADR-564). Their claims are the slide joint through export, declare and
+   rollout, and the refusal of a task change under a declared policy. Real CPU training is
+   still pinned three times: by the real lifecycle walk (three real legs), by
+   `test_the_real_trainer_trains_the_toy_and_the_engine_digests_agree`, and by the loop's
+   `test_the_real_trainer_runs_under_the_supervisor_and_the_engine_takes_its_policy`. These
+   two tests now run without a training venv as long as mujoco imports.
+
+**Evidence.** Per test, before → after: the real lifecycle walk 59.9 s → 46.7 s; the
+remote-walk parity 18.7 s → 10.0 s; the carriage walk 17.4 s → 4.9 s; the iterate refusal
+14.7 s → 5.9 s. `test_review_server.py`, `test_review_evaluation.py` and `test_app.py`
+together took 36.0 s → 16.7 s from the shutdown poll alone. **The whole suite as one
+foreground command** (`CUDA_VISIBLE_DEVICES= pixi run python -m pytest -q -p no:cacheprovider cli/tests`):
+**474.4 s (7 min 54 s)**, 1211 passed, 1 skipped. That is under the 8-minute target, but
+with only about 5 s of margin. The slowest tests left are on the keep list or claim
+real training: the real lifecycle walk 46.7 s, the loop's real trainer 20.9 s, the two
+evaluation command tests 11.8 s and 11.1 s, and the real trainer's digests 10.6 s.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
