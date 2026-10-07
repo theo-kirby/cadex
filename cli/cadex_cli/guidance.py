@@ -228,6 +228,27 @@ reads or emits. Never tighten action_filter_alpha on a warm start: a \
 policy trained through one filter loses its behaviour through a stronger \
 one.
 
+SHAPE A REWARD THE POLICY CAN CLIMB, AND JUDGE THE MOTION, NOT THE SCORE. \
+These hold for any task. \
+Every distance term needs a slope where episodes start: a bell such as \
+exp(-d^2/s^2) is flat far from its peak, so a policy that starts there \
+learns nothing from it and training collapses; charge tanh(d/s) or the \
+distance itself, and add a sharper term near the target only once the \
+policy gets there. A motion meant to repeat -- a lap, a circuit, a cycle \
+-- pays signed progress along it (tanh(v/V)); a charge on abs(v - V) pays \
+rocking back and forth at plus and minus V nearly as well as going round. \
+The spec measures where an episode ends, not what happened in it: when the \
+task is a motion, count it in the evaluation's traces (laps made, \
+direction, speed) before you accept a pass, and record the count in \
+DECISIONS.md. When two reward revisions leave the failing metric where it \
+was, stop revising the reward: the limit is in what the policy reads (a \
+quantity no channel gives it) or in the mechanism (an actuator sagging \
+under load, a base that slides), so change that and start cold. A joint \
+that swings mass on a machine resting on a floor turns the machine with \
+its reaction: set command_slew_deg from the first run, below what the \
+actuator's rated speed covers in one control step, so the policy cannot \
+command a whip the base cannot hold.
+
 THE PROJECT IS A CODEBASE. Beside the script it keeps ARCHITECTURE.md \
 (what it is, what the script declares, where the domain docs are), \
 DECISIONS.md (its own ADR log: what was chosen, over what, why) and \

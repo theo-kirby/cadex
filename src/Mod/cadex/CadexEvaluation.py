@@ -553,7 +553,8 @@ def reach_metrics(samples, rig: Mapping[str, Any], segments: Sequence[Mapping[st
 
     * **final error** is the largest tip-to-target distance over the last
       ``final_window_s`` of the segment -- the largest, so a tip that is
-      still swinging through the target is not read at its best moment;
+      still swinging through the target is not read at its best moment,
+      and ``None`` when the episode ended before that window began;
     * **time to target** runs from the segment's start until the tip is
       inside the tolerance *and stays there to the segment's end*, and is
       ``None`` if it never does;
@@ -601,7 +602,10 @@ def reach_metrics(samples, rig: Mapping[str, Any], segments: Sequence[Mapping[st
         rows.append({
             "start_s": start_s, "end_s": end_s, "target_mm": list(target), "frames": len(inside),
             "start_distance_mm": length,
-            "final_error_mm": max(final), "final_error_arm_lengths": max(final) / arm,
+            # An episode that ended before the segment's final window has
+            # no final error: unmeasured, so a spec bounding it fails.
+            "final_error_mm": max(final) if final else None,
+            "final_error_arm_lengths": max(final) / arm if final else None,
             "closest_mm": min(distance),
             "time_to_target_s": arrival, "overshoot_ratio": overshoot,
         })

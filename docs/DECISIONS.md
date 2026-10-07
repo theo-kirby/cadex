@@ -36743,3 +36743,47 @@ removed after the assembly pass rather than before it, inside the same
 transaction, so a refusal still rolls back the whole publish (ADR-434).
 
 Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-586 — An episode that ends before the final window has no final error; reward lessons for any task (2026-10-07)
+
+**Decision.** Two changes from the first design projects that were neither
+legged nor walking: a balancing table that holds and circles an object on
+a tilting plate, and a tracked arm on a floor that reaches a goal.
+
+1. `CadexEvaluation.reach_metrics` read the final error as the largest
+   distance over the segment's last `final_window_s`. An episode that a
+   termination ended before that window began has no frame there, and
+   `max()` of the empty list crashed the whole `evaluate`. That segment's
+   `final_error_mm` and `final_error_arm_lengths` are now `None`, so the
+   flat `final_error_mm_max` is `None` and a spec bounding it fails with
+   "not measured", the rule every other unmeasured metric already follows
+   (`judge`). A seed that ended early fails; the evaluation finishes.
+2. The base guidance (`cli/cadex_cli/guidance.py`) gains one section, SHAPE
+   A REWARD THE POLICY CAN CLIMB, for any task with no style chosen:
+   - a distance term needs a slope where episodes start; a bell is flat
+     there and training collapsed on it;
+   - a repeated motion pays signed progress, because a charge on `|v − V|`
+     paid rocking on a short arc, which then passed a spec that measured
+     only where the episode ended;
+   - a motion is counted in the traces before a pass is accepted;
+   - two reward revisions that leave the failing metric where it was mean
+     the limit is in the channels or the mechanism, not the reward (two
+     sharper precision terms moved a ~20 mm reach floor by nothing);
+   - a joint swinging mass on a floor-resting machine skated the machine by
+     its reaction until `command_slew_deg` limited the command rate.
+
+**Why.** Both are what the projects measured, not what was expected. The
+crash is a defect; the lessons cost the agents one to four training runs
+each to learn, and none was in the walking-only reward section.
+
+**Regression.** `test_evaluation_metrics.py::test_an_episode_that_ends_before_the_final_window_is_not_measured`
+raises the old `ValueError` without the fix. `cli/tests/test_agent_guidance.py::test_the_reward_shaping_lessons_are_for_any_task`
+pins the section's rules in the base text.
+
+**Consequences.** No op, argument, tool or response shape changes; a
+`final_error_mm` may now be `None` on a segment with frames. What the
+projects could not do — sense a free object's position or an actuator's
+load, drive a closed linkage, state a motion as a predicate — is the next
+run's charter, not this entry.
+
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).

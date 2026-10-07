@@ -424,6 +424,14 @@ def test_a_target_with_no_frames_is_not_measured() -> None:
     assert failing(REACH_SPEC, metrics) == ["final_error", "time_to_target", "overshoot"]
 
 
+def test_an_episode_that_ends_before_the_final_window_is_not_measured() -> None:
+    # Terminated at 6 s of an 8 s target: no frame in the last second.
+    metrics = reached(reaching(seconds=6.0))
+    second = metrics["segments"][1]
+    assert second["frames"] > 0 and second["final_error_mm"] is None
+    assert metrics["final_error_mm_max"] is None and "final_error" in failing(REACH_SPEC, metrics)
+
+
 # -- the episode, and a spec ------------------------------------------------
 
 def test_completed_means_the_horizon_was_reached_and_nothing_fired() -> None:

@@ -86,7 +86,7 @@ STYLE = 'printed-legged-robot'
 NOT_IN_THE_BASE = ('biped', 'quadruped', 'hexapod', 'humanoid', 'legged', 'mascot',
                    'look engineered', 'looks engineered', 'small printed robot')
 #: How a project's name reads; no text an agent is given names one (ADR-560).
-PROJECT_NAME = (r'biped-sts|biped-mg90|quad-qdd|mg-legs|\bhex\d|\bot\d+\b|\borun\d|'
+PROJECT_NAME = (r'biped-sts|ball-plate|excavator-mini|biped-new|biped-mg90|quad-qdd|mg-legs|\bhex\d|\bot\d+\b|\borun\d|'
                 r'\bsweep-|digestbug|\blark\b|\bwren\b|cadex-projects')
 
 
@@ -160,7 +160,7 @@ def test_no_text_an_agent_is_given_names_a_project():
 
 #: A project directory's name, as distinct from a run's (``ot10``, ``orun1``):
 #: the read-only projects and the run families' scratch copies.
-PROJECT_DIR = (r'biped-sts|biped-mg90|quad-qdd|mg-legs|\bhex\d|\bot\d+-|\borun\d-|'
+PROJECT_DIR = (r'biped-sts|ball-plate|excavator-mini|biped-new|biped-mg90|quad-qdd|mg-legs|\bhex\d|\bot\d+-|\borun\d-|'
                r'\bsweep-|digestbug|cadex-projects')
 REPO = Path(__file__).resolve().parents[2]
 
@@ -206,6 +206,18 @@ def test_the_training_lessons_are_in_the_base_and_reach_every_project():
                  "never by taking the last iteration",
                  "Never tighten action_filter_alpha on a warm start",
                  "start cold after any change to the model"):
+        assert rule in text, rule
+
+
+def test_the_reward_shaping_lessons_are_for_any_task():
+    # ADR-586: what a balancing table and a reaching arm taught, for any
+    # task with no style chosen -- a slope where episodes start, signed
+    # progress for a repeated motion, the motion judged from the traces,
+    # and stopping a reward revision that moves nothing.
+    text = " ".join(instructions().split())
+    for rule in ("SHAPE A REWARD THE POLICY CAN CLIMB", "needs a slope where episodes start",
+                 "pays signed progress along it", "count it in the evaluation's traces",
+                 "stop revising the reward", "set command_slew_deg from the first run"):
         assert rule in text, rule
 
 
