@@ -12,6 +12,14 @@ import os
 from pathlib import Path
 
 
+def _box_gap(first, second):
+    """The gap between two shapes' exact boxes, as the engine culls by (ADR-423)."""
+    p, q = first.optimalBoundingBox(False, True), second.optimalBoundingBox(False, True)
+    return math.sqrt(sum(max(0.0, lo_a - hi_b, lo_b - hi_a) ** 2 for lo_a, hi_a, lo_b, hi_b in (
+        (p.XMin, p.XMax, q.XMin, q.XMax), (p.YMin, p.YMax, q.YMin, q.YMax),
+        (p.ZMin, p.ZMax, q.ZMin, q.ZMax))))
+
+
 def measure(plan):
     import FreeCAD as App
     import Part
@@ -46,14 +54,25 @@ def measure(plan):
                 pair = (first, second)
                 if index == 0:
                     static = expected.get(pair)
-                    # A culled static row's distance is a box-gap lower bound
-                    # (ADR-423): the exact distance must reach it, not equal it.
-                    if (static is None or static.get("error") or
-                            not math.isclose(volume, static["common_volume_mm3"], abs_tol=1e-5, rel_tol=1e-6) or
-                            (float(left.distToShape(right)[0]) < static["distance_mm"] - 1e-5
-                             if static.get("culled") else
-                             not math.isclose(float(left.distToShape(right)[0]), static["distance_mm"], abs_tol=1e-5, rel_tol=1e-6))):
-                        raise ValueError("initial pose disagrees with published clearance: " + str(pair))
+                    # Measured as the engine measured it (ADR-581): a culled
+                    # row's distance is the exact boxes' gap (ADR-423), which
+                    # must reach it; any other row is the shells' distance
+                    # (ADR-425), which must equal it. A solid's distToShape
+                    # asks OCCT's point classifier, which can call a far
+                    # vertex inside and return 0.
+                    if static is None or static.get("error"):
+                        distance = math.nan
+                    elif static.get("culled"):
+                        distance = _box_gap(left, right)
+                    else:
+                        distance = float(Part.Compound(left.Shells).distToShape(Part.Compound(right.Shells))[0])
+                    if (not math.isclose(volume, static["common_volume_mm3"] if static else math.nan,
+                                         abs_tol=1e-5, rel_tol=1e-6) or
+                            (distance < static["distance_mm"] - 1e-5 if static.get("culled") else
+                             not math.isclose(distance, static["distance_mm"], abs_tol=1e-5, rel_tol=1e-6))):
+                        raise ValueError(f"initial pose disagrees with published clearance: {pair}: "
+                                         f"measured {distance:g} mm, published "
+                                         f"{static.get('distance_mm') if static else None} mm")
                 if pair not in worst or volume > worst[pair]["common_volume_mm3"]:
                     worst[pair] = {"first": first, "second": second,
                                    "common_volume_mm3": volume, "time_s": frame["time_s"]}

@@ -36482,4 +36482,46 @@ with only about 5 s of margin. The slowest tests left are on the keep list or cl
 real training: the real lifecycle walk 46.7 s, the loop's real trainer 20.9 s, the two
 evaluation command tests 11.8 s and 11.1 s, and the real trainer's digests 10.6 s.
 
+## ADR-581 — The smoke check's first frame measures a pair the way the engine published it (2026-10-06, orun4 report defect 2)
+
+**Context.** `cadex smoke` checks that frame 0 of its MuJoCo trace agrees with
+the clearance the engine published for the accepted revision. The engine measures
+a near pair between the two solids' **shells** (ADR-425, ADR-437), and a far pair
+by the gap between their exact boxes, as a `culled` lower bound (ADR-423). The
+smoke child (`cli/cadex_cli/smoke_geometry.py`) checked both with a solid's
+`distToShape`. That call takes OCCT's inner-solution branch: it answers 0 when it
+classifies a vertex of one solid as inside the other. On the second fresh-session
+biped (66 components, 2,080 pairs), `shin_r`'s classifier calls the point
+(-18.25, 65.63, 11.0) inside, although the shin's box ends at y = -23.7. So
+`foot_l`/`shin_r` measured 0.0 mm against a published culled bound of
+60.995594590128576 mm, and smoke refused the design with
+`initial pose disagrees with published clearance: ('foot_l', 'shin_r')`. The
+session's own note called this "a sub-1e-5 mm mismatch". Measured, it is 61 mm,
+and the cause is the measure, not the tolerance.
+
+**Decision.** The agreement check measures each pair the way the engine did. A
+culled row is measured by the exact-box gap (`optimalBoundingBox(False, True)`,
+the engine's box). It must reach the bound, as before, and on this pair it
+reproduces 60.995594590128576 to the last digit. Any other row is measured as the
+distance between the two shells' compounds, which must equal the published value.
+The tolerances are unchanged. A disagreement now names both numbers. Common volume
+and the per-frame volume check are unchanged.
+
+**Evidence.** On a scratch copy of the design, frame 0 alone now passes the
+agreement over all 2,080 pairs (64.7 s). The shell distance of `foot_l`/`shin_r`
+is 67.10 mm. `test_smoke_geometry_bound.py::test_the_first_frame_measures_shells_the_way_the_engine_published_them`
+nests a 1 mm sphere in a 10 mm box. The engine's shell distance there is 4 mm and
+a solid's `distToShape` is 0, so the test fails without this change and passes
+with it. The existing culled-bound test is unchanged and passes.
+
+**Consequences.** The design still does not pass smoke, and that result is now
+honest:
+- every failing pair is a bolt in the part it threads into (4.5–10.3 mm³ each,
+  33 pairs), which the per-frame check counts as overlap whatever fit intent the
+  static row declared;
+- the exact-geometry stage takes about 5.5 s for each later frame, so the default
+  2 s, 101-frame trace exceeds the shared 300 s bound.
+
+Both stay open under the orun4 report's defect 2.
+
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
