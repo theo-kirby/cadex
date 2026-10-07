@@ -151,6 +151,28 @@ step² and speed²:
 fit sweep refuses every joint of a closed loop with the loop named, since a
 one-joint sweep would tear the chain open.
 
+**The same linkage, built live (ADR-594, 2026-10-07).** The table above is
+the fixture route, a tree handed straight to `build_model`. Through the
+engine a four-bar of four parallel `revolute` pins never reaches the
+export: FreeCAD's solver reports the planar loop as redundant (a revolute
+pins five freedoms, and a planar loop needs only three of each closing
+one's) and the script is refused. What does build is the pushrod:
+a coupler with a `ball` at each end, which gives the coupler one idle spin
+about its ball line. Nothing damps it (a ball joint takes no
+`joint_dynamics`), and with the coupler's mass on that line it falls off
+balance — 9° in 2 s of holding, into the links beside it — so the mass
+hangs below the line and the spin is a pendulum. On the scratch project
+`orun5-fourbar` (200/80/220/120 mm bars at 1200 kg/m³), the crank servo
+turning 225 °/s through `assembly.dynamics` swept 447° and opened the loop
+by 0.70 mm at the 2 ms default, 0.0061 mm at 0.5 ms and 0.0013 mm at
+0.25 ms — steeper than step² (a 115-fold drop for a fourfold step), so
+the step² rule `cadex smoke` uses to name a step is conservative. Smoke's
+fifth check, `closure`, measures every site-to-site equality at every
+solver step against `MJCF_POSE_TOLERANCE_MM` (0.01 mm) and, on a failure,
+names the 1-2-5 step under `step × sqrt(0.01 / worst)`. Held at its solved
+pose the live four-bar's loop stays within 0.00094 mm at 2 ms and smoke
+passes.
+
 **Free base (ADR-335, 2026-09-13).** An assembly that grounds *nothing* is
 not an error: it is a mechanism whose fixed frame is not part of the design
 — a biped, a balancer, anything meant to fall. Both halves used to refuse it

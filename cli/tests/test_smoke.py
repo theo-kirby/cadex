@@ -247,6 +247,70 @@ def test_hold_keeps_the_servo_pose_and_zero_action_fires_the_declared_terminatio
     assert line.startswith("termination: arm_dropped fired at")
 
 
+def _swinging_four_bar(step_s: float) -> str:
+    """A crank-rocker (200/80/220/120 mm) in the vertical plane, closed by a
+    connect at ``c`` with the export's two-step ``solref`` (ADR-593), and no
+    drive: it falls from the solved pose and swings for two seconds. Measured
+    with these numbers: the loop opens 0.083 mm at a 2 ms step and 0.0052 mm
+    at 0.5 ms, either side of the 0.01 mm pose contract."""
+
+    hinge = 'type="hinge" axis="0 -1 0" damping="0.002"'
+    return f"""<mujoco><option timestep="{step_s}" integrator="implicitfast"/><worldbody>
+<body name="comp_base"><geom type="box" size="0.1 0.01 0.005" pos="0.1 0 -0.02" mass="1"/></body>
+<body name="comp_crank"><joint name="a" {hinge}/>
+<geom type="capsule" fromto="0 0 0 0 0 0.08" size="0.005" mass="0.05"/>
+<body name="comp_coupler" pos="0 0 0.08"><joint name="b" {hinge}/>
+<geom type="capsule" fromto="0 0 0 0.216542 0 0.038854" size="0.005" mass="0.05"/>
+<site name="c/comp_coupler" pos="0.216542 0 0.038854"/></body></body>
+<body name="comp_rocker" pos="0.2 0 0"><joint name="d" {hinge}/>
+<geom type="capsule" fromto="0 0 0 0.016542 0 0.118854" size="0.005" mass="0.05"/>
+<site name="c/comp_rocker" pos="0.016542 0 0.118854"/></body>
+</worldbody><contact><exclude body1="comp_crank" body2="comp_coupler"/>
+<exclude body1="comp_coupler" body2="comp_rocker"/></contact>
+<equality><connect name="c" site1="c/comp_coupler" site2="c/comp_rocker"
+ solref="{2 * step_s}" solimp="0.99 0.9999 0.0001"/></equality>
+<keyframe><key name="solved" qpos="0 0 0"/></keyframe></mujoco>"""
+
+
+@needs_mujoco
+def test_a_loop_that_opens_past_the_pose_contract_fails_and_names_the_step(tmp_path) -> None:
+    receipt = _runner(tmp_path, _swinging_four_bar(0.002))
+    closure = receipt["checks"]["closure"]
+    assert closure["pass"] is False and receipt["verdict"] == "fail"
+    (loop,) = closure["closures"]
+    assert loop["closure"] == "c" and loop["kind"] == "connect"
+    assert loop["worst_mm"] == closure["worst_mm"] > 0.05, loop
+    assert closure["tolerance_mm"] == 0.01 and closure["solver_step_s"] == 0.002
+    # 2 ms × sqrt(0.01 / 0.083) is 0.69 ms; the 1-2-5 step under it is 0.5.
+    assert closure["suggested_step_s"] == pytest.approx(0.0005)
+    (line,) = receipt["failing"]
+    assert line.startswith("closure: loop 'c' opens ") and "solver_step_s=0.0005" in line
+
+    # The step it names holds the same swing inside the contract.
+    held = _runner(tmp_path, _swinging_four_bar(0.0005))
+    assert held["verdict"] == "pass", held["failing"]
+    assert held["checks"]["closure"]["worst_mm"] < 0.01
+    assert held["checks"]["closure"]["suggested_step_s"] is None
+
+
+@needs_mujoco
+def test_a_model_without_loops_passes_the_closure_check_and_says_so(tmp_path) -> None:
+    receipt = _runner(tmp_path, SERVO_ARM)
+    assert receipt["checks"]["closure"] == {
+        "pass": True, "tolerance_mm": 0.01, "closures": [], "worst_mm": None,
+        "solver_step_s": 0.002, "suggested_step_s": None,
+        "note": "no loop closures in the model"}
+
+
+def test_the_named_step_is_the_1_2_5_value_under_the_step_squared_answer() -> None:
+    from cadex_cli.smoke_runner import closure_step_s
+
+    assert closure_step_s(0.002, 0.045) == pytest.approx(0.0005)  # exact: 0.94 ms
+    assert closure_step_s(0.002, 0.011) == pytest.approx(0.001)   # exact: 1.9 ms
+    assert closure_step_s(0.002, 0.5) == pytest.approx(0.0002)    # exact: 0.28 ms
+    assert closure_step_s(0.001, 0.04) == pytest.approx(0.0005)   # exactly 0.5 ms
+
+
 @needs_mujoco
 def test_a_missing_keyframe_is_a_failure_with_the_reason(tmp_path) -> None:
     xml = RESTING_BLOCK.replace('name="solved"', 'name="other"')
@@ -403,6 +467,59 @@ result = {{"plate": plate, "arm": arm, "base": base, "swing": swing,
           "j": j, "asm": asm, "diag": diag, "model": model}}
 """
 
+#: A crank-rocker four-bar (200/80/220/120 mm) as it can be built live: the
+#: native solver calls a loop of four parallel pins redundant, so the
+#: coupler ends in two ball joints -- rod ends -- hung 1 mm above the crank
+#: and rocker, its mass below the line through the balls so its free spin
+#: about that line is a pendulum and not a balance (ADR-594). The crank's
+#: servo turns it a whole turn and a quarter in a dynamics run at 0.5 ms.
+FOUR_BAR_SCRIPT = """
+G, R1, L, R2, W, T = 200.0, 80.0, 220.0, 120.0, 16.0, 6.0
+B = (0.0, R1)
+span = (G ** 2 + R1 ** 2) ** 0.5
+along = (L ** 2 - R2 ** 2 + span ** 2) / (2.0 * span)
+across = (L ** 2 - along ** 2) ** 0.5
+ux, uy = G / span, -R1 / span
+C = (along * ux - across * uy, R1 + along * uy + across * ux)
+
+def link(p0, p1, z0):
+    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+    n = (dx * dx + dy * dy) ** 0.5
+    ex, ey, nx, ny = dx / n * W / 2, dy / n * W / 2, -dy / n * W / 2, dx / n * W / 2
+    pts = [(p0[0] - ex + nx, p0[1] - ey + ny, z0), (p1[0] + ex + nx, p1[1] + ey + ny, z0),
+           (p1[0] + ex - nx, p1[1] + ey - ny, z0), (p0[0] - ex - nx, p0[1] - ey - ny, z0)]
+    return part.extrude(part.face(part.wire(pts, closed=True)), (0, 0, T))
+
+bars = {"ground_bar": link((0, 0), (G, 0), -T), "crank_bar": link((0, 0), B, 0.0),
+        "coupler_bar": link(B, C, T + 1.0), "rocker_bar": link((G, 0), C, 0.0)}
+ground = assembly.component(bars["ground_bar"], grounded=True)
+crank = assembly.component(bars["crank_bar"])
+coupler = assembly.component(bars["coupler_bar"])
+rocker = assembly.component(bars["rocker_bar"])
+
+def pin(a, b, at, kind="revolute", z=0.0):
+    o = {"position": (at[0], at[1], z)}
+    return assembly.joint(kind, assembly.connector(a, "origin", offset=o),
+                          assembly.connector(b, "origin", offset=o))
+
+ja = pin(ground, crank, (0, 0))
+jd = pin(ground, rocker, (G, 0))
+jb = pin(crank, coupler, B, "ball", 2 * T + 1)
+jc = pin(coupler, rocker, C, "ball", 2 * T + 1)
+rig = assembly.assembly([ground, crank, coupler, rocker], [ja, jd, jb, jc])
+bodies = [assembly.body(c, density_kg_m3=1200.0) for c in (ground, crank, coupler, rocker)]
+def servo(control):
+    return assembly.actuator(ja, kind="position", control_deg=control,
+                             stiffness_nmm_per_deg=500.0, damping_nmms_per_deg=5.0)
+result = {"ground": ground, "crank": crank, "coupler": coupler, "rocker": rocker,
+          "ja": ja, "jd": jd, "jb": jb, "jc": jc, "rig": rig, "solve": assembly.solve(rig),
+          "drive": assembly.dynamics(rig, bodies, actuators=[servo("225*time")], end_time_s=2.0,
+                                     frames_per_second=60, solver_step_s=0.0005),
+          "model": assembly.mjcf(rig, bodies, actuators=[servo("0")])}
+result.update(bars)
+"""
+
+
 #: A plain assembly with no MJCF output: nothing to smoke.
 NO_MODEL_SCRIPT = GROUNDED_SCRIPT.split("motor = ")[0] + """
 result = {"plate": plate, "arm": arm, "base": base, "swing": swing,
@@ -498,6 +615,36 @@ def test_a_free_base_rests_on_the_floor_and_a_buried_one_fails(engine, tmp_path,
     assert smoke["failing"][0].startswith("penetration:")
     progress = (buried / "PROGRESS.md").read_text(encoding="utf-8")
     assert "smoke 2 s zero → fail" in progress and "smoke fail 2 s zero: penetration:" in progress
+
+
+@needs_mujoco
+def test_a_four_bar_built_live_is_driven_round_and_holds_its_loop_shut(engine, tmp_path, capsys) -> None:
+    import math
+
+    project = _project(engine, tmp_path, capsys, FOUR_BAR_SCRIPT, "fourbar")
+    pin = json.loads((project / "script.json").read_text(encoding="utf-8"))["accepted_attempt"]
+    (trace,) = (project / pin["staging"] / "outputs").glob("*simulation-trace.json")
+    trace = json.loads(trace.read_text(encoding="utf-8"))
+    # One closure, the ball at the rocker; the chain is a tree up to it.
+    (closure,) = trace["dynamics"]["closures"]
+    assert closure["joint_output"] == "jc" and closure["closure_kind"] == "connect"
+    assert trace["dynamics"]["worst_closure_residual_mm"] < 0.01
+
+    def heading(rotation) -> float:
+        x, y, z, w = rotation
+        return math.atan2(2.0 * (x * y + w * z), 1.0 - 2.0 * (y * y + z * z))
+
+    crank = [heading(f["component_placements"]["crank"]["rotation_xyzw"]) for f in trace["frames"]]
+    swept = sum(abs(math.remainder(b - a, math.tau)) for a, b in zip(crank, crank[1:]))
+    assert swept > math.radians(400.0), math.degrees(swept)
+
+    code, envelope = _run(capsys, "smoke", "--project", str(project), "--out", str(project / "s"))
+    assert code == EXIT_OK, envelope
+    smoke = envelope["smoke"]
+    assert smoke["verdict"] == "pass", smoke["failing"]
+    held = smoke["checks"]["closure"]
+    assert [row["closure"] for row in held["closures"]] == ["jc"]
+    assert held["pass"] and held["worst_mm"] < held["tolerance_mm"] == 0.01
 
 
 def test_a_design_without_a_model_is_a_refusal_not_a_rollout(engine, tmp_path, capsys, monkeypatch) -> None:

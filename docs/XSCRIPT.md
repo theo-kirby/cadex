@@ -251,6 +251,17 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   the whole loop; a connect is a soft constraint, so a loop driven fast holds
   the MJCF's 0.01 mm pose contract only at a fine step (225 °/s on a 200 mm
   four-bar: 0.045 mm at 2 ms, 0.0012 mm at `solver_step_s=0.0005`).
+  **A loop of parallel pins does not reach the export live** (ADR-594): the
+  native assembly solver calls a planar four-bar of four `revolute` joints
+  redundant and the script is refused before any model is built. Build it
+  the way a pushrod is built: end the coupler in two `ball` joints (rod
+  ends). The coupler then has one free spin about the line through its
+  balls, which no joint damps (`joint_dynamics` takes no ball joint), so
+  hang its mass *below* that line — a pendulum, not a balance — and clear
+  the links it rides over. Driven 450° by its crank servo through the
+  engine, such a four-bar opens 0.70 mm at the 2 ms default, 0.0061 mm at
+  0.5 ms and 0.0013 mm at 0.25 ms; `cadex smoke` reports each closure's
+  worst gap against the 0.01 mm contract and names the step that holds it.
   `gravity_m_s2` and `solver_step_s` are authorable (ADR-079);
   gravity is metres per second squared, and `[0, 0, 0]` is how you isolate a
   joint's behaviour from the falling.

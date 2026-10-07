@@ -37255,3 +37255,78 @@ here, and still open under L1: the fit sweep moving a closed chain by
 solving the loop, and `cadex smoke` measured on a real linkage project.
 
 Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-594 — `cadex smoke` measures every loop closure, and a four-bar is built live with rod ends (2026-10-07)
+
+**Context.** ADR-593 drove a four-bar and a slider-crank from their cranks
+to their analytic outputs, but as fixtures handed to `build_model`, and
+nothing told an agent whose loop was open: `assembly.dynamics` publishes
+`worst_closure_residual_mm` with no contract beside it, and `cadex smoke`
+did not look at closures at all. orun5's L1 asks for both a linkage
+driven through the engine and a smoke check that holds it.
+
+**Measured first, on a scratch project (`orun5-fourbar`).** A four-bar of
+four parallel `revolute` pins (200/80/220/120 mm) **does not reach the
+export through the engine**: FreeCAD's native solver reports the planar
+loop redundant, and the existing rule refuses a graph the solver calls
+redundant even when it returns solved. One ball at the rocker end
+(R-R-R-S) is still redundant. A coupler with a ball at **both** ends — a
+pushrod on rod ends — is accepted. Its one idle freedom, the coupler's
+spin about the line through its balls, is undamped (`joint_dynamics`
+takes no ball joint): with the coupler's mass on that line it fell off
+balance, 9° in 2 s of holding, into the crank and rocker, and smoke
+failed on exact component overlap; hung with its mass 4 mm below the
+line and 1 mm clear of the links, it is a pendulum and smoke passes.
+Driven 225 °/s by a crank servo through `assembly.dynamics`, the crank
+swept 447.6° and the loop opened 0.70 mm at the 2 ms default, 0.0061 mm
+at 0.5 ms and 0.0013 mm at 0.25 ms; at 0.5 ms the rocker's pin stayed
+within 0.0066 mm of the circle-intersection answer at every frame.
+
+**Decision.**
+
+1. **Smoke's fifth check, `closure`.** `smoke_runner.py` finds every
+   `equality` connect or weld whose objects are sites — what the export
+   writes for a loop closure; a gear or belt is an equality between
+   joints and has no gap — and measures the distance between its two
+   sites at every solver step and every sample. It passes when the worst
+   gap is within `CLOSURE_TOLERANCE_MM`, 0.01 mm, restated from
+   `MJCF_POSE_TOLERANCE_MM` (ADR-584) because the child imports nothing
+   from the engine. The receipt lists each closure's worst gap and time,
+   worst first; a model with no closures passes with a note.
+2. **A failure names the step that holds it.** The closure's time
+   constant is two steps, so its stiffness goes as one over the step
+   squared: the failing line and `suggested_step_s` give the 1-2-5 step
+   under `step × sqrt(0.01 / worst)`. Measured gaps fall faster than
+   step² (fourfold step, 115-fold gap), so the named step is
+   conservative, never short.
+3. **The live route is documented, not changed.** `docs/XSCRIPT.md` and
+   `docs/MUJOCO.md` say that a loop of parallel pins is refused by the
+   native solver, how a rod-ended coupler is built instead, and why its
+   mass hangs below the ball line.
+
+**Alternatives.** Accepting the native solver's redundancy for a planar
+loop that ADR-593's mobility rank proves benign: the right fix for the
+most common linkage there is, but it relaxes a refusal that has caught
+real malformed graphs since orun1, and it needs its own measured unit.
+A smoke mode that drives the actuators: smoke is a held check by design
+(ADR-352); a driven loop's gap is already in the dynamics evidence.
+Measuring closures in the engine's `simulate` against the tolerance and
+refusing: a dynamics result is a measurement, reported not refused
+(the `api.dynamics` docstring), and the number is already published.
+
+**Tests.** `cli/tests/test_smoke.py`: a swinging vertical four-bar with
+the export's closure settings opens 0.083 mm at 2 ms and fails, naming
+`solver_step_s=0.0005`, and holds at 0.5 ms; a loopless model passes
+with the note; the 1-2-5 rounding on four cases; and one real-engine
+test that builds the rod-ended four-bar through the engine, drives it
+past 400° at 0.5 ms with the residual under 0.01 mm, and smokes it to a
+pass with its closure `jc` measured. With the runner change reverted,
+all four fail.
+
+**Consequences.** The smoke receipt gains `checks.closure`; no op, tool
+or protocol argument changes. Still open under L1: the fit sweep moving a
+closed chain by solving the loop (it refuses with the loop named), a
+planar four-bar of four pins built live, and a driven loop's gap compared
+with the contract where `assembly.dynamics` reports it.
+
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
