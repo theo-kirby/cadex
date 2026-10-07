@@ -416,6 +416,8 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `mean_forward_speed_mm_s`, `mean_lateral_speed_mm_s` | speed along and across the base's heading, after 1 s | `feet` |
   | `speed_ratio`, `lateral_ratio` | those speeds over the commanded one: the mean of the `speed` goal over the same settled frames | `feet` and a `speed` goal |
   | `final_error_mm_max`, `final_error_arm_lengths_max`, `time_to_target_s_max`, `overshoot_ratio_max` | a tip's worst error, arrival time and overshoot over the targets the episode held | `tip` and a `point` goal |
+  | `turns`, `laps` | a body's net signed turns about an axis through a centre (anticlockwise seen from the axis tip is positive), so a body that rocks on an arc reads about zero; whole turns completed in the net direction (ADR-587) | `body` |
+  | `final_distance_mm`, `mean_distance_mm`, `max_distance_mm` | the body's distance from the centre point at the last frame, on average, and at its furthest — no goal needed (ADR-587) | `body` |
 
   "Every foot" is the worst foot, which is what the `_min` and `_max`
   suffixes say. **That table is the whole vocabulary.** A predicate that
@@ -432,7 +434,14 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `feet=[component, ...]` names the feet, each of which needs a primitive
   collision shape, because a foot's height is its lowest collision point
   above the floor. `tip=component, tip_offset_mm=[x, y, z]` names the point
-  a reach is measured at. `seeds` are the evaluation seeds, 1 through 64
+  a reach is measured at. `body=component, body_offset_mm=[x, y, z]` names
+  a point whose motion is judged, about `centre_mm=[x, y, z]` fixed in
+  `centre=component` (the world when omitted; a tilting plate carries its
+  centre with it) and `centre_axis=[0, 0, 1]` in that frame. The motion
+  metrics are measurements of the whole episode, so **an episode that ended
+  before its horizon measures none of them** and a spec bounding one fails
+  that seed; what was played stays in the report's `detail.motion`, marked
+  `partial`. `seeds` are the evaluation seeds, 1 through 64
   distinct integers fixed in the script so two evaluations of one policy are
   the same episodes; **they are never training seeds**.
   `randomisation=[...]`, `reset_variation=[...]`, `disturbance=[...]` and

@@ -5044,6 +5044,21 @@ def _success_input(
             "body": component_outputs[id(properties["tip"])],
             "local_mm": [float(v) for v in properties.get("tip_offset_mm") or ()],
         }
+    # Absent unless the script named a body, so a spec without one is the
+    # spec it always was (ADR-587).
+    if properties.get("body") is not None:
+        resolved["body"] = {
+            "body": component_outputs[id(properties["body"])],
+            "local_mm": [float(v) for v in properties.get("body_offset_mm") or ()],
+        }
+        resolved["centre"] = {
+            "frame": (
+                None if properties.get("centre") is None
+                else component_outputs[id(properties["centre"])]
+            ),
+            "point_mm": [float(v) for v in properties.get("centre_mm") or ()],
+            "axis": [float(v) for v in properties.get("centre_axis") or ()],
+        }
     if properties.get("randomisation") is not None:
         resolved["randomisation"] = [
             _randomisation_input(item, component_outputs, joint_outputs)

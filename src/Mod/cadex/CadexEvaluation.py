@@ -8,7 +8,7 @@ shuffled is the failure this module exists to see. It reads a rollout trace
 control step) and a handful of facts about the model it ran, and returns
 **behaviour metrics**: what the mechanism did, none of them the reward.
 
-Three families, and nothing in the module knows which behaviour it is
+Four families, and nothing in the module knows which behaviour it is
 reading -- each family is asked for by what the caller names, not by a task
 kind:
 
@@ -18,7 +18,10 @@ kind:
   clearance, stance slip, duty factor, how deep a foot went into the floor,
   and how well a commanded speed was tracked;
 * **reach**, for anything with a tip and a target: final error, time to
-  target and overshoot, per target.
+  target and overshoot, per target;
+* **motion**, for any body and a point it is judged about: net signed turns
+  and laps about an axis through the point, and the body's distance from it
+  -- what a body did over the episode, not only where it ended (ADR-587).
 
 :func:`check` then holds a flat table of those metrics against a list of
 predicates (``metric``, ``min``, ``max``). A predicate names a metric and a
@@ -86,7 +89,8 @@ REACH_FINAL_WINDOW_S = 1.0
 #: behaviour: ``base`` is a floating base, ``floor`` the one plane it stands
 #: on, ``feet`` and ``tip`` what the spec names, ``shove`` a timed
 #: disturbance in the spec's conditions, ``command`` a speed goal the task
-#: states and ``target`` a point goal it states (ADR-462).
+#: states and ``target`` a point goal it states (ADR-462). ``body`` is a body
+#: the spec names to be judged about a centre (ADR-587).
 METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "completed": ("episode", ()),
     "duration_s": ("episode", ()),
@@ -114,6 +118,11 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "final_error_arm_lengths_max": ("reach", ("tip", "target")),
     "time_to_target_s_max": ("reach", ("tip", "target")),
     "overshoot_ratio_max": ("reach", ("tip", "target")),
+    "turns": ("motion", ("body",)),
+    "laps": ("motion", ("body",)),
+    "final_distance_mm": ("motion", ("body",)),
+    "mean_distance_mm": ("motion", ("body",)),
+    "max_distance_mm": ("motion", ("body",)),
 }
 
 _EPS = 1.0e-9
@@ -626,6 +635,112 @@ def reach_metrics(samples, rig: Mapping[str, Any], segments: Sequence[Mapping[st
     }
 
 
+# -- a body about a centre --------------------------------------------------
+
+#: A body this close to the axis has no bearing about it, and a frame there
+#: does not advance the turn count either way.
+MOTION_AXIS_MM = 1.0e-6
+
+
+def _unit(vector: Sequence[float]) -> Vector:
+    length = math.sqrt(sum(float(v) * float(v) for v in vector))
+    if length <= _EPS:
+        raise ValueError("a motion axis must not be zero")
+    return (float(vector[0]) / length, float(vector[1]) / length, float(vector[2]) / length)
+
+
+def _cross(a: Sequence[float], b: Sequence[float]) -> Vector:
+    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+
+
+def body_in_centre(samples, body: Mapping[str, Any],
+                   centre: Mapping[str, Any]) -> tuple[list[float], list[Vector]]:
+    """The body's point relative to the centre, in the centre's frame, per frame.
+
+    ``body`` is ``{"body", "local_mm"}``: a fixed point on one body.
+    ``centre`` is ``{"frame", "point_mm", "axis"}``: ``frame`` names the body
+    whose frame the point and axis are fixed in, or is ``None`` for the
+    world. A centre on a plate that tilts and turns moves with it, so a ball
+    held still on the plate reads as still.
+    """
+
+    point = tuple(float(v) for v in centre.get("point_mm") or (0.0, 0.0, 0.0))
+    frame = centre.get("frame")
+    times, rows = [], []
+    for time_s, placements in samples:
+        rotation, origin = _pose(placements, body["body"])
+        world = _add(_apply(rotation, body.get("local_mm") or (0.0, 0.0, 0.0)), origin)
+        if frame is not None:
+            frame_rotation, frame_origin = _pose(placements, frame)
+            world = _apply_inverse(frame_rotation, _sub(world, frame_origin))
+        times.append(float(time_s))
+        rows.append(_sub(world, point))
+    return times, rows
+
+
+def turns_about(relative: Sequence[Sequence[float]], axis: Sequence[float]) -> float:
+    """Net signed turns of a path about an axis through the origin.
+
+    Right-handed about ``axis``: anticlockwise seen from its tip is positive.
+    Each frame adds the bearing change from the last, wrapped to half a turn
+    either way, so a body that goes round twice reads 2.0 and one that rocks
+    out along an arc and back reads about zero, however far the arc.
+    """
+
+    axis = _unit(axis)
+    seed = (1.0, 0.0, 0.0) if abs(axis[0]) < 0.9 else (0.0, 1.0, 0.0)
+    u = _unit(_cross(axis, _cross(seed, axis)))
+    v = _cross(axis, u)
+    total, last = 0.0, None
+    for row in relative:
+        x = sum(a * b for a, b in zip(row, u))
+        y = sum(a * b for a, b in zip(row, v))
+        if math.hypot(x, y) <= MOTION_AXIS_MM:
+            continue
+        bearing = math.atan2(y, x)
+        if last is not None:
+            step = bearing - last
+            step -= 2.0 * math.pi * round(step / (2.0 * math.pi))
+            total += step
+        last = bearing
+    return total / (2.0 * math.pi)
+
+
+def motion_metrics(samples, rig: Mapping[str, Any], *, completed: bool) -> dict[str, Any]:
+    """How a body moved about a centre over the episode (ADR-587).
+
+    * ``turns``: net signed turns about the centre's axis -- positive
+      anticlockwise seen from the axis tip;
+    * ``laps``: whole turns completed in the net direction, ``floor(|turns|)``;
+    * ``final_distance_mm``, ``mean_distance_mm``, ``max_distance_mm``: the
+      body's straight distance from the centre point at the last frame, on
+      average over the frames, and at its furthest.
+
+    These are measurements of *the episode*, and **an episode that did not
+    run to its horizon was not one**: every metric is then ``None``, so a
+    spec bounding any of them fails, as ADR-586 fails a reach that ended
+    before its window. What was played is kept in ``motion`` for the report
+    either way, marked ``partial``. Fewer than two frames is also unmeasured.
+    """
+
+    times, relative = body_in_centre(samples, rig["body"], rig["centre"])
+    distances = [math.sqrt(sum(v * v for v in row)) for row in relative]
+    played: dict[str, Any] = {"frames": len(relative), "partial": not completed}
+    if len(relative) >= 2:
+        turns = turns_about(relative, rig["centre"].get("axis") or (0.0, 0.0, 1.0))
+        played.update({
+            "turns": turns,
+            "laps": float(math.floor(abs(turns) + _EPS)),
+            "final_distance_mm": distances[-1],
+            "mean_distance_mm": sum(distances) / len(distances),
+            "max_distance_mm": max(distances),
+            "duration_s": times[-1] - times[0],
+        })
+    names = ("turns", "laps", "final_distance_mm", "mean_distance_mm", "max_distance_mm")
+    measured = completed and len(relative) >= 2
+    return {**{name: played[name] if measured else None for name in names}, "motion": played}
+
+
 # -- the episode, and a spec held against all of it -------------------------
 
 def episode_metrics(episode: Mapping[str, Any]) -> dict[str, Any]:
@@ -644,7 +759,8 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
     Which families are read is decided by what the rig and the episode
     carry, never by what the behaviour is called: a floating base is read
     for posture, named feet for gait, a tip with targets for reach, and a
-    shove for the recovery from it. ``metrics`` holds the names in
+    shove for the recovery from it, a body with a centre for its motion
+    about it. ``metrics`` holds the names in
     :data:`METRICS` and nothing else, so it is exactly what a predicate may
     bound; a family that was not read is absent from it, and :func:`check`
     fails a predicate on an absent metric. ``detail`` keeps what a report
@@ -667,7 +783,9 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
             read.update(gait_metrics(samples, rig, command_mm_s))
     if rig.get("tip") is not None and segments:
         read.update(reach_metrics(samples, rig, segments))
-    for key in ("recovery_s", "feet", "segments", "travel_mm"):
+    if rig.get("body") is not None:
+        read.update(motion_metrics(samples, rig, completed=bool(read["completed"])))
+    for key in ("recovery_s", "feet", "segments", "travel_mm", "motion"):
         if key in read:
             detail[key] = read[key]
     return {"metrics": {name: read[name] for name in METRICS if name in read},

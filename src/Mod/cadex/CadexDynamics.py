@@ -5398,6 +5398,11 @@ _SUCCESS_NEED_CORRECTIONS = {
         "Name the component that carries the point being measured: "
         "assembly.success(..., tip=component, tip_offset_mm=[x, y, z])."
     ),
+    "body": (
+        "Name the component whose motion is judged, and the centre it is "
+        "judged about: assembly.success(..., body=component, "
+        "centre=component, centre_mm=[x, y, z], centre_axis=[0, 0, 1])."
+    ),
     "shove": (
         "Recovery is timed from the end of a shove, and the spec's "
         "conditions apply none. Give assembly.success (or the task it "
@@ -7734,11 +7739,13 @@ def _success_records(
         goal_entries = task.get("goal") or ()
     feet = [str(name) for name in spec.get("feet") or ()]
     tip = spec.get("tip")
+    body = spec.get("body")
 
     goal_kinds = {str(entry.get("kind") or "") for entry in goal_entries}
     have = {
         "feet": bool(feet),
         "tip": tip is not None,
+        "body": body is not None,
         "shove": any(not entry.get("sustained") for entry in disturbance_entries),
         # Read by kind: the commanded speed is the task's one speed goal and
         # the target its one point goal, and a task that states neither has
@@ -7883,6 +7890,8 @@ def _success_records(
             None if tip is None
             else {"body": str(tip.get("body")), "local_mm": tip.get("local_mm")}
         ),
+        body=body,
+        centre=spec.get("centre"),
     )
     for need, present in (
         ("base", rig["base"] is not None),
@@ -7951,6 +7960,12 @@ def _success_records(
             None if tip is None
             else {"body": str(rig["tip"]["body"]),
                   "local_mm": [float(v) for v in rig["tip"]["local_mm"]]}
+        ),
+        # Absent unless the script named a body (ADR-587), so a spec without
+        # one is the block it always was.
+        **(
+            {"body": dict(rig["body"]), "centre": dict(rig["centre"])}
+            if body is not None else {}
         ),
         "episode": schedule,
         "randomisation": randomisation,
@@ -8380,6 +8395,8 @@ def evaluation_rig(
     *,
     feet: Sequence[str] = (),
     tip: Mapping[str, Any] | None = None,
+    body: Mapping[str, Any] | None = None,
+    centre: Mapping[str, Any] | None = None,
     keyframe: str = MJCF_KEYFRAME_NAME,
 ) -> dict[str, Any]:
     """The facts about one model that a rollout's metrics are scaled by.
@@ -8400,11 +8417,16 @@ def evaluation_rig(
     arm length is the straight distance from the first actuated joint's
     anchor through each later joint anchor on the chain to that point.
 
+    ``body`` is ``{"body": name, "local_mm": [x, y, z]}``, a point whose
+    motion is judged about ``centre``, ``{"frame": name or None, "point_mm",
+    "axis"}`` (ADR-587). Neither needs a joint: a free ball is a body.
+
     A grounded mechanism has no floating base, and ``base`` is then ``None``:
     an arm is still measured for reach. Two floating bases is a refusal,
     because tilt and drift would have to choose one.
     """
 
+    judged = body
     mujoco = _mujoco_module()
     data = mujoco.MjData(model)
     key = int(mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, keyframe))
@@ -8570,6 +8592,36 @@ def evaluation_rig(
         rig["arm_length_mm"] = sum(
             math.dist(first, second) for first, second in zip(path, path[1:])
         )
+    if judged is not None:
+        _body(judged.get("body"), "the judged body")
+        rig["body"] = {
+            "body": str(judged.get("body")),
+            "local_mm": _floats(
+                judged.get("local_mm") or (0.0, 0.0, 0.0), count=3,
+                context="the judged body's local_mm",
+            ),
+        }
+        centre = dict(centre or {})
+        frame = centre.get("frame")
+        if frame is not None:
+            _body(frame, "the frame of the centre")
+        axis = _floats(
+            centre.get("axis") or (0.0, 0.0, 1.0), count=3, context="the centre's axis"
+        )
+        if math.sqrt(sum(v * v for v in axis)) <= 1.0e-9:
+            raise DynamicsError(
+                "The centre's axis is zero, and turns are counted about a direction.",
+                reason="evaluation_centre_axis_zero",
+                observed={"axis": axis},
+            )
+        rig["centre"] = {
+            "frame": None if frame is None else str(frame),
+            "point_mm": _floats(
+                centre.get("point_mm") or (0.0, 0.0, 0.0), count=3,
+                context="the centre's point_mm",
+            ),
+            "axis": axis,
+        }
     return rig
 
 
@@ -10719,14 +10771,16 @@ def evaluate_success(
         )
     compiled = load_model(xml)
     rig = evaluation_rig(
-        compiled, feet=list(spec.get("feet") or ()), tip=spec.get("tip")
+        compiled, feet=list(spec.get("feet") or ()), tip=spec.get("tip"),
+        body=spec.get("body"), centre=spec.get("centre"),
     )
     # A surface held off its geometry voids every seed alike: the episode
     # is played and measured, and none of it is a measurement of contact.
     offsets = contact_offsets(compiled)
     held_off = contact_offset_void(offsets)
     names = [str(name) for name in components]
-    wanted = [rig["base"], *rig["feet"], (rig.get("tip") or {}).get("body")]
+    wanted = [rig["base"], *rig["feet"], (rig.get("tip") or {}).get("body"),
+              (rig.get("body") or {}).get("body"), (rig.get("centre") or {}).get("frame")]
     names += [name for name in wanted if name is not None and name not in names]
     control_hz = int(played["episode"]["control_hz"])
     stamp = dict(identity or {})

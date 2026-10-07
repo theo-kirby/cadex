@@ -539,3 +539,23 @@ def test_a_rollout_echoes_its_reset_and_shove_draws() -> None:
     unseeded = dyn.rollout_policy(dyn.load_model(made["xml"]), played, made["container"],
                                   components=["body"], frames_per_second=50)
     assert unseeded["episode"]["reset_variation"] == [] == unseeded["episode"]["disturbance"]
+
+
+def test_a_body_is_judged_about_its_centre_from_the_episode() -> None:
+    """The block lies still: no turns about a centre beside it, a distance
+    that stays what it started at, and the centre's frame is traced."""
+
+    made = prepared(spec(
+        [{"id": "still", "metric": "turns", "min": -0.01, "max": 0.01},
+         {"id": "near", "metric": "max_distance_mm", "max": 60.0}],
+        body={"body": "body", "local_mm": [0.0, 0.0, 0.0]},
+        centre={"frame": None, "point_mm": [30.0, 0.0, 20.0], "axis": [0.0, 0.0, 1.0]},
+        episode_seconds=2.0, randomisation=[], reset_variation=[], disturbance=[]))
+    documents = []
+    row = evaluate(made, components=[],
+                   on_trace=lambda _seed, document: documents.append(document))["seeds"][0]
+    assert row["pass"], row["predicates"]
+    assert row["metrics"]["laps"] == 0.0
+    assert 25.0 < row["metrics"]["mean_distance_mm"] < 35.0
+    assert row["detail"]["motion"]["partial"] is False
+    assert "body" in documents[0]["component_outputs"]

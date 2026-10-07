@@ -473,11 +473,17 @@ def test_the_vocabulary_is_exactly_what_the_families_measure() -> None:
         "posture": balanced(standing()),
         "gait": walked(trot()),
         "reach": reached(reaching()),
+        # A hand swept round a point is a body about a centre (ADR-587).
+        "motion": evaluation.motion_metrics(
+            reaching(), {"body": {"body": "hand", "local_mm": [0.0, 0.0, 0.0]},
+                         "centre": {"frame": None, "point_mm": [0.0, 0.0, 0.0],
+                                    "axis": [0.0, 0.0, 1.0]}}, completed=True),
     }
     for name, (family, needs) in evaluation.METRICS.items():
         value = measured[family][name]
         assert isinstance(value, (int, float)) and not isinstance(value, bool), name
-        assert set(needs) <= {"base", "floor", "feet", "tip", "shove", "command", "target"}, name
+        assert set(needs) <= {"base", "floor", "feet", "tip", "shove", "command", "target",
+                              "body"}, name
     for spec in (WALK_SPEC, REACH_SPEC, BALANCE_SPEC):
         assert {row["metric"] for row in spec} <= set(evaluation.METRICS)
     # What needs a goal is what is a ratio of, or a distance from, one: a

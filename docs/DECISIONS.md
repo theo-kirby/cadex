@@ -36787,3 +36787,59 @@ load, drive a closed linkage, state a motion as a predicate — is the next
 run's charter, not this entry.
 
 Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-587 — Motion predicates: turns, laps and distance of a body about a centre (2026-10-07)
+
+**Decision.** A success spec can judge how a body moved over an episode,
+not only where a tip ended. `assembly.success` takes `body=component`
+(with `body_offset_mm`), and the centre it is judged about: `centre_mm`,
+fixed in `centre=component` (the world when omitted) with `centre_axis`
+(default +Z of that frame). `CadexEvaluation` gains a fourth family,
+**motion**, whose five metrics all need only `body`:
+
+- `turns`: net signed turns about the axis through the centre, summed
+  frame to frame with each bearing change wrapped to half a turn, so a
+  body that goes round twice reads 2.0 and one that rocks out along an arc
+  and back reads about zero;
+- `laps`: `floor(|turns|)`, whole turns in the net direction;
+- `final_distance_mm`, `mean_distance_mm`, `max_distance_mm`: the body
+  point's straight distance from the centre point.
+
+The centre is carried by its frame at every frame of the trace, so a ball
+held still on a plate that tilts and turns reads as still. These are
+measurements of the episode, so **an episode that did not run to its
+horizon measures none of them** (`None`, which `check` fails, as ADR-586
+does for a reach). What was played stays in `detail.motion`, marked
+`partial`, for reading the failure.
+
+**Why.** A spec that bounded only where a body ended passed a policy that
+rocked on a short arc and stopped on the circle (0.04–0.06 turns in 9 s,
+8/8 seeds); circulation had to be counted by hand from traces. And a
+"distance from a point" was only reachable by declaring a `point` goal
+with a near-zero joint fraction and showing the policy a constant goal
+channel. Both are measurements of the trace (charter A3), so they belong
+in the evaluation, not in a reward term.
+
+**Alternatives.** Re-using `tip` was refused: a tip must be moved by an
+actuated joint (`evaluation_tip_is_not_driven`) because the reach metrics
+scale by an arm length, and a free body has neither. A planar radius for
+the distance metrics was set aside for a straight distance: a point is a
+point, and a centre placed at the body's height on the plate reads the
+planar radius exactly.
+
+**Regression and tests.** `test_evaluation_motion.py` (circling passes a
+laps predicate; rocking on the same arc fails it while ending on the
+circle; an early end fails every motion predicate without raising, for 50,
+1 and 0 frames; signs; a centre carried through a tilt and a turn);
+`test_success_spec_api.py` and `test_success_spec_model.py` (the spec
+carries the body and centre, refuses a centre with no body, a zero axis,
+a component outside the assembly or the model, and a motion metric with
+no body); `test_evaluate_success_model.py` (a real episode measures them
+and traces the centre's frame).
+
+**Consequences.** A spec without `body` is byte for byte the block it was,
+so no stored task digest moves. No op, argument, tool or response shape
+changes (charter A5); `assembly.success` gains five keyword arguments,
+reached through `describe_api`.
+
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).

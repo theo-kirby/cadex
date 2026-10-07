@@ -3642,6 +3642,11 @@ class AssemblyDomainAPI:
         feet: Sequence[DomainValue] = (),
         tip: DomainValue | None = None,
         tip_offset_mm: Sequence[float] | None = None,
+        body: DomainValue | None = None,
+        body_offset_mm: Sequence[float] | None = None,
+        centre: DomainValue | None = None,
+        centre_mm: Sequence[float] | None = None,
+        centre_axis: Sequence[float] | None = None,
         episode_seconds: float | None = None,
         randomisation: Sequence[DomainValue] | None = None,
         reset_variation: Sequence[DomainValue] | None = None,
@@ -3690,12 +3695,28 @@ class AssemblyDomainAPI:
           worst over the targets the episode held. **A spec that bounds one
           of these on a task with no such goal is refused**: nothing a
           rollout did can be measured against a command it was never given.
+        * ``body``: the motion of that body about a centre (ADR-587) --
+          ``turns``, its net signed turns about ``centre_axis`` through the
+          centre (anticlockwise seen from the axis tip is positive), so a
+          body that rocks on an arc reads about zero; ``laps``, the whole
+          turns completed in the net direction; and ``final_distance_mm``,
+          ``mean_distance_mm`` and ``max_distance_mm`` from the centre
+          point. None needs a goal. An episode that did not run to its
+          horizon measures none of them, so a spec bounding one fails it.
 
         ``feet`` names the ``api.component`` values that are feet; each
         needs a primitive collision shape, because a foot's height is its
         lowest collision point above the floor. ``tip`` names the component
         carrying the point a reach is measured at, ``tip_offset_mm`` where
         on it, in its own frame.
+
+        ``body`` names the component whose motion is judged, and
+        ``body_offset_mm`` the point on it, in its own frame (a ball's
+        centre is its origin). ``centre`` names the component the centre is
+        fixed in -- a plate that tilts carries it -- and is the world when
+        omitted; ``centre_mm`` is the point in that frame (default the
+        origin) and ``centre_axis`` the axis turns are counted about
+        (default +Z of that frame).
 
         ``seeds`` are the evaluation seeds, fixed in the script so that two
         evaluations of one policy are the same episodes. **They are never
@@ -3853,6 +3874,43 @@ class AssemblyDomainAPI:
                 [0.0, 0.0, 0.0] if tip_offset_mm is None
                 else _vector(operation, "tip_offset_mm", tip_offset_mm, size=3)
             )
+        if body is None:
+            for name, value in (
+                ("body_offset_mm", body_offset_mm), ("centre", centre),
+                ("centre_mm", centre_mm), ("centre_axis", centre_axis),
+            ):
+                if value is not None:
+                    raise _error(
+                        operation, name,
+                        "describes the motion of a body, and no body is named",
+                        value if name != "centre" else "component",
+                    )
+        else:
+            properties["body"] = _domain_value(
+                operation, "body", body, output_type="component_link"
+            )
+            properties["body_offset_mm"] = (
+                [0.0, 0.0, 0.0] if body_offset_mm is None
+                else _vector(operation, "body_offset_mm", body_offset_mm, size=3)
+            )
+            if centre is not None:
+                properties["centre"] = _domain_value(
+                    operation, "centre", centre, output_type="component_link"
+                )
+            properties["centre_mm"] = (
+                [0.0, 0.0, 0.0] if centre_mm is None
+                else _vector(operation, "centre_mm", centre_mm, size=3)
+            )
+            axis = (
+                [0.0, 0.0, 1.0] if centre_axis is None
+                else _vector(operation, "centre_axis", centre_axis, size=3)
+            )
+            if math.sqrt(sum(v * v for v in axis)) <= 1.0e-9:
+                raise _error(
+                    operation, "centre_axis",
+                    "is zero, and turns are counted about a direction", list(axis),
+                )
+            properties["centre_axis"] = axis
         if episode_seconds is not None:
             properties["episode_seconds"] = _number(
                 operation, "episode_seconds", episode_seconds,
@@ -4235,6 +4293,9 @@ class AssemblyDomainAPI:
             ]
             if spec.properties.get("tip") is not None:
                 named.append(("success.tip", spec.properties["tip"]))
+            for parameter in ("body", "centre"):
+                if spec.properties.get(parameter) is not None:
+                    named.append((f"success.{parameter}", spec.properties[parameter]))
             for parameter in ("reset_variation", "disturbance"):
                 named.extend(
                     (f"success.{parameter}[{index}]", entry.arguments[0])

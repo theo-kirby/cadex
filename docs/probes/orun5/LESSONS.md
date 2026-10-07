@@ -1,0 +1,23 @@
+# orun5 — the workaround ledger
+
+Verified against source: 2026-10-07.
+
+Every way the two reference projects had to work around Cadex, with the
+evidence and the criterion that replaces it. The projects are evidence
+only: nothing in Cadex reads them. Rows move from *open* to *replaced* as
+the run lands each criterion, with the ADR and commit that did it.
+
+| # | Workaround | Evidence | Why it was needed | Replaced by | Status |
+|---|---|---|---|---|---|
+| W1 | The ball rides two sliders and a 4 mg hidden `carriage` bead; `joint_encoder`s on the sliders stand in for a touch panel. | ball-plate `DECISIONS.md` ADR-004; `docs/sensors.md`; `docs/rejected.md` ("Free ball rolling on the panel") | Only `imu` and `joint_encoder` sensors exist, so a free ball's position is an ungrounded channel that training refuses. | S1, a grounded position sensor in a component's frame; P1 rebuilds the rig with a free ball. | open |
+| W2 | The slider armature (0.4·m) imitates rolling inertia; damping and friction loss imitate rolling resistance. | ball-plate ADR-004; `docs/actuators.md` | Follows from W1: a ball on sliders cannot roll. | P1: a free sphere rolling by contact. | open |
+| W3 | A serial gimbal tilts the plate; the usual pushrod layout was rejected. | ball-plate ADR-002; `docs/rejected.md` ("Pushrod-linkage tilt") | Closed kinematic loops cannot be actuated in the MJCF export. | L1, loop closures as MJCF equality constraints. | open |
+| W4 | A `point` goal with `joint_fraction=0.01` on the ball exists only so `final_error_mm_max` reads as "distance from centre"; the policy is shown a constant goal channel. | ball-plate ADR-005; `docs/sensors.md` (the `centre` goal) | No metric measures a body's distance from a point without a reach goal. | M1, `final_distance_mm`, `mean_distance_mm`, `max_distance_mm` (ADR-587). | replaced (ADR-587) |
+| W5 | Circulation judged by hand from traces; circle-6 passed its spec 8/8 while rocking 0.04–0.06 turns in 9 s. | ball-plate ADR-005, ADR-008 (circle-6), ADR-009 (laps read from traces) | No predicate measures progress about a point. | M1, `turns` and `laps` (ADR-587). | replaced (ADR-587) |
+| W6 | `cadex evaluate` crashed on an early-ended seed bounding a reach metric. | ball-plate `docs/rejected.md` ("Engine issue found") | Empty final window → `max()` of nothing. | ADR-586 (orun4): unmeasured, so failing. | replaced (ADR-586) |
+| W7 | The circle task trained cold: warm start refused because the success specs differ. | ball-plate ADR-007; `docs/rejected.md` | The warm-start rule compares success specs, not only observations and actions. | Long-term rung: decide the rule, with an ADR either way. | open |
+| W8 | Servo sag under the arm's weight is a hypothesis nobody could test. | excavator-mini ADR-014, ADR-015 (hypothesis a) | The bus servo's load reading is not a channel. | S2, a grounded load sensor on bus servos; P2 measures the floor with it. | open |
+| W9 | The reach goal is fixed in the world while the base drifts 2–7 mm, and the policy cannot see the drift. | excavator-mini ADR-011, ADR-015 (hypothesis b) | A goal can only be held in the world frame. | R1, a goal held in a component's frame; P2. | open |
+| W10 | Privileged base yaw-rate and COM-velocity channels were added for reward costs on slip. | excavator-mini ADR-011, ADR-012; `docs/sensors.md` | Slip is not measured by any grounded channel. Reward-only use of privileged channels is legitimate; no change planned. | none — recorded as a legitimate use. | kept |
+| W11 | Component outputs renamed `cp_<name>` to dodge un-grounding and retirement refusals. | excavator-mini ADR-009 | An output once `grounded=True` could not be ungrounded in place; a linked output could not be retired. | ADR-585 (orun4). | replaced (ADR-585) |
+| W12 | Bucket driven servo-direct through a clevis, not through the real four-bar. | excavator-mini ADR-003 ("no linkage") | As W3. | L1; P2 optional. | open |
