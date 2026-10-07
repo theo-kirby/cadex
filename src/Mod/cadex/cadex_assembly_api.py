@@ -3041,6 +3041,7 @@ class AssemblyDomainAPI:
         motion_type: str = "auto",
         role: str = "policy",
         sensor: DomainValue | None = None,
+        frame: DomainValue | None = None,
         label: str = "",
     ) -> DomainValue:
         """Declare one channel of a task's observation space.
@@ -3059,7 +3060,10 @@ class AssemblyDomainAPI:
         * ``component_position`` / ``component_orientation`` /
           ``component_linear_velocity`` / ``component_angular_velocity`` --
           where a part is and how it is moving, in the world frame.
-          ``target`` is an ``api.component``.
+          ``target`` is an ``api.component``. A ``component_position`` may
+          name ``frame=`` another component to be read in that one's frame
+          instead (ADR-592) -- the tip as the base sees it, which is what a
+          reward compares with a goal held in the base's frame.
         * ``centre_of_mass`` / ``centre_of_mass_velocity`` -- the centre of
           mass of a component *and everything hanging off it*, and how fast
           that point is moving. These are the quantities a balance reward
@@ -3125,6 +3129,35 @@ class AssemblyDomainAPI:
                 name,
             )
         properties: dict[str, Any] = {"kind": clean_kind, "name": clean_name}
+        if frame is not None:
+            if clean_kind != "component_position":
+                raise _error(
+                    operation, "frame",
+                    "reads a component_position in another component's "
+                    f"frame; a {clean_kind} is read in its own",
+                )
+            frame = _domain_value(operation, "frame", frame, output_type="component_link")
+            if frame is value:
+                raise _error(
+                    operation, "frame",
+                    "is the component being read; name the component whose "
+                    "frame it is read in",
+                )
+            if sensor is not None:
+                raise _error(
+                    operation, "sensor",
+                    "names no sensor a component_position in another "
+                    "component's frame is measured by; a body read from "
+                    "another one on the machine is a tracked_position",
+                    sensor.properties.get("name"),
+                )
+            clean_role = str(role or "").strip().lower()
+            if clean_role not in _OBSERVATION_ROLES:
+                raise _error(operation, "role", f"must be one of {list(_OBSERVATION_ROLES)}", role)
+            if clean_role != "policy":
+                properties["role"] = clean_role
+            return self._value(operation, "observation", value, frame,
+                               label=label, **properties)
         if wanted == "actuator":
             # An actuator is identified by the coordinate it drives and the
             # kind it is, because that is what the model names it after. Its
@@ -3696,6 +3729,7 @@ class AssemblyDomainAPI:
         joint_fraction: float = 0.8,
         min_z_mm: float | None = None,
         min_separation_mm: float = 0.0,
+        frame: DomainValue | None = None,
         resample_seconds: float | None = None,
         label: str = "",
     ) -> DomainValue:
@@ -3728,6 +3762,19 @@ class AssemblyDomainAPI:
           mechanism in a contact it is not in at rest, or when the point is
           within ``min_separation_mm`` of where the tip starts the segment.
           A success spec reads the reach metrics against it.
+
+          ``frame=component`` holds the point in that component's frame
+          (ADR-592): it is drawn as above, then kept relative to the
+          component, so it travels with it. Its channels read it in the
+          component's frame, in millimetres -- the target as a base would
+          see it -- and the reach metrics measure the tip against where it
+          was at every frame. A reward compares it with the tip read in
+          the same frame: ``observation(tip, "component_position",
+          frame=component, role="privileged")``. Use it when the part that
+          carries the mechanism moves during an episode -- a tracked or
+          wheeled base, a platform that slides -- and the target belongs
+          to the machine's own workspace. A spec's goals must be held in
+          the frame the task's are.
 
         A task states at most one ``speed`` and one ``point``; ``value``
         goals are free.
@@ -3786,6 +3833,17 @@ class AssemblyDomainAPI:
             )
             if min_z_mm is not None:
                 properties["min_z_mm"] = _number(operation, "min_z_mm", min_z_mm)
+            if frame is not None:
+                properties["frame"] = _domain_value(
+                    operation, "frame", frame, output_type="component_link"
+                )
+                if properties["frame"] is properties["tip"]:
+                    raise _error(
+                        operation, "frame",
+                        "is the tip itself; a target held in the tip's own "
+                        "frame never moves relative to it. Name the component "
+                        "the target travels with",
+                    )
             properties["min_separation_mm"] = _number(
                 operation, "min_separation_mm", min_separation_mm, minimum=0.0
             )
@@ -3796,6 +3854,7 @@ class AssemblyDomainAPI:
                 ("min_z_mm", min_z_mm, None),
                 ("joint_fraction", joint_fraction, 0.8),
                 ("min_separation_mm", min_separation_mm, 0.0),
+                ("frame", frame, None),
             ):
                 if source is not None and source != default:
                     raise _error(
@@ -4280,8 +4339,8 @@ class AssemblyDomainAPI:
             if len(entry.arguments) > 1 and id(entry.arguments[1]) not in component_ids:
                 raise _error(
                     operation, where,
-                    "is read by a position_tracker mounted on a component "
-                    "that is not listed in this assembly",
+                    "is read in the frame of a component that is not listed "
+                    "in this assembly",
                 )
             if wanted == "joint" and id(target) not in joint_ids:
                 raise _error(
@@ -4470,13 +4529,14 @@ class AssemblyDomainAPI:
             operation, "goals", goals, output_type="goal", minimum=0
         )
         for index, entry in enumerate(goal_values):
-            tip = entry.properties.get("tip")
-            if tip is not None and id(tip) not in component_ids:
-                raise _error(
-                    operation,
-                    f"goals[{index}]",
-                    "names a tip that is not listed in this assembly",
-                )
+            for part in ("tip", "frame"):
+                component = entry.properties.get(part)
+                if component is not None and id(component) not in component_ids:
+                    raise _error(
+                        operation,
+                        f"goals[{index}]",
+                        f"names a {part} that is not listed in this assembly",
+                    )
         # Absent rather than ``None`` when no spec is declared, so a task
         # that has none is the value it always was.
         judged: dict[str, Any] = {}
@@ -4501,9 +4561,10 @@ class AssemblyDomainAPI:
                     )
                 )
             named.extend(
-                (f"success.goals[{index}]", entry.properties["tip"])
+                (f"success.goals[{index}]", entry.properties[part])
                 for index, entry in enumerate(spec.properties.get("goals") or ())
-                if entry.properties.get("tip") is not None
+                for part in ("tip", "frame")
+                if entry.properties.get(part) is not None
             )
             for where, component in named:
                 if id(component) not in component_ids:

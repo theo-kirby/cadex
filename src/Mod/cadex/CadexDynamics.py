@@ -6090,6 +6090,19 @@ GOAL_FOLLOWER_ALGORITHM = (
     "c0..c4"
 )
 
+#: What a point goal held in a body's frame adds to :data:`GOAL_ALGORITHM`
+#: (ADR-592), appended only to bundles whose goal carries ``frame_id``, so
+#: every earlier bundle keeps its algorithm and its digest. The tries, the
+#: draws and the acceptance tests are the world-frame ones; only what is
+#: kept changes.
+GOAL_FRAME_ALGORITHM = (
+    "; on a point goal with frame_id, the accepted point p is kept as "
+    "transpose(xmat[frame_id]) * (p - xpos[frame_id]) at that same try's "
+    "mj_forward -- the point in the frame body's own frame, which is what "
+    "its channels then read and the goal the reach is measured to -- while "
+    "min_z_m, the contact test and min_separation_m still read p in the world"
+)
+
 #: Everything a reward or termination expression may name beyond the
 #: observation channels themselves. ``_CONTROL_GLOBALS`` plus the three a
 #: reward actually wants: ``exp`` for a shaped bell, ``sqrt`` for a distance,
@@ -6315,6 +6328,36 @@ def observation_records(
                               "available": list(bodies)},
                 )
             tracked = {"frame": frame, "tracker": dict(entry["tracker"])}
+        elif entry.get("frame") is not None:
+            # ADR-592: a world quantity read in another body's frame -- the
+            # tip as the base sees it, which is what a reward needs beside a
+            # goal held in the base's frame. Stock MuJoCo still computes it.
+            frame = str(entry["frame"])
+            if kind != "component_position":
+                raise DynamicsError(
+                    f"{what} is a {kind} read in the frame of {frame!r}; only "
+                    "a component_position is read in another body's frame.",
+                    reason="observation_frame_kind",
+                    correction=(
+                        "Observe the component_position with frame=, or drop "
+                        "frame= from this channel."
+                    ),
+                    observed={"observation": name, "kind": kind, "frame": frame},
+                )
+            if frame not in bodies or frame == target:
+                raise DynamicsError(
+                    f"{what} is read in the frame of {frame!r}, which is "
+                    + ("the body it reads" if frame == target
+                       else "not a body in this assembly's dynamics model")
+                    + ".",
+                    reason="observation_frame_missing",
+                    correction=(
+                        "Name another component with an api.body as the frame."
+                    ),
+                    observed={"observation": name, "frame": frame,
+                              "available": list(bodies)},
+                )
+            tracked = {"frame": frame}
         if kind == "tracked_velocity":
             # ADR-590: a differenced velocity is only as present as the
             # readings it differences, so it needs the same tracker's
@@ -7316,6 +7359,23 @@ def _goal_tip_m(data: Any, body: int, local_m: Sequence[float]) -> list[float]:
     ]
 
 
+def _goal_in_frame_m(data: Any, frame: int, point_m: Sequence[float]) -> list[float]:
+    """A world point in one body's frame, in metres (ADR-592).
+
+    The inverse of :func:`_goal_tip_m`: the rotation's transpose applied to
+    the point less the body's origin, written out over ``xmat`` for the
+    same reason, since the trainer and the reference runner do it too.
+    """
+
+    origin = data.xpos[frame]
+    rotation = data.xmat[frame]
+    relative = [float(point_m[axis]) - float(origin[axis]) for axis in range(3)]
+    return [
+        sum(float(rotation[3 * other + axis]) * relative[other] for other in range(3))
+        for axis in range(3)
+    ]
+
+
 def _goal_followers(mujoco: Any, reloaded: Any) -> list[dict[str, Any]]:
     """Every coupled joint, as the law a goal draw places it by (ADR-474).
 
@@ -7539,6 +7599,21 @@ def _goal_records(
                 observed={"goal": name, "tip": tip, "available": list(bodies)},
             )
         body_id = int(mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_BODY, tip))
+        frame = entry.get("frame")
+        if frame is not None and (str(frame) not in bodies or str(frame) == tip):
+            raise DynamicsError(
+                f"{what} is held in the frame of {str(frame)!r}, which is "
+                + ("its own tip" if str(frame) == tip
+                   else "not a body in this assembly's dynamics model")
+                + ".",
+                reason="goal_frame_missing",
+                correction=(
+                    "Hold the goal in another component with an api.body -- "
+                    "the base the target should travel with. A target held "
+                    "in the tip's own frame never moves relative to it."
+                ),
+                observed={"goal": name, "frame": str(frame), "available": list(bodies)},
+            )
         fraction = float(entry.get("joint_fraction", 0.8))
         if not 0.0 < fraction <= 1.0:
             raise DynamicsError(
@@ -7620,6 +7695,14 @@ def _goal_records(
             # Only on a coupled mechanism, so every other point goal is the
             # record, and the digest, it always was.
             record["followers"] = followers
+        nominal_m = start
+        if frame is not None:
+            # ADR-592: present only on a goal held in a body's frame, so
+            # every world goal is the record it always was.
+            frame_id = int(mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_BODY, str(frame)))
+            record["frame"] = str(frame)
+            record["frame_id"] = frame_id
+            nominal_m = _goal_in_frame_m(data, frame_id, start)
         record.update(
             unit="mm",
             scale=scale,
@@ -7638,7 +7721,7 @@ def _goal_records(
             # target is refused for the contacts its configuration *adds*.
             resting_contacts=[list(pair) for pair in resting],
             attempts=GOAL_POINT_ATTEMPTS,
-            nominal=[value * scale for value in start],
+            nominal=[value * scale for value in nominal_m],
         )
         records.append(record)
     if len(records) > MAXIMUM_GOALS:
@@ -7935,7 +8018,11 @@ def _success_records(
     )
     shape = [(row["name"], row["kind"], row["channels"]) for row in judged_goal]
     declared = [(row["name"], row["kind"], row["channels"]) for row in goal]
-    if shape != declared:
+    # ADR-592: the frame is part of what a channel means, so a spec may not
+    # judge in the world a goal the policy reads in its base's frame.
+    framed = ([row.get("frame") for row in judged_goal]
+              == [row.get("frame") for row in goal])
+    if shape != declared or not framed:
         raise DynamicsError(
             f"{what} states goals the task does not: "
             f"{[name for name, _kind, _channels in shape]} against the "
@@ -7944,12 +8031,14 @@ def _success_records(
             correction=(
                 "The policy reads the task's goal channels by position, so a "
                 "spec judges it on the same goals: the same names and kinds, "
-                "in the same order. What a spec may change is what each is "
+                "in the same order, held in the same frame. What a spec may change is what each is "
                 "drawn from -- its range, its separation, its period. Omit "
                 "goals= to be judged on the task's own."
             ),
-            observed={"spec": [list(row[:2]) for row in shape],
-                      "task": [list(row[:2]) for row in declared]},
+            observed={"spec": [[*row[:2], judged.get("frame")]
+                               for row, judged in zip(shape, judged_goal)],
+                      "task": [[*row[:2], held.get("frame")]
+                               for row, held in zip(declared, goal)]},
         )
     for row in judged_goal:
         if (
@@ -8459,6 +8548,9 @@ def task_records(
         **({"goal": goal, "goal_algorithm": GOAL_ALGORITHM + (
             GOAL_FOLLOWER_ALGORITHM
             if any(entry.get("followers") for entry in goal) else ""
+        ) + (
+            GOAL_FRAME_ALGORITHM
+            if any(entry.get("frame_id") is not None for entry in goal) else ""
         )} if goal else {}),
         **judged,
         # The two per-episode draw streams, both stated, because they are
@@ -9092,7 +9184,7 @@ def draw_episode_goals(
         previous = [float(value) for value in entry["start_m"]]
         for segment in range(int(entry["segments"])):
             rejected = {"below_min_z": 0, "in_contact": 0, "too_close": 0}
-            point = None
+            point = kept = None
             for _ in range(int(entry["attempts"])):
                 mujoco.mj_resetDataKeyframe(model, data, key)
                 for joint in entry["joints"]:
@@ -9118,6 +9210,8 @@ def draw_episode_goals(
                     rejected["too_close"] += 1
                     continue
                 point = candidate
+                if entry.get("frame_id") is not None:
+                    kept = _goal_in_frame_m(data, int(entry["frame_id"]), candidate)
                 break
             if point is None:
                 raise DynamicsError(
@@ -9138,7 +9232,10 @@ def draw_episode_goals(
                     observed={"goal": str(entry["label"]), "segment": segment,
                               "attempts": int(entry["attempts"]), **rejected},
                 )
-            segments.append([value * float(entry["scale"]) for value in point])
+            segments.append([
+                value * float(entry["scale"])
+                for value in (kept if entry.get("frame_id") is not None else point)
+            ])
             previous = point
         drawn.append({"label": str(entry["label"]), "segments": segments})
     return drawn
@@ -9177,6 +9274,9 @@ def goal_schedule(
                 "kind": str(entry["kind"]),
                 "channels": [str(channel) for channel in entry["channels"]],
                 "unit": str(entry["unit"]),
+                # ADR-592: the body a held-in-frame point is fixed to, so a
+                # reader of the episode knows its values are in that frame.
+                **({"frame": str(entry["frame"])} if entry.get("frame") else {}),
                 "segments": [
                     {
                         "start_step": start,
@@ -10842,7 +10942,8 @@ def rollout_policy(
             {
                 "goal_channels": [
                     {"channel": str(channel), "goal": str(entry["name"]),
-                     "kind": str(entry["kind"]), "unit": str(entry["unit"])}
+                     "kind": str(entry["kind"]), "unit": str(entry["unit"]),
+                     **({"frame": str(entry["frame"])} if entry.get("frame") else {})}
                     for entry in goals for channel in entry["channels"]
                 ]
             }
@@ -11022,6 +11123,8 @@ def evaluate_success(
     names = [str(name) for name in components]
     wanted = [rig["base"], *rig["feet"], (rig.get("tip") or {}).get("body"),
               (rig.get("body") or {}).get("body"), (rig.get("centre") or {}).get("frame")]
+    # ADR-592: a target held in a body's frame is measured where that body was.
+    wanted += [entry.get("frame") for entry in played.get("goal") or ()]
     names += [name for name in wanted if name is not None and name not in names]
     control_hz = int(played["episode"]["control_hz"])
     stamp = dict(identity or {})
@@ -11077,7 +11180,8 @@ def evaluate_success(
                 segments = [
                     {"start_s": float(segment["start_s"]),
                      "end_s": float(segment["end_s"]),
-                     "target_mm": list(segment["values"])}
+                     "target_mm": list(segment["values"]),
+                     **({"frame": str(entry["frame"])} if entry.get("frame") else {})}
                     for segment in entry["segments"]
                 ]
         measured = CadexEvaluation.measure(

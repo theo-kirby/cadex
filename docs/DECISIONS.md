@@ -37105,3 +37105,71 @@ trainer's noise path now runs for a task with a load sensor and no
 tracker. Evaluations draw no sensor noise (ADR-588).
 
 Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-592 — A reach goal can be held in a body's frame (2026-10-07)
+
+**Decision.** `assembly.goal(name, kind="point", tip=..., frame=component)`
+holds the drawn target in that component's frame. The draw is the world
+draw unchanged — the same tries, the same `min_z_mm`, contact and
+separation tests, read in the world — and what is kept is the accepted
+point in the frame body's frame at that try's pose,
+`transpose(xmat[frame_id]) * (p - xpos[frame_id])`. The bundle's goal row
+gains `frame` and `frame_id`, and its `goal_algorithm` gains
+`GOAL_FRAME_ALGORITHM`, only when a frame is declared, so every world goal
+exports byte-identical and keeps its digest. The engine
+(`_goal_in_frame_m`), the trainer's host-side draw and the reference
+runner each carry the transform, and tests hold them to the same numbers.
+The goal channels are then the target as the frame body sees it; that is
+what the policy reads, and what its `nominal` (the unseeded episode) is.
+
+A reward needs the tip in the same frame, so `assembly.observation(tip,
+"component_position", frame=component)` reads a position in another
+body's frame: a stock `framepos` with `reftype`/`refname`, the element a
+tracker's reading already is (ADR-588). `frame=` is refused on any other
+kind, on the component being read, and beside a `sensor=` (a body read
+from another on the machine is a `tracked_position`).
+
+`CadexEvaluation.reach_metrics` reads a segment's tip in its `frame` at
+every frame of the trace, so final error, time to target and overshoot are
+measured to where the target was at that moment. The episode's goal
+schedule, the evaluation trace's `goal_channels` and the reach detail rows
+carry `frame`; the film places the target marker with that frame's pose.
+A success spec whose goals are held in other frames than the task's is
+refused (`success_goal_mismatch`), because the policy reads the channels
+by position and a frame is part of what a channel means. A goal frame that
+is the tip or not a body is refused (`goal_frame_missing`).
+
+**Why.** The orun5 charter's R1. A reference project's reach precision
+floor had a goal fixed in the world while the tracked base drifted as one
+of its two open hypotheses: the policy was failed for drift it could not
+see, and its goal channel was not what the machine itself could know.
+
+**Alternatives.** Converting the goal into the frame at each control step
+on device, keeping the world draw: that is a per-step transform in the
+trainer's `jnp` path and a frame-varying channel the reference runner would
+have to reproduce, for a goal that is by definition fixed in the frame.
+Exposing both a world and a frame copy of the goal channels: it grows every
+reach policy's input by three for a reading only one of them needs.
+Measuring the reach in the world against a per-frame world target gives
+the same distances (a rigid transform preserves them); reading the tip in
+the frame is the same measurement written once.
+
+**Regression and tests.** `test_dynamics_goal_frame.py`: the bundle row and
+algorithm, and a world goal's unchanged; the held draw is the world draw
+seen from the frame on the same seed (a rigid invariant and the forearm's
+own length); the trainer and a stock-MuJoCo runner draw the engine's
+numbers; the tip read in the frame and the goal channels agree at every
+step; the refusals; a target on a base that slides 400 mm and turns a
+quarter turn is met by a tip that rides with it and missed by 316 mm by a
+tip left where it started (and the reverse for a world target); and an
+evaluation on an arm whose frame link turns during the episode passes
+when measured in that frame. With the frame transform removed from
+`reach_metrics`, the last two fail. `test_film.py`: the marker travels with
+its frame, and a frame missing from a trace is a reason.
+
+**Consequences.** No op, tool or protocol argument changes; `api.goal` and
+`api.observation` each gain a `frame=` keyword. Rewards written against a
+world `component_position` stay world-frame: a task holding its goal in a
+frame must read its tip in that frame, and the docs say so.
+
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).

@@ -558,7 +558,10 @@ def reach_metrics(samples, rig: Mapping[str, Any], segments: Sequence[Mapping[st
 
     ``segments`` is ``[{"start_s", "end_s", "target_mm"}]``: the target held
     over each stretch of the episode. A frame on a boundary belongs to the
-    segment that starts there.
+    segment that starts there. A segment with ``"frame"`` holds its target
+    in that body's frame (ADR-592), so the tip is read in the same frame at
+    every frame of the trace: the distance is the one to where the target
+    really was at that moment, however the body carrying it moved.
 
     * **final error** is the largest tip-to-target distance over the last
       ``final_window_s`` of the segment -- the largest, so a tip that is
@@ -577,11 +580,22 @@ def reach_metrics(samples, rig: Mapping[str, Any], segments: Sequence[Mapping[st
 
     arm = float(rig["arm_length_mm"])
     tolerance = tolerance_arm_lengths * arm
-    times, points = tip_series(samples, rig["tip"])
+    times, world = tip_series(samples, rig["tip"])
+    framed: dict[str, list[Vector]] = {}
     rows = []
     for index, segment in enumerate(segments):
         start_s, end_s = float(segment["start_s"]), float(segment["end_s"])
         target = tuple(float(v) for v in segment["target_mm"])
+        frame = segment.get("frame")
+        if frame is not None and frame not in framed:
+            framed[frame] = [
+                _apply_inverse(rotation, _sub(point, origin))
+                for point, (rotation, origin) in zip(
+                    world, (_pose(placements, frame) for _time, placements in samples),
+                    strict=True,
+                )
+            ]
+        points = world if frame is None else framed[frame]
         last = index == len(segments) - 1
         inside = [i for i, moment in enumerate(times)
                   if moment >= start_s - _EPS and (moment < end_s - _EPS or (last and moment <= end_s + _EPS))]
@@ -610,6 +624,7 @@ def reach_metrics(samples, rig: Mapping[str, Any], segments: Sequence[Mapping[st
             overshoot = None
         rows.append({
             "start_s": start_s, "end_s": end_s, "target_mm": list(target), "frames": len(inside),
+            **({"frame": frame} if frame is not None else {}),
             "start_distance_mm": length,
             # An episode that ended before the segment's final window has
             # no final error: unmeasured, so a spec bounding it fails.

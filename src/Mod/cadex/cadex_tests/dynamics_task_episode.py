@@ -213,6 +213,22 @@ def goal_tip_m(data: Any, body: int, local_m: Sequence[float]) -> list[float]:
     ]
 
 
+def goal_in_frame_m(data: Any, frame: int, point_m: Sequence[float]) -> list[float]:
+    """A world point in one body's frame, in metres (ADR-592).
+
+    ``CadexDynamics._goal_in_frame_m``, written out again: the transpose of
+    ``xmat[frame]`` applied to the point less ``xpos[frame]``.
+    """
+
+    origin = data.xpos[frame]
+    rotation = data.xmat[frame]
+    relative = [float(point_m[axis]) - float(origin[axis]) for axis in range(3)]
+    return [
+        sum(float(rotation[3 * other + axis]) * relative[other] for other in range(3))
+        for axis in range(3)
+    ]
+
+
 def place_goal_followers(data: Any, followers: Any) -> None:
     """Write each coupled follower where its law puts it, in list order.
 
@@ -262,7 +278,7 @@ def draw_goals(mujoco: Any, model: Any, task: dict, rng: Any) -> list[dict]:
         resting = {(int(a), int(b)) for a, b in entry["resting_contacts"]}
         previous = [float(value) for value in entry["start_m"]]
         for segment in range(int(entry["segments"])):
-            point = None
+            point = kept = None
             for _ in range(int(entry["attempts"])):
                 mujoco.mj_resetDataKeyframe(model, data, key)
                 for joint in entry["joints"]:
@@ -284,13 +300,18 @@ def draw_goals(mujoco: Any, model: Any, task: dict, rng: Any) -> list[dict]:
                 if math.dist(candidate, previous) < float(entry["min_separation_m"]):
                     continue
                 point = candidate
+                if entry.get("frame_id") is not None:
+                    kept = goal_in_frame_m(data, int(entry["frame_id"]), candidate)
                 break
             if point is None:
                 raise SystemExit(
                     f"goal {entry['label']!r} found no reachable point for "
                     f"segment {segment}"
                 )
-            segments.append([value * float(entry["scale"]) for value in point])
+            segments.append([
+                value * float(entry["scale"])
+                for value in (kept if entry.get("frame_id") is not None else point)
+            ])
             previous = point
         drawn.append({"label": str(entry["label"]), "segments": segments})
     return drawn

@@ -3779,8 +3779,10 @@ def _observation_input(
             resolved[key] = str(properties[key])
     # ADR-588: a tracked position is read in its tracker's mount frame, with
     # the tracker's declaration carried to the trainer that applies it.
-    if properties.get("tracker"):
+    # ADR-592: a component_position may be read in another body's frame too.
+    if len(entry.arguments) > 1:
         resolved["frame"] = component_outputs[id(entry.arguments[1])]
+    if properties.get("tracker"):
         tracker = properties["tracker"]
         resolved["tracker"] = {
             "range_mm": [[float(low), float(high)] for low, high in tracker["range_mm"]],
@@ -5010,6 +5012,9 @@ def _goal_input(
             min_z_mm=properties.get("min_z_mm"),
             min_separation_mm=float(properties.get("min_separation_mm") or 0.0),
         )
+        # ADR-592: present only on a goal held in a body's frame.
+        if properties.get("frame") is not None:
+            resolved["frame"] = component_outputs[id(properties["frame"])]
     else:
         resolved.update(
             low=float(properties.get("low")), high=float(properties.get("high"))

@@ -1120,6 +1120,24 @@ the reason. What it does not model: the register reads drive duty, which
 equals load only near stall — a turning motor's back-EMF takes a share —
 so at speed the real reading runs above the simulated one.
 
+**A goal can be held in a body's frame, and a position read in one
+(ADR-592).** `assembly.goal(..., kind="point", frame=base)` draws its
+target as any point goal is drawn, then keeps it as
+`transpose(xmat[frame]) * (p - xpos[frame])` at the drawn pose: the bundle
+row carries `frame` and `frame_id`, `goal_algorithm` gains
+`GOAL_FRAME_ALGORITHM`, and the engine, the trainer's host-side pool and
+the reference runner keep the same numbers. The goal channels are then the
+target as the base sees it, which is what the policy reads. The reward's
+partner is `assembly.observation(tip, "component_position",
+frame=base, role="privileged")`, exported as a stock `framepos` with
+`reftype`/`refname` — the same element a tracker's reading is, with no
+noise because nothing measures it. `CadexEvaluation.reach_metrics` reads
+the tip in the frame at every frame of the trace, so a base that drifts
+carries its target with it and the error is to where the target was; an
+evaluation trace adds the frame to `goal_channels`, and the film places the
+marker with the frame's pose. A world goal's bundle and digest are
+unchanged.
+
 **Deferred, and named rather than half-built:** `touch` and
 `accelerometer` need a *site* with a placement the assembly graph does not
 carry; `contact_force` reports per-contact, so its width depends on what is

@@ -373,7 +373,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   |---|---|---|---|
   | `value` | `name` | `between=[low, high]`, in the reward's own unit | nothing; it is the reward's to give a meaning |
   | `speed` | `name`, mm/s | `between=[low, high]`: the commanded forward speed | `speed_ratio`, `lateral_ratio` |
-  | `point` | `name_x`, `name_y`, `name_z`, mm, world | a pose `tip` can reach | the reach metrics |
+  | `point` | `name_x`, `name_y`, `name_z`, mm, world (or `frame=`'s) | a pose `tip` can reach | the reach metrics |
 
   A `point` is a place the tip **can be**: the engine draws a pose with
   every joint the task drives in the middle `joint_fraction` (0.8) of its
@@ -389,6 +389,16 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   before the pose is read, so a target is never judged at a pose the
   coupling forbids (ADR-474). The bundle carries these as the goal's
   `followers`, and only on a coupled mechanism.
+  **`frame=component` holds a point in that component's frame** (ADR-592),
+  so it travels with it: a target in a tracked base's workspace stays in
+  that workspace as the base drifts. It is drawn exactly as above, then
+  kept relative to the component; its channels read it in the component's
+  frame, the policy sees it as the base would, and the reach metrics
+  measure the tip against where it was at every frame. A reward reads the
+  tip in the same frame with `assembly.observation(tip,
+  "component_position", name="tip", frame=component, role="privileged")` —
+  `frame=` is accepted on a `component_position` only. The frame may not be
+  the tip, and a success spec's goals are held in the frames the task's are.
   `resample_seconds=...` draws the goal again that often during the
   episode, on a whole number of control steps; omitted, it is held. The
   step a goal changes on is scored against the goal its action was taken

@@ -268,8 +268,11 @@ def target_track(trace: Mapping[str, Any], frames: Sequence[Mapping[str, Any]],
 
     A trace whose task states a point goal names its three channels once
     (``goal_channels``) and carries the point in force in every frame's
-    ``goal`` row, in millimetres in the world (ADR-462). ``points`` is that
-    point per solved frame; ``positions`` is each place it held, from when.
+    ``goal`` row, in millimetres in the world (ADR-462), or in the frame of
+    the component its rows name as ``frame`` (ADR-592), which is placed into
+    the world with that component's pose in the same frame. ``points`` is
+    that point per solved frame, in the world; ``positions`` is each place
+    it held, from when.
     """
 
     rows = trace.get("goal_channels")
@@ -281,17 +284,36 @@ def target_track(trace: Mapping[str, Any], frames: Sequence[Mapping[str, Any]],
     places = [at for at in places if rows[at].get("goal") == goal]
     _require(len(places) == 3 and all(rows[at].get("unit") == "mm" for at in places),
              f"{name}: the point goal {goal!r} is not three channels in millimetres")
+    carrier = rows[places[0]].get("frame")
     points = []
     for frame in frames:
         row = frame.get("goal")
         _require(isinstance(row, list) and len(row) == len(rows)
                  and all(type(row[at]) in (int, float) and math.isfinite(row[at]) for at in places),
                  f"{name}: a frame carries no {goal}")
-        points.append(tuple(float(row[at]) for at in places))
+        point = tuple(float(row[at]) for at in places)
+        if carrier:
+            pose = (frame.get("component_placements") or {}).get(str(carrier))
+            _require(isinstance(pose, Mapping), f"{name}: a frame places no {carrier}")
+            point = _carried(pose, point)
+        points.append(point)
     positions = [{"from_s": times[at], "point_mm": list(point)} for at, point in enumerate(points)
                  if at == 0 or point != points[at - 1]]
     return {"goal": goal, "channels": [str(rows[at].get("channel") or "") for at in places],
             "unit": "mm", "points": points, "positions": positions}
+
+
+def _carried(pose: Mapping[str, Any], local: Sequence[float]) -> tuple[float, float, float]:
+    """A point fixed in a component, in the world at that component's pose."""
+
+    x, y, z, w = (float(v) for v in pose["rotation_xyzw"])
+    n = math.sqrt(x * x + y * y + z * z + w * w)
+    x, y, z, w = x / n, y / n, z / n, w / n
+    rows = ((1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)),
+            (2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)),
+            (2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)))
+    origin = [float(v) for v in pose["position_mm"]]
+    return tuple(origin[i] + sum(rows[i][j] * float(local[j]) for j in range(3)) for i in range(3))
 
 
 class _Stage:
