@@ -125,3 +125,76 @@ def test_a_threaded_bolt_holds_its_allowance_while_a_real_collision_fails(tmp_pa
     # 2 mm deeper is 4π mm³, past the 7 mm³ the thread accounts for.
     driven = run({"bolt": [0, 0, -2]})
     assert [(r["first"], r["second"]) for r in driven["failing"]] == [("block", "bolt")]
+
+
+@pytest.mark.skipif(FREECADCMD is None, reason="Needs real OCCT")
+def test_the_first_frame_agrees_to_the_mjcf_pose_precision_not_float_noise(tmp_path):
+    # ADR-584: frame 0 is MuJoCo's pose of an MJCF written to six significant
+    # figures, so it sits up to micrometres from the solved pose. The
+    # excavator's bucket was 7e-5 mm off, its box gap 3.5e-5 mm short of the
+    # published 90.06905449114826 mm, and smoke refused it at a 1e-5 bound.
+    subprocess.run([str(FREECADCMD), "-c", (
+        "import Part, FreeCAD as App;"
+        f"Part.makeBox(10, 10, 10).exportBrep({str(tmp_path / 'block.brep')!r});"
+        f"Part.makeCylinder(1, 4, App.Vector(5, 5, 8)).exportBrep({str(tmp_path / 'bolt.brep')!r});"
+        f"Part.makeSphere(1, App.Vector(100, 0, 5)).exportBrep({str(tmp_path / 'far.brep')!r});"
+        f"Part.makeSphere(1, App.Vector(5, 5, 14)).exportBrep({str(tmp_path / 'near.brep')!r})")],
+        check=True, capture_output=True, timeout=300)
+    names = ("block", "bolt", "far", "near")
+    identity = {"position_mm": [0, 0, 0], "rotation_xyzw": [0, 0, 0, 1]}
+    static = [
+        # The far ball's box is 89 mm from the block's, a culled bound; the
+        # near ball is 3 mm from the block shell to shell, 1 mm from the
+        # bolt; the bolt shares 2π mm³ with the block.
+        {"first": "block", "second": "bolt", "distance_mm": 0.0, "common_volume_mm3": 2.0 * 3.141592653589793},
+        {"first": "block", "second": "far", "distance_mm": 89.0, "common_volume_mm3": 0.0, "culled": True},
+        {"first": "block", "second": "near", "distance_mm": 3.0, "common_volume_mm3": 0.0},
+        {"first": "bolt", "second": "far", "distance_mm": 80.0, "common_volume_mm3": 0.0, "culled": True},
+        {"first": "bolt", "second": "near", "distance_mm": 1.0, "common_volume_mm3": 0.0},
+        {"first": "far", "second": "near", "distance_mm": 80.0, "common_volume_mm3": 0.0, "culled": True},
+    ]
+
+    def run(offset_mm):
+        # Every part but the block sits offset_mm off its solved pose in -x
+        # and in +z, the way a rounded MJCF position puts it.
+        moved = {"position_mm": [-offset_mm, 0, offset_mm], "rotation_xyzw": [0, 0, 0, 1]}
+        (tmp_path / "trace.json").write_text(json.dumps([{"time_s": 0.0, "placements": {
+            n: identity if n == "block" else moved for n in names}}]))
+        plan = {"trace": str(tmp_path / "trace.json"), "out": str(tmp_path / "out.json"),
+                "maximum_volume_mm3": 1e-6, "static": static,
+                "thread_allowances": [{"first": "block", "second": "bolt", "allowance_mm3": 7.0}],
+                "geometry": [{"name": n, "path": str(tmp_path / f"{n}.brep")} for n in names]}
+        (tmp_path / "plan.json").write_text(json.dumps(plan))
+        subprocess.run([str(FREECADCMD), str(SMOKE)], check=True, capture_output=True, timeout=300,
+                       env={**os.environ, "CADEX_SMOKE_GEOMETRY_PLAN": str(tmp_path / "plan.json")})
+        return json.loads((tmp_path / "out.json").read_text())
+
+    exact = run(0.0)
+    assert "error" not in exact, exact
+    assert exact["pass"] is True
+    # The far ball's box gap falls 7e-5 mm short of its bound, the near
+    # ball's distance moves by 7e-5 mm, and the bolt's 2π mm³ by about
+    # 2e-4 mm³ -- each past the old 1e-5, each only the file's rounding.
+    rounded = run(7e-5)
+    assert "error" not in rounded, rounded
+    assert rounded["pass"] is True and rounded["initial_pose_agrees"] is True
+    assert abs(rounded["initial_pose_tolerance_mm"] - 0.034641016151377546) < 1e-12
+    # A pose 0.1 mm off is not rounding; it is a trace that put a part
+    # somewhere else, and still a measurement error.
+    wrong = run(0.1)
+    assert "initial pose disagrees with published clearance" in wrong["error"], wrong
+
+
+def test_the_initial_pose_bound_is_the_engines_mjcf_pose_contract():
+    # ADR-584: the child cannot import the engine, so it restates the
+    # export's pose tolerance; a change on either side must move both.
+    import importlib.util
+    import re
+
+    spec = importlib.util.spec_from_file_location("smoke_geometry_under_test", SMOKE)
+    child = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(child)
+    source = (ROOT / "src/Mod/cadex/CadexDynamics.py").read_text()
+    engine = float(re.search(r"^MJCF_POSE_TOLERANCE_MM = (\S+)$", source, re.M).group(1))
+    assert child.MJCF_POSE_TOLERANCE_MM == engine
+    assert child.INITIAL_POSE_TOLERANCE_MM == 2.0 * 3.0 ** 0.5 * engine

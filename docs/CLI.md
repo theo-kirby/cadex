@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -3143,7 +3143,15 @@ The command checks:
   proxy. The default limit is `--max-common-volume-mm3 0.000001`. Each pair's
   maximum volume and its time are retained. At the first frame, distances
   and common volumes must agree with published static clearance; a missing
-  solid or disagreement is a measurement error, never a pass. A pair whose
+  solid or disagreement is a measurement error, never a pass. Agreement is
+  to the MJCF's pose precision, not float noise (ADR-584): frame 0 is
+  MuJoCo's pose of a file written to six significant figures, whose export
+  holds each body within 0.01 mm of the solved pose, so a distance agrees
+  within 2√3 × 0.01 ≈ 0.035 mm (a culled box-gap bound need only be reached
+  to within it) and a common volume within that shift times the overlap's
+  area (at least 1e-5 mm³). `smoke-geometry.json` records the bound as
+  `initial_pose_tolerance_mm`; the error names the quantity and prints
+  both values in full. A pair whose
   relative pose is unchanged since its volume was last measured keeps that
   volume (ADR-582: the volume is invariant under a rigid motion of both);
   `smoke-geometry.json`'s `booleans` counts those `run` and `reused`.

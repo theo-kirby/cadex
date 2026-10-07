@@ -36624,3 +36624,67 @@ printed part is. As there, only a catalog bolt into a printed part
 carries an allowance; any other overlap still fails.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-584 — The smoke check's first frame agrees to the MJCF's pose precision, not float noise (2026-10-07, excavator-mini session)
+
+**Context.** An agent designing `excavator-mini` ran `cadex smoke` and was
+refused with `initial pose disagrees with published clearance:
+('cp_arm_servo', 'cp_bucket'): measured 90.069 mm, published
+90.06905449114826 mm` — read, reasonably, as one number rounded two ways.
+It was not a rounding of the *message* alone. The engine publishes
+clearance at the solved pose; smoke measures frame 0 of a MuJoCo trace of
+the exported MJCF, and MuJoCo's XML writer keeps about six significant
+figures (`CadexDynamics.MJCF_FIELD_TOLERANCE`). The bucket's body is
+written at `pos="0.279177 -0.0072 0.0111815"`, so frame 0 puts it
+7e-5 mm off the solved pose, and the pair's culled box gap (ADR-423) came
+out 90.06901983 mm, 3.47e-5 mm short of its published bound. The child
+(`cli/cadex_cli/smoke_geometry.py`) allowed 1e-5 mm, below what the file
+can carry; the export itself only promises each body within
+`MJCF_POSE_TOLERANCE_MM` = 0.01 mm of the solved pose. Over all 1,596
+pairs, frame 0 differed from the published row by up to 4.3e-5 mm in
+distance and 1.5e-3 mm³ in common volume, so the volume test (1e-5 mm³)
+would have refused it too. The `:g` in the message then hid the
+difference it was reporting, and it printed the distance even when the
+volume was what disagreed.
+
+**Decision.** The first frame agrees with the published row within what
+the MJCF's pose contract can move it, stated once:
+1. `smoke_geometry.py` restates `MJCF_POSE_TOLERANCE_MM` (0.01 mm, per
+   coordinate) and derives `INITIAL_POSE_TOLERANCE_MM` = 2√3 × 0.01 ≈
+   0.0346 mm: each part moves at most √3 × 0.01, and a distance or box gap
+   between two parts by at most twice that. An exact row's distance agrees
+   within it; a culled row's box gap must reach its bound less it.
+2. A common volume agrees within that shift times the area of the
+   overlap's boundary (the most a volume can move under such a shift), and
+   never less than the old 1e-5 mm³, so a zero-volume pair stays exact.
+3. The error names the quantity that disagreed and prints both values with
+   `repr` and the tolerance; `smoke-geometry.json` records
+   `initial_pose_tolerance_mm`.
+
+A wrong pose — the composition ADR-242 guards against — is millimetres
+off, two orders above the bound, and is still a measurement error.
+
+**Measured.** The geometry child on a scratch copy of `excavator-mini`'s
+retained artifacts: before, the error above; after, `initial_pose_agrees`
+true over 101 frames and 1,596 pairs (1,062 booleans run, 10,352 reused),
+verdict `fail` on three real overlaps the motion reaches (both tracks into
+`cp_floor` at 0.02 s, 38.9 and 37.8 mm³; `cp_house`/`cp_slew_servo` at
+0.32 s, 56.5 mm³) — findings for the design, not the check.
+
+**Regression.** `test_smoke_geometry_bound.py` moves every part but a block
+7e-5 mm off its solved pose, as a rounded MJCF does: a culled 89 mm bound,
+a 3 mm and a 1 mm shell distance and a 2π mm³ threaded overlap all agree,
+where the previous child refused the pair (`('block', 'bolt'): measured
+1.77636e-15 mm, published 0.0 mm` — the volume, reported as a distance).
+The same parts 0.1 mm off are still refused. A second test pins the
+restated 0.01 mm to `CadexDynamics.MJCF_POSE_TOLERANCE_MM`, since the child
+runs under FreeCADCmd and cannot import the engine.
+
+**Consequences.** Smoke's pre-check is now as precise as the model it
+simulates, and no more. The rotation the file rounds is not in the
+engine's pose contract (it checks body origins); at six significant
+figures it moves a point under a micrometre at robot scale, well inside
+the bound. Writing the MJCF at full precision would remove the gap at its
+source, but MuJoCo's writer has no precision setting (`MjSpec`).
+
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).

@@ -11,12 +11,50 @@ import math
 import os
 from pathlib import Path
 
+#: How far frame 0 may put a part from the solved pose the engine published
+#: its clearance at, in millimetres (ADR-584). Frame 0 is MuJoCo's pose of
+#: the exported MJCF, whose writer keeps about six significant figures: the
+#: excavator's bucket sits at x = 0.279177 m, 7e-5 mm from where the engine
+#: put it. The export holds every body origin within
+#: ``CadexDynamics.MJCF_POSE_TOLERANCE_MM`` (1e-2 mm) of the solved pose per
+#: coordinate, so a part moves at most sqrt(3) times that, and a distance or
+#: box gap between two parts by at most twice that. Anything farther is a
+#: pose the trace got wrong, which is what this check is for (ADR-242).
+MJCF_POSE_TOLERANCE_MM = 1.0e-2
+INITIAL_POSE_TOLERANCE_MM = 2.0 * math.sqrt(3.0) * MJCF_POSE_TOLERANCE_MM
+
 
 def _box_gap(p, q):
     """The gap between two exact boxes, as the engine culls by (ADR-423)."""
     return math.sqrt(sum(max(0.0, lo_a - hi_b, lo_b - hi_a) ** 2 for lo_a, hi_a, lo_b, hi_b in (
         (p.XMin, p.XMax, q.XMin, q.XMax), (p.YMin, p.YMax, q.YMin, q.YMax),
         (p.ZMin, p.ZMax, q.ZMin, q.ZMax))))
+
+
+def _disagreement(static, distance, volume, common_area):
+    """Why frame 0 disagrees with a published static row, or ``""``.
+
+    The bound is :data:`INITIAL_POSE_TOLERANCE_MM` on a distance, and that
+    shift swept over the overlap's boundary on a common volume (ADR-584). A
+    culled row is a box-gap lower bound (ADR-423) and need only be reached.
+    """
+    if static is None or static.get("error"):
+        return "no published measurement"
+    shift = INITIAL_POSE_TOLERANCE_MM
+    published = float(static["distance_mm"])
+    if static.get("culled"):
+        if not distance >= published - shift:
+            return (f"measured box gap {distance!r} mm is below the published bound "
+                    f"{published!r} mm by more than {shift:.3g} mm")
+    elif not abs(distance - published) <= shift:
+        return (f"measured {distance!r} mm, published {published!r} mm "
+                f"(tolerance {shift:.3g} mm)")
+    expected = float(static["common_volume_mm3"])
+    allowed = max(1e-5, common_area * shift)
+    if not abs(volume - expected) <= allowed:
+        return (f"measured common volume {volume!r} mm3, published {expected!r} mm3 "
+                f"(tolerance {allowed:.3g} mm3)")
+    return ""
 
 
 def measure(plan):
@@ -57,6 +95,7 @@ def measure(plan):
             for second in names[a + 1:]:
                 left, right = shapes[first][0], shapes[second][0]
                 pair = (first, second)
+                common_area = 0.0
                 # A disjoint AABB proves zero common volume; otherwise OCCT.
                 if not left.BoundBox.intersect(right.BoundBox):
                     volume = 0.0
@@ -67,7 +106,11 @@ def measure(plan):
                         volume = seen[1]
                         booleans["reused"] += 1
                     else:
-                        volume = float(left.common(right).Volume)
+                        common = left.common(right)
+                        volume = float(common.Volume)
+                        # A volume moves under a shift by at most its
+                        # boundary's area times the shift (ADR-584).
+                        common_area = float(common.Area) if volume > 0.0 else 0.0
                         booleans["run"] += 1
                         if not math.isfinite(volume) or volume < -1e-6:
                             raise ValueError("invalid common volume")
@@ -86,13 +129,12 @@ def measure(plan):
                         distance = _box_gap(boxes[first], boxes[second])
                     else:
                         distance = float(Part.Compound(left.Shells).distToShape(Part.Compound(right.Shells))[0])
-                    if (not math.isclose(volume, static["common_volume_mm3"] if static else math.nan,
-                                         abs_tol=1e-5, rel_tol=1e-6) or
-                            (distance < static["distance_mm"] - 1e-5 if static.get("culled") else
-                             not math.isclose(distance, static["distance_mm"], abs_tol=1e-5, rel_tol=1e-6))):
-                        raise ValueError(f"initial pose disagrees with published clearance: {pair}: "
-                                         f"measured {distance:g} mm, published "
-                                         f"{static.get('distance_mm') if static else None} mm")
+                    # Both within what the MJCF's pose can move them (ADR-584),
+                    # not within float noise: frame 0 is the solved pose only
+                    # to the file's six significant figures.
+                    reason = _disagreement(static, distance, volume, common_area)
+                    if reason:
+                        raise ValueError(f"initial pose disagrees with published clearance: {pair}: {reason}")
                 if pair not in worst or volume > worst[pair]["common_volume_mm3"]:
                     worst[pair] = {"first": first, "second": second,
                                    "common_volume_mm3": volume, "time_s": frame["time_s"]}
@@ -104,7 +146,8 @@ def measure(plan):
     failures = [r for r in worst.values() if r["common_volume_mm3"] > max(
         plan["maximum_volume_mm3"], r.get("thread_allowance_mm3", 0.0))]
     return {"pass": not failures, "source": "exact BREP solids at sampled MuJoCo poses",
-            "initial_pose_agrees": True, "samples": len(trace), "pairs_checked": len(worst), "booleans": booleans,
+            "initial_pose_agrees": True, "initial_pose_tolerance_mm": INITIAL_POSE_TOLERANCE_MM,
+            "samples": len(trace), "pairs_checked": len(worst), "booleans": booleans,
             "threaded": threaded,
             "maximum_volume_mm3": plan["maximum_volume_mm3"], "failing": failures,
             "pairs": list(worst.values())}
