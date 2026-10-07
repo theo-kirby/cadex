@@ -3147,6 +3147,10 @@ The command checks:
   relative pose is unchanged since its volume was last measured keeps that
   volume (ADR-582: the volume is invariant under a rigid motion of both);
   `smoke-geometry.json`'s `booleans` counts those `run` and `reused`.
+  A bolt the static block calls threaded into a printed part (ADR-492) may
+  share up to its thread allowance with that part at every pose (ADR-583);
+  its row carries `thread_allowance_mm3`, `threaded` counts those that
+  overlap, and one driven past its thread still fails.
 - Floor-proxy penetration no deeper than `--penetration-mm 0.5`, and a free
   base whose design is touching the environment floor at the end, whose linear
   speed is at most `--rest-speed-mm-s 10`, and which has turned no further

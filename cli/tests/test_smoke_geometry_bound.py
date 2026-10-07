@@ -79,3 +79,49 @@ def test_the_first_frame_measures_shells_the_way_the_engine_published_them(tmp_p
     assert [(r["first"], r["second"]) for r in result["failing"]] == [("ball", "box")]
     assert result["booleans"] == {"run": 2, "reused": 1}
     assert abs(result["failing"][0]["common_volume_mm3"] - 4.0 / 3.0 * 3.141592653589793) < 1e-2
+
+
+@pytest.mark.skipif(FREECADCMD is None, reason="Needs real OCCT")
+def test_a_threaded_bolt_holds_its_allowance_while_a_real_collision_fails(tmp_path):
+    # ADR-583: a bolt half-sunk in a block shares 2π mm³ with it, inside the
+    # thread allowance the CLI passed (ADR-492); a ball driven into the block
+    # is a collision, and the bolt driven past its thread is one too.
+    subprocess.run([str(FREECADCMD), "-c", (
+        "import Part, FreeCAD as App;"
+        f"Part.makeBox(10, 10, 10).exportBrep({str(tmp_path / 'block.brep')!r});"
+        f"Part.makeCylinder(1, 4, App.Vector(5, 5, 8)).exportBrep({str(tmp_path / 'bolt.brep')!r});"
+        f"Part.makeSphere(1, App.Vector(2, 2, 20)).exportBrep({str(tmp_path / 'ball.brep')!r})")],
+        check=True, capture_output=True, timeout=300)
+    identity = {"position_mm": [0, 0, 0], "rotation_xyzw": [0, 0, 0, 1]}
+    names = ("ball", "block", "bolt")
+
+    def run(*moves):
+        trace = [{"time_s": 0.0, "placements": {n: identity for n in names}}]
+        for i, move in enumerate(moves):
+            trace.append({"time_s": 0.1 * (i + 1), "placements": {
+                n: {"position_mm": move.get(n, [0, 0, 0]), "rotation_xyzw": [0, 0, 0, 1]} for n in names}})
+        (tmp_path / "trace.json").write_text(json.dumps(trace))
+        plan = {"trace": str(tmp_path / "trace.json"), "out": str(tmp_path / "out.json"),
+                "maximum_volume_mm3": 1e-6,
+                "static": [{"first": "ball", "second": "block", "distance_mm": 9.0, "common_volume_mm3": 0.0},
+                           {"first": "ball", "second": "bolt", "distance_mm": 5.0, "common_volume_mm3": 0.0,
+                            "culled": True},
+                           {"first": "block", "second": "bolt", "distance_mm": 0.0,
+                            "common_volume_mm3": 2.0 * 3.141592653589793}],
+                "thread_allowances": [{"first": "bolt", "second": "block", "allowance_mm3": 7.0}],
+                "geometry": [{"name": n, "path": str(tmp_path / f"{n}.brep")} for n in names]}
+        (tmp_path / "plan.json").write_text(json.dumps(plan))
+        subprocess.run([str(FREECADCMD), str(SMOKE)], check=True, capture_output=True, timeout=300,
+                       env={**os.environ, "CADEX_SMOKE_GEOMETRY_PLAN": str(tmp_path / "plan.json")})
+        result = json.loads((tmp_path / "out.json").read_text())
+        assert "error" not in result, result
+        return result
+
+    collided = run({"ball": [0, 0, -12]})
+    assert [(r["first"], r["second"]) for r in collided["failing"]] == [("ball", "block")]
+    assert collided["threaded"] == 1
+    bolt = next(r for r in collided["pairs"] if r["second"] == "bolt" and r["first"] == "block")
+    assert bolt["thread_allowance_mm3"] == 7.0 and bolt["common_volume_mm3"] > 6.0
+    # 2 mm deeper is 4π mm³, past the 7 mm³ the thread accounts for.
+    driven = run({"bolt": [0, 0, -2]})
+    assert [(r["first"], r["second"]) for r in driven["failing"]] == [("block", "bolt")]

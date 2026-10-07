@@ -36583,3 +36583,44 @@ many moving pairs still pays one boolean per moving, box-overlapping pair
 per frame.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-583 — The smoke check allows a threaded bolt its thread at every pose (2026-10-06, orun4 report defect 2)
+
+**Context.** After ADR-582, `cadex smoke` on the second fresh-session biped
+completed in 186.66 s with verdict `fail`, and all 33 failing pairs were
+bolts threaded into the printed part they hold, at 4.5–10.3 mm³ from the
+first frame on. The engine's own fit checks do not count that overlap:
+ADR-492's `thread_allowances` (`CadexFitReport.py`) lets a catalog bolt
+share up to `π/4 (d² − minor²) L` with a printed part, the static block
+reads such a pair `threaded`, and the swept check keeps that allowance
+through the motion for a pair already threaded at the solved pose. Smoke's
+per-frame check alone ignored it.
+
+**Decision.** Smoke applies the same rule, not a new tolerance:
+1. `cli/cadex_cli/smoke.py` builds the components' catalog rows from the
+   retained outputs the way the clearance scope builds them, calls the
+   engine's `thread_allowances`, and keeps an allowance only for a pair
+   whose published solved-pose overlap is above the volume limit and within
+   it — the sweep's gate. A bolt that only meets a part as the robot moves
+   holds none.
+2. The geometry child fails a pair only when its worst volume exceeds both
+   the volume limit and its allowance. Its row carries
+   `thread_allowance_mm3`; `smoke-geometry.json` counts the overlapping
+   ones under `threaded`.
+
+**Measured.** The same scratch copy: full `cadex smoke` **186.49 s, verdict
+`pass`**, every check green; 33 threaded pairs, their worst volume at most
+83.5% of the allowance over 101 frames; no other pair overlaps.
+
+**Regression.** `test_smoke_geometry_bound.py` sinks a cylinder half into a
+block with an allowance and drives a ball into the block: only the ball
+fails, and it fails on the previous child, which also failed the bolt. The
+bolt driven 2 mm deeper, past its thread, fails. `test_smoke.py` pins the
+gate: a bolt threaded at the solved pose holds its allowance; one at zero
+overlap, one past its thread, and one into a catalog servo hold none.
+
+**Consequences.** Smoke and the fit block now agree on what a screw in a
+printed part is. As there, only a catalog bolt into a printed part
+carries an allowance; any other overlap still fails.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

@@ -35,6 +35,10 @@ def measure(plan):
         raise ValueError("empty geometry or trace is not a smoke check")
     names = sorted(shapes)
     expected = {tuple(sorted((r["first"], r["second"]))): r for r in plan["static"]}
+    # A bolt threaded into a printed part at the solved pose may share up to
+    # its thread with it through the motion too (ADR-492, ADR-583).
+    allowances = {tuple(sorted((r["first"], r["second"]))): float(r["allowance_mm3"])
+                  for r in plan.get("thread_allowances", [])}
     worst = {}
     # A common volume is invariant under a rigid motion of both shapes, so a
     # pair whose relative pose is unchanged keeps the volume already measured
@@ -92,9 +96,16 @@ def measure(plan):
                 if pair not in worst or volume > worst[pair]["common_volume_mm3"]:
                     worst[pair] = {"first": first, "second": second,
                                    "common_volume_mm3": volume, "time_s": frame["time_s"]}
-    failures = [r for r in worst.values() if r["common_volume_mm3"] > plan["maximum_volume_mm3"]]
+    threaded = 0
+    for pair, row in worst.items():
+        if pair in allowances:
+            row["thread_allowance_mm3"] = allowances[pair]
+            threaded += row["common_volume_mm3"] > plan["maximum_volume_mm3"]
+    failures = [r for r in worst.values() if r["common_volume_mm3"] > max(
+        plan["maximum_volume_mm3"], r.get("thread_allowance_mm3", 0.0))]
     return {"pass": not failures, "source": "exact BREP solids at sampled MuJoCo poses",
             "initial_pose_agrees": True, "samples": len(trace), "pairs_checked": len(worst), "booleans": booleans,
+            "threaded": threaded,
             "maximum_volume_mm3": plan["maximum_volume_mm3"], "failing": failures,
             "pairs": list(worst.values())}
 
