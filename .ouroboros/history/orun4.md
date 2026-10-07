@@ -6,11 +6,11 @@ ended: 2026-10-07T01:51:46+00:00
 hours: 18.2
 state: stopped
 iterations: 52
-commits: 80
+commits: 81
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 11
-merged: no
+merged: e6226b90480a6685bde9e9a89b500f6154bd2253
 branch: ouroboros/orun4
 memory: hypergraph
 actor: claude:claude-opus-5-5
@@ -18,14 +18,14 @@ actor: claude:claude-opus-5-5
 
 # Run orun4
 
-52 iterations in 18.2h on `sb1x`, stopped (critic accepted done 2x in a row). Branch `ouroboros/orun4`, not merged.
+52 iterations in 18.2h on `sb1x`, stopped (critic accepted done 2x in a row). Branch `ouroboros/orun4`, merged as `e6226b90`.
 
 ## The numbers
 
 | | |
 |---|---|
 | iterations | 52 (changed 48, recorded 33) |
-| commits | 80 — 143 files changed, 10483 insertions(+), 1033 deletions(-) |
+| commits | 81 — 145 files changed, 10567 insertions(+), 1034 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 11 checked at the tip |
 | reverts | 0 |
 | verdicts | continue 40, done_accepted 2, done_rejected 3, reject 3, stuck 4 |
