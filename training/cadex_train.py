@@ -709,6 +709,33 @@ def tracker_reading(xp: Any, true_mm: Any, tracker: dict[str, Any],
     return xp.where(inside, reading, xp.zeros_like(reading))
 
 
+def tracker_velocity_noise(tracker: dict[str, Any]) -> tuple[float, float]:
+    """``(noise, resolution)`` of a differenced velocity, mm/s (ADR-590).
+
+    ``CadexDynamics.tracker_velocity_noise``: two readings ``1 / rate_hz``
+    apart, so ``sqrt(2) * noise_mm * rate_hz`` and ``resolution_mm * rate_hz``.
+    """
+
+    rate = float(tracker["rate_hz"])
+    return (math.sqrt(2.0) * float(tracker["noise_mm"]) * rate,
+            float(tracker["resolution_mm"]) * rate)
+
+
+def tracker_velocity_reading(xp: Any, true_mm_s: Any, tracker: dict[str, Any],
+                             in_range: Any, noise_mm_s: Any = None) -> Any:
+    """A tracker's differenced velocity (ADR-590), as the engine computes it.
+
+    ``CadexDynamics.tracker_velocity_reading`` in ``xp``: velocity plus the
+    drawn noise, rounded to the velocity resolution, and zeros whenever
+    ``in_range`` -- the paired position's flag -- is not 1.
+    """
+
+    _sigma, step = tracker_velocity_noise(tracker)
+    seen = true_mm_s if noise_mm_s is None else true_mm_s + noise_mm_s
+    quantised = xp.round(seen / step) * step
+    return xp.where(in_range == 1.0, quantised, xp.zeros_like(quantised))
+
+
 def tracker_variance_floor(task: dict[str, Any]) -> list[float]:
     """The least variance the normaliser may hold for each channel (ADR-589).
 
@@ -728,6 +755,9 @@ def tracker_variance_floor(task: dict[str, Any]) -> list[float]:
         for index, _channel in enumerate(record["channels"]):
             if not tracker:
                 floor.append(0.0)
+            elif record.get("in_range_of"):
+                known = max(tracker_velocity_noise(tracker))
+                floor.append(known * known)
             elif index < int(record["dim"]):
                 known = max(float(tracker["resolution_mm"]), float(tracker["noise_mm"]))
                 floor.append(known * known)
@@ -737,10 +767,14 @@ def tracker_variance_floor(task: dict[str, Any]) -> list[float]:
 
 
 def tracker_noise_std(task: dict[str, Any]) -> list[float]:
-    """One standard deviation per tracked coordinate, in observation order."""
+    """One standard deviation per tracked coordinate, in observation order.
+
+    A tracked velocity's is the differenced one (ADR-590).
+    """
 
     return [
-        float(record["tracker"]["noise_mm"])
+        tracker_velocity_noise(record["tracker"])[0] if record.get("in_range_of")
+        else float(record["tracker"]["noise_mm"])
         for record in task["observations"]
         if record.get("tracker")
         for _axis in range(int(record["dim"]))
@@ -1445,15 +1479,22 @@ def train(
         raw = jnp.take(data.sensordata, gather) * obs_scale
         if not tracking:
             return raw
-        parts, cursor, drawn = [], 0, 0
+        parts, cursor, drawn, flags = [], 0, 0, {}
         for record in task["observations"]:
             dim = int(record["dim"])
             segment = raw[cursor:cursor + dim]
             cursor += dim
-            if record.get("tracker"):
+            if record.get("in_range_of"):
+                # ADR-590: gated by the paired position's flag, read above.
+                parts.append(tracker_velocity_reading(
+                    jnp, segment, record["tracker"], flags[record["in_range_of"]],
+                    None if noise is None else noise[drawn:drawn + dim]))
+                drawn += dim
+            elif record.get("tracker"):
                 parts.append(tracker_reading(
                     jnp, segment, record["tracker"],
                     None if noise is None else noise[drawn:drawn + dim]))
+                flags[record["name"]] = parts[-1][dim]
                 drawn += dim
             else:
                 parts.append(segment)

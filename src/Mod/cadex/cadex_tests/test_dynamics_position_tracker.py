@@ -345,7 +345,9 @@ def test_a_trained_policy_never_holds_a_tracked_channel_below_its_floor(tmp_path
     everywhere = {**TRACKER, "range_mm": [[-1.0e5, 1.0e5]] * 3, "noise_mm": 0.0}
     built = _rig()
     observations = dyn.observation_records(
-        [_entry(everywhere)], built["tree"], built["joint_records"], built["actuators"])
+        [_entry(everywhere), {**_entry(everywhere), "kind": "tracked_velocity",
+                              "name": "ball_v"}],
+        built["tree"], built["joint_records"], built["actuators"])
     exported = dyn.export_mjcf(built, observations=observations)
     reloaded = mujoco.MjModel.from_xml_string(exported["xml"].decode("utf-8"))
     task = {**TASK, "termination": []}
@@ -373,4 +375,116 @@ def test_a_trained_policy_never_holds_a_tracked_channel_below_its_floor(tmp_path
     assert std["ball_in_range"] >= 0.5
     for axis in "xyz":
         assert std[f"ball_{axis}"] >= 0.5 - 1e-6
+        # ADR-590: the differenced velocity's quantum, 0.5 mm x 100 Hz.
+        assert std[f"ball_v_{axis}"] >= 50.0 - 1e-4
     dyn.verify_policy(container, bundle, task_sha256=hashlib.sha256(payload).hexdigest())
+
+
+# ---------------------------------------------------------------------------
+# The differenced velocity (ADR-590): what the tracker's firmware reports by
+# subtracting successive readings at its declared rate.
+# ---------------------------------------------------------------------------
+
+
+def _velocity_entry(**extra):
+    return {**_entry(), "kind": "tracked_velocity", "name": "ball_v", **extra}
+
+
+def test_a_tracked_velocity_names_its_tracker_and_follows_its_position() -> None:
+    api, (_base, plate, ball) = _surface()
+    touch = api.sensor(plate, "position_tracker", name="touch", **TRACKER)
+    read = api.observation(ball, "tracked_velocity", name="ball_v", sensor=touch)
+    assert read.properties["grounded_kind"] == "position_tracker"
+    assert read.arguments == (ball, plate)
+    with pytest.raises(ValueError, match="position_tracker"):
+        api.observation(ball, "tracked_velocity", name="ball_v", role="privileged")
+    # In the engine it needs the same tracker's position of the same body,
+    # declared first, because that is where its range comes from.
+    for entries in ([_velocity_entry()], [_velocity_entry(), _entry()],
+                    [_entry(grounded_sensor="other"), _velocity_entry()]):
+        with pytest.raises(dyn.DynamicsError) as unpaired:
+            _bundle(entries)
+        assert unpaired.value.reason == "observation_tracker_velocity_unpaired"
+    _reloaded, bundle = _bundle([_entry(), _velocity_entry()])
+    row = bundle["observations"][1]
+    assert row["channels"] == ["ball_v_x", "ball_v_y", "ball_v_z"]
+    assert (row["unit"], row["in_range_of"], row["frame"]) == ("mm/s", "ball", "plate")
+    assert dyn.ungrounded_policy_channels(bundle) == []
+
+
+def test_the_velocity_is_the_derivative_of_the_reading_through_a_tilt_and_a_turn() -> None:
+    reloaded, task = _bundle([_entry(), _velocity_entry()])
+    step = 0.5 * 100.0
+    data = mujoco.MjData(reloaded)
+    free = mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_JOINT, "ball/free")
+    vadr = reloaded.jnt_dofadr[free]
+    turn = reloaded.jnt_dofadr[mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_JOINT, "turn")]
+    tilt = reloaded.jnt_dofadr[mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_JOINT, "tilt")]
+    cases = [((0.0, 0.0), (0.3, -0.2, 0.0), (0.0, 0.0)),
+             ((35.0, -20.0), (0.0, 0.0, 0.0), (1.5, 0.0)),
+             ((-120.0, 17.5), (-0.4, 0.25, 0.1), (-0.8, 2.0))]
+    for (turn_deg, tilt_deg), ball_v, (turn_v, tilt_v) in cases:
+        _set_pose(reloaded, data, turn_deg=turn_deg, tilt_deg=tilt_deg,
+                  ball_world_m=[0.03, -0.02, 0.09])
+        data.qvel[:] = 0.0
+        data.qvel[vadr:vadr + 3] = ball_v
+        data.qvel[turn], data.qvel[tilt] = turn_v, tilt_v
+        mujoco.mj_forward(reloaded, data)
+        before = _true_in_plate(reloaded, data)
+        reading = dyn.observation_values(task, data.sensordata)
+        ahead = mujoco.MjData(reloaded)
+        ahead.qpos[:] = data.qpos
+        mujoco.mj_integratePos(reloaded, ahead.qpos, data.qvel, 1.0e-6)
+        mujoco.mj_forward(reloaded, ahead)
+        derivative = [(after - now) / 1.0e-6
+                      for after, now in zip(_true_in_plate(reloaded, ahead), before)]
+        # Rounded to resolution x rate, so within half a step of the true
+        # rate of change of the plate-frame reading -- the frame's own
+        # rotation included, which a world velocity would miss.
+        for axis, value in zip("xyz", derivative):
+            assert abs(reading[f"ball_v_{axis}"] - value) <= step / 2 + 1e-3, (axis, value)
+    assert any(abs(value) > step for value in derivative)
+    # Out of range, the velocity reads zeros with its position.
+    _set_pose(reloaded, data, turn_deg=0.0, tilt_deg=0.0, ball_world_m=[0.25, 0.0, 0.09])
+    data.qvel[vadr:vadr + 3] = [0.5, 0.5, 0.0]
+    mujoco.mj_forward(reloaded, data)
+    lost = dyn.observation_values(task, data.sensordata)
+    assert lost["ball_in_range"] == 0.0
+    assert [lost[f"ball_v_{axis}"] for axis in "xyz"] == [0.0, 0.0, 0.0]
+
+
+def test_the_velocity_noise_is_a_differences_and_the_trainer_computes_it_the_same() -> None:
+    np = pytest.importorskip("numpy")
+    trainer = _trainer()
+    # sqrt(2) x 0.4 mm x 100 Hz, and 0.5 mm x 100 Hz.
+    assert dyn.tracker_velocity_noise(TRACKER) == pytest.approx((56.5685, 50.0), abs=1e-4)
+    assert trainer.tracker_velocity_noise(TRACKER) == dyn.tracker_velocity_noise(TRACKER)
+    assert dyn.tracker_velocity_reading([74.0, -26.0, 0.0], TRACKER, True) == [50.0, -50.0, 0.0]
+    assert dyn.tracker_velocity_reading([74.0, -26.0, 0.0], TRACKER, True,
+                                        [10.0, 0.0, 0.0]) == [100.0, -50.0, 0.0]
+    assert dyn.tracker_velocity_reading([74.0, 1.0, 1.0], TRACKER, False) == [0.0] * 3
+    rng = np.random.default_rng(11)
+    for _ in range(200):
+        truth = rng.uniform(-400.0, 400.0, size=3)
+        noise = rng.normal(0.0, 56.0, size=3)
+        flag = float(rng.integers(0, 2))
+        theirs = trainer.tracker_velocity_reading(np, truth, TRACKER, flag, noise)
+        ours = dyn.tracker_velocity_reading(list(truth), TRACKER, flag == 1.0, list(noise))
+        assert list(theirs) == pytest.approx(ours, abs=1e-9)
+    task = {"observations": [
+        {"name": "angle", "dim": 1, "channels": ["angle"]},
+        {"name": "ball", "dim": 3, "tracker": TRACKER,
+         "channels": ["ball_x", "ball_y", "ball_z", "ball_in_range"]},
+        {"name": "ball_v", "dim": 3, "tracker": TRACKER, "in_range_of": "ball",
+         "channels": ["ball_v_x", "ball_v_y", "ball_v_z"]},
+    ]}
+    sigma = math.sqrt(2.0) * 0.4 * 100.0
+    assert trainer.tracker_noise_std(task) == pytest.approx([0.4] * 3 + [sigma] * 3)
+    assert trainer.tracker_variance_floor(task) == pytest.approx(
+        [0.0] + [0.25] * 4 + [sigma * sigma] * 3)
+    # A fine-resolution draw has the declared spread.
+    fine = {**TRACKER, "resolution_mm": 1.0e-4}
+    draws = rng.standard_normal((4000, 3)) * sigma
+    readings = np.asarray([trainer.tracker_velocity_reading(
+        np, np.asarray([120.0, 0.0, 0.0]), fine, 1.0, draw) for draw in draws])
+    assert readings.std(axis=0) == pytest.approx([sigma] * 3, rel=0.06)

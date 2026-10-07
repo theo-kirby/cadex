@@ -36970,3 +36970,72 @@ unit is a grounded velocity: what the panel's firmware does when it
 differences successive readings.
 
 Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-590 — A position tracker reports the velocity its firmware differences (2026-10-07)
+
+**Decision.** A `position_tracker` (ADR-588) grounds a second observation
+kind, `tracked_velocity`: `assembly.observation(body, "tracked_velocity",
+name=..., sensor=tracker)` reads `<name>_x/_y/_z` in mm/s, the body's
+velocity in the mount's frame. It is what the panel's or camera's firmware
+reports by subtracting successive readings `1 / rate_hz` apart, so it is
+declared by the tracker's own datasheet and nothing new:
+
+- noise per axis `sqrt(2) * noise_mm * rate_hz` (two independent errors
+  over one interval), drawn per control step by the trainer like the
+  position's;
+- quantum `resolution_mm * rate_hz` (one resolution step over one interval);
+- zeros whenever the same tracker's `tracked_position` of the same body
+  reads `_in_range` 0. That position must be declared first, or the export
+  is refused (`observation_tracker_velocity_unpaired`).
+
+The value is a stock MuJoCo `framelinvel` with the mount as `reftype`/
+`refname`, which is the exact derivative of the tracked position, the
+frame's rotation included (measured against a finite difference in C
+MuJoCo and in MJX). `CadexDynamics.tracker_velocity_reading` applies it,
+`training/cadex_train.py` carries the `jnp` copy, and the smoke runner the
+noise-free one. The trainer's noise vector and its normaliser floor
+(ADR-589) take the velocity's spread and quantum.
+
+**Why.** P1's free ball on a grounded panel plateaued at 0.62 reward per
+step with position, flag and encoders only. A memoryless policy cannot damp
+a rolling ball it cannot see moving, and the ball's world velocity is
+privileged under A1. Every touch-panel controller differences its readings,
+so the velocity is grounded; it is only as good as the panel, and the
+declaration says how good.
+
+**Measured** (`orun5-ball-plate`, seed 12, 700 iterations, 256 envs, the
+panel at 0.25 mm, 100 Hz, 0.5 mm: velocity noise 70.7 mm/s, quantum
+25 mm/s). Training reward per step: 0.74 at iteration 0, 0.61 at 137, 0.99 at 274,
+1.05 at 410, 1.10 at 684, best **1.13** at 535, final 1.08. Episodes ran
+to the 300-step horizon from about iteration 270. That is below the 1.33 of
+the same rig with the ball's true velocity in the actor and below the
+reference rig's 1.41, both training-batch means. But `cadex evaluate`
+against the M1 spec (ADR-587) passed the best policy **8 of 8 seeds**:
+final distance 1.20–2.64 mm (bound 8), mean distance 3.11–6.41 mm
+(bound 15), every seed to the horizon through the start kick and the
+mid-episode shove.
+
+**Alternatives.** An observation history in the trainer (stacking the last
+k readings) would let the policy difference for itself, but it changes the
+policy's input shape, the header and the engine's verification for every
+task, to recover a number the hardware already reports. A sample-and-hold
+of the previous reading in the environment state would model the
+difference exactly (its lag and its correlated noise) at the cost of a new
+member of the trainer's carried state and of the engine's stateless
+`observation_values`. The stateless form keeps both, and the lag (half of
+10 ms) and the noise correlation it leaves out are named in
+`docs/MUJOCO.md`.
+
+**Regression and tests.** `test_dynamics_position_tracker.py`: the surface
+and the unpaired refusals; the velocity equals the finite-difference
+derivative of the true plate-frame position within half a quantum through a
+tilt and a turn with the plate moving; it reads zeros out of range; the
+noise and quantum are the declaration's; the trainer's copy equals the
+engine's on 200 random draws, and its spread is the declared one.
+
+**Consequences.** No op, tool or argument changes; the bundle gains an
+`in_range_of` key on a tracked velocity's row only. Evaluations still draw
+no tracker noise (ADR-588), so a pass is judged on clean readings while
+training saw noisy ones.
+
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).

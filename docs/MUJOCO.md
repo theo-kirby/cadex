@@ -1035,7 +1035,7 @@ critic may read and the shipped policy never does. A policy channel is
 |---|---|---|
 | `imu` | the IMU board's own `api.component` | that component's `component_orientation` and `component_angular_velocity` |
 | `joint_encoder` | an `api.joint` | that joint's `position` and `velocity` (a servo's potentiometer tapped out, or a servo that reports position) |
-| `position_tracker` | the `api.component` it is mounted on (a touch panel's plate, a camera's mast) | *another* body's `tracked_position` in the mount's frame (ADR-588) |
+| `position_tracker` | the `api.component` it is mounted on (a touch panel's plate, a camera's mast) | *another* body's `tracked_position` in the mount's frame (ADR-588), and its differenced `tracked_velocity` (ADR-590) |
 
 The API refuses a sensor that does not measure what it is passed to, or
 that is mounted on something else. An ungrounded policy channel still
@@ -1069,8 +1069,24 @@ spread, drawn per control step, to what the actor and critic read, before
 the rounding; the reward and terminations read the noise-free reading, and
 evaluations draw no noise. A tracker whose `rate_hz` is below the task's
 control rate is refused (`tracker_slower_than_control`) rather than held,
-so a policy never acts on a reading the part has not made. It measures
-position only: a velocity no such part reports would be privileged.
+so a policy never acts on a reading the part has not made.
+
+**Its velocity is the firmware's difference (ADR-590).** A panel's
+controller subtracts successive readings `1 / rate_hz` apart, and so may a
+policy: `assembly.observation(body, "tracked_velocity", sensor=tracker)`,
+listed after the same tracker's `tracked_position` of the same body
+(otherwise `observation_tracker_velocity_unpaired`), reads `<name>_x/_y/_z`
+in mm/s. It is a stock `framelinvel` with the mount as reference — the
+exact derivative of the tracked position, the frame's own rotation
+included — with the noise of a difference, `sqrt(2) * noise_mm *
+rate_hz`, drawn per step, and one resolution step per interval,
+`resolution_mm * rate_hz`, as its quantum (`tracker_velocity_reading`, its
+`jnp` copy pinned equal). It reads zeros whenever the position's
+`_in_range` is 0, and its normaliser floor is the larger of those two,
+squared. What it does not model: the half-interval lag of a difference and
+the anticorrelation of successive differences' noise, both small at a
+panel's rate. A velocity no part reports, a world `component_linear_velocity`,
+stays privileged.
 The running normaliser follows the noisy readings the policy acts on, not
 the noise-free ones the reward reads, and holds each tracked axis's
 variance at no less than the larger of its resolution and noise, squared,

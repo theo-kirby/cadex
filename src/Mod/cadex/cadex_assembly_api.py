@@ -984,6 +984,7 @@ _OBSERVATION_KINDS: dict[str, str] = {
     "centre_of_mass_velocity": "component_link",
     "centroidal_angular_momentum": "component_link",
     "tracked_position": "component_link",
+    "tracked_velocity": "component_link",
 }
 
 #: What each observation kind's declared name expands to. A vector channel
@@ -1005,6 +1006,9 @@ _OBSERVATION_SUFFIXES: dict[str, tuple[str, ...]] = {
     # at all (ADR-588): a body outside the declared range reads zeros and a
     # flag of 0, never a clamped or a stale position.
     "tracked_position": ("_x", "_y", "_z", "_in_range"),
+    # The same tracker's differenced velocity (ADR-590); it shares the
+    # position's _in_range rather than carrying a second one.
+    "tracked_velocity": ("_x", "_y", "_z"),
 }
 
 
@@ -1108,7 +1112,8 @@ _SENSOR_KINDS: dict[str, tuple[str, frozenset[str]]] = {
     # A touch panel, or a camera tracking a marker (ADR-588): mounted on a
     # component, it reads *another* body's position in its own frame, with
     # a declared range, resolution, rate and noise the trainer applies.
-    "position_tracker": ("component_link", frozenset({"tracked_position"})),
+    "position_tracker": ("component_link",
+                         frozenset({"tracked_position", "tracked_velocity"})),
 }
 _OBSERVATION_ROLES = ("policy", "privileged")
 
@@ -2900,7 +2905,12 @@ class AssemblyDomainAPI:
         and ``noise_mm`` (one standard deviation per axis). The trainer adds
         the noise and rounds to the resolution; a body outside the range
         reads zeros with ``<name>_in_range`` 0, which a termination can
-        name. ``rate_hz`` must be at least the task's control rate.
+        name. ``rate_hz`` must be at least the task's control rate. A
+        ``tracked_velocity`` of the same body (ADR-590) is the tracker's
+        firmware differencing successive readings: listed after the
+        position, it reads mm/s with noise ``sqrt(2) * noise_mm * rate_hz``
+        and resolution ``resolution_mm * rate_hz``, and zeros while the
+        position is out of range.
 
         A sensor is an argument to ``api.observation(..., sensor=...)`` and
         nothing else: pass it there, and do not return it. A channel the
@@ -3049,10 +3059,10 @@ class AssemblyDomainAPI:
             # "the position" of one says nothing about which -- the same
             # reason api.actuator and api.joint_dynamics ask.
             properties["motion_type"] = _coordinate(operation, value, motion_type)
-        if clean_kind == "tracked_position" and sensor is None:
+        if clean_kind in ("tracked_position", "tracked_velocity") and sensor is None:
             raise _error(
                 operation, "sensor",
-                "a tracked_position is what a position_tracker reads, so it "
+                f"a {clean_kind} is what a position_tracker reads, so it "
                 "names one: its frame is the tracker's mount and its noise is "
                 "the tracker's declaration. A world position the robot cannot "
                 "measure is a privileged component_position",

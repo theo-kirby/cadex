@@ -288,8 +288,8 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `component_position`/`component_orientation`/`component_linear_velocity`/
   `component_angular_velocity`/`centre_of_mass`/`centre_of_mass_velocity`/
   `centroidal_angular_momentum`
-  on a component, `tracked_position` on a body a `position_tracker` reads
-  (below), and `actuator_force` on an actuator. Values reach a trainer in this API's own
+  on a component, `tracked_position` and `tracked_velocity` on a body a
+  `position_tracker` reads (below), and `actuator_force` on an actuator. Values reach a trainer in this API's own
   units — degrees, millimetres, N·mm, N·mm·s — as a per-channel `scale` in the
   bundle, so the trainer *multiplies* rather than converting. A vector
   channel expands to suffixed scalar names — `name="hand"` on a
@@ -306,7 +306,11 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   while the body is inside the range and 0, with every coordinate 0, when
   it is not, so a termination can end the episode on it. The trainer adds
   the declared noise to what the policy reads; a tracker slower than the
-  control loop is refused. One thing
+  control loop is refused. A `tracked_velocity` of the same body from the
+  same tracker, listed after its position (ADR-590), reads `<name>_x/_y/_z`
+  in mm/s: the firmware's difference of successive readings, with noise
+  `sqrt(2) * noise_mm * rate_hz` and resolution `resolution_mm * rate_hz`,
+  and zeros whenever the position reads out of range. One thing
   worth knowing before choosing a channel: a `component_position` reads the
   component's **frame origin**, so a link hinged at its own origin never
   moves in it — `centre_of_mass` is the channel for where a part actually

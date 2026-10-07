@@ -92,7 +92,12 @@ def _observe(task: dict[str, Any], sensordata: Any) -> dict[str, float]:
         scale = float(record.get("scale", 1.0))
         read = [float(sensordata[adr + offset]) * scale for offset in range(dim)]
         tracker = record.get("tracker")
-        if tracker:
+        if tracker and record.get("in_range_of"):
+            # ADR-590: a differenced velocity, zeros while its position is lost.
+            step = float(tracker["resolution_mm"]) * float(tracker["rate_hz"])
+            seen = values.get(f"{record['in_range_of']}_in_range") == 1.0
+            read = [round(value / step) * step if seen else 0.0 for value in read]
+        elif tracker:
             inside = all(float(low) <= value <= float(high)
                          for value, (low, high) in zip(read, tracker["range_mm"]))
             step = float(tracker["resolution_mm"])

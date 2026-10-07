@@ -5944,6 +5944,22 @@ OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
         "derived": ("_in_range",),
         "units": {None: ("mm", length_mm)},
     },
+    # ADR-590: the same body's velocity in the same frame, as the tracker's
+    # firmware reports it by differencing successive readings. MuJoCo's
+    # ``framelinvel`` with the mount as reference is the exact derivative of
+    # the row above (rotation of the frame included); the declared noise of
+    # a difference, sqrt(2) * noise_mm * rate_hz, and the resolution of one,
+    # resolution_mm * rate_hz, are applied by
+    # :func:`tracker_velocity_reading`. It reads zeros whenever the paired
+    # ``tracked_position`` reports the body out of range.
+    "tracked_velocity": {
+        "sensor": "mjSENS_FRAMELINVEL",
+        "target": "component",
+        "objtype": "mjOBJ_XBODY",
+        "dim": 3,
+        "suffixes": ("_x", "_y", "_z"),
+        "units": {None: ("mm/s", speed_mm_per_s)},
+    },
 }
 
 #: Observation kinds named here on purpose, with the reason they are not
@@ -6281,7 +6297,7 @@ def observation_records(
             object_name = target
 
         tracked: dict[str, Any] = {}
-        if kind == "tracked_position":
+        if kind in ("tracked_position", "tracked_velocity"):
             frame = str(entry.get("frame") or "")
             if frame not in bodies or frame == target or not entry.get("tracker"):
                 raise DynamicsError(
@@ -6299,6 +6315,31 @@ def observation_records(
                               "available": list(bodies)},
                 )
             tracked = {"frame": frame, "tracker": dict(entry["tracker"])}
+        if kind == "tracked_velocity":
+            # ADR-590: a differenced velocity is only as present as the
+            # readings it differences, so it needs the same tracker's
+            # position of the same body, declared first, for its range.
+            paired = [
+                record["name"] for record in records
+                if record["kind"] == "tracked_position"
+                and record["target"] == target
+                and record.get("grounded_sensor") == entry.get("grounded_sensor")
+            ]
+            if not paired:
+                raise DynamicsError(
+                    f"{what} is a tracked velocity with no tracked position "
+                    f"of {target!r} from the same tracker declared before it.",
+                    reason="observation_tracker_velocity_unpaired",
+                    correction=(
+                        "A tracker differences its own position readings, and "
+                        "reports nothing while the body is out of its range. "
+                        "Observe the body's tracked_position with the same "
+                        "sensor, listed before its tracked_velocity."
+                    ),
+                    observed={"observation": name, "component": target,
+                              "sensor": str(entry.get("grounded_sensor") or "")},
+                )
+            tracked["in_range_of"] = paired[0]
 
         unit, scale = _observation_unit(kind, motion_type)
         channels = [f"{name}{suffix}"
@@ -8160,7 +8201,10 @@ def task_records(
                 **{key: str(record[key]) for key in _GROUNDING_KEYS if record.get(key)},
                 # ADR-588: the mount frame and the datasheet, present only on
                 # a tracked position.
-                **{key: record[key] for key in ("frame", "tracker") if record.get(key)},
+                # ADR-590: and, on a tracked velocity, the position whose
+                # range flag it shares.
+                **{key: record[key] for key in ("frame", "tracker", "in_range_of")
+                   if record.get(key)},
             }
         )
         channels.extend(str(name) for name in record["channels"])
@@ -8686,7 +8730,11 @@ def observation_values(
         dim = int(record["dim"])
         scale = float(record["scale"])
         read = [float(sensordata[adr + offset]) * scale for offset in range(dim)]
-        if record.get("tracker"):
+        if record.get("in_range_of"):
+            read = tracker_velocity_reading(
+                read, record["tracker"],
+                values[f"{record['in_range_of']}_in_range"] == 1.0)
+        elif record.get("tracker"):
             read = tracker_reading(read, record["tracker"])
         for channel, value in zip(record["channels"], read):
             values[str(channel)] = value
@@ -8758,6 +8806,46 @@ def tracker_reading(
         round((float(value) + float(extra)) / step) * step
         for value, extra in zip(true_mm, noise)
     ] + [1.0]
+
+
+def tracker_velocity_noise(tracker: Mapping[str, Any]) -> tuple[float, float]:
+    """``(noise, resolution)`` of a tracker's differenced velocity, mm/s (ADR-590).
+
+    The firmware subtracts two successive readings ``1 / rate_hz`` apart and
+    divides by that interval: two independent errors of ``noise_mm`` give
+    ``sqrt(2) * noise_mm * rate_hz``, and one resolution step becomes
+    ``resolution_mm * rate_hz``. A faster tracker is a noisier speedometer.
+    """
+
+    rate = float(tracker["rate_hz"])
+    return (math.sqrt(2.0) * float(tracker["noise_mm"]) * rate,
+            float(tracker["resolution_mm"]) * rate)
+
+
+def tracker_velocity_reading(
+    true_mm_s: Sequence[float],
+    tracker: Mapping[str, Any],
+    in_range: bool,
+    noise_mm_s: Sequence[float] | None = None,
+) -> list[float]:
+    """What a tracker's differenced velocity reports for a body (ADR-590).
+
+    The body's velocity in the mount's frame plus any noise drawn (of
+    :func:`tracker_velocity_noise`'s spread), rounded to the velocity
+    resolution; ``[0, 0, 0]`` whenever the paired position reads out of
+    range, because a panel with nothing on it has nothing to difference.
+    ``training/cadex_train.py`` writes the same arithmetic in ``jnp`` and a
+    test pins the two equal.
+    """
+
+    if not in_range:
+        return [0.0, 0.0, 0.0]
+    _sigma, step = tracker_velocity_noise(tracker)
+    noise = list(noise_mm_s) if noise_mm_s is not None else [0.0, 0.0, 0.0]
+    return [
+        round((float(value) + float(extra)) / step) * step
+        for value, extra in zip(true_mm_s, noise)
+    ]
 
 
 def _write_reset_variation(
