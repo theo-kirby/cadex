@@ -241,7 +241,17 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   equality constraints and the published evidence records what each one gave
   up — a `connect` closing a revolute pins position and lets axis alignment
   go, which is exact for a planar four-bar and one constraint short for a
-  spatial one. `gravity_m_s2` and `solver_step_s` are authorable (ADR-079);
+  spatial one. That shortfall is **measured, not assumed** (ADR-593): the
+  closure Jacobian's rank at the solved pose, once with what the export pins
+  and once with what the joint pins, and a closing hinge whose axis would
+  have to tilt as the loop moves is refused as `overconstrained_loop` (end
+  the closing link in a `ball` joint, which a connect expresses exactly). A
+  drive on a joint the loop locks is refused as `actuator_locked_by_loop`.
+  An actuator on a joint the chain reaches from ground — a crank — drives
+  the whole loop; a connect is a soft constraint, so a loop driven fast holds
+  the MJCF's 0.01 mm pose contract only at a fine step (225 °/s on a 200 mm
+  four-bar: 0.045 mm at 2 ms, 0.0012 mm at `solver_step_s=0.0005`).
+  `gravity_m_s2` and `solver_step_s` are authorable (ADR-079);
   gravity is metres per second squared, and `[0, 0, 0]` is how you isolate a
   joint's behaviour from the falling.
   Refused rather than approximated: `distance`/`parallel`/
@@ -2069,6 +2079,10 @@ the same way.
 A joint that **can move and declares no limits** — a continuously
 rotating wheel, a free spinner, a loop-closure hinge — is a coverage hole too
 (ADR-375), and reads `incomplete` with the limit to declare named per kind.
+A joint **on a closed loop** reads `incomplete` whatever its limits
+(ADR-593): sweeping one joint of a closed chain alone would tear the loop
+open, so the reason names the loop's joints, its components and the joint
+that closes it, and its pairs are measured at the solved pose only.
 Before this it was dropped before it could be named, so a chassis whose one
 limited hinge swept clean read `complete` beside two wheels measured at the
 solved pose and nowhere else. Two joints genuinely hold no range and stay out

@@ -122,6 +122,35 @@ a tree with `equality/connect` closing the loop. Tree extraction — picking
 the spanning tree and deciding which joints become closures — is the single
 hardest piece of slice M2.
 
+**Closed linkages, driven (ADR-593, 2026-10-07).** A connect pins a
+revolute closure's pin and lets its axis go. `build_model` now measures what
+that costs: the closure Jacobian over every degree of freedom, by central
+differences at the solved pose, ranked once with what the export pins and
+once with what the joint pins (pin *and* axis). Equal ranks mean the export
+moves exactly as the mechanism does, and `built["loop_mobility"]` publishes
+both mobilities. A larger joint rank is a loop whose closing axis would have
+to tilt — over-constrained on the bench, floppy in MuJoCo — and is refused
+as `overconstrained_loop`, naming the closure and pointing at a ball end. A
+drive on a coordinate the loops lock (a pinned triangle is a truss) is
+refused as `actuator_locked_by_loop`. Measured in
+`test_dynamics_linkages.py`: a position servo on the crank of a Grashof
+four-bar (200/80/220/120 mm) turns it 450° and the rocker stays within
+0.01 mm of the circle-intersection answer at every frame; a slider-crank
+(80/200 mm) sweeps its full 160 mm stroke within 0.01 mm of
+`r cos θ + sqrt(l² − r² sin² θ)`. Both at `solver_step_s = 0.0005`, because
+the closure is soft with a two-step time constant and its error grows with
+step² and speed²:
+
+| crank speed | 2 ms | 1 ms | 0.5 ms |
+|---|---|---|---|
+| 90 °/s | 0.018 mm | 0.0025 mm | 0.0004 mm |
+| 225 °/s | 0.045 mm | 0.0062 mm | 0.0012 mm |
+| 450 °/s | 0.090 mm | 0.018 mm | 0.0048 mm |
+
+(worst closure residual, four-bar, crank driven by a position servo.) The
+fit sweep refuses every joint of a closed loop with the loop named, since a
+one-joint sweep would tear the chain open.
+
 **Free base (ADR-335, 2026-09-13).** An assembly that grounds *nothing* is
 not an error: it is a mechanism whose fixed frame is not part of the design
 — a biped, a balancer, anything meant to fall. Both halves used to refuse it

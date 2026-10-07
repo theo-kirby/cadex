@@ -3684,6 +3684,7 @@ def build_model(
             ),
             observed={"closure_residual_m": closure_violation},
         )
+    loop_mobility = _loop_mobility(mujoco, model, qpos, tree, joint_records)
     return {
         "spec": spec,
         "model": model,
@@ -3706,6 +3707,7 @@ def build_model(
         "actuators": actuator_applied,
         "environment": environment,
         "mujoco_version": str(getattr(mujoco, "__version__", "unknown")),
+        "loop_mobility": loop_mobility,
     }
 
 
@@ -3787,6 +3789,226 @@ def _closure_violation(mujoco: Any, model: Any, qpos: Sequence[float]) -> float:
         if int(data.efc_type[row]) == int(mujoco.mjtConstraint.mjCNSTR_EQUALITY):
             worst = max(worst, abs(float(data.efc_pos[row])))
     return worst
+
+
+#: Relative singular-value floor for the loop Jacobians' rank. The rows are
+#: central differences of exact kinematics, good to ~1e-10; an axis a
+#: tenth of a degree out of line contributes ~1e-3. Anything between is
+#: neither, and this sits well inside that gap.
+_LOOP_RANK_TOLERANCE = 1.0e-7
+
+#: The step each coordinate is perturbed by to differentiate the closures.
+_LOOP_JACOBIAN_STEP = 1.0e-6
+
+
+def _matrix_rank(rows: Sequence[Sequence[float]]) -> int:
+    """Rank by Gaussian elimination with full pivoting, without numpy.
+
+    The engine imports no numpy at module scope, and these matrices are a
+    handful of rows by the model's dof count: a pure-Python elimination is
+    microseconds, and its pivots are the singular-value proxy the tolerance
+    is stated against.
+    """
+
+    matrix = [list(map(float, row)) for row in rows if row]
+    if not matrix:
+        return 0
+    scale = max((abs(value) for row in matrix for value in row), default=0.0)
+    if scale == 0.0:
+        return 0
+    floor = _LOOP_RANK_TOLERANCE * scale
+    rank = 0
+    columns = len(matrix[0])
+    remaining_rows = list(range(len(matrix)))
+    remaining_columns = list(range(columns))
+    while remaining_rows and remaining_columns:
+        pivot_value, pivot_row, pivot_column = max(
+            (abs(matrix[r][c]), r, c)
+            for r in remaining_rows
+            for c in remaining_columns
+        )
+        if pivot_value <= floor:
+            break
+        rank += 1
+        remaining_rows.remove(pivot_row)
+        remaining_columns.remove(pivot_column)
+        pivot = matrix[pivot_row]
+        for r in remaining_rows:
+            factor = matrix[r][pivot_column] / pivot[pivot_column]
+            if factor:
+                matrix[r] = [a - factor * b for a, b in zip(matrix[r], pivot)]
+    return rank
+
+
+def _cross(a: Sequence[float], b: Sequence[float]) -> list[float]:
+    return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+
+
+def _loop_mobility(
+    mujoco: Any,
+    model: Any,
+    qpos: Sequence[float],
+    tree: Mapping[str, Any],
+    joint_records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    """Whether each closure means in MuJoCo what its joint means (ADR-593).
+
+    A ``connect`` pins a revolute closure's pin and lets its axis go. For a
+    planar loop that loses nothing: the loop's own motion keeps every axis
+    parallel. For a loop whose closing hinge axis would have to tilt as it
+    moves, the real joint binds where the export flops -- the mechanism is
+    over-constrained, and the model would move in a way the part cannot.
+
+    Both are measured, at the solved pose, as the rank of the closure
+    Jacobian over every degree of freedom: once with what the export pins
+    (the pin for a connect, the frame for a weld) and once with what the
+    joint really pins (a revolute's pin *and* its axis direction). The
+    mobility is ``nv`` less that rank. The export mobility exceeding the
+    real one is refused, naming the closure whose axis rows made the
+    difference; so is an actuator on a coordinate the loops lock, because
+    a drive on a joint that cannot move drives a fight with the
+    constraint solver and nothing else.
+    """
+
+    closures = list(tree.get("closures") or [])
+    if not closures:
+        return None
+    data = mujoco.MjData(model)
+    nv = int(model.nv)
+    site_ids = []
+    for closure in closures:
+        site_ids.append(
+            [
+                mujoco.mj_name2id(
+                    model, mujoco.mjtObj.mjOBJ_SITE, f"{closure['joint']}/{component}"
+                )
+                for component in closure["components"]
+            ]
+        )
+
+    def residuals(configuration: Sequence[float]) -> list[dict[str, list[float]]]:
+        data.qpos[:] = list(configuration)
+        mujoco.mj_kinematics(model, data)
+        rows = []
+        for closure, (first, second) in zip(closures, site_ids, strict=True):
+            position = [
+                float(data.site_xpos[first][i]) - float(data.site_xpos[second][i])
+                for i in range(3)
+            ]
+            first_matrix = [float(value) for value in data.site_xmat[first]]
+            second_matrix = [float(value) for value in data.site_xmat[second]]
+            z_first = first_matrix[2::3]
+            z_second = second_matrix[2::3]
+            x_first = first_matrix[0::3]
+            x_second = second_matrix[0::3]
+            if closure["closure_kind"] == "weld":
+                rotation = _cross(z_first, z_second) + _cross(x_first, x_second)
+                rows.append({"export": position + rotation, "axis": []})
+            elif closure["kind"] == "revolute":
+                rows.append({"export": position, "axis": _cross(z_first, z_second)})
+            else:
+                rows.append({"export": position, "axis": []})
+        return rows
+
+    base = list(qpos)
+    columns: list[list[dict[str, list[float]]]] = []
+    for dof in range(nv):
+        sides = []
+        for sign in (1.0, -1.0):
+            data.qpos[:] = base
+            velocity = [0.0] * nv
+            velocity[dof] = sign * _LOOP_JACOBIAN_STEP
+            data.qvel[:] = velocity
+            mujoco.mj_integratePos(model, data.qpos, data.qvel, 1.0)
+            sides.append(residuals(list(data.qpos)))
+        columns.append(
+            [
+                {
+                    key: [
+                        (a - b) / (2.0 * _LOOP_JACOBIAN_STEP)
+                        for a, b in zip(plus[key], minus[key], strict=True)
+                    ]
+                    for key in ("export", "axis")
+                }
+                for plus, minus in zip(sides[0], sides[1], strict=True)
+            ]
+        )
+
+    def rows_of(index: int, key: str) -> list[list[float]]:
+        width = len(columns[0][index][key]) if columns else 0
+        return [[columns[dof][index][key][row] for dof in range(nv)] for row in range(width)]
+
+    export_rows = [row for index in range(len(closures)) for row in rows_of(index, "export")]
+    joint_rows = export_rows + [
+        row for index in range(len(closures)) for row in rows_of(index, "axis")
+    ]
+    export_rank = _matrix_rank(export_rows)
+    joint_rank = _matrix_rank(joint_rows)
+    if joint_rank > export_rank:
+        offenders = [
+            str(closure["joint"])
+            for index, closure in enumerate(closures)
+            if rows_of(index, "axis")
+            and _matrix_rank(export_rows + rows_of(index, "axis")) > export_rank
+        ]
+        raise DynamicsError(
+            f"The loop closed by {', '.join(repr(name) for name in offenders)} is "
+            f"over-constrained: its hinge axis would have to tilt as the loop "
+            f"moves, so the real joint binds where the exported connect lets it "
+            f"move ({nv - export_rank} degrees of freedom in the export, "
+            f"{nv - joint_rank} in the mechanism).",
+            reason="overconstrained_loop",
+            correction=(
+                "A connect closure pins the pin and not the axis, which is exact "
+                "only when the loop keeps that axis aligned by itself. Make the "
+                "loop planar -- every hinge axis in it parallel -- or end the "
+                "link that closes it in a ball joint, as a pushrod's rod ends "
+                "are: a ball closure is exactly a connect."
+            ),
+            observed={
+                "closures": offenders,
+                "export_mobility": nv - export_rank,
+                "mechanism_mobility": nv - joint_rank,
+            },
+        )
+    joint_by_dof: dict[int, str] = {}
+    for record in joint_records:
+        identifier = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_JOINT, str(record["mujoco_joint"])
+        )
+        if identifier >= 0 and str(record["mujoco_type"]) in {"hinge", "slide"}:
+            joint_by_dof[int(model.jnt_dofadr[identifier])] = str(record["joint"])
+    locked = []
+    for actuator in range(int(model.nu)):
+        if int(model.actuator_trntype[actuator]) != int(mujoco.mjtTrn.mjTRN_JOINT):
+            continue
+        dof = int(model.jnt_dofadr[int(model.actuator_trnid[actuator][0])])
+        unit = [1.0 if column == dof else 0.0 for column in range(nv)]
+        if _matrix_rank(joint_rows + [unit]) == joint_rank and joint_by_dof.get(dof):
+            locked.append(joint_by_dof[dof])
+    if locked:
+        raise DynamicsError(
+            f"Joint {locked[0]!r} is driven, but the loop it is part of leaves it "
+            "no motion: the closure locks the chain, so the actuator could only "
+            "fight the constraint solver.",
+            reason="actuator_locked_by_loop",
+            correction=(
+                "A loop of n links on n pins in a plane is a rigid truss, not a "
+                "mechanism. Remove a link or a joint so the loop keeps one degree "
+                "of freedom, or drive a joint outside the loop."
+            ),
+            observed={"joints": locked, "mechanism_mobility": nv - joint_rank},
+        )
+    return {
+        "dof": nv,
+        "export_mobility": nv - export_rank,
+        "mechanism_mobility": nv - joint_rank,
+        "closures": [str(closure["joint"]) for closure in closures],
+    }
 
 
 def simulate(

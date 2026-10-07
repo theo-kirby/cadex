@@ -6411,6 +6411,49 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
             "initial_" + unit: initial, "solved_pose_agreement": True, "pairs": rows}
 
 
+def _closed_loops(component_data, joint_data):
+    """Each loop closure and the cycle it closes: its joints and components.
+
+    The cycle is the closure plus the two tree paths from its components to
+    their common ancestor, from the same spanning tree the dynamics export
+    builds, so the sweep and the MJCF agree about which chain is closed. A
+    graph the tree refuses (a placement-only joint, an unclosable sliding
+    closure) names no loop here; the child's own refusal still reports it.
+    """
+    from CadexDynamics import DynamicsError, extract_tree
+    joints = [{**data, "name": key, "connectors": [
+        {"component": c["component_output"], "local_matrix": c["local_frame"]["matrix"]}
+        for c in data["connectors"]]} for key, data in joint_data.items()]
+    try:
+        tree = extract_tree([{"name": n, "grounded": d["grounded"], "flexible": d.get("flexible", False)}
+                             for n, d in component_data.items()], joints)
+    except (DynamicsError, KeyError, TypeError, ValueError):
+        return []
+    bodies = {body["name"]: body for body in tree["bodies"]}
+
+    def path(component):
+        chain = []
+        while component is not None:
+            chain.append(component)
+            component = bodies[component]["parent"]
+        return chain
+
+    loops = []
+    for closure in tree["closures"]:
+        first, second = (path(c) for c in closure["components"])
+        common = next((c for c in first if c in second), None)
+        if common is None:
+            # Two grounded roots: the world is the common ancestor.
+            cycle = first + second[::-1]
+        else:
+            cycle = first[:first.index(common) + 1] + second[:second.index(common)][::-1]
+        members = [bodies[c]["joint"] for c in cycle if bodies[c]["joint"]
+                   and (common is None or c != common)]
+        loops.append({"closure": closure["joint"], "components": cycle,
+                      "joints": members + [closure["joint"]]})
+    return loops
+
+
 def _measure_joint_sweeps(components, component_data, joint_data, baseline, steps, solved):
     """Sweep every limited joint; ``steps`` maps each declared step name to its value.
 
@@ -6449,6 +6492,7 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
               "max_poses": _SWEEP_MAX_POSES, "max_pairs": _SWEEP_MAX_PAIRS, "joints": []}
     start = time.monotonic()
     serialised = None
+    loops = _closed_loops(component_data, joint_data)
     for name, joint in joint_data.items():
         kind = joint.get("kind")
         limited = (joint.get("angle_limits_degrees") is not None
@@ -6462,10 +6506,21 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
         limits_key, step_key, unit = _SWEEP_KINDS.get(kind, (None, None, None))
         step = steps.get(step_key) if step_key else None
         remaining = _SWEEP_TOTAL_SECONDS - (time.monotonic() - start)
+        loop = next((members for members in loops if name in members["joints"]), None)
         if joint.get("suppressed"):
             result = {"status": "skipped",
                       "reason": f"the assembly suppresses this {kind} joint, so the solver ignores it "
                                 "and it holds no range to sweep"}
+        elif loop is not None:
+            # A one-joint sweep turns a rigid subtree about one axis; on a
+            # closed chain that tears the loop open at its closure, so every
+            # pose it measured would be one the mechanism cannot reach
+            # (ADR-593). Refused with the loop named, never swept wrong.
+            result = {"status": "incomplete",
+                      "reason": f"this {kind} joint is in the closed loop {loop['joints']} "
+                                f"through {loop['components']}, closed by {loop['closure']!r}; "
+                                "sweeping one joint of a closed chain alone would tear the loop "
+                                "open, so the pairs it moves were measured at the solved pose only"}
         elif kind not in _SWEEP_KINDS:
             result = {"status": "incomplete",
                       "reason": f"only unsuppressed limited tree hinges and sliders are supported, not {kind}"}

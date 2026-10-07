@@ -37173,3 +37173,85 @@ world `component_position` stay world-frame: a task holding its goal in a
 frame must read its tip in that frame, and the docs say so.
 
 Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
+
+
+## ADR-593 — A closed linkage is driven from its crank, and a loop the export would misstate is refused (2026-10-07)
+
+**Context.** The orun5 charter's L1. A reference project rejected a
+pushrod tilt because "closed loops cannot be actuated in the MJCF export"
+and built a serial gimbal instead. Read against source, the export already
+closed a loop: since M2 (ADR-077) the spanning forest turns the joint it
+does not need into an `equality/connect` (revolute, ball) or
+`equality/weld` (fixed) between two sites, and since M4 (ADR-080) an
+actuator drives any tree joint. What was missing was the evidence that a
+drive on the crank moves the chain where its geometry says, any check that
+a connect means what its joint means, and a fit sweep that said why it
+would not sweep a loop: it refused the whole graph with "closed, coupled
+or static-joint graph is unsupported", naming no loop.
+
+**Decision.**
+1. **The closure's meaning is measured.** `build_model` differentiates
+   every closure's residual over every degree of freedom at the solved pose
+   (central differences through `mj_integratePos` and `mj_kinematics`) and
+   ranks the Jacobian twice, in pure Python (no numpy in the engine):
+   once with what the export pins (a connect's pin, a weld's frame) and
+   once with what the joint pins (a revolute's pin *and* its axis
+   direction). `built["loop_mobility"]` carries both mobilities, `nv` less
+   each rank. A joint rank above the export rank is a loop whose closing
+   axis would have to tilt as it moves: it binds on the bench and flops in
+   MuJoCo, and is refused as `overconstrained_loop`, naming the closure and
+   pointing at a ball end, which a connect expresses exactly.
+2. **A drive on a locked coordinate is refused** as
+   `actuator_locked_by_loop`: an actuated dof whose unit vector lies in the
+   joint Jacobian's row space cannot move. A pinned triangle undriven is a
+   legitimate truss and still builds.
+3. **No new declaration.** A loop closure is an ordinary joint that closes
+   a chain, as it has been since M2; the spanning tree takes the joints a
+   grounded part reaches first, so a crank on the ground is always a tree
+   joint and drivable. A joint that ends up the closure keeps the existing
+   refusal, which says how to reorder.
+4. **The fit sweep names the loop.** `_measure_joint_sweeps` finds each
+   closure's cycle on the same spanning tree the export builds and reports
+   every joint on it `incomplete` with the loop's joints, components and
+   closing joint, whatever its limits: a one-joint sweep turns a rigid
+   subtree and would tear the chain open. Solving the loop per sample was
+   not attempted in this unit; refusing is the charter's allowed outcome.
+
+**Measured.** A position servo on the crank of a Grashof four-bar
+(ground 200, crank 80, coupler 220, rocker 120 mm) turning 225 °/s for
+2 s: the rocker's far pin within 0.01 mm (`MJCF_POSE_TOLERANCE_MM`, ADR-584)
+of the circle-intersection answer at every frame, against the crank angle
+actually reached. A slider-crank (crank 80, rod 200 mm): the full 160 mm
+stroke, the slider within 0.01 mm of `r cos θ + sqrt(l² − r² sin² θ)`.
+Both at `solver_step_s = 0.0005`: a connect is soft with a two-step time
+constant, so the worst closure residual grows with step² and speed² —
+at 225 °/s 0.045 mm at 2 ms, 0.0062 mm at 1 ms, 0.0012 mm at 0.5 ms
+(full table in `docs/MUJOCO.md`). The same four-bar with its closing hinge
+tilted 30° about the coupler: export mobility 1, mechanism 0, refused.
+With a ball closure instead, both mobilities agree and it builds.
+
+**Alternatives.** An explicit `closes_loop=True` on `api.joint`: it would
+thread a new joint property through the FreeCAD document, the
+publication and the worker's joint schema to say what the graph already
+says, and the existing reorder advice covers the one case it would help.
+Writing the axis rows as a second MuJoCo equality (a weld with a free
+twist does not exist; a pair of connects offset along the axis
+over-constrains a planar loop): it changes every exported four-bar to fix
+a case that is better refused with a ball-end correction. Raising the
+default step for any model with a closure: it would slow every model to
+fix a speed-dependent error the agent can now read and choose.
+
+**Regression and tests.** `test_dynamics_linkages.py`: the driven
+four-bar and slider-crank against their analytic outputs; the tilted
+closure refused with both mobilities; the ball-ended closure accepted;
+the driven truss refused and the undriven one built; the fit sweep's
+refusal naming the four-bar's loop on every joint. With `_loop_mobility`
+removed the refusal tests fail; with the loop check removed from the
+sweep the last test fails.
+
+**Consequences.** No op, tool or protocol argument changes. `build_model`
+returns `loop_mobility`; the published evidence is unchanged. Not done
+here, and still open under L1: the fit sweep moving a closed chain by
+solving the loop, and `cadex smoke` measured on a real linkage project.
+
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
