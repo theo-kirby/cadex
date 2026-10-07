@@ -173,6 +173,22 @@ names the 1-2-5 step under `step × sqrt(0.01 / worst)`. Held at its solved
 pose the live four-bar's loop stays within 0.00094 mm at 2 ms and smoke
 passes.
 
+**Four ordinary pins, built live (ADR-595, 2026-10-07).** The solver's
+redundancy is a count, not a fault: it charges six constraints per loop,
+and a planar loop needs three. The worker now takes the rank of the loop
+joints' unit screws at the pose the solver reached — the same closure
+Jacobian ADR-593 ranks on the exported model, read before any model
+exists — and accepts a code-0 *redundant* verdict only when the loops
+keep exactly one degree of freedom and every loop joint's connectors meet
+within 0.01 mm. The planar four-pin four-bar: four freedoms, rank three,
+mobility one, redundancy three, accepted. A pinned triangle (mobility 0)
+and a four-bar whose closing pin is tilted 30° (mobility 0) keep the
+refusal. Built live with four `revolute` pins and driven 225 °/s at
+0.5 ms, the crank swept 447.6° and the rocker stayed within 0.0032° of
+circle intersection (0.0066 mm at its 120 mm tip); the worst closure
+residual was 0.0061 mm, and the dynamics evidence now carries it beside
+`closure_tolerance_mm` (0.01) and `closure_within_tolerance`.
+
 **Free base (ADR-335, 2026-09-13).** An assembly that grounds *nothing* is
 not an error: it is a mechanism whose fixed frame is not part of the design
 — a biped, a balancer, anything meant to fall. Both halves used to refuse it
@@ -866,9 +882,9 @@ exactly MuJoCo's reference configuration — so an exported tree opens
 correctly with a keyframe that happens to be all zeros. Initial placements
 and joint limits do not move it. The keyframe becomes load-bearing when a
 loop closure forces a nonzero coordinate, and that is proved on the
-four-bar fixture (`qpos = [0.873, −0.702, 0.966]`) rather than live,
-because a planar loop of revolutes is reported redundant by this tree's
-native solver and cannot reach a live gate at all.
+four-bar fixture (`qpos = [0.873, −0.702, 0.966]`); a planar loop of
+revolutes reached a live gate only once ADR-595 accepted the native
+solver's redundancy count for a one-freedom loop.
 
 **Known consequence at the time, closed a day later (hazard 3).** When M5
 landed, `compute_project_digest` gave anything that was not `brep`/`mesh` a

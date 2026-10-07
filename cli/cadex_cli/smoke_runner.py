@@ -69,9 +69,12 @@ def closure_step_s(step_s: float, worst_mm: float, tolerance_mm: float = CLOSURE
 
     The closure's time constant is two steps, so its stiffness goes as one
     over the step squared and so does how far a given load holds it open:
-    measured on a driven four-bar, 0.045, 0.0062 and 0.0012 mm at 2, 1 and
-    0.5 ms (docs/MUJOCO.md). Rounded *down* to 1, 2 or 5 of a decade, so
-    the step named is one a person would write and is not borderline.
+    measured on driven four-bars: the headless fixture opened 0.045,
+    0.0062 and 0.0012 mm at 2, 1 and 0.5 ms (ADR-593), the live one 0.70,
+    0.0061 and 0.0013 mm at 2, 0.5 and 0.25 ms -- steeper than step
+    squared, so the step this names is conservative (ADR-594,
+    docs/MUJOCO.md). Rounded *down* to 1, 2 or 5 of a decade, so the step
+    named is one a person would write and is not borderline.
     """
 
     exact = step_s * math.sqrt(tolerance_mm / worst_mm)

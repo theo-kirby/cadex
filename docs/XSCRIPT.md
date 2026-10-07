@@ -251,17 +251,23 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   the whole loop; a connect is a soft constraint, so a loop driven fast holds
   the MJCF's 0.01 mm pose contract only at a fine step (225 °/s on a 200 mm
   four-bar: 0.045 mm at 2 ms, 0.0012 mm at `solver_step_s=0.0005`).
-  **A loop of parallel pins does not reach the export live** (ADR-594): the
-  native assembly solver calls a planar four-bar of four `revolute` joints
-  redundant and the script is refused before any model is built. Build it
-  the way a pushrod is built: end the coupler in two `ball` joints (rod
-  ends). The coupler then has one free spin about the line through its
-  balls, which no joint damps (`joint_dynamics` takes no ball joint), so
-  hang its mass *below* that line — a pendulum, not a balance — and clear
-  the links it rides over. Driven 450° by its crank servo through the
-  engine, such a four-bar opens 0.70 mm at the 2 ms default, 0.0061 mm at
-  0.5 ms and 0.0013 mm at 0.25 ms; `cadex smoke` reports each closure's
-  worst gap against the 0.01 mm contract and names the step that holds it.
+  **A planar loop of pins builds live** (ADR-595). The native assembly
+  solver counts six constraints per loop and calls a four-bar of four
+  `revolute` joints redundant; that verdict is accepted when the solver
+  returned code 0 and said nothing worse, the loop's joints are revolute,
+  slider, cylindrical, ball or fixed, the rank of their screws at the solved
+  pose leaves the loops exactly **one** degree of freedom, and every loop
+  joint's connectors meet within 0.01 mm. The count is in the solve's
+  diagnostics as `loop_redundancy` (`freedoms`, `rank`, `mobility`,
+  `redundancy`, `worst_gap_mm`, `accepted`); a truss (mobility 0), a loop
+  with two or more freedoms, or a tilted closing pin keeps the refusal, and
+  the refusal names the count. A coupler on two `ball` joints (rod ends)
+  also builds, but has an undamped spin about its ball line (ADR-594).
+  Driven 450° by its crank servo, a four-pin four-bar's rocker stays within
+  0.0032° of circle intersection at 0.5 ms; the loop opens 0.70 mm at the
+  2 ms default and 0.0061 mm at 0.5 ms. A dynamics run with a loop records
+  `closure_tolerance_mm` (0.01) and `closure_within_tolerance` beside
+  `worst_closure_residual_mm`; `cadex smoke` names the step that holds it.
   `gravity_m_s2` and `solver_step_s` are authorable (ADR-079);
   gravity is metres per second squared, and `[0, 0, 0]` is how you isolate a
   joint's behaviour from the falling.

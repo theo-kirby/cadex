@@ -3179,7 +3179,8 @@ The command checks:
   under `step × sqrt(0.01 / worst)` (ADR-594). The rollout is the held or
   zero-action one above, so it measures a loop at rest or settling; how
   far a *driven* loop opens is `assembly.dynamics`'s
-  `worst_closure_residual_mm`.
+  `worst_closure_residual_mm`, which its evidence states beside
+  `closure_tolerance_mm` and `closure_within_tolerance` (ADR-595).
 
 Sampling defaults to 50 Hz, always includes the initial and final poses, and
 records actual solver times. Duration rounds up by less than one solver step.

@@ -467,11 +467,10 @@ result = {{"plate": plate, "arm": arm, "base": base, "swing": swing,
           "j": j, "asm": asm, "diag": diag, "model": model}}
 """
 
-#: A crank-rocker four-bar (200/80/220/120 mm) as it can be built live: the
-#: native solver calls a loop of four parallel pins redundant, so the
-#: coupler ends in two ball joints -- rod ends -- hung 1 mm above the crank
-#: and rocker, its mass below the line through the balls so its free spin
-#: about that line is a pendulum and not a balance (ADR-594). The crank's
+#: A crank-rocker four-bar (200/80/220/120 mm) on four ordinary pins, the
+#: coupler 1 mm above the crank and rocker. The native solver calls the loop
+#: redundant -- it counts six constraints per loop, and a plane needs three
+#: -- and the screw count accepts it as one freedom (ADR-595). The crank's
 #: servo turns it a whole turn and a quarter in a dynamics run at 0.5 ms.
 FOUR_BAR_SCRIPT = """
 G, R1, L, R2, W, T = 200.0, 80.0, 220.0, 120.0, 16.0, 6.0
@@ -504,8 +503,8 @@ def pin(a, b, at, kind="revolute", z=0.0):
 
 ja = pin(ground, crank, (0, 0))
 jd = pin(ground, rocker, (G, 0))
-jb = pin(crank, coupler, B, "ball", 2 * T + 1)
-jc = pin(coupler, rocker, C, "ball", 2 * T + 1)
+jb = pin(crank, coupler, B, z=2 * T + 1)
+jc = pin(coupler, rocker, C, z=2 * T + 1)
 rig = assembly.assembly([ground, crank, coupler, rocker], [ja, jd, jb, jc])
 bodies = [assembly.body(c, density_kg_m3=1200.0) for c in (ground, crank, coupler, rocker)]
 def servo(control):
@@ -625,18 +624,59 @@ def test_a_four_bar_built_live_is_driven_round_and_holds_its_loop_shut(engine, t
     pin = json.loads((project / "script.json").read_text(encoding="utf-8"))["accepted_attempt"]
     (trace,) = (project / pin["staging"] / "outputs").glob("*simulation-trace.json")
     trace = json.loads(trace.read_text(encoding="utf-8"))
-    # One closure, the ball at the rocker; the chain is a tree up to it.
+    # Four ordinary pins: the native solver's three redundancies are the
+    # plane's, and the screw count says so (ADR-595).
+    found = []
+
+    def walk(value) -> None:
+        if isinstance(value, dict):
+            if "loop_redundancy" in value:
+                found.append(value["loop_redundancy"])
+            for item in value.values():
+                walk(item)
+        elif isinstance(value, list):
+            for item in value:
+                walk(item)
+
+    walk(json.loads((project / pin["staging"] / "result.json").read_text(encoding="utf-8")))
+    assert found and all(
+        (row["mobility"], row["redundancy"], row["accepted"]) == (1, 3, True) for row in found
+    ), found
+    # One closure, the pin at the rocker; the chain is a tree up to it.
     (closure,) = trace["dynamics"]["closures"]
     assert closure["joint_output"] == "jc" and closure["closure_kind"] == "connect"
-    assert trace["dynamics"]["worst_closure_residual_mm"] < 0.01
+    assert closure["joint_kind"] == "revolute"
+    evidence = trace["dynamics"]
+    assert evidence["worst_closure_residual_mm"] < evidence["closure_tolerance_mm"] == 0.01
+    assert evidence["closure_within_tolerance"] is True
 
     def heading(rotation) -> float:
         x, y, z, w = rotation
         return math.atan2(2.0 * (x * y + w * z), 1.0 - 2.0 * (y * y + z * z))
 
-    crank = [heading(f["component_placements"]["crank"]["rotation_xyzw"]) for f in trace["frames"]]
+    def rocker_at(theta: float, previous: float) -> float:
+        b = (80.0 * math.cos(theta), 80.0 * math.sin(theta))
+        span = math.dist(b, (200.0, 0.0))
+        base = math.atan2(b[1], b[0] - 200.0)
+        interior = math.acos((120.0**2 + span**2 - 220.0**2) / (2.0 * 120.0 * span))
+        return min((base + interior, base - interior),
+                   key=lambda angle: abs(math.remainder(angle - previous, math.tau)))
+
+    frames = [f["component_placements"] for f in trace["frames"]]
+    crank = [heading(f["crank"]["rotation_xyzw"]) for f in frames]
+    rocker = [heading(f["rocker"]["rotation_xyzw"]) for f in frames]
     swept = sum(abs(math.remainder(b - a, math.tau)) for a, b in zip(crank, crank[1:]))
     assert swept > math.radians(400.0), math.degrees(swept)
+    # The rocker where circle intersection puts it, at the crank angle the
+    # run reached: assembled crank-up, rocker on the upper branch.
+    theta, psi = math.pi / 2.0, rocker_at(math.pi / 2.0, math.pi / 2.0)
+    psi0, worst = psi, 0.0
+    for previous, now, turned in zip(crank, crank[1:], rocker[1:]):
+        theta += math.remainder(now - previous, math.tau)
+        psi = rocker_at(theta, psi)
+        error = math.remainder((turned - rocker[0]) - (psi - psi0), math.tau)
+        worst = max(worst, abs(error) * 120.0)
+    assert worst < 0.01, worst
 
     code, envelope = _run(capsys, "smoke", "--project", str(project), "--out", str(project / "s"))
     assert code == EXIT_OK, envelope

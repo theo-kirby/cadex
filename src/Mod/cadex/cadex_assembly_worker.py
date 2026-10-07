@@ -3904,6 +3904,14 @@ def _execute_dynamics_simulation(
             "worst_closure_residual_mm": float(run["worst_closure_residual_mm"]),
         }
     )
+    if run["built"]["tree"]["closures"]:
+        # The driven gap beside the contract it is held to (ADR-595): a loop
+        # driven at the default step can sit open past it, and only this
+        # run sees the loop move -- smoke holds it still.
+        tolerance = CadexDynamics.MJCF_POSE_TOLERANCE_MM
+        evidence["closure_tolerance_mm"] = tolerance
+        evidence["closure_within_tolerance"] = (
+            float(run["worst_closure_residual_mm"]) <= tolerance)
     clearance_pairs, clearance_gap = _declared_clearance(
         properties, component_outputs
     )
@@ -5622,6 +5630,45 @@ def _diagnostics_conflict(diagnostics: Mapping[str, Any]) -> bool:
     return bool(_diagnostics_conflict_labels(diagnostics))
 
 
+_REDUNDANCY_LABELS = frozenset({"redundant constraints", "partially redundant constraints"})
+
+
+def _loop_redundancy(solver_code, conflict_labels, component_data, joint_data,
+                     component_placements):
+    """Whether a redundancy verdict is only a closed loop over-counted (ADR-595).
+
+    The native solver counts six constraints per loop, so a planar four-bar
+    on four pins -- the commonest linkage there is -- reads as three
+    redundant constraints although it moves exactly as built. ADR-593's
+    mobility rank, taken of the joint screws at the solved pose, tells that
+    apart from a graph that really is over-constrained: the verdict is
+    accepted only when the solver returned code 0, said nothing worse than
+    redundant, every loop runs through joints a screw count states, the
+    loops together have exactly one degree of freedom and some redundancy,
+    and the pose it reached closes every loop joint within the MJCF pose
+    contract. Anything else keeps the solver's refusal, with the count that
+    decided it. ``None`` when the verdict was not a redundancy or the graph
+    has no loop to explain it.
+    """
+
+    from CadexDynamics import MJCF_POSE_TOLERANCE_MM, loop_screw_mobility
+    if solver_code != 0 or not conflict_labels or set(conflict_labels) - _REDUNDANCY_LABELS:
+        return None
+    loops = _closed_loops(component_data, joint_data)
+    joints = {name: {"kind": data["kind"], "connectors": [
+        {"component": c["component_output"], "local_matrix": c["local_frame"]["matrix"]}
+        for c in data["connectors"]]} for name, data in joint_data.items()}
+    placements = {name: fact["matrix"] for name, fact in component_placements.items()}
+    mobility = loop_screw_mobility(loops, joints, placements)
+    if mobility is None:
+        return None
+    mobility["tolerance_mm"] = MJCF_POSE_TOLERANCE_MM
+    mobility["accepted"] = (mobility["mobility"] == 1 and mobility["redundancy"] > 0
+                            and mobility["worst_gap_mm"] <= MJCF_POSE_TOLERANCE_MM
+                            and mobility["worst_axis_tilt"] <= 1.0e-6)
+    return mobility
+
+
 def _frame_z_axis(frame: Mapping[str, Any]) -> tuple[float, float, float]:
     matrix = list(frame.get("matrix") or [])
     if len(matrix) != 16:
@@ -7172,10 +7219,15 @@ def validate_and_solve_assembly(
         for name, reconstruction in component_reconstructions.items()
         if reconstruction is not None
     }
+    conflict_labels = _diagnostics_conflict_labels(native_diagnostics)
+    loop_redundancy = _loop_redundancy(solver_code, conflict_labels, component_data,
+                                       joint_data, component_placements)
+    if loop_redundancy is not None and loop_redundancy["accepted"]:
+        conflict_labels = []
     diagnostics = {
         "status": "solved"
         if solver_code == 0
-        and not _diagnostics_conflict(native_diagnostics)
+        and not conflict_labels
         and not joint_dependency_issues
         else "failed",
         "solver_code": solver_code,
@@ -7193,7 +7245,8 @@ def validate_and_solve_assembly(
         "joint_dependency_issues": joint_dependency_issues,
         "require_solved": require_solved,
     }
-    conflict_labels = _diagnostics_conflict_labels(native_diagnostics)
+    if loop_redundancy is not None:
+        diagnostics["loop_redundancy"] = loop_redundancy
     if require_solved and (solver_code != 0 or conflict_labels):
         if solver_code == 0:
             # The code says solved and the diagnostics say otherwise; saying
@@ -7207,6 +7260,13 @@ def validate_and_solve_assembly(
             reason = f"rejected the graph with {solver_verdict} (code {solver_code})"
             if conflict_labels:
                 reason += f", reporting {', '.join(conflict_labels)}"
+        if loop_redundancy is not None:
+            reason += (
+                f"; the loops closed by {loop_redundancy['loops']} have "
+                f"{loop_redundancy['mobility']} degree(s) of freedom and the pose "
+                f"closes them within {loop_redundancy['worst_gap_mm']:.3g} mm, so the "
+                "redundancy is not a one-degree-of-freedom linkage over-counted"
+            )
         raise AssemblyCandidateError(
             f"The isolated native Assembly solver {reason}. Inspect details for "
             "conflicting, redundant, malformed, or ungrounded constraints.",

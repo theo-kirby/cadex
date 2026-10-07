@@ -3801,7 +3801,9 @@ _LOOP_RANK_TOLERANCE = 1.0e-7
 _LOOP_JACOBIAN_STEP = 1.0e-6
 
 
-def _matrix_rank(rows: Sequence[Sequence[float]]) -> int:
+def _matrix_rank(
+    rows: Sequence[Sequence[float]], tolerance: float = _LOOP_RANK_TOLERANCE
+) -> int:
     """Rank by Gaussian elimination with full pivoting, without numpy.
 
     The engine imports no numpy at module scope, and these matrices are a
@@ -3816,7 +3818,7 @@ def _matrix_rank(rows: Sequence[Sequence[float]]) -> int:
     scale = max((abs(value) for row in matrix for value in row), default=0.0)
     if scale == 0.0:
         return 0
-    floor = _LOOP_RANK_TOLERANCE * scale
+    floor = tolerance * scale
     rank = 0
     columns = len(matrix[0])
     remaining_rows = list(range(len(matrix)))
@@ -3846,6 +3848,124 @@ def _cross(a: Sequence[float], b: Sequence[float]) -> list[float]:
         a[2] * b[0] - a[0] * b[2],
         a[0] * b[1] - a[1] * b[0],
     ]
+
+
+#: The rank floor for joint screws read off a solved pose (ADR-595). The
+#: native solver places parts to about 1e-9 of their size, so a planar loop
+#: reads planar to about that; a hinge a hundredth of a degree out of plane
+#: contributes ~2e-4. The floor sits between them.
+_SCREW_RANK_TOLERANCE = 1.0e-6
+
+#: The unit screws each joint kind frees, as ``(motion, connector axis)``. A kind not named
+#: here constrains in a way a screw count cannot state, and a loop through
+#: it is not judged at all.
+_JOINT_SCREWS: dict[str, tuple[tuple[str, str], ...]] = {
+    "fixed": (),
+    "revolute": (("rotation", "z"),),
+    "slider": (("translation", "z"),),
+    "cylindrical": (("rotation", "z"), ("translation", "z")),
+    "ball": (("rotation", "x"), ("rotation", "y"), ("rotation", "z")),
+}
+
+
+def loop_screw_mobility(
+    loops: Sequence[Mapping[str, Any]],
+    joints: Mapping[str, Mapping[str, Any]],
+    placements: Mapping[str, Sequence[float]],
+) -> dict[str, Any] | None:
+    """How many ways the closed loops of a solved pose can move (ADR-595).
+
+    The same rank ADR-593's ``_loop_mobility`` takes of the exported model,
+    taken instead of the joint screws at the pose the assembly solver
+    reached, so it can be asked before any model exists. Each loop says the
+    relative twists round it sum to zero: six rows per loop, a column per
+    joint freedom, each column the joint's unit screw ``(w, p x w)`` or
+    ``(0, v)`` signed by which way the loop walks it. The mobility is the
+    freedoms less the rank; the redundancy is the rows less the rank, which
+    is what a constraint solver counting six per loop calls redundant. A
+    planar four-bar on four pins has four freedoms, rank three, mobility
+    one and redundancy three: a mechanism the solver over-counts, not an
+    over-constrained one.
+
+    ``loops`` are ``_closed_loops`` rows (a cycle of components and the
+    joints on it); ``joints`` map a name to its ``kind`` and two
+    ``connectors`` (``component``, ``local_matrix``); ``placements`` are the
+    solved component matrices. Also measures how far each joint's two
+    connector frames sit apart at that pose (off the axis, for a sliding
+    kind) and how far a hinge's two axes tilt, since a redundant graph is
+    only worth accepting if the solver closed it. ``None`` when a loop runs
+    through a kind no screw count states.
+    """
+
+    if not loops:
+        return None
+    columns: dict[str, list[list[float]]] = {}
+    frames: dict[str, tuple[list[float], list[float], list[float], list[float]]] = {}
+    worst_gap = 0.0
+    worst_tilt = 0.0
+    names = [name for loop in loops for name in loop["joints"]]
+    for name in dict.fromkeys(names):
+        joint = joints[name]
+        if str(joint.get("kind")) not in _JOINT_SCREWS:
+            return None
+        world = [
+            matrix_multiply(placements[str(c["component"])], c["local_matrix"])
+            for c in joint["connectors"]
+        ]
+        origin = matrix_translation_mm(world[0])
+        z_first, z_second = matrix_z_axis(world[0]), matrix_z_axis(world[1])
+        apart = [b - a for a, b in zip(origin, matrix_translation_mm(world[1]), strict=True)]
+        if any(motion == "translation" for motion, _ in _JOINT_SCREWS[str(joint["kind"])]):
+            # A sliding joint's connectors part along its axis by its own
+            # travel; only what lies off the axis is a gap.
+            along = sum(a * b for a, b in zip(apart, z_first, strict=True))
+            apart = [value - along * axis for value, axis in zip(apart, z_first, strict=True)]
+        gap = math.sqrt(sum(value * value for value in apart))
+        tilt = math.sqrt(sum(value * value for value in _cross(z_first, z_second)))
+        worst_gap = max(worst_gap, gap)
+        if _JOINT_SCREWS[str(joint["kind"])] and str(joint["kind"]) != "ball":
+            worst_tilt = max(worst_tilt, tilt)
+        frames[name] = (origin, world[0][0:12:4], world[0][1:12:4], z_first)
+    centre = [sum(frames[n][0][i] for n in frames) / len(frames) for i in range(3)]
+    length = max(1.0, *(math.dist(frames[n][0], centre) for n in frames))
+    for name, (origin, x_axis, y_axis, z_axis) in frames.items():
+        point = [(origin[i] - centre[i]) / length for i in range(3)]
+        axes = {"x": x_axis, "y": y_axis, "z": z_axis}
+        columns[name] = [
+            list(axes[axis]) + _cross(point, axes[axis])
+            if motion == "rotation"
+            else [0.0, 0.0, 0.0] + list(axes[axis])
+            for motion, axis in _JOINT_SCREWS[str(joints[name]["kind"])]
+        ]
+    order = [(name, index) for name in frames for index in range(len(columns[name]))]
+    rows: list[list[float]] = []
+    for loop in loops:
+        cycle = [str(component) for component in loop["components"]]
+        signs: dict[str, float] = {}
+        for name in loop["joints"]:
+            first, second = (str(c["component"]) for c in joints[name]["connectors"])
+            if name == loop.get("closure"):
+                forward = (first, second) == (cycle[-1], cycle[0])
+            else:
+                forward = cycle.index(second) == cycle.index(first) + 1
+            signs[name] = 1.0 if forward else -1.0
+        for row in range(6):
+            rows.append(
+                [
+                    signs[name] * columns[name][index][row] if name in signs else 0.0
+                    for name, index in order
+                ]
+            )
+    rank = _matrix_rank(rows, _SCREW_RANK_TOLERANCE)
+    return {
+        "freedoms": len(order),
+        "rank": rank,
+        "mobility": len(order) - rank,
+        "redundancy": len(rows) - rank,
+        "loops": [str(loop["closure"]) for loop in loops],
+        "worst_gap_mm": worst_gap,
+        "worst_axis_tilt": worst_tilt,
+    }
 
 
 def _loop_mobility(

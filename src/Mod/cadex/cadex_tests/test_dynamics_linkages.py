@@ -280,3 +280,77 @@ def test_the_fit_sweep_refuses_each_joint_of_a_closed_loop_naming_the_loop() -> 
         assert row["status"] == "incomplete"
         assert "closed loop ['b', 'a', 'd', 'c']" in row["reason"]
         assert "closed by 'c'" in row["reason"]
+
+
+def _redundancy(components, joints, labels=("redundant constraints",), solver_code=0):
+    """What the worker decides of a redundancy verdict on this posed graph (ADR-595)."""
+
+    import cadex_assembly_worker as worker
+
+    component_data = {c["name"]: {"grounded": c["grounded"]} for c in components}
+    joint_data = {
+        joint["name"]: {
+            **{key: joint[key] for key in ("kind", "suppressed", "parameters", "length_limits_mm")},
+            "angle_limits_degrees": None,
+            "connectors": [
+                {"component_output": c["component"], "local_frame": {"matrix": c["local_matrix"]}}
+                for c in joint["connectors"]
+            ],
+        }
+        for joint in joints
+    }
+    placements = {c["name"]: {"matrix": c["solved_matrix"]} for c in components}
+    return worker._loop_redundancy(solver_code, list(labels), component_data, joint_data, placements)
+
+
+def test_a_four_bar_on_four_pins_is_one_freedom_over_counted_and_accepted() -> None:
+    """Six rows per loop, rank three: the solver's three redundancies are the plane's."""
+
+    verdict = _redundancy(*_four_bar())
+    assert verdict["freedoms"] == 4 and verdict["rank"] == 3
+    assert verdict["mobility"] == 1 and verdict["redundancy"] == 3
+    assert verdict["loops"] == ["c"]
+    assert verdict["worst_gap_mm"] < 1e-9 and verdict["worst_axis_tilt"] < 1e-9
+    assert verdict["accepted"] is True
+    # A slider in the loop counts the same way.
+    slider = _redundancy(*_slider_crank(), labels=("redundant constraints",
+                                                   "partially redundant constraints"))
+    assert (slider["mobility"], slider["redundancy"], slider["accepted"]) == (1, 3, True)
+
+
+def test_a_redundant_loop_that_is_not_one_freedom_keeps_the_refusal() -> None:
+    # The closing hinge tilted: its axis is out of the plane, the loop locks.
+    tilted = _redundancy(*_four_bar(closing_tilt_degrees=30.0))
+    assert tilted["mobility"] == 0 and tilted["accepted"] is False
+    # A pinned triangle is a truss: no freedom at all.
+    components, joints, placements = fx.build(
+        [{"name": "ground", "grounded": True}, {"name": "left"}, {"name": "right"}],
+        [
+            {"name": "left_pin", "kind": "revolute", "parent": "ground", "child": "left",
+             "parent_frame": fx.frame(), "child_frame": fx.frame(), "values": [math.radians(60.0)]},
+            {"name": "right_pin", "kind": "revolute", "parent": "ground", "child": "right",
+             "parent_frame": fx.frame((100.0, 0.0, 0.0)), "child_frame": fx.frame(),
+             "values": [math.radians(120.0)]},
+        ],
+    )
+    joints.append(fx.closing_joint("apex", "revolute", "left", "right",
+                                   fx.frame((100.0, 0.0, 0.0)), placements))
+    truss = _redundancy(components, joints)
+    assert (truss["mobility"], truss["accepted"]) == (0, False)
+    # A four-bar the solver left open by a tenth of a millimetre is not closed.
+    components, joints = _four_bar()
+    joints[-1]["connectors"][1]["local_matrix"][3] += 0.1
+    opened = _redundancy(components, joints)
+    assert opened["mobility"] == 1 and opened["worst_gap_mm"] == pytest.approx(0.1)
+    assert opened["accepted"] is False
+
+
+def test_only_a_bare_redundancy_on_a_loop_is_judged() -> None:
+    components, joints = _four_bar()
+    assert _redundancy(components, joints, labels=("conflicting constraints",
+                                                   "redundant constraints")) is None
+    assert _redundancy(components, joints, solver_code=-2) is None
+    assert _redundancy(components, joints, labels=()) is None
+    # A loop through a kind no screw count states is left to the solver.
+    joints[1]["kind"] = "distance"
+    assert _redundancy(components, joints) is None

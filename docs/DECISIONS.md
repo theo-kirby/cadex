@@ -37329,4 +37329,71 @@ closed chain by solving the loop (it refuses with the loop named), a
 planar four-bar of four pins built live, and a driven loop's gap compared
 with the contract where `assembly.dynamics` reports it.
 
+## ADR-595 — A redundant loop of one freedom is accepted; the driven gap sits beside its contract (2026-10-07)
+
+**Context.** The native assembly solver refused a planar four-bar of four
+`revolute` pins as "redundant constraints, partially redundant
+constraints" while returning code 0 (ADR-594), so the commonest linkage
+there is could not be built live; the workaround was a rod-ended coupler
+with an undamped spin. The verdict is a count: the solver charges six
+constraints per loop, and a planar loop needs three. ADR-593's mobility
+rank tells a mechanism the count over-charges from one that is really
+over-constrained, but it is taken of an exported MuJoCo model, which does
+not exist when the solver runs.
+
+**Decision.**
+1. **The same rank, of the joint screws at the solved pose.**
+   `CadexDynamics.loop_screw_mobility` stacks six rows per loop (relative
+   twists round a loop sum to zero), a column per joint freedom — each a
+   unit screw `(w, p × w)` or `(0, v)` from the connector frame, signed by
+   which way the loop walks the joint, positions centred and scaled — and
+   ranks it with ADR-593's `_matrix_rank` at a floor of 1e-6. Mobility is
+   freedoms less rank, redundancy is rows less rank. It also measures each
+   loop joint's connector gap (off-axis for a sliding kind) and a hinge's
+   axis tilt. Kinds outside revolute, slider, cylindrical, ball and fixed
+   are not judged.
+2. **Accepted only when it is exactly one freedom over-counted.**
+   `cadex_assembly_worker._loop_redundancy` accepts a code-0 verdict
+   whose only flags are redundancy when the loops have mobility 1,
+   redundancy > 0, every loop joint's connectors meet within
+   `MJCF_POSE_TOLERANCE_MM` and no hinge tilts beyond 1e-6. The count is
+   published as `diagnostics.loop_redundancy`; a refusal it does not
+   lift names the mobility and gap that decided it.
+3. **The driven gap beside its contract.** A dynamics run with a loop
+   records `closure_tolerance_mm` and `closure_within_tolerance` next to
+   `worst_closure_residual_mm` in its evidence: the contract is stated,
+   not enforced, since a dynamics result is a measurement (ADR-594).
+
+**Alternatives.** Accepting any redundancy on a graph with a loop: would
+pass a pinned truss and a tilted closing pin, both refused here with
+mobility 0. Building the MuJoCo model at solve time to reuse
+`_loop_mobility` verbatim: it needs masses and an export the solve does
+not have; the screw rank is the same Jacobian in closed form. Accepting
+mobility ≥ 1: a planar five-bar is a real mechanism, but the charter's
+claim is the one-freedom linkage, and a two-freedom loop the solver
+over-counts can wait for a measured case.
+
+**Measured.** Headless: the planar four-bar fixture reads freedoms 4,
+rank 3, mobility 1, redundancy 3, accepted; the slider-crank the same;
+the pinned triangle and the 30°-tilted closing pin mobility 0, refused;
+a closing connector moved 0.1 mm is refused at a 0.1 mm gap. Live, a
+200/80/220/120 mm four-bar on four pins solves with the same count, and
+driven 225 °/s at 0.5 ms its crank swept 447.6° with the rocker within
+0.0032° of circle intersection (0.0066 mm at the tip) and a worst
+closure residual of 0.0061 mm.
+
+**Tests.** `test_dynamics_linkages.py`: three headless tests (accepted,
+refused for mobility 0 and for an open gap, not judged for a worse flag,
+a non-zero code or an unscreened kind). `cli/tests/test_smoke.py`: the
+real-engine four-bar is now four pins, asserts the accepted count, the
+rocker against circle intersection within 0.01 mm at the tip, and the
+evidence's tolerance fields; with the acceptance disabled it fails at
+`cadex script`.
+
+**Consequences.** No op, tool or protocol argument changes; the solve's
+diagnostics and the dynamics evidence each gain keys. ADR-594's live
+test no longer covers a rod-ended coupler (ADR-593's headless ball
+closure test still does). Still open under L1: the fit sweep solving a
+loop rather than refusing it.
+
 Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
