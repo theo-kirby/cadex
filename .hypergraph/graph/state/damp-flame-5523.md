@@ -44,6 +44,7 @@ Evidence at `f4d55ef7`: `pixi run test-engine` 2507 passed, 57 skipped; `cli/tes
 - Rest thresholds, stance height and the step definition are engine constants a spec cannot override; the P1 contract uses the same values [rec: first-mist-2505].
 - The CLI's product agent now has `evaluate` as a bridge tool beside `train_start`/`train_status`/`train_stop` (ADR-464, detail on `wild-harvest-4848`); the shell's agent has none [rec: chilly-arrow-2197].
 - The `w2-2` fixture rests on a reading of the charter: a five-body pose extract is a test fixture, not a committed rollout trace. If that reading is rejected, the fixture goes and the `w2-2` tests must skip without the read-only project [rec: ready-field-7940].
+- **An episode that ends before a reach segment's final window is unmeasured, not a crash (ADR-586, `f49be9c3`).** `reach_metrics` raised `max() arg is an empty sequence` on such a seed (`CadexEvaluation.py:604`, found on a ball-plate early-ended seed); the segment's final error is now None and a spec bounding it fails as "not measured". Pinned by `test_an_episode_that_ends_before_the_final_window_is_not_measured`. Engine 2619 passed / 59 skipped; CLI 1217 passed / 1 skipped (GPU hidden) [rec: wise-lodge-1163].
 
 ## Negative knowledge
 
@@ -64,3 +65,4 @@ Evidence at `f4d55ef7`: `pixi run test-engine` 2507 passed, 57 skipped; `cli/tes
 - rich-lantern-3026 — the film marks a point goal's target (ADR-463); P2 declared met on the critic's acceptance
 - chilly-arrow-2197 — evaluate is a CLI agent tool (ADR-464)
 - keen-walrus-1609 — a spec may state its scale; a stale constant is refused at declaration (ADR-468)
+- wise-lodge-1163 — ADR-586: evaluate marks an early-ended reach seed unmeasured and failing instead of crashing

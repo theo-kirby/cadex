@@ -23,6 +23,8 @@ Gates: test-engine 2598 passed, 58 skipped; cli/tests 1196 passed, 1 skipped [re
 
 Owner-revisable assumption: the MCP instructions carry base plus style **by pointer**. The ≤2,000-character brief names the style and `cadex guidance --project <p>`, because the client cuts at 2,048 characters. Run names (ot10, orun1) remain in DESIGN-LANGUAGE.md as evidence. They are runs, not projects, so the charter allows them [rec: lucky-peak-7846].
 
+**The base carries reward-shaping lessons for any task (ADR-586, `f49be9c3`).** `guidance.py` section SHAPE A REWARD THE POLICY CAN CLIMB, from the ball-plate and excavator projects (one to four training runs each): bell-shaped costs flat at the start state collapse training; an `abs(v-V)` cost passed a rocking policy; two sharper precision terms left a ~20 mm reach floor unchanged; slew reaction skated a floor-resting base until `command_slew_deg` limited it. Pinned by `test_the_reward_shaping_lessons_are_for_any_task`; the project-name patterns were extended so no project is named [rec: wise-lodge-1163].
+
 Judgement (maintainer): status `working` because the human owns the checkbox. The next unit is G2: fold the reference project's lessons into the base and the `printed-legged-robot` style [rec: lucky-peak-7846].
 
 ## Negative knowledge
@@ -34,3 +36,4 @@ Judgement (maintainer): status `working` because the human owns the checkbox. Th
 - light-mist-9160 — operator-declared orun4 charter gap (gap-g1-guidance-base-plus-styles)
 - glad-basin-7496 — flagged 7a4205b1 as unrecorded G1 work to verify, not rewrite
 - lucky-peak-7846 — G1 audited against the charter; project-name and MCP-host pins added; evidence complete pending owner tick
+- wise-lodge-1163 — ADR-586: base guidance gains reward-shaping lessons for any task
