@@ -709,6 +709,33 @@ def tracker_reading(xp: Any, true_mm: Any, tracker: dict[str, Any],
     return xp.where(inside, reading, xp.zeros_like(reading))
 
 
+def tracker_variance_floor(task: dict[str, Any]) -> list[float]:
+    """The least variance the normaliser may hold for each channel (ADR-589).
+
+    Zero for every channel a position tracker does not report. A tracked
+    axis is known no finer than the larger of its resolution and its noise,
+    so its spread is floored at that, squared; the in-range flag is a 0/1
+    flag, floored at a quarter, the variance of a fair one. Without the
+    floor, an axis the body barely moves along -- a ball's height above the
+    panel it rolls on -- holds a variance near zero, and one rounding step
+    or one lost touch reaches the policy as thousands of standard
+    deviations. In channel order, which is ``channels(task)``'s order.
+    """
+
+    floor: list[float] = []
+    for record in task["observations"]:
+        tracker = record.get("tracker")
+        for index, _channel in enumerate(record["channels"]):
+            if not tracker:
+                floor.append(0.0)
+            elif index < int(record["dim"]):
+                known = max(float(tracker["resolution_mm"]), float(tracker["noise_mm"]))
+                floor.append(known * known)
+            else:
+                floor.append(0.25)
+    return floor + [0.0] * len(goal_channels(task))
+
+
 def tracker_noise_std(task: dict[str, Any]) -> list[float]:
     """One standard deviation per tracked coordinate, in observation order."""
 
@@ -1412,6 +1439,7 @@ def train(
     # draws the key stream -- it always did.
     noise_std = jnp.asarray(tracker_noise_std(task), dtype=jnp.float32)
     tracking = int(noise_std.shape[0]) > 0
+    variance_floor = jnp.asarray(tracker_variance_floor(task), dtype=jnp.float32)
 
     def observe(data, noise=None):
         raw = jnp.take(data.sensordata, gather) * obs_scale
@@ -2117,7 +2145,11 @@ def train(
         vectors, sampled, logp, values, rewards, dones, landed, terminals = traces
 
         # The normaliser's statistics follow what the policy actually saw.
-        flat = landed.reshape((-1, len(names)))
+        # With a tracker that is `vectors`, which carry its noise; `landed`
+        # does not, and a near-constant axis measured without the noise it
+        # is read with scales that noise up by orders of magnitude (ADR-589).
+        # Without one the two are the same readings, and `landed` is kept.
+        flat = (vectors if tracking else landed).reshape((-1, len(names)))
         count = jnp.float32(flat.shape[0])
         batch_mean = flat.mean(axis=0)
         batch_var = flat.var(axis=0)
@@ -2127,6 +2159,8 @@ def train(
         new_variance = (
             variance * seen + batch_var * count + delta**2 * seen * count / total
         ) / total
+        if tracking:
+            new_variance = jnp.maximum(new_variance, variance_floor)
 
         # One extra critic pass, over the states the steps actually landed
         # in. It replaces the shifted `values` and the trailing bootstrap

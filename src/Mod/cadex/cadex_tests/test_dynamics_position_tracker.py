@@ -295,3 +295,82 @@ def test_a_task_reading_it_is_grounded_and_a_slow_tracker_is_refused() -> None:
     with pytest.raises(dyn.DynamicsError) as on_itself:
         _bundle([_entry(frame="ball")])
     assert on_itself.value.reason == "observation_tracker_frame"
+
+
+# ---------------------------------------------------------------------------
+# The normaliser (ADR-589): a tracked channel never reaches the policy at
+# thousands of standard deviations.
+# ---------------------------------------------------------------------------
+
+
+def test_the_normaliser_floor_is_the_declarations_and_zero_elsewhere() -> None:
+    trainer = _trainer()
+    task = {
+        "observations": [
+            {"name": "angle", "dim": 1, "channels": ["angle"]},
+            {"name": "ball", "dim": 3, "tracker": TRACKER,
+             "channels": ["ball_x", "ball_y", "ball_z", "ball_in_range"]},
+            {"name": "cam", "dim": 3, "tracker": {**TRACKER, "noise_mm": 0.0},
+             "channels": ["cam_x", "cam_y", "cam_z", "cam_in_range"]},
+        ],
+        "goal": [{"name": "target", "channels": ["target_x"]}],
+    }
+    floor = trainer.tracker_variance_floor(task)
+    assert len(floor) == len(trainer.channels(task))
+    # The larger of resolution (0.5) and noise (0.4), squared; then the
+    # resolution alone where the declaration has no noise; a flag's floor is
+    # a fair flag's variance; nothing a tracker does not report is floored.
+    assert floor == [0.0, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.0]
+    assert trainer.tracker_variance_floor({"observations": [
+        {"name": "angle", "dim": 1, "channels": ["angle"]}]}) == [0.0]
+
+
+def test_a_trained_policy_never_holds_a_tracked_channel_below_its_floor(tmp_path) -> None:
+    """Through the real trainer. The range is the whole world, so the flag
+    reads 1 on every step: without the floor its stored spread collapses to
+    the normaliser's 1e-4 epsilon, and the first lost touch would reach the
+    policy at ten thousand standard deviations. The measured case behind it
+    was a ball's height above a panel, 51 deviations from noise alone."""
+
+    import hashlib
+    import json
+    import os
+    import subprocess
+
+    from test_dynamics_policy_trainer import _venv_python
+
+    python = _venv_python()
+    if python is None:
+        pytest.skip("the offboard trainer's dependencies are not installed here")
+    everywhere = {**TRACKER, "range_mm": [[-1.0e5, 1.0e5]] * 3, "noise_mm": 0.0}
+    built = _rig()
+    observations = dyn.observation_records(
+        [_entry(everywhere)], built["tree"], built["joint_records"], built["actuators"])
+    exported = dyn.export_mjcf(built, observations=observations)
+    reloaded = mujoco.MjModel.from_xml_string(exported["xml"].decode("utf-8"))
+    task = {**TASK, "termination": []}
+    bundle = dyn.task_records(built, reloaded, task, observations=observations)
+    bundle["model"] = {"path": "outputs/job-model.xml",
+                       "sha256": hashlib.sha256(exported["xml"]).hexdigest(),
+                       "bytes": len(exported["xml"]), "output": "job_model",
+                       "mujoco_version": str(bundle["mujoco_version"])}
+    payload = json.dumps(bundle, indent=2, sort_keys=True).encode("utf-8")
+    (tmp_path / "outputs").mkdir()
+    (tmp_path / "outputs" / "job-model.xml").write_bytes(exported["xml"])
+    (tmp_path / "outputs" / "job-task.json").write_bytes(payload)
+    out = tmp_path / "p.cxpolicy"
+    environment = dict(os.environ)
+    environment.pop("PYTHONPATH", None)
+    result = subprocess.run(
+        [python, "-P", str(TRAINER), str(tmp_path / "outputs" / "job-task.json"),
+         "--out", str(out), "--seed", "0", "--iterations", "3", "--envs", "8",
+         "--unroll", "10", "--quiet"],
+        capture_output=True, text=True, env=environment, check=False)
+    assert result.returncode == 0, result.stderr[-4000:]
+    container = dyn.decode_policy(out.read_bytes())
+    header = container["header"]
+    std = dict(zip(header["observations"], header["normaliser"]["std"]))
+    assert std["ball_in_range"] >= 0.5
+    for axis in "xyz":
+        assert std[f"ball_{axis}"] >= 0.5 - 1e-6
+    dyn.verify_policy(container, bundle, task_sha256=hashlib.sha256(payload).hexdigest())

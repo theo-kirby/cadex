@@ -1071,6 +1071,13 @@ evaluations draw no noise. A tracker whose `rate_hz` is below the task's
 control rate is refused (`tracker_slower_than_control`) rather than held,
 so a policy never acts on a reading the part has not made. It measures
 position only: a velocity no such part reports would be privileged.
+The running normaliser follows the noisy readings the policy acts on, not
+the noise-free ones the reward reads, and holds each tracked axis's
+variance at no less than the larger of its resolution and noise, squared,
+and the in-range flag's at no less than 0.25 (ADR-589): an axis the body
+barely moves along — a ball's height above the panel it rolls on — would
+otherwise reach the policy at tens of standard deviations of pure noise,
+and a lost touch at thousands.
 
 **Deferred, and named rather than half-built:** `touch` and
 `accelerometer` need a *site* with a placement the assembly graph does not

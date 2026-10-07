@@ -36912,3 +36912,61 @@ on the same key stream. No op, argument, tool or response shape changes
 through `describe_api`, whose assembly notes were trimmed to make room.
 
 Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-589 — The normaliser follows a tracker's noisy readings and floors its channels (2026-10-07)
+
+**Decision.** When a task has a `position_tracker` (ADR-588), the trainer's
+running observation normaliser takes its statistics from the readings the
+policy acted on, which carry the tracker's noise, and no longer from the
+noise-free landed readings that the reward scores. After every update it
+also holds each tracker channel's variance at a floor,
+`tracker_variance_floor`: the larger of the declared resolution and noise,
+squared, for each axis, and 0.25 (a fair 0/1 flag's variance) for
+`<name>_in_range`. The floor is 0 for every other channel. A task with no
+tracker takes neither branch: both are Python-level switches on `tracking`,
+so its traced graph and its key stream are unchanged.
+
+**Why.** It was measured, on a ball-plate rig rebuilt with a free ball read
+by a touch panel (`orun5-ball-plate`). Every tracker variant trained flat at
+0.6 reward per step, even with the ball's velocity given to the actor. A
+world-frame `component_position` on the same rig and seed learned to 1.31
+in 120 iterations. Instrumenting the trainer showed why. The ball's height
+above the panel barely moves (0.04 mm noise-free), but the policy reads it
+with 0.5 mm of noise. The normaliser, fed the noise-free readings, scaled
+that channel's noise up to as much as **51 standard deviations**, a pure-noise
+input that swamped the rest. With no noise declared, the 0.25 mm rounding
+of a near-constant axis does the same on its rare step. The flag, constant
+at 1, keeps a variance near the normaliser's 1e-8 floor, so one lost touch
+would reach the policy at about 10⁴ deviations. With the fix, every
+normalised channel stays within about 7 deviations. The same plate-frame
+bundle with actor velocity, at the same seed, went from 0.61 reward per step
+at iteration 300 to 1.13 at 300, and 1.33 at 700. The reference policy that
+passed was at 1.41.
+
+**Alternatives.** Clipping every normalised observation, as is common
+elsewhere, was set aside. It would change every task's training, not only
+the ones with a tracker. It would also hide the cause: a channel scaled
+wrongly is still scaled wrongly, only less visibly. Adding the noise to the
+landed readings as well would have drawn a second key per step. The readings
+the policy acted on are already in the batch.
+
+**Regression and tests.** `test_dynamics_position_tracker.py`:
+`tracker_variance_floor` is the declaration's floor and 0 elsewhere,
+including goal channels (runs under pixi). A real trainer run on a tracker
+whose range is the whole world stores the flag's spread at 0.5 or more, and
+each axis's at no less than its floor. The engine verifies its witness. This
+test runs from the training venv and skips under pixi. Without the fix it
+fails, with the flag's stored spread at 0.0009.
+
+**Consequences.** A policy trained on a tracker before this keeps verifying,
+because its header carries the statistics it was trained with. A retrain
+moves its numbers. No op, tool, argument or bundle field changes.
+
+**What it did not fix.** On the rebuilt ball-plate, a policy that reads only
+grounded channels (tracker position and servo encoders) still plateaus at
+0.62 reward per step after 700 iterations, with episodes 131–183 steps of 300.
+A memoryless policy cannot damp a rolling ball from position alone. The next
+unit is a grounded velocity: what the panel's firmware does when it
+differences successive readings.
+
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
