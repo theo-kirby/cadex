@@ -56,8 +56,14 @@ def test_the_first_frame_measures_shells_the_way_the_engine_published_them(tmp_p
         f"Part.makeSphere(1, App.Vector(5, 5, 5)).exportBrep({str(tmp_path / 'ball.brep')!r})")],
         check=True, capture_output=True, timeout=300)
     identity = {"position_mm": [0, 0, 0], "rotation_xyzw": [0, 0, 0, 1]}
+    # ADR-582: frame 1 moves both rigidly, so the boolean is reused; frame 2
+    # moves the ball 1 mm inside the box, so it is run again.
+    carried = {"position_mm": [7, -3, 2], "rotation_xyzw": [0, 0, 0.6, 0.8]}
+    nudged = {"position_mm": [1, 0, 0], "rotation_xyzw": [0, 0, 0, 1]}
     (tmp_path / "trace.json").write_text(json.dumps(
-        [{"time_s": 0.0, "placements": {"ball": identity, "box": identity}}]))
+        [{"time_s": 0.0, "placements": {"ball": identity, "box": identity}},
+         {"time_s": 0.1, "placements": {"ball": carried, "box": carried}},
+         {"time_s": 0.2, "placements": {"ball": nudged, "box": identity}}]))
     plan = {"trace": str(tmp_path / "trace.json"), "out": str(tmp_path / "out.json"),
             "maximum_volume_mm3": 1e-6,
             "static": [{"first": "ball", "second": "box", "distance_mm": 4.0,
@@ -71,3 +77,5 @@ def test_the_first_frame_measures_shells_the_way_the_engine_published_them(tmp_p
     assert "error" not in result, result
     assert result["pass"] is False
     assert [(r["first"], r["second"]) for r in result["failing"]] == [("ball", "box")]
+    assert result["booleans"] == {"run": 2, "reused": 1}
+    assert abs(result["failing"][0]["common_volume_mm3"] - 4.0 / 3.0 * 3.141592653589793) < 1e-2

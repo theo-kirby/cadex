@@ -1,6 +1,6 @@
 # orun4 — closing report
 
-Verified against source: 2026-10-06, at `5b460c99` (the orun4 run branch), with §5 and §7 retaken after ADR-574, and §7 and the done claim after ADR-575, ADR-576 and ADR-577 (at `195921c2`), and §6, §7 and the done claim after ADR-580 (at `1a6e796e`), and §7 after ADR-581.
+Verified against source: 2026-10-06, at `5b460c99` (the orun4 run branch), with §5 and §7 retaken after ADR-574, and §7 and the done claim after ADR-575, ADR-576 and ADR-577 (at `195921c2`), and §6, §7 and the done claim after ADR-580 (at `1a6e796e`), and §7 after ADR-581 and ADR-582.
 Charter: `.ouroboros/goal.md`, "What worked, made the default — and a page
 arranged like Blender". Every number below was measured on sb1x (linux-64,
 RTX 5090), on scratch projects named `orun4-*`; the reference project was
@@ -207,6 +207,7 @@ keep list.
 | ADR-579 | the CLI suite gets lighter again: a passed evaluation's presentation drawn small where pixels are not the claim |
 | ADR-580 | the CLI suite under eight minutes: a served page stops promptly, and the walks draw small where pixels are not the claim |
 | ADR-581 | the smoke check's first frame measures a pair the way the engine published it |
+| ADR-582 | the smoke check reuses a pair's volume while its relative pose holds, and boxes each part once |
 
 ## 7. Remaining defects
 
@@ -220,10 +221,11 @@ keep list.
    first-frame pre-check's refusal is fixed (ADR-581). It was not a sub-1e-5 mm
    mismatch: a solid's `distToShape` answered 0 mm for a pair whose published
    bound was 61 mm, because OCCT classified a far vertex as inside the shin. It
-   now measures each pair the way the engine published it. Two parts are still
-   open: threaded screw engagement counts as overlap (33 bolt pairs at
-   4.5–10.3 mm³), and the exact-geometry stage takes about 5.5 s for each frame
-   on 66 components, so the 101-frame trace exceeds the 300 s bound.
+   now measures each pair the way the engine published it. The exact-geometry
+   stage's cost is fixed too (ADR-582): a pair whose relative pose holds keeps
+   its measured volume, and the whole command completes in 186.7 s, where it
+   was refused at the 300 s bound. One part is still open: threaded screw
+   engagement counts as overlap (33 bolt pairs at 4.5–10.3 mm³).
 3. **Fixed: the CLI suite was over the 8-minute target.** It is 474.4 s as
    one command since ADR-580 (§6), with about 5 s of margin; a slower
    machine or a new slow test could push it back over.

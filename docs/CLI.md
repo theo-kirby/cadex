@@ -3143,7 +3143,10 @@ The command checks:
   proxy. The default limit is `--max-common-volume-mm3 0.000001`. Each pair's
   maximum volume and its time are retained. At the first frame, distances
   and common volumes must agree with published static clearance; a missing
-  solid or disagreement is a measurement error, never a pass.
+  solid or disagreement is a measurement error, never a pass. A pair whose
+  relative pose is unchanged since its volume was last measured keeps that
+  volume (ADR-582: the volume is invariant under a rigid motion of both);
+  `smoke-geometry.json`'s `booleans` counts those `run` and `reused`.
 - Floor-proxy penetration no deeper than `--penetration-mm 0.5`, and a free
   base whose design is touching the environment floor at the end, whose linear
   speed is at most `--rest-speed-mm-s 10`, and which has turned no further

@@ -36525,3 +36525,61 @@ honest:
 Both stay open under the orun4 report's defect 2.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-582 — The smoke check reuses a pair's volume while its relative pose holds, and boxes each part once (2026-10-06, orun4 report defect 2)
+
+**Context.** After ADR-581, `cadex smoke` on the second fresh-session biped
+(66 components, 2,080 pairs, the default 2 s and 101-frame trace) was refused
+with `exact smoke geometry exceeded the shared wall-time bound` at 300.11 s.
+On a scratch copy, profiled over frames 1–3:
+- each frame ran about 144 `common` booleans (433 box-overlapping pairs over
+  3 frames) for about 5.0 s; the rest of the frame was under 0.4 s;
+- 166 of those 433 pairs measured more than 0.001 mm apart, but the shell
+  distance that would prove it cost 13.6 s against the booleans' 15.1 s, so
+  ADR-436's rule (skip the boolean for a pair measured apart) saves nothing
+  here: a distance is as dear as the boolean it would skip;
+- frame 0 took 64.7 s, most of it two `optimalBoundingBox` calls per culled
+  pair, about 4,000 calls for 65 shapes.
+Over the 101 frames, 527 of the 2,080 pairs keep their relative pose: parts
+on one MuJoCo body, such as a bolt and the plate it holds, differ frame to
+frame by at most 8.6e-19 in the relative matrix. Every moving pair differs
+by more than 1e-6.
+
+**Decision.** In `cli/cadex_cli/smoke_geometry.py`:
+1. **A common volume is invariant under a rigid motion of both shapes.** A
+   pair whose relative placement matches, within 1e-9 per matrix entry, the
+   one at which its volume was last measured keeps that volume; otherwise the
+   boolean runs and the new pose is remembered. The box cull still comes first.
+2. **Frame 0 computes each part's exact box once** and takes each culled
+   pair's gap from the two boxes (ADR-423, ADR-581), instead of recomputing
+   both boxes for each pair.
+3. `smoke-geometry.json` carries `booleans: {run, reused}`, so a receipt
+   says how much it measured.
+Thresholds, tolerances, the agreement check, the sampling and the 300 s
+bound are unchanged.
+
+**Measured.** The same scratch copy:
+- full `cadex smoke`: 300.11 s and refused, before; **186.66 s and a
+  complete receipt**, after, verdict `fail`;
+- the geometry child alone: frame 0 64.7 s to 12.2 s (with loading); the
+  101-frame trace 185.7 s, about 1.7 s for each later frame, with 4,845
+  booleans run and 9,797 reused;
+- against the old child on the first 6 frames (91.5 s, against 20.8 s), all
+  2,080 pairs' worst volumes agree within 3.7e-11 mm³ and the same 33 pairs
+  fail. Only the reported time of 25 rigid pairs differs: the old child took
+  the frame at which boolean noise of about 1e-14 mm³ peaked, and the new one
+  reports the first frame.
+
+**Regression.** `test_smoke_geometry_bound.py`'s nested-sphere test now runs
+three frames: both parts carried rigidly (reused), then the ball moved 1 mm
+(run again). It asserts `booleans == {run: 2, reused: 1}` and the sphere's
+volume, and fails on the previous child. It adds no measurable time.
+
+**Consequences.** The design's smoke now completes and fails honestly: all 33
+failing pairs are bolts threaded into their parts (4.5–10.3 mm³), which the
+per-frame check counts as overlap whatever fit intent the static row
+declared. That stays open under the orun4 report's defect 2. A design with
+many moving pairs still pays one boolean per moving, box-overlapping pair
+per frame.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
