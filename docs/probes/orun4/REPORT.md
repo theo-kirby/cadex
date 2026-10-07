@@ -1,6 +1,6 @@
 # orun4 — closing report
 
-Verified against source: 2026-10-06, at `5b460c99` (the orun4 run branch), with §5 and §7 retaken after ADR-574, and §7 and the done claim after ADR-575, ADR-576 and ADR-577 (at `195921c2`), and §6, §7 and the done claim after ADR-580 (at `1a6e796e`), and §7 after ADR-581, ADR-582 and ADR-583.
+Verified against source: 2026-10-06, at `5b460c99` (the orun4 run branch), with §5 and §7 retaken after ADR-574, and §7 and the done claim after ADR-575, ADR-576 and ADR-577 (at `195921c2`), and §6, §7 and the done claim after ADR-580 (at `1a6e796e`), and §7 and the done claim after ADR-581, ADR-582 and ADR-583 (reconciled at `152635da`).
 Charter: `.ouroboros/goal.md`, "What worked, made the default — and a page
 arranged like Blender". Every number below was measured on sb1x (linux-64,
 RTX 5090), on scratch projects named `orun4-*`; the reference project was
@@ -218,17 +218,22 @@ keep list.
    the reader takes the supervisor's `stopped` and reads the run as stopped,
    with the reason, leaving the file as written. The "no telemetry update for
    over 30 s" warning is no longer shown under a run whose record has ended.
-2. **`cadex smoke` false positives**, found by the fresh sessions. The
-   first-frame pre-check's refusal is fixed (ADR-581). It was not a sub-1e-5 mm
-   mismatch: a solid's `distToShape` answered 0 mm for a pair whose published
-   bound was 61 mm, because OCCT classified a far vertex as inside the shin. It
-   now measures each pair the way the engine published it. The exact-geometry
-   stage's cost is fixed too (ADR-582): a pair whose relative pose holds keeps
-   its measured volume, and the whole command completes in 186.7 s, where it
-   was refused at the 300 s bound. Threaded engagement is fixed too
-   (ADR-583): a bolt the static block calls threaded keeps its ADR-492
-   allowance at every pose. The same design now smokes `pass` in 186.5 s,
-   with 33 threaded pairs at most 83% of their allowance and no other overlap.
+2. **Fixed: `cadex smoke` false positives**, found by the fresh sessions.
+   The first-frame pre-check's refusal is fixed (ADR-581). It was not a
+   sub-1e-5 mm mismatch: a solid's `distToShape` answered 0 mm for a pair
+   whose published bound was 61 mm, because OCCT classified a far vertex as
+   inside the shin. It now measures each pair the way the engine published
+   it. The exact-geometry stage's cost is fixed too (ADR-582): a pair whose
+   relative pose holds keeps its measured volume, and the whole command
+   completes in 186.7 s, where it was refused at the 300 s bound. Threaded
+   engagement is fixed too (ADR-583): a bolt the static block calls threaded
+   keeps its ADR-492 allowance at every pose. The same design now smokes
+   `pass` in 186.5 s, with 33 threaded pairs at most 83% of their allowance
+   and no other overlap. Two caveats stand. A design with many *moving*
+   pairs whose boxes overlap still pays one boolean per such pair per
+   frame, since only a pair whose relative pose holds is reused
+   (ADR-582). And only a catalog bolt into a printed part carries a thread
+   allowance; any other overlap at any pose still fails (ADR-583).
 3. **Fixed: the CLI suite was over the 8-minute target.** It is 474.4 s as
    one command since ADR-580 (§6), with about 5 s of margin; a slower
    machine or a new slow test could push it back over.
@@ -261,8 +266,8 @@ the reconcile at `32810ecb` folded ADR-574 to ADR-576. Defect 1 is fixed
 (ADR-574), and orun3's three long-term defects are fixed (ADR-575 to
 ADR-577), and so are defect 3 (ADR-579 and ADR-580, the CLI suite at
 474.4 s as one command, under the owner's 480 s) and defect 4 (ADR-578).
-Defects 2 and 5 are open and stay listed above; neither is a done
-criterion. **Done is claimed for critic review.** The records for ADR-579
-and ADR-580 and this claim's own record are still to be folded by a
-reconcile pass, which work iterations are forbidden to run. No owner box is
-ticked.
+Defect 2 is fixed (ADR-581 to ADR-583, folded by the reconcile at
+`152635da`), with its two caveats kept above. Defect 5 is an assumption the
+owner may revise, not a done criterion. **Done is claimed for critic
+review.** This claim's own record is still to be folded by a reconcile
+pass, which work iterations are forbidden to run. No owner box is ticked.
