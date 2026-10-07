@@ -3786,6 +3786,10 @@ def _observation_input(
             "range_mm": [[float(low), float(high)] for low, high in tracker["range_mm"]],
             **{key: float(tracker[key]) for key in ("resolution_mm", "rate_hz", "noise_mm")},
         }
+    # ADR-591: a load sensor's declaration, in its actuator's own unit.
+    if properties.get("load"):
+        resolved["load"] = {key: float(properties["load"][key])
+                            for key in ("full_scale", "resolution", "rate_hz", "noise")}
     return resolved
 
 

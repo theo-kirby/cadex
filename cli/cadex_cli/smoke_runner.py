@@ -82,7 +82,8 @@ def _observe(task: dict[str, Any], sensordata: Any) -> dict[str, float]:
 
     A tracked position (ADR-588) reads as its tracker reports it: rounded to
     the resolution, and zeros with ``_in_range`` 0 when the body is outside
-    the declared range. No noise -- this is a check, not a training draw.
+    the declared range; a load (ADR-591) as its load sensor reports it. No
+    noise -- this is a check, not a training draw.
     """
 
     values: dict[str, float] = {}
@@ -103,6 +104,12 @@ def _observe(task: dict[str, Any], sensordata: Any) -> dict[str, float]:
             step = float(tracker["resolution_mm"])
             read = ([round(value / step) * step for value in read] + [1.0]
                     if inside else [0.0, 0.0, 0.0, 0.0])
+        elif record.get("load"):
+            # ADR-591: held within the stall line, rounded to the resolution.
+            load = record["load"]
+            full = float(load["full_scale"])
+            step = float(load["resolution"])
+            read = [round(min(max(read[0], -full), full) / step) * step]
         for channel, value in zip(record["channels"], read):
             values[str(channel)] = value
     return values

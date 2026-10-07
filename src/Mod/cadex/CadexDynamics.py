@@ -6340,6 +6340,19 @@ def observation_records(
                               "sensor": str(entry.get("grounded_sensor") or "")},
                 )
             tracked["in_range_of"] = paired[0]
+        if entry.get("load"):
+            # ADR-591: a load sensor reads its own actuator's effort, so it
+            # rides only on that actuator's actuator_force channel.
+            if kind != "actuator_force":
+                raise DynamicsError(
+                    f"{what} carries a load sensor's declaration on a {kind} "
+                    "channel; a load sensor reads an actuator's effort.",
+                    reason="observation_load_kind",
+                    correction="Observe the actuator's actuator_force with the load_sensor.",
+                    observed={"observation": name, "kind": kind},
+                )
+            tracked["load"] = {key: float(entry["load"][key])
+                               for key in ("full_scale", "resolution", "rate_hz", "noise")}
 
         unit, scale = _observation_unit(kind, motion_type)
         channels = [f"{name}{suffix}"
@@ -8203,7 +8216,8 @@ def task_records(
                 # a tracked position.
                 # ADR-590: and, on a tracked velocity, the position whose
                 # range flag it shares.
-                **{key: record[key] for key in ("frame", "tracker", "in_range_of")
+                # ADR-591: and, on a load sensor's channel, its declaration.
+                **{key: record[key] for key in ("frame", "tracker", "in_range_of", "load")
                    if record.get(key)},
             }
         )
@@ -8736,6 +8750,8 @@ def observation_values(
                 values[f"{record['in_range_of']}_in_range"] == 1.0)
         elif record.get("tracker"):
             read = tracker_reading(read, record["tracker"])
+        elif record.get("load"):
+            read = [load_reading(read[0], record["load"])]
         for channel, value in zip(record["channels"], read):
             values[str(channel)] = value
     return values
@@ -8747,7 +8763,8 @@ def _check_tracker_rates(
     *,
     context: str,
 ) -> None:
-    """Refuse a policy that acts faster than a tracker it reads reports (ADR-588).
+    """Refuse a policy that acts faster than a tracker (ADR-588) or a load
+    sensor (ADR-591) it reads reports.
 
     A tracker slower than the control loop would hand the policy the same
     reading for several steps -- a stale value the trainer would have to
@@ -8757,21 +8774,24 @@ def _check_tracker_rates(
 
     control_hz = 1.0 / float(schedule["control_interval_s"])
     for row in rows:
-        tracker = row.get("tracker")
-        if not tracker or float(tracker["rate_hz"]) + 1.0e-9 >= control_hz:
+        # ADR-591: a load sensor's rate is held to the same rule.
+        declared = row.get("tracker") or row.get("load")
+        if not declared or float(declared["rate_hz"]) + 1.0e-9 >= control_hz:
             continue
+        what = "tracker" if row.get("tracker") else "load sensor"
         raise DynamicsError(
-            f"{context} reads {row['name']!r} from a tracker reporting at "
-            f"{float(tracker['rate_hz']):g} Hz, slower than its "
+            f"{context} reads {row['name']!r} from a {what} reporting at "
+            f"{float(declared['rate_hz']):g} Hz, slower than its "
             f"{control_hz:g} Hz control loop.",
-            reason="tracker_slower_than_control",
+            reason=("tracker_slower_than_control" if row.get("tracker")
+                    else "load_sensor_slower_than_control"),
             correction=(
                 "A policy may not act on a reading its sensor has not made. "
-                "Lower control_hz to the tracker's rate or below, or declare "
+                f"Lower control_hz to the {what}'s rate or below, or declare "
                 "the faster part the machine actually carries."
             ),
             observed={"observation": str(row["name"]),
-                      "rate_hz": float(tracker["rate_hz"]),
+                      "rate_hz": float(declared["rate_hz"]),
                       "control_hz": control_hz},
         )
 
@@ -8806,6 +8826,26 @@ def tracker_reading(
         round((float(value) + float(extra)) / step) * step
         for value, extra in zip(true_mm, noise)
     ] + [1.0]
+
+
+def load_reading(
+    true_effort: float,
+    load: Mapping[str, Any],
+    noise: float = 0.0,
+) -> float:
+    """What a load sensor reports for an actuator applying ``true_effort`` (ADR-591).
+
+    The effort plus any noise drawn, held within the stall line
+    ``+/- full_scale`` -- a bus servo's load register tops out at 100 % --
+    then rounded to the declared resolution. N*mm on a turning coordinate,
+    N on a sliding one. The engine draws no noise; the trainer writes the
+    same arithmetic in ``jnp`` and a test pins the two equal.
+    """
+
+    scale = float(load["full_scale"])
+    step = float(load["resolution"])
+    held = min(max(float(true_effort) + float(noise), -scale), scale)
+    return round(held / step) * step
 
 
 def tracker_velocity_noise(tracker: Mapping[str, Any]) -> tuple[float, float]:

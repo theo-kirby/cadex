@@ -37039,3 +37039,69 @@ no tracker noise (ADR-588), so a pass is judged on clean readings while
 training saw noisy ones.
 
 Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-591 — A load sensor reads the effort an actuator applies (2026-10-07)
+
+**Decision.** A new sensor kind, `load_sensor`, grounds an actuator's
+`actuator_force` channel. `assembly.sensor(actuator, "load_sensor",
+name=..., resolution_nmm=..., noise_nmm=..., rate_hz=...)` (`resolution_n`
+and `noise_n` on a sliding coordinate; the other unit is refused) declares
+it like a datasheet, and `assembly.observation(actuator, "actuator_force",
+sensor=load)` reads it. The reading is the stock `actuatorfrc` sensor —
+already clamped at the actuator's `forcerange` — plus the noise the trainer
+draws per control step, held within `±full_scale`, then rounded to the
+resolution. `full_scale` is the actuator's own `torque_limit_nmm` (or
+`force_limit_n`): a load register reads 100 % at the stall line, so an
+actuator with no effort limit is refused (`no effort limit`).
+`CadexDynamics.load_reading` applies it noise-free in the engine and the
+smoke runner; `training/cadex_train.py` carries the `jnp` copy, and its
+noise vector and normaliser floor, renamed `sensor_noise_std` and
+`sensor_variance_floor`, cover trackers and load sensors in observation
+order. A load sensor slower than the control loop is refused
+(`load_sensor_slower_than_control`), as a tracker is (ADR-588).
+
+The catalog grounds it where real hardware is. A servo row may carry
+`load_feedback`; the STS3215 does — its Present Load register, signed,
+0.1 % of full drive per count, saturating at 100 % — with a noise of 1 % of
+stall and a 100 Hz polling rate, both named in its `approximate` list
+because no datasheet states them. `lib.servo(sku).load_sensor(actuator,
+name=, rate_hz=None)` fills those figures as fractions of the actuator's
+stall torque, and refuses an actuator its own `.actuator` did not make.
+Every PWM servo (SG90, MG90S, MG996R, DS3218) refuses with the reason:
+its signal wire carries the command in and nothing back.
+
+**Why.** The orun5 charter's S2, from a reference project whose precision
+floor had servo sag as an open hypothesis: the bus servo really reports
+its load, and the policy could not read it, because `actuator_force` could
+only be privileged.
+
+**Alternatives.** Marking each library-made actuator with its part, so
+`assembly.sensor` itself could refuse a PWM servo's: the actuator's
+properties are forwarded wholesale into the export, so every existing
+library-servo task would change bytes and its policies' digests with it.
+The API holds no per-script state to keep the mark elsewhere. So the
+catalog's refusal lives on the servo, and a direct `assembly.sensor`
+declaration is a claim, stated in the docstring and the docs, that the
+machine carries a part measuring that motor's current (an inline current
+sensor on a PWM servo's supply is real hardware). Modelling the register's
+speed term (drive duty is load only near stall) needs the motor's
+back-EMF constant, which the catalog does not carry; it is named in
+`docs/MUJOCO.md` instead.
+
+**Regression and tests.** `test_dynamics_load_sensor.py`: the surface and
+its refusals (missing figures, the wrong unit, no effort limit, another
+actuator, a non-load channel); the STS3215's figures and every PWM
+servo's refusal; an arm held against gravity reads the joint's gravity
+torque (1815.7 N·mm, read 1816 at a 2 N·mm resolution), and with a stall
+of half that load the arm sags 13° and the reading sits on the stall line;
+the rounding, the noise-then-clip order, the trainer's copy against the
+engine's on 300 draws, its spread and floor; a task reading it is
+grounded, and a slow one refused.
+
+**Consequences.** No op, tool or protocol argument changes; `api.sensor`
+gains four keyword arguments and the bundle a `load` key on a load
+sensor's row only, so every existing task exports byte-identical. The
+trainer's noise path now runs for a task with a load sensor and no
+tracker. Evaluations draw no sensor noise (ADR-588).
+
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).

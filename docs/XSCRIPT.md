@@ -289,7 +289,8 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `component_angular_velocity`/`centre_of_mass`/`centre_of_mass_velocity`/
   `centroidal_angular_momentum`
   on a component, `tracked_position` and `tracked_velocity` on a body a
-  `position_tracker` reads (below), and `actuator_force` on an actuator. Values reach a trainer in this API's own
+  `position_tracker` reads (below), and `actuator_force` on an actuator
+  (grounded by a `load_sensor`, below). Values reach a trainer in this API's own
   units — degrees, millimetres, N·mm, N·mm·s — as a per-channel `scale` in the
   bundle, so the trainer *multiplies* rather than converting. A vector
   channel expands to suffixed scalar names — `name="hand"` on a
@@ -310,7 +311,16 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   same tracker, listed after its position (ADR-590), reads `<name>_x/_y/_z`
   in mm/s: the firmware's difference of successive readings, with noise
   `sqrt(2) * noise_mm * rate_hz` and resolution `resolution_mm * rate_hz`,
-  and zeros whenever the position reads out of range. One thing
+  and zeros whenever the position reads out of range. A **load sensor**
+  (ADR-591) — a bus servo's load register, or a current sensor on a
+  motor's supply — is `assembly.sensor(actuator, "load_sensor", name=...,
+  resolution_nmm=..., noise_nmm=..., rate_hz=...)` (`_n` on a sliding
+  coordinate) and grounds that actuator's `actuator_force`: the applied
+  effort, rounded to the resolution, held within the actuator's own effort
+  limit — its stall line, which it must declare — with the trainer adding
+  the noise. A catalog servo fills its own figures with
+  `lib.servo(sku).load_sensor(actuator, name=...)`; a PWM servo, which
+  reports nothing back, refuses. One thing
   worth knowing before choosing a channel: a `component_position` reads the
   component's **frame origin**, so a link hinged at its own origin never
   moves in it — `centre_of_mass` is the channel for where a part actually

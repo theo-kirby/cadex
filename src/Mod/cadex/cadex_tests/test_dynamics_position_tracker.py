@@ -271,10 +271,10 @@ def test_the_trainers_copy_is_the_engines_and_its_noise_has_the_declared_spread(
         {"name": "ball", "dim": 3, "tracker": TRACKER,
          "channels": ["ball_x", "ball_y", "ball_z", "ball_in_range"]},
     ]}
-    assert trainer.tracker_noise_std(task) == [0.4, 0.4, 0.4]
+    assert trainer.sensor_noise_std(task) == [0.4, 0.4, 0.4]
     # The spread a training draw gives: the trainer scales a unit normal by
     # this vector, so the readings' deviation is the declaration's.
-    draws = rng.standard_normal((20000, 3)) * np.asarray(trainer.tracker_noise_std(task))
+    draws = rng.standard_normal((20000, 3)) * np.asarray(trainer.sensor_noise_std(task))
     fine = {**TRACKER, "resolution_mm": 0.01}
     readings = np.asarray([
         trainer.tracker_reading(np, np.asarray([10.0, 0.0, 5.0]), fine, draw)[:3]
@@ -315,13 +315,13 @@ def test_the_normaliser_floor_is_the_declarations_and_zero_elsewhere() -> None:
         ],
         "goal": [{"name": "target", "channels": ["target_x"]}],
     }
-    floor = trainer.tracker_variance_floor(task)
+    floor = trainer.sensor_variance_floor(task)
     assert len(floor) == len(trainer.channels(task))
     # The larger of resolution (0.5) and noise (0.4), squared; then the
     # resolution alone where the declaration has no noise; a flag's floor is
     # a fair flag's variance; nothing a tracker does not report is floored.
     assert floor == [0.0, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.0]
-    assert trainer.tracker_variance_floor({"observations": [
+    assert trainer.sensor_variance_floor({"observations": [
         {"name": "angle", "dim": 1, "channels": ["angle"]}]}) == [0.0]
 
 
@@ -479,8 +479,8 @@ def test_the_velocity_noise_is_a_differences_and_the_trainer_computes_it_the_sam
          "channels": ["ball_v_x", "ball_v_y", "ball_v_z"]},
     ]}
     sigma = math.sqrt(2.0) * 0.4 * 100.0
-    assert trainer.tracker_noise_std(task) == pytest.approx([0.4] * 3 + [sigma] * 3)
-    assert trainer.tracker_variance_floor(task) == pytest.approx(
+    assert trainer.sensor_noise_std(task) == pytest.approx([0.4] * 3 + [sigma] * 3)
+    assert trainer.sensor_variance_floor(task) == pytest.approx(
         [0.0] + [0.25] * 4 + [sigma * sigma] * 3)
     # A fine-resolution draw has the declared spread.
     fine = {**TRACKER, "resolution_mm": 1.0e-4}

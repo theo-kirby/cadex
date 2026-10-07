@@ -1036,6 +1036,7 @@ critic may read and the shipped policy never does. A policy channel is
 | `imu` | the IMU board's own `api.component` | that component's `component_orientation` and `component_angular_velocity` |
 | `joint_encoder` | an `api.joint` | that joint's `position` and `velocity` (a servo's potentiometer tapped out, or a servo that reports position) |
 | `position_tracker` | the `api.component` it is mounted on (a touch panel's plate, a camera's mast) | *another* body's `tracked_position` in the mount's frame (ADR-588), and its differenced `tracked_velocity` (ADR-590) |
+| `load_sensor` | an `api.actuator` with an effort limit (a bus servo's load register, a current sensor on a motor's supply) | that actuator's `actuator_force`, rounded, noised and held within its stall line (ADR-591) |
 
 The API refuses a sensor that does not measure what it is passed to, or
 that is mounted on something else. An ungrounded policy channel still
@@ -1094,6 +1095,30 @@ and the in-range flag's at no less than 0.25 (ADR-589): an axis the body
 barely moves along — a ball's height above the panel it rolls on — would
 otherwise reach the policy at tens of standard deviations of pure noise,
 and a lost touch at thousands.
+
+**A load sensor reads what an actuator applies (ADR-591).** A bus servo
+reports its load over the bus and a current sensor reads a motor's supply;
+a hobby PWM servo reports nothing back. `assembly.sensor(actuator,
+"load_sensor", resolution_nmm=, noise_nmm=, rate_hz=)` (`resolution_n` and
+`noise_n` on a sliding coordinate) declares one, and grounds that
+actuator's `actuator_force` — the stock `actuatorfrc` sensor, already
+clamped by MuJoCo at the actuator's `forcerange`. Its full scale is the
+actuator's own `torque_limit_nmm` (or `force_limit_n`), the stall line,
+and an actuator without one is refused. The task row carries `load`
+(`full_scale`, `resolution`, `rate_hz`, `noise`); `load_reading` (engine)
+and its `jnp` copy in the trainer (pinned equal by
+`test_dynamics_load_sensor.py`) add the noise drawn per control step,
+hold the result within `±full_scale`, and round it to the resolution. Its
+normaliser floor is the larger of resolution and noise, squared, and a load
+sensor slower than the control loop is refused
+(`load_sensor_slower_than_control`). `lib.servo(sku).load_sensor(actuator,
+name=)` is the catalog's path: a servo whose row carries `load_feedback`
+(the STS3215: its Present Load register, 0.1 % of full drive per count,
+with 1 % noise and 100 Hz polling assumed) fills those figures as
+fractions of the actuator's stall torque, and every PWM servo refuses with
+the reason. What it does not model: the register reads drive duty, which
+equals load only near stall — a turning motor's back-EMF takes a share —
+so at speed the real reading runs above the simulated one.
 
 **Deferred, and named rather than half-built:** `touch` and
 `accelerometer` need a *site* with a placement the assembly graph does not

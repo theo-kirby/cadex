@@ -736,10 +736,27 @@ def tracker_velocity_reading(xp: Any, true_mm_s: Any, tracker: dict[str, Any],
     return xp.where(in_range == 1.0, quantised, xp.zeros_like(quantised))
 
 
-def tracker_variance_floor(task: dict[str, Any]) -> list[float]:
+def load_reading(xp: Any, true_effort: Any, load: dict[str, Any],
+                 noise: Any = None) -> Any:
+    """What a load sensor reports for an actuator's effort (ADR-591).
+
+    ``CadexDynamics.load_reading`` in ``xp``: the effort plus the drawn
+    noise, held within the stall line ``+/- full_scale``, then rounded to
+    the declared resolution.
+    """
+
+    scale = float(load["full_scale"])
+    step = float(load["resolution"])
+    seen = true_effort if noise is None else true_effort + noise
+    return xp.round(xp.clip(seen, -scale, scale) / step) * step
+
+
+def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
     """The least variance the normaliser may hold for each channel (ADR-589).
 
-    Zero for every channel a position tracker does not report. A tracked
+    Zero for every channel no declared sensor reports. A load sensor's
+    channel (ADR-591) is floored like a tracked axis, at the larger of its
+    resolution and its noise, squared. A tracked
     axis is known no finer than the larger of its resolution and its noise,
     so its spread is floored at that, squared; the in-range flag is a 0/1
     flag, floored at a quarter, the variance of a fair one. Without the
@@ -752,8 +769,12 @@ def tracker_variance_floor(task: dict[str, Any]) -> list[float]:
     floor: list[float] = []
     for record in task["observations"]:
         tracker = record.get("tracker")
+        load = record.get("load")
         for index, _channel in enumerate(record["channels"]):
-            if not tracker:
+            if load:
+                known = max(float(load["resolution"]), float(load["noise"]))
+                floor.append(known * known)
+            elif not tracker:
                 floor.append(0.0)
             elif record.get("in_range_of"):
                 known = max(tracker_velocity_noise(tracker))
@@ -766,17 +787,24 @@ def tracker_variance_floor(task: dict[str, Any]) -> list[float]:
     return floor + [0.0] * len(goal_channels(task))
 
 
-def tracker_noise_std(task: dict[str, Any]) -> list[float]:
-    """One standard deviation per tracked coordinate, in observation order.
+def sensor_noise_std(task: dict[str, Any]) -> list[float]:
+    """One standard deviation per noisy coordinate, in observation order.
 
-    A tracked velocity's is the differenced one (ADR-590).
+    A tracked velocity's is the differenced one (ADR-590); a load sensor's
+    is its declared noise (ADR-591).
     """
 
+    def spread(record: dict[str, Any]) -> float:
+        if record.get("load"):
+            return float(record["load"]["noise"])
+        if record.get("in_range_of"):
+            return tracker_velocity_noise(record["tracker"])[0]
+        return float(record["tracker"]["noise_mm"])
+
     return [
-        tracker_velocity_noise(record["tracker"])[0] if record.get("in_range_of")
-        else float(record["tracker"]["noise_mm"])
+        spread(record)
         for record in task["observations"]
-        if record.get("tracker")
+        if record.get("tracker") or record.get("load")
         for _axis in range(int(record["dim"]))
     ]
 
@@ -1468,16 +1496,17 @@ def train(
             axis=-1,
         )
 
-    # ADR-588: a tracked position reads as its tracker reports it. `tracking`
-    # is a PYTHON bool, so a task with no tracker emits the graph -- and
-    # draws the key stream -- it always did.
-    noise_std = jnp.asarray(tracker_noise_std(task), dtype=jnp.float32)
-    tracking = int(noise_std.shape[0]) > 0
-    variance_floor = jnp.asarray(tracker_variance_floor(task), dtype=jnp.float32)
+    # ADR-588: a tracked position reads as its tracker reports it, and
+    # (ADR-591) a load as its load sensor does. `sensing` is a PYTHON bool,
+    # so a task with neither emits the graph -- and draws the key stream --
+    # it always did.
+    noise_std = jnp.asarray(sensor_noise_std(task), dtype=jnp.float32)
+    sensing = int(noise_std.shape[0]) > 0
+    variance_floor = jnp.asarray(sensor_variance_floor(task), dtype=jnp.float32)
 
     def observe(data, noise=None):
         raw = jnp.take(data.sensordata, gather) * obs_scale
-        if not tracking:
+        if not sensing:
             return raw
         parts, cursor, drawn, flags = [], 0, 0, {}
         for record in task["observations"]:
@@ -1495,6 +1524,11 @@ def train(
                     jnp, segment, record["tracker"],
                     None if noise is None else noise[drawn:drawn + dim]))
                 flags[record["name"]] = parts[-1][dim]
+                drawn += dim
+            elif record.get("load"):
+                parts.append(load_reading(
+                    jnp, segment, record["load"],
+                    None if noise is None else noise[drawn:drawn + dim]))
                 drawn += dim
             else:
                 parts.append(segment)
@@ -2003,8 +2037,8 @@ def train(
             # task has a goal, and is absent otherwise.
             picks = filter_carry.pop(0) if goaled else None
             key, act_key = jax.random.split(key)
-            if tracking:
-                # What the policy acts on carries the tracker's noise; the
+            if sensing:
+                # What the policy acts on carries its sensors' noise; the
                 # reward and terminations, scored in `step_env`, do not.
                 key, sense_key = jax.random.split(key)
                 sensed = jax.random.normal(
@@ -2186,11 +2220,11 @@ def train(
         vectors, sampled, logp, values, rewards, dones, landed, terminals = traces
 
         # The normaliser's statistics follow what the policy actually saw.
-        # With a tracker that is `vectors`, which carry its noise; `landed`
+        # With a noisy sensor that is `vectors`, which carry its noise; `landed`
         # does not, and a near-constant axis measured without the noise it
         # is read with scales that noise up by orders of magnitude (ADR-589).
         # Without one the two are the same readings, and `landed` is kept.
-        flat = (vectors if tracking else landed).reshape((-1, len(names)))
+        flat = (vectors if sensing else landed).reshape((-1, len(names)))
         count = jnp.float32(flat.shape[0])
         batch_mean = flat.mean(axis=0)
         batch_var = flat.var(axis=0)
@@ -2200,7 +2234,7 @@ def train(
         new_variance = (
             variance * seen + batch_var * count + delta**2 * seen * count / total
         ) / total
-        if tracking:
+        if sensing:
             new_variance = jnp.maximum(new_variance, variance_floor)
 
         # One extra critic pass, over the states the steps actually landed

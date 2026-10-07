@@ -594,6 +594,56 @@ def _tracker_datasheet(operation: str, given: Mapping[str, Any]) -> dict[str, An
     }
 
 
+def _load_datasheet(
+    operation: str,
+    actuator: DomainValue,
+    given: Mapping[str, Any],
+) -> dict[str, Any]:
+    """A load sensor's declaration, in its actuator's unit (ADR-591).
+
+    ``full_scale`` is the actuator's own effort limit -- the stall line a
+    bus servo's load register reads 100 % at -- so an actuator with no limit
+    has nothing for the reading to saturate at and is refused.
+    """
+
+    angular = str(actuator.properties.get("motion_type")) == "angular"
+    unit = "nmm" if angular else "n"
+    other = "n" if angular else "nmm"
+    for key in ("resolution", "noise"):
+        if given.get(f"{key}_{other}") is not None:
+            raise _error(operation, f"{key}_{other}",
+                         f"is not this actuator's unit: it drives a "
+                         f"{'turning' if angular else 'sliding'} coordinate, "
+                         f"so its load is declared in {key}_{unit}",
+                         given[f"{key}_{other}"])
+    missing = [key for key in (f"resolution_{unit}", "rate_hz", f"noise_{unit}")
+               if given.get(key) is None]
+    if missing:
+        raise _error(
+            operation, missing[0],
+            "is required for a load_sensor: a grounded channel states what "
+            f"the part on the machine can measure -- resolution_{unit}, "
+            f"rate_hz and noise_{unit}, as its datasheet would",
+        )
+    limit = actuator.properties.get("torque_limit_nmm" if angular else "force_limit_n")
+    if limit is None:
+        raise _error(
+            operation, "target",
+            "is an actuator with no effort limit: a load reading saturates "
+            "at the motor's stall line, so give the actuator its "
+            + ("torque_limit_nmm" if angular else "force_limit_n")
+            + " first",
+        )
+    return {
+        "full_scale": float(limit),
+        "resolution": _number(operation, f"resolution_{unit}", given[f"resolution_{unit}"],
+                              minimum=0.0, strict_minimum=True),
+        "rate_hz": _number(operation, "rate_hz", given["rate_hz"],
+                           minimum=0.0, strict_minimum=True),
+        "noise": _number(operation, f"noise_{unit}", given[f"noise_{unit}"], minimum=0.0),
+    }
+
+
 #: Which unit family each drivable joint kind's coordinate speaks. A
 #: `cylindrical` joint owns one of each and is therefore absent: like
 #: `api.motion`, it requires an explicit `motion_type`.
@@ -1114,6 +1164,21 @@ _SENSOR_KINDS: dict[str, tuple[str, frozenset[str]]] = {
     # a declared range, resolution, rate and noise the trainer applies.
     "position_tracker": ("component_link",
                          frozenset({"tracked_position", "tracked_velocity"})),
+    # A bus servo's load register, or a current sensor on a motor's supply
+    # (ADR-591): it reads the effort its own actuator applies, to a declared
+    # resolution and noise, saturating at that actuator's effort limit.
+    "load_sensor": ("actuator", frozenset({"actuator_force"})),
+}
+#: Which sensor kinds each datasheet argument of ``api.sensor`` belongs to.
+_SENSOR_DATASHEET_KINDS: dict[str, tuple[str, ...]] = {
+    "range_mm": ("position_tracker",),
+    "resolution_mm": ("position_tracker",),
+    "noise_mm": ("position_tracker",),
+    "rate_hz": ("position_tracker", "load_sensor"),
+    "resolution_nmm": ("load_sensor",),
+    "noise_nmm": ("load_sensor",),
+    "resolution_n": ("load_sensor",),
+    "noise_n": ("load_sensor",),
 }
 _OBSERVATION_ROLES = ("policy", "privileged")
 
@@ -2884,6 +2949,10 @@ class AssemblyDomainAPI:
         resolution_mm: Any = None,
         rate_hz: Any = None,
         noise_mm: Any = None,
+        resolution_nmm: Any = None,
+        noise_nmm: Any = None,
+        resolution_n: Any = None,
+        noise_n: Any = None,
         label: str = "",
     ) -> DomainValue:
         """Declare one onboard sensor, so a policy channel can say what measures it.
@@ -2912,6 +2981,18 @@ class AssemblyDomainAPI:
         and resolution ``resolution_mm * rate_hz``, and zeros while the
         position is out of range.
 
+        ``load_sensor`` (ADR-591) reads the effort an ``api.actuator``
+        applies -- a bus servo's load register, or a current sensor on a
+        motor's supply -- through an ``actuator_force`` observation of that
+        same actuator. ``resolution_nmm``, ``noise_nmm`` (``_n`` on a
+        sliding coordinate) and ``rate_hz`` are required; the reading rounds
+        to the resolution, the trainer adds the noise, and it saturates at
+        the actuator's own effort limit, its stall line. A catalog servo
+        declares its own: ``lib.servo(sku).load_sensor(actuator, name=...)``
+        fills a bus servo's figures and refuses a PWM servo, which reports
+        nothing back. Declared here directly, it is a claim that the machine
+        carries a part measuring this motor's current.
+
         A sensor is an argument to ``api.observation(..., sensor=...)`` and
         nothing else: pass it there, and do not return it. A channel the
         policy reads (``role="policy"``, the default) that names no sensor
@@ -2936,14 +3017,19 @@ class AssemblyDomainAPI:
             properties["motion_type"] = _coordinate(operation, value, motion_type)
         datasheet = {"range_mm": range_mm, "resolution_mm": resolution_mm,
                      "rate_hz": rate_hz, "noise_mm": noise_mm}
+        load = {"resolution_nmm": resolution_nmm, "noise_nmm": noise_nmm,
+                "resolution_n": resolution_n, "noise_n": noise_n}
         if clean_kind == "position_tracker":
             properties["tracker"] = _tracker_datasheet(operation, datasheet)
-        else:
-            for parameter, given in datasheet.items():
-                if given is not None:
-                    raise _error(operation, parameter,
-                                 f"applies to a position_tracker, not a {clean_kind}",
-                                 given)
+        elif clean_kind == "load_sensor":
+            properties["load"] = _load_datasheet(operation, value,
+                                                 {**load, "rate_hz": rate_hz})
+        for parameter, given in (*datasheet.items(), *load.items()):
+            owners = _SENSOR_DATASHEET_KINDS[parameter]
+            if given is not None and clean_kind not in owners:
+                raise _error(operation, parameter,
+                             f"applies to a {' or a '.join(owners)}, not a {clean_kind}",
+                             given)
         return self._value(operation, "sensor", value, label=label, **properties)
 
     def observation(
@@ -3117,6 +3203,8 @@ class AssemblyDomainAPI:
                 )
             properties["grounded_sensor"] = str(sensor.properties.get("name"))
             properties["grounded_kind"] = sensor_kind
+            if sensor_kind == "load_sensor":
+                properties["load"] = dict(sensor.properties["load"])
         return self._value(operation, "observation", value, label=label, **properties)
 
     def reward(
