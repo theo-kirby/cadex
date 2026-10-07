@@ -1,6 +1,6 @@
 # orun4 — closing report
 
-Verified against source: 2026-10-06, at `5b460c99` (the orun4 run branch), with §5 and §7 retaken after ADR-574, and §7 and the done claim after ADR-575, ADR-576 and ADR-577 (at `195921c2`).
+Verified against source: 2026-10-06, at `5b460c99` (the orun4 run branch), with §5 and §7 retaken after ADR-574, and §7 and the done claim after ADR-575, ADR-576 and ADR-577 (at `195921c2`), and §6, §7 and the done claim after ADR-580 (at `1a6e796e`).
 Charter: `.ouroboros/goal.md`, "What worked, made the default — and a page
 arranged like Blender". Every number below was measured on sb1x (linux-64,
 RTX 5090), on scratch projects named `orun4-*`; the reference project was
@@ -167,10 +167,17 @@ whole, it went 1017 s → 793 s (ADR-562) → 647 s (ADR-563) → 614 s
 a pass's heroes and shove video small in the tests that do not check their
 pixels, and brings it to **566 s as one foreground command** (1210 passed,
 1 skipped). It runs inside the shell's limit, so the thirds are no longer
-needed. **The target is not met.** The six slowest tests are keep-listed
-real-engine or real-trainer tests and take 142 s together. The other 1200
-tests share about 425 s. Each removed test and its reason are listed in
-ADR-562 to ADR-564; ADR-579 removes none.
+needed. ADR-580 makes a served page stop in 0.05 s instead of the standard
+library's 0.5 s poll (about 150 test servers stop in one run), and draws the
+real-engine walks small where their claim is not pixels. **The suite is now
+474.4 s (7 min 54 s) as one foreground command, 1211 passed, 1 skipped:
+under the 8-minute target, with about 5 s of margin.** The slowest tests
+left are keep-listed or claim real training: the real lifecycle walk 46.7 s,
+the loop's real trainer 20.9 s. Each removed test and its reason are listed
+in ADR-562 to ADR-564; ADR-579 and ADR-580 remove none and weaken no
+assertion. The full-size review render stays pinned in `test_render.py`.
+If a later run goes over 480 s, that is to be reported, not trimmed from the
+keep list.
 
 ## ADRs added by this run
 
@@ -198,6 +205,7 @@ ADR-562 to ADR-564; ADR-579 removes none.
 | ADR-577 | the checkpoint rule says what a checkpoint does and what it costs, not when the owner is watching |
 | ADR-578 | the idle-stage test compares the one timestamp it wrote, not a second reading of the clock |
 | ADR-579 | the CLI suite gets lighter again: a passed evaluation's presentation drawn small where pixels are not the claim |
+| ADR-580 | the CLI suite under eight minutes: a served page stops promptly, and the walks draw small where pixels are not the claim |
 
 ## 7. Remaining defects
 
@@ -211,8 +219,9 @@ ADR-562 to ADR-564; ADR-579 removes none.
    exact-geometry pre-check refuses a distance mismatch under 1e-5 mm on a
    pair 70 mm apart, threaded screw engagement counts as overlap, and the
    exact-geometry stage timed out on 64+ components.
-3. **The CLI suite is 566 s as one command** (ADR-579), inside the shell's
-   limit but over the 8-minute target (§6).
+3. **Fixed: the CLI suite was over the 8-minute target.** It is 474.4 s as
+   one command since ADR-580 (§6), with about 5 s of margin; a slower
+   machine or a new slow test could push it back over.
 4. **A flake, now fixed (ADR-578)**: `test_designing_turns_idle_once_the_window_passes`
    compared a minute prefix against a timestamp recomputed later, and failed
    across a minute boundary. It now compares the one timestamp it wrote, and
@@ -240,8 +249,10 @@ All ten build criteria, F1 to D3, and this report have evidence recorded,
 and the reconcile of `650d9e0b` folded D2, D3 and this report's first record;
 the reconcile at `32810ecb` folded ADR-574 to ADR-576. Defect 1 is fixed
 (ADR-574), and orun3's three long-term defects are fixed (ADR-575 to
-ADR-577), and so is defect 4 (ADR-578). Defects 2, 3 and 5 are open and
-stay listed above. **Done is withdrawn until** defect 3 is fixed (the CLI
-suite under 480 s, the owner's target) and a reconcile pass has folded the
-records since `32810ecb`, which work iterations are forbidden to run. No
-owner box is ticked.
+ADR-577), and so are defect 3 (ADR-579 and ADR-580, the CLI suite at
+474.4 s as one command, under the owner's 480 s) and defect 4 (ADR-578).
+Defects 2 and 5 are open and stay listed above; neither is a done
+criterion. **Done is claimed for critic review.** The records for ADR-579
+and ADR-580 and this claim's own record are still to be folded by a
+reconcile pass, which work iterations are forbidden to run. No owner box is
+ticked.
