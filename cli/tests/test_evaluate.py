@@ -37,14 +37,17 @@ from cadex_cli.evaluate import (
     REPORT_NAME,
     EvaluateError,
     EvaluateRefused,
+    add_shove,
     agent_view,
     check_out,
     default_out,
     evaluation_cell,
     failing_predicates,
+    hero_files,
     human_lines,
     retained_inputs,
     run_evaluation,
+    shove_files,
 )
 from cadex_cli.report import EXIT_FAILURE, EXIT_OK, EXIT_REJECTED, EXIT_USAGE, RunReport
 from cadex_cli.report import human_lines as report_lines
@@ -245,6 +248,27 @@ def test_the_prose_block_tallies_every_predicate_and_every_ending() -> None:
     assert [line for line in report_lines(report) if line.startswith("evaluate ")] == [lines[0]]
 
 
+def test_the_heroes_line_reads_the_report_and_the_envelope_alike(tmp_path) -> None:
+    """ADR-570: the report's block carries the bed's facts, the envelope's view
+    (:func:`hero_files`) only paths; the prose line reads either."""
+
+    block = {"state": "partial", "hero": {"file": "hero.png"}, "print_bed": None,
+             "errors": {"print_bed": "the inventory names no printed part to lay on a bed"}}
+    expected = "  heroes: hero; print_bed: the inventory names no printed part to lay on a bed"
+    assert human_lines({**REPORT, "heroes": block})[-1] == expected
+    view = hero_files({**REPORT, "heroes": block}, tmp_path)
+    assert view == {"state": "partial", "hero": str(tmp_path / "hero.png"), "print_bed": None,
+                    "errors": block["errors"]}
+    assert human_lines({**REPORT, "heroes": view})[-1] == expected
+    ready = {"state": "ready", "hero": {"file": "hero.png"}, "errors": {},
+             "print_bed": {"file": "print-bed.png", "beds": 2, "parts": [{}] * 10}}
+    assert human_lines({**REPORT, "heroes": ready})[-1] == (
+        "  heroes: hero and print-bed (2 bed(s), 10 printed part(s))")
+    assert human_lines({**REPORT, "heroes": hero_files({**REPORT, "heroes": ready}, tmp_path)})[-1] == (
+        "  heroes: hero and print-bed")
+    assert not [line for line in human_lines(REPORT) if "heroes" in line]
+
+
 # -- the child --------------------------------------------------------------
 
 def _code(path: Path) -> str:
@@ -261,6 +285,122 @@ def _code(path: Path) -> str:
                 and isinstance(node.body[0].value.value, str)):
             node.body = node.body[1:] or [ast.Pass()]
     return ast.unparse(tree)
+
+
+# -- the shove episode (ADR-571) ---------------------------------------------
+
+def _shove(label="shove", low=2.0, high=8.0, duration=0.1, sustained=False) -> dict:
+    return {"label": label, "body": "base", "body_id": 1, "direction": "horizontal",
+            "newtons_low": 0.3, "newtons_high": 1.5, "sustained": sustained,
+            "at_low_s": low, "at_high_s": high, "duration_s": duration}
+
+
+def _shove_task(*entries, horizon=10.0, spec_disturbance=()) -> dict:
+    return {"disturbance": list(entries),
+            "success": {"seeds": [9101, 9102], "episode": {"episode_seconds": horizon},
+                        "disturbance": list(spec_disturbance), "predicates": [{"metric": "completed"}]}}
+
+
+def test_the_shove_episode_cuts_each_trained_shove_into_ordered_pushes_that_never_overlap() -> None:
+    from cadex_cli.evaluate_runner import SHOVES_PER_ENTRY, shove_task
+
+    held = _shove("held", sustained=True)
+    task = _shove_task(_shove(), horizon=10.0, spec_disturbance=[_shove("harder"), held])
+    narrowed = shove_task(task, 8)
+    spec = narrowed["success"]
+    # The spec's first seed only; its own shoves give way to the task's, its sustained ones stay.
+    assert spec["seeds"] == [9101] and spec["predicates"] == task["success"]["predicates"]
+    assert spec["disturbance"][0] == held
+    pushes = spec["disturbance"][1:]
+    assert len(pushes) == SHOVES_PER_ENTRY == 3
+    assert [push["label"] for push in pushes] == ["shove 1", "shove 2", "shove 3"]
+    assert pushes[0]["at_low_s"] == 2.0 and pushes[-1]["at_high_s"] == pytest.approx(8.0)
+    for push in pushes:
+        # The entry's own force, direction and duration: only the window is cut.
+        assert {k: push[k] for k in ("newtons_low", "newtons_high", "direction", "duration_s", "body")} == {
+            k: task["disturbance"][0][k] for k in ("newtons_low", "newtons_high", "direction", "duration_s", "body")}
+    for before, after in zip(pushes, pushes[1:]):
+        # The latest a push can end is the earliest the next can start.
+        assert before["at_high_s"] + before["duration_s"] == pytest.approx(after["at_low_s"])
+    assert task["success"]["seeds"] == [9101, 9102]            # the task itself is untouched
+
+    # A window past the evaluation's horizon is cut back to it; a narrow one gives fewer pushes.
+    cut = shove_task(_shove_task(_shove(low=2.0, high=5.0), horizon=3.0), 8)["success"]["disturbance"]
+    assert cut[-1]["at_high_s"] + cut[-1]["duration_s"] == pytest.approx(3.0)
+    assert len(shove_task(_shove_task(_shove(low=1.0, high=1.15)), 8)["success"]["disturbance"]) == 2
+    # The engine's cap holds.
+    assert len(shove_task(_shove_task(*[_shove(str(n)) for n in range(4)]), 8)["success"]["disturbance"]) == 8
+    # A task trained against no shove has none to film.
+    for task in (_shove_task(), _shove_task(held), _shove_task(_shove(low=12.0, high=14.0))):
+        with pytest.raises(ValueError, match="no shove"):
+            shove_task(task, 8)
+
+
+def _shove_measured(*, termination="", duration=10.0, recovery=(0.62, None)) -> dict:
+    entries = [_shove("held", sustained=True), _shove("shove 1"), _shove("shove 2")]
+    draws = [{"label": "held", "newtons": 0.5, "azimuth_rad": 0.0, "start_s": 0.0, "force_n": [0.5, 0, 0]},
+             {"label": "shove 1", "newtons": 0.84, "azimuth_rad": 1.5707963267948966, "start_s": 2.53,
+              "force_n": [0.0, 0.84, 0.0]},
+             {"label": "shove 2", "newtons": 1.31, "azimuth_rad": 3.141592653589793, "start_s": 4.4,
+              "force_n": [-1.31, 0.0, 0.0]}]
+    row = {"seed": 9101, "drawn": {"disturbance": draws},
+           "episode": {"termination": termination, "duration_s": duration},
+           "detail": {"recovery_s": list(recovery)} if recovery is not None else {}}
+    return {"seeds": [row], "spec": {"disturbance": entries, "episode": {"episode_seconds": 10.0}}}
+
+
+def test_the_pushes_and_the_ending_are_read_from_the_episode_never_assumed() -> None:
+    from cadex_cli.shoves import shove_caption, shove_outcome, shove_pushes
+
+    measured = _shove_measured()
+    pushes = shove_pushes(measured)
+    assert [(p["number"], p["label"], p["newtons"], p["start_s"], p["recovery_s"], p["recovered"])
+            for p in pushes] == [(1, "shove 1", 0.84, 2.53, 0.62, True), (2, "shove 2", 1.31, 4.4, None, False)]
+    assert pushes[0]["azimuth_deg"] == pytest.approx(90.0) and pushes[1]["end_s"] == pytest.approx(4.5)
+    outcome = shove_outcome(measured, pushes)
+    assert outcome == {"stayed_up": True, "termination": None, "duration_s": 10.0, "horizon_s": 10.0,
+                       "pushes_landed": 2, "recovered": 1}
+    assert shove_caption(9101, pushes, outcome) == (
+        "seed 9101 · push 1: 0.84 N at 2.53 s, recovered in 0.62 s · "
+        "push 2: 1.31 N at 4.40 s, not settled · stayed up for the whole 10.0 s")
+
+    # A fall is reported as one, and a push the episode never reached says so.
+    fell = _shove_measured(termination="tipped", duration=3.1, recovery=(None, None))
+    pushes = shove_pushes(fell)
+    outcome = shove_outcome(fell, pushes)
+    assert (outcome["stayed_up"], outcome["termination"], outcome["pushes_landed"]) == (False, "tipped", 1)
+    assert shove_caption(9101, pushes, outcome) == (
+        "seed 9101 · push 1: 0.84 N at 2.53 s, not settled · "
+        "push 2 never landed: the episode had ended · fell: tipped at 3.10 s")
+
+    # A mechanism whose recovery is not read claims none either way.
+    unread = _shove_measured(recovery=None)
+    pushes = shove_pushes(unread)
+    assert [p["recovered"] for p in pushes] == [None, None] and shove_outcome(unread, pushes)["recovered"] is None
+    assert "recovered" not in shove_caption(9101, pushes, shove_outcome(unread, pushes))
+
+
+def test_a_failed_evaluation_and_an_unshoved_task_film_no_shoves(tmp_path) -> None:
+    """ADR-571: nothing is run for a fail, for --no-video or for a task with no shove,
+    and a stale video from an earlier pass is removed."""
+
+    out = tmp_path / "evaluation"
+    out.mkdir()
+    task = tmp_path / "task.json"
+    task.write_text(json.dumps(_shove_task(_shove())))
+    unshoved = tmp_path / "unshoved.json"
+    unshoved.write_text(json.dumps(_shove_task()))
+    never = Engine(tmp_path / "no-engine", tmp_path / "no-modules", "none")
+    for verdict, video, path, why in (("fail", True, task, "did not pass"),
+                                      ("pass", False, task, "--no-video"),
+                                      ("pass", True, unshoved, "no shove")):
+        (out / "shove.webm").write_bytes(b"left by a pass")
+        report = add_shove(never, tmp_path, out, {"verdict": verdict}, {"task": path}, video=video)
+        block = report["shove"]
+        assert block["state"] == "skipped" and why in block["error"] and block["video"] is None, block
+        assert not (out / "shove.webm").exists()
+        assert json.loads((out / REPORT_NAME).read_text())["shove"] == block
+        assert shove_files(report, out)["video"] is None
 
 
 def test_the_runner_imports_the_standard_library_and_the_engine_the_plan_names() -> None:
@@ -552,11 +692,16 @@ def test_a_usage_error_comes_before_any_engine(tmp_path, capsys) -> None:
 
 
 @needs_mujoco
-def test_an_accepted_policy_is_evaluated_as_one_command(engine, tmp_path, capsys) -> None:
+def test_an_accepted_policy_is_evaluated_as_one_command(engine, tmp_path, capsys, small_presentation) -> None:
     project = _project(tmp_path, capsys, "stands", _source())
+    # An edited working script is neither run, restored nor accepted: the
+    # evaluation reads the accepted artifacts only.
+    changed = b'raise RuntimeError("the evaluate command must not execute me")\n'
+    (project / "script.py").write_bytes(changed)
     before = (project / "script.json").read_bytes()
     code, envelope = _run(capsys, "evaluate", "--project", str(project))
     assert code == EXIT_OK, envelope
+    assert (project / "script.py").read_bytes() == changed
 
     evaluation = envelope["evaluation"]
     assert evaluation["verdict"] == "pass" and evaluation["label"] == "stays up"
@@ -599,10 +744,49 @@ def test_an_accepted_policy_is_evaluated_as_one_command(engine, tmp_path, capsys
         assert evaluation["film"]["seeds"][0][key] == str(path.parent / filmed[key]["file"])
     assert filmed["detail"]["start_source"] == "the seed's first disturbance"
     assert any(note.startswith("evaluation pass: 3 of 3 seeds pass") for note in envelope["notes"])
+    # A pass presents the design that passed (ADR-570): the studio hero and
+    # the printed parts on a bed, drawn from the attempt evaluated, beside
+    # the report and out of the history with the film.
+    heroes = report["heroes"]
+    assert heroes["state"] == "ready" and heroes["errors"] == {}, heroes
+    assert heroes["revision"] == state["accepted_revision"]
+    for key, name in (("hero", "hero.png"), ("print_bed", "print-bed.png")):
+        image = (path.parent / name).read_bytes()
+        assert image.startswith(b"\x89PNG") and heroes[key]["file"] == name
+        assert heroes[key]["bytes"] == len(image)
+        assert evaluation["heroes"][key] == str(path.parent / name)
+    assert heroes["hero"]["revision"] == state["accepted_revision"]
+    bed = heroes["print_bed"]
+    # Both drawn parts are hand-modelled, so both are printed; one bed holds them.
+    assert sorted(row["component"] for row in bed["parts"]) == ["block", "paddle"]
+    assert bed["beds"] == 1 and bed["not_fitting"] == [] and bed["hardware"] == []
+    assert any(note.startswith("heroes ready:") for note in envelope["notes"])
+    # ...and is filmed taking the task's shoves (ADR-571): one more episode on
+    # the spec's first seed, the task's 2-4 N shove cut into three pushes in
+    # its 0.2-0.5 s window, each one read back from the episode.
+    shove = report["shove"]
+    assert shove["state"] == "ready" and shove["error"] is None, shove
+    assert shove["seed"] == 1101 and evaluation["shove"]["video"] == str(path.parent / "shove.webm")
+    assert (path.parent / "shove.webm").stat().st_size == shove["video"]["bytes"] > 0
+    assert shove["video"]["marked_frames"] > 0
+    pushes = shove["pushes"]
+    assert [push["label"] for push in pushes] == ["shove 1", "shove 2", "shove 3"]
+    for push, (low, high) in zip(pushes, ((0.2, 0.2 + 0.4 / 3 - 0.1), (0.2 + 0.4 / 3, 0.5 - 0.4 / 3),
+                                          (0.5 - 0.1 / 3, 0.5))):
+        assert 2.0 <= push["newtons"] <= 4.0 and push["duration_s"] == 0.1
+        assert low - 1e-9 <= push["start_s"] <= high + 1e-9, (push, low, high)
+    assert shove["outcome"]["horizon_s"] == 3.0
+    assert shove["caption"].startswith("seed 1101 · push 1: ")
+    trace = json.loads((path.parent / shove["trace"]["file"]).read_text(encoding="utf-8"))
+    assert [d["start_s"] for d in trace["policy"]["disturbance"]] == [p["start_s"] for p in pushes]
+    # The evaluation's own seeds were not touched by it.
+    assert report["seeds"] == json.loads(path.read_text(encoding="utf-8"))["seeds"]
+    assert sorted(p.name for p in path.parent.glob("*-trace.json")) == [
+        "seed-1101-trace.json", "seed-1102-trace.json", "seed-1103-trace.json", "shove-trace.json"]
 
 
 @needs_mujoco
-def test_the_film_is_chosen_skipped_and_drawn_again_without_measuring(engine, tmp_path, capsys) -> None:
+def test_the_film_is_chosen_skipped_and_drawn_again_without_measuring(engine, tmp_path, capsys, small_presentation) -> None:
     """ADR-459: ``--film none`` measures and draws nothing; ``--film-only``
     draws another seed from the traces on disk and measures nothing; a film
     that cannot be drawn is a failure that leaves the measurement."""
@@ -616,7 +800,9 @@ def test_the_film_is_chosen_skipped_and_drawn_again_without_measuring(engine, tm
         "state": "skipped", "error": None, "seeds": []}, envelope
     path = Path(envelope["evaluation"]["report"])
     measured = json.loads(path.read_text(encoding="utf-8"))
-    assert measured["film"]["state"] == "skipped" and not list(path.parent.glob("*.png"))
+    assert measured["film"]["state"] == "skipped" and not list(path.parent.glob("seed-*.png"))
+    # No film is not no presentation: the pass still has its heroes (ADR-570).
+    assert sorted(p.name for p in path.parent.glob("*.png")) == ["hero.png", "print-bed.png"]
     traces = {p.name: p.stat().st_mtime_ns for p in path.parent.glob("seed-*-trace.json")}
     assert len(traces) == 3
 
@@ -624,8 +810,12 @@ def test_the_film_is_chosen_skipped_and_drawn_again_without_measuring(engine, tm
                           "--film", "1102", "--no-video", "--detail-start", "0.5", "--detail-step", "0.1")
     assert code == EXIT_OK, envelope
     again = json.loads(path.read_text(encoding="utf-8"))
-    assert {key: again[key] for key in measured if key != "film"} == {
-        key: measured[key] for key in measured if key != "film"}
+    assert {key: again[key] for key in measured if key not in ("film", "shove")} == {
+        key: measured[key] for key in measured if key not in ("film", "shove")}
+    # --no-video films no shoves either (ADR-571), and removes the last one.
+    assert measured["shove"]["state"] == "ready"
+    assert again["shove"]["state"] == "skipped" and "--no-video" in again["shove"]["error"]
+    assert not (path.parent / "shove.webm").exists()
     assert {p.name: p.stat().st_mtime_ns for p in path.parent.glob("seed-*-trace.json")} == traces
     (filmed,) = again["film"]["seeds"]
     assert filmed["seed"] == 1102 and filmed["video"] is None
@@ -650,7 +840,7 @@ def test_a_policy_that_fails_its_spec_exits_zero_with_the_verdict(engine, tmp_pa
     project = _project(tmp_path, capsys, "fails", _source(extra))
     out = project / "evaluations" / "named"
     code, envelope = _run(capsys, "evaluate", "--project", str(project), "--out", str(out),
-                          "--policy", "pol", "--task", "job")
+                          "--policy", "pol", "--task", "job", "--film", "none")
     # Reported, never refused: a failed evaluation is a measurement.
     assert code == EXIT_OK, envelope
     assert envelope["evaluation"]["verdict"] == "fail"
@@ -658,6 +848,21 @@ def test_a_policy_that_fails_its_spec_exits_zero_with_the_verdict(engine, tmp_pa
     assert Path(envelope["evaluation"]["report"]) == out / REPORT_NAME
     progress = (project / "PROGRESS.md").read_text(encoding="utf-8")
     assert "evaluation fail 0/3 seeds: brief (3 of 3)" in progress
+    # A failed evaluation presents nothing (ADR-570), and a hero an earlier
+    # pass left in the same directory goes.
+    report = json.loads((out / REPORT_NAME).read_text(encoding="utf-8"))
+    assert report["heroes"]["state"] == "skipped"
+    assert (report["heroes"]["hero"], report["heroes"]["print_bed"]) == (None, None)
+    assert envelope["evaluation"]["heroes"]["hero"] is None
+    # ...and films no shoves (ADR-571).
+    assert report["shove"]["state"] == "skipped" and report["shove"]["video"] is None
+    assert not (out / "shove.webm").exists() and not (out / "shove-trace.json").exists()
+    assert not (out / "hero.png").exists() and not (out / "print-bed.png").exists()
+    (out / "hero.png").write_bytes(b"left by a pass")
+    code, envelope = _run(capsys, "evaluate", "--project", str(project), "--out", str(out),
+                          "--film-only", "--film", "none")
+    assert code == EXIT_OK and envelope["evaluation"]["heroes"]["state"] == "skipped", envelope
+    assert not (out / "hero.png").exists()
 
 
 def test_nothing_to_evaluate_is_rejected_and_runs_no_child(engine, tmp_path, capsys,
@@ -676,19 +881,6 @@ def test_nothing_to_evaluate_is_rejected_and_runs_no_child(engine, tmp_path, cap
         code, envelope = _run(capsys, "evaluate", "--project", str(project))
         assert code == EXIT_REJECTED and word in envelope["error"], envelope
         assert not (project / "evaluations").exists()
-
-
-@needs_mujoco
-def test_evaluate_never_restores_or_accepts_an_edited_working_script(engine, tmp_path,
-                                                                     capsys) -> None:
-    project = _project(tmp_path, capsys, "retained", _source())
-    changed = b'raise RuntimeError("the evaluate command must not execute me")\n'
-    (project / "script.py").write_bytes(changed)
-    before = (project / "script.json").read_bytes()
-    code, envelope = _run(capsys, "evaluate", "--project", str(project))
-    assert code == EXIT_OK and envelope["evaluation"]["verdict"] == "pass", envelope
-    assert (project / "script.py").read_bytes() == changed
-    assert (project / "script.json").read_bytes() == before
 
 
 def test_the_report_block_is_documented() -> None:

@@ -644,3 +644,25 @@ def test_geometry_error_cannot_leave_a_complete_passing_receipt(engine, tmp_path
     assert "smoke" not in envelope
     assert not (out / "smoke.json").exists()
     assert json.loads((out / "smoke-dynamics.json").read_text())["schema"] == "cadex-smoke-dynamics-v1"
+
+
+def test_a_thread_allowance_holds_only_for_a_bolt_threaded_at_the_solved_pose() -> None:
+    # ADR-583: the engine's ADR-492 rule, gated as its sweep gates it.
+    from cadex_cli.smoke import thread_allowances
+
+    def link(name, source):
+        return {"type": "component_link", "source_output": source}
+
+    items = {"bolt": link("bolt", "bolt_part"), "loose": link("loose", "bolt_part"),
+             "deep": link("deep", "bolt_part"), "shin": link("shin", "shin_part"),
+             "servo": link("servo", "servo_part"),
+             "bolt_part": {"catalog": {"family": "bolt", "part_number": "m2x8-socket"}},
+             "shin_part": {}, "servo_part": {"catalog": {"family": "servo", "part_number": "sts3215"}}}
+    static = [{"first": "bolt", "second": "shin", "common_volume_mm3": 4.5},
+              {"first": "loose", "second": "shin", "common_volume_mm3": 0.0},
+              {"first": "deep", "second": "shin", "common_volume_mm3": 20.0},
+              {"first": "bolt", "second": "servo", "common_volume_mm3": 4.5}]
+    held = thread_allowances(items, static, 1e-6)
+    assert [(r["first"], r["second"]) for r in held] == [("bolt", "shin")]
+    # π/4 (2² − 1.567²) × 8 mm, with the engine's 1e-3 margin.
+    assert abs(held[0]["allowance_mm3"] - 3.141592653589793 / 4 * (4 - 1.567 ** 2) * 8 * 1.001) < 1e-9

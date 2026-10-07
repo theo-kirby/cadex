@@ -16,7 +16,10 @@ draws.
 - Review views and ``look``: orthographic, studio-lit, 2x2 supersampled, on the
   review viewport's dark prototype mat, with a measured contact shadow.
 - The concept sheet: the hero, key numbers, palette, three line views and A1's
-  proxies, lettered in a 5x7 bitmap face defined here.
+  proxies, lettered in Noto Sans, read from the TrueType file beside this module.
+- The print-bed hero: every printed part seated on its largest flat face,
+  packed onto as many beds as it takes, numbered, beside a parts list of the
+  purchased hardware (ADR-569).
 - :data:`PALETTE`: the dark scene every presented image stands on. The review
   dashboard's ``environment.js`` and ``review.css`` carry the same colours for
   the browser, and ``cli/tests/test_scene_palette.py`` holds them equal to
@@ -893,60 +896,262 @@ RULE = PALETTE['rule']
 #: The catalog family whose placed components the sheet counts as servos.
 SERVO_FAMILY = 'servo'
 
-# A 5x7 face: each glyph is seven rows, most significant bit leftmost.
-_FONT_ROWS = {
-    'A': '.###. #...# #...# ##### #...# #...# #...#',
-    'B': '####. #...# #...# ####. #...# #...# ####.',
-    'C': '.###. #...# #.... #.... #.... #...# .###.',
-    'D': '####. #...# #...# #...# #...# #...# ####.',
-    'E': '##### #.... #.... ####. #.... #.... #####',
-    'F': '##### #.... #.... ####. #.... #.... #....',
-    'G': '.###. #...# #.... #.### #...# #...# .####',
-    'H': '#...# #...# #...# ##### #...# #...# #...#',
-    'I': '.###. ..#.. ..#.. ..#.. ..#.. ..#.. .###.',
-    'J': '..### ...#. ...#. ...#. ...#. #..#. .##..',
-    'K': '#...# #..#. #.#.. ##... #.#.. #..#. #...#',
-    'L': '#.... #.... #.... #.... #.... #.... #####',
-    'M': '#...# ##.## #.#.# #.#.# #...# #...# #...#',
-    'N': '#...# #...# ##..# #.#.# #..## #...# #...#',
-    'O': '.###. #...# #...# #...# #...# #...# .###.',
-    'P': '####. #...# #...# ####. #.... #.... #....',
-    'Q': '.###. #...# #...# #...# #.#.# #..#. .##.#',
-    'R': '####. #...# #...# ####. #.#.. #..#. #...#',
-    'S': '.#### #.... #.... .###. ....# ....# ####.',
-    'T': '##### ..#.. ..#.. ..#.. ..#.. ..#.. ..#..',
-    'U': '#...# #...# #...# #...# #...# #...# .###.',
-    'V': '#...# #...# #...# #...# #...# .#.#. ..#..',
-    'W': '#...# #...# #...# #.#.# #.#.# #.#.# .#.#.',
-    'X': '#...# #...# .#.#. ..#.. .#.#. #...# #...#',
-    'Y': '#...# #...# .#.#. ..#.. ..#.. ..#.. ..#..',
-    'Z': '##### ....# ...#. ..#.. .#... #.... #####',
-    '0': '.###. #...# #..## #.#.# ##..# #...# .###.',
-    '1': '..#.. .##.. ..#.. ..#.. ..#.. ..#.. .###.',
-    '2': '.###. #...# ....# ...#. ..#.. .#... #####',
-    '3': '##### ...#. ..#.. ...#. ....# #...# .###.',
-    '4': '...#. ..##. .#.#. #..#. ##### ...#. ...#.',
-    '5': '##### #.... ####. ....# ....# #...# .###.',
-    '6': '..##. .#... #.... ####. #...# #...# .###.',
-    '7': '##### ....# ...#. ..#.. .#... .#... .#...',
-    '8': '.###. #...# #...# .###. #...# #...# .###.',
-    '9': '.###. #...# #...# .#### ....# ...#. .##..',
-    '.': '..... ..... ..... ..... ..... .##.. .##..',
-    ',': '..... ..... ..... ..... .##.. ..#.. .#...',
-    '-': '..... ..... ..... .###. ..... ..... .....',
-    '+': '..... ..#.. ..#.. ##### ..#.. ..#.. .....',
-    '=': '..... ..... ##### ..... ##### ..... .....',
-    '/': '....# ....# ...#. ..#.. .#... #.... #....',
-    ':': '..... .##.. .##.. ..... .##.. .##.. .....',
-    '%': '##..# ##..# ...#. ..#.. .#... #..## #..##',
-    '(': '...#. ..#.. .#... .#... .#... ..#.. ...#.',
-    ')': '.#... ..#.. ...#. ...#. ...#. ..#.. .#...',
-    '_': '..... ..... ..... ..... ..... ..... #####',
-    '#': '.#.#. .#.#. ##### .#.#. ##### .#.#. .#.#.',
-    '?': '.###. #...# ....# ...#. ..#.. ..... ..#..',
-    ' ': '..... ..... ..... ..... ..... ..... .....',
-}
-FONT = {ch: tuple(row for row in rows.split()) for ch, rows in _FONT_ROWS.items()}
+# --- The type face (orun4 H1, ADR-568) ---------------------------------------
+#
+# Every caption, label and clock the renders draw is set in Noto Sans Regular,
+# a plain open sans-serif (SIL OFL 1.1, docs/PROVENANCE.md), shipped beside
+# this module as a TrueType file cut down to the characters drawn. It is read
+# and rasterised here in the standard library: the outlines' quadratic curves
+# are flattened, and each pixel's ink is the outline's exact horizontal
+# coverage averaged over FONT_ROWS_PER_PIXEL scanlines.
+
+FONT_FILE = Path(__file__).resolve().with_name('NotoSans-Regular-subset.ttf')
+#: A text ``scale`` sets capitals ``CAP_UNITS * scale`` px tall, the height the
+#: retired 5x7 face drew them, so every layout keeps its rows.
+CAP_UNITS = 7
+FONT_ROWS_PER_PIXEL = 5
+#: Straight segments per quadratic curve: enough at the sizes drawn here.
+CURVE_STEPS = 6
+
+
+class Face:
+    """A TrueType face: character map, advances and glyph outlines."""
+
+    def __init__(self, data):
+        self.data = data
+        count = struct.unpack_from('>H', data, 4)[0]
+        self.tables = {}
+        for i in range(count):
+            tag, _sum, offset, length = struct.unpack_from('>4sIII', data, 12 + 16 * i)
+            self.tables[tag.decode('latin-1')] = (offset, length)
+        head = self.tables['head'][0]
+        self.units_per_em = struct.unpack_from('>H', data, head + 18)[0]
+        long_loca = struct.unpack_from('>h', data, head + 50)[0] == 1
+        glyphs = struct.unpack_from('>H', data, self.tables['maxp'][0] + 4)[0]
+        metrics = struct.unpack_from('>H', data, self.tables['hhea'][0] + 34)[0]
+        loca = self.tables['loca'][0]
+        if long_loca:
+            self.loca = struct.unpack_from('>%dI' % (glyphs + 1), data, loca)
+        else:
+            self.loca = tuple(2 * v for v in struct.unpack_from('>%dH' % (glyphs + 1), data, loca))
+        hmtx = self.tables['hmtx'][0]
+        advances = [struct.unpack_from('>H', data, hmtx + 4 * i)[0] for i in range(metrics)]
+        self.advances = advances + [advances[-1]] * (glyphs - metrics)
+        self.cap_height = struct.unpack_from('>h', data, self.tables['OS/2'][0] + 88)[0]
+        self.cmap = self._cmap()
+        self._outlines = {}
+
+    def _cmap(self):
+        data, base = self.data, self.tables['cmap'][0]
+        found = {}
+        for i in range(struct.unpack_from('>H', data, base + 2)[0]):
+            platform, encoding, offset = struct.unpack_from('>HHI', data, base + 4 + 8 * i)
+            at = base + offset
+            if (platform, encoding) not in ((3, 1), (0, 3)) or struct.unpack_from('>H', data, at)[0] != 4:
+                continue
+            segments = struct.unpack_from('>H', data, at + 6)[0] // 2
+            ends = struct.unpack_from('>%dH' % segments, data, at + 14)
+            starts = struct.unpack_from('>%dH' % segments, data, at + 16 + 2 * segments)
+            deltas = struct.unpack_from('>%dh' % segments, data, at + 16 + 4 * segments)
+            ranges_at = at + 16 + 6 * segments
+            ranges = struct.unpack_from('>%dH' % segments, data, ranges_at)
+            for k in range(segments):
+                for code in range(starts[k], min(ends[k], 0xFFFE) + 1):
+                    if ranges[k] == 0:
+                        glyph = (code + deltas[k]) & 0xFFFF
+                    else:
+                        where = ranges_at + 2 * k + ranges[k] + 2 * (code - starts[k])
+                        glyph = struct.unpack_from('>H', data, where)[0]
+                        glyph = (glyph + deltas[k]) & 0xFFFF if glyph else 0
+                    if glyph:
+                        found[chr(code)] = glyph
+            return found
+        raise StudioError('the type face has no Unicode character map')
+
+    def outline(self, glyph):
+        """The glyph's closed contours as polylines in font units, y up."""
+        if glyph not in self._outlines:
+            self._outlines[glyph] = self._read(glyph)
+        return self._outlines[glyph]
+
+    def _read(self, glyph):
+        data = self.data
+        start, end = self.loca[glyph], self.loca[glyph + 1]
+        if start == end:
+            return []
+        at = self.tables['glyf'][0] + start
+        contours = struct.unpack_from('>h', data, at)[0]
+        at += 10
+        if contours < 0:
+            return self._composite(at)
+        ends = struct.unpack_from('>%dH' % contours, data, at)
+        at += 2 * contours
+        at += 2 + struct.unpack_from('>H', data, at)[0]
+        count = ends[-1] + 1 if contours else 0
+        flags = []
+        while len(flags) < count:
+            flag = data[at]
+            at += 1
+            repeat = 1
+            if flag & 8:
+                repeat += data[at]
+                at += 1
+            flags.extend([flag] * repeat)
+        coordinates = []
+        for short, same in ((2, 16), (4, 32)):
+            value, values = 0, []
+            for flag in flags[:count]:
+                if flag & short:
+                    step = data[at]
+                    at += 1
+                    value += step if flag & same else -step
+                elif not flag & same:
+                    value += struct.unpack_from('>h', data, at)[0]
+                    at += 2
+                values.append(value)
+            coordinates.append(values)
+        points = [(x, y, bool(f & 1)) for x, y, f in zip(coordinates[0], coordinates[1], flags)]
+        result, first = [], 0
+        for last in ends:
+            result.append(_flatten(points[first:last + 1]))
+            first = last + 1
+        return result
+
+    def _composite(self, at):
+        data, result = self.data, []
+        while True:
+            flags, glyph = struct.unpack_from('>HH', data, at)
+            at += 4
+            if flags & 1:
+                dx, dy = struct.unpack_from('>hh', data, at)
+                at += 4
+            else:
+                dx, dy = struct.unpack_from('>bb', data, at)
+                at += 2
+            a, b, c, d = 1.0, 0.0, 0.0, 1.0
+            if flags & 8:
+                a = d = struct.unpack_from('>h', data, at)[0] / 16384
+                at += 2
+            elif flags & 0x40:
+                a, d = (v / 16384 for v in struct.unpack_from('>hh', data, at))
+                at += 4
+            elif flags & 0x80:
+                a, b, c, d = (v / 16384 for v in struct.unpack_from('>hhhh', data, at))
+                at += 8
+            _require(flags & 2, 'the type face has a composite glyph placed by point, which is not read')
+            for contour in self.outline(glyph):
+                result.append([(a * x + c * y + dx, b * x + d * y + dy) for x, y in contour])
+            if not flags & 0x20:
+                return result
+
+    def glyph(self, ch):
+        return self.cmap.get(ch) or self.cmap['?']
+
+
+def _flatten(points):
+    """A closed TrueType contour, on- and off-curve points, as a polyline."""
+    if not points:
+        return []
+    n = len(points)
+    start = next((i for i, p in enumerate(points) if p[2]), None)
+    if start is None:  # every point off the curve: begin between the first two
+        (x0, y0, _), (x1, y1, _) = points[0], points[1 % n]
+        points, start = [((x0 + x1) / 2, (y0 + y1) / 2, True)] + list(points), 0
+        n += 1
+    ring = points[start:] + points[:start]
+    line = [ring[0][:2]]
+    control = None
+    for x, y, on in ring[1:] + ring[:1]:
+        if on:
+            if control is None:
+                line.append((x, y))
+            else:
+                line.extend(_curve(line[-1], control, (x, y)))
+                control = None
+        elif control is None:
+            control = (x, y)
+        else:
+            middle = ((control[0] + x) / 2, (control[1] + y) / 2)
+            line.extend(_curve(line[-1], control, middle))
+            control = (x, y)
+    return line
+
+
+def _curve(p0, p1, p2):
+    out = []
+    for k in range(1, CURVE_STEPS + 1):
+        t = k / CURVE_STEPS
+        u = 1 - t
+        out.append((u * u * p0[0] + 2 * u * t * p1[0] + t * t * p2[0],
+                    u * u * p0[1] + 2 * u * t * p1[1] + t * t * p2[1]))
+    return out
+
+
+FACE = Face(FONT_FILE.read_bytes())
+_GLYPHS = {}
+
+
+def _em_px(scale):
+    return CAP_UNITS * scale * FACE.units_per_em / FACE.cap_height
+
+
+def _coverage(glyph, scale):
+    """``(left, top, width, height, alpha)``: the glyph's ink at ``scale``, relative to
+    its pen position on the capital line; alpha is one byte per pixel."""
+    key = (glyph, scale)
+    if key in _GLYPHS:
+        return _GLYPHS[key]
+    k = _em_px(scale) / FACE.units_per_em
+    cap = CAP_UNITS * scale
+    contours = [[(x * k, cap - y * k) for x, y in c] for c in FACE.outline(glyph) if len(c) > 1]
+    if not contours:
+        _GLYPHS[key] = (0, 0, 0, 0, b'')
+        return _GLYPHS[key]
+    xs = [x for c in contours for x, _ in c]
+    ys = [y for c in contours for _, y in c]
+    left, top = math.floor(min(xs)), math.floor(min(ys))
+    width, height = math.ceil(max(xs)) - left + 1, math.ceil(max(ys)) - top
+    edges = []
+    for c in contours:
+        for (x0, y0), (x1, y1) in zip(c, c[1:] + c[:1]):
+            if y0 != y1:
+                edges.append((x0 - left, y0 - top, x1 - left, y1 - top))
+    ink = [0.0] * (width * height)
+    share = 1.0 / FONT_ROWS_PER_PIXEL
+    for row in range(height):
+        base = row * width
+        for sub in range(FONT_ROWS_PER_PIXEL):
+            y = row + (sub + 0.5) * share
+            crossings = []
+            for x0, y0, x1, y1 in edges:
+                if (y0 <= y < y1) or (y1 <= y < y0):
+                    crossings.append((x0 + (y - y0) * (x1 - x0) / (y1 - y0), 1 if y1 > y0 else -1))
+            crossings.sort()
+            winding = 0
+            for (xa, step), (xb, _) in zip(crossings, crossings[1:]):
+                winding += step
+                if winding and xb > xa:
+                    _span(ink, base, width, xa, xb, share)
+    alpha = bytes(min(255, round(255 * v)) for v in ink)
+    _GLYPHS[key] = (left, top, width, height, alpha)
+    return _GLYPHS[key]
+
+
+def _span(ink, base, width, xa, xb, weight):
+    """Adds ``weight`` times the exact cover of ``[xa, xb)`` to one pixel row."""
+    xa, xb = max(0.0, xa), min(float(width), xb)
+    i = int(xa)
+    while i < width and i < xb:
+        cover = min(xb, i + 1) - max(xa, i)
+        if cover > 0:
+            ink[base + i] += cover * weight
+        i += 1
+
+
+def advance_px(text, scale):
+    """The pen's travel across ``text`` at ``scale``, in px."""
+    k = _em_px(scale) / FACE.units_per_em
+    return sum(FACE.advances[FACE.glyph(ch)] for ch in str(text)) * k
 
 
 class Canvas:
@@ -979,18 +1184,31 @@ class Canvas:
                       width, width, colour)
 
     def text(self, x, y, text, scale, colour):
-        """Draws ``text`` upper-cased in the 5x7 face; returns the x after it."""
-        for ch in str(text).upper():
-            for j, row in enumerate(FONT.get(ch, FONT['?'])):
-                for i, bit in enumerate(row):
-                    if bit == '#':
-                        self.rect(x + i * scale, y + j * scale, scale, scale, colour)
-            x += 6 * scale
-        return x
+        """Draws ``text`` in the face, capitals ``CAP_UNITS * scale`` px tall with
+        their top at ``y``; returns the x after it."""
+        pen = float(x)
+        k = _em_px(scale) / FACE.units_per_em
+        for ch in str(text):
+            glyph = FACE.glyph(ch)
+            left, top, w, h, alpha = _coverage(glyph, scale)
+            ox, oy = round(pen) + left, y + top
+            for j in range(h):
+                yy = oy + j
+                if not 0 <= yy < self.height:
+                    continue
+                for i in range(w):
+                    a = alpha[j * w + i]
+                    xx = ox + i
+                    if a and 0 <= xx < self.width:
+                        at = 3 * (yy * self.width + xx)
+                        for c in range(3):
+                            self.pixels[at + c] = (self.pixels[at + c] * (255 - a) + colour[c] * a + 127) // 255
+            pen += FACE.advances[glyph] * k
+        return round(pen)
 
 
 def text_width(text, scale):
-    return max(0, 6 * scale * len(str(text)) - scale)
+    return round(advance_px(text, scale))
 
 
 def fitted_scale(text, width, largest):
@@ -1245,11 +1463,10 @@ def blueprint_recipe(raw):
 
 
 def _paper_text(text):
-    """``text`` in the sheet's face: the two symbols measurements use spelled out."""
-    for sign in ('\N{LATIN CAPITAL LETTER O WITH STROKE}', '\N{DIAMETER SIGN}', '\N{EMPTY SET}'):
-        text = str(text).replace(sign, 'DIA ')
-    text = text.replace('\N{DEGREE SIGN}', ' DEG')
-    return ''.join(ch if ch.upper() in FONT else '?' for ch in text)
+    """``text`` in the sheet's face: a diameter is written as the face's slashed O."""
+    for sign in ('\N{DIAMETER SIGN}', '\N{EMPTY SET}'):
+        text = str(text).replace(sign, '\N{LATIN CAPITAL LETTER O WITH STROKE}')
+    return ''.join(ch if ch in FACE.cmap else '?' for ch in text)
 
 
 def _wrap(text, scale, width):
@@ -1474,7 +1691,8 @@ def blueprint_sheet(triangles, summary, names, recipe, *, measurements=(), place
         sheet.text(x, y, 'parts', 2, MUTED)
         y += 22
         for item in callouts:
-            sheet.text(x, y, f"{item['number']:>2}", 2, INK)
+            number = str(item['number'])
+            sheet.text(x + text_width('00', 2) - text_width(number, 2), y, number, 2, INK)
             sheet.text(x + 40, y, _paper_text(item['name'])[:28], 2, INK)
             y += 18
         y += 8
@@ -1525,6 +1743,393 @@ def blueprint_report(reply, fit, inventory, recipe, *, project='', version=1, da
     placed = any(isinstance(entry, dict) and entry.get('source_output') for entry in display.values())
     return blueprint_sheet(triangles, summary, names, recipe, measurements=measurements, placed=placed,
                            project=project, version=version, date=date)
+
+
+# --- The print-bed hero: the printable parts laid out flat (orun4 H2, ADR-569) --
+
+#: The bed the printable parts are laid out on, X x Y x Z in millimetres: a
+#: common 256 mm desktop printer. It is the picture's assumption, not a
+#: slicer's: Cadex does not slice (charter B3), and a part taller than Z is
+#: named rather than refused.
+BED_MM = (256.0, 256.0, 256.0)
+#: Clear space between two parts, and between a part and the bed's edge.
+BED_GAP_MM = 6.0
+#: The bed plate's thickness, colour and finish: a dark spring-steel sheet,
+#: lighter than the mat it stands on so every bed reads as one.
+BED_PLATE_MM = 3.0
+BED_RGB = (74, 77, 82)
+BED_FINISH = (0.10, 12.0)
+#: Space between two beds in one picture, as a fraction of the bed's side.
+BED_SPACING = 0.12
+#: The picture: a square studio shot of the beds and a parts column beside it.
+BED_IMAGE = (1536, 1024)
+#: The shot looks down at the beds from a front three-quarter, steep enough that
+#: no part hides another and low enough that heights still read.
+BED_VIEW = camera(20.0, 50.0)
+#: Triangles whose normals and planes agree to these tolerances are one flat face.
+FLAT_NORMAL_BINS = 400
+FLAT_PLANE_MM = 0.05
+#: Flat faces tried as the seat, largest first.
+FLAT_CANDIDATES = 64
+BED_APPROXIMATION = ('each printed part seated on its largest flat face (the face it can rest '
+                     'on with nothing below it) and turned to its smallest footprint, then '
+                     'packed onto as many beds as it takes by MaxRects with a fixed gap; a '
+                     'picture of a layout, not a slicer\'s '
+                     'plate: no supports, brim or orientation for strength are considered')
+
+
+def printed_parts(summary, fit=None, inventory=None):
+    """The drawn objects a person prints, in summary order.
+
+    A part is printed when the inventory calls its source uncatalogued and
+    no catalog part was cut to make it (``derived_catalog_sources``: that is
+    a purchased part, modified). World geometry the fit names is never a
+    part. Without a readable inventory there is no telling, and it refuses.
+    """
+    _require(bool(inventory) and inventory.get('available', True) and 'uncatalogued_sources' in inventory,
+             'no inventory to tell printed parts from purchased ones')
+    derived = {str(row.get('source_output') or '') for row in inventory.get('derived_catalog_sources') or []
+               if isinstance(row, dict)}
+    printed = {str(s) for s in inventory.get('uncatalogued_sources') or []} - derived
+    environment = world(fit)
+    return [name for name, item in summary['objects'].items()
+            if item['source'] in printed and name not in environment and item['triangles']]
+
+
+def purchased_rows(inventory):
+    """``[(count, text)]``: the purchased hardware, from the inventory's catalog roll-up."""
+    rows = []
+    for key, count in sorted(dict(inventory.get('catalog_counts') or {}).items()):
+        family, _, part = str(key).partition('/')
+        rows.append((int(count), f'{family} {part}' if part else family))
+    for row in inventory.get('derived_catalog_sources') or []:
+        if isinstance(row, dict):
+            rows.append((1, '{:s} {:s}, cut'.format(str(row.get('family') or ''),
+                                                    str(row.get('part_number') or ''))))
+    return rows
+
+
+def _rotate(points, matrix):
+    (a, b, c), (d, e, f), (g, h, i) = matrix
+    return [(a*x + b*y + c*z, d*x + e*y + f*z, g*x + h*y + i*z) for x, y, z in points]
+
+
+def _onto_down(s):
+    """The rotation taking unit vector ``s`` onto -Z (Rodrigues)."""
+    t = (0.0, 0.0, -1.0)
+    v = (s[1]*t[2] - s[2]*t[1], s[2]*t[0] - s[0]*t[2], s[0]*t[1] - s[1]*t[0])
+    c = s[0]*t[0] + s[1]*t[1] + s[2]*t[2]
+    if c < -1 + 1e-9:  # s is +Z: turn it over about X
+        return ((1, 0, 0), (0, -1, 0), (0, 0, -1))
+    k = 1.0 / (1.0 + c)
+    vx = ((0, -v[2], v[1]), (v[2], 0, -v[0]), (-v[1], v[0], 0))
+    sq = [[sum(vx[r][m] * vx[m][q] for m in range(3)) for q in range(3)] for r in range(3)]
+    return tuple(tuple((r == q) + vx[r][q] + k * sq[r][q] for q in range(3)) for r in range(3))
+
+
+def _hull(points):
+    """The 2D convex hull of ``points``, counter-clockwise (monotone chain)."""
+    pts = sorted(set(points))
+    if len(pts) < 3:
+        return pts
+
+    def turn(o, a, b):
+        return (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0])
+    lower, upper = [], []
+    for p in pts:
+        while len(lower) >= 2 and turn(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    for p in reversed(pts):
+        while len(upper) >= 2 and turn(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
+
+
+def lay_flat(tris):
+    """``(tris, facts)``: one part as it would print, its footprint from the origin.
+
+    The seat is the largest flat face the part can rest on -- every vertex
+    on or above its plane -- turned to face the bed; with none (a part all
+    curves) the part keeps its assembled attitude. It is then turned about
+    the vertical to its smallest footprint rectangle (an edge of the
+    footprint's convex hull lies along it), long side along X, and moved so
+    its footprint starts at the origin on the bed.
+    """
+    faces = {}
+    for a, b, c in tris:
+        ux, uy, uz, vx, vy, vz = b[0]-a[0], b[1]-a[1], b[2]-a[2], c[0]-a[0], c[1]-a[1], c[2]-a[2]
+        n = (uy*vz - uz*vy, uz*vx - ux*vz, ux*vy - uy*vx)
+        length = math.sqrt(n[0]*n[0] + n[1]*n[1] + n[2]*n[2])
+        if length == 0:
+            continue
+        n = (n[0]/length, n[1]/length, n[2]/length)
+        d = n[0]*a[0] + n[1]*a[1] + n[2]*a[2]
+        key = (round(n[0]*FLAT_NORMAL_BINS), round(n[1]*FLAT_NORMAL_BINS), round(n[2]*FLAT_NORMAL_BINS),
+               round(d / FLAT_PLANE_MM / 4))
+        face = faces.setdefault(key, [0.0, n, d])
+        face[0] += length / 2
+    points = list({p for tri in tris for p in tri})
+    seat, area = None, 0.0
+    for size, n, d in sorted(faces.values(), key=lambda f: -f[0])[:FLAT_CANDIDATES]:
+        # An outward face has every vertex on its inner side; winding is not
+        # trusted, so a face with every vertex on its outer side seats too.
+        far = max(n[0]*p[0] + n[1]*p[1] + n[2]*p[2] for p in points)
+        near = min(n[0]*p[0] + n[1]*p[1] + n[2]*p[2] for p in points)
+        if far <= d + FLAT_PLANE_MM:
+            seat, area = n, size
+        elif near >= d - FLAT_PLANE_MM:
+            seat, area = (-n[0], -n[1], -n[2]), size
+        if seat is not None:
+            break
+    turn = _onto_down(seat) if seat is not None else ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+    points = _rotate(points, turn)
+    hull = _hull([(p[0], p[1]) for p in points])
+    best = (math.inf, 0.0)
+    for i in range(len(hull)):
+        (x0, y0), (x1, y1) = hull[i], hull[(i + 1) % len(hull)]
+        theta = -math.atan2(y1 - y0, x1 - x0)
+        cs, sn = math.cos(theta), math.sin(theta)
+        xs = [cs*x - sn*y for x, y in hull]
+        ys = [sn*x + cs*y for x, y in hull]
+        w, h = max(xs) - min(xs), max(ys) - min(ys)
+        if w * h < best[0] - 1e-9:
+            best = (w * h, theta if w >= h else theta + math.pi / 2)
+    theta = best[1]
+    cs, sn = math.cos(theta), math.sin(theta)
+    matrix = tuple(tuple(sum(((cs, -sn, 0), (sn, cs, 0), (0, 0, 1))[r][m] * turn[m][q] for m in range(3))
+                         for q in range(3)) for r in range(3))
+    placed = _rotate(points, ((cs, -sn, 0), (sn, cs, 0), (0, 0, 1)))
+    lo = [min(p[j] for p in placed) for j in range(3)]
+    hi = [max(p[j] for p in placed) for j in range(3)]
+    out = []
+    for tri in tris:
+        out.append(tuple((x - lo[0], y - lo[1], z - lo[2]) for x, y, z in _rotate(tri, matrix)))
+    return out, {'footprint_mm': [hi[0] - lo[0], hi[1] - lo[1]], 'height_mm': hi[2] - lo[2],
+                 'seat': 'largest flat face' if seat is not None else 'as assembled (no flat face)',
+                 'seat_area_mm2': round(area, 1)}
+
+
+def _maxrects_place(free, w, d):
+    """The best free spot for ``w`` x ``d`` (either way round): ``(x, y, turned)`` or ``None``.
+
+    Best short side fit: the spot whose leftover is smallest on its
+    tighter side, then on its other side, then nearest the origin.
+    """
+    best, spot = None, None
+    for x, y, fw, fd in free:
+        for turned, (pw, pd) in ((False, (w, d)), (True, (d, w))):
+            if pw <= fw + 1e-9 and pd <= fd + 1e-9:
+                score = (min(fw - pw, fd - pd), max(fw - pw, fd - pd), y, x)
+                if best is None or score < best:
+                    best, spot = score, (x, y, turned)
+    return spot
+
+
+def _maxrects_split(free, x, y, w, d):
+    """The free rectangles left once ``(x, y, w, d)`` is taken, none inside another."""
+    out = []
+    for fx, fy, fw, fd in free:
+        if x >= fx + fw - 1e-9 or x + w <= fx + 1e-9 or y >= fy + fd - 1e-9 or y + d <= fy + 1e-9:
+            out.append((fx, fy, fw, fd))
+            continue
+        if x > fx + 1e-9:
+            out.append((fx, fy, x - fx, fd))
+        if x + w < fx + fw - 1e-9:
+            out.append((x + w, fy, fx + fw - x - w, fd))
+        if y > fy + 1e-9:
+            out.append((fx, fy, fw, y - fy))
+        if y + d < fy + fd - 1e-9:
+            out.append((fx, y + d, fw, fy + fd - y - d))
+
+    def inside(a, b):
+        return (a[0] >= b[0] - 1e-9 and a[1] >= b[1] - 1e-9 and a[0] + a[2] <= b[0] + b[2] + 1e-9
+                and a[1] + a[3] <= b[1] + b[3] + 1e-9)
+    return [r for i, r in enumerate(out)
+            if not any(j != i and inside(r, o) and (not inside(o, r) or j < i) for j, o in enumerate(out))]
+
+
+def pack_beds(footprints, bed=BED_MM, gap=BED_GAP_MM):
+    """``[(bed, x, y, turned)]`` per footprint: the parts on as few beds as it takes.
+
+    MaxRects, largest part first, each part grown by ``gap`` on its far
+    sides inside a bed shrunk by ``gap`` on its near ones: so two parts are
+    at least ``gap`` apart and every part ``gap`` inside the edge. A part
+    may be turned a quarter. A part too big for any bed gets a bed of its
+    own at the gap. Positions are the footprint's corner nearest the bed's
+    origin, in that bed's millimetres; a turned part's footprint is its
+    ``(depth, width)``.
+    """
+    area = (bed[0] - gap, bed[1] - gap)
+    order = sorted(range(len(footprints)), key=lambda i: (-footprints[i][0] * footprints[i][1], i))
+    beds, result = [], [None] * len(footprints)
+    for i in order:
+        w, d = footprints[i][0] + gap, footprints[i][1] + gap
+        for index, free in enumerate(beds):
+            spot = free is not None and _maxrects_place(free, w, d)
+            if spot:
+                break
+        else:
+            fresh = [(gap, gap, area[0], area[1])]
+            spot = _maxrects_place(fresh, w, d)
+            if not spot:
+                beds.append(None)
+                result[i] = (len(beds) - 1, gap, gap, False)
+                continue
+            beds.append(fresh)
+            index = len(beds) - 1
+        x, y, turned = spot
+        pw, pd = (d, w) if turned else (w, d)
+        beds[index] = _maxrects_split(beds[index], x, y, pw, pd)
+        result[i] = (index, x, y, turned)
+    return result
+
+
+def _plate(x0, y0, w, d, t):
+    """A box ``w`` x ``d`` x ``t`` whose top is at z = 0, as outward triangles."""
+    x1, y1, z0 = x0 + w, y0 + d, -t
+    c = [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0), (x0, y0, 0), (x1, y0, 0), (x1, y1, 0), (x0, y1, 0)]
+    quads = ((4, 5, 6, 7), (3, 2, 1, 0), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7))
+    return [tri for a, b, e, f in quads for tri in ((c[a], c[b], c[e]), (c[a], c[e], c[f]))]
+
+
+def print_bed(triangles, summary, fit, inventory, *, name='', bed=BED_MM, gap=BED_GAP_MM, size=HERO_SIZE):
+    """``(png bytes, facts)``: the print-bed hero of one snapshot.
+
+    Every printed part (:func:`printed_parts`) is laid flat
+    (:func:`lay_flat`), packed onto as many beds as it takes
+    (:func:`pack_beds`), drawn in its own look on the dark mat with its
+    number over it, and listed beside the beds with the purchased hardware
+    the inventory names. ``facts`` is JSON-ready: per part its number,
+    bed, position, footprint and seat, and the hardware rows.
+    """
+    environment, purchased = classify(summary, fit, inventory)
+    appearance, palette = declared(inventory)
+    looks = materials(summary, purchased=purchased, appearance=appearance, palette=palette)
+    names = printed_parts(summary, fit, inventory)
+    _require(bool(names), 'the inventory names no printed part to lay on a bed')
+    parts = []
+    for name_ in names:
+        item = summary['objects'][name_]
+        tris = [points for _, points in triangles[item['first']:item['first'] + item['triangles']]]
+        flat, facts = lay_flat(tris)
+        parts.append({'name': name_, 'source': item['source'], 'tris': flat, **facts})
+    placements = pack_beds([p['footprint_mm'] for p in parts], bed, gap)
+    count = 1 + max(at[0] for at in placements)
+    columns = math.ceil(math.sqrt(count))
+    pitch = (bed[0] * (1 + BED_SPACING), bed[1] * (1 + BED_SPACING))
+
+    def origin(index):
+        return (index % columns) * pitch[0], -(index // columns) * pitch[1]
+    drawn, rows = [], []
+    for number, (part, (index, x, y, turned)) in enumerate(zip(parts, placements), 1):
+        ox, oy = origin(index)
+        w, d = part['footprint_mm']
+        if turned:
+            tris = [tuple((d - py + x + ox, px + y + oy, pz) for px, py, pz in tri) for tri in part['tris']]
+            w, d = d, w
+        else:
+            tris = [tuple((px + x + ox, py + y + oy, pz) for px, py, pz in tri) for tri in part['tris']]
+        role, rgb = looks[part['name']]
+        drawn.append(((rgb, FINISH[role]), tris))
+        rows.append({'number': number, 'component': part['name'], 'source': part['source'], 'bed': index + 1,
+                     'position_mm': [round(x, 2), round(y, 2)], 'footprint_mm': [round(w, 2), round(d, 2)],
+                     'height_mm': round(part['height_mm'], 2), 'turned': turned, 'seat': part['seat'],
+                     'seat_area_mm2': part['seat_area_mm2'],
+                     'fits_bed': (w <= bed[0] - 2 * gap + 1e-9 and d <= bed[1] - 2 * gap + 1e-9
+                                  and part['height_mm'] <= bed[2] + 1e-9)})
+    plates = [((BED_RGB, BED_FINISH), _plate(*origin(i), bed[0], bed[1], BED_PLATE_MM)) for i in range(count)]
+    prepared = _prepare(plates + drawn)
+    basis = BED_VIEW
+    bounds = _frame(prepared, basis, 0.04)
+    pixels, details = studio(prepared, basis, bounds=bounds, size=size, shadow=_contact_shadow(prepared))
+    hardware = purchased_rows(inventory)
+    image = _compose_bed(pixels, size, basis, bounds, rows, hardware, count, bed, name, summary['revision'],
+                         [origin(i) for i in range(count)])
+    facts = {'revision': summary['revision'], 'bed_mm': list(bed), 'gap_mm': gap, 'beds': count,
+             'parts': rows, 'hardware': [{'count': c, 'part': text} for c, text in hardware],
+             'not_fitting': [r['component'] for r in rows if not r['fits_bed']],
+             'view': {'basis': basis, 'projection_bounds_mm': details['projection_bounds_mm']},
+             'approximation': BED_APPROXIMATION}
+    return image, facts
+
+
+def _compose_bed(pixels, size, basis, bounds, rows, hardware, count, bed, name, revision, origins):
+    """The print-bed picture: the beds, each part's number over it, and the parts column."""
+    width, height = BED_IMAGE
+    _require(size == height, 'the print-bed picture is laid out for a 1024 px shot')
+    sheet = Canvas(width, height, PAPER)
+    sheet.paste(0, 0, pixels, size, size)
+    right, up, _ = basis
+    (lo, hi) = bounds
+    extent = max(hi[0] - lo[0], hi[1] - lo[1])
+    cx0, cy0 = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
+
+    def screen(p):
+        return (size / 2 + (sum(p[j] * right[j] for j in range(3)) - cx0) * size / extent,
+                size / 2 - (sum(p[j] * up[j] for j in range(3)) - cy0) * size / extent)
+    badges = []
+    for row in rows:
+        ox, oy = origins[row['bed'] - 1]
+        x, y = row['position_mm']
+        w, d = row['footprint_mm']
+        # On the footprint's centre, half way up: footprints never overlap,
+        # and a badge that still lands on an earlier one steps down clear of it.
+        sx, sy = screen((ox + x + w / 2, oy + y + d / 2, row['height_mm'] / 2))
+        label = str(row['number'])
+        tw = text_width(label, 2)
+        bx, by = round(sx - tw / 2) - 6, round(sy) - 10
+        while any(bx < ax + aw + 2 and ax < bx + tw + 14 and by < ay + 24 and ay < by + 24 for ax, ay, aw in badges):
+            by += 6
+        badges.append((bx, by, tw + 12))
+        sheet.rect(bx, by, tw + 12, 22, PALETTE['bg'])
+        sheet.text(bx + 6, by + 4, label, 2, INK)
+    if count > 1:
+        for index, (ox, oy) in enumerate(origins):
+            sx, sy = screen((ox, oy, 0.0))
+            sheet.text(round(sx), round(sy) + 8, f'bed {index + 1}', 2, MUTED)
+    x0, column = size + 40, width - size - 80
+    title = name or 'print beds'
+    sheet.text(x0, 40, title, fitted_scale(title, column, 5), INK)
+    sheet.text(x0, 96, 'Cadex print beds', 2, MUTED)
+    sheet.text(x0, 120, 'rev ' + revision[:12], 2, MUTED)
+    sheet.rect(x0, 152, column, 2, RULE)
+    beds = '{:d} bed{:s}, {:.0f} x {:.0f} mm'.format(count, '' if count == 1 else 's', bed[0], bed[1])
+    sheet.text(x0, 170, beds, fitted_scale(beds, column, 3), INK)
+    sheet.text(x0, 200, 'each part on its largest flat face', 2, MUTED)
+    y = 236
+    sheet.text(x0, y, 'printed', 2, MUTED)
+    y += 26
+    room = (height - 40 - y) // 22 - 3 - min(len(hardware), 8)
+    shown = rows if len(rows) <= room else rows[:max(1, room - 1)]
+    for row in shown:
+        sheet.text(x0, y, str(row['number']), 2, INK)
+        size_text = '{:.0f} x {:.0f} x {:.0f}'.format(*row['footprint_mm'], row['height_mm'])
+        flag = '' if row['fits_bed'] else '  too big'
+        label = row['source'] + flag
+        sheet.text(x0 + 36, y, label, fitted_scale(label, column - 36 - text_width(size_text, 2) - 16, 2), INK)
+        sheet.text(x0 + column - text_width(size_text, 2), y, size_text, 2, MUTED)
+        y += 22
+    if len(shown) < len(rows):
+        sheet.text(x0 + 36, y, f'+ {len(rows) - len(shown)} more', 2, MUTED)
+        y += 22
+    y += 10
+    sheet.rect(x0, y, column, 2, RULE)
+    y += 18
+    sheet.text(x0, y, 'purchased', 2, MUTED)
+    y += 26
+    if not hardware:
+        sheet.text(x0, y, 'none in the inventory', 2, MUTED)
+    room = (height - 30 - y) // 22
+    listed = hardware if len(hardware) <= room else hardware[:max(1, room - 1)]
+    for amount, text in listed:
+        sheet.text(x0, y, f'{amount} x', 2, MUTED)
+        sheet.text(x0 + 52, y, text, fitted_scale(text, column - 52, 2), INK)
+        y += 22
+    if len(listed) < len(hardware):
+        sheet.text(x0 + 52, y, f'+ {len(hardware) - len(listed)} more', 2, MUTED)
+    return png(sheet.pixels, width, height)
 
 
 # --- The two whole jobs: a review render and an agent's look -----------------
@@ -1603,13 +2208,12 @@ def _palette_hex(palette):
     return {role: '#%02X%02X%02X' % tuple(rgb) for role, rgb in {**ROLE_COLORS, **palette}.items()}
 
 
-def render_files(triangles, source, root, fit, inventory, relative_dir):
-    """``(files, summary)``: the review render of one snapshot, not yet written.
+def _scene(triangles, source, fit, inventory):
+    """The drawn scene of a snapshot, as every studio image of it sees it.
 
-    Four studio SVG views, the 1024 px hero, the concept sheet and
-    ``summary.json``, keyed by file name; paths inside the summary are under
-    ``relative_dir``. ``root`` is the project root, read only for the sheet's
-    mass. Nothing is written, so a refusal leaves no partial views.
+    ``(summary, names, environment, purchased, appearance, palette,
+    prepared, shadow)``: ``summary`` is ``source`` with its environment,
+    appearance rows and palette added; ``names`` the objects drawn.
     """
     summary = dict(source)
     environment, purchased = classify(summary, fit, inventory)
@@ -1621,9 +2225,39 @@ def render_files(triangles, source, root, fit, inventory, relative_dir):
     summary['environment'] = sorted(environment)
     summary['appearance'] = _appearance_rows(names, looks, appearance, purchased)
     summary['palette'] = _palette_hex(palette)
-    start = time.perf_counter()
     prepared = _prepare(_studio_parts(triangles, summary, names, looks))
-    shadow = _contact_shadow(prepared)
+    return summary, names, environment, purchased, appearance, palette, prepared, _contact_shadow(prepared)
+
+
+def _hero(prepared, shadow):
+    return studio(prepared, HERO, bounds=_frame(prepared, HERO, 0.10), size=HERO_SIZE, shadow=shadow)
+
+
+def hero(triangles, source, fit, inventory):
+    """``(png bytes, facts)``: the studio hero of one snapshot alone.
+
+    The same picture :func:`render_files` draws as ``hero.png``, without the
+    review views and the sheet around it: what a passed evaluation presents.
+    """
+    summary, _names, _env, _purchased, _appearance, _palette, prepared, shadow = _scene(
+        triangles, source, fit, inventory)
+    pixels, details = _hero(prepared, shadow)
+    return png(pixels, HERO_SIZE), {'revision': summary['revision'], 'basis': HERO, 'size': HERO_SIZE,
+                                    'environment': summary['environment'],
+                                    'projection_bounds_mm': details['projection_bounds_mm']}
+
+
+def render_files(triangles, source, root, fit, inventory, relative_dir):
+    """``(files, summary)``: the review render of one snapshot, not yet written.
+
+    Four studio SVG views, the 1024 px hero, the concept sheet and
+    ``summary.json``, keyed by file name; paths inside the summary are under
+    ``relative_dir``. ``root`` is the project root, read only for the sheet's
+    mass. Nothing is written, so a refusal leaves no partial views.
+    """
+    start = time.perf_counter()
+    summary, names, environment, purchased, appearance, palette, prepared, shadow = _scene(
+        triangles, source, fit, inventory)
     files, summary['views'] = {}, {}
     paper, caption = hex_colour(PALETTE['bg']), hex_colour(PALETTE['ink_2'])
     for name, basis in BASES.items():
@@ -1639,7 +2273,7 @@ def render_files(triangles, source, root, fit, inventory, relative_dir):
     # The studio hero (DESIGN-LANGUAGE.md section 7): one PNG, the design's
     # presented image rather than a review view.
     hero_start = time.perf_counter()
-    pixels, details = studio(prepared, HERO, bounds=_frame(prepared, HERO, 0.10), size=HERO_SIZE, shadow=shadow)
+    pixels, details = _hero(prepared, shadow)
     files['hero.png'] = png(pixels, HERO_SIZE)
     summary['hero'] = {**details, 'basis': HERO, 'size': HERO_SIZE, 'path': f'{relative_dir}/hero.png',
                        'seconds': time.perf_counter() - hero_start}

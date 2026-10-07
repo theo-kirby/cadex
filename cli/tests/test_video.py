@@ -375,8 +375,10 @@ def test_studio_video_refuses_a_bad_style_and_a_bad_declared_appearance(video_pr
 
 
 @needs_ffmpeg
-def test_dashboard_serves_the_studio_video_it_lists(video_project):
+def test_dashboard_serves_the_studio_video_it_lists(video_project, monkeypatch):
     root = video_project
+    # The claim is the listing and the bytes served, not the pixels (ADR-563).
+    monkeypatch.setitem(STUDIO, 'size', 128)
     video = render(root, 'sample', 'studio')
     server, _ = serve(root, '127.0.0.1', 0)
     try:
@@ -427,13 +429,15 @@ def test_studio_video_reads_a_rollout_tessellation_past_the_scene_bounds_and_dra
 
 
 @needs_ffmpeg
-def test_studio_video_leaves_the_environment_out_and_puts_the_floor_on_top_of_it(video_project):
+def test_studio_video_leaves_the_environment_out_and_puts_the_floor_on_top_of_it(video_project, monkeypatch):
     """The render summary's environment (a floor) is not a part: it gets no
     material and is not drawn, and the studio floor is its top face rather
     than the lowest point the solids reach, which a tipping robot drives
     below the floor because the rollout collides on proxies (ADR-281,
     ADR-432): the quadruped's reached -18.5 mm and floated off its shadow."""
     root, run = video_project, video_project / 'runs/sample'
+    # The claims are the floor's height and the omitted part, not the pixels (ADR-563).
+    monkeypatch.setitem(STUDIO, 'size', 128)
     summary = root / 'review/render' / REVISION_A / 'summary.json'
     data = json.loads(summary.read_text())
     data['appearance'] = {'body': {'role': 'shell', 'color': '#ECE8DF'}}

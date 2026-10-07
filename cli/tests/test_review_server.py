@@ -687,6 +687,59 @@ def _orbit_and_zoom(browser, server) -> None:
 
 
 @needs_browser
+def test_browser_pans_by_shift_middle_and_two_fingers_and_fit_resets(tmp_path, browser) -> None:
+    """D1 (ADR-561): shift-drag and middle-drag pan, the point under the pointer
+    following it; on touch two fingers pan and a pinch zooms; Fit resets."""
+
+    root = _review_project(tmp_path)
+    _stage_accepted(root, REVISION_B)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        assert _model_state(page) == "loaded"
+        page.click("#model-fit")
+        page.scroll_into_view("#viewer")
+        rect = page.rect("#viewer")
+        cx, cy = rect["x"] + rect["width"] / 2, rect["y"] + rect["height"] / 2
+        camera = "window.cadexReview.viewer().camera()"
+        fitted = page.evaluate(camera)
+        name = next(iter(page.evaluate("window.cadexReview.viewer().stats()")["colours"]))
+        point = f"window.cadexReview.viewer().screenPoint({json.dumps(name)})"
+        start = page.evaluate(point)
+
+        page.drag(cx, cy, cx + 120, cy + 40, modifiers=8)
+        shifted = page.evaluate(camera)
+        assert shifted["target"] != fitted["target"]
+        assert (shifted["yaw"], shifted["pitch"], shifted["distance"]) == (
+            fitted["yaw"], fitted["pitch"], fitted["distance"])
+        moved = page.evaluate(point)
+        # The model slides with the pointer, not against it, by about the drag.
+        assert abs(moved[0] - start[0] - 120) < 12 and abs(moved[1] - start[1] - 40) < 12, (start, moved)
+
+        page.drag(cx, cy, cx - 80, cy, button="middle")
+        middled = page.evaluate(camera)
+        assert middled["target"] != shifted["target"] and middled["yaw"] == fitted["yaw"]
+        assert abs(page.evaluate(point)[0] - moved[0] + 80) < 12
+
+        page.click("#model-fit")
+        assert page.evaluate(camera) == fitted
+
+        page.send("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
+        page.two_finger_drag(cx, cy, cx + 60, cy - 30)
+        touched = page.evaluate(camera)
+        assert touched["target"] != fitted["target"] and touched["yaw"] == fitted["yaw"]
+        assert abs(touched["distance"] - fitted["distance"]) < 1e-6 * fitted["distance"]
+        page.pinch(cx, cy, 60, 200)
+        pinched = page.evaluate(camera)
+        assert pinched["distance"] < touched["distance"] and pinched["yaw"] == fitted["yaw"]
+        page.click("#model-fit")
+        assert page.evaluate(camera) == fitted
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
 def test_browser_draws_the_accepted_attempt_and_labels_a_lost_server_stale(tmp_path, browser) -> None:
     root = _review_project(tmp_path)
     _stage_accepted(root, REVISION_B)

@@ -97,6 +97,42 @@ def _passing(root: Path, name: str = "steady", *, revision: str = REVISION_A) ->
     return directory
 
 
+HERO = (64, 48)
+
+
+def _heroes(directory: Path) -> Path:
+    """Give a passed evaluation its two heroes (ADR-570), as ``add_heroes`` writes them."""
+
+    report = json.loads((directory / "evaluation.json").read_text(encoding="utf-8"))
+    block = {"schema": "cadex-heroes-v1", "state": "ready", "revision": report["accepted_revision"],
+             "errors": {}}
+    for key, name in (("hero", "hero.png"), ("print_bed", "print-bed.png")):
+        (directory / name).write_bytes(STUDIO.png(bytes(STUDIO.PALETTE["bg"]) * (HERO[0] * HERO[1]), *HERO))
+        block[key] = {"file": name, "bytes": (directory / name).stat().st_size}
+    report["heroes"] = block
+    stamp = (directory / "evaluation.json").stat()
+    (directory / "evaluation.json").write_text(json.dumps(report))
+    os.utime(directory / "evaluation.json", ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    return directory
+
+
+CAPTION = ("seed 1101 · push 1: 0.84 N at 2.53 s, recovered in 0.62 s · "
+           "push 2: 1.31 N at 4.40 s, not settled · fell: tipped at 5.10 s")
+
+
+def _shove(directory: Path) -> Path:
+    """Give a passed evaluation its shove video (ADR-571), as ``add_shove`` writes it."""
+
+    report = json.loads((directory / "evaluation.json").read_text(encoding="utf-8"))
+    (directory / "shove.webm").write_bytes(WEBM)
+    report["shove"] = {"schema": "cadex-shove-film-v1", "state": "ready", "error": None, "seed": 1101,
+                       "caption": CAPTION, "video": {"file": "shove.webm", "bytes": len(WEBM)}}
+    stamp = (directory / "evaluation.json").stat()
+    (directory / "evaluation.json").write_text(json.dumps(report))
+    os.utime(directory / "evaluation.json", ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    return directory
+
+
 # -- the server ------------------------------------------------------------------
 
 def test_the_project_lists_each_evaluation_as_a_bounded_summary(served) -> None:
@@ -204,6 +240,40 @@ def test_a_film_file_that_points_outside_the_evaluation_is_never_served(served) 
     assert _get(server.url + "evaluation/w2-shuffle/seed-1101-detail.png")[0] == 404
 
 
+def test_a_passs_heroes_are_listed_and_served_and_a_fail_has_none(served) -> None:
+    """ADR-570: the row names the heroes the report names, and only those are served."""
+
+    root, server = served
+    directory = _heroes(_passing(root))
+    _w2_shuffle(root)
+    passed, failed = _json(server.url + "api/project")["evaluations"]
+    assert passed["heroes"] == {"hero": "hero.png", "print_bed": "print-bed.png"}
+    assert failed["heroes"] == {"hero": None, "print_bed": None}
+    for name in ("hero.png", "print-bed.png"):
+        status, headers, body = _get(server.url + "evaluation/steady/" + name)
+        assert status == 200 and headers["content-type"] == "image/png"
+        assert body == (directory / name).read_bytes()
+        assert _json(server.url + "api/evaluation/steady")["files"][name]["exists"] is True
+        # A hero the failing report does not name is not served from it.
+        (root / "evaluations" / "w2-shuffle" / name).write_bytes(body)
+        assert _get(server.url + "evaluation/w2-shuffle/" + name)[0] == 404
+
+
+def test_a_passs_shove_video_is_listed_with_its_caption_and_served(served) -> None:
+    """ADR-571: the row names the shove video and the caption the report wrote; nothing else is served."""
+
+    root, server = served
+    _shove(_passing(root))
+    _w2_shuffle(root)
+    passed, failed = _json(server.url + "api/project")["evaluations"]
+    assert passed["shove"] == {"state": "ready", "video": "shove.webm", "caption": CAPTION}
+    assert failed["shove"] == {"state": "none", "video": None, "caption": None}
+    status, headers, body = _get(server.url + "evaluation/steady/shove.webm")
+    assert (status, headers["content-type"], body) == (200, "video/webm", WEBM)
+    (root / "evaluations" / "w2-shuffle" / "shove.webm").write_bytes(WEBM)
+    assert _get(server.url + "evaluation/w2-shuffle/shove.webm")[0] == 404
+
+
 def test_an_idle_poll_parses_no_report_twice(served, monkeypatch) -> None:
     root, server = served
     _w2_shuffle(root)
@@ -251,6 +321,47 @@ def test_the_2d_viewport_lists_and_plays_each_evaluation_film(tmp_path, browser)
         page.evaluate(f"window.cadexReview.setSheet({json.dumps(films[1]['key'])})", await_promise=True)
         assert page.wait_for("(function(){var i=document.getElementById('sheet-image');"
                              "return i && i.complete && i.naturalWidth})()") == SHEET[0]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
+def test_the_2d_viewport_shows_a_passs_two_heroes_before_its_film(tmp_path, browser) -> None:
+    """ADR-570: a passed evaluation's hero and print bed are 2D-viewport images; a fail adds none.
+    ADR-571: its shove video follows them, captioned."""
+
+    from test_review_server import _open, _review_project, serve
+    root = _review_project(tmp_path)
+    _w2_shuffle(root)
+    passed = _shove(_heroes(_passing(root)))
+    report = json.loads((passed / "evaluation.json").read_text())
+    report["film"] = _film(passed, (11,), video=False)
+    (passed / "evaluation.json").write_text(json.dumps(report))
+    os.utime(passed / "evaluation.json", (1_000_000_000, 1_000_000_000))
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        listed = [(s["kind"], s["label"]) for s in page.evaluate("window.cadexReview.sheets()")
+                  if s["group"] == "Evaluations"]
+        steady = [label.split(" · ", 1)[1] for kind, label in listed if label.startswith("stand pass")]
+        assert steady == ["hero", "print bed", "shoves", "seed 11 · filmstrip", "seed 11 · detail"], listed
+        # The shove video plays with the pushes and the ending beside it (ADR-571).
+        (shoves,) = [s["key"] for s in page.evaluate("window.cadexReview.sheets()") if s["key"].startswith("shove:")]
+        page.evaluate(f"window.cadexReview.setSheet({json.dumps(shoves)})", await_promise=True)
+        shown = page.evaluate("""(function () { var v = document.getElementById('sheet-video'),
+            c = document.getElementById('sheet-caption');
+            return {src: v && v.src, caption: c && c.textContent,
+                    below: !!(v && c && c.getBoundingClientRect().top >= v.getBoundingClientRect().bottom - 1)}; })()""")
+        assert "/evaluation/steady/shove.webm?v=" in shown["src"] and shown["caption"] == CAPTION, shown
+        assert shown["below"], shown
+        assert not [label for _kind, label in listed if label.startswith("walk") and "hero" in label]
+        assert not [label for _kind, label in listed if "print bed" in label and "pass" not in label]
+        for key in [s["key"] for s in page.evaluate("window.cadexReview.sheets()") if s["key"].startswith("hero:")]:
+            page.evaluate(f"window.cadexReview.setSheet({json.dumps(key)})", await_promise=True)
+            assert page.wait_for("(function(){var i=document.getElementById('sheet-image');"
+                                 "return i && i.complete && i.naturalWidth})()") == HERO[0]
+            assert "/evaluation/steady/" in page.evaluate("document.getElementById('sheet-image').src")
     finally:
         server.shutdown()
         server.server_close()

@@ -414,7 +414,7 @@ def test_a_never_reloaded_page_adds_the_final_policy_stop_when_the_walk_lands_it
 
 
 #: Each scrubber row at phone width: its slider, label and status, the
-#: viewport, the expanded overlay, and the theme's tokens to compare against.
+#: viewport, and the theme's tokens to compare against.
 SCRUBBER = """(function (box) {
   function q(s) { return document.querySelector(s); }
   function rect(e) { var b = e.getBoundingClientRect(); return {x: b.x, y: b.y, right: b.right, bottom: b.bottom, w: b.width, h: b.height}; }
@@ -425,7 +425,7 @@ SCRUBBER = """(function (box) {
           row: rect(row), pick: rect(pick), label: rect(label), name: rect(name), text: label.textContent,
           label_clipped: label.scrollWidth > label.clientWidth, label_color: getComputedStyle(label).color,
           status_color: status.hidden ? null : getComputedStyle(status).color,
-          model: rect(q('#model')), overlay: rect(q('#overlay')),
+          model: rect(q('#model')),
           ink: token('--ink'), bad: token('--bad'), warn: token('--warn')};
 })(%s)"""
 
@@ -443,7 +443,6 @@ def _phone(browser, url: str, theme: str):
     page.wait_for("document.readyState === 'complete' && !!window.cadexReview")
     page.evaluate("window.cadexReview.ready", await_promise=True)
     page.evaluate(f"window.cadexTheme.set({json.dumps(theme)})")
-    page.evaluate("window.cadexReview.setOverlayCollapsed(false)")
     return page
 
 
@@ -452,14 +451,13 @@ def _hex_rgb(value: str) -> str:
 
 
 def _assert_scrubber(m: dict, status_token: str | None) -> None:
-    """The row is in the viewport, under the overlay, its slider at least
+    """The row is in the viewport, its slider at least
     ``SCRUB_PX`` wide and a touch target tall, beside nothing it covers, and
     its words in the theme's own colours."""
 
     row, pick, label, name, model = m["row"], m["pick"], m["label"], m["name"], m["model"]
     assert m["page_width"] <= 390
     assert model["x"] <= row["x"] and row["right"] <= model["right"] and row["bottom"] <= model["bottom"]
-    assert row["y"] >= m["overlay"]["bottom"], (row, m["overlay"])
     assert pick["w"] >= SCRUB_PX, (m["text"], pick)
     assert pick["h"] >= 32  # the touch --tool height
     assert pick["x"] >= name["right"] and pick["right"] <= row["right"]
@@ -533,14 +531,14 @@ def test_both_scrubbers_keep_their_width_at_390px_in_either_theme(tmp_path, brow
             server.server_close()
 
 
-#: The model's own status line at phone width, against the expanded overlay.
+#: The model's own status line at phone width.
 MODEL_STATUS = """(function () {
   function rect(e) { var b = e.getBoundingClientRect(); return {x: b.x, y: b.y, right: b.right, bottom: b.bottom, w: b.width, h: b.height}; }
   function token(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
   var s = document.getElementById('model-status'), style = getComputedStyle(s);
   return {theme: document.documentElement.dataset.theme, state: s.dataset.state, text: s.textContent,
           page_width: document.documentElement.scrollWidth, status: rect(s), clipped: s.scrollWidth > s.clientWidth,
-          model: rect(document.getElementById('model')), overlay: rect(document.getElementById('overlay')),
+          model: rect(document.getElementById('model')),
           color: style.color, background: style.backgroundColor, warn: token('--warn')};
 })()"""
 
@@ -560,10 +558,10 @@ def _contrast(fg: str, bg: str) -> float:
 
 @needs_browser
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_the_model_status_line_reads_on_the_dark_floor_below_the_overlay_at_390px(tmp_path, browser, theme) -> None:
+def test_the_model_status_line_reads_on_the_dark_floor_at_390px(tmp_path, browser, theme) -> None:
     """ADR-557: the viewport's floor is dark in both themes (ADR-331), so the
     light theme's ``--warn`` #8a6100 once sat on it at about 2:1, at the top
-    left, partly under the expanded overlay. The line now carries its own
+    left, partly under the stage overlay (moved to Status by ADR-572). The line now carries its own
     ``--surface`` behind it and sits with the scrubbers at the bottom."""
 
     from test_review_revisions import _biped_store
@@ -580,16 +578,14 @@ def test_the_model_status_line_reads_on_the_dark_floor_below_the_overlay_at_390p
         m = page.evaluate(MODEL_STATUS)
         assert m["theme"] == theme and m["text"].startswith("no model: ")
         assert m["page_width"] <= 390
-        status, model, overlay = m["status"], m["model"], m["overlay"]
+        status, model = m["status"], m["model"]
         assert model["x"] <= status["x"] and status["right"] <= model["right"] and status["bottom"] <= model["bottom"]
-        assert status["y"] >= overlay["bottom"], (status, overlay)
         assert not m["clipped"]
         assert m["color"] == _hex_rgb(m["warn"])
         assert _rgba(m["background"])[3] == 1, m["background"]  # opaque: the floor never shows through
         ratio = _contrast(m["color"], m["background"])
         assert ratio >= 4.5, (m["color"], m["background"], ratio)
-        print(json.dumps({"model_status_390": {"theme": theme, "contrast": round(ratio, 2),
-                                               "gap_below_overlay_px": round(status["y"] - overlay["bottom"])}}))
+        print(json.dumps({"model_status_390": {"theme": theme, "contrast": round(ratio, 2)}}))
     finally:
         if page is not None:
             page.evaluate("window.cadexTheme.set('dark')")  # the module's browser is shared

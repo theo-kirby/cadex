@@ -1,13 +1,61 @@
-# The Cadex design language — small printed robots that look engineered
+# The Cadex design language — a base, and named styles
 
-Verified against source: 2026-10-04. Provenance: `[Cadex-new]`.
+Verified against source: 2026-10-06. Provenance: `[Cadex-new]`.
 
-This is how a robot that Cadex designs should look: a small legged,
-wheeled or fixed machine, 3D-printed around hobby servos, gearmotors,
-boards, a battery and sensors. It is what the agent driving Cadex is
-taught, through the engine's overlay `Mod/cadex/CadexAgentGuidance.md`
-(which `cadex guidance` prints and `cadex mcp` points the agent at;
-Cadex has no agent of its own, ADR-538), and what the renderer presents.
+This is how a machine that Cadex designs should be designed, and it is in
+two layers (ADR-560):
+
+- **The base** holds for any machine Cadex designs: a crane, a wheeled
+  base, a fixed arm, a vacuum robot, a whole mechanism, as well as a small
+  printed robot. Its principle is **form follows function**: every part
+  takes its shape from what it does — the load it carries, the part it
+  holds, the motion it allows, how it is made — and nothing is added to
+  imitate engineering. It names no kind of machine as the default and no
+  look. It is the engine's `Mod/cadex/CadexAgentGuidance.md`, which every
+  agent reads (`cadex guidance` prints it; `cadex mcp` points the agent at
+  it; Cadex has no agent of its own, ADR-538).
+- **A style** is named and optional: the rules for one kind of machine and
+  its look. A project chooses at most one, `cadex style --project DIR
+  NAME`, stored in its `agent.json`, and only then does `cadex guidance
+  --project DIR` print the style's rules after the base. With none chosen,
+  the base is the whole of the design guidance. Each style is one engine
+  file, `Mod/cadex/CadexAgentStyle.<name>.md`. A style is written from
+  reference images or projects the owner supplies, never invented.
+
+| style | for | file |
+|---|---|---|
+| `printed-legged-robot` | a small robot printed around hobby or bus servos, boards, a battery and sensors, that stands and walks on legs | `CadexAgentStyle.printed-legged-robot.md` |
+
+**Which rule is where.** The question asked of every rule is whether it
+would be wrong for a crane, a wheeled base or a fixed arm. If it would, it
+is in a style.
+
+| rule | where | why there |
+|---|---|---|
+| prove it with facts: `look`, `inspect`, the `fit` block | base | holds for any design |
+| inside out: concept, parts, place, structure, finish, refine (§8) | base | the order holds for any machine with purchased parts |
+| hold every part; nothing stuck on; mirror what has sides | base | mechanical, not a look |
+| members follow the load; what meets the ground or the work is a designed part | base | the general form of §5's limb and foot rules |
+| a printed part is printable (§6) | base | conditional on a part being printed |
+| hardware that shows is ordered; detail is real; finished edges; colour follows role | base | form follows function, stated without a finish |
+| a self-moving machine carries what runs it | base | conditional on the machine moving itself |
+| one of two finishes, exposed or panelled (§1) | style | rated on small printed robots only |
+| two materials and one small accent (§2) | style | rated on small printed robots only |
+| joints are horn caps, one design for the robot (§3) | style | servo-horn specific |
+| no face, and not the mascot box (§1, §4) | style | a robot's look; a crane has neither risk |
+| legs taper both ways, are long against their joints, end in a designed foot (§5) | style | legged only |
+| a solid of tangent primitives is measured; a joint's limit and spacing come from its sweep | base | true of any mechanism (ADR-565) |
+| the simulated body is the built body: contacts are unions of collision primitives, the support under the measured centre of mass | base | a crane on outriggers tips the same way (ADR-565) |
+| a learned task: speed bounded both ways, a target the intended motion reaches most easily, command range centred on the rest pose, progress only while upright, a ceiling on anti-degenerate charges | base | true of any learned motion (ADR-565) |
+| training practice: checkpoints on, keep the policy `evaluate` passes, when to warm-start, never tighten the filter on one | base (CLI guidance) | true of any task (ADR-565) |
+| tapered limb plates with a lightening window and round bosses; the knee actuator inside the thigh | style | a legged look; the actuator placement is the owner's taste, *owner to confirm* (ADR-565) |
+| compact hull feet with a flat strip between twin keels; hips wide enough, inward roll limited, for the feet to pass; pay for the step; a sole bounded by the standing height; the roll limit from where the feet meet | style | legged only (ADR-565, ADR-566) |
+
+**The rest of this document is the `printed-legged-robot` style's
+evidence**, from orun1's ratings, together with the base rules that came
+out of the same work (marked *base* where they appear). The ledger of what
+the reference legged-robot project added to the base and the style, row by
+row with its evidence, is `docs/probes/orun4/LESSONS.md` (ADR-565).
 
 **Where it comes from (orun1, ADR-479).** ot10 wrote this language from a
 set of reference images (ADR-411). The owner's verdict on what it produced
@@ -36,23 +84,26 @@ was frozen and measured before this was written (ADR-478), and the
 held-out set has had its one use.
 
 **What reaches the agent.** Only the rules reach the agent, as plain
-instructions in the overlay. The overlay quotes no rating and no design id,
+instructions: the base in every project, the style only in a project that
+chose it (ADR-560). Neither quotes no rating and no design id,
 shows no sweep render, and contains nothing of the judge's prompt. This
 document is the evidence for the rules, and it is not in any prompt.
 
-**Exists today versus target.** The overlay teaches §1–§6 and the procedure
-in §8 (ADR-479). Whether an unassisted design follows them, and whether the
+**Exists today versus target.** The base teaches §6, §8 and the general
+form of §5; the `printed-legged-robot` style teaches §1–§5's look and legged
+rules (ADR-479, ADR-560). Whether an unassisted design follows them, and whether the
 frozen judge v2 rates the result above the sweep's Likes and Loves, is D4's
 measurement and not a claim this document makes.
 
 ## 0. The one-sentence version
 
-**An engineered machine built from the inside out: real parts chosen and
-placed first, a structure that visibly carries them, then either an
-ordered, exposed mechanism or a panelled hard-surface enclosure. No face, no
-pillow body, and one small functional accent.**
+**The base: form follows function, built from the inside out — real parts
+chosen and placed first, then a structure that visibly carries them. The
+`printed-legged-robot` style: either an ordered, exposed mechanism or a
+panelled hard-surface enclosure, no face, no pillow body, one small
+functional accent, and legs that taper to designed feet.**
 
-## 1. Form: an engineered machine, in one of two finishes
+## 1. Form: one of two finishes (style)
 
 - **Not the mascot box.** The robot is never a large, soft, rounded box
   with a visor slot or dot eyes, over short or thin limbs, with blocks
@@ -118,7 +169,7 @@ pillow body, and one small functional accent.**
   Nos are heavily rounded boxes (`biped-a-servo-joint`, `biped-h-free`,
   `hexapod-g-minimal`). (ADR-481.)
 
-## 2. Materials and palette: two materials, one small accent
+## 2. Materials and palette: two materials, one small accent (style; colour follows role is base)
 
 Three **appearance roles**, and every part has exactly one:
 
@@ -152,7 +203,7 @@ them, and the dashboard's viewport paints them (ADR-449, ADR-522) by the
 same rule the studio draws with. A part with no declared role is drawn by supplier until
 it declares one.
 
-## 3. Joints are features
+## 3. Joints are features (style)
 
 - **Every rotation axis reads as a round feature.** That means a horn cap,
   a hub, a drum or a bearing boss, concentric with the axis. Examples: the
@@ -171,11 +222,11 @@ it declares one.
   shortest horn that carries the link (the cross horn on a micro servo), at
   reach plus wall and no larger, and no second disc on the servo's far face
   (ADR-494, which removes that half of ADR-440). Evidence: hexapod trial 1
-  (`orun1-t1-hexapod`, rev `35193b3e`) built a 35 mm disc on both faces of
+  (orun1, rev `35193b3e`) built a 35 mm disc on both faces of
   every servo and lost under frozen judge v2 on "crowded clusters of
   joints". **[judgement]** on the size: no rating isolates cap diameter.
 
-## 4. No face; a sensor where a face was
+## 4. No face; a sensor where a face was (style)
 
 - **No face, no eyes, no mouth.** Of the 55 sweep designs, the 47 whose
   notes mention a face, eyes or a visor average 1.43. The 8 whose notes do
@@ -197,7 +248,7 @@ it declares one.
   `balancer-c-exposed-mechanism` (Love, dev), "the controller is the face":
   an orange bezel around the board, "instead of a decorative visor".
 
-## 5. Structure, limbs and feet
+## 5. Structure, limbs and feet (structure and mass are base; limbs and feet are style)
 
 - **Structure carries the parts, visibly.** The structure is side frames,
   a spine, a deck, a servo column or a hull, each placed where the load
@@ -212,8 +263,10 @@ it declares one.
   held-out) are the failure.
 - **Legs are long against their joints.** Thigh and shin each at least
   2.5 joint-cap diameters between axes, the shin the longest segment, the
-  hip link no longer than its servos need, the thigh level or a little above
-  at the standing pose (ADR-494). Evidence: hexapod trial 1's 48 mm thigh
+  hip link no longer than its servos need, and, for a sprawled leg only, the
+  thigh level or a little above at the standing pose (ADR-494). An upright
+  leg under the body, a biped's, stands with the thigh coming down to a
+  slightly bent knee (ADR-566). Evidence: hexapod trial 1's 48 mm thigh
   and 70 mm shin under 35 mm caps (1.4 and 2.0 diameters, knee raised)
   drew "upturned segments … cluttered" from frozen judge v2. **[judgement]**
   on the 2.5 figure: it is the run's own ratio, not a rated measurement.
@@ -225,6 +278,21 @@ it declares one.
   designed parts, not leftovers. A ball on the end of a stick is mixed
   evidence: it appears on `hexapod-g-minimal` (No) and also on
   `quadruped-c-exposed-mechanism` (Like).
+- **Compact has a number, and the roll limit is measured (ADR-566).** A
+  sole is no longer than a quarter of the robot's standing height and no
+  wider than an eighth of it; stability on one foot comes from the flat
+  strip and where it sits under the centre of mass, not from the foot's
+  area. The inward hip-roll limit is set short of the angle where the
+  feet first meet, bracketed outward from the standing pose one sweep
+  step at a time, with the last clear angle and the first contact
+  recorded (ADR-567): a range opened wide reports its `first_contact`
+  from the lower limit, the deepest contact on a negative inward side. Evidence: the
+  reference legged robot's passing feet were about 0.21 and 0.10 of its
+  height, and its roll limit came from the feet meeting at a swept angle;
+  G2's fresh-session check (`docs/probes/orun4/FRESH-SESSION.md`) built a
+  0.34 × 0.19 slab under "compact" with no number, and picked a limit the
+  sweep then found clear. **[judgement]** on the two fractions: an upper
+  bound the passing robot met with margin, not a measured optimum.
 - **Mass low and central.** The battery is the heaviest part and goes
   low and between the hips or axles **[judgement]**: this is an engineering
   rule, not a rated one. The Loves follow it
@@ -236,7 +304,7 @@ it declares one.
   Like, held-out). Their worst is the soft box on sticks
   (`hexapod-g-minimal`, No, dev).
 
-## 6. Printability **[judgement]**
+## 6. Printability **[judgement]** (base)
 
 None of the ratings tested these rules. They are manufacturing rules,
 carried over from the overlay and ot10:
@@ -278,7 +346,7 @@ v2 sees exactly that picture.
 Built by ot10 A2 (hero render: `render`'s `hero.png` and `look`'s `hero`
 view, ADR-412) and A6 (concept sheet).
 
-## 8. The order of design: inside out
+## 8. The order of design: inside out (base)
 
 The charter makes this the procedure, not a hint ("choose the actuators,
 controller, power, battery, sensors and the cable path; place them; then
@@ -288,10 +356,12 @@ inner width … was set by motor length and battery width before the frame
 was drawn"), `biped-c` ("I fixed the servo, battery and board positions
 first and grew the frame around them"), `quadruped-e` ("the battery's bay …
 set where the hips go") and `arm5-g` ("I placed the six servos and five
-electronics parts first"). The overlay teaches it as six steps:
+electronics parts first"). The base teaches it as six steps, for any
+machine; the style adds what it fixes at step 1 and step 4:
 
-1. **Concept.** Name the machine, its finish (§1, with the reason), its
-   palette and its proportions, before any geometry.
+1. **Concept.** Name what the machine does, its scale, how its parts are
+   made, its palette and its proportions, before any geometry (the style
+   adds its finish, §1, with the reason).
 2. **Parts.** Choose every purchased part from the catalog: the actuators,
    the controller, a servo driver if one is needed, the regulator and
    battery, the sensors, the fasteners. Choose the cable path too.

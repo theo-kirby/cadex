@@ -2135,8 +2135,17 @@ def train(
     # Cost is roughly one iteration: a `rollout()` for the observations plus
     # 32 forward passes at `highest` precision. Every hundredth iteration of
     # two thousand is one per cent.
+    #
+    # That estimate holds only because the rollout is jitted **once, here**
+    # (ADR-576). Called bare, outside `iterate`, its `jax.lax.scan` was
+    # traced and compiled afresh on every call: measured on a 4096-env
+    # biped, 43-45 s per snapshot against a 1.9 s iteration, and twice
+    # that at a checkpoint that also wrote a new best. The first snapshot
+    # still pays one compile; every later one reuses it.
+    witness_rollout = jax.jit(rollout)
+
     def snapshot(params, mean, variance, curve, wall):
-        _state, _key, traces = rollout(params, state, mean, variance, key)
+        _state, _key, traces = witness_rollout(params, state, mean, variance, key)
         seen_vectors = np.asarray(traces[6]).reshape((-1, len(names)))
         if seen_vectors.shape[0] >= WITNESS_SAMPLES:
             picks = np.linspace(

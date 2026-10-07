@@ -742,6 +742,50 @@ def test_a_task_with_neither_still_trains(tmp_path) -> None:
     assert evidence["training"]["episode_variation"]["reset_variation"] == []
 
 
+def test_a_checkpoint_does_not_recompile_the_rollout(tmp_path) -> None:
+    """ADR-576: checkpoints cost a rollout, not a compile.
+
+    ``snapshot`` runs the rollout outside ``iterate`` to draw its witness
+    observations. Called bare, its ``jax.lax.scan`` was traced and compiled
+    afresh every time -- measured at 43-45 s per snapshot on a 4096-env
+    biped whose iteration took 1.9 s, so a run with ``--checkpoint-every``
+    spent most of its wall time compiling the same scan again.
+
+    The claim is counted, not timed: with ``JAX_LOG_COMPILES`` on, a run
+    with three checkpoints and a run with six compile exactly as much.
+    Before the fix the second compiled six more scans than the first.
+    """
+
+    python = _venv_python()
+    if python is None:
+        pytest.skip("the offboard trainer's dependencies are not installed here")
+
+    prepared = pf.swing_up_bundle()
+    root = tmp_path / "project"
+    (root / "outputs").mkdir(parents=True)
+    (root / "outputs" / "job-model.xml").write_bytes(prepared["model_xml"])
+    (root / "outputs" / "job-task.json").write_bytes(prepared["task_bytes"])
+
+    environment = dict(os.environ, JAX_LOG_COMPILES="1")
+    environment.pop("PYTHONPATH", None)
+
+    def compiles(iterations: int) -> int:
+        result = subprocess.run(
+            [python, "-P", str(TRAINER), str(root / "outputs" / "job-task.json"),
+             "--out", str(tmp_path / f"run{iterations}" / "walk.cxpolicy"),
+             "--seed", "0", "--iterations", str(iterations),
+             "--envs", "8", "--unroll", "10", "--quiet",
+             "--checkpoint-every", "1"],
+            capture_output=True, text=True, env=environment, check=False,
+        )
+        assert result.returncode == 0, result.stderr[-4000:]
+        report = json.loads(result.stdout.strip().splitlines()[-1])
+        assert len(report["checkpoints"]) >= iterations - 1
+        return sum("Compiling " in line for line in result.stderr.splitlines())
+
+    assert compiles(6) == compiles(3)
+
+
 def test_the_variation_actually_reaches_the_physics(tmp_path) -> None:
     """The assertion that separates plumbed from live.
 

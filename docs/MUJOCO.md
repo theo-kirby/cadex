@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-04
+Verified against source: 2026-10-06
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -3097,8 +3097,10 @@ caller edit the policy filename and digest between commands. The original
 §7b design also lives outside the repository. Neither is a reproducible
 starting point for a fresh machine by itself.
 
-The repo does carry a headless rehearsal in
-`cli/tests/test_train.py::test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares`:
+The repo does carry a headless rehearsal, then in
+`cli/tests/test_train.py::test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares`
+(since ADR-563 split between `test_iterate_refuses_a_task_change_under_a_declared_policy_until_it_is_blanked`
+and `cli/tests/test_walk.py::test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates`):
 it builds a fresh plate-and-arm mechanism with the real kernel, exports the
 task, trains on CPU, installs and verifies the policy, exports a rollout,
 changes the reward weight, retrains and reviews both traces. Its test helper

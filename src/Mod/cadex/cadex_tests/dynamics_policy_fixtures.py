@@ -301,7 +301,7 @@ def policy_container(
     import struct
 
     bundle = prepared["bundle"]
-    channels = dyn._task_channels(bundle)
+    channels = dyn.policy_channels(bundle)
     actions = list(bundle["actions"])
     shapes = _layers(len(channels), len(actions), hidden)
     rng = random.Random(seed)

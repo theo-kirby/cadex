@@ -69,7 +69,7 @@ def _render(tmp_path, monkeypatch, *, inventory=None, **accepted):
     return root, path.parent, summary
 
 
-def test_render_writes_the_concept_sheet_with_the_hero_numbers_palette_and_line_views(tmp_path, monkeypatch):
+def test_render_writes_the_concept_sheet_with_the_hero_numbers_palette_and_line_views(tmp_path, monkeypatch, small_renders):
     root, directory, summary = _render(tmp_path, monkeypatch, inventory=_inventory())
     data = (directory / 'sheet.png').read_bytes()
     width, height, rows = _decode(data)
@@ -104,7 +104,7 @@ def test_render_writes_the_concept_sheet_with_the_hero_numbers_palette_and_line_
     assert _pixel(rows, sheet.WIDTH - 5, sheet.HEIGHT - 5) == sheet.PAPER
 
 
-def test_sheet_says_why_a_number_is_missing_rather_than_inventing_it(tmp_path, monkeypatch):
+def test_sheet_says_why_a_number_is_missing_rather_than_inventing_it(tmp_path, monkeypatch, small_renders):
     _, _, summary = _render(tmp_path, monkeypatch, inventory=None, inertials=False)
     numbers = summary['sheet']['numbers']
     assert numbers['mass_kg'] is None and 'no dynamics model' in numbers['mass_reason']
@@ -115,7 +115,7 @@ def test_sheet_says_why_a_number_is_missing_rather_than_inventing_it(tmp_path, m
     ({'attempt_revision': 'b' * 64}, 'not the revision drawn'),
     ({'digest': 'e' * 64}, 'does not carry the accepted digest'),
 ])
-def test_mass_is_refused_from_an_attempt_that_is_not_the_one_drawn(tmp_path, monkeypatch, pin, reason):
+def test_mass_is_refused_from_an_attempt_that_is_not_the_one_drawn(tmp_path, monkeypatch, small_renders, pin, reason):
     _, _, summary = _render(tmp_path, monkeypatch, inventory=_inventory(), **pin)
     assert summary['sheet']['numbers']['mass_kg'] is None
     assert reason in summary['sheet']['numbers']['mass_reason']
@@ -144,17 +144,35 @@ def test_line_view_draws_silhouettes_and_creases_but_not_coplanar_splits(tmp_pat
     assert max(inside) > 120
 
 
-def test_the_face_draws_every_glyph_and_marks_what_it_lacks():
-    canvas = sheet.Canvas(200, 12, sheet.PAPER)
-    end = canvas.text(0, 0, 'Ab9.%', 1, sheet.INK)
-    assert end == 30 and sheet.text_width('Ab9.%', 1) == 29
-    assert all(len(rows) == 7 and all(len(r) == 5 for r in rows) for rows in sheet.FONT.values())
-    unknown = sheet.Canvas(10, 10, sheet.PAPER)
-    unknown.text(0, 0, '§', 1, sheet.INK)
-    question = sheet.Canvas(10, 10, sheet.PAPER)
-    question.text(0, 0, '?', 1, sheet.INK)
+def test_the_face_is_a_plain_antialiased_sans_and_marks_what_it_lacks():
+    """ADR-568: the renders letter in Noto Sans from the shipped file, at the
+    5x7 face's capital height, in the case written, with grey edges."""
+    assert not hasattr(sheet, '_FONT_ROWS') and not hasattr(sheet, 'FONT')
+    assert sheet.FONT_FILE.name == 'NotoSans-Regular-subset.ttf' and sheet.FONT_FILE.is_file()
+    assert (sheet.FONT_FILE.parent / 'NotoSans-OFL.txt').is_file()
+
+    def ink(text, scale=2, size=(120, 40)):
+        canvas = sheet.Canvas(*size, (0, 0, 0))
+        end = canvas.text(4, 8, text, scale, (255, 255, 255))
+        rows = [y for y in range(size[1]) if any(canvas.pixels[3 * (y * size[0] + x)] for x in range(size[0]))]
+        return canvas, end, rows
+
+    capital, end, rows = ink('H')
+    assert (rows[0], rows[-1]) == (8, 8 + 7 * 2 - 1)  # capitals 14 px tall, top at y
+    assert end == 4 + sheet.text_width('H', 2)
+    values = set(capital.pixels[0::3])
+    assert 255 in values and len(values - {0, 255}) > 3  # antialiased, not a bitmap
+    lower, _, _ = ink('h')
+    assert lower.pixels != capital.pixels  # the case written is the case drawn
+    _, _, descender = ink('g')
+    assert descender[-1] > 8 + 7 * 2 - 1
+    assert sheet.text_width('Ab9.%', 2) > sheet.text_width('Ab9.%', 1) > 0
+    assert sheet.text_width('il', 2) < sheet.text_width('MW', 2)  # proportional
+    unknown, _, _ = ink('\N{SECTION SIGN}')
+    question, _, _ = ink('?')
     assert unknown.pixels == question.pixels
     assert sheet.fitted_scale('OT10-HEXAPOD-10', 432, 5) == 4
+    assert sheet.text_width('OT10-HEXAPOD-10', sheet.fitted_scale('OT10-HEXAPOD-10', 200, 5)) <= 200
 
 
 def _presented(root, revision, *, with_sheet=True):

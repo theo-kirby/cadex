@@ -35407,3 +35407,1220 @@ in the light theme and 13.35:1 in the dark, 457 px below the overlay. Before the
 test fails, with the line's top at 84 px against the overlay's bottom at 149 px.
 
 Verified against source: 2026-10-05. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-558 — The engine plays a policy under the command filter it was trained with (2026-10-06, orun4 F1)
+
+**Context.** The trainer has written `training.action_filter_alpha` (ADR-160)
+and `training.command_slew_deg` (ADR-162) into every `.cxpolicy` header since
+those flags landed, with a comment saying why: a policy trained with a filter
+has to be *played* with it. Nothing under `src/Mod/cadex` read either key.
+ADR-160 assumed evaluation needed nothing because `evaluate_episode` takes
+its commands from a caller-owned callable, and the caller that grew up around
+it, `rollout_policy`, passed the network's raw output straight through. So
+every rollout, checkpoint rollout (ADR-544) and evaluation played a filtered
+policy under a controller it had never seen. An owner session found it the
+hard way: a policy trained at α 0.5 failed evaluation that a filtered replay
+passed, and the session fell back to training unfiltered.
+
+**Decision.** `CadexDynamics.recorded_command_filter(header)` reads the two
+values (absent means 1.0 and 0.0, which is what a pre-flag policy was trained
+with; a value the trainer would refuse is refused, reason
+`policy_command_filter_invalid`). `rollout_policy`, the one path the worker's
+rollout op, `evaluate_success` and `cli/cadex_cli/checkpoint_runner.py` all
+take, applies them in the trainer's order: clamp to the action box, EMA, slew
+limit, with the first command of the episode passed through. At α 1.0 and no
+slew the callable returns the network's output untouched, so an unfiltered
+policy plays bit for bit as before. The rollout's result, the evaluation
+report and each evaluation and checkpoint trace's `policy` block carry
+`command_filter`, so what was played is on the record. No op argument, tool
+or protocol shape changes; the trainer is untouched.
+
+**Measured.** The reference session's policy `walk_r11_i300` (α 0.5),
+evaluated by `evaluate_success` on its own task bundle and model (digests
+match the project's recorded evaluation) on the spec's ten seeds:
+
+| | seeds passing | W1 survives | W2 tilt | W3 speed | W4 heading | W6 steps | W7 clearance |
+|---|---|---|---|---|---|---|---|
+| filter ignored (before) | **0/10** | 7 | 7 | 8 | 0 (37–59°) | 2 | 8 |
+| filter as recorded (after) | **9/10** | 10 | 10 | 10 | 9 (16–36°) | 10 | 10 |
+
+The "before" row reproduces that project's recorded evaluation exactly.
+
+**Test.** `src/Mod/cadex/cadex_tests/test_dynamics_policy_command_filter.py`:
+a rollout's issued commands equal a reference recurrence written in the test
+over the network's recorded raw output, for α alone and α plus slew; an
+evaluation's per-seed traces do the same and the report names the filter; a
+header with neither key, or with no training block, plays exactly as before
+and its frames equal those of an explicit 1.0/0.0; out-of-range values are
+refused. Without the change the filtered cases fail with 99 of 100 commands
+off the recurrence.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-559 — A run reads as what happened to it: stopped on request, or failed when killed (2026-10-06, orun4 F2)
+
+**Context.** Two endings read wrong on the dashboard. *A stop read as a failure:* the training
+loop's supervisor ended a run stopped through `train_stop` with the verdict `stopped` and the
+agent's reason, then wrote the dashboard's `run.json` as `failed`, because `loop._record` mapped
+every ending other than `finished` to `failed` (and `test_loop.py` pinned it). The owner's
+session stopped a run on purpose and the page called it failed. A walk told to stop (Ctrl-C,
+`SIGTERM`) relayed the signal to its leg and died with `running` on disk. *A kill read as
+training for ever:* `cadex walk` writes `run.json` as `running` when it starts and rewrites it
+when it ends (ADR-285); a walk that is killed leaves `running` behind, its trainer's
+`progress.json` goes quiet, and the stage overlay read **training** with "no telemetry update
+for over 30 s" with no end (`snowy-lodge-1033`). This finishes the unaccepted orun3 draft of the
+second half (branch `orun3-wip-adr558`, renumbered: ADR-558 is the command filter).
+
+**Decision.** `stopped` is a run status beside `running`, `ok`, `failed` and `pending`
+(`review_record.RUN_STATES`): a run ended on purpose, the stop's reason in `error`, its
+`outcome` "stopped on request". The supervisor writes it for its `stopped` verdict, the
+reason being `stop requested: <the reason given>`. `cadex walk` catches Ctrl-C and `SIGTERM`
+(`walk.run_leg` has already relayed the signal to the leg), lands its record as `stopped`
+with the signal named, and exits 1. The stage (`review_server.project_stage`) gains
+**stopped**, its line the reason, its chip in `--warn`, ahead of the `failed` branch, so a
+trainer that reports `failed` because it was terminated does not override the stop. A
+supervisor told to terminate by a signal is still `interrupted` in `train_status`, and
+`failed` on the page: no reason was given. *Killed:* `cadex walk` takes an exclusive `flock`
+on `<out>/walk.lock` (`review_record.hold_walk_lock`) before its record first says
+`running`, and holds it until it has landed its last record; the kernel drops it if the
+walk is killed. The reader (`review_record.run_process`) probes `walk.lock` and the
+supervisor's `supervisor.lock` with a shared, non-blocking lock on a read-only handle:
+`alive` when one is held, `gone` when one exists and none is, `unknown` when there is none
+(a run from before this ADR, or a copy without its locks). `read_run_record` reads a
+`running` record whose process is `gone` (re-read once, since a writer lands its verdict
+and then lets go) as `failed`, with `recorded_status: "running"` and the error "the process
+that wrote this run is gone and left no verdict: it was killed or crashed before it
+finished". The file is not rewritten; the page stays read-only (ADR-537). `recorded_status`
+is a new optional key of `GET api/run/<run>`. A PID was not used: it is reused after the
+process dies, and means nothing on a copy.
+
+*Assumption, owner to revise:* a walk has no `train_stop`, so for a walk a stop request is
+Ctrl-C or `SIGTERM` delivered to it, and its reason is the signal's name. `SIGKILL` is a
+kill, not a stop.
+
+**Test.** Each fails without its half of the change (measured by reverting each half alone:
+5 tests fail each time). `test_loop.py`: four runs started through `train_start`, one
+finished, one stopped through `train_stop` with a reason, one whose supervisor is
+`SIGKILL`ed, one whose trainer crashes, each read through `ReviewProject`'s stage as
+`ok`/not failed, **stopped** with the reason, **failed** "killed or crashed", **failed**
+with the trainer's error; the stopped run's `run.json` says `stopped`. `test_walk.py`: a
+walk that finishes, one sent `SIGTERM`, one sent `SIGINT` mid-train-leg, and one whose
+trainer crashes read `ok`, `stopped`, `stopped`, `failed`, on disk and in the stage; a
+`cadex walk` in its own process `SIGKILL`ed mid-training reads `failed` with
+`recorded_status: "running"` and the file untouched. `test_review_overlay.py`: a lock
+holder `SIGKILL`ed turns the stage from training to failed; with no lock file the old
+reading stands; a Chromium through `browser.py` watches the chip turn from training to
+**failed** on the page's own poll, and, for a run whose record lands `stopped` while its
+progress says `failed`, from training to **stopped** in `--warn` with the reason.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-560 — The agent guidance is a domain-neutral base plus named, optional styles a project chooses (2026-10-06, orun4 G1)
+
+**Context.** The engine's guidance (`Mod/cadex/CadexAgentGuidance.md`, ADR-446) taught every
+agent one design language, orun1's (ADR-479): a small printed robot that "looks
+engineered", with two finishes, horn caps, no face, tapered legs and designed feet. The owner
+asked (2026-10-03, charter B1) for design to be *form follows function*, never "look
+engineered", and for Cadex's guidance to hold for cranes, vacuum robots and whole
+mechanisms as well as small printed robots: a domain-neutral **base**, plus named,
+**optional** styles a project chooses, none on by default. It also named a past project
+(`hex3`) as a training anecdote.
+
+**Decision.** The base is `CadexAgentGuidance.md`. Its design section is rewritten around
+*form follows function*: the six inside-out steps stay, phrased for any machine (the
+concept fixes what it does, its scale, how its parts are made, its proportions and palette;
+the heaviest parts go low and central; the structure is a frame, spine, deck, column or
+hull), and the mechanical rules stay as they were (hold every part, nothing stuck on, mirror
+what has sides, a printed part is printable, hardware that shows is ordered, detail is
+real, finished edges, colour follows role). The legged rules become one general rule,
+*members follow the load*, with whatever meets the ground or the work a designed part.
+*A robot is a complete machine* becomes *a self-moving machine is complete*; the QDD line
+names a dynamic machine of several kilograms rather than a robot type; the `hex3` anecdote
+becomes its general lesson. A **style** is `Mod/cadex/CadexAgentStyle.<name>.md`, the same
+shape as the base (header comment, marker, tool placeholders), installed beside it by
+`src/Mod/cadex/CMakeLists.txt`. The first is `printed-legged-robot`, carrying what left the
+base: one of two finishes, two materials and one small accent, not the mascot box, no face,
+joints as horn caps, legs tapering both ways to designed feet, and long against their
+joints. G2's lessons from the reference project go into it and the base next.
+
+A project chooses a style in its `agent.json` (`"style": NAME`), written by a new CLI
+command, `cadex style --project DIR [NAME | --clear]`, which lists the styles the engine
+carries, refuses a name it does not, and touches no engine, row or commit. `cadex guidance`
+takes `--project` and prints the base, then the chosen style's rules after a blank line;
+with none chosen, the base alone. `cadex mcp`'s brief points at `cadex guidance --project
+<project>` and names the chosen style. A stored style the engine no longer carries makes
+`cadex guidance` a usage error rather than silently dropping it. The base tells the agent
+how to choose one, and to choose only when the person asks for it or for the kind of
+machine it describes. **No new tool**: the MCP tool surface is unchanged.
+
+*Assumption, owner to revise:* one style, not two. orun1's small-printed-robot rules
+(finishes, accent, no face) and the legged rules live together in `printed-legged-robot`,
+because the reference project the owner liked is that kind of machine, and splitting a
+`small-printed-robot` style out would invent a boundary no owner evidence draws.
+
+**Rejected.** A style chosen through the page: it is read-only (ADR-537). A new MCP tool
+to choose one: the charter asks for none, and `cadex style` is reachable from the agent's
+shell like every other leg. Styles as sections of one file: a file per style is what a
+later style adds without touching the base.
+
+**Test.** `src/Mod/cadex/cadex_tests/test_agent_guidance.py`: the base names no kind of
+machine or look (biped, quadruped, hexapod, legged, mascot, look engineered, face words,
+leg segment names) and says *form follows function*; every style is well-formed, shipped by
+CMake, and restates no base rule; the moved rules are in the style and not in the base; no
+guidance file names a project. `cli/tests/test_agent_guidance.py`: the base text is the
+whole of `cadex guidance` with no style chosen, with or without stored budgets; no style
+line appears in it; `cadex style` lists, chooses, refuses an unknown name and clears; the
+chosen style's every line follows the base; a stored budget keeps the style; a stored
+style the engine lacks is refused; the brief names the style; no text an agent is given
+names a project; neither does `guidance.py` or `docs/DESIGN-LANGUAGE.md`, which no
+longer says "look engineered"; and `cadex mcp`'s `initialize` instructions, read from the
+project's `agent.json`, name the chosen style or none. Each of the base tests fails on the pre-change guidance (it says "looks
+engineered", "walking leg" and `hex3`).
+
+**Docs.** `docs/DESIGN-LANGUAGE.md` is retitled *a base, and named styles*, opens with the
+two layers and a table of which rule is where and why, and marks each evidence section
+base or style; "look engineered" is gone. `docs/CLI.md` lists `cadex style`, `cadex guidance
+--project`, the `style` envelope key and `agent.json`'s `style`.
+
+## ADR-561 — The 3D viewport pans: shift- or middle-drag, two fingers on touch (2026-10-06, orun4 D1)
+
+**Context.** The viewport orbited about a fixed target and zoomed (ADR-330); there was no
+way to move the target, so a detail away from the bounding sphere's centre could only be
+zoomed past. The owner asked for pan by name (charter D1).
+
+**Decision.** `review_scene.js` pans by sliding the camera target in the view plane:
+shift-drag or middle-drag with one pointer, and on touch the midpoint of two fingers, whose
+spread still zooms in the same gesture. One canvas pixel moves the target by the field of
+view's millimetres per pixel at the target's distance, so the point under the pointer
+follows it. Middle-click autoscroll is suppressed on the canvas. **Fit** already rebuilt the
+whole camera, target included, so it resets a pan with no change. The gesture contract is
+listed in `docs/DASHBOARD.md` §5. No route, no protocol and no tool change.
+
+**Evidence.** `test_browser_pans_by_shift_middle_and_two_fingers_and_fit_resets` drives a
+real headless Chromium through `cli/cadex_cli/browser.py` (whose `drag` now takes a button
+and modifiers, and which gains `two_finger_drag`): a shift-drag of (120, 40) px moves the
+target, keeps yaw, pitch and distance, and moves the model's screen point by that drag
+within 12 px; a middle-drag pans back; Fit restores the fitted camera exactly; under touch
+emulation a two-finger drag pans without zooming and a pinch zooms. It fails on the
+pre-change page (`assert [15, 10, 20] != [15, 10, 20]`).
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-562 — The CLI suite gets lighter: first cuts, measured (2026-10-06, orun4 owner note)
+
+**Context.** The owner finds the CLI suite too heavy: about 18 minutes whole, run in
+three interleaved thirds because one command passes the shell's 10-minute limit. The
+owner's note sets the target at under 8 minutes as one foreground command with the GPU
+hidden, and a keep list: every contract test (tool surface, protocol and
+`docs/INTEGRATION.md`, the HTTP API, licensing, engine purity, the page against
+`docs/DASHBOARD.md`), at least one real-engine end-to-end lifecycle test, and every test
+orun4 added for a fix.
+
+**Measurement (before).** `--durations=40` over the thirds, `CUDA_VISIBLE_DEVICES=`,
+1197 tests: third `NR%3==0` 185 s; third `NR%3==1` passed the 10-minute limit and was
+re-run as two sixths, 450 s (`NR%6==1`) and 241 s (`NR%6==4`); third `NR%3==2` 141 s.
+Sum **1017 s (17.0 min)**. The heaviest single costs, by cause:
+
+- `test_loop.py` teardown: five tests spent **20.05 s each** in the `project` fixture's
+  teardown, which asked a run that was only registered — no supervisor, no lock — to
+  stop and waited the full 20 s for an answer nobody could give (100 s).
+- `test_walk.py`: about 30 fake-leg tests had a **~4.1 s floor**, three-quarters of it
+  pure-Python studio rendering of four 512 px review views and the 1024 px hero.
+- `test_evaluate.py`: each real-engine evaluation took ~30 s, of which ~28 s is the
+  evaluation film; two of the three tests assert nothing about the film.
+- `test_walk.py::test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher` ran
+  its local and remote real CPU walks once per mechanism (38 s + 37 s).
+
+**Decision.** Cut only what a faster or sibling test already claims:
+
+1. `test_loop.py`'s fixture waits 20 s only for a run whose supervisor is running or
+   holds its lock; a merely registered run gets the stop file (which a late supervisor
+   still reads) and a 2 s wait. No test removed.
+2. `test_walk.py`'s `fake_cadex` fixture draws the four review views at 64 px. The hero
+   stays 1024 px: the concept sheet is laid out for it and the silhouette measures read
+   it. Full-size views stay pinned by `test_look.py` and `test_render.py`. No test removed.
+3. **Removed** `test_evaluate.py::test_evaluate_never_restores_or_accepts_an_edited_working_script`:
+   its claim — an edited working script is neither executed, restored nor accepted — is
+   now asserted inside `test_an_accepted_policy_is_evaluated_as_one_command`, which
+   already ran the same evaluation and already checked `script.json` was unchanged.
+4. `test_evaluate.py::test_a_policy_that_fails_its_spec_exits_zero_with_the_verdict`
+   passes `--film none`: its claim is the verdict, the exit code and the `PROGRESS.md`
+   row, not the film, which `test_an_accepted_policy_…` and
+   `test_the_film_is_chosen_skipped_and_drawn_again_without_measuring` pin.
+5. **Removed** the `linear-carriage` parametrisation of
+   `test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher`: remote/local parity
+   is the dispatcher's argv and the artifact set, independent of the mechanism, and the
+   carriage's own real walk stays as `test_the_same_walk_handles_a_linear_carriage`.
+
+Nothing on the keep list is touched: no contract test changed, the real-engine lifecycle
+tests (`test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates`, the real-trainer
+tests in `test_loop.py` and `test_train.py`) stay whole, and no orun4 fix test changed.
+
+**Evidence (after).** Third `NR%3==1` (the three files changed) runs whole again, **467 s**
+(353 passed, 1 skipped), down from 691 s in two sixths; the other thirds are unchanged at
+185 s and 141 s. Suite **793 s (13.2 min)**, from 1017 s; 1195 tests, from 1197. This
+is a first cut, not the target: the suite is not yet under 8 minutes, and the next cuts
+are listed there.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-563 — The CLI suite gets lighter: second cuts, renders drawn small where pixels are not the claim (2026-10-06, orun4 owner note)
+
+**Context.** ADR-562 took the suite from 1017 s to 793 s and listed the next cuts. This
+ADR makes them, on the same keep list.
+
+**Decision.** No test file loses a claim that is not made elsewhere:
+
+1. A `small_renders` fixture (`cli/tests/conftest.py`) draws the review views at 64 px
+   and the hero at 64 px scaled up to 1024 px, so every file is still written at its
+   real size and the sheet still composes. Used by `test_walk.py`'s `fake_cadex` (its
+   claims are the legs, not the render), by `test_sheet.py`'s four render tests (the
+   sheet's numbers, palette swatches, line views and the hero-equals-left-half
+   identity, none of which is the hero's pixels), and by
+   `test_look.py::test_render_and_bridge_look_report_the_proxies` (the proxies come
+   from their own depth pass, not the hero). The full-size hero stays pinned by
+   `test_look.py::test_render_writes_a_1024_px_studio_hero` and
+   `test_render_draws_the_declared_role_in_the_declared_palette`, and the 512 px views
+   by `test_render.py`.
+2. `test_video.py`'s `test_dashboard_serves_the_studio_video_it_lists` and
+   `test_studio_video_leaves_the_environment_out_and_puts_the_floor_on_top_of_it` film
+   at 128 px: their claims are the listing and bytes served, and the floor height and
+   omitted part. The 512 px film stays pinned by
+   `test_studio_video_pins_its_identity_and_bound_with_no_browser` and the declared
+   materials test.
+3. `test_review_overlay.py`'s three activity and evaluate browser tests call the page's
+   own `poll` (`window.cadexReview.refresh`) instead of waiting up to 2 s for its timer,
+   and the 5 s sleep "two polls with the directory on disk" is two such calls. That the
+   timer carries a change with no reload stays pinned by
+   `test_the_overlay_follows_progress_json_on_the_pages_own_poll`, and orun4's two fix
+   tests (killed walk to failed, stopped run to stopped) are untouched.
+4. `test_train.py::test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares`
+   is **renamed and cut** to
+   `test_iterate_refuses_a_task_change_under_a_declared_policy_until_it_is_blanked`: it
+   keeps the trained policy, the refusal of a task change naming the old task digest,
+   and the blanked sweep with its new digest. Its second real CPU training, warm-started
+   across the change, the re-declare and the new policy's rollout are **removed**:
+   `test_walk.py::test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates` makes
+   the same claim with real legs (sweep, warm train, declare, rollout; new sha, new task
+   digest, comparable reward).
+
+**Evidence (per file, before → after, same machine, `CUDA_VISIBLE_DEVICES=`).**
+`test_walk.py` 211.8 s → 144.3 s (fake-leg tests 2.7 s → 0.3 s, 5.4 s → 0.5 s);
+`test_sheet.py` four tests 25.0 s → under 1 s each; `test_review_overlay.py` the three
+tests 25.9 s → 2.9 s; `test_train.py` 62.1 s → 48.9 s (the iterate 29.3 s → 16.0 s);
+`test_look.py` proxies 7.8 s → under 3 s; `test_video.py` the two films 15.5 s → under
+3 s each.
+
+**Evidence (whole suite).** As one command under `timeout 590` it was still killed at
+590 s. In thirds: `NR%3==0` 185 s → 166 s (400 passed), `NR%3==1` 467 s → 352 s (353
+passed, 1 skipped), `NR%3==2` 141 s → 129 s (441 passed). Suite **647 s (10.8 min)**,
+from 793 s (ADR-562) and 1017 s at the start; 1195 tests, no test file removed. Not yet
+the 8-minute target: what is left is mostly real-engine end-to-end walks
+(`test_walk.py` 63 s, 39 s, 19 s), real evaluations and real trainer runs, which the
+keep list protects at least one of.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-564 — The CLI suite gets lighter: last cut, the remote-walk parity test trains with the fixture trainer (2026-10-06, orun4 owner note)
+
+**Context.** ADR-563 left the suite at 647 s. The critic named one last cut: the 39 s
+remote-walk parity test trained twice with the real CPU trainer, though its claim is
+the remote leg's parity with the local one, and real CPU training through the walk is
+already pinned by `test_walk.py::test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates`.
+
+**Decision.**
+
+1. `test_walk.py::test_remote_walk_has_local_artifact_paths_with_a_cpu_dispatcher`
+   trains both walks with `test_loop.py`'s `FIXTURE_TRAINER` (a `.cxpolicy` from
+   `dynamics_policy_fixtures.policy_container`), locally through `train.TRAINER_SCRIPT`
+   and remotely through the stand-in dispatcher. Every other leg is still the real
+   engine: declare, rollout, render, section, clearance and inventory, and every parity
+   assertion stays, including the dispatcher's pinned argv. It now needs only mujoco,
+   not a training venv. Its device assertion reads the fixture's `"fixture"`.
+2. `dynamics_policy_fixtures.policy_container` builds its network over
+   `CadexDynamics.policy_channels` (ADR-408), not every task channel. A task with a
+   privileged channel (the hinged arm's `com` and `effort`) got a fixture policy the
+   engine rightly refused (`observes 5 channels where this task's policy reads 1`); a
+   task with none is unchanged.
+3. **Not merged:** `test_loop.py` has one real-trainer test, not two.
+   `test_one_round_of_the_loop_runs_through_the_product_path` already uses the fixture
+   trainer and pins the MCP evaluate round; the real-trainer test pins checkpoints and
+   the supervisor's digest. They do not duplicate each other.
+
+**Evidence.** The parity test 39 s → 18.6 s. The whole suite as **one** foreground
+command (`CUDA_VISIBLE_DEVICES= timeout 590 pixi run python -m pytest -q cli/tests`):
+**613.9 s (10.2 min)**, 1193 passed, 1 skipped, 1 failed. The failure was the timeout
+itself: `timeout` sent SIGTERM at 590 s while
+`test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates` was running (`the walk
+was stopped on request: SIGTERM reached it`); pixi did not exit, so the run finished
+past the limit. Alone, that test passed in 63.9 s. The suite went 1017 s → 793 s → 647 s
+(thirds) → 614 s (one command) over ADR-562–564. **The 8-minute target is not met**:
+what is left is real-engine end-to-end walks, evaluations and trainer runs the keep list
+protects (slowest: the real-CPU walk 53 s, the one-command evaluate 31 s, the loop's real
+trainer 25 s and fixture round 22 s). The thirds stay the way to run the suite in the
+foreground. No further cuts are taken under this owner note; the run moves to G2.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-565 — The reference legged robot's lessons enter the base and the printed-legged-robot style as general rules (2026-10-06, orun4 G2)
+
+**Context.** The owner's last design session produced a printed biped on bus servos that
+passed its evaluation 10/10 after 26 revisions and 13 training runs. Its `DECISIONS.md`
+records what each change did to the walk and the fit. orun4's charter (G2) asks that what
+worked become the system's: written into Cadex's own guidance as general rules with their
+reasons, the domain-neutral ones in the base and the legged ones and the look in the
+`printed-legged-robot` style (ADR-560), with nothing in Cadex naming that project. The
+ledger `docs/probes/orun4/LESSONS.md` lists nineteen lessons (a change with a recorded
+effect) and six choices weighed with no recorded effect, each with its evidence.
+
+**Decision.** Every ledger row has a destination, with the reason. The test for base
+against style is the charter's: a rule that would be wrong for a crane, a wheeled base or a
+fixed arm goes in the style; where unsure, the row says *owner to confirm*.
+
+- **Base, engine guidance** (`CadexAgentGuidance.md`): a solid built from tangent primitives
+  is measured against its computed volume and a rounded hull is built as a filleted slab;
+  a joint's limit and its spacing are set together from the sweep, asymmetric where the
+  geometry is, and re-read when a neighbouring part grows; *the simulated body is the
+  built body* (contact surfaces are unions of collision primitives, the support sits under
+  the measured centre of mass); in the walking task, speed bounded on both sides, a target
+  speed that makes the intended motion the easy one, the command range centred on the
+  rest pose through `command_limits_degrees`, progress paid only while upright, a ceiling
+  on charges against degenerate motion, and heading charged from the first run when the
+  spec bounds it.
+- **Base, CLI guidance** (`cli/cadex_cli/guidance.py`, *train so a good policy can be
+  kept*): checkpoints on every run; keep the checkpoint `evaluate` passes, not the last
+  iteration or a friendlier replay; warm-start only across reward, episode or disturbance
+  changes; never tighten `action_filter_alpha` on a warm start.
+- **Style** (`CadexAgentStyle.printed-legged-robot.md`): the look of a limb (tapered plate,
+  lightening window, round bosses); the knee actuator inside the thigh (*owner to confirm*:
+  taste, no measured effect); compact hull feet with a flat strip between twin keels,
+  centred under the centre of mass; hips wide enough, with inward roll limited, for the
+  feet to pass; pay for the step (a target speed full steps reach most easily, swing and
+  slip terms, a common-mode hip charge).
+- **Tool**: the ignored command filter is fixed by ADR-558, so its workaround enters no
+  guidance. **Not adopted**: a missing hip yaw as the cause of residual heading drift, an
+  observation never tested.
+
+No guidance file gives the reference project's numbers as defaults or names it; the
+existing test that no guidance file names a project still holds. The tool surface is
+unchanged.
+
+**Consequences.** An agent reading only the base now hears the mechanical and training
+lessons phrased for any machine; one in a project that chose the style also hears the
+legged rules and the look. Tests in both guidance suites pin each adopted rule in the file
+it went to and that no style rule leaked into the base. The fresh-session check, whether an
+agent given the style follows the foot, joint and clearance rules unprompted, is the next
+G2 unit and not claimed here. Three rows wait for the owner: the foot rule's phrasing, the
+direction of the target-speed move (it went up, not down), and the knee placement.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-566 — The printed-legged-robot style bounds the foot, scopes the level thigh, and derives the roll limit (2026-10-06, orun4 G2)
+
+**Context.** G2's fresh-session check (`docs/probes/orun4/FRESH-SESSION.md`) gave a new
+agent only the base guidance and the `printed-legged-robot` style (ADR-560, ADR-565). Its
+first accepted robot met most of the style unprompted, and missed it in three places, each
+traceable to the wording rather than to the agent:
+
+1. *"Compact, never large or flat"* carried no proportion. The agent built a 72 × 40 mm
+   sole under a 210 mm robot, about 0.34 and 0.19 of its standing height, which reads as
+   the large flat plate the rule names. The reference robot's passing feet were about
+   0.21 and 0.10 of its height.
+2. *"At the standing pose the thigh runs out level"* is a rule for a sprawled leg. The
+   agent declined it for an upright biped, rightly.
+3. *"Set the hip spacing and an inward roll limit together from where they meet"* let
+   the agent pick 10° inward first and accept it when the sweep passed. The limit was
+   checked by the sweep, never derived from the angle where the feet meet, which the
+   reference robot measured and set its limit short of.
+
+**Decision.** Three edits to `CadexAgentStyle.printed-legged-robot.md` only. The base is
+untouched.
+
+- **COMPACT HAS A NUMBER.** Each sole is no longer than a quarter of the robot's standing
+  height and no wider than an eighth of it, with the height and both ratios recorded in
+  the project's `DECISIONS.md`. Stability on one foot is credited to the strip (its two
+  contact lines and their spacing) and its place under the centre of mass, never to the
+  foot's area. The look checklist names a sole past either bound. The fractions are an
+  upper bound the passing robot met with margin, not a measured optimum: *owner to
+  confirm*.
+- **A sprawled leg and an upright leg.** The level-thigh pose is asked of a sprawled leg
+  (a spider's, a hexapod's) only. An upright leg stands with the thigh coming down to a
+  slightly bent knee. Both keep the one-line, uncrowded-joints rule.
+- **MEASURE WHERE THE FEET MEET.** Sweep the hip roll with the inward limit opened wide,
+  read the joint row's `first_contact` from `inspect scope=clearance
+  path=/clearance_sweep/joints`, set the inward limit at least two sweep steps short of
+  it, and record both angles. A limit picked first and found clear is named as not
+  derived.
+
+No number from the reference robot becomes a default; the bound is a ratio to the robot's
+own height. The tool surface and the protocol are unchanged.
+
+**Consequences.** Tests in both guidance suites pin each edit in the style and its absence
+from the base, and that the level thigh is asked only of a sprawled leg; both fail on the
+style as ADR-565 left it. `docs/DESIGN-LANGUAGE.md` §5 and the ledger rows L4 and L7 carry
+the same rules. Whether a fresh agent now meets the foot rule is the next unit: a second
+fresh session on a new `orun4-*` project.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-567 — The printed-legged-robot style brackets the roll limit outward from the standing pose (2026-10-06, orun4 G2)
+
+**Context.** ADR-566 told an agent to sweep the hip roll with the inward limit opened
+wide and read the joint row's `first_contact`. G2's second fresh session
+(`docs/probes/orun4/FRESH-SESSION-2.md`) found that the number does not mean that.
+`first_contact` is the first contacting sample counted from the range's **lower** limit
+(`docs/INTEGRATION.md`, the sweep section), so when inward roll is the negative
+direction it reports the deepest contact, not the onset nearest the standing pose. On
+that session's robot the feet met at −20° and a wide range opened to −45° reported about
+−35°; the style's rule, taken literally, would have put the limit near −25°, inside the
+collision. The agent noticed and bracketed instead.
+
+**Decision.** Reword the style's MEASURE WHERE THE FEET MEET procedure only. Bracket the
+meeting angle outward from the standing pose: set the inward limit one sweep step past
+it, sweep, and while the hip roll's row is clear move the limit out one step and sweep
+again, until a foot or shin meets the other leg. Record the last clear angle, the first
+contact and the pair that met; set the limit at least two sweep steps short of the first
+contact. The style now says why a wide range's `first_contact` must not be read for this.
+
+The engine's sweep semantics are **not** changed: `first_contact` stays the lowest-first
+contacting sample, which is documented and pinned, and a direction-aware onset field
+would be a protocol change of its own. The tool surface, the protocol and the base
+guidance are unchanged.
+
+**Consequences.** `test_the_roll_limit_is_bracketed_outward_from_the_standing_pose`
+(engine suite) pins the bracketing wording, the deepest-contact warning and the absence
+of the opened-wide procedure; it fails on the style as ADR-566 left it. The CLI suite
+pins that a project which chose the style receives it. `docs/DESIGN-LANGUAGE.md` §5 and
+ledger row L7 carry the same procedure.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-568 — Every render and video is lettered in Noto Sans, read from a shipped font file; the 5×7 face is deleted (2026-10-06, orun4 H1)
+
+**Context.** Every caption, label and clock Cadex draws into an image or video went
+through one routine, `CadexStudio.Canvas.text`, which drew a 5×7 bitmap face defined in
+the module (`_FONT_ROWS`), upper-casing everything. The charter (H1, B4) retires it for a
+plain sans-serif that is open-licensed, compatible with the repository's LGPL posture and
+shipped as a font file, never a prebuilt library, with nothing else about the renders
+changing.
+
+**Decision.** The face is **Noto Sans Regular 2.004** (Copyright 2015 Google LLC, SIL
+Open Font License 1.1, no Reserved Font Name), subset with fontTools to printable ASCII
+plus 17 symbols, hinting and layout tables dropped, outlines unchanged:
+`src/Mod/cadex/NotoSans-Regular-subset.ttf` (9,712 bytes), its licence beside it as
+`NotoSans-OFL.txt`, both installed with the module (`CMakeLists.txt`), recorded in
+`docs/PROVENANCE.md` §8j and `THIRD_PARTY_LICENSES.md` §4. Noto Sans is the sans most
+Linux desktops resolve `system-ui` to, the first family in the dashboard's `--font`
+stack. DejaVu Sans (also in the environment) was the alternative; it is wider and its
+licence carries renaming terms, so it was not chosen.
+
+`CadexStudio` reads the TrueType file in the standard library (`Face`: `cmap` format 4,
+`loca`, `glyf` simple and offset-placed composite glyphs, `hmtx`, `OS/2` cap height),
+flattens each quadratic curve into six segments, and rasterises with nonzero winding:
+each pixel's ink is the outline's exact horizontal coverage averaged over five
+scanlines, cached per glyph and size, alpha-blended over the image. No font or image
+library enters the engine or the payload. A text `scale` keeps its meaning: capitals are
+`7 × scale` px tall with their top at `y`, as the 5×7 face drew them, so every layout
+keeps its rows. Text is drawn in the case written; widths are proportional, and the
+blueprint's part numbers are right-aligned by measured width. A character the face lacks
+draws as `?`, as before; a diameter sign is drawn as the face's `Ø` instead of being
+spelled `DIA`, and a degree sign as `°` instead of `DEG`. The film's and the video's
+clocks read `0.90 s` instead of `T 0.90 S`. `film_digest` and `studio_digest` now hash
+the font file too, so a different face re-renders a cached film.
+
+**Measured** (`docs/probes/orun4/h1-*-before-after.png`, from one scratch copy of the
+reference project, accepted revision `14b7223ee485`, rendered before and after with the
+same harness): the hero has 0 changed pixels; the concept sheet 0 outside its lettered
+panel; the evaluation film's overview and detail sheets 0 outside the twelve clock boxes;
+the blueprint's views and lines are unchanged and its text column re-flows (the notes
+fit one line in the narrower face). The video frame differs outside its clock by at most
+32 grey levels, which is VP9's lossy coding responding to different clock pixels: the
+frames themselves are drawn by the same renderer the film sheets measure unchanged.
+
+**Consequences.** `_FONT_ROWS` and `FONT` are gone. `test_the_face_is_a_plain_antialiased_sans_and_marks_what_it_lacks`
+(CLI suite) pins the face file, the capital height, antialiasing, case, descenders,
+proportional widths and the `?` fallback, replacing the 5×7 face's test;
+`test_the_render_font_ships_with_its_licence` (engine suite) pins the install list, the
+licence text, the provenance entry and that no other font file is tracked under the
+engine module. The tool surface and the protocol are unchanged.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-569 — The print-bed hero: printed parts laid flat on as many beds as it takes, beside the purchased hardware (2026-10-06, orun4 H2)
+
+**Context.** The orun4 charter's H2 asks for a second hero when a policy passes
+evaluation: every printable part laid flat on a print bed, oriented as it would print and
+labelled, with a parts list of the purchased hardware beside it, on the dark floor. B3
+rules out slicing: every capable open slicer is AGPL, so Cadex neither vendors, imports
+nor runs one. This ADR is the picture; hooking it to a passing `evaluate`, `/api/project`
+and the 2D viewport is the next unit.
+
+**Decision.** `CadexStudio.print_bed(triangles, summary, fit, inventory, *, name, bed,
+gap)` returns the PNG and JSON-ready facts. Pure standard library, in the studio renderer
+beside the hero and sheets; nothing in `cadexd` imports it.
+
+- **Which parts.** A part is printed when the inventory calls its source uncatalogued and
+  no catalog part was cut to make it (`derived_catalog_sources`, a modified purchase).
+  World geometry the fit names is never a part. With no readable inventory it refuses;
+  with no printed part it refuses.
+- **How a part lies.** `lay_flat` seats it on its largest flat face it can rest on:
+  triangles grouped by normal (1/400 bins) and plane (0.2 mm bins), largest first, the
+  first whose plane has every vertex on one side, turned to face the bed. Winding is not
+  trusted, so either side counts. A part with no such face among the 64 largest keeps its
+  assembled attitude and says so. It is then turned about the vertical to its smallest
+  footprint rectangle (an edge of the footprint's hull lies along it), long side along X.
+  This is a slicer's "lay on face" default, not a judgment of strength, supports or
+  overhang. A declared print orientation is not modelled. If a script ever needs one,
+  that is a separate decision.
+- **How parts are packed.** `pack_beds` is MaxRects, best short-side fit, largest part
+  first, a quarter turn allowed. Each footprint grows by the gap on its far sides inside a
+  bed shrunk by the gap on its near ones, so parts are at least the gap apart and the gap
+  inside every edge. A part that fits no bed gets one of its own and is named under
+  `not_fitting`, as is a part taller than the bed. Default bed 256 × 256 × 256 mm (a
+  common desktop printer), gap 6 mm. Both are parameters, and the picture states the bed
+  it assumed.
+- **The picture.** 1536 × 1024, on the sheet's layout. A 1024 px studio shot (front
+  three-quarter, 20° round and 50° up) of the beds as dark 3 mm plates on the prototype
+  mat, beds in a grid, every part in its own appearance colour, its number on its
+  footprint centre (nudged clear of an earlier badge), and `bed n` under each bed when
+  there are several. The right-hand column has the project name, the revision and
+  `n beds, W x D mm`, then the numbered printed parts with footprint × height, then the
+  purchased hardware as `count x family part`, all from the inventory's catalog roll-up.
+  It is lettered in the H1 face (ADR-568).
+
+**Measured** on the scratch copy `orun4-biped-sts`, accepted revision `14b7223ee485`:
+10 printed parts on 2 beds at 256 mm (the first is 89% covered once grown by the gap;
+`foot_r` spills to the second), 1 bed at 300 mm, 10 hardware rows, 6.0 s per render,
+223 KB. Example: `docs/probes/orun4/h2-print-bed.png`.
+
+**Consequences.** `cadex_tests/test_studio_print_bed.py` (engine suite, 9 tests) pins the
+seat on a tilted plate, the refusal of a face with material beyond it, the no-seat
+fallback, non-overlap and bounds over 40 random packings, the multi-bed and oversize
+cases, the printed/purchased/cut/world split, the hardware rows and both refusals. The
+tool surface and the protocol are unchanged.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-570 — A passed evaluation presents the design that passed: the hero and the print bed, beside its report (2026-10-06, orun4 H2)
+
+**Context.** The orun4 charter's H2 (and B2) asks that a policy passing evaluation
+produce two heroes of the design that passed, on the dark floor, shown in the 2D
+viewport and listed in `/api/project`, with a failed evaluation making neither.
+ADR-569 drew the print-bed picture; nothing called it, and the studio hero was drawn
+only by `cadex render`, which rebuilds. `cadex evaluate` must never rebuild, restore or
+accept a script (ADR-457).
+
+**Decision.**
+
+- **When.** After the measurement and the film, `cadex evaluate` (and `--film-only`)
+  calls `evaluate.add_heroes`. A `pass` verdict draws both heroes; any other verdict
+  draws neither and removes `hero.png` and `print-bed.png` left in the directory by an
+  earlier pass. No new flag, no new tool: the agent's `evaluate` tool gets them by the
+  same call, and its bounded view names their paths under `heroes`.
+- **From what.** `render.retained_snapshot` builds the display block a rebuild reply
+  carries (`cadexd._display_block`: each output's solved placement and its
+  tessellation, paths made absolute) from the accepted attempt's retained
+  `result.json`, and reads it with `CadexStudio.snapshot`. It is refused when the
+  attempt is not the revision evaluated. The fit (for the floor) and the inventory
+  (printed or purchased, declared looks) are read from the pinned attempt through
+  `inspect`, and the inventory the film already read is summarised rather than read
+  again.
+- **What.** `CadexStudio.hero` draws the studio hero alone; `render_files` and it now
+  share `_scene` and `_hero`, so `hero.png` here is the picture `cadex render` draws.
+  `CadexStudio.print_bed` is ADR-569's. Both are written beside `evaluation.json` and
+  named in the report's `heroes` block (`cadex-heroes-v1`): `state` (`ready`, `partial`,
+  `failed`, `skipped`), `revision`, per hero its `file`, size and facts, and `errors`.
+  Each hero stands alone: a design with no printed part gets a hero and an error for
+  the print bed. A hero that cannot be drawn is reported and does not change the exit
+  code. The measurement is never touched.
+- **Kept out of history.** The evaluation's `.gitignore` names the two heroes beside the
+  film patterns: `--film-only` draws them again.
+- **The page.** Each `/api/project` evaluation row carries `heroes`: `hero` and
+  `print_bed`, the file names its report names, or `null`. `GET /evaluation/<name>/<file>`
+  serves them under the same allowlist as the film, so a hero file the report does not
+  name is a 404. The 2D viewport lists a pass's `hero` and `print bed` as images in the
+  Evaluations group, before that evaluation's film.
+- **Fixed with it.** `BED_APPROXIMATION` said parts are "packed in rows"; packing is
+  MaxRects (ADR-569), and it now says so.
+
+**Measured** on the scratch copy `orun4-biped-sts` (accepted `14b7223ee485`, 55 drawn
+objects, 259,437 triangles), `cadex evaluate --film-only` on its passing evaluation:
+the retained snapshot reads in 0.8 s, the hero takes 5.8 s and the print bed 5.9 s.
+The print bed is **byte-identical** to `docs/probes/orun4/h2-print-bed.png`, which
+ADR-569 drew from a rebuild snapshot of the same revision, so the retained-geometry
+path and the rebuild path agree.
+
+**Consequences.** `test_evaluate.py`: on the live engine a pass writes both heroes of
+the evaluated revision (both hand-modelled parts on one bed), `--film none` still makes
+them, and a fail makes neither and removes a stale one; the prose line reads the
+report's block and the envelope's view. `test_review_evaluation.py`: the row's
+`heroes`, the allowlist, and in Chromium the 2D viewport listing a pass's hero and print
+bed before its film and loading each. The tool surface and the protocol are unchanged.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-571 — A passed evaluation is filmed taking the task's shoves, each push marked, the outcome read from the episode (2026-10-06, orun4 H3)
+
+**Context.** The orun4 charter's H3 (and B2) asks that a policy passing evaluation be
+filmed taking horizontal pushes drawn from the task's disturbance model, each marked
+on screen when it lands, in the H1 font and the existing film pipeline, shown in the
+2D viewport beside the evaluation films, with the push magnitudes and the recovery
+outcome written beside it from the rollout itself: a robot that falls is filmed
+falling. An evaluation's own episodes are played under the **spec's** disturbances,
+and a spec may declare none: the printed biped's walk spec declares `disturbance=[]`,
+so none of its ten passing episodes was pushed, though its task trained against one
+0.3–1.5 N shove per episode.
+
+**Decision.**
+
+- **The episode.** After the heroes, `evaluate.add_shove` runs the evaluation's child
+  once more with `shove` set. `evaluate_runner.shove_task` narrows the spec: its first
+  seed only (a frozen evaluation seed, never the training seed); its predicates,
+  horizon, randomisation, reset variation, goals and sustained disturbances kept; its
+  shoves replaced by the **task's**. Each non-sustained task disturbance becomes
+  `SHOVES_PER_ENTRY = 3` pushes: its start window (cut back to the spec's horizon) is
+  cut into three equal slices no shorter than the push, each slice an entry with the
+  original force range, direction, arc, body and duration, so the pushes land in
+  order and never overlap; at most `MAXIMUM_DISTURBANCES` in all. The child then calls
+  the engine's own `evaluate_success` on that task, so the draws, the frames, the
+  recovery from each push (`CadexEvaluation.recovery`) and the ending are the engine's
+  reading, and the policy plays under its recorded command filter (ADR-558). Its trace
+  is `shove-trace.json`. Three pushes rather than the task's one, because one push in a
+  ten-second film is a single moment; the magnitudes are never raised past the
+  trained band.
+- **The film.** `shoves.film_shoves`, a module of its own because `film.py` names no
+  behaviour (`test_film.py` pins that), draws `shove.webm` with `film._video` (the studio
+  look, the dark floor, 10 fps, the H1 face) and a `draw` overlay, `shove_marks`: from
+  when a push lands, for 0.6 s or the push, an arrow in `--warn` (#FFE08A) ending at the
+  pushed body's centre, in the push's projected direction, longer for a harder push,
+  with its force beside it; top left, a line per landed push with `recovered in <s>`
+  once the engine reads the design as settled; on the last frame `stayed up` or
+  `fell: <termination>`. A fall ends the video where the episode ended. The
+  evaluation's `.gitignore` names `*.webm`, so the video stays out of the project's
+  history with the film.
+- **Beside it.** The report's `shove` block (`cadex-shove-film-v1`): `state`, `seed`,
+  `pushes` (newtons, azimuth, force, start, duration, recovery, recovered — read from
+  the episode's draws and measurement), `outcome`, `caption`, `failing` (the spec's
+  predicates the pushed episode missed, for reading; the verdict is untouched),
+  `drawn_from`, `trace`, `video`. "Settled" is said rather than "recovered" where the
+  engine's rest (tilt ≤ 10°, speed ≤ one COM height/s for 1 s) was never reached, since
+  a walker that keeps walking may never rest.
+- **When not.** A failed evaluation, `--no-video` and a task trained against no shove
+  film nothing (`skipped`, with the reason) and remove an earlier pass's video. A
+  child or film failure is `failed` with the reason and does not change the exit code.
+- **Everywhere a pass is presented.** `cadex evaluate`, `--film-only` and the agent's
+  `evaluate` tool. **Fixed with it:** the tool's bridge never called ADR-570's
+  `add_heroes`, so an agent's passing evaluation drew no heroes, though ADR-570 said it
+  did; the bridge now calls `add_heroes` and `add_shove` after `add_film`, and its
+  bounded view names `shove` beside `heroes`. The tool's schema and description are
+  unchanged.
+- **The page.** Each `/api/project` evaluation row carries `shove`: `state`, `video` (the
+  file the report names, or `null`) and `caption` (bounded to 600 characters). The
+  file allowlist serves the video. The 2D viewport lists a pass's `· shoves` video
+  after its heroes and before its film, and draws the caption under the video in
+  `#sheet-caption`.
+
+**Measured** on the scratch copy `orun4-biped-sts` (accepted `14b7223ee485`, policy
+`235b65eba72d`, which passed 10/10 unpushed): the shove episode on seed 9101 took 0.5 s
+and its 64-frame video 100 s. Pushes drawn: 0.33 N at 3.12 s, 0.90 N at 5.75 s, 0.55 N
+due at 6.95 s; the walker **tipped at 6.30 s**, after the second, and neither push was
+followed by a settled second. The video shows the fall, the third push is reported as
+never landing, and the caption says `fell: tipped at 6.30 s`. That is a finding about
+the reference policy, not the film: it passes its walk spec and does not hold three
+pushes from its own training band.
+
+**Consequences.** `test_evaluate.py`: the slices (order, no overlap, horizon, cap, no
+shove), the pushes, outcome and caption read from an episode including a fall and an
+unread recovery, the three skips with a stale video removed; on the live engine a pass
+films three pushes of the fixture's 2–4 N shove inside their slices with the trace's
+draws equal to the report's, `--film-only --no-video` skips and removes it, and a fail
+films nothing. `test_loop.py`: the agent's tool reports heroes and shove skipped on a
+fail. `test_review_evaluation.py`: the row, the allowlist, and in Chromium the
+captioned video after the heroes. No engine module, protocol op or tool schema changed.
+
+## ADR-572 — Status is an editor of its own, beside the 3D viewport, not an overlay on its model (2026-10-06, orun4 D2)
+
+**Context.** ADR-542 put what the project is doing — the stage chip and line, the run
+it reads, its numbers and sparklines, the trainer's warning, and since ADR-550 the
+agent's activity — in a box over the top right of the 3D viewport, collapsible to one
+line, the choice kept in `localStorage` `cadex.overlay`. It was the only part of the
+page that could not be placed: it covered the model, it rode with the 3D viewport into
+whatever area that went, and on a phone it took a fifth of the one screen. The orun4
+charter's D2 asks for it as an editor, `data-editor="status"`, shown as **Status**,
+placeable like the 3D and 2D viewports, with an area of its own beside the 3D viewport
+by default at a desk and a tab on a phone; the 3D viewport keeps the checkpoint
+scrubber and the revision timeline, which drive what it plays.
+
+**Decision.**
+- **One more editor.** `index.html` parks `#editor-status` in the shelf with the other
+  two; `review.js`'s editor order is 3D viewport, Status, 2D viewport, so a phone's tabs
+  read **3D**, **Status**, **2D**. The stage chip, `#status-stage[data-stage]`, is the
+  editor's tool and sits in its area's header; the body, `#status[data-stage]`, holds
+  the line and everything below it. Every `#overlay-*` hook is now `#status-*` with the
+  same content and rules; `renderOverlay` is `renderStatus`.
+- **The default layout** is the 3D viewport over three quarters of the width with
+  Status to its right. The layout key moves to `cadex.layout.v4`, so a browser holding a
+  v3 layout (which has no Status) starts from the new default instead of hiding Status.
+- **Collapse is removed.** An area is sized by its edges and a tab by the phone, so
+  the toggle, `setOverlayCollapsed` and the `cadex.overlay` key go; the page now keeps
+  three `localStorage` keys, not four.
+- **Nothing is drawn over the model** but the 3D viewport's own scrubbers, timeline and
+  model-status line, which stay where they were.
+
+**Consequences.** `test_review_overlay.py` becomes `test_review_status.py`, with every
+test kept on the renamed hooks. Its collapse-and-quarter-at-390-px test is replaced by
+one Chromium test: at the default desk layout Status is an area to the right of the 3D
+viewport, the same height, under half its width, with the chip in the header and
+nothing of it inside `#model` while the three timelines are; dragging Status's grip
+onto the middle of the 3D viewport swaps the two; Reset restores the default; at
+390 px the tabs are `3D`, `Status`, `2D`, the 3D tab carries no status, and the Status
+tab fills the width with the training stage and its warning. Measured at 1400 × 900:
+Status 317 × 769 px beside a 951 × 769 px 3D viewport; at 390 × 844, 390 × 756 px.
+`test_review_checkpoints.py` drops its "below the overlay" assertions (nothing is above
+the scrubbers now); `test_review_design.py` pins the Status hooks, the two-area default
+and the three tabs; `test_http_api.py` pins the three keys. `docs/DASHBOARD.md` §1, §2,
+§6 and §12 and `docs/CLI.md` say the same. No route, API key, engine module, protocol
+op or tool schema changed.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-573 — Layouts come from one-click presets; an area may be empty; a drag previews where it lands (2026-10-06, orun4 D3)
+
+**Context.** Since ADR-534 the screen is a tree of areas a reader splits, resizes,
+docks and swaps one gesture at a time, with View → Layout → Reset as the only way
+back. Getting from the default to, say, three rows took four or five gestures, and
+the dock hint was an unlabelled tint over a ten-pixel grip at 60 % opacity. The orun4
+charter's D3 asks for one-click presets — single, side by side, stacked, 2 over 1,
+1 over 2, three columns, three rows, quad — with a visible drag handle and a drop
+preview, the layout still the browser's own (B5).
+
+**Decision.**
+- **Presets.** `layout.js` gains `preset(name)` over eight shapes (`single`, `side`,
+  `stacked`, `two_over_one`, `one_over_two`, `columns`, `rows`, `quad`). It replaces
+  the tree with that shape, every area an equal share, filled in reading order with the
+  editors in the page's order (3D viewport, Status, 2D viewport), un-maximizes, and
+  saves. View → Layout shows them as eight icon buttons, `#layout-presets
+  button[data-preset]`, under Reset; a click applies one and closes the menu.
+- **Quad's fourth area is empty.** The critic asked for the smallest reversible rule:
+  a second 2D viewport if the layout can show an editor twice cheaply, else an empty
+  area with the picker. It cannot: an area *moves* its editor's own elements so a
+  canvas keeps its WebGL context (ADR-534), and a second 2D viewport would need a
+  second sheet stage, source list and fit state in `review.js`. So `empty` is a
+  pseudo-editor that may appear any number of times. It has the editor picker
+  (listing `Empty` only while it is current) and a line, "Empty area: pick an editor
+  from the menu at the top left"; picking an editor there swaps it in and leaves the
+  editor's old area empty. It docks, swaps, maximizes and closes like any area, is
+  kept in `cadex.layout.v4` (the stored form is a superset of v4's, so the key
+  stays), and `show(type)` fills an empty area before it splits one. Undoing the rule
+  later is one shape: give quad a fourth editor when one exists.
+- **A discoverable drag.** The grip is a dotted strip at 80 % opacity with a grab
+  cursor, at full opacity over a tinted chip when the header is hovered; the drop
+  preview names where the area will land: **Swap**, **Dock left**, **Dock right**,
+  **Dock above** or **Dock below**.
+
+**Consequences.** `cli/tests/test_review_layout.py` (Chromium, 1280 × 900): every
+preset is applied through the View menu by one click and its areas' editors and
+geometry checked against the shape within 2.5 % of the screen per side (1, 2, 2, 3, 3,
+3, 3 and 4 areas), each with a picker, the menu closed and the tree kept; quad's empty
+area offers the picker and the line, picking the 2D viewport there moves it in, and
+the layout survives a reload; on side by side the 3D viewport's grip is dragged to
+Status's right edge, the preview covers that half and reads "Dock right", and the drop
+puts Status first; Reset restores the default tree. `docs/DASHBOARD.md` §2 and §12
+say the same. No route, API key, `localStorage` key, engine module, protocol op or
+tool schema changed.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-574 — A run stopped on request before ADR-559 reads stopped; an ended run is never a quiet trainer (2026-10-06, orun4 F2)
+
+**Context.** ADR-559 made a stop request write a `stopped` record, but only for
+endings written after it. A loop run stopped through `train_stop` before it has a
+`run.json` that the old `loop._record` wrote as `failed`, while its supervisor's
+`training-status.json` says `stopped` with the stop's reason. The reader only looked
+at `run.json`, so the Status editor and `/api/project`'s stage said **failed** for a
+run that was asked to stop (orun4's closing report, §7 defect 1). Under the same run
+it also warned "no telemetry update for over 30 s; process state unknown", because the
+trainer was killed mid-run and its `progress.json` still says `training`.
+
+**Decision.**
+- `read_run_record` reads a `failed` record as `stopped` when the run directory's
+  `training-status.json` (schema `cadex-training-status-v1`, same run) says
+  `stopped`. Its `error` is that file's reason, and `recorded_status: "failed"`
+  says what the file holds. The file is left as written: the page reads and never
+  writes or migrates. A run killed with no stop request has a supervisor that wrote
+  `interrupted` or `failed`, or nothing, and still reads **failed**.
+- `training_telemetry` marks a trainer snapshot `stale` only while the run's record
+  is live. When the record has ended (`ok`, `failed`, `stopped`) and the snapshot
+  still says `starting` or `training`, its state is `ended`, with the reason "the
+  run ended <status>; its trainer's last snapshot says it was still training". The
+  Status editor's run line reads `run <name> · ended`, with no quiet-trainer warning
+  under it.
+
+**Consequences.** `test_review_status.py::test_a_run_stopped_before_adr559_reads_stopped_and_a_killed_one_failed`
+covers both: the stage reads `stopped` with the reason, `/api/run` gives `stopped` and
+`recorded_status: "failed"`, the file still says `failed`, the telemetry is
+`ended`, not `stale`, and the same run with an `interrupted` supervisor reads `failed`. It fails
+without the change. On `orun4-biped-sts` the stage now reads stopped for `walk-r13`,
+with its reason. `docs/DASHBOARD.md`'s Status row says the same. No route, schema,
+engine module, protocol op or tool changed.
+
+## ADR-575 — A project is on the dashboard from its agent's first tool call, not its first script (2026-10-06, orun4 long-term)
+
+**Context.** `cadex app` counted a directory as a project only once it held the
+engine's `script.json`, and the engine writes that file with the first accepted
+script. An agent working a fresh project through `cadex mcp` writes the activity log
+(`review/activity.jsonl`, ADR-549) at its first tool call and takes the CLI lock
+(`.cadex-cli.lock`) when the engine opens, minutes before its first script lands.
+Until then the index left the project out and `/p/<name>/api/project` answered
+`{"error": "not found"}` — the defect orun3 left (orun4 report, §7).
+
+**Decision.** `ProjectsDirectory` counts a subdirectory as a project when it holds
+any of `PROJECT_MARKERS`: `script.json`, `review/activity.jsonl`, `.cadex-cli.lock`
+or `agent.json` — the engine's manifest and the files the CLI writes into a project
+before it. The project reads as it already did with no manifest: nothing accepted
+(`accepted.available: false`, "no script.json"), no runs. A directory the CLI never
+touched is still not a project. The server still writes nothing.
+
+**Consequences.** `test_app.py::test_a_project_being_worked_on_is_listed_before_its_first_script`
+covers each marker on an `orun4-*` directory with no `script.json`: listed by
+`/api/projects`, a 200 `/api/project`, the page served, and a plain directory beside
+it still 404. It fails without the change. `docs/CLI.md`'s `cadex app` row says the
+same. No route, response schema, engine module, protocol op or tool changed.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-576 — A checkpoint costs a rollout, not a compile: the witness rollout is jitted once (2026-10-06, orun4 long-term)
+
+**Context.** orun3 left a defect: the trainer stalls 37–39 s before each
+checkpoint. The charter asked for the time to be measured before anything
+changed. An instrumented copy of `training/cadex_train.py`, run on the
+reference biped's 4096-env walk task (`--unroll 24 --epochs 4 --hidden 256 128`,
+`--checkpoint-every 2`, 7 iterations, holding the machine lock), timed every
+step of a checkpoint:
+
+| step | per checkpoint |
+|---|---|
+| `snapshot`'s `rollout()` (the witness observations) | **42.5–45.4 s** |
+| device-to-host copy of the traces | 0.002 s |
+| witness forward passes at `highest` precision | 0.002–0.25 s |
+| `policy_header` | < 0.001 s |
+| `checked_policy` (witness check and encoding) | 0.033 s |
+| `write_atomically` (176 KB) | < 0.001 s |
+| a training iteration, for scale | 1.9 s |
+
+A checkpoint that also wrote a new `best` paid it twice. The cause was one
+step: `snapshot` called `rollout` bare, outside the jitted `iterate`, so its
+`jax.lax.scan` was traced and compiled again on every call. With
+`JAX_LOG_COMPILES=1` on the swing-up fixture, six iterations at
+`--checkpoint-every 1` compiled `jit(scan)` 16 times and three iterations
+compiled it 10 times.
+
+**Decision.** `train()` jits the rollout once, `witness_rollout =
+jax.jit(rollout)`, and `snapshot` calls that. Nothing else changes: the
+rollout's result is still discarded, so a run with checkpoints takes the same
+trajectory as one without, and the witness, the container and the files are as
+before.
+
+**Consequences.** On the same task and seed, the first checkpoint pays one
+compile (42.5 s) and every later one takes 1.9 s; seven iterations with four
+checkpoint writes went from 274.0 s to 144.6 s of trainer wall time.
+`test_dynamics_policy_trainer.py::test_a_checkpoint_does_not_recompile_the_rollout`
+counts JAX compiles for a three- and a six-iteration run with a checkpoint every
+iteration and asserts they are equal; it fails on the old trainer (more compiles
+with more checkpoints) and passes now. Like the file's other trainer runs it
+needs the `training/requirements.txt` venv and skips under pixi. No dependency,
+CLI flag, file format, engine module, protocol op or tool changed.
+`training/README.md` notes the one compile.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-577 — The checkpoint rule says what a checkpoint does and what it costs (2026-10-06, orun4 long-term)
+
+**Context.** orun3 left a defect: the guidance told the agent to set
+`checkpoint_every` whenever the owner was watching, a ritual rather than a
+rule. ADR-565 had since reworded it to "Set checkpoint_every on every run",
+still with no cost attached, written when a checkpoint stalled the trainer
+about 40 s. ADR-576 measured and removed that stall: the first checkpoint pays
+one compile of the witness rollout (42.5 s on the reference legged task) and
+every later one about one training iteration (1.9 s there).
+
+**Decision.** The base guidance's TRAIN SO A GOOD POLICY CAN BE KEPT
+paragraph (`cli/cadex_cli/guidance.py`) states the rule as a trade. *What it
+does:* every N iterations a complete, witness-checked policy and the best so
+far, so a run's best policy survives when it is not its last and a stopped run
+still leaves one; on a local run each checkpoint is also played in the
+viewport, on the CPU beside training (ADR-544). *What it costs:* one compile at
+the first checkpoint, tens of seconds on a large task, then about one training
+iteration each, plus one policy file. Every 10 to 25 iterations adds a tenth of
+the run's time or less after that compile, so it is left off only for a run the
+agent will throw away. The rest of the paragraph (choose by evaluating
+checkpoints, warm and cold starts, the filter on a warm start) is unchanged.
+
+**Consequences.**
+`test_agent_guidance.py::test_the_checkpoint_rule_says_what_it_does_and_what_it_costs`
+pins both halves and that the rule says neither "on every run" nor "watching";
+it and the updated ADR-565 test fail on the old text. The paragraph is in the
+base, so it reaches every project with or without a style. No tool, setting,
+default, protocol op or trainer behaviour changed; `checkpoint_every` still
+defaults to 0.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-578 — The idle-stage test compares the one timestamp it wrote, not a second reading of the clock (2026-10-06, orun4 long-term)
+
+**Context.** `test_review_status.py::test_designing_turns_idle_once_the_window_passes`
+wrote a revision's `saved_at` from one reading of the clock, then asserted
+that the stage's `since` started with the minute of a *second* reading. When a
+minute turned between the two readings the test failed, though the server was
+right: `since` is the accepted revision's own `saved_at` (ADR-542). The orun4
+report listed it as a known flake, and a flaky test means a green gate is
+not reliably green.
+
+**Decision.** The test reads the clock once for the timestamp it asserts on,
+and compares `since` with that string exactly, to the second, rather than a
+minute prefix. The test's helper reads a module-level `_clock`, and the test
+also runs with that clock replaced by one that ticks across a minute
+boundary between writing `saved_at` and any later reading. Its windows sit
+120 s either side of `DESIGNING_WINDOW_S`, so a clock up to a minute behind
+the server's still lands each case on the same side. The server is unchanged.
+
+**Consequences.** The `across_a_minute` case fails on the old assertion every
+time (`'…T22:45:59+00:00'.startswith('…T22:46')`) and passes on the new one;
+the `wall` case is the test as it ran before. Nothing else in the suite or the
+product moves.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-579 — The CLI suite gets lighter again: a passed evaluation's presentation drawn small where pixels are not the claim (2026-10-06, orun4 owner note)
+
+**Context.** ADR-564 left the suite at 614 s as one command. Since then H2 and H3
+(ADR-570, ADR-571) made a passed evaluation also draw two 1024 px heroes and a 512 px
+shove video, and the suite regressed. Measured again with `--durations=40` in the
+GPU-hidden thirds: `NR%3==0` 150 s (395 passed), `NR%3==1` 341 s (324 passed,
+1 skipped), `NR%3==2` 231 s (491 passed). That is **722 s** in all. The two evaluation command tests had
+gone from about 30 s to **74.0 s**
+(`test_the_film_is_chosen_skipped_and_drawn_again_without_measuring`) and **61.3 s**
+(`test_an_accepted_policy_is_evaluated_as_one_command`). Under a profiler about two thirds of
+that was the studio frames of the shove video and the seed video, and a quarter was
+the two heroes. Neither test asserts a pixel of them.
+
+**Decision.** No test is removed and no assertion changes:
+
+1. A `small_presentation` fixture (`cli/tests/conftest.py`) builds on `small_renders`
+   (ADR-563). It films at 128 px and draws the heroes at 64 px, scaled up to their real
+   1024 px. The two evaluation command tests and
+   `test_loop.py::test_one_round_of_the_loop_runs_through_the_product_path` use it.
+   Their claims are the files a pass and a fail leave, the report and envelope blocks,
+   the pushes read back from the shove episode and the marked-frame count, which still
+   holds at 128 px. Full-size drawing stays pinned where it is the claim: the 512 px
+   studio video in `test_video.py`, the 1024 px hero in `test_look.py`, and the print
+   bed in the engine suite's `test_studio_print_bed.py`. No test now draws the shove
+   video at 512 px.
+2. `test_walk.py`'s two leg-timeout tests (`…runs_out_of_time…`,
+   `…kills_the_grandchild_that_ignored_the_term`) set `LEG_TERMINATION_GRACE_S` to 1 s.
+   Their claim is the bound and the subtree kill. The grace's own length is pinned by
+   `test_stopped_leg_preserves_descendant_cleanup_grace`.
+3. `test_loop.py`'s `project` fixture waits 0.5 s, not 2 s, on a run that was only
+   registered (ADR-562). The stop file it writes is what a late supervisor reads.
+4. `test_render.py::test_real_part_only_and_empty_refusal` uses `small_renders`. Its
+   claims are the refusal, the object set, the revision and a byte-identical repeat.
+   The 512 px real views stay pinned by `test_real_render_revision_images_pose_and_project_commit`.
+
+**Evidence.** Per test, before → after: the two evaluation command tests 74.0 s → 11.7 s
+and 61.3 s → 11.0 s; the loop round 22.0 s → 7.3 s; the two leg-timeout tests
+7.0 s → 3.0 s each; the five registered-run teardowns 2.0 s → 0.5 s; the render
+refusal 10.8 s → under 3 s. **The whole suite as one foreground command**
+(`CUDA_VISIBLE_DEVICES= pixi run python -m pytest -q -p no:cacheprovider cli/tests`):
+**565.7 s (9.4 min)**, 1210 passed, 1 skipped, inside the shell's limit. It no longer
+needs splitting into thirds. **The 8-minute target is still not met.** The slowest
+tests left are on the keep list or claim a real leg: the real-CPU walk lifecycle 59.8 s, the
+loop's real trainer 20.9 s, the remote-walk parity 18.6 s, the second-mechanism walk
+17.5 s, the iterate refusal 14.6 s and the real trainer's digests 10.7 s. Together that is 142 s. The
+other 1200 tests share about 425 s.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-580 — The CLI suite under eight minutes: a served page stops promptly, and the walks draw small where pixels are not the claim (2026-10-06, orun4 owner note)
+
+**Context.** ADR-579 left the suite at **566.3 s** as one command (measured again before
+this change: 566.3 s, 1210 passed, 1 skipped). The owner's target is under 480 s. Two
+things were left. First, the walks: `cadex walk` draws its review render (four views and
+a 1024 px hero) in the calling process, and four real-engine tests drew it at full size
+while asserting only files, covered pixels, bounds and byte-identity. Two of them also
+trained a real CPU policy whose training was not their claim. Second, the dashboard's
+serving thread used `serve_forever()`'s standard-library 0.5 s idle poll, so every
+`shutdown()` waited about half a second. About 150 test servers stop in one suite run,
+and a person restarting `cadex app` waited the same half second.
+
+**Decision.** No test is removed and no assertion is weakened:
+
+1. `review_server.serve` and `serve_projects` poll for shutdown every
+   `SHUTDOWN_POLL_S = 0.05` s. `test_app.py::test_a_served_page_and_the_app_stop_promptly`
+   pins a stop under 0.15 s for both servers, and it fails at 0.5 s.
+2. `test_walk.py`'s real lifecycle walk uses `small_presentation`. Its claims are the
+   legs, the reviews, git history, preserved artifacts and a D4 video that decodes, not
+   pixels. The remote-walk parity and the linear-carriage walk use `small_renders`.
+   Byte-identity across local and remote still holds at 64 px. The full-size review
+   views stay pinned by `test_render.py::test_real_render_revision_images_pose_and_project_commit`.
+3. The linear-carriage walk (`test_the_same_walk_handles_a_linear_carriage`) and the
+   iterate refusal (`test_train.py::test_iterate_refuses_a_task_change_under_a_declared_policy_until_it_is_blanked`)
+   train with the fixture trainer (`test_loop.FIXTURE_TRAINER`, as the remote-walk parity
+   has since ADR-564). Their claims are the slide joint through export, declare and
+   rollout, and the refusal of a task change under a declared policy. Real CPU training is
+   still pinned three times: by the real lifecycle walk (three real legs), by
+   `test_the_real_trainer_trains_the_toy_and_the_engine_digests_agree`, and by the loop's
+   `test_the_real_trainer_runs_under_the_supervisor_and_the_engine_takes_its_policy`. These
+   two tests now run without a training venv as long as mujoco imports.
+
+**Evidence.** Per test, before → after: the real lifecycle walk 59.9 s → 46.7 s; the
+remote-walk parity 18.7 s → 10.0 s; the carriage walk 17.4 s → 4.9 s; the iterate refusal
+14.7 s → 5.9 s. `test_review_server.py`, `test_review_evaluation.py` and `test_app.py`
+together took 36.0 s → 16.7 s from the shutdown poll alone. **The whole suite as one
+foreground command** (`CUDA_VISIBLE_DEVICES= pixi run python -m pytest -q -p no:cacheprovider cli/tests`):
+**474.4 s (7 min 54 s)**, 1211 passed, 1 skipped. That is under the 8-minute target, but
+with only about 5 s of margin. The slowest tests left are on the keep list or claim
+real training: the real lifecycle walk 46.7 s, the loop's real trainer 20.9 s, the two
+evaluation command tests 11.8 s and 11.1 s, and the real trainer's digests 10.6 s.
+
+## ADR-581 — The smoke check's first frame measures a pair the way the engine published it (2026-10-06, orun4 report defect 2)
+
+**Context.** `cadex smoke` checks that frame 0 of its MuJoCo trace agrees with
+the clearance the engine published for the accepted revision. The engine measures
+a near pair between the two solids' **shells** (ADR-425, ADR-437), and a far pair
+by the gap between their exact boxes, as a `culled` lower bound (ADR-423). The
+smoke child (`cli/cadex_cli/smoke_geometry.py`) checked both with a solid's
+`distToShape`. That call takes OCCT's inner-solution branch: it answers 0 when it
+classifies a vertex of one solid as inside the other. On the second fresh-session
+biped (66 components, 2,080 pairs), `shin_r`'s classifier calls the point
+(-18.25, 65.63, 11.0) inside, although the shin's box ends at y = -23.7. So
+`foot_l`/`shin_r` measured 0.0 mm against a published culled bound of
+60.995594590128576 mm, and smoke refused the design with
+`initial pose disagrees with published clearance: ('foot_l', 'shin_r')`. The
+session's own note called this "a sub-1e-5 mm mismatch". Measured, it is 61 mm,
+and the cause is the measure, not the tolerance.
+
+**Decision.** The agreement check measures each pair the way the engine did. A
+culled row is measured by the exact-box gap (`optimalBoundingBox(False, True)`,
+the engine's box). It must reach the bound, as before, and on this pair it
+reproduces 60.995594590128576 to the last digit. Any other row is measured as the
+distance between the two shells' compounds, which must equal the published value.
+The tolerances are unchanged. A disagreement now names both numbers. Common volume
+and the per-frame volume check are unchanged.
+
+**Evidence.** On a scratch copy of the design, frame 0 alone now passes the
+agreement over all 2,080 pairs (64.7 s). The shell distance of `foot_l`/`shin_r`
+is 67.10 mm. `test_smoke_geometry_bound.py::test_the_first_frame_measures_shells_the_way_the_engine_published_them`
+nests a 1 mm sphere in a 10 mm box. The engine's shell distance there is 4 mm and
+a solid's `distToShape` is 0, so the test fails without this change and passes
+with it. The existing culled-bound test is unchanged and passes.
+
+**Consequences.** The design still does not pass smoke, and that result is now
+honest:
+- every failing pair is a bolt in the part it threads into (4.5–10.3 mm³ each,
+  33 pairs), which the per-frame check counts as overlap whatever fit intent the
+  static row declared;
+- the exact-geometry stage takes about 5.5 s for each later frame, so the default
+  2 s, 101-frame trace exceeds the shared 300 s bound.
+
+Both stay open under the orun4 report's defect 2.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-582 — The smoke check reuses a pair's volume while its relative pose holds, and boxes each part once (2026-10-06, orun4 report defect 2)
+
+**Context.** After ADR-581, `cadex smoke` on the second fresh-session biped
+(66 components, 2,080 pairs, the default 2 s and 101-frame trace) was refused
+with `exact smoke geometry exceeded the shared wall-time bound` at 300.11 s.
+On a scratch copy, profiled over frames 1–3:
+- each frame ran about 144 `common` booleans (433 box-overlapping pairs over
+  3 frames) for about 5.0 s; the rest of the frame was under 0.4 s;
+- 166 of those 433 pairs measured more than 0.001 mm apart, but the shell
+  distance that would prove it cost 13.6 s against the booleans' 15.1 s, so
+  ADR-436's rule (skip the boolean for a pair measured apart) saves nothing
+  here: a distance is as dear as the boolean it would skip;
+- frame 0 took 64.7 s, most of it two `optimalBoundingBox` calls per culled
+  pair, about 4,000 calls for 65 shapes.
+Over the 101 frames, 527 of the 2,080 pairs keep their relative pose: parts
+on one MuJoCo body, such as a bolt and the plate it holds, differ frame to
+frame by at most 8.6e-19 in the relative matrix. Every moving pair differs
+by more than 1e-6.
+
+**Decision.** In `cli/cadex_cli/smoke_geometry.py`:
+1. **A common volume is invariant under a rigid motion of both shapes.** A
+   pair whose relative placement matches, within 1e-9 per matrix entry, the
+   one at which its volume was last measured keeps that volume; otherwise the
+   boolean runs and the new pose is remembered. The box cull still comes first.
+2. **Frame 0 computes each part's exact box once** and takes each culled
+   pair's gap from the two boxes (ADR-423, ADR-581), instead of recomputing
+   both boxes for each pair.
+3. `smoke-geometry.json` carries `booleans: {run, reused}`, so a receipt
+   says how much it measured.
+Thresholds, tolerances, the agreement check, the sampling and the 300 s
+bound are unchanged.
+
+**Measured.** The same scratch copy:
+- full `cadex smoke`: 300.11 s and refused, before; **186.66 s and a
+  complete receipt**, after, verdict `fail`;
+- the geometry child alone: frame 0 64.7 s to 12.2 s (with loading); the
+  101-frame trace 185.7 s, about 1.7 s for each later frame, with 4,845
+  booleans run and 9,797 reused;
+- against the old child on the first 6 frames (91.5 s, against 20.8 s), all
+  2,080 pairs' worst volumes agree within 3.7e-11 mm³ and the same 33 pairs
+  fail. Only the reported time of 25 rigid pairs differs: the old child took
+  the frame at which boolean noise of about 1e-14 mm³ peaked, and the new one
+  reports the first frame.
+
+**Regression.** `test_smoke_geometry_bound.py`'s nested-sphere test now runs
+three frames: both parts carried rigidly (reused), then the ball moved 1 mm
+(run again). It asserts `booleans == {run: 2, reused: 1}` and the sphere's
+volume, and fails on the previous child. It adds no measurable time.
+
+**Consequences.** The design's smoke now completes and fails honestly: all 33
+failing pairs are bolts threaded into their parts (4.5–10.3 mm³), which the
+per-frame check counts as overlap whatever fit intent the static row
+declared. That stays open under the orun4 report's defect 2. A design with
+many moving pairs still pays one boolean per moving, box-overlapping pair
+per frame.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-583 — The smoke check allows a threaded bolt its thread at every pose (2026-10-06, orun4 report defect 2)
+
+**Context.** After ADR-582, `cadex smoke` on the second fresh-session biped
+completed in 186.66 s with verdict `fail`, and all 33 failing pairs were
+bolts threaded into the printed part they hold, at 4.5–10.3 mm³ from the
+first frame on. The engine's own fit checks do not count that overlap:
+ADR-492's `thread_allowances` (`CadexFitReport.py`) lets a catalog bolt
+share up to `π/4 (d² − minor²) L` with a printed part, the static block
+reads such a pair `threaded`, and the swept check keeps that allowance
+through the motion for a pair already threaded at the solved pose. Smoke's
+per-frame check alone ignored it.
+
+**Decision.** Smoke applies the same rule, not a new tolerance:
+1. `cli/cadex_cli/smoke.py` builds the components' catalog rows from the
+   retained outputs the way the clearance scope builds them, calls the
+   engine's `thread_allowances`, and keeps an allowance only for a pair
+   whose published solved-pose overlap is above the volume limit and within
+   it — the sweep's gate. A bolt that only meets a part as the robot moves
+   holds none.
+2. The geometry child fails a pair only when its worst volume exceeds both
+   the volume limit and its allowance. Its row carries
+   `thread_allowance_mm3`; `smoke-geometry.json` counts the overlapping
+   ones under `threaded`.
+
+**Measured.** The same scratch copy: full `cadex smoke` **186.49 s, verdict
+`pass`**, every check green; 33 threaded pairs, their worst volume at most
+83.5% of the allowance over 101 frames; no other pair overlaps.
+
+**Regression.** `test_smoke_geometry_bound.py` sinks a cylinder half into a
+block with an allowance and drives a ball into the block: only the ball
+fails, and it fails on the previous child, which also failed the bolt. The
+bolt driven 2 mm deeper, past its thread, fails. `test_smoke.py` pins the
+gate: a bolt threaded at the solved pose holds its allowance; one at zero
+overlap, one past its thread, and one into a catalog servo hold none.
+
+**Consequences.** Smoke and the fit block now agree on what a screw in a
+printed part is. As there, only a catalog bolt into a printed part
+carries an allowance; any other overlap still fails.
+
+Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).

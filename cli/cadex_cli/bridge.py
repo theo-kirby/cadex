@@ -30,7 +30,7 @@ from . import evaluate as evaluation
 from . import loop
 from .clearance import read_fit
 from .client import CadexdClient
-from .inventory import InventoryError, read_inventory, read_inventory_summary
+from .inventory import InventoryError, inventory_summary, read_inventory, read_inventory_summary
 from .revision_meshes import retain as retain_revision_meshes
 from .studio import FIT_REPORT, STUDIO
 from .tools import (
@@ -476,9 +476,20 @@ class Bridge:
                 inventory = read_inventory(self.client)
             except (InventoryError, RuntimeError, ValueError, OSError):
                 inventory = None
+            try:
+                fit = read_fit(self.client)
+            except Exception:  # noqa: BLE001 - as cadex evaluate: an unreadable fit leaves every part drawn
+                fit = None
         measured = evaluation.add_film(
             root, out, measured, choice=str(arguments.get("film") or "auto"),
             inventory=inventory)
+        # A pass presents itself as `cadex evaluate`'s does, unasked: the two
+        # heroes (ADR-570) and the shove video (ADR-571).
+        measured = evaluation.add_heroes(
+            root, out, measured, fit=fit,
+            inventory=inventory_summary(inventory) if inventory else None)
+        measured = evaluation.add_shove(self.client.engine, root, out, measured, inputs,
+                                        inventory=inventory)
         trained_by = loop.runs_that_trained(root, inputs["policy_sha256"])
         view = {"ok": True, **evaluation.agent_view(measured, out), "trained_by_run": trained_by}
         failing = evaluation.failing_predicates(measured)

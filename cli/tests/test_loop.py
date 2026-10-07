@@ -146,10 +146,15 @@ def project(tmp_path, monkeypatch) -> Path:
     root.mkdir()
     _retained(root)
     yield root
-    # No supervisor outlives its test: ask every live run to stop.
+    # No supervisor outlives its test: ask every live run to stop. A run
+    # only registered, with no supervisor holding its lock, gets the stop
+    # file a late supervisor will read, and a half-second wait rather than
+    # 20 s (ADR-562, ADR-579).
     for run in loop.list_runs(root):
         if run["state"] in loop.LIVE_STATES:
-            loop.request_stop(Path(run["dir"]), "the test ended", wait_s=20.0)
+            run_dir = Path(run["dir"])
+            held = run["state"] == "running" or loop.lock_held(run_dir / loop.LOCK_NAME)
+            loop.request_stop(run_dir, "the test ended", wait_s=20.0 if held else 0.5)
 
 
 def _until(run_dir: Path, *, leaves=loop.LIVE_STATES, seconds: float = 30.0) -> dict:
@@ -322,7 +327,9 @@ def test_a_running_run_is_read_stopped_and_leaves_its_checkpoint(project, monkey
     assert "policy" not in view and "checkpoint" in view["next"]
     assert view["log_tail"] == ["iteration 0  reward/step +0.5"]
     assert not loop.lock_held(loop.machine_lock_path())
-    assert json.loads((run_dir / "run.json").read_text())["status"] == "failed"
+    # A stop asked for is not a failure (ADR-559).
+    record = json.loads((run_dir / "run.json").read_text())
+    assert record["status"] == "stopped" and "the reward is flat" in record["error"]
     # Stopping a run that has ended changes nothing.
     assert loop.request_stop(run_dir, "again")["state"] == "stopped"
     assert [row["kind"] for row in loop.read_ledger(project)].count("train_stop_requested") == 1
@@ -454,6 +461,53 @@ def test_the_agent_starts_watches_and_stops_runs_through_the_bridge(project, mon
             "train_registered", "train_ended", "train_registered", "train_stop_requested",
             "train_ended"]
         assert listing["ledger"][2]["reason"] == second["reason"]
+
+
+def test_each_ending_of_a_started_run_reads_on_the_page_as_what_happened(
+        project, monkeypatch) -> None:
+    """Finished, stopped through ``train_stop``, killed, crashed: each run
+    started through ``train_start`` is, in ``/api/project``'s stage, what
+    happened to it. Before ADR-559 a stop read as failed, and a killed
+    supervisor's run as training for ever."""
+
+    from cadex_cli.review_record import read_run_record
+    from cadex_cli.review_server import ReviewProject
+
+    def shown(run: str) -> tuple[str, str, str]:
+        # Records are stamped to the second, and the stage reads the newest:
+        # the next run's must not tie with this one's.
+        stage = ReviewProject(project).review()["stage"]
+        time.sleep(1.1)
+        assert stage["run"] == run, stage
+        record = read_run_record(project / "runs" / run, project)
+        return stage["state"], stage["reason"], record["status"]
+
+    start = {"budget_s": 60, "reason": REASON, "settings": {"iterations": 3}}
+    with Bridge(FakeCadexd(), project_root=project) as bridge:
+        assert bridge.call("train_start", {"run": "done", **start})["is_error"] is False
+        assert _payload(bridge.call("train_status", {"run": "done", "wait_s": 30}))["state"] == "finished"
+        state, _reason, status = shown("done")
+        assert status == "ok" and state not in ("stopped", "failed")
+
+        monkeypatch.setenv("FAKE_TRAIN_MODE", "slow")
+        assert _payload(bridge.call("train_start", {"run": "asked", **start}))["state"] == "running"
+        assert _payload(bridge.call("train_stop", {"run": "asked", "reason": "the reward is flat"}))[
+            "state"] == "stopped"
+        state, reason, status = shown("asked")
+        assert (state, status) == ("stopped", "stopped") and "the reward is flat" in reason
+
+        assert _payload(bridge.call("train_start", {"run": "killed", **start}))["state"] == "running"
+        os.kill(int(loop.read_run(project / "runs" / "killed")["status"]["supervisor_pid"]),
+                signal.SIGKILL)
+        _until(project / "runs" / "killed", leaves=("running",))
+        state, reason, status = shown("killed")
+        assert (state, status) == ("failed", "failed") and "killed or crashed" in reason
+
+        monkeypatch.setenv("FAKE_TRAIN_MODE", "crash")
+        bridge.call("train_start", {"run": "crashed", **start})
+        assert _payload(bridge.call("train_status", {"run": "crashed", "wait_s": 30}))["state"] == "failed"
+        state, reason, status = shown("crashed")
+        assert (state, status) == ("failed", "failed") and "MJX cannot build this model" in reason
 
 
 def test_a_refused_tool_call_is_an_error_the_agent_can_act_on(project, tmp_path) -> None:
@@ -613,7 +667,8 @@ def _payload(reply: dict) -> dict:
 
 
 @pytest.mark.skipif(not HAS_MUJOCO, reason="mujoco is not importable here")
-def test_one_round_of_the_loop_runs_through_the_product_path(engine, tmp_path, monkeypatch) -> None:
+def test_one_round_of_the_loop_runs_through_the_product_path(engine, tmp_path, monkeypatch,
+                                                            small_presentation) -> None:
     """Design, train, evaluate: two agent sessions over a live engine. The
     run started in the first is read in the second, which declares its
     policy and evaluates it."""
@@ -675,6 +730,9 @@ def test_one_round_of_the_loop_runs_through_the_product_path(engine, tmp_path, m
     assert [picture["type"] for picture in pictures] == ["image", "image"]
     assert all(base64.b64decode(picture["data"])[:4] == b"\x89PNG" for picture in pictures)
     assert len(text["text"]) < 21_500
+    # A fail presents nothing through the agent's tool either (ADR-570, ADR-571).
+    assert view["heroes"]["state"] == "skipped" and view["shove"]["state"] == "skipped"
+    assert view["shove"]["video"] is None
     report = Path(view["report"])
     assert report.is_file() and report.is_relative_to(root / "evaluations")
     # The ledger is the round, in order, and the next session can read it.

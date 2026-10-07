@@ -568,7 +568,7 @@ def _studio_frames(looks, materials, names, meshes, frames, times, count, sample
         if overlay is not None:
             overlay(k, canvas.pixels, size, ([cx-reach, cy-reach], [cx+reach, cy+reach]))
         clock = times[-1] if i == count-1 else i/FPS
-        canvas.text(14, size-28, f'T {clock:4.1f} S', 2, clock_colour)
+        canvas.text(14, size-28, f'{clock:4.1f} s', 2, clock_colour)
         (work / f'{i:04d}.png').write_bytes(studio_render.png(bytes(canvas.pixels), size))
     return {'style': 'studio', 'style_sha256': studio_digest(),
             'renderer': 'CadexStudio studio (engine), CPU, no browser or display',
@@ -590,7 +590,7 @@ def _studio_frames(looks, materials, names, meshes, frames, times, count, sample
 def studio_digest():
     """Identity of the code that determines a studio video's pixels."""
     h = hashlib.sha256()
-    for path in (Path(studio_render.__file__), Path(__file__)):
+    for path in (Path(studio_render.__file__), Path(studio_render.FONT_FILE), Path(__file__)):
         h.update(path.name.encode())
         h.update(path.read_bytes())
     return h.hexdigest()

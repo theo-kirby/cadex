@@ -28,6 +28,18 @@ The report's ``film`` block names what was drawn from the seeds' traces
 on the dark prototype floor, beside ``evaluation.json``. The measurement is
 written before anything is drawn, so a film that could not be made leaves a
 complete report that says so.
+
+A passed evaluation also presents the design that passed (ADR-570): the
+report's ``heroes`` block names ``hero.png``, the studio hero, and
+``print-bed.png``, the printed parts laid flat on print beds beside the
+purchased hardware, both drawn from the accepted attempt's retained
+geometry. A failed evaluation presents nothing, and removes what an earlier
+pass in the same directory left.
+
+A passed evaluation is also filmed taking shoves (ADR-571): the report's
+``shove`` block names ``shove.webm``, one more episode under the shoves the
+task was trained against with each push marked as it lands, and writes the
+pushes, the recovery from each and how the episode ended beside it.
 """
 
 from __future__ import annotations
@@ -40,6 +52,7 @@ import tempfile
 from typing import Any, Mapping
 
 from . import film as film_module
+from . import shoves
 from .engine import Engine
 from .smoke import SmokeError, retained_attempt, smoke_interpreter
 from .train import TASK_KIND
@@ -194,8 +207,31 @@ def run_evaluation(engine: Engine, inputs: Mapping[str, Any], out: Path, *,
     for stale in out.glob("seed-*-trace.json"):
         stale.unlink()
     film_module.clear(out)
-    measured_name = "evaluation-measured.json"
+    measured = _run_child(engine, inputs, out, "evaluation-measured.json", timeout=timeout)
+    summary = measured["summary"]
+    report = {
+        "schema": REPORT_SCHEMA,
+        "verdict": "pass" if summary["pass"] else "fail",
+        "accepted_revision": inputs["accepted_revision"],
+        "accepted_digest": inputs["accepted_digest"],
+        "policy_output": inputs["policy_output"],
+        "task_output": inputs["task_output"],
+        "model_output": inputs["model_output"],
+        "weights": inputs["weights"],
+        "trained_task_sha256": inputs["trained_task_sha256"],
+        "engine": engine.describe(),
+        **measured,
+    }
+    write_report(out, report)
+    return report
+
+
+def _run_child(engine: Engine, inputs: Mapping[str, Any], out: Path, measured_name: str, *,
+               shove: bool = False, timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, Any]:
+    """Run :mod:`evaluate_runner` over ``inputs`` and return what it measured, checked."""
+
     plan = {
+        "trace": shoves.SHOVE_TRACE,
         "module_dir": str(engine.module_dir),
         "model": str(inputs["model"]),
         "task": str(inputs["task"]),
@@ -203,6 +239,7 @@ def run_evaluation(engine: Engine, inputs: Mapping[str, Any], out: Path, *,
         "components": list(inputs["components"]),
         "out": str(out),
         "measured": measured_name,
+        "shove": shove,
     }
     python = smoke_interpreter(engine)
     with tempfile.TemporaryDirectory(prefix="cadex-evaluate-") as scratch:
@@ -239,22 +276,7 @@ def run_evaluation(engine: Engine, inputs: Mapping[str, Any], out: Path, *,
         raise EvaluateError(f"{measured_path} is not an evaluation report.")
     if measured.get("policy_sha256") != inputs["policy_sha256"]:
         raise EvaluateError("the evaluation ran a policy other than the accepted one")
-    summary = measured["summary"]
-    report = {
-        "schema": REPORT_SCHEMA,
-        "verdict": "pass" if summary["pass"] else "fail",
-        "accepted_revision": inputs["accepted_revision"],
-        "accepted_digest": inputs["accepted_digest"],
-        "policy_output": inputs["policy_output"],
-        "task_output": inputs["task_output"],
-        "model_output": inputs["model_output"],
-        "weights": inputs["weights"],
-        "trained_task_sha256": inputs["trained_task_sha256"],
-        "engine": engine.describe(),
-        **measured,
-    }
-    write_report(out, report)
-    return report
+    return measured
 
 
 def write_report(out: Path, report: Mapping[str, Any]) -> Path:
@@ -315,6 +337,142 @@ def add_film(root: Path, out: Path, report: Mapping[str, Any], *, choice: str = 
     filmed = {**report, "film": block}
     write_report(out, filmed)
     return filmed
+
+
+HEROES_SCHEMA = "cadex-heroes-v1"
+#: Report key -> file, beside ``evaluation.json``.
+HERO_FILES = dict(zip(("hero", "print_bed"), film_module.HERO_NAMES))
+
+
+def add_heroes(root: Path, out: Path, report: Mapping[str, Any], *,
+               fit: Mapping[str, Any] | None = None,
+               inventory: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Draw the two heroes of a passed evaluation and write the report again
+    with its ``heroes`` block.
+
+    Drawn from the accepted attempt's retained geometry, never a rebuild, and
+    only when that is the revision evaluated. Each hero stands alone: one
+    that cannot be drawn (no printed part, no inventory) is named under
+    ``errors`` and the other is still made. The measurement is untouched.
+    """
+
+    from .inventory import InventoryError
+    from .render import retained_snapshot
+    from .studio import STUDIO
+
+    for name in HERO_FILES.values():
+        (out / name).unlink(missing_ok=True)
+    block: dict[str, Any] = {"schema": HEROES_SCHEMA, "state": "skipped",
+                             "revision": report.get("accepted_revision"),
+                             "hero": None, "print_bed": None, "errors": {}}
+    if report.get("verdict") != "pass":
+        block["errors"]["evaluation"] = "the evaluation did not pass: a failed evaluation presents nothing"
+    else:
+        try:
+            triangles, summary = retained_snapshot(root, fit)
+            if summary["revision"] != report.get("accepted_revision"):
+                raise InventoryError("the retained accepted attempt is not the revision evaluated")
+        except InventoryError as exc:
+            block["errors"]["geometry"] = str(exc)
+        else:
+            film_module.write_ignore(out)
+            drawers = {
+                "hero": lambda: STUDIO.hero(triangles, summary, fit, inventory),
+                "print_bed": lambda: STUDIO.print_bed(triangles, summary, fit, inventory,
+                                                      name=Path(root).name),
+            }
+            for key, draw in drawers.items():
+                try:
+                    image, facts = draw()
+                except STUDIO.StudioError as exc:
+                    block["errors"][key] = str(exc)
+                    continue
+                (out / HERO_FILES[key]).write_bytes(image)
+                block[key] = {"file": HERO_FILES[key], "bytes": len(image), **facts}
+        made = [key for key in HERO_FILES if block[key]]
+        block["state"] = ("ready" if len(made) == len(HERO_FILES) else
+                          "partial" if made else "failed")
+    presented = {**report, "heroes": block}
+    write_report(out, presented)
+    return presented
+
+
+def add_shove(engine: Engine, root: Path, out: Path, report: Mapping[str, Any],
+              inputs: Mapping[str, Any], *, inventory: Mapping[str, Any] | None = None,
+              video: bool = True, timeout: float = DEFAULT_TIMEOUT_S) -> dict[str, Any]:
+    """Film a passed policy taking shoves and write the report again with its
+    ``shove`` block (ADR-571).
+
+    One more episode on the spec's first seed under the spec's conditions,
+    with the shoves the task was trained against (``evaluate_runner.shove_task``):
+    played and measured by the engine, then filmed with every push marked.
+    The pushes, the recovery from each and how the episode ended are written
+    beside the video from that episode, so a design that falls is filmed and
+    reported falling. A failed evaluation, ``--no-video`` or a task trained
+    against no shove films nothing. The evaluation's measurement and verdict
+    are untouched either way: this is a presentation, not a predicate.
+    """
+
+    for name in (shoves.SHOVE_VIDEO, shoves.SHOVE_TRACE):
+        (out / name).unlink(missing_ok=True)
+    block: dict[str, Any] = {"schema": shoves.SHOVE_SCHEMA, "state": "skipped", "error": None,
+                             "seed": None, "pushes": [], "outcome": None, "caption": None,
+                             "failing": [], "trace": None, "video": None}
+    try:
+        task = json.loads(Path(inputs["task"]).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        unfit = f"the task bundle could not be read: {exc}"
+    else:
+        unfit = "" if shoves.trained_shoves(task) else "the task trained against no shove, so there is none to film"
+    if report.get("verdict") != "pass":
+        block["error"] = "the evaluation did not pass: a failed evaluation presents nothing"
+    elif not video:
+        block["error"] = "--no-video: no shove video was asked for"
+    elif unfit:
+        block["error"] = unfit
+    else:
+        try:
+            measured = _run_child(engine, inputs, out, "shove-measured.json", shove=True, timeout=timeout)
+            row = measured["seeds"][0]
+            pushes = shoves.shove_pushes(measured)
+            outcome = shoves.shove_outcome(measured, pushes)
+            block.update({
+                "seed": int(row["seed"]), "pushes": pushes, "outcome": outcome,
+                "caption": shoves.shove_caption(int(row["seed"]), pushes, outcome),
+                "failing": list(row.get("failing") or []), "trace": row["trace"],
+                # What each push was drawn from: the task's own shove,
+                # its start window cut into slices.
+                "drawn_from": [{key: entry.get(key) for key in (
+                    "label", "body", "newtons_low", "newtons_high", "at_low_s", "at_high_s",
+                    "duration_s", "direction", "sustained")} for entry in measured["spec"]["disturbance"]],
+            })
+            film_module.write_ignore(out)
+            block["video"] = shoves.film_shoves(root, out, report, measured, inventory)
+            block["state"] = "ready"
+        except EvaluateRefused as exc:
+            # The child's refusal: no trained shove lands inside the
+            # evaluation's horizon (``evaluate_runner.shove_task``).
+            block["error"] = str(exc)
+        except (EvaluateError, shoves.FilmError) as exc:
+            block["state"], block["error"] = "failed", str(exc)
+            (out / shoves.SHOVE_VIDEO).unlink(missing_ok=True)
+    shoved = {**report, "shove": block}
+    write_report(out, shoved)
+    return shoved
+
+
+def shove_files(report: Mapping[str, Any], out: Path) -> dict[str, Any]:
+    """The ``shove`` block as a caller reads it: its state, the video's path,
+    the caption, the pushes and the ending, or why there is none."""
+
+    shove = report.get("shove") or {}
+    video = shove.get("video") or {}
+    return {"state": shove.get("state") or "none",
+            "video": str(Path(out) / video["file"]) if video.get("file") else None,
+            "caption": shove.get("caption"), "error": shove.get("error"),
+            "pushes": [{key: push.get(key) for key in ("number", "newtons", "start_s", "recovery_s")}
+                       for push in shove.get("pushes") or []],
+            "outcome": shove.get("outcome")}
 
 
 def failing_predicates(report: Mapping[str, Any]) -> list[str]:
@@ -389,8 +547,20 @@ def agent_view(report: Mapping[str, Any], out: Path) -> dict[str, Any]:
         } for row in report.get("seeds") or []],
         "film": {"state": film.get("state"), "error": film.get("error"),
                  "seeds": [row.get("seed") for row in film.get("seeds") or []]},
+        "heroes": hero_files(report, out),
+        "shove": shove_files(report, out),
         "report": str(Path(out) / REPORT_NAME),
     })
+
+
+def hero_files(report: Mapping[str, Any], out: Path) -> dict[str, Any]:
+    """The ``heroes`` block as a caller reads it: its state, each hero's path, why one is missing."""
+
+    heroes = report.get("heroes") or {}
+    return {"state": heroes.get("state") or "none",
+            **{key: str(Path(out) / heroes[key]["file"]) if heroes.get(key) else None
+               for key in HERO_FILES},
+            "errors": dict(heroes.get("errors") or {})}
 
 
 def evaluation_cell(report: Mapping[str, Any]) -> str:
@@ -444,5 +614,19 @@ def human_lines(report: Mapping[str, Any]) -> list[str]:
                                if row.get("video")))
     elif film.get("state") == "failed":
         lines.append("  film: not drawn: " + str(film.get("error")))
+    heroes = report.get("heroes") or {}
+    if heroes.get("state") in ("ready", "partial", "failed"):
+        made = [key.replace("_", "-") for key in HERO_FILES if heroes.get(key)]
+        # The report's block carries the bed's facts; the envelope's, its path.
+        bed = heroes.get("print_bed")
+        lines.append("  heroes: " + (" and ".join(made) if made else "none drawn")
+                     + (f" ({bed['beds']} bed(s), {len(bed.get('parts') or [])} printed part(s))"
+                        if isinstance(bed, Mapping) else "")
+                     + "".join(f"; {key}: {text}" for key, text in (heroes.get("errors") or {}).items()))
+    shove = report.get("shove") or {}
+    if shove.get("state") == "ready":
+        lines.append("  shoves: " + str(shove.get("caption")))
+    elif shove.get("state") == "failed":
+        lines.append("  shoves: not filmed: " + str(shove.get("error")))
     return lines
 

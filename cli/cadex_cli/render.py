@@ -71,3 +71,43 @@ def write_render(client, root, *, expected_revision=None, accepted_snapshot=None
     except STUDIO.StudioError as exc:
         raise InventoryError(str(exc)) from exc
     return directory / 'summary.json', summary
+
+
+def retained_snapshot(root, fit=None):
+    """``(triangles, summary)`` of the accepted revision, read from what its attempt retained.
+
+    No rebuild: a rebuild reply's ``display`` is the attempt's outputs with
+    their paths made absolute (``cadexd._display_block``), and this builds
+    the same block from the retained ``result.json``, so a command that must
+    not run the script (``cadex evaluate``) draws what ``cadex render``
+    would. ``fit`` names the world geometry, as for :func:`acquire_snapshot`.
+    """
+    from .smoke import retained_attempt
+    try:
+        state, staging, result = retained_attempt(Path(root))
+    except Exception as exc:  # noqa: BLE001 - one reason, whatever was unreadable
+        raise InventoryError(f'cannot read the retained accepted attempt: {exc}') from exc
+    display = {}
+    for item in result.get('outputs') or []:
+        name = str(item.get('name') or '')
+        entry = {'artifact_kind': item.get('artifact_kind') or None,
+                 'placement': item.get('solved_placement_matrix'), 'tessellation': None}
+        if item.get('source_output'):
+            entry['source_output'] = str(item['source_output'])
+        tessellation = item.get('display')
+        if isinstance(tessellation, dict):
+            paths = {}
+            for key in ('artifact_path', 'sidecar_path'):
+                path = (staging / str(tessellation.get(key) or '')).resolve()
+                if not path.is_relative_to(staging):
+                    raise InventoryError(f'retained tessellation for {name} escapes its attempt')
+                paths[key] = str(path)
+            entry['tessellation'] = {**tessellation, **paths}
+        display[name] = entry
+    revision = str(state['accepted_revision'])
+    try:
+        return STUDIO.snapshot({'ok': True, 'revision': revision, 'accepted_revision': revision,
+                                'digest': state.get('accepted_digest'), 'display': display},
+                               STUDIO.world(fit))
+    except STUDIO.StudioError as exc:
+        raise InventoryError(str(exc)) from exc

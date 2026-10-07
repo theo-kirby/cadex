@@ -9,6 +9,7 @@ that only held while Cadex ran its own agent.
 """
 import io
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -17,7 +18,9 @@ from cadex_cli import mcp
 from cadex_cli.__main__ import main
 from cadex_cli.guidance import (
     BRIEF_LIMIT, CADEX_COMMAND, GUIDANCE_FILE, OVERLAY, TOOL_NAMES, agent_guidance, brief, instructions,
+    style_guidance, styles,
 )
+from cadex_cli.session import read_agent_state, write_agent_budgets
 from cadex_cli.studio import ENGINE_MODULE_DIR
 
 
@@ -71,5 +74,165 @@ def test_mcp_sends_a_brief_that_fits_and_points_at_the_whole(capsys):
     mcp.handle({'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {}}, Host(), stream)
     sent = json.loads(stream.getvalue())['result']['instructions']
     assert len(sent) <= BRIEF_LIMIT < 2048
-    assert f'`{CADEX_COMMAND} guidance`' in sent and '--project /p/bracket --wait' in sent
+    assert f'`{CADEX_COMMAND} guidance --project /p/bracket`' in sent
+    assert '--project /p/bracket --wait' in sent and 'style' not in sent
     assert Path(CADEX_COMMAND).is_file()
+    chose = brief('/p/bracket', style='printed-legged-robot')
+    assert len(chose) <= BRIEF_LIMIT and 'design style `printed-legged-robot`' in chose
+
+
+STYLE = 'printed-legged-robot'
+#: The kinds of machine and the looks the base never assumes (ADR-560).
+NOT_IN_THE_BASE = ('biped', 'quadruped', 'hexapod', 'humanoid', 'legged', 'mascot',
+                   'look engineered', 'looks engineered', 'small printed robot')
+#: How a project's name reads; no text an agent is given names one (ADR-560).
+PROJECT_NAME = (r'biped-sts|biped-mg90|quad-qdd|mg-legs|\bhex\d|\bot\d+\b|\borun\d|'
+                r'\bsweep-|digestbug|\blark\b|\bwren\b|cadex-projects')
+
+
+def _style_lines(style):
+    """Every rule line of a style, as the agent reads it."""
+    return [line for line in style_guidance(style).splitlines() if len(line) > 40]
+
+
+def test_the_base_guidance_names_no_kind_of_machine_as_the_default():
+    base = instructions().lower()
+    assert base == OVERLAY.lower()
+    for word in NOT_IN_THE_BASE:
+        assert re.search(r'\b' + re.escape(word) + r's?\b', base) is None, word
+    assert 'form follows function' in base
+
+
+def test_no_style_text_appears_unless_the_project_chose_one(tmp_path, capsys):
+    assert STYLE in styles()
+    for style in styles():
+        for line in _style_lines(style):
+            assert line not in OVERLAY, line
+    # A project with no agent.json, and one with budgets but no style, get the base alone.
+    assert main(['guidance', '--project', str(tmp_path)]) == 0
+    assert capsys.readouterr().out == OVERLAY
+    write_agent_budgets(tmp_path, {'timeout_seconds': 900})
+    assert main(['guidance', '--project', str(tmp_path)]) == 0
+    assert capsys.readouterr().out == OVERLAY
+
+
+def test_a_project_chooses_a_style_and_its_guidance_carries_it(tmp_path, capsys):
+    assert main(['style', '--project', str(tmp_path), '--json']) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed['style'] == {'chosen': '', 'available': styles()}
+
+    assert main(['style', '--project', str(tmp_path), STYLE, '--json']) == 0
+    assert json.loads(capsys.readouterr().out)['style']['chosen'] == STYLE
+    assert read_agent_state(tmp_path).style == STYLE
+    assert main(['guidance', '--project', str(tmp_path)]) == 0
+    text = capsys.readouterr().out
+    assert text == instructions(STYLE) and text.startswith(OVERLAY)
+    for line in _style_lines(STYLE):
+        assert line in text[len(OVERLAY):]
+    # Storing a budget keeps the style; the brief cadex mcp sends names it.
+    assert write_agent_budgets(tmp_path, {'memory_limit_mb': 4096}).style == STYLE
+
+    assert main(['style', '--project', str(tmp_path), 'crane-yard', '--json']) != 0
+    capsys.readouterr()
+    assert read_agent_state(tmp_path).style == STYLE
+
+    assert main(['style', '--project', str(tmp_path), '--clear', '--json']) == 0
+    capsys.readouterr()
+    assert read_agent_state(tmp_path).style == ''
+    assert main(['guidance', '--project', str(tmp_path)]) == 0
+    assert capsys.readouterr().out == OVERLAY
+
+
+def test_a_stored_style_the_engine_does_not_carry_is_refused_not_dropped(tmp_path, capsys):
+    (tmp_path / 'agent.json').write_text(json.dumps(
+        {'schema': 'cadex-cli-agent-v1', 'style': 'gone-style'}), encoding='utf-8')
+    assert main(['guidance', '--project', str(tmp_path)]) != 0
+    assert 'gone-style' in capsys.readouterr().err
+
+
+def test_no_text_an_agent_is_given_names_a_project():
+    texts = {'base': OVERLAY, 'brief': brief('/p', style=STYLE)}
+    texts.update({style: style_guidance(style) for style in styles()})
+    for name, text in texts.items():
+        found = re.findall(PROJECT_NAME, text, re.I)
+        assert not found, (name, found)
+
+
+#: A project directory's name, as distinct from a run's (``ot10``, ``orun1``):
+#: the read-only projects and the run families' scratch copies.
+PROJECT_DIR = (r'biped-sts|biped-mg90|quad-qdd|mg-legs|\bhex\d|\bot\d+-|\borun\d-|'
+               r'\bsweep-|digestbug|cadex-projects')
+REPO = Path(__file__).resolve().parents[2]
+
+
+def test_no_guidance_file_names_a_project_and_the_doc_lost_look_engineered():
+    """Every file the guidance is made of -- the engine's base and styles, the
+    CLI's module, and the doc they are cited from -- names no project, and the
+    doc no longer asks for a machine that looks engineered (ADR-560)."""
+
+    files = [REPO / 'cli/cadex_cli/guidance.py', REPO / 'docs/DESIGN-LANGUAGE.md',
+             ENGINE_MODULE_DIR / 'CadexAgentGuidance.md',
+             *sorted(ENGINE_MODULE_DIR.glob('CadexAgentStyle.*.md'))]
+    for path in files:
+        text = path.read_text(encoding='utf-8')
+        found = re.findall(PROJECT_DIR, text, re.I)
+        assert not found, (path.name, found)
+    doc = (REPO / 'docs/DESIGN-LANGUAGE.md').read_text(encoding='utf-8').lower()
+    assert re.search(r'looks? engineered', doc) is None
+
+
+def test_the_mcp_server_instructions_follow_the_projects_style(tmp_path):
+    """What ``cadex mcp`` sends at ``initialize`` reads the project's
+    ``agent.json``: no style named when none is chosen, the chosen one when
+    it is, and the command it sends the agent to prints exactly that."""
+
+    from argparse import Namespace
+    from cadex_cli.__main__ import McpSession
+
+    session = McpSession.__new__(McpSession)
+    session.args = Namespace(project=str(tmp_path))
+    plain = session.instructions()
+    assert 'style' not in plain and f'guidance --project {tmp_path.resolve()}' in plain
+    assert main(['style', '--project', str(tmp_path), STYLE]) == 0
+    chosen = session.instructions()
+    assert f'design style `{STYLE}`' in chosen and len(chosen) <= BRIEF_LIMIT
+
+
+def test_the_training_lessons_are_in_the_base_and_reach_every_project():
+    # ADR-565: training practice the reference legged robot learned the hard
+    # way, phrased for any task, so it is in the base with no style chosen.
+    text = " ".join(instructions().split())
+    for rule in ("TRAIN SO A GOOD POLICY CAN BE KEPT", "Set checkpoint_every on any run",
+                 "never by taking the last iteration",
+                 "Never tighten action_filter_alpha on a warm start",
+                 "start cold after any change to the model"):
+        assert rule in text, rule
+
+
+def test_the_checkpoint_rule_says_what_it_does_and_what_it_costs():
+    # ADR-577: a rule, not a ritual. The agent is told what a checkpoint
+    # buys and what it costs since ADR-576 (one compile, then about one
+    # iteration each), and no longer to set it on every run or because
+    # someone is watching.
+    text = " ".join(instructions().split())
+    start = text.index("TRAIN SO A GOOD POLICY CAN BE KEPT")
+    rule = text[start:text.index("Choose the policy to keep", start)]
+    for claim in ("What it does:", "witness-checked policy", "a stopped run still leaves one",
+                  "plays each checkpoint in the dashboard's viewport", "What it costs:",
+                  "compiles the witness rollout once", "about one training iteration",
+                  "leave it off only for a run you will throw away"):
+        assert claim in rule, claim
+    assert "on every run" not in rule and "watching" not in rule
+
+
+def test_the_style_s_foot_thigh_and_roll_rules_reach_a_project_that_chose_it(tmp_path, capsys):
+    # ADR-566: the three rules the fresh-session check found too loose reach
+    # the agent through `cadex guidance --project`, and never the base.
+    assert main(['style', '--project', str(tmp_path), STYLE]) == 0
+    capsys.readouterr()
+    assert main(['guidance', '--project', str(tmp_path)]) == 0
+    chosen = " ".join(capsys.readouterr().out.split())
+    base = " ".join(instructions().split())
+    for rule in ('COMPACT HAS A NUMBER', 'no wider than an eighth of it', 'A SPRAWLED LEG',
+                 'MEASURE WHERE THE FEET MEET', 'bracket it outward from the standing pose'):
+        assert rule in chosen and rule not in base, rule

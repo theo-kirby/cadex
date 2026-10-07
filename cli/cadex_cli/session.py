@@ -21,7 +21,11 @@ seconds and the memory ceiling one engine script run may spend,
 so once, ``cadex budgets --set timeout_seconds=900``, and every later run —
 an MCP session, a ``cadex params``, a walk's legs — opens with it. ``--engine-timeout`` and
 ``--engine-memory`` override them for one call. An unset budget is absent,
-never zero, and the engine fills it from its own default per field.
+never zero, and the engine fills it from its own default per field. Beside
+them it keeps **the project's design style** (ADR-560): the name of one
+optional style of the agent guidance, set by ``cadex style``, which
+``cadex guidance --project`` adds to the domain-neutral base. Unset is the
+base alone.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ import errno
 import json
 import math
 import os
+import re
 from pathlib import Path
 from typing import Any, Iterator, Mapping
 
@@ -60,6 +65,8 @@ class AgentState:
     updated_at: str = ""
     #: The project's engine budgets (ADR-517); only the ones it sets.
     budgets: dict[str, Any] = field(default_factory=dict)
+    #: The project's chosen guidance style (ADR-560); empty is none.
+    style: str = ""
 
     def to_json(self) -> dict[str, Any]:
         payload = {
@@ -68,6 +75,8 @@ class AgentState:
         }
         if self.budgets:
             payload["budgets"] = dict(self.budgets)
+        if self.style:
+            payload["style"] = self.style
         return payload
 
 
@@ -144,7 +153,18 @@ def read_agent_state(project_root: Path | str) -> AgentState:
     return AgentState(
         updated_at=str(payload.get("updated_at") or ""),
         budgets=_stored_budgets(payload.get("budgets")),
+        style=_stored_style(payload.get("style")),
     )
+
+
+#: What a style name may be: the stem of an engine ``CadexAgentStyle.<name>.md``.
+STYLE_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,63}")
+
+
+def _stored_style(raw: Any) -> str:
+    """The style a file names; anything that is not a style name is no style."""
+
+    return raw if isinstance(raw, str) and STYLE_NAME.fullmatch(raw) else ""
 
 
 def _write_agent_file(project_root: Path | str, state: AgentState) -> None:
@@ -176,7 +196,23 @@ def write_agent_budgets(project_root: Path | str, changes: Mapping[str, Any]) ->
             budgets[key] = value
         else:
             budgets.pop(key, None)
-    state = AgentState(updated_at=_now(), budgets=budgets)
+    state = AgentState(updated_at=_now(), budgets=budgets, style=stored.style)
+    _write_agent_file(project_root, state)
+    return state
+
+
+def write_agent_style(project_root: Path | str, style: str) -> AgentState:
+    """Store the project's guidance style (ADR-560); an empty name clears it.
+
+    Whether the engine carries a style of that name is the caller's check
+    (:func:`cadex_cli.guidance.styles`): this only refuses what could never
+    be one.
+    """
+
+    if style and not STYLE_NAME.fullmatch(style):
+        raise ValueError(f"not a style name: {style!r}")
+    stored = read_agent_state(project_root)
+    state = AgentState(updated_at=_now(), budgets=dict(stored.budgets), style=style)
     _write_agent_file(project_root, state)
     return state
 

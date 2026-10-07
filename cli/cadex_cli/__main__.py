@@ -50,7 +50,7 @@ from .bridge import MODELLING_OPS, Bridge, ToolCall
 from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine, source_comparison
 from .export import ExportedOutput, ExportError, export_blueprints, export_outputs, parse_formats
-from .inventory import InventoryError, read_inventory, write_inventory
+from .inventory import InventoryError, inventory_summary, read_inventory, write_inventory
 from .render import acquire_snapshot, describe_proxies, write_render
 from .section import write_section
 from .revision_meshes import (
@@ -66,6 +66,7 @@ from .clearance import (
     MAXIMUM_COMMON_VOLUME_MM3,
     MINIMUM_CLEARANCE_MM,
     bounds_agreement,
+    read_fit,
     write_clearance,
 )
 from .project_docs import (
@@ -101,6 +102,7 @@ from .session import (
     read_script_state,
     read_working_revision,
     write_agent_budgets,
+    write_agent_style,
 )
 from .train import (
     TrainError,
@@ -122,16 +124,20 @@ from .evaluate import (
     EvaluateError,
     EvaluateRefused,
     add_film,
+    add_heroes,
+    add_shove,
     check_out,
     default_out,
     evaluation_cell,
     failing_predicates,
+    hero_files,
     read_report,
     retained_inputs,
     run_evaluation,
+    shove_files,
 )
 from .loop import SLOT_BUSY, LoopError, lock_held, machine_lock_path, machine_slot
-from .review_record import manifest_identity, read_accepted_identity, write_run_record
+from .review_record import hold_walk_lock, manifest_identity, read_accepted_identity, write_run_record
 from .review_server import serve as serve_review, serve_projects
 from .smoke import (
     DEFAULT_FPS,
@@ -153,7 +159,7 @@ from .smoke import (
     smoke_command,
     smoke_interpreter,
 )
-from .guidance import brief as guidance_brief, instructions as guidance_text
+from .guidance import brief as guidance_brief, instructions as guidance_text, styles as guidance_styles
 from .activity import append_activity, begin_activity, reply_error
 from .mcp import serve as serve_mcp
 from .tools import STANDARD_DISPLAY, tool_definitions
@@ -224,11 +230,30 @@ def build_parser() -> argparse.ArgumentParser:
         "goes). The next call reopens it.",
     )
 
-    subparsers.add_parser(
+    guidance_parser = subparsers.add_parser(
         "guidance",
-        help="Print the whole guidance an agent driving Cadex follows; "
-        "`cadex mcp`'s instructions are a short brief that tells the agent "
-        "to run this. No engine.",
+        help="Print the whole guidance an agent driving Cadex follows: the "
+        "domain-neutral base, and the project's chosen style after it when it "
+        "chose one (`cadex style`, ADR-560). `cadex mcp`'s instructions are a "
+        "short brief that tells the agent to run this. No engine.",
+    )
+    _common(guidance_parser, inherit=True)
+
+    style_parser = subparsers.add_parser(
+        "style",
+        help="Show or choose the project's design style (ADR-560): one named, "
+        "optional set of guidance rules for a kind of machine, which `cadex "
+        "guidance --project` adds to the base. With no NAME it lists the "
+        "styles and the one chosen. No engine, no tokens.",
+    )
+    _common(style_parser, inherit=True)
+    style_parser.add_argument(
+        "style_name", nargs="?", default="", metavar="NAME",
+        help="The style to choose; `cadex style` lists them.",
+    )
+    style_parser.add_argument(
+        "--clear", action="store_true",
+        help="Choose no style: the base guidance alone.",
     )
 
     params_parser = subparsers.add_parser(
@@ -1063,6 +1088,37 @@ def command_budgets(args: argparse.Namespace, report: RunReport) -> int:
     else:
         stored = read_agent_state(root).budgets
     report.budgets = {"stored": dict(stored)}
+    report.ok = True
+    return EXIT_OK
+
+
+def command_style(args: argparse.Namespace, report: RunReport) -> int:
+    """``cadex style [NAME | --clear]``: the project's design style (ADR-560).
+
+    Stored in the project's ``agent.json``; ``cadex guidance --project`` and
+    ``cadex mcp``'s brief read it. A name the engine carries no style for is
+    refused rather than stored, so a project never names a style its
+    guidance cannot print.
+    """
+
+    root = Path(args.project).expanduser()
+    if not root.is_dir():
+        raise ValueError(f"no project at {root}.")
+    available = guidance_styles()
+    if args.style_name and args.clear:
+        raise ValueError("give a style NAME or --clear, not both.")
+    if args.style_name:
+        if args.style_name not in available:
+            raise ValueError(f"no style named {args.style_name!r}; the engine carries: "
+                             + (", ".join(available) or "none") + ".")
+        chosen = write_agent_style(root, args.style_name).style
+        report.notes.append(f"chose the style {chosen}; `cadex guidance --project` now carries it.")
+    elif args.clear:
+        chosen = write_agent_style(root, "").style
+        report.notes.append("chose no style; `cadex guidance --project` carries the base alone.")
+    else:
+        chosen = read_agent_state(root).style
+    report.style = {"chosen": chosen, "available": available}
     report.ok = True
     return EXIT_OK
 
@@ -1966,6 +2022,20 @@ def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
             root, out, measured, choice=args.film, inventory=inventory,
             start=args.detail_start, step=args.detail_step, video=not args.no_video,
             progress=_progress)
+        # A pass presents the design that passed (ADR-570): the hero and the
+        # print bed, from the same pinned attempt. The fit names the floor;
+        # the summarised inventory tells printed parts from purchased ones.
+        try:
+            fit = read_fit(_client)
+        except Exception:  # noqa: BLE001 - as cadex render: an unreadable fit leaves every part drawn
+            fit = None
+        measured = add_heroes(root, out, measured, fit=fit,
+                              inventory=inventory_summary(inventory) if inventory else None)
+        # ...and films the passed policy taking the task's shoves (ADR-571).
+        if measured["verdict"] == "pass" and not args.no_video:
+            _progress(" · shoves  one more episode under the task's shoves, filmed")
+        measured = add_shove(engine, root, out, measured, inputs, inventory=inventory,
+                             video=not args.no_video, timeout=float(args.timeout))
         path = out / EVALUATION_NAME
         report.evaluation = {
             key: measured[key] for key in (
@@ -1979,6 +2049,18 @@ def command_evaluate(args: argparse.Namespace, report: RunReport) -> int:
             "seeds": [{"seed": row["seed"],
                        **{key: str(out / row[key]["file"]) for key in ("overview", "detail", "video")
                           if row.get(key)}} for row in film["seeds"]]}
+        report.evaluation["heroes"] = hero_files(measured, out)
+        heroes = report.evaluation["heroes"]
+        if heroes["state"] != "skipped":
+            report.notes.append("heroes {:s}: {:s}{:s}.".format(
+                heroes["state"], ", ".join(str(heroes[key]) for key in ("hero", "print_bed")
+                                           if heroes[key]) or "none drawn",
+                "".join(f"; {key}: {text}" for key, text in heroes["errors"].items())))
+        report.evaluation["shove"] = shove_files(measured, out)
+        shove = report.evaluation["shove"]
+        if shove["state"] in ("ready", "failed"):
+            report.notes.append("shove video {:s}: {:s}.".format(
+                shove["state"], str(shove["caption"] if shove["state"] == "ready" else shove["error"])))
         failing = failing_predicates(measured)
         report.notes.append(
             "evaluation {:s}: {:d} of {:d} seeds pass{:s}; {:s}.".format(
@@ -2060,7 +2142,8 @@ class McpSession:
         self._report: RunReport | None = None
 
     def instructions(self) -> str:
-        return guidance_brief(str(Path(self.args.project).expanduser().resolve()))
+        root = Path(self.args.project).expanduser().resolve()
+        return guidance_brief(str(root), style=read_agent_state(root).style)
 
     def tools(self) -> list[dict[str, Any]]:
         return tool_definitions(self.engine.protocol)
@@ -2250,7 +2333,42 @@ def command_app(args: argparse.Namespace, report: RunReport) -> int:
     return EXIT_OK
 
 
+class _WalkStopped(Exception):
+    """A walk told to stop by ``SIGTERM``: raised from the handler so the
+    walk lands its verdict before it ends (ADR-559)."""
+
+
 def command_walk(args: argparse.Namespace, report: RunReport) -> int:
+    """:func:`_command_walk`, ended on purpose by Ctrl-C or ``SIGTERM``.
+
+    A walk told to stop stops its leg (``walk.run_leg`` relays the signal),
+    then lands its record as ``stopped``, with the signal as the reason,
+    before it lets go of its lock: a stop asked for reads as stopped, never
+    as failed. ``SIGKILL`` gives it no chance; that leaves ``running`` under
+    a free lock, which reads as failed (ADR-559).
+    """
+
+    held: dict[str, Any] = {}
+
+    def stop(_number: int, _frame: Any) -> None:
+        raise _WalkStopped()
+
+    main = threading.current_thread() is threading.main_thread()
+    previous = signal.signal(signal.SIGTERM, stop) if main else None
+    try:
+        return _command_walk(args, report, held)
+    except (KeyboardInterrupt, _WalkStopped) as exc:
+        name = "SIGTERM" if isinstance(exc, _WalkStopped) else "SIGINT (Ctrl-C)"
+        report.error = f"the walk was stopped on request: {name} reached it before it finished."
+        if "land" in held:
+            held["land"]("stopped")
+        return EXIT_FAILURE
+    finally:
+        if main:
+            signal.signal(signal.SIGTERM, previous)
+
+
+def _command_walk(args: argparse.Namespace, report: RunReport, held: dict[str, Any]) -> int:
     """The lifecycle walk as one command (ADR-199).
 
     The iterate change (``--set``,
@@ -2324,6 +2442,15 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
     out_dir = Path(args.out).expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)
     report.out_dir = str(out_dir)
+    # Held until the walk's process ends, before its record first says
+    # `running`: the kernel drops it if the walk is killed, and the
+    # dashboard reads a `running` record under a free lock as failed
+    # (ADR-559). Kept in `held`, so it lives until the walk has landed
+    # its last record, a stopped one included.
+    walk_lock = held["lock"] = hold_walk_lock(out_dir)
+    if walk_lock is None:
+        report.notes.append("walk lock not taken: another process holds "
+                            f"{out_dir.name}/walk.lock; the dashboard cannot tell this walk is alive")
     common = _walk_common(args)
     legs: list[dict[str, Any]] = []
     # The walk's own wall-clock bound, in the envelope beside the legs it
@@ -2381,6 +2508,8 @@ def command_walk(args: argparse.Namespace, report: RunReport) -> int:
             report.notes.append(f"run record not written: {exc}")
             return
         report.walk["run_record"] = str(path)
+
+    held["land"] = land_record
 
     def learned(leg: Any) -> None:
         """A finished leg's envelope identity is the record's, from here on.
@@ -2787,7 +2916,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     # A bare `cadex` opens the dashboard; `cadex -h` is the help.
     command = args.command or "app"
     if command == "guidance":
-        sys.stdout.write(guidance_text())
+        style = read_agent_state(Path(args.project).expanduser()).style
+        try:
+            text = guidance_text(style)
+        except ValueError as error:
+            print(f"cadex guidance: {error}", file=sys.stderr)
+            return EXIT_USAGE
+        sys.stdout.write(text)
         return EXIT_OK
 
     report = RunReport(project_root=str(Path(args.project).expanduser()))
@@ -2828,6 +2963,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_app(args, report)
         elif command == "budgets":
             code = command_budgets(args, report)
+        elif command == "style":
+            code = command_style(args, report)
         elif command == "revision":
             code = command_revision(args, report)
         else:  # argparse already refuses anything else
@@ -3029,7 +3166,7 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command in ("review", "app", "budgets"):  # no run: no row, no commit (ADR-286)
+    if command in ("review", "app", "budgets", "style"):  # no run: no row, no commit (ADR-286)
         return
     if command == "revision" and args.action in ("list", "backfill"):  # a read; a store fill (ADR-548)
         return
@@ -3077,7 +3214,7 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command in ("review", "app", "budgets"):
+    if command in ("review", "app", "budgets", "style"):
         return
     if command == "revision" and args.action in ("list", "backfill"):
         return

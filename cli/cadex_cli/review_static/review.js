@@ -1,19 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Cadex Authors
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// The app (ADR-534): two editors tiled by layout.js, after Blender's areas,
+// The app (ADR-534): three editors tiled by layout.js, after Blender's areas,
 // under a menu bar (ADR-539).
 //
 //   3D viewport  the accepted model or a run's, shaded or hairline, a
 //                run's rollout played back on a timeline, a training run's
 //                checkpoints looped as they land (ADR-545), the design's
-//                revisions on a timeline with a ghost and a tint (ADR-547), and the stage
-//                overlay (what the project is doing, how training is going;
-//                ADR-542) -- the whole screen by default;
+//                revisions on a timeline with a ghost and a tint (ADR-547) -- most
+//                of the screen by default;
+//   Status       what the project is doing, how training is going and what
+//                the agent last did (ADR-542, ADR-550; an editor since
+//                ADR-572) -- an area beside the 3D viewport by default;
 //   2D viewport  the project's drawings, images, documents, evaluation films and training plots,
 //                a split away;
 //   Menu bar     File (the project), Revisions (the trail), View (theme,
-//                render style, layout).
+//                render style, layout presets and reset, ADR-573).
 //
 // Read-only (ADR-537): the agent working the project changes it, through
 // the CLI or `cadex mcp`, and the page follows. Polls /api/project for what
@@ -27,9 +29,9 @@
   // (`cadex app`) it is `p/<name>/` under the index, and NAME is that project.
   var NAME = (location.pathname.match(/\/p\/([^/]+)\/(?:index\.html)?$/) || [null, null])[1];
   var POLL_MS = 2000;
-  var ORDER = ['view3d', 'view2d'];
-  // One 3D viewport over the whole screen; split an area for the 2D one.
-  var DEFAULT_LAYOUT = { editor: 'view3d' };
+  var ORDER = ['view3d', 'status', 'view2d'];
+  // The 3D viewport with Status beside it; split an area for the 2D one.
+  var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.75, 0.25], children: [{ editor: 'view3d' }, { editor: 'status' }] };
   var STYLES = ['shaded', 'hairline'];
   var state = { review: null, lastOk: null, stale: false, error: null, model: null, viewer: null, layout: null };
   var pendingPoll = null;
@@ -335,7 +337,7 @@
   }
 
   // -- 3D viewport: checkpoint rollouts (ADR-545) -------------------------------------
-  // The run the overlay reads lists its checkpoints in `stage.checkpoints`,
+  // The run Status reads lists its checkpoints in `stage.checkpoints`,
   // each rolled out by the engine as it landed (ADR-544). While that run is
   // the model shown, the newest one loops; the scrubber picks an older one,
   // and moving it back to the newest end follows new ones again. While the
@@ -507,11 +509,10 @@
     return JSON.stringify(['revisions', ordinal, !!(stop && stop.retained)]);
   }
 
-  // -- 3D viewport: the stage overlay (ADR-542) ---------------------------------------
+  // -- Status (ADR-542, an editor since ADR-572) --------------------------------------
   // What the project is doing and how training is going, from /api/project's
-  // `stage` on the page's own poll. Collapsed or not is this browser's.
-  var overlayCollapsed = readPref('cadex.overlay', ['expanded', 'collapsed'], 'expanded') === 'collapsed';
-  var STAGE_LABELS = { idle: 'idle', designing: 'designing', training: 'training', evaluating: 'evaluating', failed: 'failed' };
+  // `stage` on the page's own poll.
+  var STAGE_LABELS = { idle: 'idle', designing: 'designing', training: 'training', evaluating: 'evaluating', stopped: 'stopped', failed: 'failed' };
 
   // Text and attributes are written only when they change, so an idle poll adds no nodes.
   function setText(id, value) { var node = $(id); if (node.textContent !== value) node.textContent = value; return node; }
@@ -540,12 +541,12 @@
     if (line.getAttribute('points') !== out) line.setAttribute('points', out);
   }
 
-  function renderOverlay() {
+  function renderStatus() {
     var review = state.review, stage = review.stage || { state: 'idle', training: null, runs: 0 };
     var t = stage.training, now = Date.parse(review.served_at) || Date.now();
-    var node = $('overlay'), name = STAGE_LABELS[stage.state] ? stage.state : 'idle';
+    var node = $('status'), name = STAGE_LABELS[stage.state] ? stage.state : 'idle';
     if (node.dataset.stage !== name) node.dataset.stage = name;
-    setText('overlay-stage', STAGE_LABELS[name]);
+    setText('status-stage', STAGE_LABELS[name]).dataset.stage = name;
     var trail = review.revisions || [], line;
     if (name === 'training' && t) {
       line = t.iteration != null && t.iteration >= 0
@@ -562,23 +563,23 @@
     } else {
       line = stage.reason || '';
     }
-    setText('overlay-line', line).title = line;
+    setText('status-line', line).title = line;
     renderActivity(review, now);
     // The run it reads, named when there is more than one to choose from.
-    setHidden('overlay-run', !(stage.run && stage.runs > 1));
-    setText('overlay-run', stage.run ? 'run ' + stage.run + (t && name !== 'training' ? ' · ' + t.state : '') : '');
-    setHidden('overlay-stats', !t);
-    setHidden('overlay-sparks', !t);
+    setHidden('status-run', !(stage.run && stage.runs > 1));
+    setText('status-run', stage.run ? 'run ' + stage.run + (t && name !== 'training' ? ' · ' + t.state : '') : '');
+    setHidden('status-stats', !t);
+    setHidden('status-sparks', !t);
     var warning = t ? (t.warning || (t.state === 'stale' ? t.reason : '')) : '';
-    setHidden('overlay-warning', !warning);
-    setText('overlay-warning', warning);
+    setHidden('status-warning', !warning);
+    setText('status-warning', warning);
     if (!t) return;
-    setText('overlay-reward-now', fmt(t.reward_per_step));
-    setText('overlay-best', t.best_reward_per_step == null ? '—' : fmt(t.best_reward_per_step) + ' @ ' + (t.best_iteration + 1));
-    setText('overlay-loss-now', fmt(t.loss));
-    setText('overlay-eta', name === 'training' && t.eta_s ? duration(t.eta_s) : '—');
-    spark('overlay-reward', (t.spark || {}).curve);
-    spark('overlay-loss', (t.spark || {}).loss_curve);
+    setText('status-reward-now', fmt(t.reward_per_step));
+    setText('status-best', t.best_reward_per_step == null ? '—' : fmt(t.best_reward_per_step) + ' @ ' + (t.best_iteration + 1));
+    setText('status-loss-now', fmt(t.loss));
+    setText('status-eta', name === 'training' && t.eta_s ? duration(t.eta_s) : '—');
+    spark('status-reward', (t.spark || {}).curve);
+    spark('status-loss', (t.spark || {}).loss_curve);
   }
   // The agent's newest call through cadex mcp (ADR-550), timed against the server's
   // clock. A call still running is logged as such (ADR-553) and is never idle; past
@@ -591,7 +592,7 @@
   }
   function renderActivity(review, now) {
     var activity = review.activity || {}, entries = activity.available ? activity.entries || [] : [];
-    var newest = entries[0], node = $('overlay-activity'), name, line;
+    var newest = entries[0], node = $('status-activity'), name, line;
     if (!newest) {
       name = 'none'; line = activity.reason || 'no agent activity logged';
     } else {
@@ -605,12 +606,12 @@
       }
     }
     if (node.dataset.state !== name) node.dataset.state = name;
-    setText('overlay-activity-line', line).title = line;
-    setHidden('overlay-activity-log', entries.length < 2);
+    setText('status-activity-line', line).title = line;
+    setHidden('status-activity-log', entries.length < 2);
     var shown = entries.slice(0, ACTIVITY_LIST), key = JSON.stringify(shown);
     if (key === activityKey) return;
     activityKey = key;
-    var list = $('overlay-activity-list');
+    var list = $('status-activity-list');
     list.textContent = '';
     shown.forEach(function (e) {
       var item = document.createElement('li'), clock = (e.t || '').slice(11, 19);
@@ -619,13 +620,6 @@
       item.title = item.textContent;
       list.appendChild(item);
     });
-  }
-  function setOverlayCollapsed(collapsed) {
-    overlayCollapsed = !!collapsed;
-    writePref('cadex.overlay', overlayCollapsed ? 'collapsed' : 'expanded');
-    $('overlay').dataset.collapsed = String(overlayCollapsed);
-    $('overlay-toggle').setAttribute('aria-expanded', String(!overlayCollapsed));
-    return overlayCollapsed;
   }
 
   // -- 2D viewport -------------------------------------------------------------------
@@ -653,12 +647,26 @@
     (Array.isArray(docs.domain) ? docs.domain : []).forEach(function (path) {
       list.push({ key: 'doc:' + path, group: 'Documents', kind: 'doc', label: path.replace(/^docs\//, ''), url: 'doc/current/' + path });
     });
-    // Newest first: each filmed seed's rollout video and its two sheets (ADR-541).
+    // Newest first: a pass's two heroes (ADR-570), then each filmed seed's
+    // rollout video and its two sheets (ADR-541).
     (review.evaluations || []).slice().reverse().forEach(function (e) {
-      var film = e.film || {};
-      if (film.state !== 'ready') return;
+      var film = e.film || {}, heroes = e.heroes || {};
       var title = (e.task_label || e.task_output || e.name) + ' ' + e.verdict + ' ' + e.passed + '/' + e.seeds +
                   (e.relation === 'historical' ? ' (earlier)' : '');
+      [['hero', 'hero'], ['print_bed', 'print bed']].forEach(function (part) {
+        if (e.verdict !== 'pass' || !heroes[part[0]]) return;
+        list.push({ key: 'hero:' + e.name + ':' + heroes[part[0]], group: 'Evaluations', kind: 'image',
+                    url: 'evaluation/' + encodeURIComponent(e.name) + '/' + encodeURIComponent(heroes[part[0]]) + '?v=' + e.stamp,
+                    label: title + ' · ' + part[1] });
+      });
+      // ...and its shove video, with the pushes and the ending beside it (ADR-571).
+      var shove = e.shove || {};
+      if (e.verdict === 'pass' && shove.video) {
+        list.push({ key: 'shove:' + e.name + ':' + shove.video, group: 'Evaluations', kind: 'video',
+                    url: 'evaluation/' + encodeURIComponent(e.name) + '/' + encodeURIComponent(shove.video) + '?v=' + e.stamp,
+                    label: title + ' · shoves', caption: shove.caption || '' });
+      }
+      if (film.state !== 'ready') return;
       (film.sheets || []).forEach(function (s) {
         [['video', 'video', 'video'], ['overview', 'image', 'filmstrip'], ['detail', 'image', 'detail']].forEach(function (part) {
           if (!s[part[0]]) return;
@@ -721,6 +729,7 @@
     if (item.kind === 'video') {
       stage.appendChild(el('video', { src: item.url, controls: true, loop: true, muted: true, playsInline: true,
                                       autoplay: true, id: 'sheet-video', ariaLabel: item.label }));
+      if (item.caption) stage.appendChild(el('p', { id: 'sheet-caption', text: item.caption }));
       return Promise.resolve();
     }
     if (item.kind === 'doc') {
@@ -879,7 +888,7 @@
   function render() {
     renderFreshness();
     if (!state.review) return;
-    renderHeader(); renderRevisions(); renderOverlay(); renderSources(); followTraining(); renderCheckpoints(); renderRevisionTimeline(); renderSheetSources();
+    renderHeader(); renderRevisions(); renderStatus(); renderSources(); followTraining(); renderCheckpoints(); renderRevisionTimeline(); renderSheetSources();
   }
 
   function runModelKey(review, name) {
@@ -931,7 +940,7 @@
                         tools: home.querySelector('.editor-tools'), body: home.querySelector('.editor-body') };
     });
     state.layout = window.CadexLayout.create({ root: $('screen'), shelf: $('editor-shelf'), editors: editors, order: ORDER,
-                                               storageKey: 'cadex.layout.v3', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
+                                               storageKey: 'cadex.layout.v4', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
     state.viewer = window.CadexViewer.create($('viewer'));
     applyStyle(renderStyle);
 
@@ -943,8 +952,6 @@
         if (button) applyStyle(button.dataset.style);
       });
     });
-    setOverlayCollapsed(overlayCollapsed);
-    $('overlay-toggle').addEventListener('click', function () { setOverlayCollapsed(!overlayCollapsed); });
     $('play-toggle').addEventListener('click', function () { ckpt.paused = !!playing; togglePlayback(); });
     $('checkpoint-pick').addEventListener('input', function () { pickCheckpoint(Number($('checkpoint-pick').value)); });
     $('revision-pick').addEventListener('input', function () { pickRevision(Number($('revision-pick').value)); });
@@ -974,6 +981,12 @@
     document.addEventListener('cadex-theme', function () { if (renderStyle === 'hairline') applyStyle('hairline'); });
     renderThemeChoice();
     $('layout-reset').addEventListener('click', function () { state.layout.reset(); });
+    $('layout-presets').addEventListener('click', function (event) {
+      var button = event.target.closest('button[data-preset]');
+      if (!button) return;
+      state.layout.preset(button.dataset.preset);
+      $('view-panel').open = false;
+    });
     wireMenus();
 
     // Each canvas follows its box; redraw whenever the box changes.
@@ -1013,7 +1026,6 @@
     pickRevision: pickRevision,
     showRevision: showRevision,
     seek: seek,
-    setOverlayCollapsed: setOverlayCollapsed,
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, ms: lastPoll.ms }; },
     state: function () {
       return { stale: state.stale, error: state.error,

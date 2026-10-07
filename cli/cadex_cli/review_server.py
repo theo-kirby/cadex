@@ -54,12 +54,12 @@ from typing import Any, Callable, Mapping, Sequence
 from urllib.parse import quote, unquote, urlsplit
 from xml.etree import ElementTree
 
-from .activity import read_activity
+from .activity import ACTIVITY_PATH, read_activity
 from .checkpoints import FAILURE_SUFFIX as CHECKPOINT_FAILURE_SUFFIX
 from .checkpoints import TRACE_SUFFIX as CHECKPOINT_TRACE_SUFFIX
 from .revision_meshes import revision_mesh_paths, revision_model, revision_models
 from .revisions import read_history as read_revision_history
-from .session import read_agent_state
+from .session import AGENT_STATE_NAME, LOCK_NAME, read_agent_state
 from .studio import PRINTABLES, STUDIO
 from .review_record import (
     policy_lineage,
@@ -153,7 +153,7 @@ API_RESPONSE_KEYS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         "resolved", "problems", "relation", "telemetry", "disk"}),
         frozenset({"schema", "recorded_at", "mode", "walk_seconds", "model", "params", "task",
                    "training", "policy", "rollout", "project_docs", "policy_store",
-                   "video_render"})),
+                   "video_render", "recorded_status"})),
     "policy-origin/<run>": (frozenset({
         "schema", "run", "policy_sha256", "origin", "reason", "recorded_source_run",
         "source_agrees", "playbacks"}), frozenset()),
@@ -1508,9 +1508,9 @@ def tessellation_to_stl(sidecar: Mapping[str, Any], data: bytes) -> bytes:
 HISTORY_KEYS = ("curve", "loss_curve", "episode_steps_curve")
 
 
-#: The most points a sparkline in the stage overlay carries (ADR-542).
+#: The most points a sparkline in Status carries (ADR-542, ADR-572).
 SPARK_POINTS = 64
-#: The histories the stage overlay draws as sparklines.
+#: The histories Status draws as sparklines.
 SPARK_KEYS = ("curve", "loss_curve")
 
 
@@ -1532,7 +1532,7 @@ def _telemetry_summary(result: dict[str, Any], reported: int, *, spark: bool = F
     here is hashed and nothing grows with training length, so a poll of the
     whole run list costs a bounded amount per run however long the history.
     ``spark`` keeps a :data:`SPARK_POINTS` sketch of the reward and loss
-    histories, for the one run the stage overlay reads (ADR-542)."""
+    histories, for the one run Status reads (ADR-542)."""
 
     if spark:
         result["spark"] = {key: _spark(result.get(key) or []) for key in SPARK_KEYS}
@@ -1608,7 +1608,13 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
     reported = data.get("state")
     result.update(state=reported if reported in ("starting", "training", "done", "failed") else "unknown",
                   reported_state=reported, age_s=age, reason=str(data.get("error") or ""))
-    if reported in ("starting", "training") and age > 30:
+    ended = record.get("status") in ("ok", "failed", "stopped")
+    if reported in ("starting", "training") and ended:
+        # The record says how the run ended; a trainer killed mid-run never
+        # wrote its own end, so its snapshot is not a quiet process (ADR-574).
+        result.update(state="ended", reason=f"the run ended {record.get('status')}; "
+                      "its trainer's last snapshot says it was still training")
+    elif reported in ("starting", "training") and age > 30:
         result.update(state="stale", reason="no telemetry update for over 30 s; process state unknown")
     checkpoints = data.get("checkpoints", [])
     if not isinstance(checkpoints, list):
@@ -1728,23 +1734,58 @@ def _evaluation_report(directory: Path) -> tuple[dict[str, Any], tuple[int, ...]
     return report, (stat.st_ino, stat.st_size, stat.st_mtime_ns)
 
 
+#: The heroes a passed evaluation presents (ADR-570), as its report keys them.
+HERO_KEYS = ("hero", "print_bed")
+
+
+def _hero_names(report: Mapping[str, Any]) -> dict[str, str | None]:
+    """Per hero, the file the report's ``heroes`` block names, or None."""
+
+    heroes = report.get("heroes") if isinstance(report.get("heroes"), dict) else {}
+    names: dict[str, str | None] = {}
+    for key in HERO_KEYS:
+        item = heroes.get(key)
+        name = item.get("file") if isinstance(item, dict) else None
+        names[key] = name if isinstance(name, str) and name and set(name) <= _EVALUATION_NAME else None
+    return names
+
+
+#: The longest shove caption a row carries; the report's is far shorter.
+_SHOVE_CAPTION_CHARS = 600
+
+
+def _shove(report: Mapping[str, Any]) -> dict[str, Any]:
+    """A pass's shove video (ADR-571): its file and the caption written
+    beside it from the episode, or nothing when the report names none."""
+
+    shove = report.get("shove") if isinstance(report.get("shove"), dict) else {}
+    video = shove.get("video") if isinstance(shove.get("video"), dict) else {}
+    name = video.get("file")
+    caption = shove.get("caption")
+    return {"state": str(shove.get("state") or "none"),
+            "video": name if isinstance(name, str) and name and set(name) <= _EVALUATION_NAME else None,
+            "caption": caption[:_SHOVE_CAPTION_CHARS] if isinstance(caption, str) else None}
+
+
 def _film_files(directory: Path, report: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    """Every file the report's film block names, resolved inside the evaluation."""
+    """Every file the report's film, heroes and shove blocks name, resolved inside the evaluation."""
 
     files: dict[str, dict[str, Any]] = {}
     film = report.get("film") if isinstance(report.get("film"), dict) else {}
-    for row in film.get("seeds") or []:
-        for key in ("overview", "detail", "video"):
-            item = row.get(key) if isinstance(row, dict) else None
-            name = item.get("file") if isinstance(item, dict) else None
-            if not isinstance(name, str) or not name or not set(name) <= _EVALUATION_NAME:
-                continue
-            resolved = resolve_reference(directory, name)
-            path = directory / name
-            present = bool(resolved["exists"] and not resolved["error"]
-                           and path.is_file() and not path.is_symlink())
-            files[name] = {"exists": present, "error": resolved["error"],
-                           "bytes": path.stat().st_size if present else None}
+    named = [row.get(key) if isinstance(row, dict) else None
+             for row in film.get("seeds") or [] for key in ("overview", "detail", "video")]
+    named += [{"file": name} for name in _hero_names(report).values() if name]
+    named += [{"file": _shove(report)["video"]}]
+    for item in named:
+        name = item.get("file") if isinstance(item, dict) else None
+        if not isinstance(name, str) or not name or not set(name) <= _EVALUATION_NAME:
+            continue
+        resolved = resolve_reference(directory, name)
+        path = directory / name
+        present = bool(resolved["exists"] and not resolved["error"]
+                       and path.is_file() and not path.is_symlink())
+        files[name] = {"exists": present, "error": resolved["error"],
+                       "bytes": path.stat().st_size if present else None}
     return files
 
 
@@ -1826,6 +1867,11 @@ def evaluations(project_root: Path | str, accepted: Mapping[str, Any]) -> list[d
                          "seeds": [row.get("seed") for row in film.get("seeds") or []
                                    if isinstance(row, dict)],
                          "sheets": _film_sheets(film)},
+                # A pass's two heroes (ADR-570), named only when the
+                # report names them; a fail has neither.
+                "heroes": _hero_names(report),
+                # A pass's shove video and its caption (ADR-571).
+                "shove": _shove(report),
                 "stamp": "-".join(str(part) for part in stamp[1:]),
                 "evaluated_at": _datetime.datetime.fromtimestamp(
                     stamp[2] / 1e9, _datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -1893,7 +1939,7 @@ DESIGNING_WINDOW_S = 600
 EVALUATING_WINDOW_S = 120
 #: Entries of one evaluation directory read to find its newest write.
 EVALUATING_ENTRY_LIMIT = 256
-#: The telemetry fields the stage overlay shows for the run it reads.
+#: The telemetry fields Status shows for the run it reads.
 STAGE_TELEMETRY_KEYS = ("state", "reason", "age_s", "iteration", "total", "eta_s", "wall_time_s",
                         "reward_per_step", "loss", "best_iteration", "best_reward_per_step",
                         "warning", "spark")
@@ -1958,13 +2004,14 @@ def _evaluate_in_flight(activity: Mapping[str, Any]) -> str | None:
 
 
 def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
-    """What the project is doing now, for the 3D viewport's overlay (ADR-542).
+    """What the project is doing now, for the Status editor (ADR-542, ADR-572).
 
     ``state`` is the first that holds of: ``evaluating`` (an evaluation is
     writing, or an ``evaluate`` call through ``cadex mcp`` is in flight in
     ``review["activity"]``, ADR-553; the call's reason wins, ADR-555), ``training`` (the run the page reads is training, or its
-    telemetry has gone quiet -- ``stale``), ``failed`` (the newest run failed
-    and no revision was accepted after it), ``designing`` (a revision was
+    telemetry has gone quiet -- ``stale``), ``stopped`` (the newest run was
+    stopped on request, ``reason`` the request's, ADR-559), ``failed`` (the
+    newest run failed and no revision was accepted after it), ``designing`` (a revision was
     accepted inside :data:`DESIGNING_WINDOW_S`), else ``idle``. ``since`` is
     when that state's evidence was written. ``run`` is the newest run
     training, a quiet one included, else the one :func:`default_run`
@@ -2002,6 +2049,11 @@ def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
     elif record is not None and record.get("status") in ("running", "pending") and training \
             and training["state"] in ("starting", "training", "stale"):
         stage.update(state="training", reason=training["reason"] if training["state"] == "stale" else "",
+                     since=_iso(recorded_at) if recorded_at else None)
+    elif record is not None and record.get("status") == "stopped" \
+            and (accepted_at is None or (recorded_at or 0) >= accepted_at):
+        # Asked for, so not a failure, though the trainer it ended may say so (ADR-559).
+        stage.update(state="stopped", reason=str(record.get("error") or "the run was stopped"),
                      since=_iso(recorded_at) if recorded_at else None)
     elif record is not None and (record.get("status") == "failed" or (training or {}).get("state") == "failed") \
             and (accepted_at is None or (recorded_at or 0) >= accepted_at):
@@ -2748,12 +2800,20 @@ class ReviewServer(ThreadingHTTPServer):
         return f"http://{shown}:{port}/"
 
 
+#: Files whose presence makes a directory a project (ADR-575): the engine's
+#: manifest, and what the CLI writes before the first script exists.
+PROJECT_MARKERS = (PROJECT_SCRIPT_FILENAME, ACTIVITY_PATH, LOCK_NAME, AGENT_STATE_NAME)
+
+
 class ProjectsDirectory:
     """Every project directly under one directory, found anew per request.
 
     A project is a subdirectory holding the project manifest
-    (``script.json``); a project created while the page is open appears on
-    its next poll. Listing reads each manifest and counts ``runs/`` entries,
+    (``script.json``), or any file the CLI writes into a project before the
+    first script makes that manifest: the activity log, the lock, or
+    ``agent.json`` (ADR-575). An agent's session is on the page from its
+    first tool call, not its first script. A project created while the page
+    is open appears on its next poll. Listing reads each manifest and counts ``runs/`` entries,
     and nothing else, so a directory of many projects stays cheap to list.
     """
 
@@ -2765,7 +2825,7 @@ class ProjectsDirectory:
             return []
         return sorted(child.name for child in self.root.iterdir()
                       if child.is_dir() and not child.name.startswith(".")
-                      and (child / PROJECT_SCRIPT_FILENAME).is_file())
+                      and any((child / marker).is_file() for marker in PROJECT_MARKERS))
 
     def project(self, name: str) -> ReviewProject | None:
         if name not in self._names():
@@ -2802,12 +2862,19 @@ class ProjectsServer(ThreadingHTTPServer):
     url = ReviewServer.url
 
 
+#: How often the serving thread looks for ``shutdown()`` while idle, in
+#: seconds. The standard library's 0.5 s made every stop wait half a second
+#: (ADR-580).
+SHUTDOWN_POLL_S = 0.05
+
+
 def serve_projects(projects_root: Path | str, host: str = "127.0.0.1", port: int = 0,
                    log: Callable[[str], None] | None = None) -> tuple[ProjectsServer, threading.Thread]:
     """As :func:`serve`, over a directory of projects (``cadex app``)."""
 
     server = ProjectsServer(projects_root, host, port, log=log)
-    thread = threading.Thread(target=server.serve_forever, name="cadex-app", daemon=True)
+    thread = threading.Thread(target=server.serve_forever, args=(SHUTDOWN_POLL_S,),
+                              name="cadex-app", daemon=True)
     thread.start()
     return server, thread
 
@@ -2821,6 +2888,7 @@ def serve(project_root: Path | str, host: str = "127.0.0.1", port: int = 0,
     """
 
     server = ReviewServer(project_root, host, port, log=log)
-    thread = threading.Thread(target=server.serve_forever, name="cadex-review", daemon=True)
+    thread = threading.Thread(target=server.serve_forever, args=(SHUTDOWN_POLL_S,),
+                              name="cadex-review", daemon=True)
     thread.start()
     return server, thread

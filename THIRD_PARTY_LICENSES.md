@@ -88,8 +88,12 @@ rendering"):
 | `three.module.js` | [three.js](https://github.com/mrdoob/three.js) r160 | MIT | `THREE-LICENSE.txt` |
 | `environment.js`, `floor.js` (adapted) | `neural-whoop` studio environment | MIT | `REFERENCE-LICENSE.txt` |
 
-The engine payload carries no fonts of its own. The dashboard's pages use
-the browser's system fonts.
+The engine payload carries one font: `NotoSans-Regular-subset.ttf`, a
+subset of Noto Sans Regular 2.004 (Copyright 2015 Google LLC, SIL Open Font
+License 1.1), installed beside `CadexStudio.py`, which letters every render
+and video with it (ADR-568). Its licence text ships beside it as
+`NotoSans-OFL.txt`; `docs/PROVENANCE.md` §8j records its source. The
+dashboard's pages use the browser's system fonts.
 
 ## 5. Where each obligation is satisfied in the payload
 

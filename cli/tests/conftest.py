@@ -84,3 +84,45 @@ def private_training_slot(tmp_path, monkeypatch):
     otherwise be refused by it -- or, worse, hold it against that job.
     """
     monkeypatch.setenv("CADEX_TRAIN_LOCK", str(tmp_path / "machine-training.lock"))
+
+
+@pytest.fixture
+def small_renders(monkeypatch):
+    """Draw the review render small, for tests whose claim is not its pixels.
+
+    The four review views are drawn at 64 px, and the hero at 64 px scaled up
+    to the 1024 px the concept sheet is laid out for, so every file is still
+    written at its real size. The full-size renders stay pinned by
+    ``test_look`` and ``test_render`` (ADR-562, ADR-563).
+    """
+    from cadex_cli.studio import STUDIO
+
+    drawn, small = STUDIO.studio, 64
+
+    def studio(prepared, basis, *, bounds, size, **kwargs):
+        if size != STUDIO.HERO_SIZE:
+            return drawn(prepared, basis, bounds=bounds, size=size, **kwargs)
+        pixels, details = drawn(prepared, basis, bounds=bounds, size=small, **kwargs)
+        k = size // small
+        rows = (b"".join(bytes(pixels[3 * (y * small + x):3 * (y * small + x) + 3]) * k
+                         for x in range(small)) * k for y in range(small))
+        return bytearray(b"".join(rows)), {**details, "covered_pixels": details["covered_pixels"] * k * k}
+
+    monkeypatch.setattr(STUDIO, "SIZE", small)
+    monkeypatch.setattr(STUDIO, "studio", studio)
+
+
+@pytest.fixture
+def small_presentation(small_renders, monkeypatch):
+    """Draw a pass's videos at 128 px and its heroes at 64 px scaled up.
+
+    For tests whose claims are which files a pass and a fail leave, the
+    blocks the report and the envelope carry, and the pushes read from the
+    shove episode -- never their pixels. Full-size drawing stays pinned
+    where it is the claim: the 512 px studio video by ``test_video``, the
+    1024 px hero by ``test_look``, the print bed by the engine suite's
+    ``test_studio_print_bed`` (ADR-579).
+    """
+    from cadex_cli.video import STUDIO as VIDEO
+
+    monkeypatch.setitem(VIDEO, "size", 128)

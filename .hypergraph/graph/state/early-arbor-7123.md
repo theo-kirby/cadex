@@ -39,6 +39,10 @@ Status: working
 
 **Scratch cache diagnosis distinguishes in-place mutation from the tested build operations.** In-place writes through hardlinked module inputs reproduce the previously observed `project-b816c82c107e41400932d3a4` bundle name and corrected/stale hashes. On this machine, CMake 4.2.3 `-E copy` and `file(INSTALL)` each replace the destination inode and preserve cached bytes; neither reproduces the mismatch. The historical writer remains unidentified. This is isolated file-identity evidence, not an end-to-end build qualification, product fix or refreshed application bundle; orientation/build status stays `working` [rec: nimble-basin-8423].
 
+**The CLI suite runs green as one foreground command in 474 s, under the owner's 480 s target (ADR-580).** The path: 1017 s over thirds → 793 → 647 → 614 s (ADR-562 to ADR-564), then 722 s in thirds → 566 s as one command (ADR-579), then 474 s (ADR-580) [rec: odd-fern-0897] [rec: crimson-anchor-3392] [rec: terse-falcon-9243] [rec: tender-sun-8957] [rec: modest-ivy-6616]. The cuts: `test_loop`'s fixture no longer waits 20 s on unsupervised runs; a `small_renders` fixture draws review views and the hero small where pixels are not the claim, and a passed evaluation's presentation is likewise drawn small in tests that do not claim its pixels; overlay browser tests call the page's own poll instead of its 2 s timer (the timer still pinned by one test); duplicate evaluate/iterate trainings folded into the tests that make those claims; the remote-walk parity test, the carriage walk and the iterate refusal train on `FIXTURE_TRAINER`; and dashboard servers stop within 0.05 s of `shutdown()` [rec: terse-falcon-9243] [rec: tender-sun-8957] [rec: modest-ivy-6616]. Nothing on the keep list was weakened: contract tests, the real-engine lifecycle walk and the orun4 fix tests stay. Last whole-suite run, GPU hidden, as one command: 1211 passed, 1 skipped in 474 s [rec: modest-ivy-6616]. The orun4 C1 report states this figure and the done claim is back with the critic [rec: curious-trail-5191]. Reconcile judgement: status stays `working`; the margin under 480 s is small (6 s), so a slower machine or a new real-engine test can push it back over.
+
+**The minute-boundary flake in `test_review_status.py::test_designing_turns_idle_once_the_window_passes` is fixed (ADR-578).** The test compared a `since` minute prefix against a second clock reading; it now asserts `since` equals the one `saved_at` it wrote, and a parametrized `across_a_minute` case with an injected clock straddling a minute fails the old assertion every time. The server (`project_stage`) was right and is unchanged [rec: light-dusk-7651].
+
 ## Negative knowledge
 
 - [scope: scratch worker-cache trials using CMake 4.2.3 on this machine | confidence: high | evidence: nimble-basin-8423] Build-copy and install replace inodes; in-place truncation mutates linked cache bytes. These trials do not identify the historical writer, test races or qualify the complete build.
@@ -56,6 +60,8 @@ Status: working
 - [scope: a build that aborts early | confidence: high | evidence: weathered-sand-9705] It tells you about exactly one problem. A job red for weeks has been accumulating them silently: three separate walls stood behind one another here, and each was invisible until the one in front was removed. Budget for "fix, re-run, find the next" rather than for one diagnosis.
 - [scope: a CI job that has failed for weeks | confidence: high | evidence: weathered-sand-9705] It stops being read. This one failed on reconcile commits whose entire diff was markdown, and ADR-159 recorded it as "standing state" — a true sentence that functioned as a reason not to look. The actual first cause took one `gh run view --log-failed` to find.
 - [scope: an absolute wall-clock bar in CI | confidence: high | evidence: weathered-sand-9705] It cannot be enforced on a machine you do not control. Every timing in the gate is uniformly 2.2–2.5× slower on a GitHub macOS runner than on the developer Mac (open 2.005 → 5.102 s, refine 1.358 → 3.021 s, drag 0.520 → 1.268 s), so the drag is not slow — the runner is. Raise the enforced ceiling, and keep reporting the real bar, or the uploaded artifact becomes evidence for a parity claim that was never met.
+
+- [scope: `timeout N pixi run python -m pytest cli/tests` on this machine | confidence: medium | evidence: terse-falcon-9243] `timeout` does not kill the run cleanly under `pixi run`: the SIGTERM reached a running test and showed up as a failure, and pixi kept running past the limit. Treat a test that fails at exactly the limit as killed, not as a regression, and rerun it alone.
 
 ## Provenance
 
@@ -84,3 +90,10 @@ Status: working
 - weathered-trail-0874 — onboarding version guidance uses the configuration as the project-copy source; documentation checks passed
 - curious-badger-6887 — stale engine-suite count removed from command guidance; full-directory task and no-build instruction retained, documentation checks passed
 - warm-shore-1092 — stale-doc pass after ADR-536 to ADR-539: about 45 docs corrected, ten audits marked as dated records, owner items listed
+- odd-fern-0897 — CLI suite measured at 1017 s over thirds; five safe cuts to 793 s (ADR-562)
+- crimson-anchor-3392 — small renders, page poll on demand, iterate test cut to its unique claim: 647 s (ADR-563)
+- terse-falcon-9243 — remote-walk parity on the fixture trainer; 614 s as one command, 8-minute target not met (ADR-564)
+- light-dusk-7651 — ADR-578: the idle-stage minute-boundary flake fixed and pinned by an injected-clock case; orun4 done claim withdrawn pending the 480 s suite
+- tender-sun-8957 — ADR-579: 722 s in thirds to 566 s as one command; presentation drawn small where pixels are not the claim; 480 s not yet met
+- modest-ivy-6616 — ADR-580: 474 s as one command, under 480 s; servers stop in 0.05 s; carriage walk and iterate refusal on the fixture trainer
+- curious-trail-5191 — C1 report updated for 474 s; done claimed for critic review (no state impact of its own)

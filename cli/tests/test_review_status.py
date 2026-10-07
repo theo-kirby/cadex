@@ -1,0 +1,648 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
+"""The Status editor: the stage overlay of ADR-542 (orun3 V1), an editor of
+its own since ADR-572 (orun4 D2).
+
+``/api/project`` carries ``stage``: what the project is doing (idle,
+designing, training, evaluating, failed), the run the page reads, and that
+run's telemetry with bounded reward and loss sparklines. The server half is
+pinned here without a browser; with a Chromium the page is driven while the
+biped fixture's ``progress.json`` is rewritten under it, on the page's own
+poll, and Status is placed: an area beside the 3D viewport at a desk, a tab
+on a phone, and an area that docks and swaps like the others.
+
+The fixture is the real biped's curves (``fixtures/biped-progress.json``,
+from ``ot5-biped``'s ``probe3-final``), written a prefix at a time as a
+training run would.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import pytest
+
+from cadex_cli.activity import activity_path, append_activity, begin_activity
+from cadex_cli.review_record import RUN_GONE_ERROR, hold_walk_lock, run_process
+from cadex_cli.review_server import (DESIGNING_WINDOW_S, EVALUATING_WINDOW_S, SPARK_POINTS,
+                                     serve)
+from test_review_record import REVISION_B
+from test_review_server import (_json, _mesh_run, _open, _review_project, _rewrite_record,
+                                browser, needs_browser)  # noqa: F401  (fixture)
+
+BIPED = json.loads((Path(__file__).parent / "fixtures" / "biped-progress.json").read_text())
+RUN = "biped-train"
+ACTIVITY_IDLE_S = 300  # review.js's ACTIVITY_IDLE_S (ADR-550)
+
+
+def _biped_progress(root: Path, iteration: int, *, state: str = "training", **changes) -> Path:
+    """The biped's ``progress.json`` as the trainer writes it after ``iteration``."""
+
+    done = iteration + 1
+    curve = BIPED["curve"][:done]
+    best = max(curve, key=lambda point: point[1]) if curve else None
+    data = {"schema": BIPED["schema"], "state": state, "iteration": iteration, "total": BIPED["total"],
+            "updated_at": time.time(), "task_sha256": "t" * 64, "device": "gpu",
+            "wall_time_s": 4.0 * done, "eta_s": 4.0 * (BIPED["total"] - done),
+            "reward_per_step": curve[-1][1] if curve else None,
+            "loss": BIPED["loss_curve"][iteration][1] if curve else None,
+            "curve": curve, "loss_curve": BIPED["loss_curve"][:done],
+            "episode_steps_curve": BIPED["episode_steps_curve"][:done],
+            "best_iteration": best[0] if best else -1,
+            "best_reward_per_step": best[1] if best else None,
+            "checkpoints": [], "error": "", "warning": ""}
+    data.update(changes)
+    path = root / "runs" / RUN / "train" / "progress.json"
+    partial = path.with_suffix(".partial")
+    partial.write_text(json.dumps(data))
+    partial.replace(path)
+    return path
+
+
+def _training_project(tmp_path: Path) -> Path:
+    """The review fixture with a biped training run going on at revision B."""
+
+    root = _review_project(tmp_path)
+    for older in ("first", "second", "broken"):
+        _rewrite_record(root / "runs" / older, recorded_at="2026-09-01T00:00:00Z")
+    run = _mesh_run(root, RUN, revision=REVISION_B)
+    _rewrite_record(run, status="running")
+    _biped_progress(root, 39)
+    return root
+
+
+def _history(root: Path, saved_at: str) -> None:
+    (root / "script_history").mkdir(exist_ok=True)
+    (root / "script_history" / "history.json").write_text(json.dumps({"entries": [
+        {"ordinal": 1, "revision": "a" * 64, "saved_at": "2026-09-01T00:00:00Z", "outputs": {}},
+        {"ordinal": 2, "revision": REVISION_B, "saved_at": saved_at, "outputs": {}}]}))
+
+
+def _stage(root: Path) -> dict:
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        return _json(server.url + "api/project")["stage"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def _refresh(page) -> None:
+    """Run the page's own ``poll`` now rather than wait up to ``POLL_MS`` for
+    its timer: the same code path, without the wait (ADR-563)."""
+    page.evaluate("window.cadexReview.refresh()", await_promise=True)
+
+
+_clock = time.time  # the test's own clock, replaced to cross a minute boundary
+
+
+def _iso(seconds_ago: float) -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(_clock() - seconds_ago))
+
+
+def _ticking_across_a_minute():
+    """A clock a second on per reading, whose second and third readings fall
+    either side of a minute: the boundary between writing ``saved_at`` and
+    any later reading, every time."""
+
+    reading = [(time.time() // 60) * 60 - 1.5]
+
+    def clock() -> float:
+        reading[0] += 1.0
+        return reading[0] - 1.0
+    return clock
+
+
+def test_a_training_run_is_the_stage_with_its_numbers_and_bounded_sparklines(tmp_path):
+    root = _training_project(tmp_path)
+    _biped_progress(root, 199)
+    stage = _stage(root)
+    assert stage["state"] == "training" and stage["run"] == RUN and stage["runs"] == 4
+    t = stage["training"]
+    assert (t["iteration"], t["total"], t["eta_s"]) == (199, 240, 4.0 * 40)
+    best = max(BIPED["curve"][:200], key=lambda p: p[1])
+    assert (t["best_iteration"], t["best_reward_per_step"]) == (best[0], best[1])
+    # 200 samples become at most SPARK_POINTS, the first and the newest kept.
+    for key, history in (("curve", BIPED["curve"]), ("loss_curve", BIPED["loss_curve"])):
+        points = t["spark"][key]
+        assert len(points) == SPARK_POINTS
+        assert points[0][0] == 0 and points[-1][0] == 199
+        assert points[-1][1] == pytest.approx(history[199][1], rel=1e-4)
+    assert t["warning"] == ""
+
+
+def test_the_collapse_warning_and_a_quiet_trainer_reach_the_stage(tmp_path):
+    root = _training_project(tmp_path)
+    _biped_progress(root, 60, warning="episode_collapse: mean episode 3 steps")
+    assert _stage(root)["training"]["warning"] == "episode_collapse: mean episode 3 steps"
+    _biped_progress(root, 60, updated_at=time.time() - 120)
+    stage = _stage(root)
+    assert stage["state"] == "training" and stage["training"]["state"] == "stale"
+    assert "no telemetry update" in stage["reason"]
+
+
+def test_a_failed_run_is_the_stage_until_a_revision_is_accepted_after_it(tmp_path):
+    root = _training_project(tmp_path)
+    _rewrite_record(root / "runs" / RUN, status="failed", error="the trainer ran out of memory",
+                    recorded_at=_iso(30))
+    _biped_progress(root, 80, state="failed", error="the trainer ran out of memory")
+    _history(root, _iso(3600))
+    stage = _stage(root)
+    assert stage["state"] == "failed" and stage["reason"] == "the trainer ran out of memory"
+    _history(root, _iso(5))
+    stage = _stage(root)
+    assert stage["state"] == "designing" and stage["reason"] == "revision 2 accepted"
+    # The run it read is still named, with its last numbers.
+    assert stage["run"] == RUN and stage["training"]["state"] == "failed"
+
+
+@pytest.mark.parametrize("clock", ["wall", "across_a_minute"])
+def test_designing_turns_idle_once_the_window_passes(tmp_path, monkeypatch, clock):
+    """``since`` is the accepted revision's own ``saved_at``, compared with the
+    one string written rather than a second reading of the clock, which
+    failed whenever a minute turned between the two (ADR-578)."""
+
+    if clock == "across_a_minute":
+        monkeypatch.setattr(sys.modules[__name__], "_clock", _ticking_across_a_minute())
+    root = _review_project(tmp_path)
+    _history(root, _iso(DESIGNING_WINDOW_S - 120))
+    assert _stage(root)["state"] == "designing"
+    saved_at = _iso(DESIGNING_WINDOW_S + 120)
+    _history(root, saved_at)
+    stage = _stage(root)
+    assert stage["state"] == "idle"
+    assert stage["since"] == saved_at.replace("Z", "+00:00")
+
+
+def test_an_evaluation_without_its_report_is_the_stage_while_it_writes(tmp_path):
+    root = _training_project(tmp_path)
+    _biped_progress(root, 239, state="done")
+    _rewrite_record(root / "runs" / RUN, status="ok")
+    directory = root / "evaluations" / "bbbbbbbbbbbb-cccccccccccc"
+    directory.mkdir(parents=True)
+    trace = directory / "seed-1101-trace.json"
+    trace.write_text("{}")
+    stage = _stage(root)
+    assert stage["state"] == "evaluating" and stage["reason"] == "an evaluation is running"
+    # Abandoned: nothing written inside the window.
+    old = time.time() - EVALUATING_WINDOW_S - 30
+    for path in (trace, directory):
+        os.utime(path, (old, old))
+    assert _stage(root)["state"] != "evaluating"
+
+
+def test_an_in_flight_evaluate_call_is_the_stage_until_it_returns(tmp_path):
+    """Most of an ``evaluate`` through ``cadex mcp`` is the session building the
+    design, before any evaluation directory exists; its in-flight activity line
+    is what says it is evaluating (ADR-553)."""
+
+    root = _training_project(tmp_path)
+    _biped_progress(root, 239, state="done")
+    _rewrite_record(root / "runs" / RUN, status="ok")
+    started = time.time() - 40
+    call = begin_activity(root, "evaluate", {}, now=started)
+    stage = _stage(root)
+    assert stage["state"] == "evaluating" and stage["reason"] == "the agent's evaluate call is running"
+    assert stage["since"] == time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(int(started)))
+    append_activity(root, "evaluate", {}, ok=True, detail="evaluate: fail", ms=41000.0, call=call)
+    assert _stage(root)["state"] != "evaluating"
+    # Another call in flight is not an evaluation.
+    begin_activity(root, "render", {"views": ["iso"]})
+    assert _stage(root)["state"] != "evaluating"
+    # An evaluate whose server is gone will never return: not evaluating.
+    log = activity_path(root)
+    gone = json.loads(log.read_text().splitlines()[-1]) | {"tool": "evaluate", "pid": 2 ** 22 + 7, "call": "x-1"}
+    with open(log, "a") as handle:
+        handle.write(json.dumps(gone) + "\n")
+    assert _stage(root)["state"] != "evaluating"
+
+
+def test_a_project_with_no_runs_has_a_stage_and_no_training(tmp_path):
+    from test_review_record import _manifest, _project
+    root = _project(tmp_path)
+    _manifest(root, REVISION_B)
+    stage = _stage(root)
+    assert stage == {"state": "idle", "reason": "", "since": None, "run": None, "runs": 0, "training": None,
+                     "checkpoints": None}
+
+
+# -- the page --------------------------------------------------------------------
+
+STATUS = """(function () {
+  function q(s) { return document.querySelector(s); }
+  function rect(e) { var b = e.getBoundingClientRect(); return {width: b.width, height: b.height, x: b.x, y: b.y, right: b.right, bottom: b.bottom}; }
+  var area = q('#status').closest('.area'), model = q('#model').closest('.area');
+  return {stage: q('#status').dataset.stage,
+          line: q('#status-line').textContent, chip: q('#status-stage').textContent,
+          chip_in_header: !!q('#status-stage').closest('.area-header'),
+          run: q('#status-run').hidden ? null : q('#status-run').textContent,
+          best: q('#status-best').textContent, eta: q('#status-eta').textContent,
+          reward: q('#status-reward polyline').getAttribute('points') || '',
+          warning: q('#status-warning').hidden ? null : q('#status-warning').textContent,
+          warning_color: getComputedStyle(q('#status-warning')).color,
+          warn: getComputedStyle(document.documentElement).getPropertyValue('--warn').trim(),
+          status: area && rect(area), model: model && rect(model),
+          in_model: !!q('#model').querySelector('#status, #status-stage'),
+          areas: Array.from(document.querySelectorAll('#screen .area')).map(function (a) { return a.dataset.editor; }),
+          tabs: Array.from(document.querySelectorAll('#screen .tab')).map(function (t) { return t.textContent; }),
+          timelines_in_model: ['checkpoints', 'revision-timeline', 'playback'].every(function (id) {
+            return !!q('#model').querySelector('#' + id); })};
+})()"""
+
+
+#: A walk's process as far as its lock goes: takes the run's walk lock the
+#: way ``cadex walk`` does, says so, and sleeps until it is killed.
+WALK_HOLDER = """
+import sys, time
+from cadex_cli.review_record import hold_walk_lock
+handle = hold_walk_lock(sys.argv[1])
+print("held" if handle else "busy", flush=True)
+time.sleep(600)
+"""
+
+
+def _walk_process(run_dir: Path) -> subprocess.Popen:
+    process = subprocess.Popen([sys.executable, "-c", WALK_HOLDER, str(run_dir)],
+                               stdout=subprocess.PIPE, text=True,
+                               env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)})
+    assert process.stdout.readline().strip() == "held"
+    return process
+
+
+def test_a_killed_walk_is_failed_not_training_forever(tmp_path):
+    """The open end ``snowy-lodge-1033`` named: a walk killed mid-training
+    leaves ``run.json`` saying ``running``, so the stage read ``training``
+    (quiet) for ever. Its lock dies with it (ADR-559)."""
+
+    root = _training_project(tmp_path)
+    run = root / "runs" / RUN
+    # Before ADR-559 there is no lock to read: what the files say stands.
+    _biped_progress(root, 60, updated_at=time.time() - 120)
+    assert run_process(run) == "unknown" and _stage(root)["state"] == "training"
+    walk = _walk_process(run)
+    try:
+        assert run_process(run) == "alive"
+        stage = _stage(root)
+        assert stage["state"] == "training" and stage["training"]["state"] == "stale"
+        walk.send_signal(signal.SIGKILL)
+        walk.wait(timeout=10)
+    finally:
+        walk.kill()
+        walk.stdout.close()
+    assert run_process(run) == "gone"
+    stage = _stage(root)
+    assert stage["state"] == "failed" and stage["reason"] == RUN_GONE_ERROR
+    assert stage["run"] == RUN and stage["training"]["iteration"] == 60
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        record = _json(server.url + "api/run/" + RUN)
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert (record["status"], record["recorded_status"], record["error"]) == ("failed", "running", RUN_GONE_ERROR)
+    # The file is left as the walk wrote it: the page reads, never writes.
+    assert json.loads((run / "run.json").read_text())["status"] == "running"
+
+
+def test_a_walk_that_finished_under_its_lock_reads_as_it_wrote(tmp_path):
+    root = _training_project(tmp_path)
+    run = root / "runs" / RUN
+    handle = hold_walk_lock(run)
+    _biped_progress(root, 239, state="done")
+    _rewrite_record(run, status="ok", recorded_at=_iso(5))
+    handle.close()
+    assert run_process(run) == "gone"
+    assert _stage(root)["state"] != "failed"
+
+
+def _supervisor_status(run: Path, state: str, reason: str) -> None:
+    (run / "training-status.json").write_text(json.dumps({
+        "schema": "cadex-training-status-v1", "run": run.name, "state": state,
+        "reason": reason, "exit": -15}))
+
+
+def test_a_run_stopped_before_adr559_reads_stopped_and_a_killed_one_failed(tmp_path):
+    """A loop run stopped on request before ADR-559 has a ``failed`` record
+    and a supervisor that wrote ``stopped``: the request is what happened,
+    with no quiet-trainer warning under it. One killed with no stop request
+    still reads failed (ADR-574)."""
+
+    root = _training_project(tmp_path)
+    run = root / "runs" / RUN
+    reason = "stop requested: iteration 140 passed the evaluation"
+    _rewrite_record(run, status="failed", mode="loop", error=reason, recorded_at=_iso(30))
+    _biped_progress(root, 60, updated_at=time.time() - 3600)
+    _supervisor_status(run, "stopped", reason)
+    stage = _stage(root)
+    assert (stage["state"], stage["reason"], stage["run"]) == ("stopped", reason, RUN)
+    assert stage["training"]["state"] == "ended" and stage["training"]["iteration"] == 60
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        record = _json(server.url + "api/run/" + RUN)
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert (record["status"], record["recorded_status"], record["outcome"]) == (
+        "stopped", "failed", "stopped on request")
+    assert json.loads((run / "run.json").read_text())["status"] == "failed"
+    _supervisor_status(run, "interrupted", "")
+    stage = _stage(root)
+    assert stage["state"] == "failed" and stage["training"]["state"] == "ended"
+
+
+def _hex_rgb(value: str) -> str:
+    return "rgb(%d, %d, %d)" % tuple(int(value[i:i + 2], 16) for i in (1, 3, 5))
+
+
+@needs_browser
+def test_status_follows_progress_json_on_the_pages_own_poll(tmp_path, browser) -> None:
+    root = _training_project(tmp_path)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        page.wait_for("document.getElementById('status').dataset.stage === 'training'")
+        first = page.evaluate(STATUS)
+        assert first["chip"] == "training" and first["line"].startswith("iteration 40 / 240")
+        assert first["run"] == "run " + RUN  # four runs: it says which it reads
+        assert first["reward"] and first["warning"] is None
+        # The trainer writes on; the page's 2 s poll, not a reload, carries it.
+        _biped_progress(root, 159)
+        page.wait_for("document.getElementById('status-line').textContent.indexOf('iteration 160 / 240') === 0",
+                      timeout=10)
+        second = page.evaluate(STATUS)
+        assert second["reward"] != first["reward"] and second["best"] != first["best"]
+        assert second["eta"] == "5 min"
+        _biped_progress(root, 170, warning="episode_collapse: mean episode 3 steps")
+        page.wait_for("!document.getElementById('status-warning').hidden", timeout=10)
+        warned = page.evaluate(STATUS)
+        assert warned["warning"] == "episode_collapse: mean episode 3 steps"
+        assert warned["warning_color"] == _hex_rgb(warned["warn"])
+        # Done: the run's numbers stay, the stage moves on.
+        _biped_progress(root, 239, state="done")
+        _rewrite_record(root / "runs" / RUN, status="ok")
+        page.wait_for("document.getElementById('status').dataset.stage !== 'training'", timeout=10)
+        assert page.evaluate(STATUS)["run"] == "run " + RUN + " · done"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
+def test_status_is_an_area_at_a_desk_a_tab_on_a_phone_and_docks_like_the_others(tmp_path, browser) -> None:
+    """ADR-572: Status is an editor beside the 3D viewport, never over the
+    model; the scrubbers and the timeline stay in the 3D viewport they drive."""
+
+    root = _training_project(tmp_path)
+    _biped_progress(root, 120, warning="episode_collapse: mean episode 3 steps")
+    for tool in ("build", "inspect", "measure"):
+        append_activity(root, tool, {"scope": "clearance"}, ok=True, detail="", ms=900.0)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        page.evaluate("window.cadexReview.layout().reset()")
+        page.wait_for("document.getElementById('status').dataset.stage === 'training'")
+        desk = page.evaluate(STATUS)
+        # The default: the 3D viewport, Status to its right, side by side and not overlapping.
+        assert desk["areas"] == ["view3d", "status"], desk["areas"]
+        s, v = desk["status"], desk["model"]
+        assert s["x"] >= v["right"] - 1 and abs(s["y"] - v["y"]) <= 1 and abs(s["height"] - v["height"]) <= 1
+        assert v["width"] > 2 * s["width"]
+        assert desk["chip_in_header"] and desk["chip"] == "training"
+        assert desk["warning"] and desk["reward"] and not desk["in_model"] and desk["timelines_in_model"]
+        assert page.evaluate("document.getElementById('status-activity').dataset.state") == "active"
+        # Like any area: dragged by its grip onto the middle of the 3D viewport, the two swap.
+        grip = page.evaluate("(function () { var b = document.querySelector('.area[data-editor=status] .area-grip')"
+                             ".getBoundingClientRect(); return [b.x + b.width / 2, b.y + b.height / 2]; })()")
+        page.drag(grip[0], grip[1], v["x"] + v["width"] / 2, v["y"] + v["height"] / 2)
+        page.wait_for("document.querySelector('#screen .area').dataset.editor === 'status'", timeout=5)
+        swapped = page.evaluate(STATUS)
+        assert swapped["areas"] == ["status", "view3d"] and swapped["status"]["x"] < swapped["model"]["x"]
+        # Its own header picks it in any area, and Reset puts the default back.
+        page.evaluate("window.cadexReview.layout().reset()")
+        assert page.evaluate(STATUS)["areas"] == ["view3d", "status"]
+
+        phone = browser.page("about:blank")
+        phone.send("Emulation.setDeviceMetricsOverride",
+                   {"width": 390, "height": 844, "deviceScaleFactor": 1, "mobile": True})
+        phone.send("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
+        phone.send("Page.navigate", {"url": server.url})
+        phone.wait_for("document.readyState === 'complete' && !!window.cadexReview")
+        phone.evaluate("window.cadexReview.ready", await_promise=True)
+        first = phone.evaluate(STATUS)
+        # A phone has a tab per editor; the 3D one is first and nothing sits over its model.
+        assert first["tabs"] == ["3D", "Status", "2D"] and first["areas"] == ["view3d"], first
+        assert not first["in_model"] and first["timelines_in_model"]
+        phone.click("#screen .tab[data-editor=status]")
+        shown = phone.evaluate(STATUS)
+        assert shown["areas"] == ["status"] and shown["stage"] == "training" and shown["warning"]
+        assert shown["status"]["width"] == 390
+        assert phone.evaluate("document.documentElement.scrollWidth") <= 390
+        print(json.dumps({"status_editor": {"desk_px": [round(s["width"]), round(s["height"])],
+                                            "model_px": [round(v["width"]), round(v["height"])],
+                                            "phone_px": [round(shown["status"]["width"]), round(shown["status"]["height"])]}}))
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+ACTIVITY = """(function () {
+  function q(s) { return document.querySelector(s); }
+  return {state: q('#status-activity').dataset.state, line: q('#status-activity-line').textContent,
+          log_hidden: q('#status-activity-log').hidden,
+          items: Array.from(document.querySelectorAll('#status-activity-list li')).map(function (li) {
+            return [li.dataset.outcome, li.textContent]; }),
+          line_color: getComputedStyle(q('#status-activity-line')).color,
+          bad: getComputedStyle(document.documentElement).getPropertyValue('--bad').trim(),
+          info: getComputedStyle(document.documentElement).getPropertyValue('--info').trim()};
+})()"""
+
+
+@needs_browser
+def test_status_says_what_the_agent_is_doing_and_when_it_went_quiet(tmp_path, browser) -> None:
+    """V4's line (ADR-550): the newest call and how long ago, a short list of the
+    ones before it, ``idle`` past :data:`ACTIVITY_IDLE_S`, and a page that
+    renders with no log at all, each read by the page's own ``poll`` (the
+    timer's tick is pinned by the progress test above)."""
+
+    root = _review_project(tmp_path)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        none = page.evaluate(ACTIVITY)
+        assert none["state"] == "none" and none["log_hidden"] and none["items"] == []
+        assert none["line"] == "no tool call through cadex mcp has been logged in this project"
+        # The agent works: each call lands in the log and the poll carries it.
+        append_activity(root, "build", {"source": "x" * 3000}, ok=True, detail="built 4 parts", ms=2100.0)
+        _refresh(page)
+        page.wait_for("document.getElementById('status-activity').dataset.state === 'active'", timeout=10)
+        first = page.evaluate(ACTIVITY)
+        assert first["line"] == "build source=<3000 chars> · just now" and first["log_hidden"]
+        append_activity(root, "inspect", {"scope": "clearance"}, ok=True, detail="", ms=400.0)
+        append_activity(root, "set_params", {"values": {"bore": 8}}, ok=False,
+                        detail="unknown parameter: bore", ms=12.0)
+        _refresh(page)
+        page.wait_for("document.getElementById('status-activity').dataset.state === 'error'", timeout=10)
+        failed = page.evaluate(ACTIVITY)
+        assert failed["line"] == "set_params values={bore} · failed: unknown parameter: bore · just now"
+        assert failed["line_color"] == _hex_rgb(failed["bad"])
+        assert not failed["log_hidden"]
+        assert [outcome for outcome, _ in failed["items"]] == ["error", "ok", "ok"]
+        assert failed["items"][1][1].endswith("inspect scope=\"clearance\"")
+        # Only the newest few are listed.
+        for n in range(6):
+            append_activity(root, "measure", {"n": n}, ok=True, detail="", ms=5.0)
+        _refresh(page)
+        page.wait_for("document.querySelectorAll('#status-activity-list li').length === 5 && "
+                      "document.getElementById('status-activity-line').textContent.indexOf('measure n=5') === 0",
+                      timeout=10)
+        # Quiet past the threshold: the line says idle, not a stale action as current.
+        log = activity_path(root)
+        log.unlink()
+        append_activity(root, "build", {}, ok=True, detail="", ms=10.0, now=time.time() - 3600)
+        append_activity(root, "evaluate", {"seeds": [1, 2]}, ok=True, detail="", ms=10.0,
+                        now=time.time() - ACTIVITY_IDLE_S - 120)
+        _refresh(page)
+        page.wait_for("document.getElementById('status-activity').dataset.state === 'idle'", timeout=10)
+        idle = page.evaluate(ACTIVITY)
+        assert idle["line"] == "agent idle · last call evaluate 7 min ago"
+        assert [text.split(" ", 1)[1] for _, text in idle["items"]] == ["evaluate seeds=[2]", "build"]
+        # The log goes away (a fresh copy): the page shows the absence, not the old line.
+        log.unlink()
+        _refresh(page)
+        page.wait_for("document.getElementById('status-activity').dataset.state === 'none'", timeout=10)
+        assert page.evaluate(ACTIVITY)["items"] == []
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
+def test_an_in_flight_evaluate_reads_evaluating_and_running_never_idle(tmp_path, browser) -> None:
+    """ADR-553 on the page: an ``evaluate`` call in flight turns the stage
+    ``evaluating`` and the activity line ``running``, however long it has run;
+    its return turns both back, each read by the page's own ``poll``."""
+
+    root = _review_project(tmp_path)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        append_activity(root, "set_params", {"values": {"foot_w": 38}}, ok=True, detail="", ms=900.0)
+        _refresh(page)
+        page.wait_for("document.getElementById('status-activity').dataset.state === 'active'", timeout=10)
+        # Started longer ago than the idle threshold, and still running.
+        call = begin_activity(root, "evaluate", {}, now=time.time() - ACTIVITY_IDLE_S - 100)
+        _refresh(page)
+        page.wait_for("document.getElementById('status').dataset.stage === 'evaluating'", timeout=10)
+        running = page.evaluate(ACTIVITY) | {"status": page.evaluate(STATUS)}
+        assert running["status"]["chip"] == "evaluating"
+        assert running["status"]["line"] == "the agent's evaluate call is running · 7 min"
+        assert running["state"] == "running" and running["line"] == "evaluate · running 7 min"
+        assert running["line_color"] == _hex_rgb(running["info"])
+        assert running["items"][0][0] == "running" and running["items"][0][1].endswith("evaluate · running")
+        assert [outcome for outcome, _ in running["items"]] == ["running", "ok"]
+        append_activity(root, "evaluate", {}, ok=True, detail="evaluate: fail", ms=480000.0, call=call)
+        _refresh(page)
+        page.wait_for("document.getElementById('status-activity').dataset.state === 'active'", timeout=10)
+        done = page.evaluate(ACTIVITY) | {"status": page.evaluate(STATUS)}
+        assert done["status"]["stage"] != "evaluating"
+        assert done["line"] == "evaluate · just now"
+        assert [outcome for outcome, _ in done["items"]] == ["ok", "ok"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
+def test_the_evaluate_call_names_the_stage_once_its_directory_exists(tmp_path, browser) -> None:
+    """W1's ``evaluate`` wrote its evaluation directory part-way through the
+    call, and the line then named that directory's id. The agent's call wins,
+    and a directory alone reads without its id (ADR-555)."""
+
+    root = _training_project(tmp_path)
+    _biped_progress(root, 239, state="done")
+    _rewrite_record(root / "runs" / RUN, status="ok")
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        call = begin_activity(root, "evaluate", {}, now=time.time() - 65)
+        _refresh(page)
+        page.wait_for("document.getElementById('status').dataset.stage === 'evaluating'", timeout=10)
+        assert page.evaluate(STATUS)["line"] == "the agent's evaluate call is running · 1 min"
+        # The evaluation's own directory appears; the call is still in flight.
+        directory = root / "evaluations" / "dc0af1158165-d3a4c0ffee00"
+        directory.mkdir(parents=True)
+        (directory / "seed-1101-trace.json").write_text("{}")
+        assert _json(server.url + "api/project")["stage"]["reason"] == "the agent's evaluate call is running"
+        _refresh(page)  # two of the page's polls with the directory on disk
+        _refresh(page)
+        during = page.evaluate(STATUS)
+        assert during["stage"] == "evaluating"
+        assert during["line"] == "the agent's evaluate call is running · 1 min"
+        assert "dc0af1158165" not in during["line"]
+        # The call returns while the directory is still fresh: it alone reads without its id.
+        append_activity(root, "evaluate", {}, ok=True, detail="evaluate: pass", ms=66000.0, call=call)
+        _refresh(page)
+        page.wait_for("document.getElementById('status-line').textContent.indexOf('an evaluation is running') === 0",
+                      timeout=10)
+        assert "dc0af1158165" not in page.evaluate(STATUS)["line"]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_the_idle_threshold_here_is_the_pages():
+    page = (Path(__file__).resolve().parents[1] / "cadex_cli" / "review_static" / "review.js").read_text()
+    assert f"var ACTIVITY_IDLE_S = {ACTIVITY_IDLE_S}," in page
+
+
+@needs_browser
+def test_status_turns_a_killed_walk_from_training_to_failed(tmp_path, browser) -> None:
+    root = _training_project(tmp_path)
+    walk = _walk_process(root / "runs" / RUN)
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        page.wait_for("document.getElementById('status').dataset.stage === 'training'")
+        walk.send_signal(signal.SIGKILL)
+        walk.wait(timeout=10)
+        # The page's own poll, not a reload, carries the death.
+        page.wait_for("document.getElementById('status').dataset.stage === 'failed'", timeout=10)
+        shown = page.evaluate(STATUS)
+        assert shown["chip"] == "failed" and RUN_GONE_ERROR in shown["line"]
+    finally:
+        walk.kill()
+        walk.stdout.close()
+        server.shutdown()
+        server.server_close()
+
+
+@needs_browser
+def test_status_reads_a_stopped_run_as_stopped_with_its_reason(tmp_path, browser) -> None:
+    """A run ended through ``train_stop``: its record lands ``stopped`` with
+    the reason, while the trainer it ended says ``failed`` in its progress.
+    The chip turns from training to **stopped**, in ``--warn``, on the page's
+    own poll -- never to failed (ADR-559)."""
+
+    root = _training_project(tmp_path)
+    run = root / "runs" / RUN
+    server, _thread = serve(root, "127.0.0.1", 0)
+    try:
+        page = _open(browser, server.url)
+        page.wait_for("document.getElementById('status').dataset.stage === 'training'")
+        _biped_progress(root, 41, state="failed", error="KeyboardInterrupt: ")
+        _rewrite_record(run, status="stopped", recorded_at=_iso(0),
+                        error="stop requested: the reward is flat")
+        page.wait_for("document.getElementById('status').dataset.stage === 'stopped'", timeout=10)
+        shown = page.evaluate(STATUS)
+        assert shown["chip"] == "stopped" and shown["line"] == "stop requested: the reward is flat"
+        chip = page.evaluate("getComputedStyle(document.getElementById('status-stage')).color")
+        assert chip == _hex_rgb(shown["warn"])
+    finally:
+        server.shutdown()
+        server.server_close()

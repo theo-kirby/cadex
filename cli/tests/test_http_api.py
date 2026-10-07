@@ -16,23 +16,25 @@ import inspect
 import json
 from pathlib import Path
 import re
+import shutil
 
 import pytest
 
 from cadex_cli import review_server
+from cadex_cli.review_record import WALK_LOCK_FILENAME
 from cadex_cli.review_server import (
     API_RESPONSE_KEYS, API_ROUTES, APP_API_ROUTES, ReviewHandler, serve, serve_projects)
 from test_review_checkpoints import RUN, _trace as _checkpoint_trace, _training_run
 from test_review_evaluation import _passing
 from test_review_record import REVISION_A, REVISION_B, _manifest, _project
 from test_review_revisions import _biped_store
-from test_review_server import _escaped_run, _get, _json, _mesh_run, _stage_accepted
+from test_review_server import _escaped_run, _get, _json, _mesh_run, _rewrite_record, _stage_accepted
 from test_review_server import _training_run as _untraced_run
 
 REPO = Path(__file__).resolve().parents[2]
 STATIC = REPO / "cli" / "cadex_cli" / "review_static"
 #: The per-viewer conveniences the page may keep in ``localStorage``.
-BROWSER_KEYS = {"cadex.theme", "cadex.layout.v3", "cadex.render", "cadex.overlay"}
+BROWSER_KEYS = {"cadex.theme", "cadex.layout.v4", "cadex.render"}
 
 
 def _documented() -> dict[str, tuple[set[str], set[str]]]:
@@ -119,7 +121,7 @@ def biped(tmp_path):
 #: Each route, the paths that reach it in the fixture, and the 404s it gives.
 PROBES = {
     "project": (["api/project"], []),
-    "run/<run>": (["api/run/first", "api/run/broken", "api/run/escaped", f"api/run/{RUN}"],
+    "run/<run>": (["api/run/first", "api/run/broken", "api/run/escaped", f"api/run/{RUN}", "api/run/killed"],
                   ["api/run/nope"]),
     "policy-origin/<run>": (["api/policy-origin/first", "api/policy-origin/escaped"],
                             ["api/policy-origin/nope"]),
@@ -148,6 +150,10 @@ def _check(route: str, reply: dict, seen: dict[str, set[str]]) -> None:
 def test_every_reply_carries_its_documented_keys_and_nothing_else(biped, tmp_path) -> None:
     assert set(PROBES) == set(API_ROUTES)
     seen: dict[str, set[str]] = {}
+    # A walk killed before its verdict: `running` under a lock nobody holds (ADR-559).
+    shutil.copytree(biped / "runs" / "first", biped / "runs" / "killed")
+    _rewrite_record(biped / "runs" / "killed", status="running")
+    (biped / "runs" / "killed" / WALK_LOCK_FILENAME).touch()
     server, _thread = serve(biped, "127.0.0.1", 0)
     try:
         for route, (found, missing) in PROBES.items():
@@ -167,6 +173,7 @@ def test_every_reply_carries_its_documented_keys_and_nothing_else(biped, tmp_pat
         assert played["available"] and not failed["available"]
         assert {"meshes"} <= seen["model/accepted"] and {"compare"} <= seen["model/revision/<ordinal>"]
         assert "policy_store" in seen["run/<run>"] and "playback" in seen["model/run/<run>"]
+        assert _json(server.url + "api/run/killed")["recorded_status"] == "running"
     finally:
         server.shutdown()
         server.server_close()

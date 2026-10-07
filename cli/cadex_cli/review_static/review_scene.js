@@ -403,13 +403,24 @@ export function create(canvas) {
     return {count:n,box:n?[x0,y0,x1,y1]:null,width:W,height:H};
   }
   function nonBackgroundPixels() {return modelPixels().count;}
-  // Orbit and zoom by pointer events, so a mouse and a finger drive the same
-  // camera (DASHBOARD.md §5): one pointer orbits, two pinch, the wheel
-  // zooms. The canvas captures the pointer, so a drag that leaves it still
-  // orbits, and its `touch-action: none` keeps the page from scrolling.
-  const pointers=new Map(); let pinch=0;
+  // Orbit, pan and zoom by pointer events, so a mouse and a finger drive the same
+  // camera (DASHBOARD.md §5): one pointer orbits, shift- or middle-drag pans, two
+  // fingers pan by their midpoint and pinch, the wheel zooms. The canvas captures
+  // the pointer, so a drag that leaves it still moves the camera, and its
+  // `touch-action: none` keeps the page from scrolling.
+  const pointers=new Map(); let pinch=0, mid=null, panning=false;
   const zoom=f=>{c.distance=Math.max((bounds?.radius||1)*.2,c.distance*f);};
   const span=()=>{const [a,b]=[...pointers.values()];return Math.hypot(a[0]-b[0],a[1]-b[1]);};
+  const centre=()=>{const [a,b]=[...pointers.values()];return [(a[0]+b[0])/2,(a[1]+b[1])/2];};
+  // Pan (ADR-561): slide the target in the view plane so the point under the
+  // pointer follows it, one canvas pixel being the field of view's mm per pixel at
+  // the target's distance. Right and up are the camera's, in the model's z-up frame.
+  function pan(dx,dy) {
+    const h=canvas.clientHeight||canvas.height||1, mm=2*c.distance*Math.tan(camera.fov*Math.PI/360)/h;
+    const sy=Math.sin(c.yaw), cy=Math.cos(c.yaw), sp=Math.sin(c.pitch), cp=Math.cos(c.pitch);
+    const right=[-sy,cy,0], up=[-sp*cy,-sp*sy,cp];
+    c.target=c.target.map((t,i)=>t-right[i]*dx*mm+up[i]*dy*mm);
+  }
   // Picking (orun2 A1, ADR-505): a press and release that barely moved is a click, not an
   // orbit; it names the solid under it, or null, to the page's onPick.
   const raycaster=new THREE.Raycaster(), ndc=new THREE.Vector2(); let onPick=null, press=null, picked=null;
@@ -444,20 +455,22 @@ export function create(canvas) {
   }
   // The picked solid glows faintly; null clears it. Never set by a capture.
   function highlight(name) {picked=meshes.has(name)?name:null; meshes.forEach((m,n)=>{if(m.material.emissive)m.material.emissive.setHex(n===picked?0x3a3a3a:0);}); draw(); return picked;}
-  canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);press=pointers.size===1?[e.clientX,e.clientY]:null;if(pointers.size===2)pinch=span();e.preventDefault();});
+  canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);press=pointers.size===1?[e.clientX,e.clientY]:null;panning=pointers.size===1&&(e.shiftKey||e.button===1);if(pointers.size===2){pinch=span();mid=centre();}e.preventDefault();});
   canvas.addEventListener('pointermove',e=>{
     const p=pointers.get(e.pointerId);if(!p)return;
     if(press&&Math.hypot(e.clientX-press[0],e.clientY-press[1])>=5)press=null;
-    if(pointers.size===1){c.yaw-=(e.clientX-p[0])*.01;c.pitch=Math.max(-1.5,Math.min(1.5,c.pitch+(e.clientY-p[1])*.01));}
+    if(pointers.size===1&&panning)pan(e.clientX-p[0],e.clientY-p[1]);
+    else if(pointers.size===1){c.yaw-=(e.clientX-p[0])*.01;c.pitch=Math.max(-1.5,Math.min(1.5,c.pitch+(e.clientY-p[1])*.01));}
     pointers.set(e.pointerId,[e.clientX,e.clientY]);
-    if(pointers.size===2){const s=span();if(s>0&&pinch>0)zoom(pinch/s);pinch=s;}
+    if(pointers.size===2){const s=span(),m=centre();if(mid)pan(m[0]-mid[0],m[1]-mid[1]);if(s>0&&pinch>0)zoom(pinch/s);pinch=s;mid=m;}
     draw();
   });
   const lift=e=>{
     if (e.type==='pointerup'&&press&&pointers.size===1&&Math.hypot(e.clientX-press[0],e.clientY-press[1])<5&&onPick) onPick(pick(e.clientX,e.clientY));
-    press=null; pointers.delete(e.pointerId);pinch=0;
+    press=null; pointers.delete(e.pointerId);pinch=0;mid=null;panning=false;
   };
   canvas.addEventListener('pointerup',lift);canvas.addEventListener('pointercancel',lift);
+  canvas.addEventListener('mousedown',e=>{if(e.button===1)e.preventDefault();});  // no middle-click autoscroll
   canvas.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(e.deltaY*.0015));draw();},{passive:false});
   window.addEventListener('resize',draw);
   return {available:true,load,install,clear,fit,draw,setPoses,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,

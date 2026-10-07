@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-04. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-06. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -175,6 +175,13 @@ Turning alpha further down does not turn it into a rate limit; that is what
 `--command-slew-deg` is for, and the two compose in that order because the
 playback harness composes them in that order.
 
+**The engine plays a policy under the filter it recorded** (ADR-558). Both
+values go into the `.cxpolicy` header at `training.action_filter_alpha` and
+`training.command_slew_deg`, and every rollout, checkpoint rollout and
+evaluation (`CadexDynamics.rollout_policy`) applies them in the same order,
+first command of the episode unfiltered. A header that records neither plays
+unfiltered, as it was trained. There is no flag to set at evaluation.
+
 A slew limit at or below the joint's own physical reach in one control step is
 worse than none: it forbids commands the servo *can* execute. Measure it
 against the actuator rather than deriving it — ADR-162 carries the numbers.
@@ -187,7 +194,8 @@ against the actuator rather than deriving it — ADR-162 carries the numbers.
 not a weight dump: pull it off the box mid-run, paste its digest into
 `assembly.policy`, rebuild, and watch it. Cost is about one iteration each —
 a rollout for the witness observations plus 32 forward passes — so every
-hundredth of two thousand is 1 %.
+hundredth of two thousand is 1 %. The first checkpoint also pays one compile
+of that rollout; later ones reuse it (ADR-576).
 
 The witness is checked on checkpoints too. That error is *relative* and grows
 with the activations a policy learns (ADR-094), so a checkpoint that fails it

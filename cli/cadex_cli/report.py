@@ -97,6 +97,9 @@ class RunReport:
     #: ``engine``) and what the project ``stored``; ``cadex budgets``
     #: reports ``stored`` alone.
     budgets: dict[str, Any] = field(default_factory=dict)
+    #: ``cadex style`` (ADR-560): the guidance style the project ``chosen``
+    #: (empty for none) and the ``available`` ones the engine carries.
+    style: dict[str, Any] = field(default_factory=dict)
     #: Free-form notes worth printing but not worth a field of their own.
     notes: list[str] = field(default_factory=list)
 
@@ -135,6 +138,8 @@ class RunReport:
             payload["revisions"] = dict(self.revisions)
         if self.budgets:
             payload["budgets"] = dict(self.budgets)
+        if self.style:
+            payload["style"] = dict(self.style)
         if self.notes:
             payload["notes"] = list(self.notes)
         if self.error:
@@ -352,6 +357,10 @@ def human_lines(report: RunReport) -> list[str]:
         lines.append("budgets " + ("  ".join(
             f"{key} {value:g}" + (f" ({sources[key]})" if key in sources else "")
             for key, value in sorted((shown or {}).items())) or "none stored: the engine's defaults"))
+    if report.style:
+        lines.append("style  " + (report.style.get("chosen") or "none: the base guidance alone")
+                     + "  (available: " + (", ".join(report.style.get("available") or ()) or "none")
+                     + ")")
     for note in report.notes:
         lines.append(f"note   {note}")
     if report.revision:

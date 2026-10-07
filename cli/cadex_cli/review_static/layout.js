@@ -6,7 +6,13 @@
 // an area's header picks its editor, splits it, maximizes it or closes it;
 // dragging a header onto another area docks it beside that area (an edge) or
 // swaps the two (the middle). Each editor is shown at most once, so picking
-// one shown elsewhere swaps the two areas' editors.
+// one shown elsewhere swaps the two areas' editors. An area may also be
+// empty, showing only its editor picker, so a preset can have more areas
+// than there are editors (ADR-573).
+//
+// A preset (ADR-573) replaces the whole tree in one step: single, side by
+// side, stacked, 2 over 1, 1 over 2, three columns, three rows or quad, its
+// areas filled with the editors in their order and any left over empty.
 //
 // The layout is a tree: a split {dir: 'row'|'col', sizes, children} or an
 // area {editor}. It is this browser's own, kept in localStorage; a browser
@@ -15,7 +21,19 @@
 (function () {
   'use strict';
 
-  var MIN_PX = 120, DRAG_PX = 6;
+  var MIN_PX = 120, DRAG_PX = 6, EMPTY = 'empty';
+  // Each preset's shape: a slot is an area, filled in reading order.
+  var PRESETS = {
+    single: 0,
+    side: { dir: 'row', children: [0, 0] },
+    stacked: { dir: 'col', children: [0, 0] },
+    two_over_one: { dir: 'col', children: [{ dir: 'row', children: [0, 0] }, 0] },
+    one_over_two: { dir: 'col', children: [0, { dir: 'row', children: [0, 0] }] },
+    columns: { dir: 'row', children: [0, 0, 0] },
+    rows: { dir: 'col', children: [0, 0, 0] },
+    quad: { dir: 'col', children: [{ dir: 'row', children: [0, 0] }, { dir: 'row', children: [0, 0] }] }
+  };
+  var ZONES = { center: 'Swap', left: 'Dock left', right: 'Dock right', top: 'Dock above', bottom: 'Dock below' };
   var ICONS = {
     row: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M8 2.5v11"/></svg>',
     col: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M1.5 8h13"/></svg>',
@@ -59,6 +77,7 @@
     }
     function valid(node, seen) {
       if (!node || typeof node !== 'object') return false;
+      if (node.editor === EMPTY) return true;
       if (typeof node.editor === 'string') {
         if (!editors[node.editor] || seen[node.editor]) return false;
         seen[node.editor] = true;
@@ -95,7 +114,7 @@
       else node.children.forEach(function (child) { areas(child, out); });
       return out;
     }
-    function shown() { return areas().map(function (area) { return area.editor; }); }
+    function shown() { return areas().map(function (area) { return area.editor; }).filter(function (type) { return type !== EMPTY; }); }
     function hidden() { var on = shown(); return order.filter(function (type) { return on.indexOf(type) < 0; }); }
 
     // A split of one child is that child; a split inside a split of the same
@@ -145,8 +164,8 @@
     // -- the operations ------------------------------------------------------
     function setEditor(id, type) {
       var found = find(id);
-      if (!found || !found.node.editor || !editors[type] || found.node.editor === type) return false;
-      var other = areas().filter(function (area) { return area.editor === type; })[0];
+      if (!found || !found.node.editor || !(editors[type] || type === EMPTY) || found.node.editor === type) return false;
+      var other = type === EMPTY ? null : areas().filter(function (area) { return area.editor === type; })[0];
       if (other) other.editor = found.node.editor;
       found.node.editor = type;
       commit();
@@ -185,12 +204,14 @@
       render(); onChange();
       return maximized;
     }
-    // Bring an editor into view: its tab on a phone; at desk, beside the
-    // largest area when it is not already shown.
+    // Bring an editor into view: its tab on a phone; at desk, in an empty
+    // area, or else beside the largest area, when it is not already shown.
     function show(type) {
       if (!editors[type]) return false;
       if (narrow.matches) { tab = type; render(); onChange(); return true; }
       if (shown().indexOf(type) >= 0) return true;
+      var empty = areas().filter(function (area) { return area.editor === EMPTY; })[0];
+      if (empty) return setEditor(empty.id, type);
       var largest = null, best = -1;
       root.querySelectorAll('.area').forEach(function (node) {
         var r = node.getBoundingClientRect();
@@ -198,6 +219,20 @@
       });
       var rect = largest ? largest.getBoundingClientRect() : { width: 1, height: 0 };
       return split(largest ? largest.dataset.area : areas()[0].id, rect.width >= rect.height ? 'row' : 'col', type);
+    }
+    // Fill a preset's slots with the editors in order; past the last editor
+    // a slot is an empty area. Shares are equal.
+    function preset(name) {
+      if (!Object.prototype.hasOwnProperty.call(PRESETS, name)) return false;
+      var next = 0;
+      function fill(shape) {
+        if (!shape) { var type = order[next] || EMPTY; next += 1; return { editor: type }; }
+        return { dir: shape.dir, sizes: shape.children.map(function () { return 1; }), children: shape.children.map(fill) };
+      }
+      tree = normalize(stamp(fill(PRESETS[name])));
+      maximized = null;
+      commit();
+      return true;
     }
     function reset() {
       try { localStorage.removeItem(storageKey); } catch (_) { /* nothing kept */ }
@@ -239,8 +274,8 @@
     function typeSelect(current, onPick) {
       var select = el('select', 'area-type');
       select.setAttribute('aria-label', 'Editor');
-      order.forEach(function (type) {
-        var option = el('option', '', editors[type].title);
+      order.concat(current === EMPTY ? [EMPTY] : []).forEach(function (type) {
+        var option = el('option', '', type === EMPTY ? 'Empty' : editors[type].title);
         option.value = type;
         select.appendChild(option);
       });
@@ -248,14 +283,21 @@
       select.addEventListener('change', function () { onPick(select.value); });
       return select;
     }
+    // An empty area has a picker and a line saying so, and nothing to move.
+    function emptyEditor() {
+      var body = el('div', 'editor-body area-empty');
+      body.appendChild(el('p', 'muted', 'Empty area: pick an editor from the menu at the top left.'));
+      return { tools: el('div', 'editor-tools'), body: body };
+    }
     function buildArea(node) {
-      var editor = editors[node.editor];
+      var editor = node.editor === EMPTY ? emptyEditor() : editors[node.editor];
       var area = el('section', 'area');
       area.dataset.area = node.id;
       area.dataset.editor = node.editor;
       var header = el('header', 'area-header');
       var grip = el('span', 'area-grip');
       grip.title = 'Drag onto another area to move this one';
+      grip.setAttribute('aria-hidden', 'true');
       header.appendChild(grip);
       header.appendChild(typeSelect(node.editor, function (type) { setEditor(node.id, type); }));
       header.appendChild(editor.tools);
@@ -365,6 +407,7 @@
             dragging = true;
             root.classList.add('dragging');
             hint = el('div', 'drop-hint');
+            hint.appendChild(el('span', 'drop-label'));
             document.body.appendChild(hint);
           }
           var under = document.elementFromPoint(e.clientX, e.clientY);
@@ -374,6 +417,7 @@
           drop = { id: area.dataset.area, zone: zone };
           hint.hidden = false;
           hint.dataset.zone = zone;
+          hint.firstChild.textContent = ZONES[zone];
           hint.style.left = box.left + 'px'; hint.style.top = box.top + 'px';
           hint.style.width = box.width + 'px'; hint.style.height = box.height + 'px';
         }
@@ -404,7 +448,7 @@
     tree = load();
     render();
     return {
-      render: render, reset: reset, setEditor: setEditor, split: split, close: close, move: move,
+      render: render, reset: reset, preset: preset, presets: Object.keys(PRESETS), setEditor: setEditor, split: split, close: close, move: move,
       maximize: maximize, show: show,
       tree: function () { return strip(tree); },
       areas: function () { return areas().map(function (area) { return { id: area.id, editor: area.editor }; }); },

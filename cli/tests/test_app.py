@@ -61,6 +61,27 @@ def app(tmp_path):
         server.server_close()
 
 
+def test_a_served_page_and_the_app_stop_promptly(tmp_path) -> None:
+    """ADR-580: ``shutdown()`` returns in a tenth of a second, not the
+    standard library's half second of idle polling."""
+
+    import time
+    from cadex_cli.review_server import serve
+
+    projects = _projects(tmp_path)
+    for start in (lambda: serve_projects(projects, "127.0.0.1", 0),
+                  lambda: serve(projects / "biped", "127.0.0.1", 0)):
+        server, thread = start()
+        _get(server.url + "/")
+        time.sleep(0.2)  # idle, inside a poll
+        began = time.monotonic()
+        server.shutdown()
+        took = time.monotonic() - began
+        server.server_close()
+        thread.join(1.0)
+        assert took < 0.15 and not thread.is_alive(), took
+
+
 def test_the_index_lists_only_projects_and_finds_new_ones_live(app) -> None:
     projects, server = app
     listing = _json(server.url + "api/projects")
@@ -92,6 +113,36 @@ def test_each_project_is_its_review_page_under_its_own_prefix(app) -> None:
     for missing in ("p/nope/", "p/nope/api/project", "p/notes/api/project", "p/.cache/api/project",
                     "p/biped/api/nope", "api/project"):
         assert _get(server.url + missing)[0] == 404, missing
+
+
+@pytest.mark.parametrize("marker", ["activity", "lock", "agent"])
+def test_a_project_being_worked_on_is_listed_before_its_first_script(app, marker) -> None:
+    """orun3's defect (ADR-575): an MCP session's first tool call writes the
+    activity log and takes the CLI lock long before the agent's first script
+    makes ``script.json``, and until then the page read the project as "not
+    found". Any file the CLI writes into a project makes it one."""
+
+    from cadex_cli.activity import begin_activity
+    from cadex_cli.session import project_lock, write_agent_budgets
+
+    projects, server = app
+    root = projects / "orun4-fresh"
+    if marker == "activity":
+        begin_activity(root, "describe_api", {})
+    elif marker == "lock":
+        with project_lock(root):
+            pass
+    else:
+        write_agent_budgets(root, {"timeout_seconds": 900})
+    assert not (root / "script.json").exists()
+    names = [entry["name"] for entry in _json(server.url + "api/projects")["projects"]]
+    assert "orun4-fresh" in names
+    review = _json(server.url + "p/orun4-fresh/api/project")
+    assert review["project"] == "orun4-fresh"
+    assert review["accepted"]["available"] is False
+    assert _get(server.url + "p/orun4-fresh/")[0] == 200
+    # A directory the CLI never touched is still not a project.
+    assert _get(server.url + "p/notes/api/project")[0] == 404
 
 
 def test_a_bare_cadex_is_the_app(monkeypatch) -> None:

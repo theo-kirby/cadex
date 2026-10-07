@@ -96,6 +96,51 @@ Until this section changes, the run works to these defaults:
   npm, build step or framework. Layouts are per-viewer conveniences, kept
   in the browser.
 
+## Owner notes
+
+- **Never end a turn waiting on a background task (added 2026-10-06,
+  iteration 14).** In this loop the session ends when the actor's turn
+  ends. A suite started in the background and "waited for" finishes after
+  the session is gone, so the iteration leaves code with no record.
+  Iterations 3, 6 and 10 were rejected this way, and 4, 7, 11 and 12 came
+  up empty.
+  - Run every gate in the **foreground**, as commands that each finish
+    within the shell's 10-minute limit.
+  - The CLI suite takes about 18 minutes whole. Run it in three
+    interleaved thirds, each its own foreground command:
+
+        CUDA_VISIBLE_DEVICES= pixi run python -m pytest -q -p no:cacheprovider $(ls cli/tests/test_*.py | sort | awk 'NR%3==0')
+        CUDA_VISIBLE_DEVICES= pixi run python -m pytest -q -p no:cacheprovider $(ls cli/tests/test_*.py | sort | awk 'NR%3==1')
+        CUDA_VISIBLE_DEVICES= pixi run python -m pytest -q -p no:cacheprovider $(ls cli/tests/test_*.py | sort | awk 'NR%3==2')
+
+    If a third runs past 10 minutes, split it further. Three green thirds
+    count as a green suite. `pixi run test-engine` (about 8 minutes)
+    stays one command.
+  - Write the record and handoff **before** a long gate where you can,
+    then amend them with the gate's result. Do not leave them until the end.
+
+- **Make the CLI suite lighter (added 2026-10-06, iteration 14).** The
+  owner finds the suite too heavy. Take this as the next unit after the one
+  in progress, ahead of the remaining criteria.
+  - **Measure first:** `--durations=40` over the whole suite, run in the
+    thirds above. Record the slowest tests and files.
+  - **Target:** the whole CLI suite in **under 8 minutes** as one
+    foreground command, with the GPU hidden. Once it gets there, the
+    thirds above are no longer needed.
+  - **Cut** duplicate coverage, tests of behaviour that no longer exists,
+    redundant parametrisations, and slow end-to-end tests whose claim a
+    faster test already makes. Shrinking a fixture or a sleep counts as
+    much as deleting a test.
+  - **Keep:**
+    - every test that pins a contract: the tool surface, the protocol and
+      `docs/INTEGRATION.md`, the HTTP API, licensing, engine purity, and
+      the page against `docs/DASHBOARD.md`;
+    - at least one real-engine end-to-end test of the lifecycle;
+    - every test this run added for a fix.
+  - **Record it** with one ADR listing each removed test and why, plus
+    the before and after wall times. `pixi run test-engine` may be trimmed
+    on the same terms if it shows up in the measurement.
+
 ## Done criteria
 
 Each criterion needs a causally parented record with measured evidence.

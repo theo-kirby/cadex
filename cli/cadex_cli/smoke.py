@@ -238,6 +238,36 @@ def _retained_bundle(root: Path, destination: Path) -> tuple[dict, dict, dict]:
     return state, items, display
 
 
+def thread_allowances(items: dict, static: list, maximum_volume: float) -> list[dict]:
+    """Each bolt-into-printed-part pair the static block calls threaded (ADR-583).
+
+    The engine's own rule (ADR-492), read the way its clearance sweep reads
+    it: the components are built as the clearance scope builds them, and an
+    allowance holds only for a pair whose solved-pose overlap is already
+    within it. A bolt that only meets a part as the robot moves holds none.
+    """
+    from .studio import FIT_REPORT
+
+    rows = []
+    for name, item in items.items():
+        if item.get("type") != "component_link":
+            continue
+        source = items.get(item.get("source_output")) or {}
+        row = {"component": name}
+        for key in ("catalog", "catalog_derived_from"):
+            if isinstance(source.get(key), dict):
+                row[key] = {k: str(source[key].get(k) or "") for k in ("family", "part_number")}
+        rows.append(row)
+    allowances = FIT_REPORT.thread_allowances({"components": rows})
+    held = []
+    for row in static:
+        key = frozenset((str(row.get("first") or ""), str(row.get("second") or "")))
+        volume = row.get("common_volume_mm3")
+        if key in allowances and FIT_REPORT._threaded(row, allowances, volume) and volume > maximum_volume:
+            held.append({"first": row["first"], "second": row["second"], "allowance_mm3": allowances[key]})
+    return held
+
+
 def check_geometry(engine: Engine, *, items: dict, display: dict, model_name: str,
                    out: Path, timeout: float, maximum_volume: float) -> dict:
     """Trusted FreeCAD child reads detached solids and numeric poses only."""
@@ -256,7 +286,9 @@ def check_geometry(engine: Engine, *, items: dict, display: dict, model_name: st
             raise SmokeError(f"exact smoke geometry unavailable for {name}")
         geometry.append({"name": name, "path": source["artifact_path"]})
     assembly = items[model["assembly_data"]["assembly_output"]]
-    plan = {"geometry": geometry, "static": assembly.get("clearance", []),
+    static = assembly.get("clearance", [])
+    plan = {"geometry": geometry, "static": static,
+            "thread_allowances": thread_allowances(items, static, maximum_volume),
             "trace": str(out / "smoke-trace.json"), "out": str(out / "smoke-geometry.json"),
             "maximum_volume_mm3": maximum_volume}
     with tempfile.TemporaryDirectory(prefix="cadex-smoke-") as temp:

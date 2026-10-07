@@ -77,15 +77,15 @@ def test_spec_has_every_required_section_and_a_verified_date():
 
 def test_every_hook_in_the_hierarchy_table_is_on_the_page():
     """§2's element hooks are the ones the page carries: an id the table
-    names and the page lacks is a failing test, the overlay's included
-    (ADR-542)."""
+    names and the page lacks is a failing test, Status's included
+    (ADR-542, ADR-572)."""
 
     section = SPEC.read_text().split("## 2. Hierarchy", 1)[1].split("## 3. ", 1)[0]
     rows = [line for line in section.splitlines() if line.startswith("| **")]
     hooks = {hook for row in rows for cell in re.findall(r"`([^`]+)`", row)
              for hook in re.findall(r"#([a-z][a-z0-9-]*)", cell)}
-    assert {"overlay", "overlay-toggle", "overlay-line", "overlay-warning", "overlay-reward",
-            "overlay-activity", "overlay-activity-line", "overlay-activity-list"} <= hooks
+    assert {"editor-status", "status", "status-stage", "status-line", "status-warning", "status-reward",
+            "status-activity", "status-activity-line", "status-activity-list"} <= hooks
     page = (STATIC / "index.html").read_text()
     ids = set(re.findall(r'\bid="([^"]+)"', page))
     assert hooks <= ids, sorted(hooks - ids)
@@ -168,7 +168,7 @@ def test_the_spec_itself_names_no_private_address():
 
 # §2: one 3D viewport over the whole screen by default, and the menu bar's
 # three menus (ADR-539).
-EDITORS = ["view3d"]
+EDITORS = ["view3d", "status"]
 HEADINGS = ["File", "Revisions", "View"]
 
 MEASURE = """(function () {
@@ -252,7 +252,7 @@ def _assert_follows_the_spec(browser, server, size) -> None:
     # The 3D viewport's canvas fills its area's body.
     assert m["canvas"]["width"] >= 0.98 * m["model"]["width"] and m["canvas"]["height"] >= 0.98 * m["model"]["height"]
     if size == "desk":
-        # §12: the default layout is one 3D viewport over the whole screen.
+        # §12: the default layout is the 3D viewport with Status beside it (ADR-572).
         assert m["mode"] == "areas"
         assert [a["editor"] for a in m["areas"]] == EDITORS
         assert [h["text"] for h in m["headings"]] == HEADINGS
@@ -266,7 +266,7 @@ def _assert_follows_the_spec(browser, server, size) -> None:
     # §6: on the phone one editor fills the screen, the 3D viewport first, and a tab bar picks it.
     assert m["mode"] == "tabs"
     assert [a["editor"] for a in m["areas"]] == ["view3d"]
-    assert m["tabs"] == ["view3d", "view2d"]
+    assert m["tabs"] == ["view3d", "status", "view2d"]
     assert m["canvas"]["width"] >= width - 1
 
 
