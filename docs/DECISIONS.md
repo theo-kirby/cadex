@@ -36843,3 +36843,72 @@ changes (charter A5); `assembly.success` gains five keyword arguments,
 reached through `describe_api`.
 
 Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-588 — A position tracker: a grounded sensor for a free body's position (2026-10-07)
+
+**Decision.** `assembly.sensor` gains a third kind, `position_tracker`,
+declared on the component it is mounted on with a datasheet — `range_mm`
+(a box `[[x0, x1], [y0, y1], [z0, z1]]` in the mount's frame),
+`resolution_mm`, `rate_hz` and `noise_mm` (one standard deviation per
+axis), all four required and refused on any other kind. It grounds one new
+observation kind, `tracked_position`, whose target is the body it reads —
+never its own mount. The channel expands to `<name>_x`, `_y`, `_z` and
+`<name>_in_range`.
+
+- **MuJoCo computes it.** The export writes a `framepos` sensor on the
+  body's `xbody` with the mount as `reftype="xbody"`/`refname`, so the
+  value is the body's position in the mount's frame through any tilt and
+  turn, three values wide in `sensordata`.
+- **The declaration is applied in one function**, `tracker_reading`, in the
+  engine (`observation_values`), its `jnp` copy in the trainer, and the
+  smoke runner's copy: inside the range on every axis — judged on the true
+  position, as a panel judges a touch — the position is rounded to the
+  resolution and the flag is 1; outside, all four read 0. Never a clamped
+  edge, never a held value.
+- **The trainer adds the noise**, drawn per control step from its own key
+  split (taken only by a task with a tracker, so every other task's random
+  stream is unchanged), to what the actor and critic read, before the
+  rounding. Rewards and terminations read the noise-free reading;
+  evaluations draw none.
+- **The rate is a refusal, not a hold.** A tracker slower than the task's
+  control loop is refused at export (`tracker_slower_than_control`): a
+  sample-and-hold would hand the policy stale readings, which is what the
+  criterion forbids, and lowering `control_hz` is one argument.
+
+**Why.** A design that needed a free object's position — a ball on a
+plate — had no grounded way to read it, because only `imu` and
+`joint_encoder` existed, and faked a touch panel with two sliders and a
+hidden bead (orun5 ledger, W1). A resistive touch panel or a camera with a
+marker is real hardware that reports exactly this: a position in its own
+frame, over a range, at a resolution and rate, with noise (charter A1).
+
+**Alternatives.** A `frame=` argument on any `component_position` was set
+aside: it would make a world-frame privileged channel and a measured one
+the same kind, and the datasheet would have nowhere to live. A velocity
+channel was not added: neither part reports one, so it would be privileged
+(A1); a policy that needs the ball's speed gets it from a design that
+measures it, or from a later unit that models differencing honestly.
+Sample-and-hold for slow trackers was refused for the staleness above.
+Reporting out of range as NaN was refused: it poisons the normaliser and
+every reward term that touches it.
+
+**Regression and tests.** `test_dynamics_position_tracker.py`: the surface
+carries the declaration and the mount, and refuses a missing or reversed
+range, a datasheet on an `imu`, a tracker reading its own mount, and a
+`tracked_position` without a tracker; the exported channel matches the
+ball's true position in the plate's frame within half a resolution step
+at five poses of a plate that turns about z and tilts about x; a ball
+250 mm off the plate reads all zeros and the termination on
+`ball_in_range` is accepted; rounding and the true-position range test;
+the trainer's copy equals the engine's on 200 random draws and its noise
+has the declared spread (σ within 6 %); a task reading it has no
+ungrounded channel, and a 30 Hz tracker under a 50 Hz loop is refused.
+Run by hand: `training/cadex_train.py` trained that rig on CPU (3
+iterations, 8 envs), and its witness agreed with the engine to 1.8e-9.
+
+**Consequences.** A task with no tracker exports byte-identical and trains
+on the same key stream. No op, argument, tool or response shape changes
+(charter A5); `assembly.sensor` gains four keyword arguments, reached
+through `describe_api`, whose assembly notes were trimmed to make room.
+
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).

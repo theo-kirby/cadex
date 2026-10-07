@@ -5930,6 +5930,20 @@ OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
         "suffixes": ("_x", "_y", "_z"),
         "units": {None: ("nmms", angular_momentum_nmms)},
     },
+    # ADR-588: another body's position in a tracker's mount frame -- a touch
+    # panel reading a ball, a camera reading a marker. Stock MuJoCo still
+    # computes it (a ``framepos`` with ``reftype``/``refname``); the one
+    # derived channel, ``_in_range``, is the tracker's own report of whether
+    # it saw the body, applied by :func:`tracker_reading`.
+    "tracked_position": {
+        "sensor": "mjSENS_FRAMEPOS",
+        "target": "component",
+        "objtype": "mjOBJ_XBODY",
+        "dim": 3,
+        "suffixes": ("_x", "_y", "_z"),
+        "derived": ("_in_range",),
+        "units": {None: ("mm", length_mm)},
+    },
 }
 
 #: Observation kinds named here on purpose, with the reason they are not
@@ -6266,8 +6280,29 @@ def observation_records(
                 )
             object_name = target
 
+        tracked: dict[str, Any] = {}
+        if kind == "tracked_position":
+            frame = str(entry.get("frame") or "")
+            if frame not in bodies or frame == target or not entry.get("tracker"):
+                raise DynamicsError(
+                    f"{what} is a tracked position whose tracker is mounted on "
+                    f"{frame!r}, which is "
+                    + ("the body it reads" if frame == target
+                       else "not a body in this assembly's dynamics model")
+                    + ".",
+                    reason="observation_tracker_frame",
+                    correction=(
+                        "Mount the position_tracker on a component with an "
+                        "api.body, and observe a different body with it."
+                    ),
+                    observed={"observation": name, "frame": frame,
+                              "available": list(bodies)},
+                )
+            tracked = {"frame": frame, "tracker": dict(entry["tracker"])}
+
         unit, scale = _observation_unit(kind, motion_type)
-        channels = [f"{name}{suffix}" for suffix in row["suffixes"]]
+        channels = [f"{name}{suffix}"
+                    for suffix in (*row["suffixes"], *row.get("derived", ()))]
         for channel in channels:
             if channel in taken:
                 raise DynamicsError(
@@ -6306,6 +6341,7 @@ def observation_records(
                 # anything MuJoCo already carries.
                 "mujoco_sensor": f"obs/{index}",
                 **{key: str(entry[key]) for key in _GROUNDING_KEYS if entry.get(key)},
+                **tracked,
             }
         )
     if len(taken) > MAXIMUM_OBSERVATION_CHANNELS:
@@ -6342,6 +6378,9 @@ def _add_observation_sensors(
         sensor.type = getattr(mujoco.mjtSensor, str(record["sensor"]))
         sensor.objtype = getattr(mujoco.mjtObj, str(record["objtype"]))
         sensor.objname = str(record["object_name"])
+        if record.get("frame"):
+            sensor.reftype = mujoco.mjtObj.mjOBJ_XBODY
+            sensor.refname = str(record["frame"])
 
 
 def _verify_exported_sensors(
@@ -8119,6 +8158,9 @@ def task_records(
                 # (ADR-408). Absent means the defaults -- a policy input with
                 # no sensor named -- so a pre-ADR-408 task keeps its bytes.
                 **{key: str(record[key]) for key in _GROUNDING_KEYS if record.get(key)},
+                # ADR-588: the mount frame and the datasheet, present only on
+                # a tracked position.
+                **{key: record[key] for key in ("frame", "tracker") if record.get(key)},
             }
         )
         channels.extend(str(name) for name in record["channels"])
@@ -8215,6 +8257,7 @@ def task_records(
         episode_seconds=float(task.get("episode_seconds") or 0.0),
         context=context,
     )
+    _check_tracker_rates(observation_rows, schedule, context=context)
     goal = _goal_records(
         mujoco,
         reloaded,
@@ -8642,9 +8685,79 @@ def observation_values(
         adr = int(record["adr"])
         dim = int(record["dim"])
         scale = float(record["scale"])
-        for offset, channel in enumerate(record["channels"][:dim]):
-            values[str(channel)] = float(sensordata[adr + offset]) * scale
+        read = [float(sensordata[adr + offset]) * scale for offset in range(dim)]
+        if record.get("tracker"):
+            read = tracker_reading(read, record["tracker"])
+        for channel, value in zip(record["channels"], read):
+            values[str(channel)] = value
     return values
+
+
+def _check_tracker_rates(
+    rows: Sequence[Mapping[str, Any]],
+    schedule: Mapping[str, Any],
+    *,
+    context: str,
+) -> None:
+    """Refuse a policy that acts faster than a tracker it reads reports (ADR-588).
+
+    A tracker slower than the control loop would hand the policy the same
+    reading for several steps -- a stale value the trainer would have to
+    model as a hold. Refusing keeps every reading fresh, and the remedy is
+    one argument: a lower ``control_hz``, or a faster part.
+    """
+
+    control_hz = 1.0 / float(schedule["control_interval_s"])
+    for row in rows:
+        tracker = row.get("tracker")
+        if not tracker or float(tracker["rate_hz"]) + 1.0e-9 >= control_hz:
+            continue
+        raise DynamicsError(
+            f"{context} reads {row['name']!r} from a tracker reporting at "
+            f"{float(tracker['rate_hz']):g} Hz, slower than its "
+            f"{control_hz:g} Hz control loop.",
+            reason="tracker_slower_than_control",
+            correction=(
+                "A policy may not act on a reading its sensor has not made. "
+                "Lower control_hz to the tracker's rate or below, or declare "
+                "the faster part the machine actually carries."
+            ),
+            observed={"observation": str(row["name"]),
+                      "rate_hz": float(tracker["rate_hz"]),
+                      "control_hz": control_hz},
+        )
+
+
+def tracker_reading(
+    true_mm: Sequence[float],
+    tracker: Mapping[str, Any],
+    noise_mm: Sequence[float] | None = None,
+) -> list[float]:
+    """What a position tracker reports for a body at ``true_mm`` (ADR-588).
+
+    The position in the mount's frame plus any noise drawn, rounded to the
+    declared resolution, then the in-range flag: ``[x, y, z, 1.0]`` when the
+    body's *true* position lies inside ``range_mm`` on every axis, and
+    ``[0, 0, 0, 0.0]`` when it does not -- a touch panel with nothing on it
+    reports no touch, never the edge it last saw. The engine draws no noise
+    (an evaluation is deterministic); ``training/cadex_train.py`` writes the
+    same arithmetic in ``jnp`` with a drawn ``noise_mm``, and a test pins
+    the two equal.
+    """
+
+    bounds = tracker["range_mm"]
+    inside = all(
+        float(low) <= float(value) <= float(high)
+        for value, (low, high) in zip(true_mm, bounds)
+    )
+    if not inside:
+        return [0.0, 0.0, 0.0, 0.0]
+    step = float(tracker["resolution_mm"])
+    noise = list(noise_mm) if noise_mm is not None else [0.0, 0.0, 0.0]
+    return [
+        round((float(value) + float(extra)) / step) * step
+        for value, extra in zip(true_mm, noise)
+    ] + [1.0]
 
 
 def _write_reset_variation(

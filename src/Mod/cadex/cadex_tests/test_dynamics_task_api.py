@@ -183,7 +183,7 @@ def test_the_channel_expansion_agrees_with_the_engines() -> None:
 
     for kind, row in dyn.OBSERVATION_KINDS.items():
         assert _observation_channels(kind, "x") == [
-            f"x{suffix}" for suffix in row["suffixes"]
+            f"x{suffix}" for suffix in (*row["suffixes"], *row.get("derived", ()))
         ], kind
 
 

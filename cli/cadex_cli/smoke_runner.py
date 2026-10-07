@@ -77,16 +77,30 @@ def _table() -> dict[str, Any]:
     }
 
 
-def _channels(task: dict[str, Any]) -> list[tuple[str, int, float]]:
-    """``(channel, sensordata address, scale)`` per observation channel."""
+def _observe(task: dict[str, Any], sensordata: Any) -> dict[str, float]:
+    """Every observation channel by name, as ``CadexDynamics.observation_values``.
 
-    found: list[tuple[str, int, float]] = []
+    A tracked position (ADR-588) reads as its tracker reports it: rounded to
+    the resolution, and zeros with ``_in_range`` 0 when the body is outside
+    the declared range. No noise -- this is a check, not a training draw.
+    """
+
+    values: dict[str, float] = {}
     for record in task.get("observations") or []:
         adr = int(record["adr"])
+        dim = int(record.get("dim", len(record["channels"])))
         scale = float(record.get("scale", 1.0))
-        for offset, channel in enumerate(record["channels"]):
-            found.append((str(channel), adr + offset, scale))
-    return found
+        read = [float(sensordata[adr + offset]) * scale for offset in range(dim)]
+        tracker = record.get("tracker")
+        if tracker:
+            inside = all(float(low) <= value <= float(high)
+                         for value, (low, high) in zip(read, tracker["range_mm"]))
+            step = float(tracker["resolution_mm"])
+            read = ([round(value / step) * step for value in read] + [1.0]
+                    if inside else [0.0, 0.0, 0.0, 0.0])
+        for channel, value in zip(record["channels"], read):
+            values[str(channel)] = value
+    return values
 
 
 def _up_vector(quat_wxyz: Any) -> tuple[float, float, float]:
@@ -193,7 +207,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     nonfinite_at: float | None = None
     termination_rules: list[dict[str, Any]] = []
     table = _table()
-    channels = _channels(task) if task else []
     if task:
         for rule in task.get("termination") or []:
             termination_rules.append({
@@ -231,7 +244,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     def observe_termination(time_s: float) -> None:
         if not termination_rules:
             return
-        values = {name: float(data.sensordata[adr]) * scale for name, adr, scale in channels}
+        values = _observe(task, data.sensordata)
         for rule in termination_rules:
             if rule["fired_at_s"] is not None or rule["error"] is not None:
                 continue

@@ -687,6 +687,39 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
     ] + goal_channels(task)
 
 
+def tracker_reading(xp: Any, true_mm: Any, tracker: dict[str, Any],
+                    noise_mm: Any = None) -> Any:
+    """What a position tracker reports for a body at ``true_mm`` (ADR-588).
+
+    ``CadexDynamics.tracker_reading`` written out in ``xp`` (``jnp`` here,
+    ``numpy`` in the test that pins the two equal), because this file cannot
+    import the engine. The true position plus the drawn noise, rounded to the
+    declared resolution, then the in-range flag; outside the range on any
+    axis -- judged on the true position, as a panel judges a touch -- every
+    value is 0, never a clamped or a held one.
+    """
+
+    low = xp.asarray([float(pair[0]) for pair in tracker["range_mm"]])
+    high = xp.asarray([float(pair[1]) for pair in tracker["range_mm"]])
+    inside = xp.all(xp.logical_and(true_mm >= low, true_mm <= high))
+    step = float(tracker["resolution_mm"])
+    seen = true_mm if noise_mm is None else true_mm + noise_mm
+    quantised = xp.round(seen / step) * step
+    reading = xp.concatenate([quantised, xp.ones((1,), dtype=quantised.dtype)])
+    return xp.where(inside, reading, xp.zeros_like(reading))
+
+
+def tracker_noise_std(task: dict[str, Any]) -> list[float]:
+    """One standard deviation per tracked coordinate, in observation order."""
+
+    return [
+        float(record["tracker"]["noise_mm"])
+        for record in task["observations"]
+        if record.get("tracker")
+        for _axis in range(int(record["dim"]))
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Domain randomisation, and the extension this trainer states rather than
 # improvises.
@@ -1374,8 +1407,29 @@ def train(
             axis=-1,
         )
 
-    def observe(data):
-        return jnp.take(data.sensordata, gather) * obs_scale
+    # ADR-588: a tracked position reads as its tracker reports it. `tracking`
+    # is a PYTHON bool, so a task with no tracker emits the graph -- and
+    # draws the key stream -- it always did.
+    noise_std = jnp.asarray(tracker_noise_std(task), dtype=jnp.float32)
+    tracking = int(noise_std.shape[0]) > 0
+
+    def observe(data, noise=None):
+        raw = jnp.take(data.sensordata, gather) * obs_scale
+        if not tracking:
+            return raw
+        parts, cursor, drawn = [], 0, 0
+        for record in task["observations"]:
+            dim = int(record["dim"])
+            segment = raw[cursor:cursor + dim]
+            cursor += dim
+            if record.get("tracker"):
+                parts.append(tracker_reading(
+                    jnp, segment, record["tracker"],
+                    None if noise is None else noise[drawn:drawn + dim]))
+                drawn += dim
+            else:
+                parts.append(segment)
+        return jnp.concatenate(parts)
 
     def named(vector):
         return {name: vector[index] for index, name in enumerate(names)}
@@ -1880,7 +1934,16 @@ def train(
             # task has a goal, and is absent otherwise.
             picks = filter_carry.pop(0) if goaled else None
             key, act_key = jax.random.split(key)
-            vector = jax.vmap(observe)(data)
+            if tracking:
+                # What the policy acts on carries the tracker's noise; the
+                # reward and terminations, scored in `step_env`, do not.
+                key, sense_key = jax.random.split(key)
+                sensed = jax.random.normal(
+                    sense_key, (envs, int(noise_std.shape[0])),
+                    dtype=jnp.float32) * noise_std
+                vector = jax.vmap(observe)(data, sensed)
+            else:
+                vector = jax.vmap(observe)(data)
             if goaled:
                 # `steps` is the count of steps ALREADY taken, so this is
                 # the goal in force for the step about to be taken.

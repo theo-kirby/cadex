@@ -288,13 +288,25 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `component_position`/`component_orientation`/`component_linear_velocity`/
   `component_angular_velocity`/`centre_of_mass`/`centre_of_mass_velocity`/
   `centroidal_angular_momentum`
-  on a component, and `actuator_force` on an actuator. Values reach a trainer in this API's own
+  on a component, `tracked_position` on a body a `position_tracker` reads
+  (below), and `actuator_force` on an actuator. Values reach a trainer in this API's own
   units — degrees, millimetres, N·mm, N·mm·s — as a per-channel `scale` in the
   bundle, so the trainer *multiplies* rather than converting. A vector
   channel expands to suffixed scalar names — `name="hand"` on a
   `component_position` is `hand_x`, `hand_y`, `hand_z` — and those are the
   names a reward writes; two channels that would produce one name are
-  refused, including when the collision comes from an expansion. One thing
+  refused, including when the collision comes from an expansion. A
+  **position tracker** (ADR-588) — a touch panel, a camera tracking a
+  marker — is `assembly.sensor(mount, "position_tracker", name=...,
+  range_mm=[[x0, x1], [y0, y1], [z0, z1]], resolution_mm=..., rate_hz=...,
+  noise_mm=...)`, all four declared as its datasheet states them, and
+  `assembly.observation(body, "tracked_position", name="ball",
+  sensor=tracker)` reads `ball_x`, `ball_y`, `ball_z` — the body's position
+  in the mount's frame, rounded to the resolution — and `ball_in_range`, 1
+  while the body is inside the range and 0, with every coordinate 0, when
+  it is not, so a termination can end the episode on it. The trainer adds
+  the declared noise to what the policy reads; a tracker slower than the
+  control loop is refused. One thing
   worth knowing before choosing a channel: a `component_position` reads the
   component's **frame origin**, so a link hinged at its own origin never
   moves in it — `centre_of_mass` is the channel for where a part actually

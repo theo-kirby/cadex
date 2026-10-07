@@ -561,6 +561,39 @@ def _limits(
     return result
 
 
+def _tracker_datasheet(operation: str, given: Mapping[str, Any]) -> dict[str, Any]:
+    """A position tracker's declaration, as the trainer applies it (ADR-588)."""
+
+    missing = [key for key, value in given.items() if value is None]
+    if missing:
+        raise _error(
+            operation, missing[0],
+            "is required for a position_tracker: a grounded channel states "
+            "what the part on the machine can measure -- range_mm, "
+            "resolution_mm, rate_hz and noise_mm, as its datasheet would",
+        )
+    raw = given["range_mm"]
+    if not isinstance(raw, (list, tuple)) or len(raw) != 3:
+        raise _error(operation, "range_mm",
+                     "expected [[x0, x1], [y0, y1], [z0, z1]] in the mount's frame", raw)
+    bounds = []
+    for axis, pair in zip("xyz", raw):
+        limits = _limits(operation, f"range_mm[{axis}]", pair)
+        if limits is None or None in limits or limits[0] >= limits[1]:
+            raise _error(operation, f"range_mm[{axis}]",
+                         "expected a two-sided [minimum, maximum] with minimum below maximum",
+                         pair)
+        bounds.append([float(limits[0]), float(limits[1])])
+    return {
+        "range_mm": bounds,
+        "resolution_mm": _number(operation, "resolution_mm", given["resolution_mm"],
+                                 minimum=0.0, strict_minimum=True),
+        "rate_hz": _number(operation, "rate_hz", given["rate_hz"],
+                           minimum=0.0, strict_minimum=True),
+        "noise_mm": _number(operation, "noise_mm", given["noise_mm"], minimum=0.0),
+    }
+
+
 #: Which unit family each drivable joint kind's coordinate speaks. A
 #: `cylindrical` joint owns one of each and is therefore absent: like
 #: `api.motion`, it requires an explicit `motion_type`.
@@ -950,6 +983,7 @@ _OBSERVATION_KINDS: dict[str, str] = {
     "centre_of_mass": "component_link",
     "centre_of_mass_velocity": "component_link",
     "centroidal_angular_momentum": "component_link",
+    "tracked_position": "component_link",
 }
 
 #: What each observation kind's declared name expands to. A vector channel
@@ -967,6 +1001,10 @@ _OBSERVATION_SUFFIXES: dict[str, tuple[str, ...]] = {
     "centre_of_mass": ("_x", "_y", "_z"),
     "centre_of_mass_velocity": ("_x", "_y", "_z"),
     "centroidal_angular_momentum": ("_x", "_y", "_z"),
+    # The three coordinates a tracker reports, then whether it reported them
+    # at all (ADR-588): a body outside the declared range reads zeros and a
+    # flag of 0, never a clamped or a stale position.
+    "tracked_position": ("_x", "_y", "_z", "_in_range"),
 }
 
 
@@ -1067,6 +1105,10 @@ _SENSOR_KINDS: dict[str, tuple[str, frozenset[str]]] = {
     "imu": ("component_link",
             frozenset({"component_orientation", "component_angular_velocity"})),
     "joint_encoder": ("joint", frozenset({"position", "velocity"})),
+    # A touch panel, or a camera tracking a marker (ADR-588): mounted on a
+    # component, it reads *another* body's position in its own frame, with
+    # a declared range, resolution, rate and noise the trainer applies.
+    "position_tracker": ("component_link", frozenset({"tracked_position"})),
 }
 _OBSERVATION_ROLES = ("policy", "privileged")
 
@@ -2833,6 +2875,10 @@ class AssemblyDomainAPI:
         *,
         name: str,
         motion_type: str = "auto",
+        range_mm: Any = None,
+        resolution_mm: Any = None,
+        rate_hz: Any = None,
+        noise_mm: Any = None,
         label: str = "",
     ) -> DomainValue:
         """Declare one onboard sensor, so a policy channel can say what measures it.
@@ -2844,6 +2890,17 @@ class AssemblyDomainAPI:
         servo's potentiometer tapped out, or a servo that reports position).
         A stock hobby servo reports nothing: its joint has no encoder unless
         one is declared.
+
+        ``position_tracker`` (ADR-588) is a touch panel, or a camera
+        tracking a marker: ``target`` is the component it is mounted on, and
+        it reads *another* body's position in that component's frame through
+        a ``tracked_position`` observation. It is declared like a datasheet,
+        and all four are required: ``range_mm`` (``[[x0, x1], [y0, y1],
+        [z0, z1]]`` in the mount's frame), ``resolution_mm``, ``rate_hz``
+        and ``noise_mm`` (one standard deviation per axis). The trainer adds
+        the noise and rounds to the resolution; a body outside the range
+        reads zeros with ``<name>_in_range`` 0, which a termination can
+        name. ``rate_hz`` must be at least the task's control rate.
 
         A sensor is an argument to ``api.observation(..., sensor=...)`` and
         nothing else: pass it there, and do not return it. A channel the
@@ -2867,6 +2924,16 @@ class AssemblyDomainAPI:
         properties: dict[str, Any] = {"kind": clean_kind, "name": clean_name}
         if wanted[0] == "joint":
             properties["motion_type"] = _coordinate(operation, value, motion_type)
+        datasheet = {"range_mm": range_mm, "resolution_mm": resolution_mm,
+                     "rate_hz": rate_hz, "noise_mm": noise_mm}
+        if clean_kind == "position_tracker":
+            properties["tracker"] = _tracker_datasheet(operation, datasheet)
+        else:
+            for parameter, given in datasheet.items():
+                if given is not None:
+                    raise _error(operation, parameter,
+                                 f"applies to a position_tracker, not a {clean_kind}",
+                                 given)
         return self._value(operation, "sensor", value, label=label, **properties)
 
     def observation(
@@ -2982,6 +3049,15 @@ class AssemblyDomainAPI:
             # "the position" of one says nothing about which -- the same
             # reason api.actuator and api.joint_dynamics ask.
             properties["motion_type"] = _coordinate(operation, value, motion_type)
+        if clean_kind == "tracked_position" and sensor is None:
+            raise _error(
+                operation, "sensor",
+                "a tracked_position is what a position_tracker reads, so it "
+                "names one: its frame is the tracker's mount and its noise is "
+                "the tracker's declaration. A world position the robot cannot "
+                "measure is a privileged component_position",
+                sensor,
+            )
         clean_role = str(role or "").strip().lower()
         if clean_role not in _OBSERVATION_ROLES:
             raise _error(operation, "role", f"must be one of {list(_OBSERVATION_ROLES)}", role)
@@ -3001,6 +3077,23 @@ class AssemblyDomainAPI:
                     f"a {sensor_kind} measures {sorted(measures)}, not {clean_kind}",
                     sensor.properties.get("name"),
                 )
+            if sensor_kind == "position_tracker":
+                # A tracker reads some *other* body, in its mount's frame:
+                # the mount travels as the observation's second argument so
+                # the worker can name it.
+                if sensor.arguments[0] is value:
+                    raise _error(
+                        operation, "sensor",
+                        f"{sensor.properties.get('name')!r} is mounted on this "
+                        "component; a position_tracker reads another body "
+                        "relative to its mount",
+                        sensor.properties.get("name"),
+                    )
+                properties["grounded_sensor"] = str(sensor.properties.get("name"))
+                properties["grounded_kind"] = sensor_kind
+                properties["tracker"] = dict(sensor.properties["tracker"])
+                return self._value(operation, "observation", value, sensor.arguments[0],
+                                   label=label, **properties)
             if sensor.arguments[0] is not value or (
                 wanted == "joint"
                 and sensor.properties.get("motion_type") != properties.get("motion_type")
@@ -4085,6 +4178,12 @@ class AssemblyDomainAPI:
                 raise _error(
                     operation, where,
                     "observes a component that is not listed in this assembly",
+                )
+            if len(entry.arguments) > 1 and id(entry.arguments[1]) not in component_ids:
+                raise _error(
+                    operation, where,
+                    "is read by a position_tracker mounted on a component "
+                    "that is not listed in this assembly",
                 )
             if wanted == "joint" and id(target) not in joint_ids:
                 raise _error(

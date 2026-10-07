@@ -3777,6 +3777,15 @@ def _observation_input(
     for key in ("role", "grounded_sensor", "grounded_kind"):
         if properties.get(key):
             resolved[key] = str(properties[key])
+    # ADR-588: a tracked position is read in its tracker's mount frame, with
+    # the tracker's declaration carried to the trainer that applies it.
+    if properties.get("tracker"):
+        resolved["frame"] = component_outputs[id(entry.arguments[1])]
+        tracker = properties["tracker"]
+        resolved["tracker"] = {
+            "range_mm": [[float(low), float(high)] for low, high in tracker["range_mm"]],
+            **{key: float(tracker[key]) for key in ("resolution_mm", "rate_hz", "noise_mm")},
+        }
     return resolved
 
 

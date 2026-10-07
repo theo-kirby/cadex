@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-06
+Verified against source: 2026-10-07
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -1035,6 +1035,7 @@ critic may read and the shipped policy never does. A policy channel is
 |---|---|---|
 | `imu` | the IMU board's own `api.component` | that component's `component_orientation` and `component_angular_velocity` |
 | `joint_encoder` | an `api.joint` | that joint's `position` and `velocity` (a servo's potentiometer tapped out, or a servo that reports position) |
+| `position_tracker` | the `api.component` it is mounted on (a touch panel's plate, a camera's mast) | *another* body's `tracked_position` in the mount's frame (ADR-588) |
 
 The API refuses a sensor that does not measure what it is passed to, or
 that is mounted on something else. An ungrounded policy channel still
@@ -1049,6 +1050,27 @@ header lists the actor's channels only, which is what
 `CadexDynamics.policy_channels` verifies it against. The motivation is
 hex2 (2026-09-25): a hexapod whose policy read joint angles its MG90S
 servos cannot report and a centre-of-mass velocity nothing on it measures.
+
+**A position tracker reads a free body (ADR-588).** A touch panel reading
+a ball, or a camera reading a marker, is a `position_tracker` declared on
+its mount with a datasheet: `range_mm` (a box in the mount's frame),
+`resolution_mm`, `rate_hz` and `noise_mm`, all required. Its
+`tracked_position` is a stock `framepos` sensor with the mount as
+`reftype="xbody"`/`refname`, so MuJoCo computes the body's position in
+the mount's frame through every tilt and turn. The task row carries
+`frame` and the `tracker` declaration, and four channels over a three-wide
+slice: `<name>_x/_y/_z` and `<name>_in_range`. `tracker_reading` (engine)
+and its `jnp` copy in `training/cadex_train.py` (pinned equal by
+`test_dynamics_position_tracker.py`) apply it: inside the range on every
+axis — judged on the true position — the reading is rounded to the
+resolution and the flag is 1; outside, every value is 0, never a clamped
+edge or the last reading. The trainer adds Gaussian noise of the declared
+spread, drawn per control step, to what the actor and critic read, before
+the rounding; the reward and terminations read the noise-free reading, and
+evaluations draw no noise. A tracker whose `rate_hz` is below the task's
+control rate is refused (`tracker_slower_than_control`) rather than held,
+so a policy never acts on a reading the part has not made. It measures
+position only: a velocity no such part reports would be privileged.
 
 **Deferred, and named rather than half-built:** `touch` and
 `accelerometer` need a *site* with a placement the assembly graph does not
