@@ -759,38 +759,89 @@ def _rekey_renamed_assembly(
     return old_name
 
 
+def _with_assembly_groups(objects: list[Any]) -> list[Any]:
+    """``objects`` plus the joint, simulation and view groups of its assemblies.
+
+    Those groups are created untagged under a tagged assembly, so a check
+    that counts only tagged objects as the program's own sees the ``Joints``
+    group listing a managed joint as a foreign reference to it (ADR-585).
+    """
+
+    result = list(objects)
+    for obj in objects:
+        if str(getattr(obj, "TypeId", "")) != "Assembly::AssemblyObject":
+            continue
+        for group in (
+            _assembly_joint_group(obj),
+            _assembly_simulation_group(obj),
+            _assembly_view_group(obj),
+        ):
+            if group is not None and all(group is not item for item in result):
+                result.append(group)
+    return result
+
+
+def _domain_internal_objects(doc: Any, prepared: Mapping[str, Any]) -> list[Any]:
+    """Objects this domain pass owns and rewrites, assembly groups included."""
+
+    return _with_assembly_groups(
+        _program_objects(doc, str(prepared["program_id"]), prepared["pack"].domain)
+    )
+
+
+def _program_internal_objects(doc: Any, program_id: str) -> list[Any]:
+    """Every object the program owns in any domain, assembly groups included.
+
+    A project publish rewrites all of its domains in one transaction, so once
+    every pass has run, a reference from any of these is the script's own.
+    """
+
+    tagged = [
+        obj
+        for obj in list(getattr(doc, "Objects", []) or [])
+        if contracts.PROP_PROGRAM_ID in _properties(obj)
+        and str(getattr(obj, contracts.PROP_PROGRAM_ID, "") or "") == program_id
+    ]
+    return _with_assembly_groups(tagged)
+
+
+def _refuse_foreign_retirement_uses(
+    doc: Any,
+    retired: list[Any],
+    internal: list[Any],
+) -> None:
+    for obj in retired:
+        external = _external_uses(doc, [obj], internal)
+        if external:
+            output_name = str(
+                getattr(obj, contracts.PROP_PROGRAM_OUTPUT, "")
+                or getattr(obj, "Name", "")
+                or ""
+            )
+            raise _reference_error(
+                f"Cannot retire XScript output {output_name!r}; human-created "
+                "or foreign document objects still reference it",
+                external,
+            )
+
+
 def _retired_program_objects(
     doc: Any,
     prepared: Mapping[str, Any],
     desired_outputs: set[str],
+    *,
+    check_references: bool = True,
 ) -> list[Any]:
     owned = _program_objects(doc, str(prepared["program_id"]), prepared["pack"].domain)
-    internal = list(owned)
-    for obj in owned:
-        if str(getattr(obj, "TypeId", "")) == "Assembly::AssemblyObject":
-            joint_group = _assembly_joint_group(obj)
-            if joint_group is not None:
-                internal.append(joint_group)
-            simulation_group = _assembly_simulation_group(obj)
-            if simulation_group is not None:
-                internal.append(simulation_group)
-            view_group = _assembly_view_group(obj)
-            if view_group is not None:
-                internal.append(view_group)
     retired = []
     for obj in owned:
         output_name = str(getattr(obj, contracts.PROP_PROGRAM_OUTPUT, "") or "")
         root_name = output_name.partition(".")[0]
         if not output_name or root_name in desired_outputs:
             continue
-        external = _external_uses(doc, [obj], internal)
-        if external:
-            raise _reference_error(
-                f"Cannot retire XScript output {output_name!r}; human-created "
-                "or foreign document objects still reference it",
-                external,
-            )
         retired.append(obj)
+    if check_references:
+        _refuse_foreign_retirement_uses(doc, retired, _with_assembly_groups(owned))
     return retired
 
 
@@ -1309,12 +1360,7 @@ def _configure_component(
     was_linked = getattr(obj, "LinkedObject", None) is not None
     mode_changed = is_assembly_link and bool(getattr(obj, "Rigid", True)) is flexible
     if was_linked and mode_changed:
-        managed = _program_objects(
-            doc,
-            str(prepared["program_id"]),
-            prepared["pack"].domain,
-        )
-        external = _external_uses(doc, [obj], managed)
+        external = _external_uses(doc, [obj], _domain_internal_objects(doc, prepared))
         if external:
             raise _reference_error(
                 f"Cannot change flexible mode for component output {item['name']!r}; "
@@ -1423,14 +1469,12 @@ def _configure_component(
             {"operation": "ground", "component_output": item["name"]},
         )
     elif existing is not None:
+        # The assembly's own Joints group lists this joint; it is the
+        # program's, not a consumer, and removing the joint updates it.
         external = _external_uses(
             doc,
             [existing],
-            _program_objects(
-                doc,
-                str(prepared["program_id"]),
-                prepared["pack"].domain,
-            ),
+            _domain_internal_objects(doc, prepared),
         )
         if external:
             raise _reference_error(
@@ -3197,12 +3241,14 @@ def _publish_partdesign_candidate(
     doc: Any,
     *,
     manage_transaction: bool = True,
+    defer_retirement: bool = False,
 ) -> dict[str, Any]:
     """Publish one v2 Part Design candidate through the shared stable boundary.
 
     With ``manage_transaction=False`` no transaction is opened, committed, or
     aborted here; the caller owns exactly one enclosing transaction and
-    exceptions propagate to it.
+    exceptions propagate to it. ``defer_retirement`` is as for
+    ``publish_candidate`` (ADR-585).
     """
 
     program_id = str(prepared["program_id"])
@@ -3239,7 +3285,7 @@ def _publish_partdesign_candidate(
     )
     desired = {str(item["name"]) for item in validated["outputs"]}
     retired_names = sorted(set(publications) - desired)
-    for name in retired_names:
+    for name in [] if defer_retirement else retired_names:
         uses = scripted_publication.external_reference_uses(
             doc,
             [publications[name]],
@@ -3254,6 +3300,7 @@ def _publish_partdesign_candidate(
     transaction_open = False
     created: list[str] = []
     removed: list[str] = []
+    deferred: list[Any] = []
     try:
         if manage_transaction and hasattr(doc, "openTransaction"):
             doc.openTransaction(
@@ -3270,10 +3317,14 @@ def _publish_partdesign_candidate(
         root.Label = str(prepared["program_name"])
         _tag_partdesign_root(root, prepared)
         for name in retired_names:
-            removed.extend(
-                scripted_publication.delete_publication(
-                    doc, root, publications.pop(name)
+            published = publications.pop(name)
+            if defer_retirement:
+                deferred.extend(
+                    [published, scripted_publication.publication_target(published, root)]
                 )
+                continue
+            removed.extend(
+                scripted_publication.delete_publication(doc, root, published)
             )
         for item in validated["outputs"]:
             name = str(item["name"])
@@ -3384,6 +3435,7 @@ def _publish_partdesign_candidate(
         "interfaces": interface_table,
         "created_objects": created,
         "retired_objects": removed,
+        "deferred_retirements": deferred,
         "downstream_references": downstream,
         "recompute_deferred": True,
         "stdout": str(validated.get("stdout") or ""),
@@ -3398,6 +3450,7 @@ def publish_candidate(
     *,
     manage_transaction: bool = True,
     check_surface: bool = True,
+    defer_retirement: bool = False,
 ) -> dict[str, Any]:
     """Apply detached, validated values without process waits or artifact I/O.
 
@@ -3405,6 +3458,9 @@ def publish_candidate(
     publication has no per-domain surface). ``manage_transaction=False`` opens
     no transaction and never commits or aborts; the caller owns exactly one
     enclosing transaction and exceptions propagate to it.
+    ``defer_retirement=True`` neither checks nor removes the outputs that
+    left the contract; it returns them as ``deferred_retirements`` for the
+    caller to retire once every domain pass has run (ADR-585).
     """
 
     if check_surface:
@@ -3432,27 +3488,18 @@ def publish_candidate(
             validated,
             doc,
             manage_transaction=manage_transaction,
+            defer_retirement=defer_retirement,
         )
     _rekey_renamed_assembly(doc, prepared, validated)
     existing = _objects_by_output(doc, prepared)
     desired_output_names = {str(item["name"]) for item in validated["outputs"]}
-    retired = _retired_program_objects(doc, prepared, desired_output_names)
-    internal_objects = _program_objects(
+    retired = _retired_program_objects(
         doc,
-        str(prepared["program_id"]),
-        prepared["pack"].domain,
+        prepared,
+        desired_output_names,
+        check_references=not defer_retirement,
     )
-    if prepared["pack"].domain == "assembly":
-        for candidate in list(internal_objects):
-            if str(getattr(candidate, "TypeId", "")) != "Assembly::AssemblyObject":
-                continue
-            for group in (
-                _assembly_joint_group(candidate),
-                _assembly_simulation_group(candidate),
-                _assembly_view_group(candidate),
-            ):
-                if group is not None and group not in internal_objects:
-                    internal_objects.append(group)
+    internal_objects = _domain_internal_objects(doc, prepared)
     updated_objects = [
         existing[str(item["name"])]
         for item in validated["outputs"]
@@ -3603,7 +3650,8 @@ def publish_candidate(
             downstream_uses,
             revision=str(prepared["revision"]),
         )
-        removed = _remove_owned_objects(doc, retired)
+        if not defer_retirement:
+            removed = _remove_owned_objects(doc, retired)
         if hasattr(doc, "commitTransaction") and transaction_open:
             doc.commitTransaction()
             transaction_open = False
@@ -3686,6 +3734,7 @@ def publish_candidate(
         "live_outputs": live_outputs,
         "created_objects": [str(obj.Name) for obj in created],
         "retired_objects": removed,
+        "deferred_retirements": list(retired) if defer_retirement else [],
         "downstream_references": {
             "safe_whole_object_uses": scripted_publication.json_reference_uses(
                 downstream_uses
@@ -3826,6 +3875,7 @@ def publish_project_candidate(
     live_outputs: dict[str, dict[str, Any]] = {}
     created: list[str] = []
     removed: list[str] = []
+    deferred_retirements: list[Any] = []
     transaction_open = False
     # The live document is created with UndoMode 0, and in that mode
     # abortTransaction restores nothing: a pass that raised after creating
@@ -3893,6 +3943,10 @@ def publish_project_candidate(
                 sub_validated,
                 manage_transaction=False,
                 check_surface=False,
+                defer_retirement=True,
+            )
+            deferred_retirements.extend(
+                list(result.get("deferred_retirements") or [])
             )
             for name, row in dict(result.get("live_outputs") or {}).items():
                 outputs_map[str(name)] = str(row.get("object_name") or "")
@@ -3909,6 +3963,16 @@ def publish_project_candidate(
             removed.extend(
                 str(name) for name in list(result.get("retired_objects") or [])
             )
+        # Outputs that left the contract retire only now, once every domain
+        # pass has run: a part output's component link belongs to the later
+        # assembly pass, which retargets or retires it (ADR-585). What the
+        # script owns in any domain is its own; anything else still blocks.
+        _refuse_foreign_retirement_uses(
+            doc,
+            deferred_retirements,
+            _program_internal_objects(doc, _PROJECT_PROGRAM_ID),
+        )
+        removed.extend(_remove_owned_objects(doc, deferred_retirements))
         # Orphan GC: whole domains (and any stragglers) whose outputs left the
         # accepted contract are removed inside the same transaction.
         orphans = ownership.orphaned_outputs(doc, _PROJECT_PROGRAM_ID, contract)

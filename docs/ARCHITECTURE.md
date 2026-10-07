@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-10-06
+Verified against source: 2026-10-07
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -156,7 +156,9 @@ from `src/` (ADR-061).
   domains under ONE transaction (per-domain sub-publishes with
   `manage_transaction=False`), rewrites same-script assembly component
   tokens to live names, garbage-collects owned objects whose outputs left
-  the contract, and aborts on any untagged document object
+  the contract — after every domain pass has run, so a component link the
+  assembly pass retargets or retires never blocks its source's retirement
+  (ADR-585) — and aborts on any untagged document object
   (`PUBLICATION_UNTAGGED_OBJECT`). Undo is on for that one transaction
   and cleared after it, so any refusal rolls the document back to the
   accepted revision (ADR-434). Failed candidates stay inspectable

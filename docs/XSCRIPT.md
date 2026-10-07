@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-04
+Verified against source: 2026-10-07
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -103,6 +103,14 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   (`result["probe"]` to `result["robot"]`) re-keys the live assembly in
   place. Its joint group, joints and component links carry over, rather than
   being retired and recreated (ADR-429).
+- **A rerun script publishes what it declares** (ADR-585). Turning a
+  component's `grounded=True` to `grounded=False` removes its managed
+  `<name>.ground` joint in place, and the reverse adds it. An output the
+  script stops returning is retired once every domain pass has run, so a
+  part or partdesign output whose component link the same publish retargets
+  (its source renamed) or retires (the component dropped too) goes with
+  no rename. Only a reference from outside the script's own objects
+  still refuses either change, and the refusal names its owner.
 - `mesh.from_shape()` tessellates a same-script part value (`Mod/MeshPart`);
   `mesh.import_file()` reads one flat asset file; `mesh.transform()` places
   one (same kwargs and same order of operations as `part.transform`, composed

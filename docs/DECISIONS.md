@@ -36624,3 +36624,60 @@ printed part is. As there, only a catalog bolt into a printed part
 carries an allowance; any other overlap still fails.
 
 Verified against source: 2026-10-06. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-585 — A rerun script ungrounds a component and retires a linked output in place (2026-10-07, excavator-mini engine workaround)
+
+**Context.** The excavator-mini project renamed its component outputs twice,
+ending at `cp_<name>` (its own ADR-009), because two ordinary script edits
+were refused at publication with `DOMAIN_PUBLICATION_FAILED`:
+- `grounded=True` turned to `grounded=False` on `c_drive_left` raised
+  `Cannot unground component output 'c_drive_left'; external objects
+  reference its managed grounding joint`, naming `Joints`. The check that
+  guards the `<name>.ground` joint counted only tagged objects as the
+  program's own, and the assembly's `Joints` group is created untagged, so
+  the group that merely lists the joint read as a foreign consumer. Every
+  grounded component hit it; the retirement and update paths already added
+  the assembly's groups to their internal set.
+- dropping `bolt_drive_0` raised `Cannot retire XScript output
+  'bolt_drive_0'; human-created or foreign document objects still reference
+  it`, naming `VibeAssembly_project_comp_bolt_drive_0`, the script's own
+  component link. `publish_project_candidate` runs the domains in order
+  (sketcher, part, partdesign, mesh, assembly) and each pass retired its own
+  leftovers at once, checking references against its own domain only. The
+  part pass therefore retired the shape before the assembly pass had
+  retargeted or retired the link to it. Part Design's retirement had the
+  same order.
+Both checks are deliberate: they keep a publish from breaking a reference
+the script does not own. The bug was where they drew "own".
+
+**Decision.** In `CadexScriptedDomainPublication.py`:
+1. The ungrounding and flexible-mode checks count the assembly's joint,
+   simulation and view groups as the program's, through one helper
+   (`_domain_internal_objects`) that the update preflight now shares.
+2. Under `publish_project_candidate`, each domain pass (`publish_candidate`
+   and the Part Design publisher, `defer_retirement=True`) hands back the
+   outputs that left the contract instead of checking and removing them.
+   Once every pass has run, they are checked against everything the project
+   owns in any domain, plus the assembly groups, and removed, before the
+   orphan sweep and the ownership lint. A reference from any other object
+   still refuses with the same message and names its owner.
+
+No op, argument, response shape or tool changes.
+
+**Regression.** `src/Mod/cadex/cadex_tests/test_publication_declared_state.py`
+publishes into a live FreeCADCmd document: a bolt component grounded, then
+ungrounded and welded, then grounded again; its source part renamed while
+the component keeps its name; the part and component dropped together; a
+Part Design body renamed under its component. A foreign `App::Link` to a
+dropped output is still refused, naming `ForeignLink`. Before the fix, the
+ungrounding fails on `Joints` and both renames fail on the script's own
+link, with the excavator's two messages; the Part Design case fails on its
+own path's message. Two stub-level tests pin the internal sets without a
+kernel.
+
+**Consequences.** Component output names can stay plain: what the script
+says about grounding and outputs is what publishes. A retired output is
+removed after the assembly pass rather than before it, inside the same
+transaction, so a refusal still rolls back the whole publish (ADR-434).
+
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
