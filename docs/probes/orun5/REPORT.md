@@ -245,13 +245,11 @@ Three domain-neutral rules, each with its reason; no rule names a project:
 `LESSONS.md` lists every workaround in the two reference projects (W1–W12),
 its evidence and what replaced it:
 
-- **Nine replaced:** W1, W2, W3, W4, W5, W6, W8, W9 and W11, each by this
+- **Ten replaced:** W1, W2, W3, W4, W5, W6, W7, W8, W9 and W11, each by this
   run's or orun4's ADRs.
 - **One kept as legitimate:** W10, privileged channels used in reward
   terms only.
-- **Two still open:**
-  - W7, the warm-start rule (§10);
-  - W12, the bucket four-bar, which was not built.
+- **One still open:** W12, the bucket four-bar, which was not built.
 
 ADRs added by this run:
 
@@ -267,13 +265,15 @@ ADRs added by this run:
 | 594 | `cadex smoke` measures every loop closure; a four-bar built live with rod ends |
 | 595 | a redundant loop of one freedom is accepted; the driven gap sits beside its contract |
 | 596 | base guidance: choose a real sensor, close a linkage, state a motion as a predicate |
+| 597 | a curriculum step may revise the success spec |
 
 ## 10. Remaining defects
 
-1. **W7, the warm-start rule, is undecided.** A warm start is refused across
-   tasks whose success specs differ, even when observations and actions
-   match. The reference circle task trained cold for that reason. The
-   charter asks for an ADR either way, and none was written this run.
+1. **W7, the warm-start rule, is decided (ADR-597), but no run has used
+   it yet.** A curriculum step may now revise `success`, because the bar is
+   not something the network reads or emits. The rule is test-pinned in
+   `training/test_curriculum_warm_start.py`. No training run in this report
+   used it: the circle task was not re-warmed from the centring policy.
 2. **The trainer's checkpoint stall was not re-measured this run.** orun4
    fixed it (ADR-576: 42.5–45.4 s down to 1.9 s per checkpoint on a
    4096-env biped). In P2's run, 1400 iterations took 3903 s and the

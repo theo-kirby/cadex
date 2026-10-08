@@ -334,6 +334,10 @@ def unflatten_parameters(np: Any, weights: Sequence[float], shapes):
 #:   sensor channels and carries no clock."
 #: * ``randomisation``, ``reset_variation`` and ``termination`` do not: they
 #:   move the distribution of states, not the vector describing one.
+#: * ``success`` does not (ADR-597). It is the bar an evaluation judges the
+#:   policy against; the trainer reads it only to refuse a ``--seed`` that is
+#:   an evaluation seed, and that check runs on the child's spec. A tightened
+#:   bar on the same task is the ordinary next step after a pass.
 #:
 #: ``observations``, ``actions``, ``model``, ``functions`` and ``schema`` are
 #: absent BECAUSE they do exactly that -- and every one of them keeps being
@@ -346,6 +350,7 @@ CURRICULUM_TASK_KEYS = frozenset({
     "randomisation",
     "reset_variation",
     "reward",
+    "success",
     "termination",
 })
 

@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-06. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-07. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -166,7 +166,7 @@ each is a Python value branched on at trace time, never a `jnp.where`.
 |---|---|---|
 | `--action-filter-alpha` | `1.0` (no filter) | ADR-160. Low-passes the command between the clamp and `data.ctrl`: `a[t] = α·clamped[t] + (1−α)·a[t−1]`, per environment, reset with the episode. Bounds **smoothness**. |
 | `--command-slew-deg` | `0.0` (no limit) | ADR-162. Clips the issued command to `previous ± S` degrees, *after* the filter. Bounds **rate**, which the filter does not. `0` is off here, unlike alpha, where `0` freezes the command and is refused. |
-| `--init-from-task-change REASON` | off | ADR-161. Lets `--init-from` cross a task change, as a **curriculum**. Skips the whole-file task digest and nothing else; the keys that differ must be a subset of `CURRICULUM_TASK_KEYS`. Requires `--init-from-parent-task`. |
+| `--init-from-task-change REASON` | off | ADR-161. Lets `--init-from` cross a task change, as a **curriculum**. Skips the whole-file task digest and nothing else; the keys that differ must be a subset of `CURRICULUM_TASK_KEYS`, which includes `success` (ADR-597): a revised bar is not something the network reads or emits. Requires `--init-from-parent-task`. |
 
 **Filter, smooth and rate-limit are three different operators.** An EMA's
 per-step change is `α·|raw − previous|`, so on a ±25° command box at α 0.65 it

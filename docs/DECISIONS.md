@@ -37444,3 +37444,50 @@ reason, and that the hand-count sentence is gone; the existing
 project-name tests cover the new text. No API, op or tool changes.
 
 Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-597 — A curriculum step may revise the success spec (2026-10-07)
+
+**Context.** ADR-161 lets `--init-from` cross a task change when every
+top-level key that moved is in `CURRICULUM_TASK_KEYS`. It answers one
+question: does the change alter what the network reads or what it emits?
+`success` (ADR-456) arrived after that set was written and was never
+weighed against the question. ADR-456 recorded the gap: a warm start across
+a spec revision is a whole-file digest mismatch. A real project hit it
+(orun5 ledger W7). A policy that passed a centring task could not be
+warm-started into a circling task on the same rig, because the two tasks
+bound different metrics. The circling policy trained cold. The charter's
+long-term rung asks for a decision with an ADR either way.
+
+**Decision.** `success` joins `CURRICULUM_TASK_KEYS`.
+
+- **It passes the ADR-161 test.** The success spec is the bar an evaluation
+  judges a policy against: predicates, frozen seeds and evaluation
+  conditions. No observation channel reads it and no action writes it. The
+  trainer reads it in one place: `check_training_seed` refuses a `--seed`
+  that is an evaluation seed. That check runs on the child bundle's spec,
+  so a revised seed list is still enforced.
+- **The other checks are unchanged.** The flag still skips only the
+  whole-file digest. The model digest, the observation channels in order,
+  the action table and the network shape are all still checked, and so are
+  the parent-bundle tie and the formatting refusal. A task change that also
+  moves `observations`, `actions` or `goal` is still refused for those keys.
+- **It is declared, not silent.** As for every other curriculum key, the
+  step needs `--init-from-task-change REASON` and `--init-from-parent-task`.
+  The policy's header records `keys: ["success"]`.
+
+**Rejected.** *Keep the refusal.* It protects nothing. A spec revision
+cannot make the weights mean something else, and refusing it forces a
+cold start or a loosened spec. ADR-007 in the reference project rightly
+refused to loosen its spec. *Ignore `success` in the digest.* That would let
+a revised bar ride along undeclared, and the policy's record would not say
+that its bar moved.
+
+**Tests.** `training/test_curriculum_warm_start.py`: a revised spec is
+admitted as a declared step and names `["success"]`; the same revision
+without the flag is still a digest refusal; the set-membership pin now
+states `success` in and `goal` out. Both new assertions fail without the
+change. The base guidance's warm-start rule (`cli/cadex_cli/guidance.py`)
+now lists the success spec beside the reward, the episode and the
+disturbances.
+
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
