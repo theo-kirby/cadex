@@ -213,6 +213,22 @@ def goal_tip_m(data: Any, body: int, local_m: Sequence[float]) -> list[float]:
     ]
 
 
+def goal_in_frame_m(data: Any, frame: int, point_m: Sequence[float]) -> list[float]:
+    """A world point in one body's frame, in metres (ADR-592).
+
+    ``CadexDynamics._goal_in_frame_m``, written out again: the transpose of
+    ``xmat[frame]`` applied to the point less ``xpos[frame]``.
+    """
+
+    origin = data.xpos[frame]
+    rotation = data.xmat[frame]
+    relative = [float(point_m[axis]) - float(origin[axis]) for axis in range(3)]
+    return [
+        sum(float(rotation[3 * other + axis]) * relative[other] for other in range(3))
+        for axis in range(3)
+    ]
+
+
 def place_goal_followers(data: Any, followers: Any) -> None:
     """Write each coupled follower where its law puts it, in list order.
 
@@ -262,7 +278,7 @@ def draw_goals(mujoco: Any, model: Any, task: dict, rng: Any) -> list[dict]:
         resting = {(int(a), int(b)) for a, b in entry["resting_contacts"]}
         previous = [float(value) for value in entry["start_m"]]
         for segment in range(int(entry["segments"])):
-            point = None
+            point = kept = None
             for _ in range(int(entry["attempts"])):
                 mujoco.mj_resetDataKeyframe(model, data, key)
                 for joint in entry["joints"]:
@@ -284,13 +300,18 @@ def draw_goals(mujoco: Any, model: Any, task: dict, rng: Any) -> list[dict]:
                 if math.dist(candidate, previous) < float(entry["min_separation_m"]):
                     continue
                 point = candidate
+                if entry.get("frame_id") is not None:
+                    kept = goal_in_frame_m(data, int(entry["frame_id"]), candidate)
                 break
             if point is None:
                 raise SystemExit(
                     f"goal {entry['label']!r} found no reachable point for "
                     f"segment {segment}"
                 )
-            segments.append([value * float(entry["scale"]) for value in point])
+            segments.append([
+                value * float(entry["scale"])
+                for value in (kept if entry.get("frame_id") is not None else point)
+            ])
             previous = point
         drawn.append({"label": str(entry["label"]), "segments": segments})
     return drawn
@@ -304,8 +325,13 @@ def goals_at(task: dict, goals: list[dict], step: int) -> dict[str, float]:
     for entry, draw in zip(task.get("goal") or [], goals):
         period = int(entry["resample_steps"])
         index = 0 if not period else min(step // period, len(draw["segments"]) - 1)
-        for channel, value in zip(entry["channels"], draw["segments"][index]):
-            values[str(channel)] = float(value)
+        told = [float(value) for value in draw["segments"][index]]
+        if entry["kind"] == "phase":
+            # The phase line of the bundle's goal_algorithm (ADR-598).
+            angle = told[0] + float(entry["radians_per_step"]) * (step - index * period)
+            told = [math.sin(angle), math.cos(angle)]
+        for channel, value in zip(entry["channels"], told):
+            values[str(channel)] = value
     return values
 
 

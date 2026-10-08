@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-06
+Verified against source: 2026-10-07
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -121,6 +121,73 @@ MuJoCo is a kinematic *tree* plus equality constraints. A four-bar becomes
 a tree with `equality/connect` closing the loop. Tree extraction — picking
 the spanning tree and deciding which joints become closures — is the single
 hardest piece of slice M2.
+
+**Closed linkages, driven (ADR-593, 2026-10-07).** A connect pins a
+revolute closure's pin and lets its axis go. `build_model` now measures what
+that costs: the closure Jacobian over every degree of freedom, by central
+differences at the solved pose, ranked once with what the export pins and
+once with what the joint pins (pin *and* axis). Equal ranks mean the export
+moves exactly as the mechanism does, and `built["loop_mobility"]` publishes
+both mobilities. A larger joint rank is a loop whose closing axis would have
+to tilt — over-constrained on the bench, floppy in MuJoCo — and is refused
+as `overconstrained_loop`, naming the closure and pointing at a ball end. A
+drive on a coordinate the loops lock (a pinned triangle is a truss) is
+refused as `actuator_locked_by_loop`. Measured in
+`test_dynamics_linkages.py`: a position servo on the crank of a Grashof
+four-bar (200/80/220/120 mm) turns it 450° and the rocker stays within
+0.01 mm of the circle-intersection answer at every frame; a slider-crank
+(80/200 mm) sweeps its full 160 mm stroke within 0.01 mm of
+`r cos θ + sqrt(l² − r² sin² θ)`. Both at `solver_step_s = 0.0005`, because
+the closure is soft with a two-step time constant and its error grows with
+step² and speed²:
+
+| crank speed | 2 ms | 1 ms | 0.5 ms |
+|---|---|---|---|
+| 90 °/s | 0.018 mm | 0.0025 mm | 0.0004 mm |
+| 225 °/s | 0.045 mm | 0.0062 mm | 0.0012 mm |
+| 450 °/s | 0.090 mm | 0.018 mm | 0.0048 mm |
+
+(worst closure residual, four-bar, crank driven by a position servo.) The
+fit sweep refuses every joint of a closed loop with the loop named, since a
+one-joint sweep would tear the chain open.
+
+**The same linkage, built live (ADR-594, 2026-10-07).** The table above is
+the fixture route, a tree handed straight to `build_model`. Through the
+engine a four-bar of four parallel `revolute` pins never reaches the
+export: FreeCAD's solver reports the planar loop as redundant (a revolute
+pins five freedoms, and a planar loop needs only three of each closing
+one's) and the script is refused. What does build is the pushrod:
+a coupler with a `ball` at each end, which gives the coupler one idle spin
+about its ball line. Nothing damps it (a ball joint takes no
+`joint_dynamics`), and with the coupler's mass on that line it falls off
+balance — 9° in 2 s of holding, into the links beside it — so the mass
+hangs below the line and the spin is a pendulum. On the scratch project
+`orun5-fourbar` (200/80/220/120 mm bars at 1200 kg/m³), the crank servo
+turning 225 °/s through `assembly.dynamics` swept 447° and opened the loop
+by 0.70 mm at the 2 ms default, 0.0061 mm at 0.5 ms and 0.0013 mm at
+0.25 ms — steeper than step² (a 115-fold drop for a fourfold step), so
+the step² rule `cadex smoke` uses to name a step is conservative. Smoke's
+fifth check, `closure`, measures every site-to-site equality at every
+solver step against `MJCF_POSE_TOLERANCE_MM` (0.01 mm) and, on a failure,
+names the 1-2-5 step under `step × sqrt(0.01 / worst)`. Held at its solved
+pose the live four-bar's loop stays within 0.00094 mm at 2 ms and smoke
+passes.
+
+**Four ordinary pins, built live (ADR-595, 2026-10-07).** The solver's
+redundancy is a count, not a fault: it charges six constraints per loop,
+and a planar loop needs three. The worker now takes the rank of the loop
+joints' unit screws at the pose the solver reached — the same closure
+Jacobian ADR-593 ranks on the exported model, read before any model
+exists — and accepts a code-0 *redundant* verdict only when the loops
+keep exactly one degree of freedom and every loop joint's connectors meet
+within 0.01 mm. The planar four-pin four-bar: four freedoms, rank three,
+mobility one, redundancy three, accepted. A pinned triangle (mobility 0)
+and a four-bar whose closing pin is tilted 30° (mobility 0) keep the
+refusal. Built live with four `revolute` pins and driven 225 °/s at
+0.5 ms, the crank swept 447.6° and the rocker stayed within 0.0032° of
+circle intersection (0.0066 mm at its 120 mm tip); the worst closure
+residual was 0.0061 mm, and the dynamics evidence now carries it beside
+`closure_tolerance_mm` (0.01) and `closure_within_tolerance`.
 
 **Free base (ADR-335, 2026-09-13).** An assembly that grounds *nothing* is
 not an error: it is a mechanism whose fixed frame is not part of the design
@@ -815,9 +882,9 @@ exactly MuJoCo's reference configuration — so an exported tree opens
 correctly with a keyframe that happens to be all zeros. Initial placements
 and joint limits do not move it. The keyframe becomes load-bearing when a
 loop closure forces a nonzero coordinate, and that is proved on the
-four-bar fixture (`qpos = [0.873, −0.702, 0.966]`) rather than live,
-because a planar loop of revolutes is reported redundant by this tree's
-native solver and cannot reach a live gate at all.
+four-bar fixture (`qpos = [0.873, −0.702, 0.966]`); a planar loop of
+revolutes reached a live gate only once ADR-595 accepted the native
+solver's redundancy count for a one-freedom loop.
 
 **Known consequence at the time, closed a day later (hazard 3).** When M5
 landed, `compute_project_digest` gave anything that was not `brep`/`mesh` a
@@ -1035,6 +1102,8 @@ critic may read and the shipped policy never does. A policy channel is
 |---|---|---|
 | `imu` | the IMU board's own `api.component` | that component's `component_orientation` and `component_angular_velocity` |
 | `joint_encoder` | an `api.joint` | that joint's `position` and `velocity` (a servo's potentiometer tapped out, or a servo that reports position) |
+| `position_tracker` | the `api.component` it is mounted on (a touch panel's plate, a camera's mast) | *another* body's `tracked_position` in the mount's frame (ADR-588), and its differenced `tracked_velocity` (ADR-590) |
+| `load_sensor` | an `api.actuator` with an effort limit (a bus servo's load register, a current sensor on a motor's supply) | that actuator's `actuator_force`, rounded, noised and held within its stall line (ADR-591) |
 
 The API refuses a sensor that does not measure what it is passed to, or
 that is mounted on something else. An ungrounded policy channel still
@@ -1049,6 +1118,104 @@ header lists the actor's channels only, which is what
 `CadexDynamics.policy_channels` verifies it against. The motivation is
 hex2 (2026-09-25): a hexapod whose policy read joint angles its MG90S
 servos cannot report and a centre-of-mass velocity nothing on it measures.
+
+**A position tracker reads a free body (ADR-588).** A touch panel reading
+a ball, or a camera reading a marker, is a `position_tracker` declared on
+its mount with a datasheet: `range_mm` (a box in the mount's frame),
+`resolution_mm`, `rate_hz` and `noise_mm`, all required. Its
+`tracked_position` is a stock `framepos` sensor with the mount as
+`reftype="xbody"`/`refname`, so MuJoCo computes the body's position in
+the mount's frame through every tilt and turn. The task row carries
+`frame` and the `tracker` declaration, and four channels over a three-wide
+slice: `<name>_x/_y/_z` and `<name>_in_range`. `tracker_reading` (engine)
+and its `jnp` copy in `training/cadex_train.py` (pinned equal by
+`test_dynamics_position_tracker.py`) apply it: inside the range on every
+axis — judged on the true position — the reading is rounded to the
+resolution and the flag is 1; outside, every value is 0, never a clamped
+edge or the last reading. The trainer adds Gaussian noise of the declared
+spread, drawn per control step, to what the actor and critic read, before
+the rounding; the reward and terminations read the noise-free reading, and
+evaluations draw no noise. A tracker whose `rate_hz` is below the task's
+control rate is refused (`tracker_slower_than_control`) rather than held,
+so a policy never acts on a reading the part has not made.
+
+**Its velocity is the firmware's difference (ADR-590).** A panel's
+controller subtracts successive readings `1 / rate_hz` apart, and so may a
+policy: `assembly.observation(body, "tracked_velocity", sensor=tracker)`,
+listed after the same tracker's `tracked_position` of the same body
+(otherwise `observation_tracker_velocity_unpaired`), reads `<name>_x/_y/_z`
+in mm/s. It is a stock `framelinvel` with the mount as reference — the
+exact derivative of the tracked position, the frame's own rotation
+included — with the noise of a difference, `sqrt(2) * noise_mm *
+rate_hz`, drawn per step, and one resolution step per interval,
+`resolution_mm * rate_hz`, as its quantum (`tracker_velocity_reading`, its
+`jnp` copy pinned equal). It reads zeros whenever the position's
+`_in_range` is 0, and its normaliser floor is the larger of those two,
+squared. What it does not model: the half-interval lag of a difference and
+the anticorrelation of successive differences' noise, both small at a
+panel's rate. A velocity no part reports, a world `component_linear_velocity`,
+stays privileged.
+The running normaliser follows the noisy readings the policy acts on, not
+the noise-free ones the reward reads, and holds each tracked axis's
+variance at no less than the larger of its resolution and noise, squared,
+and the in-range flag's at no less than 0.25 (ADR-589): an axis the body
+barely moves along — a ball's height above the panel it rolls on — would
+otherwise reach the policy at tens of standard deviations of pure noise,
+and a lost touch at thousands.
+
+**A load sensor reads what an actuator applies (ADR-591).** A bus servo
+reports its load over the bus and a current sensor reads a motor's supply;
+a hobby PWM servo reports nothing back. `assembly.sensor(actuator,
+"load_sensor", resolution_nmm=, noise_nmm=, rate_hz=)` (`resolution_n` and
+`noise_n` on a sliding coordinate) declares one, and grounds that
+actuator's `actuator_force` — the stock `actuatorfrc` sensor, already
+clamped by MuJoCo at the actuator's `forcerange`. Its full scale is the
+actuator's own `torque_limit_nmm` (or `force_limit_n`), the stall line,
+and an actuator without one is refused. The task row carries `load`
+(`full_scale`, `resolution`, `rate_hz`, `noise`); `load_reading` (engine)
+and its `jnp` copy in the trainer (pinned equal by
+`test_dynamics_load_sensor.py`) add the noise drawn per control step,
+hold the result within `±full_scale`, and round it to the resolution. Its
+normaliser floor is the larger of resolution and noise, squared, and a load
+sensor slower than the control loop is refused
+(`load_sensor_slower_than_control`). `lib.servo(sku).load_sensor(actuator,
+name=)` is the catalog's path: a servo whose row carries `load_feedback`
+(the STS3215: its Present Load register, 0.1 % of full drive per count,
+with 1 % noise and 100 Hz polling assumed) fills those figures as
+fractions of the actuator's stall torque, and every PWM servo refuses with
+the reason. What it does not model: the register reads drive duty, which
+equals load only near stall — a turning motor's back-EMF takes a share —
+so at speed the real reading runs above the simulated one.
+
+**A goal can be a clock (ADR-598).** `assembly.goal(..., kind="phase",
+period_seconds=T)` is a bundle row with `low` 0, `high` 2π, `nominal` [0],
+`period_s` and `radians_per_step` (2π·dt/T), and `goal_algorithm` gains
+`GOAL_PHASE_ALGORITHM` only where one is stated. Its start phase is drawn
+by the value draw already stated, so the engine, the trainer's host pool
+and the reference runner draw the same numbers; at step s the angle is
+`start + radians_per_step * (s - segment start)`, read as `name_sin` and
+`name_cos` by `CadexDynamics.goal_values` and the trainer's
+`phase_channels`. It is the only channel that carries time, because the
+trainer's reset does not rewind `data.time` and a MuJoCo `clock` sensor
+would therefore read wrong after the first episode.
+
+**A goal can be held in a body's frame, and a position read in one
+(ADR-592).** `assembly.goal(..., kind="point", frame=base)` draws its
+target as any point goal is drawn, then keeps it as
+`transpose(xmat[frame]) * (p - xpos[frame])` at the drawn pose: the bundle
+row carries `frame` and `frame_id`, `goal_algorithm` gains
+`GOAL_FRAME_ALGORITHM`, and the engine, the trainer's host-side pool and
+the reference runner keep the same numbers. The goal channels are then the
+target as the base sees it, which is what the policy reads. The reward's
+partner is `assembly.observation(tip, "component_position",
+frame=base, role="privileged")`, exported as a stock `framepos` with
+`reftype`/`refname` — the same element a tracker's reading is, with no
+noise because nothing measures it. `CadexEvaluation.reach_metrics` reads
+the tip in the frame at every frame of the trace, so a base that drifts
+carries its target with it and the error is to where the target was; an
+evaluation trace adds the frame to `goal_channels`, and the film places the
+marker with the frame's pose. A world goal's bundle and digest are
+unchanged.
 
 **Deferred, and named rather than half-built:** `touch` and
 `accelerometer` need a *site* with a placement the assembly graph does not

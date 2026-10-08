@@ -540,6 +540,28 @@ def test_a_point_goal_the_film_cannot_place_is_a_reason(tmp_path, small) -> None
         film.film_evaluation(tmp_path, out, report, seeds=[1101], video=False)
 
 
+def test_a_target_held_in_a_component_is_marked_where_that_component_carried_it() -> None:
+    """ADR-592: a goal held in a body's frame names it, and the marker is that
+    point placed with the body's pose in each frame, so it travels with it."""
+
+    rows = [{"channel": f"target_{axis}", "goal": "target", "kind": "point", "unit": "mm",
+             "frame": "base"} for axis in "xyz"]
+    quarter = [0.0, 0.0, math.sin(math.pi / 4), math.cos(math.pi / 4)]
+    frames = [
+        {"goal": [100.0, 0.0, 0.0], "component_placements": {
+            "base": {"position_mm": [0.0, 0.0, 50.0], "rotation_xyzw": [0.0, 0.0, 0.0, 1.0]}}},
+        {"goal": [100.0, 0.0, 0.0], "component_placements": {
+            "base": {"position_mm": [400.0, 0.0, 50.0], "rotation_xyzw": quarter}}},
+    ]
+    track = film.target_track({"goal_channels": rows}, frames, [0.0, 2.0], "trace.json")
+    assert track["points"][0] == pytest.approx((100.0, 0.0, 50.0))
+    assert track["points"][1] == pytest.approx((400.0, 100.0, 50.0))
+    assert len(track["positions"]) == 2
+    del frames[1]["component_placements"]["base"]
+    with pytest.raises(film.FilmError, match="a frame places no base"):
+        film.target_track({"goal_channels": rows}, frames, [0.0, 2.0], "trace.json")
+
+
 def test_a_base_that_is_not_drawn_is_a_reason(tmp_path, small) -> None:
     _project(tmp_path)
     out = tmp_path / "evaluations" / "one"

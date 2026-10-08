@@ -166,6 +166,32 @@ def test_a_key_outside_the_curriculum_set_is_refused(parent_file, key):
                     init_from_parent_task=str(parent_file)))
 
 
+def test_a_revised_success_spec_may_move(parent_file):
+    """ADR-597: the bar is not something the network reads or emits."""
+
+    parent_task = child_with(success={"seeds": [101, 102], "predicates": [
+        {"metric": "final_distance_mm", "max": 20.0}]})
+    parent_file.write_bytes(emit(parent_task))
+    child = child_with(success={"seeds": [101, 102], "predicates": [
+        {"metric": "final_distance_mm", "max": 20.0},
+        {"metric": "laps", "min": 2.0}]})
+    keys = check_policy_fits(
+        header_for(parent_task), bundle_of(child),
+        options(init_from_task_change="the spec now bounds laps",
+                init_from_parent_task=str(parent_file)))
+    assert keys == ["success"]
+
+
+def test_a_revised_success_spec_still_needs_the_declared_step():
+    """Without the flag a spec revision is a digest mismatch, as before."""
+
+    parent_task = child_with(success={"seeds": [101]})
+    with pytest.raises(SystemExit, match="the task digest"):
+        check_policy_fits(header_for(parent_task),
+                          bundle_of(child_with(success={"seeds": [102]})),
+                          options())
+
+
 def test_the_reason_alone_is_not_enough(parent_file):
     with pytest.raises(SystemExit, match="--init-from-parent-task is required"):
         check_policy_fits(header_for(TASK),
@@ -223,4 +249,6 @@ def test_the_curriculum_sets_say_what_they_mean():
     assert "model" not in CURRICULUM_TASK_KEYS
     assert "functions" not in CURRICULUM_TASK_KEYS
     assert "schema" not in CURRICULUM_TASK_KEYS
+    assert "goal" not in CURRICULUM_TASK_KEYS
+    assert "success" in CURRICULUM_TASK_KEYS
     assert CURRICULUM_EPISODE_KEYS == {"episode_seconds", "max_steps"}

@@ -60,7 +60,7 @@ The agent's two requests cost tokens. The loop between them does not.
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
 | `cadex asset --put FILE` | Copy a file into the project store — a trained `.cxpolicy` coming home, its `.json`/`.xml` provenance, a mesh, a `.cxpart`. With no `--put`, list the store. | no |
 | `cadex train --out DIR` | Rebuild, export the training bundle into `--out`, run the offboard trainer on it from its venv, and report the receipt. With `--put`, store the policy and report its sha256. With `--remote`, the trainer runs on the box through `training/remote_train.sh`; the artifacts do not move. With `--dry-run`, report the plan — the files the leg would touch and the steps it would take, in either mode — and train nothing. | no |
-| `cadex smoke --out DIR` | Simulate retained accepted artifacts with zero action or held position actuators, check finite state, exact component overlaps and floor support, and write `smoke.json` (ADR-352; details below). No rebuild or acceptance. | no |
+| `cadex smoke --out DIR` | Simulate retained accepted artifacts with zero action or held position actuators, check finite state, exact component overlaps, floor support and closed loops, and write `smoke.json` (ADR-352; details below). No rebuild or acceptance. | no |
 | `cadex evaluate` | Hold the accepted policy against its task's success spec (`assembly.success`, ADR-456): one rollout per frozen seed under the spec's conditions, then pass or fail per seed and per predicate, the behaviour metrics, the reward by term and how each episode ended, written to `evaluations/<revision>-<policy>/evaluation.json` in the project, with a filmstrip and a rollout video drawn from the seeds' traces on the dark prototype floor, and, when it passes, the studio hero and the print-bed hero of the design that passed and a video of the policy taking the task's shoves (ADR-457, ADR-459, ADR-570, ADR-571; details below). No rebuild or acceptance, and no trainer. | no |
 | `cadex walk --out DIR` | The lifecycle walk as one command: an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command, each bounded by `--leg-timeout` (default 3600 s); `review.json` lands in `--out`. | no |
 | `cadex review --host ADDR --port N` | Serve **this one project's** dashboard to a browser, read-only (ADR-286): the model in an orbit/zoom WebGL viewport — the accepted attempt's tessellation, or a run's own rollout meshes at its own revision — its drawings, documents and training plots in a 2D viewport, and the revision trail in the menu bar (ADR-539); its `GET /api/...` routes also serve every recorded run labelled current/historical, its parameters and specs as recorded, rollout figures and retained artifacts. Opens no engine, rebuilds nothing and writes nothing: it answers GET and HEAD only, and follows what the agent changes (ADR-537, `docs/DASHBOARD.md` §18). Default `127.0.0.1:8765`; `--host` the machine's Tailscale address to reach it from another device. Ctrl-C stops it. How the page is laid out, typed and coloured is `docs/DASHBOARD.md`. | no |
@@ -3170,6 +3170,17 @@ The command checks:
   fit uses exact solids.
 - Any termination conditions in the selected task, without applying task
   randomisation, disturbances or a trained policy.
+- Every loop closure the export wrote (an `equality` connect or weld
+  between two sites, ADR-593) stays shut: the gap between its two sites at
+  every solver step within the MJCF's pose contract, 0.01 mm (ADR-584).
+  `checks.closure` lists each closure's worst gap and its time, worst
+  first. A closure is soft with a two-step time constant, so the gap goes
+  as the step squared; a failure names `suggested_step_s`, the 1-2-5 step
+  under `step × sqrt(0.01 / worst)` (ADR-594). The rollout is the held or
+  zero-action one above, so it measures a loop at rest or settling; how
+  far a *driven* loop opens is `assembly.dynamics`'s
+  `worst_closure_residual_mm`, which its evidence states beside
+  `closure_tolerance_mm` and `closure_within_tolerance` (ADR-595).
 
 Sampling defaults to 50 Hz, always includes the initial and final poses, and
 records actual solver times. Duration rounds up by less than one solver step.

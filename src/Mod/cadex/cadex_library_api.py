@@ -485,6 +485,22 @@ class ServoPart(_BayPart):
         )
 
 
+    def load_sensor(self, actuator: Any, *, name: str,
+                    rate_hz: float | None = None, label: str = "") -> Any:
+        """This servo's load reading, as ``assembly.sensor(..., 'load_sensor')``.
+
+        ``actuator`` is the one this servo's ``.actuator`` made. A bus servo
+        that reports its load (``spec['load_feedback']``) grounds an
+        ``actuator_force`` observation of it: the register's resolution and
+        an assumed noise, as fractions of the actuator's stall torque, which
+        is the reading's full scale. ``rate_hz`` overrides the catalogued
+        polling rate, which falls as more servos share the bus. A hobby PWM
+        servo reports nothing back over its signal wire and is refused.
+        """
+
+        return self._lib._servo_load_sensor(self, actuator, name=name,
+                                            rate_hz=rate_hz, label=label)
+
     def joint_dynamics(
         self,
         joint: Any,
@@ -2075,6 +2091,55 @@ class LibraryAPI:
             torque_limit_nmm=torque,
             label=label,
             **extra,
+        )
+
+    def _servo_load_sensor(
+        self,
+        servo: ServoPart,
+        actuator: Any,
+        *,
+        name: str,
+        rate_hz: float | None,
+        label: str,
+    ) -> Any:
+        operation = "servo.load_sensor"
+        if self._assembly is None:
+            raise LibraryError(
+                f"lib.{operation}: the assembly API is not staged here."
+            )
+        feedback = servo.spec.get("load_feedback")
+        if not feedback:
+            reporting = sorted(sku for sku, row in catalog.SERVOS.items()
+                               if row.get("load_feedback"))
+            raise LibraryError(
+                f"lib.{operation}: the {servo.part_number} is a hobby PWM "
+                "servo: its signal wire carries the command in and nothing "
+                "back, so the machine has no load reading for a policy to "
+                "read. Use a servo that reports its load ("
+                + ", ".join(reporting) + "), keep the effort privileged "
+                "(an actuator_force observation with role='privileged'), or, "
+                "if the machine carries a current sensor on this servo's "
+                "supply, declare that part with assembly.sensor(actuator, "
+                "'load_sensor', ...)."
+            )
+        limit = (actuator.properties.get("torque_limit_nmm")
+                 if getattr(actuator, "operation", None) == "actuator" else None)
+        rated = [entry["nmm"] for entry in servo.spec["stall_torque_nmm"]]
+        if limit is None or not any(abs(float(limit) - nmm) <= 1.0e-6 for nmm in rated):
+            raise LibraryError(
+                f"lib.{operation}: expected the actuator this "
+                f"{servo.part_number}'s .actuator made; its load reads as a "
+                "fraction of that actuator's stall torque, "
+                + " or ".join(f"{nmm:g} N*mm" for nmm in rated) + "."
+            )
+        return self._assembly.sensor(
+            actuator,
+            "load_sensor",
+            name=name,
+            resolution_nmm=float(feedback["resolution_fraction"]) * float(limit),
+            noise_nmm=float(feedback["noise_fraction"]) * float(limit),
+            rate_hz=float(feedback["rate_hz"]) if rate_hz is None else rate_hz,
+            label=label,
         )
 
     def _servo_joint_dynamics(

@@ -561,6 +561,89 @@ def _limits(
     return result
 
 
+def _tracker_datasheet(operation: str, given: Mapping[str, Any]) -> dict[str, Any]:
+    """A position tracker's declaration, as the trainer applies it (ADR-588)."""
+
+    missing = [key for key, value in given.items() if value is None]
+    if missing:
+        raise _error(
+            operation, missing[0],
+            "is required for a position_tracker: a grounded channel states "
+            "what the part on the machine can measure -- range_mm, "
+            "resolution_mm, rate_hz and noise_mm, as its datasheet would",
+        )
+    raw = given["range_mm"]
+    if not isinstance(raw, (list, tuple)) or len(raw) != 3:
+        raise _error(operation, "range_mm",
+                     "expected [[x0, x1], [y0, y1], [z0, z1]] in the mount's frame", raw)
+    bounds = []
+    for axis, pair in zip("xyz", raw):
+        limits = _limits(operation, f"range_mm[{axis}]", pair)
+        if limits is None or None in limits or limits[0] >= limits[1]:
+            raise _error(operation, f"range_mm[{axis}]",
+                         "expected a two-sided [minimum, maximum] with minimum below maximum",
+                         pair)
+        bounds.append([float(limits[0]), float(limits[1])])
+    return {
+        "range_mm": bounds,
+        "resolution_mm": _number(operation, "resolution_mm", given["resolution_mm"],
+                                 minimum=0.0, strict_minimum=True),
+        "rate_hz": _number(operation, "rate_hz", given["rate_hz"],
+                           minimum=0.0, strict_minimum=True),
+        "noise_mm": _number(operation, "noise_mm", given["noise_mm"], minimum=0.0),
+    }
+
+
+def _load_datasheet(
+    operation: str,
+    actuator: DomainValue,
+    given: Mapping[str, Any],
+) -> dict[str, Any]:
+    """A load sensor's declaration, in its actuator's unit (ADR-591).
+
+    ``full_scale`` is the actuator's own effort limit -- the stall line a
+    bus servo's load register reads 100 % at -- so an actuator with no limit
+    has nothing for the reading to saturate at and is refused.
+    """
+
+    angular = str(actuator.properties.get("motion_type")) == "angular"
+    unit = "nmm" if angular else "n"
+    other = "n" if angular else "nmm"
+    for key in ("resolution", "noise"):
+        if given.get(f"{key}_{other}") is not None:
+            raise _error(operation, f"{key}_{other}",
+                         f"is not this actuator's unit: it drives a "
+                         f"{'turning' if angular else 'sliding'} coordinate, "
+                         f"so its load is declared in {key}_{unit}",
+                         given[f"{key}_{other}"])
+    missing = [key for key in (f"resolution_{unit}", "rate_hz", f"noise_{unit}")
+               if given.get(key) is None]
+    if missing:
+        raise _error(
+            operation, missing[0],
+            "is required for a load_sensor: a grounded channel states what "
+            f"the part on the machine can measure -- resolution_{unit}, "
+            f"rate_hz and noise_{unit}, as its datasheet would",
+        )
+    limit = actuator.properties.get("torque_limit_nmm" if angular else "force_limit_n")
+    if limit is None:
+        raise _error(
+            operation, "target",
+            "is an actuator with no effort limit: a load reading saturates "
+            "at the motor's stall line, so give the actuator its "
+            + ("torque_limit_nmm" if angular else "force_limit_n")
+            + " first",
+        )
+    return {
+        "full_scale": float(limit),
+        "resolution": _number(operation, f"resolution_{unit}", given[f"resolution_{unit}"],
+                              minimum=0.0, strict_minimum=True),
+        "rate_hz": _number(operation, "rate_hz", given["rate_hz"],
+                           minimum=0.0, strict_minimum=True),
+        "noise": _number(operation, f"noise_{unit}", given[f"noise_{unit}"], minimum=0.0),
+    }
+
+
 #: Which unit family each drivable joint kind's coordinate speaks. A
 #: `cylindrical` joint owns one of each and is therefore absent: like
 #: `api.motion`, it requires an explicit `motion_type`.
@@ -950,6 +1033,8 @@ _OBSERVATION_KINDS: dict[str, str] = {
     "centre_of_mass": "component_link",
     "centre_of_mass_velocity": "component_link",
     "centroidal_angular_momentum": "component_link",
+    "tracked_position": "component_link",
+    "tracked_velocity": "component_link",
 }
 
 #: What each observation kind's declared name expands to. A vector channel
@@ -967,6 +1052,13 @@ _OBSERVATION_SUFFIXES: dict[str, tuple[str, ...]] = {
     "centre_of_mass": ("_x", "_y", "_z"),
     "centre_of_mass_velocity": ("_x", "_y", "_z"),
     "centroidal_angular_momentum": ("_x", "_y", "_z"),
+    # The three coordinates a tracker reports, then whether it reported them
+    # at all (ADR-588): a body outside the declared range reads zeros and a
+    # flag of 0, never a clamped or a stale position.
+    "tracked_position": ("_x", "_y", "_z", "_in_range"),
+    # The same tracker's differenced velocity (ADR-590); it shares the
+    # position's _in_range rather than carrying a second one.
+    "tracked_velocity": ("_x", "_y", "_z"),
 }
 
 
@@ -1051,7 +1143,7 @@ _SUCCESS_SCALE_KEYS = (
 
 #: What a goal may be (ADR-462). ``CadexDynamics.GOAL_KINDS`` is the same
 #: tuple, and ``test_goal_api`` holds the two equal.
-_GOAL_KINDS = ("value", "speed", "point")
+_GOAL_KINDS = ("value", "speed", "point", "phase")
 
 #: An observation's name, which becomes a name a reward formula writes. The
 #: same shape as a Python identifier because that is what it turns into,
@@ -1067,6 +1159,26 @@ _SENSOR_KINDS: dict[str, tuple[str, frozenset[str]]] = {
     "imu": ("component_link",
             frozenset({"component_orientation", "component_angular_velocity"})),
     "joint_encoder": ("joint", frozenset({"position", "velocity"})),
+    # A touch panel, or a camera tracking a marker (ADR-588): mounted on a
+    # component, it reads *another* body's position in its own frame, with
+    # a declared range, resolution, rate and noise the trainer applies.
+    "position_tracker": ("component_link",
+                         frozenset({"tracked_position", "tracked_velocity"})),
+    # A bus servo's load register, or a current sensor on a motor's supply
+    # (ADR-591): it reads the effort its own actuator applies, to a declared
+    # resolution and noise, saturating at that actuator's effort limit.
+    "load_sensor": ("actuator", frozenset({"actuator_force"})),
+}
+#: Which sensor kinds each datasheet argument of ``api.sensor`` belongs to.
+_SENSOR_DATASHEET_KINDS: dict[str, tuple[str, ...]] = {
+    "range_mm": ("position_tracker",),
+    "resolution_mm": ("position_tracker",),
+    "noise_mm": ("position_tracker",),
+    "rate_hz": ("position_tracker", "load_sensor"),
+    "resolution_nmm": ("load_sensor",),
+    "noise_nmm": ("load_sensor",),
+    "resolution_n": ("load_sensor",),
+    "noise_n": ("load_sensor",),
 }
 _OBSERVATION_ROLES = ("policy", "privileged")
 
@@ -2833,6 +2945,14 @@ class AssemblyDomainAPI:
         *,
         name: str,
         motion_type: str = "auto",
+        range_mm: Any = None,
+        resolution_mm: Any = None,
+        rate_hz: Any = None,
+        noise_mm: Any = None,
+        resolution_nmm: Any = None,
+        noise_nmm: Any = None,
+        resolution_n: Any = None,
+        noise_n: Any = None,
         label: str = "",
     ) -> DomainValue:
         """Declare one onboard sensor, so a policy channel can say what measures it.
@@ -2844,6 +2964,34 @@ class AssemblyDomainAPI:
         servo's potentiometer tapped out, or a servo that reports position).
         A stock hobby servo reports nothing: its joint has no encoder unless
         one is declared.
+
+        ``position_tracker`` (ADR-588) is a touch panel, or a camera
+        tracking a marker: ``target`` is the component it is mounted on, and
+        it reads *another* body's position in that component's frame through
+        a ``tracked_position`` observation. It is declared like a datasheet,
+        and all four are required: ``range_mm`` (``[[x0, x1], [y0, y1],
+        [z0, z1]]`` in the mount's frame), ``resolution_mm``, ``rate_hz``
+        and ``noise_mm`` (one standard deviation per axis). The trainer adds
+        the noise and rounds to the resolution; a body outside the range
+        reads zeros with ``<name>_in_range`` 0, which a termination can
+        name. ``rate_hz`` must be at least the task's control rate. A
+        ``tracked_velocity`` of the same body (ADR-590) is the tracker's
+        firmware differencing successive readings: listed after the
+        position, it reads mm/s with noise ``sqrt(2) * noise_mm * rate_hz``
+        and resolution ``resolution_mm * rate_hz``, and zeros while the
+        position is out of range.
+
+        ``load_sensor`` (ADR-591) reads the effort an ``api.actuator``
+        applies -- a bus servo's load register, or a current sensor on a
+        motor's supply -- through an ``actuator_force`` observation of that
+        same actuator. ``resolution_nmm``, ``noise_nmm`` (``_n`` on a
+        sliding coordinate) and ``rate_hz`` are required; the reading rounds
+        to the resolution, the trainer adds the noise, and it saturates at
+        the actuator's own effort limit, its stall line. A catalog servo
+        declares its own: ``lib.servo(sku).load_sensor(actuator, name=...)``
+        fills a bus servo's figures and refuses a PWM servo, which reports
+        nothing back. Declared here directly, it is a claim that the machine
+        carries a part measuring this motor's current.
 
         A sensor is an argument to ``api.observation(..., sensor=...)`` and
         nothing else: pass it there, and do not return it. A channel the
@@ -2867,6 +3015,21 @@ class AssemblyDomainAPI:
         properties: dict[str, Any] = {"kind": clean_kind, "name": clean_name}
         if wanted[0] == "joint":
             properties["motion_type"] = _coordinate(operation, value, motion_type)
+        datasheet = {"range_mm": range_mm, "resolution_mm": resolution_mm,
+                     "rate_hz": rate_hz, "noise_mm": noise_mm}
+        load = {"resolution_nmm": resolution_nmm, "noise_nmm": noise_nmm,
+                "resolution_n": resolution_n, "noise_n": noise_n}
+        if clean_kind == "position_tracker":
+            properties["tracker"] = _tracker_datasheet(operation, datasheet)
+        elif clean_kind == "load_sensor":
+            properties["load"] = _load_datasheet(operation, value,
+                                                 {**load, "rate_hz": rate_hz})
+        for parameter, given in (*datasheet.items(), *load.items()):
+            owners = _SENSOR_DATASHEET_KINDS[parameter]
+            if given is not None and clean_kind not in owners:
+                raise _error(operation, parameter,
+                             f"applies to a {' or a '.join(owners)}, not a {clean_kind}",
+                             given)
         return self._value(operation, "sensor", value, label=label, **properties)
 
     def observation(
@@ -2878,6 +3041,7 @@ class AssemblyDomainAPI:
         motion_type: str = "auto",
         role: str = "policy",
         sensor: DomainValue | None = None,
+        frame: DomainValue | None = None,
         label: str = "",
     ) -> DomainValue:
         """Declare one channel of a task's observation space.
@@ -2896,7 +3060,10 @@ class AssemblyDomainAPI:
         * ``component_position`` / ``component_orientation`` /
           ``component_linear_velocity`` / ``component_angular_velocity`` --
           where a part is and how it is moving, in the world frame.
-          ``target`` is an ``api.component``.
+          ``target`` is an ``api.component``. A ``component_position`` may
+          name ``frame=`` another component to be read in that one's frame
+          instead (ADR-592) -- the tip as the base sees it, which is what a
+          reward compares with a goal held in the base's frame.
         * ``centre_of_mass`` / ``centre_of_mass_velocity`` -- the centre of
           mass of a component *and everything hanging off it*, and how fast
           that point is moving. These are the quantities a balance reward
@@ -2962,6 +3129,35 @@ class AssemblyDomainAPI:
                 name,
             )
         properties: dict[str, Any] = {"kind": clean_kind, "name": clean_name}
+        if frame is not None:
+            if clean_kind != "component_position":
+                raise _error(
+                    operation, "frame",
+                    "reads a component_position in another component's "
+                    f"frame; a {clean_kind} is read in its own",
+                )
+            frame = _domain_value(operation, "frame", frame, output_type="component_link")
+            if frame is value:
+                raise _error(
+                    operation, "frame",
+                    "is the component being read; name the component whose "
+                    "frame it is read in",
+                )
+            if sensor is not None:
+                raise _error(
+                    operation, "sensor",
+                    "names no sensor a component_position in another "
+                    "component's frame is measured by; a body read from "
+                    "another one on the machine is a tracked_position",
+                    sensor.properties.get("name"),
+                )
+            clean_role = str(role or "").strip().lower()
+            if clean_role not in _OBSERVATION_ROLES:
+                raise _error(operation, "role", f"must be one of {list(_OBSERVATION_ROLES)}", role)
+            if clean_role != "policy":
+                properties["role"] = clean_role
+            return self._value(operation, "observation", value, frame,
+                               label=label, **properties)
         if wanted == "actuator":
             # An actuator is identified by the coordinate it drives and the
             # kind it is, because that is what the model names it after. Its
@@ -2982,6 +3178,15 @@ class AssemblyDomainAPI:
             # "the position" of one says nothing about which -- the same
             # reason api.actuator and api.joint_dynamics ask.
             properties["motion_type"] = _coordinate(operation, value, motion_type)
+        if clean_kind in ("tracked_position", "tracked_velocity") and sensor is None:
+            raise _error(
+                operation, "sensor",
+                f"a {clean_kind} is what a position_tracker reads, so it "
+                "names one: its frame is the tracker's mount and its noise is "
+                "the tracker's declaration. A world position the robot cannot "
+                "measure is a privileged component_position",
+                sensor,
+            )
         clean_role = str(role or "").strip().lower()
         if clean_role not in _OBSERVATION_ROLES:
             raise _error(operation, "role", f"must be one of {list(_OBSERVATION_ROLES)}", role)
@@ -3001,6 +3206,23 @@ class AssemblyDomainAPI:
                     f"a {sensor_kind} measures {sorted(measures)}, not {clean_kind}",
                     sensor.properties.get("name"),
                 )
+            if sensor_kind == "position_tracker":
+                # A tracker reads some *other* body, in its mount's frame:
+                # the mount travels as the observation's second argument so
+                # the worker can name it.
+                if sensor.arguments[0] is value:
+                    raise _error(
+                        operation, "sensor",
+                        f"{sensor.properties.get('name')!r} is mounted on this "
+                        "component; a position_tracker reads another body "
+                        "relative to its mount",
+                        sensor.properties.get("name"),
+                    )
+                properties["grounded_sensor"] = str(sensor.properties.get("name"))
+                properties["grounded_kind"] = sensor_kind
+                properties["tracker"] = dict(sensor.properties["tracker"])
+                return self._value(operation, "observation", value, sensor.arguments[0],
+                                   label=label, **properties)
             if sensor.arguments[0] is not value or (
                 wanted == "joint"
                 and sensor.properties.get("motion_type") != properties.get("motion_type")
@@ -3014,6 +3236,8 @@ class AssemblyDomainAPI:
                 )
             properties["grounded_sensor"] = str(sensor.properties.get("name"))
             properties["grounded_kind"] = sensor_kind
+            if sensor_kind == "load_sensor":
+                properties["load"] = dict(sensor.properties["load"])
         return self._value(operation, "observation", value, label=label, **properties)
 
     def reward(
@@ -3505,6 +3729,8 @@ class AssemblyDomainAPI:
         joint_fraction: float = 0.8,
         min_z_mm: float | None = None,
         min_separation_mm: float = 0.0,
+        frame: DomainValue | None = None,
+        period_seconds: float | None = None,
         resample_seconds: float | None = None,
         label: str = "",
     ) -> DomainValue:
@@ -3538,8 +3764,32 @@ class AssemblyDomainAPI:
           within ``min_separation_mm`` of where the tip starts the segment.
           A success spec reads the reach metrics against it.
 
+          ``frame=component`` holds the point in that component's frame
+          (ADR-592): it is drawn as above, then kept relative to the
+          component, so it travels with it. Its channels read it in the
+          component's frame, in millimetres -- the target as a base would
+          see it -- and the reach metrics measure the tip against where it
+          was at every frame. A reward compares it with the tip read in
+          the same frame: ``observation(tip, "component_position",
+          frame=component, role="privileged")``. Use it when the part that
+          carries the mechanism moves during an episode -- a tracked or
+          wheeled base, a platform that slides -- and the target belongs
+          to the machine's own workspace. A spec's goals must be held in
+          the frame the task's are.
+        * ``"phase"`` -- a clock (ADR-598): an angle that turns once every
+          ``period_seconds``, anticlockwise (increasing), from a start drawn
+          uniformly over one turn per episode. Its channels are
+          ``name_sin`` and ``name_cos``, computed from the episode's step
+          counter. Nothing else a policy or a reward reads carries time, so
+          this is how a task asks for a motion that keeps going -- a body
+          led round a circle, a gait at a set cadence: the target angle is
+          ``atan2(name_sin, name_cos)``, and the cosine of a body's lag
+          behind it at ``(x, y)`` is ``(x*name_cos + y*name_sin) /
+          sqrt(x*x + y*y)``. It is the controller's own timer, not a
+          sensor reading. Turn the other way with ``-name_sin``.
+
         A task states at most one ``speed`` and one ``point``; ``value``
-        goals are free.
+        and ``phase`` goals are free.
 
         ``resample_seconds`` draws the goal again that often during the
         episode, which is what makes a policy learn to *change* what it is
@@ -3569,6 +3819,12 @@ class AssemblyDomainAPI:
                 operation, "kind", f"must be one of {list(_GOAL_KINDS)}", kind
             )
         properties: dict[str, Any] = {"name": clean_name, "kind": clean_kind}
+        if clean_kind != "phase" and period_seconds is not None:
+            raise _error(
+                operation, "period_seconds",
+                f"is how long a phase goal takes to turn once, and this is "
+                f"a {clean_kind}", period_seconds,
+            )
         if clean_kind == "point":
             if between is not None:
                 raise _error(
@@ -3595,6 +3851,17 @@ class AssemblyDomainAPI:
             )
             if min_z_mm is not None:
                 properties["min_z_mm"] = _number(operation, "min_z_mm", min_z_mm)
+            if frame is not None:
+                properties["frame"] = _domain_value(
+                    operation, "frame", frame, output_type="component_link"
+                )
+                if properties["frame"] is properties["tip"]:
+                    raise _error(
+                        operation, "frame",
+                        "is the tip itself; a target held in the tip's own "
+                        "frame never moves relative to it. Name the component "
+                        "the target travels with",
+                    )
             properties["min_separation_mm"] = _number(
                 operation, "min_separation_mm", min_separation_mm, minimum=0.0
             )
@@ -3605,6 +3872,7 @@ class AssemblyDomainAPI:
                 ("min_z_mm", min_z_mm, None),
                 ("joint_fraction", joint_fraction, 0.8),
                 ("min_separation_mm", min_separation_mm, 0.0),
+                ("frame", frame, None),
             ):
                 if source is not None and source != default:
                     raise _error(
@@ -3612,6 +3880,23 @@ class AssemblyDomainAPI:
                         "describes how a point goal is drawn, and this is "
                         f"a {clean_kind}", source,
                     )
+        if clean_kind == "phase":
+            if between is not None:
+                raise _error(
+                    operation, "between",
+                    "is the range of a value or a speed; a phase starts "
+                    "anywhere on its turn", between,
+                )
+            if period_seconds is None:
+                raise _error(
+                    operation, "period_seconds",
+                    "a phase goal turns once every period_seconds: give it",
+                )
+            properties["period_seconds"] = _number(
+                operation, "period_seconds", period_seconds,
+                minimum=0.0, maximum=3600.0, strict_minimum=True,
+            )
+        elif clean_kind != "point":
             if between is None:
                 raise _error(
                     operation, "between",
@@ -3642,6 +3927,11 @@ class AssemblyDomainAPI:
         feet: Sequence[DomainValue] = (),
         tip: DomainValue | None = None,
         tip_offset_mm: Sequence[float] | None = None,
+        body: DomainValue | None = None,
+        body_offset_mm: Sequence[float] | None = None,
+        centre: DomainValue | None = None,
+        centre_mm: Sequence[float] | None = None,
+        centre_axis: Sequence[float] | None = None,
         episode_seconds: float | None = None,
         randomisation: Sequence[DomainValue] | None = None,
         reset_variation: Sequence[DomainValue] | None = None,
@@ -3690,12 +3980,28 @@ class AssemblyDomainAPI:
           worst over the targets the episode held. **A spec that bounds one
           of these on a task with no such goal is refused**: nothing a
           rollout did can be measured against a command it was never given.
+        * ``body``: the motion of that body about a centre (ADR-587) --
+          ``turns``, its net signed turns about ``centre_axis`` through the
+          centre (anticlockwise seen from the axis tip is positive), so a
+          body that rocks on an arc reads about zero; ``laps``, the whole
+          turns completed in the net direction; and ``final_distance_mm``,
+          ``mean_distance_mm`` and ``max_distance_mm`` from the centre
+          point. None needs a goal. An episode that did not run to its
+          horizon measures none of them, so a spec bounding one fails it.
 
         ``feet`` names the ``api.component`` values that are feet; each
         needs a primitive collision shape, because a foot's height is its
         lowest collision point above the floor. ``tip`` names the component
         carrying the point a reach is measured at, ``tip_offset_mm`` where
         on it, in its own frame.
+
+        ``body`` names the component whose motion is judged, and
+        ``body_offset_mm`` the point on it, in its own frame (a ball's
+        centre is its origin). ``centre`` names the component the centre is
+        fixed in -- a plate that tilts carries it -- and is the world when
+        omitted; ``centre_mm`` is the point in that frame (default the
+        origin) and ``centre_axis`` the axis turns are counted about
+        (default +Z of that frame).
 
         ``seeds`` are the evaluation seeds, fixed in the script so that two
         evaluations of one policy are the same episodes. **They are never
@@ -3853,6 +4159,43 @@ class AssemblyDomainAPI:
                 [0.0, 0.0, 0.0] if tip_offset_mm is None
                 else _vector(operation, "tip_offset_mm", tip_offset_mm, size=3)
             )
+        if body is None:
+            for name, value in (
+                ("body_offset_mm", body_offset_mm), ("centre", centre),
+                ("centre_mm", centre_mm), ("centre_axis", centre_axis),
+            ):
+                if value is not None:
+                    raise _error(
+                        operation, name,
+                        "describes the motion of a body, and no body is named",
+                        value if name != "centre" else "component",
+                    )
+        else:
+            properties["body"] = _domain_value(
+                operation, "body", body, output_type="component_link"
+            )
+            properties["body_offset_mm"] = (
+                [0.0, 0.0, 0.0] if body_offset_mm is None
+                else _vector(operation, "body_offset_mm", body_offset_mm, size=3)
+            )
+            if centre is not None:
+                properties["centre"] = _domain_value(
+                    operation, "centre", centre, output_type="component_link"
+                )
+            properties["centre_mm"] = (
+                [0.0, 0.0, 0.0] if centre_mm is None
+                else _vector(operation, "centre_mm", centre_mm, size=3)
+            )
+            axis = (
+                [0.0, 0.0, 1.0] if centre_axis is None
+                else _vector(operation, "centre_axis", centre_axis, size=3)
+            )
+            if math.sqrt(sum(v * v for v in axis)) <= 1.0e-9:
+                raise _error(
+                    operation, "centre_axis",
+                    "is zero, and turns are counted about a direction", list(axis),
+                )
+            properties["centre_axis"] = axis
         if episode_seconds is not None:
             properties["episode_seconds"] = _number(
                 operation, "episode_seconds", episode_seconds,
@@ -4027,6 +4370,12 @@ class AssemblyDomainAPI:
                 raise _error(
                     operation, where,
                     "observes a component that is not listed in this assembly",
+                )
+            if len(entry.arguments) > 1 and id(entry.arguments[1]) not in component_ids:
+                raise _error(
+                    operation, where,
+                    "is read in the frame of a component that is not listed "
+                    "in this assembly",
                 )
             if wanted == "joint" and id(target) not in joint_ids:
                 raise _error(
@@ -4215,13 +4564,14 @@ class AssemblyDomainAPI:
             operation, "goals", goals, output_type="goal", minimum=0
         )
         for index, entry in enumerate(goal_values):
-            tip = entry.properties.get("tip")
-            if tip is not None and id(tip) not in component_ids:
-                raise _error(
-                    operation,
-                    f"goals[{index}]",
-                    "names a tip that is not listed in this assembly",
-                )
+            for part in ("tip", "frame"):
+                component = entry.properties.get(part)
+                if component is not None and id(component) not in component_ids:
+                    raise _error(
+                        operation,
+                        f"goals[{index}]",
+                        f"names a {part} that is not listed in this assembly",
+                    )
         # Absent rather than ``None`` when no spec is declared, so a task
         # that has none is the value it always was.
         judged: dict[str, Any] = {}
@@ -4235,6 +4585,9 @@ class AssemblyDomainAPI:
             ]
             if spec.properties.get("tip") is not None:
                 named.append(("success.tip", spec.properties["tip"]))
+            for parameter in ("body", "centre"):
+                if spec.properties.get(parameter) is not None:
+                    named.append((f"success.{parameter}", spec.properties[parameter]))
             for parameter in ("reset_variation", "disturbance"):
                 named.extend(
                     (f"success.{parameter}[{index}]", entry.arguments[0])
@@ -4243,9 +4596,10 @@ class AssemblyDomainAPI:
                     )
                 )
             named.extend(
-                (f"success.goals[{index}]", entry.properties["tip"])
+                (f"success.goals[{index}]", entry.properties[part])
                 for index, entry in enumerate(spec.properties.get("goals") or ())
-                if entry.properties.get("tip") is not None
+                for part in ("tip", "frame")
+                if entry.properties.get(part) is not None
             )
             for where, component in named:
                 if id(component) not in component_ids:

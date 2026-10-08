@@ -241,7 +241,34 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   equality constraints and the published evidence records what each one gave
   up — a `connect` closing a revolute pins position and lets axis alignment
   go, which is exact for a planar four-bar and one constraint short for a
-  spatial one. `gravity_m_s2` and `solver_step_s` are authorable (ADR-079);
+  spatial one. That shortfall is **measured, not assumed** (ADR-593): the
+  closure Jacobian's rank at the solved pose, once with what the export pins
+  and once with what the joint pins, and a closing hinge whose axis would
+  have to tilt as the loop moves is refused as `overconstrained_loop` (end
+  the closing link in a `ball` joint, which a connect expresses exactly). A
+  drive on a joint the loop locks is refused as `actuator_locked_by_loop`.
+  An actuator on a joint the chain reaches from ground — a crank — drives
+  the whole loop; a connect is a soft constraint, so a loop driven fast holds
+  the MJCF's 0.01 mm pose contract only at a fine step (225 °/s on a 200 mm
+  four-bar: 0.045 mm at 2 ms, 0.0012 mm at `solver_step_s=0.0005`).
+  **A planar loop of pins builds live** (ADR-595). The native assembly
+  solver counts six constraints per loop and calls a four-bar of four
+  `revolute` joints redundant; that verdict is accepted when the solver
+  returned code 0 and said nothing worse, the loop's joints are revolute,
+  slider, cylindrical, ball or fixed, the rank of their screws at the solved
+  pose leaves the loops exactly **one** degree of freedom, and every loop
+  joint's connectors meet within 0.01 mm. The count is in the solve's
+  diagnostics as `loop_redundancy` (`freedoms`, `rank`, `mobility`,
+  `redundancy`, `worst_gap_mm`, `accepted`); a truss (mobility 0), a loop
+  with two or more freedoms, or a tilted closing pin keeps the refusal, and
+  the refusal names the count. A coupler on two `ball` joints (rod ends)
+  also builds, but has an undamped spin about its ball line (ADR-594).
+  Driven 450° by its crank servo, a four-pin four-bar's rocker stays within
+  0.0032° of circle intersection at 0.5 ms; the loop opens 0.70 mm at the
+  2 ms default and 0.0061 mm at 0.5 ms. A dynamics run with a loop records
+  `closure_tolerance_mm` (0.01) and `closure_within_tolerance` beside
+  `worst_closure_residual_mm`; `cadex smoke` names the step that holds it.
+  `gravity_m_s2` and `solver_step_s` are authorable (ADR-079);
   gravity is metres per second squared, and `[0, 0, 0]` is how you isolate a
   joint's behaviour from the falling.
   Refused rather than approximated: `distance`/`parallel`/
@@ -288,13 +315,39 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `component_position`/`component_orientation`/`component_linear_velocity`/
   `component_angular_velocity`/`centre_of_mass`/`centre_of_mass_velocity`/
   `centroidal_angular_momentum`
-  on a component, and `actuator_force` on an actuator. Values reach a trainer in this API's own
+  on a component, `tracked_position` and `tracked_velocity` on a body a
+  `position_tracker` reads (below), and `actuator_force` on an actuator
+  (grounded by a `load_sensor`, below). Values reach a trainer in this API's own
   units — degrees, millimetres, N·mm, N·mm·s — as a per-channel `scale` in the
   bundle, so the trainer *multiplies* rather than converting. A vector
   channel expands to suffixed scalar names — `name="hand"` on a
   `component_position` is `hand_x`, `hand_y`, `hand_z` — and those are the
   names a reward writes; two channels that would produce one name are
-  refused, including when the collision comes from an expansion. One thing
+  refused, including when the collision comes from an expansion. A
+  **position tracker** (ADR-588) — a touch panel, a camera tracking a
+  marker — is `assembly.sensor(mount, "position_tracker", name=...,
+  range_mm=[[x0, x1], [y0, y1], [z0, z1]], resolution_mm=..., rate_hz=...,
+  noise_mm=...)`, all four declared as its datasheet states them, and
+  `assembly.observation(body, "tracked_position", name="ball",
+  sensor=tracker)` reads `ball_x`, `ball_y`, `ball_z` — the body's position
+  in the mount's frame, rounded to the resolution — and `ball_in_range`, 1
+  while the body is inside the range and 0, with every coordinate 0, when
+  it is not, so a termination can end the episode on it. The trainer adds
+  the declared noise to what the policy reads; a tracker slower than the
+  control loop is refused. A `tracked_velocity` of the same body from the
+  same tracker, listed after its position (ADR-590), reads `<name>_x/_y/_z`
+  in mm/s: the firmware's difference of successive readings, with noise
+  `sqrt(2) * noise_mm * rate_hz` and resolution `resolution_mm * rate_hz`,
+  and zeros whenever the position reads out of range. A **load sensor**
+  (ADR-591) — a bus servo's load register, or a current sensor on a
+  motor's supply — is `assembly.sensor(actuator, "load_sensor", name=...,
+  resolution_nmm=..., noise_nmm=..., rate_hz=...)` (`_n` on a sliding
+  coordinate) and grounds that actuator's `actuator_force`: the applied
+  effort, rounded to the resolution, held within the actuator's own effort
+  limit — its stall line, which it must declare — with the trainer adding
+  the noise. A catalog servo fills its own figures with
+  `lib.servo(sku).load_sensor(actuator, name=...)`; a PWM servo, which
+  reports nothing back, refuses. One thing
   worth knowing before choosing a channel: a `component_position` reads the
   component's **frame origin**, so a link hinged at its own origin never
   moves in it — `centre_of_mass` is the channel for where a part actually
@@ -347,7 +400,8 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   |---|---|---|---|
   | `value` | `name` | `between=[low, high]`, in the reward's own unit | nothing; it is the reward's to give a meaning |
   | `speed` | `name`, mm/s | `between=[low, high]`: the commanded forward speed | `speed_ratio`, `lateral_ratio` |
-  | `point` | `name_x`, `name_y`, `name_z`, mm, world | a pose `tip` can reach | the reach metrics |
+  | `point` | `name_x`, `name_y`, `name_z`, mm, world (or `frame=`'s) | a pose `tip` can reach | the reach metrics |
+  | `phase` | `name_sin`, `name_cos` | a start phase over one turn; then it turns once every `period_seconds` | nothing |
 
   A `point` is a place the tip **can be**: the engine draws a pose with
   every joint the task drives in the middle `joint_fraction` (0.8) of its
@@ -363,6 +417,26 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   before the pose is read, so a target is never judged at a pose the
   coupling forbids (ADR-474). The bundle carries these as the goal's
   `followers`, and only on a coupled mechanism.
+  **`frame=component` holds a point in that component's frame** (ADR-592),
+  so it travels with it: a target in a tracked base's workspace stays in
+  that workspace as the base drifts. It is drawn exactly as above, then
+  kept relative to the component; its channels read it in the component's
+  frame, the policy sees it as the base would, and the reach metrics
+  measure the tip against where it was at every frame. A reward reads the
+  tip in the same frame with `assembly.observation(tip,
+  "component_position", name="tip", frame=component, role="privileged")` —
+  `frame=` is accepted on a `component_position` only. The frame may not be
+  the tip, and a success spec's goals are held in the frames the task's are.
+  **A `phase` is a clock** (ADR-598): `assembly.goal("lead", kind="phase",
+  period_seconds=4.0)` draws a start angle uniformly over one turn per
+  episode and advances it `2*pi*dt/period_seconds` every control step,
+  anticlockwise, computed from the episode's step counter. Its channels
+  are the angle's sine and cosine. Nothing else a policy or a reward reads
+  carries time, so a motion that has to keep going — a body led round a
+  circle, a cadence — is stated against it: the cosine of a body at
+  `(x, y)` lagging the target is `(x*lead_cos + y*lead_sin) /
+  sqrt(x*x + y*y)`. It is the controller's own timer, not a sensor, so it
+  is grounded. Unseeded, it starts at 0. It takes no `between`.
   `resample_seconds=...` draws the goal again that often during the
   episode, on a whole number of control steps; omitted, it is held. The
   step a goal changes on is scored against the goal its action was taken
@@ -416,6 +490,8 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `mean_forward_speed_mm_s`, `mean_lateral_speed_mm_s` | speed along and across the base's heading, after 1 s | `feet` |
   | `speed_ratio`, `lateral_ratio` | those speeds over the commanded one: the mean of the `speed` goal over the same settled frames | `feet` and a `speed` goal |
   | `final_error_mm_max`, `final_error_arm_lengths_max`, `time_to_target_s_max`, `overshoot_ratio_max` | a tip's worst error, arrival time and overshoot over the targets the episode held | `tip` and a `point` goal |
+  | `turns`, `laps` | a body's net signed turns about an axis through a centre (anticlockwise seen from the axis tip is positive), so a body that rocks on an arc reads about zero; whole turns completed in the net direction (ADR-587) | `body` |
+  | `final_distance_mm`, `mean_distance_mm`, `max_distance_mm` | the body's distance from the centre point at the last frame, on average, and at its furthest — no goal needed (ADR-587) | `body` |
 
   "Every foot" is the worst foot, which is what the `_min` and `_max`
   suffixes say. **That table is the whole vocabulary.** A predicate that
@@ -432,7 +508,14 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `feet=[component, ...]` names the feet, each of which needs a primitive
   collision shape, because a foot's height is its lowest collision point
   above the floor. `tip=component, tip_offset_mm=[x, y, z]` names the point
-  a reach is measured at. `seeds` are the evaluation seeds, 1 through 64
+  a reach is measured at. `body=component, body_offset_mm=[x, y, z]` names
+  a point whose motion is judged, about `centre_mm=[x, y, z]` fixed in
+  `centre=component` (the world when omitted; a tilting plate carries its
+  centre with it) and `centre_axis=[0, 0, 1]` in that frame. The motion
+  metrics are measurements of the whole episode, so **an episode that ended
+  before its horizon measures none of them** and a spec bounding one fails
+  that seed; what was played stays in the report's `detail.motion`, marked
+  `partial`. `seeds` are the evaluation seeds, 1 through 64
   distinct integers fixed in the script so two evaluations of one policy are
   the same episodes; **they are never training seeds**.
   `randomisation=[...]`, `reset_variation=[...]`, `disturbance=[...]` and
@@ -2024,6 +2107,10 @@ the same way.
 A joint that **can move and declares no limits** — a continuously
 rotating wheel, a free spinner, a loop-closure hinge — is a coverage hole too
 (ADR-375), and reads `incomplete` with the limit to declare named per kind.
+A joint **on a closed loop** reads `incomplete` whatever its limits
+(ADR-593): sweeping one joint of a closed chain alone would tear the loop
+open, so the reason names the loop's joints, its components and the joint
+that closes it, and its pairs are measured at the solved pose only.
 Before this it was dropped before it could be named, so a chassis whose one
 limited hinge swept clean read `complete` beside two wheels measured at the
 solved pose and nowhere else. Two joints genuinely hold no range and stay out

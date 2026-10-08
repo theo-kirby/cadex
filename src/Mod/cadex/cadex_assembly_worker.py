@@ -3777,6 +3777,21 @@ def _observation_input(
     for key in ("role", "grounded_sensor", "grounded_kind"):
         if properties.get(key):
             resolved[key] = str(properties[key])
+    # ADR-588: a tracked position is read in its tracker's mount frame, with
+    # the tracker's declaration carried to the trainer that applies it.
+    # ADR-592: a component_position may be read in another body's frame too.
+    if len(entry.arguments) > 1:
+        resolved["frame"] = component_outputs[id(entry.arguments[1])]
+    if properties.get("tracker"):
+        tracker = properties["tracker"]
+        resolved["tracker"] = {
+            "range_mm": [[float(low), float(high)] for low, high in tracker["range_mm"]],
+            **{key: float(tracker[key]) for key in ("resolution_mm", "rate_hz", "noise_mm")},
+        }
+    # ADR-591: a load sensor's declaration, in its actuator's own unit.
+    if properties.get("load"):
+        resolved["load"] = {key: float(properties["load"][key])
+                            for key in ("full_scale", "resolution", "rate_hz", "noise")}
     return resolved
 
 
@@ -3889,6 +3904,14 @@ def _execute_dynamics_simulation(
             "worst_closure_residual_mm": float(run["worst_closure_residual_mm"]),
         }
     )
+    if run["built"]["tree"]["closures"]:
+        # The driven gap beside the contract it is held to (ADR-595): a loop
+        # driven at the default step can sit open past it, and only this
+        # run sees the loop move -- smoke holds it still.
+        tolerance = CadexDynamics.MJCF_POSE_TOLERANCE_MM
+        evidence["closure_tolerance_mm"] = tolerance
+        evidence["closure_within_tolerance"] = (
+            float(run["worst_closure_residual_mm"]) <= tolerance)
     clearance_pairs, clearance_gap = _declared_clearance(
         properties, component_outputs
     )
@@ -4997,6 +5020,13 @@ def _goal_input(
             min_z_mm=properties.get("min_z_mm"),
             min_separation_mm=float(properties.get("min_separation_mm") or 0.0),
         )
+        # ADR-592: present only on a goal held in a body's frame.
+        if properties.get("frame") is not None:
+            resolved["frame"] = component_outputs[id(properties["frame"])]
+    elif resolved["kind"] == "phase":
+        # ADR-598: the period is all a phase declares; the engine sets the
+        # turn its start is drawn over.
+        resolved["period_seconds"] = float(properties.get("period_seconds"))
     else:
         resolved.update(
             low=float(properties.get("low")), high=float(properties.get("high"))
@@ -5043,6 +5073,21 @@ def _success_input(
         resolved["tip"] = {
             "body": component_outputs[id(properties["tip"])],
             "local_mm": [float(v) for v in properties.get("tip_offset_mm") or ()],
+        }
+    # Absent unless the script named a body, so a spec without one is the
+    # spec it always was (ADR-587).
+    if properties.get("body") is not None:
+        resolved["body"] = {
+            "body": component_outputs[id(properties["body"])],
+            "local_mm": [float(v) for v in properties.get("body_offset_mm") or ()],
+        }
+        resolved["centre"] = {
+            "frame": (
+                None if properties.get("centre") is None
+                else component_outputs[id(properties["centre"])]
+            ),
+            "point_mm": [float(v) for v in properties.get("centre_mm") or ()],
+            "axis": [float(v) for v in properties.get("centre_axis") or ()],
         }
     if properties.get("randomisation") is not None:
         resolved["randomisation"] = [
@@ -5587,6 +5632,45 @@ def _diagnostics_conflict_labels(diagnostics: Mapping[str, Any]) -> list[str]:
 
 def _diagnostics_conflict(diagnostics: Mapping[str, Any]) -> bool:
     return bool(_diagnostics_conflict_labels(diagnostics))
+
+
+_REDUNDANCY_LABELS = frozenset({"redundant constraints", "partially redundant constraints"})
+
+
+def _loop_redundancy(solver_code, conflict_labels, component_data, joint_data,
+                     component_placements):
+    """Whether a redundancy verdict is only a closed loop over-counted (ADR-595).
+
+    The native solver counts six constraints per loop, so a planar four-bar
+    on four pins -- the commonest linkage there is -- reads as three
+    redundant constraints although it moves exactly as built. ADR-593's
+    mobility rank, taken of the joint screws at the solved pose, tells that
+    apart from a graph that really is over-constrained: the verdict is
+    accepted only when the solver returned code 0, said nothing worse than
+    redundant, every loop runs through joints a screw count states, the
+    loops together have exactly one degree of freedom and some redundancy,
+    and the pose it reached closes every loop joint within the MJCF pose
+    contract. Anything else keeps the solver's refusal, with the count that
+    decided it. ``None`` when the verdict was not a redundancy or the graph
+    has no loop to explain it.
+    """
+
+    from CadexDynamics import MJCF_POSE_TOLERANCE_MM, loop_screw_mobility
+    if solver_code != 0 or not conflict_labels or set(conflict_labels) - _REDUNDANCY_LABELS:
+        return None
+    loops = _closed_loops(component_data, joint_data)
+    joints = {name: {"kind": data["kind"], "connectors": [
+        {"component": c["component_output"], "local_matrix": c["local_frame"]["matrix"]}
+        for c in data["connectors"]]} for name, data in joint_data.items()}
+    placements = {name: fact["matrix"] for name, fact in component_placements.items()}
+    mobility = loop_screw_mobility(loops, joints, placements)
+    if mobility is None:
+        return None
+    mobility["tolerance_mm"] = MJCF_POSE_TOLERANCE_MM
+    mobility["accepted"] = (mobility["mobility"] == 1 and mobility["redundancy"] > 0
+                            and mobility["worst_gap_mm"] <= MJCF_POSE_TOLERANCE_MM
+                            and mobility["worst_axis_tilt"] <= 1.0e-6)
+    return mobility
 
 
 def _frame_z_axis(frame: Mapping[str, Any]) -> tuple[float, float, float]:
@@ -6378,6 +6462,49 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
             "initial_" + unit: initial, "solved_pose_agreement": True, "pairs": rows}
 
 
+def _closed_loops(component_data, joint_data):
+    """Each loop closure and the cycle it closes: its joints and components.
+
+    The cycle is the closure plus the two tree paths from its components to
+    their common ancestor, from the same spanning tree the dynamics export
+    builds, so the sweep and the MJCF agree about which chain is closed. A
+    graph the tree refuses (a placement-only joint, an unclosable sliding
+    closure) names no loop here; the child's own refusal still reports it.
+    """
+    from CadexDynamics import DynamicsError, extract_tree
+    joints = [{**data, "name": key, "connectors": [
+        {"component": c["component_output"], "local_matrix": c["local_frame"]["matrix"]}
+        for c in data["connectors"]]} for key, data in joint_data.items()]
+    try:
+        tree = extract_tree([{"name": n, "grounded": d["grounded"], "flexible": d.get("flexible", False)}
+                             for n, d in component_data.items()], joints)
+    except (DynamicsError, KeyError, TypeError, ValueError):
+        return []
+    bodies = {body["name"]: body for body in tree["bodies"]}
+
+    def path(component):
+        chain = []
+        while component is not None:
+            chain.append(component)
+            component = bodies[component]["parent"]
+        return chain
+
+    loops = []
+    for closure in tree["closures"]:
+        first, second = (path(c) for c in closure["components"])
+        common = next((c for c in first if c in second), None)
+        if common is None:
+            # Two grounded roots: the world is the common ancestor.
+            cycle = first + second[::-1]
+        else:
+            cycle = first[:first.index(common) + 1] + second[:second.index(common)][::-1]
+        members = [bodies[c]["joint"] for c in cycle if bodies[c]["joint"]
+                   and (common is None or c != common)]
+        loops.append({"closure": closure["joint"], "components": cycle,
+                      "joints": members + [closure["joint"]]})
+    return loops
+
+
 def _measure_joint_sweeps(components, component_data, joint_data, baseline, steps, solved):
     """Sweep every limited joint; ``steps`` maps each declared step name to its value.
 
@@ -6416,6 +6543,7 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
               "max_poses": _SWEEP_MAX_POSES, "max_pairs": _SWEEP_MAX_PAIRS, "joints": []}
     start = time.monotonic()
     serialised = None
+    loops = _closed_loops(component_data, joint_data)
     for name, joint in joint_data.items():
         kind = joint.get("kind")
         limited = (joint.get("angle_limits_degrees") is not None
@@ -6429,10 +6557,21 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
         limits_key, step_key, unit = _SWEEP_KINDS.get(kind, (None, None, None))
         step = steps.get(step_key) if step_key else None
         remaining = _SWEEP_TOTAL_SECONDS - (time.monotonic() - start)
+        loop = next((members for members in loops if name in members["joints"]), None)
         if joint.get("suppressed"):
             result = {"status": "skipped",
                       "reason": f"the assembly suppresses this {kind} joint, so the solver ignores it "
                                 "and it holds no range to sweep"}
+        elif loop is not None:
+            # A one-joint sweep turns a rigid subtree about one axis; on a
+            # closed chain that tears the loop open at its closure, so every
+            # pose it measured would be one the mechanism cannot reach
+            # (ADR-593). Refused with the loop named, never swept wrong.
+            result = {"status": "incomplete",
+                      "reason": f"this {kind} joint is in the closed loop {loop['joints']} "
+                                f"through {loop['components']}, closed by {loop['closure']!r}; "
+                                "sweeping one joint of a closed chain alone would tear the loop "
+                                "open, so the pairs it moves were measured at the solved pose only"}
         elif kind not in _SWEEP_KINDS:
             result = {"status": "incomplete",
                       "reason": f"only unsuppressed limited tree hinges and sliders are supported, not {kind}"}
@@ -7084,10 +7223,15 @@ def validate_and_solve_assembly(
         for name, reconstruction in component_reconstructions.items()
         if reconstruction is not None
     }
+    conflict_labels = _diagnostics_conflict_labels(native_diagnostics)
+    loop_redundancy = _loop_redundancy(solver_code, conflict_labels, component_data,
+                                       joint_data, component_placements)
+    if loop_redundancy is not None and loop_redundancy["accepted"]:
+        conflict_labels = []
     diagnostics = {
         "status": "solved"
         if solver_code == 0
-        and not _diagnostics_conflict(native_diagnostics)
+        and not conflict_labels
         and not joint_dependency_issues
         else "failed",
         "solver_code": solver_code,
@@ -7105,7 +7249,8 @@ def validate_and_solve_assembly(
         "joint_dependency_issues": joint_dependency_issues,
         "require_solved": require_solved,
     }
-    conflict_labels = _diagnostics_conflict_labels(native_diagnostics)
+    if loop_redundancy is not None:
+        diagnostics["loop_redundancy"] = loop_redundancy
     if require_solved and (solver_code != 0 or conflict_labels):
         if solver_code == 0:
             # The code says solved and the diagnostics say otherwise; saying
@@ -7119,6 +7264,13 @@ def validate_and_solve_assembly(
             reason = f"rejected the graph with {solver_verdict} (code {solver_code})"
             if conflict_labels:
                 reason += f", reporting {', '.join(conflict_labels)}"
+        if loop_redundancy is not None:
+            reason += (
+                f"; the loops closed by {loop_redundancy['loops']} have "
+                f"{loop_redundancy['mobility']} degree(s) of freedom and the pose "
+                f"closes them within {loop_redundancy['worst_gap_mm']:.3g} mm, so the "
+                "redundancy is not a one-degree-of-freedom linkage over-counted"
+            )
         raise AssemblyCandidateError(
             f"The isolated native Assembly solver {reason}. Inspect details for "
             "conflicting, redundant, malformed, or ungrounded constraints.",

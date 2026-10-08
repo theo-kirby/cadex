@@ -9,7 +9,7 @@ engine. What it reads is the MJCF the accepted revision exported and, when
 there is one, the task bundle beside it; ``mujoco`` is the module the
 engine's own rollouts use (ADR-076), so a model that plays here plays there.
 
-Four checks, each a fixture's known answer (``cli/tests/test_smoke.py``):
+Five checks, each a fixture's known answer (``cli/tests/test_smoke.py``):
 
 * **finite** -- every solver-step state is finite and MuJoCo raised no warning
   (a bad ``qacc`` resets the state to zero, so the counters are the only
@@ -28,7 +28,12 @@ Four checks, each a fixture's known answer (``cli/tests/test_smoke.py``):
 * **termination** -- when a task was exported, none of its own declared
   termination rules fires over the trace. This is the design's own
   statement of what "holding its pose" means, evaluated exactly the way
-  ``training/cadex_train.py`` evaluates it.
+  ``training/cadex_train.py`` evaluates it;
+* **closure** -- every loop closure the export wrote as an ``equality``
+  between two sites (ADR-593) stays shut: the gap between its two sites, at
+  every solver step, within the MJCF's pose contract (ADR-584). A closure
+  is soft with a two-step time constant, so how far it opens goes as the
+  step squared; a failure names the step that would hold it (ADR-594).
 
 Two modes. ``hold`` gives every position actuator its joint's keyframe value
 as the command, so servos hold the solved pose; every other actuator gets
@@ -52,6 +57,32 @@ ENVIRONMENT_FLOOR_GEOM = "environment/floor"
 DEFAULT_KEYFRAME = "solved"
 #: How many penetrating pairs the receipt lists, worst first.
 MAXIMUM_REPORTED_PAIRS = 32
+#: ``CadexDynamics.MJCF_POSE_TOLERANCE_MM``, restated: this child imports
+#: nothing from the engine. A loop open by more than this has a pose the
+#: export's own contract would not accept (ADR-584).
+CLOSURE_TOLERANCE_MM = 1.0e-2
+
+
+def closure_step_s(step_s: float, worst_mm: float, tolerance_mm: float = CLOSURE_TOLERANCE_MM) -> float:
+    """The largest 1-2-5 step under which a loop open ``worst_mm`` at
+    ``step_s`` would hold ``tolerance_mm``.
+
+    The closure's time constant is two steps, so its stiffness goes as one
+    over the step squared and so does how far a given load holds it open:
+    measured on driven four-bars: the headless fixture opened 0.045,
+    0.0062 and 0.0012 mm at 2, 1 and 0.5 ms (ADR-593), the live one 0.70,
+    0.0061 and 0.0013 mm at 2, 0.5 and 0.25 ms -- steeper than step
+    squared, so the step this names is conservative (ADR-594,
+    docs/MUJOCO.md). Rounded *down* to 1, 2 or 5 of a decade, so the step
+    named is one a person would write and is not borderline.
+    """
+
+    exact = step_s * math.sqrt(tolerance_mm / worst_mm)
+    decade = 10.0 ** math.floor(math.log10(exact))
+    for mantissa in (5.0, 2.0, 1.0):
+        if mantissa * decade <= exact * (1.0 + 1e-9):
+            return mantissa * decade
+    return decade
 
 
 def _sha256(path: Path) -> str:
@@ -77,16 +108,42 @@ def _table() -> dict[str, Any]:
     }
 
 
-def _channels(task: dict[str, Any]) -> list[tuple[str, int, float]]:
-    """``(channel, sensordata address, scale)`` per observation channel."""
+def _observe(task: dict[str, Any], sensordata: Any) -> dict[str, float]:
+    """Every observation channel by name, as ``CadexDynamics.observation_values``.
 
-    found: list[tuple[str, int, float]] = []
+    A tracked position (ADR-588) reads as its tracker reports it: rounded to
+    the resolution, and zeros with ``_in_range`` 0 when the body is outside
+    the declared range; a load (ADR-591) as its load sensor reports it. No
+    noise -- this is a check, not a training draw.
+    """
+
+    values: dict[str, float] = {}
     for record in task.get("observations") or []:
         adr = int(record["adr"])
+        dim = int(record.get("dim", len(record["channels"])))
         scale = float(record.get("scale", 1.0))
-        for offset, channel in enumerate(record["channels"]):
-            found.append((str(channel), adr + offset, scale))
-    return found
+        read = [float(sensordata[adr + offset]) * scale for offset in range(dim)]
+        tracker = record.get("tracker")
+        if tracker and record.get("in_range_of"):
+            # ADR-590: a differenced velocity, zeros while its position is lost.
+            step = float(tracker["resolution_mm"]) * float(tracker["rate_hz"])
+            seen = values.get(f"{record['in_range_of']}_in_range") == 1.0
+            read = [round(value / step) * step if seen else 0.0 for value in read]
+        elif tracker:
+            inside = all(float(low) <= value <= float(high)
+                         for value, (low, high) in zip(read, tracker["range_mm"]))
+            step = float(tracker["resolution_mm"])
+            read = ([round(value / step) * step for value in read] + [1.0]
+                    if inside else [0.0, 0.0, 0.0, 0.0])
+        elif record.get("load"):
+            # ADR-591: held within the stall line, rounded to the resolution.
+            load = record["load"]
+            full = float(load["full_scale"])
+            step = float(load["resolution"])
+            read = [round(min(max(read[0], -full), full) / step) * step]
+        for channel, value in zip(record["channels"], read):
+            values[str(channel)] = value
+    return values
 
 
 def _up_vector(quat_wxyz: Any) -> tuple[float, float, float]:
@@ -154,6 +211,32 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # than as "world" so a receipt reads the way the manifest does.
         return ENVIRONMENT_FLOOR_GEOM if index == floor else body_name(model.geom_bodyid[index])
 
+    # -- the loops -------------------------------------------------------
+    # What the export writes for a loop closure: a connect or a weld between
+    # two sites. A gear or belt is an equality too, but between joints, and
+    # it has no gap to measure.
+    closures: list[dict[str, Any]] = []
+    for eq in range(int(model.neq)):
+        if int(model.eq_objtype[eq]) != int(mujoco.mjtObj.mjOBJ_SITE):
+            continue
+        if int(model.eq_type[eq]) not in (int(mujoco.mjtEq.mjEQ_CONNECT), int(mujoco.mjtEq.mjEQ_WELD)):
+            continue
+        closures.append({
+            "closure": str(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_EQUALITY, eq) or ""),
+            "kind": "connect" if int(model.eq_type[eq]) == int(mujoco.mjtEq.mjEQ_CONNECT) else "weld",
+            "sites": (int(model.eq_obj1id[eq]), int(model.eq_obj2id[eq])),
+            "worst_mm": 0.0,
+            "time_s": 0.0,
+        })
+
+    def observe_closures(time_s: float) -> None:
+        for closure in closures:
+            first, second = closure["sites"]
+            gap_mm = float(np.linalg.norm(data.site_xpos[first] - data.site_xpos[second])) * 1000.0
+            if gap_mm > closure["worst_mm"]:
+                closure["worst_mm"] = gap_mm
+                closure["time_s"] = time_s
+
     # -- the command -----------------------------------------------------
     held: list[dict[str, Any]] = []
     for act in range(model.nu):
@@ -193,7 +276,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     nonfinite_at: float | None = None
     termination_rules: list[dict[str, Any]] = []
     table = _table()
-    channels = _channels(task) if task else []
     if task:
         for rule in task.get("termination") or []:
             termination_rules.append({
@@ -231,7 +313,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     def observe_termination(time_s: float) -> None:
         if not termination_rules:
             return
-        values = {name: float(data.sensordata[adr]) * scale for name, adr, scale in channels}
+        values = _observe(task, data.sensordata)
         for rule in termination_rules:
             if rule["fired_at_s"] is not None or rule["error"] is not None:
                 continue
@@ -258,6 +340,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             for b in range(1, model.nbody)}})
 
     mujoco.mj_forward(model, data)
+    observe_closures(0.0)
     touching_floor = observe_contacts(0.0)
     observe_termination(0.0)
     nonfinite_at = None if state_is_finite() else 0.0
@@ -276,11 +359,15 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if not state_is_finite():
             nonfinite_at = float(data.time)
             break
+        # mj_step leaves the sites where the step began: every state the
+        # rollout passed through is measured, not only the sampled ones.
+        observe_closures(step * timestep)
         elapsed = (step + 1) * timestep
         if elapsed + 1e-9 >= next_sample or step == total_steps - 1:
             mujoco.mj_forward(model, data)
             touching_floor = observe_contacts(elapsed)
             observe_termination(elapsed)
+            observe_closures(elapsed)
             snapshot()
             sampled += 1
             next_sample = (math.floor(elapsed * fps + 1e-9) + 1) / fps
@@ -402,11 +489,35 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     for r in broken:
         failing.append(f"termination: {r['label'] or r['expression']} could not be read ({r['error']})")
 
+    open_loops = [c for c in closures if c["worst_mm"] > CLOSURE_TOLERANCE_MM]
+    worst_loop = max(closures, key=lambda c: c["worst_mm"], default=None)
+    closure = {
+        "pass": not open_loops,
+        "tolerance_mm": CLOSURE_TOLERANCE_MM,
+        "closures": [
+            {"closure": c["closure"], "kind": c["kind"], "worst_mm": c["worst_mm"], "time_s": c["time_s"]}
+            for c in sorted(closures, key=lambda c: -c["worst_mm"])
+        ],
+        "worst_mm": worst_loop["worst_mm"] if worst_loop else None,
+        "solver_step_s": timestep,
+        "suggested_step_s": (
+            closure_step_s(timestep, worst_loop["worst_mm"]) if open_loops else None),
+        "note": None if closures else "no loop closures in the model",
+    }
+    for c in open_loops:
+        failing.append(
+            f"closure: loop {c['closure']!r} opens {c['worst_mm']:.4g} mm at {c['time_s']:.3f} s "
+            f"(contract {CLOSURE_TOLERANCE_MM:g} mm at a {timestep * 1000.0:g} ms step); a closure "
+            f"is soft and opens as the step squared: export with "
+            f"solver_step_s={closure_step_s(timestep, c['worst_mm']):g} or finer"
+        )
+
     checks = {
         "finite": finite,
         "penetration": penetration,
         "support": support,
         "termination": termination,
+        "closure": closure,
     }
     return {
         "schema": SCHEMA,

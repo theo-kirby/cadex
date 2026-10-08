@@ -74,6 +74,8 @@ TARGET = {
     "min_z_mm": 50.0, "min_separation_mm": 80.0, "resample_seconds": 1.0,
 }
 PACE = {"name": "pace", "kind": "value", "low": 1.0, "high": 2.0}
+#: A clock (ADR-598): one turn every 0.8 s, its start drawn again at 1.0 s.
+LEAD = {"name": "lead", "kind": "phase", "period_seconds": 0.8, "resample_seconds": 1.0}
 ARM_TASK = {
     "label": "reach",
     "actions": [
@@ -226,7 +228,7 @@ def test_a_goal_lands_in_the_bundle_resolved_and_self_contained() -> None:
     speed = made(WALK_TASK, mechanism=walker, motors=WALKER_MOTORS,
                  observations=WALKER_OBSERVATIONS)["bundle"]["goal"][0]
     assert (speed["kind"], speed["unit"], speed["channels"]) == ("speed", "mm/s", ["command"])
-    assert dyn.GOAL_KINDS == ("value", "speed", "point")
+    assert dyn.GOAL_KINDS == ("value", "speed", "point", "phase")
 
 
 def test_the_policy_reads_every_goal_after_its_sensor_channels() -> None:
@@ -275,6 +277,10 @@ def test_a_goal_is_part_of_what_the_task_is() -> None:
         ([{**PACE, "resample_seconds": 0.001}], "goal_resample_between_control_steps"),
         ([{**TARGET, "tip": "nothing"}], "goal_tip_missing"),
         ([{**TARGET, "joint_fraction": 0.0}], "malformed_goal"),
+        ([{**LEAD, "period_seconds": 0.0}], "malformed_goal"),
+        ([{**LEAD, "name": "elbow"}, {"name": "elbow_sin", "kind": "value",
+                                      "low": 0.0, "high": 1.0}],
+         "duplicate_goal_channel"),
         ([{**PACE, "name": f"v{index}"} for index in range(dyn.MAXIMUM_GOALS + 1)],
          "too_many_goals"),
     ],
@@ -453,6 +459,64 @@ def test_goal_values_are_the_last_segment_that_has_started() -> None:
     assert dyn.goal_values(schedule, 10_000)["a"] == 3.0
 
 
+# -- the phase goal (ADR-598) ----------------------------------------------
+
+def _clocked():
+    return made({**ARM_TASK, "goal": [TARGET, PACE, LEAD], "reward": ARM_TASK["reward"] + [
+        {"label": "on_time", "expression": "lead_sin", "weight": 1.0}]})
+
+
+def test_a_phase_lands_in_the_bundle_as_a_turn_per_step() -> None:
+    bundle = _clocked()["bundle"]
+    lead = bundle["goal"][2]
+    assert lead == {
+        "label": "lead", "name": "lead", "kind": "phase",
+        "channels": ["lead_sin", "lead_cos"], "resample_steps": 50, "segments": 2,
+        "unit": "rad", "low": 0.0, "high": 2.0 * math.pi, "nominal": [0.0],
+        "period_s": 0.8, "radians_per_step": pytest.approx(2.0 * math.pi * 0.02 / 0.8),
+    }
+    # Stated in the bundle's algorithm only where a phase is, so every
+    # earlier bundle keeps its text and its digest.
+    assert bundle["goal_algorithm"] == dyn.GOAL_ALGORITHM + dyn.GOAL_PHASE_ALGORITHM
+    assert made()["bundle"]["goal_algorithm"] == dyn.GOAL_ALGORITHM
+    assert dyn.goal_channels(bundle)[-2:] == ["lead_sin", "lead_cos"]
+
+
+def test_a_phase_advances_with_the_episodes_clock() -> None:
+    """The channels a policy reads and a reward names turn once per period
+    from a start drawn per segment, and come round to it a period later."""
+
+    prepared = _clocked()
+    shown = []
+
+    def watching(step, observation):
+        shown.append(dict(observation))
+        return [0.0, -67.5]
+
+    episode = dyn.evaluate_episode(model(prepared), prepared["bundle"],
+                                   actions=watching, seed=5)
+    lead = episode["goal"][2]
+    first, second = (segment["values"][0] for segment in lead["segments"])
+    assert [segment["start_step"] for segment in lead["segments"]] == [0, 50]
+    assert 0.0 <= first < 2.0 * math.pi and first != second
+    assert lead["radians_per_step"] == pytest.approx(math.pi / 20.0)
+    for step, (observed, landed) in enumerate(zip(shown, episode["steps"], strict=True)):
+        start, since = (first, step) if step < 50 else (second, step - 50)
+        angle = start + 2.0 * math.pi * since * 0.02 / 0.8
+        assert observed["lead_sin"] == pytest.approx(math.sin(angle), abs=1.0e-12)
+        assert observed["lead_cos"] == pytest.approx(math.cos(angle), abs=1.0e-12)
+        # Scored against the clock the action was taken under.
+        assert landed["reward_terms"][-1]["value"] == observed["lead_sin"]
+    # A period is 40 steps: the clock comes round.
+    assert shown[40]["lead_sin"] == pytest.approx(shown[0]["lead_sin"], abs=1.0e-12)
+    assert shown[10]["lead_cos"] == pytest.approx(-math.sin(first), abs=1.0e-12)
+    # Unseeded, it starts at zero.
+    plain = dyn.evaluate_episode(model(prepared), prepared["bundle"])
+    assert [plain["steps"][step]["observation"]["lead_sin"] for step in (0, 1)] == (
+        pytest.approx([0.0, math.sin(math.pi / 20.0)], abs=1.0e-12)
+    )
+
+
 # -- the reference runner ---------------------------------------------------
 
 def _stock(bundle_path: Path, seed=None) -> dict:
@@ -467,12 +531,20 @@ def _stock(bundle_path: Path, seed=None) -> dict:
 
 
 @pytest.mark.parametrize("seed", [None, 17])
-def test_a_stock_mujoco_draws_the_goals_the_engine_drew(tmp_path: Path, seed) -> None:
+@pytest.mark.parametrize("clocked", [False, True])
+def test_a_stock_mujoco_draws_the_goals_the_engine_drew(
+    tmp_path: Path, seed, clocked
+) -> None:
     """The bundle says enough: a process with no Cadex on its path reads the
     same targets out of the same seed and scores the same rewards against
-    them, every number compared as text."""
+    them, every number compared as text -- a phase's turn too (ADR-598)."""
 
-    prepared = made(root=tmp_path)
+    prepared = made(
+        {**ARM_TASK, "goal": [TARGET, PACE, LEAD], "reward": ARM_TASK["reward"] + [
+            {"label": "on_time", "expression": "lead_sin", "weight": 1.0}]}
+        if clocked else ARM_TASK,
+        root=tmp_path,
+    )
     there = _stock(prepared["path"], seed)
     here = dyn.evaluate_episode(model(prepared), prepared["bundle"], seed=seed)
 

@@ -223,7 +223,7 @@ taking the last iteration and never on a replay of your own: evaluate \
 resets every frozen seed with its own perturbations and judges with the \
 spec's predicates, and a friendlier replay passes policies that evaluate \
 fails. Warm-start (init_from a checkpoint) when only the reward, the \
-episode or the disturbances changed, so what it learned carries over; start cold after any change to the model or to what the policy \
+episode, the disturbances or the success spec changed, so what it learned carries over; start cold after any change to the model or to what the policy \
 reads or emits. Never tighten action_filter_alpha on a warm start: a \
 policy trained through one filter loses its behaviour through a stronger \
 one.
@@ -237,10 +237,7 @@ distance itself, and add a sharper term near the target only once the \
 policy gets there. A motion meant to repeat -- a lap, a circuit, a cycle \
 -- pays signed progress along it (tanh(v/V)); a charge on abs(v - V) pays \
 rocking back and forth at plus and minus V nearly as well as going round. \
-The spec measures where an episode ends, not what happened in it: when the \
-task is a motion, count it in the evaluation's traces (laps made, \
-direction, speed) before you accept a pass, and record the count in \
-DECISIONS.md. When two reward revisions leave the failing metric where it \
+When two reward revisions leave the failing metric where it \
 was, stop revising the reward: the limit is in what the policy reads (a \
 quantity no channel gives it) or in the mechanism (an actuator sagging \
 under load, a base that slides), so change that and start cold. A joint \
@@ -248,6 +245,24 @@ that swings mass on a machine resting on a floor turns the machine with \
 its reaction: set command_slew_deg from the first run, below what the \
 actuator's rated speed covers in one control step, so the policy cannot \
 command a whip the base cannot hold.
+
+STATE THE MOTION AS A PREDICATE, NOT AS WHERE IT ENDS. A spec that bounds \
+only where an episode ended passes a policy that rocks on a short arc and \
+stops in the right place, so when the task is a motion, bound the motion. \
+Name the body and the point it moves about in `assembly.success(..., \
+body=<component>, centre_mm=[x, y, z], centre=<component>, \
+centre_axis=[0, 0, 1])` -- the centre held in the frame of the part it \
+belongs to, so it moves with that part -- and bound `turns` (net signed \
+turns about the axis: going round twice reads 2, rocking out and back \
+reads about 0, and its sign is the direction) or `laps` (whole turns) for \
+a motion that goes round, and `final_distance_mm`, `mean_distance_mm` or \
+`max_distance_mm` for how far the body stays from that point. These need \
+no goal: never declare a goal only to get a distance, because the policy \
+then reads a goal channel that means nothing. A motion metric of an \
+episode that ended before its horizon is unmeasured and fails the seed, \
+so a policy cannot pass by ending early. Still watch the film before you \
+accept a pass: a predicate says how much the body moved, the film says \
+whether it moved as the machine should.
 
 THE PROJECT IS A CODEBASE. Beside the script it keeps ARCHITECTURE.md \
 (what it is, what the script declares, where the domain docs are), \

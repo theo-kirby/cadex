@@ -150,6 +150,34 @@ def test_the_trainers_segment_rule_is_the_engines() -> None:
     assert module.goal_segment(numpy, steps, 0, 1).tolist() == [0] * len(steps)
 
 
+def test_the_trainers_phase_is_the_engines() -> None:
+    """A phase goal (ADR-598) is the one goal whose channels move inside a
+    segment, so the trainer's turn of it is held to the engine's at every
+    step of an episode and past it, through a resample."""
+
+    numpy = pytest.importorskip("numpy")
+    module = _trainer_module()
+    prepared = made({**ARM_TASK, "goal": [TARGET, PACE, LEAD]})
+    bundle = prepared["bundle"]
+    lead = bundle["goal"][2]
+    assert (lead["kind"], lead["resample_steps"], lead["segments"]) == ("phase", 35, 3)
+    assert module.channels(bundle) == dyn._task_channels(bundle)
+    episode = dyn.evaluate_episode(model(prepared), bundle, seed=9)
+    scheduled = episode["goal"][2]
+    starts = numpy.asarray([segment["values"] for segment in scheduled["segments"]])
+    steps = numpy.arange(0, int(bundle["episode"]["max_steps"]) + 40)
+    period = int(lead["resample_steps"])
+    segment = module.goal_segment(numpy, steps, period, int(lead["segments"]))
+    told = module.phase_channels(
+        numpy, starts[segment], steps - segment * period, lead["radians_per_step"]
+    )
+    for step, row in zip(steps.tolist(), told.tolist(), strict=True):
+        held = dyn.goal_values([scheduled], step)
+        assert row == pytest.approx([held["lead_sin"], held["lead_cos"]], abs=1.0e-12)
+    trained = inspect.getsource(module.train)
+    assert "phase_channels(jnp, held, steps - segment * period, turn)" in trained
+
+
 def test_the_trainer_reads_the_channels_in_the_engines_order() -> None:
     """The observation vector is positional. Sensor channels, then goals;
     and the policy's share of it is the policy channels, then goals."""
@@ -291,6 +319,8 @@ def test_a_warm_start_across_a_changed_goal_is_refused() -> None:
 #: goal that was up when the step was taken -- so the curve a run reports is
 #: a statement about the goals it drew and when it changed them.
 ASKED = {"name": "ask", "kind": "value", "low": 1.0, "high": 2.0, "resample_seconds": 0.1}
+#: A clock (ADR-598): a turn every 0.6 s, its start drawn again every 0.7 s.
+LEAD = {"name": "lead", "kind": "phase", "period_seconds": 0.6, "resample_seconds": 0.7}
 ASKED_TASK = {
     **pf.SWING_UP_TASK,
     "label": "asked",
@@ -383,6 +413,42 @@ def test_a_training_run_is_paid_for_the_goals_the_engine_draws(tmp_path) -> None
     assert run["episode"]["total_reward"] == pytest.approx(
         5.0 * sum(segment["values"][0] for segment in asked)
     )
+
+
+def test_a_training_run_is_paid_for_the_phase_the_engine_turns(tmp_path) -> None:
+    """The same exact agreement for a phase goal (ADR-598), whose channels
+    change every step: the reward is its sine, so a trainer that turned it
+    at another rate, from another start or across a resample wrongly
+    reports a different curve."""
+
+    python = _venv_python()
+    if python is None:
+        pytest.skip("the offboard trainer's dependencies are not installed here")
+
+    clock = {"name": "lead", "kind": "phase", "period_seconds": 0.26,
+             "resample_seconds": 0.1}
+    prepared, root = _swing(
+        {**ASKED_TASK, "label": "clocked", "goal": [clock],
+         "reward": [{"label": "lead", "expression": "lead_sin", "weight": 1.0}]},
+        tmp_path, "clocked",
+    )
+    bundle = prepared["bundle"]
+    assert int(bundle["episode"]["max_steps"]) == 20
+    out, result = _run(python, root, "--seed", "6", "--iterations", "5", "--envs", "4",
+                       "--unroll", "15", "--goal-pool", "1")
+    assert result.returncode == 0, result.stderr[-4000:]
+
+    (drawn,) = dyn.draw_episode_goals(mujoco, prepared["model"], bundle, random.Random(6))
+    schedule = dyn.goal_schedule(bundle, [drawn])
+    expected = [
+        sum(dyn.goal_values(schedule, step % 20)["lead_sin"]
+            for step in range(15 * iteration, 15 * iteration + 15)) / 15.0
+        for iteration in range(5)
+    ]
+    container = dyn.decode_policy(out.read_bytes())
+    curve = [row["reward_per_step"] for row in container["header"]["training"]["reward_curve"]]
+    assert curve == pytest.approx(expected, rel=1.0e-5, abs=1.0e-6)
+    assert container["header"]["observations"][-2:] == ["lead_sin", "lead_cos"]
 
 
 def test_the_trainer_trains_on_reachable_points_from_its_pool(tmp_path) -> None:

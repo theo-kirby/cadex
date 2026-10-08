@@ -339,3 +339,40 @@ def test_a_task_takes_one_success_value_and_nothing_else() -> None:
         with pytest.raises(ValueError) as refusal:
             _task(api, scene, success=wrong)
         assert "invalid success" in str(refusal.value)
+
+
+# -- a body judged about a centre (ADR-587) ---------------------------------
+
+def test_a_spec_carries_a_body_and_the_centre_it_is_judged_about() -> None:
+    api = _api()
+    scene = _scene(api)
+    base, limb = scene["components"]
+    spec = api.success([{"metric": "laps", "min": 2}], seeds=SEEDS, body=limb,
+                       centre=base, centre_mm=[0, 0, 12.5])
+    assert spec.properties["body"] is limb and spec.properties["centre"] is base
+    assert list(spec.properties["body_offset_mm"]) == [0.0, 0.0, 0.0]
+    assert list(spec.properties["centre_mm"]) == [0.0, 0.0, 12.5]
+    assert list(spec.properties["centre_axis"]) == [0.0, 0.0, 1.0]
+    _task(api, scene, success=spec)
+    # The world is the centre's frame when none is named.
+    assert "centre" not in api.success(BALANCE, seeds=SEEDS, body=limb).properties
+
+
+def test_a_centre_without_a_body_or_with_a_zero_axis_is_refused() -> None:
+    api = _api()
+    scene = _scene(api)
+    base, limb = scene["components"]
+    for arguments in ({"centre": base}, {"centre_mm": [0, 0, 1]}, {"centre_axis": [0, 0, 1]},
+                      {"body_offset_mm": [0, 0, 1]}):
+        with pytest.raises(ValueError) as refusal:
+            api.success(BALANCE, seeds=SEEDS, **arguments)
+        assert "no body is named" in str(refusal.value)
+    with pytest.raises(ValueError) as refusal:
+        api.success(BALANCE, seeds=SEEDS, body=limb, centre_axis=[0, 0, 0])
+    assert "is zero" in str(refusal.value)
+    stranger = api.component(_source("solid9"))
+    for arguments, where in (({"body": stranger}, "success.body"),
+                             ({"body": limb, "centre": stranger}, "success.centre")):
+        with pytest.raises(ValueError) as refusal:
+            _task(api, scene, success=api.success(BALANCE, seeds=SEEDS, **arguments))
+        assert where in str(refusal.value)

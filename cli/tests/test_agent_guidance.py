@@ -212,13 +212,61 @@ def test_the_training_lessons_are_in_the_base_and_reach_every_project():
 def test_the_reward_shaping_lessons_are_for_any_task():
     # ADR-586: what a balancing table and a reaching arm taught, for any
     # task with no style chosen -- a slope where episodes start, signed
-    # progress for a repeated motion, the motion judged from the traces,
-    # and stopping a reward revision that moves nothing.
+    # progress for a repeated motion, and stopping a reward revision that
+    # moves nothing. (Counting laps by hand from traces gave way to the
+    # motion predicates, ADR-587, ADR-596.)
     text = " ".join(instructions().split())
     for rule in ("SHAPE A REWARD THE POLICY CAN CLIMB", "needs a slope where episodes start",
-                 "pays signed progress along it", "count it in the evaluation's traces",
+                 "pays signed progress along it",
                  "stop revising the reward", "set command_slew_deg from the first run"):
         assert rule in text, rule
+
+
+def _rule(text, head, length=4000):
+    start = text.index(head)
+    return text[start:start + length]
+
+
+def test_a_motion_is_stated_as_a_predicate_with_its_reason():
+    # ADR-596: the motion predicates (ADR-587) reach every project as a
+    # rule -- turns and laps for going round, distance from a point with no
+    # goal declared, an early end failing -- with the reason it exists.
+    text = " ".join(instructions().split())
+    rule = _rule(text, "STATE THE MOTION AS A PREDICATE", 1600)
+    for claim in ("rocks on a short arc", "body=<component>", "centre=<component>",
+                  "bound `turns`", "rocking out and back reads about 0", "`laps`",
+                  "`final_distance_mm`", "`mean_distance_mm`", "These need no goal",
+                  "never declare a goal only to get a distance", "is unmeasured and fails"):
+        assert claim in rule, claim
+    assert "count it in the evaluation's traces" not in text
+
+
+def test_the_sensor_rule_grounds_position_and_load_on_real_parts():
+    # ADR-596: choosing a sensor -- a tracker on the reader's mount with its
+    # datasheet, out of range as a termination, load only from an actuator
+    # that reports it, a goal in the moving base's frame, and privileged
+    # when no part on the market would measure it.
+    text = " ".join(instructions().split())
+    rule = _rule(text, "CHOOSE A SENSOR A REAL PART COULD BE", 2600)
+    for claim in ("cannot run on the machine", '"position_tracker"', "range_mm=", "resolution_mm=",
+                  "rate_hz=", "noise_mm=", '"tracked_position"', "terminate on that flag",
+                  ".load_sensor(actuator", "`actuator_force`", "A PWM servo",
+                  "frame=base", "it is privileged", 'role="privileged"'):
+        assert claim in rule, claim
+
+
+def test_the_linkage_rule_says_when_to_close_a_chain_and_how_it_is_proved():
+    # ADR-596: when a closed chain beats serial joints and why, how a loop
+    # is declared and driven, what is refused, and that the sweep does not
+    # prove a loop's motion while smoke does.
+    text = " ".join(instructions().split())
+    rule = _rule(text, "CLOSE A LINKAGE WHERE THE BUILT MACHINE WOULD HAVE ONE", 2000)
+    for claim in ("A serial stand-in for a linkage is a different machine",
+                  "the actuator should stay on the frame", "choose serial joints when",
+                  "dead point", "A loop closes with an ordinary joint", "equality constraint",
+                  "over-constrained", "ball joint", "reports each loop joint as not swept",
+                  "the smoke check", "never by the sweep"):
+        assert claim in rule, claim
 
 
 def test_the_checkpoint_rule_says_what_it_does_and_what_it_costs():

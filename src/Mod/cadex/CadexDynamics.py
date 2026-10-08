@@ -3684,6 +3684,7 @@ def build_model(
             ),
             observed={"closure_residual_m": closure_violation},
         )
+    loop_mobility = _loop_mobility(mujoco, model, qpos, tree, joint_records)
     return {
         "spec": spec,
         "model": model,
@@ -3706,6 +3707,7 @@ def build_model(
         "actuators": actuator_applied,
         "environment": environment,
         "mujoco_version": str(getattr(mujoco, "__version__", "unknown")),
+        "loop_mobility": loop_mobility,
     }
 
 
@@ -3787,6 +3789,346 @@ def _closure_violation(mujoco: Any, model: Any, qpos: Sequence[float]) -> float:
         if int(data.efc_type[row]) == int(mujoco.mjtConstraint.mjCNSTR_EQUALITY):
             worst = max(worst, abs(float(data.efc_pos[row])))
     return worst
+
+
+#: Relative singular-value floor for the loop Jacobians' rank. The rows are
+#: central differences of exact kinematics, good to ~1e-10; an axis a
+#: tenth of a degree out of line contributes ~1e-3. Anything between is
+#: neither, and this sits well inside that gap.
+_LOOP_RANK_TOLERANCE = 1.0e-7
+
+#: The step each coordinate is perturbed by to differentiate the closures.
+_LOOP_JACOBIAN_STEP = 1.0e-6
+
+
+def _matrix_rank(
+    rows: Sequence[Sequence[float]], tolerance: float = _LOOP_RANK_TOLERANCE
+) -> int:
+    """Rank by Gaussian elimination with full pivoting, without numpy.
+
+    The engine imports no numpy at module scope, and these matrices are a
+    handful of rows by the model's dof count: a pure-Python elimination is
+    microseconds, and its pivots are the singular-value proxy the tolerance
+    is stated against.
+    """
+
+    matrix = [list(map(float, row)) for row in rows if row]
+    if not matrix:
+        return 0
+    scale = max((abs(value) for row in matrix for value in row), default=0.0)
+    if scale == 0.0:
+        return 0
+    floor = tolerance * scale
+    rank = 0
+    columns = len(matrix[0])
+    remaining_rows = list(range(len(matrix)))
+    remaining_columns = list(range(columns))
+    while remaining_rows and remaining_columns:
+        pivot_value, pivot_row, pivot_column = max(
+            (abs(matrix[r][c]), r, c)
+            for r in remaining_rows
+            for c in remaining_columns
+        )
+        if pivot_value <= floor:
+            break
+        rank += 1
+        remaining_rows.remove(pivot_row)
+        remaining_columns.remove(pivot_column)
+        pivot = matrix[pivot_row]
+        for r in remaining_rows:
+            factor = matrix[r][pivot_column] / pivot[pivot_column]
+            if factor:
+                matrix[r] = [a - factor * b for a, b in zip(matrix[r], pivot)]
+    return rank
+
+
+def _cross(a: Sequence[float], b: Sequence[float]) -> list[float]:
+    return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+
+
+#: The rank floor for joint screws read off a solved pose (ADR-595). The
+#: native solver places parts to about 1e-9 of their size, so a planar loop
+#: reads planar to about that; a hinge a hundredth of a degree out of plane
+#: contributes ~2e-4. The floor sits between them.
+_SCREW_RANK_TOLERANCE = 1.0e-6
+
+#: The unit screws each joint kind frees, as ``(motion, connector axis)``. A kind not named
+#: here constrains in a way a screw count cannot state, and a loop through
+#: it is not judged at all.
+_JOINT_SCREWS: dict[str, tuple[tuple[str, str], ...]] = {
+    "fixed": (),
+    "revolute": (("rotation", "z"),),
+    "slider": (("translation", "z"),),
+    "cylindrical": (("rotation", "z"), ("translation", "z")),
+    "ball": (("rotation", "x"), ("rotation", "y"), ("rotation", "z")),
+}
+
+
+def loop_screw_mobility(
+    loops: Sequence[Mapping[str, Any]],
+    joints: Mapping[str, Mapping[str, Any]],
+    placements: Mapping[str, Sequence[float]],
+) -> dict[str, Any] | None:
+    """How many ways the closed loops of a solved pose can move (ADR-595).
+
+    The same rank ADR-593's ``_loop_mobility`` takes of the exported model,
+    taken instead of the joint screws at the pose the assembly solver
+    reached, so it can be asked before any model exists. Each loop says the
+    relative twists round it sum to zero: six rows per loop, a column per
+    joint freedom, each column the joint's unit screw ``(w, p x w)`` or
+    ``(0, v)`` signed by which way the loop walks it. The mobility is the
+    freedoms less the rank; the redundancy is the rows less the rank, which
+    is what a constraint solver counting six per loop calls redundant. A
+    planar four-bar on four pins has four freedoms, rank three, mobility
+    one and redundancy three: a mechanism the solver over-counts, not an
+    over-constrained one.
+
+    ``loops`` are ``_closed_loops`` rows (a cycle of components and the
+    joints on it); ``joints`` map a name to its ``kind`` and two
+    ``connectors`` (``component``, ``local_matrix``); ``placements`` are the
+    solved component matrices. Also measures how far each joint's two
+    connector frames sit apart at that pose (off the axis, for a sliding
+    kind) and how far a hinge's two axes tilt, since a redundant graph is
+    only worth accepting if the solver closed it. ``None`` when a loop runs
+    through a kind no screw count states.
+    """
+
+    if not loops:
+        return None
+    columns: dict[str, list[list[float]]] = {}
+    frames: dict[str, tuple[list[float], list[float], list[float], list[float]]] = {}
+    worst_gap = 0.0
+    worst_tilt = 0.0
+    names = [name for loop in loops for name in loop["joints"]]
+    for name in dict.fromkeys(names):
+        joint = joints[name]
+        if str(joint.get("kind")) not in _JOINT_SCREWS:
+            return None
+        world = [
+            matrix_multiply(placements[str(c["component"])], c["local_matrix"])
+            for c in joint["connectors"]
+        ]
+        origin = matrix_translation_mm(world[0])
+        z_first, z_second = matrix_z_axis(world[0]), matrix_z_axis(world[1])
+        apart = [b - a for a, b in zip(origin, matrix_translation_mm(world[1]), strict=True)]
+        if any(motion == "translation" for motion, _ in _JOINT_SCREWS[str(joint["kind"])]):
+            # A sliding joint's connectors part along its axis by its own
+            # travel; only what lies off the axis is a gap.
+            along = sum(a * b for a, b in zip(apart, z_first, strict=True))
+            apart = [value - along * axis for value, axis in zip(apart, z_first, strict=True)]
+        gap = math.sqrt(sum(value * value for value in apart))
+        tilt = math.sqrt(sum(value * value for value in _cross(z_first, z_second)))
+        worst_gap = max(worst_gap, gap)
+        if _JOINT_SCREWS[str(joint["kind"])] and str(joint["kind"]) != "ball":
+            worst_tilt = max(worst_tilt, tilt)
+        frames[name] = (origin, world[0][0:12:4], world[0][1:12:4], z_first)
+    centre = [sum(frames[n][0][i] for n in frames) / len(frames) for i in range(3)]
+    length = max(1.0, *(math.dist(frames[n][0], centre) for n in frames))
+    for name, (origin, x_axis, y_axis, z_axis) in frames.items():
+        point = [(origin[i] - centre[i]) / length for i in range(3)]
+        axes = {"x": x_axis, "y": y_axis, "z": z_axis}
+        columns[name] = [
+            list(axes[axis]) + _cross(point, axes[axis])
+            if motion == "rotation"
+            else [0.0, 0.0, 0.0] + list(axes[axis])
+            for motion, axis in _JOINT_SCREWS[str(joints[name]["kind"])]
+        ]
+    order = [(name, index) for name in frames for index in range(len(columns[name]))]
+    rows: list[list[float]] = []
+    for loop in loops:
+        cycle = [str(component) for component in loop["components"]]
+        signs: dict[str, float] = {}
+        for name in loop["joints"]:
+            first, second = (str(c["component"]) for c in joints[name]["connectors"])
+            if name == loop.get("closure"):
+                forward = (first, second) == (cycle[-1], cycle[0])
+            else:
+                forward = cycle.index(second) == cycle.index(first) + 1
+            signs[name] = 1.0 if forward else -1.0
+        for row in range(6):
+            rows.append(
+                [
+                    signs[name] * columns[name][index][row] if name in signs else 0.0
+                    for name, index in order
+                ]
+            )
+    rank = _matrix_rank(rows, _SCREW_RANK_TOLERANCE)
+    return {
+        "freedoms": len(order),
+        "rank": rank,
+        "mobility": len(order) - rank,
+        "redundancy": len(rows) - rank,
+        "loops": [str(loop["closure"]) for loop in loops],
+        "worst_gap_mm": worst_gap,
+        "worst_axis_tilt": worst_tilt,
+    }
+
+
+def _loop_mobility(
+    mujoco: Any,
+    model: Any,
+    qpos: Sequence[float],
+    tree: Mapping[str, Any],
+    joint_records: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    """Whether each closure means in MuJoCo what its joint means (ADR-593).
+
+    A ``connect`` pins a revolute closure's pin and lets its axis go. For a
+    planar loop that loses nothing: the loop's own motion keeps every axis
+    parallel. For a loop whose closing hinge axis would have to tilt as it
+    moves, the real joint binds where the export flops -- the mechanism is
+    over-constrained, and the model would move in a way the part cannot.
+
+    Both are measured, at the solved pose, as the rank of the closure
+    Jacobian over every degree of freedom: once with what the export pins
+    (the pin for a connect, the frame for a weld) and once with what the
+    joint really pins (a revolute's pin *and* its axis direction). The
+    mobility is ``nv`` less that rank. The export mobility exceeding the
+    real one is refused, naming the closure whose axis rows made the
+    difference; so is an actuator on a coordinate the loops lock, because
+    a drive on a joint that cannot move drives a fight with the
+    constraint solver and nothing else.
+    """
+
+    closures = list(tree.get("closures") or [])
+    if not closures:
+        return None
+    data = mujoco.MjData(model)
+    nv = int(model.nv)
+    site_ids = []
+    for closure in closures:
+        site_ids.append(
+            [
+                mujoco.mj_name2id(
+                    model, mujoco.mjtObj.mjOBJ_SITE, f"{closure['joint']}/{component}"
+                )
+                for component in closure["components"]
+            ]
+        )
+
+    def residuals(configuration: Sequence[float]) -> list[dict[str, list[float]]]:
+        data.qpos[:] = list(configuration)
+        mujoco.mj_kinematics(model, data)
+        rows = []
+        for closure, (first, second) in zip(closures, site_ids, strict=True):
+            position = [
+                float(data.site_xpos[first][i]) - float(data.site_xpos[second][i])
+                for i in range(3)
+            ]
+            first_matrix = [float(value) for value in data.site_xmat[first]]
+            second_matrix = [float(value) for value in data.site_xmat[second]]
+            z_first = first_matrix[2::3]
+            z_second = second_matrix[2::3]
+            x_first = first_matrix[0::3]
+            x_second = second_matrix[0::3]
+            if closure["closure_kind"] == "weld":
+                rotation = _cross(z_first, z_second) + _cross(x_first, x_second)
+                rows.append({"export": position + rotation, "axis": []})
+            elif closure["kind"] == "revolute":
+                rows.append({"export": position, "axis": _cross(z_first, z_second)})
+            else:
+                rows.append({"export": position, "axis": []})
+        return rows
+
+    base = list(qpos)
+    columns: list[list[dict[str, list[float]]]] = []
+    for dof in range(nv):
+        sides = []
+        for sign in (1.0, -1.0):
+            data.qpos[:] = base
+            velocity = [0.0] * nv
+            velocity[dof] = sign * _LOOP_JACOBIAN_STEP
+            data.qvel[:] = velocity
+            mujoco.mj_integratePos(model, data.qpos, data.qvel, 1.0)
+            sides.append(residuals(list(data.qpos)))
+        columns.append(
+            [
+                {
+                    key: [
+                        (a - b) / (2.0 * _LOOP_JACOBIAN_STEP)
+                        for a, b in zip(plus[key], minus[key], strict=True)
+                    ]
+                    for key in ("export", "axis")
+                }
+                for plus, minus in zip(sides[0], sides[1], strict=True)
+            ]
+        )
+
+    def rows_of(index: int, key: str) -> list[list[float]]:
+        width = len(columns[0][index][key]) if columns else 0
+        return [[columns[dof][index][key][row] for dof in range(nv)] for row in range(width)]
+
+    export_rows = [row for index in range(len(closures)) for row in rows_of(index, "export")]
+    joint_rows = export_rows + [
+        row for index in range(len(closures)) for row in rows_of(index, "axis")
+    ]
+    export_rank = _matrix_rank(export_rows)
+    joint_rank = _matrix_rank(joint_rows)
+    if joint_rank > export_rank:
+        offenders = [
+            str(closure["joint"])
+            for index, closure in enumerate(closures)
+            if rows_of(index, "axis")
+            and _matrix_rank(export_rows + rows_of(index, "axis")) > export_rank
+        ]
+        raise DynamicsError(
+            f"The loop closed by {', '.join(repr(name) for name in offenders)} is "
+            f"over-constrained: its hinge axis would have to tilt as the loop "
+            f"moves, so the real joint binds where the exported connect lets it "
+            f"move ({nv - export_rank} degrees of freedom in the export, "
+            f"{nv - joint_rank} in the mechanism).",
+            reason="overconstrained_loop",
+            correction=(
+                "A connect closure pins the pin and not the axis, which is exact "
+                "only when the loop keeps that axis aligned by itself. Make the "
+                "loop planar -- every hinge axis in it parallel -- or end the "
+                "link that closes it in a ball joint, as a pushrod's rod ends "
+                "are: a ball closure is exactly a connect."
+            ),
+            observed={
+                "closures": offenders,
+                "export_mobility": nv - export_rank,
+                "mechanism_mobility": nv - joint_rank,
+            },
+        )
+    joint_by_dof: dict[int, str] = {}
+    for record in joint_records:
+        identifier = mujoco.mj_name2id(
+            model, mujoco.mjtObj.mjOBJ_JOINT, str(record["mujoco_joint"])
+        )
+        if identifier >= 0 and str(record["mujoco_type"]) in {"hinge", "slide"}:
+            joint_by_dof[int(model.jnt_dofadr[identifier])] = str(record["joint"])
+    locked = []
+    for actuator in range(int(model.nu)):
+        if int(model.actuator_trntype[actuator]) != int(mujoco.mjtTrn.mjTRN_JOINT):
+            continue
+        dof = int(model.jnt_dofadr[int(model.actuator_trnid[actuator][0])])
+        unit = [1.0 if column == dof else 0.0 for column in range(nv)]
+        if _matrix_rank(joint_rows + [unit]) == joint_rank and joint_by_dof.get(dof):
+            locked.append(joint_by_dof[dof])
+    if locked:
+        raise DynamicsError(
+            f"Joint {locked[0]!r} is driven, but the loop it is part of leaves it "
+            "no motion: the closure locks the chain, so the actuator could only "
+            "fight the constraint solver.",
+            reason="actuator_locked_by_loop",
+            correction=(
+                "A loop of n links on n pins in a plane is a rigid truss, not a "
+                "mechanism. Remove a link or a joint so the loop keeps one degree "
+                "of freedom, or drive a joint outside the loop."
+            ),
+            observed={"joints": locked, "mechanism_mobility": nv - joint_rank},
+        )
+    return {
+        "dof": nv,
+        "export_mobility": nv - export_rank,
+        "mechanism_mobility": nv - joint_rank,
+        "closures": [str(closure["joint"]) for closure in closures],
+    }
 
 
 def simulate(
@@ -5310,8 +5652,11 @@ MAXIMUM_GOALS = 4
 #: meaning; ``speed`` is one number that *is* the commanded forward speed in
 #: millimetres per second, which is what lets a success spec read how well
 #: it was tracked; ``point`` is a place in the world, in millimetres, that a
-#: named tip can reach.
-GOAL_KINDS = ("value", "speed", "point")
+#: named tip can reach; ``phase`` is an angle that turns once per declared
+#: period from a start drawn per episode, told as its sine and cosine
+#: (ADR-598) -- the controller's own timer, which is the only way a reward
+#: or a policy can know how far an episode has run.
+GOAL_KINDS = ("value", "speed", "point", "phase")
 
 #: How many joint configurations a ``point`` goal may draw before the draw
 #: is refused, and how many whole episodes are drawn when the task is built
@@ -5397,6 +5742,11 @@ _SUCCESS_NEED_CORRECTIONS = {
     "tip": (
         "Name the component that carries the point being measured: "
         "assembly.success(..., tip=component, tip_offset_mm=[x, y, z])."
+    ),
+    "body": (
+        "Name the component whose motion is judged, and the centre it is "
+        "judged about: assembly.success(..., body=component, "
+        "centre=component, centre_mm=[x, y, z], centre_axis=[0, 0, 1])."
     ),
     "shove": (
         "Recovery is timed from the end of a shove, and the spec's "
@@ -5925,6 +6275,36 @@ OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
         "suffixes": ("_x", "_y", "_z"),
         "units": {None: ("nmms", angular_momentum_nmms)},
     },
+    # ADR-588: another body's position in a tracker's mount frame -- a touch
+    # panel reading a ball, a camera reading a marker. Stock MuJoCo still
+    # computes it (a ``framepos`` with ``reftype``/``refname``); the one
+    # derived channel, ``_in_range``, is the tracker's own report of whether
+    # it saw the body, applied by :func:`tracker_reading`.
+    "tracked_position": {
+        "sensor": "mjSENS_FRAMEPOS",
+        "target": "component",
+        "objtype": "mjOBJ_XBODY",
+        "dim": 3,
+        "suffixes": ("_x", "_y", "_z"),
+        "derived": ("_in_range",),
+        "units": {None: ("mm", length_mm)},
+    },
+    # ADR-590: the same body's velocity in the same frame, as the tracker's
+    # firmware reports it by differencing successive readings. MuJoCo's
+    # ``framelinvel`` with the mount as reference is the exact derivative of
+    # the row above (rotation of the frame included); the declared noise of
+    # a difference, sqrt(2) * noise_mm * rate_hz, and the resolution of one,
+    # resolution_mm * rate_hz, are applied by
+    # :func:`tracker_velocity_reading`. It reads zeros whenever the paired
+    # ``tracked_position`` reports the body out of range.
+    "tracked_velocity": {
+        "sensor": "mjSENS_FRAMELINVEL",
+        "target": "component",
+        "objtype": "mjOBJ_XBODY",
+        "dim": 3,
+        "suffixes": ("_x", "_y", "_z"),
+        "units": {None: ("mm/s", speed_mm_per_s)},
+    },
 }
 
 #: Observation kinds named here on purpose, with the reason they are not
@@ -6053,6 +6433,31 @@ GOAL_FOLLOWER_ALGORITHM = (
     "c0 + c1*x + c2*x**2 + c3*x**3 + c4*x**4 with x = qpos[driver_qpos_adr] "
     "- driver_reference (0 when it has no driver), its polycoef being "
     "c0..c4"
+)
+
+#: What a point goal held in a body's frame adds to :data:`GOAL_ALGORITHM`
+#: (ADR-592), appended only to bundles whose goal carries ``frame_id``, so
+#: every earlier bundle keeps its algorithm and its digest. The tries, the
+#: draws and the acceptance tests are the world-frame ones; only what is
+#: kept changes.
+GOAL_FRAME_ALGORITHM = (
+    "; on a point goal with frame_id, the accepted point p is kept as "
+    "transpose(xmat[frame_id]) * (p - xpos[frame_id]) at that same try's "
+    "mj_forward -- the point in the frame body's own frame, which is what "
+    "its channels then read and the goal the reach is measured to -- while "
+    "min_z_m, the contact test and min_separation_m still read p in the world"
+)
+
+#: What a phase goal adds to :data:`GOAL_ALGORITHM` (ADR-598), appended only
+#: to bundles that state one, so every earlier bundle keeps its algorithm
+#: and its digest. The draw is the value draw already stated -- its start
+#: phase is uniform(low, high) over one turn -- and what is added is how
+#: that one number becomes the two channels a step reads.
+GOAL_PHASE_ALGORITHM = (
+    "; on a phase goal, the drawn value is the start phase of its segment, "
+    "and at control step s the angle is start + radians_per_step * (s - k * "
+    "resample_steps) for the segment k in force; its channels are "
+    "sin(angle) then cos(angle)"
 )
 
 #: Everything a reward or termination expression may name beyond the
@@ -6261,8 +6666,97 @@ def observation_records(
                 )
             object_name = target
 
+        tracked: dict[str, Any] = {}
+        if kind in ("tracked_position", "tracked_velocity"):
+            frame = str(entry.get("frame") or "")
+            if frame not in bodies or frame == target or not entry.get("tracker"):
+                raise DynamicsError(
+                    f"{what} is a tracked position whose tracker is mounted on "
+                    f"{frame!r}, which is "
+                    + ("the body it reads" if frame == target
+                       else "not a body in this assembly's dynamics model")
+                    + ".",
+                    reason="observation_tracker_frame",
+                    correction=(
+                        "Mount the position_tracker on a component with an "
+                        "api.body, and observe a different body with it."
+                    ),
+                    observed={"observation": name, "frame": frame,
+                              "available": list(bodies)},
+                )
+            tracked = {"frame": frame, "tracker": dict(entry["tracker"])}
+        elif entry.get("frame") is not None:
+            # ADR-592: a world quantity read in another body's frame -- the
+            # tip as the base sees it, which is what a reward needs beside a
+            # goal held in the base's frame. Stock MuJoCo still computes it.
+            frame = str(entry["frame"])
+            if kind != "component_position":
+                raise DynamicsError(
+                    f"{what} is a {kind} read in the frame of {frame!r}; only "
+                    "a component_position is read in another body's frame.",
+                    reason="observation_frame_kind",
+                    correction=(
+                        "Observe the component_position with frame=, or drop "
+                        "frame= from this channel."
+                    ),
+                    observed={"observation": name, "kind": kind, "frame": frame},
+                )
+            if frame not in bodies or frame == target:
+                raise DynamicsError(
+                    f"{what} is read in the frame of {frame!r}, which is "
+                    + ("the body it reads" if frame == target
+                       else "not a body in this assembly's dynamics model")
+                    + ".",
+                    reason="observation_frame_missing",
+                    correction=(
+                        "Name another component with an api.body as the frame."
+                    ),
+                    observed={"observation": name, "frame": frame,
+                              "available": list(bodies)},
+                )
+            tracked = {"frame": frame}
+        if kind == "tracked_velocity":
+            # ADR-590: a differenced velocity is only as present as the
+            # readings it differences, so it needs the same tracker's
+            # position of the same body, declared first, for its range.
+            paired = [
+                record["name"] for record in records
+                if record["kind"] == "tracked_position"
+                and record["target"] == target
+                and record.get("grounded_sensor") == entry.get("grounded_sensor")
+            ]
+            if not paired:
+                raise DynamicsError(
+                    f"{what} is a tracked velocity with no tracked position "
+                    f"of {target!r} from the same tracker declared before it.",
+                    reason="observation_tracker_velocity_unpaired",
+                    correction=(
+                        "A tracker differences its own position readings, and "
+                        "reports nothing while the body is out of its range. "
+                        "Observe the body's tracked_position with the same "
+                        "sensor, listed before its tracked_velocity."
+                    ),
+                    observed={"observation": name, "component": target,
+                              "sensor": str(entry.get("grounded_sensor") or "")},
+                )
+            tracked["in_range_of"] = paired[0]
+        if entry.get("load"):
+            # ADR-591: a load sensor reads its own actuator's effort, so it
+            # rides only on that actuator's actuator_force channel.
+            if kind != "actuator_force":
+                raise DynamicsError(
+                    f"{what} carries a load sensor's declaration on a {kind} "
+                    "channel; a load sensor reads an actuator's effort.",
+                    reason="observation_load_kind",
+                    correction="Observe the actuator's actuator_force with the load_sensor.",
+                    observed={"observation": name, "kind": kind},
+                )
+            tracked["load"] = {key: float(entry["load"][key])
+                               for key in ("full_scale", "resolution", "rate_hz", "noise")}
+
         unit, scale = _observation_unit(kind, motion_type)
-        channels = [f"{name}{suffix}" for suffix in row["suffixes"]]
+        channels = [f"{name}{suffix}"
+                    for suffix in (*row["suffixes"], *row.get("derived", ()))]
         for channel in channels:
             if channel in taken:
                 raise DynamicsError(
@@ -6301,6 +6795,7 @@ def observation_records(
                 # anything MuJoCo already carries.
                 "mujoco_sensor": f"obs/{index}",
                 **{key: str(entry[key]) for key in _GROUNDING_KEYS if entry.get(key)},
+                **tracked,
             }
         )
     if len(taken) > MAXIMUM_OBSERVATION_CHANNELS:
@@ -6337,6 +6832,9 @@ def _add_observation_sensors(
         sensor.type = getattr(mujoco.mjtSensor, str(record["sensor"]))
         sensor.objtype = getattr(mujoco.mjtObj, str(record["objtype"]))
         sensor.objname = str(record["object_name"])
+        if record.get("frame"):
+            sensor.reftype = mujoco.mjtObj.mjOBJ_XBODY
+            sensor.refname = str(record["frame"])
 
 
 def _verify_exported_sensors(
@@ -7218,6 +7716,23 @@ def _goal_tip_m(data: Any, body: int, local_m: Sequence[float]) -> list[float]:
     ]
 
 
+def _goal_in_frame_m(data: Any, frame: int, point_m: Sequence[float]) -> list[float]:
+    """A world point in one body's frame, in metres (ADR-592).
+
+    The inverse of :func:`_goal_tip_m`: the rotation's transpose applied to
+    the point less the body's origin, written out over ``xmat`` for the
+    same reason, since the trainer and the reference runner do it too.
+    """
+
+    origin = data.xpos[frame]
+    rotation = data.xmat[frame]
+    relative = [float(point_m[axis]) - float(origin[axis]) for axis in range(3)]
+    return [
+        sum(float(rotation[3 * other + axis]) * relative[other] for other in range(3))
+        for axis in range(3)
+    ]
+
+
 def _goal_followers(mujoco: Any, reloaded: Any) -> list[dict[str, Any]]:
     """Every coupled joint, as the law a goal draw places it by (ADR-474).
 
@@ -7341,7 +7856,7 @@ def _goal_records(
                 correction=f"The kinds are {', '.join(GOAL_KINDS)}.",
                 observed={"goal": name, "kind": kind},
             )
-        if kind != "value" and kind in seen_kinds:
+        if kind not in ("value", "phase") and kind in seen_kinds:
             raise DynamicsError(
                 f"{what} is a second {kind} goal beside {seen_kinds[kind]!r}.",
                 reason="duplicate_goal_kind",
@@ -7349,14 +7864,16 @@ def _goal_records(
                     "A success spec reads the commanded speed and the target "
                     "point by kind, so a task states at most one of each. A "
                     "further number a reward gives its own meaning is "
-                    "kind='value'."
+                    "kind='value', and a further clock is kind='phase'."
                 ),
                 observed={"goal": name, "kind": kind,
                           "earlier": seen_kinds[kind]},
             )
         seen_kinds[kind] = name
         channels = (
-            [f"{name}_x", f"{name}_y", f"{name}_z"] if kind == "point" else [name]
+            [f"{name}_x", f"{name}_y", f"{name}_z"] if kind == "point"
+            else [f"{name}_sin", f"{name}_cos"] if kind == "phase"
+            else [name]
         )
         for channel in channels:
             if channel in owners:
@@ -7369,7 +7886,8 @@ def _goal_records(
                         "with one name means whichever was looked up last. "
                         "Rename the goal. Note that a point goal expands: one "
                         "named 'target' occupies target_x, target_y and "
-                        "target_z."
+                        "target_z; and a phase goal named 'lead' occupies "
+                        "lead_sin and lead_cos."
                     ),
                     observed={"goal": name, "channel": channel},
                 )
@@ -7405,6 +7923,30 @@ def _goal_records(
             "resample_steps": steps,
             "segments": 1 if not steps else -(-max_steps // steps),
         }
+        if kind == "phase":
+            period = float(entry.get("period_seconds", math.nan))
+            if not (math.isfinite(period) and period > 0.0):
+                raise DynamicsError(
+                    f"{what} turns once every {period!r} s.",
+                    reason="malformed_goal",
+                    correction=(
+                        "Give period_seconds, a positive number of seconds "
+                        "for one whole turn."
+                    ),
+                    observed={"goal": name, "period_seconds": repr(period)},
+                )
+            record.update(
+                unit="rad",
+                # The start phase is drawn over one turn by the value draw,
+                # so both copies of the draw read it unchanged.
+                low=0.0,
+                high=2.0 * math.pi,
+                nominal=[0.0],
+                period_s=period,
+                radians_per_step=2.0 * math.pi * interval / period,
+            )
+            records.append(record)
+            continue
         if kind != "point":
             low = float(entry.get("low", math.nan))
             high = float(entry.get("high", math.nan))
@@ -7441,6 +7983,21 @@ def _goal_records(
                 observed={"goal": name, "tip": tip, "available": list(bodies)},
             )
         body_id = int(mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_BODY, tip))
+        frame = entry.get("frame")
+        if frame is not None and (str(frame) not in bodies or str(frame) == tip):
+            raise DynamicsError(
+                f"{what} is held in the frame of {str(frame)!r}, which is "
+                + ("its own tip" if str(frame) == tip
+                   else "not a body in this assembly's dynamics model")
+                + ".",
+                reason="goal_frame_missing",
+                correction=(
+                    "Hold the goal in another component with an api.body -- "
+                    "the base the target should travel with. A target held "
+                    "in the tip's own frame never moves relative to it."
+                ),
+                observed={"goal": name, "frame": str(frame), "available": list(bodies)},
+            )
         fraction = float(entry.get("joint_fraction", 0.8))
         if not 0.0 < fraction <= 1.0:
             raise DynamicsError(
@@ -7522,6 +8079,14 @@ def _goal_records(
             # Only on a coupled mechanism, so every other point goal is the
             # record, and the digest, it always was.
             record["followers"] = followers
+        nominal_m = start
+        if frame is not None:
+            # ADR-592: present only on a goal held in a body's frame, so
+            # every world goal is the record it always was.
+            frame_id = int(mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_BODY, str(frame)))
+            record["frame"] = str(frame)
+            record["frame_id"] = frame_id
+            nominal_m = _goal_in_frame_m(data, frame_id, start)
         record.update(
             unit="mm",
             scale=scale,
@@ -7540,7 +8105,7 @@ def _goal_records(
             # target is refused for the contacts its configuration *adds*.
             resting_contacts=[list(pair) for pair in resting],
             attempts=GOAL_POINT_ATTEMPTS,
-            nominal=[value * scale for value in start],
+            nominal=[value * scale for value in nominal_m],
         )
         records.append(record)
     if len(records) > MAXIMUM_GOALS:
@@ -7734,11 +8299,13 @@ def _success_records(
         goal_entries = task.get("goal") or ()
     feet = [str(name) for name in spec.get("feet") or ()]
     tip = spec.get("tip")
+    body = spec.get("body")
 
     goal_kinds = {str(entry.get("kind") or "") for entry in goal_entries}
     have = {
         "feet": bool(feet),
         "tip": tip is not None,
+        "body": body is not None,
         "shove": any(not entry.get("sustained") for entry in disturbance_entries),
         # Read by kind: the commanded speed is the task's one speed goal and
         # the target its one point goal, and a task that states neither has
@@ -7835,7 +8402,11 @@ def _success_records(
     )
     shape = [(row["name"], row["kind"], row["channels"]) for row in judged_goal]
     declared = [(row["name"], row["kind"], row["channels"]) for row in goal]
-    if shape != declared:
+    # ADR-592: the frame is part of what a channel means, so a spec may not
+    # judge in the world a goal the policy reads in its base's frame.
+    framed = ([row.get("frame") for row in judged_goal]
+              == [row.get("frame") for row in goal])
+    if shape != declared or not framed:
         raise DynamicsError(
             f"{what} states goals the task does not: "
             f"{[name for name, _kind, _channels in shape]} against the "
@@ -7844,12 +8415,14 @@ def _success_records(
             correction=(
                 "The policy reads the task's goal channels by position, so a "
                 "spec judges it on the same goals: the same names and kinds, "
-                "in the same order. What a spec may change is what each is "
+                "in the same order, held in the same frame. What a spec may change is what each is "
                 "drawn from -- its range, its separation, its period. Omit "
                 "goals= to be judged on the task's own."
             ),
-            observed={"spec": [list(row[:2]) for row in shape],
-                      "task": [list(row[:2]) for row in declared]},
+            observed={"spec": [[*row[:2], judged.get("frame")]
+                               for row, judged in zip(shape, judged_goal)],
+                      "task": [[*row[:2], held.get("frame")]
+                               for row, held in zip(declared, goal)]},
         )
     for row in judged_goal:
         if (
@@ -7883,6 +8456,8 @@ def _success_records(
             None if tip is None
             else {"body": str(tip.get("body")), "local_mm": tip.get("local_mm")}
         ),
+        body=body,
+        centre=spec.get("centre"),
     )
     for need, present in (
         ("base", rig["base"] is not None),
@@ -7951,6 +8526,12 @@ def _success_records(
             None if tip is None
             else {"body": str(rig["tip"]["body"]),
                   "local_mm": [float(v) for v in rig["tip"]["local_mm"]]}
+        ),
+        # Absent unless the script named a body (ADR-587), so a spec without
+        # one is the block it always was.
+        **(
+            {"body": dict(rig["body"]), "centre": dict(rig["centre"])}
+            if body is not None else {}
         ),
         "episode": schedule,
         "randomisation": randomisation,
@@ -8104,6 +8685,13 @@ def task_records(
                 # (ADR-408). Absent means the defaults -- a policy input with
                 # no sensor named -- so a pre-ADR-408 task keeps its bytes.
                 **{key: str(record[key]) for key in _GROUNDING_KEYS if record.get(key)},
+                # ADR-588: the mount frame and the datasheet, present only on
+                # a tracked position.
+                # ADR-590: and, on a tracked velocity, the position whose
+                # range flag it shares.
+                # ADR-591: and, on a load sensor's channel, its declaration.
+                **{key: record[key] for key in ("frame", "tracker", "in_range_of", "load")
+                   if record.get(key)},
             }
         )
         channels.extend(str(name) for name in record["channels"])
@@ -8200,6 +8788,7 @@ def task_records(
         episode_seconds=float(task.get("episode_seconds") or 0.0),
         context=context,
     )
+    _check_tracker_rates(observation_rows, schedule, context=context)
     goal = _goal_records(
         mujoco,
         reloaded,
@@ -8343,6 +8932,12 @@ def task_records(
         **({"goal": goal, "goal_algorithm": GOAL_ALGORITHM + (
             GOAL_FOLLOWER_ALGORITHM
             if any(entry.get("followers") for entry in goal) else ""
+        ) + (
+            GOAL_FRAME_ALGORITHM
+            if any(entry.get("frame_id") is not None for entry in goal) else ""
+        ) + (
+            GOAL_PHASE_ALGORITHM
+            if any(entry["kind"] == "phase" for entry in goal) else ""
         )} if goal else {}),
         **judged,
         # The two per-episode draw streams, both stated, because they are
@@ -8380,6 +8975,8 @@ def evaluation_rig(
     *,
     feet: Sequence[str] = (),
     tip: Mapping[str, Any] | None = None,
+    body: Mapping[str, Any] | None = None,
+    centre: Mapping[str, Any] | None = None,
     keyframe: str = MJCF_KEYFRAME_NAME,
 ) -> dict[str, Any]:
     """The facts about one model that a rollout's metrics are scaled by.
@@ -8400,11 +8997,16 @@ def evaluation_rig(
     arm length is the straight distance from the first actuated joint's
     anchor through each later joint anchor on the chain to that point.
 
+    ``body`` is ``{"body": name, "local_mm": [x, y, z]}``, a point whose
+    motion is judged about ``centre``, ``{"frame": name or None, "point_mm",
+    "axis"}`` (ADR-587). Neither needs a joint: a free ball is a body.
+
     A grounded mechanism has no floating base, and ``base`` is then ``None``:
     an arm is still measured for reach. Two floating bases is a refusal,
     because tilt and drift would have to choose one.
     """
 
+    judged = body
     mujoco = _mujoco_module()
     data = mujoco.MjData(model)
     key = int(mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, keyframe))
@@ -8570,6 +9172,36 @@ def evaluation_rig(
         rig["arm_length_mm"] = sum(
             math.dist(first, second) for first, second in zip(path, path[1:])
         )
+    if judged is not None:
+        _body(judged.get("body"), "the judged body")
+        rig["body"] = {
+            "body": str(judged.get("body")),
+            "local_mm": _floats(
+                judged.get("local_mm") or (0.0, 0.0, 0.0), count=3,
+                context="the judged body's local_mm",
+            ),
+        }
+        centre = dict(centre or {})
+        frame = centre.get("frame")
+        if frame is not None:
+            _body(frame, "the frame of the centre")
+        axis = _floats(
+            centre.get("axis") or (0.0, 0.0, 1.0), count=3, context="the centre's axis"
+        )
+        if math.sqrt(sum(v * v for v in axis)) <= 1.0e-9:
+            raise DynamicsError(
+                "The centre's axis is zero, and turns are counted about a direction.",
+                reason="evaluation_centre_axis_zero",
+                observed={"axis": axis},
+            )
+        rig["centre"] = {
+            "frame": None if frame is None else str(frame),
+            "point_mm": _floats(
+                centre.get("point_mm") or (0.0, 0.0, 0.0), count=3,
+                context="the centre's point_mm",
+            ),
+            "axis": axis,
+        }
     return rig
 
 
@@ -8590,9 +9222,149 @@ def observation_values(
         adr = int(record["adr"])
         dim = int(record["dim"])
         scale = float(record["scale"])
-        for offset, channel in enumerate(record["channels"][:dim]):
-            values[str(channel)] = float(sensordata[adr + offset]) * scale
+        read = [float(sensordata[adr + offset]) * scale for offset in range(dim)]
+        if record.get("in_range_of"):
+            read = tracker_velocity_reading(
+                read, record["tracker"],
+                values[f"{record['in_range_of']}_in_range"] == 1.0)
+        elif record.get("tracker"):
+            read = tracker_reading(read, record["tracker"])
+        elif record.get("load"):
+            read = [load_reading(read[0], record["load"])]
+        for channel, value in zip(record["channels"], read):
+            values[str(channel)] = value
     return values
+
+
+def _check_tracker_rates(
+    rows: Sequence[Mapping[str, Any]],
+    schedule: Mapping[str, Any],
+    *,
+    context: str,
+) -> None:
+    """Refuse a policy that acts faster than a tracker (ADR-588) or a load
+    sensor (ADR-591) it reads reports.
+
+    A tracker slower than the control loop would hand the policy the same
+    reading for several steps -- a stale value the trainer would have to
+    model as a hold. Refusing keeps every reading fresh, and the remedy is
+    one argument: a lower ``control_hz``, or a faster part.
+    """
+
+    control_hz = 1.0 / float(schedule["control_interval_s"])
+    for row in rows:
+        # ADR-591: a load sensor's rate is held to the same rule.
+        declared = row.get("tracker") or row.get("load")
+        if not declared or float(declared["rate_hz"]) + 1.0e-9 >= control_hz:
+            continue
+        what = "tracker" if row.get("tracker") else "load sensor"
+        raise DynamicsError(
+            f"{context} reads {row['name']!r} from a {what} reporting at "
+            f"{float(declared['rate_hz']):g} Hz, slower than its "
+            f"{control_hz:g} Hz control loop.",
+            reason=("tracker_slower_than_control" if row.get("tracker")
+                    else "load_sensor_slower_than_control"),
+            correction=(
+                "A policy may not act on a reading its sensor has not made. "
+                f"Lower control_hz to the {what}'s rate or below, or declare "
+                "the faster part the machine actually carries."
+            ),
+            observed={"observation": str(row["name"]),
+                      "rate_hz": float(declared["rate_hz"]),
+                      "control_hz": control_hz},
+        )
+
+
+def tracker_reading(
+    true_mm: Sequence[float],
+    tracker: Mapping[str, Any],
+    noise_mm: Sequence[float] | None = None,
+) -> list[float]:
+    """What a position tracker reports for a body at ``true_mm`` (ADR-588).
+
+    The position in the mount's frame plus any noise drawn, rounded to the
+    declared resolution, then the in-range flag: ``[x, y, z, 1.0]`` when the
+    body's *true* position lies inside ``range_mm`` on every axis, and
+    ``[0, 0, 0, 0.0]`` when it does not -- a touch panel with nothing on it
+    reports no touch, never the edge it last saw. The engine draws no noise
+    (an evaluation is deterministic); ``training/cadex_train.py`` writes the
+    same arithmetic in ``jnp`` with a drawn ``noise_mm``, and a test pins
+    the two equal.
+    """
+
+    bounds = tracker["range_mm"]
+    inside = all(
+        float(low) <= float(value) <= float(high)
+        for value, (low, high) in zip(true_mm, bounds)
+    )
+    if not inside:
+        return [0.0, 0.0, 0.0, 0.0]
+    step = float(tracker["resolution_mm"])
+    noise = list(noise_mm) if noise_mm is not None else [0.0, 0.0, 0.0]
+    return [
+        round((float(value) + float(extra)) / step) * step
+        for value, extra in zip(true_mm, noise)
+    ] + [1.0]
+
+
+def load_reading(
+    true_effort: float,
+    load: Mapping[str, Any],
+    noise: float = 0.0,
+) -> float:
+    """What a load sensor reports for an actuator applying ``true_effort`` (ADR-591).
+
+    The effort plus any noise drawn, held within the stall line
+    ``+/- full_scale`` -- a bus servo's load register tops out at 100 % --
+    then rounded to the declared resolution. N*mm on a turning coordinate,
+    N on a sliding one. The engine draws no noise; the trainer writes the
+    same arithmetic in ``jnp`` and a test pins the two equal.
+    """
+
+    scale = float(load["full_scale"])
+    step = float(load["resolution"])
+    held = min(max(float(true_effort) + float(noise), -scale), scale)
+    return round(held / step) * step
+
+
+def tracker_velocity_noise(tracker: Mapping[str, Any]) -> tuple[float, float]:
+    """``(noise, resolution)`` of a tracker's differenced velocity, mm/s (ADR-590).
+
+    The firmware subtracts two successive readings ``1 / rate_hz`` apart and
+    divides by that interval: two independent errors of ``noise_mm`` give
+    ``sqrt(2) * noise_mm * rate_hz``, and one resolution step becomes
+    ``resolution_mm * rate_hz``. A faster tracker is a noisier speedometer.
+    """
+
+    rate = float(tracker["rate_hz"])
+    return (math.sqrt(2.0) * float(tracker["noise_mm"]) * rate,
+            float(tracker["resolution_mm"]) * rate)
+
+
+def tracker_velocity_reading(
+    true_mm_s: Sequence[float],
+    tracker: Mapping[str, Any],
+    in_range: bool,
+    noise_mm_s: Sequence[float] | None = None,
+) -> list[float]:
+    """What a tracker's differenced velocity reports for a body (ADR-590).
+
+    The body's velocity in the mount's frame plus any noise drawn (of
+    :func:`tracker_velocity_noise`'s spread), rounded to the velocity
+    resolution; ``[0, 0, 0]`` whenever the paired position reads out of
+    range, because a panel with nothing on it has nothing to difference.
+    ``training/cadex_train.py`` writes the same arithmetic in ``jnp`` and a
+    test pins the two equal.
+    """
+
+    if not in_range:
+        return [0.0, 0.0, 0.0]
+    _sigma, step = tracker_velocity_noise(tracker)
+    noise = list(noise_mm_s) if noise_mm_s is not None else [0.0, 0.0, 0.0]
+    return [
+        round((float(value) + float(extra)) / step) * step
+        for value, extra in zip(true_mm_s, noise)
+    ]
 
 
 def _write_reset_variation(
@@ -8799,7 +9571,7 @@ def draw_episode_goals(
         previous = [float(value) for value in entry["start_m"]]
         for segment in range(int(entry["segments"])):
             rejected = {"below_min_z": 0, "in_contact": 0, "too_close": 0}
-            point = None
+            point = kept = None
             for _ in range(int(entry["attempts"])):
                 mujoco.mj_resetDataKeyframe(model, data, key)
                 for joint in entry["joints"]:
@@ -8825,6 +9597,8 @@ def draw_episode_goals(
                     rejected["too_close"] += 1
                     continue
                 point = candidate
+                if entry.get("frame_id") is not None:
+                    kept = _goal_in_frame_m(data, int(entry["frame_id"]), candidate)
                 break
             if point is None:
                 raise DynamicsError(
@@ -8845,7 +9619,10 @@ def draw_episode_goals(
                     observed={"goal": str(entry["label"]), "segment": segment,
                               "attempts": int(entry["attempts"]), **rejected},
                 )
-            segments.append([value * float(entry["scale"]) for value in point])
+            segments.append([
+                value * float(entry["scale"])
+                for value in (kept if entry.get("frame_id") is not None else point)
+            ])
             previous = point
         drawn.append({"label": str(entry["label"]), "segments": segments})
     return drawn
@@ -8884,6 +9661,16 @@ def goal_schedule(
                 "kind": str(entry["kind"]),
                 "channels": [str(channel) for channel in entry["channels"]],
                 "unit": str(entry["unit"]),
+                # ADR-592: the body a held-in-frame point is fixed to, so a
+                # reader of the episode knows its values are in that frame.
+                **({"frame": str(entry["frame"])} if entry.get("frame") else {}),
+                # ADR-598: how far a phase turns per step, so a reader of
+                # the episode can say what it read at any frame. Its
+                # segments' values are their start phases.
+                **(
+                    {"radians_per_step": float(entry["radians_per_step"])}
+                    if entry["kind"] == "phase" else {}
+                ),
                 "segments": [
                     {
                         "start_step": start,
@@ -8909,6 +9696,9 @@ def goal_values(
 
     The last segment that has started. Past the final segment's start it is
     still that segment, which is what the frame after the last step reads.
+    A phase goal (ADR-598) is the one whose channels move inside a segment:
+    its angle advances ``radians_per_step`` every step from the segment's
+    drawn start, and it reads as that angle's sine and cosine.
     """
 
     values: dict[str, float] = {}
@@ -8917,8 +9707,14 @@ def goal_values(
         for segment in entry["segments"]:
             if int(segment["start_step"]) <= int(step):
                 held = segment
-        for channel, value in zip(entry["channels"], held["values"], strict=True):
-            values[str(channel)] = float(value)
+        told = [float(value) for value in held["values"]]
+        if entry.get("kind") == "phase":
+            angle = told[0] + float(entry["radians_per_step"]) * (
+                int(step) - int(held["start_step"])
+            )
+            told = [math.sin(angle), math.cos(angle)]
+        for channel, value in zip(entry["channels"], told, strict=True):
+            values[str(channel)] = value
     return values
 
 
@@ -10549,7 +11345,8 @@ def rollout_policy(
             {
                 "goal_channels": [
                     {"channel": str(channel), "goal": str(entry["name"]),
-                     "kind": str(entry["kind"]), "unit": str(entry["unit"])}
+                     "kind": str(entry["kind"]), "unit": str(entry["unit"]),
+                     **({"frame": str(entry["frame"])} if entry.get("frame") else {})}
                     for entry in goals for channel in entry["channels"]
                 ]
             }
@@ -10719,14 +11516,18 @@ def evaluate_success(
         )
     compiled = load_model(xml)
     rig = evaluation_rig(
-        compiled, feet=list(spec.get("feet") or ()), tip=spec.get("tip")
+        compiled, feet=list(spec.get("feet") or ()), tip=spec.get("tip"),
+        body=spec.get("body"), centre=spec.get("centre"),
     )
     # A surface held off its geometry voids every seed alike: the episode
     # is played and measured, and none of it is a measurement of contact.
     offsets = contact_offsets(compiled)
     held_off = contact_offset_void(offsets)
     names = [str(name) for name in components]
-    wanted = [rig["base"], *rig["feet"], (rig.get("tip") or {}).get("body")]
+    wanted = [rig["base"], *rig["feet"], (rig.get("tip") or {}).get("body"),
+              (rig.get("body") or {}).get("body"), (rig.get("centre") or {}).get("frame")]
+    # ADR-592: a target held in a body's frame is measured where that body was.
+    wanted += [entry.get("frame") for entry in played.get("goal") or ()]
     names += [name for name in wanted if name is not None and name not in names]
     control_hz = int(played["episode"]["control_hz"])
     stamp = dict(identity or {})
@@ -10782,7 +11583,8 @@ def evaluate_success(
                 segments = [
                     {"start_s": float(segment["start_s"]),
                      "end_s": float(segment["end_s"]),
-                     "target_mm": list(segment["values"])}
+                     "target_mm": list(segment["values"]),
+                     **({"frame": str(entry["frame"])} if entry.get("frame") else {})}
                     for segment in entry["segments"]
                 ]
         measured = CadexEvaluation.measure(

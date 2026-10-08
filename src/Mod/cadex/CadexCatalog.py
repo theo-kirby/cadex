@@ -511,6 +511,15 @@ SERVOS: Mapping[str, Mapping[str, Any]] = {
             {"volts": 7.4, "s_per_60_deg": 0.192},
         ],
         "bus": "half-duplex TTL serial, 1 Mbps default, IDs 0-253; position, speed, load, voltage and temperature read back",
+        # ADR-591: what grounds a load_sensor. The Present Load register is
+        # signed, 0.1 % of full drive per count, and tops out at 100 %; the
+        # noise and the polling rate are not datasheet figures (approximate).
+        "load_feedback": {
+            "register": "Present Load: signed, 0.1 % of full drive per count, saturating at 100 %",
+            "resolution_fraction": 0.001,
+            "noise_fraction": 0.01,
+            "rate_hz": 100.0,
+        },
         "connector": "two 5264-3P (GND, V, S) on the rear end for daisy-chaining",
         "sources": [
             "https://www.feetechrc.com/Data/feetechrc/upload/file/20260622/6391772523943436695270694.pdf",
@@ -521,6 +530,7 @@ SERVOS: Mapping[str, Mapping[str, Any]] = {
             "hole_depth_mm",
             "envelope_height_mm: the raised cover (about 2.7 mm over the output face) and the rear bump (about 3.4 mm under the rear face) at the far end are scaled from the drawing, not dimensioned, and are not modelled; leave relief there.",
             "mount_faces: the output/rear assignment of the 20.7 and 24.45 mm hole pairs is read from the drawings' bosses, not labelled; the rear-face thread is unconfirmed.",
+            "load_feedback: the register reads the motor's drive duty, which is its load only near stall (a turning motor's back-EMF takes a share); noise_fraction (1 % of stall) and rate_hz (one servo polled per 10 ms on a shared bus) are assumed, not datasheet figures.",
         ],
     },
 }
@@ -1476,7 +1486,9 @@ def catalog_families() -> dict[str, Any]:
                 "spec['mount_points'] with the axis each screw enters along; "
                 "its bay keeps those faces reachable. It reads its position, "
                 "load and temperature back over a daisy-chained TTL bus, so "
-                "it needs no PWM driver and grounds a joint encoder."
+                "it needs no PWM driver, grounds a joint encoder, and grounds "
+                "a load sensor through .load_sensor(actuator, name=...); a "
+                "PWM servo reports nothing back and refuses one."
             ),
         },
     }

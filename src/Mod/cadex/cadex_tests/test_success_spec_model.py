@@ -540,3 +540,31 @@ def test_a_task_with_no_spec_has_nothing_to_evaluate_under() -> None:
     with pytest.raises(dyn.DynamicsError) as raised:
         dyn.evaluation_task(task)
     assert raised.value.reason == "task_has_no_success_spec"
+
+
+# -- a body judged about a centre (ADR-587) ---------------------------------
+
+def test_a_motion_metric_needs_a_body() -> None:
+    error = refusal(spec([{"id": "round", "metric": "laps", "min": 2}]))
+    assert error.reason == "success_metric_needs_body"
+    assert "body=component" in error.correction
+
+
+def test_a_spec_with_a_body_carries_it_and_its_centre_and_one_without_does_not() -> None:
+    laps = [{"id": "round", "metric": "laps", "min": 2}]
+    _model, task = bundle(spec(laps, body={"body": "front", "local_mm": [0, 0, 5]},
+                               centre={"frame": "body", "point_mm": [0, 0, 1],
+                                       "axis": [0, 0, 2]}))
+    judged = task["success"]
+    assert judged["body"] == {"body": "front", "local_mm": [0.0, 0.0, 5.0]}
+    assert judged["centre"] == {"frame": "body", "point_mm": [0.0, 0.0, 1.0],
+                                "axis": [0.0, 0.0, 2.0]}
+    assert "body" not in bundle(spec())[1]["success"]
+
+
+def test_a_body_or_centre_frame_the_model_lacks_is_refused_by_name() -> None:
+    for body, centre in (({"body": "ghost"}, {"frame": None}),
+                         ({"body": "front"}, {"frame": "ghost"})):
+        error = refusal(spec([{"metric": "laps", "min": 2}], body=body, centre=centre))
+        assert error.reason == "evaluation_body_missing"
+        assert error.observed["body"] == "ghost"

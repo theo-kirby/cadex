@@ -334,6 +334,10 @@ def unflatten_parameters(np: Any, weights: Sequence[float], shapes):
 #:   sensor channels and carries no clock."
 #: * ``randomisation``, ``reset_variation`` and ``termination`` do not: they
 #:   move the distribution of states, not the vector describing one.
+#: * ``success`` does not (ADR-597). It is the bar an evaluation judges the
+#:   policy against; the trainer reads it only to refuse a ``--seed`` that is
+#:   an evaluation seed, and that check runs on the child's spec. A tightened
+#:   bar on the same task is the ordinary next step after a pass.
 #:
 #: ``observations``, ``actions``, ``model``, ``functions`` and ``schema`` are
 #: absent BECAUSE they do exactly that -- and every one of them keeps being
@@ -346,6 +350,7 @@ CURRICULUM_TASK_KEYS = frozenset({
     "randomisation",
     "reset_variation",
     "reward",
+    "success",
     "termination",
 })
 
@@ -687,6 +692,128 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
     ] + goal_channels(task)
 
 
+def tracker_reading(xp: Any, true_mm: Any, tracker: dict[str, Any],
+                    noise_mm: Any = None) -> Any:
+    """What a position tracker reports for a body at ``true_mm`` (ADR-588).
+
+    ``CadexDynamics.tracker_reading`` written out in ``xp`` (``jnp`` here,
+    ``numpy`` in the test that pins the two equal), because this file cannot
+    import the engine. The true position plus the drawn noise, rounded to the
+    declared resolution, then the in-range flag; outside the range on any
+    axis -- judged on the true position, as a panel judges a touch -- every
+    value is 0, never a clamped or a held one.
+    """
+
+    low = xp.asarray([float(pair[0]) for pair in tracker["range_mm"]])
+    high = xp.asarray([float(pair[1]) for pair in tracker["range_mm"]])
+    inside = xp.all(xp.logical_and(true_mm >= low, true_mm <= high))
+    step = float(tracker["resolution_mm"])
+    seen = true_mm if noise_mm is None else true_mm + noise_mm
+    quantised = xp.round(seen / step) * step
+    reading = xp.concatenate([quantised, xp.ones((1,), dtype=quantised.dtype)])
+    return xp.where(inside, reading, xp.zeros_like(reading))
+
+
+def tracker_velocity_noise(tracker: dict[str, Any]) -> tuple[float, float]:
+    """``(noise, resolution)`` of a differenced velocity, mm/s (ADR-590).
+
+    ``CadexDynamics.tracker_velocity_noise``: two readings ``1 / rate_hz``
+    apart, so ``sqrt(2) * noise_mm * rate_hz`` and ``resolution_mm * rate_hz``.
+    """
+
+    rate = float(tracker["rate_hz"])
+    return (math.sqrt(2.0) * float(tracker["noise_mm"]) * rate,
+            float(tracker["resolution_mm"]) * rate)
+
+
+def tracker_velocity_reading(xp: Any, true_mm_s: Any, tracker: dict[str, Any],
+                             in_range: Any, noise_mm_s: Any = None) -> Any:
+    """A tracker's differenced velocity (ADR-590), as the engine computes it.
+
+    ``CadexDynamics.tracker_velocity_reading`` in ``xp``: velocity plus the
+    drawn noise, rounded to the velocity resolution, and zeros whenever
+    ``in_range`` -- the paired position's flag -- is not 1.
+    """
+
+    _sigma, step = tracker_velocity_noise(tracker)
+    seen = true_mm_s if noise_mm_s is None else true_mm_s + noise_mm_s
+    quantised = xp.round(seen / step) * step
+    return xp.where(in_range == 1.0, quantised, xp.zeros_like(quantised))
+
+
+def load_reading(xp: Any, true_effort: Any, load: dict[str, Any],
+                 noise: Any = None) -> Any:
+    """What a load sensor reports for an actuator's effort (ADR-591).
+
+    ``CadexDynamics.load_reading`` in ``xp``: the effort plus the drawn
+    noise, held within the stall line ``+/- full_scale``, then rounded to
+    the declared resolution.
+    """
+
+    scale = float(load["full_scale"])
+    step = float(load["resolution"])
+    seen = true_effort if noise is None else true_effort + noise
+    return xp.round(xp.clip(seen, -scale, scale) / step) * step
+
+
+def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
+    """The least variance the normaliser may hold for each channel (ADR-589).
+
+    Zero for every channel no declared sensor reports. A load sensor's
+    channel (ADR-591) is floored like a tracked axis, at the larger of its
+    resolution and its noise, squared. A tracked
+    axis is known no finer than the larger of its resolution and its noise,
+    so its spread is floored at that, squared; the in-range flag is a 0/1
+    flag, floored at a quarter, the variance of a fair one. Without the
+    floor, an axis the body barely moves along -- a ball's height above the
+    panel it rolls on -- holds a variance near zero, and one rounding step
+    or one lost touch reaches the policy as thousands of standard
+    deviations. In channel order, which is ``channels(task)``'s order.
+    """
+
+    floor: list[float] = []
+    for record in task["observations"]:
+        tracker = record.get("tracker")
+        load = record.get("load")
+        for index, _channel in enumerate(record["channels"]):
+            if load:
+                known = max(float(load["resolution"]), float(load["noise"]))
+                floor.append(known * known)
+            elif not tracker:
+                floor.append(0.0)
+            elif record.get("in_range_of"):
+                known = max(tracker_velocity_noise(tracker))
+                floor.append(known * known)
+            elif index < int(record["dim"]):
+                known = max(float(tracker["resolution_mm"]), float(tracker["noise_mm"]))
+                floor.append(known * known)
+            else:
+                floor.append(0.25)
+    return floor + [0.0] * len(goal_channels(task))
+
+
+def sensor_noise_std(task: dict[str, Any]) -> list[float]:
+    """One standard deviation per noisy coordinate, in observation order.
+
+    A tracked velocity's is the differenced one (ADR-590); a load sensor's
+    is its declared noise (ADR-591).
+    """
+
+    def spread(record: dict[str, Any]) -> float:
+        if record.get("load"):
+            return float(record["load"]["noise"])
+        if record.get("in_range_of"):
+            return tracker_velocity_noise(record["tracker"])[0]
+        return float(record["tracker"]["noise_mm"])
+
+    return [
+        spread(record)
+        for record in task["observations"]
+        if record.get("tracker") or record.get("load")
+        for _axis in range(int(record["dim"]))
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Domain randomisation, and the extension this trainer states rather than
 # improvises.
@@ -812,6 +939,22 @@ def goal_tip_m(data: Any, body: int, local_m: Sequence[float]) -> list[float]:
     ]
 
 
+def goal_in_frame_m(data: Any, frame: int, point_m: Sequence[float]) -> list[float]:
+    """A world point in one body's frame, in metres (ADR-592).
+
+    ``CadexDynamics._goal_in_frame_m``, written out again: the transpose of
+    ``xmat[frame]`` applied to the point less ``xpos[frame]``.
+    """
+
+    origin = data.xpos[frame]
+    rotation = data.xmat[frame]
+    relative = [float(point_m[axis]) - float(origin[axis]) for axis in range(3)]
+    return [
+        sum(float(rotation[3 * other + axis]) * relative[other] for other in range(3))
+        for axis in range(3)
+    ]
+
+
 def place_goal_followers(data: Any, followers: Any) -> None:
     """Write each coupled follower where its law puts it, in list order.
 
@@ -868,7 +1011,7 @@ def draw_goals(mujoco: Any, model: Any, task: dict[str, Any], rng: Any) -> list[
         apart = float(entry["min_separation_m"])
         previous = [float(value) for value in entry["start_m"]]
         for segment in range(int(entry["segments"])):
-            point = None
+            point = kept = None
             for _ in range(int(entry["attempts"])):
                 mujoco.mj_resetDataKeyframe(model, data, key)
                 for joint in entry["joints"]:
@@ -893,6 +1036,8 @@ def draw_goals(mujoco: Any, model: Any, task: dict[str, Any], rng: Any) -> list[
                 if math.dist(candidate, previous) < apart:
                     continue
                 point = candidate
+                if entry.get("frame_id") is not None:
+                    kept = goal_in_frame_m(data, int(entry["frame_id"]), candidate)
                 break
             if point is None:
                 raise SystemExit(
@@ -901,7 +1046,10 @@ def draw_goals(mujoco: Any, model: Any, task: dict[str, Any], rng: Any) -> list[
                     "the engine refuses the same draw, so this bundle's goal "
                     "cannot be trained as declared"
                 )
-            segments.append([value * float(entry["scale"]) for value in point])
+            segments.append([
+                value * float(entry["scale"])
+                for value in (kept if entry.get("frame_id") is not None else point)
+            ])
             previous = point
         drawn.append({"label": str(entry["label"]), "segments": segments})
     return drawn
@@ -923,6 +1071,19 @@ def goal_segment(xp: Any, steps: Any, period: int, count: int) -> Any:
     if not period:
         return xp.zeros_like(steps)
     return xp.minimum(steps // period, count - 1)
+
+
+def phase_channels(xp: Any, start: Any, since: Any, radians_per_step: float) -> Any:
+    """A phase goal's two channels, ``sin`` then ``cos`` (ADR-598).
+
+    The bundle's ``goal_algorithm`` and ``CadexDynamics.goal_values``: the
+    segment's drawn start phase advanced ``radians_per_step`` for each of
+    the ``since`` control steps taken in that segment. ``start`` carries the
+    pooled value's trailing axis of one; the result has two there.
+    """
+
+    angle = start + float(radians_per_step) * xp.expand_dims(since, -1)
+    return xp.concatenate([xp.sin(angle), xp.cos(angle)], axis=-1)
 
 
 def goal_pool(mujoco: Any, xml: bytes, task: dict[str, Any], *,
@@ -1357,25 +1518,67 @@ def train(
         )
     ]
     goal_periods = [int(entry["resample_steps"]) for entry in goal_entries]
+    # ADR-598: a phase goal's turn per step; None for a goal that is held.
+    goal_turns = [
+        float(entry["radians_per_step"]) if entry["kind"] == "phase" else None
+        for entry in goal_entries
+    ]
     goal_pool_size = int(goal_tables[0].shape[0]) if goaled else 0
 
     def goals_at(picks, steps):
         """Each environment's goal channels at its own episode step.
 
         ``picks`` is which pooled episode an environment holds and ``steps``
-        how many control steps of it have been taken.
+        how many control steps of it have been taken. A phase goal's pooled
+        value is its segment's start, turned to the step here.
         """
 
-        return jnp.concatenate(
-            [
-                pooled[picks, goal_segment(jnp, steps, period, pooled.shape[1])]
-                for pooled, period in zip(goal_tables, goal_periods)
-            ],
-            axis=-1,
-        )
+        told = []
+        for pooled, period, turn in zip(goal_tables, goal_periods, goal_turns):
+            segment = goal_segment(jnp, steps, period, pooled.shape[1])
+            held = pooled[picks, segment]
+            if turn is not None:
+                held = phase_channels(jnp, held, steps - segment * period, turn)
+            told.append(held)
+        return jnp.concatenate(told, axis=-1)
 
-    def observe(data):
-        return jnp.take(data.sensordata, gather) * obs_scale
+    # ADR-588: a tracked position reads as its tracker reports it, and
+    # (ADR-591) a load as its load sensor does. `sensing` is a PYTHON bool,
+    # so a task with neither emits the graph -- and draws the key stream --
+    # it always did.
+    noise_std = jnp.asarray(sensor_noise_std(task), dtype=jnp.float32)
+    sensing = int(noise_std.shape[0]) > 0
+    variance_floor = jnp.asarray(sensor_variance_floor(task), dtype=jnp.float32)
+
+    def observe(data, noise=None):
+        raw = jnp.take(data.sensordata, gather) * obs_scale
+        if not sensing:
+            return raw
+        parts, cursor, drawn, flags = [], 0, 0, {}
+        for record in task["observations"]:
+            dim = int(record["dim"])
+            segment = raw[cursor:cursor + dim]
+            cursor += dim
+            if record.get("in_range_of"):
+                # ADR-590: gated by the paired position's flag, read above.
+                parts.append(tracker_velocity_reading(
+                    jnp, segment, record["tracker"], flags[record["in_range_of"]],
+                    None if noise is None else noise[drawn:drawn + dim]))
+                drawn += dim
+            elif record.get("tracker"):
+                parts.append(tracker_reading(
+                    jnp, segment, record["tracker"],
+                    None if noise is None else noise[drawn:drawn + dim]))
+                flags[record["name"]] = parts[-1][dim]
+                drawn += dim
+            elif record.get("load"):
+                parts.append(load_reading(
+                    jnp, segment, record["load"],
+                    None if noise is None else noise[drawn:drawn + dim]))
+                drawn += dim
+            else:
+                parts.append(segment)
+        return jnp.concatenate(parts)
 
     def named(vector):
         return {name: vector[index] for index, name in enumerate(names)}
@@ -1880,7 +2083,16 @@ def train(
             # task has a goal, and is absent otherwise.
             picks = filter_carry.pop(0) if goaled else None
             key, act_key = jax.random.split(key)
-            vector = jax.vmap(observe)(data)
+            if sensing:
+                # What the policy acts on carries its sensors' noise; the
+                # reward and terminations, scored in `step_env`, do not.
+                key, sense_key = jax.random.split(key)
+                sensed = jax.random.normal(
+                    sense_key, (envs, int(noise_std.shape[0])),
+                    dtype=jnp.float32) * noise_std
+                vector = jax.vmap(observe)(data, sensed)
+            else:
+                vector = jax.vmap(observe)(data)
             if goaled:
                 # `steps` is the count of steps ALREADY taken, so this is
                 # the goal in force for the step about to be taken.
@@ -2054,7 +2266,11 @@ def train(
         vectors, sampled, logp, values, rewards, dones, landed, terminals = traces
 
         # The normaliser's statistics follow what the policy actually saw.
-        flat = landed.reshape((-1, len(names)))
+        # With a noisy sensor that is `vectors`, which carry its noise; `landed`
+        # does not, and a near-constant axis measured without the noise it
+        # is read with scales that noise up by orders of magnitude (ADR-589).
+        # Without one the two are the same readings, and `landed` is kept.
+        flat = (vectors if sensing else landed).reshape((-1, len(names)))
         count = jnp.float32(flat.shape[0])
         batch_mean = flat.mean(axis=0)
         batch_var = flat.var(axis=0)
@@ -2064,6 +2280,8 @@ def train(
         new_variance = (
             variance * seen + batch_var * count + delta**2 * seen * count / total
         ) / total
+        if sensing:
+            new_variance = jnp.maximum(new_variance, variance_floor)
 
         # One extra critic pass, over the states the steps actually landed
         # in. It replaces the shifted `values` and the trailing bootstrap
