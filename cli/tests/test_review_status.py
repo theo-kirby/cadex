@@ -229,7 +229,7 @@ def test_a_project_with_no_runs_has_a_stage_and_no_training(tmp_path):
     _manifest(root, REVISION_B)
     stage = _stage(root)
     assert stage == {"state": "idle", "reason": "", "since": None, "run": None, "runs": 0, "training": None,
-                     "checkpoints": None}
+                     "checkpoints": None, "panel": {"available": False, "reason": "no status.html in the project"}}
 
 
 # -- the page --------------------------------------------------------------------
@@ -243,7 +243,8 @@ STATUS = """(function () {
           chip_in_header: !!q('#status-stage').closest('.area-header'),
           run: q('#status-run').hidden ? null : q('#status-run').textContent,
           best: q('#status-best').textContent, eta: q('#status-eta').textContent,
-          reward: q('#status-reward polyline').getAttribute('points') || '',
+          reward: (q('#status-reward .chart-line') || {getAttribute: function () { return ''; }}).getAttribute('points') || '',
+          reward_ticks: q('#status-reward .chart-label') ? q('#status-reward .chart-label').children.length : 0,
           warning: q('#status-warning').hidden ? null : q('#status-warning').textContent,
           warning_color: getComputedStyle(q('#status-warning')).color,
           warn: getComputedStyle(document.documentElement).getPropertyValue('--warn').trim(),
@@ -371,6 +372,8 @@ def test_status_follows_progress_json_on_the_pages_own_poll(tmp_path, browser) -
         assert first["chip"] == "training" and first["line"].startswith("iteration 40 / 240")
         assert first["run"] == "run " + RUN  # four runs: it says which it reads
         assert first["reward"] and first["warning"] is None
+        # A chart, not a sparkline: its axes carry tick labels (ADR-606).
+        assert first["reward_ticks"] >= 4
         # The trainer writes on; the page's 2 s poll, not a reload, carries it.
         _biped_progress(root, 159)
         page.wait_for("document.getElementById('status-line').textContent.indexOf('iteration 160 / 240') === 0",
@@ -597,7 +600,7 @@ def test_the_evaluate_call_names_the_stage_once_its_directory_exists(tmp_path, b
 
 
 def test_the_idle_threshold_here_is_the_pages():
-    page = (Path(__file__).resolve().parents[1] / "cadex_cli" / "review_static" / "review.js").read_text()
+    page = (Path(__file__).resolve().parents[1] / "cadex_cli" / "review_static" / "status.js").read_text()
     assert f"var ACTIVITY_IDLE_S = {ACTIVITY_IDLE_S}," in page
 
 

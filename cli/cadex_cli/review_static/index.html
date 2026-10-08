@@ -134,30 +134,55 @@
   </section>
 
   <!-- What the project is doing, and how training is going (ADR-542), as an editor of its own
-       (ADR-572): read from /api/project's stage on the page's poll. -->
+       (ADR-572), drawn by status.js (ADR-606): read from /api/project's stage on the page's poll. -->
   <section class="editor" id="editor-status" data-editor="status" data-title="Status" data-short="Status">
     <div class="editor-tools">
       <span id="status-stage" class="chip">idle</span>
+      <!-- Training is Cadex's own view; Project is the agent's status.html, when it wrote one (ADR-607). -->
+      <span class="segmented" id="status-tabs" role="group" aria-label="Status view" hidden>
+        <button type="button" data-tab="training" aria-pressed="true">Training</button>
+        <button type="button" data-tab="project" aria-pressed="false">Project</button>
+      </span>
     </div>
-    <div class="editor-body" id="status" data-stage="idle" aria-label="Project stage">
-      <p id="status-line"></p>
-      <div id="status-run" hidden></div>
-      <!-- What the agent last did through cadex mcp (ADR-550): review/activity.jsonl, read in /api/project's activity. -->
-      <div id="status-activity" data-state="none">
-        <p id="status-activity-line">no agent activity logged</p>
-        <details id="status-activity-log" hidden><summary>recent calls</summary><ol id="status-activity-list"></ol></details>
+    <div class="editor-body" id="status" data-stage="idle" data-tab="training" aria-label="Project stage">
+      <div class="status-head">
+        <p id="status-line"></p>
+        <div id="status-progress" class="progress" hidden><span></span></div>
+        <div id="status-run" hidden></div>
+        <!-- What the agent last did through cadex mcp (ADR-550): review/activity.jsonl, read in /api/project's activity. -->
+        <div id="status-activity" data-state="none">
+          <p id="status-activity-line">no agent activity logged</p>
+          <details id="status-activity-log" hidden><summary>recent calls</summary><ol id="status-activity-list"></ol></details>
+        </div>
+        <p id="status-warning" hidden></p>
       </div>
-      <dl id="status-stats" hidden>
-        <div><dt>Reward/step</dt><dd id="status-reward-now">—</dd></div>
-        <div><dt>Best</dt><dd id="status-best">—</dd></div>
-        <div><dt>Loss</dt><dd id="status-loss-now">—</dd></div>
-        <div><dt>ETA</dt><dd id="status-eta">—</dd></div>
-      </dl>
-      <div class="sparks" id="status-sparks" hidden>
-        <figure><figcaption>reward</figcaption><svg id="status-reward" viewBox="0 0 100 24" preserveAspectRatio="none" aria-label="Reward per step by iteration"><polyline/></svg></figure>
-        <figure><figcaption>loss</figcaption><svg id="status-loss" viewBox="0 0 100 24" preserveAspectRatio="none" aria-label="Loss by iteration"><polyline/></svg></figure>
+      <div id="status-training">
+        <dl id="status-stats" hidden>
+          <div><dt>Reward/step</dt><dd id="status-reward-now">—</dd></div>
+          <div><dt>Best</dt><dd id="status-best">—</dd></div>
+          <div><dt>Loss</dt><dd id="status-loss-now">—</dd></div>
+          <div><dt>Episode</dt><dd id="status-episode-now">—</dd></div>
+          <div><dt>Action std</dt><dd id="status-std-now">—</dd></div>
+          <div id="status-eta-tile"><dt>ETA</dt><dd id="status-eta">—</dd></div>
+        </dl>
+        <!-- One chart per measure, each on its own axis (ADR-606); drawn at the area's width. -->
+        <div class="charts" id="status-charts" hidden>
+          <figure class="chart"><figcaption>Reward per step</figcaption><svg id="status-reward" role="img" aria-label="Reward per step by iteration"></svg></figure>
+          <figure class="chart"><figcaption>Loss</figcaption><svg id="status-loss" role="img" aria-label="Loss by iteration"></svg></figure>
+          <figure class="chart"><figcaption>Episode length (steps)</figcaption><svg id="status-episode" role="img" aria-label="Episode length by iteration"></svg></figure>
+          <figure class="chart"><figcaption>Action std</figcaption><svg id="status-std" role="img" aria-label="Action standard deviation by iteration"></svg></figure>
+        </div>
+        <section id="status-eval" class="status-section" hidden>
+          <h2>Latest evaluation <span id="status-eval-verdict" class="chip"></span></h2>
+          <p id="status-eval-line" class="muted"></p>
+          <table id="status-eval-list" class="status-table"><thead><tr><th>Predicate</th><th>Bound</th><th>Seeds passed</th><th class="num">Median</th></tr></thead><tbody></tbody></table>
+        </section>
+        <section id="status-runs" class="status-section" hidden>
+          <h2>Runs <span id="status-runs-count" class="muted small"></span></h2>
+          <table class="status-table"><thead><tr><th>Run</th><th class="num c-iter">Iterations</th><th class="num">Best</th><th class="num">Δ best</th><th>Outcome</th><th>Evaluation</th></tr></thead><tbody id="status-runs-body"></tbody></table>
+        </section>
       </div>
-      <p id="status-warning" hidden></p>
+      <div id="status-panel" hidden></div>
     </div>
   </section>
 
@@ -173,6 +198,7 @@
   </section>
 
 </div>
+<script src="status.js"></script>
 <script type="module" src="viewer.js"></script>
 </body>
 </html>
