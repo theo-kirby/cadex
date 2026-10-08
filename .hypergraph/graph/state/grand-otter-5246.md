@@ -32,7 +32,9 @@ Charter criterion for run orun5: **C1. Closing report.** The human owns the chec
 - The ADR-596 rules, ADRs 587–597, eleven remaining defects, and the ledger `LESSONS.md` W1–W12. Since ADR-597 (W7 replaced, success spec revisable by a declared curriculum step) the ledger reads ten replaced, one kept, one open (W12); REPORT §9 and §10 item 1 updated to match [rec: still-arrow-7544] [rec: chilly-hill-6548].
 - The two defects carried from orun4 (checkpoint stall, "not found" before the first script) are reported as fixed by orun4's ADR-576 and ADR-575 and not re-measured this run, rather than called open or fixed [rec: still-arrow-7544].
 
-The charter's "reconcile, then claim done" step: the done claim was made before the reconcile because work iterations may not reconcile; this pass folds `dusty-canyon-3027`, `still-arrow-7544` and `chilly-hill-6548`, so the claim now stands on a reconciled state. Maintainer judgement: status `working`, not `done` — the human owns the checkbox, and roles do not tick it [rec: still-arrow-7544] [rec: chilly-hill-6548].
+- **Circle runs after the report** (REPORT §6, its table, the P1 status row, defects 1 and 11, ledger W5/W7): circle-6 (σ narrowed, rocks, laps 0 on 8/8), circle-7 (first use of ADR-597, warm from centring, 3–4 laps at 12–17 mm) and circle-9 (unsaturated doubled off-radius cost, 20.6–24.0 mm), all 0/8 on radius or laps. Defect 1 no longer says ADR-597 is unused. New **defect 12**: no channel carries time, so a phase-tracking reward cannot be written; the `phase` goal kind is designed there, not built. The report now lists twelve defects [rec: flat-hawk-9763] [rec: bold-wind-5086] [rec: damp-orchard-1989].
+
+The charter's "reconcile, then claim done" step: work iterations may not reconcile, so each done claim precedes its fold. This pass folds the three-record tail REPORT's done-claim paragraph names (`flat-hawk-9763`, `bold-wind-5086`, `damp-orchard-1989`), after earlier passes folded `dusty-canyon-3027`, `still-arrow-7544` and `chilly-hill-6548`; the claim again stands on a reconciled state. Maintainer judgement: status `working`, not `done` — the human owns the checkbox, and roles do not tick it [rec: still-arrow-7544] [rec: damp-orchard-1989].
 
 ## Negative knowledge
 
@@ -43,3 +45,6 @@ None yet.
 - honest-bay-2056 — operator-declared orun5 charter gap (gap-c1-closing-report-docs-probes)
 - still-arrow-7544 — REPORT.md written with a figure per capability; done claimed for critic review, owner boxes unticked
 - chilly-hill-6548 — REPORT §9, §10 item 1 and ledger W7 updated for ADR-597; only W12 open
+- flat-hawk-9763 — REPORT §6, status row, defect 11 and ledger W5 updated with circle-6
+- bold-wind-5086 — REPORT §6, defects 1, 11, new 12 (no time channel) and done-claim tail; ledger W5/W7 with circle-7
+- damp-orchard-1989 — REPORT §6 circle-9 paragraph and table, defects 1 and 11, three-record done-claim tail; ledger W5/W7 with circle-9
