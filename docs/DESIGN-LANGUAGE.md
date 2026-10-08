@@ -1,6 +1,6 @@
 # The Cadex design language — a base, and named styles
 
-Verified against source: 2026-10-06. Provenance: `[Cadex-new]`.
+Verified against source: 2026-10-08. Provenance: `[Cadex-new]`.
 
 This is how a machine that Cadex designs should be designed, and it is in
 two layers (ADR-560):
@@ -333,10 +333,14 @@ v2 sees exactly that picture.
 - **The dark prototype floor** (owner's decision, ot10 A8, ADR-444): every
   presented image stands on the review viewport's mat. That is the scene
   background `#141414`, a `#1c1c1c` / `#232323` checker and a `#3a3a3a`
-  major line on every grid pitch, fading into the background with distance,
-  so there is no horizon line. The colours are one table,
-  `CadexStudio.PALETTE` in the engine (ADR-445). The viewport's copies are
-  held equal to it by a test.
+  line, fading into the background with distance, so there is no horizon
+  line. The colours are one table, `CadexStudio.PALETTE` in the engine
+  (ADR-445). The viewport's copies are held equal to it by a test.
+- **The floor is true size** (owner's decision, ADR-604): its squares are
+  a metre on a side in every image, film and video, whatever the framing,
+  as in the viewport, so a design's size reads against the floor. The
+  design's own floor (world geometry) is never drawn: the mat stands in for
+  it at its top face.
 - **A soft contact shadow** under the robot, and **antialiased edges**.
 - **A concept sheet** presents a design: the hero, orthographic line
   views, the palette swatches, the name and the key numbers (mass,

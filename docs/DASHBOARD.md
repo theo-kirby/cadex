@@ -1,6 +1,6 @@
 # DASHBOARD.md — The dashboard, Cadex's only UI
 
-Verified against source: 2026-10-06. [Cadex-new]
+Verified against source: 2026-10-08. [Cadex-new]
 
 This is the design specification for the dashboard: the pages `cadex app`
 and `cadex review` serve (`cli/cadex_cli/review_server.py` and
@@ -531,13 +531,29 @@ carries a scene colour of its own.
 
 **The floor.** The CPU renderer (`CadexStudio._floor`) intersects each
 orthographic ray with the floor plane: a checker one pitch square, the
-major line on every multiple of the pitch anchored at the world origin, the
-pitch chosen by `floor.js`'s own `chooseGridPitch` ladder for the framed
-span, and each line's pixel coverage computed from the floor footprint of
-the pixel, which antialiases it. The mat fades into the background between
-0.75× and 1.9× the framed extent from the point under the image centre. A
-level view (`front`, `right`) sees no floor and draws the background. No
-minor lines and no baked labels: at a hero's framing they are noise.
+line on every multiple of the pitch anchored at the world origin, and each
+line's pixel coverage computed from the floor footprint of the pixel, which
+antialiases it. The pitch is **1 m at every framing** (`GRID_PITCH_MM`,
+ADR-604), the viewport's `GRID_PITCH`, and the line is the same 5/256 of
+it (`LINE_FRACTION`): the hero, the review views, `look`, the sheets, the
+print-bed hero, the evaluation's overview and detail filmstrips, rollout
+and shove videos all stand on true-size squares, so a 300 mm robot covers
+a third of one and its size reads. (Until ADR-604 the pitch followed the
+framed span down a 10 mm–10 m ladder, so a square was 50 mm in one image
+and 500 mm in the next.) The mat fades into the background between 0.75×
+and 1.9× the framed extent from the point under the image centre. A level
+view (`front`, `right`) sees no floor and draws the background. No minor
+lines and no baked labels: at a hero's framing they are noise.
+
+**Where the mat lies, and what is not drawn.** The design's own floor —
+the world geometry its fit names — is never drawn in any engine image or
+video; the mat is laid at its top face (`world_top` for stills; the
+collision plane, else the world's top, for films and studio videos, §15),
+and at the design's lowest point only when it declares none. Every path
+leaves it out: `look` and `render` (`exclude`), the hero and the sheet
+(`_scene`), the print bed (printed parts only), films and shove videos
+(`retained_solids`' world set) and studio videos (the render summary's
+`environment`).
 
 **The shadow** is the measured contact shadow (§15, ADR-432), deepened for a
 dark floor — it may take a tile to 20 % of its brightness (was 45 %). On
@@ -548,11 +564,14 @@ probe is re-scored (ADR-444). The viewport and its capture (§10) are the
 source, not a consumer, and are unchanged.
 
 **Held by** `cli/tests/test_scene_palette.py` (the renderer's palette is the
-viewport's, parsed independently, and the charter's values; the ladder and
-line width are `floor.js`'s; no image module carries a scene colour; the
-hero stands on the mat and fades; a changed viewport palette changes the
-drawn image; the studio video's identity covers the palette source), with
-the shadow held by `test_contact_shadow_darkens_the_floor_under_the_design_only`.
+viewport's, parsed independently, and the charter's values; the 1 m pitch
+and line width are `floor.js`'s; the mat is a metre a square at a 400 mm
+and a 4 m framing alike; no image module carries a scene colour; the hero
+stands on the mat and fades; a changed viewport palette changes the drawn
+image; the studio video's identity covers the palette source), with the
+shadow held by `test_contact_shadow_darkens_the_floor_under_the_design_only`,
+the mat at the world's top by
+`test_the_mat_lies_at_the_top_of_the_world_geometry_not_under_the_design`.
 Before/after: `docs/probes/ot10/a8-*.png`.
 
 ## 18. Read-only: the agent changes the project, the page follows (ADR-537)

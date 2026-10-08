@@ -55,21 +55,14 @@ PALETTE = {
     'ink_2': (154, 154, 154),
     'rule': (58, 58, 58),
 }
-#: The viewport's grid pitches (``floor.js`` ``PITCH_LADDER``), in millimetres.
-PITCH_LADDER_MM = (10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000)
-#: A major line is 5/256 of its pitch wide, as ``floor.js`` paints it
-#: (5 px of a 512 px texture spanning two pitches).
+#: The mat's grid pitch, in millimetres: one square a metre on a side at
+#: every framing, in every image and video the engine draws (ADR-604). The
+#: viewport's ``floor.js`` paints its mat at the same ``GRID_PITCH`` (1 m),
+#: so a design reads at true size against the floor wherever it is shown.
+GRID_PITCH_MM = 1000.0
+#: A major line is 5/256 of its pitch wide, as ``floor.js`` paints it (its
+#: ``LINE_FRACTION``).
 LINE_FRACTION = 5 / 256
-
-
-def grid_pitch_mm(span_mm, want=5):
-    """The mat's pitch for a shot spanning ``span_mm``: ``floor.js`` ``chooseGridPitch``."""
-    target = max(1e-4, span_mm) / max(1, want)
-    best = PITCH_LADDER_MM[0]
-    for pitch in PITCH_LADDER_MM:
-        if pitch <= target:
-            best = pitch
-    return best
 
 
 def hex_colour(rgb):
@@ -482,8 +475,9 @@ def _floor(basis, bounds, size, floor_z):
     The mat is the viewport's (:data:`PALETTE`): a ``tile_a``/``tile_b``
     checker one grid pitch square, major lines on every multiple of the pitch
     anchored at the world origin (so a walk slides over a fixed grid), fading
-    into the scene background with distance. The pitch is the viewport's own
-    choice for the framed span. Every orthographic ray meets the floor plane
+    into the scene background with distance. The pitch is
+    :data:`GRID_PITCH_MM` at every framing: a metre is a metre in every
+    image, as in the viewport (ADR-604). Every orthographic ray meets the floor plane
     at a point linear in the pixel, so each line's coverage of a pixel is
     exact to first order: that is what antialiases the grid. ``dark`` is the
     contact shadow's multiplier at the pixel. A view that cannot see the
@@ -499,7 +493,7 @@ def _floor(basis, bounds, size, floor_z):
     extent = max(hi[0] - lo[0], hi[1] - lo[1])
     step = extent / size
     cx0, cy0 = (lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2
-    pitch = grid_pitch_mm(extent)
+    pitch = GRID_PITCH_MM
     half = pitch * LINE_FRACTION / 2
 
     def at(sx, sy):
@@ -607,7 +601,7 @@ def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
     return image, {'projection_bounds_mm': [list(lo), list(hi)], 'pixel_visits': visits,
                    'covered_pixels': round(covered * inv), 'samples_per_pixel': samples * samples,
                    'contact_shadow': lookup is not None,
-                   'floor': ({'kind': 'prototype mat', 'pitch_mm': grid_pitch_mm(extent),
+                   'floor': ({'kind': 'prototype mat', 'pitch_mm': GRID_PITCH_MM,
                               'z_mm': mat_z} if tz > 0.05 else {'kind': 'scene background'})}
 
 
@@ -779,6 +773,19 @@ def _studio_parts(triangles, summary, drawn_names, looks):
     return parts
 
 
+def world_top(triangles, summary, environment):
+    """The top of the world geometry ``environment`` names, or ``None`` without any.
+
+    Where the mat is laid (ADR-604): the design's own floor is never drawn,
+    and the mat stands in for it at its top face.
+    """
+    tops = [p[2] for name in environment if name in summary['objects']
+            for _, tri in triangles[summary['objects'][name]['first']:
+                                    summary['objects'][name]['first'] + summary['objects'][name]['triangles']]
+            for p in tri]
+    return max(tops) if tops else None
+
+
 def look(triangles, summary, views, *, focus=(), exclude=(), purchased=None, appearance=None,
          palette=None, size=LOOK_SIZE):
     """The agent's own views of a snapshot: PNG bytes per requested view.
@@ -788,7 +795,8 @@ def look(triangles, summary, views, *, focus=(), exclude=(), purchased=None, app
     ``focus`` names the objects the view is framed on, with everything else
     still drawn; ``purchased``, ``appearance`` and ``palette`` choose each
     object's material (see :func:`materials`). Every view is a studio image
-    (:func:`studio`); ``hero`` is the presentation view.
+    (:func:`studio`); ``hero`` is the presentation view. The mat lies at
+    the top of the excluded world geometry when there is any.
     """
     objects = summary['objects']
     unknown = sorted(set(focus) - set(objects))
@@ -802,7 +810,7 @@ def look(triangles, summary, views, *, focus=(), exclude=(), purchased=None, app
              'nothing to draw once environment geometry is left out')
     prepared = _prepare(_studio_parts(triangles, summary, names, looks))
     framed = prepared if not focus else _prepare(_studio_parts(triangles, summary, framed_names, looks))
-    shadow = _contact_shadow(prepared)
+    shadow = _contact_shadow(prepared, floor=world_top(triangles, summary, exclude))
     shots = []
     for view in views:
         basis = LOOK_VIEWS[view]
@@ -2226,7 +2234,9 @@ def _scene(triangles, source, fit, inventory):
     summary['appearance'] = _appearance_rows(names, looks, appearance, purchased)
     summary['palette'] = _palette_hex(palette)
     prepared = _prepare(_studio_parts(triangles, summary, names, looks))
-    return summary, names, environment, purchased, appearance, palette, prepared, _contact_shadow(prepared)
+    # The world geometry is never drawn; the mat is laid at its top (ADR-604).
+    shadow = _contact_shadow(prepared, floor=world_top(triangles, summary, environment))
+    return summary, names, environment, purchased, appearance, palette, prepared, shadow
 
 
 def _hero(prepared, shadow):

@@ -42,11 +42,12 @@ def _mesh(tmp_path, name, size, z0=0.0):
     return {'artifact_kind': 'tessellation', 'artifact_path': str(binary), 'sidecar_path': str(side)}
 
 
-def _reply(tmp_path):
-    """A floor, a 20 mm printed body on it and a purchased pin beside it."""
+def _reply(tmp_path, lift=0.0):
+    """A floor, a 20 mm printed body on it and a purchased pin beside it,
+    both ``lift`` mm above the floor's top face."""
     revision = 'a' * 64
     display = {}
-    for name, size, z0 in (('floor', (1000, 1000, 2), -2), ('body', (20, 20, 20), 0), ('pin', (5, 5, 30), 0)):
+    for name, size, z0 in (('floor', (1000, 1000, 2), -2), ('body', (20, 20, 20), lift), ('pin', (5, 5, 30), lift)):
         display[name] = {'artifact_kind': 'brep', 'placement': None, 'tessellation': _mesh(tmp_path, name, size, z0)}
         display['c_' + name] = {'artifact_kind': None, 'placement': IDENTITY, 'tessellation': None,
                                 'source_output': name}
@@ -70,11 +71,27 @@ def test_a_render_draws_the_review_set_in_process(tmp_path):
     assert files['hero.png'].startswith(PNG)
     assert summary['hero']['path'] == 'review/render/hero.png' and summary['environment'] == ['c_floor']
     assert summary['appearance']['c_pin'] == {'role': 'accent', 'color': '#FF0000', 'source': 'declared'}
+    # The floor is never drawn: the mat stands in for it at its top face, a
+    # metre a square (ADR-604).
+    assert summary['hero']['floor'] == {'kind': 'prototype mat', 'pitch_mm': 1000.0, 'z_mm': 0.0}
     # No accepted attempt to read a mass from: the sheet says so rather than guessing.
     assert summary['sheet']['numbers']['mass_kg'] is None
     written = CadexStudio.write_files(tmp_path / 'out', files)
     assert json.loads((tmp_path / 'out' / 'summary.json').read_text())['revision'] == summary['revision']
     assert len(written) == 7
+
+
+def test_the_mat_lies_at_the_top_of_the_world_geometry_not_under_the_design(tmp_path):
+    """A design whose initial pose stands 5 mm above its floor is drawn 5 mm
+    above the mat, in the hero and in a look, and the floor itself is not drawn."""
+    triangles, source = CadexStudio.snapshot(_reply(tmp_path, lift=5.0), CadexStudio.world(FIT))
+    _image, facts = CadexStudio.hero(triangles, source, FIT, INVENTORY)
+    assert facts['environment'] == ['c_floor']
+    _facts, shots = CadexStudio.look_report(_reply(tmp_path, lift=5.0), FIT, INVENTORY, ['hero', 'iso'])
+    assert {view: details['floor']['z_mm'] for view, _png, details in shots} == {'hero': 0.0, 'iso': 0.0}
+    # The 1 m floor slab would frame a metre; the shot frames the 30 mm design.
+    width = shots[0][2]['projection_bounds_mm'][1][0] - shots[0][2]['projection_bounds_mm'][0][0]
+    assert width < 100
 
 
 def test_the_look_names_what_it_left_out(tmp_path):

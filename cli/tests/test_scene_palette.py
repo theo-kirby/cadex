@@ -51,15 +51,42 @@ def test_the_renderer_palette_is_the_viewports_palette():
     assert tokens['bg'] == viewport['bg']
 
 
+def _fraction(text):
+    numerator, _, denominator = text.partition('/')
+    return float(numerator) / float(denominator or 1)
+
+
 def test_the_grid_is_the_viewports_grid():
+    """Both floors are true size (ADR-604): one metre a square, the same line width."""
     floor = (STATIC / 'floor.js').read_text()
-    ladder = re.search(r'PITCH_LADDER = \[([^\]]*)\]', floor).group(1)
-    assert [round(float(v) * 1000) for v in ladder.split(',')] == list(scene.PITCH_LADDER_MM)
-    # A major line is drawn (5 * S) / 512 wide on a texture of S spanning two pitches.
-    assert 'drawLines(M, (5 * S) / 512, line)' in floor and scene.LINE_FRACTION == 5 / 256
-    # chooseGridPitch: the coarsest step that still puts `want` divisions across.
-    assert scene.grid_pitch_mm(400) == 50 and scene.grid_pitch_mm(4000) == 500
-    assert scene.grid_pitch_mm(1) == 10
+    pitch = re.search(r'export const GRID_PITCH = ([\d.]+);', floor).group(1)
+    assert float(pitch) * 1000 == scene.GRID_PITCH_MM == 1000
+    line = re.search(r'export const LINE_FRACTION = ([\d.\s/]+);', floor).group(1)
+    assert _fraction(line) == scene.LINE_FRACTION == 5 / 256
+    # No framing-dependent ladder is left on either side.
+    assert 'PITCH_LADDER' not in floor and not hasattr(scene, 'grid_pitch_mm')
+
+
+def test_the_engine_mat_is_a_metre_a_square_at_every_framing():
+    """A 20 mm cube framed at 400 mm, and the same cube in a 4 m frame, both
+    stand on 1000 mm squares; only how much of a square shows changes."""
+    prepared = _scene_triangles()
+    for span in (400.0, 4000.0):
+        bounds = ([-span / 2, -span / 2], [span / 2, span / 2])
+        _pixels, details = render.studio(prepared, render.HERO, bounds=bounds, size=48,
+                                         shadow=render._contact_shadow(prepared))
+        assert details['floor'] == {'kind': 'prototype mat', 'pitch_mm': 1000.0, 'z_mm': 0.0}
+    # Lines every metre and only there: a ray landing on x = 1000 is on a
+    # line, one landing on x = 500 (where a 4 m frame's old ladder drew one) is not.
+    top = render.BASES['top']
+    for span in (400.0, 4000.0):
+        backdrop = render._floor(top, ([-span / 2 + 1000, -span / 2 + 250],
+                                       [span / 2 + 1000, span / 2 + 250]), 64, 0.0)
+        assert backdrop(32, 32, 1.0) != scene.PALETTE['bg']
+        line = backdrop(31, 32, 1.0), backdrop(32, 32, 1.0)
+        assert any(max(c) > max(scene.PALETTE['tile_b']) for c in line), span
+    backdrop = render._floor(top, ([500 - 200, 250 - 200], [500 + 200, 250 + 200]), 64, 0.0)
+    assert all(max(backdrop(x, 32, 1.0)) <= max(scene.PALETTE['tile_b']) for x in range(28, 36))
 
 
 def test_no_cli_module_carries_a_colour_of_its_own_for_the_scene():
@@ -94,8 +121,7 @@ def test_the_hero_stands_on_the_mat_and_fades_into_the_scene():
     prepared = _scene_triangles()
     size = 160
     pixels, details = _draw(prepared, size=size)
-    assert details['floor'] == {'kind': 'prototype mat', 'pitch_mm': scene.grid_pitch_mm(
-        max(b - a for a, b in zip(*details['projection_bounds_mm']))), 'z_mm': 0.0}
+    assert details['floor'] == {'kind': 'prototype mat', 'pitch_mm': 1000.0, 'z_mm': 0.0}
     mat = {scene.PALETTE['tile_a'], scene.PALETTE['tile_b']}
     colours = {_at(pixels, size, x, y) for y in range(size) for x in range(size)}
     # The checker's two tiles both appear unshaded, and the grid line is drawn
