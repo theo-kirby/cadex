@@ -15,7 +15,7 @@ never written. The owner ticks the criteria; this report ticks none of them.
 | S2 a grounded load sensor | evidence recorded | ADR-591; `test_dynamics_load_sensor.py`; §3 | `tiny-lake-4065` |
 | L1 a closed linkage, exported and driven | evidence recorded; the fit sweep **refuses** a loop, naming it, rather than solving it (the charter allows either) | ADR-593, ADR-594, ADR-595; `test_dynamics_linkages.py`; a live four-pin four-bar smoked and driven; §4 | `civic-sun-5811`, `spring-river-3041`, `young-aspen-5297` |
 | R1 a goal held in a body's frame | evidence recorded | ADR-592; `test_dynamics_goal_frame.py`; first real run in P2; §5 | `long-cabin-6279` |
-| P1 the ball-plate, as built | centring **passes 8/8**; circle on the charter's *otherwise* branch (predicate shown failing a rocking trace and passing a circling one, and failing a trained rocking policy, circle-6, on 8 of 8 seeds; circle-7, warm from centring by ADR-597, goes round 3–4 laps on 8 of 8 but at 12–17 mm; not trained to a pass) | §6 | `smooth-stream-7287`, `dusty-canyon-3027` |
+| P1 the ball-plate, as built | centring **passes 8/8**; circle on the charter's *otherwise* branch (predicate shown failing a rocking trace and passing a circling one, and failing a trained rocking policy, circle-6, on 8 of 8 seeds; circle-7, warm from centring by ADR-597, goes round 3–4 laps on 8 of 8 but at 12–17 mm; circle-9, warm from circle-7 with a heavier unsaturated off-radius cost, at 20.6–24.0 mm; not trained to a pass) | §6 | `smooth-stream-7287`, `dusty-canyon-3027` |
 | P2 the excavator's floor, measured | the floor **moved**, cause not separated | §7 | `hidden-sand-7542`, `misty-water-8806` |
 | C1 this report | this file | §1–§10 | the record that adds this file |
 
@@ -226,6 +226,45 @@ tracking a target angle that advances with time — **cannot be written in
 xscript today**, because no channel a reward or a policy reads carries time
 (defect 12).
 
+The next run, circle-9, tested whether radius is only a reward-shape gap. In
+circle-7's reward the off-radius cost is `tanh(|r − 40| / 10)`, which is
+already 0.99 at 15 mm and 0.91 at 25 mm. Moving the ball out from 15 mm to
+25 mm therefore saved almost nothing. circle-9 changed only the circle
+task's reward:
+
+- off-radius scale 10 → 25 mm, so the cost still grows between 12 and
+  30 mm;
+- off-radius weight −0.8 → −1.6;
+- alive 1.6 → 2.4, so a step on the plate still pays.
+
+The unsigned task keeps the shared terms. circle-9 warm-started from
+circle-7 by ADR-597, and the trainer named `reward` as the only change.
+1000 iterations, seed 15, a checkpoint every 250, 712 s on the CPU,
+witness 8.6e-8. Reward per step peaked at 2.04 (iteration 809) and ended
+at 1.87.
+
+A first attempt, circle-8, used the same settings with no checkpoints and
+ran out of its 570 s budget at iteration 779. It left no policy, so it has
+no measurement. Both runs inherited a hidden GPU from the launching shell,
+which is why they ran on the CPU.
+
+circle-9 evaluated on the same 8 frozen seeds
+(`46230146b3e0-bbd88fc92f43`):
+
+| predicate | bound | measured |
+|---|---|---|
+| `completed` | ≥ 1 | 1 on 8 of 8 |
+| `mean_distance_mm` | 30–50 | 20.6–24.0 |
+| `laps` | ≥ 2 | 3–4 on 8 of 8 (turns +3.47 to +4.09) |
+
+It passes on 0 of 8 seeds, and still only on radius. The heavier,
+unsaturated cost moved the mean radius out by about 7 mm, from 12–17 mm to
+20.6–24.0 mm (max distance 32.8–52.8 mm), and kept circulation on every
+seed. That still leaves 6–9 mm to the bound's floor. **Reward reweighting
+alone does not hold 40 mm** in one curriculum step. As planned, the next
+attempt is the `phase` goal (defect 12): a target angle that advances with
+time says where the ball should be, not only how far out.
+
 **The circle task is still not trained to a pass.**
 
 The pushrod tilt (optional, needs L1) was not built.
@@ -325,12 +364,13 @@ ADRs added by this run:
 
 ## 10. Remaining defects
 
-1. **W7, the warm-start rule, is decided (ADR-597) and used once.** A
+1. **W7, the warm-start rule, is decided (ADR-597) and used twice.** A
    curriculum step may now revise `success`, because the bar is not
    something the network reads or emits. The rule is test-pinned in
    `training/test_curriculum_warm_start.py`, and circle-7 (§6) warm-started
-   the circle task from the centring policy across a changed `success`. One
-   use is not a measure of how often such a step helps.
+   the circle task from the centring policy across a changed `success`.
+   circle-9 then stepped circle-7 to a revised reward. Two uses are not a
+   measure of how often such a step helps.
 2. **The trainer's checkpoint stall was not re-measured this run.** orun4
    fixed it (ADR-576: 42.5–45.4 s down to 1.9 s per checkpoint on a
    4096-env biped). In P2's run, 1400 iterations took 3903 s and the
@@ -367,7 +407,9 @@ ADRs added by this run:
     computes angles with `** 0.5` or a series.
 11. **P1's circle task is not trained to a pass** (§6). Narrowing the
     exploration width turned a circling policy into a rocking one (circle-6);
-    warming from centring gives a mean that circles, too tight (circle-7). P2's spec still
+    warming from centring gives a mean that circles, too tight (circle-7); a
+    heavier, unsaturated off-radius cost moves it out to 20.6–24.0 mm,
+    still short of 30 (circle-9). P2's spec still
     fails on 3 of 10 seeds, and its improvement is not attributed (§7).
 12. **No channel carries time, so a reward cannot track a phase.** A
     policy observes sensor channels and goals, and neither carries a clock
@@ -393,6 +435,7 @@ S1, M1, S2, L1, R1, P1, P2 and this report have evidence recorded. P1's
 circle half and P2's attribution are on the terms stated above. The owner's
 boxes are not ticked.
 
-The unreconciled tail is `flat-hawk-9763` (circle-6) and circle-7's
-record. A work iteration may not reconcile, so the next reconcile pass folds
-both before the critic judges this claim.
+The unreconciled tail is `flat-hawk-9763` (circle-6), `bold-wind-5086`
+(circle-7) and circle-9's record. A work iteration may not reconcile, so
+the next reconcile pass folds all three before the critic judges this
+claim.
