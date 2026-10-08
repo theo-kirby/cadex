@@ -3118,6 +3118,10 @@ def main(argv: Sequence[str]) -> int:
             "curve": decimated_curve(curve),
             "loss_curve": decimated_curve(curve, key="loss"),
             "episode_steps_curve": decimated_curve(curve, key="episode_steps"),
+            # Additive on the same terms (ADR-606): the exploration sigma's
+            # history, so the dashboard's Status charts it beside reward,
+            # loss and episode length rather than only its last value.
+            "action_std_curve": decimated_curve(curve, key="action_std"),
             "best_reward_per_step": (
                 None if not best or best.get("iteration", -1) < 0
                 else float(best["reward_per_step"])
