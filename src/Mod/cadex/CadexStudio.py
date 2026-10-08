@@ -125,8 +125,72 @@ SUPERSAMPLE = 2
 #: with no declared role is `mechanism` when purchased and `shell` when
 #: printed; being purchased is otherwise not a colour.
 ROLE_COLORS = {'shell': (233, 230, 223), 'mechanism': (47, 50, 55), 'accent': (242, 106, 27)}
-#: Per role: (specular strength, Blinn exponent). Satin shell, harder mechanism.
-FINISH = {'shell': (0.16, 20.0), 'mechanism': (0.30, 16.0), 'accent': (0.22, 28.0)}
+#: A finish is ``(specular, Blinn exponent, metal, sheen)``: the strength
+#: and tightness of the key light's highlight, how much of the surface is a
+#: tinted mirror of the studio rather than a diffuse colour (0 plastic, 1
+#: metal), and how strongly it reflects the studio's sky and dark floor.
+#: Per printed role: a satin shell, a harder mechanism, a glossier accent.
+FINISH = {'shell': (0.16, 20.0, 0.0, 0.10), 'mechanism': (0.30, 16.0, 0.0, 0.20),
+          'accent': (0.22, 28.0, 0.0, 0.14)}
+
+# --- Finish classes (ADR-603) ------------------------------------------------
+#
+# What a part is made of, beside the role it plays. A printed part is drawn in
+# its role's colour and finish; a part off the catalog keeps its role's colour
+# in a moulded satin; and two kinds of catalog part are not plastic at all and
+# override the role: fasteners and bearings are metal, boards are a PCB. One
+# rule for stills, films, videos and the browser (review_server.part_looks).
+
+#: The finish classes, in the order the browser and the docs name them.
+FINISH_CLASSES = ('printed', 'purchased', 'hardware', 'board')
+#: Catalog family -> the metal it is drawn in. Black-oxide socket screws and
+#: nuts, bright steel washers, bearings and bushings, brass heat-set inserts.
+#: ``shaft``, ``dowel`` and ``pin`` are the hook for ground steel stock: no
+#: such family is catalogued yet, and one that is added is drawn bright steel.
+HARDWARE_METALS = {'bolt': 'black_oxide', 'nut': 'black_oxide', 'washer': 'steel',
+                   'bearing': 'steel', 'bushing': 'steel', 'heat_insert': 'brass',
+                   'shaft': 'steel', 'dowel': 'steel', 'pin': 'steel'}
+#: The catalog families drawn as a circuit board.
+BOARD_FAMILIES = ('board',)
+#: Each metal's base colour and finish. Black oxide is dark but a mirror,
+#: with a hard highlight: it reads as steel, not as matte graphite plastic.
+METALS = {'black_oxide': ((60, 62, 68), (0.85, 60.0, 1.0, 1.0)),
+          'steel': ((178, 182, 188), (0.70, 70.0, 1.0, 1.0)),
+          'brass': ((201, 160, 82), (0.65, 50.0, 1.0, 1.0))}
+#: A purchased part's moulded or anodised satin: a broader, brighter sheen
+#: than a print's, in the role's own colour.
+PURCHASED_FINISH = (0.45, 48.0, 0.0, 0.30)
+#: The board: green solder mask, a near-black chip package and tinned pads.
+BOARD_LOOK = {'mask': ((31, 107, 60), (0.30, 30.0, 0.0, 0.26)),
+              'chip': ((24, 25, 28), (0.40, 40.0, 0.0, 0.30)),
+              'pad': ((196, 198, 202), (0.70, 60.0, 1.0, 1.0))}
+#: A through-hole pad's copper ring around its drill, a side.
+PAD_RING_MM = 0.35
+#: The studio a surface reflects: the dark mat below the horizon, brighter
+#: towards it, and above it a soft overhead light that is full by this
+#: height of the reflected ray; plus a softbox on the key side, a broad lobe
+#: which is what bands a metal cylinder.
+SKY_FLOOR, SKY_HORIZON, SKY_FULL_AT = 0.08, 0.30, 0.65
+SOFTBOX, SOFTBOX_POWER = 0.85, 3
+#: The softbox, in view space (x right, y up, z towards the viewer): low on
+#: the key side, so the walls a hero sees mirror it, not only the tops.
+SOFTBOX_DIR = (-0.70, 0.10, 0.70)
+#: How bright a metal's base colour becomes mirroring the full sky.
+METAL_REFLECTION = 1.35
+
+
+def _sky(height, toward_box):
+    """The studio's brightness along a reflected ray: ``height`` is its world z,
+    ``toward_box`` its cosine to the softbox."""
+    if height <= 0.0:
+        f = max(0.0, 1.0 + height / 0.5)
+        sky = SKY_FLOOR + (SKY_HORIZON - SKY_FLOOR) * f * f
+    else:
+        f = min(1.0, height / SKY_FULL_AT)
+        sky = SKY_HORIZON + (1.0 - SKY_HORIZON) * f * f * (3.0 - 2.0 * f)
+    return sky + SOFTBOX * max(0.0, toward_box) ** SOFTBOX_POWER
+
+
 #: A tessellation corner keeps its face's normal when the smoothed normal
 #: turns further than this from it: fillets shade smooth, box edges stay crisp.
 CREASE_DEGREES = 40.0
@@ -320,16 +384,79 @@ def png(pixels, size=SIZE, height=None):
             chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
 
 
-def materials(summary, *, purchased=None, appearance=None, palette=None):
-    """``object -> (role, rgb)``: what each object is drawn in.
+class Look(tuple):
+    """``(role, rgb)``: the role an object plays and the colour it is drawn in.
+
+    A pair, so it unpacks and compares as one. It also carries what the
+    object is made of (ADR-603): ``finish``, one of :data:`FINISH_CLASSES`;
+    ``catalog``, the ``{family, part_number}`` it came off, or ``None``;
+    and ``role_rgb``, its role's colour, which ``rgb`` replaces for metal
+    and boards.
+    """
+
+    def __new__(cls, role, rgb, finish='printed', catalog=None, role_rgb=None):
+        look = super().__new__(cls, (role, tuple(rgb)))
+        look.finish, look.catalog = finish, (dict(catalog) if catalog else None)
+        look.role_rgb = tuple(role_rgb) if role_rgb is not None else tuple(rgb)
+        return look
+
+
+def finish_class(family, purchased=False):
+    """The finish class (ADR-603) of a part off catalog ``family`` (or none).
+
+    Hardware and boards by family, whatever role the part declares; any other
+    catalog part, or a part the inventory calls purchased, is ``purchased``;
+    the rest is ``printed``.
+    """
+    if family in HARDWARE_METALS:
+        return 'hardware'
+    if family in BOARD_FAMILIES:
+        return 'board'
+    return 'purchased' if family or purchased else 'printed'
+
+
+def catalogued(summary, inventory):
+    """``object -> {family, part_number}``: the catalog row each drawn object came off.
+
+    Read from the inventory: its ``catalog_by_component`` map (the build
+    reply's block) or the ``catalog`` on each component row (``inspect
+    scope=inventory``), then, for an output cut from a catalog body, the row
+    ``derived_catalog_sources`` names for its source. Empty with no
+    readable inventory.
+    """
+    if not inventory or not inventory.get('available', True):
+        return {}
+    found = {}
+    for name, identity in dict(inventory.get('catalog_by_component') or {}).items():
+        if isinstance(identity, dict) and identity.get('family'):
+            found[str(name)] = identity
+    for row in inventory.get('components') or []:
+        if isinstance(row, dict) and isinstance(row.get('catalog'), dict) and row['catalog'].get('family'):
+            found.setdefault(str(row.get('component') or ''), row['catalog'])
+    derived = {str(row.get('source_output') or ''): row for row in inventory.get('derived_catalog_sources') or []
+               if isinstance(row, dict) and row.get('family')}
+    result = {}
+    for name, item in summary['objects'].items():
+        identity = found.get(name) or derived.get(str(item.get('source') or ''))
+        if identity:
+            result[name] = {'family': str(identity['family']), 'part_number': str(identity.get('part_number') or '')}
+    return result
+
+
+def materials(summary, *, purchased=None, appearance=None, palette=None, catalog=None):
+    """``object -> Look``: what each object is drawn in.
 
     ``appearance`` maps an object to its declared role (A3's hook: xscript
     declares it, inventory carries it); ``palette`` overrides a role's
     colour. Undeclared objects fall back on ``purchased``: mechanism if
     bought, shell if printed. With neither, each object keeps its index
     colour from the snapshot, which is all a design with no inventory says.
+    ``catalog`` (:func:`catalogued`) names the row a part came off: its
+    finish class (:func:`finish_class`) follows from the family, and for
+    hardware and boards the drawn colour is the finish's own, over any role.
     """
     appearance, colours = dict(appearance or {}), {**ROLE_COLORS, **dict(palette or {})}
+    catalog = dict(catalog or {})
     unknown = sorted({str(r) for r in appearance.values()} - set(ROLE_COLORS))
     _require(not unknown, 'unknown appearance role ' + ', '.join(unknown) +
              '; roles: ' + ', '.join(ROLE_COLORS))
@@ -338,8 +465,153 @@ def materials(summary, *, purchased=None, appearance=None, palette=None):
         role = appearance.get(name)
         if role is None and purchased is not None:
             role = 'mechanism' if name in purchased else 'shell'
-        result[name] = (role or 'shell', tuple(colours[role]) if role else tuple(item['color']))
+        rgb = tuple(colours[role]) if role else tuple(item['color'])
+        identity = catalog.get(name)
+        family = identity['family'] if identity else None
+        finish = finish_class(family, purchased is not None and name in purchased)
+        drawn = (METALS[HARDWARE_METALS[family]][0] if finish == 'hardware' else
+                 BOARD_LOOK['mask'][0] if finish == 'board' else rgb)
+        result[name] = Look(role or 'shell', drawn, finish, identity, rgb)
     return result
+
+
+def _finish_of(look):
+    """The raster finish of a look (a :class:`Look` or a plain ``(role, rgb)``)."""
+    finish = getattr(look, 'finish', 'printed')
+    if finish == 'hardware':
+        return METALS[HARDWARE_METALS[look.catalog['family']]][1]
+    if finish == 'board':
+        return BOARD_LOOK['mask'][1]
+    if finish == 'purchased':
+        return PURCHASED_FINISH
+    return FINISH[look[0]]
+
+
+def material(look, triangles=(), placement=None):
+    """What :func:`_prepare` takes for one object drawn in ``look``.
+
+    ``(rgb, finish)``, or for a board whose mesh is the catalog board's
+    (:func:`board_layout`) ``(rgb, finish, paint)``, where ``paint`` names
+    the solder mask, chip and pads of a point. ``triangles`` are the
+    object's, as they will be drawn; ``placement`` the 4x4 matrix that put
+    its mesh there (``None`` when they are in the mesh's own frame).
+    """
+    finish = _finish_of(look)
+    if getattr(look, 'finish', None) != 'board' or not triangles:
+        return (tuple(look[1]), finish)
+    inverse = _rigid_inverse(placement)
+    local = [_apply(inverse, p) for tri in triangles for p in tri] if inverse else [p for tri in triangles for p in tri]
+    layout = board_layout(look.catalog, local)
+    if layout is None:
+        return (tuple(look[1]), finish)
+    return (tuple(look[1]), finish, _board_paint(layout, inverse))
+
+
+def _rigid_inverse(placement):
+    """The inverse of a rigid 4x4 row-major ``placement``, or ``None`` for identity/none."""
+    if placement is None or list(placement) == IDENTITY:
+        return None
+    m = placement
+    rows = ((m[0], m[4], m[8]), (m[1], m[5], m[9]), (m[2], m[6], m[10]))
+    t = (m[3], m[7], m[11])
+    return rows, tuple(-sum(rows[r][c] * t[c] for c in range(3)) for r in range(3))
+
+
+def _apply(transform, p):
+    rows, t = transform
+    return tuple(rows[r][0] * p[0] + rows[r][1] * p[1] + rows[r][2] * p[2] + t[r] for r in range(3))
+
+
+_CATALOG = None
+
+
+def _board_spec(part_number):
+    """The catalog's row for board ``part_number``, or ``None``: read from
+    ``CadexCatalog`` beside this module, by path, as this module is loaded."""
+    global _CATALOG
+    if _CATALOG is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('_cadex_studio_catalog',
+                                                      Path(__file__).resolve().parent / 'CadexCatalog.py')
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _CATALOG = module
+    return _CATALOG.BOARDS.get(str(part_number or '').strip().lower())
+
+
+def board_layout(identity, points):
+    """Where a catalog board's chip and pads are, in its mesh's own frame, or ``None``.
+
+    ``points`` are the mesh's vertices. ``lib.board`` builds the board in the
+    catalog frame (lower-left corner, bottom face z = 0, component side +Z)
+    and a script may move it there before it is published, so the mesh is
+    matched rather than assumed: its bounding box must be the catalog
+    board's (PCB and chip box) under a quarter turn about +Z and a shift,
+    to 0.05 mm, and every vertex above the PCB must lie over the chip. A
+    mesh that matches no such pose (cut, mirrored, upside down, decimated)
+    gets ``None`` and is drawn plain solder mask.
+    """
+    spec = _board_spec((identity or {}).get('part_number')) if (identity or {}).get('family') in BOARD_FAMILIES else None
+    if spec is None or not points:
+        return None
+    w, l, t = float(spec['width_mm']), float(spec['length_mm']), float(spec['thickness_mm'])
+    co, cs = [float(v) for v in spec['cosmetic_origin']], [float(v) for v in spec['cosmetic_size']]
+    cat_lo = (min(0.0, co[0]), min(0.0, co[1]), min(0.0, co[2]))
+    cat_hi = (max(w, co[0] + cs[0]), max(l, co[1] + cs[1]), max(t, co[2] + cs[2]))
+    lo = [min(p[j] for p in points) for j in range(3)]
+    hi = [max(p[j] for p in points) for j in range(3)]
+    tol = max(0.05, 0.002 * max(cat_hi[j] - cat_lo[j] for j in range(3)))
+    turns = (lambda x, y: (x, y), lambda x, y: (-y, x), lambda x, y: (-x, -y), lambda x, y: (y, -x))
+    for quarter, turn in enumerate(turns):
+        corners = [turn(x, y) for x in (cat_lo[0], cat_hi[0]) for y in (cat_lo[1], cat_hi[1])]
+        rlo = (min(c[0] for c in corners), min(c[1] for c in corners), cat_lo[2])
+        rhi = (max(c[0] for c in corners), max(c[1] for c in corners), cat_hi[2])
+        if any(abs((hi[j] - lo[j]) - (rhi[j] - rlo[j])) > tol for j in range(3)):
+            continue
+        shift = tuple(lo[j] - rlo[j] for j in range(3))
+
+        def place(p, turn=turn, shift=shift):
+            x, y = turn(p[0], p[1])
+            return (x + shift[0], y + shift[1], p[2] + shift[2])
+        a, b = place(co), place((co[0] + cs[0], co[1] + cs[1], co[2] + cs[2]))
+        chip_lo = tuple(min(a[j], b[j]) for j in range(3))
+        chip_hi = tuple(max(a[j], b[j]) for j in range(3))
+        top = shift[2] + t
+        if not all(chip_lo[0] - tol <= p[0] <= chip_hi[0] + tol and chip_lo[1] - tol <= p[1] <= chip_hi[1] + tol
+                   for p in points if p[2] > top + tol):
+            continue
+        pads = [{'origin': [round(v, 4) for v in place(row['origin'])],
+                 'dia_mm': round(float(row['hole_dia']) + 2 * PAD_RING_MM, 4)}
+                for row in spec.get('terminals') or []]
+        return {'width_mm': w, 'length_mm': l, 'thickness_mm': t,
+                'chip': {'origin': [round(v, 4) for v in chip_lo],
+                         'size': [round(chip_hi[j] - chip_lo[j], 4) for j in range(3)]},
+                'pads': pads,
+                'frame': {'quarter_turns_about_z': quarter, 'shift_mm': [round(v, 4) for v in shift]}}
+    return None
+
+
+def _board_paint(layout, inverse=None):
+    """``paint(point) -> (rgb, finish)``: the solder mask, chip or pad under a point.
+
+    ``point`` is where the triangle being drawn was prepared; ``inverse``
+    takes it back to the mesh frame ``layout`` is in.
+    """
+    chip_o, chip_s = layout['chip']['origin'], layout['chip']['size']
+    lo = [chip_o[j] - 0.02 for j in range(3)]
+    hi = [chip_o[j] + chip_s[j] + 0.02 for j in range(3)]
+    pads = [(p['origin'][0], p['origin'][1], (p['dia_mm'] / 2) ** 2) for p in layout['pads']]
+    mask, chip, pad = BOARD_LOOK['mask'], BOARD_LOOK['chip'], BOARD_LOOK['pad']
+
+    def paint(point):
+        x, y, z = _apply(inverse, point) if inverse else point
+        if lo[0] <= x <= hi[0] and lo[1] <= y <= hi[1] and lo[2] <= z <= hi[2]:
+            return chip
+        for px, py, r2 in pads:
+            if (x - px) * (x - px) + (y - py) * (y - py) <= r2:
+                return pad
+        return mask
+    return paint
 
 
 def _prepare(parts):
@@ -348,11 +620,16 @@ def _prepare(parts):
     Each corner's normal averages the faces sharing that vertex whose normals
     lie within CREASE_DEGREES of this face's own, weighted by area: large
     radii shade as the curves they are, and a box keeps its edges however its
-    faces happen to be split into triangles.
+    faces happen to be split into triangles. A material that paints its
+    surface by position (``(rgb, finish, paint)``, a board) becomes one per
+    triangle, ``(rgb, finish, paint, corners)``, carrying the corners as
+    they were here: the shading pass interpolates them, so the paint still
+    lands where it should after :func:`_posed` moves the triangle.
     """
     limit = math.cos(math.radians(CREASE_DEGREES))
     prepared = []
     for material, tris in parts:
+        painted = material is not None and len(material) == 3
         index, around, faces = {}, [], []
         for points in tris:
             (ax, ay, az), (bx, by, bz), (cx, cy, cz) = points
@@ -381,7 +658,7 @@ def _prepare(parts):
                         x += gx*weight; y += gy*weight; z += gz*weight
                 length = math.sqrt(x*x + y*y + z*z)
                 normals.append((x/length, y/length, z/length))
-            prepared.append((material, points, normals))
+            prepared.append((material + (tuple(points),) if painted else material, points, normals))
     return prepared
 
 
@@ -536,8 +813,9 @@ def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
     Orthographic along ``basis``; ``bounds`` is the framed projection window.
     Every pixel is ``samples`` squared subsamples: a depth pass keeps the
     nearest triangle per subsample, then only visible subsamples are shaded
-    (key, fill and rim light, Blinn specular per role finish, normals
-    interpolated across the triangle), and the rest take the floor
+    (key, fill and rim light, Blinn specular and a reflection of the studio
+    per finish, normals interpolated across the triangle; metal is a tinted
+    mirror, a board is painted per subsample), and the rest take the floor
     (:func:`_floor`), with ``shadow`` (from :func:`_contact_shadow`)
     darkening it under the design when the camera is above it.
     """
@@ -551,6 +829,7 @@ def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
     # Lights in view space: x right, y up, z towards the viewer.
     key = _unit((-0.45, 0.6, 0.66)); fill = _unit((0.8, 0.05, 0.6))
     half = _unit((key[0], key[1], key[2] + 1.0))
+    box = _unit(SOFTBOX_DIR)
     floor_z, lookup = shadow if shadow is not None and tz > 0.05 else (None, None)
     # The mat lies at the shadow's floor, or under the design's lowest point
     # when no shadow was measured.
@@ -576,11 +855,20 @@ def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
                         r += bg[0]; g += bg[1]; b += bg[2]
                         continue
                     covered += 1
-                    (rgb, finish), ax, ay, w1x, w1y, w2x, w2y, vn = shading[t]
+                    material, ax, ay, w1x, w1y, w2x, w2y, vn = shading[t]
                     px, py = k % n + .5 - ax, k // n + .5 - ay
                     w1 = min(1.0, max(0.0, px*w1x + py*w1y))
                     w2 = min(1.0 - w1, max(0.0, px*w2x + py*w2y))
                     w0 = 1.0 - w1 - w2
+                    if len(material) == 2:
+                        rgb, finish = material
+                    else:
+                        # A painted surface (a board): what is under this
+                        # subsample, from its corners where they were prepared.
+                        p0, p1, p2 = material[3]
+                        rgb, finish = material[2]((w0*p0[0] + w1*p1[0] + w2*p2[0],
+                                                   w0*p0[1] + w1*p1[1] + w2*p2[1],
+                                                   w0*p0[2] + w1*p1[2] + w2*p2[2]))
                     (a0, a1, a2), (b0, b1, b2), (c0, c1, c2) = vn
                     nx, ny, nz = w0*a0 + w1*b0 + w2*c0, w0*a1 + w1*b1 + w2*c1, w0*a2 + w1*b2 + w2*c2
                     length = math.sqrt(nx*nx + ny*ny + nz*nz) or 1.0
@@ -589,10 +877,25 @@ def studio(prepared, basis, *, bounds, size, samples=SUPERSAMPLE, shadow=None):
                     nx, ny, nz = nx/length, ny/length, nz/length
                     diffuse = (0.36 + 0.08 * ny + 0.58 * max(0.0, nx*key[0] + ny*key[1] + nz*key[2])
                                + 0.20 * max(0.0, nx*fill[0] + ny*fill[1] + nz*fill[2]))
-                    gloss = finish[0] * max(0.0, nx*half[0] + ny*half[1] + nz*half[2]) ** finish[1]
-                    # A sheen of the studio's sky, strongest on a hard finish: what
-                    # keeps graphite from reading as a black hole.
-                    glow = 255.0 * (gloss + 0.28 * (1.0 - nz) ** 3 + finish[0] * 0.25 * (0.5 + 0.5 * ny))
+                    spec, power, metal, sheen = finish if len(finish) == 4 else (*finish, 0.0, 0.0)
+                    gloss = spec * max(0.0, nx*half[0] + ny*half[1] + nz*half[2]) ** power
+                    # The studio as a surface sees it mirrored (:func:`_sky`): the
+                    # reflected view ray's height in the world picks the soft
+                    # overhead light or the dark floor, more so at grazing angles.
+                    sky = _sky(2.0 * nz * (nx*rz + ny*uz + nz*tz) - tz,
+                               2.0 * nz * (nx*box[0] + ny*box[1] + nz*box[2]) - box[2])
+                    rim = 0.28 * (1.0 - nz) ** 3
+                    if metal:
+                        # A tinted mirror: the base colour scaled by what it
+                        # reflects, under a hard white highlight.
+                        mirror = diffuse * (1.0 - metal) + metal * (0.22 + METAL_REFLECTION * sky)
+                        glow = 255.0 * (gloss + 0.5 * rim)
+                        r += min(255.0, rgb[0]*mirror + glow)
+                        g += min(255.0, rgb[1]*mirror + glow)
+                        b += min(255.0, rgb[2]*mirror + glow)
+                        continue
+                    fresnel = 0.25 + 0.75 * (1.0 - nz) ** 5
+                    glow = 255.0 * (gloss + rim + sheen * fresnel * sky)
                     r += min(255.0, rgb[0]*diffuse + glow)
                     g += min(255.0, rgb[1]*diffuse + glow)
                     b += min(255.0, rgb[2]*diffuse + glow)
@@ -695,7 +998,9 @@ def design_proxies(triangles, summary, *, exclude=(), purchased=None, appearance
     covered = sum(pixels.values())
     hardware = None if purchased is None else sum(c for name, c in pixels.items() if name in purchased)
     share = None if hardware is None or not covered else hardware / covered
-    colours = sorted({'#%02X%02X%02X' % tuple(looks[name][1]) for name in pixels})
+    # Materials the design chose: its roles' colours. Metal and boards are
+    # what a catalog part is made of, not a material of the design (ADR-603).
+    colours = sorted({'#%02X%02X%02X' % tuple(looks[name].role_rgb) for name in pixels})
     p1, p3 = PROXY_BARS['hardware_silhouette_share'], PROXY_BARS['material_count']
     return {
         'view': 'hero', 'size': PROXY_SIZE, 'samples_per_pixel': SUPERSAMPLE * SUPERSAMPLE,
@@ -767,9 +1072,8 @@ def _studio_parts(triangles, summary, drawn_names, looks):
     parts = []
     for name in drawn_names:
         item = summary['objects'][name]
-        role, rgb = looks[name]
         tris = [points for _, points in triangles[item['first']:item['first'] + item['triangles']]]
-        parts.append(((rgb, FINISH[role]), tris))
+        parts.append((material(looks[name], tris, item.get('placement')), tris))
     return parts
 
 
@@ -787,23 +1091,23 @@ def world_top(triangles, summary, environment):
 
 
 def look(triangles, summary, views, *, focus=(), exclude=(), purchased=None, appearance=None,
-         palette=None, size=LOOK_SIZE):
+         palette=None, size=LOOK_SIZE, catalog=None):
     """The agent's own views of a snapshot: PNG bytes per requested view.
 
     ``exclude`` names objects left out entirely (environment geometry: a floor
     would otherwise set the framing and shrink the design to a speck);
     ``focus`` names the objects the view is framed on, with everything else
-    still drawn; ``purchased``, ``appearance`` and ``palette`` choose each
-    object's material (see :func:`materials`). Every view is a studio image
-    (:func:`studio`); ``hero`` is the presentation view. The mat lies at
-    the top of the excluded world geometry when there is any.
+    still drawn; ``purchased``, ``appearance``, ``palette`` and ``catalog``
+    choose each object's material (see :func:`materials`). Every view is a
+    studio image (:func:`studio`); ``hero`` is the presentation view. The
+    mat lies at the top of the excluded world geometry when there is any.
     """
     objects = summary['objects']
     unknown = sorted(set(focus) - set(objects))
     _require(not unknown, 'unknown focus ' + ', '.join(unknown) + '; drawable: ' + ', '.join(sorted(objects)))
     _require(all(v in LOOK_VIEWS for v in views),
              'unknown view; choose from ' + ', '.join(LOOK_VIEWS))
-    looks = materials(summary, purchased=purchased, appearance=appearance, palette=palette)
+    looks = materials(summary, purchased=purchased, appearance=appearance, palette=palette, catalog=catalog)
     names = [name for name in objects if name not in exclude]
     framed_names = [name for name in names if not focus or name in focus]
     _require(bool(framed_names) and any(objects[n]['triangles'] for n in framed_names),
@@ -2039,8 +2343,7 @@ def print_bed(triangles, summary, fit, inventory, *, name='', bed=BED_MM, gap=BE
             w, d = d, w
         else:
             tris = [tuple((px + x + ox, py + y + oy, pz) for px, py, pz in tri) for tri in part['tris']]
-        role, rgb = looks[part['name']]
-        drawn.append(((rgb, FINISH[role]), tris))
+        drawn.append((material(looks[part['name']]), tris))
         rows.append({'number': number, 'component': part['name'], 'source': part['source'], 'bed': index + 1,
                      'position_mm': [round(x, 2), round(y, 2)], 'footprint_mm': [round(w, 2), round(d, 2)],
                      'height_mm': round(part['height_mm'], 2), 'turned': turned, 'seat': part['seat'],
@@ -2170,7 +2473,8 @@ def look_report(reply, fit, inventory, views=LOOK_DEFAULT_VIEWS, focus=()):
     by_source = {item['source']: name for name, item in summary['objects'].items()}
     focus_objects = [by_source.get(name, name) for name in focus]
     shots = look(triangles, summary, views, focus=focus_objects, exclude=environment,
-                 purchased=purchased, appearance=appearance, palette=palette)
+                 purchased=purchased, appearance=appearance, palette=palette,
+                 catalog=catalogued(summary, inventory))
     proxies = design_proxies(triangles, summary, exclude=environment, purchased=purchased,
                              appearance=appearance, palette=palette)
     proxies['sharp_outside_edge_share'] = edge_proxy(inventory, environment)
@@ -2205,10 +2509,17 @@ def look_report(reply, fit, inventory, views=LOOK_DEFAULT_VIEWS, focus=()):
 
 
 def _appearance_rows(names, looks, appearance, purchased):
-    """Per drawn object: its role, colour and where the role came from."""
-    return {name: {'role': looks[name][0], 'color': '#%02X%02X%02X' % looks[name][1],
+    """Per drawn object: its role, colour, where the role came from, and its finish.
+
+    ``color`` is what it is drawn in: its role's colour, or for hardware and
+    boards the finish's own (ADR-603); ``finish`` and ``catalog`` are what a
+    video drawn later from this summary needs to draw it the same way.
+    """
+    return {name: {'role': looks[name][0], 'color': '#%02X%02X%02X' % tuple(looks[name][1]),
                    'source': ('declared' if name in appearance else
-                              'supplier' if purchased is not None else 'index')}
+                              'supplier' if purchased is not None else 'index'),
+                   'finish': getattr(looks[name], 'finish', 'printed'),
+                   'catalog': getattr(looks[name], 'catalog', None)}
             for name in names}
 
 
@@ -2226,7 +2537,8 @@ def _scene(triangles, source, fit, inventory):
     summary = dict(source)
     environment, purchased = classify(summary, fit, inventory)
     appearance, palette = declared(inventory)
-    looks = materials(summary, purchased=purchased, appearance=appearance, palette=palette)
+    looks = materials(summary, purchased=purchased, appearance=appearance, palette=palette,
+                      catalog=catalogued(summary, inventory))
     names = [name for name in summary['objects'] if name not in environment]
     _require(any(summary['objects'][n]['triangles'] for n in names),
              'nothing to draw once environment geometry is left out')

@@ -25,6 +25,9 @@ from cadex_cli.inventory import (
     INVENTORY_DOC_NAME, inventory_summary, render_inventory,
 )
 from cadex_cli.report import EXIT_OK
+from cadex_cli.studio import FIT_REPORT
+
+inventory_view = FIT_REPORT.inventory_view
 
 #: A plate with two catalogued M3 bolts standing on it. `plate` is modelled
 #: by hand and the bolts come off `lib.bolt`, so one accepted revision
@@ -253,6 +256,13 @@ def test_inventory_summary_counts_components_and_names_sources() -> None:
     assert summary["catalogued_count"] == 2
     assert summary["uncatalogued_count"] == 3
     assert summary["catalog_counts"] == {"servo/MG90S": 2}
+    # Which component placed which row, for the renderer's finishes (ADR-603).
+    assert summary["catalog_by_component"] == {
+        "c1": {"family": "servo", "part_number": "MG90S"},
+        "c2": {"family": "servo", "part_number": "MG90S"}}
+    # The model's bounded view is spared the per-component list: the
+    # roll-up above already says it.
+    assert "catalog_by_component" not in inventory_view(summary)
     assert summary["uncatalogued_sources"] == ["bracket", "servo_cut"]
     assert "Advisory" in summary["source"]
     assert "lost its catalog identity" in summary["note"]

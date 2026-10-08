@@ -555,6 +555,20 @@ leaves it out: `look` and `render` (`exclude`), the hero and the sheet
 (`retained_solids`' world set) and studio videos (the render summary's
 `environment`).
 
+**What parts are made of** (ADR-603, `docs/DESIGN-LANGUAGE.md` §2): each
+part's finish class — `printed`, `purchased`, `hardware`, `board` — comes
+from its catalog family. The renderer shades a finish as `(specular,
+exponent, metal, sheen)`: key, fill and rim light, a reflection of a small
+studio (a soft overhead light, a softbox on the key side, the dark mat
+below), metal as a tinted mirror under a hard highlight, and a board
+painted per subsample (mask, chip box, tinned pads) from where the point
+lies in the catalog board's frame. `/api/model/accepted` gives the viewport
+the same facts per component: `finish`, `catalog` (`{family,
+part_number}` or `null`), `board` (`null`, or `{width_mm, length_mm,
+thickness_mm, chip: {origin, size}, pads: [{origin, dia_mm}], frame}` in
+the part's own mesh frame, mm), with `color` the finish's base colour for
+hardware and boards.
+
 **The shadow** is the measured contact shadow (§15, ADR-432), deepened for a
 dark floor — it may take a tile to 20 % of its brightness (was 45 %). On
 `ot10-quadruped-3`'s hero the tiles at its feet fall from 28–35 to 6.
@@ -571,7 +585,9 @@ stands on the mat and fades; a changed viewport palette changes the drawn
 image; the studio video's identity covers the palette source), with the
 shadow held by `test_contact_shadow_darkens_the_floor_under_the_design_only`,
 the mat at the world's top by
-`test_the_mat_lies_at_the_top_of_the_world_geometry_not_under_the_design`.
+`test_the_mat_lies_at_the_top_of_the_world_geometry_not_under_the_design`,
+and the finishes by `src/Mod/cadex/cadex_tests/test_studio_finishes.py` and
+`test_each_part_carries_its_finish_catalog_row_and_board_layout`.
 Before/after: `docs/probes/ot10/a8-*.png`.
 
 ## 18. Read-only: the agent changes the project, the page follows (ADR-537)

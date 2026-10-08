@@ -253,6 +253,14 @@ def test_materials_are_the_declared_roles_then_supplier(tmp_path) -> None:
     assert looks["c_post_a"] == ("mechanism", STUDIO.ROLE_COLORS["mechanism"])  # catalogued
     assert looks["c_post_b"] == ("accent", (0x10, 0x20, 0x30))                # declared, recoloured
     assert source["declared"] is True
+    # With the catalog rows the block carries, a catalog bolt is drawn as
+    # black-oxide metal, declared accent or not (ADR-603).
+    inventory["catalog_by_component"] = {"c_post_a": {"family": "bolt", "part_number": "m3x12-socket"},
+                                         "c_post_b": {"family": "bolt", "part_number": "m3x12-socket"}}
+    looks, _source = film.materials(sources, list(sources), REVISION, inventory)
+    assert looks["c_post_b"] == ("accent", STUDIO.METALS["black_oxide"][0])
+    assert looks["c_post_a"].finish == looks["c_post_b"].finish == "hardware"
+    assert looks["c_body"].finish == "printed"
 
 
 @pytest.mark.parametrize("inventory", [None, {"revision": "b" * 64, "uncatalogued_sources": []},

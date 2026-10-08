@@ -203,6 +203,41 @@ them, and the dashboard's viewport paints them (ADR-449, ADR-522) by the
 same rule the studio draws with. A part with no declared role is drawn by supplier until
 it declares one.
 
+### What a part is made of: finish classes (base)
+
+Beside its role, every part has a **finish class**, and it is base, not
+style (ADR-603): a style may pick the role colours, but a screw is steel
+and a board is a PCB in every style. The class follows the catalog family
+the part came off (the inventory's catalog row, or the row a cut catalog
+body came off), and for metal and boards it **overrides the declared role's
+colour** — the role is still reported, and still counts in the design's
+material measure (P3 counts role colours, not finishes).
+
+| class | which parts | drawn as |
+|---|---|---|
+| `printed` | everything no catalog row names and the inventory calls printed | the role's colour and finish, as above |
+| `purchased` | any other catalog part — servo, gearmotor, battery, BLDC, QDD, wheel, tyre, gear — or a part the inventory calls purchased | the role's colour in a moulded satin: a tighter, brighter highlight than a print's |
+| `hardware` | `bolt`, `nut` (black-oxide steel `#3C3E44`); `washer`, `bearing`, `bushing` (bright steel `#B2B6BC`); `heat_insert` (brass `#C9A052`) | metal: a tinted mirror of the studio under a hard highlight |
+| `board` | `board` | green solder mask `#1F6B3C`, the chip box near-black `#18191C`, the terminal pads tinned `#C4C6CA` |
+
+- **Hardware reads as metal.** Black oxide is dark but a mirror: its tops
+  catch the sky, its walls the softbox, and it carries a hard highlight, so
+  it never reads as matte graphite plastic. `shaft`, `dowel` and `pin` are
+  in the table as steel for when such a family is catalogued; none is yet.
+- **A board shows what it is.** The chip and pads are painted where the
+  catalog puts them, in the board's own frame, and only when the mesh *is*
+  the catalog board (its bounds match the PCB and chip under a quarter turn
+  about +Z and a shift, and nothing above the PCB lies outside the chip). A
+  board the script cut or flipped is drawn plain solder mask.
+- **Printed parts keep the clean look.** Shell and graphite reflect a
+  little of the studio — a soft overhead light, the dark mat below — so a
+  top reads apart from a wall without any gloss.
+
+One rule everywhere: `CadexStudio.materials` (stills, `look`, the sheet,
+the print bed, evaluation films and studio videos) and the dashboard's
+model API (`finish`, `catalog`, `board` on each component), which the
+viewport paints with.
+
 ## 3. Joints are features (style)
 
 - **Every rotation axis reads as a round feature.** That means a horn cap,

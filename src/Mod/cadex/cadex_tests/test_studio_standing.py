@@ -70,7 +70,8 @@ def test_a_render_draws_the_review_set_in_process(tmp_path):
     assert sorted(files) == ['front.svg', 'hero.png', 'iso.svg', 'right.svg', 'sheet.png', 'summary.json', 'top.svg']
     assert files['hero.png'].startswith(PNG)
     assert summary['hero']['path'] == 'review/render/hero.png' and summary['environment'] == ['c_floor']
-    assert summary['appearance']['c_pin'] == {'role': 'accent', 'color': '#FF0000', 'source': 'declared'}
+    assert summary['appearance']['c_pin'] == {'role': 'accent', 'color': '#FF0000', 'source': 'declared',
+                                              'finish': 'purchased', 'catalog': None}
     # The floor is never drawn: the mat stands in for it at its top face, a
     # metre a square (ADR-604).
     assert summary['hero']['floor'] == {'kind': 'prototype mat', 'pitch_mm': 1000.0, 'z_mm': 0.0}

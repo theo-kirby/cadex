@@ -421,7 +421,9 @@ def studio_materials(root, record, names):
     inventory said was purchased (docs/XSCRIPT.md, ot10 A3). A design with
     no such summary is drawn all in the shell material, and the video says
     so rather than guessing which parts were bought. Components the summary
-    names as environment get no look and are not drawn (ADR-432).
+    names as environment get no look and are not drawn (ADR-432). Each look
+    carries the finish and catalog row the summary names (ADR-603), so a
+    bolt is metal and a board a PCB here as in the render.
     """
     revision = record['model']['accepted_revision']
     candidates = [(record.get('project_artifacts') or {}).get('render'),
@@ -448,9 +450,13 @@ def studio_materials(root, record, names):
                 continue
             entry = appearance.get(name) or {}
             role, colour = entry.get('role'), str(entry.get('color', ''))
-            require(role in studio_render.FINISH and re.fullmatch('#[0-9A-Fa-f]{6}', colour),
+            finish, catalog = entry.get('finish', 'printed'), entry.get('catalog')
+            require(role in studio_render.FINISH and re.fullmatch('#[0-9A-Fa-f]{6}', colour)
+                    and finish in studio_render.FINISH_CLASSES
+                    and (finish not in ('hardware', 'board') or isinstance(catalog, dict)),
                     f'render summary gives {name} no valid appearance')
-            looks[name] = (role, tuple(int(colour[k:k+2], 16) for k in (1, 3, 5)))
+            looks[name] = studio_render.Look(role, tuple(int(colour[k:k+2], 16) for k in (1, 3, 5)),
+                                             finish, catalog)
         return looks, {'source': item['path'], 'declared': True, 'environment_omitted': environment}
     shell = studio_render.ROLE_COLORS['shell']
     return ({name: ('shell', shell) for name in names},
@@ -514,7 +520,7 @@ def _studio_frames(looks, materials, names, meshes, frames, times, count, sample
     size, pad, half = STUDIO['size'], STUDIO['pad'], STUDIO['smooth_frames']
     right, up, _ = studio_render.HERO
     local = {name: studio_render._prepare(
-        [((looks[name][1], studio_render.FINISH[looks[name][0]]), meshes[name])]) for name in names}
+        [(studio_render.material(looks[name], meshes[name]), meshes[name])]) for name in names}
     vertices = {name: list({p for tri in meshes[name] for p in tri}) for name in names}
     # One exact pass over every sampled pose: the floor, the travel and the track.
     used = [sample(i) for i in range(count)]
@@ -573,7 +579,8 @@ def _studio_frames(looks, materials, names, meshes, frames, times, count, sample
     return {'style': 'studio', 'style_sha256': studio_digest(),
             'renderer': 'CadexStudio studio (engine), CPU, no browser or display',
             'width': size, 'height': size, 'materials': materials,
-            'appearance': {name: {'role': looks[name][0], 'color': '#%02X%02X%02X' % looks[name][1]}
+            'appearance': {name: {'role': looks[name][0], 'color': '#%02X%02X%02X' % tuple(looks[name][1]),
+                                  'finish': getattr(looks[name], 'finish', 'printed')}
                            for name in names},
             'projection': 'orthographic hero view (35 degrees round from the front, 20 above the floor)',
             'camera': {'basis': [list(v) for v in studio_render.HERO]},
