@@ -1,6 +1,6 @@
 # DASHBOARD.md — The dashboard, Cadex's only UI
 
-Verified against source: 2026-10-06. [Cadex-new]
+Verified against source: 2026-10-08. [Cadex-new]
 
 This is the design specification for the dashboard: the pages `cadex app`
 and `cadex review` serve (`cli/cadex_cli/review_server.py` and
@@ -37,7 +37,7 @@ language: the screen is tiled by **areas**, each showing one **editor** —
 the 3D viewport and the 2D viewport — and each area can be
 resized, moved, split, maximized or closed (§12). There is a light theme
 beside the dark one (§4), and the 3D viewport draws shaded by default or as
-a hairline diagram (§10). Still no build step: `layout.js` tiles the
+a wireframe diagram (§10; called hairline until ADR-602). Still no build step: `layout.js` tiles the
 screen, `theme.js` picks the theme, and both are plain scripts.
 
 **The settings are a menu bar (ADR-539).** File, Revisions and View sit in the top bar as dropdowns, and the screen is one 3D viewport by default.
@@ -80,10 +80,10 @@ the screen (`#screen[data-mode]`), which `layout.js` tiles with areas
 | Editor | `data-editor` | Element hooks (stable) | What it is for |
 |---|---|---|---|
 | **Top bar** | — | `#top`, `#home`, `#project-name`, `#accepted-line`, `#freshness[data-state]`, `#theme-toggle` | A link home (hidden under `cadex review`), the project's name, the accepted revision's ordinal and date, **live** or **offline**, and a light/dark toggle. |
-| **3D viewport** | `view3d` | `#view3d-source`, `#view3d-style button[data-style]`, `#model-fit`, `#model`, `#model-status[data-state]`, `#viewer`, `#playback`, `#play-toggle`, `#play-time`, `#play-clock`, `#checkpoints[data-follow][data-state]`, `#checkpoint-pick`, `#checkpoint-label`, `#checkpoint-status`, `#revision-timeline[data-follow][data-state][data-ordinal]`, `#revision-pick`, `#revision-label`, `#revision-status` | The accepted model or a run's, shaded or hairline (§10); orbit, pan (shift- or middle-drag, two fingers) and zoom by pointer or touch (§5); **Fit**. `#model-status` says why no model is drawn (loading, missing with its reason in `--warn`, an error in `--bad`). It sits at the bottom left, above the scrubbers, on an opaque `--surface`, because the floor is dark in both themes (ADR-557). A run that kept a rollout trace plays it on the timeline. **Checkpoints** (ADR-545): while the run Status reads is the model shown, each of its checkpoints the engine rolled out (ADR-544) is a stop on a scrubber above the timeline, oldest to newest, with the run's own rollout last once it has one; a page left open adds that `final policy` stop on the poll after the walk lands its rollout, with no reload (ADR-554). The newest loops, labelled with its iteration (one-based, as Status counts) and reward per step; `data-follow="true"` while it follows new ones. Picking an older one keeps it while newer ones land; moving back to the newest end follows again. A failed rollout plays nothing, leaves the model at rest and says why in `#checkpoint-status` in `--bad`; the same line counts checkpoints still rolling out. While that run is training the viewport turns to it on its own, unless a source was picked by hand this visit. **Revision history** (ADR-547), a source offered once anything is accepted: each stored revision is a stop on `#revision-timeline`, oldest to newest, drawn from the model kept when it was accepted (ADR-546). The newest is shown and followed (`data-follow="true"`); picking an older one keeps it, and the newest end follows again. Unchanged parts are drawn in `--paper-ink`, parts whose digest changed against the revision before in `--info`, and that previous revision is a ghost in `--ink-2` at 22% opacity wherever it differs (a part kept as it was, where it was, is not drawn twice; a hairline diagram leaves the ghost out). `#revision-status` names the changed parts and the revision compared against. A revision whose model was not kept (`data-state="missing"`) draws nothing and says why in `--warn`; the revision after it draws with no ghost and says there is nothing to compare with. |
+| **3D viewport** | `view3d` | `#view3d-source`, `#view3d-style button[data-style]`, `#model-fit`, `#model`, `#model-status[data-state]`, `#viewer`, `#playback`, `#play-toggle`, `#play-time`, `#play-clock`, `#checkpoints[data-follow][data-state]`, `#checkpoint-pick`, `#checkpoint-label`, `#checkpoint-status`, `#revision-timeline[data-follow][data-state][data-ordinal]`, `#revision-pick`, `#revision-label`, `#revision-status` | The accepted model or a run's, shaded or wireframe (§10); orbit, pan (shift- or middle-drag, two fingers) and zoom by pointer or touch (§5); **Fit**. `#model-status` says why no model is drawn (loading, missing with its reason in `--warn`, an error in `--bad`). It sits at the bottom left, above the scrubbers, on an opaque `--surface`, because the floor is dark in both themes (ADR-557). A run that kept a rollout trace plays it on the timeline. **Checkpoints** (ADR-545): while the run Status reads is the model shown, each of its checkpoints the engine rolled out (ADR-544) is a stop on a scrubber above the timeline, oldest to newest, with the run's own rollout last once it has one; a page left open adds that `final policy` stop on the poll after the walk lands its rollout, with no reload (ADR-554). The newest loops, labelled with its iteration (one-based, as Status counts) and reward per step; `data-follow="true"` while it follows new ones. Picking an older one keeps it while newer ones land; moving back to the newest end follows again. A failed rollout plays nothing, leaves the model at rest and says why in `#checkpoint-status` in `--bad`; the same line counts checkpoints still rolling out. While that run is training the viewport turns to it on its own, unless a source was picked by hand this visit. **Revision history** (ADR-547), a source offered once anything is accepted: each stored revision is a stop on `#revision-timeline`, oldest to newest, drawn from the model kept when it was accepted (ADR-546). The newest is shown and followed (`data-follow="true"`); picking an older one keeps it, and the newest end follows again. Unchanged parts are drawn in `--paper-ink`, parts whose digest changed against the revision before in `--info`, and that previous revision is a ghost in `--ink-2` at 22% opacity wherever it differs (a part kept as it was, where it was, is not drawn twice; a wireframe diagram leaves the ghost out). `#revision-status` names the changed parts and the revision compared against. A revision whose model was not kept (`data-state="missing"`) draws nothing and says why in `--warn`; the revision after it draws with no ghost and says there is nothing to compare with. |
 | **Status** | `status` | `#editor-status`, `#status-stage[data-stage]`, `#status[data-stage]`, `#status-line`, `#status-run`, `#status-stats`, `#status-reward-now`, `#status-best`, `#status-loss-now`, `#status-eta`, `#status-sparks`, `#status-reward`, `#status-loss`, `#status-warning`, `#status-activity[data-state]`, `#status-activity-line`, `#status-activity-log`, `#status-activity-list` | What the project is doing and how training is going (ADR-542, the first panel back after ADR-533), an editor of its own since ADR-572, beside the 3D viewport rather than over its model: a stage chip in the area's header — **idle**, **designing** (a revision accepted in the last 10 min), **training** (iteration of total and ETA), **evaluating**, **stopped** in `--warn` (the newest run was stopped on request, through `train_stop` or a walk's Ctrl-C or `SIGTERM`; its line is the stop's reason, ADR-559; a run stopped before ADR-559, whose record says `failed` but whose supervisor's `training-status.json` says `stopped`, reads stopped too, ADR-574) or **failed** (a run that failed, or a walk or supervisor killed mid-run whose record still says `running` under a lock nobody holds, ADR-559) — and, in its body, one line, the run it reads (named when there are several), reward per step, the best reward and its iteration, loss, ETA, reward and loss sparklines, and the trainer's collapse `warning` in `--warn` (or, while the run is still recorded as live, that its telemetry has been quiet for over 30 s; never under a run whose record has ended, ADR-574). Read from `/api/project`'s `stage` on the page's own poll. **The agent's activity** (ADR-550), from `/api/project`'s `activity` (ADR-549): one mono line under the run with the newest `cadex mcp` call, its argument summary and how long ago (`data-state="active"`), or `failed: <detail>` in `--bad` (`"error"`); a call still in flight reads `<tool> <args> · running <how long>` in `--info` (`"running"`, ADR-553), never idle, and an in-flight `evaluate` makes the stage **evaluating**, its line `the agent's evaluate call is running` for the whole call, never an evaluation directory's id (ADR-555); a call whose server died before it returned reads `did not return` in `--bad`; once no call has returned for 5 min and none is in flight it reads `agent idle · last call <tool> <ago>` in `--ink-2` (`"idle"`); with no log it shows the reason (`"none"`). `recent calls` opens the newest five, each with its UTC clock time, failures in `--bad`. It never collapses: an area is sized by its edges, and on a phone it is a tab. With no runs it is one line, `idle`. |
 | **2D viewport** | `view2d` | `#view2d-source`, `#view2d-fit`, `#sheet-stage[data-kind]`, `#sheet-empty` | The project's drawings and presentation images (pan, zoom, double-click to fit), its documents (markdown, drawn as text only), each evaluation's film, newest first (a passed evaluation's hero and print-bed hero first, as images, ADR-570; then its shove video, `· shoves`, with the pushes and the ending captioned below it in `--ink-2` mono, ADR-571; then each filmed seed's rollout video, which plays in place with controls, muted and looping, and its filmstrip and detail sheets as images; ADR-541), and each run's training curves (reward, loss, episode length) as plots. |
-| **Menu bar** | — | `#menubar`; `#file-panel` (`#project-select`, `#project-open`, `#project-all`); `#revision-panel` (`#revision-list li[data-revision][data-ordinal][data-current]`, `#revision-empty`); `#view-panel` (`#theme-choice`, `#style-choice`, `#layout-reset`, `#layout-presets button[data-preset]`) | File, Revisions and View in the top bar, each a `<details class="menu">` dropdown (ADR-539): open another project; the revision trail, read-only (§18), where a row (`data-retained` says whether its model was kept) opens that revision on the 3D viewport's revision timeline — a view, never a restore; the theme, the render style and the layout: Reset, and eight one-click presets (§12). One opens at a time; a click outside or Escape closes it, and with one open, hovering another opens that one. On a phone the dropdown spans the screen between the gutters. |
+| **Menu bar** | — | `#menubar`; `#file-panel` (`#project-select`, `#project-open`, `#project-all`); `#revision-panel` (`#revision-list li[data-revision][data-ordinal][data-current]`, `#revision-empty`); `#view-panel` (`#theme-choice`, `#style-choice`, `#mesh-lines`, `#mesh-strength`, `#reflections`, `#layout-reset`, `#layout-presets button[data-preset]`) | File, Revisions and View in the top bar, each a `<details class="menu">` dropdown (ADR-539): open another project; the revision trail, read-only (§18), where a row (`data-retained` says whether its model was kept) opens that revision on the 3D viewport's revision timeline — a view, never a restore; the theme, the render style, the wireframe's mesh lines (on or off, and a strength slider) and the shaded solids' reflections (a strength slider), each this browser's own (§10), and the layout: Reset, and eight one-click presets (§12). One opens at a time; a click outside or Escape closes it, and with one open, hovering another opens that one. On a phone the dropdown spans the screen between the gutters. |
 
 The element ids and `data-*` attributes above are the hooks the CLI suite
 pins: `test_review_design.py` fails if an id in this table is missing from
@@ -131,7 +131,7 @@ The light theme overrides the same token names under
 `--rule-strong` #a8a8a8, `--ink` #1c1c1c, `--ink-2` #5c5c5c, `--accent`
 #262626, `--ok` #18794a, `--warn` #8a6100, `--bad` #b42318, `--info`
 #0b7285. Two tokens beyond the table follow the theme too: `--select` (a
-pressed button, the drop hint) and `--paper` / `--paper-ink` (the hairline
+pressed button, the drop hint) and `--paper` / `--paper-ink` (the wireframe
 diagram, §10). `theme.js` sets `data-theme` before the first paint from the
 browser's stored choice — dark, light or the system's — and every page
 loads it.
@@ -383,18 +383,59 @@ Every receipt ships under `docs/probes/ot6/` within the charter's caps
 
 ## 10. The viewport: dark only, shared with the capture
 
-**Render styles (ADR-534).** The 3D viewport draws **shaded** by default —
-the lit stage below, the one every capture uses — or **hairline**: a
-diagram of silhouettes and creases in `--paper-ink` on flat `--paper`, with
-no floor, shadow or fog. The hairline is one screen-space pass in
-`review_scene.js` (`setStyle`): the solids' view normals and depth are drawn
-offscreen at twice the canvas's resolution (at most 16 Mpx), ink goes
-wherever either jumps between neighbouring pixels — depth for silhouettes,
-inked on the nearer side only, and a normal turn of more than about 37° for
-creases — with a hard threshold, and the canvas takes the mean of each 2×2
-block, so a line is one crisp pixel with its stair-steps smoothed. A
-tessellated fillet, whose facets turn by less, stays clean. The choice is the
-browser's (`cadex.render`); a capture never uses it.
+**Render styles (ADR-534, ADR-602).** The 3D viewport draws **shaded** by
+default — the lit stage below, the one every capture uses — or
+**wireframe** (called **hairline** until ADR-602; a stored `hairline` choice
+opens as wireframe and is rewritten): a diagram of silhouettes and creases
+in `--paper-ink` on flat `--paper`, with no floor, shadow or fog. The bold
+lines are one screen-space pass in `review_scene.js` (`setStyle`): the
+solids' view normals (each facet's own, so smooth shading never softens a
+crease) and depth are drawn offscreen at twice the canvas's resolution (at
+most 16 Mpx), ink goes wherever either jumps between neighbouring pixels —
+depth for silhouettes, inked on the nearer side only, and a normal turn of
+more than about 37° for creases — with a hard threshold, and the canvas takes
+the mean of each 2×2 block, so a line is one crisp pixel with its
+stair-steps smoothed. A tessellated fillet, whose facets turn by less, stays
+clean of ink.
+
+**Mesh lines (ADR-602).** Under the bold lines the wireframe can draw a soft
+layer of the tessellation itself: every edge where two facets turn by more
+than 2° (`MESH_LINES.angle`), so a curved face shows its facets and a flat
+one stays clean, drawn over a depth-only prepass of the solids so a line
+behind a solid is hidden, and mixed into the paper at a **strength** of the
+ink (default 0.22, 0–1). They are on by default; View → **Mesh lines** turns
+them off and its slider sets the strength (`setMeshLines`). The edges are
+built the first time they are drawn and kept with the solid.
+
+**Materials (ADR-601).** A shaded solid is a physical material over its role
+colour (the role colours and the hover glow are unchanged), lit
+by the stage's lights and by a small procedural studio — a dim box room
+with an overhead softbox, a warm key, a cool fill and a rim strip,
+prefiltered once into an environment map (`studioEnvironment`) — that is
+seen only in reflections. Its normals are crease-angle normals: at each
+vertex the facets within 40° of each other (the engine's `CREASE_DEGREES`)
+are averaged, weighted by their corner angles, so a fillet, a bore or a ball
+reads smooth and an edge that turns further stays crisp. The finish comes
+from the manifest's `finish` (`printed`, `purchased`, `hardware`, `board`;
+without one, `purchased` when the supplier says so, else `printed`):
+printed plastic roughness 0.55 with a faint clearcoat and sheen; purchased
+bodies a satin plastic (0.42); hardware metal by catalog family — bolts,
+screws, nuts and standoffs black oxide, washers, bearings, bushings, shafts
+and dowels bright steel, heat-set inserts brass; boards a satin solder mask
+(`#1f6b3c` when the part has no colour). A board whose manifest carries its
+own `board` geometry (the chip's box and the pads' centres and diameters, mm,
+in the mesh's frame) is coloured facet by facet: a facet wholly in the
+chip's box near-black, one wholly within a pad's radius plus 0.6 mm (across
+the board's face) tin, the rest the mask; a facet is coloured whole, so a
+long one never smears. The floor takes no reflection. View →
+**Reflections** scales every finish's reflection 0–2× (default 1×,
+`setReflections`). The sun's shadow is offset two shadow-map texels along
+the normal, so a flat face lit at a grazing angle no longer stripes itself.
+
+The style, the mesh lines and the reflections are this browser's
+(`cadex.render`, `cadex.meshlines`, `cadex.meshlines.strength`,
+`cadex.reflections`); a capture never uses them and draws shaded at the
+default strength.
 
 The environment module behind the viewport and the video capturer has one
 palette, the reference's dark one (ADR-331); the light palette and its theme
@@ -412,15 +453,42 @@ framing, camera — are `docs/probes/ot6/look/README.md`, with the composite
 [side-by-side.png](probes/ot6/look/side-by-side.png).
 
 **The grid is anchored to the world (ADR-343).** The mat's major lines sit
-on whole multiples of the pitch in world metres, with a block corner on the
-origin, whatever the floor's size. The floor grows with the fog as the camera
-pulls back, and until 2026-09-14 its texture was laid from the plane's corner.
-Zooming out past a 24 m floor slid the grid under the model, by 0.26 of a
-2 m block at twice the fit distance and 0.51 at four times, so a *1 METER*
-line was not where a metre is. A size change now rescales the plane and
-re-offsets the texture without repainting it. Only a change of pitch or minor
-mesh repaints. The minor mesh still steps with the framing (5 → 10 → 20 cm,
-then none) by design, and the major lines never move.
+on whole metres in world space, with a block corner on the origin, whatever
+the floor's size. The floor grows with the fog as the camera pulls back, and
+until 2026-09-14 its texture was laid from the plane's corner. Zooming out
+past a 24 m floor slid the grid under the model, by 0.26 of a 2 m block at
+twice the fit distance and 0.51 at four times, so a *1 METER* line was not
+where a metre is. A size change now rescales the plane and re-offsets the
+texture without repainting it.
+
+**The grid is true size (ADR-600).** One square a metre on a side, at every
+zoom and every framing: `floor.js` exports `GRID_PITCH = 1` and
+`LINE_FRACTION = 5/256` (the line's width as a share of the pitch), paints
+the 2 m checker block once at 2048 texels with its *1 METER* and
+*PROTOTYPE* labels, and never repaints it. The finer mesh that stepped with
+the framing (5 → 10 → 20 cm) and the half-pitch dots are gone: zooming
+showed them as layers of grid sliding over one another.
+
+**The floor is the design's own (ADR-600).** World geometry — a task's
+floor, slab or wall, a part the manifest marks `world` — is never drawn
+beside a design, in the viewport or in a scene-style capture (`video.py`
+passes the flag). The mat lies at the top of that geometry, so the design
+stands on the mat as it stands on its floor; with none, under the design's
+lowest point; and when the world geometry rises more than a floor could
+above the design's lowest point (2 mm or 2 % of its height), under the
+design. The mat is pushed back in depth (polygon offset) rather than
+lowered, so a part resting on it never z-fights. A model that is nothing but
+world geometry is drawn as it is. `stats().floor` reports `z_mm`, `source`
+(`world` or `design`) and `pitch_mm`; `stats().hidden_world` names the parts
+not drawn.
+
+**The clip planes follow the shot (ADR-600).** The camera's near plane is
+0.002 of its distance to the target and its far plane is 1.5× the floor's
+size (`STAGE_LOOK.farFloorMul`), so the depth buffer's precision scales with
+the shot and the floor, its fade and the design never clip, pop or z-fight
+at any zoom; `stats().clip` reports both. They used to be 0.001 of the
+design's radius and a fixed 800 m, a ratio of millions that let the mat
+and a design's own floor fight at the contact.
 
 **The follow camera and the timer (ADR-332).** A recording's camera is the
 reference's follow rig, computed by the shared scene module (`follow`) from
@@ -532,9 +600,10 @@ carries a scene colour of its own.
 **The floor.** The CPU renderer (`CadexStudio._floor`) intersects each
 orthographic ray with the floor plane: a checker one pitch square, the
 major line on every multiple of the pitch anchored at the world origin, the
-pitch chosen by `floor.js`'s own `chooseGridPitch` ladder for the framed
-span, and each line's pixel coverage computed from the floor footprint of
-the pixel, which antialiases it. The mat fades into the background between
+pitch one metre as `floor.js` draws it (ADR-600; it was chosen from a ladder
+by the framed span until then) at `floor.js`'s line fraction, and each
+line's pixel coverage computed from the floor footprint of the pixel, which
+antialiases it. The mat fades into the background between
 0.75× and 1.9× the framed extent from the point under the image centre. A
 level view (`front`, `right`) sees no floor and draws the background. No
 minor lines and no baked labels: at a hero's framing they are noise.
@@ -548,8 +617,8 @@ probe is re-scored (ADR-444). The viewport and its capture (§10) are the
 source, not a consumer, and are unchanged.
 
 **Held by** `cli/tests/test_scene_palette.py` (the renderer's palette is the
-viewport's, parsed independently, and the charter's values; the ladder and
-line width are `floor.js`'s; no image module carries a scene colour; the
+viewport's, parsed independently, and the charter's values; the one metre
+pitch and the line fraction are `floor.js`'s; no image module carries a scene colour; the
 hero stands on the mat and fades; a changed viewport palette changes the
 drawn image; the studio video's identity covers the palette source), with
 the shadow held by `test_contact_shadow_darkens_the_floor_under_the_design_only`.

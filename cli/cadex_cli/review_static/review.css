@@ -222,6 +222,11 @@ details.menu > summary:hover, details.menu[open] > summary { background: var(--s
 .field { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); margin: var(--s2) 0; color: var(--ink-2); font-size: var(--fs-0); }
 .field select { flex: 1; max-width: 70%; font-size: var(--fs-0); min-height: 28px; }
 .field .segmented button { font-size: var(--fs-0); min-height: 28px; padding: 0 var(--s2); }
+/* The viewport's look controls (ADR-601, ADR-602): a switch and a slider, right-aligned. */
+.look-control { display: flex; align-items: center; gap: var(--s2); }
+.look-control input[type="checkbox"] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+.look-control input[type="range"] { width: 120px; height: 28px; margin: 0; accent-color: var(--accent); }
+.look-control input:disabled { opacity: .4; }
 .presets { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s1); margin: 0 0 var(--s2); }
 .menu-panel .presets button { padding: 0; min-height: 34px; display: flex; align-items: center; justify-content: center; }
 .presets svg { width: 22px; height: 20px; fill: none; stroke: var(--ink-2); stroke-width: 1.3; }

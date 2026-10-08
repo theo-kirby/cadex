@@ -4,7 +4,7 @@
 // The app (ADR-534): three editors tiled by layout.js, after Blender's areas,
 // under a menu bar (ADR-539).
 //
-//   3D viewport  the accepted model or a run's, shaded or hairline, a
+//   3D viewport  the accepted model or a run's, shaded or wireframe, a
 //                run's rollout played back on a timeline, a training run's
 //                checkpoints looped as they land (ADR-545), the design's
 //                revisions on a timeline with a ghost and a tint (ADR-547) -- most
@@ -15,7 +15,8 @@
 //   2D viewport  the project's drawings, images, documents, evaluation films and training plots,
 //                a split away;
 //   Menu bar     File (the project), Revisions (the trail), View (theme,
-//                render style, layout presets and reset, ADR-573).
+//                render style, mesh lines, reflections, layout presets
+//                and reset, ADR-573, ADR-602).
 //
 // Read-only (ADR-537): the agent working the project changes it, through
 // the CLI or `cadex mcp`, and the page follows. Polls /api/project for what
@@ -32,7 +33,7 @@
   var ORDER = ['view3d', 'status', 'view2d'];
   // The 3D viewport with Status beside it; split an area for the 2D one.
   var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.75, 0.25], children: [{ editor: 'view3d' }, { editor: 'status' }] };
-  var STYLES = ['shaded', 'hairline'];
+  var STYLES = ['shaded', 'wireframe'];
   var state = { review: null, lastOk: null, stale: false, error: null, model: null, viewer: null, layout: null };
   var pendingPoll = null;
   var lastPoll = { project_bytes: 0, ms: 0 };
@@ -71,11 +72,19 @@
     });
   }
   // This browser's view preferences; a browser that refuses storage gets the defaults.
+  function readStored(key) {
+    try { return localStorage.getItem(key); } catch (_) { return null; }
+  }
   function readPref(key, choices, fallback) {
-    try { var value = localStorage.getItem(key); return choices.indexOf(value) >= 0 ? value : fallback; }
-    catch (_) { return fallback; }
+    var value = readStored(key);
+    return choices.indexOf(value) >= 0 ? value : fallback;
   }
   function writePref(key, value) { try { localStorage.setItem(key, value); } catch (_) { /* this visit only */ } }
+  // A stored number within [lo, hi], or the fallback.
+  function readNumber(key, lo, hi, fallback) {
+    var value = readStored(key), number = value === null || value === '' ? NaN : Number(value);
+    return isFinite(number) ? Math.max(lo, Math.min(hi, number)) : fallback;
+  }
   function token(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
   function pressed(group, attribute, value) {
     $(group).querySelectorAll('button').forEach(function (button) {
@@ -171,7 +180,14 @@
   var source = 'accepted', sourcesKey = null, modelKey = null, modelLoad = 0, modelAbort = null;
   // A failed load is tried again on a later poll, waiting longer each time.
   var modelFailures = 0, modelRetryAt = 0;
-  var renderStyle = readPref('cadex.render', STYLES, 'shaded');
+  // The render style; 'hairline', the wireframe's name before ADR-602, is read as it and kept so.
+  var renderStyle = readPref('cadex.render', STYLES.concat(['hairline']), 'shaded');
+  if (renderStyle === 'hairline') { renderStyle = 'wireframe'; writePref('cadex.render', renderStyle); }
+  // The viewport's look (ADR-601, ADR-602): the wireframe's mesh lines and the shaded
+  // solids' reflections, this browser's own.
+  var meshLines = { shown: readPref('cadex.meshlines', ['on', 'off'], 'on') === 'on',
+                    strength: readNumber('cadex.meshlines.strength', 0, 1, 0.22) };
+  var reflections = readNumber('cadex.reflections', 0, 2, 1);
 
   function renderSources() {
     var runs = (state.review.runs || []).map(function (run) { return run.run; });
@@ -265,13 +281,38 @@
   }
 
   function applyStyle(name) {
+    if (name === 'hairline') name = 'wireframe';
     if (STYLES.indexOf(name) < 0) return renderStyle;
     renderStyle = name;
     writePref('cadex.render', name);
     pressed('view3d-style', 'data-style', name);
     pressed('style-choice', 'data-style', name);
     if (state.viewer) state.viewer.setStyle(name, { paper: token('--paper'), ink: token('--paper-ink') });
+    $('mesh-lines').disabled = name !== 'wireframe';
+    $('mesh-strength').disabled = name !== 'wireframe' || !meshLines.shown;
+    $('reflections').disabled = name !== 'shaded';
     return name;
+  }
+  // Mesh lines: on or off, and how strong, of the ink (0-1). Either may be left out.
+  function applyMeshLines(next) {
+    next = next || {};
+    if (typeof next.shown === 'boolean') meshLines.shown = next.shown;
+    if (next.strength != null && isFinite(Number(next.strength))) meshLines.strength = Math.max(0, Math.min(1, Number(next.strength)));
+    writePref('cadex.meshlines', meshLines.shown ? 'on' : 'off');
+    writePref('cadex.meshlines.strength', String(meshLines.strength));
+    $('mesh-lines').checked = meshLines.shown;
+    $('mesh-strength').value = String(meshLines.strength);
+    $('mesh-strength').disabled = renderStyle !== 'wireframe' || !meshLines.shown;
+    if (state.viewer && state.viewer.setMeshLines) state.viewer.setMeshLines(meshLines);
+    return { shown: meshLines.shown, strength: meshLines.strength };
+  }
+  // Reflections: the shaded solids' environment, 0-2 times each finish's own.
+  function applyReflections(value) {
+    if (value != null && isFinite(Number(value))) reflections = Math.max(0, Math.min(2, Number(value)));
+    writePref('cadex.reflections', String(reflections));
+    $('reflections').value = String(reflections);
+    if (state.viewer && state.viewer.setReflections) state.viewer.setReflections(reflections);
+    return reflections;
   }
 
   // Playback: the trace's own placements, blended between the two frames
@@ -942,6 +983,8 @@
     state.layout = window.CadexLayout.create({ root: $('screen'), shelf: $('editor-shelf'), editors: editors, order: ORDER,
                                                storageKey: 'cadex.layout.v4', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
     state.viewer = window.CadexViewer.create($('viewer'));
+    applyMeshLines();
+    applyReflections();
     applyStyle(renderStyle);
 
     $('model-fit').addEventListener('click', function () { state.viewer.fit(); });
@@ -952,6 +995,9 @@
         if (button) applyStyle(button.dataset.style);
       });
     });
+    $('mesh-lines').addEventListener('change', function () { applyMeshLines({ shown: $('mesh-lines').checked }); });
+    $('mesh-strength').addEventListener('input', function () { applyMeshLines({ strength: $('mesh-strength').value }); });
+    $('reflections').addEventListener('input', function () { applyReflections($('reflections').value); });
     $('play-toggle').addEventListener('click', function () { ckpt.paused = !!playing; togglePlayback(); });
     $('checkpoint-pick').addEventListener('input', function () { pickCheckpoint(Number($('checkpoint-pick').value)); });
     $('revision-pick').addEventListener('input', function () { pickRevision(Number($('revision-pick').value)); });
@@ -978,7 +1024,7 @@
     });
     document.addEventListener('cadex-theme-choice', renderThemeChoice);
     // The diagram's paper and ink are the theme's.
-    document.addEventListener('cadex-theme', function () { if (renderStyle === 'hairline') applyStyle('hairline'); });
+    document.addEventListener('cadex-theme', function () { if (renderStyle === 'wireframe') applyStyle('wireframe'); });
     renderThemeChoice();
     $('layout-reset').addEventListener('click', function () { state.layout.reset(); });
     $('layout-presets').addEventListener('click', function (event) {
@@ -1006,6 +1052,10 @@
     layout: function () { return state.layout; },
     setStyle: applyStyle,
     renderStyle: function () { return renderStyle; },
+    setMeshLines: applyMeshLines,
+    meshLines: function () { return { shown: meshLines.shown, strength: meshLines.strength }; },
+    setReflections: applyReflections,
+    reflections: function () { return reflections; },
     setSource: function (value) { ckpt.chosenSource = true; return setSource(value); },
     setSheet: setSheet,
     sheets: function () { return sheet.list.map(function (item) { return { key: item.key, group: item.group, kind: item.kind, label: item.label }; }); },

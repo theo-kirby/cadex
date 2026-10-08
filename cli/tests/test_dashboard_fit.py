@@ -7,7 +7,8 @@ a 1.2 m slab under a 178 mm quadruped, which Fit framed whole and left the
 robot a speck (docs/probes/orun2/REPORT.md, defect 1). The engine already
 names that slab world geometry in the fit block; the manifest carries the
 flag and the viewer leaves such parts out of the bounds Fit frames and out
-of the model-pixel coverage check. Proved against a real engine.
+of the model-pixel coverage check, and (ADR-600) does not draw them at all:
+the mat lies at the floor's top instead. Proved against a real engine.
 """
 
 from __future__ import annotations
@@ -82,6 +83,9 @@ def test_browser_fit_frames_the_body_and_coverage_ignores_the_floor(engine, floo
     assert 0.05 < fraction < 0.6, px
     assert x0 > 0 and y0 > 0 and x1 < px["width"] - 1 and y1 < px["height"] - 1, px
     assert (x1 - x0) > 0.25 * px["width"] or (y1 - y0) > 0.25 * px["height"], px
-    # The floor is still drawn: it is left out of framing, not hidden.
+    # The floor is installed but not drawn (ADR-600): the mat lies at its top, z = 0, where the
+    # body stands.
     page.evaluate("window.cadexReview.viewer().draw()")
-    assert page.evaluate("window.cadexReview.viewer().stats().components") == 2
+    stats = page.evaluate("window.cadexReview.viewer().stats()")
+    assert stats["components"] == 2 and stats["hidden_world"] == ["c_floor"]
+    assert stats["floor"]["source"] == "world" and stats["floor"]["z_mm"] == pytest.approx(0, abs=1e-6)

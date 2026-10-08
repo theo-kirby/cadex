@@ -12,14 +12,14 @@
 //   - the palette is applied once at construction: scene.background / fog / ground tint / light
 //     intensities from PALETTE.scene, the floor texture from PALETTE.tile;
 //   - setStage is THE entry point: give it the shot's camera distance and it derives fog, then the
-//     floor size from the fog, then the grid subdivision from the framing — and returns what it
-//     derived, so a caller can report the numbers rather than recompute them;
+//     floor size from the fog, then the far plane the camera needs to see all of it — and returns
+//     what it derived, so a caller can report the numbers rather than recompute them;
 //   - setSize / setFog are the primitives setStage drives; call them directly only to override one
 //     axis of the derivation.
 //   - dispose tears the whole thing down (floor geometry + texture + the extra fill light).
 
 import * as THREE from "./three.module.js";
-import { buildStageFloor, chooseGridPitch, resizeStageFloor } from "./floor.js";
+import { buildStageFloor, GRID_PITCH, resizeStageFloor } from "./floor.js";
 export const KEY_DIR = [0.22, 1.0, 0.15];
 
 // The derivation constants behind `setStage`. Every one of these used to be a hard-coded number
@@ -32,13 +32,14 @@ export const KEY_DIR = [0.22, 1.0, 0.15];
 //   footprintFogMul — the floor runs to 4x the fog's far distance, which is the invariant that
 //               matters: the plane's own EDGE is always well past the point it has faded to
 //               background, so no shot can ever catch the stage ending.
-//   grid*     — the metre pitch is kept honest (that label is the scale reference) and a finer mesh
-//               is chosen from the shot's own framing, so an 82 mm airframe sits on something it
-//               can be read against instead of on 1/12 of a bare metre square. A wide arena shot
-//               resolves the subdivision to "coarser than the tile", i.e. none.
+//   farFloorMul — the camera's far plane is this multiple of the floor's size (ADR-600): past the
+//               farthest corner of the floor from any camera the floor grows to cover, so the mat
+//               is never cut by the far plane and never pops in or out while zooming. It used to
+//               be a fixed 800 m with the fade clamped under it.
+// The grid is no longer derived at all: it is one square a metre on a side (floor.js, ADR-600).
 export const STAGE_LOOK = {
   fogNearMul: 1.5, fogNearMin: 1.0, fogFarMul: 14, fogFarMin: 6.0,
-  footprintFogMul: 4, gridPitch: 1, gridSpanMul: 2.5, gridWant: 5,
+  footprintFogMul: 4, farFloorMul: 1.5,
   keyDir: KEY_DIR, exposure: 0.95,
 };
 
@@ -72,8 +73,7 @@ function skyGradient(bg, top) {
 // until the first `setStage`, which derives the real fade from the shot's own standoff. They are
 // arena-sized on purpose, so a scene that has not been staged yet still shows something.
 export const PALETTE = {
-  tile: { tileA: "#1c1c1c", tileB: "#232323", line: "#3a3a3a", dot: "#444444",
-          minorLine: "#303030", label: "rgba(150,150,150,0.22)" },
+  tile: { tileA: "#1c1c1c", tileB: "#232323", line: "#3a3a3a", label: "rgba(150,150,150,0.22)" },
   scene: {
     bg: 0x141414, sky: "#070707", fogNear: 40, fogFar: 130,
     hemiIntensity: 1.6, hemiGround: 0x2a2a2a, sunIntensity: 2.7, fillIntensity: 1.0,
@@ -82,7 +82,7 @@ export const PALETTE = {
 };
 
 export function createEnvironment(view, { labels = true } = {}) {
-  let size = { footprint: 10, floorZ: 0, pitch: 1, minor: 0 };
+  let size = { footprint: 10, floorZ: 0 };
   let fogOverride = null;                 // {near, far} set by setFog; survives restaging
   let room = null;
 
@@ -106,7 +106,6 @@ export function createEnvironment(view, { labels = true } = {}) {
     disposeObj(room);
     room = buildStageFloor(view.world, {
       size: size.footprint, floorZ: size.floorZ,
-      pitch: size.pitch, minor: size.minor,
       palette: PALETTE.tile, labels,
     });
   }
@@ -127,17 +126,10 @@ export function createEnvironment(view, { labels = true } = {}) {
   }
 
   function setSize(sz = {}) {
-    const next = {
-      footprint: sz.footprint ?? size.footprint,
-      floorZ: sz.floorZ ?? size.floorZ,
-      pitch: sz.pitch ?? size.pitch,
-      minor: sz.minor ?? size.minor,
-    };
-    const repaint = !room || next.pitch !== size.pitch || next.minor !== size.minor;
-    size = next;
-    // A zoom changes the floor's size on nearly every frame; only a change of grid repaints the
-    // texture, and the grid stays anchored to the world origin either way (floor.js).
-    if (repaint) rebuildRoom();
+    size = { footprint: sz.footprint ?? size.footprint, floorZ: sz.floorZ ?? size.floorZ };
+    // A zoom changes the floor's size on nearly every frame; the texture is painted once, and the
+    // grid stays anchored to the world origin whatever the size (floor.js).
+    if (!room) rebuildRoom();
     else resizeStageFloor(room, { size: size.footprint, floorZ: size.floorZ });
   }
 
@@ -151,7 +143,7 @@ export function createEnvironment(view, { labels = true } = {}) {
 
   // Set up the whole stage for a shot at `camDist` metres from its subject, and RETURN what was
   // derived. One call, one chain of consequences: fog comes from the standoff, the floor's size
-  // comes from the fog, and the grid's subdivision comes from the framing.
+  // comes from the fog, and the far plane the camera must use comes from the floor's size.
   //
   // This is the fix for a specific bug, not just tidying. Sizing the floor to the COURSE (what the
   // Studio used to do) and leaving fog at the palette's fixed [40, 150] worked only because walls
@@ -163,32 +155,29 @@ export function createEnvironment(view, { labels = true } = {}) {
   //             supply, because everything else is a consequence of it.
   //   camReach  how far the camera itself stands from the origin; the floor is grown to cover it.
   //             Defaults to the live camera's own horizontal distance.
-  //   frameSpan metres of world the frame spans vertically, for the grid subdivision. Defaults to
-  //             the live camera's FOV applied to camDist.
-  //   fog / gridPitch / gridMinor / roomSize   explicit overrides for any one derived value.
+  //   frameSpan metres of world the frame spans vertically, reported back. Defaults to the live
+  //             camera's FOV applied to camDist.
+  //   fog / roomSize   explicit overrides for either derived value.
+  // The caller sets its camera's far plane to the returned `far`.
   function setStage({ camDist, camReach = null, frameSpan = null, fog = null,
-                      gridPitch = null, gridMinor = null, roomSize = null, floorZ = 0 } = {}) {
+                      roomSize = null, floorZ = 0 } = {}) {
     const d = Math.max(1e-3, Number(camDist) || 0);
     const L = STAGE_LOOK;
 
     const span = frameSpan ?? (2 * Math.tan(THREE.MathUtils.degToRad(view.camera.fov) / 2) * d);
     const reach = camReach ?? 2 * (Math.hypot(view.camera.position.x, view.camera.position.z) + 0.6);
 
-    let [fogNear, fogFar] = fog
+    const [fogNear, fogFar] = fog
       ?? [Math.max(L.fogNearMin, L.fogNearMul * d), Math.max(L.fogFarMin, L.fogFarMul * d)];
-    // The fade must COMPLETE inside the frustum, or the far plane clips a floor that is still
-    // partly visible and you get the hard horizon back by another route. Only bites on the giant
-    // arena presets (a 60 m course wants a 806 m fade against the camera's 800 m far plane).
-    if (!fog) fogFar = Math.min(fogFar, 0.9 * view.camera.far);
     const footprint = roomSize ?? Math.max(L.footprintFogMul * fogFar, reach);
-
-    const pitch = gridPitch ?? L.gridPitch;
-    const autoMinor = chooseGridPitch(span * L.gridSpanMul, L.gridWant);
-    const minor = gridMinor ?? (autoMinor <= pitch / 2 ? autoMinor : 0);
+    // The fade completes well inside the frustum and the whole floor lies inside it too: the far
+    // plane follows the floor, so it can clip neither the fade nor the mat.
+    const far = L.farFloorMul * footprint;
 
     setFog({ near: fogNear, far: fogFar });
-    setSize({ footprint, floorZ, pitch, minor });
-    return { roomSize: footprint, fog: { near: fogNear, far: fogFar }, pitch, minor, frameSpan: span };
+    setSize({ footprint, floorZ });
+    return { roomSize: footprint, fog: { near: fogNear, far: fogFar }, far, pitch: GRID_PITCH,
+             floorZ, frameSpan: span };
   }
 
   function dispose() {

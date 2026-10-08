@@ -61,7 +61,22 @@
           <span>Render</span>
           <span class="segmented" id="style-choice" role="group" aria-label="Render style">
             <button type="button" data-style="shaded">Shaded</button>
-            <button type="button" data-style="hairline">Hairline</button>
+            <button type="button" data-style="wireframe">Wireframe</button>
+          </span>
+        </div>
+        <!-- The viewport's look, this browser's own (ADR-601, ADR-602): the wireframe's soft mesh
+             lines and their strength, and the shaded solids' reflections. -->
+        <div class="field">
+          <label for="mesh-lines">Mesh lines</label>
+          <span class="look-control">
+            <input type="checkbox" id="mesh-lines" checked>
+            <input type="range" id="mesh-strength" min="0" max="1" step="0.02" value="0.22" aria-label="Mesh line strength">
+          </span>
+        </div>
+        <div class="field">
+          <label for="reflections">Reflections</label>
+          <span class="look-control">
+            <input type="range" id="reflections" min="0" max="2" step="0.05" value="1" aria-label="Reflection strength">
           </span>
         </div>
         <div class="field">
@@ -97,7 +112,7 @@
       <select id="view3d-source" aria-label="Model to show"></select>
       <span class="segmented" id="view3d-style" role="group" aria-label="Render style">
         <button type="button" data-style="shaded" aria-pressed="true">Shaded</button>
-        <button type="button" data-style="hairline" aria-pressed="false">Hairline</button>
+        <button type="button" data-style="wireframe" aria-pressed="false">Wireframe</button>
       </span>
       <button id="model-fit" type="button">Fit</button>
     </div>

@@ -52,14 +52,17 @@ def test_the_renderer_palette_is_the_viewports_palette():
 
 
 def test_the_grid_is_the_viewports_grid():
+    """One fixed metre pitch and one line fraction on both sides (ADR-600)."""
     floor = (STATIC / 'floor.js').read_text()
-    ladder = re.search(r'PITCH_LADDER = \[([^\]]*)\]', floor).group(1)
-    assert [round(float(v) * 1000) for v in ladder.split(',')] == list(scene.PITCH_LADDER_MM)
-    # A major line is drawn (5 * S) / 512 wide on a texture of S spanning two pitches.
-    assert 'drawLines(M, (5 * S) / 512, line)' in floor and scene.LINE_FRACTION == 5 / 256
-    # chooseGridPitch: the coarsest step that still puts `want` divisions across.
-    assert scene.grid_pitch_mm(400) == 50 and scene.grid_pitch_mm(4000) == 500
-    assert scene.grid_pitch_mm(1) == 10
+    pitch = float(re.search(r'export const GRID_PITCH = ([\d.]+);', floor).group(1))
+    fraction = re.search(r'export const LINE_FRACTION = (\d+) / (\d+);', floor).groups()
+    assert pitch == 1 and int(fraction[0]) / int(fraction[1]) == scene.LINE_FRACTION == 5 / 256
+    # The texture draws its lines at that fraction of the pitch, and nothing finer.
+    assert 'ctx.lineWidth = LINE_FRACTION * M' in floor
+    assert 'PITCH_LADDER' not in floor and 'chooseGridPitch' not in floor
+    # The engine's floor is the same metre, once it carries one fixed pitch.
+    if hasattr(scene, 'GRID_PITCH_MM'):
+        assert scene.GRID_PITCH_MM == pitch * 1000
 
 
 def test_no_cli_module_carries_a_colour_of_its_own_for_the_scene():

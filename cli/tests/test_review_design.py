@@ -273,7 +273,7 @@ def _assert_follows_the_spec(browser, server, size) -> None:
 @needs_browser
 def test_light_theme_is_chosen_kept_and_drawn(tmp_path, browser) -> None:
     """§4: the light theme overrides the same tokens, survives a reload, and
-    the hairline style draws the theme's paper."""
+    the wireframe style draws the theme's paper."""
 
     from test_review_server import REVISION_B, _review_project, _stage_accepted, serve
     root = _review_project(tmp_path)
@@ -286,15 +286,15 @@ def test_light_theme_is_chosen_kept_and_drawn(tmp_path, browser) -> None:
         assert page.evaluate("document.documentElement.dataset.theme") == "light"
         light = page.evaluate("getComputedStyle(document.body).backgroundColor")
         assert light != "rgb(20, 20, 20)"
-        page.click("#view3d-style button[data-style=hairline]")
-        assert page.evaluate("window.cadexReview.viewer().stats().render_style") == "hairline"
+        page.click("#view3d-style button[data-style=wireframe]")
+        assert page.evaluate("window.cadexReview.viewer().stats().render_style") == "wireframe"
         page.send("Page.reload", {})
         page.wait_for("document.readyState === 'complete' && !!window.cadexReview")
         page.evaluate("window.cadexReview.ready", await_promise=True)
         assert page.evaluate("document.documentElement.dataset.theme") == "light"
         assert page.evaluate("getComputedStyle(document.body).backgroundColor") == light
-        assert page.evaluate("window.cadexReview.renderStyle()") == "hairline"
-        # The hairline's paper fills the canvas where the model is not.
+        assert page.evaluate("window.cadexReview.renderStyle()") == "wireframe"
+        # The wireframe's paper fills the canvas where the model is not.
         assert _model_state(page) == "loaded"
         pixel = page.evaluate("""(function () {
           var v = window.cadexReview.viewer(); v.draw();
