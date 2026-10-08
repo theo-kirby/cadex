@@ -550,125 +550,21 @@
     return JSON.stringify(['revisions', ordinal, !!(stop && stop.retained)]);
   }
 
-  // -- Status (ADR-542, an editor since ADR-572) --------------------------------------
+  // -- Status (ADR-542, an editor since ADR-572, drawn by status.js since ADR-606) -----
   // What the project is doing and how training is going, from /api/project's
   // `stage` on the page's own poll.
-  var STAGE_LABELS = { idle: 'idle', designing: 'designing', training: 'training', evaluating: 'evaluating', stopped: 'stopped', failed: 'failed' };
+  function renderStatus() { if (window.CadexStatus) window.CadexStatus.render(state.review); }
 
   // Text and attributes are written only when they change, so an idle poll adds no nodes.
   function setText(id, value) { var node = $(id); if (node.textContent !== value) node.textContent = value; return node; }
   function setHidden(id, hidden) { var node = $(id); if (node.hidden !== hidden) node.hidden = hidden; }
-  function ago(stamp, now) {
-    var t = stamp ? Date.parse(stamp) : NaN;
-    if (isNaN(t)) return '';
-    var s = Math.max(0, (now - t) / 1000);
-    return s < 60 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago'
-         : s < 86400 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' d ago';
-  }
-  function duration(seconds) {
-    if (seconds == null || !isFinite(seconds)) return '—';
-    var s = Math.round(seconds);
-    return s < 60 ? s + ' s' : s < 3600 ? Math.round(s / 60) + ' min' : (s / 3600).toFixed(1) + ' h';
-  }
-  function spark(id, points) {
-    var line = $(id).querySelector('polyline'), values = (points || []).map(function (p) { return p[1]; });
-    var out = '';
-    if (values.length > 1) {
-      var lo = Math.min.apply(null, values), hi = Math.max.apply(null, values), span = hi - lo || 1;
-      out = values.map(function (v, i) {
-        return (i / (values.length - 1) * 100).toFixed(1) + ',' + (22 - (v - lo) / span * 20).toFixed(1);
-      }).join(' ');
-    }
-    if (line.getAttribute('points') !== out) line.setAttribute('points', out);
-  }
-
-  function renderStatus() {
-    var review = state.review, stage = review.stage || { state: 'idle', training: null, runs: 0 };
-    var t = stage.training, now = Date.parse(review.served_at) || Date.now();
-    var node = $('status'), name = STAGE_LABELS[stage.state] ? stage.state : 'idle';
-    if (node.dataset.stage !== name) node.dataset.stage = name;
-    setText('status-stage', STAGE_LABELS[name]).dataset.stage = name;
-    var trail = review.revisions || [], line;
-    if (name === 'training' && t) {
-      line = t.iteration != null && t.iteration >= 0
-        ? 'iteration ' + (t.iteration + 1) + ' / ' + fmt(t.total) + (t.eta_s ? ' · ETA ' + duration(t.eta_s) : '')
-        : 'starting';
-      if (t.state === 'stale') line += ' · no update ' + duration(t.age_s);
-    } else if (name === 'designing') {
-      line = (stage.reason || 'revision accepted') + ' · ' + ago(stage.since, now);
-    } else if (name === 'evaluating') {
-      var began = Date.parse(stage.since);
-      line = (stage.reason || 'evaluating') + (isNaN(began) ? '' : ' · ' + duration(Math.max(0, (now - began) / 1000)));
-    } else if (name === 'idle') {
-      line = trail.length ? 'revision ' + trail[0].ordinal + ' accepted ' + ago(trail[0].saved_at, now) : 'nothing accepted yet';
-    } else {
-      line = stage.reason || '';
-    }
-    setText('status-line', line).title = line;
-    renderActivity(review, now);
-    // The run it reads, named when there is more than one to choose from.
-    setHidden('status-run', !(stage.run && stage.runs > 1));
-    setText('status-run', stage.run ? 'run ' + stage.run + (t && name !== 'training' ? ' · ' + t.state : '') : '');
-    setHidden('status-stats', !t);
-    setHidden('status-sparks', !t);
-    var warning = t ? (t.warning || (t.state === 'stale' ? t.reason : '')) : '';
-    setHidden('status-warning', !warning);
-    setText('status-warning', warning);
-    if (!t) return;
-    setText('status-reward-now', fmt(t.reward_per_step));
-    setText('status-best', t.best_reward_per_step == null ? '—' : fmt(t.best_reward_per_step) + ' @ ' + (t.best_iteration + 1));
-    setText('status-loss-now', fmt(t.loss));
-    setText('status-eta', name === 'training' && t.eta_s ? duration(t.eta_s) : '—');
-    spark('status-reward', (t.spark || {}).curve);
-    spark('status-loss', (t.spark || {}).loss_curve);
-  }
-  // The agent's newest call through cadex mcp (ADR-550), timed against the server's
-  // clock. A call still running is logged as such (ADR-553) and is never idle; past
-  // ACTIVITY_IDLE_S with no call in flight, the line reads as idle.
-  var ACTIVITY_IDLE_S = 300, ACTIVITY_LIST = 5, activityKey = null;
-  function activityText(e) {
-    return e.tool + (e.args ? ' ' + e.args : '')
-      + (e.outcome === 'error' ? ' · failed' + (e.detail ? ': ' + e.detail : '')
-         : e.outcome === 'lost' ? ' · did not return' : e.outcome === 'running' ? ' · running' : '');
-  }
-  function renderActivity(review, now) {
-    var activity = review.activity || {}, entries = activity.available ? activity.entries || [] : [];
-    var newest = entries[0], node = $('status-activity'), name, line;
-    if (!newest) {
-      name = 'none'; line = activity.reason || 'no agent activity logged';
-    } else {
-      var t = Date.parse(newest.t), quiet = isNaN(t) ? Infinity : (now - t) / 1000;
-      if (newest.outcome === 'running') {
-        name = 'running'; line = activityText(newest) + ' ' + duration(isFinite(quiet) ? Math.max(0, quiet) : null);
-      } else if (quiet > ACTIVITY_IDLE_S) {
-        name = 'idle'; line = 'agent idle · last call ' + newest.tool + ' ' + ago(newest.t, now);
-      } else {
-        name = newest.outcome === 'error' || newest.outcome === 'lost' ? 'error' : 'active'; line = activityText(newest) + ' · ' + ago(newest.t, now);
-      }
-    }
-    if (node.dataset.state !== name) node.dataset.state = name;
-    setText('status-activity-line', line).title = line;
-    setHidden('status-activity-log', entries.length < 2);
-    var shown = entries.slice(0, ACTIVITY_LIST), key = JSON.stringify(shown);
-    if (key === activityKey) return;
-    activityKey = key;
-    var list = $('status-activity-list');
-    list.textContent = '';
-    shown.forEach(function (e) {
-      var item = document.createElement('li'), clock = (e.t || '').slice(11, 19);
-      item.dataset.outcome = e.outcome;
-      item.textContent = (clock ? clock + ' ' : '') + activityText(e);
-      item.title = item.textContent;
-      list.appendChild(item);
-    });
-  }
 
   // -- 2D viewport -------------------------------------------------------------------
   // Everything flat the project has: its drawings, its presentation images,
   // its documents, its evaluations' films, and each run's training curves.
   // Images pan and zoom; a rollout video plays in place.
   var sheet = { key: null, shownKey: null, list: [], kind: null, view: { scale: 1, x: 0, y: 0, fitted: true } };
-  var CURVES = [['curve', 'reward'], ['loss_curve', 'loss'], ['episode_steps_curve', 'episode length']];
+  var CURVES = [['curve', 'reward'], ['loss_curve', 'loss'], ['episode_steps_curve', 'episode length'], ['action_std_curve', 'action std']];
 
   function sheetSources(review) {
     var list = [];

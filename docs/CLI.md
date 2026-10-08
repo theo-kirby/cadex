@@ -67,7 +67,7 @@ The agent's two requests cost tokens. The loop between them does not.
 | `cadex style [NAME \| --clear]` | The project's design style (ADR-560): one named, optional set of guidance rules for a kind of machine and its look, which `cadex guidance --project` prints after the base. With no NAME it reports; NAME chooses one the engine carries (a `Mod/cadex/CadexAgentStyle.<NAME>.md`) and refuses any other; `--clear` returns to none, the base alone. Stored in the project's `agent.json`. The envelope's `style` is `chosen` (empty for none) and `available`. No engine, no row, no commit. | no |
 | `cadex budgets [--set NAME=VALUE ...]` | The project's engine budgets (ADR-517): `timeout_seconds`, the wall-clock seconds one engine script run may take (at most 3600), and `memory_limit_mb`, its memory ceiling (at most 131072). Stored in the project's `agent.json`; every later run — an MCP session, a `params`, a revision, each leg of a walk — sends them as `open_project`'s `budgets`, and the engine fills one that is not set from its own default (300 s and 6144 MB unless its preferences say otherwise). `--set NAME=0` unsets one. With no `--set` it reports. The envelope's `budgets.stored` is what is stored. `--engine-timeout` / `--engine-memory` override them for one call. `GET /api/project` carries them read-only. No engine, no row, no commit. | no |
 | `cadex revision list\|reject\|restore\|backfill [SELECTOR]` | Going back through the revisions (ADR-506). `list`: the stored trail (`script_history/`, ADR-045), oldest first, with the values and digest each was accepted with, and `models`: per ordinal, whether its model is `retained` in `review/revisions/` or the `reason` it is not (ADR-546) — no engine, no row, no commit. Every engine session keeps the accepted revision's model on open and on close, and `cadex mcp` keeps each accepted build's as it lands. `reject`: put back the revision accepted before the current one; `restore SELECTOR` (an ordinal or a revision prefix): put back that one. Both write the stored source through `write_script` with `replace` (going back may drop outputs on purpose), then its recorded values through `set_params`; each is a run with its row and commit. The envelope's `revisions` says the `target`, where it came `from`, what was `accepted`, whether that is `exact`ly the target, and whether it is the `same_geometry` — a parameter the target left at its default cannot be unset once stored, so it is set to the default and the revision id differs. A selector that is not the accepted revision is a usage error for `reject`. `backfill` (ADR-548): keep a model for every stored revision that has none, which is every revision accepted before ADR-546. The accepted one is kept from its attempt on disk; each other one has its stored source rebuilt in a scratch project, with the values the trail stored with it, else the values the project's own repository recorded in `script.json` at its acceptance (and that commit's `assets/`), else none. It is kept only when the engine lands on exactly its revision id (and its digest, when the trail has one). Another revision of the same id is copied rather than rebuilt. A rebuild that lands elsewhere or is refused is a `failed` row with every try's reason; nothing is stored in its place, and the store remembers the reason so the dashboard shows it. The engine never opens the project itself, so nothing accepted moves. `SELECTOR` limits it to one revision. The envelope's `revisions.backfill` has one row per revision tried. No row, no commit: the store is ignored by the project's git. Never run by the dashboard. | no |
-| `cadex app [--projects DIR] [--host ADDR] [--port N]` | Serve the dashboard over a **directory of projects** (orun2 D1, ADR-502): `/` lists every subdirectory holding a `script.json`, or any file the CLI writes before the first script does — `review/activity.jsonl`, `.cadex-cli.lock`, `agent.json` — so an agent's session is listed from its first tool call (ADR-575) — re-read on each request, so a project made while the page is open appears — with when it was last accepted (`/api/projects` also carries its revision and run count), and each project's review page (the one `cadex review` serves) is under `/p/<name>/`. Every URL the pages use and the server builds is relative to the page (ADR-551), so the whole dashboard also works mounted under a path prefix by a proxy that rewrites nothing. **A bare `cadex`, with no subcommand, is this command** (`cadex -h` is the help), and so is `pixi run app`. The directory is `--projects`, then `CADEX_PROJECTS`, then `~/cadex-projects`, created if absent. Default `127.0.0.1:8765`; for another device put `tailscale serve` in front of it. Read-only, as `cadex review` is (ADR-537). From a fresh clone: `pixi run setup-engine && pixi run build-engine && pixi run app`. | no |
+| `cadex app [--projects DIR] [--host ADDR] [--port N]` | Serve the dashboard over a **directory of projects** (orun2 D1, ADR-502): `/` lists every subdirectory holding a `script.json`, or any file the CLI writes before the first script does — `review/activity.jsonl`, `.cadex-cli.lock`, `agent.json` — so an agent's session is listed from its first tool call (ADR-575) — re-read on each request, so a project made while the page is open appears — as a card on a home page (ADR-605): the project that moved last in a spotlight, then every project with its picture, stage, counts, latest evaluation and when it last moved (`/api/projects` carries each project's card, below), and each project's review page (the one `cadex review` serves) is under `/p/<name>/`. Every URL the pages use and the server builds is relative to the page (ADR-551), so the whole dashboard also works mounted under a path prefix by a proxy that rewrites nothing. **A bare `cadex`, with no subcommand, is this command** (`cadex -h` is the help), and so is `pixi run app`. The directory is `--projects`, then `CADEX_PROJECTS`, then `~/cadex-projects`, created if absent. Default `127.0.0.1:8765`; for another device put `tailscale serve` in front of it. Read-only, as `cadex review` is (ADR-537). From a fresh clone: `pixi run setup-engine && pixi run build-engine && pixi run app`. | no |
 
 Flags, valid on either side of the subcommand:
 
@@ -1499,8 +1499,16 @@ ADR-559, or a pre-ADR-559 `failed` record's `training-status.json` says
 the evaluation directory's name, ADR-555),
 `since`, `run` (the newest run training, else the run a fresh visit opens),
 `runs` (how many), and `training`: that run's telemetry with `spark`, its
-reward and loss histories cut to at most 64 points each, or `null` when no
-run has telemetry. It is one bounded block whatever the history. `stage`
+reward, loss, episode-length and action-std histories (`curve`,
+`loss_curve`, `episode_steps_curve`, `action_std_curve`) cut to at most 128
+points each (ADR-606; 64, and reward and loss only, before it), `marks`
+(`[iteration, reward_per_step]` of each checkpoint the trainer reported, at
+most 128), its `label`, `episode_steps` and `action_std`, or `null` when no
+run has telemetry. It is one bounded block whatever the history.
+`stage.panel` (ADR-607) says whether the project has an agent-authored
+`status.html`: `{available: true, url: "status/panel.html?v=<stamp>", bytes}`,
+or `{available: false, reason}` when there is none, it is a symlink, or it is
+over 512 KB. `stage`
 also carries **`checkpoints`** (ADR-545): that run's numbered checkpoints
 rolled out by ADR-544's watcher, at most the newest 64 (`listed_of` says
 how many), oldest first. Each item is its `stem` (`walk.000040`), `tag`,
@@ -1533,10 +1541,13 @@ it with a 304. The page
 has no telemetry panel (ADR-533 removed it): the Status editor (ADR-542,
 ADR-572) is drawn from `/api/project`'s `stage` alone, on the page's existing
 poll, and is rebuilt only when that block changes, so Status reads the
-stage, the iteration, the ETA, the sparklines and the warning from one
-snapshot. The page fetches `/api/run/<name>` only when the 2D viewport
-plots one of a run's curves, never for Status, so an idle poll adds a
-constant number of DOM nodes whatever the run count. `window.cadexReview.lastPoll()` reports the last
+stage, the iteration, the ETA, the charts and the warning from one
+snapshot. Its latest-evaluation table reads `/api/evaluation/<name>` once per
+new evaluation (ADR-606). The page fetches `/api/run/<name>` when the 2D
+viewport plots one of a run's curves, and for Status only while its
+**Project** panel is shown, at most every 10 s and only when the run has
+moved (ADR-607), so an idle poll adds a constant number of DOM nodes
+whatever the run count. `window.cadexReview.lastPoll()` reports the last
 poll's list bytes, detail bytes and wall time. The `test_review_history_scale.py`
 suite pins this over sixty-three runs with 512-sample histories and three
 checkpoints each, then grows the history by twenty runs under a deliberately
@@ -1800,7 +1811,7 @@ of a fixture biped that reaches every route disagree, in the way
 
 | Route | Answers | Always | When they apply |
 |---|---|---|---|
-| `GET api/projects` | `cadex app` only: every project under the directory | `schema`, `root`, `projects`, `served_at` | |
+| `GET api/projects` | `cadex app` only: every project under the directory, each with its card (below) | `schema`, `root`, `projects`, `served_at` | |
 | `GET api/project` | the page's one poll: accepted identity, runs with telemetry summaries, the stage, revisions, evaluations, exports, sections, drawings, budgets, agent activity | `schema`, `project`, `accepted`, `docs`, `decisions`, `runs`, `presentation`, `evaluations`, `revisions`, `stage`, `exports`, `sections`, `drawings`, `budgets`, `activity`, `served_at` | |
 | `GET api/run/<run>` | one run's record with full telemetry and disk use | `run`, `status`, `error`, `artifacts`, `project_artifacts`, `videos`, `legs`, `outcome`, `resolved`, `problems`, `relation`, `telemetry`, `disk` | `schema`, `recorded_at`, `mode`, `walk_seconds`, `model`, `params`, `task`, `training`, `policy`, `rollout`, `project_docs`, `policy_store`, `video_render`, `recorded_status` |
 | `GET api/policy-origin/<run>` | which run trained the run's policy, and its other playbacks | `schema`, `run`, `policy_sha256`, `origin`, `reason`, `recorded_source_run`, `source_agrees`, `playbacks` | |
@@ -1813,8 +1824,31 @@ of a fixture biped that reaches every route disagree, in the way
 
 The files the replies point to — `mesh/...`, `artifact/...`, `video/...`,
 `doc/...`, `evaluation/...`, `presentation/...`, `export/...`,
-`blueprint/...`, `section/...` — are served only when a reply offers them,
-and are not part of this table.
+`blueprint/...`, `section/...`, `status/panel.html` — are served only when a reply offers them,
+and are not part of this table. `status/panel.html` (ADR-607) is the
+project's own `status.html`, a regular file at its root and no symlink, at
+most 512 KB, served as `text/html` with `Content-Security-Policy: sandbox
+allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src
+'unsafe-inline'; img-src data:; font-src data:`, `X-Content-Type-Options:
+nosniff` and `Referrer-Policy: no-referrer`: an opaque origin that runs its
+own inline script and fetches nothing. Absent or refused, it is a 404.
+
+**Each project in `api/projects`** (ADR-605) is `name`, `url` (`p/<name>/`),
+`accepted` and `runs` (how many run directories), and its card: `revisions`
+and `evaluations` (how many), `latest_evaluation` (`name`, `verdict`,
+`passed`, `seeds`, `task_label`, `evaluated_at`, `relation` and the first
+three `failing`, or `null`), `thumbnail` (`{url, source, relation}`, the
+`url` relative to the index: `source` is `render` for the presentation
+hero, `evaluation` for the newest passing evaluation's hero, `film` for the
+newest filmed seed's detail sheet with `tile: [columns, rows]` so the page
+shows its first frame, `sheet` for the concept sheet; `null` when there is
+none), `stage` (as `api/project`'s, read from the newest run alone:
+`state`, `reason`, `since`, `run`, `iteration`, `total`, `reward_per_step`,
+`best_reward_per_step`, `eta_s`, `training_state`) and `active_at` (the
+newest time any of those records, or `null`). A card is reused while the
+files it reads keep their stat and it is younger than 10 s, so a directory
+of hundreds of projects lists in tens of milliseconds; a project that cannot
+be read gets a card that says so rather than failing the listing.
 
 **Each accepted component's look** (ADR-522, ADR-603). Every entry of
 `api/model/accepted`'s `components` carries `role`, `color`,

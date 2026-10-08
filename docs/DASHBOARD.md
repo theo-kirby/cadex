@@ -66,10 +66,28 @@ nothing (§18), on a server bound to 127.0.0.1 (§22).
 
 ## 2. Hierarchy
 
-**Index** (`/`, `projects.html`): the top bar, then **Projects**, newest
-accepted first, 20 to a page. Each row is the name, linking to its page, and
-a muted date; **Newer** and **Older** page through them, and the page number
-is kept in the URL (`?page=N`).
+**Home** (`/`, `projects.html`, ADR-605): the home of a viewer, not a
+directory listing. A sticky top bar carries the name, the project count
+(`#projects-count`), a filter (`#projects-filter`, kept in the URL as
+`?q=`), **live** or **offline** (`#freshness`) and the light/dark toggle.
+Below it, `#spotlight` puts the project that moved last (`active_at`) large:
+its picture at 16:9 beside its name (`#spotlight-link`, `--fs-3`), its stage
+chip (`#spotlight-stage`), its latest evaluation's verdict, a training
+progress bar, a line saying what it is doing or what failed, its counts and
+**Open project**; it is shown on the first page with no filter. Then
+**Projects** (`#projects`), a grid of cards (`li[data-project][data-stage]`,
+each one link to `p/<name>/`), at least 232 px wide, as many to a row as fit:
+the picture at 4:3, the name and how long ago it moved, the stage chip and the
+verdict chip (`pass 8/8` in `--ok`, `fail 0/8` in `--bad`), a progress bar
+while it trains, the line, and its revisions, runs and evaluations. The
+picture is the presentation hero, else the newest passing evaluation's hero,
+else the first frame of the newest film sheet (the sheet cropped to its
+first tile, its time label cut), else the concept sheet, else a drawn
+placeholder (an isometric box on a dot grid); renders sit on the dark floor
+in both themes, so a picture's mat is `#141414` whatever the theme. 24 to a
+page, most recently active first and then by name; **Newer** and **Older**
+page through them (`#pager`, `?page=N`). It polls `api/projects` every 5 s,
+and a card is rebuilt only when what it shows changed.
 
 **Project** (`p/<name>/` under the index, or the root under `cadex review`; every URL it uses is relative to it, ADR-551): the top bar over
 the screen (`#screen[data-mode]`), which `layout.js` tiles with areas
@@ -81,7 +99,7 @@ the screen (`#screen[data-mode]`), which `layout.js` tiles with areas
 |---|---|---|---|
 | **Top bar** | — | `#top`, `#home`, `#project-name`, `#accepted-line`, `#freshness[data-state]`, `#theme-toggle` | A link home (hidden under `cadex review`), the project's name, the accepted revision's ordinal and date, **live** or **offline**, and a light/dark toggle. |
 | **3D viewport** | `view3d` | `#view3d-source`, `#view3d-style button[data-style]`, `#model-fit`, `#model`, `#model-status[data-state]`, `#viewer`, `#playback`, `#play-toggle`, `#play-time`, `#play-clock`, `#checkpoints[data-follow][data-state]`, `#checkpoint-pick`, `#checkpoint-label`, `#checkpoint-status`, `#revision-timeline[data-follow][data-state][data-ordinal]`, `#revision-pick`, `#revision-label`, `#revision-status` | The accepted model or a run's, shaded or wireframe (§10); orbit, pan (shift- or middle-drag, two fingers) and zoom by pointer or touch (§5); **Fit**. `#model-status` says why no model is drawn (loading, missing with its reason in `--warn`, an error in `--bad`). It sits at the bottom left, above the scrubbers, on an opaque `--surface`, because the floor is dark in both themes (ADR-557). A run that kept a rollout trace plays it on the timeline. **Checkpoints** (ADR-545): while the run Status reads is the model shown, each of its checkpoints the engine rolled out (ADR-544) is a stop on a scrubber above the timeline, oldest to newest, with the run's own rollout last once it has one; a page left open adds that `final policy` stop on the poll after the walk lands its rollout, with no reload (ADR-554). The newest loops, labelled with its iteration (one-based, as Status counts) and reward per step; `data-follow="true"` while it follows new ones. Picking an older one keeps it while newer ones land; moving back to the newest end follows again. A failed rollout plays nothing, leaves the model at rest and says why in `#checkpoint-status` in `--bad`; the same line counts checkpoints still rolling out. While that run is training the viewport turns to it on its own, unless a source was picked by hand this visit. **Revision history** (ADR-547), a source offered once anything is accepted: each stored revision is a stop on `#revision-timeline`, oldest to newest, drawn from the model kept when it was accepted (ADR-546). The newest is shown and followed (`data-follow="true"`); picking an older one keeps it, and the newest end follows again. Unchanged parts are drawn in `--paper-ink`, parts whose digest changed against the revision before in `--info`, and that previous revision is a ghost in `--ink-2` at 22% opacity wherever it differs (a part kept as it was, where it was, is not drawn twice; a wireframe diagram leaves the ghost out). `#revision-status` names the changed parts and the revision compared against. A revision whose model was not kept (`data-state="missing"`) draws nothing and says why in `--warn`; the revision after it draws with no ghost and says there is nothing to compare with. |
-| **Status** | `status` | `#editor-status`, `#status-stage[data-stage]`, `#status[data-stage]`, `#status-line`, `#status-run`, `#status-stats`, `#status-reward-now`, `#status-best`, `#status-loss-now`, `#status-eta`, `#status-sparks`, `#status-reward`, `#status-loss`, `#status-warning`, `#status-activity[data-state]`, `#status-activity-line`, `#status-activity-log`, `#status-activity-list` | What the project is doing and how training is going (ADR-542, the first panel back after ADR-533), an editor of its own since ADR-572, beside the 3D viewport rather than over its model: a stage chip in the area's header — **idle**, **designing** (a revision accepted in the last 10 min), **training** (iteration of total and ETA), **evaluating**, **stopped** in `--warn` (the newest run was stopped on request, through `train_stop` or a walk's Ctrl-C or `SIGTERM`; its line is the stop's reason, ADR-559; a run stopped before ADR-559, whose record says `failed` but whose supervisor's `training-status.json` says `stopped`, reads stopped too, ADR-574) or **failed** (a run that failed, or a walk or supervisor killed mid-run whose record still says `running` under a lock nobody holds, ADR-559) — and, in its body, one line, the run it reads (named when there are several), reward per step, the best reward and its iteration, loss, ETA, reward and loss sparklines, and the trainer's collapse `warning` in `--warn` (or, while the run is still recorded as live, that its telemetry has been quiet for over 30 s; never under a run whose record has ended, ADR-574). Read from `/api/project`'s `stage` on the page's own poll. **The agent's activity** (ADR-550), from `/api/project`'s `activity` (ADR-549): one mono line under the run with the newest `cadex mcp` call, its argument summary and how long ago (`data-state="active"`), or `failed: <detail>` in `--bad` (`"error"`); a call still in flight reads `<tool> <args> · running <how long>` in `--info` (`"running"`, ADR-553), never idle, and an in-flight `evaluate` makes the stage **evaluating**, its line `the agent's evaluate call is running` for the whole call, never an evaluation directory's id (ADR-555); a call whose server died before it returned reads `did not return` in `--bad`; once no call has returned for 5 min and none is in flight it reads `agent idle · last call <tool> <ago>` in `--ink-2` (`"idle"`); with no log it shows the reason (`"none"`). `recent calls` opens the newest five, each with its UTC clock time, failures in `--bad`. It never collapses: an area is sized by its edges, and on a phone it is a tab. With no runs it is one line, `idle`. |
+| **Status** | `status` | `#editor-status`, `#status-stage[data-stage]`, `#status-tabs`, `#status[data-stage][data-tab]`, `#status-line`, `#status-progress`, `#status-run`, `#status-training`, `#status-stats`, `#status-reward-now`, `#status-best`, `#status-loss-now`, `#status-episode-now`, `#status-std-now`, `#status-eta`, `#status-charts`, `#status-reward`, `#status-loss`, `#status-episode`, `#status-std`, `#status-eval`, `#status-eval-verdict`, `#status-eval-list`, `#status-runs`, `#status-runs-body`, `#status-panel`, `#status-warning`, `#status-activity[data-state]`, `#status-activity-line`, `#status-activity-log`, `#status-activity-list` | Drawn by `status.js` (ADR-606). What the project is doing and how training is going (ADR-542, the first panel back after ADR-533), an editor of its own since ADR-572, beside the 3D viewport rather than over its model: a stage chip in the area's header — **idle**, **designing** (a revision accepted in the last 10 min), **training** (iteration of total and ETA), **evaluating**, **stopped** in `--warn` (the newest run was stopped on request, through `train_stop` or a walk's Ctrl-C or `SIGTERM`; its line is the stop's reason, ADR-559; a run stopped before ADR-559, whose record says `failed` but whose supervisor's `training-status.json` says `stopped`, reads stopped too, ADR-574) or **failed** (a run that failed, or a walk or supervisor killed mid-run whose record still says `running` under a lock nobody holds, ADR-559) — and, in its body, one line (`--fs-1`) with a progress bar while training, the run it reads (named when there are several), tiles for reward per step, the best reward and its iteration, loss, episode length, action std and (while training) ETA; **four charts**, one measure each on its own axes and never two on one (ADR-606): reward per step, loss, episode length and action std by iteration (one-based), from `stage.training.spark`, the x axis running to the run's total so the unrun part shows; y ticks with a `--rule` grid, x ticks, a 2 px `--accent` line, on reward the best iteration as a `--ok` dot on a dashed rule labelled `best <value> @ <iteration>` and each reported checkpoint as a tick on the axis; hover puts a crosshair and the iteration and value on the nearest sample; a measure the run did not report says so; the charts tile as many to a row as fit at 300 px and redraw when the area resizes; **Latest evaluation**, its verdict chip, task, policy, age and how the episodes ended, then a row per predicate (its bound, a seeds-passed meter in `--ok`/`--warn`/`--bad`, its median) from `api/evaluation/<name>`, read once per evaluation; **Runs**, newest first (at most 40): name, label and the agent's stated reason (ellipsized), iterations, best reward, its change from the previous run with a best (`--ok` up, `--bad` down), the outcome chip (done, stopped, failed, running) and the verdict of its evaluation (one of its own policy's by digest, else the first evaluation made between it and the next run); the run Status reads is shaded; below 420 px the iterations column goes. And the trainer's collapse `warning` in `--warn` (or, while the run is still recorded as live, that its telemetry has been quiet for over 30 s; never under a run whose record has ended, ADR-574). Read from `/api/project`'s `stage` on the page's own poll. **The agent's activity** (ADR-550), from `/api/project`'s `activity` (ADR-549): one mono line under the run with the newest `cadex mcp` call, its argument summary and how long ago (`data-state="active"`), or `failed: <detail>` in `--bad` (`"error"`); a call still in flight reads `<tool> <args> · running <how long>` in `--info` (`"running"`, ADR-553), never idle, and an in-flight `evaluate` makes the stage **evaluating**, its line `the agent's evaluate call is running` for the whole call, never an evaluation directory's id (ADR-555); a call whose server died before it returned reads `did not return` in `--bad`; once no call has returned for 5 min and none is in flight it reads `agent idle · last call <tool> <ago>` in `--ink-2` (`"idle"`); with no log it shows the reason (`"none"`). `recent calls` opens the newest five, each with its UTC clock time, failures in `--bad`. It never collapses: an area is sized by its edges, and on a phone it is a tab. With no runs it is one line, `idle`. **Project** (ADR-607): when the project has a `status.html`, `#status-tabs` offers **Training** and **Project**, Project first; Project shows the agent's own panel in `#status-panel` (§23) under the stage line and the activity. |
 | **2D viewport** | `view2d` | `#view2d-source`, `#view2d-fit`, `#sheet-stage[data-kind]`, `#sheet-empty` | The project's drawings and presentation images (pan, zoom, double-click to fit), its documents (markdown, drawn as text only), each evaluation's film, newest first (a passed evaluation's hero and print-bed hero first, as images, ADR-570; then its shove video, `· shoves`, with the pushes and the ending captioned below it in `--ink-2` mono, ADR-571; then each filmed seed's rollout video, which plays in place with controls, muted and looping, and its filmstrip and detail sheets as images; ADR-541), and each run's training curves (reward, loss, episode length) as plots. |
 | **Menu bar** | — | `#menubar`; `#file-panel` (`#project-select`, `#project-open`, `#project-all`); `#revision-panel` (`#revision-list li[data-revision][data-ordinal][data-current]`, `#revision-empty`); `#view-panel` (`#theme-choice`, `#style-choice`, `#mesh-lines`, `#mesh-strength`, `#reflections`, `#layout-reset`, `#layout-presets button[data-preset]`) | File, Revisions and View in the top bar, each a `<details class="menu">` dropdown (ADR-539): open another project; the revision trail, read-only (§18), where a row (`data-retained` says whether its model was kept) opens that revision on the 3D viewport's revision timeline — a view, never a restore; the theme, the render style, the wireframe's mesh lines (on or off, and a strength slider) and the shaded solids' reflections (a strength slider), each this browser's own (§10), and the layout: Reset, and eight one-click presets (§12). One opens at a time; a click outside or Escape closes it, and with one open, hovering another opens that one. On a phone the dropdown spans the screen between the gutters. |
 
@@ -180,8 +198,11 @@ the same scene, and the viewport's sky *is* `--bg`.
 
 A 4 px base: `--s1` 4, `--s2` 8, `--s3` 12, `--s4` 16, `--s5` 24, `--s6` 32.
 
-- Page gutter `--s5` at desk, `--s3` on phone. Sections are separated by a
-  `--rule` hairline, not boxed in cards.
+- Page gutter `--s5` at desk, `--s3` on phone (`--s4` on the home page,
+  ADR-605). Sections are separated by a `--rule` hairline, not boxed in
+  cards; the home page's projects are the exception, a card each with a
+  `--radius` corner and a `--rule` border that turns `--rule-strong` on
+  hover.
 - **Shape**: `--radius-sm` 8 px on controls, `--bw` 1.5 px borders.
 - **Controls**: minimum 40 × 40 px hit area on touch (`@media (pointer:
   coarse)`), 32 px on desk; `--surface-2` fill, `--rule` border, `--surface-3`
@@ -215,7 +236,9 @@ One.
 | **≥ 700 px** (desk; 1400 is the reference width) | A 40 px top bar over the screen, tiled by areas (§12). The page never scrolls; each editor scrolls on its own. |
 | **< 700 px** (phone; 400 × 850 is the reference size) | One editor fills the screen, the 3D viewport first, and a tab bar at the bottom picks it: **3D**, **Status**, **2D**. `--s3` gutters below 600 px. |
 
-The index is one column, at most 760 px wide, at every width.
+The home page is a grid of cards at most 1440 px wide, one column below
+600 px with 16 px gutters; its spotlight stacks its picture over its text
+below 800 px.
 
 Invariants at every width, and the ones the design test asserts on the
 rendered page at 1400 × 900 and at 400 × 850 with touch emulation:
@@ -729,3 +752,130 @@ the 2 s project poll.
 
 Measured on a link emulated at 30 Mbit/s and 40 ms (Chromium, the 45-part
 arm): first load 9.1 s → 3.9 s, reopening the same model 8.2 s → 0.8 s.
+
+## 23. The agent's Status panel (ADR-607)
+
+Cadex's own Status charts what every machine has: reward, loss, episode
+length, action std, evaluations, runs. What only one machine has -- the
+ball's distance from its circle per run, a linkage's crank angle against its
+foot path, the margin each predicate cleared by -- the agent working the
+project may draw itself, in **`status.html`** at the project's root. The
+agent writes it with its own file tools; there is no tool for it, and the
+page never writes it.
+
+**How it is served.** `status/panel.html` serves the file whole, a regular
+file and no symlink, at most 512 KB, under `Content-Security-Policy: sandbox
+allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src
+'unsafe-inline'; img-src data:; font-src data:` with `X-Content-Type-Options:
+nosniff`. The page embeds it in `<iframe sandbox="allow-scripts">` --
+never `allow-same-origin` -- so it runs in an opaque origin: it cannot read
+the dashboard, its storage or its cookies, cannot navigate the page, open
+popups or submit forms, and cannot fetch anything at all, the project's own
+files included. Everything it shows arrives in a message.
+
+**The message.** On each of the page's 2 s polls, when the frame loads, when
+the theme changes, and whenever the panel posts `{type:
+"cadex-status-ready"}` to its parent, the page posts:
+
+```js
+{
+  type: "cadex-status", schema: "cadex-status-panel-v1",
+  project: "<name>", served_at: "<ISO time>",
+  theme: { name: "dark" | "light",
+           tokens: { "--bg", "--surface", "--surface-2", "--surface-3", "--rule", "--rule-strong",
+                     "--ink", "--ink-2", "--accent", "--ok", "--warn", "--bad", "--info", "--select",
+                     "--font", "--mono", "--fs-0", "--fs-1", "--fs-2", "--fs-3" } },  // computed values
+  accepted: { available, revision, digest, updated_at } | null,
+  revisions: [ { ordinal, revision, saved_at } ],           // newest first, at most 64
+  stage: { state, reason, since, run, runs },               // as Status reads it
+  training: null | {                                        // the run Status reads
+    state, reason, iteration, total, eta_s, wall_time_s, reward_per_step, loss, episode_steps,
+    action_std, best_iteration, best_reward_per_step, warning, label, age_s,
+    curves: { curve, loss_curve, episode_steps_curve, action_std_curve },  // [[iteration, value]]
+    resolution: "full" | "sketch",  // full: the trainer's histories (<= 512 points), read from
+                                    // api/run/<run> at most every 10 s; sketch: <= 128 points
+    checkpoints: [ { iteration, reward_per_step } | { iteration, path, status } ] },
+  runs: [ { run, status, outcome, mode, recorded_at, label, reason, telemetry_state, iteration,
+            total, reward_per_step, best_reward_per_step, best_iteration, wall_time_s,
+            policy_sha256 } ],                              // oldest first
+  evaluations: [ { name, verdict, passed, seeds, failing, terminations, task_output, task_label,
+                   policy_output, policy_sha256, evaluated_at, relation,
+                   summary? } ],  // oldest first; the newest carries its report's summary --
+                                  // predicates [{id, metric, min, max, passed, failed_seeds,
+                                  // value: {min, median, max}}], terminations, reward -- once read
+  params: { specs, values?, ... } | null,                   // the newest run's recorded params
+  activity: [ { t, tool, args, outcome, detail } ]          // the agent's newest calls
+}
+```
+
+Iterations are zero-based in the message, as the trainer writes them;
+Status shows them one-based. Fields are added under the same schema; a
+panel ignores what it does not know, and a field that changes meaning gets a
+new schema.
+
+**Style guide.** A panel sits inside Status, so it should read as part of it.
+
+- *Palette.* Use the message's `theme.tokens` and nothing else: set each as
+  a custom property on `document.documentElement` when a message arrives,
+  and style with `var(--ink)` and so on, so the panel follows dark and light.
+  Page background `--surface`, a block `--surface-2` with an 8 px radius,
+  text `--ink`, secondary text `--ink-2`, gridlines `--rule`, axes
+  `--rule-strong`. Data is `--accent`, one line or one bar colour.
+  `--ok`, `--warn`, `--bad` and `--info` are status (passed, marginal,
+  failed, in progress), never "series 2", and each comes with a word or a
+  label, never colour alone.
+- *Type.* `--font` at `--fs-1` (14 px) for body and `--fs-0` (12 px) for
+  axes, captions and table text; headings at 600 weight, sentence case, no
+  uppercase; `--mono` for identifiers (run names, predicate ids). Nothing
+  under 12 px; `font-variant-numeric: tabular-nums` on numbers.
+- *Charts.* Inline SVG drawn at the frame's width (`clientWidth`), redrawn on
+  `resize`. One measure per chart and one y axis: two measures of different
+  scale are two charts, never a dual axis. Recessive gridlines, tick labels
+  on both axes, a 2 px line, no chart junk. Mark what matters with a label
+  (the best, the bound, the target), not only a colour. A table beside a
+  chart is welcome; a single number can be a tile.
+- *Layout.* 12 px padding; blocks stacked with 12 px gaps; nothing wider
+  than the frame (it can be 320 px), no horizontal scroll.
+- *Behaviour.* Draw only from the message. Keep the last message and
+  redraw from it; post `{type: "cadex-status-ready"}` once at startup.
+  No timers that run when nothing arrives. Images only as `data:` URIs.
+
+**A skeleton** to start from:
+
+```html
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<style>
+  html, body { margin: 0; background: var(--surface); color: var(--ink); font: 400 var(--fs-1)/1.45 var(--font); }
+  body { padding: 12px; } h2 { font-size: var(--fs-1); margin: 0 0 4px; }
+  section { background: var(--surface-2); border-radius: 8px; padding: 8px 10px; margin-bottom: 12px; }
+  svg { display: block; width: 100%; } .grid { stroke: var(--rule); }
+  .label { fill: var(--ink-2); font: var(--fs-0) var(--font); } .line { fill: none; stroke: var(--accent); stroke-width: 2; }
+</style></head>
+<body>
+<section><h2>Best reward per run</h2><svg id="chart" height="140"></svg></section>
+<script>
+let last = null;
+function draw(msg) {
+  for (const [name, value] of Object.entries(msg.theme.tokens)) document.documentElement.style.setProperty(name, value);
+  const runs = msg.runs.filter(r => r.best_reward_per_step != null), svg = document.getElementById('chart');
+  const W = svg.clientWidth, H = 140, L = 40, B = 20, hi = Math.max(...runs.map(r => r.best_reward_per_step), 1e-9);
+  const x = i => L + (i + 0.5) * (W - L) / Math.max(runs.length, 1), y = v => H - B - v / hi * (H - B - 8);
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.innerHTML = [0, hi / 2, hi].map(v => `<line class="grid" x1="${L}" x2="${W}" y1="${y(v)}" y2="${y(v)}"/>`
+      + `<text class="label" x="${L - 4}" y="${y(v) + 4}" text-anchor="end">${v.toPrecision(2)}</text>`).join('')
+    + `<polyline class="line" points="${runs.map((r, i) => x(i) + ',' + y(r.best_reward_per_step)).join(' ')}"/>`
+    + runs.map((r, i) => `<text class="label" x="${x(i)}" y="${H - 4}" text-anchor="middle">${r.run}</text>`).join('');
+}
+addEventListener('message', e => {
+  if (e.data && e.data.type === 'cadex-status' && e.data.schema === 'cadex-status-panel-v1') draw(last = e.data);
+});
+addEventListener('resize', () => last && draw(last));
+parent.postMessage({ type: 'cadex-status-ready' }, '*');
+</script>
+</body></html>
+```
+
+`cadex guidance` tells the agent it may write one and points here;
+`test_review_status_panel.py` holds the route's headers, its containment,
+the frame's sandbox and a panel that draws from the message.

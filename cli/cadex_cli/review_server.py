@@ -58,6 +58,7 @@ from .activity import ACTIVITY_PATH, read_activity
 from .checkpoints import FAILURE_SUFFIX as CHECKPOINT_FAILURE_SUFFIX
 from .checkpoints import TRACE_SUFFIX as CHECKPOINT_TRACE_SUFFIX
 from .revision_meshes import revision_mesh_paths, revision_model, revision_models
+from .revisions import HISTORY_DIR, HISTORY_INDEX
 from .revisions import read_history as read_revision_history
 from .session import AGENT_STATE_NAME, LOCK_NAME, read_agent_state
 from .studio import PRINTABLES, STUDIO
@@ -68,6 +69,7 @@ from .review_record import (
     PROJECT_SCRIPT_SCHEMA,
     RUN_ARTIFACT_KEYS,
     RUNS_DIRNAME,
+    RUN_RECORD_FILENAME,
     read_accepted_identity,
     read_project_review,
     read_run_record,
@@ -85,7 +87,7 @@ STATIC_FILES = {
     "review.js": ("text/javascript; charset=utf-8", STATIC_DIR / "review.js"),
     **{name: ("text/javascript; charset=utf-8", STATIC_DIR / name) for name in
        ("three.module.js", "floor.js", "environment.js", "review_scene.js", "stl.js", "capture.js",
-        "layout.js", "theme.js")},
+        "layout.js", "theme.js", "status.js")},
     "capture.html": ("text/html; charset=utf-8", STATIC_DIR / "capture.html"),
     "viewer.js": ("text/javascript; charset=utf-8", STATIC_DIR / "viewer.js"),
 }
@@ -1557,13 +1559,17 @@ def tessellation_to_stl(sidecar: Mapping[str, Any], data: bytes) -> bytes:
     return bytes(out)
 
 
-HISTORY_KEYS = ("curve", "loss_curve", "episode_steps_curve")
+HISTORY_KEYS = ("curve", "loss_curve", "episode_steps_curve", "action_std_curve")
 
 
-#: The most points a sparkline in Status carries (ADR-542, ADR-572).
-SPARK_POINTS = 64
-#: The histories Status draws as sparklines.
-SPARK_KEYS = ("curve", "loss_curve")
+#: The most points a history in Status carries (ADR-542, ADR-572); its
+#: charts have axes since ADR-606, so the sketch is finer than a sparkline's.
+SPARK_POINTS = 128
+#: The histories Status charts: reward, loss, episode length and the
+#: policy's exploration (action std), each on its own axis (ADR-606).
+SPARK_KEYS = HISTORY_KEYS
+#: The most checkpoint marks the reward chart carries (ADR-606).
+CHECKPOINT_MARKS = 128
 
 
 def _spark(points: list[list[float]], limit: int = SPARK_POINTS) -> list[list[float]]:
@@ -1584,7 +1590,7 @@ def _telemetry_summary(result: dict[str, Any], reported: int, *, spark: bool = F
     here is hashed and nothing grows with training length, so a poll of the
     whole run list costs a bounded amount per run however long the history.
     ``spark`` keeps a :data:`SPARK_POINTS` sketch of the reward and loss
-    histories, for the one run Status reads (ADR-542)."""
+    histories, for the one run Status reads (ADR-542, ADR-606)."""
 
     if spark:
         result["spark"] = {key: _spark(result.get(key) or []) for key in SPARK_KEYS}
@@ -1609,8 +1615,7 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
     """
 
     result: dict[str, Any] = {"state": "missing", "reason": "training telemetry missing",
-                              "checkpoints": [], "curve": [], "loss_curve": [],
-                              "episode_steps_curve": []}
+                              "checkpoints": [], **{key: [] for key in HISTORY_KEYS}}
 
     def finish(value: dict[str, Any], reported: int = 0) -> dict[str, Any]:
         return value if detail else _telemetry_summary(value, reported, spark=spark)
@@ -1646,7 +1651,7 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
             result[key] = [[int(i), float(v)] for i, v in points]
             if any(not math.isfinite(v) for i, v in result[key]):
                 raise ValueError("nonfinite history")
-        for key in ("iteration", "total", "reward_per_step", "loss", "episode_steps",
+        for key in ("iteration", "total", "reward_per_step", "loss", "episode_steps", "action_std",
                     "eta_s", "wall_time_s", "best_iteration", "best_reward_per_step"):
             value = data.get(key)
             if value is not None and (not isinstance(value, (int, float)) or not math.isfinite(value)):
@@ -1654,9 +1659,11 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
             result[key] = value
         # The collapse the trainer has detected (ADR-410), as it said it.
         result["warning"] = str(data.get("warning") or "")[:300]
+        # The run's own label, as the trainer was given it (ADR-606).
+        result["label"] = str(data.get("label") or "")[:120]
     except (OSError, TypeError, ValueError, OverflowError):
         return finish({"state": "invalid", "reason": "training telemetry has invalid metrics",
-                       "checkpoints": [], "curve": [], "loss_curve": [], "episode_steps_curve": []})
+                       "checkpoints": [], **{key: [] for key in HISTORY_KEYS}})
     reported = data.get("state")
     result.update(state=reported if reported in ("starting", "training", "done", "failed") else "unknown",
                   reported_state=reported, age_s=age, reason=str(data.get("error") or ""))
@@ -1673,6 +1680,12 @@ def training_telemetry(root: Path, record: Mapping[str, Any], *, detail: bool = 
         result.update(state="invalid", reason="invalid checkpoint list")
         return finish(result)
     reported = sum(1 for item in checkpoints[:512] if isinstance(item, dict))
+    if spark:
+        # Where the trainer wrote a checkpoint, for the reward chart's marks (ADR-606).
+        marks = [[item["iteration"], item.get("reward_per_step")] for item in checkpoints[:512]
+                 if isinstance(item, dict) and isinstance(item.get("iteration"), int)]
+        result["marks"] = [[i, v if isinstance(v, (int, float)) and math.isfinite(v) else None]
+                           for i, v in marks[-CHECKPOINT_MARKS:]]
     # Where the checkpoint bytes may be: this run's own train/ first, then the
     # training run its record names (a playback run copies the snapshot but
     # not the checkpoints). Both stay inside this project's runs/.
@@ -1993,8 +2006,8 @@ EVALUATING_WINDOW_S = 120
 EVALUATING_ENTRY_LIMIT = 256
 #: The telemetry fields Status shows for the run it reads.
 STAGE_TELEMETRY_KEYS = ("state", "reason", "age_s", "iteration", "total", "eta_s", "wall_time_s",
-                        "reward_per_step", "loss", "best_iteration", "best_reward_per_step",
-                        "warning", "spark")
+                        "reward_per_step", "loss", "episode_steps", "action_std", "best_iteration",
+                        "best_reward_per_step", "warning", "label", "spark", "marks")
 
 
 def _stamp(value: Any) -> float | None:
@@ -2055,7 +2068,57 @@ def _evaluate_in_flight(activity: Mapping[str, Any]) -> str | None:
     return None
 
 
-def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
+#: The page an agent may write for its own machine's Status (ADR-607): one
+#: file at the project's root, served whole under a sandbox to an iframe.
+STATUS_PANEL_FILE = "status.html"
+#: The largest panel served; a bigger one is refused, not cut.
+STATUS_PANEL_LIMIT = 512 * 1024
+#: The panel's headers (ADR-607): an opaque origin that may run its own
+#: inline script and style and fetch nothing -- no network, no project
+#: file, no parent page -- so it sees only what the page posts to it.
+STATUS_PANEL_HEADERS = {
+    "Content-Security-Policy": ("sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; "
+                                "style-src 'unsafe-inline'; img-src data:; font-src data:"),
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
+
+
+def status_panel_path(root: Path) -> tuple[Path | None, str]:
+    """``(path, "")`` for a servable ``status.html``, else ``(None, why)``.
+
+    A regular file directly in the project, no symlink and inside the
+    containment check, at most :data:`STATUS_PANEL_LIMIT` bytes."""
+
+    item = resolve_reference(root, STATUS_PANEL_FILE)
+    path = root / STATUS_PANEL_FILE
+    if item["error"]:
+        return None, f"{STATUS_PANEL_FILE} refused: {item['error']}"
+    try:
+        if path.is_symlink():
+            return None, f"{STATUS_PANEL_FILE} refused: a symlink"
+        if not item["exists"] or not path.is_file():
+            return None, f"no {STATUS_PANEL_FILE} in the project"
+        size = path.stat().st_size
+    except OSError:
+        return None, f"no {STATUS_PANEL_FILE} in the project"
+    if size > STATUS_PANEL_LIMIT:
+        return None, f"{STATUS_PANEL_FILE} refused: {size} bytes, over {STATUS_PANEL_LIMIT}"
+    return path, ""
+
+
+def status_panel(root: Path) -> dict[str, Any]:
+    """Whether the project has an agent-authored Status panel, and its URL (ADR-607)."""
+
+    path, reason = status_panel_path(root)
+    if path is None:
+        return {"available": False, "reason": reason}
+    stat = path.stat()
+    return {"available": True, "url": f"status/panel.html?v={stat.st_mtime_ns:x}-{stat.st_size:x}",
+            "bytes": stat.st_size}
+
+
+def project_stage(root: Path, review: Mapping[str, Any], *, checkpoints: bool = True) -> dict[str, Any]:
     """What the project is doing now, for the Status editor (ADR-542, ADR-572).
 
     ``state`` is the first that holds of: ``evaluating`` (an evaluation is
@@ -2070,6 +2133,8 @@ def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
     picks, and ``training`` its telemetry with the
     reward and loss sparklines, or ``None`` when no run has telemetry.
     ``checkpoints`` is that run's :func:`checkpoint_rollouts` (ADR-545).
+    ``panel`` is :func:`status_panel` (ADR-607). ``checkpoints=False``
+    skips the rollouts and the panel, for the projects listing.
     Everything is read from the project directory; nothing is inferred
     about a process the files do not describe.
     """
@@ -2114,9 +2179,11 @@ def project_stage(root: Path, review: Mapping[str, Any]) -> dict[str, Any]:
     elif accepted_at is not None and now - accepted_at <= DESIGNING_WINDOW_S:
         stage.update(state="designing", reason=f"revision {trail[0].get('ordinal')} accepted")
     # The read run's checkpoint rollouts, for the 3D viewport's scrubber (ADR-545).
-    checkpoints = checkpoint_rollouts(root, name) if record is not None else None
+    if not checkpoints:
+        return {**stage, "run": None if record is None else name, "runs": len(runs), "training": training}
+    rollouts = checkpoint_rollouts(root, name) if record is not None else None
     return {**stage, "run": None if record is None else name, "runs": len(runs), "training": training,
-            "checkpoints": checkpoints}
+            "checkpoints": rollouts, "panel": status_panel(root)}
 
 
 class ReviewProject:
@@ -2604,10 +2671,11 @@ class ReviewHandler(BaseHTTPRequestHandler):
     def _not_found(self, what: str) -> None:
         self._send_json({"error": "not found", "what": what}, HTTPStatus.NOT_FOUND)
 
-    def _send_file(self, path: Path, *, download: bool, headers: Mapping[str, str] | None = None) -> None:
+    def _send_file(self, path: Path, *, download: bool, headers: Mapping[str, str] | None = None,
+                   content_type: str | None = None) -> None:
         """A permitted file, whole or as one byte range (video seeking)."""
 
-        content_type = CONTENT_TYPES.get(path.suffix.lower()) or (
+        content_type = content_type or CONTENT_TYPES.get(path.suffix.lower()) or (
             mimetypes.guess_type(path.name)[0] or "application/octet-stream")
         try:
             size = path.stat().st_size
@@ -2789,6 +2857,13 @@ class ReviewHandler(BaseHTTPRequestHandler):
             path = project.run_video(rest[1], int(rest[2]))
         elif head == "evaluation" and len(rest) == 2:
             path = evaluation_file(project.root, rest[0], rest[1])
+        elif head == "status" and rest == ["panel.html"]:
+            # The agent's own panel (ADR-607), under its sandbox and nothing else.
+            path = status_panel_path(project.root)[0]
+            if path is not None:
+                self._send_file(path, download=False, content_type="text/html; charset=utf-8",
+                                headers=STATUS_PANEL_HEADERS)
+                return
         elif head == "doc" and rest[:1] == ["run"] and len(rest) >= 3:
             path = project.run_document(rest[1], "/".join(rest[2:]))
         elif head == "doc" and rest[:1] == ["current"] and len(rest) >= 2:
@@ -2852,6 +2927,158 @@ class ReviewServer(ThreadingHTTPServer):
         return f"http://{shown}:{port}/"
 
 
+#: How long a project's card in the listing is reused while nothing it is
+#: read from has moved (ADR-605): a stage that changes with the clock alone
+#: -- designing turning idle, a quiet trainer -- is at most this late.
+CARD_TTL_S = 10.0
+_CARD_MEMO: dict[str, tuple[tuple[Any, ...], float, dict[str, Any]]] = {}
+_CARD_MEMO_SIZE = 4096
+#: What a card's fingerprint stats, relative to the project.
+_CARD_INPUTS = (PROJECT_SCRIPT_FILENAME, str(ACTIVITY_PATH), f"{HISTORY_DIR}/{HISTORY_INDEX}",
+                RUNS_DIRNAME, "evaluations", PRESENTATION_DIR, f"{PRESENTATION_DIR}/summary.json")
+
+
+def _newest_run_dir(root: Path) -> tuple[Path | None, int]:
+    """The run directory whose record was written last, by stat alone, and how many there are."""
+
+    runs = root / RUNS_DIRNAME
+    if not runs.is_dir() or runs.is_symlink():
+        return None, 0
+    newest, stamp, count = None, -1, 0
+    for child in runs.iterdir():
+        if not child.is_dir():
+            continue
+        count += 1
+        try:
+            written = (child / RUN_RECORD_FILENAME).stat().st_mtime_ns
+        except OSError:
+            written = child.stat().st_mtime_ns
+        if written > stamp or (written == stamp and newest is not None and child.name > newest.name):
+            newest, stamp = child, written
+    return newest, count
+
+
+def _card_fingerprint(root: Path, newest: Path | None) -> tuple[Any, ...]:
+    stamps: list[Any] = []
+    paths = [root / relative for relative in _CARD_INPUTS]
+    if newest is not None:
+        paths += [newest / RUN_RECORD_FILENAME, newest / "train" / "progress.json"]
+    for path in paths:
+        try:
+            stat = path.stat()
+            stamps.append((stat.st_mtime_ns, stat.st_size))
+        except OSError:
+            stamps.append(None)
+    return (str(newest), *stamps)
+
+
+def _latest_stamp(*values: Any) -> str | None:
+    found = [stamp for stamp in (_stamp(value) for value in values if value) if stamp is not None]
+    return _iso(max(found)) if found else None
+
+
+def project_card(root: Path, name: str) -> dict[str, Any]:
+    """What the home page shows of one project (ADR-605), read cheaply.
+
+    The counts (``revisions``, ``evaluations``), the ``latest_evaluation``'s
+    verdict, a ``thumbnail`` (the presentation hero, else the newest passing
+    evaluation's hero, else the newest filmed seed's detail sheet with its
+    ``tile`` grid so the page shows its first frame, else the concept sheet;
+    ``None`` when there is none),
+    the ``stage`` as :func:`project_stage` reads it from the newest run alone,
+    and ``active_at``, the newest time any of them records. Every ``url`` is
+    relative to the index, like the project's own."""
+
+    base = "p/" + quote(name, safe="") + "/"
+    accepted = read_accepted_identity(root)
+    newest, _count = _newest_run_dir(root)
+    record = None
+    if newest is not None:
+        record = read_run_record(newest, root)
+        record["telemetry"] = training_telemetry(root, record, detail=False)
+    history = read_revision_history(root)
+    trail = [{key: entry.get(key) for key in ("ordinal", "revision", "saved_at")} for entry in history[-1:]]
+    activity = read_activity(root, limit=4)
+    stage = project_stage(root, {"runs": [record] if record else [], "revisions": trail, "activity": activity},
+                          checkpoints=False)
+    training = stage.pop("training") or {}
+    stage.pop("runs", None)
+    stage.update({key: training.get(key) for key in ("iteration", "total", "reward_per_step",
+                                                      "best_reward_per_step", "eta_s")})
+    stage["training_state"] = training.get("state")
+    rows = evaluations(root, accepted)
+    latest = rows[-1] if rows else None
+    thumbnail = None
+    shown = presentation(root, accepted)
+    files = shown.get("files") or {}
+    version = str(shown.get("digest") or shown.get("revision") or "")[:12]
+    if "hero" in files:
+        thumbnail = {"url": f"{base}presentation/hero.png?v={version}", "source": "render",
+                     "relation": shown.get("relation")}
+    else:
+        for row in reversed(rows):
+            hero = (row.get("heroes") or {}).get("hero")
+            if row.get("verdict") == "pass" and hero:
+                thumbnail = {"url": f"{base}evaluation/{quote(row['name'], safe='')}/{quote(hero, safe='')}"
+                                    f"?v={row['stamp']}", "source": "evaluation", "relation": row.get("relation")}
+                break
+    for row in reversed(rows if thumbnail is None else []):
+        # A filmed seed's detail sheet, cropped by the page to its first frame.
+        sheets = (row.get("film") or {}).get("sheets") or []
+        frame = next((sheet.get(kind) for sheet in sheets for kind in ("detail", "overview") if sheet.get(kind)), None)
+        if frame:
+            from .film import COLUMNS, ROWS
+            thumbnail = {"url": f"{base}evaluation/{quote(row['name'], safe='')}/{quote(frame, safe='')}"
+                                f"?v={row['stamp']}", "source": "film", "relation": row.get("relation"),
+                         "tile": [COLUMNS, ROWS]}
+            break
+    if thumbnail is None and "sheet" in files:
+        thumbnail = {"url": f"{base}presentation/sheet.png?v={version}", "source": "sheet",
+                     "relation": shown.get("relation")}
+    updated = None
+    if training.get("age_s") is not None:
+        updated = _iso(_datetime.datetime.now(_datetime.timezone.utc).timestamp() - float(training["age_s"]))
+    entries = activity.get("entries") or []
+    return {
+        "revisions": len(history),
+        "evaluations": len(rows),
+        "latest_evaluation": None if latest is None else {
+            key: latest.get(key) for key in ("name", "verdict", "passed", "seeds", "task_label",
+                                             "evaluated_at", "relation")} | {"failing": latest["failing"][:3]},
+        "thumbnail": thumbnail,
+        "stage": stage,
+        "active_at": _latest_stamp(accepted.get("updated_at"), trail[0]["saved_at"] if trail else None,
+                                   entries[0].get("t") if entries else None,
+                                   record.get("recorded_at") if record else None, updated,
+                                   latest.get("evaluated_at") if latest else None),
+    }
+
+
+def cached_project_card(root: Path, name: str) -> dict[str, Any]:
+    """:func:`project_card`, reused while its inputs are unchanged and it is
+    younger than :data:`CARD_TTL_S`; a project that cannot be read says so
+    rather than failing the whole listing."""
+
+    newest, _count = _newest_run_dir(root)
+    key = _card_fingerprint(root, newest)
+    now = _datetime.datetime.now(_datetime.timezone.utc).timestamp()
+    with _MEMO_LOCK:
+        held = _CARD_MEMO.get(str(root))
+    if held is not None and held[0] == key and now - held[1] < CARD_TTL_S:
+        return held[2]
+    try:
+        card = project_card(root, name)
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        card = {"revisions": 0, "evaluations": 0, "latest_evaluation": None, "thumbnail": None,
+                "stage": {"state": "idle", "reason": f"unreadable: {exc}"[:200], "since": None, "run": None},
+                "active_at": None}
+    with _MEMO_LOCK:
+        if len(_CARD_MEMO) >= _CARD_MEMO_SIZE:
+            _CARD_MEMO.clear()
+        _CARD_MEMO[str(root)] = (key, now, card)
+    return card
+
+
 #: Files whose presence makes a directory a project (ADR-575): the engine's
 #: manifest, and what the CLI writes before the first script exists.
 PROJECT_MARKERS = (PROJECT_SCRIPT_FILENAME, ACTIVITY_PATH, LOCK_NAME, AGENT_STATE_NAME)
@@ -2865,8 +3092,10 @@ class ProjectsDirectory:
     first script makes that manifest: the activity log, the lock, or
     ``agent.json`` (ADR-575). An agent's session is on the page from its
     first tool call, not its first script. A project created while the page
-    is open appears on its next poll. Listing reads each manifest and counts ``runs/`` entries,
-    and nothing else, so a directory of many projects stays cheap to list.
+    is open appears on its next poll. Listing reads each manifest, counts
+    ``runs/`` entries and adds each project's card (:func:`project_card`,
+    ADR-605), which is reused while the files it reads are unchanged, so a
+    directory of many projects stays cheap to list.
     """
 
     def __init__(self, root: Path | str) -> None:
@@ -2894,6 +3123,7 @@ class ProjectsDirectory:
                 "url": "p/" + quote(name, safe="") + "/",
                 "accepted": read_accepted_identity(root),
                 "runs": sum(1 for child in runs.iterdir() if child.is_dir()) if runs.is_dir() else 0,
+                **cached_project_card(root, name),
             })
         return {"schema": PROJECTS_SCHEMA, "root": self.root.name, "projects": projects,
                 "served_at": _now()}

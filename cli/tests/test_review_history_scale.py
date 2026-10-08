@@ -108,7 +108,9 @@ def test_the_run_list_carries_a_bounded_telemetry_summary_per_run(long_history):
         assert telemetry["summary"] is True
         assert telemetry["state"] == "done"
         assert telemetry["iteration"] == POINTS - 1
-        assert telemetry["samples"] == {"curve": POINTS, "loss_curve": POINTS, "episode_steps_curve": POINTS}
+        # A trainer before ADR-606 wrote no action std history.
+        assert telemetry["samples"] == {"curve": POINTS, "loss_curve": POINTS, "episode_steps_curve": POINTS,
+                                        "action_std_curve": 0}
         assert telemetry["checkpoints_reported"] == CHECKPOINTS
         assert "curve" not in telemetry and "checkpoints" not in telemetry
         assert telemetry["checkpoint_source"]["state"] == "none"

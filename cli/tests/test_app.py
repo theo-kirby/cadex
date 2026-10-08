@@ -211,7 +211,7 @@ def test_browser_goes_from_the_index_to_a_drawn_project(tmp_path, browser) -> No
     try:
         page = browser.page(server.url)
         page.wait_for("document.querySelectorAll('#projects li').length === 2")
-        # Newest accepted first, each a link and a date; one page, so no pager.
+        # The most recently active first, each a card linking to its page; one page, so no pager.
         assert page.evaluate("[...document.querySelectorAll('#projects li')].map(l => l.dataset.project)")[0] == "biped"
         assert page.attribute("#projects li[data-project='biped'] a", "href") == "p/biped/"
         assert page.text("#projects-count") == "2"
@@ -228,29 +228,30 @@ def test_browser_goes_from_the_index_to_a_drawn_project(tmp_path, browser) -> No
 
 @needs_browser
 def test_browser_pages_through_the_projects_newest_first(tmp_path, browser) -> None:
-    """ADR-533: 20 projects to a page, newest accepted first, the page in the URL."""
+    """ADR-533, ADR-605: 24 projects to a page, the most recently active
+    first (these have no recorded time, so by name), the page in the URL."""
 
     projects = tmp_path / "many"
-    for index in range(45):
+    for index in range(60):
         (projects / f"p{index:02d}").mkdir(parents=True)
         (projects / f"p{index:02d}" / "script.json").write_text("{}")
     server, _thread = serve_projects(projects, "127.0.0.1", 0)
     try:
         page = browser.page(server.url)
-        page.wait_for("document.querySelectorAll('#projects li').length === 20")
+        page.wait_for("document.querySelectorAll('#projects li').length === 24")
         assert page.text("#page-at") == "1 of 3"
         assert page.evaluate("document.getElementById('page-prev').disabled") is True
         first = page.evaluate("[...document.querySelectorAll('#projects li')].map(l => l.dataset.project)")
-        assert first[0] == "p00" and first[-1] == "p19"
+        assert first[0] == "p00" and first[-1] == "p23"
         page.click("#page-next")
         page.click("#page-next")
         page.wait_for("document.getElementById('page-at').textContent === '3 of 3'")
-        assert page.evaluate("document.querySelectorAll('#projects li').length") == 5
+        assert page.evaluate("document.querySelectorAll('#projects li').length") == 12
         assert page.evaluate("location.search") == "?page=3"
         assert page.evaluate("document.getElementById('page-next').disabled") is True
         again = browser.page(server.url + "?page=2")
         again.wait_for("document.getElementById('page-at').textContent === '2 of 3'")
-        assert again.evaluate("document.querySelector('#projects li').dataset.project") == "p20"
+        assert again.evaluate("document.querySelector('#projects li').dataset.project") == "p24"
     finally:
         server.shutdown()
         server.server_close()

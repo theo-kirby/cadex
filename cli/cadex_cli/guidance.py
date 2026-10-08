@@ -280,6 +280,21 @@ PROGRESS.md is the CLI's too: this server lands a row, and a commit in the \
 project's own repository, each time it lets go of a session that changed \
 the design.
 
+YOU MAY GIVE THE DASHBOARD A STATUS PANEL. The dashboard's Status already \
+charts reward, loss, episode length and action std, the latest evaluation \
+and every run. For what only this machine has -- a measurement per run, a \
+predicate's margin, a quantity the evaluation reports -- write status.html \
+at the project's root with your file tools; Status then shows it under a \
+Project tab. It runs in a sandbox that can fetch nothing, the project's own \
+files included: everything it draws arrives as a `cadex-status-panel-v1` \
+message the page posts on every poll (the stage, the run's curves, every \
+run, every evaluation with the newest one's predicates, and the theme's \
+colour tokens). Draw inline SVG from that message alone, in those tokens, \
+one measure per chart. The message, the style guide and a skeleton to start \
+from are in docs/DASHBOARD.md, section 23, in the Cadex repository that \
+holds the `cadex` command you run. Keep it under \
+512 KB, and say in DECISIONS.md what it shows and why.
+
 WHEN A QUESTION'S ANSWER WOULD CHANGE THE DESIGN, ask the person. When it \
 would not, carry on with the most reversible assumption and say which one \
 you took.

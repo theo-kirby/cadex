@@ -1304,7 +1304,7 @@ def test_retained_telemetry_preserves_histories_on_training_failure(tmp_path, mo
     monkeypatch.setattr(module, 'globals_for', lambda _: {})
     monkeypatch.setattr(module, 'load_bundle', lambda *_: {'task_sha256': 'task', 'model_sha256': 'model'})
     rows = [{'iteration': i, 'reward_per_step': i / 10, 'loss': 1000-i,
-             'episode_steps': i+1} for i in range(600)]
+             'episode_steps': i+1, 'action_std': 0.5 - i / 2000} for i in range(600)]
     def failing_train(bundle, options, *, emit, progress):
         progress(state='training', iteration=599, total=700, curve=rows, wall=1, device='fixture')
         rows.append({'iteration': 600, 'reward_per_step': float('nan'),
@@ -1318,7 +1318,7 @@ def test_retained_telemetry_preserves_histories_on_training_failure(tmp_path, mo
     assert data['state'] == 'failed' and data['iteration'] == 599
     assert data['task_sha256'] == 'task' and data['model_sha256'] == 'model'
     assert data['updated_at'] >= data['started_at']
-    for name, key in [('curve', 'reward_per_step'), ('loss_curve', 'loss'), ('episode_steps_curve', 'episode_steps')]:
+    for name, key in [('curve', 'reward_per_step'), ('loss_curve', 'loss'), ('episode_steps_curve', 'episode_steps'), ('action_std_curve', 'action_std')]:
         assert len(data[name]) == 512
         assert data[name][0] == [0, rows[0][key]]
         assert data[name][-1] == [599, rows[599][key]]
