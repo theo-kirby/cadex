@@ -37397,3 +37397,50 @@ closure test still does). Still open under L1: the fit sweep solving a
 loop rather than refusing it.
 
 Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-596 — The base guidance says how to choose a sensor, when to close a linkage, and how to state a motion (2026-10-07)
+
+**Decision.** Three rules join the domain-neutral base (ADR-560), each
+with its reason and phrased for any machine:
+
+- **CHOOSE A SENSOR A REAL PART COULD BE** (`CadexAgentGuidance.md`): a
+  free object's position through a `position_tracker` on the component the
+  real reader is fixed to, with its datasheet figures (ADR-588), and its
+  `_in_range` flag as a termination; an effort through `load_sensor` only
+  on an actuator that reports it, a PWM servo being refused (ADR-591); a
+  target relative to a moving base held in that base's frame (ADR-592);
+  and a channel no part on the market measures declared privileged, with
+  the part that would ground it recorded.
+- **CLOSE A LINKAGE WHERE THE BUILT MACHINE WOULD HAVE ONE**
+  (`CadexAgentGuidance.md`): a serial stand-in is a different machine;
+  close a chain when the actuator should stay on the frame, the output
+  needs a ratio or path one pivot cannot give, or two outputs move
+  together; stay serial for independent wide-range axes or a chain near a
+  dead point. How a loop is declared and driven, the two refusals
+  (ADR-593), and that its motion is proved by the smoke check (ADR-594),
+  never by the fit sweep.
+- **STATE THE MOTION AS A PREDICATE, NOT AS WHERE IT ENDS**
+  (`cli/cadex_cli/guidance.py`, beside the reward rules): bound `turns` or
+  `laps` for a motion that goes round and the distance metrics for how
+  far a body stays from a point (ADR-587), with no goal declared for it.
+  It replaces ADR-586's "count it in the evaluation's traces", written
+  before a predicate could count it.
+
+**Why.** The orun5 charter's long-term rung 1. The capabilities landed
+under S1, S2, R1, L1 and M1 reach an agent only through `describe_api`,
+which says what each call does but not when a design should use it. The
+two reference projects worked around each gap the same way — a hidden
+bead for a touch panel, a serial gimbal for a pushrod, a point goal for a
+distance, laps counted by hand — and a fresh agent would repeat those
+habits unless the base says what replaced them.
+
+**Alternatives.** A style for these rules: each holds for a crane, a
+wheeled base or a fixed arm, so the question policy puts them in the base.
+Keeping the hand-count sentence beside the predicate rule: two
+instructions for one job, one of them now weaker.
+
+**Tests.** `cli/tests/test_agent_guidance.py` pins each rule's claims and
+reason, and that the hand-count sentence is gone; the existing
+project-name tests cover the new text. No API, op or tool changes.
+
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
