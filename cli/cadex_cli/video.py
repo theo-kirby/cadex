@@ -268,7 +268,8 @@ def _render(root, directory, style='scene'):
                 else:
                     meshes[entry['name']] = stl(retained(directory, relative))
                 # Manifest order is the component colour identity in both clients.
-                entries.append({'name': entry['name'], 'mesh': entry['mesh'],
+                # World geometry is posed but not drawn: the mat stands in for it (ADR-600).
+                entries.append({'name': entry['name'], 'mesh': entry['mesh'], 'world': entry.get('world') is True,
                                 'placement': frames[0]['component_placements'][entry['name']]})
         geometry = None
         if style == 'studio':
