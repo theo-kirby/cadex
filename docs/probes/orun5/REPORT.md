@@ -1,6 +1,6 @@
 # orun5 — closing report
 
-Verified against source: 2026-10-07, at `f36f21b2` (the orun5 run branch).
+Verified against source: 2026-10-08, at `f172085e` (the orun5 run branch).
 Charter: `.ouroboros/goal.md`, "Sense the world, close the loop, judge the
 motion". Every number below was measured on sb1x (linux-64, RTX 5090) on
 scratch projects named `orun5-*`. The two reference projects were read and
@@ -446,9 +446,17 @@ ADRs added by this run:
    25-iteration checkpoints landed evenly, 69–72 s apart. The progress file
    keeps no per-iteration times, so a residual stall cannot be separated
    from that spacing.
-3. **"Not found" before a project's first script was not re-measured this
-   run.** orun4's ADR-575 made a project readable from its agent's first
-   tool call. Neither orun5 project exercised a fresh, script-less project.
+3. **Measured, and resolved: a fresh project is readable from its agent's
+   first tool call.** `fresh_project_probe.py` starts `cadex app` over an
+   empty projects directory and `cadex mcp` on a project that does not
+   exist, and never writes a script. Until the first tool call nothing is
+   on disk, so the index leaves the project out and `/api/project` answers
+   404 (0.00–0.05 s, through `initialize` and `tools/list`). After the
+   first call (`describe_api`, 0.06 s) the directory holds
+   `review/activity.jsonl` and `.cadex-cli.lock`, and at 0.11 s the
+   project is listed with a 200 that reads `accepted.available: false`,
+   "no script.json". It stays so after the server exits. ADR-575 holds
+   end to end; nothing is left to fix.
 4. **A failed `cadex script --set` silently reverts the project's
    `script.py`** to the accepted revision. During P1's circle work this
    discarded an edit twice, because a stale policy declaration failed its
@@ -510,6 +518,6 @@ S1, M1, S2, L1, R1, P1, P2 and this report have evidence recorded. P1's
 circle half and P2's attribution are on the terms stated above. The owner's
 boxes are not ticked.
 
-The unreconciled tail is the phase goal and circle-10's record, then circle-11's. A work
-iteration may not reconcile, so the next reconcile pass folds it before the
-critic judges this claim.
+The unreconciled tail is the phase goal and circle-10's record, circle-11's,
+and the §10.3 measurement. A work iteration may not reconcile, so the next
+reconcile pass folds them before the critic judges this claim.
