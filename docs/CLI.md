@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -93,7 +93,11 @@ Flags, valid on either side of the subcommand:
 `script --set` also takes `--replace`, which is you saying you mean to drop
 an output the accepted revision declares — without it such a script is
 refused, because `write_script` replaces *the whole* script and losing an
-output by accident is easy (ADR-045).
+output by accident is easy (ADR-045). Only an accepted script persists, so
+a refused one edited in place as `script.py` can be put back to the
+accepted revision; the refused source is kept at
+`review/script.rejected.py`, and a `script:` note says so, and says when
+`script.py` was put back (ADR-599).
 
 ### 2a. Driving a project with your agent: `cadex mcp` (ADR-538)
 
@@ -3158,7 +3162,12 @@ The command checks:
   A bolt the static block calls threaded into a printed part (ADR-492) may
   share up to its thread allowance with that part at every pose (ADR-583);
   its row carries `thread_allowance_mm3`, `threaded` counts those that
-  overlap, and one driven past its thread still fails.
+  overlap, and one driven past its thread still fails. A pair the
+  simulator held in contact no deeper than `--penetration-mm` — a ball
+  resting on a plate — may share at most that depth times half the common
+  solid's surface (ADR-599); its row carries `contact_allowance_mm3`,
+  `in_contact` counts those within it, and the dynamics run writes the
+  contacts it saw to `smoke-contacts.json`.
 - Floor-proxy penetration no deeper than `--penetration-mm 0.5`, and a free
   base whose design is touching the environment floor at the end, whose linear
   speed is at most `--rest-speed-mm-s 10`, and which has turned no further
@@ -3166,7 +3175,9 @@ The command checks:
   (ADR-377: a design that toppled and settled meets the first two and is not
   standing; the angle is read against the keyframe, so a base modelled lying
   down and holding that pose reads zero). Grounded bodies hold by
-  construction. Floor support uses the model's collision proxies; component
+  construction; in a design with any, a free body is a payload — a ball on
+  a plate — listed under `checks.support.payloads` and owed no floor
+  (ADR-599). Floor support uses the model's collision proxies; component
   fit uses exact solids.
 - Any termination conditions in the selected task, without applying task
   randomisation, disturbances or a trained policy.
@@ -3176,10 +3187,14 @@ The command checks:
   `checks.closure` lists each closure's worst gap and its time, worst
   first. A closure is soft with a two-step time constant, so the gap goes
   as the step squared; a failure names `suggested_step_s`, the 1-2-5 step
-  under `step × sqrt(0.01 / worst)` (ADR-594). The rollout is the held or
-  zero-action one above, so it measures a loop at rest or settling; how
-  far a *driven* loop opens is `assembly.dynamics`'s
-  `worst_closure_residual_mm`, which its evidence states beside
+  under `step × sqrt(0.01 / worst)` (ADR-594). A loop held still never
+  opens, so when the model has a closure and a position actuator, smoke
+  also drives it (ADR-599): from the same keyframe, every position
+  actuator sweeps one 2 s sine about what it holds, 40 % of its command
+  range's half-span (0.3 rad without a range), and each closure's gap is
+  measured through it. A closure's row says `while_driven` when the sweep
+  opened it furthest, and the failure line says "of the driven sweep". An
+  `assembly.dynamics` run states its own `worst_closure_residual_mm` beside
   `closure_tolerance_mm` and `closure_within_tolerance` (ADR-595).
 
 Sampling defaults to 50 Hz, always includes the initial and final poses, and

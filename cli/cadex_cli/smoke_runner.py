@@ -61,6 +61,10 @@ MAXIMUM_REPORTED_PAIRS = 32
 #: nothing from the engine. A loop open by more than this has a pose the
 #: export's own contract would not accept (ADR-584).
 CLOSURE_TOLERANCE_MM = 1.0e-2
+#: The driven loop probe (ADR-599): one sweep of this period, and the
+#: amplitude for an actuator with no command range.
+DRIVE_PERIOD_S = 2.0
+DRIVE_UNLIMITED_RAD = 0.3
 
 
 def closure_step_s(step_s: float, worst_mm: float, tolerance_mm: float = CLOSURE_TOLERANCE_MM) -> float:
@@ -289,6 +293,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "error": None,
             })
 
+    touches: dict[tuple[str, str], float] = {}
+
     def observe_contacts(time_s: float) -> bool:
         touching_floor = False
         for index in range(int(data.ncon)):
@@ -297,7 +303,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             if floor in (g1, g2) and float(contact.dist) <= 0.0:
                 touching_floor = True
             if floor not in (g1, g2):
-                continue  # Component fit comes from exact BREP, not collision proxies.
+                # Component fit comes from exact BREP, not collision proxies;
+                # the contact's depth only bounds what the exact check allows
+                # a pair the simulator holds in contact (ADR-599).
+                depth_mm = -float(contact.dist) * 1000.0
+                bodies = tuple(sorted((body_name(model.geom_bodyid[g1]), body_name(model.geom_bodyid[g2]))))
+                if depth_mm > 0.0 and bodies[0] != bodies[1]:
+                    touches[bodies] = max(depth_mm, touches.get(bodies, 0.0))
+                continue
             depth_mm = -float(contact.dist) * 1000.0
             if depth_mm <= 0.0:
                 continue
@@ -371,7 +384,45 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             snapshot()
             sampled += 1
             next_sample = (math.floor(elapsed * fps + 1e-9) + 1) / fps
+    # -- the loops, driven ----------------------------------------------
+    # Held still, a driven loop never opens, so a step too coarse for its
+    # motion would pass (ADR-599). On a fresh state from the same keyframe,
+    # each position actuator sweeps sinusoidally about what it holds --
+    # 40 % of its command range's half-span, one 2 s period -- and every
+    # closure's gap is measured through that motion.
+    swept = [(i, row["ctrl"]) for i, row in enumerate(held) if row["kind"] == "position"]
+    if closures and swept and nonfinite_at is None:
+        probe = mujoco.MjData(model)
+        mujoco.mj_resetDataKeyframe(model, probe, key)
+        mujoco.mj_forward(model, probe)
+        period = DRIVE_PERIOD_S
+        for step in range(int(math.ceil(period / timestep - 1e-9))):
+            phase = math.sin(2.0 * math.pi * step * timestep / period)
+            for act, centre in swept:
+                if model.actuator_ctrllimited[act]:
+                    low, high = (float(v) for v in model.actuator_ctrlrange[act])
+                    reach = 0.4 * (high - low) / 2.0
+                    probe.ctrl[act] = min(high, max(low, centre + reach * phase))
+                else:
+                    probe.ctrl[act] = centre + DRIVE_UNLIMITED_RAD * phase
+            mujoco.mj_step(model, probe)
+            if not (np.isfinite(probe.qpos).all() and np.isfinite(probe.qvel).all()):
+                break
+            for closure in closures:
+                first, second = closure["sites"]
+                gap_mm = float(np.linalg.norm(probe.site_xpos[first] - probe.site_xpos[second])) * 1000.0
+                if gap_mm > closure.get("driven_mm", 0.0):
+                    closure["driven_mm"] = gap_mm
+                    closure["driven_time_s"] = step * timestep
+        for closure in closures:
+            if closure.get("driven_mm", 0.0) > closure["worst_mm"]:
+                closure["worst_mm"], closure["time_s"] = closure["driven_mm"], closure["driven_time_s"]
+                closure["while_driven"] = True
+
     Path(args.out).with_name("smoke-trace.json").write_text(json.dumps(trace, allow_nan=False))
+    Path(args.out).with_name("smoke-contacts.json").write_text(json.dumps(
+        [{"first": a, "second": b, "depth_mm": d} for (a, b), d in sorted(touches.items())],
+        allow_nan=False))
 
     warnings = [
         {"warning": mujoco.mjtWarning(i).name, "count": warning_counts[i]}
@@ -409,7 +460,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             f"at {row['time_s']:.3f} s (tolerance {tolerance:g} mm)"
         )
 
-    if free_joints:
+    # A free body in a rig with grounded bodies is a payload -- a ball on a
+    # plate -- not a base that must stand on the floor (ADR-599).
+    payloads = [body_name(model.jnt_bodyid[j]) for j in free_joints] if grounded else []
+    if free_joints and not grounded:
         joint = free_joints[0]
         qadr, dofadr = int(model.jnt_qposadr[joint]), int(model.jnt_dofadr[joint])
         base = body_name(model.jnt_bodyid[joint])
@@ -463,6 +517,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "pass": bool(grounded),
             "grounded": grounded,
             "note": "grounded bodies are static in the model; they hold by construction",
+            "payloads": payloads,
         }
 
     if not free_joints and not grounded:
@@ -495,7 +550,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "pass": not open_loops,
         "tolerance_mm": CLOSURE_TOLERANCE_MM,
         "closures": [
-            {"closure": c["closure"], "kind": c["kind"], "worst_mm": c["worst_mm"], "time_s": c["time_s"]}
+            {"closure": c["closure"], "kind": c["kind"], "worst_mm": c["worst_mm"], "time_s": c["time_s"],
+             "while_driven": bool(c.get("while_driven"))}
             for c in sorted(closures, key=lambda c: -c["worst_mm"])
         ],
         "worst_mm": worst_loop["worst_mm"] if worst_loop else None,
@@ -507,6 +563,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     for c in open_loops:
         failing.append(
             f"closure: loop {c['closure']!r} opens {c['worst_mm']:.4g} mm at {c['time_s']:.3f} s "
+            + ("of the driven sweep " if c.get("while_driven") else "") +
             f"(contract {CLOSURE_TOLERANCE_MM:g} mm at a {timestep * 1000.0:g} ms step); a closure "
             f"is soft and opens as the step squared: export with "
             f"solver_step_s={closure_step_s(timestep, c['worst_mm']):g} or finer"

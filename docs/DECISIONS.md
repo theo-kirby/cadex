@@ -37550,3 +37550,53 @@ to 8.7e-8. `test_dynamics_goal_api.py`: the API's arguments and refusals,
 and the kinds named in `describe_api`.
 
 Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-599 — Smoke owes a payload no floor, allows a contact its depth, drives a held loop; a refused script is kept (2026-10-08)
+
+**Context.** orun5's closing report (`docs/probes/orun5/REPORT.md` §10)
+left four defects. This entry closes three; the fourth (evaluations draw
+no tracker noise, ADR-588) stays open, because seeding noise into the
+engine's rollout changes the path the trainer's witness is checked against.
+
+**Decision.**
+1. **A free body in a grounded rig is a payload.** `cadex smoke` took the
+   first free joint as a base that must stand on the floor, so a ball on a
+   grounded plate failed `support` with no floor to rest on. With any
+   grounded body, support is `grounded` and the free bodies are listed as
+   `payloads`, owed no floor.
+2. **A pair in simulated contact may share its contact's depth.** The exact
+   check failed a ball resting 7.5 µm into its plate against the 1e-6 mm³
+   overlap bound. The dynamics run now writes the component pairs it held in
+   contact, with their deepest penetration, to `smoke-contacts.json`. A pair
+   whose contact stayed within `--penetration-mm` may share at most that
+   depth times half the common solid's surface: a lens of thickness t has
+   volume at most t·A/2. A ball 1 mm in, or a contact past the tolerance,
+   still fails.
+3. **A held loop is also driven.** Under `hold` a driven linkage sits still,
+   so a loop that opens 0.02–0.70 mm when driven at the 2 ms default step
+   passed. When a model has a closure and a position actuator, smoke now
+   sweeps every position actuator one 2 s sine about its hold (40 % of its
+   command range's half-span) from the same keyframe, and judges each
+   closure on the worse of the held and driven gaps, naming the step that
+   closes it. ADR-594's live four-bar fixture exported at the default step
+   and now fails (0.17 mm) until its `mjcf` says `solver_step_s=0.0005`,
+   which it does.
+4. **A refused `script --set` keeps its source.** Only an accepted script
+   persists, so an agent's in-place edit to `script.py` that the build
+   refused was put back to the accepted revision with nothing saying so;
+   during orun5 it cost a training run. The refused source is now written to
+   `review/script.rejected.py`, and a `script:` note says where, and says
+   that `script.py` was put back only when it was.
+
+**Regression.** `cli/tests/test_smoke.py`: a ball on a grounded plate is a
+payload and its contact is written; a crank-driven four-bar held still is
+swept, fails at 2 ms "of the driven sweep" and passes at the step it names.
+`cli/tests/test_smoke_geometry_bound.py`: a 7.5 µm resting ball passes only
+with its simulated contact, and fails at 1 mm or past the tolerance.
+`cli/tests/test_commands.py`: a refused in-place edit is kept and reported.
+
+**Consequences.** `checks.support` gains `payloads`; the closure rows gain
+`while_driven`; `smoke-geometry.json` gains `in_contact` and per-row
+`contact_allowance_mm3`. No op, tool or protocol argument changes.
+
+Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).

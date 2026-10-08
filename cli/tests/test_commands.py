@@ -166,6 +166,25 @@ def test_script_prints_the_source_and_nothing_else(project, capsys) -> None:
     assert captured.err == ""
 
 
+def test_a_refused_script_set_keeps_the_source_it_was_given(project, capsys) -> None:
+    """ADR-599: a refused edit made in place to script.py is put back to the
+    accepted revision; the refused source survives and the envelope says where."""
+
+    root = project["root"]
+    edited = PLATE + "\nbroken = part.box(\n"
+    (root / "script.py").write_text(edited, encoding="utf-8")
+    code = main(["script", "--set", str(root / "script.py"), "--project", str(root), "--json"])
+    envelope = _envelope(capsys)
+
+    assert code == EXIT_REJECTED and envelope["ok"] is False
+    assert (root / "review" / "script.rejected.py").read_text(encoding="utf-8") == edited
+    (note,) = [n for n in envelope["notes"] if n.startswith("script:")]
+    assert "review/script.rejected.py" in note
+    # Said to be put back only when it was.
+    reverted = (root / "script.py").read_text(encoding="utf-8") != edited
+    assert ("back at the accepted revision" in note) is reverted
+
+
 def test_a_long_script_and_a_wide_parameter_set_are_read_whole(
     engine, tmp_path, capsys
 ) -> None:

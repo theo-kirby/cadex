@@ -198,3 +198,43 @@ def test_the_initial_pose_bound_is_the_engines_mjcf_pose_contract():
     engine = float(re.search(r"^MJCF_POSE_TOLERANCE_MM = (\S+)$", source, re.M).group(1))
     assert child.MJCF_POSE_TOLERANCE_MM == engine
     assert child.INITIAL_POSE_TOLERANCE_MM == 2.0 * 3.0 ** 0.5 * engine
+
+
+@pytest.mark.skipif(FREECADCMD is None, reason="Needs real OCCT")
+def test_a_pair_in_simulated_contact_shares_its_contact_depth_and_no_more(tmp_path):
+    # ADR-599: a 25 mm ball resting 7.5 um into a plate, as the simulator's
+    # soft contact holds it, shares a sliver with it. That is contact, not a
+    # collision, while the simulator held the pair within the penetration
+    # tolerance; a ball 1 mm in is a collision whatever the contact says.
+    subprocess.run([str(FREECADCMD), "-c", (
+        "import Part, FreeCAD as App;"
+        f"Part.makeBox(160, 160, 10, App.Vector(-80, -80, -10)).exportBrep({str(tmp_path / 'plate.brep')!r});"
+        f"Part.makeSphere(12.5, App.Vector(0, 0, 12.5)).exportBrep({str(tmp_path / 'ball.brep')!r})")],
+        check=True, capture_output=True, timeout=300)
+    identity = {"position_mm": [0, 0, 0], "rotation_xyzw": [0, 0, 0, 1]}
+
+    def run(sink_mm, contacts):
+        trace = [{"time_s": 0.0, "placements": {"ball": identity, "plate": identity}},
+                 {"time_s": 0.1, "placements": {"plate": identity, "ball": {
+                     "position_mm": [0, 0, -sink_mm], "rotation_xyzw": [0, 0, 0, 1]}}}]
+        (tmp_path / "trace.json").write_text(json.dumps(trace))
+        plan = {"trace": str(tmp_path / "trace.json"), "out": str(tmp_path / "out.json"),
+                "maximum_volume_mm3": 1e-6, "contact_depth_mm": 0.05, "contacts": contacts,
+                "static": [{"first": "ball", "second": "plate", "distance_mm": 0.0,
+                            "common_volume_mm3": 0.0}],
+                "geometry": [{"name": n, "path": str(tmp_path / f"{n}.brep")} for n in ("ball", "plate")]}
+        (tmp_path / "plan.json").write_text(json.dumps(plan))
+        subprocess.run([str(FREECADCMD), str(SMOKE)], check=True, capture_output=True, timeout=300,
+                       env={**os.environ, "CADEX_SMOKE_GEOMETRY_PLAN": str(tmp_path / "plan.json")})
+        result = json.loads((tmp_path / "out.json").read_text())
+        assert "error" not in result, result
+        return result
+
+    touching = [{"first": "ball", "second": "plate", "depth_mm": 0.0075}]
+    resting = run(0.0075, touching)
+    assert resting["pass"] is True and resting["in_contact"] == 1
+    # Without the simulator's contact the same sliver is a collision...
+    assert run(0.0075, [])["pass"] is False
+    # ...and so is a ball 1 mm in, or one whose contact passed the tolerance.
+    assert run(1.0, touching)["pass"] is False
+    assert run(0.0075, [dict(touching[0], depth_mm=0.2)])["pass"] is False

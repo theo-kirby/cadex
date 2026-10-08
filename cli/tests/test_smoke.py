@@ -117,6 +117,15 @@ SERVO_TASK = {
 }
 
 
+#: A grounded plate with a free 25 mm ball resting on it and no floor: a
+#: balancing rig, whose ball is a payload, not a base (ADR-599).
+BALL_ON_PLATE = """<mujoco><option timestep="0.002"/><worldbody>
+<body name="comp_plate" pos="0 0 0"><geom name="comp_plate/collision0" type="box" size="0.08 0.08 0.005" mass="0.2"/></body>
+<body name="comp_ball" pos="0 0 0.0175"><freejoint name="ball"/>
+<geom name="comp_ball/collision0" type="sphere" size="0.0125" mass="0.064"/></body>
+</worldbody><keyframe><key name="solved" qpos="0 0 0.0175 1 0 0 0"/></keyframe></mujoco>"""
+
+
 def _runner(tmp_path: Path, xml: str, *, task: dict | None = None, **flags) -> dict:
     model = tmp_path / "model-model.xml"
     model.write_text(xml, encoding="utf-8")
@@ -233,7 +242,8 @@ def test_hold_keeps_the_servo_pose_and_zero_action_fires_the_declared_terminatio
         "pass": True, "rules": 1, "fired": [], "errors": [], "note": None}
     assert held["checks"]["support"] == {
         "kind": "grounded", "pass": True, "grounded": ["comp_base"],
-        "note": "grounded bodies are static in the model; they hold by construction"}
+        "note": "grounded bodies are static in the model; they hold by construction",
+        "payloads": []}
     assert held["task"]["label"] == "hold" and held["keyframe"] == "solved"
 
     dropped = _runner(tmp_path, SERVO_ARM, task=SERVO_TASK, mode="zero")
@@ -514,7 +524,7 @@ result = {"ground": ground, "crank": crank, "coupler": coupler, "rocker": rocker
           "ja": ja, "jd": jd, "jb": jb, "jc": jc, "rig": rig, "solve": assembly.solve(rig),
           "drive": assembly.dynamics(rig, bodies, actuators=[servo("225*time")], end_time_s=2.0,
                                      frames_per_second=60, solver_step_s=0.0005),
-          "model": assembly.mjcf(rig, bodies, actuators=[servo("0")])}
+          "model": assembly.mjcf(rig, bodies, actuators=[servo("0")], solver_step_s=0.0005)}
 result.update(bars)
 """
 
@@ -682,6 +692,8 @@ def test_a_four_bar_built_live_is_driven_round_and_holds_its_loop_shut(engine, t
     assert code == EXIT_OK, envelope
     smoke = envelope["smoke"]
     assert smoke["verdict"] == "pass", smoke["failing"]
+    # Driven round its sweep at the step its export names (ADR-599); at the
+    # 2 ms default the same sweep opens the loop 0.17 mm.
     held = smoke["checks"]["closure"]
     assert [row["closure"] for row in held["closures"]] == ["jc"]
     assert held["pass"] and held["worst_mm"] < held["tolerance_mm"] == 0.01
@@ -853,3 +865,38 @@ def test_a_thread_allowance_holds_only_for_a_bolt_threaded_at_the_solved_pose() 
     assert [(r["first"], r["second"]) for r in held] == [("bolt", "shin")]
     # π/4 (2² − 1.567²) × 8 mm, with the engine's 1e-3 margin.
     assert abs(held[0]["allowance_mm3"] - 3.141592653589793 / 4 * (4 - 1.567 ** 2) * 8 * 1.001) < 1e-9
+
+
+@needs_mujoco
+def test_a_free_ball_on_a_grounded_rig_is_a_payload_not_a_base(tmp_path) -> None:
+    # ADR-599: the rig holds by construction; the ball needs no floor, and
+    # its contact with the plate is written for the exact check to bound.
+    receipt = _runner(tmp_path, BALL_ON_PLATE)
+    support = receipt["checks"]["support"]
+    assert support["kind"] == "grounded" and support["pass"] is True
+    assert support["grounded"] == ["comp_plate"] and support["payloads"] == ["comp_ball"]
+    assert not [line for line in receipt["failing"] if line.startswith("support")]
+    contacts = json.loads((tmp_path / "smoke-contacts.json").read_text())
+    assert [(c["first"], c["second"]) for c in contacts] == [("comp_ball", "comp_plate")]
+    assert 0.0 < contacts[0]["depth_mm"] < 0.5
+
+
+@needs_mujoco
+def test_a_driven_loop_held_still_is_swept_and_its_gap_measured(tmp_path) -> None:
+    # ADR-599: the crank-rocker driven by a position servo on its crank
+    # holds still under ``hold`` and closes at any step; swept about that
+    # hold it opens at 2 ms, and the step the receipt names closes it.
+    def driven(step_s):
+        return _swinging_four_bar(step_s).replace(
+            "<keyframe>", '<actuator><general name="a/position" joint="a" biastype="affine" '
+            'gainprm="50" biasprm="0 -50 -0.5" ctrllimited="true" ctrlrange="-1.5 1.5"/></actuator>'
+            "<keyframe>")
+
+    coarse = _runner(tmp_path, driven(0.002))
+    closure = coarse["checks"]["closure"]
+    (loop,) = closure["closures"]
+    assert loop["while_driven"] is True and closure["pass"] is False, closure
+    (line,) = [l for l in coarse["failing"] if l.startswith("closure:")]
+    assert "of the driven sweep" in line and "solver_step_s=" in line
+    fine = _runner(tmp_path, driven(closure["suggested_step_s"]))
+    assert fine["checks"]["closure"]["pass"] is True, fine["checks"]["closure"]

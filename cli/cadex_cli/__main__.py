@@ -1414,6 +1414,35 @@ def command_inventory(args: argparse.Namespace, report: RunReport) -> int:
         return EXIT_OK
 
 
+#: Where a refused ``script --set`` leaves the source it was given (ADR-599).
+REJECTED_SCRIPT = Path("review") / "script.rejected.py"
+
+
+def _keep_rejected_source(args: argparse.Namespace, report: RunReport, source: str) -> None:
+    """Only an accepted script persists, so a refused one edited in place as
+    ``script.py`` is put back to the accepted revision. Keep what was refused
+    where the next attempt can start from it, and say both (ADR-599)."""
+
+    root = Path(args.project).expanduser().resolve()
+    kept = root / REJECTED_SCRIPT
+    try:
+        kept.parent.mkdir(parents=True, exist_ok=True)
+        kept.write_text(source, encoding="utf-8")
+    except OSError as exc:
+        report.notes.append(f"script: the refused source could not be kept: {exc}")
+        return
+    script = root / "script.py"
+    try:
+        reverted = (args.source_file != "-" and Path(args.source_file).expanduser().resolve() == script
+                    and script.read_text(encoding="utf-8") != source)
+    except OSError:
+        reverted = False
+    report.notes.append(
+        ("script: script.py is back at the accepted revision; " if reverted else "script: ")
+        + f"the refused source is kept at {REJECTED_SCRIPT.as_posix()}. "
+        "Fix it there and run script --set again.")
+
+
 def command_script(args: argparse.Namespace, report: RunReport) -> int:
     """Print the project script, or replace it wholesale from a file."""
 
@@ -1463,6 +1492,7 @@ def command_script(args: argparse.Namespace, report: RunReport) -> int:
                 reply.get("error") or reply.get("failure_code") or "write_script failed"
             )
             _refresh_script_state(client, report)
+            _keep_rejected_source(args, report, source)
             return EXIT_REJECTED
         _refresh_script_state(client, report)
         _finish(args, report, engine, reply.get("display"))
@@ -1938,13 +1968,13 @@ def command_smoke(args: argparse.Namespace, report: RunReport) -> int:
         )
         _progress(f" · smoke  {model.name}  {float(args.seconds):g} s {args.mode}  ({python})")
         receipt_path.unlink(missing_ok=True)
-        for filename in ("smoke-trace.json", "smoke-geometry.json"):
+        for filename in ("smoke-trace.json", "smoke-geometry.json", "smoke-contacts.json"):
             (Path(report.out_dir) / filename).unlink(missing_ok=True)
         dynamics = run_smoke(command, receipt=dynamics_path, timeout=max(0.001, deadline - time.monotonic()))
         geometry = check_geometry(
             engine, items=items, display=display, model_name=model.name,
             out=Path(report.out_dir), timeout=deadline - time.monotonic(),
-            maximum_volume=args.max_common_volume_mm3,
+            maximum_volume=args.max_common_volume_mm3, penetration_mm=float(args.penetration_mm),
         )
         report.smoke = dynamics
         report.smoke["schema"] = "cadex-smoke-v1"

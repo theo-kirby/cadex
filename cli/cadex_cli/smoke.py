@@ -268,8 +268,18 @@ def thread_allowances(items: dict, static: list, maximum_volume: float) -> list[
     return held
 
 
+def _contacts(path: Path) -> list:
+    """The component pairs the simulator held in contact, with their deepest
+    penetration (ADR-599); none when the dynamics run wrote no file."""
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return []
+
+
 def check_geometry(engine: Engine, *, items: dict, display: dict, model_name: str,
-                   out: Path, timeout: float, maximum_volume: float) -> dict:
+                   out: Path, timeout: float, maximum_volume: float,
+                   penetration_mm: float = 0.0) -> dict:
     """Trusted FreeCAD child reads detached solids and numeric poses only."""
     import os
     import tempfile
@@ -290,7 +300,8 @@ def check_geometry(engine: Engine, *, items: dict, display: dict, model_name: st
     plan = {"geometry": geometry, "static": static,
             "thread_allowances": thread_allowances(items, static, maximum_volume),
             "trace": str(out / "smoke-trace.json"), "out": str(out / "smoke-geometry.json"),
-            "maximum_volume_mm3": maximum_volume}
+            "maximum_volume_mm3": maximum_volume,
+            "contacts": _contacts(out / "smoke-contacts.json"), "contact_depth_mm": float(penetration_mm)}
     with tempfile.TemporaryDirectory(prefix="cadex-smoke-") as temp:
         plan_path = Path(temp) / "plan.json"
         plan_path.write_text(json.dumps(plan))

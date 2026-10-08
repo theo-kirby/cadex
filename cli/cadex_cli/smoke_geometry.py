@@ -103,7 +103,7 @@ def measure(plan):
                     relative = left.Placement.inverse().multiply(right.Placement).Matrix.A
                     seen = measured.get(pair)
                     if seen and max(abs(x - y) for x, y in zip(relative, seen[0])) <= 1e-9:
-                        volume = seen[1]
+                        volume, common_area = seen[1], seen[2]
                         booleans["reused"] += 1
                     else:
                         common = left.common(right)
@@ -114,7 +114,7 @@ def measure(plan):
                         booleans["run"] += 1
                         if not math.isfinite(volume) or volume < -1e-6:
                             raise ValueError("invalid common volume")
-                        measured[pair] = (relative, volume)
+                        measured[pair] = (relative, volume, common_area)
                 if index == 0:
                     static = expected.get(pair)
                     # Measured as the engine measured it (ADR-581): a culled
@@ -137,18 +137,32 @@ def measure(plan):
                         raise ValueError(f"initial pose disagrees with published clearance: {pair}: {reason}")
                 if pair not in worst or volume > worst[pair]["common_volume_mm3"]:
                     worst[pair] = {"first": first, "second": second,
-                                   "common_volume_mm3": volume, "time_s": frame["time_s"]}
+                                   "common_volume_mm3": volume, "time_s": frame["time_s"],
+                                   "common_area_mm2": common_area}
     threaded = 0
     for pair, row in worst.items():
         if pair in allowances:
             row["thread_allowance_mm3"] = allowances[pair]
             threaded += row["common_volume_mm3"] > plan["maximum_volume_mm3"]
+    # A pair the simulator held in contact overlaps by its contact's depth
+    # (ADR-599). A lens of thickness t has volume at most t times half its
+    # surface, so the pair may share that much at the penetration
+    # tolerance; a contact deeper than the tolerance holds none.
+    depth = float(plan.get("contact_depth_mm") or 0.0)
+    touching = {tuple(sorted((r["first"], r["second"]))) for r in plan.get("contacts", [])
+                if 0.0 < float(r["depth_mm"]) <= depth}
+    contact = 0
+    for pair, row in worst.items():
+        if pair in touching and row["common_volume_mm3"] > plan["maximum_volume_mm3"]:
+            row["contact_allowance_mm3"] = 0.5 * row["common_area_mm2"] * depth
+            contact += row["common_volume_mm3"] <= row["contact_allowance_mm3"]
     failures = [r for r in worst.values() if r["common_volume_mm3"] > max(
-        plan["maximum_volume_mm3"], r.get("thread_allowance_mm3", 0.0))]
+        plan["maximum_volume_mm3"], r.get("thread_allowance_mm3", 0.0),
+        r.get("contact_allowance_mm3", 0.0))]
     return {"pass": not failures, "source": "exact BREP solids at sampled MuJoCo poses",
             "initial_pose_agrees": True, "initial_pose_tolerance_mm": INITIAL_POSE_TOLERANCE_MM,
             "samples": len(trace), "pairs_checked": len(worst), "booleans": booleans,
-            "threaded": threaded,
+            "threaded": threaded, "in_contact": contact,
             "maximum_volume_mm3": plan["maximum_volume_mm3"], "failing": failures,
             "pairs": list(worst.values())}
 
