@@ -190,10 +190,21 @@
 
   // One measure on its own axes: y ticks and grid, x ticks in iterations (one-based,
   // as Status counts), the line, and for reward the best iteration and the checkpoints.
+  // A centred mean over ``half`` samples either side, shrinking at the ends
+  // so the first and last points stay where the run was.
+  function rollingMean(points, half) {
+    if (half < 1 || points.length < 3) return points;
+    return points.map(function (p, i) {
+      var k = Math.min(half, i, points.length - 1 - i), sum = 0;
+      for (var j = i - k; j <= i + k; j++) sum += points[j][1];
+      return [p[0], sum / (2 * k + 1)];
+    });
+  }
+
   function drawChart(spec, points, t) {
     var node = $(spec.id), width = Math.round(node.getBoundingClientRect().width), height = 132;
     var marks = spec.marks ? (t.marks || []) : [];
-    var key = JSON.stringify([width, points, spec.marks ? [t.best_iteration, t.best_reward_per_step, marks] : 0, t.total]);
+    var key = JSON.stringify([width, points, spec.marks ? [t.best_iteration, t.best_reward_per_step, marks] : 0, t.total, (review.stage || {}).state]);
     if (chartKeys[spec.id] === key) return;
     chartKeys[spec.id] = key;
     while (node.firstChild) node.removeChild(node.firstChild);
@@ -209,7 +220,10 @@
     }
     var L = 46, R = 10, T = 8, B = 20;
     var xs = points.map(function (p) { return p[0]; }), ys = points.map(function (p) { return p[1]; });
-    var x0 = 0, x1 = Math.max(Math.max.apply(null, xs), (t.total || 0) - 1, 1);
+    // While the run trains, the axis runs to its total so the unrun part
+    // shows; once it has ended, to the last iteration it reached.
+    var live = (review.stage || {}).state === 'training';
+    var x0 = 0, x1 = Math.max(Math.max.apply(null, xs), live ? (t.total || 0) - 1 : 0, 1);
     var y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
     if (y1 === y0) { y0 -= Math.abs(y0) * 0.1 || 1; y1 += Math.abs(y1) * 0.1 || 1; }
     var pad = (y1 - y0) * 0.08; y0 -= pad; y1 += pad;
@@ -231,8 +245,14 @@
       node.appendChild(svg('line', { class: 'chart-checkpoint', x1: sx(m[0]).toFixed(1), x2: sx(m[0]).toFixed(1),
                                      y1: height - B, y2: height - B - 5 }));
     });
-    node.appendChild(svg('polyline', { class: 'chart-line', points: points.map(function (p) {
-      return sx(p[0]).toFixed(1) + ',' + sy(p[1]).toFixed(1); }).join(' ') }));
+    // The samples as they are, faint, and their rolling mean as the line:
+    // a batch of episodes that end together swings the raw series between
+    // two levels, and the trend is what the reader needs to follow.
+    var line = function (series) { return series.map(function (p) {
+      return sx(p[0]).toFixed(1) + ',' + sy(p[1]).toFixed(1); }).join(' '); };
+    var smooth = rollingMean(points, Math.max(1, Math.round(points.length / 24)));
+    node.appendChild(svg('polyline', { class: 'chart-raw', points: line(points) }));
+    node.appendChild(svg('polyline', { class: 'chart-line', points: line(smooth) }));
     if (spec.marks && t.best_iteration != null && t.best_iteration >= 0 && t.best_reward_per_step != null) {
       var bx = sx(t.best_iteration), by = sy(t.best_reward_per_step);
       node.appendChild(svg('line', { class: 'chart-best-rule', x1: bx.toFixed(1), x2: bx.toFixed(1), y1: T, y2: height - B }));

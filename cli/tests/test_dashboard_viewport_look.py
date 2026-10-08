@@ -231,7 +231,7 @@ def test_mesh_lines_show_facets_under_the_ink_and_their_choice_persists(served, 
     page = _page(browser, server)
     page.evaluate("window.cadexReview.setStyle('wireframe')")
     _install(page, "T.entry('drum', T.cylinder(30, 40, 48))")
-    assert page.evaluate("window.cadexReview.meshLines()") == {"shown": True, "strength": 0.22}
+    assert page.evaluate("window.cadexReview.meshLines()") == {"shown": True, "strength": 0.12}
 
     def drawn():
         paper = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--paper').trim()")

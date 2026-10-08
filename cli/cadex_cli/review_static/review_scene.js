@@ -38,7 +38,7 @@ const WIREFRAME = {paper:'#fbfbf9', ink:'#1c1c1c'};
 // The mesh lines (ADR-602): every edge where two facets turn by more than `angle` degrees, so a
 // curved face shows its facets and a flat one stays clean, drawn at `strength` of the ink over
 // the paper, hidden where a solid is in front of them.
-export const MESH_LINES = {angle:2, strength:.22, max:1};
+export const MESH_LINES = {angle:2, strength:.12, max:1};
 // Smooth shading (ADR-601): a vertex normal averages the facets around it that turn by less than
 // the engine's CREASE_DEGREES (CadexStudio.py), so a fillet or a bore reads smooth and an edge
 // that turns further stays crisp.

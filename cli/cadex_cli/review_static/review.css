@@ -158,6 +158,7 @@ figure.chart svg { display: block; width: 100%; overflow: visible; }
 .chart-grid line { stroke: var(--rule); stroke-width: 1; }
 .chart-axis { stroke: var(--rule-strong); stroke-width: 1; }
 .chart-label text, .chart-empty { fill: var(--ink-2); font: var(--fs-0) var(--font); }
+.chart-raw { fill: none; stroke: var(--accent); stroke-width: 1; stroke-opacity: .28; stroke-linejoin: round; }
 .chart-line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .chart-checkpoint { stroke: var(--ink-2); stroke-width: 1.5; }
 .chart-best-rule { stroke: var(--ok); stroke-width: 1; stroke-dasharray: 3 3; opacity: .7; }

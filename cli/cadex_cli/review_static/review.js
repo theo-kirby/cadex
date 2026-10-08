@@ -186,7 +186,7 @@
   // The viewport's look (ADR-601, ADR-602): the wireframe's mesh lines and the shaded
   // solids' reflections, this browser's own.
   var meshLines = { shown: readPref('cadex.meshlines', ['on', 'off'], 'on') === 'on',
-                    strength: readNumber('cadex.meshlines.strength', 0, 1, 0.22) };
+                    strength: readNumber('cadex.meshlines.strength', 0, 1, 0.12) };
   var reflections = readNumber('cadex.reflections', 0, 2, 1);
 
   function renderSources() {

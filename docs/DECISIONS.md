@@ -37600,3 +37600,224 @@ with its simulated contact, and fails at 1 mm or past the tolerance.
 `contact_allowance_mm3`. No op, tool or protocol argument changes.
 
 Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-600 — The viewport's floor is the design's own, a metre grid, and clip planes that follow the shot (2026-10-08)
+
+**Decision.** World geometry (manifest `world: true`) is installed but never
+drawn beside a design, in the viewport and in the scene-style capture
+(`video.py` passes the flag). The prototype mat lies at the top of that
+geometry, else under the design's lowest point; when the world geometry
+rises above the design's lowest point by more than 2 mm or 2 % of its
+height, the mat stays under the design. A model that is only world geometry
+is drawn as it is. The mat is polygon-offset back in depth, not lowered.
+The grid is one fixed pitch of 1 m (`floor.js` `GRID_PITCH = 1`,
+`LINE_FRACTION = 5/256`), painted once; the pitch ladder, the
+framing-chosen minor lines and the half-pitch dots are deleted. The camera's
+near plane is 0.002 of its distance and its far plane 1.5× the floor's size,
+replacing 0.001 of the design radius and a fixed 800 m. Picking, ghosts and
+framing ignore undrawn world parts.
+
+**Why.** The owner saw the design's own floor z-fight, clip and pop against
+the mat, and "different layers of grid overlaying" while zooming. A near/far
+ratio in the millions left no depth precision at the contact.
+
+**Tests.** `cli/tests/test_dashboard_viewport_look.py` (no slab pixel drawn;
+the mat at the world top, a lifted body, a tall wall, no world, world only;
+a 1 m pitch and both clip planes at five zooms; no ladder in `floor.js`);
+`test_scene_palette.py::test_the_grid_is_the_viewports_grid`;
+`test_dashboard_fit.py` (engine-gated).
+
+**Consequences.** `stats()` gains `floor`, `hidden_world` and `clip`. A
+metre square is coarse under a 100 mm robot, by the owner's choice.
+
+Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-601 — Physical materials in the shaded viewport (2026-10-08)
+
+**Decision.** Shaded solids use crease-angle normals (vertices welded by
+exact position, facets within 40° — the engine's `CREASE_DEGREES` —
+averaged, weighted by corner angle), and reflect a procedural studio room
+(softbox, warm key, cool fill, rim strip) prefiltered once by
+`PMREMGenerator`. Each part gets a `MeshPhysicalMaterial` from its manifest
+`finish` (ADR-603): printed plastic (roughness 0.55, faint clearcoat and
+sheen), satin purchased bodies, black-oxide, bright-steel or brass hardware
+by `catalog.family`, and satin solder mask for boards, whose chip-box facets
+are near-black and pad facets tin when the manifest gives `board` geometry
+(coloured facet-whole). Role colours and the hover glow are unchanged; the
+floor takes no reflection; the sun shadow's normal bias is two texels.
+View → Reflections scales the reflections 0–2× (`cadex.reflections`).
+
+**Why.** The owner asked for more realistic materials that keep the crisp
+bevels: flat facet normals made fillets read faceted, white and graphite
+read flat, and screws and boards looked like the printed parts.
+
+**Tests.** `test_dashboard_viewport_look.py`: crease normals on a cylinder,
+finishes per part, board chip and pad facets and colours, a plain board
+stays green, the reflections strength persists.
+
+**Consequences.** `stats()` gains `finishes`, `boards` and `reflections`.
+About 1 s of load on a 466k-triangle model in headless Chromium.
+
+Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-602 — Hairline becomes Wireframe, with optional mesh lines (2026-10-08)
+
+**Decision.** The diagram style is renamed `wireframe` in `STYLES`, labels,
+`stats().render_style` and the docs; `setStyle('hairline')` and a stored
+`cadex.render = hairline` mean wireframe, and the stored value is
+rewritten. The bold silhouette and crease pass is unchanged. Under it an
+optional mesh-line layer draws `EdgesGeometry` at 2° over a depth-only
+prepass, so hidden lines stay hidden, at a strength of the ink (default
+0.12, 0–1). View → Mesh lines toggles it and sets the strength
+(`cadex.meshlines`, `cadex.meshlines.strength`). The floor stays hidden in
+wireframe.
+
+**Why.** The owner wanted the name and a faint view of the geometry under
+the bold lines, toggleable and adjustable. The default was lowered from the
+first cut's 0.22 to 0.12 after seeing hatched rods: "you can barely see it".
+
+**Tests.** `test_dashboard_viewport_look.py` (stored hairline opens as
+wireframe; mesh lines change pixels, the switch removes them while the ink
+stays, both survive a reload; controls disabled in the wrong style);
+`test_review_design.py`; `test_http_api.py` lists the new browser keys.
+
+**Consequences.** `setMeshLines`/`meshLines` on the viewer and
+`window.cadexReview`; edges are built lazily the first time wireframe draws.
+
+Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-603 — Material classes: catalog hardware is metal, boards are PCBs, purchased parts satin (2026-10-08)
+
+**Decision.** Every drawn part has a finish class from its catalog family:
+`printed`; `purchased` (any other catalog part); `hardware` (bolt and nut
+black-oxide steel `#3C3E44`; washer, bearing and bushing bright steel
+`#B2B6BC`; heat_insert brass `#C9A052`; `shaft`, `dowel` and `pin` mapped to
+steel as a hook, none catalogued yet); or `board` (solder mask `#1F6B3C`,
+chip `#18191C`, tinned pads `#C4C6CA`). Hardware and boards take the
+finish's colour over any declared role; the role is still reported, and the
+design language's material count still counts role colours.
+`CadexStudio.materials` returns looks carrying `finish`, `catalog` and
+`role_rgb`; a finish shades as `(specular, exponent, metal, sheen)` with a
+small studio reflection, metal as a tinted mirror. A board's chip and pads
+are painted per subsample in the catalog frame, only when the mesh matches
+the catalog board under a quarter turn about +Z and a shift; otherwise plain
+mask. `review_server.part_looks` adds `finish`, `catalog` and `board` to
+each accepted component and `appearance.finishes`; stills, `look`, sheets,
+the print bed, films, shove and studio videos all draw with it.
+
+**Why.** The owner asked that hardware and electronics stop looking like
+the printed forms. One rule shared by the engine and the browser keeps
+every image and the viewport in agreement.
+
+**Tests.** `src/Mod/cadex/cadex_tests/test_studio_finishes.py`;
+`test_dashboard_parts.py::test_each_part_carries_its_finish_catalog_row_and_board_layout`;
+`test_film`, `test_video`, `test_inventory`, `test_look`,
+`test_studio_standing`.
+
+**Consequences.** Renders of designs with catalog screws and boards change
+colour; `summary.json` appearance rows gain `finish` and `catalog`.
+
+Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-604 — The engine's floor is a metre a square (2026-10-08)
+
+**Decision.** `CadexStudio._floor` draws its checker at a fixed
+`GRID_PITCH_MM = 1000` with `LINE_FRACTION = 5/256` at every framing, in the
+hero, review views, `look`, sheets, print-bed hero, evaluation filmstrips,
+rollout and shove videos; the pitch ladder and `grid_pitch_mm` are removed.
+Stills lay the mat at the top of the world geometry the fit names, as films
+and studio videos already did. World geometry is never drawn on any path.
+
+**Why.** The owner wants the floor true size everywhere; a framing-chosen
+pitch made a square 50 mm in one image and 500 mm in the next.
+
+**Tests.** `test_scene_palette.py` (parity with `floor.js`; 1000 mm at a
+400 mm and a 4 m framing; lines at metres only); `test_studio_standing.py`.
+
+**Consequences.** A small robot shows at most one or two grid lines.
+
+Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-605 — The home page is a viewer's home, not a directory (2026-10-08)
+
+**Decision.** `cadex app`'s index shows the most recently active project in
+a spotlight, then every project as a card: picture, name, time since it
+last moved, stage chip with a progress bar while training, latest
+evaluation verdict, and revision, run and evaluation counts. It sorts by
+recent activity, 24 to a page, with a name filter kept in the URL. Each
+`/api/projects` entry gains `revisions`, `evaluations`,
+`latest_evaluation`, `thumbnail` (`{url, source, relation[, tile]}`,
+relative: presentation hero, else the newest passing evaluation's hero,
+else a film sheet's first frame, else the concept sheet, else a placeholder),
+`stage` and `active_at`; the top-level keys are unchanged. A card is cached
+per project by the stat of the files it reads, for at most 10 s; an
+unreadable project gets a card that says so.
+
+**Why.** The owner found the index "boring, not dynamic, looks like a
+directory folder". Over 270 real projects the listing costs about 0.2 s
+cold and 0.02 s warm.
+
+**Tests.** `cli/tests/test_home.py`; `test_app.py` (24 a page);
+`test_dashboard_prefix.py`, `test_http_api.py`.
+
+**Consequences.** 24 a page instead of 20; sorted by `active_at`.
+
+Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-606 — Status uses its area: charts with axes, the evaluation, the runs (2026-10-08)
+
+**Decision.** Status is drawn by `status.js`: tiles for reward, best, loss,
+episode length, action std and (while training) ETA; four charts, one
+measure each on its own axes with ticks, grid and hover, the x axis to the
+run's total while it trains and to its last iteration once ended, the samples drawn faint under their rolling mean, and on
+reward the best iteration and each checkpoint marked; the latest
+evaluation as a per-predicate table; and a runs table, newest first, with
+each run's reason, iterations, best, change in best from the run before,
+outcome and evaluation verdict. Stage, activity and warning are unchanged.
+`stage.training.spark` carries all four histories at up to 128 points, plus
+`marks`, `label`, `episode_steps` and `action_std`; the trainer writes
+`action_std_curve`.
+
+**Why.** The owner said the panel "doesn't carry its weight": tiny graphs
+without axes, always just reward and loss. The rolling mean was added after
+seeing real runs whose environments end their episodes together, which
+swings the raw series between two levels.
+
+**Tests.** `test_review_status_panel.py::test_browser_status_charts_every_measure_with_axes`;
+`test_review_status.py`; `test_review_history_scale.py`;
+`test_dynamics_policy_trainer.py`.
+
+**Consequences.** `/api/project` carries four 128-point histories for the
+run Status reads; older runs show "not reported" for action std.
+
+Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-607 — The agent may author a sandboxed Status panel (2026-10-08)
+
+**Decision.** A project's `status.html` (a regular file at the root, no
+symlink, at most 512 KB) is served at `status/panel.html` as `text/html`
+with `Content-Security-Policy: sandbox allow-scripts; default-src 'none';
+script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:;
+font-src data:`, `X-Content-Type-Options: nosniff` and
+`Referrer-Policy: no-referrer`; otherwise 404. Status then offers Training
+and Project, Project first, embedding it in `<iframe sandbox="allow-scripts">`
+with no same-origin. The page posts a `cadex-status-panel-v1` message (theme
+tokens, stage, training with curves, runs, evaluations, params, activity) on
+each poll, on load, on theme change and on `cadex-status-ready`.
+`docs/DASHBOARD.md` §23 documents the message, a style guide and a skeleton,
+and the base guidance tells agents they may write one. No MCP tool is added.
+
+**Why.** The owner wants the model to "edit the HTML directly" for
+machine-specific views. An opaque origin with no network and no access to
+the parent keeps the dashboard read-only and the project's files
+unreachable.
+
+**Tests.** `cli/tests/test_review_status_panel.py` (absent 404; exact
+headers; symlink, oversize and directory refused; app prefix; guidance; a
+browser test where the panel draws from the message while its `fetch` and
+parent access are blocked and its origin is `"null"`).
+
+**Consequences.** The message schema is a contract and changes by new
+schema name.
+
+Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).

@@ -135,6 +135,9 @@ def test_browser_follows_a_change_the_cli_makes(plate_app, browser, capsys) -> N
     assert accepted != before
     page.wait_for("window.cadexReview.state().revision === %s" % json.dumps(accepted), timeout=30)
     page.wait_for("(window.cadexReview.state().model || {}).revision === %s" % json.dumps(accepted), timeout=60)
+    # The manifest is the page's as soon as it arrives; the meshes are drawn
+    # once every one is in and installed, which takes its own time.
+    page.wait_for("Math.abs(%s - 55) < 0.01" % width, timeout=60)
     assert page.evaluate(width) == pytest.approx(55.0, abs=0.01)
     assert page.evaluate("document.querySelectorAll('#revision-list li').length") >= 2
 
