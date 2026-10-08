@@ -1,6 +1,6 @@
 # orun5 — closing report
 
-Verified against source: 2026-10-08, at `f172085e` (the orun5 run branch).
+Verified against source: 2026-10-08, at `7466b0ed` (the orun5 run branch).
 Charter: `.ouroboros/goal.md`, "Sense the world, close the loop, judge the
 motion". Every number below was measured on sb1x (linux-64, RTX 5090) on
 scratch projects named `orun5-*`. The two reference projects were read and
@@ -440,12 +440,18 @@ ADRs added by this run:
    the circle task from the centring policy across a changed `success`.
    circle-9 then stepped circle-7 to a revised reward. Two uses are not a
    measure of how often such a step helps.
-2. **The trainer's checkpoint stall was not re-measured this run.** orun4
-   fixed it (ADR-576: 42.5–45.4 s down to 1.9 s per checkpoint on a
-   4096-env biped). In P2's run, 1400 iterations took 3903 s and the
-   25-iteration checkpoints landed evenly, 69–72 s apart. The progress file
-   keeps no per-iteration times, so a residual stall cannot be separated
-   from that spacing.
+2. **Measured, and resolved: a checkpoint costs one compile, then one
+   iteration.** orun4 fixed the stall (ADR-576: 42.5–45.4 s down to 1.9 s
+   per checkpoint on a 4096-env biped). Re-measured on 2026-10-08, holding
+   the machine lock: the trainer cold on the ball-plate's circle task
+   (256 envs, seed 17, 60 iterations, `--checkpoint-every 10`), each
+   stderr line stamped as it arrived. An iteration took 0.431–0.440 s. The
+   first checkpoint's gap was 9.54 s, one compile of the witness rollout;
+   every later one, and every `best` written beside one, was 0.438–0.440 s,
+   one iteration (nine writes in all). The gaps were the same at the
+   tenth checkpoint as at the second, so nothing grows with the run. P2's
+   69–72 s spacing was 25 iterations of its larger task, not a stall.
+   ADR-576 holds; nothing is left to fix.
 3. **Measured, and resolved: a fresh project is readable from its agent's
    first tool call.** `fresh_project_probe.py` starts `cadex app` over an
    empty projects directory and `cadex mcp` on a project that does not
