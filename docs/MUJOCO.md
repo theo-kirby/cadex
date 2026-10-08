@@ -1187,6 +1187,18 @@ the reason. What it does not model: the register reads drive duty, which
 equals load only near stall — a turning motor's back-EMF takes a share —
 so at speed the real reading runs above the simulated one.
 
+**A goal can be a clock (ADR-598).** `assembly.goal(..., kind="phase",
+period_seconds=T)` is a bundle row with `low` 0, `high` 2π, `nominal` [0],
+`period_s` and `radians_per_step` (2π·dt/T), and `goal_algorithm` gains
+`GOAL_PHASE_ALGORITHM` only where one is stated. Its start phase is drawn
+by the value draw already stated, so the engine, the trainer's host pool
+and the reference runner draw the same numbers; at step s the angle is
+`start + radians_per_step * (s - segment start)`, read as `name_sin` and
+`name_cos` by `CadexDynamics.goal_values` and the trainer's
+`phase_channels`. It is the only channel that carries time, because the
+trainer's reset does not rewind `data.time` and a MuJoCo `clock` sensor
+would therefore read wrong after the first episode.
+
 **A goal can be held in a body's frame, and a position read in one
 (ADR-592).** `assembly.goal(..., kind="point", frame=base)` draws its
 target as any point goal is drawn, then keeps it as

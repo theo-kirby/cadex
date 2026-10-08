@@ -5023,6 +5023,10 @@ def _goal_input(
         # ADR-592: present only on a goal held in a body's frame.
         if properties.get("frame") is not None:
             resolved["frame"] = component_outputs[id(properties["frame"])]
+    elif resolved["kind"] == "phase":
+        # ADR-598: the period is all a phase declares; the engine sets the
+        # turn its start is drawn over.
+        resolved["period_seconds"] = float(properties.get("period_seconds"))
     else:
         resolved.update(
             low=float(properties.get("low")), high=float(properties.get("high"))

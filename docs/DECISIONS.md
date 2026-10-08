@@ -37491,3 +37491,62 @@ now lists the success spec beside the reward, the episode and the
 disturbances.
 
 Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-598 — A goal can be a clock: the `phase` kind (2026-10-07)
+
+**Context.** Nothing a policy or a reward reads carries time. A policy
+observes sensor channels and goals; a reward or a termination names
+declared channels only; only a control formula may name `time`. A `value`
+goal is a uniform draw held for a segment, not a ramp. A MuJoCo `clock`
+sensor would not do: the trainer's reset does not rewind `data.time`, so it
+would read wrong from the second episode on. orun5's circling task met the
+gap (REPORT defect 12): a memoryless policy whose reward pays for radius
+and speed found an arc to rock on, or a circle too tight, and a reward that
+leads the body round by a target angle could not be written.
+
+**Decision.** `GOAL_KINDS` and `_GOAL_KINDS` gain `"phase"`.
+`assembly.goal(name, kind="phase", period_seconds=T)`:
+
+- **declares its period only.** `between`, the point arguments and a
+  missing or non-positive period are refused; no other kind takes
+  `period_seconds`.
+- **draws a start phase** per segment over one turn, by the value draw
+  already stated (`low` 0, `high` 2π in the bundle row). The draw code in
+  the engine, the trainer's host pool and the reference runner is
+  unchanged, and their streams stay the same length.
+- **turns `radians_per_step` = 2π·dt/T every control step**, anticlockwise,
+  from the segment's start, computed from the episode's step counter. It
+  reads as channels `name_sin` and `name_cos`. `CadexDynamics.goal_values`
+  computes them in the engine; the trainer's `goals_at` calls
+  `phase_channels` on device; the reference runner repeats the line from
+  `GOAL_PHASE_ALGORITHM`.
+- **leaves every earlier bundle as it was.** `GOAL_PHASE_ALGORITHM` is
+  appended to `goal_algorithm` only when a phase is stated, so no other
+  bundle's text or digest moves.
+- **is free like a value.** A task may state more than one, within
+  `MAXIMUM_GOALS`; a success spec reads no metric against it.
+
+It is the controller's own timer, the command a robot's firmware would
+issue, not a sensor reading, so A1's grounding rule is untouched: goals are
+never privileged.
+
+**Rejected.** *A `clock` observation from MuJoCo's `data.time`.* Wrong after
+the first reset in the trainer, and a second clock to keep in step with the
+engine's. *A ramp `value` goal.* An angle that wraps cannot be told to a
+network as one number without a jump at 2π; sine and cosine have none.
+*A recurrent policy.* A larger change to the trainer, and a clock is still
+what a circling machine's firmware would run.
+
+**Tests.** `test_dynamics_goal_model.py`: the bundle row and the appended
+algorithm; the channels a policy sees and a reward names advance with the
+episode's step, come round after a period and restart at a resample; a
+malformed period and a clashing channel are refused; the stock reference
+runner reproduces a phase episode number for number.
+`test_dynamics_goal_trainer.py`: the trainer's `goal_segment` and
+`phase_channels` equal `goal_values` at every step and past the horizon;
+the real trainer's reward curve on a `lead_sin` reward equals the engine's
+schedule. That last one is venv-gated; run by hand this iteration, it agreed
+to 8.7e-8. `test_dynamics_goal_api.py`: the API's arguments and refusals,
+and the kinds named in `describe_api`.
+
+Verified against source: 2026-10-07. Provenance: [Cadex-new] (ADR-061).

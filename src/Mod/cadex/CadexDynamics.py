@@ -5652,8 +5652,11 @@ MAXIMUM_GOALS = 4
 #: meaning; ``speed`` is one number that *is* the commanded forward speed in
 #: millimetres per second, which is what lets a success spec read how well
 #: it was tracked; ``point`` is a place in the world, in millimetres, that a
-#: named tip can reach.
-GOAL_KINDS = ("value", "speed", "point")
+#: named tip can reach; ``phase`` is an angle that turns once per declared
+#: period from a start drawn per episode, told as its sine and cosine
+#: (ADR-598) -- the controller's own timer, which is the only way a reward
+#: or a policy can know how far an episode has run.
+GOAL_KINDS = ("value", "speed", "point", "phase")
 
 #: How many joint configurations a ``point`` goal may draw before the draw
 #: is refused, and how many whole episodes are drawn when the task is built
@@ -6443,6 +6446,18 @@ GOAL_FRAME_ALGORITHM = (
     "mj_forward -- the point in the frame body's own frame, which is what "
     "its channels then read and the goal the reach is measured to -- while "
     "min_z_m, the contact test and min_separation_m still read p in the world"
+)
+
+#: What a phase goal adds to :data:`GOAL_ALGORITHM` (ADR-598), appended only
+#: to bundles that state one, so every earlier bundle keeps its algorithm
+#: and its digest. The draw is the value draw already stated -- its start
+#: phase is uniform(low, high) over one turn -- and what is added is how
+#: that one number becomes the two channels a step reads.
+GOAL_PHASE_ALGORITHM = (
+    "; on a phase goal, the drawn value is the start phase of its segment, "
+    "and at control step s the angle is start + radians_per_step * (s - k * "
+    "resample_steps) for the segment k in force; its channels are "
+    "sin(angle) then cos(angle)"
 )
 
 #: Everything a reward or termination expression may name beyond the
@@ -7841,7 +7856,7 @@ def _goal_records(
                 correction=f"The kinds are {', '.join(GOAL_KINDS)}.",
                 observed={"goal": name, "kind": kind},
             )
-        if kind != "value" and kind in seen_kinds:
+        if kind not in ("value", "phase") and kind in seen_kinds:
             raise DynamicsError(
                 f"{what} is a second {kind} goal beside {seen_kinds[kind]!r}.",
                 reason="duplicate_goal_kind",
@@ -7849,14 +7864,16 @@ def _goal_records(
                     "A success spec reads the commanded speed and the target "
                     "point by kind, so a task states at most one of each. A "
                     "further number a reward gives its own meaning is "
-                    "kind='value'."
+                    "kind='value', and a further clock is kind='phase'."
                 ),
                 observed={"goal": name, "kind": kind,
                           "earlier": seen_kinds[kind]},
             )
         seen_kinds[kind] = name
         channels = (
-            [f"{name}_x", f"{name}_y", f"{name}_z"] if kind == "point" else [name]
+            [f"{name}_x", f"{name}_y", f"{name}_z"] if kind == "point"
+            else [f"{name}_sin", f"{name}_cos"] if kind == "phase"
+            else [name]
         )
         for channel in channels:
             if channel in owners:
@@ -7869,7 +7886,8 @@ def _goal_records(
                         "with one name means whichever was looked up last. "
                         "Rename the goal. Note that a point goal expands: one "
                         "named 'target' occupies target_x, target_y and "
-                        "target_z."
+                        "target_z; and a phase goal named 'lead' occupies "
+                        "lead_sin and lead_cos."
                     ),
                     observed={"goal": name, "channel": channel},
                 )
@@ -7905,6 +7923,30 @@ def _goal_records(
             "resample_steps": steps,
             "segments": 1 if not steps else -(-max_steps // steps),
         }
+        if kind == "phase":
+            period = float(entry.get("period_seconds", math.nan))
+            if not (math.isfinite(period) and period > 0.0):
+                raise DynamicsError(
+                    f"{what} turns once every {period!r} s.",
+                    reason="malformed_goal",
+                    correction=(
+                        "Give period_seconds, a positive number of seconds "
+                        "for one whole turn."
+                    ),
+                    observed={"goal": name, "period_seconds": repr(period)},
+                )
+            record.update(
+                unit="rad",
+                # The start phase is drawn over one turn by the value draw,
+                # so both copies of the draw read it unchanged.
+                low=0.0,
+                high=2.0 * math.pi,
+                nominal=[0.0],
+                period_s=period,
+                radians_per_step=2.0 * math.pi * interval / period,
+            )
+            records.append(record)
+            continue
         if kind != "point":
             low = float(entry.get("low", math.nan))
             high = float(entry.get("high", math.nan))
@@ -8893,6 +8935,9 @@ def task_records(
         ) + (
             GOAL_FRAME_ALGORITHM
             if any(entry.get("frame_id") is not None for entry in goal) else ""
+        ) + (
+            GOAL_PHASE_ALGORITHM
+            if any(entry["kind"] == "phase" for entry in goal) else ""
         )} if goal else {}),
         **judged,
         # The two per-episode draw streams, both stated, because they are
@@ -9619,6 +9664,13 @@ def goal_schedule(
                 # ADR-592: the body a held-in-frame point is fixed to, so a
                 # reader of the episode knows its values are in that frame.
                 **({"frame": str(entry["frame"])} if entry.get("frame") else {}),
+                # ADR-598: how far a phase turns per step, so a reader of
+                # the episode can say what it read at any frame. Its
+                # segments' values are their start phases.
+                **(
+                    {"radians_per_step": float(entry["radians_per_step"])}
+                    if entry["kind"] == "phase" else {}
+                ),
                 "segments": [
                     {
                         "start_step": start,
@@ -9644,6 +9696,9 @@ def goal_values(
 
     The last segment that has started. Past the final segment's start it is
     still that segment, which is what the frame after the last step reads.
+    A phase goal (ADR-598) is the one whose channels move inside a segment:
+    its angle advances ``radians_per_step`` every step from the segment's
+    drawn start, and it reads as that angle's sine and cosine.
     """
 
     values: dict[str, float] = {}
@@ -9652,8 +9707,14 @@ def goal_values(
         for segment in entry["segments"]:
             if int(segment["start_step"]) <= int(step):
                 held = segment
-        for channel, value in zip(entry["channels"], held["values"], strict=True):
-            values[str(channel)] = float(value)
+        told = [float(value) for value in held["values"]]
+        if entry.get("kind") == "phase":
+            angle = told[0] + float(entry["radians_per_step"]) * (
+                int(step) - int(held["start_step"])
+            )
+            told = [math.sin(angle), math.cos(angle)]
+        for channel, value in zip(entry["channels"], told, strict=True):
+            values[str(channel)] = value
     return values
 
 

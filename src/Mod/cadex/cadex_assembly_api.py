@@ -1143,7 +1143,7 @@ _SUCCESS_SCALE_KEYS = (
 
 #: What a goal may be (ADR-462). ``CadexDynamics.GOAL_KINDS`` is the same
 #: tuple, and ``test_goal_api`` holds the two equal.
-_GOAL_KINDS = ("value", "speed", "point")
+_GOAL_KINDS = ("value", "speed", "point", "phase")
 
 #: An observation's name, which becomes a name a reward formula writes. The
 #: same shape as a Python identifier because that is what it turns into,
@@ -3730,6 +3730,7 @@ class AssemblyDomainAPI:
         min_z_mm: float | None = None,
         min_separation_mm: float = 0.0,
         frame: DomainValue | None = None,
+        period_seconds: float | None = None,
         resample_seconds: float | None = None,
         label: str = "",
     ) -> DomainValue:
@@ -3775,9 +3776,20 @@ class AssemblyDomainAPI:
           wheeled base, a platform that slides -- and the target belongs
           to the machine's own workspace. A spec's goals must be held in
           the frame the task's are.
+        * ``"phase"`` -- a clock (ADR-598): an angle that turns once every
+          ``period_seconds``, anticlockwise (increasing), from a start drawn
+          uniformly over one turn per episode. Its channels are
+          ``name_sin`` and ``name_cos``, computed from the episode's step
+          counter. Nothing else a policy or a reward reads carries time, so
+          this is how a task asks for a motion that keeps going -- a body
+          led round a circle, a gait at a set cadence: the target angle is
+          ``atan2(name_sin, name_cos)``, and the cosine of a body's lag
+          behind it at ``(x, y)`` is ``(x*name_cos + y*name_sin) /
+          sqrt(x*x + y*y)``. It is the controller's own timer, not a
+          sensor reading. Turn the other way with ``-name_sin``.
 
         A task states at most one ``speed`` and one ``point``; ``value``
-        goals are free.
+        and ``phase`` goals are free.
 
         ``resample_seconds`` draws the goal again that often during the
         episode, which is what makes a policy learn to *change* what it is
@@ -3807,6 +3819,12 @@ class AssemblyDomainAPI:
                 operation, "kind", f"must be one of {list(_GOAL_KINDS)}", kind
             )
         properties: dict[str, Any] = {"name": clean_name, "kind": clean_kind}
+        if clean_kind != "phase" and period_seconds is not None:
+            raise _error(
+                operation, "period_seconds",
+                f"is how long a phase goal takes to turn once, and this is "
+                f"a {clean_kind}", period_seconds,
+            )
         if clean_kind == "point":
             if between is not None:
                 raise _error(
@@ -3862,6 +3880,23 @@ class AssemblyDomainAPI:
                         "describes how a point goal is drawn, and this is "
                         f"a {clean_kind}", source,
                     )
+        if clean_kind == "phase":
+            if between is not None:
+                raise _error(
+                    operation, "between",
+                    "is the range of a value or a speed; a phase starts "
+                    "anywhere on its turn", between,
+                )
+            if period_seconds is None:
+                raise _error(
+                    operation, "period_seconds",
+                    "a phase goal turns once every period_seconds: give it",
+                )
+            properties["period_seconds"] = _number(
+                operation, "period_seconds", period_seconds,
+                minimum=0.0, maximum=3600.0, strict_minimum=True,
+            )
+        elif clean_kind != "point":
             if between is None:
                 raise _error(
                     operation, "between",

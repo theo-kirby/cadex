@@ -61,7 +61,7 @@ def test_the_agent_is_told_the_surface_exists() -> None:
     # ...and the notes, which are the page the agent is shown whole, say
     # what it is for in a sentence. The page has a size budget (ADR-360)
     # that ``cli/tests/test_client.py`` holds against a live engine.
-    assert "assembly.goal(name, kind='value'|'speed'|'point', ...)" in assembly["notes"]
+    assert "assembly.goal(name, kind='value'|'speed'|'point'|'phase', ...)" in assembly["notes"]
     assert "api.task(goals=[...])" in assembly["notes"]
 
 
@@ -107,6 +107,30 @@ def test_a_point_carries_its_tip_and_how_it_is_drawn() -> None:
     assert "resample_seconds" not in plain.properties
 
 
+def test_a_phase_carries_its_period_and_nothing_else() -> None:
+    """A clock (ADR-598): its period is all it declares. A range, a tip or
+    a missing period is refused, and no other kind takes a period."""
+
+    api = _api()
+    lead = api.goal("lead", kind="phase", period_seconds=4, resample_seconds=8)
+    assert dict(lead.properties) == {
+        "name": "lead", "kind": "phase", "period_seconds": 4.0,
+        "resample_seconds": 8.0,
+    }
+    hand = _scene(api)["components"][1]
+    with pytest.raises(ValueError, match="invalid period_seconds"):
+        api.goal("lead", kind="phase")
+    for wrong in (0, -2, float("inf"), "soon"):
+        with pytest.raises(ValueError, match="invalid period_seconds"):
+            api.goal("lead", kind="phase", period_seconds=wrong)
+    with pytest.raises(ValueError, match="invalid between"):
+        api.goal("lead", kind="phase", period_seconds=4, between=[0, 1])
+    with pytest.raises(ValueError, match="describes how a point goal is drawn"):
+        api.goal("lead", kind="phase", period_seconds=4, tip=hand)
+    with pytest.raises(ValueError, match="invalid period_seconds"):
+        api.goal("pace", between=[0, 1], period_seconds=4)
+
+
 def test_a_task_takes_its_goals_and_a_task_without_any_is_the_value_it_was() -> None:
     api = _api()
     scene = _scene(api)
@@ -148,7 +172,7 @@ def test_a_name_a_reward_could_not_write_is_refused(name) -> None:
 def test_a_kind_that_is_not_one_is_refused_with_the_kinds() -> None:
     with pytest.raises(ValueError) as refusal:
         _api().goal("target", kind="pose", between=[0, 1])
-    assert "['value', 'speed', 'point']" in str(refusal.value)
+    assert "['value', 'speed', 'point', 'phase']" in str(refusal.value)
 
 
 def test_a_range_is_two_numbers_in_order() -> None:

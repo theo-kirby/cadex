@@ -401,6 +401,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `value` | `name` | `between=[low, high]`, in the reward's own unit | nothing; it is the reward's to give a meaning |
   | `speed` | `name`, mm/s | `between=[low, high]`: the commanded forward speed | `speed_ratio`, `lateral_ratio` |
   | `point` | `name_x`, `name_y`, `name_z`, mm, world (or `frame=`'s) | a pose `tip` can reach | the reach metrics |
+  | `phase` | `name_sin`, `name_cos` | a start phase over one turn; then it turns once every `period_seconds` | nothing |
 
   A `point` is a place the tip **can be**: the engine draws a pose with
   every joint the task drives in the middle `joint_fraction` (0.8) of its
@@ -426,6 +427,16 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   "component_position", name="tip", frame=component, role="privileged")` —
   `frame=` is accepted on a `component_position` only. The frame may not be
   the tip, and a success spec's goals are held in the frames the task's are.
+  **A `phase` is a clock** (ADR-598): `assembly.goal("lead", kind="phase",
+  period_seconds=4.0)` draws a start angle uniformly over one turn per
+  episode and advances it `2*pi*dt/period_seconds` every control step,
+  anticlockwise, computed from the episode's step counter. Its channels
+  are the angle's sine and cosine. Nothing else a policy or a reward reads
+  carries time, so a motion that has to keep going — a body led round a
+  circle, a cadence — is stated against it: the cosine of a body at
+  `(x, y)` lagging the target is `(x*lead_cos + y*lead_sin) /
+  sqrt(x*x + y*y)`. It is the controller's own timer, not a sensor, so it
+  is grounded. Unseeded, it starts at 0. It takes no `between`.
   `resample_seconds=...` draws the goal again that often during the
   episode, on a whole number of control steps; omitted, it is held. The
   step a goal changes on is scored against the goal its action was taken

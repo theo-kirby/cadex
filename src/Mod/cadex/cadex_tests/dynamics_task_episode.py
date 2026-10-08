@@ -325,8 +325,13 @@ def goals_at(task: dict, goals: list[dict], step: int) -> dict[str, float]:
     for entry, draw in zip(task.get("goal") or [], goals):
         period = int(entry["resample_steps"])
         index = 0 if not period else min(step // period, len(draw["segments"]) - 1)
-        for channel, value in zip(entry["channels"], draw["segments"][index]):
-            values[str(channel)] = float(value)
+        told = [float(value) for value in draw["segments"][index]]
+        if entry["kind"] == "phase":
+            # The phase line of the bundle's goal_algorithm (ADR-598).
+            angle = told[0] + float(entry["radians_per_step"]) * (step - index * period)
+            told = [math.sin(angle), math.cos(angle)]
+        for channel, value in zip(entry["channels"], told):
+            values[str(channel)] = value
     return values
 
 

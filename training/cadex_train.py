@@ -1073,6 +1073,19 @@ def goal_segment(xp: Any, steps: Any, period: int, count: int) -> Any:
     return xp.minimum(steps // period, count - 1)
 
 
+def phase_channels(xp: Any, start: Any, since: Any, radians_per_step: float) -> Any:
+    """A phase goal's two channels, ``sin`` then ``cos`` (ADR-598).
+
+    The bundle's ``goal_algorithm`` and ``CadexDynamics.goal_values``: the
+    segment's drawn start phase advanced ``radians_per_step`` for each of
+    the ``since`` control steps taken in that segment. ``start`` carries the
+    pooled value's trailing axis of one; the result has two there.
+    """
+
+    angle = start + float(radians_per_step) * xp.expand_dims(since, -1)
+    return xp.concatenate([xp.sin(angle), xp.cos(angle)], axis=-1)
+
+
 def goal_pool(mujoco: Any, xml: bytes, task: dict[str, Any], *,
               base_seed: int, count: int) -> list[list[list[list[float]]]]:
     """``count`` episodes of goals, one table per goal entry.
@@ -1505,22 +1518,29 @@ def train(
         )
     ]
     goal_periods = [int(entry["resample_steps"]) for entry in goal_entries]
+    # ADR-598: a phase goal's turn per step; None for a goal that is held.
+    goal_turns = [
+        float(entry["radians_per_step"]) if entry["kind"] == "phase" else None
+        for entry in goal_entries
+    ]
     goal_pool_size = int(goal_tables[0].shape[0]) if goaled else 0
 
     def goals_at(picks, steps):
         """Each environment's goal channels at its own episode step.
 
         ``picks`` is which pooled episode an environment holds and ``steps``
-        how many control steps of it have been taken.
+        how many control steps of it have been taken. A phase goal's pooled
+        value is its segment's start, turned to the step here.
         """
 
-        return jnp.concatenate(
-            [
-                pooled[picks, goal_segment(jnp, steps, period, pooled.shape[1])]
-                for pooled, period in zip(goal_tables, goal_periods)
-            ],
-            axis=-1,
-        )
+        told = []
+        for pooled, period, turn in zip(goal_tables, goal_periods, goal_turns):
+            segment = goal_segment(jnp, steps, period, pooled.shape[1])
+            held = pooled[picks, segment]
+            if turn is not None:
+                held = phase_channels(jnp, held, steps - segment * period, turn)
+            told.append(held)
+        return jnp.concatenate(told, axis=-1)
 
     # ADR-588: a tracked position reads as its tracker reports it, and
     # (ADR-591) a load as its load sensor does. `sensing` is a PYTHON bool,

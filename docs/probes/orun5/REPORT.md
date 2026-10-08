@@ -15,7 +15,7 @@ never written. The owner ticks the criteria; this report ticks none of them.
 | S2 a grounded load sensor | evidence recorded | ADR-591; `test_dynamics_load_sensor.py`; §3 | `tiny-lake-4065` |
 | L1 a closed linkage, exported and driven | evidence recorded; the fit sweep **refuses** a loop, naming it, rather than solving it (the charter allows either) | ADR-593, ADR-594, ADR-595; `test_dynamics_linkages.py`; a live four-pin four-bar smoked and driven; §4 | `civic-sun-5811`, `spring-river-3041`, `young-aspen-5297` |
 | R1 a goal held in a body's frame | evidence recorded | ADR-592; `test_dynamics_goal_frame.py`; first real run in P2; §5 | `long-cabin-6279` |
-| P1 the ball-plate, as built | centring **passes 8/8**; circle on the charter's *otherwise* branch (predicate shown failing a rocking trace and passing a circling one, and failing a trained rocking policy, circle-6, on 8 of 8 seeds; circle-7, warm from centring by ADR-597, goes round 3–4 laps on 8 of 8 but at 12–17 mm; circle-9, warm from circle-7 with a heavier unsaturated off-radius cost, at 20.6–24.0 mm; not trained to a pass) | §6 | `smooth-stream-7287`, `dusty-canyon-3027` |
+| P1 the ball-plate, as built | centring **passes 8/8**; circle on the charter's *otherwise* branch (predicate shown failing a rocking trace and passing a circling one, and failing a trained rocking policy, circle-6, on 8 of 8 seeds; circle-7, warm from centring by ADR-597, goes round 3–4 laps on 8 of 8 but at 12–17 mm; circle-9, warm from circle-7 with a heavier unsaturated off-radius cost, at 20.6–24.0 mm; circle-10, led by an ADR-598 phase goal, passes 6 of 8 seeds and loses the other 2 to the start kick; not yet a spec pass) | §6 | `smooth-stream-7287`, `dusty-canyon-3027` |
 | P2 the excavator's floor, measured | the floor **moved**, cause not separated | §7 | `hidden-sand-7542`, `misty-water-8806` |
 | C1 this report | this file | §1–§10 | the record that adds this file |
 
@@ -265,7 +265,45 @@ alone does not hold 40 mm** in one curriculum step. As planned, the next
 attempt is the `phase` goal (defect 12): a target angle that advances with
 time says where the ball should be, not only how far out.
 
-**The circle task is still not trained to a pass.**
+The phase goal was then built (ADR-598): `assembly.goal("lead",
+kind="phase", period_seconds=3.5)`, a clock read as `lead_sin` and
+`lead_cos`. circle-10 is a new task, `task_circle_phase`, with the same
+model, terminations, randomisation, kick and success spec. Its reward pays
+the ball for being where the clock says:
+
+- alive +1.0;
+- `exp(-((b_x − 40·lead_cos)² + (b_y − 40·lead_sin)²) / 800)` at +1.5,
+  for being near the clock's point on the 40 mm circle;
+- the cosine of the ball's bearing lag, `(b_x·lead_cos + b_y·lead_sin) /
+  (r + 5)`, at +0.3;
+- off radius `tanh(|r − 40| / 25)` at −0.8;
+- the tilt cost.
+
+It **started cold**. The phase adds two policy inputs, and ADR-161 refuses
+a warm start whose observations change, so circle-9 could not seed it.
+1500 iterations × 256 envs, seed 16, on the GPU, 696 s. Reward per step
+was 0.72 at iteration 0, best 2.42 at iteration 640, and ended at 1.78.
+Both the best checkpoint and the final policy were evaluated on the same 8
+frozen seeds:
+
+| predicate | bound | best, it 640 (`35c62c0b23ab-bf6dab62633e`) | final (`35c62c0b23ab-6b815c4671e7`) |
+|---|---|---|---|
+| `completed` | ≥ 1 | 1 on 5 of 8 | 1 on 6 of 8 |
+| `mean_distance_mm` | 30–50 | 34.2–35.6 on those 5 | 33.4–35.3 on those 6 |
+| `laps` | ≥ 2 | 2–3 on those 5 (turns +2.27 to +3.28) | 2–3 on those 6 (turns +2.34 to +3.32) |
+| seeds passing | all | **5 of 8** | **6 of 8** |
+
+So **a clock in the reward closes the radius gap**. Every seed that runs
+to the horizon passes every predicate, at 33–36 mm and 2–3 laps. That is
+the first circle policy to pass any seed. Every failure is the same
+event: the episode ends 0.30–0.36 s in with "ball reached the rim" (seeds
+9101 and 9102 for both policies, 9103 for the best checkpoint). The start
+kick (up to 0.6 N for 40 ms on the 25 mm ball) throws the ball outward
+before the policy has caught it. circle-9 survived the same kicks on all
+8 seeds, so this policy reaches for the circle with the kick rather than
+against it. **The circle task is still not trained to a spec pass**, which
+needs every seed. The open gap is now the first 0.3 s, not the radius or
+the circulation.
 
 The pushrod tilt (optional, needs L1) was not built.
 
@@ -409,9 +447,13 @@ ADRs added by this run:
     exploration width turned a circling policy into a rocking one (circle-6);
     warming from centring gives a mean that circles, too tight (circle-7); a
     heavier, unsaturated off-radius cost moves it out to 20.6–24.0 mm,
-    still short of 30 (circle-9). P2's spec still
+    still short of 30 (circle-9). A phase-led reward (ADR-598, circle-10)
+    passes 6 of 8 seeds at 33–36 mm and 2–3 laps. The 2 it fails, it loses
+    to the start kick within 0.36 s. P2's spec still
     fails on 3 of 10 seeds, and its improvement is not attributed (§7).
-12. **No channel carries time, so a reward cannot track a phase.** A
+12. **Resolved by ADR-598: the `phase` goal kind.** What follows is the
+    defect as it stood. **No channel carries time, so a reward cannot track
+    a phase.** A
     policy observes sensor channels and goals, and neither carries a clock
     (the trainer's own words, `training/cadex_train.py`, ADR-136). Only a
     control formula may name `time`. A reward or termination names declared
@@ -435,7 +477,6 @@ S1, M1, S2, L1, R1, P1, P2 and this report have evidence recorded. P1's
 circle half and P2's attribution are on the terms stated above. The owner's
 boxes are not ticked.
 
-The unreconciled tail is `flat-hawk-9763` (circle-6), `bold-wind-5086`
-(circle-7) and circle-9's record. A work iteration may not reconcile, so
-the next reconcile pass folds all three before the critic judges this
-claim.
+The unreconciled tail is the phase goal and circle-10's record. A work
+iteration may not reconcile, so the next reconcile pass folds it before the
+critic judges this claim.
