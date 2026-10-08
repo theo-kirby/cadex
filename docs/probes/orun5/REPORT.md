@@ -15,7 +15,7 @@ never written. The owner ticks the criteria; this report ticks none of them.
 | S2 a grounded load sensor | evidence recorded | ADR-591; `test_dynamics_load_sensor.py`; §3 | `tiny-lake-4065` |
 | L1 a closed linkage, exported and driven | evidence recorded; the fit sweep **refuses** a loop, naming it, rather than solving it (the charter allows either) | ADR-593, ADR-594, ADR-595; `test_dynamics_linkages.py`; a live four-pin four-bar smoked and driven; §4 | `civic-sun-5811`, `spring-river-3041`, `young-aspen-5297` |
 | R1 a goal held in a body's frame | evidence recorded | ADR-592; `test_dynamics_goal_frame.py`; first real run in P2; §5 | `long-cabin-6279` |
-| P1 the ball-plate, as built | centring **passes 8/8**; circle on the charter's *otherwise* branch (predicate shown failing a rocking trace and passing a circling one, and failing a trained rocking policy, circle-6, on 8 of 8 seeds; circle-7, warm from centring by ADR-597, goes round 3–4 laps on 8 of 8 but at 12–17 mm; circle-9, warm from circle-7 with a heavier unsaturated off-radius cost, at 20.6–24.0 mm; circle-10, led by an ADR-598 phase goal, passes 6 of 8 seeds and loses the other 2 to the start kick; not yet a spec pass) | §6 | `smooth-stream-7287`, `dusty-canyon-3027` |
+| P1 the ball-plate, as built | centring **passes 8/8**; circle on the charter's *otherwise* branch (predicate shown failing a rocking trace and passing a circling one, and failing a trained rocking policy, circle-6, on 8 of 8 seeds; circle-7, warm from centring by ADR-597, goes round 3–4 laps on 8 of 8 but at 12–17 mm; circle-9, warm from circle-7 with a heavier unsaturated off-radius cost, at 20.6–24.0 mm; circle-10, led by an ADR-598 phase goal, passes 6 of 8 seeds and loses the other 2 to the start kick; circle-11, warm from circle-10 with a state-gated catch term, passes 7 of 8 and loses seed 9102 to the kick; not a spec pass, and iteration on the circle task has stopped) | §6 | `smooth-stream-7287`, `dusty-canyon-3027` |
 | P2 the excavator's floor, measured | the floor **moved**, cause not separated | §7 | `hidden-sand-7542`, `misty-water-8806` |
 | C1 this report | this file | §1–§10 | the record that adds this file |
 
@@ -305,6 +305,37 @@ against it. **The circle task is still not trained to a spec pass**, which
 needs every seed. The open gap is now the first 0.3 s, not the radius or
 the circulation.
 
+circle-11 went after that gap with a reward-only step (ADR-597), warm from
+circle-10's final policy into `task_circle_catch`. The task keeps the same
+model, goal, kick, terminations and spec, and the curriculum check read
+`the task changed in ['label', 'reward']`. No reward can read episode
+time, so the catch is gated on the ball's state instead of on the first
+0.5 s:
+
+- the near-point term is multiplied by `1 − tanh(max(r − 48, 0) / 4)`, so
+  the pull to the clock's point fades out beyond 48 mm;
+- a catch term, `−tanh(max(r − 48, 0) / 4) · tanh(v_r / 100)` at +1.0,
+  pays for the ball's radial speed back towards the centre beyond 48 mm
+  and charges for it going outward.
+
+800 iterations × 256 envs, seed 17, on the GPU, 382 s. Reward per step was
+0.84 at iteration 0, best 2.54 at iteration 523, and ended at 2.51.
+
+| predicate | bound | best, it 523 (`8cfdf569c42b-33b73809c148`) | final (`8cfdf569c42b-a6d3d7e85fe2`) |
+|---|---|---|---|
+| `completed` | ≥ 1 | 1 on 7 of 8 | 1 on 7 of 8 |
+| `mean_distance_mm` | 30–50 | 33.8–35.7 on those 7 | 33.8–35.6 on those 7 |
+| `laps` | ≥ 2 | 2–3 on those 7 (turns +2.38 to +3.39) | 2–3 on those 7 (turns +2.36 to +3.39) |
+| seeds passing | all | **7 of 8** | **7 of 8** |
+
+The catch keeps seed 9101 on, which circle-10 lost. **Seed 9102 still
+reaches the rim**, at 0.30 s (best) and 0.28 s (final). In its trace the
+ball leaves the centre at about 250 mm/s and has slowed to about 140 mm/s
+when the panel reads it past 62.5 mm. So the policy is braking, but not
+hard enough within the ±10° command range in that time. **The circle task
+is not trained to a spec pass.** As the critic directed, iteration on it
+stops here, at 7 of 8, with the kick and the spec unchanged.
+
 The pushrod tilt (optional, needs L1) was not built.
 
 ## 7. P2 — the excavator's precision floor, measured
@@ -449,7 +480,9 @@ ADRs added by this run:
     heavier, unsaturated off-radius cost moves it out to 20.6–24.0 mm,
     still short of 30 (circle-9). A phase-led reward (ADR-598, circle-10)
     passes 6 of 8 seeds at 33–36 mm and 2–3 laps. The 2 it fails, it loses
-    to the start kick within 0.36 s. P2's spec still
+    to the start kick within 0.36 s. A state-gated catch term (circle-11)
+    raises that to 7 of 8. Seed 9102 still reaches the rim at 0.28 s, and
+    iteration on the circle task has stopped there. P2's spec still
     fails on 3 of 10 seeds, and its improvement is not attributed (§7).
 12. **Resolved by ADR-598: the `phase` goal kind.** What follows is the
     defect as it stood. **No channel carries time, so a reward cannot track
@@ -477,6 +510,6 @@ S1, M1, S2, L1, R1, P1, P2 and this report have evidence recorded. P1's
 circle half and P2's attribution are on the terms stated above. The owner's
 boxes are not ticked.
 
-The unreconciled tail is the phase goal and circle-10's record. A work
+The unreconciled tail is the phase goal and circle-10's record, then circle-11's. A work
 iteration may not reconcile, so the next reconcile pass folds it before the
 critic judges this claim.
