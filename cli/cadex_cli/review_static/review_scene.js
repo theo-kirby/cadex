@@ -28,16 +28,160 @@ const PROXY = {color:0xffe08a, opacity:.9};
 // engine's exploded-view segments, in the page's `--muted`.
 const SECTION_NORMALS = {XY:[0,0,1], XZ:[0,1,0], YZ:[1,0,0]};
 const LEADER = {color:0x9aa3ad, opacity:.85};
-// Render styles (ADR-534). 'shaded' is the lit stage every capture uses and the viewport's
-// default; 'hairline' is a diagram: silhouettes and creases in ink on flat paper, and no floor,
-// shadow or fog. The page passes its own paper and ink so the diagram follows the theme.
-const STYLES = ['shaded','hairline'];
-const HAIRLINE = {paper:'#fbfbf9', ink:'#1c1c1c'};
+// Render styles (ADR-534, ADR-602). 'shaded' is the lit stage every capture uses and the
+// viewport's default; 'wireframe' (called 'hairline' until ADR-602) is a diagram: silhouettes and
+// creases in ink on flat paper, and no floor, shadow or fog, with an optional soft layer of the
+// tessellation's own edges under them. The page passes its own paper and ink so the diagram
+// follows the theme.
+const STYLES = ['shaded','wireframe'];
+const WIREFRAME = {paper:'#fbfbf9', ink:'#1c1c1c'};
+// The mesh lines (ADR-602): every edge where two facets turn by more than `angle` degrees, so a
+// curved face shows its facets and a flat one stays clean, drawn at `strength` of the ink over
+// the paper, hidden where a solid is in front of them.
+export const MESH_LINES = {angle:2, strength:.22, max:1};
+// Smooth shading (ADR-601): a vertex normal averages the facets around it that turn by less than
+// the engine's CREASE_DEGREES (CadexStudio.py), so a fillet or a bore reads smooth and an edge
+// that turns further stays crisp.
+export const CREASE_DEGREES = 40;
+// Physical finishes (ADR-601), keyed by the manifest's `finish` (and, for hardware, its catalog
+// family). The role colour stays the base colour; a finish only says how the surface takes light.
+// `colour` is the fallback when a part carries none; `env` is how much of the studio it reflects
+// (a metal is mostly reflection; a plastic mostly its own colour under the lights).
+export const FINISHES = {
+  printed:  {roughness:.55, metalness:0, clearcoat:.08, clearcoatRoughness:.5, sheen:.2, sheenRoughness:.6, env:.4},
+  purchased:{roughness:.42, metalness:0, clearcoat:.1, clearcoatRoughness:.35, env:.45},
+  board:    {roughness:.45, metalness:0, clearcoat:.3, clearcoatRoughness:.3, env:.45, colour:'#1f6b3c'},
+  black_oxide:{roughness:.4, metalness:.85, env:1, colour:'#2a2b2e'},
+  steel:    {roughness:.28, metalness:.92, env:1, colour:'#c4c8ce'},
+  brass:    {roughness:.32, metalness:.92, env:1, colour:'#c9a24a'},
+};
+// Hardware by catalog family: fasteners are black oxide, bearings and the like bright steel,
+// heat-set inserts brass.
+const HARDWARE = {bolt:'black_oxide', screw:'black_oxide', nut:'black_oxide', standoff:'black_oxide',
+  washer:'steel', bearing:'steel', bushing:'steel', shaft:'steel', dowel:'steel', heat_insert:'brass', insert:'brass'};
+// A board's own geometry, when the manifest carries it: the chip and the pads, coloured per facet.
+const BOARD = {chip:'#18191b', pad:'#c9ccd0', ring:.6, tolerance:.05};
+// The reflections' default strength (environment-map intensity); the page may scale it.
+export const REFLECTIONS = {strength:1, max:2};
+
+// Crease-angle vertex normals for a triangle soup (`mm`: 9 floats a triangle, as parsed from STL).
+// Corners at bit-identical positions are one vertex; a corner's normal is the mean of the unit
+// normals of the facets at its vertex that lie within `degrees` of its own facet's, each weighted
+// by its corner angle there -- so how a face was split into triangles does not tilt the normal
+// (an area weight, as the engine's CPU renderer uses, would lean towards the side cut in two).
+export function creaseNormals(mm, degrees=CREASE_DEGREES) {
+  const corners=(mm.length/3)|0, faces=(corners/3)|0, limit=Math.cos(degrees*Math.PI/180);
+  const face=new Float32Array(faces*3), angle=new Float32Array(corners), out=new Float32Array(corners*3);
+  for (let f=0;f<faces;f++) {
+    const o=f*9, ax=mm[o+3]-mm[o], ay=mm[o+4]-mm[o+1], az=mm[o+5]-mm[o+2], bx=mm[o+6]-mm[o], by=mm[o+7]-mm[o+1], bz=mm[o+8]-mm[o+2];
+    face[f*3]=ay*bz-az*by; face[f*3+1]=az*bx-ax*bz; face[f*3+2]=ax*by-ay*bx;
+    // Each corner's interior angle, the weight its facet's normal carries at that vertex.
+    for (let k=0;k<3;k++) {
+      const p=o+3*k, q=o+3*((k+1)%3), r=o+3*((k+2)%3);
+      const ux=mm[q]-mm[p], uy=mm[q+1]-mm[p+1], uz=mm[q+2]-mm[p+2], vx=mm[r]-mm[p], vy=mm[r+1]-mm[p+1], vz=mm[r+2]-mm[p+2];
+      const len=Math.hypot(ux,uy,uz)*Math.hypot(vx,vy,vz);
+      angle[f*3+k]=len?Math.acos(Math.max(-1,Math.min(1,(ux*vx+uy*vy+uz*vz)/len))):0;
+    }
+  }
+  // Weld: an open-addressed table over the coordinates' float bits (+0 for -0).
+  const bits=new Uint32Array(new Float32Array(mm.length).map((v,i)=>mm[i]+0).buffer);
+  let size=1; while (size<corners*2) size<<=1;
+  const table=new Int32Array(size).fill(-1), vertex=new Int32Array(corners); let unique=0;
+  const first=new Int32Array(corners);
+  for (let c=0;c<corners;c++) {
+    const x=bits[c*3], y=bits[c*3+1], z=bits[c*3+2];
+    let h=(Math.imul(x,73856093)^Math.imul(y,19349663)^Math.imul(z,83492791))&(size-1);
+    for (;;) {
+      const s=table[h];
+      if (s<0) {table[h]=c; first[unique]=c; vertex[c]=unique++; break;}
+      if (bits[s*3]===x&&bits[s*3+1]===y&&bits[s*3+2]===z) {vertex[c]=vertex[s]; break;}
+      h=(h+1)&(size-1);
+    }
+  }
+  // The corners at each vertex, as one flat list.
+  const start=new Int32Array(unique+1);
+  for (let c=0;c<corners;c++) start[vertex[c]+1]++;
+  for (let v=0;v<unique;v++) start[v+1]+=start[v];
+  const fill=start.slice(0,unique), list=new Int32Array(corners);
+  for (let c=0;c<corners;c++) list[fill[vertex[c]]++]=c;
+  for (let c=0;c<corners;c++) {
+    const f=(c/3)|0, nx=face[f*3], ny=face[f*3+1], nz=face[f*3+2], nl=Math.hypot(nx,ny,nz)||1;
+    let sx=0, sy=0, sz=0;
+    for (let k=start[vertex[c]], e=start[vertex[c]+1];k<e;k++) {
+      const g=(list[k]/3)|0, gx=face[g*3], gy=face[g*3+1], gz=face[g*3+2], gl=Math.hypot(gx,gy,gz);
+      if (!gl || (nx*gx+ny*gy+nz*gz)/(nl*gl)<limit) continue;
+      const a=angle[list[k]]/gl;
+      sx+=gx*a; sy+=gy*a; sz+=gz*a;
+    }
+    const sl=Math.hypot(sx,sy,sz);
+    if (sl>0) {out[c*3]=sx/sl; out[c*3+1]=sy/sl; out[c*3+2]=sz/sl;}
+    else {out[c*3]=nx/nl; out[c*3+1]=ny/nl; out[c*3+2]=nz/nl;}
+  }
+  return out;
+}
+
+// The finish a part is drawn with: the manifest's `finish`, its hardware family's metal, or --
+// before the manifest carried a finish -- printed unless the supplier says purchased.
+export function finishOf(entry) {
+  const finish=entry.finish||(entry.supplier==='purchased'?'purchased':'printed');
+  if (finish==='hardware') {
+    const family=String(entry.catalog?.family||'').toLowerCase();
+    return HARDWARE[family]||(/insert/.test(family)?'brass':/bear|wash|bush|shaft|dowel|pin/.test(family)?'steel':'black_oxide');
+  }
+  return FINISHES[finish]?finish:'printed';
+}
+
+// Per-facet colours for a board from its own geometry (`board`, mm, the mesh's own frame): a
+// facet whose corners all lie in the chip's box is the chip, one whose corners all lie within a
+// pad's radius plus a ring (across the board's face) is tin, the rest the solder mask. A facet
+// is coloured whole, so a long facet from a pad's rim to the board's edge never smears. Returns
+// {colours (linear RGB per corner), chip, pad} facet counts.
+export function boardColours(mm, board, base) {
+  const corners=(mm.length/3)|0, colours=new Float32Array(corners*3);
+  const mask=new THREE.Color(base), chipC=new THREE.Color(BOARD.chip), padC=new THREE.Color(BOARD.pad);
+  const chip=board&&board.chip&&Array.isArray(board.chip.origin)&&Array.isArray(board.chip.size)?board.chip:null;
+  const pads=(board&&Array.isArray(board.pads)?board.pads:[]).filter(p=>Array.isArray(p.origin)&&p.origin.length===3&&p.dia_mm>0);
+  // The board's face normal is its thinnest axis.
+  const lo=[Infinity,Infinity,Infinity], hi=[-Infinity,-Infinity,-Infinity];
+  for (let c=0;c<corners;c++) for (let j=0;j<3;j++) {const v=mm[c*3+j]; if(v<lo[j])lo[j]=v; if(v>hi[j])hi[j]=v;}
+  const ext=hi.map((v,j)=>v-lo[j]), up=ext.indexOf(Math.min(...ext)), [u,w]=[0,1,2].filter(j=>j!==up);
+  const t=BOARD.tolerance;
+  const inChip=c=>chip&&[0,1,2].every(j=>{const a=chip.origin[j], b=a+chip.size[j], v=mm[c*3+j]; return v>=Math.min(a,b)-t&&v<=Math.max(a,b)+t;});
+  const onPad=c=>pads.some(p=>Math.hypot(mm[c*3+u]-p.origin[u],mm[c*3+w]-p.origin[w])<=p.dia_mm/2+BOARD.ring);
+  let chips=0, padFacets=0;
+  for (let f=0;f<corners/3;f++) {
+    const c=f*3; let col=mask;
+    if (inChip(c)&&inChip(c+1)&&inChip(c+2)) {col=chipC; chips++;}
+    else if (onPad(c)&&onPad(c+1)&&onPad(c+2)) {col=padC; padFacets++;}
+    for (let k=0;k<3;k++) {colours[(c+k)*3]=col.r; colours[(c+k)*3+1]=col.g; colours[(c+k)*3+2]=col.b;}
+  }
+  return {colours, chip:chips, pad:padFacets};
+}
+
+// A small procedural studio for reflections (ADR-601): a dim box room, y up, lit by a large soft
+// panel overhead, a key panel to one side, a cooler fill and a rim behind, prefiltered once into
+// a PMREM. Nothing of it is drawn; the solids only see it in their reflections and ambient light.
+function studioEnvironment(renderer) {
+  const room=new THREE.Scene(), box=new THREE.BoxGeometry(1,1,1), made=[];
+  const add=(colour,intensity,scale,position,side=THREE.FrontSide)=> {
+    const m=new THREE.MeshBasicMaterial({color:new THREE.Color(colour).multiplyScalar(intensity),side,toneMapped:false});
+    const mesh=new THREE.Mesh(box,m); mesh.scale.set(...scale); mesh.position.set(...position); room.add(mesh); made.push(m);
+  };
+  add(0x9a9a9a,.35,[16,9,16],[0,3.5,0],THREE.BackSide);    // walls, ceiling and floor
+  add(0x202020,1,[16,.1,16],[0,-.9,0]);                    // a darker floor, so the lower half reads as ground
+  add(0xffffff,3.5,[6,.1,4],[0,7.8,0]);                     // the overhead softbox
+  add(0xfff4e8,9,[.1,3,4],[-7.8,3,1.5]);                    // key, warm, to one side
+  add(0xdfe8ff,3.5,[.1,2.4,5],[7.8,2.5,-1]);                // fill, cool, opposite
+  add(0xffffff,6,[5,1.6,.1],[0,3.5,-7.8]);                  // rim strip behind
+  const pmrem=new THREE.PMREMGenerator(renderer), target=pmrem.fromScene(room,.03);
+  pmrem.dispose(); box.dispose(); made.forEach(m=>m.dispose());
+  return target.texture;
+}
 
 export function create(canvas) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, draw(){}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, draw(){}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -55,6 +199,8 @@ export function create(canvas) {
   const fill = new THREE.DirectionalLight(0xdfe6ff,1.0); fill.position.set(-12,6,-9);
   scene.add(hemi, sun, sun.target, fill);
   const environment = createEnvironment({scene,world,camera,renderer,lights:{hemi,sun,fill}}, {labels:true});
+  let envMap=null; try { envMap=studioEnvironment(renderer); } catch (_) { envMap=null; }
+  let reflections=REFLECTIONS.strength;
   let bounds=null, triangleCount=0, staged='', stage=null;
   let c={yaw:.8,pitch:.5,distance:100,target:[0,0,0]}, floorZ=0;
   const meshes = new Map();
@@ -94,6 +240,7 @@ export function create(canvas) {
       clipPlane.set(new THREE.Vector3(...SECTION_NORMALS[section.plane]).negate(), section.offset_mm*.001).applyMatrix4(model.matrixWorld);
     }
     meshes.forEach(m=>{m.material.clippingPlanes=section?[clipPlane]:null; m.material.clipShadows=true; m.material.needsUpdate=true;});
+    lineMaterial.clippingPlanes=section?[clipPlane]:null; lineMaterial.needsUpdate=true;
   }
   function setSection(plane, offset) {
     section=(plane in SECTION_NORMALS&&Number.isFinite(offset))?{plane,offset_mm:offset}:null;
@@ -137,16 +284,25 @@ export function create(canvas) {
     }
     hudCamera.right=w; hudCamera.top=h; hudCamera.updateProjectionMatrix();
   }
-  // The hairline pass: the solids' view normals and depth go to an offscreen target at twice
-  // the canvas's resolution, an edge pass marks ink wherever either jumps between neighbouring
-  // pixels -- the silhouettes against depth, the creases against the normals -- with a hard
-  // threshold, and the canvas takes the average of each 2x2 block. So a line is crisp and one
-  // pixel wide and its stair-steps are smoothed, rather than a soft threshold's grey halo. A
-  // tessellated fillet's facets turn by less than the crease threshold, so a curved face stays clean.
-  const SUPERSAMPLE=2;
-  let style='shaded', target=null, edges=null;
+  // The wireframe pass (ADR-534; 'hairline' until ADR-602): the solids' view normals and depth go
+  // to an offscreen target at twice the canvas's resolution, an edge pass marks ink wherever either
+  // jumps between neighbouring pixels -- the silhouettes against depth, the creases against the
+  // facets' own normals (flat, so smooth shading never softens a crease) -- with a hard threshold,
+  // and the canvas takes the average of each 2x2 block. So a line is crisp and one pixel wide and
+  // its stair-steps are smoothed, rather than a soft threshold's grey halo. A tessellated fillet's
+  // facets turn by less than the crease threshold, so a curved face stays clean of ink.
+  //
+  // The mesh lines (ADR-602) are a second, optional layer under the ink: each solid's facet edges
+  // that turn by more than MESH_LINES.angle, on their own layer, drawn into a third target over a
+  // depth-only prepass of the solids (pushed back a hair, so a line on a surface wins and a line
+  // behind one loses), and mixed in at `strength` of the ink.
+  const SUPERSAMPLE=2, LINES_LAYER=1;
+  let style='shaded', target=null, edges=null, lineTarget=null;
+  let meshLines={shown:true, strength:MESH_LINES.strength};
   const paper=new THREE.Color(), ink=new THREE.Color();
-  const normals=new THREE.MeshNormalMaterial({side:THREE.DoubleSide});
+  const normals=new THREE.MeshNormalMaterial({side:THREE.DoubleSide, flatShading:true});
+  const prepass=new THREE.MeshBasicMaterial({colorWrite:false, side:THREE.DoubleSide, polygonOffset:true, polygonOffsetFactor:1, polygonOffsetUnits:1});
+  const lineMaterial=new THREE.LineBasicMaterial({color:0xffffff, toneMapped:false});
   const fullscreen='varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }';
   const edgePass=new THREE.ShaderMaterial({
     uniforms:{tNormal:{value:null}, tDepth:{value:null}, texel:{value:new THREE.Vector2()}, near:{value:.01}, far:{value:100}},
@@ -168,33 +324,55 @@ export function create(canvas) {
       }`,
     depthTest:false, depthWrite:false, toneMapped:false});
   const resolvePass=new THREE.ShaderMaterial({
-    uniforms:{tEdges:{value:null}, paper:{value:new THREE.Vector3()}, ink:{value:new THREE.Vector3()}},
+    uniforms:{tEdges:{value:null}, tLines:{value:null}, strength:{value:0}, paper:{value:new THREE.Vector3()}, ink:{value:new THREE.Vector3()}},
     vertexShader:fullscreen,
-    fragmentShader:`uniform sampler2D tEdges; uniform vec3 paper, ink; varying vec2 vUv;
-      void main(){ gl_FragColor=vec4(mix(paper,ink,texture2D(tEdges,vUv).r),1.); }`,
+    fragmentShader:`uniform sampler2D tEdges; uniform sampler2D tLines; uniform float strength; uniform vec3 paper, ink; varying vec2 vUv;
+      void main(){
+        vec3 under=mix(paper,ink,strength*texture2D(tLines,vUv).r);
+        gl_FragColor=vec4(mix(under,ink,texture2D(tEdges,vUv).r),1.);
+      }`,
     depthTest:false, depthWrite:false, toneMapped:false});
   const passScene=new THREE.Scene(), passCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
   const passQuad=new THREE.Mesh(new THREE.PlaneGeometry(2,2),edgePass);
   passScene.add(passQuad);
   function srgb(colour, vector) {const c=colour.clone().convertLinearToSRGB(); vector.set(c.r,c.g,c.b);}
-  function setColours({paper:p=null, ink:k=null}={}) {paper.set(p||HAIRLINE.paper); ink.set(k||HAIRLINE.ink);}
+  function setColours({paper:p=null, ink:k=null}={}) {paper.set(p||WIREFRAME.paper); ink.set(k||WIREFRAME.ink);}
   setColours();
-  function paintHairline() {
+  // Each solid's mesh lines, built the first time they are drawn and kept with the solid.
+  function buildMeshLines() {
+    meshes.forEach(m=> {
+      if (m.userData.meshLines) return;
+      const line=new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry,MESH_LINES.angle),lineMaterial);
+      line.layers.set(LINES_LAYER); line.raycast=()=>{}; m.add(line); m.userData.meshLines=line;
+    });
+  }
+  function meshLineCount() {let n=0; meshes.forEach(m=>{if(m.userData.meshLines)n+=m.userData.meshLines.geometry.attributes.position.count/2;}); return n;}
+  function paintWireframe() {
     const size=renderer.getDrawingBufferSize(new THREE.Vector2());
     // At most 16 Mpx offscreen, so a large high-DPI canvas does not run a small GPU out of memory.
     const limit=renderer.capabilities.maxTextureSize;
     const scale=Math.max(1,Math.min(SUPERSAMPLE,limit/size.x,limit/size.y,Math.sqrt(16e6/(size.x*size.y))));
     const w=Math.floor(size.x*scale), h=Math.floor(size.y*scale);
     if (!target||target.width!==w||target.height!==h) {
-      if (target) {target.depthTexture.dispose(); target.dispose(); edges.dispose();}
+      if (target) {target.depthTexture.dispose(); target.dispose(); edges.dispose(); lineTarget.dispose();}
       target=new THREE.WebGLRenderTarget(w,h,{depthTexture:new THREE.DepthTexture(w,h),minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter});
       // Linear filtering at each canvas pixel's centre is the mean of its 2x2 block.
       edges=new THREE.WebGLRenderTarget(w,h,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,depthBuffer:false});
+      lineTarget=new THREE.WebGLRenderTarget(w,h,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
     }
     const background=scene.background, fog=scene.fog, shown=world.children.map(o=>o.visible);
     scene.background=null; scene.fog=null; scene.overrideMaterial=normals;
     world.children.forEach(o=>{if(o!==model)o.visible=false;});
     renderer.setRenderTarget(target); renderer.setClearColor(0x000000,0); renderer.clear(); renderer.render(scene,camera);
+    const lines=meshLines.shown&&meshLines.strength>0;
+    if (lines) {
+      buildMeshLines();
+      renderer.setRenderTarget(lineTarget); renderer.clear();
+      scene.overrideMaterial=prepass; renderer.render(scene,camera);
+      scene.overrideMaterial=null; camera.layers.set(LINES_LAYER);
+      renderer.autoClear=false; renderer.render(scene,camera); renderer.autoClear=true;
+      camera.layers.set(0);
+    }
     scene.background=background; scene.fog=fog; scene.overrideMaterial=null;
     world.children.forEach((o,i)=>{o.visible=shown[i];});
     const u=edgePass.uniforms;
@@ -202,18 +380,27 @@ export function create(canvas) {
     u.texel.value.set(1/w,1/h); u.near.value=camera.near; u.far.value=camera.far;
     passQuad.material=edgePass; renderer.setRenderTarget(edges); renderer.render(passScene,passCamera);
     renderer.setRenderTarget(null);
-    resolvePass.uniforms.tEdges.value=edges.texture;
-    srgb(paper,resolvePass.uniforms.paper.value); srgb(ink,resolvePass.uniforms.ink.value);
+    const r=resolvePass.uniforms;
+    r.tEdges.value=edges.texture; r.tLines.value=lineTarget.texture; r.strength.value=lines?meshLines.strength:0;
+    srgb(paper,r.paper.value); srgb(ink,r.ink.value);
     passQuad.material=resolvePass; renderer.render(passScene,passCamera);
   }
   function setStyle(name, colours={}) {
+    // A stored choice from before ADR-602 still means the diagram.
+    if (name==='hairline') name='wireframe';
     if (STYLES.includes(name)) style=name;
     setColours(colours); draw();
     return style;
   }
+  // The mesh lines' switch and strength (0..MESH_LINES.max of the ink); either may be left out.
+  function setMeshLines({shown=meshLines.shown, strength=meshLines.strength}={}) {
+    const s=Number(strength);
+    meshLines={shown:!!shown, strength:Number.isFinite(s)?Math.max(0,Math.min(MESH_LINES.max,s)):meshLines.strength};
+    draw(); return {...meshLines};
+  }
   let onDraw=null;
   function paint() {
-    if (style==='hairline') {paintHairline(); if (onDraw) onDraw(); return;}
+    if (style==='wireframe') {paintWireframe(); if (onDraw) onDraw(); return;}
     renderer.render(scene,camera);
     if (onDraw) onDraw();
     if (clock===null) return;
@@ -235,25 +422,57 @@ export function create(canvas) {
     const min=box.min.toArray(), max=box.max.toArray();
     bounds={min,max,center:min.map((v,i)=>(v+max[i])/2),radius:Math.hypot(...min.map((v,i)=>max[i]-v))/2 || 1};
   }
+  // The highest point of the world geometry the viewport does not draw, mm, at its current pose;
+  // null when there is none.
+  function worldTop() {
+    const hidden=[...meshes.values()].filter(m=>m.userData.world&&!m.visible), v=new THREE.Vector3();
+    if (!hidden.length) return null;
+    let top=-Infinity;
+    hidden.forEach(m=> {
+      m.updateMatrix(); const a=m.geometry.attributes.position;
+      for (let i=0;i<a.count;i++) top=Math.max(top,v.fromBufferAttribute(a,i).applyMatrix4(m.matrix).z);
+    });
+    return top*1000;
+  }
+  // Where the mat lies (ADR-600): on the top of the design's own floor -- the world geometry, which
+  // is never drawn beside it -- so the design stands on the mat as it stands on that floor; with
+  // no world geometry, under the design's lowest point. World geometry that rises above the
+  // design's lowest point by more than a floor could (2 mm, or 2 % of the design's height) is more
+  // than a floor, and the mat stays under the design. The mat is pushed back in depth rather than
+  // lowered (floor.js), so a part resting exactly on it never z-fights.
+  let floorSource='design';
+  function matZ(b) {
+    const top=worldTop(), low=b.min[2], slack=Math.max(2,.02*(b.max[2]-b.min[2]));
+    floorSource=top===null?'design':top<=low+slack?'world':'design';
+    return (floorSource==='world'?top:low)/1000;
+  }
   function frameBounds(b) {
-    bounds=JSON.parse(JSON.stringify(b)); floorZ=b.min[2]/1000 - Math.max(b.radius/1000*1e-5,1e-7);
+    bounds=JSON.parse(JSON.stringify(b)); floorZ=matZ(b);
     const focus=new THREE.Vector3(b.center[0]/1000,b.center[2]/1000,-b.center[1]/1000);
     sun.target.position.copy(focus); sun.position.copy(focus).add(new THREE.Vector3(...KEY_DIR).normalize().multiplyScalar(20));
     const h=Math.max(.01,b.radius/1000*1.2);
     Object.assign(sun.shadow.camera,{left:-h,right:h,top:h,bottom:-h,near:.1,far:40+h*2});
-    sun.shadow.camera.updateProjectionMatrix(); sun.shadow.normalBias=h/2048;
+    sun.shadow.camera.updateProjectionMatrix();
+    // Two shadow-map texels of normal offset: a flat face lit at a grazing angle no longer
+    // shades itself in stripes (acne), and a part still meets its shadow.
+    sun.shadow.normalBias=h/512;
     staged='';
   }
+  // The camera's clip planes (ADR-600): near is a fixed fraction of the camera's distance, so the
+  // depth buffer's precision scales with the shot and the mat never z-fights the design at any
+  // zoom; far is the stage's, which follows the floor (environment.js), so the mat never pops.
+  const NEAR_FRACTION=.002;
   function draw() {
     const w=canvas.clientWidth||canvas.width,h=canvas.clientHeight||canvas.height;
     if (renderer.domElement.width!==Math.floor(w*renderer.getPixelRatio()) || renderer.domElement.height!==Math.floor(h*renderer.getPixelRatio())) renderer.setSize(w,h,false);
     camera.aspect=w/h;
     const d=c.distance/1000, t=c.target.map(x=>x/1000), cp=Math.cos(c.pitch);
     camera.position.set(t[0]+d*cp*Math.cos(c.yaw),t[2]+d*Math.sin(c.pitch),-t[1]-d*cp*Math.sin(c.yaw));
-    camera.lookAt(t[0],t[2],-t[1]); camera.near=Math.max(.00001,(bounds?.radius||1)/1000*.001); camera.far=Math.max(800,d*60);
-    camera.updateProjectionMatrix();
+    camera.lookAt(t[0],t[2],-t[1]);
     const key=JSON.stringify([d,w/h,floorZ]);
     if (key!==staged) {stage=environment.setStage({camDist:d, floorZ}); staged=key;}
+    camera.near=Math.min(1,Math.max(1e-5,d*NEAR_FRACTION)); camera.far=Math.max(stage.far,d*4);
+    camera.updateProjectionMatrix();
     // The presentation floor is front-sided: orbiting underneath remains a CAD inspection.
     paint();
   }
@@ -269,7 +488,7 @@ export function create(canvas) {
   function clear() {
     disposeProxies(); proxyGeoms=[]; setLines([]);
     meshes.forEach(m=> {
-      model.remove(m); m.geometry.dispose(); m.material.dispose();
+      model.remove(m); m.geometry.dispose(); m.material.dispose(); m.userData.meshLines?.geometry.dispose();
     });
     meshes.clear(); clearGhost(); bounds=null;triangleCount=0;picked=null;draw();
   }
@@ -281,15 +500,39 @@ export function create(canvas) {
   // A part's colour is its appearance role's (ADR-522) when the manifest gives one, as `look`
   // and the concept sheet paint it; a design with no assembly keeps the index palette.
   const colourOf=(entry,i)=>/^#[0-9A-Fa-f]{6}$/.test(entry.color||'')?parseInt(entry.color.slice(1),16):PALETTE[i%PALETTE.length];
+  // A part's material (ADR-601): physical, from its finish, over its role colour, reflecting the
+  // studio. A board with its own geometry is coloured per facet: solder mask, chip and tin.
+  function material(entry, i, g) {
+    const finish=finishOf(entry), f=FINISHES[finish], hex=/^#[0-9A-Fa-f]{6}$/.test(entry.color||'');
+    const colour=new THREE.Color(hex||!f.colour?colourOf(entry,i):parseInt(f.colour.slice(1),16));
+    const m=new THREE.MeshPhysicalMaterial({color:colour, roughness:f.roughness, metalness:f.metalness,
+      clearcoat:f.clearcoat||0, clearcoatRoughness:f.clearcoatRoughness||0,
+      sheen:f.sheen||0, sheenRoughness:f.sheenRoughness||1, sheenColor:0xffffff,
+      envMap, envMapIntensity:f.env*reflections, side:THREE.DoubleSide});
+    let board=null;
+    if (finish==='board'&&entry.board) {
+      board=boardColours(entry.positions, entry.board, colour);
+      g.setAttribute('color',new THREE.Float32BufferAttribute(board.colours,3));
+      m.vertexColors=true; m.color.set(0xffffff);
+      board={chip:board.chip, pad:board.pad};
+    }
+    return {m, finish, colour, board};
+  }
   function install(entries) {
     clear();
+    // The design's own floor and world geometry is never drawn beside a design (ADR-600): the mat
+    // stands in for it, at its top. A model that is nothing but world geometry is drawn as it is.
+    const design=entries.some(e=>e.world!==true);
     entries.forEach((entry,i)=> {
-      const g=new THREE.BufferGeometry();
+      const g=new THREE.BufferGeometry(), hidden=design&&entry.world===true;
       g.setAttribute('position',new THREE.Float32BufferAttribute(entry.positions.map(v=>v*.001),3));
-      g.computeVertexNormals();g.computeBoundingBox();
-      const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:colourOf(entry,i),roughness:.72,metalness:.05,side:THREE.DoubleSide}));
+      if (!hidden) g.setAttribute('normal',new THREE.Float32BufferAttribute(creaseNormals(entry.positions),3));
+      g.computeBoundingBox();
+      const {m:mat, finish, colour, board}=material(entry,i,g);
+      const m=new THREE.Mesh(g,mat);
       m.userData.mmBounds=new THREE.Box3().setFromArray(entry.positions);
-      m.userData.world=entry.world===true;
+      m.userData.world=entry.world===true; m.userData.finish=finish; m.userData.env=FINISHES[finish].env; m.userData.colour=colour; m.userData.board=board;
+      m.visible=!hidden;
       m.castShadow=true;m.receiveShadow=true;pose(m,entry.placement);
       meshes.set(entry.name,m);model.add(m);triangleCount+=entry.positions.length/9;
     });
@@ -306,12 +549,13 @@ export function create(canvas) {
   function setPoses(poses) {meshes.forEach((m,n)=>pose(m,poses[n]));draw();}
   // A ghost (the revision timeline's previous revision, ADR-547): translucent, unlit and
   // unshadowed, beside the model rather than in it, so it sizes, picks and outlines nothing
-  // and a hairline diagram leaves it out. setGhost([]) removes it.
+  // and a wireframe diagram leaves it out. World geometry has no ghost, as it has no solid.
+  // setGhost([]) removes it.
   const ghost=new THREE.Group(); world.add(ghost);
   function clearGhost() {ghost.children.slice().forEach(m=>{ghost.remove(m);m.geometry.dispose();m.material.dispose();});}
   function setGhost(entries, colour=0x9a9a9a, opacity=.2) {
     clearGhost();
-    (entries||[]).forEach(entry=>{
+    (entries||[]).filter(entry=>entry.world!==true).forEach(entry=>{
       const g=new THREE.BufferGeometry();
       g.setAttribute('position',new THREE.Float32BufferAttribute(entry.positions.map(v=>v*.001),3));
       const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:colour,transparent:true,opacity,depthWrite:false,side:THREE.DoubleSide}));
@@ -329,13 +573,15 @@ export function create(canvas) {
   }
   // Exact bounds of the installed solids, in mm simulator coordinates, at each pose set in
   // `frames` (a list of {name: placement}): every vertex of every solid is transformed, so a
-  // rotated part's box is its own and not its rotated box's. Leaves the last poses applied.
+  // rotated part's box is its own and not its rotated box's. World geometry the viewport does not
+  // draw is posed but sizes nothing. Leaves the last poses applied.
   function boundsOver(frames) {
     const v=new THREE.Vector3();
     return frames.map(poses=> {
       const lo=[Infinity,Infinity,Infinity], hi=[-Infinity,-Infinity,-Infinity];
       meshes.forEach((m,n)=> {
-        pose(m,poses[n]); m.updateMatrix(); const a=m.geometry.attributes.position;
+        pose(m,poses[n]); if (!m.visible) return;
+        m.updateMatrix(); const a=m.geometry.attributes.position;
         for (let i=0;i<a.count;i++) {
           v.fromBufferAttribute(a,i).applyMatrix4(m.matrix);
           const p=[v.x*1000,v.y*1000,v.z*1000];
@@ -428,7 +674,7 @@ export function create(canvas) {
     const r=canvas.getBoundingClientRect(); if(!r.width||!r.height) return null;
     draw(); model.updateMatrixWorld(true);
     raycaster.setFromCamera(ndc.set((x-r.left)/r.width*2-1,-((y-r.top)/r.height)*2+1),camera);
-    const hit=raycaster.intersectObjects([...meshes.values()],false)[0];
+    const hit=raycaster.intersectObjects([...meshes.values()].filter(m=>m.visible),false)[0];
     if (!hit) return null;
     for (const [n,m] of meshes) if (m===hit.object) return n;
     return null;
@@ -473,13 +719,25 @@ export function create(canvas) {
   canvas.addEventListener('mousedown',e=>{if(e.button===1)e.preventDefault();});  // no middle-click autoscroll
   canvas.addEventListener('wheel',e=>{e.preventDefault();zoom(Math.exp(e.deltaY*.0015));draw();},{passive:false});
   window.addEventListener('resize',draw);
+  // The reflections' strength: a multiple (0..REFLECTIONS.max) of each finish's own.
+  function setReflections(value) {
+    const v=Number(value); if (Number.isFinite(v)) reflections=Math.max(0,Math.min(REFLECTIONS.max,v));
+    meshes.forEach(m=>{m.material.envMapIntensity=m.userData.env*reflections;}); draw(); return reflections;
+  }
   return {available:true,load,install,clear,fit,draw,setPoses,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
-    setSection,setLines,showLines,setStyle,style:()=>style,
+    setSection,setLines,showLines,setStyle,style:()=>style,setMeshLines,meshLines:()=>({...meshLines}),setReflections,reflections:()=>reflections,
     pick,screenPoint,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,
       world:[...meshes].filter(([,m])=>m.userData.world).map(([n])=>n),style:STYLE,render_style:style,stage,showing:showing(),
       proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length}, ghost:ghost.children.map(m=>m.name),
-      colours:Object.fromEntries([...meshes].map(([n,m])=>[n,'#'+m.material.color.getHexString()])),
+      colours:Object.fromEntries([...meshes].map(([n,m])=>[n,'#'+m.userData.colour.getHexString()])),
+      hidden_world:[...meshes].filter(([,m])=>m.userData.world&&!m.visible).map(([n])=>n),
+      floor:{z_mm:floorZ*1000, source:floorSource, pitch_mm:(stage?.pitch??1)*1000},
+      clip:{near:camera.near, far:camera.far},
+      finishes:Object.fromEntries([...meshes].map(([n,m])=>[n,m.userData.finish])),
+      boards:Object.fromEntries([...meshes].filter(([,m])=>m.userData.board).map(([n,m])=>[n,{...m.userData.board}])),
+      reflections:{strength:reflections, environment:!!envMap},
+      mesh_lines:{...meshLines, drawn:meshLineCount()},
       section:section&&{...section}, leaders:{drawn:leaders?leaders.geometry.attributes.position.count/2:0,shown:!!(leaders&&leaders.visible)},
       poses:Object.fromEntries([...meshes].map(([n,m])=>[n,{position_mm:m.position.toArray().map(v=>v*1000),rotation_xyzw:m.quaternion.toArray()}]))}),
     png:()=>{draw();return canvas.toDataURL('image/png').split(',')[1];}};

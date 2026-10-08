@@ -34,7 +34,8 @@ from test_review_server import _training_run as _untraced_run
 REPO = Path(__file__).resolve().parents[2]
 STATIC = REPO / "cli" / "cadex_cli" / "review_static"
 #: The per-viewer conveniences the page may keep in ``localStorage``.
-BROWSER_KEYS = {"cadex.theme", "cadex.layout.v4", "cadex.render"}
+BROWSER_KEYS = {"cadex.theme", "cadex.layout.v4", "cadex.render", "cadex.meshlines", "cadex.meshlines.strength",
+                "cadex.reflections"}
 
 
 def _documented() -> dict[str, tuple[set[str], set[str]]]:

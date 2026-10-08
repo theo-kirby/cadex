@@ -1818,9 +1818,12 @@ and are not part of this table.
 
 **What the browser keeps.** The page keeps no project state of its own:
 everything it shows is read from these routes on each poll. What it keeps in
-`localStorage` is three per-viewer conveniences — `cadex.theme` (dark, light
-or system), `cadex.layout.v4` (the screen's areas) and `cadex.render` (the
-viewport's render style) — and the test fails if the page stores any other key. A picked
+`localStorage` is per-viewer conveniences — `cadex.theme` (dark, light
+or system), `cadex.layout.v4` (the screen's areas), `cadex.render` (the
+viewport's render style, shaded or wireframe; a stored `hairline` is read as
+wireframe), `cadex.meshlines` and `cadex.meshlines.strength` (the wireframe's
+mesh lines, on or off, and their strength) and `cadex.reflections` (the shaded
+solids' reflection strength) — and the test fails if the page stores any other key. A picked
 checkpoint, a scrubbed revision or a selected run lasts only as long as the
 page.
 
