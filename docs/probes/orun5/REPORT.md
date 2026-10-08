@@ -1,6 +1,6 @@
 # orun5 — closing report
 
-Verified against source: 2026-10-08, at `593f9cb8` (the orun5 run branch).
+Verified against source: 2026-10-08, at `93247955` (the orun5 run branch).
 Charter: `.ouroboros/goal.md`, "Sense the world, close the loop, judge the
 motion". Every number below was measured on sb1x (linux-64, RTX 5090) on
 scratch projects named `orun5-*`. The two reference projects were read and
@@ -524,6 +524,7 @@ S1, M1, S2, L1, R1, P1, P2 and this report have evidence recorded. P1's
 circle half and P2's attribution are on the terms stated above. The owner's
 boxes are not ticked.
 
-The unreconciled tail is the §10.2 checkpoint measurement and the record
-that makes this claim. A work iteration may not reconcile, so the next
-reconcile pass folds them before the critic judges this claim.
+The state graph is reconciled through the record that restates this
+claim: the §10.2 checkpoint measurement and the first statement of the
+claim are folded, the high-water mark is advanced, and `hypergraph check`
+exits 0 at that mark.

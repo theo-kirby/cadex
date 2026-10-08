@@ -35,9 +35,10 @@ Charter criterion for run orun5: **C1. Closing report.** The human owns the chec
 - **Circle runs after the report** (REPORT §6, its table, the P1 status row, defects 1 and 11, ledger W5/W7): circle-6 (σ narrowed, rocks, laps 0 on 8/8), circle-7 (first use of ADR-597, warm from centring, 3–4 laps at 12–17 mm) and circle-9 (unsaturated doubled off-radius cost, 20.6–24.0 mm), all 0/8 on radius or laps. Defect 1 no longer says ADR-597 is unused. New **defect 12**: no channel carries time, so a phase-tracking reward cannot be written; the `phase` goal kind is designed there, not built. The report now lists twelve defects [rec: flat-hawk-9763] [rec: bold-wind-5086] [rec: damp-orchard-1989].
 
 - **circle-10 and circle-11 in the report** (REPORT §6 paragraphs and tables, P1 status row, defect 11 now at 7/8; LESSONS W5): **defect 12 is resolved by ADR-598** (the `phase` goal kind, built) [rec: tidy-badger-2182] [rec: glad-valley-4220].
-- **REPORT §10.3 closed by measurement**: the carried orun4 defect "not found before the first script" was re-measured end to end on a real `cadex mcp` and `cadex app` — a fresh project is listed and returns 200 at its agent's first tool call (0.11 s), never before; `docs/probes/orun5/fresh_project_probe.py` reproduces it. The checkpoint stall (§10.2) is the last carried defect still unmeasured; it needs the GPU and the machine lock [rec: forest-grove-6707].
+- **REPORT §10.3 closed by measurement**: the carried orun4 defect "not found before the first script" was re-measured end to end on a real `cadex mcp` and `cadex app` — a fresh project is listed and returns 200 at its agent's first tool call (0.11 s), never before; `docs/probes/orun5/fresh_project_probe.py` reproduces it. [rec: forest-grove-6707].
+- **REPORT §10.2 closed by measurement**: the checkpoint stall was re-measured under the machine lock — the first checkpoint pays one compile (9.54 s), every later write one iteration (0.44 s); ADR-576 holds. All three defects carried from orun4 are now measured and closed (§10.1–§10.3); the §10.2 "tenth" checkpoint was corrected to "fifth" [rec: rustic-bloom-7305] [rec: solemn-quartz-2619].
 
-The charter's "reconcile, then claim done" step: work iterations may not reconcile, so each done claim precedes its fold. This pass folds the three-record tail the REPORT's done-claim paragraph names (`tidy-badger-2182`, `glad-valley-4220`, `forest-grove-6707`); the claim again stands on a reconciled state. Maintainer judgement: status `working`, not `done` — the human owns the checkbox, and roles do not tick it [rec: still-arrow-7544] [rec: forest-grove-6707].
+**Done claimed for critic review, on a reconciled state.** S1, M1, S2, L1, R1, P1, P2 and C1 each have recorded evidence (criterion by criterion in `solemn-quartz-2619` and REPORT.md's table); P1's circle half is on the charter's *otherwise* branch (predicate fails rocking, passes circling; best circle policy 7/8, not a spec pass) and P2's floor move (23.6 → 11.5 mm) is unattributed. The claim was first made before its fold; a housekeeping pass folded the tail, advanced the mark and restated it, and REPORT.md's Done-claim paragraph says so. Maintainer judgement: status `working`, not `done` — the human owns the checkbox, and roles do not tick it [rec: still-arrow-7544] [rec: solemn-quartz-2619] [rec: forest-vine-6003].
 
 ## Negative knowledge
 
@@ -54,3 +55,6 @@ None yet.
 - tidy-badger-2182 — REPORT §6 circle-10, status row, defect 11; defect 12 resolved by ADR-598; LESSONS W5
 - glad-valley-4220 — REPORT §6 circle-11, status row and defect 11 at 7/8; LESSONS W5
 - forest-grove-6707 — REPORT §10.3 closed: fresh project readable from first tool call (0.11 s); probe added
+- rustic-bloom-7305 — REPORT §10.2 closed: checkpoint stall measured, ADR-576 holds
+- solemn-quartz-2619 — §10.2 checkpoint count fixed; done claimed for critic review
+- forest-vine-6003 — tail folded, mark advanced; done claim restated on a reconciled state
