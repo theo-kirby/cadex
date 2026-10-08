@@ -15,7 +15,7 @@ never written. The owner ticks the criteria; this report ticks none of them.
 | S2 a grounded load sensor | evidence recorded | ADR-591; `test_dynamics_load_sensor.py`; §3 | `tiny-lake-4065` |
 | L1 a closed linkage, exported and driven | evidence recorded; the fit sweep **refuses** a loop, naming it, rather than solving it (the charter allows either) | ADR-593, ADR-594, ADR-595; `test_dynamics_linkages.py`; a live four-pin four-bar smoked and driven; §4 | `civic-sun-5811`, `spring-river-3041`, `young-aspen-5297` |
 | R1 a goal held in a body's frame | evidence recorded | ADR-592; `test_dynamics_goal_frame.py`; first real run in P2; §5 | `long-cabin-6279` |
-| P1 the ball-plate, as built | centring **passes 8/8**; circle on the charter's *otherwise* branch (predicate shown failing a rocking trace and passing a circling one, and failing a trained rocking policy, circle-6, on 8 of 8 seeds; not trained to a pass) | §6 | `smooth-stream-7287`, `dusty-canyon-3027` |
+| P1 the ball-plate, as built | centring **passes 8/8**; circle on the charter's *otherwise* branch (predicate shown failing a rocking trace and passing a circling one, and failing a trained rocking policy, circle-6, on 8 of 8 seeds; circle-7, warm from centring by ADR-597, goes round 3–4 laps on 8 of 8 but at 12–17 mm; not trained to a pass) | §6 | `smooth-stream-7287`, `dusty-canyon-3027` |
 | P2 the excavator's floor, measured | the floor **moved**, cause not separated | §7 | `hidden-sand-7542`, `misty-water-8806` |
 | C1 this report | this file | §1–§10 | the record that adds this file |
 
@@ -198,6 +198,34 @@ centre and never completes a lap. Two things follow:
 - the laps bound now fails a **trained** rocking policy on all 8 seeds, not
   only the scripted rocker in §2.
 
+A seventh run, circle-7, asked whether the circling can come from a
+competent controller instead of from noise. It warm-started the circle task
+from the passing centring policy (centre-vel) through ADR-597's curriculum
+step, the first run to use it: the trainer accepted the step with
+`disturbance`, `episode`, `label`, `reward` and `success` changed, and kept
+centre-vel's own σ, 0.268. 1000 iterations, seed 15, 456 s; reward per step
+0.70 at iteration 0, 1.04 by iteration 195, then flat, ending at 1.11 (best
+1.15), below circle-5's 1.32. Evaluated on the same 8 frozen seeds
+(`32a0a13bbde1-5fc199867250`):
+
+| predicate | bound | measured |
+|---|---|---|
+| `completed` | ≥ 1 | 1 on 8 of 8 |
+| `mean_distance_mm` | 30–50 | 12.0–17.2 |
+| `laps` | ≥ 2 | 3–4 on 8 of 8 (turns +3.56 to +4.74) |
+
+So **circle-7's mean goes round**, every seed to the horizon, and passes
+the laps bound on all 8, which no earlier circle policy did. It fails only
+on radius, and by more than circle-5: the ball circles 12–17 mm out and
+ends 1.2–11.8 mm from the centre, as if the centring prior still pulls it
+in. A controller that circulates by its mean is reachable from centring; the
+radius is not, under this reward.
+
+The direction ranked first after circle-6 — a reward on the ball's phase
+tracking a target angle that advances with time — **cannot be written in
+xscript today**, because no channel a reward or a policy reads carries time
+(defect 12).
+
 **The circle task is still not trained to a pass.**
 
 The pushrod tilt (optional, needs L1) was not built.
@@ -297,11 +325,12 @@ ADRs added by this run:
 
 ## 10. Remaining defects
 
-1. **W7, the warm-start rule, is decided (ADR-597), but no run has used
-   it yet.** A curriculum step may now revise `success`, because the bar is
-   not something the network reads or emits. The rule is test-pinned in
-   `training/test_curriculum_warm_start.py`. No training run in this report
-   used it: the circle task was not re-warmed from the centring policy.
+1. **W7, the warm-start rule, is decided (ADR-597) and used once.** A
+   curriculum step may now revise `success`, because the bar is not
+   something the network reads or emits. The rule is test-pinned in
+   `training/test_curriculum_warm_start.py`, and circle-7 (§6) warm-started
+   the circle task from the centring policy across a changed `success`. One
+   use is not a measure of how often such a step helps.
 2. **The trainer's checkpoint stall was not re-measured this run.** orun4
    fixed it (ADR-576: 42.5–45.4 s down to 1.9 s per checkpoint on a
    4096-env biped). In P2's run, 1400 iterations took 3903 s and the
@@ -337,8 +366,26 @@ ADRs added by this run:
 10. **xscript has no `math`** (no sin, cos or atan2). A linkage script
     computes angles with `** 0.5` or a series.
 11. **P1's circle task is not trained to a pass** (§6). Narrowing the
-    exploration width turned a circling policy into a rocking one (circle-6). P2's spec still
+    exploration width turned a circling policy into a rocking one (circle-6);
+    warming from centring gives a mean that circles, too tight (circle-7). P2's spec still
     fails on 3 of 10 seeds, and its improvement is not attributed (§7).
+12. **No channel carries time, so a reward cannot track a phase.** A
+    policy observes sensor channels and goals, and neither carries a clock
+    (the trainer's own words, `training/cadex_train.py`, ADR-136). Only a
+    control formula may name `time`. A reward or termination names declared
+    channels only. A `value` goal is a uniform draw held for a segment, not
+    a ramp. A MuJoCo `clock` sensor row would not do, because the trainer's
+    reset does not rewind `data.time`. What adding one needs, without a new
+    tool (A5): a goal kind, say `"phase"`, with a declared period. It would
+    carry a start phase drawn per episode and channels `name_sin` and
+    `name_cos` computed from the episode's step counter. That means
+    `_GOAL_KINDS` in `cadex_assembly_api.py`, `GOAL_KINDS` and `goal_values`
+    in `CadexDynamics.py`, and `draw_goals` and `goals_at` in the trainer,
+    with the pin test that holds the two halves together. It is a command
+    from the controller's own timer, like any goal, not a sensor reading, so
+    A1 is untouched. A phase reward is then expressible with the existing
+    functions: `(b_x*c + b_y*s) / r` is the cosine of the ball's lag behind
+    the target.
 
 ## Done claim
 
@@ -346,6 +393,6 @@ S1, M1, S2, L1, R1, P1, P2 and this report have evidence recorded. P1's
 circle half and P2's attribution are on the terms stated above. The owner's
 boxes are not ticked.
 
-The unreconciled tail is `dusty-canyon-3027` and this report's record. A
-work iteration may not reconcile, so the next reconcile pass folds both
-before the critic judges this claim.
+The unreconciled tail is `flat-hawk-9763` (circle-6) and circle-7's
+record. A work iteration may not reconcile, so the next reconcile pass folds
+both before the critic judges this claim.
