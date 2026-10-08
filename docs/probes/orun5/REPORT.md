@@ -15,7 +15,7 @@ never written. The owner ticks the criteria; this report ticks none of them.
 | S2 a grounded load sensor | evidence recorded | ADR-591; `test_dynamics_load_sensor.py`; §3 | `tiny-lake-4065` |
 | L1 a closed linkage, exported and driven | evidence recorded; the fit sweep **refuses** a loop, naming it, rather than solving it (the charter allows either) | ADR-593, ADR-594, ADR-595; `test_dynamics_linkages.py`; a live four-pin four-bar smoked and driven; §4 | `civic-sun-5811`, `spring-river-3041`, `young-aspen-5297` |
 | R1 a goal held in a body's frame | evidence recorded | ADR-592; `test_dynamics_goal_frame.py`; first real run in P2; §5 | `long-cabin-6279` |
-| P1 the ball-plate, as built | centring **passes 8/8**; circle on the charter's *otherwise* branch (predicate shown failing a rocking trace and passing a circling one; not trained to a pass) | §6 | `smooth-stream-7287`, `dusty-canyon-3027` |
+| P1 the ball-plate, as built | centring **passes 8/8**; circle on the charter's *otherwise* branch (predicate shown failing a rocking trace and passing a circling one, and failing a trained rocking policy, circle-6, on 8 of 8 seeds; not trained to a pass) | §6 | `smooth-stream-7287`, `dusty-canyon-3027` |
 | P2 the excavator's floor, measured | the floor **moved**, cause not separated | §7 | `hidden-sand-7542`, `misty-water-8806` |
 | C1 this report | this file | §1–§10 | the record that adds this file |
 
@@ -172,6 +172,34 @@ plateaued at 0.62, and with a privileged true velocity it reached 1.33.
   radius 16–29 mm against a floor of 30;
 - the closest, circle-5, reads 28.1–29.2 mm with 6 of 8 seeds completed.
 
+A sixth run, circle-6, tested why. circle-5 trained at 1.42 reward per
+step, which needs a ball within a few millimetres of 40 mm. But its
+deterministic mean, the policy the evaluation runs, orbits at 26–29 mm.
+The guess was that exploration noise (σ 0.24) was doing the circling. So
+circle-6 warm-started from circle-5 with σ narrowed to 0.08 and ran 1000
+iterations (seed 14, 455 s). The same task digest was used, so no
+curriculum step was needed. The narrow-σ reward fell at once, from 1.32 at
+iteration 3 to 0.87, and climbed back only to 1.00 by iteration 1000.
+Evaluated on the same 8 frozen seeds (`31977766f3c5-f4af2f075192`):
+
+| predicate | bound | measured |
+|---|---|---|
+| `completed` | ≥ 1 | 1 on 8 of 8 |
+| `mean_distance_mm` | 30–50 | 24.2–27.1 |
+| `laps` | ≥ 2 | 0 on 8 of 8 (turns −0.39 to +0.80) |
+
+So **circle-6 rocks**. The ball swings on an arc about 25 mm from the
+centre and never completes a lap. Two things follow:
+
+- the circulation of circle-1 to circle-5 came from the exploration noise,
+  not from the policy's mean. A memoryless policy whose mean only holds an
+  arc needs another approach (a reward that pays for phase rather than
+  speed, or a recurrent policy). A narrower σ does not supply it.
+- the laps bound now fails a **trained** rocking policy on all 8 seeds, not
+  only the scripted rocker in §2.
+
+**The circle task is still not trained to a pass.**
+
 The pushrod tilt (optional, needs L1) was not built.
 
 ## 7. P2 — the excavator's precision floor, measured
@@ -308,7 +336,8 @@ ADRs added by this run:
    frame compares across frames.** This is documented, not detected.
 10. **xscript has no `math`** (no sin, cos or atan2). A linkage script
     computes angles with `** 0.5` or a series.
-11. **P1's circle task is not trained to a pass** (§6). P2's spec still
+11. **P1's circle task is not trained to a pass** (§6). Narrowing the
+    exploration width turned a circling policy into a rocking one (circle-6). P2's spec still
     fails on 3 of 10 seeds, and its improvement is not attributed (§7).
 
 ## Done claim
