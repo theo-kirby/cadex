@@ -599,14 +599,43 @@ carries a scene colour of its own.
 
 **The floor.** The CPU renderer (`CadexStudio._floor`) intersects each
 orthographic ray with the floor plane: a checker one pitch square, the
-major line on every multiple of the pitch anchored at the world origin, the
-pitch one metre as `floor.js` draws it (ADR-600; it was chosen from a ladder
-by the framed span until then) at `floor.js`'s line fraction, and each
+line on every multiple of the pitch anchored at the world origin, and each
 line's pixel coverage computed from the floor footprint of the pixel, which
-antialiases it. The mat fades into the background between
-0.75× and 1.9× the framed extent from the point under the image centre. A
-level view (`front`, `right`) sees no floor and draws the background. No
-minor lines and no baked labels: at a hero's framing they are noise.
+antialiases it. The pitch is **1 m at every framing** (`GRID_PITCH_MM`,
+ADR-604), the viewport's `GRID_PITCH`, and the line is the same 5/256 of
+it (`LINE_FRACTION`): the hero, the review views, `look`, the sheets, the
+print-bed hero, the evaluation's overview and detail filmstrips, rollout
+and shove videos all stand on true-size squares, so a 300 mm robot covers
+a third of one and its size reads. (Until ADR-604 the pitch followed the
+framed span down a 10 mm–10 m ladder, so a square was 50 mm in one image
+and 500 mm in the next.) The mat fades into the background between 0.75×
+and 1.9× the framed extent from the point under the image centre. A level
+view (`front`, `right`) sees no floor and draws the background. No minor
+lines and no baked labels: at a hero's framing they are noise.
+
+**Where the mat lies, and what is not drawn.** The design's own floor —
+the world geometry its fit names — is never drawn in any engine image or
+video; the mat is laid at its top face (`world_top` for stills; the
+collision plane, else the world's top, for films and studio videos, §15),
+and at the design's lowest point only when it declares none. Every path
+leaves it out: `look` and `render` (`exclude`), the hero and the sheet
+(`_scene`), the print bed (printed parts only), films and shove videos
+(`retained_solids`' world set) and studio videos (the render summary's
+`environment`).
+
+**What parts are made of** (ADR-603, `docs/DESIGN-LANGUAGE.md` §2): each
+part's finish class — `printed`, `purchased`, `hardware`, `board` — comes
+from its catalog family. The renderer shades a finish as `(specular,
+exponent, metal, sheen)`: key, fill and rim light, a reflection of a small
+studio (a soft overhead light, a softbox on the key side, the dark mat
+below), metal as a tinted mirror under a hard highlight, and a board
+painted per subsample (mask, chip box, tinned pads) from where the point
+lies in the catalog board's frame. `/api/model/accepted` gives the viewport
+the same facts per component: `finish`, `catalog` (`{family,
+part_number}` or `null`), `board` (`null`, or `{width_mm, length_mm,
+thickness_mm, chip: {origin, size}, pads: [{origin, dia_mm}], frame}` in
+the part's own mesh frame, mm), with `color` the finish's base colour for
+hardware and boards.
 
 **The shadow** is the measured contact shadow (§15, ADR-432), deepened for a
 dark floor — it may take a tile to 20 % of its brightness (was 45 %). On
@@ -617,11 +646,16 @@ probe is re-scored (ADR-444). The viewport and its capture (§10) are the
 source, not a consumer, and are unchanged.
 
 **Held by** `cli/tests/test_scene_palette.py` (the renderer's palette is the
-viewport's, parsed independently, and the charter's values; the one metre
-pitch and the line fraction are `floor.js`'s; no image module carries a scene colour; the
-hero stands on the mat and fades; a changed viewport palette changes the
-drawn image; the studio video's identity covers the palette source), with
-the shadow held by `test_contact_shadow_darkens_the_floor_under_the_design_only`.
+viewport's, parsed independently, and the charter's values; the 1 m pitch
+and line width are `floor.js`'s; the mat is a metre a square at a 400 mm
+and a 4 m framing alike; no image module carries a scene colour; the hero
+stands on the mat and fades; a changed viewport palette changes the drawn
+image; the studio video's identity covers the palette source), with the
+shadow held by `test_contact_shadow_darkens_the_floor_under_the_design_only`,
+the mat at the world's top by
+`test_the_mat_lies_at_the_top_of_the_world_geometry_not_under_the_design`,
+and the finishes by `src/Mod/cadex/cadex_tests/test_studio_finishes.py` and
+`test_each_part_carries_its_finish_catalog_row_and_board_layout`.
 Before/after: `docs/probes/ot10/a8-*.png`.
 
 ## 18. Read-only: the agent changes the project, the page follows (ADR-537)

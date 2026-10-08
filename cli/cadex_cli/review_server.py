@@ -1144,28 +1144,36 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def part_looks(result: Mapping[str, Any], entries: list[dict[str, Any]]) -> dict[str, Any]:
-    """Each shown part's appearance role, colour and print status (ADR-522).
+def part_looks(result: Mapping[str, Any], entries: list[dict[str, Any]],
+               mesh_points=None) -> dict[str, Any]:
+    """Each shown part's appearance role, colour, finish and print status (ADR-522, ADR-603).
 
     The rule is the renderer's (``CadexStudio.materials``), so the viewer
     paints a part as ``look`` and the concept sheet do: the role a
     component declared, else mechanism for a catalogued (purchased) part and
-    shell for a printed one, in the assembly's palette. The facts are the
-    ones ``inspect scope=inventory`` joins, read from the same accepted
-    ``result.json``. ``printable`` is the engine's roster, every output with
-    a surface ``export_printable`` would accept. Sets ``role``, ``color``,
-    ``role_source``, ``supplier`` and ``printable`` on each entry and
-    returns the model's ``appearance`` block. With no assembly there is no
-    supplier to read and every entry keeps ``role`` ``None``: the viewer
-    keeps its index colours, as ``look`` does.
+    shell for a printed one, in the assembly's palette; and the finish class
+    its catalog family gives it, ``printed``, ``purchased``, ``hardware``
+    (metal) or ``board`` (a PCB), which for hardware and boards sets the
+    colour over any role. The facts are the ones ``inspect scope=inventory``
+    joins, read from the same accepted ``result.json``. ``printable`` is the
+    engine's roster, every output with a surface ``export_printable`` would
+    accept. Sets ``role``, ``color``, ``role_source``, ``supplier``,
+    ``finish``, ``catalog`` (``{family, part_number}`` or ``None``),
+    ``board`` and ``printable`` on each entry and returns the model's
+    ``appearance`` block. ``board`` is ``None`` except on a catalog board
+    whose mesh is the catalog's (``CadexStudio.board_layout``): then its
+    size, its chip box and its pads, in the part's own mesh frame (mm), read
+    from ``mesh_points(output)``, the output's tessellation vertices. With
+    no assembly there is no supplier to read and every entry keeps ``role``
+    ``None``: the viewer keeps its index colours, as ``look`` does.
     """
 
     outputs = {str(item.get("name") or ""): item for item in result.get("outputs") or []
                if isinstance(item, Mapping)}
     roster = PRINTABLES.printable_roster(result.get("outputs"))
     for entry in entries:
-        entry.update(role=None, color=None, role_source=None, supplier=None,
-                     printable=entry.get("output") in roster)
+        entry.update(role=None, color=None, role_source=None, supplier=None, finish=None,
+                     catalog=None, board=None, printable=entry.get("output") in roster)
     links = {name: item for name, item in outputs.items() if item.get("type") == "component_link"}
     assemblies = [item for item in outputs.values() if item.get("type") == "assembly"]
     if not links:
@@ -1182,21 +1190,47 @@ def part_looks(result: Mapping[str, Any], entries: list[dict[str, Any]]) -> dict
                            for entry in entries}}
     purchased = {entry["name"] for entry in entries
                  if isinstance((outputs.get(str(entry.get("output"))) or {}).get("catalog"), Mapping)}
+    catalog = {}
+    for entry in entries:
+        source = outputs.get(str(entry.get("output"))) or {}
+        identity = source.get("catalog") or source.get("catalog_derived_from")
+        if isinstance(identity, Mapping) and identity.get("family"):
+            catalog[entry["name"]] = {"family": str(identity["family"]),
+                                      "part_number": str(identity.get("part_number") or "")}
     try:
         _declared, palette = STUDIO.declared({"appearance": appearance, "palette": palette_block})
         looks = STUDIO.materials(summary, purchased=purchased,
                                  appearance={k: v for k, v in appearance.items() if k in summary["objects"]},
-                                 palette=palette)
+                                 palette=palette, catalog=catalog)
     except STUDIO.StudioError as exc:
         return {"available": False, "reason": str(exc), "palette": None, "printable": sorted(roster)}
+    layouts: dict[str, Any] = {}
     for entry in entries:
-        role, rgb = looks[entry["name"]]
+        look = looks[entry["name"]]
+        role, rgb = look
+        board = None
+        if look.finish == "board" and mesh_points is not None and entry.get("output"):
+            output = str(entry["output"])
+            if output not in layouts:
+                try:
+                    points = mesh_points(output)
+                except (OSError, ValueError, KeyError, TypeError):
+                    points = None
+                layouts[output] = STUDIO.board_layout(look.catalog, points) if points else None
+            board = layouts[output]
         entry.update(role=role, color="#%02X%02X%02X" % tuple(rgb),
                      role_source="declared" if entry["name"] in appearance else "supplier",
-                     supplier="purchased" if entry["name"] in purchased else "printed")
+                     supplier="purchased" if entry["name"] in purchased else "printed",
+                     finish=look.finish, catalog=look.catalog, board=board)
     return {"available": True,
-            "source": "the accepted assembly's declared roles, else purchased mechanism and printed shell "
-                      "(CadexStudio.materials, as look and the concept sheet draw them)",
+            "source": "the accepted assembly's declared roles, else purchased mechanism and printed shell, "
+                      "and the finish each catalog family gives (CadexStudio.materials, as look, the concept "
+                      "sheet, films and videos draw them)",
+            "finishes": {"classes": list(STUDIO.FINISH_CLASSES),
+                         "hardware": {family: "#%02X%02X%02X" % STUDIO.METALS[metal][0]
+                                      for family, metal in sorted(STUDIO.HARDWARE_METALS.items())},
+                         "board": {part: "#%02X%02X%02X" % look[0]
+                                   for part, look in STUDIO.BOARD_LOOK.items()}},
             "palette": {role: "#%02X%02X%02X" % tuple(rgb)
                         for role, rgb in {**STUDIO.ROLE_COLORS, **palette}.items()},
             "printable": sorted(roster)}
@@ -1451,11 +1485,29 @@ def accepted_model_uncached(project_root: Path | str) -> dict[str, Any]:
                              else "declared component placements"),
         "components": entries,
         "exploded": exploded_views(result, {entry["name"]: entry["placement"] for entry in entries}),
-        "appearance": part_looks(result, entries),
+        "appearance": part_looks(result, entries, lambda output: tessellation_vertices(
+            staging, tess_by_output[output]) if output in tess_by_output else None),
         "measurements": declared_measurements(result, entries),
         "meshes": {output: entry["artifact"] for output, entry in tess_by_output.items()},
     })
     return model
+
+
+def tessellation_vertices(staging: Path, tess: Mapping[str, Any]) -> list[tuple[float, float, float]]:
+    """An accepted output's tessellation vertices, in its own frame (mm): what
+    a board's layout is matched against (ADR-603)."""
+
+    sidecar = _load_json(staging / "display" / str(tess["sidecar"]))
+    if not sidecar or sidecar.get("schema") != TESSELLATION_SCHEMA or sidecar.get("byte_order") != "little":
+        raise ValueError("unsupported tessellation format")
+    layout = (sidecar.get("layout") or {}).get("vertices") or {}
+    if layout.get("dtype") != "f32":
+        raise ValueError("unsupported tessellation layout")
+    offset, size = int(layout["offset"]), int(layout["bytes"])
+    data = (staging / str(tess["artifact"])).read_bytes()
+    if offset < 0 or size % 12 or offset + size > len(data):
+        raise ValueError("tessellation layout exceeds its buffer")
+    return list(struct.iter_unpack("<3f", data[offset:offset + size]))
 
 
 def tessellation_to_stl(sidecar: Mapping[str, Any], data: bytes) -> bytes:

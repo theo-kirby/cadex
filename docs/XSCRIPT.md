@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-07
+Verified against source: 2026-10-08
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -691,6 +691,12 @@ asm  = assembly.assembly([hood, knee, eye], joints,
   no role is drawn by supplier — `mechanism` when it places a catalog part,
   `shell` when printed — and every consumer says which parts were declared
   and which were inferred.
+- **A catalog fastener is metal and a catalog board a PCB, whatever its
+  role** (ADR-603): `bolt`/`nut` are drawn black-oxide steel,
+  `washer`/`bearing`/`bushing` bright steel, `heat_insert` brass, `board`
+  solder mask with its chip and pads; any other catalog part keeps its
+  role's colour in a purchased satin. The role is still the one declared or
+  inferred; only what it is drawn in changes (`docs/DESIGN-LANGUAGE.md` §2).
 - Carried by `inspect scope="inventory"`: each component row has
   `appearance` when it declared one, and the value has `palette` (empty when
   none was declared). The CLI's inventory block (on every build reply) adds

@@ -1816,6 +1816,20 @@ The files the replies point to — `mesh/...`, `artifact/...`, `video/...`,
 `blueprint/...`, `section/...` — are served only when a reply offers them,
 and are not part of this table.
 
+**Each accepted component's look** (ADR-522, ADR-603). Every entry of
+`api/model/accepted`'s `components` carries `role`, `color`,
+`role_source`, `supplier` and `printable`, and the finish the viewport
+paints: `finish` (`printed`, `purchased`, `hardware` or `board`, from the
+catalog family), `catalog` (`{family, part_number}` the output came off,
+or `null`) and `board` — `null`, or on a catalog board whose mesh is the
+catalog's, `{width_mm, length_mm, thickness_mm, chip: {origin, size},
+pads: [{origin, dia_mm}], frame}` in the part's own mesh frame in
+millimetres (`dia_mm` is the tinned ring's outer diameter; `frame` is the
+quarter turns about +Z and the shift the mesh was moved by). For hardware
+and boards `color` is the finish's base colour, whatever the role; the
+model's `appearance.finishes` lists the classes and those colours. With no
+assembly every one of these is `null`.
+
 **What the browser keeps.** The page keeps no project state of its own:
 everything it shows is read from these routes on each poll. What it keeps in
 `localStorage` is per-viewer conveniences — `cadex.theme` (dark, light
@@ -1890,7 +1904,10 @@ records digest, component/source names, colors, transformed bounds in mm,
 camera bases, projected bounds, coverage, limits and acquisition/render timing,
 plus `environment` (world geometry left out), `appearance` (each drawn
 object's role, colour and `source` — `declared` by the script, `supplier`
-from the inventory, or `index` with no inventory), `palette` (the colour in
+from the inventory, or `index` with no inventory — plus its `finish`,
+`printed`, `purchased`, `hardware` or `board`, and the `catalog` row that
+decided it, ADR-603; `color` is what it is drawn in, the metal's or the
+solder mask's for hardware and boards), `palette` (the colour in
 effect for each role), `hero` (its path, size and seconds) and `proxies`
 (below). A walk's review carries the whole summary as its `render` block, so
 the roles and the proxies reach `review.json` with it, and both commands add
@@ -2038,6 +2055,9 @@ followed by a `sweep` line with one line per unswept joint and per
 failing pair, each carrying its status. The same run adds `inventory`,
 the catalog-identity block that reply carried (ADR-362) — `component_count`,
 `catalogued_count`, `uncatalogued_count`, the `catalog_counts` roll-up and
+`catalog_by_component` (component → `{family, part_number}`, what the
+studio draws hardware as metal and boards as PCBs by, ADR-603; left out of
+the model's bounded view) and
 every `uncatalogued_sources` name, with `derived_catalog_sources` naming
 the ones cut from a catalog body (ADR-381), plus `appearance` (component →
 declared role) and `palette` (ADR-413) — printed as an `inventory` line
@@ -2493,7 +2513,9 @@ the **model's view** of a successful `write_script`, `edit_script`,
   `fit.sweep.world_geometry` and `fit.attachments.reported` are worst
   first, at most 12 rows, with `<list>_omitted` and `<list>_rest` when cut.
   `fit.sweep.joints` lists only joints not swept to completion.
-- `inventory.appearance` becomes a count per role.
+- `inventory.appearance` becomes a count per role, and
+  `inventory.catalog_by_component` is left out (`catalog_counts` carries
+  the same roll-up; ADR-603).
   `inventory.printed_edges` keeps its totals and `measured_count`, plus
   `sharpest`: the printed parts with the most sharp convex edge.
   `uncatalogued_sources` and `derived_catalog_sources` are cut the same

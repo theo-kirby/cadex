@@ -358,9 +358,13 @@ def test_render_draws_the_declared_role_in_the_declared_palette(tmp_path, monkey
     fit = {'failing': [{'first': 'c_floor', 'second': '', 'status': 'world geometry'}]}
     monkeypatch.setattr(cli_render, '_published_blocks', lambda client: [fit, _declared_inventory()])
     path, summary = cli_render.write_render(Client(), tmp_path / 'project')
+    # The pin is bought, so its finish is a purchased satin (ADR-603); with no
+    # catalog row it is neither metal nor a board, and keeps its declared colour.
     assert summary['appearance'] == {
-        'c_body': {'role': 'shell', 'color': '#C9AE86', 'source': 'declared'},
-        'c_pin': {'role': 'accent', 'color': '#179C98', 'source': 'declared'},
+        'c_body': {'role': 'shell', 'color': '#C9AE86', 'source': 'declared', 'finish': 'printed',
+                   'catalog': None},
+        'c_pin': {'role': 'accent', 'color': '#179C98', 'source': 'declared', 'finish': 'purchased',
+                  'catalog': None},
     }
     assert summary['palette'] == {'shell': '#C9AE86', 'mechanism': '#2F3237', 'accent': '#179C98'}
     _, rows = _pixels((path.parent / 'hero.png').read_bytes())

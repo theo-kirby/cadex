@@ -195,9 +195,11 @@ def materials(sources: Mapping[str, str], drawn: Sequence[str], revision: str,
     """``(looks, source)``: each drawn component's appearance role and colour.
 
     By the rules a render draws with: the role the script declared, else
-    mechanism for a catalogued part and shell for a printed one. The
-    inventory block carries both, read from the accepted attempt. Without
-    one at this revision every part is drawn as shell, and the film says so.
+    mechanism for a catalogued part and shell for a printed one, and the
+    finish its catalog family gives it (metal hardware, a board, a purchased
+    satin: ADR-603). The inventory block carries all three, read from the
+    accepted attempt. Without one at this revision every part is drawn as
+    shell, and the film says so.
     """
 
     summary = {"objects": {name: {"source": sources[name], "color": studio_render.ROLE_COLORS["shell"]}
@@ -221,7 +223,7 @@ def materials(sources: Mapping[str, str], drawn: Sequence[str], revision: str,
         appearance, palette = studio_render.declared(block)
         looks = studio_render.materials(summary, purchased=purchased,
                                         appearance={k: v for k, v in appearance.items() if k in drawn},
-                                        palette=palette)
+                                        palette=palette, catalog=studio_render.catalogued(summary, block))
     except studio_render.StudioError as exc:
         raise FilmError(str(exc)) from exc
     return looks, {"source": "the accepted assembly's inventory", "declared": True}
@@ -324,7 +326,7 @@ class _Stage:
         self.names = [name for name in meshes if name in looks]
         _require(self.names, "nothing to draw once world geometry is left out")
         self.local = {name: studio_render._prepare(
-            [((looks[name][1], studio_render.FINISH[looks[name][0]]), meshes[name])])
+            [(studio_render.material(looks[name], meshes[name]), meshes[name])])
             for name in self.names}
         self.corners = {}
         for name in self.names:
@@ -762,7 +764,8 @@ def film_evaluation(root: Path, out: Path, report: Mapping[str, Any], *, seeds: 
         "showing": "tessellated solids of the accepted revision at each recorded pose; "
                    "collision proxies and world geometry not drawn",
         "materials": source,
-        "appearance": {name: {"role": looks[name][0], "color": "#%02X%02X%02X" % tuple(looks[name][1])}
+        "appearance": {name: {"role": looks[name][0], "color": "#%02X%02X%02X" % tuple(looks[name][1]),
+                              "finish": getattr(looks[name], "finish", "printed")}
                        for name in stage.names},
         "geometry": geometry,
         "seeds": filmed,

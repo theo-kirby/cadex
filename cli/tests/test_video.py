@@ -342,13 +342,16 @@ def test_studio_video_draws_the_declared_materials_and_says_where_they_came_from
     assert {v['role'] for v in undeclared['appearance'].values()} == {'shell'}
     summary = root / 'review/render' / REVISION_A / 'summary.json'
     data = json.loads(summary.read_text())
+    # The shin is a catalog bolt here: drawn as the render drew it, metal (ADR-603).
     data['appearance'] = {'body': {'role': 'accent', 'color': '#F26A1B'},
-                          'shin': {'role': 'mechanism', 'color': '#2F3237'}}
+                          'shin': {'role': 'mechanism', 'color': '#3C3E44', 'finish': 'hardware',
+                                   'catalog': {'family': 'bolt', 'part_number': 'm3x12-socket'}}}
     summary.write_text(json.dumps(data))
     declared = render(root, 'sample', 'studio')
     assert declared['materials'] == {'declared': True, 'environment_omitted': [],
                                      'source': f'review/render/{REVISION_A}/summary.json'}
-    assert declared['appearance']['body'] == {'role': 'accent', 'color': '#F26A1B'}
+    assert declared['appearance']['body'] == {'role': 'accent', 'color': '#F26A1B', 'finish': 'printed'}
+    assert declared['appearance']['shin'] == {'role': 'mechanism', 'color': '#3C3E44', 'finish': 'hardware'}
 
     def orange(frame):
         return sum(1 for i in range(0, len(frame), 3)
@@ -369,6 +372,12 @@ def test_studio_video_refuses_a_bad_style_and_a_bad_declared_appearance(video_pr
     summary.write_text(json.dumps(data))
     with pytest.raises(ValueError, match='body no valid appearance'):
         render(root, 'sample', 'studio')
+    # A finish that is not one of the classes, or metal with no catalog row to say which.
+    for bad in ({'finish': 'chrome'}, {'finish': 'hardware'}):
+        data['appearance'] = {'body': {'role': 'shell', 'color': '#FFFFFF', **bad}}
+        summary.write_text(json.dumps(data))
+        with pytest.raises(ValueError, match='body no valid appearance'):
+            render(root, 'sample', 'studio')
     status = read_run_record(run, root)
     assert status['video_render']['state'] == 'failed' and status['videos'] == []
     assert not list(run.glob('*.webm'))

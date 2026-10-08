@@ -1244,6 +1244,15 @@ def inventory_summary(value: Any) -> dict[str, Any]:
         "catalogued_count": catalogued,
         "uncatalogued_count": max(len(components) - catalogued, 0),
         "catalog_counts": dict(sorted(counts.items())),
+        # Which component placed which catalog row: what the studio draws a
+        # fastener as metal and a board as a PCB by (ADR-603).
+        "catalog_by_component": {
+            str(row.get("component") or ""): {
+                "family": str(row["catalog"].get("family") or ""),
+                "part_number": str(row["catalog"].get("part_number") or ""),
+            }
+            for row in components if isinstance(row.get("catalog"), Mapping)
+        },
         "uncatalogued_sources": uncatalogued,
         "derived_catalog_sources": derived,
         # What the script declared about how each part looks (ADR-413):
@@ -1395,6 +1404,9 @@ def inventory_view(inventory: dict[str, Any]) -> dict[str, Any]:
     """
 
     view = dict(inventory)
+    # Per component, and the catalog_counts roll-up already says it: the
+    # renderer reads the full block, the model is spared the list (ADR-603).
+    view.pop("catalog_by_component", None)
     appearance = inventory.get("appearance")
     if isinstance(appearance, dict):
         roles: dict[str, int] = {}
