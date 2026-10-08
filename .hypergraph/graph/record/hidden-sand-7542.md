@@ -66,11 +66,18 @@ The reference baseline, for the comparison (from its evaluations, read-only):
 | reach-04 | — | 20.5 | 2/10 |
 | reach-03 (600 iterations cold) | — | 38.1 | 0/10 |
 
-**reach-p2-cold:** RESULT PENDING. It was training when this record was first written (iteration 126 at 424 s; best reward per step 1.56).
+**reach-p2-cold** finished with exit 0 after 1400 iterations. Its best reward per step was 4.75, at iteration 1397. Its best checkpoint (`reach.best.cxpolicy`, `5dc8fc5a…`) was declared and evaluated on the frozen seeds 101–110 as `evaluations/0c0b7e5b05e5-5dc8fc5abd8a`, on task `ea19ce4a…`:
+
+| Policy | Final error per seed 101–110 (mm) | Median | Pass |
+|---|---|---|---|
+| reach-p2-cold (best) | 3.4, 17.2, 21.4, 2.5, 10.6, 5.2, 22.4, 12.5, 6.0, 12.4 | 11.5 | 7/10 |
+| reach-05 (reference) | 11.0, 32.6, 25.1, 25.4, 26.7, 13.7, 20.8, 22.1, 39.3, 18.7 | 23.6 | 2/10 |
+
+**The floor moved.** The median halved, and 9 of the 10 seeds improved. Only seed 107 got worse, from 20.8 to 22.4 mm. Seeds 102, 103 and 107 still miss the 15 mm bound, so the spec still fails. Tilt and drift stayed small: max tilt 0.06° and max drift 8.6 mm. **One run cannot attribute the move.** It changed three things at once: the goal is now in the track frame, the actor reads the load channels, and training ran 1400 iterations without a break where the reference ran a 600 + 400 + 400 warm chain. Sag is already ruled out by the probe above, so the likely causes are the goal frame and the schedule. Separating them would need another run, for example the same 1400-iteration schedule with a world-fixed goal. That run was not done.
 
 Gates: no Cadex code changed in this unit; only a scratch project and the ledger. The two suites were not rerun for that reason.
 
-Dispatch closed: 1 unit — P2 measured (pending numbers)
+Dispatch closed: 1 unit — P2 measured
 
 ## Repo
 
