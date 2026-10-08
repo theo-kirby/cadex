@@ -1,6 +1,6 @@
 # orun5 — closing report
 
-Verified against source: 2026-10-08, at `7466b0ed` (the orun5 run branch).
+Verified against source: 2026-10-08, at `593f9cb8` (the orun5 run branch).
 Charter: `.ouroboros/goal.md`, "Sense the world, close the loop, judge the
 motion". Every number below was measured on sb1x (linux-64, RTX 5090) on
 scratch projects named `orun5-*`. The two reference projects were read and
@@ -449,7 +449,7 @@ ADRs added by this run:
    first checkpoint's gap was 9.54 s, one compile of the witness rollout;
    every later one, and every `best` written beside one, was 0.438–0.440 s,
    one iteration (nine writes in all). The gaps were the same at the
-   tenth checkpoint as at the second, so nothing grows with the run. P2's
+   fifth checkpoint as at the second, so nothing grows with the run. P2's
    69–72 s spacing was 25 iterations of its larger task, not a stall.
    ADR-576 holds; nothing is left to fix.
 3. **Measured, and resolved: a fresh project is readable from its agent's
@@ -524,6 +524,6 @@ S1, M1, S2, L1, R1, P1, P2 and this report have evidence recorded. P1's
 circle half and P2's attribution are on the terms stated above. The owner's
 boxes are not ticked.
 
-The unreconciled tail is the phase goal and circle-10's record, circle-11's,
-and the §10.3 measurement. A work iteration may not reconcile, so the next
+The unreconciled tail is the §10.2 checkpoint measurement and the record
+that makes this claim. A work iteration may not reconcile, so the next
 reconcile pass folds them before the critic judges this claim.
