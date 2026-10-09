@@ -234,6 +234,9 @@ def sweep_summary(
     - A pair declared ``contact``, or welded by a fixed joint and so carrying
       the implied ``attached`` intent (ADR-372), is exempt, exactly as it is
       at the solved pose: parts a design asks to touch are not held to a gap.
+    - A bolt on a drive's output-flange hole axis, clean against that drive
+      at the solved pose, is not judged against it (ADR-609): the flange it
+      threads into turns with it, though the catalog case is one solid.
 
     **A finding against world geometry is reported, never failed**
     (ADR-420). A pair one side of which the static block names world
@@ -303,6 +306,9 @@ def sweep_summary(
                       static[key], {key: allowance},
                       static[key].get("common_volume_mm3"))
                   and static[key]["common_volume_mm3"] > maximum_volume}
+    # A bolt in a drive's output flange turns with the flange (ADR-609): its
+    # swept overlap with the one-solid case is the model, not the design.
+    turning = output_bolt_pairs(value)
     # Components the static block names world geometry -- a declared floor,
     # a collision plane, a bench marked ``world=True`` -- by name, with the
     # engine's reason (ADR-420). A swept finding against one of them is the
@@ -403,7 +409,8 @@ def sweep_summary(
                     "error": str(row.get("error") or "no swept measurement for this pair"),
                 })
             elif volume > maximum_volume and not _threaded(
-                    {"first": first, "second": second}, allowances, volume):
+                    {"first": first, "second": second}, allowances, volume) \
+                    and frozenset((first, second)) not in turning:
                 overlap: dict[str, Any] = {
                     "joint": name, "first": first, "second": second,
                     "status": "intersection",
@@ -680,8 +687,55 @@ def _world_axes(row: Mapping[str, Any], matrix: Sequence[float]) -> list[tuple]:
         sizes = {key: float(axis[key]) for key in SIZE_FACTS
                  if _finite(axis.get(key)) and axis[key] > 0}
         if len(origin) == 3 and length > 1e-12:
-            axes.append((_apply(matrix, origin), [v / length for v in direction], sizes))
+            axes.append((_apply(matrix, origin), [v / length for v in direction], sizes,
+                         axis.get("output") is True))
     return axes
+
+
+def output_bolt_pairs(value: Any) -> set[frozenset]:
+    """Bolts in a drive's output-flange holes, paired with that drive (ADR-609).
+
+    A QDD publishes its output flange's tapped holes as axes marked
+    ``output``. The catalog body is one solid, fixed to the stator, but the
+    flange those holes are in turns with the driven link, so a bolt on one
+    of those axes at the solved pose -- and not already overlapping the
+    drive there -- turns with the flange rather than through the case. The
+    swept check does not judge that pair's overlap; the solved pose does.
+    """
+
+    if not isinstance(value, Mapping):
+        return set()
+    rows = [row for row in value.get("components") or []
+            if isinstance(row, Mapping) and row.get("component")]
+
+    def family(row: Mapping[str, Any]) -> str:
+        found = row.get("catalog") or {}
+        return str(found.get("family") or "") if isinstance(found, Mapping) else ""
+
+    bolts = []
+    for row in rows:
+        matrix = _matrix(row)
+        if family(row) == "bolt" and matrix is not None:
+            bolts.append((str(row["component"]), _world_axes(row, matrix)))
+    static = {frozenset((str(r.get("first") or ""), str(r.get("second") or ""))): r
+              for r in value.get("pairs") or [] if isinstance(r, Mapping)}
+    pairs: set[frozenset] = set()
+    for row in rows:
+        matrix = _matrix(row)
+        if matrix is None or family(row) not in DRIVE_FAMILIES:
+            continue
+        outputs = [axis for axis in _world_axes(row, matrix) if axis[3]]
+        if not outputs:
+            continue
+        for name, axes in bolts:
+            key = frozenset((name, str(row["component"])))
+            solved = static.get(key)
+            volume = solved.get("common_volume_mm3") if solved else None
+            if not _finite(volume) or volume > MAXIMUM_COMMON_VOLUME_MM3:
+                continue
+            if any(_on_axis(hole, axis) for hole in outputs for axis in axes):
+                pairs.add(key)
+    return pairs
 
 
 def _misfit(hole: Mapping[str, float], bolt: Mapping[str, float]) -> str | None:
@@ -835,7 +889,9 @@ def mounting_summary(value: Any) -> dict[str, Any]:
         # holds by its own thread (a common volume with the shank), or is
         # clamped under the head when the thread is this part's own tapped
         # hole, a nut or an insert.
-        holes = _world_axes(row, matrix)
+        # The output flange's holes turn with the driven link (ADR-609): a
+        # bolt in one holds the link to the flange, never the drive in place.
+        holes = [hole for hole in _world_axes(row, matrix) if not hole[3]]
         screwed: dict[str, list[str]] = {}
         misfits: list[str] = []
         unthreaded: list[str] = []

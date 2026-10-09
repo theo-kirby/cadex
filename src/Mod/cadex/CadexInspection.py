@@ -264,7 +264,7 @@ def capture_inspection(service: Any, arguments: Mapping[str, Any]) -> dict[str, 
             "kind": "wiring",
             "project_root": str(service.project_scope_snapshot().get("root") or ""),
         }
-    if scope in {"inventory", "clearance"}:
+    if scope in {"inventory", "clearance", "anatomy"}:
         # What the assembly is MADE OF: every component of the accepted
         # revision joined back to the output it places, that output's catalog
         # identity, and the pose the solver put it at (ADR-233). Store-backed
@@ -1332,6 +1332,17 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
         if isinstance(source.get("houses"), list):
             row["houses"] = [str(name) for name in source["houses"]]
         components.append(row)
+    if captured.get("kind") == "anatomy":
+        # The creature's moving anatomy (ADR-614): the worker's graph stamp
+        # and the boxes above, summarised by the same pure code every front
+        # end shows. Graph-only, so nothing is measured at read time.
+        from CadexAnatomy import anatomy_summary
+
+        return {
+            "revision": revision,
+            "assembly": assembly,
+            **anatomy_summary(by_name.get(assembly, {}).get("anatomy"), components),
+        }
     if captured.get("kind") == "clearance":
         measurements = by_name.get(assembly, {}).get("clearance")
         measured = {
@@ -1617,7 +1628,7 @@ def complete_inspection(captured: Mapping[str, Any]) -> dict[str, Any]:
             raw = _complete_blueprint(captured)
         elif kind == "wiring":
             raw = _complete_wiring(captured)
-        elif kind in {"inventory", "clearance"}:
+        elif kind in {"inventory", "clearance", "anatomy"}:
             raw = _complete_inventory(captured)
         elif kind == "contacts":
             raw = _complete_contacts(captured)

@@ -5,6 +5,7 @@ set(Cadex_Scripts
     Init.py
     CadexEngineSettings.py
     CadexInspection.py
+    CadexAnatomy.py
     CadexModelingSurface.py
     CadexPinResolution.py
     CadexReferenceContracts.py
@@ -27,6 +28,7 @@ set(Cadex_Scripts
     CadexFitReport.py
     CadexEvaluation.py
     CadexAgentGuidance.md
+    CadexAgentStyle.creature.md
     CadexAgentStyle.printed-legged-robot.md
     CadexLinkedPart.py
     CadexProject.py

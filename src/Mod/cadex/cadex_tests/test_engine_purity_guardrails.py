@@ -98,6 +98,9 @@ DECLARED_ENGINE_MODULES = frozenset(
         "CadexGeometryDigest",
         # inspection, pins, tessellation
         "CadexInspection",
+        # The anatomy block (ADR-614): pure graph arithmetic over the
+        # accepted attempt's stamp, served by inspect scope=anatomy.
+        "CadexAnatomy",
         "CadexPinResolution",
         "CadexRouting",
         "CadexBundle",

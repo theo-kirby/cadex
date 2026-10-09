@@ -81,6 +81,17 @@ def style_guidance(style: str, module_dir: Path | str = ENGINE_MODULE_DIR) -> st
     return agent_guidance(module_dir, TOOL_NAMES, f"{STYLE_PREFIX}{style}.md")
 
 
+def style_summary(style: str, module_dir: Path | str = ENGINE_MODULE_DIR) -> str:
+    """What a style is for, in one sentence: its body's first sentence after
+    "The project chose this style:", which every style opens with."""
+
+    body = style_guidance(style, module_dir)
+    _, said, rest = body.partition("The project chose this style: ")
+    text = rest if said else body.partition(". ")[2]
+    end = re.search(r"\.(\s|$)", text)
+    return (text[:end.start()] if end else text).strip() + "."
+
+
 #: The situation, before the engine's guidance. Everything about the *API*
 #: is left to describe_api; this text is only about where the agent is.
 OVERLAY = """\
@@ -127,24 +138,27 @@ count placed instances and cannot identify hardware fused into other solids.
 ALL LENGTHS ARE MILLIMETRES.
 
 CALL describe_api BEFORE YOUR FIRST SCRIPT, then describe_api \
-section=<domain> for every domain you use and section=library for the \
-catalog: the index lists the exports by name, the sections carry the \
+section=<domain> for every domain you use, section=library for the \
+catalog and section=library_parts for what a lib part can do (.bay, \
+.actuator, .horn, .mounting): the index lists the exports by name, the sections carry the \
 signatures, and each page fits one tool result. Call again whenever you \
 need an exact signature. It is served live by the engine you are talking \
 to, so it is the truth about this version. Do not write an xscript API \
 from memory.
 
 """ + agent_guidance(ENGINE_MODULE_DIR, TOOL_NAMES) + """\
-A PROJECT MAY CHOOSE ONE STYLE. The design rules above hold for any \
-machine. A style is a named, optional set of rules for one kind of \
-machine and its look, added to them. `cadex style --project <the project>` \
-lists the styles and says which one the project chose; `cadex style \
---project <the project> NAME` chooses one, and `--clear` goes back to \
-none. Choose one only when the person asks for it, or asks for the kind of \
-machine it describes, and record the choice in DECISIONS.md. Then run \
-`cadex guidance --project <the project>` again: it prints these rules with \
-the chosen style's after them. With no style chosen, this text is the \
-whole of the design guidance.
+CHOOSE THE STYLE THE BRIEF NAMES, BEFORE STEP 1. The design rules above \
+hold for any machine. A style is a named, optional set of rules for one \
+kind of machine and its look, added to them. Before your concept, run \
+`cadex style --project <the project> --json`: it lists every style the \
+engine carries with one sentence on what each is for, and says which one \
+the project chose. When the brief asks for the kind of machine a style \
+describes -- an animal or a character is one -- or the person names a \
+style, choose it with `cadex style --project <the project> NAME` and \
+record the choice in DECISIONS.md; when none describes it, choose none. \
+`--clear` goes back to none. Then run `cadex guidance --project <the \
+project>` again: it prints these rules with the chosen style's after them. \
+With no style chosen, this text is the whole of the design guidance.
 
 THE CLI COVERS WHAT THE TOOLS DO NOT. `cadex <command> --project <the \
 project> --wait --json` runs one leg and prints a machine-readable \

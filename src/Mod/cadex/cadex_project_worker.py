@@ -60,6 +60,159 @@ from cadex_tessellation import generate_display_artifacts, validate_display_requ
 REQUEST_ENV = "CADEX_XSCRIPT_DOMAIN_REQUEST"
 RESULT_ENV = "CADEX_XSCRIPT_DOMAIN_RESULT"
 SCHEMA = "cadex-xscript-project-worker-v1"
+SOURCE_FILENAME = "<cadex-project-xscript>"
+
+#: What one run left behind for its failure report: the script's namespace,
+#: its stdout so far, and the output being built. One worker process runs
+#: one request (a warm worker re-enters ``main``), and ``main`` resets it.
+_SCRIPT_RUN: dict[str, Any] = {}
+
+
+def _reset_script_run() -> None:
+    from cadex_domain_api import track_creation_sites
+
+    _SCRIPT_RUN.clear()
+    track_creation_sites(True)
+
+
+#: Most operands and names one failure report lists.
+_FAILURE_SITE_OPERANDS = 6
+_FAILURE_SITE_NAMES = 3
+
+
+def _script_names(value: Any) -> list[str]:
+    """The script's own names for ``value``: globals and result keys."""
+
+    namespace = _SCRIPT_RUN.get("namespace") or {}
+    names: list[str] = []
+    result = namespace.get("result")
+    if isinstance(result, dict):
+        names.extend(
+            f"result[{key!r}]" for key, item in result.items() if item is value
+        )
+
+    def matches(item: Any) -> bool:
+        return item is value or (
+            type(item).__name__.endswith("Part")
+            and getattr(item, "body", None) is value
+        )
+
+    for key, item in namespace.items():
+        if key.startswith("_") or key == "result" or key in _SCRIPT_RUN.get("staged", ()):
+            continue
+        if matches(item):
+            names.append(key)
+        elif isinstance(item, (list, tuple)) and len(item) <= 256:
+            names.extend(
+                f"{key}[{index}]" for index, entry in enumerate(item) if matches(entry)
+            )
+        elif isinstance(item, dict) and len(item) <= 256:
+            names.extend(
+                f"{key}[{entry_key!r}]" for entry_key, entry in item.items() if matches(entry)
+            )
+        if len(names) >= _FAILURE_SITE_NAMES:
+            break
+    return list(dict.fromkeys(names))[:_FAILURE_SITE_NAMES]
+
+
+def _describe_definition(payload: Mapping[str, Any]) -> dict[str, Any]:
+    from cadex_domain_api import creation_lines, values_with_payload
+
+    call = f"{payload.get('domain') or 'part'}.{payload.get('operation') or '?'}"
+    names: list[str] = []
+    for value in values_with_payload(payload)[:4]:
+        names.extend(_script_names(value))
+    described: dict[str, Any] = {"call": call, "lines": creation_lines(payload)[:5]}
+    if names:
+        described["names"] = list(dict.fromkeys(names))[:_FAILURE_SITE_NAMES]
+    return described
+
+
+def _operands(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The definitions one failing call consumed, each located in the script."""
+
+    def serialized(value: Any) -> bool:
+        return isinstance(value, dict) and {"domain", "operation"} <= set(value)
+
+    found: list[tuple[str, Mapping[str, Any]]] = []
+    arguments = payload.get("arguments") if isinstance(payload.get("arguments"), list) else []
+    properties = payload.get("properties") if isinstance(payload.get("properties"), dict) else {}
+    slots = [(f"argument {index}", item) for index, item in enumerate(arguments)]
+    slots += [(str(key), item) for key, item in properties.items()]
+    for label, item in slots:
+        if serialized(item):
+            found.append((label, item))
+        elif isinstance(item, list):
+            found.extend(
+                (f"{label}[{index}]", entry)
+                for index, entry in enumerate(item)
+                if serialized(entry)
+            )
+    return [
+        {"parameter": label, **_describe_definition(item)}
+        for label, item in found[:_FAILURE_SITE_OPERANDS]
+    ]
+
+
+def _site_phrase(described: Mapping[str, Any]) -> str:
+    lines = list(described.get("lines") or [])
+    names = list(described.get("names") or [])
+    phrase = str(described.get("call") or "")
+    if names:
+        phrase = f"{', '.join(names)} = {phrase}"
+    if lines:
+        phrase += f" (script line{'s' if len(lines) > 1 else ''} {', '.join(map(str, lines))})"
+    return phrase
+
+
+def _exec_line(exc: BaseException) -> int:
+    """The last script line the exception's traceback passed through."""
+
+    line = 0
+    tb = exc.__traceback__
+    while tb is not None:
+        if tb.tb_frame.f_code.co_filename == SOURCE_FILENAME:
+            line = int(tb.tb_lineno)
+        tb = tb.tb_next
+    return line
+
+
+def failure_site(exc: BaseException) -> tuple[dict[str, Any], str] | None:
+    """Where in the script a refused build failed (ADR-617).
+
+    ``({"output", "call", "lines", "names", "inside", "operands"}, sentence)``
+    for a kernel refusal that carries the definition it failed on; the
+    script line alone for an exception the script itself raised; ``None``
+    when neither is known.
+    """
+
+    payload = getattr(exc, "failed_payload", None)
+    output = _SCRIPT_RUN.get("output")
+    if isinstance(payload, Mapping):
+        site: dict[str, Any] = {}
+        if output:
+            site["output"] = str(output)
+        site.update(_describe_definition(payload))
+        inside = [op for op in getattr(exc, "enclosing_operations", []) or [] if op]
+        if inside:
+            site["inside"] = inside
+        operands = _operands(payload)
+        if operands:
+            site["operands"] = operands
+        sentence = "Failing call: " + _site_phrase(site)
+        if inside:
+            sentence += f", nested in {' -> '.join(f'part.{op}' for op in inside)}"
+        if output:
+            sentence += f", while building output {output!r}"
+        if operands:
+            sentence += "; operands: " + "; ".join(
+                f"{item['parameter']}: {_site_phrase(item)}" for item in operands
+            )
+        return site, sentence + "."
+    line = _exec_line(exc)
+    if line:
+        return {"script_line": line}, f"Raised at script line {line}."
+    return None
 
 
 def _execute_project_source(
@@ -76,7 +229,7 @@ def _execute_project_source(
 
     started = time.monotonic()
     operations = 0
-    source_filename = "<cadex-project-xscript>"
+    source_filename = SOURCE_FILENAME
 
     def trace(frame: Any, event: str, _arg: Any):
         nonlocal operations
@@ -111,6 +264,8 @@ def _execute_project_source(
     namespace.update(globals_by_name)
     output = io.StringIO()
     previous_trace = sys.gettrace()
+    _SCRIPT_RUN["namespace"] = namespace
+    _SCRIPT_RUN["staged"] = frozenset(globals_by_name)
     try:
         sys.settrace(trace)
         with redirect_stdout(output):
@@ -121,6 +276,10 @@ def _execute_project_source(
             )
     finally:
         sys.settrace(previous_trace)
+        # Kept whether or not the script raised: a refused build is when
+        # the author's prints matter most, and they used to be dropped with
+        # the StringIO (ADR-620).
+        _SCRIPT_RUN["stdout"] = output.getvalue()[-MAX_STDOUT_CHARS:]
     result = namespace.get("result")
     if not isinstance(result, dict):
         raise TypeError("A project script must assign a dictionary to result.")
@@ -782,6 +941,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
 
         def serialize(name: str, value: Any, domain: str) -> dict[str, Any]:
             nonlocal output_index
+            _SCRIPT_RUN["output"] = name
             cpu_stage(f"output {name}")
             payload = _payload(value)
             item = _serialize_output(
@@ -827,6 +987,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
             expected = [
                 {"name": name, "type": "solid"} for name in grouped["partdesign"]
             ]
+            _SCRIPT_RUN["output"] = None
             cpu_stage("partdesign bodies")
             built, partdesign_validation = validate_and_build_partdesign(
                 document,
@@ -845,6 +1006,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         for name, value in grouped["mesh"].items():
             from cadex_mesh_worker import serialize_mesh_output
 
+            _SCRIPT_RUN["output"] = name
             cpu_stage(f"output {name}")
             payload = _payload(value)
             item = serialize_mesh_output(
@@ -876,6 +1038,7 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
                 _stamp_source_output(item, component_sources)
                 assembly_outputs.append(item)
                 outputs.append(item)
+            _SCRIPT_RUN["output"] = None
             validations["assembly"] = validate_and_solve_assembly(
                 document,
                 dict(grouped["assembly"]),
@@ -1176,6 +1339,7 @@ def _run_preview(request: dict[str, Any], root: Path) -> dict[str, Any]:
 
 def main() -> int:
     result_path = Path(os.environ[RESULT_ENV]).resolve()
+    _reset_script_run()
     try:
         request_path = Path(os.environ[REQUEST_ENV]).resolve()
         root = request_path.parent
@@ -1199,6 +1363,17 @@ def main() -> int:
         details = getattr(exc, "details", None)
         if isinstance(details, dict):
             payload["details"] = details
+        try:
+            located = failure_site(exc)
+        except Exception:  # the report must never cost the refusal itself
+            located = None
+        if located is not None:
+            site, sentence = located
+            error = str(payload['error']).rstrip()
+            payload["error"] = f"{error}{'' if error.endswith('.') else '.'} {sentence}"
+            payload["details"] = {**dict(payload.get("details") or {}), "failure_site": site}
+        # The script's prints, which a refused build used to drop (ADR-620).
+        payload["stdout"] = str(_SCRIPT_RUN.get("stdout") or "")
     _write_json(result_path, payload)
     return 0 if payload.get("ok") else 1
 

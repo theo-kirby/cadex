@@ -25,6 +25,7 @@ two layers (ADR-560):
 | style | for | file |
 |---|---|---|
 | `printed-legged-robot` | a small robot printed around hobby or bus servos, boards, a battery and sensors, that stands and walks on legs | `CadexAgentStyle.printed-legged-robot.md` |
+| `creature` | a robot in an animal's or a character's form, articulated like the animal and built as a real machine (§11) | `CadexAgentStyle.creature.md` |
 
 **Which rule is where.** The question asked of every rule is whether it
 would be wrong for a crane, a wheeled base or a fixed arm. If it would, it
@@ -49,10 +50,13 @@ is in a style.
 | a learned task: speed bounded both ways, a target the intended motion reaches most easily, command range centred on the rest pose, progress only while upright, a ceiling on anti-degenerate charges | base | true of any learned motion (ADR-565) |
 | training practice: checkpoints on, keep the policy `evaluate` passes, when to warm-start, never tighten the filter on one | base (CLI guidance) | true of any task (ADR-565) |
 | tapered limb plates with a lightening window and round bosses; the knee actuator inside the thigh | style | a legged look; the actuator placement is the owner's taste, *owner to confirm* (ADR-565) |
+| a machine in an animal's form lists its moving anatomy and joints every region, or records a measured reason; the design is not done while a region is rigid without one | base | conditional on the brief, like a self-moving machine's kit (ADR-627) |
+| the look bars never decide that a design is done | base | a met bar is a floor (ADR-627) |
+| the actuator is the joint and shows; panels wrap the mechanism; segments where it bends; a real sensor as the eye; likeness by silhouette | style `creature` | an animal's look (§11, ADR-626) |
 | compact hull feet with a flat strip between twin keels; hips wide enough, inward roll limited, for the feet to pass; pay for the step; a sole bounded by the standing height; the roll limit from where the feet meet | style | legged only (ADR-565, ADR-566) |
 
-**The rest of this document is the `printed-legged-robot` style's
-evidence**, from orun1's ratings, together with the base rules that came
+**§1–§10 are the `printed-legged-robot` style's evidence; §11 is the
+`creature` style's**, from orun1's ratings, together with the base rules that came
 out of the same work (marked *base* where they appear). The ledger of what
 the reference legged-robot project added to the base and the style, row by
 row with its evidence, is `docs/probes/orun4/LESSONS.md` (ADR-565).
@@ -441,3 +445,42 @@ machine; the style adds what it fixes at step 1 and step 4:
   authority on whether a design clears the owner's bar, and this document
   does not override it. If they disagree, the judge wins, and this
   document is what changes.
+
+## 11. The creature style (ADR-626)
+
+**Where it comes from.** The owner's rated reference set
+(`reference/v2/`, gitignored: 47 images deduplicated from
+`reference/Cadex-Reference.pdf`, rated and grouped by the owner on
+2026-10-09, seven of them starred as north stars), and a blind-rated
+baseline sweep of six design-only QDD creatures on the Cadex of that day
+(`reference/v2/cbase-findings.md`). The sweep's mean was 2.3 of 5 overall
+and 2.6 for "every part designed"; no design jointed a head, jaw, tail,
+arm or wing, and the only two designs with a jointed neck rated best.
+
+**What the north stars share, and the rule each became.**
+
+| trait in the references | rule in the style |
+|---|---|
+| the actuator is the joint and shows: housings grown around drives, a ring or face in the accent | THE ACTUATOR IS THE JOINT, AND IT SHOWS |
+| the shell sits on the masses; slender links do the work | SHELLS SIT ON THE MASSES; LINKS DO THE WORK |
+| gently bent or curved panels that form-fit the mechanism (owner, 2026-10-09: curved is fine; a cosmetic shell is the defect) | PANELS WRAP THE MECHANISM, checked by the build's shell check |
+| necks and tails broken into discrete segments with joint rings | SEGMENTS, NOT A SKIN, WHERE IT BENDS |
+| a camera head; a ring eye that is a real part | THE CHARACTER IS A REAL SENSOR |
+| two tones plus one functional accent | TWO TONES AND ONE FUNCTIONAL ACCENT |
+| likeness from silhouette and proportion, not surface | LIKENESS BY SILHOUETTE AND PROPORTION |
+| the real-product bar (a production arm, a precision hexapod) | THE BAR IS A REAL PRODUCT |
+
+The articulation rule is split: the base says a machine in an animal's form
+joints its anatomy or records why not (ADR-627), and the style gives the
+starting joint list and the actuator sizing that makes it affordable.
+
+**Where it differs from `printed-legged-robot`.** That style says no face
+and never one soft skin. This one keeps no face, but lets the head's real
+sensor read as the eye, and allows curved panels as long as they wrap what
+they cover. Its scale is set by its actuators, not by a servo horn.
+
+**Exists today versus target.** The style, the anatomy block, the shell
+check, `lib.panel`, `lib.housing` and the small QDDs exist. Whether designs
+made with them rate higher is measured by re-running the baseline's six
+briefs into the same blind pool.
+

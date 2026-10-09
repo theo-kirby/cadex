@@ -37822,6 +37822,413 @@ schema name.
 
 Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
 
+## ADR-608 — A light QDD tier: the AK60-6 V3.0 and the AK45-10 V3.0 (2026-10-09)
+
+**Decision.** `QDD_ACTUATORS` gains `cubemars-ak60-6-v3` (6:1, 48 V, 9 N·m
+peak, 3 N·m rated, 640 rpm no-load, 380 g, Ø79 × 43 mm) and
+`cubemars-ak45-10-v3` (10:1, 24 V, 7 N·m peak, 2.5 N·m rated, 180 rpm
+no-load, 262 g, Ø53 × 45.2 mm), every figure from CubeMars' product pages
+and 2D drawings (PROVENANCE §8i), each row in the existing schema with the
+same derived fields. Two rules widen the schema without changing the old
+rows. A rear face with its own bolt circle names it in
+`rear_mount_count`/`rear_mount_pcd_mm`/`rear_mount_angle_offset_degrees`
+(the AK45-10: 4-M2.5 on Ø47 against 6-M2.5 on Ø47.5 in front), and
+`lib.qdd` publishes `spec["rear_mount_holes"]` for every row. A figure the
+manufacturer does not publish is `None` and says so in `rating_notes`:
+the AK60-6's backlash. The `qdd_actuators` catalog notes name the two
+tiers.
+
+**Why.** A blind-rated sweep of six agent-designed QDD animals found every
+agent left the head, jaw, tail and wings rigid, partly because the only QDDs
+were 0.5 kg and 100 mm across, so each extra joint "costs 0.5 kg". The AK60-6
+and AK45-10 are a half and a third of that, with the torque a neck or tail
+joint needs.
+
+**Tests.** `test_library.py::test_light_qdds_pin_manufacturer_ratings_and_drawn_bolt_circles`;
+the catalog SKU pin, the real-kernel envelope test extended to both rows
+(valid single solid, bounds, mass, open bores front, rear and output).
+
+**Consequences.** The AK45-10 runs from 24 V and the others from 48 V: a
+design mixing them needs two buses. `CadexAgentGuidance.md` still calls
+the QDDs "about half a kilogram each". That file has another owner, so
+this change leaves it alone.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-609 — `QddPart.mounting()`, and output-flange bolts turn with the flange (2026-10-09)
+
+**Decision.** `qdd.mounting(wall=4, face="front", length=None,
+output_wall=None, output_length=None)` returns `hold.stator` and
+`hold.output` (`QddHold`: `face`, `screw`, `length_mm`, `wall_mm`, `holes`,
+`screws`). Each side is one `lib.bolt` per hole at the case's own thread,
+head `wall` out from the face, shank on the hole axis. Its length is the
+wall plus the drawn thread depth, rounded down to a millimetre, so the tip
+stops in the tapped hole. A screw that would bottom out, or engage under
+half its diameter, is refused. `holes` are normal-fit clearance holes
+through the wall.
+
+The QDD's output-flange holes join its published mount axes, at
+`output_thread`, marked `output: true`. `mounting_summary` never counts
+them as holding the actuator: a bolt there holds the link to the flange.
+`CadexFitReport.output_bolt_pairs` names each bolt that lies on an output
+axis of a drive at the solved pose and does not overlap it there. The
+clearance sweep does not judge such a pair's overlap with that drive.
+
+**Why.** The catalog body is one solid, welded to the stator, but the
+flange it carries turns with the driven link. Swinging the joint therefore
+drove every output screw through the case (12 mm³ and up on the AK45-10
+fixture), and agents dropped the output screws: "they would plough through
+the single-solid QDD envelope when the joint turns". The QDD also had no
+`.mounting()`, unlike boards (ADR-493). Splitting the body into stator and
+rotor solids was rejected for now. It changes every placed QDD's component
+structure and needs an undrawn flange diameter for each row.
+
+**Tests.** `test_library.py::test_qdd_mounting_puts_a_screw_on_every_hole_and_stops_in_the_thread`
+(all four SKUs, front, rear and output), `…_follows_the_placement_and_refuses_a_bottoming_screw`,
+the mount-axes pin (22 axes, 6 marked output);
+`test_mounting_check.py::test_a_bolt_in_a_qdd_output_flange_turns_with_it_in_the_sweep`
+(published values), and `…_is_held_and_its_output_screws_turn_on_the_real_kernel`. In that
+real-kernel test an AK45-10 on its rear screws in a printed bracket, with a link
+on its output swung ±90°, reads held by screws, static fit pass and sweep
+0 failing, while the raw sweep rows show the three output screws inside
+the case.
+
+**Consequences.** A bolt on an output axis that is clean at the solved pose
+is trusted through any motion against that one drive, though a joint that
+does not turn about the QDD's own axis would move the flange in a way the
+real part cannot. The screws still need `contacts=` with the actuator: a
+shank in a 0 mm-away tapped bore reads below clearance otherwise, as every
+catalog tapped hole does. The worker bundle imports the installed
+`CadexCatalog`, so the real-kernel checks need `pixi run build-engine`
+(or a payload) before they see the new rows.
+
+## ADR-624 — The hardware-silhouette share is reported, not a ceiling (2026-10-09)
+
+**Context.** `look` and `render` held P1, `hardware_silhouette_share`, to
+ot10's frozen ≤ 0.20. ADR-479 already told the agent to read it as how much
+shows, but the bar and its `meets: false` stayed. In the blind-rated
+baseline sweep of six QDD creatures (`reference/v2/cbase-findings.md`) the
+audit found it pushing the wrong way: a ceiling on visible hardware rewards
+covering actuators, while every one of the owner's north-star references
+shows the actuator as the joint.
+
+**Decision.** `CadexStudio.PROXY_BARS` drops P1. `design_proxies` still
+measures it, with `bar: null`, `meets: null` and a `reading` saying it is
+reported, not a bar; `look`'s `measures` carry the `reading`, and
+`describe_proxies` writes "(reported, no bar)". P2 and P3 keep their frozen
+bars. `docs/probes/ot10/contract.json` is unchanged: it is the record every
+earlier probe was scored on.
+
+**Tests.** `cli/tests/test_ot10_contract.py` (live bars are P2 and P3; the
+contract keeps P1), `cli/tests/test_look.py`, `cli/tests/test_walk.py`.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-625 — The agent chooses the style its brief names (2026-10-09)
+
+**Context.** ADR-560 made styles optional and chosen "only when the person
+asks". In the baseline sweep no agent ran `cadex style`, so no style was
+ever read, and the only style that existed was servo-scale.
+
+**Decision.** The overlay's style paragraph is now CHOOSE THE STYLE THE
+BRIEF NAMES, BEFORE STEP 1: run `cadex style --project P --json`, which now
+lists every style with one sentence on what it is for (`style.about`, and
+one note per style on a bare report, from `guidance.style_summary`), and
+choose the one that describes the machine the brief asks for (an animal or
+a character is one), else none. No style is on by default; the choice is
+the agent's, recorded in DECISIONS.md.
+
+**Tests.** `cli/tests/test_agent_guidance.py`.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-626 — The `creature` style (2026-10-09)
+
+**Context.** The owner rated 47 deduplicated references and starred seven
+north stars (an ostrich-like biped, a precision hexapod, a chicken, a
+greyhound, a production desktop arm, a panther, a jerboa poster). The
+baseline sweep's creatures averaged 2.3 of 5 overall. Their shells were
+lofts sized by eye that floated over the electronics, and their appendages
+were rigid. The owner's correction: curved panels are good when they
+form-fit the mechanism; a cosmetic shell is the defect.
+
+**Decision.** `Mod/cadex/CadexAgentStyle.creature.md`, shipped in the
+payload: the anatomy as the joint list; actuators sized to the joint; the
+actuator is the joint and shows (`lib.housing`); shells on the masses,
+slender links doing the work; panels grown from what they cover
+(`lib.panel`) and checked by the shell check; segments where it bends; a
+real sensor as the eye; two tones and one functional accent; likeness by
+silhouette and proportion; the real-product bar. `docs/DESIGN-LANGUAGE.md`
+§11 is its evidence.
+
+**Tests.** `cadex_tests/test_agent_guidance.py`
+(`test_the_creature_style_carries_the_north_star_rules_and_not_the_legged_ones`,
+and the payload and well-formedness checks every style passes).
+
+## ADR-615 — The xscript sandbox provides `math` (2026-10-09)
+
+**Decision.** The sandbox's builtins carry `math`: a read-only namespace
+(`cadex_domain_worker.SANDBOX_MATH`), not the module object, holding the
+deterministic whitelist `SANDBOX_MATH_NAMES` — the constants `pi e tau inf
+nan`, the trigonometric and hyperbolic functions and their inverses,
+`atan2`, `sqrt cbrt hypot dist exp expm1 exp2 log log2 log10 log1p pow`,
+`radians degrees`, `floor ceil trunc fabs fmod remainder modf copysign`,
+`isclose isfinite isinf isnan` and `fsum prod gcd lcm isqrt`. `factorial`,
+`comb` and `perm` are left out. `import` stays refused (ADR-138); `import
+math` and `from math import …` are refused with "`math` is already provided
+-- delete the import and call math.sin(...) … directly". The project pack's
+`instructions` say so.
+
+**Why.** Six audited sessions (cbase-*, 2026-10-09) wrote Taylor-series
+sin/cos and Rodrigues rotations by hand because the sandbox had no `math`.
+Every name kept is a pure function of its arguments or a constant, so the
+determinism contract holds: the same script built in two fresh projects on
+the real engine gave the same digest (`090d85f4…`). A namespace rather than
+the module keeps `__spec__`/`__loader__` out of reach of a computed
+`getattr` (ADR-616).
+
+**Tests.** `src/Mod/cadex/cadex_tests/test_script_refusal_diagnostics.py`
+(`test_math_is_provided_and_deterministic`,
+`test_math_is_read_only_and_only_the_whitelist`,
+`test_import_math_is_refused_with_the_fix`).
+
+**Consequences.** A script may call `math.*` with no import. The source
+policy's import refusal is unchanged in substance.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-616 — Safe introspection in the sandbox: getattr, hasattr, dir, type (2026-10-09)
+
+**Decision.** The sandbox's builtins gain `getattr(obj, name[, default])`
+and `hasattr(obj, name)`, which refuse a non-`str` name, a name starting
+with `_`, and the frame attributes `SANDBOX_BLOCKED_ATTRIBUTES` (`gi_frame
+gi_code cr_frame cr_code ag_frame ag_code tb_frame tb_next f_back f_globals
+f_locals f_builtins f_code`); `dir(obj)` listing public names only and
+`dir()` the script's own; one-argument `type(obj)` (the class factory is
+refused); `isinstance`, `callable`, `repr`; and `AttributeError`,
+`KeyError`, `IndexError`, `ZeroDivisionError`. The AST source policy also
+refuses those frame attributes written as attributes
+(`CadexScriptedDomains._BLOCKED_ATTRIBUTES`, test-held equal to the
+worker's set).
+
+**Why.** The sessions probed lib parts by trial refusal because `dir`,
+`hasattr`, `getattr` and `type` were undefined names. The security model is
+the AST policy's "no private attribute", so the computed forms apply the
+same rule at run time. The frame attributes were already a gap in that
+rule -- a generator's `gi_frame.f_back.f_globals` reaches the worker's own
+module globals with no underscore -- and a `getattr` that honoured only the
+underscore would have been a second door to it, so both doors close.
+
+**Tests.** `test_script_refusal_diagnostics.py`
+(`test_safe_introspection_works_on_public_names`,
+`test_introspection_refuses_private_dunder_and_frame_names`,
+`test_type_is_one_argument_and_frames_are_refused_by_the_policy`,
+`test_the_two_frame_attribute_lists_are_one_list`); real engine: a script
+using `getattr(part, "box")`, `hasattr`, `dir(lib)` and `isinstance` was
+accepted.
+
+**Consequences.** A script naming a frame attribute is now refused by the
+source policy (none in the tree did).
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-617 — A kernel refusal names the failing call; a kernel crash is a refusal (2026-10-09)
+
+**Decision.** (1) While a project worker runs, every `DomainValue` records
+the script line that made it (`cadex_domain_api.track_creation_sites`,
+`creation_lines`), in a registry beside the payload and never in it. A part
+build that raises keeps the payload it failed on and appends each enclosing
+call (`cadex_part_worker._note_failure_site`); the worker's failure report
+turns that into `details.failure_site` -- `output`, `call`, `lines`, the
+script's `names` for the value (globals, list and dict entries, result
+keys), `inside`, and `operands` located the same way -- and appends a
+sentence to `error`. An exception the script raised itself gets `Raised at
+script line N.` (2) Around each crash-prone part operation (fillet,
+chamfer, fuse, cut, common, section, general_fuse, slice, defeature,
+offset, offset2d, thicken, loft, loft_cage, sweep, mate) the worker writes
+`kernel.json` beside its CPU ledger and clears it on exit. A worker that
+leaves no `result.json` with a breadcrumb in flight is refused as
+`DOMAIN_WORKER_NO_RESULT` with `domain_failure_stage: "kernel_crash"`,
+`observed.kernel_operation`, a message naming the call, and a correction.
+
+**Why.** "api.fuse: declared solid but OpenCascade produced Compound
+containing 2 solids" in a script with forty fuses, and a fillet segfault in
+`ChFi3d_FilBuilder::PerformTwoCorner` that came back as "exited without a
+result", were bisected by hand in the audited sessions. On the real engine
+now: `… Compound containing 2 solids. Failing call: result['pelvis'],
+pelvis = part.fuse (script line 5), while building output 'pelvis';
+operands: argument 0[0]: hip_l = part.box (script line 2); argument 0[1]:
+hip_r = part.box (script line 3).` -- and the cbase-heron-a crash, rebuilt
+from its transcript: `The isolated domain worker crashed (SIGSEGV) inside
+OpenCascade while running part.fillet made at script line 328 (arg1=2.0,
+on_failure=skip), during 'output foot_l_body'.` Line 328 is that fillet.
+Lines stay out of the payload so definitions, memo keys and digests do not
+move when a comment does.
+
+**Tests.** `test_script_refusal_diagnostics.py` (creation lines beside the
+payload, the named fuse refusal, nesting, script-raised lines, the crash
+refusal through `execute_candidate`, the breadcrumb written and cleared).
+
+**Consequences.** The failure envelope's keys are unchanged; `error` grows
+a sentence. Each crash-prone build costs two small file writes.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-618 — A solver refusal says what the solver said, and reaches the model whole (2026-10-09)
+
+**Decision.** A native-solver refusal appends the solver's own message,
+every joint it did not report satisfied (mapped from document names such
+as `CandidateJoint12` to output names) and the remaining degrees of
+freedom (`cadex_assembly_worker._solver_failure_summary`); `details` adds
+`solver_message` and `implicated_joints`. A silent failure says what a
+silent failure usually is. The bridge's model view of every refusal
+(`bridge.refusal_view`) keeps every envelope key and bounds the bulk in
+`observed`: OCCT's progress meter is dropped from `stderr`, `stderr` and
+`traceback` keep 3,000-character tails, `component_placements` becomes a
+count, `native.joints` keeps the unsatisfied rows, and long
+`joint_outputs` lists are cut.
+
+**Why.** The `solver_error (code -1)` detail was not truncated by the
+engine but by the agent harness: on cbase-deinonychus-a the refusal was
+293,000 characters -- 125 placement matrices first in sorted order, an
+OCCT progress meter last -- and the harness kept the first and last 5,000.
+The solver's message and the blamed joints were in the cut middle. On the
+real engine now (two crossed hinges on one lever): `…solver_error (code
+-1), reporting conflicting constraints, redundant constraints, partially
+redundant constraints. The solver said: 'vector::_M_range_check: …'. Joints
+it implicated: hinge_a (conflicting), hinge_b (conflicting). Remaining
+degrees of freedom: 0.`, and the MCP result was 9,059 characters.
+
+**Tests.** `test_script_refusal_diagnostics.py` (summary by output name,
+silent failure); `cli/tests/test_refusal_view.py` (a 250,000-character
+refusal reaches the model under 15,000 with its diagnosis).
+
+**Consequences.** The engine reply and the session row are unchanged; only
+the model's view is bounded.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-619 — describe_api lists what each lib part can do (2026-10-09)
+
+**Decision.** `describe_api.library.part_classes` lists every public class
+of `cadex_library_api` but the API and its error -- `QddPart`, `ServoPart`,
+`BoardPart`, `BoardMounting`, `WheelPart`, `FootPadPart`, `BatteryPart`,
+`LibraryPart` -- with `returned_by` (the calls annotated as returning it),
+public `attributes`, and each public method's name, signature (no `self`)
+and first paragraph, generated from the classes
+(`CadexScriptedRuntime._library_part_classes`). The bridge serves it as
+its own page, `describe_api section=library_parts` (7,251 characters); the
+index lists each class's method names, and the library section leaves the
+classes out, because it is already 20,963 of the 21,500-character budget.
+
+**Why.** The audited sessions could not find `QddPart.actuator`,
+`.joint_dynamics`, `.bay`, `ServoPart.horn` or `BoardPart.mounting()`: the
+library section listed only the generators.
+
+**Tests.** `test_script_refusal_diagnostics.py::test_describe_api_lists_every_lib_part_method`;
+`cli/tests/test_refusal_view.py` (the section, the index, the library
+page); `cli/tests/test_client.py` (the live page under budget); the golden
+`response_schemas/describe_api.json` carries the shape.
+
+**Consequences.** One new section name; `VIEW_ARGS`, the describe_api tool
+text and the CLI guidance name it. `cadex_library_api.py` is unchanged.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-620 — A refused build carries the script's prints (2026-10-09)
+
+**Decision.** The project worker keeps the script's stdout whether or not
+it raised and sends it in its failure report; the runtime puts the
+worker's `stdout` in the refusal's `observed.stdout` (the process's own
+stdout only from a worker that sent none). The CLI envelope gains
+`stdout`, accepted or refused, and the prose report prints a refused run's
+prints under its error.
+
+**Why.** The StringIO holding a script's prints was dropped with the
+exception, so a print was readable only when the build worked -- exactly
+when it was needed least. Real engine: a script printing three leg lengths
+then dividing by zero now reports `division by zero. Raised at script line
+4.` followed by the three lines.
+
+**Tests.** `test_script_refusal_diagnostics.py`
+(`test_prints_survive_a_script_that_raises`,
+`test_the_worker_failure_report_carries_stdout_and_the_site`).
+
+**Consequences.** `observed.stdout` on a refusal is now the script's
+output, not FreeCADCmd's.
+
+## ADR-613 — A creature declares its moving anatomy: `assembly.anatomy` (2026-10-09)
+
+**Decision.** `assembly.anatomy(region, components, *, reason=None,
+label="")` names one region of a creature's moving anatomy — free text, 1 to
+48 characters, the suggested vocabulary spine, neck, head, jaw, tail,
+arm_l/arm_r, leg_*, wing_*, toe — and the `assembly.component` values it is
+made of. It is an intermediate on `assembly.sensor`'s terms: passed to
+`assembly.assembly(..., anatomy=[...])`, never returned, registered in the
+pack's exports and `_DOMAIN_OPERATION_OUTPUT_TYPES` but not its output
+types, and listed by `describe_api`. `reason=` (non-empty, at most 600
+characters) is how a region is deliberately rigid or passive. The assembly
+refuses a region whose component it does not list, a region name declared
+twice and a component in two regions. Undeclared, nothing enters the
+definition, so no digest moves.
+
+**Why.** In the cbase sweep (2026-10-09) no agent-designed deinonychus,
+heron or leopard jointed the head, jaw, tail, forelimbs or wings; only
+herons jointed the neck, and they rated best. Agents fixed the DOF count in
+their first minutes and nothing they read asked them to revisit it. The
+guidance rule that follows tells creature designs to list their moving
+anatomy and give each region a joint and actuator or a measured reason; this
+is the declaration it points at.
+
+**Tests.** `src/Mod/cadex/cadex_tests/test_anatomy.py` (registration,
+`describe_api`, properties, refusals); `test_project_tool_surface.py`.
+
+**Consequences.** The `anatomy` export joins the assembly API contract,
+as `goal` did (ADR-462). A script that declares none keeps its definition,
+revision and digest: a copy of `cbase-heron-a` opened and restored at its
+accepted revision on this engine.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-614 — Every build reply measures the anatomy: the `anatomy` block (2026-10-09)
+
+**Decision.** The assembly worker stamps `anatomy` beside the assembly's
+definition (as `attachments` is): the declared regions by component output
+name, every unsuppressed joint with kind, components and actuator count
+(the most any one export or dynamics run declares), the root component and
+the world geometry. `CadexAnatomy.anatomy_summary` (pure, in the service's
+closure) joins it to the inventory's boxes and is served as `inspect
+scope=anatomy`: per region `status` (`articulated`, `passive only`, `root`,
+`rigid`, `rigid, no reason`), its joints and their drive (`actuated`,
+`loop` — passive in a closed loop an actuator drives — or `passive`),
+`joint_dof`, `actuated_dof`, `parent_region`, `welded_to`, `reason`; a
+`verdict` (`complete` only when every region is articulated, the root, or
+has a reason; `incomplete`; `undeclared`; `unavailable`); and, declared or
+not, `rigid_appendages` — each branch one fixed joint welds onto a rigid
+body that is at least 15 % of the design's extent and reaches 8 % of it past
+the rest of the body. The CLI bridge reads the scope after every modelling
+op and puts `CadexAnatomy.anatomy_view` on the reply as `anatomy`; `look`
+adds `measures.anatomy`. `inspect`'s scope list gains `anatomy`; no cadexd
+op, argument or golden changes.
+
+**Why.** A declaration nobody measures is a claim. The block makes "done"
+visible: on `cbase-heron-a` with its regions declared, the real engine
+reports the neck `articulated` (one QDD and three loop joints), the head
+`rigid, no reason` welded to the neck with `w_head` protruding 152 mm along
++x, both feet rigid with no reason, and seven actuated DOF; and the same
+summary over `cbase-deinonychus-a`'s accepted graph, undeclared, finds its
+welded tail protruding 450 mm along −x.
+Graph-only, so a build pays no geometry call for it.
+
+**Tests.** `test_anatomy.py` (stamp, summary, loop drive, shared bodies,
+appendages, view, scope); `test_engine_purity_guardrails.py` (closure);
+`cli/tests/test_mcp_protocol.py` (the block on a build reply, an older
+engine without the scope), `test_look.py`, `fake_cadexd.anatomy_value`.
+
+**Consequences.** Advisory: nothing is refused. A design-only project
+declares no actuator (none without an `assembly.mjcf` or dynamics run), so
+its jointed regions read `passive only`. Revisions accepted before this read
+`unavailable` until rebuilt.
 ## ADR-621 — A closed loop is swept from its limited joints, re-closed at every sample; a redundant linkage is counted per linkage (2026-10-09)
 
 **Context.** Audits of six cbase design sessions (QDD robot animals with

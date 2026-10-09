@@ -135,6 +135,85 @@ def cpu_stage(stage: str) -> None:
         return
 
 
+#: The breadcrumb a worker leaves beside its CPU ledger while a crash-prone
+#: kernel call is running (ADR-617). A segfault inside OCCT writes no
+#: ``result.json``, so this file is the only account of what was running;
+#: the runtime reads it and names the call.
+KERNEL_BREADCRUMB_NAME = "kernel.json"
+_kernel_stack: list[dict[str, Any]] = []
+
+
+def _kernel_scalars(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value if not isinstance(value, str) or len(value) <= 80 else value[:80]
+    if isinstance(value, (list, tuple)) and len(value) <= 6 and all(
+        item is None or isinstance(item, (bool, int, float)) for item in value
+    ):
+        return list(value)
+    return None
+
+
+def _kernel_entry(payload: Any) -> dict[str, Any]:
+    from cadex_domain_api import creation_lines
+
+    operation = str(payload.get("operation") or "")
+    arguments = payload.get("arguments") if isinstance(payload.get("arguments"), list) else []
+    properties = payload.get("properties") if isinstance(payload.get("properties"), dict) else {}
+    scalars = {
+        f"arg{index}": _kernel_scalars(item)
+        for index, item in enumerate(arguments)
+        if _kernel_scalars(item) is not None
+    }
+    scalars.update(
+        {
+            str(key): _kernel_scalars(item)
+            for key, item in properties.items()
+            if _kernel_scalars(item) is not None and key != "edges"
+        }
+    )
+    current = _progress.get("current") or {}
+    return {
+        "operation": operation,
+        "lines": creation_lines(payload)[:5],
+        "stage": str(current.get("stage") or ""),
+        "scalars": dict(list(scalars.items())[:8]),
+    }
+
+
+class kernel_operation:
+    """Context manager: one crash-prone kernel call is in flight."""
+
+    def __init__(self, payload: Any) -> None:
+        self._payload = payload
+        self._path: Path | None = None
+
+    def _write(self) -> None:
+        try:
+            _write_json(self._path, {"in_flight": list(_kernel_stack)})
+        except OSError:
+            return
+
+    def __enter__(self) -> "kernel_operation":
+        progress = os.environ.get(PROGRESS_ENV)
+        if not progress or not isinstance(self._payload, dict):
+            return self
+        self._path = Path(progress).with_name(KERNEL_BREADCRUMB_NAME)
+        try:
+            entry = _kernel_entry(self._payload)
+        except Exception:  # a breadcrumb must never fail the build it marks
+            entry = {"operation": str(self._payload.get("operation") or "")}
+        _kernel_stack.append(entry)
+        self._write()
+        return self
+
+    def __exit__(self, *_exc: Any) -> None:
+        if self._path is None:
+            return
+        if _kernel_stack:
+            _kernel_stack.pop()
+        self._write()
+
+
 #: How many CPUs a worker may run on. RLIMIT_CPU is charged across every
 #: thread, and OCCT sizes its pools from the CPUs it can see, so without this
 #: the same script costs four times the CPU-seconds on a 32-core box that it
@@ -188,8 +267,145 @@ def _resource_limits(request: dict[str, Any]) -> None:
     apply(resource.RLIMIT_NOFILE, 64)
 
 
+#: The ``math`` names a script may use (ADR-615). Every one is a pure
+#: function of its arguments or a constant, so the determinism contract --
+#: same script, same parameter values, same model -- holds exactly as it
+#: does for the arithmetic operators a script already had. Left out: the
+#: integer combinatorics (``factorial``, ``comb``, ``perm``), whose cost
+#: grows with the argument rather than staying a float operation, and
+#: nothing here reads a clock, a seed or the environment.
+SANDBOX_MATH_NAMES = (
+    "pi", "e", "tau", "inf", "nan",
+    "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
+    "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",
+    "sqrt", "cbrt", "hypot", "dist", "exp", "expm1", "exp2",
+    "log", "log2", "log10", "log1p", "pow",
+    "radians", "degrees",
+    "floor", "ceil", "trunc", "fabs", "fmod", "remainder", "modf",
+    "copysign", "isclose", "isfinite", "isinf", "isnan",
+    "fsum", "prod", "gcd", "lcm", "isqrt",
+)
+
+
+class _SandboxMath:
+    """A read-only ``math`` for the script: the public names, nothing else.
+
+    Not the real module object. ``math`` itself would hand out ``__spec__``
+    and ``__loader__``, which the AST policy already refuses to name but a
+    computed ``getattr`` would otherwise reach; this namespace has only the
+    whitelisted functions and constants, and cannot be written to.
+    """
+
+    __slots__ = ("_names",)
+
+    def __init__(self) -> None:
+        import math as _math
+
+        names = {}
+        for name in SANDBOX_MATH_NAMES:
+            if hasattr(_math, name):  # cbrt/exp2 arrived in 3.11
+                names[name] = getattr(_math, name)
+        object.__setattr__(self, "_names", MappingProxyType(names))
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return object.__getattribute__(self, "_names")[name]
+        except KeyError:
+            raise AttributeError(
+                f"math.{name} is not available in an xscript; the sandbox's "
+                f"math has: {', '.join(sorted(object.__getattribute__(self, '_names')))}."
+            ) from None
+
+    def __setattr__(self, _name: str, _value: Any) -> None:
+        raise TypeError("The xscript math namespace is read-only.")
+
+    def __dir__(self) -> list[str]:
+        return sorted(object.__getattribute__(self, "_names"))
+
+    def __repr__(self) -> str:
+        return "<xscript math>"
+
+
+SANDBOX_MATH = _SandboxMath()
+
+
+#: Public attribute names that reach an interpreter frame, and through it
+#: the worker's own globals. The source policy refuses them as attributes
+#: (``CadexScriptedDomains._BLOCKED_ATTRIBUTES``, the same set), so a
+#: computed ``getattr`` must refuse them too or it would be a way around it.
+SANDBOX_BLOCKED_ATTRIBUTES = frozenset(
+    {
+        "gi_frame", "gi_code", "cr_frame", "cr_code", "ag_frame", "ag_code",
+        "tb_frame", "tb_next", "f_back", "f_globals", "f_locals",
+        "f_builtins", "f_code",
+    }
+)
+
+
+def _public_name(function: str, name: Any) -> str:
+    if type(name) is not str:
+        raise TypeError(f"{function}() attribute name must be a str.")
+    if name.startswith("_") or name in SANDBOX_BLOCKED_ATTRIBUTES:
+        raise ValueError(
+            f"{function}(obj, {name!r}): private, dunder and frame attributes "
+            "are not allowed in an xscript, the same rule the source policy "
+            "applies to obj._name."
+        )
+    return name
+
+
+_MISSING = object()
+
+
+def _sandbox_getattr(obj: Any, name: Any, default: Any = _MISSING) -> Any:
+    """``getattr`` for public names only (ADR-616)."""
+
+    clean = _public_name("getattr", name)
+    if default is _MISSING:
+        return getattr(obj, clean)
+    return getattr(obj, clean, default)
+
+
+def _sandbox_hasattr(obj: Any, name: Any) -> bool:
+    """``hasattr`` for public names only (ADR-616)."""
+
+    return hasattr(obj, _public_name("hasattr", name))
+
+
+def _sandbox_dir(*args: Any) -> list[str]:
+    """``dir(obj)``, public names only; ``dir()`` lists the script's names."""
+
+    if len(args) > 1:
+        raise TypeError(f"dir expected at most 1 argument, got {len(args)}.")
+    if args:
+        names = dir(args[0])
+    else:
+        names = list(sys._getframe(1).f_locals)
+    return sorted(name for name in names if not str(name).startswith("_"))
+
+
+def _sandbox_type(obj: Any, *rest: Any) -> type:
+    """``type(obj)``; the three-argument class factory is not offered."""
+
+    if rest:
+        raise TypeError("type() takes one argument in an xscript.")
+    return type(obj)
+
+
 _SAFE_BUILTINS = MappingProxyType(
     {
+        "math": SANDBOX_MATH,
+        "getattr": _sandbox_getattr,
+        "hasattr": _sandbox_hasattr,
+        "dir": _sandbox_dir,
+        "type": _sandbox_type,
+        "isinstance": isinstance,
+        "callable": callable,
+        "repr": repr,
+        "AttributeError": AttributeError,
+        "KeyError": KeyError,
+        "IndexError": IndexError,
+        "ZeroDivisionError": ZeroDivisionError,
         "abs": abs,
         "all": all,
         "any": any,

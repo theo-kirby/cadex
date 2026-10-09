@@ -330,6 +330,9 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             # success spec (ADR-462).
             "goal",
             "exploded_view",
+            # ...and a region of a creature's moving anatomy, an argument to
+            # api.assembly (ADR-613).
+            "anatomy",
         ),
         production_ready=True,
     ),
@@ -362,7 +365,12 @@ PROJECT_PACK = XScriptWorkbenchPack(
         "global is the parts library: catalogued fasteners, bearings and "
         "hardware as parametric part values built from real specs — browse "
         "it in describe_api's library section before modelling standard "
-        "hardware by hand."
+        "hardware by hand, and what each part it returns can do (.bay, "
+        ".actuator, .horn, .mounting) in the library_parts section. The "
+        "script is plain Python without imports: `math` is provided (sin, "
+        "cos, atan2, sqrt, hypot, radians, pi, ...; call it without "
+        "importing it), and getattr, hasattr, dir, type and isinstance work "
+        "on public names."
     ),
     api_exports=(),
     production_ready=True,
@@ -553,6 +561,18 @@ _BLOCKED_NAMES = frozenset(
         "vars",
     }
 )
+#: Public attribute names that reach an interpreter frame and through it the
+#: worker's own module globals (ADR-616). The worker's computed ``getattr``
+#: refuses the same set (``cadex_domain_worker.SANDBOX_BLOCKED_ATTRIBUTES``;
+#: a test holds the two equal), since that module is staged into the sandbox
+#: and is not importable from here.
+_BLOCKED_ATTRIBUTES = frozenset(
+    {
+        "gi_frame", "gi_code", "cr_frame", "cr_code", "ag_frame", "ag_code",
+        "tb_frame", "tb_next", "f_back", "f_globals", "f_locals",
+        "f_builtins", "f_code",
+    }
+)
 _BLOCKED_DOC_METHODS = frozenset(
     {
         "close",
@@ -583,7 +603,25 @@ def validate_program_source(source: str) -> None:
     for node in ast.walk(tree):
         line = int(getattr(node, "lineno", 0) or 0)
         if isinstance(node, (ast.Import, ast.ImportFrom)):
-            violations.append(f"line {line}: imports are not allowed")
+            modules = (
+                [alias.name for alias in node.names]
+                if isinstance(node, ast.Import)
+                else [str(node.module or "")]
+            )
+            if modules and all(name == "math" for name in modules):
+                # ADR-615: math is provided, not imported, so the blanket
+                # refusal of import (ADR-138) stands and says what to do.
+                violations.append(
+                    f"line {line}: imports are not allowed; `math` is already "
+                    "provided -- delete the import and call math.sin(...), "
+                    "math.atan2(...), math.pi directly"
+                )
+            else:
+                violations.append(f"line {line}: imports are not allowed")
+        elif isinstance(node, ast.Attribute) and node.attr in _BLOCKED_ATTRIBUTES:
+            violations.append(
+                f"line {line}: frame attribute {node.attr!r} is not allowed"
+            )
         elif isinstance(node, ast.Name) and node.id in _BLOCKED_NAMES:
             violations.append(f"line {line}: name {node.id!r} is not allowed")
         elif isinstance(node, ast.Attribute):

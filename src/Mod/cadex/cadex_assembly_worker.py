@@ -5609,6 +5609,81 @@ def _native_diagnostics(assembly: Any) -> dict[str, Any]:
     return {"available": True, **_json_safe(value)}
 
 
+#: Most implicated joints a solver refusal names in its message.
+_SOLVER_SUMMARY_JOINTS = 8
+
+
+def _solver_failure_summary(
+    native: Mapping[str, Any], joint_objects: Mapping[str, Any]
+) -> tuple[str, list[dict[str, Any]]]:
+    """The solver's own words and the joints it blamed, by output (ADR-618).
+
+    ``getSolverDiagnostics`` names joints by document object
+    (``CandidateJoint12``); the author knows them by result key. Returns a
+    sentence to append to the refusal and every non-satisfied joint row.
+    """
+
+    by_native = {
+        str(getattr(joint, "Name", "") or ""): name
+        for name, joint in joint_objects.items()
+    }
+
+    def output_name(native_name: Any) -> str:
+        return by_native.get(str(native_name), str(native_name))
+
+    implicated: list[dict[str, Any]] = []
+    for row in list(native.get("joints") or []):
+        if not isinstance(row, Mapping) or row.get("status") in (None, "satisfied"):
+            continue
+        implicated.append(
+            {
+                "joint": output_name(row.get("joint")),
+                "status": str(row.get("status")),
+                "constraint_count": row.get("constraint_count"),
+                "redundant_constraint_count": row.get("redundant_constraint_count"),
+                "removed_degrees_of_freedom": row.get("removed_degrees_of_freedom"),
+                "maximum_absolute_residual": row.get("maximum_absolute_residual"),
+            }
+        )
+    listed = {item["joint"] for item in implicated}
+    for key, status in (
+        ("conflicting_joints", "conflicting"),
+        ("malformed_joints", "malformed"),
+        ("redundant_joints", "redundant"),
+        ("partially_redundant_joints", "partially_redundant"),
+    ):
+        for native_name in list(native.get(key) or []):
+            name = output_name(native_name)
+            if name not in listed:
+                implicated.append({"joint": name, "status": status})
+                listed.add(name)
+    parts: list[str] = []
+    message = str(native.get("solver_message") or "").strip()
+    if message:
+        parts.append(f" The solver said: {message!r}.")
+    if implicated:
+        shown = ", ".join(
+            f"{item['joint']} ({item['status']})"
+            for item in implicated[:_SOLVER_SUMMARY_JOINTS]
+        )
+        more = len(implicated) - _SOLVER_SUMMARY_JOINTS
+        parts.append(
+            f" Joints it implicated: {shown}"
+            + (f", and {more} more in details.implicated_joints" if more > 0 else "")
+            + "."
+        )
+    elif not message:
+        parts.append(
+            " The solver gave no message and blamed no joint, which is how a "
+            "graph that is not connected to the grounded component, or a joint "
+            "whose two connectors cannot be brought together at all, fails."
+        )
+    remaining = native.get("remaining_degrees_of_freedom")
+    if isinstance(remaining, int) and native.get("available"):
+        parts.append(f" Remaining degrees of freedom: {remaining}.")
+    return "".join(parts), implicated
+
+
 _DIAGNOSTIC_CONFLICT_LABELS: tuple[tuple[str, str], ...] = (
     ("has_conflicts", "conflicting constraints"),
     ("has_redundancies", "redundant constraints"),
@@ -7341,6 +7416,63 @@ def _check_attachments(rows, joint_data, assembly_output):
     return report
 
 
+def _anatomy_stamp(raw_result, assembly_properties, component_outputs, joint_outputs,
+                   joint_data, assembly_output, *, root, world_geometry):
+    """The graph facts the anatomy block is computed from (ADR-614).
+
+    Published beside the definition on the assembly's row, like
+    ``attachments``, so no digest moves: the regions ``api.anatomy``
+    declared, in script order, by component output name; every unsuppressed
+    joint with its kind, its two components and how many ``api.actuator``
+    entries drive it (the most any one export or dynamics run declares, so
+    an Earth and a lunar export of one robot do not count a motor twice);
+    the component the dynamics tree roots at; and the world geometry. No
+    geometry is touched: :mod:`CadexAnatomy` reads the boxes the inventory
+    join already carries.
+    """
+
+    actuators: dict[str, int] = {}
+    for value in raw_result.values():
+        if not isinstance(value, DomainValue) or value.domain != "assembly":
+            continue
+        per_export: dict[str, int] = {}
+        for entry in list(value.properties.get("actuators") or ()):
+            if (isinstance(entry, DomainValue) and entry.operation == "actuator"
+                    and entry.arguments and id(entry.arguments[0]) in joint_outputs):
+                name = joint_outputs[id(entry.arguments[0])]
+                per_export[name] = per_export.get(name, 0) + 1
+        for name, count in per_export.items():
+            actuators[name] = max(actuators.get(name, 0), count)
+    component_values = list(assembly_properties.get("components") or [])
+    world = sorted({component_outputs[id(value)] for value in component_values
+                    if value.properties.get("world")}
+                   | {str(row["component"]) for row in world_geometry or ()})
+    joints = []
+    for name, joint in joint_data.items():
+        if joint.get("assembly_output") != assembly_output or joint.get("suppressed"):
+            continue
+        sides = [connector.get("component_output") for connector in joint.get("connectors") or ()]
+        if len(sides) != 2 or None in sides:
+            continue
+        joints.append({"joint": str(name), "kind": str(joint.get("kind") or ""),
+                       "components": [str(side) for side in sides],
+                       "actuators": int(actuators.get(name, 0))})
+    regions = []
+    for region in list(assembly_properties.get("anatomy") or ()):
+        row = {"region": str(region.properties.get("region") or ""),
+               "components": [component_outputs[id(c)] for c in region.arguments]}
+        if region.properties.get("reason"):
+            row["reason"] = str(region.properties["reason"])
+        regions.append(row)
+    return {
+        "regions": regions,
+        "components": [component_outputs[id(value)] for value in component_values],
+        "world_components": world,
+        "root_component": root,
+        "joints": joints,
+    }
+
+
 def validate_and_solve_assembly(
     document: Any,
     raw_result: Mapping[str, Any],
@@ -7835,11 +7967,21 @@ def validate_and_solve_assembly(
                    f" (tolerance {loop_redundancy['tolerance_mm']:g} mm, axes parallel within "
                    "1e-6), so the redundancy is not a moving linkage over-counted")
             )
+        solver_summary, implicated = _solver_failure_summary(
+            native_diagnostics, joint_objects
+        )
         raise AssemblyCandidateError(
-            f"The isolated native Assembly solver {reason}. Inspect details for "
-            "conflicting, redundant, malformed, or ungrounded constraints.",
+            f"The isolated native Assembly solver {reason}.{solver_summary} "
+            "Inspect details for conflicting, redundant, malformed, or "
+            "ungrounded constraints.",
             details={"stage": "native_solver",
                      "diagnostic_conflicts": conflict_labels,
+                     # First, and named by output (ADR-618): the solver's own
+                     # message and the joints it blamed used to sit behind
+                     # every component's placement, past where a refusal is
+                     # read.
+                     "solver_message": str(native_diagnostics.get("solver_message") or ""),
+                     "implicated_joints": implicated,
                      **diagnostics},
         )
 
@@ -7873,6 +8015,16 @@ def validate_and_solve_assembly(
             components, component_data, joint_data, clearance,
             sweep_steps, diagnostics["status"] == "solved", cache=fit_cache)
         fit_cache.save()
+    # The anatomy graph (ADR-614): graph facts only, so a preview pays for
+    # it too and it costs nothing a person would notice.
+    world_flags = {component_outputs[id(value)] for value in component_values
+                   if value.properties.get("world")}
+    anatomy_root = next((name for name in grounded_outputs if name not in world_flags),
+                        free_base or next((component_outputs[id(value)] for value in component_values
+                                           if component_outputs[id(value)] not in world_flags), None))
+    anatomy = _anatomy_stamp(raw_result, assembly_properties, component_outputs, joint_outputs,
+                             joint_data, assembly_output, root=anatomy_root,
+                             world_geometry=world_geometry)
     _cpu_stage("assembly derived outputs")
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None
@@ -8132,6 +8284,7 @@ def validate_and_solve_assembly(
     by_name[assembly_output]["clearance"] = clearance
     by_name[assembly_output]["world_geometry"] = world_geometry
     by_name[assembly_output]["attachments"] = attachments
+    by_name[assembly_output]["anatomy"] = anatomy
     by_name[assembly_output]["assembly_data"] = {
         "component_outputs": [component_outputs[id(value)] for value in component_values],
         "joint_outputs": [joint_outputs[id(value)] for value in joint_values],

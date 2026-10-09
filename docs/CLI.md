@@ -64,7 +64,7 @@ The agent's two requests cost tokens. The loop between them does not.
 | `cadex evaluate` | Hold the accepted policy against its task's success spec (`assembly.success`, ADR-456): one rollout per frozen seed under the spec's conditions, then pass or fail per seed and per predicate, the behaviour metrics, the reward by term and how each episode ended, written to `evaluations/<revision>-<policy>/evaluation.json` in the project, with a filmstrip and a rollout video drawn from the seeds' traces on the dark prototype floor, and, when it passes, the studio hero and the print-bed hero of the design that passed and a video of the policy taking the task's shoves (ADR-457, ADR-459, ADR-570, ADR-571; details below). No rebuild or acceptance, and no trainer. | no |
 | `cadex walk --out DIR` | The lifecycle walk as one command: an optional change (`--set`), train and store (locally, or on the box with `--remote`), re-declare the policy in the script, verify and roll out, review. Every leg is a child `cadex` command, each bounded by `--leg-timeout` (default 3600 s); `review.json` lands in `--out`. | no |
 | `cadex review --host ADDR --port N` | Serve **this one project's** dashboard to a browser, read-only (ADR-286): the model in an orbit/zoom WebGL viewport — the accepted attempt's tessellation, or a run's own rollout meshes at its own revision — its drawings, documents and training plots in a 2D viewport, and the revision trail in the menu bar (ADR-539); its `GET /api/...` routes also serve every recorded run labelled current/historical, its parameters and specs as recorded, rollout figures and retained artifacts. Opens no engine, rebuilds nothing and writes nothing: it answers GET and HEAD only, and follows what the agent changes (ADR-537, `docs/DASHBOARD.md` §18). Default `127.0.0.1:8765`; `--host` the machine's Tailscale address to reach it from another device. Ctrl-C stops it. How the page is laid out, typed and coloured is `docs/DASHBOARD.md`. | no |
-| `cadex style [NAME \| --clear]` | The project's design style (ADR-560): one named, optional set of guidance rules for a kind of machine and its look, which `cadex guidance --project` prints after the base. With no NAME it reports; NAME chooses one the engine carries (a `Mod/cadex/CadexAgentStyle.<NAME>.md`) and refuses any other; `--clear` returns to none, the base alone. Stored in the project's `agent.json`. The envelope's `style` is `chosen` (empty for none) and `available`. No engine, no row, no commit. | no |
+| `cadex style [NAME \| --clear]` | The project's design style (ADR-560): one named, optional set of guidance rules for a kind of machine and its look, which `cadex guidance --project` prints after the base. With no NAME it reports; NAME chooses one the engine carries (a `Mod/cadex/CadexAgentStyle.<NAME>.md`) and refuses any other; `--clear` returns to none, the base alone. Stored in the project's `agent.json`. The envelope's `style` is `chosen` (empty for none), `available`, and `about`: each style's one sentence on what it is for, which a bare report also prints as one note per style, so an agent can choose the one its brief names (ADR-625). No engine, no row, no commit. | no |
 | `cadex budgets [--set NAME=VALUE ...]` | The project's engine budgets (ADR-517): `timeout_seconds`, the wall-clock seconds one engine script run may take (at most 3600), and `memory_limit_mb`, its memory ceiling (at most 131072). Stored in the project's `agent.json`; every later run — an MCP session, a `params`, a revision, each leg of a walk — sends them as `open_project`'s `budgets`, and the engine fills one that is not set from its own default (300 s and 6144 MB unless its preferences say otherwise). `--set NAME=0` unsets one. With no `--set` it reports. The envelope's `budgets.stored` is what is stored. `--engine-timeout` / `--engine-memory` override them for one call. `GET /api/project` carries them read-only. No engine, no row, no commit. | no |
 | `cadex revision list\|reject\|restore\|backfill [SELECTOR]` | Going back through the revisions (ADR-506). `list`: the stored trail (`script_history/`, ADR-045), oldest first, with the values and digest each was accepted with, and `models`: per ordinal, whether its model is `retained` in `review/revisions/` or the `reason` it is not (ADR-546) — no engine, no row, no commit. Every engine session keeps the accepted revision's model on open and on close, and `cadex mcp` keeps each accepted build's as it lands. `reject`: put back the revision accepted before the current one; `restore SELECTOR` (an ordinal or a revision prefix): put back that one. Both write the stored source through `write_script` with `replace` (going back may drop outputs on purpose), then its recorded values through `set_params`; each is a run with its row and commit. The envelope's `revisions` says the `target`, where it came `from`, what was `accepted`, whether that is `exact`ly the target, and whether it is the `same_geometry` — a parameter the target left at its default cannot be unset once stored, so it is set to the default and the revision id differs. A selector that is not the accepted revision is a usage error for `reject`. `backfill` (ADR-548): keep a model for every stored revision that has none, which is every revision accepted before ADR-546. The accepted one is kept from its attempt on disk; each other one has its stored source rebuilt in a scratch project, with the values the trail stored with it, else the values the project's own repository recorded in `script.json` at its acceptance (and that commit's `assets/`), else none. It is kept only when the engine lands on exactly its revision id (and its digest, when the trail has one). Another revision of the same id is copied rather than rebuilt. A rebuild that lands elsewhere or is refused is a `failed` row with every try's reason; nothing is stored in its place, and the store remembers the reason so the dashboard shows it. The engine never opens the project itself, so nothing accepted moves. `SELECTOR` limits it to one revision. The envelope's `revisions.backfill` has one row per revision tried. No row, no commit: the store is ignored by the project's git. Never run by the dashboard. | no |
 | `cadex app [--projects DIR] [--host ADDR] [--port N]` | Serve the dashboard over a **directory of projects** (orun2 D1, ADR-502): `/` lists every subdirectory holding a `script.json`, or any file the CLI writes before the first script does — `review/activity.jsonl`, `.cadex-cli.lock`, `agent.json` — so an agent's session is listed from its first tool call (ADR-575) — re-read on each request, so a project made while the page is open appears — as a card on a home page (ADR-605): the project that moved last in a spotlight, then every project with its picture, stage, counts, latest evaluation and when it last moved (`/api/projects` carries each project's card, below), and each project's review page (the one `cadex review` serves) is under `/p/<name>/`. Every URL the pages use and the server builds is relative to the page (ADR-551), so the whole dashboard also works mounted under a path prefix by a proxy that rewrites nothing. **A bare `cadex`, with no subcommand, is this command** (`cadex -h` is the help), and so is `pixi run app`. The directory is `--projects`, then `CADEX_PROJECTS`, then `~/cadex-projects`, created if absent. Default `127.0.0.1:8765`; for another device put `tailscale serve` in front of it. Read-only, as `cadex review` is (ADR-537). From a fresh clone: `pixi run setup-engine && pixi run build-engine && pixi run app`. | no |
@@ -2009,7 +2009,9 @@ A1's frozen proxies (`docs/probes/ot10/README.md`) from the drawn design in
 the hero view: `hardware_silhouette_share` (P1), of the subsamples the design
 covers, the fraction whose front-most surface is a purchased component, and
 `material_count` (P3), the distinct colours of the objects visible there,
-with the list. Each carries its frozen `bar` and whether it `meets` it. The
+with the list. P3 carries its frozen `bar` and whether it `meets` it. P1 is
+reported with no bar (`bar` and `meets` are `null`, and `reading` says why):
+its 0.20 ceiling rewarded covering the actuators, and is retired (ADR-624). The
 hero is measured by a depth pass alone at 512 px and 2×2 subsamples
 (`render.PROXY_SIZE`), whatever size it is drawn at, so `render`, `look` and
 review agree. Environment geometry is left out as in the image. With no
@@ -2080,7 +2082,10 @@ revision and commits views under a revision directory. The same snapshot supplie
 }
 ```
 
-`error` is present instead of `notes` when `ok` is false. `outputs` entries
+`error` is present instead of `notes` when `ok` is false. `stdout` is what
+the script printed on that run, accepted or refused, when it printed
+anything (ADR-620): a refused build's prints used to be lost with it. The
+prose report prints them under the error, one `  | ` line each. `outputs` entries
 that produced no file carry `skipped` with the reason. A run that accepted
 a build adds `fit`, the measured-fit block that build's reply carried (§4, ADR-346) — `verdict`, counts and every failing
 pair by name, with the swept `sweep` half inside it (ADR-366) — and the
@@ -2237,7 +2242,14 @@ each domain and the library listing their exports by name, with a
 output types, every export's name, full signature and the first paragraph
 of its documentation, the whole catalog for the library, and a
 `descriptions` line naming the `inspect scope=api` path that holds the rest
-of any docstring. A section the contract lacks is refused with
+of any docstring. `section=library_parts` (ADR-619) is the page of what the
+lib generators return, served from the engine's `library.part_classes`:
+each public class of `cadex_library_api` (`QddPart`, `ServoPart`,
+`BoardPart`, `BoardMounting`, …) with `returned_by` (the calls annotated
+as returning it), its public `attributes`, and every public method's name,
+signature and first paragraph; the index lists each class's method names,
+and the library section leaves the classes out, because it is already most
+of one tool result. A section the contract lacks is refused with
 `NO_SUCH_SECTION` and the list of sections. That refusal is decided
 **after** the engine has answered: the bridge sends the argument-free
 request first, because the section names come from the reply, and only
@@ -2262,6 +2274,22 @@ standard`, no edges) on every modelling op, so the accepted attempt the
 review dashboard draws always retains tessellation (ADR-312). Anything the
 model supplies for either is overruled, and the reply's `display` block is
 dropped before the model sees it.
+
+### A refusal reaches the model with its diagnosis first (ADR-618)
+
+The model's view of any refused call keeps every envelope key but bounds
+the bulk inside `observed` (`bridge.refusal_view`): OCCT's progress meter
+(`\r\t\t(37 %)\t` frames) is dropped from `stderr`, and `stderr` and
+`traceback` keep their last 3,000 characters; `details.component_placements`
+becomes `{count, note}`; `details.native.joints` keeps only the joints the
+solver did not report satisfied, with `satisfied_joint_count`; long
+`joint_outputs` lists are cut the ADR-435 way. `stdout` stays whole (the
+engine bounds it at 16,000 characters). The engine reply and the session
+row are untouched. Measured on `cbase-deinonychus-a`: a `solver_error`
+refusal was 293,000 characters, the harness kept its first and last 5,000,
+and the solver's message sat in the cut middle; the same kind of refusal
+now reaches the model at about 9,000 characters with the solver's message
+in `error`.
 
 ### Training refuses inputs the robot cannot read (ADR-408)
 
@@ -2783,6 +2811,45 @@ when the revision places no assembly components or the inventory could
 not be read; neither refuses the build. `inventory` is an `inspect` scope
 on the model's surface for the same reason, and the last accepted build's
 block is the envelope's `inventory`.
+
+### Every build reply carries the creature's moving anatomy (ADR-614)
+
+Beside `fit` and `inventory`, the same four replies carry an `anatomy`
+block, read from `inspect scope=anatomy` under the same lock. It is the
+bounded view (`CadexAnatomy.anatomy_view`) of the regions the script
+declared with `assembly.anatomy` (`docs/XSCRIPT.md` "Anatomy"), computed from
+the accepted joint graph only. On `cbase-heron-a` with seven regions
+declared (abridged):
+
+```json
+"anatomy": {
+  "verdict": "incomplete", "actuated_dof": 7, "joint_dof": 25,
+  "mobile_joints": 16, "actuated_joints": 7, "rigid_bodies": 14,
+  "root_component": "bulkhead", "unacknowledged_appendages": 3,
+  "regions": [
+    {"region": "spine", "status": "root", "components": ["bulkhead", "spine", "mantle"], "joints": []},
+    {"region": "neck", "status": "articulated", "joint_dof": 7, "actuated_dof": 1,
+     "joints": ["neck (revolute, actuated)", "neck_mid (revolute, loop)",
+                "neck_rod_base (cylindrical, loop)", "neck_rod_head (ball, loop)"],
+     "welded_to": ["spine"]},
+    {"region": "head", "status": "rigid, no reason", "components": ["head", "tof"],
+     "joints": [], "welded_to": ["neck"]}
+  ],
+  "rigid_appendages": [
+    {"joint": "w_head", "welded_to": "upper_neck", "components": ["head", "tof", "tof_screw_0", "tof_screw_1"],
+     "extent_mm": [225.0, 30.0, 53.38], "protrudes_mm": 152.063, "toward": "+x",
+     "regions": ["head"], "acknowledged": false}
+  ],
+  "full": "inspect scope=anatomy"
+}
+```
+
+**The block is advisory**: no verdict refuses a build. `undeclared` (no
+`anatomy=`) still carries the totals and the welded appendages; an engine
+without the scope, or a block that cannot be read, gives `verdict:
+unavailable` with the `error`. The whole block is the bridge's
+`last_anatomy`, and `look` adds `measures.anatomy` (verdict, `meets`,
+`open_regions`, `actuated_dof`) beside the design-language measures.
 
 ### What the agent is told
 

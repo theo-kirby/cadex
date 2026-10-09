@@ -194,11 +194,15 @@ def _sky(height, toward_box):
 #: A tessellation corner keeps its face's normal when the smoothed normal
 #: turns further than this from it: fillets shade smooth, box edges stay crisp.
 CREASE_DEGREES = 40.0
-#: A1's frozen bars for the proxies (docs/probes/ot10/contract.json;
-#: test_ot10_contract holds them equal). P2 is a BREP measure, read from the
-#: inventory rather than the image.
-PROXY_BARS = {'hardware_silhouette_share': {'max': 0.2}, 'sharp_outside_edge_share': {'max': 0.25},
-              'material_count': {'min': 2, 'max': 3}}
+#: The bars ``look`` and ``render`` hold the proxies to: A1's frozen ones
+#: (docs/probes/ot10/contract.json) less P1, which is retired as a bar
+#: (ADR-624) and reported as how much hardware shows. P2 is a BREP measure,
+#: read from the inventory rather than the image.
+PROXY_BARS = {'sharp_outside_edge_share': {'max': 0.25}, 'material_count': {'min': 2, 'max': 3}}
+#: Why P1 carries no bar: a ceiling on visible hardware rewards covering the
+#: actuators, and the owner's references show the actuator as the joint.
+HARDWARE_SHARE_READING = ('reported, not a bar (ADR-624): how much of the hero silhouette is '
+                          'purchased hardware; an actuator meant to read as the joint shows here')
 #: The hero is measured at this size, whatever size it is drawn at.
 PROXY_SIZE = 512
 #: The floor every studio image stands on is the review viewport's dark
@@ -1001,13 +1005,13 @@ def design_proxies(triangles, summary, *, exclude=(), purchased=None, appearance
     # Materials the design chose: its roles' colours. Metal and boards are
     # what a catalog part is made of, not a material of the design (ADR-603).
     colours = sorted({'#%02X%02X%02X' % tuple(looks[name].role_rgb) for name in pixels})
-    p1, p3 = PROXY_BARS['hardware_silhouette_share'], PROXY_BARS['material_count']
+    p3 = PROXY_BARS['material_count']
     return {
         'view': 'hero', 'size': PROXY_SIZE, 'samples_per_pixel': SUPERSAMPLE * SUPERSAMPLE,
         'definitions': 'docs/probes/ot10/README.md',
         'hardware_silhouette_share': {
-            'value': None if share is None else round(share, 4), 'bar': dict(p1),
-            'meets': None if share is None else share <= p1['max'],
+            'value': None if share is None else round(share, 4), 'bar': None, 'meets': None,
+            'reading': HARDWARE_SHARE_READING,
             'design_subsamples': covered, 'hardware_subsamples': hardware,
             **({} if purchased is not None else {'reason': 'no inventory to tell purchased from printed'}),
         },
@@ -1176,6 +1180,8 @@ def describe_proxies(proxies):
     def share(proxy):
         if proxy['value'] is None:
             return 'unmeasured (' + proxy['reason'] + ')'
+        if not proxy.get('bar'):
+            return '{:.1%} (reported, no bar)'.format(proxy['value'])
         text = '{:.1%} ({:s} {:.0%})'.format(proxy['value'], 'meets' if proxy['meets'] else 'over',
                                              proxy['bar']['max'])
         if proxy.get('unresolved_edges'):
@@ -2495,11 +2501,11 @@ def look_report(reply, fit, inventory, views=LOOK_DEFAULT_VIEWS, focus=()):
         ),
         'components_drawn': len(summary['objects']) - len(environment & set(summary['objects'])),
         # The design-language measures (docs/DESIGN-LANGUAGE.md): how much of
-        # the hero silhouette is bought hardware, how much printed outside
-        # edge is left sharp, and how many materials it shows, each against
-        # its bar.
+        # the hero silhouette is bought hardware (reported, no bar: ADR-624),
+        # how much printed outside edge is left sharp, and how many materials
+        # it shows, the last two against their bars.
         'measures': {
-            key: {k: proxies[key][k] for k in ('value', 'bar', 'meets')}
+            key: {k: proxies[key][k] for k in ('value', 'bar', 'meets', 'reading') if k in proxies[key]}
             for key in ('hardware_silhouette_share', 'sharp_outside_edge_share', 'material_count')
         },
         'triangles': summary['triangles'],

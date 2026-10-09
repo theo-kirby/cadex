@@ -717,6 +717,92 @@ asm  = assembly.assembly([hood, knee, eye], joints,
   no dynamics, and a colour change is still a definition change that the
   project re-accepts.
 
+### Anatomy: what a creature moves `[ADR-613, ADR-614]`
+
+A robot animal or character names its moving anatomy, so a build reply can
+say which of it moves:
+
+```python
+spine = assembly.anatomy("spine", [c_bulk, c_spine])
+neck  = assembly.anatomy("neck", [c_lower_neck, c_upper_neck, c_neck_rod])
+head  = assembly.anatomy("head", [c_head, c_tof])
+tail  = assembly.anatomy("tail", [c_tail],
+                         reason="ossified: raptor tails were stiff; a tail "
+                                "joint costs 0.4 kg the hip margin cannot carry")
+asm   = assembly.assembly(components, joints, anatomy=[spine, neck, head, tail])
+```
+
+- `assembly.anatomy(region, components, *, reason=None, label="")` is an
+  intermediate like `assembly.sensor`: pass it to `assembly.assembly(...,
+  anatomy=[...])` and never return it. `region` is free text, 1 to 48
+  characters with whitespace collapsed; the vocabulary the reply reads best
+  is `spine`, `neck`, `head`, `jaw`, `tail`, `arm_l`/`arm_r`,
+  `leg_fl`/`leg_fr`/`leg_rl`/`leg_rr` (or `leg_l`/`leg_r`), `wing_l`/`wing_r`,
+  `toe`. `components` are `assembly.component` values of the same assembly
+  (at least one). `reason=` is how a region is deliberately rigid or
+  passive: non-empty, at most 600 characters, and worth the measurement
+  that justifies it.
+- The assembly refuses a region whose component it does not list, a region
+  name declared twice, and a component in two regions.
+- **Undeclared is not a default.** `anatomy` enters the assembly's
+  definition only when the script sets it, so no existing digest moves.
+- Every build reply carries the measured `anatomy` block, and
+  `inspect scope=anatomy` serves it whole — see "The anatomy block" below.
+
+#### The anatomy block `[ADR-614]`
+
+Computed from the accepted revision's joint graph only: the worker stamps
+`anatomy` beside the assembly's definition (the declared regions by
+component output name, every unsuppressed joint with its kind, its two
+components and how many `assembly.actuator` entries drive it — the most any
+one export or dynamics run declares — the root component and the world
+geometry), and `CadexAnatomy.anatomy_summary` joins it to the inventory's
+boxes (`source_facts.bounds_mm` through the solved placement). No geometry
+call.
+
+- **Rigid bodies** are the components fixed joints weld together; mobile
+  joints (`revolute` 1, `slider` 1, `cylindrical` 2, `ball` 3 coordinates)
+  join them, oriented away from the root (the first grounded non-world
+  component, else the free base the dynamics tree roots at). Coupling and
+  constraint kinds (`gears`, `belt`, `distance`, …) are left out.
+- **A joint's drive** is `actuated` (an actuator declared on it), `loop`
+  (passive, but in a closed loop an actuated joint is also in — a four-bar's
+  pins) or `passive`.
+- **A region's joints** are the mobile joints into a rigid body it owns, or
+  between two of its own. The root region owns the root body; elsewhere the
+  region reaching nearest the root owns a body two regions share, ties to
+  the one declared first, and the others in it are `welded_to` it. Each
+  region row carries `status`, `components`, `joints` (`{joint, kind, dof,
+  drive, actuators, within?}`), `joint_dof`, `actuated_dof`,
+  `parent_region` and, where present, `welded_to` and `reason`.
+- **Status**: `articulated` (a joint of its own, actuated or loop-driven),
+  `passive only` (joints, none driven), `root` (the body everything hangs
+  off, no joint of its own), `rigid` (no joint, a reason) or
+  `rigid, no reason`.
+- **`verdict`**: `complete` when every region is articulated, the root, or
+  carries a reason; `incomplete` otherwise; `undeclared` when the script
+  declares no anatomy (advisory); `unavailable` when the accepted revision
+  published no graph (accepted before ADR-614 — rebuild).
+- **`rigid_appendages`**, declared or not: in every rigid body, each branch
+  a single fixed joint welds on (a bridge of the weld graph, taken top down
+  from the body's anchor — its owning region's parts and the joint-side
+  part, or for an undeclared torso its heaviest part) whose box is at least
+  15 % of the design's largest extent and reaches at least 8 % of it past
+  the rest of the body (an undeclared torso's branch must also be at most
+  half its solid volume). Each row: `components`, `welded_to`, `joint`,
+  `extent_mm`, `protrudes_mm`, `toward` (`+x` …), `regions` and
+  `acknowledged` — true when every region it holds is articulated, the root,
+  or carries a reason. A fused head and a welded tail are what this finds.
+- Plus `actuated_dof`, `joint_dof`, `mobile_joints`, `actuated_joints`,
+  `rigid_bodies`, `root_component`, `unacknowledged_appendages` and
+  `undeclared_joints` (mobile joints into a body no region holds).
+- The build reply shows it bounded (`CadexAnatomy.anatomy_view`: component
+  lists cut to six with a count, joints as `name (kind, drive)`, twelve
+  appendages); `look`'s `measures` add `anatomy`
+  (`CadexAnatomy.anatomy_measure`: the verdict, `meets`, `open_regions`).
+  A design-only project with no `assembly.mjcf` or dynamics run declares no
+  actuator, so every region with joints reads `passive only` until one does.
+
 ### The parts library: `lib` `[ADR-181]`
 
 Catalogued hardware as parametric part values, staged as the `lib` global
@@ -1010,15 +1096,27 @@ limits on published current/power, and approximations: PROVENANCE §8c.
 
 #### Quasi-direct-drive actuators `[ADR-540]`
 
-`lib.qdd("cubemars-ak70-10" | "cubemars-ak80-9-v3", origin=..., direction=...,
-roll_degrees=...)` returns a `QddPart`: a CubeMars integrated joint actuator
-(motor, planetary stage, FOC driver). The datum is the output face's centre,
-+Z out through the output, the case in -Z. `direction` is the joint axis.
-`.spec` carries the 48 V ratings (rated/peak torque in N·m and N·mm, rated
-and no-load speed, currents, Kt), `mount_holes` (M3 stator bolt circle at
-`front_mount_z_mm` and `rear_mount_z_mm`), `output_holes`, `mass_g`,
-`effective_density_kg_m3`, `reflected_inertia_kgmm2` and
-`speed_line_damping_nmms_per_deg`.
+`lib.qdd(sku, origin=..., direction=..., roll_degrees=...)` returns a
+`QddPart`: a CubeMars integrated joint actuator (motor, planetary stage, FOC
+driver). Two tiers (ADR-608):
+
+| SKU | Mass | Peak / rated | No-load | Ø × length | Stator / output |
+|---|---|---|---|---|---|
+| `cubemars-ak70-10` | 621 g | 24.8 / 8.3 N·m | 480 rpm, 48 V | 89 × 50.25 | 8-M3 Ø83 / 6-M3 Ø25 |
+| `cubemars-ak80-9-v3` | 490 g | 22 / 9 N·m | 570 rpm, 48 V | 98 × 38.5 | 8-M3 Ø85 / 6-M4 Ø28 |
+| `cubemars-ak60-6-v3` | 380 g | 9 / 3 N·m | 640 rpm, 48 V | 79 × 43 | 6-M3 Ø68 / 6-M3 Ø20 |
+| `cubemars-ak45-10-v3` | 262 g | 7 / 2.5 N·m | 180 rpm, 24 V | 53 × 45.2 | 6-M2.5 Ø47.5 front, 4-M2.5 Ø47 rear / 3-M2.5 Ø27 |
+
+The first two are hip and knee drives; the light pair is for necks, heads,
+jaws, tails and arms. The datum is the output face's centre, +Z out through
+the output, the case in -Z. `direction` is the joint axis. `.spec` carries
+the ratings at `rated_voltage_v` (rated/peak torque in N·m and N·mm, rated
+and no-load speed, currents, Kt), `mount_holes` (the front stator bolt
+circle at `front_mount_z_mm`), `rear_mount_holes` (at `rear_mount_z_mm`; the
+same circle unless the drawing gives the rear its own), `output_holes`,
+`mass_g`, `effective_density_kg_m3`, `reflected_inertia_kgmm2` and
+`speed_line_damping_nmms_per_deg`. `backlash_arcmin` is `None` where the
+manufacturer publishes none (the AK60-6).
 
 - `.actuator(joint, control_nmm="0", rating="peak")` is a `kind="motor"`
   actuator: the control is the output torque, bounded at the datasheet peak
@@ -1033,6 +1131,34 @@ and no-load speed, currents, Kt), `mount_holes` (M3 stator bolt circle at
   Pass a damping to replace the line.
 - `.bay(clearance=0.5, lead_room=15)` is the envelope grown for a printed
   housing, with room for the leads behind.
+- `.mounting(wall=4, face="front", length=None, output_wall=None,
+  output_length=None)` (ADR-609) returns `hold.stator` and `hold.output`,
+  each with `face`, `screw`, `length_mm`, `wall_mm`, `holes` and `screws`:
+  - `stator.screws` are `lib.bolt`s on every stator hole of `face`
+    (`"front"` or `"rear"`) at the case's thread, heads `wall` mm out from
+    that face, shanks into its tapped holes; `output.screws` the same on the
+    output flange's holes, heads `output_wall` (default `wall`) out from the
+    output face, through the driven link;
+  - each screw is the wall plus the drawn thread depth, rounded down to a
+    millimetre: a screw that would bottom out, or engage under half its
+    diameter, is refused;
+  - `holes` are normal-fit clearance holes through each wall: cut the
+    stator's from the part that carries it and the output's from the driven
+    link.
+
+  Weld the stator screws to the carrier and the output screws to the link,
+  and declare each screw's `contacts=` pair with the actuator. The mounting
+  check then counts the stator screws as holding it. The output holes are
+  published as `output` axes: they never count as holding the actuator, and
+  the clearance sweep lets a bolt in one turn with the flange instead of
+  sweeping it through the one-solid case.
+
+```python
+ak = lib.qdd("cubemars-ak45-10-v3", origin=(0, 0, 60), direction=(0, 1, 0))
+hold = ak.mounting(4.0, face="rear")
+neck = part.cut(neck, list(hold.stator.holes))
+head = part.cut(head, list(hold.output.holes))
+```
 
 The envelope is coaxial cylinders with tapped bores. Pilots, dowels,
 connectors and the rotor/stator mass split are omitted. There is no thermal
@@ -1690,6 +1816,61 @@ Source is validated before any worker runs (AST policy in
   rejected.
 - Violations return `SOURCE_POLICY_VIOLATION` with offending line numbers —
   structured failure payloads, not exceptions.
+- **`math` is provided, not imported** (ADR-615). The name `math` is a
+  read-only namespace (`cadex_domain_worker.SANDBOX_MATH`) holding the
+  deterministic whitelist `SANDBOX_MATH_NAMES`: `pi e tau inf nan`, the
+  trigonometric and hyperbolic functions and their inverses, `atan2`,
+  `sqrt cbrt hypot dist exp expm1 exp2 log log2 log10 log1p pow`,
+  `radians degrees`, `floor ceil trunc fabs fmod remainder modf copysign`,
+  `isclose isfinite isinf isnan`, `fsum prod gcd lcm isqrt`. Left out:
+  `factorial`, `comb`, `perm` (cost grows with the argument). It is not the
+  module object, so `math.__spec__` and friends are not there to reach. The
+  blanket refusal of `import` stands (ADR-138); `import math` and
+  `from math import …` are refused with a message saying `math` is already
+  there.
+- **Safe introspection** (ADR-616): `getattr(obj, name[, default])` and
+  `hasattr(obj, name)` refuse a name that starts with `_` or is one of the
+  frame attributes (`gi_frame`, `f_back`, `f_globals`, `tb_frame`, …,
+  `SANDBOX_BLOCKED_ATTRIBUTES`), the same rule the AST policy applies to
+  `obj._name` — which now also refuses those frame attributes written as
+  attributes (`_BLOCKED_ATTRIBUTES`, test-held equal). `dir(obj)` lists
+  public names only, `dir()` the script's own; `type(obj)` takes one
+  argument (no class factory); `isinstance`, `callable`, `repr`, and
+  `AttributeError`, `KeyError`, `IndexError`, `ZeroDivisionError` join the
+  builtins.
+
+### What a refused build says
+
+- **The failing call is named** (ADR-617). Every value a script makes
+  records the script line that made it, in a registry beside the payload
+  (`cadex_domain_api.track_creation_sites`), never in it, so a definition,
+  its memo key and the digest are byte-identical to before. A part build
+  that raises keeps the payload it failed on and the calls it was nested
+  in; the project worker turns that into `details.failure_site`
+  (`output`, `call`, `lines`, `names`, `inside`, `operands`) and appends a
+  sentence to `error`:
+  `api.fuse: declared solid but OpenCascade produced Compound containing 2
+  solids. Failing call: result['pelvis'], pelvis = part.fuse (script line
+  5), while building output 'pelvis'; operands: argument 0[0]: hip_l =
+  part.box (script line 2); argument 0[1]: hip_r = part.box (script line
+  3).` An exception the script itself raised gets its line
+  (`division by zero. Raised at script line 4.`).
+- **A kernel crash is a refusal naming the call** (ADR-617). Around each
+  crash-prone part operation (fillet, chamfer, the booleans, offsets,
+  lofts, sweeps, `mate`) the worker writes `kernel.json` beside its CPU
+  ledger and clears it on the way out. A worker that dies with no
+  `result.json` and a breadcrumb in flight comes back as
+  `DOMAIN_WORKER_NO_RESULT` with `domain_failure_stage: kernel_crash`,
+  `observed.kernel_operation`, and a correction:
+  `The isolated domain worker crashed (SIGSEGV) inside OpenCascade while
+  running part.fillet made at script line 328 (arg1=2.0, on_failure=skip),
+  during 'output foot_l_body'.`
+- **A solver refusal says what the solver said** (ADR-618): its own
+  message and every joint it did not report satisfied, by output name, in
+  the error and in `details.solver_message` / `details.implicated_joints`.
+- **The script's prints survive a refusal** (ADR-620): the worker keeps
+  its stdout whether or not the script raised, and the refusal carries it
+  as `observed.stdout`.
 
 ### Worker isolation
 
