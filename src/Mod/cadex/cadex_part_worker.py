@@ -4529,7 +4529,74 @@ def build_part_shape(
     return shape
 
 
+#: The kernel operations a worker crash has been seen inside, or is likeliest
+#: inside: OCCT's fillet builder segfaulted in ``ChFi3d_FilBuilder::
+#: PerformTwoCorner`` on cbase-heron-a and the refusal named nothing. Each is
+#: written to the worker's kernel breadcrumb on the way in and cleared on the
+#: way out, so a worker that dies there is reported as that call (ADR-617).
+_CRASH_PRONE_OPERATIONS = frozenset(
+    {
+        "fillet", "chamfer", "fuse", "cut", "common", "section",
+        "general_fuse", "slice", "defeature", "offset", "offset2d",
+        "thicken", "loft", "loft_cage", "sweep", "mate",
+    }
+)
+
+
+def _kernel_breadcrumb(payload: Mapping[str, Any]):
+    """The worker's breadcrumb context, or None outside a worker.
+
+    Looked up in ``sys.modules`` rather than imported: a breadcrumb exists
+    only inside a sandboxed worker, which has always loaded
+    ``cadex_domain_worker`` by now, and an import here would put that
+    module -- and every worker module it reaches -- into ``cadexd``'s own
+    closure, which ``test_engine_purity_guardrails`` holds fixed.
+    """
+
+    import sys
+
+    worker = sys.modules.get("cadex_domain_worker")
+    kernel_operation = getattr(worker, "kernel_operation", None)
+    return kernel_operation(payload) if kernel_operation is not None else None
+
+
+def _note_failure_site(exc: PartOperationError, payload: Mapping[str, Any]) -> None:
+    """Remember which definition failed, and the calls it was nested in.
+
+    The innermost build that raised keeps its payload; every enclosing build
+    the error passes through appends its operation. The project worker turns
+    the payload into script lines and operands (ADR-617).
+    """
+
+    if getattr(exc, "failed_payload", None) is None:
+        exc.failed_payload = dict(payload)
+        exc.enclosing_operations = []
+    else:
+        exc.enclosing_operations.append(str(payload.get("operation") or ""))
+
+
 def _build_part_shape_uncached(
+    payload: dict[str, Any],
+    *,
+    diagnostics: dict[str, Any] | None = None,
+):
+    operation = str(payload.get("operation") or "")
+    crumb = (
+        _kernel_breadcrumb(payload)
+        if operation in _CRASH_PRONE_OPERATIONS
+        else None
+    )
+    try:
+        if crumb is not None:
+            with crumb:
+                return _build_part_shape_checked(payload, diagnostics=diagnostics)
+        return _build_part_shape_checked(payload, diagnostics=diagnostics)
+    except PartOperationError as exc:
+        _note_failure_site(exc, payload)
+        raise
+
+
+def _build_part_shape_checked(
     payload: dict[str, Any],
     *,
     diagnostics: dict[str, Any] | None = None,

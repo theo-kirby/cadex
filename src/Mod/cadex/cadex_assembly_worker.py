@@ -5609,6 +5609,81 @@ def _native_diagnostics(assembly: Any) -> dict[str, Any]:
     return {"available": True, **_json_safe(value)}
 
 
+#: Most implicated joints a solver refusal names in its message.
+_SOLVER_SUMMARY_JOINTS = 8
+
+
+def _solver_failure_summary(
+    native: Mapping[str, Any], joint_objects: Mapping[str, Any]
+) -> tuple[str, list[dict[str, Any]]]:
+    """The solver's own words and the joints it blamed, by output (ADR-618).
+
+    ``getSolverDiagnostics`` names joints by document object
+    (``CandidateJoint12``); the author knows them by result key. Returns a
+    sentence to append to the refusal and every non-satisfied joint row.
+    """
+
+    by_native = {
+        str(getattr(joint, "Name", "") or ""): name
+        for name, joint in joint_objects.items()
+    }
+
+    def output_name(native_name: Any) -> str:
+        return by_native.get(str(native_name), str(native_name))
+
+    implicated: list[dict[str, Any]] = []
+    for row in list(native.get("joints") or []):
+        if not isinstance(row, Mapping) or row.get("status") in (None, "satisfied"):
+            continue
+        implicated.append(
+            {
+                "joint": output_name(row.get("joint")),
+                "status": str(row.get("status")),
+                "constraint_count": row.get("constraint_count"),
+                "redundant_constraint_count": row.get("redundant_constraint_count"),
+                "removed_degrees_of_freedom": row.get("removed_degrees_of_freedom"),
+                "maximum_absolute_residual": row.get("maximum_absolute_residual"),
+            }
+        )
+    listed = {item["joint"] for item in implicated}
+    for key, status in (
+        ("conflicting_joints", "conflicting"),
+        ("malformed_joints", "malformed"),
+        ("redundant_joints", "redundant"),
+        ("partially_redundant_joints", "partially_redundant"),
+    ):
+        for native_name in list(native.get(key) or []):
+            name = output_name(native_name)
+            if name not in listed:
+                implicated.append({"joint": name, "status": status})
+                listed.add(name)
+    parts: list[str] = []
+    message = str(native.get("solver_message") or "").strip()
+    if message:
+        parts.append(f" The solver said: {message!r}.")
+    if implicated:
+        shown = ", ".join(
+            f"{item['joint']} ({item['status']})"
+            for item in implicated[:_SOLVER_SUMMARY_JOINTS]
+        )
+        more = len(implicated) - _SOLVER_SUMMARY_JOINTS
+        parts.append(
+            f" Joints it implicated: {shown}"
+            + (f", and {more} more in details.implicated_joints" if more > 0 else "")
+            + "."
+        )
+    elif not message:
+        parts.append(
+            " The solver gave no message and blamed no joint, which is how a "
+            "graph that is not connected to the grounded component, or a joint "
+            "whose two connectors cannot be brought together at all, fails."
+        )
+    remaining = native.get("remaining_degrees_of_freedom")
+    if isinstance(remaining, int) and native.get("available"):
+        parts.append(f" Remaining degrees of freedom: {remaining}.")
+    return "".join(parts), implicated
+
+
 _DIAGNOSTIC_CONFLICT_LABELS: tuple[tuple[str, str], ...] = (
     ("has_conflicts", "conflicting constraints"),
     ("has_redundancies", "redundant constraints"),
@@ -7271,11 +7346,21 @@ def validate_and_solve_assembly(
                 f"closes them within {loop_redundancy['worst_gap_mm']:.3g} mm, so the "
                 "redundancy is not a one-degree-of-freedom linkage over-counted"
             )
+        solver_summary, implicated = _solver_failure_summary(
+            native_diagnostics, joint_objects
+        )
         raise AssemblyCandidateError(
-            f"The isolated native Assembly solver {reason}. Inspect details for "
-            "conflicting, redundant, malformed, or ungrounded constraints.",
+            f"The isolated native Assembly solver {reason}.{solver_summary} "
+            "Inspect details for conflicting, redundant, malformed, or "
+            "ungrounded constraints.",
             details={"stage": "native_solver",
                      "diagnostic_conflicts": conflict_labels,
+                     # First, and named by output (ADR-618): the solver's own
+                     # message and the joints it blamed used to sit behind
+                     # every component's placement, past where a refusal is
+                     # read.
+                     "solver_message": str(native_diagnostics.get("solver_message") or ""),
+                     "implicated_joints": implicated,
                      **diagnostics},
         )
 

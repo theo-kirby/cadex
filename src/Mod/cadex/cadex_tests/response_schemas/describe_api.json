@@ -229,7 +229,26 @@
     "signature": "str"
    }
   ],
-  "notes": "str"
+  "notes": "str",
+  "part_classes": [
+   {
+    "attributes": [
+     "str"
+    ],
+    "description": "str",
+    "methods": [
+     {
+      "description": "str",
+      "name": "str",
+      "signature": "str"
+     }
+    ],
+    "name": "str",
+    "returned_by": [
+     "str"
+    ]
+   }
+  ]
  },
  "mounts": {
   "mate": "str",
