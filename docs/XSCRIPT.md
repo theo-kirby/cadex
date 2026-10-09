@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-08
+Verified against source: 2026-10-09
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -256,12 +256,19 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `revolute` joints redundant; that verdict is accepted when the solver
   returned code 0 and said nothing worse, the loop's joints are revolute,
   slider, cylindrical, ball or fixed, the rank of their screws at the solved
-  pose leaves the loops exactly **one** degree of freedom, and every loop
-  joint's connectors meet within 0.01 mm. The count is in the solve's
+  pose leaves **every linkage** -- each set of loops that share a joint --
+  at least one degree of freedom (ADR-621; ADR-595 asked for exactly one
+  over all loops together, which refused a four-bar in each of two legs and
+  every two-input five-bar), and every loop joint's connectors meet within
+  0.01 mm with hinge axes parallel. The count is in the solve's
   diagnostics as `loop_redundancy` (`freedoms`, `rank`, `mobility`,
-  `redundancy`, `worst_gap_mm`, `accepted`); a truss (mobility 0), a loop
-  with two or more freedoms, or a tilted closing pin keeps the refusal, and
-  the refusal names the count. A coupler on two `ball` joints (rod ends)
+  `redundancy`, `groups` with each linkage's own `mobility`,
+  `worst_gap_mm`, `accepted`); a linkage with no freedom -- a truss, or a
+  closing pin tilted out of its plane -- keeps the refusal whatever the
+  other legs do, and the refusal names it. The export closes a revolute
+  loop with a `connect`, which pins the pin and lets the axis go: exact for
+  a planar loop, and the one axis it gives up is the one ADR-593's export
+  check measures, so four parallel pins need no rod ends. A coupler on two `ball` joints (rod ends)
   also builds, but has an undamped spin about its ball line (ADR-594).
   Driven 450° by its crank servo, a four-pin four-bar's rocker stays within
   0.0032° of circle intersection at 0.5 ms; the loop opens 0.70 mm at the
@@ -2037,7 +2044,10 @@ At the solved pose (ADR-427), a pair against world geometry that is only
 `below clearance` -- a foot standing on the floor with no common volume -- is
 listed under `fit.world_geometry_contacts` and does not fail the static fit.
 Interpenetrating world geometry at the solved pose, or an unmeasured pair
-against it, still fails.
+against it, still fails. The world geometry itself is named in
+`fit.world_geometry` (with `world_geometry_count`) and is never a failing
+row (ADR-623): before this the floor's own row sat in `failing`, so a design
+that declared its floor `world=True` exactly as asked could never pass.
 
 **What the fixed joints hold** is measured beside these checks and is never one
 of them (ADR-370). Every pair joined by an unsuppressed `fixed` joint is
@@ -2113,10 +2123,25 @@ the same way.
 A joint that **can move and declares no limits** — a continuously
 rotating wheel, a free spinner, a loop-closure hinge — is a coverage hole too
 (ADR-375), and reads `incomplete` with the limit to declare named per kind.
-A joint **on a closed loop** reads `incomplete` whatever its limits
-(ADR-593): sweeping one joint of a closed chain alone would tear the loop
-open, so the reason names the loop's joints, its components and the joint
-that closes it, and its pairs are measured at the solved pose only.
+A joint **on a closed loop** is swept from the loop's inputs (ADR-621).
+Each limited `revolute` or `slider` of the loop -- the joint its actuator
+turns -- is driven through its range at the declared step, and at every
+sample every other joint of the loops that share a joint with it is solved
+again so each closure meets (a damped Gauss-Newton continued from the
+solved pose a degree or a millimetre at a time, so the mechanism stays on
+the branch it was assembled on); the loop's other limited joints -- its
+other drives -- hold their solved value unless holding one would lock this
+one, and joints off the loop keep theirs. Each closed pose is measured with
+exact solids as a serial sweep is. The row adds `loop`, `held`, `passive`,
+`reached_degrees`/`reached_mm` and `unclosed`: a sample the loop cannot
+close -- a dead point, a link too short for the range -- is listed with its
+value and residual, the samples past it are not tried, and the joint is
+`incomplete` naming where the loop stopped closing (narrow the limit to the
+reached range). A loop joint with no limits of its own is `passive`, moved
+by the inputs (`driven_by`) and not a coverage hole; a loop with no limited
+joint at all keeps every joint `incomplete`, naming the loop. A joint on no
+loop sweeps as before even when the graph has loops elsewhere: each loop
+lies wholly inside or wholly outside the subtree it turns.
 Before this it was dropped before it could be named, so a chassis whose one
 limited hinge swept clean read `complete` beside two wheels measured at the
 solved pose and nowhere else. Two joints genuinely hold no range and stay out
@@ -2149,13 +2174,29 @@ a weld means belongs to the `attachments` report (ADR-370), which measures it
 at the solved pose.
 
 Each joint's native queries run in a fresh FreeCAD subprocess with a 90-second
-timeout; the assembly shares 180 seconds of sweep budget. Preparation and
+timeout, up to four at once (ADR-622); the assembly shares 180 seconds of
+sweep budget, cut to what the run's own wall budget leaves after a reserve
+for the outputs that follow (20 s plus a quarter of the time the build has
+taken), so a first sweep of a loop cannot turn an accepted build into a
+timed-out one. Preparation and
 process cleanup add overhead. At most 73 poses and 2,000 moving pairs are
 allowed per joint; rigid pairs are copied, not measured, and do not count
 (ADR-426). Reports carry the limits and measured elapsed seconds. Timeout, malformed
 or unsupported geometry, limited joints of any other kind (cylindrical included),
-flexible components, closed/coupled/static-joint graphs, and unsolved
-assemblies produce explicit `incomplete` coverage and a reason. No samples means no claim about fit. Joints
+flexible components, coupled/static-joint graphs, and unsolved
+assemblies produce explicit `incomplete` coverage and a reason.
+
+**A rebuild measures only what changed** (ADR-622). Every exact static pair
+and every swept pair is kept in the project's `script_artifacts/fit-cache/`,
+keyed by the SHA-256 of both world solids' BREPs (placement included), the
+pair's motion at every sample, and the engine's measuring code and kernel
+version; a later build of the same two solids in the same motion reads the
+earlier numbers back, every digit, and a part that moved or changed is
+measured afresh. A joint sweep that runs out of time keeps the pairs it
+finished, so the next build carries on from there. Within a pair, samples
+are measured nearest box first, and a sample whose box gap already exceeds
+both the least distance measured and the 0.001 mm contact tolerance is not
+measured: it can change none of the three numbers. No samples means no claim about fit. Joints
 without limits are outside coverage. A sweep failure never rejects acceptance.
 The checker uses copied solids, never changes live placements, and never
 rebuilds historical scripts. It needs no dynamics declaration or MuJoCo run.

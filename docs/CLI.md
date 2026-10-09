@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -2665,8 +2665,21 @@ is published in `world_geometry_contacts` (with
 reason}`, and is never in `failing`. An intersection with world geometry at
 the solved pose is the pose the simulation starts from, so it still fails,
 and so does an unmeasured pair. The progress line appends `; 6 resting on
-world geometry (advisory)`. The world geometry's own row stays in `failing`
-as it was.
+world geometry (advisory)`. The world geometry itself -- the floor's own
+row, which ADR-427 left in `failing` -- is published in `world_geometry`
+(`component`, `reason`, with `world_geometry_count`) and never in `failing`
+or the counts (ADR-623), so a design standing on a `world=True` floor can
+pass.
+
+A closed loop is swept from its limited joints and re-closed at every sample
+(ADR-621): such a row carries `loop`, `held`, `passive`, the `reached_`
+range and any `unclosed` samples; a loop joint with no limits of its own is
+`passive` (`driven_by` its loop's limited joints), counted in
+`joints_passive` beside `joints_skipped`, left out of the model's view and
+out of the verdict, and the progress line appends `; N passive in a loop`.
+Joint sweeps run up to four at once, each its own bounded child process,
+and the sweep's total budget is also bounded by what is left of the run's
+wall budget (ADR-622).
 
 None of these is a pass: a joint that was not swept has been checked at one pose
 only. The block is advisory like the static one — a failing swept fit is

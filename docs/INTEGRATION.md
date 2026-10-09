@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-10-04
+Verified against source: 2026-10-09
 
 **This document is the contract between the engine and its client.** Cadex
 is three things (ADR-500): the **engine** (`cadexd`, at the repo root), the
@@ -684,6 +684,23 @@ proved by the boxes. A rigid pair's row repeats the static solved-pose
 measurement, and since ADR-423 carries `culled: true` when that static
 measurement is itself a bound. The `culled` key is absent on every exactly
 measured row and on a revision accepted before ADR-419. No op argument changed.
+Since ADR-621 a joint on a **closed loop** is swept rather than refused: a
+limited revolute or slider of the loop is driven through its range and every
+other joint of the loops sharing a joint with it is re-solved at each sample,
+the loop's other limited joints held at their solved value unless holding
+them would lock it. Its row adds `loop` (`closures`, `joints`), `held`,
+`passive`, `free_freedoms`, `reached_degrees`/`reached_mm` (the range that
+closed), `unclosed` (each sample that did not close, with its value in the
+joint's unit and `residual_mm`, null past the first), `worst_closure_residual_mm`
+and `closure_tolerance_mm`; `sample_count` counts the closed samples only, and
+a row with any `unclosed` sample is `incomplete` with a reason saying where
+the loop stopped closing. A pair row's `relative_motion` is then true when the
+two bodies move differently at some closed sample. A loop joint with no
+limits of its own retains `status: passive` with `loop`, `driven_by` (the
+loop's limited joints) and a reason, and no measurements: it is not missing
+coverage. A loop with no limited joint keeps every joint `incomplete`, naming
+the loop. All of these keys are absent on a revision accepted before ADR-621,
+whose loop joints read `incomplete`. No op argument changed.
 
 `cadex clearance --sweep` writes these facts and the accepted revision to
 `docs/clearance-sweep.md`. Exit 0 means the report was written, including when

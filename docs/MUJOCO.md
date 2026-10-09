@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-07
+Verified against source: 2026-10-09
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -148,8 +148,12 @@ step² and speed²:
 | 450 °/s | 0.090 mm | 0.018 mm | 0.0048 mm |
 
 (worst closure residual, four-bar, crank driven by a position servo.) The
-fit sweep refuses every joint of a closed loop with the loop named, since a
-one-joint sweep would tear the chain open.
+fit sweep drives a closed loop from its limited joint and re-closes it at
+every sample (ADR-621; before it refused every joint of the loop): on this
+four-bar the crank's 10-90° range at 2° puts the rocker tip within 1e-6 mm
+of circle intersection at all 41 samples, and the coupler-rocker pin driven
+on its own stops closing at -24°, just past the linkage's 23.56°
+transmission minimum, and says so.
 
 **The same linkage, built live (ADR-594, 2026-10-07).** The table above is
 the fixture route, a tree handed straight to `build_model`. Through the
@@ -179,8 +183,12 @@ and a planar loop needs three. The worker now takes the rank of the loop
 joints' unit screws at the pose the solver reached — the same closure
 Jacobian ADR-593 ranks on the exported model, read before any model
 exists — and accepts a code-0 *redundant* verdict only when the loops
-keep exactly one degree of freedom and every loop joint's connectors meet
-within 0.01 mm. The planar four-pin four-bar: four freedoms, rank three,
+keep a degree of freedom and every loop joint's connectors meet
+within 0.01 mm. Since ADR-621 the freedom is counted per linkage (loops
+sharing a joint): a four-bar in each of two legs is two linkages of one
+freedom each and builds, where ADR-595's single count of two refused it;
+a leg whose closing pin is tilted has none and is refused even beside a
+leg that moves. The planar four-pin four-bar: four freedoms, rank three,
 mobility one, redundancy three, accepted. A pinned triangle (mobility 0)
 and a four-bar whose closing pin is tilted 30° (mobility 0) keep the
 refusal. Built live with four `revolute` pins and driven 225 °/s at

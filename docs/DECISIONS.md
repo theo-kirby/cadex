@@ -37821,3 +37821,194 @@ parent access are blocked and its origin is `"null"`).
 schema name.
 
 Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-621 — A closed loop is swept from its limited joints, re-closed at every sample; a redundant linkage is counted per linkage (2026-10-09)
+
+**Context.** Audits of six cbase design sessions (QDD robot animals with
+pushrod and pantograph legs) found that the clearance sweep moved nothing
+in a graph with a closed loop. ADR-593 reported every loop joint
+`incomplete` ("sweeping one joint of a closed chain alone would tear the
+loop open"), and `_sweep_joint` refused the whole graph whenever the tree
+had a closure ("closed, coupled or static-joint graph is unsupported"), so
+even the serial hip-roll joints above the loops went unswept. No design
+had its motion range proven; agents hand-built `pose_*` parameters, and
+`cbase-leopard-b` grew a `close_loop` parameter "so the fit sweep can turn
+each joint". Separately, every session that tried a planar pushrod on
+revolute pins was refused: ADR-595 accepted a redundant verdict only when
+*all* loops together had exactly one freedom, and a robot with a four-bar
+per leg has one per leg ("the loops closed by [...] have 4 degree(s) of
+freedom", `cbase-leopard-a` 8, `cbase-heron-a` 5), so every agent ended on
+cylindrical + ball rod ends.
+
+**Decision.**
+1. **The loop's limited joints are its inputs.** `_measure_joint_sweeps`
+   sends a limited `revolute` or `slider` of a loop to the bounded child
+   like any other; there `_sweep_loop_joint` sets it to each sample and
+   `CadexDynamics.loop_sweep` re-solves every other joint of the loops
+   that share a joint with it (`loop_groups`) so each closure meets its
+   kind again: a damped Gauss-Newton on the closures' residuals, by
+   continuation from the solved pose in steps of at most 1 degree (1 mm),
+   outward in each direction, so the mechanism stays on the branch it was
+   assembled on. The loop's other limited joints -- the other drives of a
+   two-input linkage -- hold their solved value, the first released that
+   would otherwise lock the driven one; joints off the group keep theirs.
+   Each closed pose is measured with exact solids through the same
+   `_measure_samples` a serial sweep uses; a pair's `relative_motion` is
+   whether its two bodies move differently at some sample.
+2. **A pose the loop cannot close is reported, not measured.** It is listed
+   in `unclosed` with its value and residual, the samples past it in that
+   direction are not tried (null residual), `reached_<unit>` is the range
+   that closed, and the joint is `incomplete` saying where the loop
+   stopped closing. The row also carries `loop`, `held`, `passive`,
+   `free_freedoms`, `worst_closure_residual_mm` and `closure_tolerance_mm`
+   (`CLOSURE_RESIDUAL_MM`, 1e-4 mm).
+3. **A loop joint with no limits is `passive`**, with `loop` and
+   `driven_by`: moved by the inputs, not a coverage hole, counted in the
+   CLI's `joints_passive` beside `joints_skipped` and out of the verdict.
+   A loop with no limited joint keeps every joint `incomplete`, naming the
+   loop and saying to limit its input.
+4. **A joint on no loop sweeps in a graph with loops.** Each loop lies
+   wholly inside or wholly outside the subtree such a joint turns (a cycle
+   that crossed into the subtree would have to pass through the joint), so
+   every closure holds rigidly; the refusal is kept for coupled and
+   static-joint graphs only.
+5. **Redundancy is counted per linkage.** `_loop_redundancy` accepts the
+   solver's code-0 redundant verdict when every set of loops sharing a
+   joint keeps at least one freedom (and, as before, there is redundancy,
+   every loop joint closes within 0.01 mm and hinge axes are parallel).
+   `loop_redundancy.groups` carries each linkage's count. A planar loop of
+   revolutes *is* over-constrained in 3D mobility terms -- a revolute pins
+   five freedoms and a planar loop needs three -- but the count is the
+   whole of the fault: the export already closes a revolute loop with a
+   `connect`, which pins the pin and lets the axis go (the "relaxed
+   closing pin"), and ADR-593's export-against-joint rank refuses exactly
+   the loop whose closing axis would have to tilt. So no relaxation in the
+   export is needed; only the count was wrong. A linkage with no freedom --
+   a truss, a tilted closing pin -- is refused whatever the other legs do,
+   which ADR-595's single count let through beside a moving leg.
+
+**Measured.** ADR-593's 200/80/220/120 mm four-bar on real OCCT, the crank
+limited 10-90 degrees at 2 degrees: 41 samples closed (worst residual
+4e-11 mm), the rocker tip's distance to a grounded stop equal to the
+circle-intersection answer within 1e-6 mm, the other three joints
+passive. The coupler-rocker pin driven on its own over +/-60 degrees
+closes from -22 to 60 and opens at -24 by 1.40 mm, the linkage's 23.56
+degree transmission minimum. A coaxial doubled hinge sweeps to the same
+rows as the hinge alone. Headless, `loop_sweep` puts the rocker within
+1e-9 mm of circle intersection over +/-60 degrees of crank. On a copy of
+`cbase-heron-a` (budget raised to 900 s): `knee_l`/`knee_r` complete over
+-60..60 (25 closed samples, holding the hip, worst closure 7e-11 mm),
+`neck` complete over -40..30 (15 samples), and `hip_l`/`hip_r`
+incomplete: holding the knee crank, the pushrod loop closes only from -50
+to 40 degrees and is open by 0.564 mm at 45 -- a real finding about the
+declared +/-50 degree hip limit. The same copy with its pushrod ends made
+plain `revolute` pins builds, solves (no redundancy flagged) and exports
+MJCF, with the same sweep rows. `roll_l`/`roll_r` stay incomplete on the
+existing 2,000-moving-pair budget. `cbase-deinonychus-a` (two loops per
+leg sharing the knee): all four loop inputs complete on a warm rebuild.
+
+**Tests.** `test_dynamics_linkages.py`: the loop's limited joint is sent to
+the child and the rest are passive; no limit names the loop; `loop_sweep`
+against circle intersection; two legs of one freedom each accepted, a
+tilted second leg refused. `test_joint_fit_sweep.py`: the real-OCCT
+four-bar (crank swept, stop distance analytic, transmission-angle stop,
+no-limit loop), the doubled coaxial hinge now complete, and the pair-row
+contract read from `_measure_samples`. `cli/tests` unchanged except the
+progress line's passive count.
+
+**Consequences.** No op, tool or protocol argument changes; the published
+sweep rows and `loop_redundancy` gain keys (documented in
+`docs/INTEGRATION.md`). A revision accepted before this reads as it did.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-622 — The fit is measured once per geometry, sweeps run four at once, and a sweep never times out the build (2026-10-09)
+
+**Context.** At 100-229 components a cbase build took 2-4 min and agents
+hit the 300 s cap. Profiled: on `cbase-leopard-b` (229 components, 26,106
+pairs, 721 measured exactly) the static fit alone was 230 CPU-seconds; on
+`cbase-deinonychus-a` 42 of a 66 s build (`distToShape` 20 s, `common`
+15 s). Every rebuild measured every near pair again, though an agent's
+edit changes a few parts. ADR-621 makes loop sweeps real work too.
+
+**Decision.**
+1. **A fit cache keyed by geometry.** `_FitCache` keeps every exact static
+   pair (distance, common volume), every component's exact box, and every
+   swept pair's three numbers in `script_artifacts/fit-cache/fit-<v>.json`
+   of the project the run builds (located from the run's request path;
+   the worker's `HOME`/`TMPDIR` are its attempt directory, which is
+   pruned). A pair is keyed by the SHA-256 of each component's *part*
+   BREP -- the linked source, so the same part placed anywhere has one
+   digest -- and their relative placement rounded to 1e-9; a swept pair
+   also by the samples and the relative placement at each. `v` hashes the
+   worker module's bytes and the kernel version, so changed measuring code
+   or OCCT starts afresh and the stale file is deleted. Outside a project
+   run there is no cache. The child reads it and hands what it measured
+   back to the parent, which writes once per build.
+2. **Swept pairs are measured pair by pair, nearest box first.** A pair is
+   finished, and cached, as soon as it is measured; a sample whose box gap
+   exceeds both the least distance measured so far and the 0.001 mm
+   contact tolerance is skipped (it can change none of the three numbers).
+   A child about to time out stops 5 s early and returns the pairs it
+   finished, so the next build carries on.
+3. **Up to four joint sweeps at once**, each still its own bounded
+   process, on the worker's four CPUs.
+4. **The sweep's total budget is bounded by the run's.** It is
+   `min(180 s, run budget left - 20 s - a quarter of the build so far)`,
+   read from the worker's CPU rlimit (which the runtime sets to its wall
+   budget) and its age; joints past it are `incomplete` with the existing
+   reason. A first sweep of a loop must not turn an accepted build into a
+   refused one: an unbounded heron build met the 300 s cap.
+
+**Measured.** Results identical: leopard-b's static fit on the same
+geometry by the base worker and by this one, cold and warm, over 26,106
+pairs -- identical lists; 229.7 CPU-s base, 224.8 cold, **0.84 warm**.
+After `paw_r=17 -> 16`, which changes four paws and moves the whole free
+base, the build's 721 exact pairs against a fresh base-code measurement of
+the same geometry: 717 bit-identical, worst difference 5.6e-12 mm, no
+verdict changed. Per build (worker CPU / wall, loaded 32-core box):
+leopard-b cold 209.5 CPU-s / 139 s, warm rebuild 95 / 74 s, after the paw
+change 100 / 87 s. Deinonychus-a (now sweeping its loops): cold 159 s
+wall, two loop inputs complete and two out of time with 112 pairs kept;
+the next build 61 s wall / 68 user-s with all four complete (6-13 s each)
+and static and swept rows identical to the cold build's. Heron-a's sweep:
+70 -> 53 s with pair-by-pair measurement and gap skipping, every swept row
+identical.
+
+**Tests.** `test_fit_cache.py` (real OCCT): a rebuild reads back the first
+build's static and swept rows exactly with no miss; a moved part is
+re-measured and the rest still hit; everything moved together hits every
+pair; no store outside a project run. The existing sweep known answers
+(first contact, culling, agreement, budgets) pass unchanged.
+
+**Consequences.** No op or protocol change. `script_artifacts/fit-cache/`
+is new project-store state, ignored by the project's git with the rest of
+`script_artifacts`. Found on the way, not fixed: `cbase-heron-a`'s
+`mantle_body` builds to a different solid on two runs of the same script
+(its mantle screws' common volume reads 10.8 mm3 in one and 0.0 in the
+other); the cache follows the geometry, so it neither hides nor causes
+that.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-623 — World geometry never fails the static fit (2026-10-09)
+
+**Context.** "A world=True floor fails fit." `fit_summary` appended every
+`world_geometry` component -- a floor declared `world=True`, a collision
+plane on a design body -- to `failing` as a row of its own (ADR-427 left
+it there "as A5 already reads it"), so a design that declared its floor
+exactly as `docs/XSCRIPT.md` asks read `fit fail: 1 failing` forever. The
+sweep has never failed a finding against world geometry (ADR-420).
+
+**Decision.** The world geometry is published as `fit.world_geometry`
+(`component`, `reason`) with `world_geometry_count`, and is never in
+`failing`, `counts` or the verdict. A part merely resting on it stays
+advisory (`world_geometry_contacts`, ADR-427); a part *sunk into* it or
+unmeasured against it still fails, because the solved pose is the pose a
+simulation starts from -- that is the part's finding, not the floor's.
+
+**Tests.** `cli/tests/test_clearance.py`: the floor stance passes; the
+late-page fixture's environment component is named under `world_geometry`
+and not failing; the real-engine intent fixture names it there.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
