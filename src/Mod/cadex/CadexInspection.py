@@ -1329,6 +1329,8 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
         # bay was cut into it. Absent when there is nothing to say.
         if isinstance(source.get("catalog_mount_axes"), list):
             row["mount_axes"] = [dict(axis) for axis in source["catalog_mount_axes"]]
+        if isinstance(source.get("catalog_drive_axis"), Mapping):
+            row["drive_axis"] = dict(source["catalog_drive_axis"])
         if isinstance(source.get("houses"), list):
             row["houses"] = [str(name) for name in source["houses"]]
         components.append(row)

@@ -758,17 +758,33 @@ call.
   join them, oriented away from the root (the first grounded non-world
   component, else the free base the dynamics tree roots at). Coupling and
   constraint kinds (`gears`, `belt`, `distance`, …) are left out.
-- **A joint's drive** is `actuated` (an actuator declared on it), `loop`
-  (passive, but in a closed loop an actuated joint is also in — a four-bar's
-  pins) or `passive`.
+- **A joint's drive** is one of four, first match wins:
+  - `actuated` — an `assembly.actuator` is declared on it;
+  - `catalog drive` — no actuator is declared, but a catalog actuator
+    (`lib.qdd`, `lib.servo`, `lib.gearmotor`, `lib.bldc`; `lib.linear_actuator`
+    for a slider) is welded into the rigid body on one side of it with its
+    output axis on the joint's axis at the solved pose: within 3° (either
+    sense) and 1.5 mm. A rotary drive counts on a `revolute` or
+    `cylindrical` joint, a linear one on a `slider` or `cylindrical`. The
+    row names it as `driver`. This is the motor a design-only project placed
+    and never declared;
+  - `loop` — passive, but in a closed loop an actuated or catalog-driven
+    joint is also in (a four-bar's pins);
+  - `passive`.
+  Each library drive records its output axis (canonical +Z through its
+  datum) beside the definition as `catalog_drive_axis`, served on its
+  inventory rows as `drive_axis`; the stamp carries each mobile joint's
+  axis line to the solved pose (`axis: {origin, axis}`). No geometry call.
 - **A region's joints** are the mobile joints into a rigid body it owns, or
   between two of its own. The root region owns the root body; elsewhere the
   region reaching nearest the root owns a body two regions share, ties to
   the one declared first, and the others in it are `welded_to` it. Each
   region row carries `status`, `components`, `joints` (`{joint, kind, dof,
-  drive, actuators, within?}`), `joint_dof`, `actuated_dof`,
+  drive, actuators, driven_dof, driver?, within?}`), `joint_dof`,
+  `actuated_dof` (declared actuators, or 1 per catalog drive),
   `parent_region` and, where present, `welded_to` and `reason`.
-- **Status**: `articulated` (a joint of its own, actuated or loop-driven),
+- **Status**: `articulated` (a joint of its own, actuated, catalog-driven or
+  loop-driven),
   `passive only` (joints, none driven), `root` (the body everything hangs
   off, no joint of its own), `rigid` (no joint, a reason) or
   `rigid, no reason`.
@@ -786,15 +802,18 @@ call.
   `extent_mm`, `protrudes_mm`, `toward` (`+x` …), `regions` and
   `acknowledged` — true when every region it holds is articulated, the root,
   or carries a reason. A fused head and a welded tail are what this finds.
-- Plus `actuated_dof`, `joint_dof`, `mobile_joints`, `actuated_joints`,
+- Plus `actuated_dof`, `joint_dof`, `mobile_joints`, `actuated_joints`
+  (declared or catalog-driven), `catalog_driven_joints`,
   `rigid_bodies`, `root_component`, `unacknowledged_appendages` and
   `undeclared_joints` (mobile joints into a body no region holds).
 - The build reply shows it bounded (`CadexAnatomy.anatomy_view`: component
-  lists cut to six with a count, joints as `name (kind, drive)`, twelve
+  lists cut to six with a count, joints as `name (kind, drive)` or
+  `name (kind, catalog drive: <component>)`, twelve
   appendages); `look`'s `measures` add `anatomy`
   (`CadexAnatomy.anatomy_measure`: the verdict, `meets`, `open_regions`).
   A design-only project with no `assembly.mjcf` or dynamics run declares no
-  actuator, so every region with joints reads `passive only` until one does.
+  actuator, so its drives are read off the catalog motors it placed; a
+  joint with neither reads `passive`.
 
 ### The parts library: `lib` `[ADR-181]`
 

@@ -346,3 +346,115 @@ def test_a_revision_accepted_before_the_stamp_reads_unavailable(tmp_path) -> Non
     root = _store(tmp_path, {"ok": True, "outputs": [{"name": "asm", "type": "assembly"}]})
     value = complete_inspection(capture_inspection(_service(root), {"scope": "anatomy"}))["value"]
     assert value["verdict"] == "unavailable"
+
+
+# -- catalog drives: a design-only project's motors (ADR-614) ----------------
+
+def test_every_drive_family_records_its_output_axis_and_motion() -> None:
+    from cadex_library_api import _definition_key, library_mount_facts
+    from test_library import _lib
+
+    lib = _lib()
+    qdd = lib.qdd("cubemars-ak80-9-v3", origin=(10.0, 20.0, 30.0), direction=(0.0, 1.0, 0.0))
+    servo = lib.servo("sts3215", origin=(1.0, 2.0, 3.0), direction=(1.0, 0.0, 0.0))
+    motor = lib.gearmotor("pololu-2367")
+    bldc = lib.bldc("hobbywing-30415200", origin=(0.0, 0.0, 5.0))
+    linear = lib.linear_actuator("l12-50-210-12-s", direction=(0.0, 0.0, -1.0))
+    bolt = lib.bolt("M3", 10.0)
+    drives = library_mount_facts()["drives"]
+    row = drives[_definition_key(qdd.body)]
+    assert row["origin"] == pytest.approx([10.0, 20.0, 30.0])
+    assert row["axis"] == pytest.approx([0.0, 1.0, 0.0]) and row["motion"] == "rotary"
+    assert drives[_definition_key(servo.body)]["axis"] == pytest.approx([1.0, 0.0, 0.0])
+    assert drives[_definition_key(motor.body)]["motion"] == "rotary"
+    assert drives[_definition_key(bldc.body)]["origin"] == pytest.approx([0.0, 0.0, 5.0])
+    assert drives[_definition_key(linear.body)]["axis"] == pytest.approx([0.0, 0.0, -1.0])
+    assert drives[_definition_key(linear.body)]["motion"] == "linear"
+    # A bolt drives nothing.
+    assert _definition_key(bolt.body) not in drives
+
+
+def test_the_stamp_carries_each_joint_axis_to_the_solved_pose() -> None:
+    from cadex_assembly_worker import _solved_joint_axis
+
+    def fact(matrix):
+        return {"matrix": matrix}
+
+    identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    # The hinge frame sits at (10, 0, 0) with its +Z along world +Y, on
+    # component a at the origin...
+    frame = [1, 0, 0, 10, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1]
+    joint = {"connectors": [{"component_output": "a", "global_frame": fact(frame)}]}
+    assert _solved_joint_axis(joint, {"a": fact(identity)}, {"a": fact(identity)}) == {
+        "origin": [10.0, 0.0, 0.0], "axis": [0.0, 1.0, 0.0]}
+    # ...and the solve turned a 90 degrees about Z and lifted it 5 mm.
+    turned = [0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 5, 0, 0, 0, 1]
+    line = _solved_joint_axis(joint, {"a": fact(identity)}, {"a": fact(turned)})
+    assert line["origin"] == pytest.approx([0.0, 10.0, 5.0])
+    assert line["axis"] == pytest.approx([-1.0, 0.0, 0.0])
+
+
+def _drive_row(name, origin, axis, motion="rotary"):
+    row = _box(name, origin, [v + 10 for v in origin])
+    row["drive_axis"] = {"origin": list(origin), "axis": list(axis), "motion": motion}
+    return row
+
+
+def _arm(drive_rows, joints):
+    rows = [_box("torso", (0, 0, 0), (200, 100, 100)), _box("upper", (200, 0, 40), (400, 20, 60)),
+            _box("lower", (400, 0, 40), (600, 20, 60)), _box("rod", (200, 30, 40), (400, 40, 60)),
+            *drive_rows]
+    stamp = {"regions": [{"region": "spine", "components": ["torso"]},
+                         {"region": "arm_r", "components": ["upper", "lower", "rod"]}],
+             "components": [r["component"] for r in rows], "world_components": [],
+             "root_component": "torso", "joints": joints}
+    return anatomy.anatomy_summary(stamp, rows)
+
+
+_SHOULDER = {"origin": [200.0, 10.0, 50.0], "axis": [0.0, 1.0, 0.0]}
+
+
+def test_a_motor_welded_on_the_joint_axis_drives_it_with_no_actuator_declared() -> None:
+    block = _arm([_drive_row("qdd", (200.0, -5.0, 50.0), (0.0, -1.0, 0.0))], [
+        _joint("w_qdd", "fixed", "torso", "qdd"),
+        {**_joint("shoulder", "revolute", "torso", "upper"), "axis": _SHOULDER},
+        {**_joint("elbow", "revolute", "upper", "lower"),
+         "axis": {"origin": [400.0, 10.0, 50.0], "axis": [0.0, 1.0, 0.0]}},
+    ])
+    arm = _region(block, "arm_r")
+    drives = {j["joint"]: (j["drive"], j.get("driver")) for j in arm["joints"]}
+    # Antiparallel is still coaxial; the elbow has no motor on its axis.
+    assert drives == {"shoulder": ("catalog drive", "qdd"), "elbow": ("passive", None)}
+    assert arm["status"] == "articulated" and arm["actuated_dof"] == 1
+    assert block["catalog_driven_joints"] == 1 and block["actuated_dof"] == 1
+    view = anatomy.anatomy_view(block)
+    assert "shoulder (revolute, catalog drive: qdd)" in view["regions"][1]["joints"]
+
+
+def test_a_declared_actuator_wins_and_an_off_axis_or_wrong_motion_drive_does_not_count() -> None:
+    declared = _arm([_drive_row("qdd", (200.0, -5.0, 50.0), (0.0, 1.0, 0.0))], [
+        _joint("w_qdd", "fixed", "torso", "qdd"),
+        {**_joint("shoulder", "revolute", "torso", "upper", actuators=1), "axis": _SHOULDER}])
+    assert _region(declared, "arm_r")["joints"][0]["drive"] == "actuated"
+    assert declared["catalog_driven_joints"] == 0
+    for drive in (_drive_row("qdd", (200.0, -5.0, 53.0), (0.0, 1.0, 0.0)),        # 3 mm off
+                  _drive_row("qdd", (200.0, -5.0, 50.0), (0.0, 0.2, 1.0)),        # aimed away
+                  _drive_row("qdd", (200.0, -5.0, 50.0), (0.0, 1.0, 0.0), "linear")):
+        block = _arm([drive], [_joint("w_qdd", "fixed", "torso", "qdd"),
+                               {**_joint("shoulder", "revolute", "torso", "upper"), "axis": _SHOULDER}])
+        assert _region(block, "arm_r")["status"] == "passive only"
+    # A motor that is not welded to either side drives nothing.
+    loose = _arm([_drive_row("qdd", (200.0, -5.0, 50.0), (0.0, 1.0, 0.0))],
+                 [{**_joint("shoulder", "revolute", "torso", "upper"), "axis": _SHOULDER}])
+    assert _region(loose, "arm_r")["status"] == "passive only"
+
+
+def test_a_loop_a_catalog_drive_closes_is_driven_through_it() -> None:
+    block = _arm([_drive_row("qdd", (200.0, -5.0, 50.0), (0.0, 1.0, 0.0))], [
+        _joint("w_qdd", "fixed", "torso", "qdd"),
+        {**_joint("shoulder", "revolute", "torso", "upper"), "axis": _SHOULDER},
+        _joint("rod_base", "ball", "torso", "rod"),
+        _joint("rod_top", "ball", "rod", "upper"),
+    ])
+    drives = {j["joint"]: j["drive"] for j in _region(block, "arm_r")["joints"]}
+    assert drives == {"shoulder": "catalog drive", "rod_base": "loop", "rod_top": "loop"}

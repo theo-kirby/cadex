@@ -38199,8 +38199,16 @@ name, every unsuppressed joint with kind, components and actuator count
 the world geometry. `CadexAnatomy.anatomy_summary` (pure, in the service's
 closure) joins it to the inventory's boxes and is served as `inspect
 scope=anatomy`: per region `status` (`articulated`, `passive only`, `root`,
-`rigid`, `rigid, no reason`), its joints and their drive (`actuated`,
-`loop` — passive in a closed loop an actuator drives — or `passive`),
+`rigid`, `rigid, no reason`), its joints and their drive — `actuated`
+(an `assembly.actuator` declared on it; declared wins), `catalog drive`
+(none declared, but a catalog actuator — qdd, servo, gearmotor, bldc, or a
+linear actuator on a slider — is welded into the body on one side with its
+output axis on the joint axis at the solved pose, within 3° and 1.5 mm;
+the row names it as `driver`), `loop` (passive in a closed loop either
+drives) or `passive`. Library drives stamp `catalog_drive_axis` beside the
+definition, inventory rows serve it as `drive_axis`, and the anatomy stamp
+carries each mobile joint's axis to the solved pose, so this costs no
+geometry call either;
 `joint_dof`, `actuated_dof`, `parent_region`, `welded_to`, `reason`; a
 `verdict` (`complete` only when every region is articulated, the root, or
 has a reason; `incomplete`; `undeclared`; `unavailable`); and, declared or
@@ -38215,19 +38223,26 @@ op, argument or golden changes.
 visible: on `cbase-heron-a` with its regions declared, the real engine
 reports the neck `articulated` (one QDD and three loop joints), the head
 `rigid, no reason` welded to the neck with `w_head` protruding 152 mm along
-+x, both feet rigid with no reason, and seven actuated DOF; and the same
++x, both feet rigid with no reason, and seven actuated DOF — with its MJCF
+export (seven declared actuators) and, design-only with the export removed,
+as seven `catalog drive` joints on exactly the seven QDDs the export
+declares (on a private staged payload carrying this tree); and the same
 summary over `cbase-deinonychus-a`'s accepted graph, undeclared, finds its
 welded tail protruding 450 mm along −x.
 Graph-only, so a build pays no geometry call for it.
 
 **Tests.** `test_anatomy.py` (stamp, summary, loop drive, shared bodies,
-appendages, view, scope); `test_engine_purity_guardrails.py` (closure);
+appendages, view, scope; every drive family's output axis, the joint axis
+carried to the solved pose, catalog drive on axis, declared wins, off-axis,
+wrong motion and unwelded refused, a loop a catalog drive closes); `test_engine_purity_guardrails.py` (closure);
 `cli/tests/test_mcp_protocol.py` (the block on a build reply, an older
 engine without the scope), `test_look.py`, `fake_cadexd.anatomy_value`.
 
 **Consequences.** Advisory: nothing is refused. A design-only project
 declares no actuator (none without an `assembly.mjcf` or dynamics run), so
-its jointed regions read `passive only`. Revisions accepted before this read
-`unavailable` until rebuilt.
+its drives are read off the catalog motors it placed: a motor off its
+joint's axis, or a hand-modelled one, leaves that joint `passive`.
+Revisions accepted before this read `unavailable` until rebuilt, and read
+no `catalog drive` until rebuilt on an engine that stamps drive axes.
 
 Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).

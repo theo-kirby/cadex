@@ -50,15 +50,18 @@ SUGGESTED_REGIONS = (
 ANATOMY_SOURCE = (
     "the accepted revision's joint graph (inspect scope=anatomy): the regions "
     "assembly.anatomy declared, every unsuppressed joint, which ones an "
-    "api.actuator drives in any export, the weld clusters fixed joints make, "
+    "api.actuator drives in any export or a catalog actuator drives on its "
+    "axis, the weld clusters fixed joints make, "
     "and the bounding boxes the inventory already carries. Not a motion or "
     "strength check."
 )
 
 ANATOMY_NOTE = (
     "A region is articulated when a joint moves it relative to the region it "
-    "hangs off (or between its own segments) and an actuator drives that "
-    "joint directly or through a closed loop. A region with no joint of its "
+    "hangs off (or between its own segments) and something drives that "
+    "joint: an api.actuator declared on it (actuated), a catalog actuator "
+    "welded to one side with its output on the joint axis (catalog drive), "
+    "or either through a closed loop (loop). A region with no joint of its "
     "own is rigid; declare reason= when that is deliberate, with the "
     "measurement that says so. The verdict is complete only when every "
     "declared region is articulated, the root, or carries a reason."
@@ -110,6 +113,86 @@ def world_boxes(components: Sequence[Mapping[str, Any]]) -> dict[str, tuple]:
         boxes[name] = ([min(c[i] for c in corners) for i in range(3)],
                        [max(c[i] for c in corners) for i in range(3)])
     return boxes
+
+
+#: The drives that make a region articulated: an api.actuator declared on
+#: the joint, a catalog actuator on its axis, or a closed loop either drives.
+DRIVEN = ("actuated", "catalog drive", "loop")
+#: How far a catalog actuator's output axis may sit off a joint's axis and
+#: still be read as driving it: a degree-scale aim and a millimetre-scale
+#: offset, far tighter than any motor placed for another joint.
+DRIVE_AXIS_ANGLE_DEGREES = 3.0
+DRIVE_AXIS_OFFSET_MM = 1.5
+#: Which joint kinds each output motion can drive.
+DRIVE_KINDS = {"rotary": ("revolute", "cylindrical"), "linear": ("slider", "cylindrical")}
+
+
+def world_drive_axes(components: Sequence[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Each catalog actuator's output axis in world coordinates at the solved pose.
+
+    ``drive_axis`` on an inventory row is in the source output's own
+    coordinates (stamped beside the definition, ADR-614); the solved
+    placement carries it into the world, like a mount axis.
+    """
+
+    found: dict[str, dict[str, Any]] = {}
+    for row in components:
+        if not isinstance(row, Mapping) or not isinstance(row.get("drive_axis"), Mapping):
+            continue
+        matrix = (row.get("placement") or {}).get("matrix")
+        if not (isinstance(matrix, (list, tuple)) and len(matrix) >= 12
+                and all(_finite(v) for v in matrix[:12])):
+            matrix = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]
+        m = [float(v) for v in matrix[:12]]
+        try:
+            origin = [float(v) for v in row["drive_axis"]["origin"]][:3]
+            axis = [float(v) for v in row["drive_axis"]["axis"]][:3]
+        except (KeyError, TypeError, ValueError):
+            continue
+        world_origin = [m[4 * i] * origin[0] + m[4 * i + 1] * origin[1] + m[4 * i + 2] * origin[2]
+                        + m[4 * i + 3] for i in range(3)]
+        world_axis = [m[4 * i] * axis[0] + m[4 * i + 1] * axis[1] + m[4 * i + 2] * axis[2]
+                      for i in range(3)]
+        found[str(row.get("component") or "")] = {
+            "origin": world_origin, "axis": world_axis,
+            "motion": str(row["drive_axis"].get("motion") or "rotary")}
+    return found
+
+
+def _coaxial(drive: Mapping[str, Any], line: Mapping[str, Any]) -> bool:
+    try:
+        a = [float(v) for v in drive["axis"]][:3]
+        b = [float(v) for v in line["axis"]][:3]
+        p = [float(v) for v in drive["origin"]][:3]
+        o = [float(v) for v in line["origin"]][:3]
+    except (KeyError, TypeError, ValueError):
+        return False
+    na, nb = math.sqrt(sum(v * v for v in a)), math.sqrt(sum(v * v for v in b))
+    if na <= 1e-12 or nb <= 1e-12:
+        return False
+    a, b = [v / na for v in a], [v / nb for v in b]
+    if abs(sum(x * y for x, y in zip(a, b))) < math.cos(math.radians(DRIVE_AXIS_ANGLE_DEGREES)):
+        return False
+    offset = [p[i] - o[i] for i in range(3)]
+    along = sum(offset[i] * b[i] for i in range(3))
+    radial = math.sqrt(max(sum(v * v for v in offset) - along * along, 0.0))
+    return radial <= DRIVE_AXIS_OFFSET_MM
+
+
+def _catalog_driver(joint: Mapping[str, Any], drives: Mapping[str, Mapping[str, Any]],
+                    members: Mapping[str, Sequence[str]], clusters: Any) -> str:
+    """The catalog actuator welded to one side of ``joint`` on its axis, or ``""``."""
+
+    line = joint.get("axis")
+    if not isinstance(line, Mapping) or not drives:
+        return ""
+    for side in joint["components"]:
+        for name in members.get(clusters.find(str(side)), ()):
+            drive = drives.get(name)
+            if (drive and joint.get("kind") in DRIVE_KINDS.get(drive["motion"], ())
+                    and _coaxial(drive, line)):
+                return name
+    return ""
 
 
 def _union(boxes: Sequence[tuple]) -> tuple | None:
@@ -351,24 +434,45 @@ def anatomy_summary(stamp: Any, components: Sequence[Mapping[str, Any]] = ()) ->
                 queue.append(other)
     far = len(members) + 1
 
+    # A joint no api.actuator names is still driven when a catalog actuator
+    # sits on its axis, welded into the body on one side of it: the motor a
+    # design-only project placed but never declared. Declared wins.
+    drives = world_drive_axes(components)
+    catalog_driver: dict[int, str] = {}
+    for _a, _b, index in edges:
+        joint = mobile[index]
+        if int(joint.get("actuators") or 0) > 0:
+            continue
+        found = _catalog_driver(joint, drives, members, clusters)
+        if found:
+            catalog_driver[index] = found
+
+    def driven(index: int) -> bool:
+        return int(mobile[index].get("actuators") or 0) > 0 or index in catalog_driver
+
     # Which mobile joints close a loop, and which loops an actuator drives.
     bridges = _bridges(list(members), edges)
-    loop_of: dict[str, str] = {}
     loop_parts = _Clusters(list(members))
     for first, second, index in edges:
         if index not in bridges:
             loop_parts.join(first, second)
     driven_loops = {loop_parts.find(clusters.find(str(mobile[i]["components"][0])))
-                    for _a, _b, i in edges if i not in bridges and int(mobile[i].get("actuators") or 0) > 0}
+                    for _a, _b, i in edges if i not in bridges and driven(i)}
 
     def drive(index: int) -> str:
         joint = mobile[index]
         if int(joint.get("actuators") or 0) > 0:
             return "actuated"
+        if index in catalog_driver:
+            return "catalog drive"
         if index in bridges:
             return "passive"
         side = loop_parts.find(clusters.find(str(joint["components"][0])))
         return "loop" if side in driven_loops else "passive"
+
+    def driven_dof(index: int) -> int:
+        dof = JOINT_DOF[str(mobile[index]["kind"])]
+        return min(int(mobile[index].get("actuators") or 0) or (1 if index in catalog_driver else 0), dof)
 
     # Region ownership of clusters: the root region owns the root cluster;
     # elsewhere the region reaching nearest the root owns a shared cluster,
@@ -408,7 +512,10 @@ def anatomy_summary(stamp: Any, components: Sequence[Mapping[str, Any]] = ()) ->
         joint = mobile[index]
         row = {"joint": str(joint.get("joint") or ""), "kind": str(joint.get("kind")),
                "dof": JOINT_DOF[str(joint.get("kind"))], "drive": drive(index),
-               "actuators": int(joint.get("actuators") or 0)}
+               "actuators": int(joint.get("actuators") or 0),
+               "driven_dof": driven_dof(index)}
+        if index in catalog_driver:
+            row["driver"] = catalog_driver[index]
         if child_owner in in_cluster.get(a, []):
             row["within"] = True
         else:
@@ -421,7 +528,7 @@ def anatomy_summary(stamp: Any, components: Sequence[Mapping[str, Any]] = ()) ->
         name = str(region["region"])
         own = assigned[name]
         reason = region.get("reason")
-        if any(j["drive"] in ("actuated", "loop") for j in own):
+        if any(j["drive"] in DRIVEN for j in own):
             status = "articulated"
         elif own:
             status = "passive only"
@@ -441,7 +548,7 @@ def anatomy_summary(stamp: Any, components: Sequence[Mapping[str, Any]] = ()) ->
             "components": [str(c) for c in region.get("components") or []],
             "joints": own,
             "joint_dof": sum(j["dof"] for j in own),
-            "actuated_dof": sum(min(j["actuators"], j["dof"]) for j in own),
+            "actuated_dof": sum(j["driven_dof"] for j in own),
         }
         if name in parent_region:
             row["parent_region"] = parent_region[name]
@@ -515,10 +622,10 @@ def anatomy_summary(stamp: Any, components: Sequence[Mapping[str, Any]] = ()) ->
         "unacknowledged_appendages": sum(1 for a in appendages if not a["acknowledged"]),
         "rigid_bodies": len(members),
         "mobile_joints": len(edges),
-        "actuated_joints": sum(1 for _a, _b, i in edges if int(mobile[i].get("actuators") or 0) > 0),
+        "actuated_joints": sum(1 for _a, _b, i in edges if driven(i)),
+        "catalog_driven_joints": len(catalog_driver),
         "joint_dof": sum(JOINT_DOF[str(mobile[i]["kind"])] for _a, _b, i in edges),
-        "actuated_dof": sum(min(int(mobile[i].get("actuators") or 0), JOINT_DOF[str(mobile[i]["kind"])])
-                            for _a, _b, i in edges),
+        "actuated_dof": sum(driven_dof(i) for _a, _b, i in edges),
         "root_component": root,
     }
     if regions:
@@ -535,7 +642,7 @@ VIEW_COMPONENT_LIMIT = 6
 #: The block's scalar keys the view carries whole.
 VIEW_KEYS = (
     "verdict", "revision", "assembly", "actuated_dof", "joint_dof", "mobile_joints",
-    "actuated_joints", "rigid_bodies", "root_component", "unacknowledged_appendages",
+    "actuated_joints", "catalog_driven_joints", "rigid_bodies", "root_component", "unacknowledged_appendages",
     "undeclared_joints", "note", "reason", "error",
 )
 
@@ -560,8 +667,9 @@ def anatomy_view(block: Mapping[str, Any]) -> dict[str, Any]:
     for row in list(block.get("regions") or [])[:VIEW_LIST_LIMIT * 2]:
         item = {key: value for key, value in row.items() if key not in ("components", "joints")}
         item["components"] = cut(row.get("components"))
-        item["joints"] = ["{:s} ({:s}, {:s})".format(j["joint"], j["kind"], j["drive"])
-                          for j in row.get("joints") or []]
+        item["joints"] = ["{:s} ({:s}, {:s}{:s})".format(
+            j["joint"], j["kind"], j["drive"], ": " + j["driver"] if j.get("driver") else "")
+            for j in row.get("joints") or []]
         regions.append(item)
     view["regions"] = regions
     appendages = []

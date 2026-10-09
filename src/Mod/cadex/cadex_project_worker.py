@@ -461,6 +461,11 @@ def _stamp_mounting(outputs: list[dict[str, Any]]) -> None:
             names_by_key.setdefault(key, []).append(str(item["name"]))
             if item.get("catalog") is not None:
                 item["catalog_mount_axes"] = [dict(row) for row in axes.get(key, [])]
+                # A catalog actuator's output axis (ADR-614), which the
+                # anatomy block reads to find the joint it drives.
+                drive = facts.get("drives", {}).get(key)
+                if drive:
+                    item["catalog_drive_axis"] = dict(drive)
     if not bays:
         return
     # Only nodes with a bay's own operation are serialised for comparison.

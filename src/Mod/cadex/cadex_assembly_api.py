@@ -1544,7 +1544,7 @@ class AssemblyDomainAPI:
         to ``api.assembly(..., anatomy=[...])``; do not return it. Every build
         reply then carries an ``anatomy`` block: per region, the joints that
         move it relative to the region it hangs off, which an ``api.actuator``
-        drives, and ``articulated`` / ``rigid`` / ``rigid, no reason`` /
+        or a catalog motor welded on the joint's axis drives, and ``articulated`` / ``rigid`` / ``rigid, no reason`` /
         ``passive only`` (ADR-613, ADR-614).
         """
 
