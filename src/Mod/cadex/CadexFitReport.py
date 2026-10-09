@@ -328,7 +328,7 @@ def sweep_summary(
         else:
             failing.append(finding)
 
-    complete = skipped = 0
+    complete = skipped = passive = 0
     for joint in published.get("joints") or []:
         if not isinstance(joint, dict):
             continue
@@ -343,7 +343,11 @@ def sweep_summary(
             "status": str(joint.get("status") or ""),
             "pairs_measured": len(rows),
         }
-        for key in ("step", "sample_count", "range_" + unit, "initial_" + unit):
+        for key in ("step", "sample_count", "range_" + unit, "initial_" + unit,
+                    # A joint of a closed loop (ADR-621): the loop it drove,
+                    # what it held and solved, how far it closed, and where not.
+                    "loop", "held", "passive", "driven_by", "reached_" + unit, "unclosed",
+                    "worst_closure_residual_mm"):
             if joint.get(key) is not None:
                 item[key] = joint[key]
         if joint.get("reason"):
@@ -355,6 +359,10 @@ def sweep_summary(
             # ignores it, so there is no range it could have been swept
             # through. It is counted apart from the joints this block judges.
             skipped += 1
+        elif item["status"] == "passive":
+            # A loop joint with no range of its own (ADR-621): the loop's
+            # limited joints drive it, and their rows hold what it moved.
+            passive += 1
         minimum_distance = maximum_common = first_contact = None
         contact_pair: list[str] = []
         moving = 0
@@ -442,7 +450,7 @@ def sweep_summary(
                 "value": first_contact, "unit": unit, "pair": contact_pair,
             }
         joints.append(item)
-    judged = len(joints) - skipped
+    judged = len(joints) - skipped - passive
     if failing:
         verdict = "fail"
     elif not judged:
@@ -465,6 +473,9 @@ def sweep_summary(
         # answerable: joints_checked - joints_complete - joints_skipped is
         # the coverage that is actually missing (ADR-371).
         "joints_skipped": skipped,
+        # Passive joints of a closed loop, moved by its limited ones and
+        # judged in their rows (ADR-621), counted apart the same way.
+        "joints_passive": passive,
         "joints": joints,
         "thresholds": {"minimum_clearance_mm": float(minimum),
                        "maximum_common_volume_mm3": float(maximum_volume)},
@@ -1370,10 +1381,11 @@ def fit_view(fit: dict[str, Any]) -> dict[str, Any]:
     if isinstance(sweep, dict):
         swept = dict(sweep)
         joints = [joint for joint in (sweep.get("joints") or [])
-                  if not (isinstance(joint, dict) and joint.get("status") == "complete")]
+                  if not (isinstance(joint, dict) and joint.get("status") in ("complete", "passive"))]
         _cut(swept, "joints", joints, "inspect scope=clearance path=/clearance_sweep/joints")
         swept["joints_note"] = (
-            "Only joints not swept to completion are listed; every joint's row, "
+            "Only joints not swept to completion are listed (a passive loop joint "
+            "is moved by its loop's limited joints and is not); every joint's row, "
             "first contact included, is inspect scope=clearance "
             "path=/clearance_sweep/joints."
         )

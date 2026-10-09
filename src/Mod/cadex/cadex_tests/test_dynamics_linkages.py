@@ -253,17 +253,13 @@ def test_a_drive_on_a_rigid_triangle_is_refused() -> None:
     assert excinfo.value.observed["joints"] == ["left_pin"]
 
 
-def test_the_fit_sweep_refuses_each_joint_of_a_closed_loop_naming_the_loop() -> None:
-    """A one-joint sweep would tear the chain open; it says so, by name."""
+def _worker_joints(joints, limited=()):
+    """The four-bar's joints as the worker's ``joint_data``, ``limited`` ones at ±180 degrees."""
 
-    import cadex_assembly_worker as worker
-
-    components, joints = _four_bar()
-    component_data = {c["name"]: {"grounded": c["grounded"]} for c in components}
-    joint_data = {
+    return {
         joint["name"]: {
             **{key: joint[key] for key in ("kind", "suppressed", "parameters", "length_limits_mm")},
-            "angle_limits_degrees": [-180.0, 180.0],
+            "angle_limits_degrees": [-180.0, 180.0] if joint["name"] in limited else None,
             "connectors": [
                 {"component_output": c["component"], "local_frame": {"matrix": c["local_matrix"]}}
                 for c in joint["connectors"]
@@ -271,15 +267,138 @@ def test_the_fit_sweep_refuses_each_joint_of_a_closed_loop_naming_the_loop() -> 
         }
         for joint in joints
     }
+
+
+def test_the_fit_sweep_drives_a_closed_loop_from_its_limited_joint(monkeypatch) -> None:
+    """ADR-621: the loop's limited joint is its input, the rest are passive.
+
+    ADR-593 refused every joint of a loop ("sweeping one joint of a closed
+    chain alone would tear the loop open"). Now the limited crank is handed
+    to the bounded child, which re-closes the loop at every sample (its
+    real-kernel answer is ``test_joint_fit_sweep``'s four-bar), and the
+    three unlimited joints are ``passive``: moved by it, not coverage holes.
+    A loop with no limit anywhere has no input, and every joint says so.
+    """
+
+    import cadex_assembly_worker as worker
+
+    components, joints = _four_bar()
+    component_data = {c["name"]: {"grounded": c["grounded"]} for c in components}
+    driven = []
+
+    def bounded(serialised, component_data, joint_data, baseline, name, step, seconds):
+        driven.append(name)
+        return {"status": "complete", "pairs": [], "elapsed_seconds": 0.0}
+
+    monkeypatch.setattr(worker, "_bounded_sweep_call", bounded)
+    monkeypatch.setattr(worker, "_sweep_payload_components", lambda components: {})
     report = worker._measure_joint_sweeps(
-        {}, component_data, joint_data, [], {"sweep_step_degrees": 1.0}, True
-    )
-    assert report["status"] == "incomplete"
+        {}, component_data, _worker_joints(joints, limited={"a"}), [],
+        {"sweep_step_degrees": 1.0}, True)
+    assert driven == ["a"]
+    assert report["status"] == "complete", report
+    rows = {row["joint"]: row for row in report["joints"]}
+    assert rows["a"]["status"] == "complete"
+    for name in ("d", "b", "c"):
+        assert rows[name]["status"] == "passive"
+        assert rows[name]["driven_by"] == ["a"]
+        assert rows[name]["loop"] == {"closures": ["c"], "joints": ["b", "a", "d", "c"]}
+        assert "solved at every sample" in rows[name]["reason"]
+
+    driven.clear()
+    report = worker._measure_joint_sweeps(
+        {}, component_data, _worker_joints(joints), [], {"sweep_step_degrees": 1.0}, True)
+    assert driven == [] and report["status"] == "incomplete"
     assert [row["joint"] for row in report["joints"]] == ["a", "d", "b", "c"]
     for row in report["joints"]:
         assert row["status"] == "incomplete"
         assert "closed loop ['b', 'a', 'd', 'c']" in row["reason"]
         assert "closed by 'c'" in row["reason"]
+        assert "no joint of that loop declares limits" in row["reason"]
+
+
+def test_the_loop_solve_puts_the_rocker_where_circle_intersection_does() -> None:
+    """``loop_sweep``, headless: the crank driven, the rest re-closed (ADR-621)."""
+
+    components, joints = _four_bar()
+    tree = dyn.extract_tree(components, joints)
+    placements = {c["name"]: c["solved_matrix"] for c in components}
+    import cadex_assembly_worker as worker
+    loops = worker._closed_loops({c["name"]: {"grounded": c["grounded"]} for c in components},
+                                 _worker_joints(joints))
+    travels = [math.radians(d) for d in range(-60, 61, 5)]
+    swept = dyn.loop_sweep(tree, {j["name"]: j for j in joints}, placements, loops, "a",
+                           travels, held=["d"])
+    # Holding the rocker would lock the crank, so it is released.
+    assert (swept["locked"], swept["held"], swept["passive"], swept["free_freedoms"]) == (
+        False, [], ["b", "d"], 0)
+    rocker = None
+    for travel, pose in zip(travels, swept["poses"]):
+        assert pose["closed"] and pose["residual_mm"] < dyn.LOOP_POSE_CLOSURE_MM
+        crank = dyn.matrix_multiply(pose["bodies"]["crank"], placements["crank"])
+        theta = math.atan2(crank[4], crank[0])
+        assert theta == pytest.approx(math.radians(50.0) + travel, abs=1e-12)
+        moved = dyn.matrix_multiply(pose["bodies"]["rocker"], placements["rocker"])
+        angle = math.atan2(moved[4], moved[0])
+        rocker = _rocker_angle(theta, angle if rocker is None else rocker)
+        assert ROCKER * abs(math.remainder(angle - rocker, math.tau)) < 1e-9
+        # The ground never moves.
+        assert pose["bodies"]["ground"] == list(dyn.IDENTITY_MATRIX)
+
+
+def _two_legs(*, tilt_second: float = 0.0):
+    """Two four-bars off one ground, each its own linkage; the second's closing pin may tilt."""
+
+    theta = math.radians(50.0)
+    b = (CRANK * math.cos(theta), CRANK * math.sin(theta))
+    span = math.dist(b, (GROUND, 0.0))
+    base = math.atan2(-b[1], GROUND - b[0])
+    interior = math.acos((COUPLER**2 + span**2 - ROCKER**2) / (2.0 * COUPLER * span))
+    coupler = base + interior
+    c = (b[0] + COUPLER * math.cos(coupler), b[1] + COUPLER * math.sin(coupler))
+    rocker = math.atan2(c[1], c[0] - GROUND)
+    links, chain = [{"name": "ground", "grounded": True}], []
+    for leg, z in (("l", 0.0), ("r", 100.0)):
+        links += [{"name": f"crank_{leg}"}, {"name": f"coupler_{leg}"}, {"name": f"rocker_{leg}"}]
+        chain += [
+            {"name": f"a_{leg}", "kind": "revolute", "parent": "ground", "child": f"crank_{leg}",
+             "parent_frame": fx.frame((0.0, 0.0, z)), "child_frame": fx.frame(), "values": [theta]},
+            {"name": f"d_{leg}", "kind": "revolute", "parent": "ground", "child": f"rocker_{leg}",
+             "parent_frame": fx.frame((GROUND, 0.0, z)), "child_frame": fx.frame(), "values": [rocker]},
+            {"name": f"b_{leg}", "kind": "revolute", "parent": f"crank_{leg}", "child": f"coupler_{leg}",
+             "parent_frame": fx.frame((CRANK, 0.0, 0.0)), "child_frame": fx.frame(),
+             "values": [coupler - theta]},
+        ]
+    components, joints, placements = fx.build(links, chain)
+    for leg, tilt in (("l", 0.0), ("r", tilt_second)):
+        joints.append(fx.closing_joint(
+            f"c_{leg}", "revolute", f"coupler_{leg}", f"rocker_{leg}",
+            fx.frame((COUPLER, 0.0, 0.0), axis=(1.0, 0.0, 0.0), angle_degrees=tilt), placements))
+    return components, joints
+
+
+def test_a_four_bar_in_each_leg_is_one_freedom_per_linkage_and_accepted() -> None:
+    """ADR-621: the count is per linkage, not over every loop of the robot.
+
+    ADR-595 accepted a redundancy only when *all* loops together had one
+    freedom, so two legs with a four-bar each -- two freedoms -- kept the
+    refusal, and every cbase design moved its pushrods to cylindrical and
+    ball ends to get past it. Each leg is its own linkage of one freedom;
+    a leg whose closing pin is tilted out of its plane is a locked one,
+    and is refused whatever the other leg does.
+    """
+
+    verdict = _redundancy(*_two_legs())
+    assert verdict["mobility"] == 2 and verdict["redundancy"] == 6
+    assert [group["mobility"] for group in verdict["groups"]] == [1, 1]
+    assert [group["loops"] for group in verdict["groups"]] == [["c_l"], ["c_r"]]
+    assert verdict["accepted"] is True
+    locked = _redundancy(*_two_legs(tilt_second=30.0))
+    # One freedom in all -- ADR-595 would have accepted this -- but the
+    # second leg has none.
+    assert locked["mobility"] == 1
+    assert [group["mobility"] for group in locked["groups"]] == [1, 0]
+    assert locked["accepted"] is False
 
 
 def _redundancy(components, joints, labels=("redundant constraints",), solver_code=0):

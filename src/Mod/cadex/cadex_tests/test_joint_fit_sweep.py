@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 import ast
+import json
 import math
 import re
 from pathlib import Path
@@ -110,12 +111,20 @@ def test_known_angle_solved_agreement_and_incomplete_coverage(tmp_path, monkeypa
     for name, reason in [('disagreement', 'disagreement'), ('capped', 'pose budget'),
                          ('unsupported', 'hinges and sliders are supported, not cylindrical'),
                          ('timeout', 'runtime budget'), ('exhausted', 'total runtime budget'),
-                         ('pair_cap', 'pair budget'), ('closed', 'closed'),
+                         ('pair_cap', 'pair budget'),
                          ('open_ended', 'open-ended'),
                          ('undeclared', 'sweep_step_degrees is not declared')]:
         assert result[name]['status'] == 'incomplete', result[name]
         assert reason in result[name]['joints'][0]['reason']
     assert result['undeclared']['step_mm'] == 1 and result['undeclared']['step_degrees'] is None
+    # A second, coaxial hinge closes a loop that still turns (ADR-621): the
+    # limited one is swept with the loop re-closed, to the same answer as
+    # alone, and the closing one is passive. ADR-593 refused both.
+    closed = {row['joint']: row for row in result['closed']['joints']}
+    assert result['closed']['status'] == 'complete', result['closed']
+    assert closed['hinge']['status'] == 'complete' and closed['hinge']['unclosed'] == []
+    assert closed['hinge']['pairs'] == joint['pairs']
+    assert closed['closure']['status'] == 'passive' and closed['closure']['driven_by'] == ['hinge']
     # The pair budget counts the pairs the joint moves, not every pair in the
     # assembly (ADR-426). Before this, 64 far grounded blocks put this hinge
     # over the budget with 65 pairs to measure, as 87 components put every
@@ -327,18 +336,20 @@ _CONTRACT = Path(__file__).resolve().parents[4] / 'docs' / 'INTEGRATION.md'
 
 
 def _published_pair_row_keys():
-    """Constant keys `_sweep_joint` puts on every swept pair row, from source.
+    """Constant keys every swept pair row carries, from source.
 
     Read with `ast` rather than by running the sweep, because the sweep needs
     a real kernel and this contract does not: the shape of the row is decided
-    by one dict literal, and a renamed or deleted key is visible there.
+    by one dict literal -- in `_measure_samples`, which both a serial sweep
+    and a loop sweep (ADR-621) measure through -- and a renamed or deleted
+    key is visible there.
     """
     worker = ast.parse(_WORKER.read_text(encoding='utf-8'))
     func = next(node for node in ast.walk(worker)
-                if isinstance(node, ast.FunctionDef) and node.name == '_sweep_joint')
+                if isinstance(node, ast.FunctionDef) and node.name == '_measure_samples')
     assign = next(node for node in ast.walk(func)
                   if isinstance(node, ast.Assign)
-                  and any(getattr(t, 'id', None) == 'rows' for t in node.targets))
+                  and any(getattr(t, 'id', None) == 'row' for t in node.targets))
     literal = assign.value.elt if isinstance(assign.value, ast.ListComp) else assign.value
     assert isinstance(literal, ast.Dict), ast.dump(assign.value)
     return {key.value for key in literal.keys
@@ -748,3 +759,154 @@ def test_a_swept_bead_in_a_cavity_and_one_buried_in_a_solid_read_true(tmp_path, 
     assert buried['minimum_distance_mm'] == 0.0
     assert buried['maximum_common_volume_mm3'] == pytest.approx(4 * math.pi / 3, rel=1e-3)
     assert buried['first_contact_degrees'] == 20
+
+
+_LOOP_DRIVER = r'''
+import json, sys
+import FreeCAD as App
+import Part
+sys.path.insert(0, sys.argv[-1])
+from cadex_assembly_worker import _measure_clearance, _measure_joint_sweeps
+spec = json.loads(SPEC)
+D = App.newDocument('LoopSweep')
+components = {}
+for item in spec['components']:
+    obj = D.addObject('Part::Feature', item['name'])
+    obj.Shape = Part.makeSphere(item['radius'], App.Vector(*item['centre']))
+    obj.Placement = App.Placement(App.Matrix(*item['matrix']))
+    components[item['name']] = obj
+D.recompute()
+data = {item['name']: {'grounded': item['grounded']} for item in spec['components']}
+baseline = _measure_clearance(components)
+report = _measure_joint_sweeps(components, data, spec['joints'], baseline,
+                               {'sweep_step_degrees': spec['step']}, True)
+unlimited = {name: dict(joint, angle_limits_degrees=None) for name, joint in spec['joints'].items()}
+nothing = _measure_joint_sweeps(components, data, unlimited, baseline,
+                                {'sweep_step_degrees': spec['step']}, True)
+wide = dict(spec['joints'])
+wide['c'] = dict(wide['c'], angle_limits_degrees=spec['wide'])
+toggled = _measure_joint_sweeps(components, data, wide, baseline,
+                                {'sweep_step_degrees': spec['step']}, True)
+print('CLEARANCE-FRAME ' + json.dumps(dict(report=report, nothing=nothing, toggled=toggled)))
+'''
+
+
+def _four_bar_spec():
+    """ADR-593's Grashof four-bar (200/80/220/120 mm), crank at 50 degrees, as worker joint data."""
+
+    import dynamics_fixtures as fx
+    import CadexDynamics as dyn
+    ground, crank, coupler, rocker = 200.0, 80.0, 220.0, 120.0
+    theta = math.radians(50.0)
+    b = (crank * math.cos(theta), crank * math.sin(theta))
+    span = math.dist(b, (ground, 0.0))
+    base = math.atan2(-b[1], ground - b[0])
+    interior = math.acos((coupler ** 2 + span ** 2 - rocker ** 2) / (2.0 * coupler * span))
+    heading = base + interior
+    c = (b[0] + coupler * math.cos(heading), b[1] + coupler * math.sin(heading))
+    phi = math.atan2(c[1], c[0] - ground)
+    components, joints, placements = fx.build(
+        [{'name': 'ground', 'grounded': True}, {'name': 'crank'},
+         {'name': 'coupler'}, {'name': 'rocker'}],
+        [{'name': 'a', 'kind': 'revolute', 'parent': 'ground', 'child': 'crank',
+          'parent_frame': fx.frame(), 'child_frame': fx.frame(), 'values': [theta]},
+         {'name': 'd', 'kind': 'revolute', 'parent': 'ground', 'child': 'rocker',
+          'parent_frame': fx.frame((ground, 0.0, 0.0)), 'child_frame': fx.frame(), 'values': [phi]},
+         {'name': 'b', 'kind': 'revolute', 'parent': 'crank', 'child': 'coupler',
+          'parent_frame': fx.frame((crank, 0.0, 0.0)), 'child_frame': fx.frame(),
+          'values': [heading - theta]}])
+    joints.append(fx.closing_joint('c', 'revolute', 'coupler', 'rocker',
+                                   fx.frame((coupler, 0.0, 0.0)), placements))
+    # A stop on the rocker tip's circle, 15 mm out from it at 75 degrees: the
+    # tip's 5 mm sphere and the stop's come within 5 mm there and no nearer.
+    stop = [ground + 135.0 * math.cos(math.radians(75.0)), 135.0 * math.sin(math.radians(75.0)), 0.0]
+    spheres = {'ground': ((100.0, -100.0, 0.0), 5.0), 'crank': ((40.0, 0.0, 30.0), 5.0),
+               'coupler': ((110.0, 0.0, 60.0), 5.0), 'rocker': ((rocker, 0.0, 0.0), 5.0)}
+    items = [{'name': c['name'], 'grounded': c['grounded'], 'matrix': c['solved_matrix'],
+              'centre': list(spheres[c['name']][0]), 'radius': spheres[c['name']][1]}
+             for c in components]
+    items.append({'name': 'stop', 'grounded': True, 'matrix': list(dyn.IDENTITY_MATRIX),
+                  'centre': stop, 'radius': 5.0})
+    data = {}
+    for joint in joints:
+        data[joint['name']] = {
+            'kind': joint['kind'], 'suppressed': False, 'parameters': {}, 'length_limits_mm': None,
+            'angle_limits_degrees': [10.0, 90.0] if joint['name'] == 'a' else None,
+            'connectors': [{'component_output': c['component'],
+                            'local_frame': {'matrix': c['local_matrix']}} for c in joint['connectors']]}
+    return {'components': items, 'joints': data, 'step': 2.0, 'stop': stop,
+            'lengths': (ground, crank, coupler, rocker)}
+
+
+@pytest.mark.skipif(kernel.FREECADCMD is None, reason='Needs real OCCT')
+def test_a_four_bar_is_swept_from_its_crank_with_the_loop_closed_at_every_sample(tmp_path, monkeypatch):
+    """ADR-621 on real OCCT: the crank's range, the rocker where geometry puts it.
+
+    Before this every joint of the loop read ``incomplete`` ("sweeping one
+    joint of a closed chain alone would tear the loop open"), so no pushrod
+    leg had its motion range proven. The crank 'a' (limited 10..90 degrees)
+    is now driven, the loop re-closed at each 2 degree sample, and the
+    rocker tip's distance to a grounded stop matches circle intersection at
+    every sample; the three unlimited loop joints are passive. With no limit
+    anywhere in the loop, nothing is driven and every joint says so; with
+    the coupler-rocker pin driven past the transmission angle it can reach,
+    the sweep stops where the loop opens and says by how much.
+    """
+
+    spec = _four_bar_spec()
+    spec['wide'] = [-60.0, 60.0]
+    monkeypatch.setattr(kernel, '_FRAME_DRIVER',
+                        _LOOP_DRIVER.replace('json.loads(SPEC)', 'json.loads(%r)' % json.dumps(spec)))
+    result = kernel._drive_frame(tmp_path)
+    report = result['report']
+    assert report['status'] == 'complete', report
+    rows = {row['joint']: row for row in report['joints']}
+    crank = rows['a']
+    assert crank['status'] == 'complete' and crank['solved_pose_agreement']
+    assert crank['loop'] == {'closures': ['c'], 'joints': ['b', 'a', 'd', 'c']}
+    assert crank['held'] == [] and crank['passive'] == ['b', 'd'] and crank['unclosed'] == []
+    assert crank['sample_count'] == 41 and crank['reached_degrees'] == [10.0, 90.0]
+    assert crank['worst_closure_residual_mm'] < crank['closure_tolerance_mm']
+    for name in ('b', 'd', 'c'):
+        assert rows[name]['status'] == 'passive' and rows[name]['driven_by'] == ['a'], rows[name]
+    # The analytic rocker at each crank sample, and the tip's distance to the stop.
+    ground, length_crank, coupler, rocker = spec['lengths']
+    expected = math.inf
+    for i in range(41):
+        theta = math.radians(10.0 + 2.0 * i)
+        b = (length_crank * math.cos(theta), length_crank * math.sin(theta))
+        span = math.dist(b, (ground, 0.0))
+        base = math.atan2(b[1], b[0] - ground)
+        interior = math.acos((rocker ** 2 + span ** 2 - coupler ** 2) / (2.0 * rocker * span))
+        phi = base - interior
+        tip = (ground + rocker * math.cos(phi), rocker * math.sin(phi))
+        expected = min(expected, math.dist(tip, spec['stop'][:2]) - 10.0)
+    pairs = {frozenset((r['first'], r['second'])): r for r in crank['pairs']}
+    stop = pairs[frozenset(('rocker', 'stop'))]
+    assert stop['relative_motion'] and 'culled' not in stop
+    assert stop['minimum_distance_mm'] == pytest.approx(expected, abs=1e-6)
+    assert 5.0 <= stop['minimum_distance_mm'] < 5.1
+    # Two grounded bodies hold still against each other.
+    assert not pairs[frozenset(('ground', 'stop'))]['relative_motion']
+    nothing = {row['joint']: row for row in result['nothing']['joints']}
+    assert result['nothing']['status'] == 'incomplete'
+    assert all(row['status'] == 'incomplete' and 'no joint of that loop declares limits' in row['reason']
+               for row in nothing.values())
+    toggled = {row['joint']: row for row in result['toggled']['joints']}['c']
+    assert toggled['status'] == 'incomplete', toggled
+    assert 'pose budget' not in toggled.get('reason', ''), toggled
+    # The closing pin reads 0 at the solved pose, where the coupler and the
+    # rocker meet at 45.56 degrees; this crank-rocker never closes that angle
+    # below its 23.56 degree transmission minimum (crank and ground in line),
+    # so -22 is the last 2 degree sample that closes and -24 the first that
+    # cannot. Upward it reaches the 60 degree limit (105.6 < 107.2).
+    mu_min = math.degrees(math.acos((coupler ** 2 + rocker ** 2 - (ground - length_crank) ** 2)
+                                    / (2.0 * coupler * rocker)))
+    assert toggled['initial_degrees'] == pytest.approx(0.0, abs=1e-9)
+    floor = mu_min - 45.559009498
+    assert toggled['reached_degrees'] == [2.0 * math.ceil(floor / 2.0), 60.0] == [-22.0, 60.0]
+    first = next(row for row in toggled['unclosed'] if row['residual_mm'] is not None)
+    assert first['degrees'] == -24.0 and first['residual_mm'] > toggled['closure_tolerance_mm']
+    assert [row['degrees'] for row in toggled['unclosed']] == [-60.0 + 2 * i for i in range(19)]
+    assert toggled['held'] == []  # holding the crank would lock the pin
+    assert 'still open by' in toggled['reason'] and 'were not reached' in toggled['reason']

@@ -3968,6 +3968,375 @@ def loop_screw_mobility(
     }
 
 
+def loop_groups(loops: Sequence[Mapping[str, Any]]) -> list[list[Mapping[str, Any]]]:
+    """The loops that move together: those that share a joint, transitively.
+
+    Two loops that share only a body -- two legs off one torso -- move
+    independently: driving a joint of one changes no joint of the other, so
+    the other's closure holds rigidly. Loops that share a joint do not, and
+    are judged (ADR-595, ADR-622) and solved (ADR-621) as one system.
+    """
+
+    groups: list[list[Mapping[str, Any]]] = []
+    joints: list[set[str]] = []
+    for loop in loops:
+        names = {str(name) for name in loop["joints"]}
+        touching = [index for index, group in enumerate(joints) if group & names]
+        merged = [loop]
+        for index in reversed(touching):
+            merged = groups.pop(index) + merged
+            names |= joints.pop(index)
+        groups.append(merged)
+        joints.append(names)
+    # Script order of each group's first loop, so the result is deterministic.
+    order = {id(loop): index for index, loop in enumerate(loops)}
+    for group in groups:
+        group.sort(key=lambda loop: order[id(loop)])
+    groups.sort(key=lambda group: order[id(group[0])])
+    return groups
+
+
+# ---------------------------------------------------------------------------
+# A closed loop moved through its input's range (ADR-621).
+# ---------------------------------------------------------------------------
+
+#: A pose the loop sweep reached closes when every closure of the loop meets
+#: its kind within this, in mm (a closure's angular residual is scaled by the
+#: loop's size): the bound the tree build holds a solved joint to.
+LOOP_POSE_CLOSURE_MM = CLOSURE_RESIDUAL_MM
+
+#: The longest step the continuation takes between two solved poses. A
+#: Newton solve started a degree away stays on the branch the mechanism is
+#: on; a sweep step of 5 degrees is reached in five of these.
+_LOOP_SUBSTEP = {"revolute": math.radians(1.0), "slider": 1.0}
+_LOOP_NEWTON_ITERATIONS = 40
+_LOOP_DIFFERENCE_STEP = 1.0e-7
+_LOOP_RANK_STEP = 1.0e-5
+#: Converged: far inside LOOP_POSE_CLOSURE_MM, so a pose that stops here is
+#: closed to the solver's own precision rather than to the bound.
+_LOOP_CONVERGED_MM = 1.0e-10
+
+#: How many coordinates each kind frees, in the order ``_joint_motion`` reads them.
+_LOOP_FREEDOMS = {"fixed": 0, "revolute": 1, "slider": 1, "cylindrical": 2, "ball": 3}
+
+
+def _joint_motion(kind: str, values: Sequence[float]) -> list[float]:
+    """A joint's motion in its parent connector frame: rotation about and travel along +Z."""
+
+    if kind == "fixed" or not values:
+        return matrix_from_rotation_translation((1, 0, 0, 0, 1, 0, 0, 0, 1), (0, 0, 0))
+    if kind == "slider":
+        return matrix_from_rotation_translation((1, 0, 0, 0, 1, 0, 0, 0, 1), (0, 0, values[0]))
+    if kind in ("revolute", "cylindrical"):
+        angle = values[0] if kind == "revolute" else values[1]
+        travel = values[0] if kind == "cylindrical" else 0.0
+        c, s = math.cos(angle), math.sin(angle)
+        return matrix_from_rotation_translation((c, -s, 0, s, c, 0, 0, 0, 1), (0, 0, travel))
+    # A ball: the rotation vector, by Rodrigues.
+    angle = math.sqrt(sum(value * value for value in values))
+    if angle < 1.0e-15:
+        return matrix_from_rotation_translation((1, 0, 0, 0, 1, 0, 0, 0, 1), (0, 0, 0))
+    x, y, z = (value / angle for value in values)
+    c, s = math.cos(angle), math.sin(angle)
+    t = 1.0 - c
+    return matrix_from_rotation_translation(
+        (t * x * x + c, t * x * y - s * z, t * x * z + s * y,
+         t * x * y + s * z, t * y * y + c, t * y * z - s * x,
+         t * x * z - s * y, t * y * z + s * x, t * z * z + c),
+        (0, 0, 0),
+    )
+
+
+def _closure_residual(kind: str, transform: Sequence[float], scale: float) -> list[float]:
+    """What a closing joint's two frames are out by, in mm, against what its kind allows."""
+
+    t = matrix_translation_mm(transform)
+    r = matrix_rotation(transform)
+    # Small rotation vector of the frame's rotation, and its +Z's tilt.
+    turned = [scale * (r[7] - r[5]) / 2.0, scale * (r[2] - r[6]) / 2.0, scale * (r[3] - r[1]) / 2.0]
+    tilt = [scale * r[2], scale * r[5]]
+    if kind == "revolute":
+        return t + tilt
+    if kind == "slider":
+        return t[:2] + turned
+    if kind == "cylindrical":
+        return t[:2] + tilt
+    if kind == "ball":
+        return t
+    return t + turned
+
+
+def _driven_coordinate(kind: str, transform: Sequence[float]) -> float:
+    """A revolute's angle (radians) or a slider's travel (mm) from its frames' transform."""
+
+    if kind == "slider":
+        return float(transform[11])
+    return math.atan2(float(transform[4]), float(transform[0]))
+
+
+def _solve_linear(matrix: list[list[float]], vector: list[float]) -> list[float] | None:
+    """Gaussian elimination with partial pivoting; ``None`` when singular."""
+
+    size = len(vector)
+    rows = [list(matrix[i]) + [vector[i]] for i in range(size)]
+    for column in range(size):
+        pivot = max(range(column, size), key=lambda row: abs(rows[row][column]))
+        if abs(rows[pivot][column]) < 1.0e-300:
+            return None
+        rows[column], rows[pivot] = rows[pivot], rows[column]
+        for row in range(column + 1, size):
+            factor = rows[row][column] / rows[column][column]
+            if factor:
+                rows[row] = [a - factor * b for a, b in zip(rows[row], rows[column])]
+    solution = [0.0] * size
+    for row in reversed(range(size)):
+        solution[row] = (rows[row][size] - sum(
+            rows[row][k] * solution[k] for k in range(row + 1, size))) / rows[row][row]
+    return solution
+
+
+def loop_sweep(
+    tree: Mapping[str, Any],
+    joints: Mapping[str, Mapping[str, Any]],
+    placements: Mapping[str, Sequence[float]],
+    loops: Sequence[Mapping[str, Any]],
+    driven: str,
+    travels: Sequence[float],
+    *,
+    held: Sequence[str] = (),
+) -> dict[str, Any]:
+    """Move a closed loop by one joint and re-close it at each travel (ADR-621).
+
+    ``driven`` is a limited revolute or slider on one of ``loops`` (the
+    worker's ``_closed_loops`` rows); ``travels`` are its coordinate changes
+    from the solved pose, radians or mm. Every other joint of the loops that
+    move with it (:func:`loop_groups`) is **passive** -- its coordinates are
+    solved so each closure of the group meets its kind again -- except the
+    ``held`` ones, which keep their solved value: the other limited joints,
+    which are the other drives of a two-input linkage. A held joint that
+    would lock the driven one is released, the first that frees it in
+    order, else all of them; ``held`` in the result is what stayed held.
+    Joints off the group keep their solved coordinates, so whatever hangs
+    off a moving link moves with it.
+
+    The solve is a damped Gauss-Newton on the closures' residuals, by
+    continuation from the solved pose in steps of at most a degree (or a
+    millimetre), outward in each direction: a pose is reached from its
+    neighbour, so the mechanism stays on the branch it was assembled on.
+    The damping makes each step the least motion that closes the loops, so
+    a freedom the closures do not determine -- a rod-ended pushrod's spin
+    about its own axis -- holds still (``free_freedoms`` counts them). A
+    travel the loops cannot close within :data:`LOOP_POSE_CLOSURE_MM` -- a
+    toggle, a dead point, a link too short -- is reported unclosed with
+    its residual, and the travels past it in that direction are not tried.
+
+    Returns ``poses`` in the order of ``travels``: ``closed``,
+    ``residual_mm`` and, when closed, ``bodies`` -- each body's world-frame
+    motion from its solved placement, a 16-float matrix, for every body in
+    ``tree``. ``locked`` is true, with no poses, when the loops leave the
+    driven joint no motion even with every other loop joint free.
+    """
+
+    bodies = {str(body["name"]): body for body in tree["bodies"]}
+    tree_joint = {str(body["joint"]): body for body in tree["bodies"] if body.get("joint")}
+    group = next(group for group in loop_groups(loops)
+                 if any(driven in loop["joints"] for loop in group))
+    group_joints = list(dict.fromkeys(str(name) for loop in group for name in loop["joints"]))
+    closures = [str(loop["closure"]) for loop in group]
+    for name in group_joints:
+        if str(joints[name]["kind"]) not in _LOOP_FREEDOMS:
+            raise ValueError(f"the loop runs through {name!r}, a {joints[name]['kind']} joint "
+                             "the loop solve has no motion for")
+    kind = str(joints[driven]["kind"])
+    frames = {}
+    for name, body in tree_joint.items():
+        frames[name] = matrix_multiply(placements[str(body["parent"])], body["parent_local_matrix"])
+    driven_side = 1.0
+    if driven in tree_joint:
+        first = str(joints[driven]["connectors"][0]["component"])
+        # The coordinate runs from connector 0's frame to connector 1's, so a
+        # child on connector 0 turns the other way (as ``_sweep_joint``).
+        driven_side = 1.0 if first == tree_joint[driven]["parent"] else -1.0
+    centre_points = [matrix_translation_mm(matrix_multiply(
+        placements[str(c["component"])], c["local_matrix"]))
+        for name in group_joints for c in joints[name]["connectors"][:1]]
+    centre = [sum(p[i] for p in centre_points) / len(centre_points) for i in range(3)]
+    scale = max(1.0, *(math.dist(p, centre) for p in centre_points))
+
+    def closure_transform(name, motions):
+        cache: dict[str, list[float]] = {}
+
+        def world(component):
+            if component not in cache:
+                body = bodies[component]
+                parent = body["parent"]
+                delta = (world(str(parent)) if parent is not None
+                         else matrix_from_rotation_translation((1, 0, 0, 0, 1, 0, 0, 0, 1), (0, 0, 0)))
+                joint = body.get("joint")
+                if joint in motions:
+                    delta = matrix_multiply(delta, motions[joint])
+                cache[component] = delta
+            return cache[component]
+
+        a, b = joints[name]["connectors"]
+        return joint_transform(
+            matrix_multiply(world(str(a["component"])), placements[str(a["component"])]), a["local_matrix"],
+            matrix_multiply(world(str(b["component"])), placements[str(b["component"])]), b["local_matrix"])
+
+    initial = None
+    if driven not in tree_joint:
+        initial = _driven_coordinate(kind, closure_transform(driven, {}))
+
+    def motions_for(passive, x, travel):
+        motions = {}
+        offset = 0
+        for name in passive:
+            count = _LOOP_FREEDOMS[str(joints[name]["kind"])]
+            values = x[offset:offset + count]
+            offset += count
+            if any(values):
+                frame = frames[name]
+                motions[name] = matrix_multiply(matrix_multiply(
+                    frame, _joint_motion(str(joints[name]["kind"]), values)), matrix_inverse(frame))
+        if driven in tree_joint and travel:
+            frame = frames[driven]
+            motions[driven] = matrix_multiply(matrix_multiply(
+                frame, _joint_motion(kind, [driven_side * travel])), matrix_inverse(frame))
+        return motions
+
+    def residual(passive, x, travel):
+        motions = motions_for(passive, x, travel)
+        values: list[float] = []
+        for name in closures:
+            transform = closure_transform(name, motions)
+            values += _closure_residual(str(joints[name]["kind"]), transform, scale)
+            if name == driven:
+                error = _driven_coordinate(kind, transform) - (initial + travel)
+                values.append((scale * math.remainder(error, math.tau)) if kind == "revolute" else error)
+        return values
+
+    def jacobian(passive, x, travel, base):
+        columns = []
+        for index in range(len(x)):
+            moved = list(x)
+            moved[index] += _LOOP_DIFFERENCE_STEP
+            columns.append([(a - b) / _LOOP_DIFFERENCE_STEP
+                            for a, b in zip(residual(passive, moved, travel), base)])
+        return columns
+
+    def rank(columns):
+        # A column that moves no closure by more than a part in 1e7 of the
+        # loop per unit of its coordinate is no motion at all: what is left
+        # is the difference's rounding, and normalising it would count it.
+        normalised = []
+        for column in columns:
+            norm = math.sqrt(sum(value * value for value in column))
+            if norm > 1.0e-7 * scale:
+                normalised.append([value / norm for value in column])
+        if not normalised:
+            return 0
+        return _matrix_rank([list(row) for row in zip(*normalised)], _SCREW_RANK_TOLERANCE)
+
+    def freedom(passive):
+        # Central differences: the rank floor is relative 1e-6, and a forward
+        # difference's own error is about its step, 1e-7, too near it.
+        x = [0.0] * sum(_LOOP_FREEDOMS[str(joints[n]["kind"])] for n in passive)
+        h = _LOOP_RANK_STEP
+
+        def central(shift):
+            return [(a - b) / (2.0 * h) for a, b in zip(shift(h), shift(-h))]
+
+        columns = [central(lambda d, i=i: residual(passive, [v + (d if k == i else 0.0)
+                                                            for k, v in enumerate(x)], 0.0))
+                   for i in range(len(x))]
+        drive = central(lambda d: residual(passive, x, d))
+        passive_rank = rank(columns)
+        return passive_rank == rank(columns + [drive]), len(x) - passive_rank
+
+    candidates = [name for name in held if name in group_joints and name != driven]
+    tree_group = [name for name in group_joints if name in tree_joint and name != driven
+                  and _LOOP_FREEDOMS[str(joints[name]["kind"])]]
+    trials = [candidates] + [[n for n in candidates if n != released] for released in candidates]
+    if candidates:
+        trials.append([])
+    chosen = None
+    for keep in trials:
+        passive = [name for name in tree_group if name not in keep]
+        movable, free = freedom(passive)
+        if movable:
+            chosen = keep
+            break
+    report = {"loops": closures, "joints": group_joints, "scale_mm": scale}
+    if chosen is None:
+        return {**report, "locked": True, "held": [], "passive": tree_group, "poses": []}
+    passive = [name for name in tree_group if name not in chosen]
+    size = sum(_LOOP_FREEDOMS[str(joints[n]["kind"])] for n in passive)
+
+    def solve(x, travel):
+        values = residual(passive, x, travel)
+        worst = max((abs(v) for v in values), default=0.0)
+        for _ in range(_LOOP_NEWTON_ITERATIONS):
+            if worst <= _LOOP_CONVERGED_MM or not x:
+                break
+            columns = jacobian(passive, x, travel, values)
+            normal = [[sum(a * b for a, b in zip(ci, cj)) for cj in columns] for ci in columns]
+            damping = 1.0e-12 * max(1.0, max(normal[i][i] for i in range(len(x))))
+            for i in range(len(x)):
+                normal[i][i] += damping
+            step = _solve_linear(normal, [-sum(a * b for a, b in zip(c, values)) for c in columns])
+            if step is None:
+                break
+            size_now = sum(v * v for v in values)
+            for _ in range(12):
+                trial = [a + b for a, b in zip(x, step)]
+                trial_values = residual(passive, trial, travel)
+                if sum(v * v for v in trial_values) < size_now:
+                    break
+                step = [s / 2.0 for s in step]
+            else:
+                break
+            x, values = trial, trial_values
+            worst = max((abs(v) for v in values), default=0.0)
+        return x, worst
+
+    substep = _LOOP_SUBSTEP[kind]
+    results: dict[int, dict[str, Any]] = {}
+    for direction in (1.0, -1.0):
+        order = sorted((i for i, t in enumerate(travels) if (t >= 0.0) == (direction > 0)),
+                       key=lambda i: abs(travels[i]))
+        x, at, broken = [0.0] * size, 0.0, None
+        for index in order:
+            target = float(travels[index])
+            if broken is not None:
+                results[index] = {"travel": target, "closed": False, "residual_mm": None}
+                continue
+            count = max(1, math.ceil(abs(target - at) / substep - 1e-9))
+            worst = 0.0
+            for k in range(1, count + 1):
+                travel = at + (target - at) * k / count
+                x, worst = solve(x, travel)
+                if worst > LOOP_POSE_CLOSURE_MM:
+                    break
+            if worst > LOOP_POSE_CLOSURE_MM:
+                broken = travel
+                results[index] = {"travel": target, "closed": False, "residual_mm": worst,
+                                  "failed_at_travel": travel}
+                continue
+            at = target
+            motions = motions_for(passive, x, target)
+            world: dict[str, list[float]] = {}
+            for body in tree["bodies"]:
+                parent = body["parent"]
+                delta = (world[str(parent)] if parent is not None
+                         else matrix_from_rotation_translation((1, 0, 0, 0, 1, 0, 0, 0, 1), (0, 0, 0)))
+                if body.get("joint") in motions:
+                    delta = matrix_multiply(delta, motions[body["joint"]])
+                world[str(body["name"])] = delta
+            results[index] = {"travel": target, "closed": True, "residual_mm": worst, "bodies": world}
+    return {**report, "locked": False, "held": list(chosen), "passive": passive,
+            "free_freedoms": free, "poses": [results[i] for i in range(len(travels))]}
+
+
 def _loop_mobility(
     mujoco: Any,
     model: Any,

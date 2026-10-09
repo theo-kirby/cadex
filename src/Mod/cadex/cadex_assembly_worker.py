@@ -5647,15 +5647,19 @@ def _loop_redundancy(solver_code, conflict_labels, component_data, joint_data,
     mobility rank, taken of the joint screws at the solved pose, tells that
     apart from a graph that really is over-constrained: the verdict is
     accepted only when the solver returned code 0, said nothing worse than
-    redundant, every loop runs through joints a screw count states, the
-    loops together have exactly one degree of freedom and some redundancy,
-    and the pose it reached closes every loop joint within the MJCF pose
-    contract. Anything else keeps the solver's refusal, with the count that
-    decided it. ``None`` when the verdict was not a redundancy or the graph
-    has no loop to explain it.
+    redundant, every loop runs through joints a screw count states, every
+    linkage -- each set of loops sharing a joint -- keeps at least one
+    degree of freedom, there is some redundancy, and the pose it reached
+    closes every loop joint within the MJCF pose contract with its hinge
+    axes parallel. ADR-595 asked for exactly one freedom over all the loops
+    together, which refused every legged robot with a four-bar per leg and
+    every two-input five-bar; ADR-621 counts per linkage. Anything else
+    keeps the solver's refusal, with the count that decided it. ``None``
+    when the verdict was not a redundancy or the graph has no loop to
+    explain it.
     """
 
-    from CadexDynamics import MJCF_POSE_TOLERANCE_MM, loop_screw_mobility
+    from CadexDynamics import MJCF_POSE_TOLERANCE_MM, loop_groups, loop_screw_mobility
     if solver_code != 0 or not conflict_labels or set(conflict_labels) - _REDUNDANCY_LABELS:
         return None
     loops = _closed_loops(component_data, joint_data)
@@ -5666,8 +5670,21 @@ def _loop_redundancy(solver_code, conflict_labels, component_data, joint_data,
     mobility = loop_screw_mobility(loops, joints, placements)
     if mobility is None:
         return None
+    # Each set of loops that share a joint is one linkage (ADR-621): a robot
+    # with a four-bar in each leg has one freedom per leg, and its total is
+    # the leg count, which said nothing about whether any one leg moves. A
+    # linkage with no freedom at all -- a pinned truss, a closing pin tilted
+    # out of its plane -- is what is over-constrained, and it is refused
+    # whatever the others do.
+    groups = []
+    for group in loop_groups(loops):
+        counted = loop_screw_mobility(group, joints, placements)
+        groups.append({"loops": counted["loops"], "freedoms": counted["freedoms"],
+                       "mobility": counted["mobility"], "redundancy": counted["redundancy"]})
+    mobility["groups"] = groups
     mobility["tolerance_mm"] = MJCF_POSE_TOLERANCE_MM
-    mobility["accepted"] = (mobility["mobility"] == 1 and mobility["redundancy"] > 0
+    mobility["accepted"] = (all(group["mobility"] >= 1 for group in groups)
+                            and mobility["redundancy"] > 0
                             and mobility["worst_gap_mm"] <= MJCF_POSE_TOLERANCE_MM
                             and mobility["worst_axis_tilt"] <= 1.0e-6)
     return mobility
@@ -5939,9 +5956,192 @@ def _cpu_stage(stage: str) -> None:
     cpu_stage(stage)
 
 
+#: Entries the fit cache keeps; past it the oldest go first (ADR-622).
+_FIT_CACHE_LIMIT = 200_000
+
+
+class _FitCache:
+    """Exact fit measurements kept between builds, keyed by the geometry they measured (ADR-622).
+
+    A rebuild re-measured every near pair from nothing: on ``cbase-leopard-b``
+    the static fit was 230 of a build's 300 CPU-seconds, and an agent's
+    edit that moved one leg paid for the other three, the torso and every
+    fastener again. A pair's distance and common volume are a function of
+    its two solids' own geometry and of where one stands relative to the
+    other, so a pair is keyed by the SHA-256 of each component's part BREP
+    (:meth:`component_digest`) and by their relative placement to 1e-9, and every key by this module's own source and the
+    kernel's version, so changed measuring code or a changed OCCT starts
+    afresh. A part rebuilt any differently, or moved relative to the other,
+    is a miss and is measured as it always was; a pair that moved together
+    -- a free base that settles a millimetre lower, four identical legs --
+    reads back the number measured in the other frame, equal to it to the
+    kernel's rounding (JSON keeps a float's every digit).
+
+    The store is one JSON file in the project's ``script_artifacts`` (see
+    :meth:`directory`). It is a cache, never a source of truth: unreadable
+    or corrupt, it is ignored; a failed write loses nothing but the next
+    build's head start.
+    """
+
+    def __init__(self, path: Path | None, entries: dict[str, Any]):
+        self.path = path
+        self.entries = entries
+        self.added: dict[str, Any] = {}
+        self.hits = self.misses = 0
+        self._digests: dict[Any, Any] = {}
+
+    @staticmethod
+    def directory() -> Path | None:
+        """``script_artifacts/fit-cache/`` of the project this run builds, or ``None``.
+
+        The run is confined to its attempt directory (``HOME`` and ``TMPDIR``
+        point there), which is deleted a few attempts on; the cache lives one
+        level up beside the revisions, in the project store the attempt
+        belongs to, and is ignored by the project's git like the rest of
+        ``script_artifacts``. A process not started as a project run -- a
+        test driver -- has no such directory and no cache.
+        """
+        import os
+        try:
+            request = os.environ.get("CADEX_XSCRIPT_DOMAIN_REQUEST")
+            if not request:
+                return None
+            staging = Path(request).resolve().parent
+            store = staging.parent.parent
+            if not staging.name.startswith("attempt-") or store.name != "script_artifacts":
+                return None
+            root = store / "fit-cache"
+            root.mkdir(exist_ok=True)
+            return root
+        except OSError:
+            return None
+
+    @classmethod
+    def open(cls) -> "_FitCache":
+        directory = cls.directory()
+        if directory is None:
+            return cls(None, {})
+        path = directory / f"fit-{_fit_cache_version()}.json"
+        try:
+            entries = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(entries, dict):
+                entries = {}
+        except (OSError, ValueError):
+            entries = {}
+        return cls(path, entries)
+
+    def digest(self, shape: Any) -> str | None:
+        """A shape's identity: the SHA-256 of its BREP, its own placement included."""
+        key = id(shape)
+        known = self._digests.get(key)
+        if known is None or known[0] is not shape:
+            try:
+                value = hashlib.sha256(shape.exportBrepToString().encode("utf-8")).hexdigest()
+            except Exception:
+                value = None
+            # The shape is held beside its digest, so its id cannot be reused.
+            self._digests[key] = known = (shape, value)
+        return known[1]
+
+    def component_digest(self, component: Any) -> str | None:
+        """A component's own geometry, wherever it is placed (ADR-622).
+
+        An assembly component is a link to its part: the part's shape, and a
+        placement the link composes onto it (:func:`_component_world_shape`).
+        The part's BREP is the same however the link places it, so its digest
+        is what a pair is keyed by, beside where the two stand relative to
+        each other. A component that is not a link carries its placement in
+        its own shape, so its digest changes whenever it moves -- a miss,
+        never a wrong hit.
+        """
+        key = ("component", id(component))
+        known = self._digests.get(key)
+        if known is None or known[0] is not component:
+            # Not through digest(): a link's source shape is a new object at
+            # every read, and an id is only an identity while its object lives.
+            source = _linked_source_shape(component)
+            shape = source if source is not None else component.Shape
+            try:
+                value = hashlib.sha256(shape.exportBrepToString().encode("utf-8")).hexdigest()
+            except Exception:
+                value = None
+            self._digests[key] = known = (component, value)
+        return known[1]
+
+    def get(self, key: str | None) -> Any:
+        if key is None:
+            return None
+        value = self.entries.get(key)
+        if value is None:
+            self.misses += 1
+        else:
+            self.hits += 1
+        return value
+
+    def put(self, key: str | None, value: Any) -> None:
+        if key is not None:
+            self.entries[key] = value
+            self.added[key] = value
+
+    def save(self) -> None:
+        """Write what this build added; the oldest entries go past the limit."""
+        if self.path is None or not self.added:
+            return
+        import os
+        try:
+            try:
+                current = json.loads(self.path.read_text(encoding="utf-8"))
+                if not isinstance(current, dict):
+                    current = {}
+            except (OSError, ValueError):
+                current = {}
+            # Another build may have written since this one read: keep both.
+            for key in self.added:
+                current.pop(key, None)
+            current.update(self.added)
+            if len(current) > _FIT_CACHE_LIMIT:
+                current = dict(list(current.items())[-_FIT_CACHE_LIMIT:])
+            temporary = self.path.with_name(f"{self.path.name}.{os.getpid()}.tmp")
+            temporary.write_text(json.dumps(current, separators=(",", ":")), encoding="utf-8")
+            os.replace(temporary, self.path)
+            # Another engine's measurements are never read again.
+            for stale in self.path.parent.glob("fit-*.json"):
+                if stale != self.path:
+                    stale.unlink(missing_ok=True)
+        except OSError:
+            return
+
+
+def _relative_key(placements) -> str:
+    """Where one solid stands relative to the other at each pose, to 1e-9 (ADR-622).
+
+    ``placements`` is one ``(first, second)`` pair of world placements per
+    pose. Rounded so a frame that differs by the solver's last digit still
+    finds the pair it measured; a difference that small moves no distance
+    by more than it, a millionth of the 0.001 mm contact tolerance.
+    """
+    rows = []
+    for first, second in placements:
+        relative = first.inverse().multiply(second).toMatrix().A
+        rows.append([round(value, 9) + 0.0 for value in relative[:12]])
+    return hashlib.sha256(json.dumps(rows).encode()).hexdigest()
+
+
+def _fit_cache_version() -> str:
+    """What a cached measurement was made with: this module's bytes and the kernel's version."""
+    try:
+        import FreeCAD as App
+        kernel = ".".join(str(part) for part in App.Version()[:4])
+    except Exception:
+        kernel = "unknown"
+    source = Path(__file__).read_bytes()
+    return hashlib.sha256(source + kernel.encode("utf-8")).hexdigest()[:20]
+
+
 def _measure_clearance(
     components: Mapping[str, Any], *, solved: bool = True,
     floors: Mapping[frozenset, float] | None = None,
+    cache: _FitCache | None = None,
 ) -> list[dict[str, Any]]:
     """All pairs at the initial solved pose; failures remain unmeasured.
 
@@ -5969,8 +6169,29 @@ def _measure_clearance(
         # Exact geometry, not triangulation, so the gap bounds the distance
         # from below (the same box ADR-419's sweep culls with).
         if name not in boxes:
-            boxes[name] = world(name).optimalBoundingBox(False, True)
+            digest = cache.digest(world(name)) if cache is not None else None
+            key = None if digest is None else "box:" + digest
+            known = cache.get(key) if key is not None else None
+            if known is not None:
+                import FreeCAD as App
+                boxes[name] = App.BoundBox(*known)
+            else:
+                boxes[name] = world(name).optimalBoundingBox(False, True)
+                if key is not None:
+                    found = boxes[name]
+                    cache.put(key, [found.XMin, found.YMin, found.ZMin,
+                                    found.XMax, found.YMax, found.ZMax])
         return boxes[name]
+
+    def pair_key(first, second):
+        if cache is None:
+            return None
+        own_a = cache.component_digest(components[first])
+        own_b = cache.component_digest(components[second])
+        if own_a is None or own_b is None:
+            return None
+        placed = [(world(first).Placement, world(second).Placement)]
+        return f"pair:{own_a}:{own_b}:{_relative_key(placed)}"
 
     rows = []
     for index, first in enumerate(names):
@@ -5994,6 +6215,14 @@ def _measure_clearance(
                         row.update(distance_mm=gap, common_volume_mm3=0.0, culled=True)
                         rows.append(row)
                         continue
+                # The same two world solids measured by an earlier build
+                # (ADR-622): its numbers, exactly as it measured them.
+                key = pair_key(first, second) if a.Solids and b.Solids else None
+                known = cache.get(key) if key is not None else None
+                if known is not None:
+                    row.update(distance_mm=known[0], common_volume_mm3=known[1])
+                    rows.append(row)
+                    continue
                 # Each exactly measured pair is its own ledger stage, so a CPU
                 # refusal names the pairs that spent it (ADR-436).
                 _cpu_stage(f"static fit {first} / {second}")
@@ -6013,6 +6242,8 @@ def _measure_clearance(
                 if not math.isfinite(volume) or volume < 0:
                     raise ValueError("Invalid common volume")
                 row["common_volume_mm3"] = volume
+                if key is not None:
+                    cache.put(key, [distance, volume])
             except Exception as exc:
                 row["error"] = str(exc)
             rows.append(row)
@@ -6128,9 +6359,14 @@ _SWEEP_CULL_MM = 10.0
 
 
 def _sweep_payload_components(components):
-    """Each component's world BREP and placement, serialised once per sweep."""
-    return {n: {"brep": _component_world_shape(obj).exportBrepToString(),
-                "placement": list(obj.Placement.toMatrix().A)} for n, obj in components.items()}
+    """Each component's world BREP, its own geometry's digest (ADR-622) and placement, once per sweep."""
+    payload = {}
+    digests = _FitCache(None, {})
+    for n, obj in components.items():
+        payload[n] = {"brep": _component_world_shape(obj).exportBrepToString(),
+                      "sha": digests.component_digest(obj),
+                      "placement": list(obj.Placement.toMatrix().A)}
+    return payload
 
 
 def _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, step, seconds):
@@ -6142,7 +6378,7 @@ def _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, 
     try:
         payload = {"components": serialised,
             "component_data": component_data, "joint_data": joint_data,
-            "baseline": baseline, "name": name, "step": step}
+            "baseline": baseline, "name": name, "step": step, "seconds": seconds}
         with tempfile.TemporaryDirectory(prefix="cadex-fit-sweep-") as directory:
             source = Path(directory) / "input.json"
             target = Path(directory) / "output.json"
@@ -6163,20 +6399,43 @@ def _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, 
     return result
 
 
+#: How long before its timeout a child sweep stops on its own, so it can
+#: hand back the pairs it finished (ADR-622).
+_SWEEP_CHILD_MARGIN_SECONDS = 5.0
+
+
 def _sweep_child(source, target):
+    import time
+    started = time.monotonic()
     import FreeCAD as App
     import Part
     from types import SimpleNamespace
     data = json.loads(Path(source).read_text(encoding="utf-8"))
     try:
         components = {}
+        digests = {}
         for name, item in data["components"].items():
             shape = Part.Shape()
             shape.importBrepFromString(item["brep"])
             components[name] = SimpleNamespace(Shape=shape,
                 Placement=App.Placement(App.Matrix(*item["placement"])))
+            digests[name] = item.get("sha")
+        # Read-only here: what this child measures goes back to the parent,
+        # which writes the cache once per build (ADR-622).
+        cache = _FitCache.open()
+        cache.path = None
+        # Stop a little before the parent's timeout, keeping what is done.
+        seconds = data.get("seconds")
+        deadline = None if seconds is None else started + float(seconds) - _SWEEP_CHILD_MARGIN_SECONDS
         result = _sweep_joint(components, data["component_data"], data["joint_data"],
-                              data["baseline"], data["name"], data["step"])
+                              data["baseline"], data["name"], data["step"],
+                              cache=cache, digests=digests, deadline=deadline)
+        if cache.added:
+            result["cache_entries"] = cache.added
+    except _SweepDeadline as stopped:
+        result = {"status": "incomplete", "reason": "runtime budget exceeded"}
+        if stopped.entries:
+            result["cache_entries"] = stopped.entries
     except Exception as exc:
         result = {"status": "incomplete", "reason": str(exc)}
     Path(target).write_text(json.dumps(result), encoding="utf-8")
@@ -6285,12 +6544,18 @@ def _box_gap(first, second):
         (first.ZMin, first.ZMax, second.ZMin, second.ZMax))))
 
 
-def _sweep_joint(components, component_data, joint_data, baseline, name, step):
-    """Sample one limited hinge or slider of a rigid tree with exact solids.
+def _sweep_joint(components, component_data, joint_data, baseline, name, step, *, cache=None, digests=None,
+                 deadline=None):
+    """Sample one limited hinge or slider with exact solids.
 
     A hinge turns its subtree about the solved connector +Z; a slider
     translates it along that axis. Values, limits and first contact are in
     the joint's own unit (degrees or mm), named in the result's ``unit``.
+    A joint on a closed loop is moved by :func:`_sweep_loop_joint` instead,
+    which re-closes the loop at every sample (ADR-621). A loop elsewhere in
+    the graph does not stop this one: a joint on no loop's cycle moves each
+    loop wholly inside its subtree or wholly outside it, so every closure
+    holds rigidly through the motion.
 
     Every pair carries ``relative_motion`` (ADR-374): true when one side is
     inside the swept subtree and the other is not, which is the only case
@@ -6318,12 +6583,51 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
         for c in data["connectors"]]} for key, data in joint_data.items()]
     tree = extract_tree([{"name": n, "grounded": d["grounded"], "flexible": d.get("flexible", False)}
                          for n, d in component_data.items()], joints)
-    if tree["closures"] or tree["couplings"] or tree["static_joints"]:
-        raise ValueError("closed, coupled or static-joint graph is unsupported")
+    if tree["couplings"] or tree["static_joints"]:
+        raise ValueError("coupled or static-joint graph is unsupported")
     joint = next(j for j in joints if j["name"] == name)
     if joint["kind"] not in _SWEEP_KINDS or joint["suppressed"]:
         raise ValueError("only unsuppressed limited tree hinges and sliders are supported")
+    loops = _closed_loops(component_data, joint_data)
+    if any(name in loop["joints"] for loop in loops):
+        return _sweep_loop_joint(components, joint_data, baseline, name, step, tree, joints, loops,
+                                 cache=cache, digests=digests, deadline=deadline)
     limits_key, _step_key, unit = _SWEEP_KINDS[joint["kind"]]
+    values = _sweep_values(joint, limits_key, step)
+    body = next(b for b in tree["bodies"] if b["joint"] == name)
+    moving = {body["name"]}
+    for b in tree["bodies"]:
+        if b["parent"] in moving:
+            moving.add(b["name"])
+    poses = {n: obj.Placement for n, obj in components.items()}
+    connectors = joint["connectors"]
+    a, b = [c["component"] for c in connectors]
+    coords = joint_coordinates(joint["kind"], joint_transform(
+        list(poses[a].toMatrix().A), connectors[0]["local_matrix"],
+        list(poses[b].toMatrix().A), connectors[1]["local_matrix"]), context=name)
+    if coords["residual_mm"] > 1e-4 or coords["residual_radians"] > 1e-6:
+        raise ValueError(f"solved {joint['kind']} joint has a residual its kind cannot express")
+    initial = (math.degrees(coords["values"][0]) if unit == "degrees"
+               else length_mm(coords["values"][0]))
+    side = 0 if a == body["parent"] else 1
+    frame = poses[body["parent"]].multiply(App.Placement(App.Matrix(*connectors[side]["local_matrix"])))
+    deltas = []
+    for value in values:
+        travel = (value - initial) * (1 if side == 0 else -1)
+        motion = (App.Placement(App.Vector(), App.Rotation(App.Vector(0, 0, 1), travel))
+                  if unit == "degrees" else App.Placement(App.Vector(0, 0, travel), App.Rotation()))
+        deltas.append(frame.multiply(motion).multiply(frame.inverse()))
+    rows = _measure_samples(components, baseline, values, [{n: delta for n in moving} for delta in deltas],
+                            lambda first, second: (first in moving) != (second in moving),
+                            "first_contact_" + unit, cache=cache, digests=digests, deadline=deadline)
+    low, high = joint[limits_key]
+    return {"status": "complete", "kind": joint["kind"], "unit": unit, "step": step,
+            "sample_count": len(values), "range_" + unit: [low, high],
+            "initial_" + unit: initial, "solved_pose_agreement": True, "pairs": rows}
+
+
+def _sweep_values(joint, limits_key, step):
+    """The samples a limited joint is swept at: its range at ``step``, both ends included."""
     if joint.get(limits_key) is None:
         raise ValueError(f"{joint['kind']} joint declares no {limits_key}")
     low, high = joint[limits_key]
@@ -6332,19 +6636,35 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
     count = math.ceil((high - low) / step)
     if count < 0 or count + 1 > _SWEEP_MAX_POSES:
         raise ValueError("pose budget exceeded")
-    values = [min(low + i * step, high) for i in range(count + 1)]
-    body = next(b for b in tree["bodies"] if b["joint"] == name)
-    moving = {body["name"]}
-    for b in tree["bodies"]:
-        if b["parent"] in moving:
-            moving.add(b["name"])
+    return [min(low + i * step, high) for i in range(count + 1)]
+
+
+def _measure_samples(components, baseline, values, motions, moves, contact_key, *,
+                     cache=None, digests=None, deadline=None):
+    """Every pair's extremes over ``values``, each sample's body motions given.
+
+    ``motions[i]`` maps each body that moves at sample ``i`` to the rigid
+    world motion carrying it there from its solved placement; a body not
+    named holds still. ``moves(first, second)`` is a pair's
+    ``relative_motion``: only such a pair is measured, the rest repeat
+    their solved-pose row (ADR-374, ADR-419). The near ones are measured
+    exactly and the far ones bounded by their boxes, as
+    :func:`_sweep_joint` describes.
+
+    A pair whose two solids (``digests``, :meth:`_FitCache.component_digest`)
+    an earlier build already measured in the same relative motion through
+    the same samples takes that build's three numbers from ``cache``
+    (ADR-622), and is not measured again; its solved-pose agreement was
+    checked when it was measured.
+    """
+    import FreeCAD as App
+    moving = {n for sample in motions for n in sample}
+    moving_pairs = sum(moves(row["first"], row["second"]) for row in baseline)
     # The budget counts the pairs this joint moves, the only ones measured
     # (ADR-426); a rigid row is a copy of its solved-pose value.
-    moving_pairs = sum((row["first"] in moving) != (row["second"] in moving) for row in baseline)
     if moving_pairs > _SWEEP_MAX_PAIRS:
         raise ValueError(f"pair budget exceeded: {moving_pairs} moving pairs, "
                          f"more than {_SWEEP_MAX_PAIRS}")
-    poses = {n: obj.Placement for n, obj in components.items()}
     shapes = {n: _component_world_shape(obj).copy() for n, obj in components.items()}
     solved_shapes = {n: shape.Placement for n, shape in shapes.items()}
     boxes = {}
@@ -6387,42 +6707,38 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
         if row.get("culled"):
             # A static bound (ADR-423): no measurement to agree with.
             bounded.add(key)
-    connectors = joint["connectors"]
-    a, b = [c["component"] for c in connectors]
-    coords = joint_coordinates(joint["kind"], joint_transform(
-        list(poses[a].toMatrix().A), connectors[0]["local_matrix"],
-        list(poses[b].toMatrix().A), connectors[1]["local_matrix"]), context=name)
-    if coords["residual_mm"] > 1e-4 or coords["residual_radians"] > 1e-6:
-        raise ValueError(f"solved {joint['kind']} joint has a residual its kind cannot express")
-    initial = (math.degrees(coords["values"][0]) if unit == "degrees"
-               else length_mm(coords["values"][0]))
-    side = 0 if a == body["parent"] else 1
-    frame = poses[body["parent"]].multiply(App.Placement(App.Matrix(*connectors[side]["local_matrix"])))
-    contact_key = "first_contact_" + unit
-    # Whether *this* joint moves the pair apart or together (ADR-374). Exactly
-    # one side inside the swept subtree is what makes the measurement a fact
-    # about the motion; two sides that are both inside it, or both outside,
-    # are one rigid body for this sweep and hold their solved-pose value at
-    # every sample. The loop below already decides this to know whether to
-    # measure, so saying it on the row costs nothing and lets a reader tell a
-    # number the motion produced from one it merely repeated.
-    rows = [{"first": a, "second": b, "relative_motion": (a in moving) != (b in moving),
-             "minimum_distance_mm": None,
-             "maximum_common_volume_mm3": None, contact_key: None,
-             **({"culled": True, "minimum_distance_mm": cached[a, b][0],
-                 "maximum_common_volume_mm3": cached[a, b][1]}
-                if (a, b) in bounded and (a in moving) == (b in moving) else {})}
-            for a, b in cached]
-    deltas = []
-    for value in values:
-        travel = (value - initial) * (1 if side == 0 else -1)
-        motion = (App.Placement(App.Vector(), App.Rotation(App.Vector(0, 0, 1), travel))
-                  if unit == "degrees" else App.Placement(App.Vector(0, 0, travel), App.Rotation()))
-        deltas.append(frame.multiply(motion).multiply(frame.inverse()))
+    # A moving pair's cache key (ADR-622): both solids' own geometry, the
+    # samples, and where one stands relative to the other at every one.
+    keys, remembered, sample_gaps = {}, set(), {}
+
+    def sweep_key(a, b):
+        if cache is None or not digests or not digests.get(a) or not digests.get(b):
+            return None
+        poses = [tuple(sample[n].multiply(solved_shapes[n]) if n in sample else solved_shapes[n]
+                       for n in (a, b)) for sample in motions]
+        return "sweep:" + hashlib.sha256(json.dumps(
+            [digests[a], digests[b], _relative_key(poses), list(values), contact_key]
+        ).encode()).hexdigest()
+
+    # Whether *this* motion moves the pair apart or together (ADR-374).
+    # Exactly the pairs ``moves`` names are a fact about the motion; the
+    # others are one rigid body for this sweep and hold their solved-pose
+    # value at every sample. The loop below already decides this to know
+    # whether to measure, so saying it on the row costs nothing and lets a
+    # reader tell a number the motion produced from one it merely repeated.
+    rows = []
+    for a, b in cached:
+        relative = bool(moves(a, b))
+        row = {"first": a, "second": b, "relative_motion": relative,
+               "minimum_distance_mm": None, "maximum_common_volume_mm3": None, contact_key: None}
+        if (a, b) in bounded and not relative:
+            row.update(culled=True, minimum_distance_mm=cached[a, b][0],
+                       maximum_common_volume_mm3=cached[a, b][1])
+        rows.append(row)
     # The moving side's box at a sample is the box of its solved box's
     # corners carried by the rigid motion, which still contains the solid.
     sample_boxes = [{n: [f(delta.multVec(c)[i] for c in corners(n)) for f in (min, max) for i in range(3)]
-                     for n in moving} for delta in deltas]
+                     for n, delta in sample.items()} for sample in motions]
     for row in rows:
         a, b = row["first"], row["second"]
         if not row["relative_motion"]:
@@ -6432,9 +6748,18 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
             first, second = box_at(a, boxes_at), box_at(b, boxes_at)
             gaps.append(math.sqrt(sum(max(0.0, first[i] - second[i + 3], second[i] - first[i + 3]) ** 2
                                       for i in range(3))))
-        if min(gaps) > _SWEEP_CULL_MM:
+        if gaps and min(gaps) > _SWEEP_CULL_MM:
             row.update(culled=True, minimum_distance_mm=min(gaps), maximum_common_volume_mm3=0.0)
             continue
+        sample_gaps[a, b] = gaps
+        key = sweep_key(a, b)
+        known = cache.get(key) if key is not None else None
+        if known is not None:
+            row.update({"minimum_distance_mm": known[0], "maximum_common_volume_mm3": known[1],
+                        contact_key: known[2]})
+            remembered.add((a, b))
+            continue
+        keys[a, b] = key
         d, v = measure(a, b)
         distance, volume = cached[a, b]
         if (a, b) in bounded:
@@ -6443,23 +6768,159 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step):
             cached[a, b] = d, v
         elif abs(d - distance) > 1e-4 or abs(v - volume) > 1e-3:
             raise ValueError("solved-pose clearance disagreement")
-    for value, delta, boxes_at in zip(values, deltas, sample_boxes):
-        for n in moving:
-            shapes[n].Placement = delta.multiply(solved_shapes[n])
-        for row in rows:
-            a, b = row["first"], row["second"]
-            if row.get("culled"):
-                continue
-            d, v = (measure(a, b, boxes_at) if row["relative_motion"] else cached[a, b])
-            if row["minimum_distance_mm"] is None or d < row["minimum_distance_mm"]:
+    # Pair by pair, every sample of one pair before the next (ADR-622), so a
+    # pair is finished -- and cached -- as soon as it is measured, and a
+    # sweep the deadline stops keeps every pair it finished for the next
+    # build. Each measurement still sees both solids exactly where that
+    # sample puts them, so the numbers are the ones sample by sample gave.
+    import time
+    for row in rows:
+        a, b = row["first"], row["second"]
+        if row.get("culled") or (a, b) in remembered or not values:
+            continue
+        if not row["relative_motion"]:
+            d, v = cached[a, b]
+            row.update({"minimum_distance_mm": d, "maximum_common_volume_mm3": v,
+                        contact_key: values[0] if d <= 1e-3 else None})
+            continue
+        if deadline is not None and time.monotonic() > deadline:
+            raise _SweepDeadline({key: value for key, value in cache.added.items()} if cache else {})
+        # Nearest boxes first (ADR-622). A sample whose box gap -- a lower
+        # bound on its distance -- is past both the least distance measured
+        # so far and the 0.001 mm contact tolerance can change none of the
+        # three numbers: its distance is no smaller, it is no contact, and
+        # boxes apart share no volume. Every later sample is further still.
+        gaps = sample_gaps[a, b]
+        contacts = []
+        for index in sorted(range(len(values)), key=lambda i: gaps[i]):
+            best = row["minimum_distance_mm"]
+            if best is not None and gaps[index] > 1e-3 and gaps[index] >= best:
+                break
+            sample = motions[index]
+            for n in (a, b):
+                if n in moving:
+                    shapes[n].Placement = (sample[n].multiply(solved_shapes[n]) if n in sample
+                                           else solved_shapes[n])
+            d, v = measure(a, b, sample_boxes[index])
+            if best is None or d < best:
                 row["minimum_distance_mm"] = d
             if row["maximum_common_volume_mm3"] is None or v > row["maximum_common_volume_mm3"]:
                 row["maximum_common_volume_mm3"] = v
-            if row[contact_key] is None and d <= 1e-3:
-                row[contact_key] = value
-    return {"status": "complete", "kind": joint["kind"], "unit": unit, "step": step,
-            "sample_count": len(values), "range_" + unit: [low, high],
-            "initial_" + unit: initial, "solved_pose_agreement": True, "pairs": rows}
+            if d <= 1e-3:
+                contacts.append(index)
+        row[contact_key] = values[min(contacts)] if contacts else None
+        for n in (a, b):
+            shapes[n].Placement = solved_shapes[n]
+        key = keys.get((a, b))
+        if key is not None:
+            cache.put(key, [row["minimum_distance_mm"], row["maximum_common_volume_mm3"], row[contact_key]])
+    return rows
+
+
+class _SweepDeadline(Exception):
+    """A child sweep out of time, carrying the cache entries of the pairs it finished (ADR-622)."""
+
+    def __init__(self, entries):
+        super().__init__("runtime budget exceeded")
+        self.entries = entries
+
+
+#: How far apart two bodies' motions may read and still be one rigid body
+#: for a loop sweep's ``relative_motion`` (matrix entries, mm and unitless).
+_LOOP_RIGID_TOLERANCE = 1e-9
+
+
+def _sweep_loop_joint(components, joint_data, baseline, name, step, tree, joints, loops, *,
+                      cache=None, digests=None, deadline=None):
+    """Drive one limited joint of a closed loop and re-close the loop at each sample (ADR-621).
+
+    A one-joint sweep turns a rigid subtree, which on a closed chain tears
+    the loop open at its closure (ADR-593). Here the joint is the loop's
+    input instead: it is set to each sample of its range, and every other
+    joint of the loops that move with it is solved so each closure meets
+    again (``CadexDynamics.loop_sweep``) -- except the loop's other limited
+    joints, its other drives, which hold their solved value unless holding
+    them would lock this one. Each pose is measured with exact solids as a
+    serial sweep is, over the pairs it moves relative to each other.
+
+    A sample the loops cannot close -- a dead point, a toggle, a link too
+    short for the range -- is not measured: it is listed in ``unclosed``
+    with its value and residual, the samples past it in that direction are
+    not tried, ``reached_<unit>`` is the range that closed, and the joint
+    is ``incomplete`` saying where the loop stopped closing.
+    """
+    import FreeCAD as App
+    from CadexDynamics import (LOOP_POSE_CLOSURE_MM, joint_coordinates, joint_transform,
+                               length_mm, loop_sweep)
+    joint = next(j for j in joints if j["name"] == name)
+    limits_key, _step_key, unit = _SWEEP_KINDS[joint["kind"]]
+    values = _sweep_values(joint, limits_key, step)
+    poses = {n: obj.Placement for n, obj in components.items()}
+    placements = {n: list(p.toMatrix().A) for n, p in poses.items()}
+    connectors = joint["connectors"]
+    a, b = [c["component"] for c in connectors]
+    coords = joint_coordinates(joint["kind"], joint_transform(
+        placements[a], connectors[0]["local_matrix"],
+        placements[b], connectors[1]["local_matrix"]), context=name)
+    if coords["residual_mm"] > 1e-4 or coords["residual_radians"] > 1e-6:
+        raise ValueError(f"solved {joint['kind']} joint has a residual its kind cannot express")
+    initial = (math.degrees(coords["values"][0]) if unit == "degrees"
+               else length_mm(coords["values"][0]))
+    travels = [math.radians(v - initial) if unit == "degrees" else v - initial for v in values]
+    held = [j["name"] for j in joints if j["name"] != name and not j.get("suppressed")
+            and (j.get("angle_limits_degrees") is not None or j.get("length_limits_mm") is not None)]
+    solved = loop_sweep(tree, {j["name"]: j for j in joints}, placements, loops, name, travels, held=held)
+    loop = {"closures": solved["loops"], "joints": solved["joints"]}
+    if solved["locked"]:
+        raise ValueError(f"the closed loop {solved['joints']} closed by {solved['loops']} leaves this "
+                         f"{joint['kind']} joint no motion even with every other joint of it free, "
+                         "so it has no range to sweep")
+    closed = [(value, pose) for value, pose in zip(values, solved["poses"]) if pose["closed"]]
+    unclosed = [{unit: value, "residual_mm": pose["residual_mm"]}
+                for value, pose in zip(values, solved["poses"]) if not pose["closed"]]
+    motions, signatures = [], {}
+    for _value, pose in closed:
+        sample = {}
+        for body, matrix in pose["bodies"].items():
+            signatures.setdefault(body, []).append(matrix)
+            if any(abs(x - y) > _LOOP_RIGID_TOLERANCE for x, y in zip(matrix, _IDENTITY_MATRIX)):
+                sample[body] = App.Placement(App.Matrix(*matrix))
+        motions.append(sample)
+
+    def moves(first, second):
+        # Two bodies whose motions agree at every closed sample are one rigid
+        # body for this sweep; any other pair moves relative to each other.
+        p, q = signatures.get(first, ()), signatures.get(second, ())
+        return any(abs(x - y) > _LOOP_RIGID_TOLERANCE for m, n in zip(p, q) for x, y in zip(m, n))
+
+    contact_key = "first_contact_" + unit
+    rows = _measure_samples(components, baseline, [value for value, _ in closed], motions, moves,
+                            contact_key, cache=cache, digests=digests, deadline=deadline)
+    low, high = joint[limits_key]
+    result = {"status": "complete", "kind": joint["kind"], "unit": unit, "step": step,
+              "sample_count": len(closed), "range_" + unit: [low, high],
+              "initial_" + unit: initial, "solved_pose_agreement": True,
+              "loop": loop, "held": solved["held"], "passive": solved["passive"],
+              "free_freedoms": solved["free_freedoms"],
+              "worst_closure_residual_mm": max((pose["residual_mm"] for _, pose in closed), default=None),
+              "closure_tolerance_mm": LOOP_POSE_CLOSURE_MM,
+              "reached_" + unit: ([min(v for v, _ in closed), max(v for v, _ in closed)]
+                                  if closed else None),
+              "unclosed": unclosed, "pairs": rows}
+    if unclosed:
+        failed = [row for row in unclosed if row["residual_mm"] is not None]
+        result["status"] = "incomplete"
+        result["reason"] = (
+            f"the closed loop {solved['joints']} closes only from {result['reached_' + unit]} "
+            f"{unit} of this joint's declared {[low, high]}: at "
+            + ", ".join(f"{row[unit]:g} {unit} it is still open by {row['residual_mm']:.3g} mm"
+                        for row in failed)
+            + (" and the samples past that were not reached" if len(failed) < len(unclosed) else "")
+            + "; narrow the limits to the range the linkage reaches, or fix the link that runs out")
+    return result
+
+
+_IDENTITY_MATRIX = (1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0)
 
 
 def _closed_loops(component_data, joint_data):
@@ -6505,7 +6966,7 @@ def _closed_loops(component_data, joint_data):
     return loops
 
 
-def _measure_joint_sweeps(components, component_data, joint_data, baseline, steps, solved):
+def _measure_joint_sweeps(components, component_data, joint_data, baseline, steps, solved, *, cache=None):
     """Sweep every limited joint; ``steps`` maps each declared step name to its value.
 
     A limited joint whose kind's step is undeclared, or whose kind is not
@@ -6537,13 +6998,24 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
     read as an unsupported *kind*.
     """
     import time
+    total = _SWEEP_TOTAL_SECONDS
+    left = _run_seconds_left()
+    if left is not None:
+        # The run's own wall budget bounds the sweep too (ADR-622): what is
+        # left once the outputs after the fit have their reserve. A loop
+        # swept for the first time must not turn a build that fits into one
+        # the runtime refuses; the joints it leaves say so, by name.
+        total = max(0.0, min(total, left - _SWEEP_RESERVE_SECONDS - _SWEEP_RESERVE_FRACTION * _run_age()))
     report = {"status": "complete",
               "step_degrees": steps.get("sweep_step_degrees"), "step_mm": steps.get("sweep_step_mm"),
-              "per_joint_seconds": _SWEEP_JOINT_SECONDS, "total_seconds": _SWEEP_TOTAL_SECONDS,
+              "per_joint_seconds": _SWEEP_JOINT_SECONDS, "total_seconds": total,
               "max_poses": _SWEEP_MAX_POSES, "max_pairs": _SWEEP_MAX_PAIRS, "joints": []}
     start = time.monotonic()
     serialised = None
+    pending = []
     loops = _closed_loops(component_data, joint_data)
+    from CadexDynamics import loop_groups
+    groups = loop_groups(loops)
     for name, joint in joint_data.items():
         kind = joint.get("kind")
         limited = (joint.get("angle_limits_degrees") is not None
@@ -6556,22 +7028,40 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
             continue
         limits_key, step_key, unit = _SWEEP_KINDS.get(kind, (None, None, None))
         step = steps.get(step_key) if step_key else None
-        remaining = _SWEEP_TOTAL_SECONDS - (time.monotonic() - start)
+        remaining = total - (time.monotonic() - start)
         loop = next((members for members in loops if name in members["joints"]), None)
         if joint.get("suppressed"):
             result = {"status": "skipped",
                       "reason": f"the assembly suppresses this {kind} joint, so the solver ignores it "
                                 "and it holds no range to sweep"}
-        elif loop is not None:
-            # A one-joint sweep turns a rigid subtree about one axis; on a
-            # closed chain that tears the loop open at its closure, so every
-            # pose it measured would be one the mechanism cannot reach
-            # (ADR-593). Refused with the loop named, never swept wrong.
-            result = {"status": "incomplete",
-                      "reason": f"this {kind} joint is in the closed loop {loop['joints']} "
-                                f"through {loop['components']}, closed by {loop['closure']!r}; "
-                                "sweeping one joint of a closed chain alone would tear the loop "
-                                "open, so the pairs it moves were measured at the solved pose only"}
+        elif loop is not None and not (kind in _SWEEP_KINDS and limited):
+            # A loop is swept from its inputs -- its limited hinges and
+            # sliders -- and re-closed at every sample (ADR-621), so a loop
+            # joint with no range of its own is moved by them, not driven.
+            group = next(g for g in groups if any(name in member["joints"] for member in g))
+            inputs = [member for member in dict.fromkeys(j for m in group for j in m["joints"])
+                      if joint_data[member].get("kind") in _SWEEP_KINDS
+                      and not joint_data[member].get("suppressed")
+                      and (joint_data[member].get("angle_limits_degrees") is not None
+                           or joint_data[member].get("length_limits_mm") is not None)]
+            if inputs:
+                result = {"status": "passive", "loop": {"closures": [m["closure"] for m in group],
+                                                        "joints": list(dict.fromkeys(
+                                                            j for m in group for j in m["joints"]))},
+                          "driven_by": inputs,
+                          "reason": f"this {kind} joint is a passive joint of the closed loop "
+                                    f"{loop['joints']} closed by {loop['closure']!r}: it is solved at "
+                                    f"every sample its limited joints {inputs} are swept through, and "
+                                    "the pairs it moves are measured in their rows"}
+            else:
+                result = {"status": "incomplete",
+                          "reason": f"this {kind} joint is in the closed loop {loop['joints']} "
+                                    f"through {loop['components']}, closed by {loop['closure']!r}, "
+                                    "and no joint of that loop declares limits, so nothing drove it "
+                                    "and the pairs it moves were measured at the solved pose only; "
+                                    "declare angle_limits_degrees (or length_limits_mm) on the "
+                                    "loop's input -- the joint its actuator turns -- for the loop "
+                                    "to be swept from it"}
         elif kind not in _SWEEP_KINDS:
             result = {"status": "incomplete",
                       "reason": f"only unsuppressed limited tree hinges and sliders are supported, not {kind}"}
@@ -6588,13 +7078,81 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
         else:
             if serialised is None:
                 serialised = _sweep_payload_components(components)
-            result = _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, step,
-                min(remaining, _SWEEP_JOINT_SECONDS))
-        report["joints"].append({"joint": name, "kind": kind, "unit": unit, **result})
-        if result["status"] not in ("complete", "skipped"):
+            result = None
+            pending.append((len(report["joints"]), name, step))
+        report["joints"].append({"joint": name, "kind": kind, "unit": unit, **(result or {})})
+
+    def sweep(name, step):
+        # Each child is a process of its own, so up to _SWEEP_PARALLEL run at
+        # once on the worker's CPUs (ADR-622); each is still bounded by the
+        # per-joint budget and by what is left of the total when it starts.
+        remaining = total - (time.monotonic() - start)
+        if remaining <= 0:
+            return {"status": "incomplete", "reason": "unsolved assembly or total runtime budget exceeded"}
+        return _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, step,
+                                   min(remaining, _SWEEP_JOINT_SECONDS))
+
+    if pending:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=_sweep_parallel()) as pool:
+            futures = [(index, pool.submit(sweep, name, step)) for index, name, step in pending]
+            for index, future in futures:
+                result = future.result()
+                for key, value in (result.pop("cache_entries", None) or {}).items():
+                    if cache is not None:
+                        cache.put(key, value)
+                report["joints"][index].update(result)
+    for row in report["joints"]:
+        if row["status"] not in ("complete", "skipped", "passive"):
             report["status"] = "incomplete"
     report["elapsed_seconds"] = time.monotonic() - start
     return report
+
+
+#: Joint sweeps run at once, at most one per CPU the worker may use (ADR-622).
+_SWEEP_PARALLEL = 4
+#: What the sweep leaves of the run's wall budget for the outputs after it:
+#: a fixed part, and a part that grows with how long the build took so far.
+_SWEEP_RESERVE_SECONDS = 20.0
+_SWEEP_RESERVE_FRACTION = 0.25
+
+
+def _sweep_parallel() -> int:
+    import os
+    try:
+        cpus = len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        cpus = os.cpu_count() or 1
+    return max(1, min(_SWEEP_PARALLEL, cpus))
+
+
+def _run_age() -> float:
+    """Seconds since this worker process started (Linux; 0.0 where unknown)."""
+    try:
+        import os
+        ticks = os.sysconf("SC_CLK_TCK")
+        started = float(Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split()[19]) / ticks
+        uptime = float(Path("/proc/uptime").read_text().split()[0])
+        return max(0.0, uptime - started)
+    except (OSError, ValueError, IndexError, AttributeError):
+        return 0.0
+
+
+def _run_seconds_left() -> float | None:
+    """What is left of the run's budget: its CPU limit, which the runtime sets to its wall limit.
+
+    ``None`` where the limit or the process's age cannot be read; the sweep
+    then keeps its own fixed budget.
+    """
+    try:
+        import resource
+        limit = resource.getrlimit(resource.RLIMIT_CPU)[0]
+    except (ImportError, OSError, ValueError):
+        return None
+    age = _run_age()
+    if limit == resource.RLIM_INFINITY or limit <= 0 or age <= 0.0:
+        return None
+    return float(limit) - age
 
 
 # Absolute comparison slack in mm, not a geometry/contact tolerance (ADR-353).
@@ -7265,11 +7823,17 @@ def validate_and_solve_assembly(
             if conflict_labels:
                 reason += f", reporting {', '.join(conflict_labels)}"
         if loop_redundancy is not None:
+            locked = [group["loops"] for group in loop_redundancy.get("groups") or []
+                      if group["mobility"] < 1]
             reason += (
                 f"; the loops closed by {loop_redundancy['loops']} have "
                 f"{loop_redundancy['mobility']} degree(s) of freedom and the pose "
-                f"closes them within {loop_redundancy['worst_gap_mm']:.3g} mm, so the "
-                "redundancy is not a one-degree-of-freedom linkage over-counted"
+                f"closes them within {loop_redundancy['worst_gap_mm']:.3g} mm"
+                + (f", and the linkage closed by {locked[0]} has none: it is a rigid "
+                   "truss or a pin out of its plane, not a mechanism the count over-charges"
+                   if locked else
+                   f" (tolerance {loop_redundancy['tolerance_mm']:g} mm, axes parallel within "
+                   "1e-6), so the redundancy is not a moving linkage over-counted")
             )
         raise AssemblyCandidateError(
             f"The isolated native Assembly solver {reason}. Inspect details for "
@@ -7288,8 +7852,10 @@ def validate_and_solve_assembly(
         clearance = world_geometry = attachments = clearance_sweep = None
     else:
         _cpu_stage("assembly static fit")
+        fit_cache = _FitCache.open()
         clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved",
-                                       floors=_declared_floors(assembly_properties, component_outputs))
+                                       floors=_declared_floors(assembly_properties, component_outputs),
+                                       cache=fit_cache)
         world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs,
                                     raw_result, joint_data, assembly_output)
         attachments = _check_attachments(clearance, joint_data, assembly_output)
@@ -7305,7 +7871,8 @@ def validate_and_solve_assembly(
         _cpu_stage("assembly swept fit")
         clearance_sweep = _measure_joint_sweeps(
             components, component_data, joint_data, clearance,
-            sweep_steps, diagnostics["status"] == "solved")
+            sweep_steps, diagnostics["status"] == "solved", cache=fit_cache)
+        fit_cache.save()
     _cpu_stage("assembly derived outputs")
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None

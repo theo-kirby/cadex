@@ -896,6 +896,12 @@ def _sweep_line(sweep: dict[str, Any]) -> str:
     # are never counted as unswept coverage and never inflate a pass.
     skipped = int(sweep.get("joints_skipped") or 0)
     suffix = "; {:d} suppressed".format(skipped) if skipped else ""
+    # Passive loop joints are moved by their loop's limited joints (ADR-621):
+    # counted beside the swept ones, never as unswept coverage.
+    passive = int(sweep.get("joints_passive") or 0)
+    if passive:
+        suffix += "; {:d} passive in a loop".format(passive)
+    skipped += passive
     # Findings against world geometry never move the verdict (ADR-420), but
     # a pass that hides them would read as a leg that never meets the floor.
     world = int(sweep.get("world_geometry_count") or 0)
@@ -913,7 +919,8 @@ def _sweep_line(sweep: dict[str, Any]) -> str:
         # limited joints and suppresses every one of them, which is not the
         # same statement as declaring none.
         if skipped and skipped == checked:
-            return "sweep unavailable: every limited joint suppressed ({:d})".format(skipped)
+            return "sweep unavailable: every limited joint suppressed ({:d})".format(
+                skipped - passive)
         return "sweep unavailable: no limited joint"
     if verdict == "fail":
         # "failing", not "overlapping": since ADR-378 a pair can fail this
