@@ -883,6 +883,11 @@ def _fit_line(fit: dict[str, Any]) -> str:
             int(attachments.get("reported_count") or 0),
             int(attachments["pairs_checked"]),
         )
+    shells = fit.get("shells")
+    # Silent when the design declares no shell (ADR-612).
+    if isinstance(shells, dict) and int(shells.get("shell_count") or 0):
+        line += "  shells: {:d} of {:d} reported".format(
+            int(shells.get("reported_count") or 0), int(shells["shell_count"]))
     return line
 
 

@@ -2316,6 +2316,82 @@ class LibraryAPI:
 
     # -- browsing ----------------------------------------------------------
 
+    # -- grown parts: panels and housings (ADR-610, ADR-611) ------------------
+
+    def panel(
+        self, over: Any, *, axis: Sequence[float] = (1.0, 0.0, 0.0),
+        up: Sequence[float] | None = None, span: Sequence[float] | None = None,
+        offset: float = 1.5, thickness: float = 2.0, exponent: float | None = None,
+        step: float = 12.0, seams: Sequence[float] = (), split: str | None = None,
+        split_at: float | None = None, seam_gap: float = 0.4, mount_to: Any = None, screw: str = "m2",
+        screws_per_panel: int = 2, spacing: float = 3.0, label: str = "",
+    ) -> Any:
+        """A curved panel grown from what it covers, split and screwed down.
+
+        ``over`` is the solids or lib parts the panel wraps (the frame is
+        added when ``mount_to`` names it). Stations stand every ``step`` mm
+        along ``axis`` across ``span`` (default the contents' extent, as
+        world coordinates along the axis); at each, the contents' section is
+        fitted with the tightest superellipse of ``exponent`` (2 ellipse, 4
+        muscled, 8 boxy; default None picks, for the whole panel, the one of
+        2-6 enclosing the least section), its own centre and aspect, grown
+        so every point clears its inner face by ``offset``. The skin is the loft through
+        those rings, ``thickness`` thick (covers are 1.6-2.4 mm), open at
+        both ends. ``seams`` are axial positions it is split at;
+        ``split='top_bottom'``/``'left_right'`` parts it along the axis too,
+        ``seam_gap`` apart, at ``split_at`` (world coordinate along ``up`` or
+        across; default the plane nearest the rings' mean centre that cuts
+        every ring across its middle). With ``mount_to`` (the frame), each piece gets up
+        to ``screws_per_panel`` bosses that stand down from the skin onto
+        the frame, a counterbored clearance hole and a ``lib.bolt`` of
+        ``screw`` size and stocked length. Returns a PanelSet: ``.parts``
+        (one solid per piece, ``.names`` beside them), ``.screws`` (one
+        component each; weld each to its panel), ``.holes`` (tap-drill
+        pilots: ``frame = part.cut(frame, panel.holes)``), ``.rings`` (the
+        fitted stations), ``.unmounted`` and ``.notes``. Covered values must
+        be built from primitives and booleans (lib parts are); an imported
+        mesh is refused by name.
+        """
+        from CadexPanels import PanelError, build_panel
+
+        try:
+            return build_panel(
+                self, over, axis=axis, up=up, span=span, offset=offset,
+                thickness=thickness, exponent=exponent, step=step, seams=seams,
+                split=split, split_at=split_at, seam_gap=seam_gap, mount_to=mount_to, screw=screw,
+                screws_per_panel=screws_per_panel, spacing=spacing, label=label)
+        except PanelError as exc:
+            raise LibraryError(f"lib.panel: {exc}") from exc
+
+    def housing(
+        self, drive: Any, *, wall: float = 2.0, clearance: float = 0.5,
+        seat: str | None = None, plate: float | None = None,
+        lead_room: float | None = None, label: str = "",
+    ) -> Any:
+        """A printed housing grown around a drive: the limb around the motor.
+
+        ``drive`` is a ``lib.qdd(...)`` or ``lib.servo(...)`` part, placed.
+        A QDD gets a drum concentric with its axis, ``clearance`` off its
+        case and ``wall`` thick, seated on a ``plate`` (default 3 mm) against
+        its stator face -- ``seat='rear'`` (default) or ``'front'`` -- with
+        one ``lib.bolt`` per stator hole, the output side and leads open. A
+        tab servo gets a tub whose rim the tabs screw down onto; a bus servo
+        a tub whose floor its rear face screws to; both cut with its own
+        ``.bay()``, leads out the back. Returns a Housing: ``.body`` (the
+        solid), ``.screws`` (one component each; weld each, and the drive,
+        to the housing), ``.cavity`` and ``.holes`` (what was cut), ``.spec``
+        (the numbers), and ``.fuse(link, ...)`` -- the housing with links
+        grown on and the cavity and holes cut again.
+        """
+        from CadexPanels import PanelError, build_housing
+
+        try:
+            return build_housing(self, drive, wall=wall, clearance=clearance,
+                                 seat=seat, plate=plate, lead_room=lead_room,
+                                 label=label)
+        except PanelError as exc:
+            raise LibraryError(f"lib.housing: {exc}") from exc
+
     def catalog(self) -> dict[str, Any]:
         """The browsable catalog: families, part numbers, deciding specs."""
 

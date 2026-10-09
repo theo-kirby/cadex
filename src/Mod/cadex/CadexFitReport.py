@@ -979,6 +979,191 @@ def mounting_summary(value: Any) -> dict[str, Any]:
     return summary
 
 
+#: Where the shell block's facts come from, said in the block itself (ADR-612).
+SHELL_SOURCE = (
+    "engine measurements of the accepted revision at the solved pose (inspect "
+    "scope=clearance path=/shell_gaps and /components): for every component "
+    "declared appearance=\"shell\", the distance from about 400 points of its "
+    "surface to the parts inside its box, its volume and area, and the bolts "
+    "and fixed joints that hold it. Not the script's stdout."
+)
+
+#: The typical gap past which a shell is floating rather than wrapping: the
+#: median distance from its inner face to what it covers. A panel drawn at
+#: a 1-3 mm clearance over a board, a battery and a motor measures 2-4 mm
+#: there (a superellipse over a box stands off the box's flat faces by a
+#: few mm); an egg sized by eye over the same parts measures 10 or more.
+SHELL_FLOATING_GAP_MM = 6.0
+#: The wall estimate 2 * volume / area past which a shell is a solid lump
+#: rather than a panel: covers are printed 1.6-2.4 mm, so twice the thickest
+#: leaves room for bosses and ribs and still catches a filled loft (whose
+#: estimate is a third of its own width or more).
+SHELL_SOLID_WALL_MM = 4.0
+
+#: Said whenever a shell is reported.
+SHELL_NOTE = (
+    "A shell is a panel that wraps the mechanism: it sits a small clearance "
+    "over what it covers (floating: its inner face stands off the parts by "
+    "more than the threshold over most of it), it is a thin printed wall "
+    "(solid: 2 x volume / area is a lump's, not a 1.6-2.4 mm panel's), and "
+    "it is screwed to the frame that carries it (unmounted: no lib.bolt "
+    "through it threads into a non-shell part, and no fixed joint welds it "
+    "to one it touches). lib.panel(over=[...], mount_to=frame) grows such a "
+    "panel from what it covers; lib.housing(drive) grows one round a drive."
+)
+
+
+def shell_summary(value: Any) -> dict[str, Any]:
+    """Whether each declared shell wraps, is thin, and is held (ADR-612).
+
+    ``value`` is the ``inspect scope=clearance`` value :func:`fit_summary`
+    reads. Every component declared ``appearance="shell"`` gets one row:
+    its measured inner-face gap (``gap_median_mm``, ``gap_p90_mm``,
+    ``hug_fraction`` -- the share of the inner face within 4 mm), its wall
+    estimate ``wall_mm`` (2 x volume / area), what holds it (``screws``
+    or ``welded``) and its findings: ``floating``, ``covers nothing``,
+    ``solid``, ``unmounted``. ``reported`` lists the shells with a finding,
+    worst first; ``fitted`` the rest. ``verdict`` is ``pass``, ``reported``,
+    ``none`` (no declared shell) or ``unavailable`` (no published
+    components). Advisory like the inventory block: it refuses nothing and
+    is counted among no fit failure.
+    """
+
+    if not isinstance(value, Mapping):
+        value = {}
+    published = value.get("components")
+    thresholds = {
+        "floating_gap_mm": SHELL_FLOATING_GAP_MM,
+        "solid_wall_mm": SHELL_SOLID_WALL_MM,
+        "contact_mm": MOUNT_CONTACT_MM,
+        "thread_engagement_mm3": THREAD_ENGAGEMENT_MM3,
+    }
+    if not isinstance(published, list):
+        return {"verdict": "unavailable", "source": SHELL_SOURCE, "thresholds": thresholds,
+                "shell_count": 0, "reported_count": 0, "reported": [], "fitted": [],
+                "reason": "No published components for the shell check; rebuild."}
+    rows = [row for row in published if isinstance(row, Mapping) and row.get("component")]
+    shells = [row for row in rows if str(row.get("appearance") or "") == "shell"]
+    if not shells:
+        return {"verdict": "none", "source": SHELL_SOURCE, "thresholds": thresholds,
+                "shell_count": 0, "reported_count": 0, "reported": [], "fitted": [],
+                "reason": "No component declares appearance=\"shell\"."}
+    shell_names = {str(row["component"]) for row in shells}
+
+    def family(row: Mapping[str, Any]) -> str:
+        catalog = row.get("catalog") or {}
+        return str(catalog.get("family") or "") if isinstance(catalog, Mapping) else ""
+
+    by_name = {str(row["component"]): row for row in rows}
+    bolts = {name for name, row in by_name.items() if family(row) == "bolt"}
+    touching: dict[str, set[str]] = {}
+    bites: dict[str, set[str]] = {}
+    for pair in value.get("pairs") or []:
+        if not isinstance(pair, Mapping):
+            continue
+        first, second = str(pair.get("first") or ""), str(pair.get("second") or "")
+        distance, volume = pair.get("distance_mm"), pair.get("common_volume_mm3")
+        if pair.get("error") or not _finite(distance) or not _finite(volume):
+            continue
+        if volume > MAXIMUM_COMMON_VOLUME_MM3 or (
+                distance <= MOUNT_CONTACT_MM and not pair.get("culled")):
+            touching.setdefault(first, set()).add(second)
+            touching.setdefault(second, set()).add(first)
+        if volume >= THREAD_ENGAGEMENT_MM3:
+            bites.setdefault(first, set()).add(second)
+            bites.setdefault(second, set()).add(first)
+    welded: dict[str, set[str]] = {}
+    for row in value.get("attachments") or []:
+        if isinstance(row, Mapping) and str(row.get("status") or "") == "touching":
+            first, second = str(row.get("first") or ""), str(row.get("second") or "")
+            welded.setdefault(first, set()).add(second)
+            welded.setdefault(second, set()).add(first)
+    gaps_published = value.get("shell_gaps")
+    gaps = {str(row.get("component") or ""): row for row in (gaps_published or [])
+            if isinstance(row, Mapping)}
+    holders = {name for name in by_name if name not in shell_names and name not in bolts}
+
+    results = []
+    for row in shells:
+        name = str(row["component"])
+        item: dict[str, Any] = {"component": name, "findings": []}
+        measured = gaps.get(name)
+        if measured is None:
+            item["gap"] = "unmeasured" if gaps_published is None else "missing"
+        elif measured.get("error"):
+            item["gap"] = "unmeasured"
+            item["error"] = str(measured["error"])
+        else:
+            covers = list(measured.get("covers") or [])
+            item["covers_count"] = len(covers)
+            for key in ("gap_median_mm", "gap_p25_mm", "gap_p90_mm", "hug_fraction",
+                        "inner_samples"):
+                if key in measured:
+                    item[key] = measured[key]
+            if not covers:
+                item["findings"].append("covers nothing")
+            elif not measured.get("inner_samples"):
+                item["findings"].append("floating")
+            elif _finite(measured.get("gap_median_mm")) and \
+                    measured["gap_median_mm"] > SHELL_FLOATING_GAP_MM:
+                item["findings"].append("floating")
+        facts = row.get("source_facts") or {}
+        volume, area = facts.get("volume_mm3"), facts.get("area_mm2")
+        if _finite(volume) and _finite(area) and area > 0:
+            item["wall_mm"] = round(2.0 * volume / area, 3)
+            if item["wall_mm"] > SHELL_SOLID_WALL_MM:
+                item["findings"].append("solid")
+        screws = sorted(b for b in touching.get(name, set()) & bolts
+                        if bites.get(b, set()) & holders - {name})
+        into = sorted({h for b in screws for h in bites.get(b, set()) & holders})
+        weld = sorted(welded.get(name, set()) & holders)
+        if screws:
+            item.update(mounted="screws", screws=screws, held_by=into)
+        elif weld:
+            item.update(mounted="welded", held_by=weld)
+        else:
+            item.update(mounted=None)
+            item["findings"].append("unmounted")
+        details = []
+        if "floating" in item["findings"]:
+            details.append(
+                "its inner face stands a median {} mm off what it covers".format(
+                    item.get("gap_median_mm", "?")) if item.get("inner_samples")
+                else "no part of it faces what it covers")
+        if "covers nothing" in item["findings"]:
+            details.append("no non-shell part lies inside its box")
+        if "solid" in item["findings"]:
+            details.append(f"2 x volume / area is {item['wall_mm']} mm, a lump, not a panel")
+        if "unmounted" in item["findings"]:
+            details.append("no bolt through it threads into a non-shell part and no "
+                           "fixed joint welds it to one it touches")
+        if details:
+            item["detail"] = "; ".join(details) + "."
+        results.append(item)
+
+    def severity(item):
+        gap = item.get("gap_median_mm")
+        return (-len(item["findings"]), -(gap if _finite(gap) else 0.0))
+
+    reported = sorted([i for i in results if i["findings"]], key=severity)
+    fitted = [i for i in results if not i["findings"]]
+    summary: dict[str, Any] = {
+        "verdict": "reported" if reported else "pass",
+        "source": SHELL_SOURCE,
+        "thresholds": thresholds,
+        "shell_count": len(results),
+        "reported_count": len(reported),
+        "reported": reported,
+        "fitted": fitted,
+    }
+    if gaps_published is None:
+        summary["gap_note"] = ("This revision published no shell gaps (accepted before "
+                               "ADR-612): floating was not measured. Rebuild to measure it.")
+    if reported:
+        summary["note"] = SHELL_NOTE
+    return summary
+
+
 def _finite(number: Any) -> bool:
     """A measurement the block can compare, rather than a hole in the report."""
 
@@ -1115,6 +1300,9 @@ def fit_summary(
         # ...and what holds each purchased part (ADR-486): its own verdict,
         # counted among no fit failure, like the attachment block.
         "mounting": mounting_summary(value),
+        # ...and whether each declared shell wraps, is thin and is held
+        # (ADR-612): its own verdict, counted among no fit failure.
+        "shells": shell_summary(value),
     }
     if resting:
         summary["world_geometry_note"] = FIT_WORLD_NOTE
@@ -1392,6 +1580,14 @@ def fit_view(fit: dict[str, Any]) -> dict[str, Any]:
         _cut(block, "held", list(mounting.get("held") or []),
              "inspect scope=clearance path=/components")
         view["mounting"] = block
+    shells = fit.get("shells")
+    if isinstance(shells, dict) and "reported" in shells:
+        block = dict(shells)
+        _cut(block, "reported", list(shells.get("reported") or []),
+             "inspect scope=clearance path=/shell_gaps")
+        _cut(block, "fitted", list(shells.get("fitted") or []),
+             "inspect scope=clearance path=/shell_gaps")
+        view["shells"] = block
     return view
 
 

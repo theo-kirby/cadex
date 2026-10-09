@@ -1368,6 +1368,9 @@ def _complete_inventory(captured: Mapping[str, Any]) -> Any:
             # ADR-370: no fixed-joint pair and no published report are
             # different facts, and a reader must not read one as the other.
             "attachments": by_name.get(assembly, {}).get("attachments"),
+            # How far each declared shell stands off what it covers (ADR-612);
+            # absent on a revision accepted before it, like attachments.
+            "shell_gaps": by_name.get(assembly, {}).get("shell_gaps"),
             # The placed components, for the mounting check (ADR-486): it
             # reads catalog identity, placement, bounds, mount axes and
             # housed outputs beside the pair distances above.

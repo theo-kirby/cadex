@@ -6744,6 +6744,121 @@ def _fixed_joint_pairs(joint_data, assembly_output):
     return pairs
 
 
+#: Shell samples per shell, and how far past a shell's box a part may stand
+#: and still be among what it covers (ADR-612).
+_SHELL_SAMPLES = 400
+_SHELL_ENVELOPE_MM = 5.0
+#: Contents tessellation: coarse, since a gap is read to a tenth of a mm.
+_SHELL_DEFLECTION_MM = 0.3
+
+
+def _shell_surface_samples(shape, limit=_SHELL_SAMPLES):
+    """Points spread over a shape's faces by area, each with its outward normal."""
+
+    import FreeCAD as App
+
+    triangles = []
+    for face in shape.Faces:
+        try:
+            points, facets = face.tessellate(_SHELL_DEFLECTION_MM)
+        except Exception:
+            continue
+        for i, j, k in facets:
+            a, b, c = points[i], points[j], points[k]
+            area = (b - a).cross(c - a).Length / 2.0
+            if area > 1e-9:
+                triangles.append((area, face, (a + b + c) * (1.0 / 3.0)))
+    if not triangles:
+        return [], []
+    total = sum(row[0] for row in triangles)
+    step = total / float(limit)
+    samples, normals = [], []
+    carried = step / 2.0
+    for area, face, centre in triangles:
+        carried += area
+        while carried >= step:
+            carried -= step
+            try:
+                u, v = face.Surface.parameter(App.Vector(centre))
+                normal = face.normalAt(u, v)
+            except Exception:
+                continue
+            samples.append([centre.x, centre.y, centre.z])
+            normals.append([normal.x, normal.y, normal.z])
+    return samples, normals
+
+
+def _measure_shell_gaps(components, properties, component_outputs, solved):
+    """How far each ``appearance="shell"`` component stands off what it covers (ADR-612).
+
+    For each shell: the non-shell, non-world components whose exact boxes
+    reach within :data:`_SHELL_ENVELOPE_MM` of its box are what it covers;
+    its surface is sampled by area and every sample's distance to their
+    tessellated surface measured exactly (``CadexPanels.gap_statistics``).
+    Samples whose outward normal points at that nearest point are the inner
+    face, and their gap is the one a designer means. Advisory, like the
+    rest of the derived fit: a failure is the row's ``error``.
+    """
+
+    values = list(properties.get("components") or [])
+    roles = {component_outputs[id(v)]: str(v.properties.get("appearance") or "")
+             for v in values if id(v) in component_outputs}
+    world = {component_outputs[id(v)] for v in values
+             if id(v) in component_outputs and v.properties.get("world")}
+    shells = [name for name, role in roles.items() if role == "shell"]
+    if not shells:
+        return []
+    from CadexPanels import gap_statistics
+
+    shapes, boxes, meshes = {}, {}, {}
+
+    def world_shape(name):
+        if name not in shapes:
+            shapes[name] = _component_world_shape(components[name])
+            boxes[name] = shapes[name].BoundBox
+        return shapes[name]
+
+    def mesh(name):
+        if name not in meshes:
+            points, facets = world_shape(name).tessellate(_SHELL_DEFLECTION_MM)
+            meshes[name] = [[[points[i].x, points[i].y, points[i].z] for i in tri]
+                            for tri in facets]
+        return meshes[name]
+
+    rows = []
+    for name in shells:
+        row: dict[str, Any] = {"component": name}
+        try:
+            if not solved:
+                raise ValueError("Assembly solver did not produce a solved pose")
+            shape = world_shape(name)
+            if shape.isNull() or not shape.Solids:
+                raise ValueError("Shell has no solid to measure")
+            _cpu_stage(f"shell gaps {name}")
+            box = boxes[name]
+            grown = (box.XMin - _SHELL_ENVELOPE_MM, box.XMax + _SHELL_ENVELOPE_MM,
+                     box.YMin - _SHELL_ENVELOPE_MM, box.YMax + _SHELL_ENVELOPE_MM,
+                     box.ZMin - _SHELL_ENVELOPE_MM, box.ZMax + _SHELL_ENVELOPE_MM)
+            covered = []
+            for other in components:
+                if other == name or roles.get(other) == "shell" or other in world:
+                    continue
+                other_box = world_shape(other).BoundBox
+                if (other_box.XMax >= grown[0] and other_box.XMin <= grown[1]
+                        and other_box.YMax >= grown[2] and other_box.YMin <= grown[3]
+                        and other_box.ZMax >= grown[4] and other_box.ZMin <= grown[5]):
+                    covered.append(other)
+            row["covers"] = sorted(covered)
+            triangles = [tri for other in covered for tri in mesh(other)]
+            samples, normals = _shell_surface_samples(shape)
+            stats = gap_statistics(samples, normals, triangles) if triangles else None
+            row.update(stats or {"samples": len(samples), "inner_samples": 0})
+        except Exception as exc:
+            row["error"] = str(exc)
+        rows.append(row)
+    return rows
+
+
 def _check_attachments(rows, joint_data, assembly_output):
     """Measure whether each fixed-joint pair's solids actually touch (ADR-370).
 
@@ -7285,7 +7400,7 @@ def validate_and_solve_assembly(
         # 0.72 s of a 0.77 s warm preview on the latency bar's part: exact
         # bounding boxes and a boolean common over BREP the preview never
         # returns (ADR-527). The accepting run measures it, as it always did.
-        clearance = world_geometry = attachments = clearance_sweep = None
+        clearance = world_geometry = attachments = clearance_sweep = shell_gaps = None
     else:
         _cpu_stage("assembly static fit")
         clearance = _measure_clearance(components, solved=diagnostics["status"] == "solved",
@@ -7293,6 +7408,13 @@ def validate_and_solve_assembly(
         world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs,
                                     raw_result, joint_data, assembly_output)
         attachments = _check_attachments(clearance, joint_data, assembly_output)
+        # How far each declared shell stands off what it covers (ADR-612).
+        _cpu_stage("assembly shell gaps")
+        try:
+            shell_gaps = _measure_shell_gaps(components, assembly_properties, component_outputs,
+                                             diagnostics["status"] == "solved")
+        except Exception as exc:  # advisory: never refuses a build
+            shell_gaps = [{"component": "", "error": str(exc)}]
         sweep_steps = {key: assembly_properties[key] for key in ("sweep_step_degrees", "sweep_step_mm")
                        if assembly_properties.get(key) is not None}
         # Coverage is reported even when neither step is declared (ADR-367).
@@ -7565,6 +7687,7 @@ def validate_and_solve_assembly(
     by_name[assembly_output]["clearance"] = clearance
     by_name[assembly_output]["world_geometry"] = world_geometry
     by_name[assembly_output]["attachments"] = attachments
+    by_name[assembly_output]["shell_gaps"] = shell_gaps
     by_name[assembly_output]["assembly_data"] = {
         "component_outputs": [component_outputs[id(value)] for value in component_values],
         "joint_outputs": [joint_outputs[id(value)] for value in joint_values],
