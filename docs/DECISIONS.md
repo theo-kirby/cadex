@@ -37821,3 +37821,85 @@ parent access are blocked and its origin is `"null"`).
 schema name.
 
 Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-608 — A light QDD tier: the AK60-6 V3.0 and the AK45-10 V3.0 (2026-10-09)
+
+**Decision.** `QDD_ACTUATORS` gains `cubemars-ak60-6-v3` (6:1, 48 V, 9 N·m
+peak, 3 N·m rated, 640 rpm no-load, 380 g, Ø79 × 43 mm) and
+`cubemars-ak45-10-v3` (10:1, 24 V, 7 N·m peak, 2.5 N·m rated, 180 rpm
+no-load, 262 g, Ø53 × 45.2 mm), every figure from CubeMars' product pages
+and 2D drawings (PROVENANCE §8i), each row in the existing schema with the
+same derived fields. Two rules widen the schema without changing the old
+rows. A rear face with its own bolt circle names it in
+`rear_mount_count`/`rear_mount_pcd_mm`/`rear_mount_angle_offset_degrees`
+(the AK45-10: 4-M2.5 on Ø47 against 6-M2.5 on Ø47.5 in front), and
+`lib.qdd` publishes `spec["rear_mount_holes"]` for every row. A figure the
+manufacturer does not publish is `None` and says so in `rating_notes`:
+the AK60-6's backlash. The `qdd_actuators` catalog notes name the two
+tiers.
+
+**Why.** A blind-rated sweep of six agent-designed QDD animals found every
+agent left the head, jaw, tail and wings rigid, partly because the only QDDs
+were 0.5 kg and 100 mm across, so each extra joint "costs 0.5 kg". The AK60-6
+and AK45-10 are a half and a third of that, with the torque a neck or tail
+joint needs.
+
+**Tests.** `test_library.py::test_light_qdds_pin_manufacturer_ratings_and_drawn_bolt_circles`;
+the catalog SKU pin, the real-kernel envelope test extended to both rows
+(valid single solid, bounds, mass, open bores front, rear and output).
+
+**Consequences.** The AK45-10 runs from 24 V and the others from 48 V: a
+design mixing them needs two buses. `CadexAgentGuidance.md` still calls
+the QDDs "about half a kilogram each". That file has another owner, so
+this change leaves it alone.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-609 — `QddPart.mounting()`, and output-flange bolts turn with the flange (2026-10-09)
+
+**Decision.** `qdd.mounting(wall=4, face="front", length=None,
+output_wall=None, output_length=None)` returns `hold.stator` and
+`hold.output` (`QddHold`: `face`, `screw`, `length_mm`, `wall_mm`, `holes`,
+`screws`). Each side is one `lib.bolt` per hole at the case's own thread,
+head `wall` out from the face, shank on the hole axis. Its length is the
+wall plus the drawn thread depth, rounded down to a millimetre, so the tip
+stops in the tapped hole. A screw that would bottom out, or engage under
+half its diameter, is refused. `holes` are normal-fit clearance holes
+through the wall.
+
+The QDD's output-flange holes join its published mount axes, at
+`output_thread`, marked `output: true`. `mounting_summary` never counts
+them as holding the actuator: a bolt there holds the link to the flange.
+`CadexFitReport.output_bolt_pairs` names each bolt that lies on an output
+axis of a drive at the solved pose and does not overlap it there. The
+clearance sweep does not judge such a pair's overlap with that drive.
+
+**Why.** The catalog body is one solid, welded to the stator, but the
+flange it carries turns with the driven link. Swinging the joint therefore
+drove every output screw through the case (12 mm³ and up on the AK45-10
+fixture), and agents dropped the output screws: "they would plough through
+the single-solid QDD envelope when the joint turns". The QDD also had no
+`.mounting()`, unlike boards (ADR-493). Splitting the body into stator and
+rotor solids was rejected for now. It changes every placed QDD's component
+structure and needs an undrawn flange diameter for each row.
+
+**Tests.** `test_library.py::test_qdd_mounting_puts_a_screw_on_every_hole_and_stops_in_the_thread`
+(all four SKUs, front, rear and output), `…_follows_the_placement_and_refuses_a_bottoming_screw`,
+the mount-axes pin (22 axes, 6 marked output);
+`test_mounting_check.py::test_a_bolt_in_a_qdd_output_flange_turns_with_it_in_the_sweep`
+(published values), and `…_is_held_and_its_output_screws_turn_on_the_real_kernel`. In that
+real-kernel test an AK45-10 on its rear screws in a printed bracket, with a link
+on its output swung ±90°, reads held by screws, static fit pass and sweep
+0 failing, while the raw sweep rows show the three output screws inside
+the case.
+
+**Consequences.** A bolt on an output axis that is clean at the solved pose
+is trusted through any motion against that one drive, though a joint that
+does not turn about the QDD's own axis would move the flange in a way the
+real part cannot. The screws still need `contacts=` with the actuator: a
+shank in a 0 mm-away tapped bore reads below clearance otherwise, as every
+catalog tapped hole does. The worker bundle imports the installed
+`CadexCatalog`, so the real-kernel checks need `pixi run build-engine`
+(or a payload) before they see the new rows.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
