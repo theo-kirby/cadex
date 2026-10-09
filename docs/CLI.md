@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -2082,7 +2082,10 @@ revision and commits views under a revision directory. The same snapshot supplie
 }
 ```
 
-`error` is present instead of `notes` when `ok` is false. `outputs` entries
+`error` is present instead of `notes` when `ok` is false. `stdout` is what
+the script printed on that run, accepted or refused, when it printed
+anything (ADR-620): a refused build's prints used to be lost with it. The
+prose report prints them under the error, one `  | ` line each. `outputs` entries
 that produced no file carry `skipped` with the reason. A run that accepted
 a build adds `fit`, the measured-fit block that build's reply carried (§4, ADR-346) — `verdict`, counts and every failing
 pair by name, with the swept `sweep` half inside it (ADR-366) — and the
@@ -2239,7 +2242,14 @@ each domain and the library listing their exports by name, with a
 output types, every export's name, full signature and the first paragraph
 of its documentation, the whole catalog for the library, and a
 `descriptions` line naming the `inspect scope=api` path that holds the rest
-of any docstring. A section the contract lacks is refused with
+of any docstring. `section=library_parts` (ADR-619) is the page of what the
+lib generators return, served from the engine's `library.part_classes`:
+each public class of `cadex_library_api` (`QddPart`, `ServoPart`,
+`BoardPart`, `BoardMounting`, …) with `returned_by` (the calls annotated
+as returning it), its public `attributes`, and every public method's name,
+signature and first paragraph; the index lists each class's method names,
+and the library section leaves the classes out, because it is already most
+of one tool result. A section the contract lacks is refused with
 `NO_SUCH_SECTION` and the list of sections. That refusal is decided
 **after** the engine has answered: the bridge sends the argument-free
 request first, because the section names come from the reply, and only
@@ -2264,6 +2274,22 @@ standard`, no edges) on every modelling op, so the accepted attempt the
 review dashboard draws always retains tessellation (ADR-312). Anything the
 model supplies for either is overruled, and the reply's `display` block is
 dropped before the model sees it.
+
+### A refusal reaches the model with its diagnosis first (ADR-618)
+
+The model's view of any refused call keeps every envelope key but bounds
+the bulk inside `observed` (`bridge.refusal_view`): OCCT's progress meter
+(`\r\t\t(37 %)\t` frames) is dropped from `stderr`, and `stderr` and
+`traceback` keep their last 3,000 characters; `details.component_placements`
+becomes `{count, note}`; `details.native.joints` keeps only the joints the
+solver did not report satisfied, with `satisfied_joint_count`; long
+`joint_outputs` lists are cut the ADR-435 way. `stdout` stays whole (the
+engine bounds it at 16,000 characters). The engine reply and the session
+row are untouched. Measured on `cbase-deinonychus-a`: a `solver_error`
+refusal was 293,000 characters, the harness kept its first and last 5,000,
+and the solver's message sat in the cut middle; the same kind of refusal
+now reaches the model at about 9,000 characters with the solver's message
+in `error`.
 
 ### Training refuses inputs the robot cannot read (ADR-408)
 

@@ -90,6 +90,10 @@ class RunReport:
     #: video drawn from the seeds landed.
     evaluation: dict[str, Any] = field(default_factory=dict)
     error: str = ""
+    #: What the script printed on its last run (ADR-620), accepted or
+    #: refused: a refusal is when an author's prints matter most, and the
+    #: engine now sends them on both (``stdout``, ``observed.stdout``).
+    stdout: str = ""
     #: ``cadex revision``: the trail it listed, or the revision it put back (ADR-506).
     revisions: dict[str, Any] = field(default_factory=dict)
     #: The project's engine budgets (ADR-517): after an engine run, those
@@ -144,6 +148,8 @@ class RunReport:
             payload["notes"] = list(self.notes)
         if self.error:
             payload["error"] = self.error
+        if self.stdout:
+            payload["stdout"] = self.stdout
         return payload
 
 
@@ -181,6 +187,8 @@ def apply_modeling_reply(report: RunReport, reply: Mapping[str, Any]) -> None:
         report.accepted_revision
     )
     report.digest = str(reply.get("digest") or "") or report.digest
+    observed = reply.get("observed") if isinstance(reply.get("observed"), Mapping) else {}
+    report.stdout = str(reply.get("stdout") or observed.get("stdout") or "")
 
 
 def emit(report: RunReport, *, as_json: bool, stream: TextIO | None = None) -> None:
@@ -202,6 +210,9 @@ def human_lines(report: RunReport) -> list[str]:
     lines: list[str] = []
     if report.error:
         lines.append(f"error: {report.error}")
+        if report.stdout:
+            lines.append("the script printed, before it was refused:")
+            lines.extend(f"  | {line}" for line in report.stdout.rstrip("\n").splitlines())
     if report.digest:
         lines.append(f"model  {report.digest[:16]}  ({report.project_root})")
     elif report.project_root:

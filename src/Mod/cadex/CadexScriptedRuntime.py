@@ -918,6 +918,85 @@ def _cpu_ledger_sentence(ledger: Mapping[str, Any]) -> str:
     )
 
 
+#: Must equal ``cadex_domain_worker.KERNEL_BREADCRUMB_NAME`` (a test holds
+#: them equal; that module is staged into the sandbox, not imported here).
+_KERNEL_BREADCRUMB_NAME = "kernel.json"
+
+_SIGNAL_NAMES = {6: "SIGABRT", 7: "SIGBUS", 8: "SIGFPE", 11: "SIGSEGV"}
+
+
+def _kernel_breadcrumb(staging: Path) -> dict[str, Any] | None:
+    """The innermost kernel call a dead worker was in, or None (ADR-617)."""
+
+    try:
+        crumb = json.loads((staging / _KERNEL_BREADCRUMB_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    in_flight = crumb.get("in_flight") if isinstance(crumb, Mapping) else None
+    if not isinstance(in_flight, list) or not in_flight:
+        return None
+    innermost = in_flight[-1]
+    if not isinstance(innermost, Mapping) or not innermost.get("operation"):
+        return None
+    entry = {
+        "operation": str(innermost.get("operation")),
+        "lines": [int(line) for line in list(innermost.get("lines") or []) if isinstance(line, int)],
+        "stage": str(innermost.get("stage") or ""),
+        "scalars": dict(innermost.get("scalars") or {}),
+    }
+    if len(in_flight) > 1:
+        entry["inside"] = [
+            str(item.get("operation") or "")
+            for item in in_flight[:-1]
+            if isinstance(item, Mapping)
+        ]
+    return entry
+
+
+def _kernel_crash_sentence(
+    crashed_in: Mapping[str, Any], process: Mapping[str, Any]
+) -> tuple[str, str]:
+    operation = str(crashed_in["operation"])
+    returncode = process.get("returncode")
+    how = "crashed"
+    if isinstance(returncode, int) and returncode < 0:
+        how += f" ({_SIGNAL_NAMES.get(-returncode, f'signal {-returncode}')})"
+    elif "SIGSEGV" in str(process.get("stderr") or ""):
+        how += " (SIGSEGV)"
+    lines = list(crashed_in.get("lines") or [])
+    where = (
+        f" made at script line{'s' if len(lines) > 1 else ''} {', '.join(map(str, lines))}"
+        if lines
+        else ""
+    )
+    scalars = dict(crashed_in.get("scalars") or {})
+    shown = ", ".join(f"{key}={value}" for key, value in scalars.items())
+    stage = str(crashed_in.get("stage") or "")
+    message = (
+        f"The isolated domain worker {how} inside OpenCascade while running "
+        f"part.{operation}{where}"
+        + (f" ({shown})" if shown else "")
+        + (f", during {stage!r}" if stage else "")
+        + ". A native crash is the kernel failing on this call's geometry, so "
+        "the same call will crash again unchanged."
+    )
+    if operation in {"fillet", "chamfer"} or "blend" in scalars:
+        correction = (
+            f"Change the part.{operation} call{where}: a smaller radius, fewer "
+            "edges (round the long edges and leave the corners where three "
+            "rounded edges meet), or round before the boolean that made the "
+            "corner."
+        )
+    else:
+        correction = (
+            f"Change the part.{operation} call{where}: move its inputs apart "
+            "or into clear overlap by a fraction of a millimetre (a tangent "
+            "or coincident face is what the kernel cannot resolve), or split "
+            "it into smaller calls."
+        )
+    return message, correction
+
+
 def execute_candidate(
     prepared: Mapping[str, Any],
     *,
@@ -984,6 +1063,18 @@ def execute_candidate(
         return resource_failure
     result_path = Path(str(prepared["staging"])) / "result.json"
     if not result_path.is_file():
+        crashed_in = _kernel_breadcrumb(Path(str(prepared["staging"])))
+        if crashed_in is not None:
+            message, correction = _kernel_crash_sentence(crashed_in, process)
+            return _failure(
+                str(prepared["tool_name"]),
+                "DOMAIN_WORKER_NO_RESULT",
+                "external_process",
+                message,
+                observed={**dict(process), "kernel_operation": crashed_in},
+                domain_failure_stage="kernel_crash",
+                required_changes=[correction],
+            )
         return _failure(
             str(prepared["tool_name"]),
             "DOMAIN_WORKER_NO_RESULT",
@@ -1018,7 +1109,12 @@ def execute_candidate(
                 "exception_type": report.get("exception_type"),
                 "details": report.get("details"),
                 "traceback": report.get("traceback"),
-                "stdout": report.get("stdout") or process.get("stdout"),
+                # The script's own prints when the worker sent them -- a project
+                # worker always does now, refused or not (ADR-620) -- and the
+                # process's stdout only from a worker that predates that.
+                "stdout": (
+                    report["stdout"] if "stdout" in report else process.get("stdout")
+                ),
                 "stderr": process.get("stderr"),
                 "elapsed_seconds": process.get("elapsed_seconds"),
             },
@@ -2592,7 +2688,89 @@ def _library_listing() -> dict[str, Any]:
 
     from cadex_library_api import library_listing
 
-    return library_listing()
+    listing = library_listing()
+    listing["part_classes"] = _library_part_classes()
+    return listing
+
+
+def _library_part_classes() -> list[dict[str, Any]]:
+    """What a lib generator hands back, and what can be called on it (ADR-619).
+
+    ``lib.qdd(...)`` returns a ``QddPart`` whose ``.actuator``,
+    ``.joint_dynamics`` and ``.bay`` are the calls a design needs, and the
+    library section listed only the generators: six audited sessions guessed
+    at those methods or read them out of a refusal. Generated from the
+    classes themselves -- every public class of ``cadex_library_api`` that a
+    generator returns or that is a library part -- so the listing cannot
+    drift from what a script can call.
+    """
+
+    import cadex_library_api as library
+
+    def summary(text: Any) -> str:
+        head = str(text or "").strip().split("\n\n", 1)[0]
+        return " ".join(head.split())
+
+    module_classes = {
+        name: cls
+        for name, cls in vars(library).items()
+        if isinstance(cls, type) and cls.__module__ == library.__name__
+    }
+    #: class name -> the public calls annotated as returning it.
+    returned_by: dict[str, list[str]] = {}
+    for owner_name, owner in sorted(module_classes.items()):
+        prefix = "lib" if owner is library.LibraryAPI else owner_name
+        for name, member in sorted(vars(owner).items()):
+            if name.startswith("_") or not callable(member):
+                continue
+            annotation = _inspect.signature(member).return_annotation
+            label = annotation if isinstance(annotation, str) else getattr(annotation, "__name__", "")
+            if label in module_classes:
+                returned_by.setdefault(str(label), []).append(f"{prefix}.{name}")
+
+    classes: list[dict[str, Any]] = []
+    for name, cls in sorted(module_classes.items()):
+        # Every public class but the API itself and its error is something a
+        # call hands a script (BoardMounting is what BoardPart.mounting()
+        # returns, unannotated).
+        if name.startswith("_") or cls is library.LibraryAPI or issubclass(cls, Exception):
+            continue
+        attributes = sorted(
+            {
+                slot
+                for klass in cls.__mro__
+                for slot in getattr(klass, "__slots__", ())
+                if not slot.startswith("_")
+            }
+        )
+        methods = []
+        for method_name in sorted(dir(cls)):
+            if method_name.startswith("_"):
+                continue
+            member = getattr(cls, method_name)
+            if not callable(member) or isinstance(member, type):
+                continue
+            signature = _inspect.signature(member)
+            parameters = list(signature.parameters.values())
+            if parameters and parameters[0].name == "self":
+                signature = signature.replace(parameters=parameters[1:])
+            methods.append(
+                {
+                    "name": method_name,
+                    "signature": str(signature),
+                    "description": summary(_inspect.getdoc(member)),
+                }
+            )
+        classes.append(
+            {
+                "name": name,
+                "description": summary(_inspect.getdoc(cls)),
+                "returned_by": returned_by.get(name, []),
+                "attributes": attributes,
+                "methods": methods,
+            }
+        )
+    return classes
 
 
 def describe_project_api() -> dict[str, Any]:

@@ -78,8 +78,10 @@ VIEW_ARGS: dict[tuple[str, str], tuple[type, str]] = {
     ("describe_api", "section"): (
         str,
         "One page of the contract: a domain name from the index's `domains`, "
-        "or `library` for the catalog and the lib exports. Omit it for the "
-        "index, which lists every export by name and names the sections.",
+        "`library` for the catalog and the lib exports, or `library_parts` "
+        "for the methods of the parts lib returns (QddPart.actuator, "
+        "ServoPart.horn, BoardPart.mounting). Omit it for the index, which "
+        "lists every export by name and names the sections.",
     ),
 }
 
@@ -102,7 +104,8 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "page at a time so each fits one tool result. Without `section`: the "
         "index — the program schema, the globals a script may use, and every "
         "domain's exports by name. With `section=<domain>` or "
-        "`section=library`: that section's notes and every export's full "
+        "`section=library` (or `section=library_parts`, the methods of the "
+        "parts lib returns): that section's notes and every export's full "
         "signature with the first paragraph of its documentation; the "
         "page's `descriptions` line says which inspect scope=api path holds "
         "the rest. Call the index before writing your first script, then the "

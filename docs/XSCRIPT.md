@@ -1723,6 +1723,61 @@ Source is validated before any worker runs (AST policy in
   rejected.
 - Violations return `SOURCE_POLICY_VIOLATION` with offending line numbers —
   structured failure payloads, not exceptions.
+- **`math` is provided, not imported** (ADR-615). The name `math` is a
+  read-only namespace (`cadex_domain_worker.SANDBOX_MATH`) holding the
+  deterministic whitelist `SANDBOX_MATH_NAMES`: `pi e tau inf nan`, the
+  trigonometric and hyperbolic functions and their inverses, `atan2`,
+  `sqrt cbrt hypot dist exp expm1 exp2 log log2 log10 log1p pow`,
+  `radians degrees`, `floor ceil trunc fabs fmod remainder modf copysign`,
+  `isclose isfinite isinf isnan`, `fsum prod gcd lcm isqrt`. Left out:
+  `factorial`, `comb`, `perm` (cost grows with the argument). It is not the
+  module object, so `math.__spec__` and friends are not there to reach. The
+  blanket refusal of `import` stands (ADR-138); `import math` and
+  `from math import …` are refused with a message saying `math` is already
+  there.
+- **Safe introspection** (ADR-616): `getattr(obj, name[, default])` and
+  `hasattr(obj, name)` refuse a name that starts with `_` or is one of the
+  frame attributes (`gi_frame`, `f_back`, `f_globals`, `tb_frame`, …,
+  `SANDBOX_BLOCKED_ATTRIBUTES`), the same rule the AST policy applies to
+  `obj._name` — which now also refuses those frame attributes written as
+  attributes (`_BLOCKED_ATTRIBUTES`, test-held equal). `dir(obj)` lists
+  public names only, `dir()` the script's own; `type(obj)` takes one
+  argument (no class factory); `isinstance`, `callable`, `repr`, and
+  `AttributeError`, `KeyError`, `IndexError`, `ZeroDivisionError` join the
+  builtins.
+
+### What a refused build says
+
+- **The failing call is named** (ADR-617). Every value a script makes
+  records the script line that made it, in a registry beside the payload
+  (`cadex_domain_api.track_creation_sites`), never in it, so a definition,
+  its memo key and the digest are byte-identical to before. A part build
+  that raises keeps the payload it failed on and the calls it was nested
+  in; the project worker turns that into `details.failure_site`
+  (`output`, `call`, `lines`, `names`, `inside`, `operands`) and appends a
+  sentence to `error`:
+  `api.fuse: declared solid but OpenCascade produced Compound containing 2
+  solids. Failing call: result['pelvis'], pelvis = part.fuse (script line
+  5), while building output 'pelvis'; operands: argument 0[0]: hip_l =
+  part.box (script line 2); argument 0[1]: hip_r = part.box (script line
+  3).` An exception the script itself raised gets its line
+  (`division by zero. Raised at script line 4.`).
+- **A kernel crash is a refusal naming the call** (ADR-617). Around each
+  crash-prone part operation (fillet, chamfer, the booleans, offsets,
+  lofts, sweeps, `mate`) the worker writes `kernel.json` beside its CPU
+  ledger and clears it on the way out. A worker that dies with no
+  `result.json` and a breadcrumb in flight comes back as
+  `DOMAIN_WORKER_NO_RESULT` with `domain_failure_stage: kernel_crash`,
+  `observed.kernel_operation`, and a correction:
+  `The isolated domain worker crashed (SIGSEGV) inside OpenCascade while
+  running part.fillet made at script line 328 (arg1=2.0, on_failure=skip),
+  during 'output foot_l_body'.`
+- **A solver refusal says what the solver said** (ADR-618): its own
+  message and every joint it did not report satisfied, by output name, in
+  the error and in `details.solver_message` / `details.implicated_joints`.
+- **The script's prints survive a refusal** (ADR-620): the worker keeps
+  its stdout whether or not the script raised, and the refusal carries it
+  as `observed.stdout`.
 
 ### Worker isolation
 

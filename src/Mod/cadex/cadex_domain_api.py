@@ -224,6 +224,9 @@ class DomainValue:
         )
         object.__setattr__(self, "properties", _immutable_value(self.properties))
 
+        if _CREATION_SITES is not None:
+            _record_creation_site(self)
+
     def to_payload(self) -> dict[str, Any]:
         return {
             "domain": self.domain,
@@ -232,6 +235,99 @@ class DomainValue:
             "arguments": [_json_value(item) for item in self.arguments],
             "properties": _json_value(self.properties),
         }
+
+
+# -- where each value was made (ADR-617) ------------------------------------
+#
+# A kernel refusal used to name only the operation ("api.fuse: declared solid
+# but OpenCascade produced Compound containing 2 solids"), and a script with
+# forty fuses left the author to bisect it by hand. The worker turns this
+# registry on for one run; every value the script makes records the script
+# line that made it, kept OUT of the payload so the definition, the memo key
+# and the digest are exactly what they were -- an edited comment must not
+# move a single byte of the model.
+
+#: The filenames the workers compile a script under.
+SCRIPT_FILENAMES = frozenset({"<cadex-project-xscript>", "<cadex-domain-xscript>"})
+_CREATION_SITES: dict[str, list[tuple[DomainValue, int]]] | None = None
+#: canonical payload -> script lines, filled lazily per operation.
+_SITE_LINES: dict[str, list[int]] = {}
+_SITES_INDEXED: dict[str, int] = {}
+_MAX_CREATION_SITES = 200_000
+_site_count = 0
+
+
+def track_creation_sites(enabled: bool = True) -> None:
+    """Start (or stop) recording where each value is made, empty."""
+
+    global _CREATION_SITES, _site_count
+    _CREATION_SITES = {} if enabled else None
+    _SITE_LINES.clear()
+    _SITES_INDEXED.clear()
+    _site_count = 0
+
+
+def _record_creation_site(value: DomainValue) -> None:
+    global _site_count
+    if _site_count >= _MAX_CREATION_SITES:
+        return
+    import sys
+
+    frame = sys._getframe(1)
+    line = 0
+    while frame is not None:
+        if frame.f_code.co_filename in SCRIPT_FILENAMES:
+            line = int(frame.f_lineno)
+            break
+        frame = frame.f_back
+    _CREATION_SITES.setdefault(value.operation, []).append((value, line))
+    _site_count += 1
+
+
+def _canonical_payload(payload: Any) -> str:
+    import json
+
+    return json.dumps(payload, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+
+
+def creation_lines(payload: Mapping[str, Any]) -> list[int]:
+    """The script lines that made a value with exactly this payload.
+
+    Empty when tracking is off or no script line made it. Indexes one
+    operation's values the first time that operation is asked about, so a
+    run that never fails pays only the append.
+    """
+
+    if _CREATION_SITES is None or not isinstance(payload, Mapping):
+        return []
+    operation = str(payload.get("operation") or "")
+    entries = _CREATION_SITES.get(operation) or []
+    start = _SITES_INDEXED.get(operation, 0)
+    for value, line in entries[start:]:
+        if line:
+            key = _canonical_payload(value.to_payload())
+            lines = _SITE_LINES.setdefault(key, [])
+            if line not in lines:
+                lines.append(line)
+    _SITES_INDEXED[operation] = len(entries)
+    try:
+        key = _canonical_payload(dict(payload))
+    except (TypeError, ValueError):
+        return []
+    return sorted(_SITE_LINES.get(key, []))
+
+
+def values_with_payload(payload: Mapping[str, Any]) -> list[DomainValue]:
+    """The recorded values whose payload is exactly ``payload``."""
+
+    if _CREATION_SITES is None or not isinstance(payload, Mapping):
+        return []
+    key = _canonical_payload(dict(payload))
+    return [
+        value
+        for value, _line in _CREATION_SITES.get(str(payload.get("operation") or ""), [])
+        if _canonical_payload(value.to_payload()) == key
+    ]
 
 
 class DomainAPI:

@@ -138,8 +138,9 @@ count placed instances and cannot identify hardware fused into other solids.
 ALL LENGTHS ARE MILLIMETRES.
 
 CALL describe_api BEFORE YOUR FIRST SCRIPT, then describe_api \
-section=<domain> for every domain you use and section=library for the \
-catalog: the index lists the exports by name, the sections carry the \
+section=<domain> for every domain you use, section=library for the \
+catalog and section=library_parts for what a lib part can do (.bay, \
+.actuator, .horn, .mounting): the index lists the exports by name, the sections carry the \
 signatures, and each page fits one tool result. Call again whenever you \
 need an exact signature. It is served live by the engine you are talking \
 to, so it is the truth about this version. Do not write an xscript API \
