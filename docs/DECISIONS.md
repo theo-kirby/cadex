@@ -37821,3 +37821,77 @@ parent access are blocked and its origin is `"null"`).
 schema name.
 
 Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-613 — A creature declares its moving anatomy: `assembly.anatomy` (2026-10-09)
+
+**Decision.** `assembly.anatomy(region, components, *, reason=None,
+label="")` names one region of a creature's moving anatomy — free text, 1 to
+48 characters, the suggested vocabulary spine, neck, head, jaw, tail,
+arm_l/arm_r, leg_*, wing_*, toe — and the `assembly.component` values it is
+made of. It is an intermediate on `assembly.sensor`'s terms: passed to
+`assembly.assembly(..., anatomy=[...])`, never returned, registered in the
+pack's exports and `_DOMAIN_OPERATION_OUTPUT_TYPES` but not its output
+types, and listed by `describe_api`. `reason=` (non-empty, at most 600
+characters) is how a region is deliberately rigid or passive. The assembly
+refuses a region whose component it does not list, a region name declared
+twice and a component in two regions. Undeclared, nothing enters the
+definition, so no digest moves.
+
+**Why.** In the cbase sweep (2026-10-09) no agent-designed deinonychus,
+heron or leopard jointed the head, jaw, tail, forelimbs or wings; only
+herons jointed the neck, and they rated best. Agents fixed the DOF count in
+their first minutes and nothing they read asked them to revisit it. The
+guidance rule that follows tells creature designs to list their moving
+anatomy and give each region a joint and actuator or a measured reason; this
+is the declaration it points at.
+
+**Tests.** `src/Mod/cadex/cadex_tests/test_anatomy.py` (registration,
+`describe_api`, properties, refusals); `test_project_tool_surface.py`.
+
+**Consequences.** The `anatomy` export joins the assembly API contract,
+as `goal` did (ADR-462). A script that declares none keeps its definition,
+revision and digest: a copy of `cbase-heron-a` opened and restored at its
+accepted revision on this engine.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-614 — Every build reply measures the anatomy: the `anatomy` block (2026-10-09)
+
+**Decision.** The assembly worker stamps `anatomy` beside the assembly's
+definition (as `attachments` is): the declared regions by component output
+name, every unsuppressed joint with kind, components and actuator count
+(the most any one export or dynamics run declares), the root component and
+the world geometry. `CadexAnatomy.anatomy_summary` (pure, in the service's
+closure) joins it to the inventory's boxes and is served as `inspect
+scope=anatomy`: per region `status` (`articulated`, `passive only`, `root`,
+`rigid`, `rigid, no reason`), its joints and their drive (`actuated`,
+`loop` — passive in a closed loop an actuator drives — or `passive`),
+`joint_dof`, `actuated_dof`, `parent_region`, `welded_to`, `reason`; a
+`verdict` (`complete` only when every region is articulated, the root, or
+has a reason; `incomplete`; `undeclared`; `unavailable`); and, declared or
+not, `rigid_appendages` — each branch one fixed joint welds onto a rigid
+body that is at least 15 % of the design's extent and reaches 8 % of it past
+the rest of the body. The CLI bridge reads the scope after every modelling
+op and puts `CadexAnatomy.anatomy_view` on the reply as `anatomy`; `look`
+adds `measures.anatomy`. `inspect`'s scope list gains `anatomy`; no cadexd
+op, argument or golden changes.
+
+**Why.** A declaration nobody measures is a claim. The block makes "done"
+visible: on `cbase-heron-a` with its regions declared, the real engine
+reports the neck `articulated` (one QDD and three loop joints), the head
+`rigid, no reason` welded to the neck with `w_head` protruding 152 mm along
++x, both feet rigid with no reason, and seven actuated DOF; undeclared,
+`cbase-deinonychus-a`'s welded tail is found protruding 450 mm along −x.
+Graph-only, so a build pays no geometry call for it.
+
+**Tests.** `test_anatomy.py` (stamp, summary, loop drive, shared bodies,
+appendages, view, scope); `test_engine_purity_guardrails.py` (closure);
+`cli/tests/test_mcp_protocol.py` (the block on a build reply, an older
+engine without the scope), `test_look.py`, `fake_cadexd.anatomy_value`.
+
+**Consequences.** Advisory: nothing is refused. A design-only project
+declares no actuator (none without an `assembly.mjcf` or dynamics run), so
+its jointed regions read `passive only`. Revisions accepted before this read
+`unavailable` until rebuilt.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
