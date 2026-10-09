@@ -6783,6 +6783,63 @@ def _check_attachments(rows, joint_data, assembly_output):
     return report
 
 
+def _anatomy_stamp(raw_result, assembly_properties, component_outputs, joint_outputs,
+                   joint_data, assembly_output, *, root, world_geometry):
+    """The graph facts the anatomy block is computed from (ADR-614).
+
+    Published beside the definition on the assembly's row, like
+    ``attachments``, so no digest moves: the regions ``api.anatomy``
+    declared, in script order, by component output name; every unsuppressed
+    joint with its kind, its two components and how many ``api.actuator``
+    entries drive it (the most any one export or dynamics run declares, so
+    an Earth and a lunar export of one robot do not count a motor twice);
+    the component the dynamics tree roots at; and the world geometry. No
+    geometry is touched: :mod:`CadexAnatomy` reads the boxes the inventory
+    join already carries.
+    """
+
+    actuators: dict[str, int] = {}
+    for value in raw_result.values():
+        if not isinstance(value, DomainValue) or value.domain != "assembly":
+            continue
+        per_export: dict[str, int] = {}
+        for entry in list(value.properties.get("actuators") or ()):
+            if (isinstance(entry, DomainValue) and entry.operation == "actuator"
+                    and entry.arguments and id(entry.arguments[0]) in joint_outputs):
+                name = joint_outputs[id(entry.arguments[0])]
+                per_export[name] = per_export.get(name, 0) + 1
+        for name, count in per_export.items():
+            actuators[name] = max(actuators.get(name, 0), count)
+    component_values = list(assembly_properties.get("components") or [])
+    world = sorted({component_outputs[id(value)] for value in component_values
+                    if value.properties.get("world")}
+                   | {str(row["component"]) for row in world_geometry or ()})
+    joints = []
+    for name, joint in joint_data.items():
+        if joint.get("assembly_output") != assembly_output or joint.get("suppressed"):
+            continue
+        sides = [connector.get("component_output") for connector in joint.get("connectors") or ()]
+        if len(sides) != 2 or None in sides:
+            continue
+        joints.append({"joint": str(name), "kind": str(joint.get("kind") or ""),
+                       "components": [str(side) for side in sides],
+                       "actuators": int(actuators.get(name, 0))})
+    regions = []
+    for region in list(assembly_properties.get("anatomy") or ()):
+        row = {"region": str(region.properties.get("region") or ""),
+               "components": [component_outputs[id(c)] for c in region.arguments]}
+        if region.properties.get("reason"):
+            row["reason"] = str(region.properties["reason"])
+        regions.append(row)
+    return {
+        "regions": regions,
+        "components": [component_outputs[id(value)] for value in component_values],
+        "world_components": world,
+        "root_component": root,
+        "joints": joints,
+    }
+
+
 def validate_and_solve_assembly(
     document: Any,
     raw_result: Mapping[str, Any],
@@ -7306,6 +7363,16 @@ def validate_and_solve_assembly(
         clearance_sweep = _measure_joint_sweeps(
             components, component_data, joint_data, clearance,
             sweep_steps, diagnostics["status"] == "solved")
+    # The anatomy graph (ADR-614): graph facts only, so a preview pays for
+    # it too and it costs nothing a person would notice.
+    world_flags = {component_outputs[id(value)] for value in component_values
+                   if value.properties.get("world")}
+    anatomy_root = next((name for name in grounded_outputs if name not in world_flags),
+                        free_base or next((component_outputs[id(value)] for value in component_values
+                                           if component_outputs[id(value)] not in world_flags), None))
+    anatomy = _anatomy_stamp(raw_result, assembly_properties, component_outputs, joint_outputs,
+                             joint_data, assembly_output, root=anatomy_root,
+                             world_geometry=world_geometry)
     _cpu_stage("assembly derived outputs")
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None
@@ -7565,6 +7632,7 @@ def validate_and_solve_assembly(
     by_name[assembly_output]["clearance"] = clearance
     by_name[assembly_output]["world_geometry"] = world_geometry
     by_name[assembly_output]["attachments"] = attachments
+    by_name[assembly_output]["anatomy"] = anatomy
     by_name[assembly_output]["assembly_data"] = {
         "component_outputs": [component_outputs[id(value)] for value in component_values],
         "joint_outputs": [joint_outputs[id(value)] for value in joint_values],
