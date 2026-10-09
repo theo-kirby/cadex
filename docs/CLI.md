@@ -2819,7 +2819,11 @@ block, read from `inspect scope=anatomy` under the same lock. It is the
 bounded view (`CadexAnatomy.anatomy_view`) of the regions the script
 declared with `assembly.anatomy` (`docs/XSCRIPT.md` "Anatomy"), computed from
 the accepted joint graph only. On `cbase-heron-a` with seven regions
-declared (abridged):
+declared (abridged; with its `assembly.mjcf` export the same joints read
+`actuated`, and with the export removed — design only — they read
+`catalog drive: <qdd>`, e.g. `neck (revolute, catalog drive: neck_qdd)`,
+`hip_l (revolute, catalog drive: hip_qdd_l)`, the verdict and seven
+`actuated_dof` unchanged):
 
 ```json
 "anatomy": {

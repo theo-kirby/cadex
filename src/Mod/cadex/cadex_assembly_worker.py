@@ -7531,8 +7531,50 @@ def _check_attachments(rows, joint_data, assembly_output):
     return report
 
 
+def _rigid_matrix(fact):
+    """A placement fact's row-major 4x4 as three rows, or None."""
+
+    matrix = (fact or {}).get("matrix") if isinstance(fact, Mapping) else None
+    if not isinstance(matrix, (list, tuple)) or len(matrix) < 12:
+        return None
+    return [[float(matrix[4 * r + c]) for c in range(4)] for r in range(3)]
+
+
+def _solved_joint_axis(joint, initial, solved):
+    """The joint's axis line at the solved pose: ``{"origin", "axis"}`` or None.
+
+    The connector frames are resolved before the solve, on the first
+    connector's component at its initial placement; carrying the frame
+    through that component's move from initial to solved gives the line the
+    joint turns or slides along where the solver left it. Its local +Z is
+    the joint axis, FreeCAD's convention for every joint kind.
+    """
+
+    connectors = list(joint.get("connectors") or ())
+    if not connectors:
+        return None
+    frame = _rigid_matrix(connectors[0].get("global_frame"))
+    name = connectors[0].get("component_output")
+    start, end = _rigid_matrix((initial or {}).get(name)), _rigid_matrix((solved or {}).get(name))
+    if frame is None:
+        return None
+    origin = [frame[r][3] for r in range(3)]
+    axis = [frame[r][2] for r in range(3)]
+    if start is not None and end is not None:
+        # x_solved = R_end R_start^T (x - t_start) + t_end; rigid, so the
+        # inverse rotation is the transpose.
+        def carry(point, vector):
+            local = [point[i] - (0.0 if vector else start[i][3]) for i in range(3)]
+            back = [sum(start[k][i] * local[k] for k in range(3)) for i in range(3)]
+            return [sum(end[i][k] * back[k] for k in range(3)) + (0.0 if vector else end[i][3])
+                    for i in range(3)]
+        origin, axis = carry(origin, False), carry(axis, True)
+    return {"origin": [round(v, 6) for v in origin], "axis": [round(v, 9) for v in axis]}
+
+
 def _anatomy_stamp(raw_result, assembly_properties, component_outputs, joint_outputs,
-                   joint_data, assembly_output, *, root, world_geometry):
+                   joint_data, assembly_output, *, root, world_geometry,
+                   initial=None, solved=None):
     """The graph facts the anatomy block is computed from (ADR-614).
 
     Published beside the definition on the assembly's row, like
@@ -7569,9 +7611,13 @@ def _anatomy_stamp(raw_result, assembly_properties, component_outputs, joint_out
         sides = [connector.get("component_output") for connector in joint.get("connectors") or ()]
         if len(sides) != 2 or None in sides:
             continue
-        joints.append({"joint": str(name), "kind": str(joint.get("kind") or ""),
-                       "components": [str(side) for side in sides],
-                       "actuators": int(actuators.get(name, 0))})
+        row = {"joint": str(name), "kind": str(joint.get("kind") or ""),
+               "components": [str(side) for side in sides],
+               "actuators": int(actuators.get(name, 0))}
+        line = _solved_joint_axis(joint, initial, solved) if row["kind"] != "fixed" else None
+        if line is not None:
+            row["axis"] = line
+        joints.append(row)
     regions = []
     for region in list(assembly_properties.get("anatomy") or ()):
         row = {"region": str(region.properties.get("region") or ""),
@@ -8146,7 +8192,10 @@ def validate_and_solve_assembly(
                                            if component_outputs[id(value)] not in world_flags), None))
     anatomy = _anatomy_stamp(raw_result, assembly_properties, component_outputs, joint_outputs,
                              joint_data, assembly_output, root=anatomy_root,
-                             world_geometry=world_geometry)
+                             world_geometry=world_geometry,
+                             initial={name: data.get("initial_placement")
+                                      for name, data in component_data.items()},
+                             solved=component_placements)
     _cpu_stage("assembly derived outputs")
     by_name = {str(item.get("name") or ""): item for item in outputs}
     simulation_summary = None

@@ -79,6 +79,15 @@ _CATALOG_IDENTITY: dict[str, dict[str, str]] = {}
 #: both keyed by canonical definition.
 _MOUNT_AXES: dict[str, list[dict[str, list[float]]]] = {}
 _BAY_OF: dict[str, str] = {}
+#: Where each catalog actuator's output drives, in the body's own placed
+#: coordinates (ADR-614): the output axis (every drive family's canonical
+#: +Z through its datum) and whether it turns or slides. The anatomy block
+#: reads it to tell a jointed limb with a motor on its axis from a passive
+#: one when no ``assembly.actuator`` is declared. Off the digest like the rest.
+_DRIVE_AXES: dict[str, dict[str, Any]] = {}
+#: The families whose output drives a joint, and how.
+DRIVE_MOTION = {"servo": "rotary", "qdd": "rotary", "gearmotor": "rotary",
+                "bldc": "rotary", "linear_actuator": "linear"}
 
 
 def _definition_key(body: Any) -> str:
@@ -113,6 +122,7 @@ def library_mount_facts() -> dict[str, dict[str, Any]]:
     return {
         "axes": {key: [dict(row) for row in rows] for key, rows in _MOUNT_AXES.items()},
         "bays": dict(_BAY_OF),
+        "drives": {key: dict(row) for key, row in _DRIVE_AXES.items()},
     }
 
 
@@ -171,6 +181,7 @@ class LibraryPart:
         body: Any,
         spec: Mapping[str, Any],
         mount_axes: Sequence[Mapping[str, Any]] = (),
+        drive_frame: tuple | None = None,
     ) -> None:
         object.__setattr__(self, "family", family)
         object.__setattr__(self, "part_number", part_number)
@@ -189,6 +200,9 @@ class LibraryPart:
                      "axis": [float(v) for v in row["axis"]], **sizes}
                     for row in mount_axes
                 ]
+            if drive_frame is not None and family in DRIVE_MOTION:
+                (axis,) = _frame_axes(drive_frame, [((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))])
+                _DRIVE_AXES[key] = {**axis, "motion": DRIVE_MOTION[family]}
 
     def __setattr__(self, _name: str, _value: Any) -> None:
         raise TypeError("A library part is immutable; build another instead.")
@@ -303,7 +317,8 @@ class _BayPart(LibraryPart):
     def __init__(self, lib, family, part_number, body, spec, frame_placement,
                  mount_rows=()):
         super().__init__(family, part_number, body, spec,
-                         _frame_axes(frame_placement, mount_rows))
+                         _frame_axes(frame_placement, mount_rows),
+                         drive_frame=frame_placement)
         object.__setattr__(self, "_lib", lib)
         object.__setattr__(self, "_frame_placement", frame_placement)
 
@@ -1566,7 +1581,8 @@ class LibraryAPI:
         return LibraryPart("gearmotor", sku.strip().lower(),
                            self._place_frame("gearmotor", body, frame), spec,
                            _frame_axes(frame, [((x, y, 0.0), (0.0, 0.0, 1.0))
-                                               for x, y in spec["mount_holes"]]))
+                                               for x, y in spec["mount_holes"]]),
+                           drive_frame=frame)
 
     def battery(
         self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
@@ -1753,9 +1769,10 @@ class LibraryAPI:
                                origin=(-10, 0, z), direction=(1, 0, 0))
                  for z in (0, centre)]
         body = part.cut(part.fuse([housing, rear, sleeve, shaft, eye]), holes, label=label)
+        frame = self._frame("linear_actuator", origin, direction, roll_degrees)
         return LibraryPart("linear_actuator", sku.strip().lower(),
-                           self._place("linear_actuator", body, origin, direction, roll_degrees),
-                           spec)
+                           self._place_frame("linear_actuator", body, frame),
+                           spec, drive_frame=frame)
 
     def bldc(
         self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
@@ -1790,7 +1807,8 @@ class LibraryAPI:
         return LibraryPart("bldc", sku.strip().lower(),
                            self._place_frame("bldc", body, frame), spec,
                            _frame_axes(frame, [((x, y, 0.0), (0.0, 0.0, 1.0))
-                                               for x, y in spec["mount_holes"]]))
+                                               for x, y in spec["mount_holes"]]),
+                           drive_frame=frame)
 
     def qdd(
         self, sku: str, *, origin: Sequence[float] = _DEFAULT_ORIGIN,
@@ -2555,6 +2573,7 @@ def create_library_api(part_api: Any, assembly_api: Any = None) -> LibraryAPI:
     _CATALOG_IDENTITY.clear()
     _MOUNT_AXES.clear()
     _BAY_OF.clear()
+    _DRIVE_AXES.clear()
     return LibraryAPI(part_api, assembly_api)
 
 
