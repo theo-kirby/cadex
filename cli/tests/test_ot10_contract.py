@@ -139,14 +139,17 @@ def test_baseline_is_scored_and_committed():
 
 
 def test_the_proxies_measure_against_the_frozen_bars():
+    """P2 and P3 still measure against the frozen bars; P1 is retired as a bar
+    (ADR-624) and reported only, while the contract keeps its frozen value as
+    the record every earlier probe was scored on."""
     from cadex_cli.studio import STUDIO as render
 
     p1, p2, p3 = (CONTRACT["proxies"][key] for key in ("P1", "P2", "P3"))
     assert render.PROXY_BARS == {
-        p1["name"]: {"max": p1["max"]},
         p2["name"]: {"max": p2["max"]},
         p3["name"]: {"min": p3["min"], "max": p3["max"]},
     }
+    assert p1["name"] not in render.PROXY_BARS and "ADR-624" in render.HARDWARE_SHARE_READING
 
 
 def test_a5_cold_prompts_are_frozen_on_page_and_file():

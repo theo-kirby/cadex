@@ -159,7 +159,7 @@ from .smoke import (
     smoke_command,
     smoke_interpreter,
 )
-from .guidance import brief as guidance_brief, instructions as guidance_text, styles as guidance_styles
+from .guidance import brief as guidance_brief, instructions as guidance_text, styles as guidance_styles, style_summary as guidance_style_summary
 from .activity import append_activity, begin_activity, reply_error
 from .mcp import serve as serve_mcp
 from .tools import STANDARD_DISPLAY, tool_definitions
@@ -1118,7 +1118,10 @@ def command_style(args: argparse.Namespace, report: RunReport) -> int:
         report.notes.append("chose no style; `cadex guidance --project` carries the base alone.")
     else:
         chosen = read_agent_state(root).style
-    report.style = {"chosen": chosen, "available": available}
+    report.style = {"chosen": chosen, "available": available,
+                    "about": {name: guidance_style_summary(name) for name in available}}
+    if not args.style_name and not args.clear:
+        report.notes.extend(f"{name}: {summary}" for name, summary in report.style["about"].items())
     report.ok = True
     return EXIT_OK
 

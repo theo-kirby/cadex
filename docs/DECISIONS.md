@@ -37821,3 +37821,68 @@ parent access are blocked and its origin is `"null"`).
 schema name.
 
 Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-624 — The hardware-silhouette share is reported, not a ceiling (2026-10-09)
+
+**Context.** `look` and `render` held P1, `hardware_silhouette_share`, to
+ot10's frozen ≤ 0.20. ADR-479 already told the agent to read it as how much
+shows, but the bar and its `meets: false` stayed. In the blind-rated
+baseline sweep of six QDD creatures (`reference/v2/cbase-findings.md`) the
+audit found it pushing the wrong way: a ceiling on visible hardware rewards
+covering actuators, while every one of the owner's north-star references
+shows the actuator as the joint.
+
+**Decision.** `CadexStudio.PROXY_BARS` drops P1. `design_proxies` still
+measures it, with `bar: null`, `meets: null` and a `reading` saying it is
+reported, not a bar; `look`'s `measures` carry the `reading`, and
+`describe_proxies` writes "(reported, no bar)". P2 and P3 keep their frozen
+bars. `docs/probes/ot10/contract.json` is unchanged: it is the record every
+earlier probe was scored on.
+
+**Tests.** `cli/tests/test_ot10_contract.py` (live bars are P2 and P3; the
+contract keeps P1), `cli/tests/test_look.py`, `cli/tests/test_walk.py`.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-625 — The agent chooses the style its brief names (2026-10-09)
+
+**Context.** ADR-560 made styles optional and chosen "only when the person
+asks". In the baseline sweep no agent ran `cadex style`, so no style was
+ever read, and the only style that existed was servo-scale.
+
+**Decision.** The overlay's style paragraph is now CHOOSE THE STYLE THE
+BRIEF NAMES, BEFORE STEP 1: run `cadex style --project P --json`, which now
+lists every style with one sentence on what it is for (`style.about`, and
+one note per style on a bare report, from `guidance.style_summary`), and
+choose the one that describes the machine the brief asks for (an animal or
+a character is one), else none. No style is on by default; the choice is
+the agent's, recorded in DECISIONS.md.
+
+**Tests.** `cli/tests/test_agent_guidance.py`.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-626 — The `creature` style (2026-10-09)
+
+**Context.** The owner rated 47 deduplicated references and starred seven
+north stars (an ostrich-like biped, a precision hexapod, a chicken, a
+greyhound, a production desktop arm, a panther, a jerboa poster). The
+baseline sweep's creatures averaged 2.3 of 5 overall. Their shells were
+lofts sized by eye that floated over the electronics, and their appendages
+were rigid. The owner's correction: curved panels are good when they
+form-fit the mechanism; a cosmetic shell is the defect.
+
+**Decision.** `Mod/cadex/CadexAgentStyle.creature.md`, shipped in the
+payload: the anatomy as the joint list; actuators sized to the joint; the
+actuator is the joint and shows (`lib.housing`); shells on the masses,
+slender links doing the work; panels grown from what they cover
+(`lib.panel`) and checked by the shell check; segments where it bends; a
+real sensor as the eye; two tones and one functional accent; likeness by
+silhouette and proportion; the real-product bar. `docs/DESIGN-LANGUAGE.md`
+§11 is its evidence.
+
+**Tests.** `cadex_tests/test_agent_guidance.py`
+(`test_the_creature_style_carries_the_north_star_rules_and_not_the_legged_ones`,
+and the payload and well-formedness checks every style passes).
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).

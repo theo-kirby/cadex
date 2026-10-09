@@ -401,15 +401,17 @@ def _design(tmp_path, boxes):
                             'digest': 'd' * 64, 'display': display})
 
 
-def test_hardware_silhouette_share_fails_exposed_hardware_and_passes_a_shell(tmp_path):
+def test_hardware_silhouette_share_is_reported_without_a_bar(tmp_path):
     """P1: a servo on a plate is mostly hardware in the hero; the same servo
-    inside a printed shell is none of it."""
+    inside a printed shell is none of it. Neither passes nor fails: the share
+    is reported, not held to a ceiling (ADR-624)."""
     crude = _design(tmp_path, {'plate': ((60, 30, 3), (0, 0, 0)), 'servo': ((40, 20, 40), (10, 5, 3))})
     p1 = render.design_proxies(*crude, purchased={'servo'})['hardware_silhouette_share']
-    assert p1['value'] > 0.5 and p1['meets'] is False and p1['bar'] == {'max': 0.2}
+    assert p1['value'] > 0.5 and p1['meets'] is None and p1['bar'] is None
+    assert 'not a bar' in p1['reading']
     designed = _design(tmp_path, {'shell': ((60, 30, 50), (0, 0, 0)), 'servo': ((40, 20, 40), (10, 5, 3))})
     p1 = render.design_proxies(*designed, purchased={'servo'})['hardware_silhouette_share']
-    assert p1['value'] == 0.0 and p1['meets'] is True
+    assert p1['value'] == 0.0 and p1['meets'] is None
     assert p1['design_subsamples'] > 0.2 * (2 * render.PROXY_SIZE) ** 2
     # With no inventory nothing says what was purchased: unmeasured, not zero.
     p1 = render.design_proxies(*designed)['hardware_silhouette_share']
@@ -471,7 +473,8 @@ def test_render_and_bridge_look_report_the_proxies(tmp_path, monkeypatch, small_
         bridge.state.last_fit = fit
         bridge.state.last_inventory = _declared_inventory()
         facts = json.loads(bridge.call('look', {'views': ['top']})['content'][0]['text'])
-    assert facts['measures'] == {key: {k: proxies[key][k] for k in ('value', 'bar', 'meets')}
+    assert facts['measures'] == {key: {k: proxies[key][k] for k in ('value', 'bar', 'meets', 'reading')
+                                       if k in proxies[key]}
                                  for key in ('hardware_silhouette_share', 'sharp_outside_edge_share',
                                              'material_count')}
     # This inventory carries no edge facts, so P2 says why rather than passing.

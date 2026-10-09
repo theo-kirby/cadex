@@ -27,6 +27,7 @@ set(Cadex_Scripts
     CadexFitReport.py
     CadexEvaluation.py
     CadexAgentGuidance.md
+    CadexAgentStyle.creature.md
     CadexAgentStyle.printed-legged-robot.md
     CadexLinkedPart.py
     CadexProject.py

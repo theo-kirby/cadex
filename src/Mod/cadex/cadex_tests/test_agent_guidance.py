@@ -169,3 +169,27 @@ def test_the_roll_limit_is_bracketed_outward_from_the_standing_pose():
     # The procedure that set a limit inside the collision is gone.
     assert 'inward limit opened wide' not in style
     assert 'read that joint row' not in style
+
+
+#: The creature style's rules (ADR-626), one per trait the owner's north-star
+#: references share (docs/DESIGN-LANGUAGE.md section 11).
+CREATURE_RULES = ('THE ANATOMY IS THE JOINT LIST', 'SIZE THE ACTUATOR TO THE JOINT',
+                  'THE ACTUATOR IS THE JOINT, AND IT SHOWS', 'SHELLS SIT ON THE MASSES; LINKS DO THE WORK',
+                  'PANELS WRAP THE MECHANISM', 'SEGMENTS, NOT A SKIN, WHERE IT BENDS',
+                  'THE CHARACTER IS A REAL SENSOR', 'TWO TONES AND ONE FUNCTIONAL ACCENT',
+                  'LIKENESS BY SILHOUETTE AND PROPORTION', 'THE BAR IS A REAL PRODUCT')
+
+
+def test_the_creature_style_carries_the_north_star_rules_and_not_the_legged_ones():
+    body = _body(MODULE_DIR / 'CadexAgentStyle.creature.md')
+    legged = _body(MODULE_DIR / 'CadexAgentStyle.printed-legged-robot.md')
+    for rule in CREATURE_RULES:
+        assert rule in body, rule
+        assert rule not in _body() and rule not in legged, rule
+    # Curved panels are allowed when they wrap the mechanism; the defect is a
+    # shell sized by eye around nothing (owner, 2026-10-09).
+    assert 'may curve' in body and 'grown from what it covers' in body
+    assert 'never one soft skin' not in body
+    # It points at the helpers and the measured blocks that back it.
+    for name in ('lib.housing', 'lib.panel(over=', 'shell check', 'anatomy block', '`reason=`'):
+        assert name in body, name

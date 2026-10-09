@@ -18,7 +18,7 @@ from cadex_cli import mcp
 from cadex_cli.__main__ import main
 from cadex_cli.guidance import (
     BRIEF_LIMIT, CADEX_COMMAND, GUIDANCE_FILE, OVERLAY, TOOL_NAMES, agent_guidance, brief, instructions,
-    style_guidance, styles,
+    style_guidance, style_summary, styles,
 )
 from cadex_cli.session import read_agent_state, write_agent_budgets
 from cadex_cli.studio import ENGINE_MODULE_DIR
@@ -119,7 +119,12 @@ def test_no_style_text_appears_unless_the_project_chose_one(tmp_path, capsys):
 def test_a_project_chooses_a_style_and_its_guidance_carries_it(tmp_path, capsys):
     assert main(['style', '--project', str(tmp_path), '--json']) == 0
     listed = json.loads(capsys.readouterr().out)
-    assert listed['style'] == {'chosen': '', 'available': styles()}
+    about = {name: style_summary(name) for name in styles()}
+    assert listed['style'] == {'chosen': '', 'available': styles(), 'about': about}
+    # A bare report says what each style is for, so an agent can choose the
+    # one its brief names (ADR-625).
+    assert [f'{name}: {text}' for name, text in about.items()] == listed['notes']
+    assert 'creature' in about and 'animal' in about['creature']
 
     assert main(['style', '--project', str(tmp_path), STYLE, '--json']) == 0
     assert json.loads(capsys.readouterr().out)['style']['chosen'] == STYLE
