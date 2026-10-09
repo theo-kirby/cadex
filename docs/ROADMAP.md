@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-10-04
+Verified against source: 2026-10-09
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -1714,6 +1714,11 @@ the items below are what made that true. `AGENTS.md` describes the result.
       CubeMars AK70-10 and AK80-9 V3.0: a torque motor at the datasheet limit,
       and the torque-speed line, reflected inertia and back-drive friction as
       joint dynamics (ADR-540).
+- [x] A light QDD tier for necks, heads, jaws, tails and arms: the AK60-6 V3.0
+      (380 g, 9 N·m) and AK45-10 V3.0 (262 g, 7 N·m) (ADR-608), and
+      `QddPart.mounting()`: stator and output screws sized to the drawn
+      thread, clearance holes, and output-flange bolts that turn with the
+      flange in the clearance sweep (ADR-609).
 
 ## Off-phase — the harness ops, experimental (ADR-056, ADR-057, ADR-062, ADR-063, ADR-065, 2026-07-27 → 2026-08-01)
 

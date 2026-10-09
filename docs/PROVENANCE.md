@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-10-06
+Verified against source: 2026-10-09
 
 Cadex is not written from scratch. It is a **derivative work of a large
 free-software project, FreeCAD**, carrying the design lessons of two more
@@ -433,7 +433,8 @@ drawing is redistributed. A STEP model was only measured, never copied in.
 
 ## 8i. Catalog QDD actuator data `[Cadex-new, ADR-540]`
 
-`lib.qdd("cubemars-ak70-10")` and `lib.qdd("cubemars-ak80-9-v3")` are
+`lib.qdd("cubemars-ak70-10")`, `lib.qdd("cubemars-ak80-9-v3")`,
+`lib.qdd("cubemars-ak60-6-v3")` and `lib.qdd("cubemars-ak45-10-v3")` are
 independently authored from CubeMars's product pages, accessed 2026-10-04:
 
 - [AK70-10 KV100](https://www.cubemars.com/product/ak70-10-kv100-robotic-actuator.html):
@@ -451,6 +452,28 @@ independently authored from CubeMars's product pages, accessed 2026-10-04:
   [2D drawing](https://www.cubemars.com/images/20250407/1744015272105618.png):
   Ø98 body, Ø48 × 3 mm output hub, 38.5 mm overall; 8-M3 on Ø85 front and
   rear; 6-M4 on Ø28 output. Hole depths are undimensioned (assumed 3 mm).
+
+The light tier (ADR-608), from the same manufacturer's pages and 2D
+drawings, accessed 2026-10-09:
+
+- [AK60-6 V3.0 KV80](https://www.cubemars.com/product/ak60-6-v3-0-kv80-robotic-actuator.html):
+  6:1, rated at 24/48 V (the catalog takes 48 V): rated 3 N·m at 490 rpm and
+  3.8 A, peak 9 N·m at 11.2 A, no-load 640 rpm, Kt 0.135 N·m/A, rotor
+  inertia 243.5 g·cm², back drive 0.2 N·m, 380 g, Ø79 × 43 mm. No backlash
+  figure is published ("low backlash"), so the row carries `None`. Its
+  [2D drawing](https://www.cubemars.com/data/cms/202602/ak60-6-v3-0-robotic-actuator-2d-drawing.pdf):
+  Ø79 × 29.5 mm body, Ø49 × 1 mm and Ø25 × 0.5 mm output steps, a 12 mm rear
+  step (Ø57, the rear view's ring); 6-M3×6 front and 6-M3×3.5 rear on Ø68;
+  6-M3×6 output on Ø20.
+- [AK45-10 V3.0 KV75](https://www.cubemars.com/product/ak45-10-v3-0-kv75-robotic-actuator.html):
+  10:1, 24 V: rated 2.5 N·m at 120 rpm and 1.9 A, peak 7 N·m at 5 A,
+  no-load 180 rpm, Kt 0.127 N·m/A, rotor inertia 157.33 g·cm², back drive
+  0.1 N·m, backlash 18 arcmin, 262 g, Ø53 × 45.2 mm. Its
+  [2D drawing](https://www.cubemars.com/images/202607/AK45-10-V3.0-KV75-en-draw.png)
+  ([PDF](https://www.cubemars.com/data/cms/202607/ak45-10-v3-0-kv75-2d-drawing.pdf)):
+  Ø53 body, Ø37 × 1 mm output step; 6-M2.5×5 front on Ø47.5, 4-M2.5×5 rear
+  on Ø47, 3-M2.5×6 output on Ø27. Resellers list 260 g and 150 rpm; the
+  manufacturer's figures are used.
 
 Bolt-circle clocking is read off the drawings, not dimensioned on them.
 Kt and rotor inertia are taken as motor-side (Kt × ratio is near the

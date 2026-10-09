@@ -533,6 +533,40 @@ class ServoPart(_BayPart):
         )
 
 
+class QddHold:
+    """One side of ``QddPart.mounting()``: the screws and the holes for them.
+
+    ``face`` (``'front'``, ``'rear'`` or ``'output'``), the ``screw`` size and
+    ``length_mm`` they were sized with, ``wall_mm`` (the printed thickness
+    they clamp), ``holes`` (clearance holes to cut from that printed part)
+    and ``screws`` (``lib.bolt`` parts, one component each).
+    """
+
+    __slots__ = ("face", "screw", "length_mm", "wall_mm", "holes", "screws")
+
+    def __init__(self, *, face, screw, length_mm, wall_mm, holes, screws):
+        for name, value in (("face", face), ("screw", screw),
+                            ("length_mm", length_mm), ("wall_mm", wall_mm),
+                            ("holes", tuple(holes)), ("screws", tuple(screws))):
+            object.__setattr__(self, name, value)
+
+    def __setattr__(self, _name: str, _value: Any) -> None:
+        raise TypeError("A QDD mounting is immutable inside the script.")
+
+
+class QddMounting:
+    """What ``QddPart.mounting()`` returns: the ``stator`` and ``output`` holds."""
+
+    __slots__ = ("stator", "output")
+
+    def __init__(self, *, stator, output):
+        object.__setattr__(self, "stator", stator)
+        object.__setattr__(self, "output", output)
+
+    def __setattr__(self, _name: str, _value: Any) -> None:
+        raise TypeError("A QDD mounting is immutable inside the script.")
+
+
 class QddPart(_BayPart):
     """A placed quasi-direct-drive actuator: envelope, torque and inertia.
 
@@ -540,8 +574,9 @@ class QddPart(_BayPart):
     and the case in -Z, so ``direction`` is the joint axis and the output
     face is where the driven link bolts on. ``spec['mount_holes']`` are the
     stator bolt circle's centres at ``front_mount_z_mm`` (the face the
-    output side of the case is held by) and ``rear_mount_z_mm``;
-    ``spec['output_holes']`` are the output flange's, at z = 0.
+    output side of the case is held by), ``spec['rear_mount_holes']`` the
+    rear face's at ``rear_mount_z_mm``; ``spec['output_holes']`` are the
+    output flange's, at z = 0. ``.mounting()`` gives the screws for both.
     """
 
     __slots__ = ()
@@ -550,8 +585,109 @@ class QddPart(_BayPart):
         rows = [((x, y, spec["front_mount_z_mm"]), (0.0, 0.0, 1.0))
                 for x, y in spec["mount_holes"]]
         rows += [((x, y, spec["rear_mount_z_mm"]), (0.0, 0.0, -1.0))
-                 for x, y in spec["mount_holes"]]
-        super().__init__(lib, "qdd", part_number, body, spec, frame_placement, rows)
+                 for x, y in spec["rear_mount_holes"]]
+        outputs = [((x, y, 0.0), (0.0, 0.0, 1.0)) for x, y in spec["output_holes"]]
+        super().__init__(lib, "qdd", part_number, body, spec, frame_placement,
+                         rows + outputs)
+        # The output flange's tapped holes are published too, with their own
+        # thread and marked ``output``: the flange turns with the driven
+        # link, so the mounting check never counts them as holding the
+        # stator, and the swept check lets a bolt in one turn with it
+        # (ADR-609).
+        axes = _MOUNT_AXES.get(_definition_key(body) or "")
+        thread = re.match(r"\s*M(\d+(?:\.\d+)?)", str(spec["output_thread"]), re.I)
+        if axes and thread and outputs:
+            for row in axes[-len(outputs):]:
+                row.update(thread_dia_mm=float(thread.group(1)), output=True)
+
+    def mounting(self, wall: float = 4.0, *, face: str = "front",
+                 length: float | None = None, output_wall: float | None = None,
+                 output_length: float | None = None, label: str = "") -> QddMounting:
+        """Screws and clearance holes for the stator and the output (ADR-609).
+
+        ``stator``: one ``lib.bolt`` per stator hole on ``face`` (``'front'``,
+        the face behind the output, or ``'rear'``), at the case's own
+        ``mount_thread``, its head seated ``wall`` mm out from that face (the
+        printed part that carries the stator is ``wall`` thick there) and its
+        shank on the hole's axis into the case's tapped hole. ``output``: one
+        per output-flange hole at ``output_thread``, its head ``output_wall``
+        (default ``wall``) out from the output face, through the driven link
+        into the flange. Each screw is ``length`` long (default the wall plus
+        the drawn thread depth, rounded down to a millimetre), never longer,
+        so the tip stops inside the tapped hole; a screw that would bottom
+        out, or engage less than half its diameter, is refused. Each side's
+        ``holes`` are normal-fit clearance holes through its wall, one solid
+        per screw: cut them from the printed part, then place each screw as
+        its own component. The stator screws weld to the part that carries
+        the stator and the output screws to the driven link; declare each
+        screw's ``contacts=`` pair with the actuator (its shank sits in the
+        actuator's own tapped hole, 0 mm away). The fit report then counts
+        the stator screws as holding the actuator, and lets an output screw
+        turn with the flange it threads into instead of sweeping it through
+        the case.
+        """
+        operation = "qdd.mounting"
+        spec = self.spec
+        key = str(face or "").strip().lower()
+        if key not in ("front", "rear"):
+            raise LibraryError(f"lib.{operation}: face must be 'front' or 'rear', "
+                               f"got {face!r}.")
+        stator_wall = _positive(operation, "wall", wall)
+        out_wall = (stator_wall if output_wall is None
+                    else _positive(operation, "output_wall", output_wall))
+        if key == "front":
+            stator = self._hold(operation, "front", spec["mount_thread"],
+                                spec["mount_holes"], spec["front_mount_z_mm"], 1.0,
+                                spec["front_mount_depth_mm"], stator_wall, length, label)
+        else:
+            stator = self._hold(operation, "rear", spec["mount_thread"],
+                                spec["rear_mount_holes"], spec["rear_mount_z_mm"], -1.0,
+                                spec["rear_mount_depth_mm"], stator_wall, length, label)
+        output = self._hold(operation, "output", spec["output_thread"],
+                            spec["output_holes"], 0.0, 1.0, spec["output_depth_mm"],
+                            out_wall, output_length, label)
+        return QddMounting(stator=stator, output=output)
+
+    def _hold(self, operation, face, thread_name, centres, z, outward, depth,
+              wall, length, label):
+        # ``outward`` is +1 where the screw head faces +Z (front, output) and
+        # -1 on the rear face; the shank runs back along it into the case.
+        size = catalog.normalise_thread_size(str(thread_name).lower())
+        thread = catalog.thread_spec(size)
+        d = thread["nominal_dia_mm"]
+        if length is None:
+            long = float(math.floor(wall + depth + 1e-9))
+        else:
+            long = _positive(operation, "length" if face != "output" else "output_length",
+                             length)
+        bite = long - wall
+        if bite > depth + 1e-9:
+            raise LibraryError(
+                f"lib.{operation}: a {long:g} mm {size.upper()} screw through a "
+                f"{wall:g} mm wall reaches {bite:g} mm into the {face} face's "
+                f"{depth:g} mm tapped holes and bottoms out; the most is "
+                f"{wall + depth:g} mm.")
+        if bite < d / 2.0 - 1e-9:
+            raise LibraryError(
+                f"lib.{operation}: a {long:g} mm {size.upper()} screw through a "
+                f"{wall:g} mm wall engages {bite:g} mm of the {face} face's "
+                f"thread, under half its diameter; thin the wall or lengthen it.")
+        clear = thread["clearance_normal_mm"]
+        seat = z + outward * wall
+        low = min(z, seat) - 1.0
+        part = self._lib._part
+        origin, _unit, rotation = self._frame_placement
+        head = _rotate(rotation, (0.0, 0.0, outward))
+        holes = [self._lib._place_frame(
+                     operation,
+                     part.cylinder(clear / 2.0, wall + 2.0, origin=(x, y, low), label=label),
+                     self._frame_placement)
+                 for x, y in centres]
+        screws = [self._lib.bolt(size, long, direction=head, origin=tuple(
+                      a + b for a, b in zip(origin, _rotate(rotation, (x, y, seat)))))
+                  for x, y in centres]
+        return QddHold(face=face, screw=size, length_mm=long, wall_mm=wall,
+                       holes=holes, screws=screws)
 
     def bay(self, *, clearance: float = 0.5, lead_room: float = 15.0,
             label: str = "") -> Any:
@@ -1686,6 +1822,12 @@ class LibraryAPI:
 
         mounts = circle(spec["mount_count"], spec["mount_pcd_mm"],
                         spec["mount_angle_offset_degrees"])
+        # A rear face with its own bolt circle names it; otherwise the rear
+        # holes repeat the front circle (ADR-608).
+        rears = circle(spec.get("rear_mount_count", spec["mount_count"]),
+                       spec.get("rear_mount_pcd_mm", spec["mount_pcd_mm"]),
+                       spec.get("rear_mount_angle_offset_degrees",
+                                spec["mount_angle_offset_degrees"]))
         outputs = circle(spec["output_count"], spec["output_pcd_mm"],
                          spec["output_angle_offset_degrees"])
         m_r = float(spec["mount_thread"].lstrip("Mm")) / 2.0
@@ -1696,18 +1838,19 @@ class LibraryAPI:
         holes = [part.cylinder(m_r, f_depth + 1.0, origin=(x, y, front - f_depth))
                  for x, y in mounts]
         holes += [part.cylinder(m_r, r_depth + 1.0, origin=(x, y, rear - 1.0))
-                  for x, y in mounts]
+                  for x, y in rears]
         holes += [part.cylinder(o_r, o_depth + 1.0, origin=(x, y, -o_depth))
                   for x, y in outputs]
         body = part.cut(part.fuse(segments), holes, label=label)
         volume_mm3 = (
             sum(math.pi * (dia / 2.0) ** 2 * (high - low)
                 for dia, low, high in spec["segments"])
-            - len(mounts) * math.pi * m_r * m_r * (f_depth + r_depth)
+            - math.pi * m_r * m_r * (len(mounts) * f_depth + len(rears) * r_depth)
             - len(outputs) * math.pi * o_r * o_r * o_depth
         )
         ratio = spec["gear_ratio"]
         spec["mount_holes"] = mounts
+        spec["rear_mount_holes"] = rears
         spec["output_holes"] = outputs
         spec["peak_torque_nmm"] = spec["peak_torque_nm"] * 1000.0
         spec["rated_torque_nmm"] = spec["rated_torque_nm"] * 1000.0

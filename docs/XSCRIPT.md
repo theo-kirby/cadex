@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-08
+Verified against source: 2026-10-09
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -1003,15 +1003,27 @@ limits on published current/power, and approximations: PROVENANCE §8c.
 
 #### Quasi-direct-drive actuators `[ADR-540]`
 
-`lib.qdd("cubemars-ak70-10" | "cubemars-ak80-9-v3", origin=..., direction=...,
-roll_degrees=...)` returns a `QddPart`: a CubeMars integrated joint actuator
-(motor, planetary stage, FOC driver). The datum is the output face's centre,
-+Z out through the output, the case in -Z. `direction` is the joint axis.
-`.spec` carries the 48 V ratings (rated/peak torque in N·m and N·mm, rated
-and no-load speed, currents, Kt), `mount_holes` (M3 stator bolt circle at
-`front_mount_z_mm` and `rear_mount_z_mm`), `output_holes`, `mass_g`,
-`effective_density_kg_m3`, `reflected_inertia_kgmm2` and
-`speed_line_damping_nmms_per_deg`.
+`lib.qdd(sku, origin=..., direction=..., roll_degrees=...)` returns a
+`QddPart`: a CubeMars integrated joint actuator (motor, planetary stage, FOC
+driver). Two tiers (ADR-608):
+
+| SKU | Mass | Peak / rated | No-load | Ø × length | Stator / output |
+|---|---|---|---|---|---|
+| `cubemars-ak70-10` | 621 g | 24.8 / 8.3 N·m | 480 rpm, 48 V | 89 × 50.25 | 8-M3 Ø83 / 6-M3 Ø25 |
+| `cubemars-ak80-9-v3` | 490 g | 22 / 9 N·m | 570 rpm, 48 V | 98 × 38.5 | 8-M3 Ø85 / 6-M4 Ø28 |
+| `cubemars-ak60-6-v3` | 380 g | 9 / 3 N·m | 640 rpm, 48 V | 79 × 43 | 6-M3 Ø68 / 6-M3 Ø20 |
+| `cubemars-ak45-10-v3` | 262 g | 7 / 2.5 N·m | 180 rpm, 24 V | 53 × 45.2 | 6-M2.5 Ø47.5 front, 4-M2.5 Ø47 rear / 3-M2.5 Ø27 |
+
+The first two are hip and knee drives; the light pair is for necks, heads,
+jaws, tails and arms. The datum is the output face's centre, +Z out through
+the output, the case in -Z. `direction` is the joint axis. `.spec` carries
+the ratings at `rated_voltage_v` (rated/peak torque in N·m and N·mm, rated
+and no-load speed, currents, Kt), `mount_holes` (the front stator bolt
+circle at `front_mount_z_mm`), `rear_mount_holes` (at `rear_mount_z_mm`; the
+same circle unless the drawing gives the rear its own), `output_holes`,
+`mass_g`, `effective_density_kg_m3`, `reflected_inertia_kgmm2` and
+`speed_line_damping_nmms_per_deg`. `backlash_arcmin` is `None` where the
+manufacturer publishes none (the AK60-6).
 
 - `.actuator(joint, control_nmm="0", rating="peak")` is a `kind="motor"`
   actuator: the control is the output torque, bounded at the datasheet peak
@@ -1026,6 +1038,34 @@ and no-load speed, currents, Kt), `mount_holes` (M3 stator bolt circle at
   Pass a damping to replace the line.
 - `.bay(clearance=0.5, lead_room=15)` is the envelope grown for a printed
   housing, with room for the leads behind.
+- `.mounting(wall=4, face="front", length=None, output_wall=None,
+  output_length=None)` (ADR-609) returns `hold.stator` and `hold.output`,
+  each with `face`, `screw`, `length_mm`, `wall_mm`, `holes` and `screws`:
+  - `stator.screws` are `lib.bolt`s on every stator hole of `face`
+    (`"front"` or `"rear"`) at the case's thread, heads `wall` mm out from
+    that face, shanks into its tapped holes; `output.screws` the same on the
+    output flange's holes, heads `output_wall` (default `wall`) out from the
+    output face, through the driven link;
+  - each screw is the wall plus the drawn thread depth, rounded down to a
+    millimetre: a screw that would bottom out, or engage under half its
+    diameter, is refused;
+  - `holes` are normal-fit clearance holes through each wall: cut the
+    stator's from the part that carries it and the output's from the driven
+    link.
+
+  Weld the stator screws to the carrier and the output screws to the link,
+  and declare each screw's `contacts=` pair with the actuator. The mounting
+  check then counts the stator screws as holding it. The output holes are
+  published as `output` axes: they never count as holding the actuator, and
+  the clearance sweep lets a bolt in one turn with the flange instead of
+  sweeping it through the one-solid case.
+
+```python
+ak = lib.qdd("cubemars-ak45-10-v3", origin=(0, 0, 60), direction=(0, 1, 0))
+hold = ak.mounting(4.0, face="rear")
+neck = part.cut(neck, list(hold.stator.holes))
+head = part.cut(head, list(hold.output.holes))
+```
 
 The envelope is coaxial cylinders with tapped bores. Pilots, dowels,
 connectors and the rotor/stator mass split are omitted. There is no thermal

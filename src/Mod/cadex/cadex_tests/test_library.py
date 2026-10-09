@@ -1134,7 +1134,7 @@ def test_qdd_pins_manufacturer_ratings_and_isolation():
     spec["segments"][0][0] = 999
     assert catalog.qdd_spec("cubemars-ak70-10")["segments"][0][0] == 77
     assert _lib().catalog()["qdd_actuators"]["skus"] == [
-        "cubemars-ak70-10", "cubemars-ak80-9-v3"]
+        "cubemars-ak45-10-v3", "cubemars-ak60-6-v3", "cubemars-ak70-10", "cubemars-ak80-9-v3"]
     assert "qdd" in {row["name"] for row in library_listing()["exports"]}
     with pytest.raises(LibraryError):
         _lib().qdd("cubemars-ak70-10", direction=(0, 0, 0))
@@ -1192,15 +1192,133 @@ def test_qdd_actuator_is_a_torque_motor_at_the_datasheet_limit() -> None:
         unstaged.joint_dynamics(joint)
 
 
+def test_light_qdds_pin_manufacturer_ratings_and_drawn_bolt_circles():
+    """ADR-608: the AK60-6 V3 and AK45-10 V3 rows, from CubeMars' tables and drawings."""
+    ak60 = _lib().qdd("cubemars-ak60-6-v3").spec
+    assert (ak60["gear_ratio"], ak60["rated_voltage_v"], ak60["mass_g"]) == (6, 48, 380)
+    assert (ak60["rated_torque_nm"], ak60["peak_torque_nm"]) == (3, 9)
+    assert (ak60["rated_speed_rpm"], ak60["no_load_speed_rpm"]) == (490, 640)
+    assert (ak60["kt_nm_per_a"], ak60["rotor_inertia_gcm2"]) == (0.135, 243.5)
+    assert ak60["back_drive_torque_nm"] == 0.2 and ak60["backlash_arcmin"] is None
+    assert "no backlash figure" in ak60["rating_notes"]
+    assert ak60["reflected_inertia_kgmm2"] == pytest.approx(243.5 * 0.1 * 36)
+    assert ak60["speed_line_damping_nmms_per_deg"] == pytest.approx(9000 / 3840)
+    assert ak60["segments"][2] == [79, -31, -1.5]
+    assert len(ak60["mount_holes"]) == len(ak60["rear_mount_holes"]) == 6
+    assert ak60["mount_holes"] == ak60["rear_mount_holes"]
+    assert all(math.hypot(x, y) == pytest.approx(34) for x, y in ak60["mount_holes"])
+    assert all(math.hypot(x, y) == pytest.approx(10) for x, y in ak60["output_holes"])
+    ak45 = _lib().qdd("cubemars-ak45-10-v3").spec
+    assert (ak45["gear_ratio"], ak45["rated_voltage_v"], ak45["mass_g"]) == (10, 24, 262)
+    assert (ak45["rated_torque_nm"], ak45["peak_torque_nm"]) == (2.5, 7)
+    assert (ak45["rated_speed_rpm"], ak45["no_load_speed_rpm"]) == (120, 180)
+    assert (ak45["back_drive_torque_nm"], ak45["backlash_arcmin"]) == (0.1, 18)
+    assert ak45["reflected_inertia_kgmm2"] == pytest.approx(157.33 * 0.1 * 100)
+    assert ak45["mount_thread"] == ak45["output_thread"] == "M2.5"
+    # The rear face has its own circle: 4 x M2.5 on 47 mm against the front's 6 on 47.5.
+    assert len(ak45["mount_holes"]) == 6 and len(ak45["rear_mount_holes"]) == 4
+    assert all(math.hypot(x, y) == pytest.approx(23.75) for x, y in ak45["mount_holes"])
+    assert all(math.hypot(x, y) == pytest.approx(23.5) for x, y in ak45["rear_mount_holes"])
+    assert ak45["rear_mount_holes"][0] == pytest.approx([23.5, 0.0])
+    assert len(ak45["output_holes"]) == 3
+    for row in (ak60, ak45):
+        # Light tier: under 400 g, and the drilled envelope reproduces the mass.
+        assert row["mass_g"] < 400
+        envelope = sum(math.pi * (d / 2) ** 2 * (hi - lo) for d, lo, hi in row["segments"])
+        assert row["mass_g"] < row["effective_density_kg_m3"] * envelope / 1e6 < row["mass_g"] * 1.01
+        assert row["sources"][0].startswith("https://www.cubemars.com/product/")
+        # Every hole circle clears the envelope step it is drilled through.
+        front = max(d for d, lo, hi in row["segments"] if hi > row["front_mount_z_mm"] + 1e-9)
+        assert row["mount_pcd_mm"] / 2 > front / 2
+        assert row["mount_pcd_mm"] / 2 < row["case_dia_mm"] / 2
+    assert catalog.qdd_spec("cubemars-ak60-6-v3")["output_thread"] == "M3"
+
+
+def _bolt_axis(bolt):
+    from cadex_library_api import _MOUNT_AXES, _definition_key
+
+    [row] = _MOUNT_AXES[_definition_key(bolt.body)]
+    return row
+
+
+@pytest.mark.parametrize("sku", sorted(catalog.QDD_ACTUATORS))
+def test_qdd_mounting_puts_a_screw_on_every_hole_and_stops_in_the_thread(sku):
+    """ADR-609: the stator and output screws, on the published hole axes."""
+    from cadex_library_api import _MOUNT_AXES, _definition_key
+
+    qdd = _lib().qdd(sku)
+    spec = qdd.spec
+    axes = _MOUNT_AXES[_definition_key(qdd.body)]
+    hold = qdd.mounting()
+    stator, output = hold.stator, hold.output
+    assert (stator.face, output.face, stator.wall_mm, output.wall_mm) == (
+        "front", "output", 4.0, 4.0)
+    assert stator.screw == spec["mount_thread"].lower()
+    assert output.screw == spec["output_thread"].lower()
+    assert len(stator.screws) == len(stator.holes) == len(spec["mount_holes"])
+    assert len(output.screws) == len(output.holes) == len(spec["output_holes"])
+    for side, depth in ((stator, spec["front_mount_depth_mm"]),
+                        (output, spec["output_depth_mm"])):
+        # Rounded down to a millimetre, never past the drawn thread.
+        assert side.length_mm == math.floor(4.0 + depth)
+        assert 0 < side.length_mm - 4.0 <= depth
+        for screw in side.screws:
+            assert screw.family == "bolt"
+            assert screw.part_number == f"{side.screw}x{side.length_mm:g}-socket"
+    front = spec["front_mount_z_mm"]
+    for (x, y), screw in zip(spec["mount_holes"], stator.screws):
+        row = _bolt_axis(screw)
+        assert row["origin"] == pytest.approx([x, y, front + 4.0])
+        assert row["axis"] == pytest.approx([0, 0, 1])
+        assert any(a["origin"] == pytest.approx([x, y, front]) and not a.get("output")
+                   for a in axes)
+    for (x, y), screw in zip(spec["output_holes"], output.screws):
+        assert _bolt_axis(screw)["origin"] == pytest.approx([x, y, 4.0])
+        assert any(a["origin"] == pytest.approx([x, y, 0.0]) and a.get("output")
+                   and a["thread_dia_mm"] == float(spec["output_thread"][1:])
+                   for a in axes)
+    rear = qdd.mounting(3.0, face="rear").stator
+    assert rear.face == "rear" and len(rear.screws) == len(spec["rear_mount_holes"])
+    assert rear.length_mm == math.floor(3.0 + spec["rear_mount_depth_mm"])
+    for (x, y), screw in zip(spec["rear_mount_holes"], rear.screws):
+        row = _bolt_axis(screw)
+        assert row["origin"] == pytest.approx([x, y, spec["rear_mount_z_mm"] - 3.0])
+        assert row["axis"] == pytest.approx([0, 0, -1])
+    with pytest.raises(TypeError):
+        hold.stator = None
+
+
+def test_qdd_mounting_follows_the_placement_and_refuses_a_bottoming_screw():
+    qdd = _lib().qdd("cubemars-ak45-10-v3", origin=(10, 0, 0), direction=(1, 0, 0))
+    hold = qdd.mounting(3.0, output_wall=5.0)
+    # +Z maps to +X: front face at x = 9, head 3 mm out; output head 5 mm out.
+    assert {round(_bolt_axis(s)["origin"][0], 6) for s in hold.stator.screws} == {12.0}
+    assert {round(_bolt_axis(s)["origin"][0], 6) for s in hold.output.screws} == {15.0}
+    assert all(_bolt_axis(s)["axis"] == pytest.approx([1, 0, 0]) for s in hold.output.screws)
+    assert (hold.stator.length_mm, hold.output.length_mm) == (8.0, 11.0)
+    assert len(_ops(hold.stator.holes[0], "cylinder")) == 1
+    assert catalog_identity_of(hold.stator.holes[0]) is None
+    with pytest.raises(LibraryError, match="bottoms out"):
+        qdd.mounting(3.0, length=9.0)
+    with pytest.raises(LibraryError, match="under half its diameter"):
+        qdd.mounting(3.0, output_length=4.0)
+    with pytest.raises(LibraryError, match="face must be"):
+        qdd.mounting(face="side")
+    with pytest.raises(LibraryError):
+        qdd.mounting(0.0)
+
+
 def test_qdd_bay_and_mount_axes_follow_the_placement():
     from cadex_library_api import _MOUNT_AXES, _definition_key
 
     qdd = _lib().qdd("cubemars-ak70-10", origin=(10, 0, 0), direction=(1, 0, 0))
     axes = _MOUNT_AXES[_definition_key(qdd.body)]
-    assert len(axes) == 16
+    # 8 front and 8 rear stator holes, then the 6 output-flange holes (ADR-609).
+    assert len(axes) == 22
     assert all(row["thread_dia_mm"] == 3.0 for row in axes)
+    assert [bool(row.get("output")) for row in axes] == [False] * 16 + [True] * 6
     # +Z maps to +X: the front stator face sits 6 mm behind the output face.
-    assert {round(row["origin"][0], 6) for row in axes} == {4.0, -29.05}
+    assert {round(row["origin"][0], 6) for row in axes} == {10.0, 4.0, -29.05}
     assert all(abs(row["axis"][0]) == pytest.approx(1.0) for row in axes)
     bay = qdd.bay()
     assert len(_ops(bay, "cylinder")) == 4
@@ -1226,7 +1344,8 @@ from cadex_library_api import create_library_api
 from cadex_part_worker import build_part_shape
 pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
 lib = create_library_api(create_domain_api(pack.domain, pack.api_exports, pack.output_types))
-for sku, r, length in (("cubemars-ak70-10", 44.5, 50.25), ("cubemars-ak80-9-v3", 49.0, 38.5)):
+for sku, r, length in (("cubemars-ak70-10", 44.5, 50.25), ("cubemars-ak80-9-v3", 49.0, 38.5),
+                       ("cubemars-ak60-6-v3", 39.5, 43.0), ("cubemars-ak45-10-v3", 26.5, 45.2)):
     part = lib.qdd(sku)
     spec = part.spec
     shape = build_part_shape(part.body.to_payload())
@@ -1239,8 +1358,9 @@ for sku, r, length in (("cubemars-ak70-10", 44.5, 50.25), ("cubemars-ak80-9-v3",
     front, rear = spec["front_mount_z_mm"], spec["rear_mount_z_mm"]
     for x, y in spec["mount_holes"]:
         assert not shape.isInside(App.Vector(x, y, front - 0.5), 1e-7, True), (sku, x, y)
-        assert not shape.isInside(App.Vector(x, y, rear + 0.5), 1e-7, True), (sku, x, y)
         assert shape.isInside(App.Vector(x * 0.9, y * 0.9, front - 1.0), 1e-7, True), sku
+    for x, y in spec["rear_mount_holes"]:
+        assert not shape.isInside(App.Vector(x, y, rear + 0.5), 1e-7, True), (sku, x, y)
     for x, y in spec["output_holes"]:
         assert not shape.isInside(App.Vector(x, y, -0.5), 1e-7, True), (sku, x, y)
     assert shape.isInside(App.Vector(0, 0, -1.0), 1e-7, True), sku

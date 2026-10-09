@@ -1112,11 +1112,15 @@ def bldc_spec(sku: Any) -> dict[str, Any]:
 
 # Quasi-direct-drive joint actuators (ADR-540): motor, planetary stage and
 # FOC driver in one case, torque-controlled -- the Mini Cheetah class. Values
-# are the manufacturer's specification tables and 2D drawings at 48 V.
+# are the manufacturer's specification tables and 2D drawings, at 48 V
+# except the AK45-10, which is rated at 24 V only (``rated_voltage_v``).
 # Datum: the output face centre; +Z out through the output, the case in -Z.
 # ``segments`` are coaxial [diameter, z_low, z_high] cylinders whose union is
-# the envelope. Kt and rotor inertia are motor-side, so the output sees
-# ``gear_ratio`` times the one and its square times the other.
+# the envelope. A rear face with its own bolt circle names it in
+# ``rear_mount_count``/``rear_mount_pcd_mm``/``rear_mount_angle_offset_degrees``;
+# without them the rear holes repeat the front circle. Kt and rotor inertia
+# are motor-side, so the output sees ``gear_ratio`` times the one and its
+# square times the other.
 QDD_ACTUATORS = {
     "cubemars-ak70-10": {
         "manufacturer": "CubeMars", "manufacturer_part_number": "AK70-10 KV100",
@@ -1172,6 +1176,70 @@ QDD_ACTUATORS = {
             "Hole depths are undimensioned on the drawing: every M3 and M4 hole is an assumed 3 mm major-diameter blind bore, not a screw engagement limit.",
             "Mass is the manufacturer's; the envelope is filled at the effective density that reproduces it, so the inertia is a uniform-solid estimate, not the real rotor/stator split.",
             "Mounting-hole clocking (22.5 degrees off +X) is read from the drawing, not dimensioned on it.",
+        ],
+    },
+    # The light tier (ADR-608): neck, head, jaw, tail and arm joints, where
+    # half a kilogram per joint is the wrong price.
+    "cubemars-ak60-6-v3": {
+        "manufacturer": "CubeMars", "manufacturer_part_number": "AK60-6 V3.0 KV80",
+        "model": "AK60-6 V3.0 KV80",
+        "gear_ratio": 6.0, "rated_voltage_v": 48.0,
+        "rated_torque_nm": 3.0, "peak_torque_nm": 9.0,
+        "rated_speed_rpm": 490.0, "no_load_speed_rpm": 640.0,
+        "rated_current_a": 3.8, "peak_current_a": 11.2,
+        "kt_nm_per_a": 0.135, "rotor_inertia_gcm2": 243.5,
+        "back_drive_torque_nm": 0.2, "backlash_arcmin": None,
+        "mass_g": 380.0,
+        "case_dia_mm": 79.0, "overall_length_mm": 43.0,
+        "segments": [[25.0, -0.5, 0.0], [49.0, -1.5, -0.5], [79.0, -31.0, -1.5],
+                     [57.0, -43.0, -31.0]],
+        "mount_thread": "M3", "mount_count": 6, "mount_pcd_mm": 68.0,
+        "mount_angle_offset_degrees": 0.0,
+        "front_mount_z_mm": -1.5, "front_mount_depth_mm": 6.0,
+        "rear_mount_z_mm": -31.0, "rear_mount_depth_mm": 3.5,
+        "output_thread": "M3", "output_count": 6, "output_pcd_mm": 20.0,
+        "output_angle_offset_degrees": -7.5, "output_depth_mm": 6.0,
+        "rating_notes": "Rated at 48 V (the table also rates 24 V: 233 rpm rated, 320 rpm no-load, 10.3 A peak). Peak torque is a current-limited short-duty rating, rated torque the continuous one. lib.qdd's joint_dynamics models the straight peak-to-no-load line (9 N*m at rest, none at 640 rpm), which passes 2.1 N*m at the 490 rpm rated speed against the rated 3 N*m. The page publishes no backlash figure ('low backlash' only), so backlash_arcmin is None. No thermal model.",
+        "sources": ["https://www.cubemars.com/product/ak60-6-v3-0-kv80-robotic-actuator.html",
+                    "https://www.cubemars.com/data/cms/202602/ak60-6-v3-0-robotic-actuator-2d-drawing.pdf"],
+        "approximate": [
+            "Coaxial cylinder envelope from the 2D drawing; the case grooves, the cover screws, the two 3 mm dowel holes in the output, the connector tab and the rear connectors are omitted.",
+            "The rear step's 57 mm diameter is the rear view's dimensioned inner ring, taken as the step's diameter; the side view does not dimension it.",
+            "Hole depths are the drawing's (front and output M3 x 6, rear M3 x 3.5), cut at the thread's major diameter; not a screw engagement limit.",
+            "Mass is the manufacturer's; the envelope is filled at the effective density that reproduces it, so the inertia is a uniform-solid estimate, not the real rotor/stator split.",
+            "The output bolt circle's clocking (-7.5 degrees off +X) is read from the drawing, not dimensioned on it; the flange turns, so it is only the joint's zero.",
+        ],
+    },
+    "cubemars-ak45-10-v3": {
+        "manufacturer": "CubeMars", "manufacturer_part_number": "AK45-10 V3.0 KV75",
+        "model": "AK45-10 V3.0 KV75",
+        "gear_ratio": 10.0, "rated_voltage_v": 24.0,
+        "rated_torque_nm": 2.5, "peak_torque_nm": 7.0,
+        "rated_speed_rpm": 120.0, "no_load_speed_rpm": 180.0,
+        "rated_current_a": 1.9, "peak_current_a": 5.0,
+        "kt_nm_per_a": 0.127, "rotor_inertia_gcm2": 157.33,
+        "back_drive_torque_nm": 0.1, "backlash_arcmin": 18.0,
+        "mass_g": 262.0,
+        "case_dia_mm": 53.0, "overall_length_mm": 45.2,
+        "segments": [[37.0, -1.0, 0.0], [53.0, -45.2, -1.0]],
+        "mount_thread": "M2.5", "mount_count": 6, "mount_pcd_mm": 47.5,
+        "mount_angle_offset_degrees": 30.0,
+        "front_mount_z_mm": -1.0, "front_mount_depth_mm": 5.0,
+        # The rear face carries its own circle: 4 x M2.5 on 47 mm.
+        "rear_mount_count": 4, "rear_mount_pcd_mm": 47.0,
+        "rear_mount_angle_offset_degrees": 0.0,
+        "rear_mount_z_mm": -45.2, "rear_mount_depth_mm": 5.0,
+        "output_thread": "M2.5", "output_count": 3, "output_pcd_mm": 27.0,
+        "output_angle_offset_degrees": 30.0, "output_depth_mm": 6.0,
+        "rating_notes": "Rated at 24 V, the only voltage the table gives. Peak torque is a current-limited short-duty rating, rated torque the continuous one. lib.qdd's joint_dynamics models the straight peak-to-no-load line (7 N*m at rest, none at 180 rpm), which passes 2.3 N*m at the 120 rpm rated speed against the rated 2.5 N*m. No thermal model.",
+        "sources": ["https://www.cubemars.com/product/ak45-10-v3-0-kv75-robotic-actuator.html",
+                    "https://www.cubemars.com/images/202607/AK45-10-V3.0-KV75-en-draw.png",
+                    "https://www.cubemars.com/data/cms/202607/ak45-10-v3-0-kv75-2d-drawing.pdf"],
+        "approximate": [
+            "Coaxial cylinder envelope from the 2D drawing; the output's unthreaded holes, the cover screws, the power plug and the side set screw are omitted.",
+            "Hole depths are the drawing's (front M2.5 x 5, rear M2.5 x 5, output M2.5 x 6), cut at the thread's major diameter; not a screw engagement limit.",
+            "Mass is the manufacturer's; the envelope is filled at the effective density that reproduces it, so the inertia is a uniform-solid estimate, not the real rotor/stator split.",
+            "Bolt-circle clocking (front and output 30 degrees off +X, rear on +X) is read from the drawing, not dimensioned on it; the output flange turns, so its clocking is only the joint's zero.",
         ],
     },
 }
@@ -1426,7 +1494,7 @@ def catalog_families() -> dict[str, Any]:
         },
         "qdd_actuators": {
             "skus": sorted(QDD_ACTUATORS),
-            "notes": "lib.qdd(sku): quasi-direct-drive joint actuators (motor, planetary stage, FOC driver) as a sourced coaxial envelope with stator and output bolt circles; .actuator(joint) is a torque motor at the datasheet peak (or rated) output torque, .joint_dynamics(joint) the peak-to-no-load torque-speed line, reflected rotor inertia and back-drive friction. No thermal model.",
+            "notes": "lib.qdd(sku): quasi-direct-drive joint actuators (motor, planetary stage, FOC driver) as a sourced coaxial envelope with stator and output bolt circles; .actuator(joint) is a torque motor at the datasheet peak (or rated) output torque, .joint_dynamics(joint) the peak-to-no-load torque-speed line, reflected rotor inertia and back-drive friction; .mounting() the stator and output screws (lib.bolt, sized to the drawn thread depth) and the clearance holes to cut for them. Two tiers: cubemars-ak70-10 (621 g, 24.8 N*m peak) and cubemars-ak80-9-v3 (490 g, 22 N*m) for hips and knees; cubemars-ak60-6-v3 (380 g, 9 N*m) and cubemars-ak45-10-v3 (262 g, 7 N*m, 24 V) for necks, heads, jaws, tails and arms. No thermal model.",
         },
         "gearmotors": {
             "skus": sorted(GEARMOTORS),
