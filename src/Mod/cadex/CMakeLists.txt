@@ -20,6 +20,7 @@ set(Cadex_Scripts
     CadexBoards.py
     CadexMounts.py
     CadexCage.py
+    CadexPanels.py
     CadexPrintables.py
     CadexBlueprints.py
     CadexStudio.py

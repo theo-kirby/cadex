@@ -869,6 +869,21 @@ def test_the_progress_line_says_what_the_welds_hold(attachments, phrase):
     assert _fit_line(fit) == 'fit pass: 0 failing of 105 pair(s)' + phrase
 
 
+@pytest.mark.parametrize('shells,phrase', [
+    (None, ''),
+    ({'shell_count': 0, 'reported_count': 0}, ''),
+    ({'shell_count': 5, 'reported_count': 1}, '  shells: 1 of 5 reported'),
+])
+def test_the_progress_line_says_how_many_shells_are_reported(shells, phrase):
+    """ADR-612: a floating, solid or unmounted shell is worth a phrase."""
+
+    from cadex_cli.bridge import _fit_line
+    fit = {'verdict': 'pass', 'failing_count': 0, 'pairs_checked': 105}
+    if shells is not None:
+        fit['shells'] = shells
+    assert _fit_line(fit) == 'fit pass: 0 failing of 105 pair(s)' + phrase
+
+
 FLUSH_RIG = '''
 block = part.box(10, 10, 10)
 a = assembly.component(block, grounded=True)

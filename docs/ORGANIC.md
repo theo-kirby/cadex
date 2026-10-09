@@ -1,6 +1,6 @@
 # ORGANIC.md — Organic Modelling, and the CAD/Mesh Interface
 
-Verified against source: 2026-10-04
+Verified against source: 2026-10-09
 Status: **O0 closed (ADR-124), O1 closed (ADR-125), O2 closed (ADR-126),
 O3 closed (ADR-127).** The phase's four slices are done; O2b and O4 are
 parked by decision.
@@ -291,6 +291,51 @@ express — and rotating a ring does not become its roll, nor does anything
 become its exponent. Both stay editable as numbers. Inventing a value from a
 gesture the user may have made by accident is the quiet reinterpretation a
 declared table exists to prevent.
+
+### O3b — Panels grown from the mechanism, and the shell check — **closed (ADR-610..612)**
+
+The cage made a shape cheap to draw and said nothing about what it was
+drawn over. Agents sized rings by eye, and blind-rated robot animals scored
+worst on "every part designed, shells included": eggs, domes and sausages
+floating over the electronics, no drive housed. The owner's liked
+references have gently bent panels that form-fit the mechanism; the one
+good agent example had trunk ends coaxial with the ab/ad motors at 2.5 mm
+and drums grown round the knee motors.
+
+- `lib.panel(over=[...], axis=..., mount_to=frame, seams=[...],
+  split="top_bottom")` stands the cage's ring on each station of what it
+  covers instead of a guess: the covered recipes are read into points
+  (`CadexPanels.sample`), each station's points fitted with the tightest
+  superellipse about their own centre and grown by `offset`, each half-axis
+  slope-limited so the skin bends gently, and the outer loft less the inner
+  is the panel, 2 mm thick, split at real seams and screwed down through
+  counterbored bosses that stand on the frame. `docs/XSCRIPT.md` has the
+  whole contract.
+- `lib.housing(qdd_or_servo)` wraps a drive's own envelope at a wall,
+  seated on its own mounting face and screwed through its own holes; a link
+  is grown on with `.fuse(link)`.
+- `fit.shells` measures every declared shell on the real solids: the
+  median gap from its inner face to what it covers (`floating` over 6 mm),
+  its wall estimate (`solid` over 4 mm) and what holds it (`unmounted`).
+
+```python
+skin = lib.panel([pack, board], axis=(1, 0, 0), mount_to=deck, span=(-74, 76),
+                 seams=[0.0], split="top_bottom")
+for name, body, screws in zip(skin.names, skin.parts, skin.screws_by_part):
+    ...  # one shell component per panel, welded to the deck; one per screw
+```
+
+Measured on that trunk (deck, 2S pack, ESP32, an AK80-9 at each end, the
+rear one housed): fit passes on 325 pairs; the four panels' inner faces
+stand a median 2.5-4.7 mm off what they cover, each screwed into the deck
+with two M2s; the drum 0.5 mm. A hollow egg sized by eye over the same
+parts is `floating` at 31.3 mm and `unmounted`, while fit still passes --
+the gap the fit block could not see.
+
+**Still the cage's limit:** a ring is convex, so one panel over a tall
+narrow part on a wide deck stands off the deck's sides by the step
+between them (p90 9.6-10.5 mm on the trunk's top halves). Split it, or panel
+the deck and the part separately.
 
 ### O2b — Swept-volume clearance — **closed (ADR-130)**
 
