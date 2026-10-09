@@ -796,3 +796,116 @@ def test_a_board_on_its_own_mounting_threads_every_screw_on_the_real_kernel(tmp_
     # clearance"; what matters is that no screw's thread is an intersection.
     assert not [row for row in fit["failing"] if row["status"] == "intersection"], fit["failing"]
     assert fit["threaded_count"] == 3
+
+
+
+# ADR-609: an AK45-10 held by .mounting()'s rear stator screws in a printed
+# bracket, and a link screwed to its output flange that the joint swings.
+# The catalog case is one solid fixed to the stator; the flange turns with
+# the link, so the output screws turn with it rather than through the case.
+_QDD_ON_A_BRACKET = """
+qdd = lib.qdd("cubemars-ak45-10-v3")
+hold = qdd.mounting(4.0, face="rear")
+bracket = part.cut(part.box(70.0, 70.0, 4.0, origin=(-35.0, -35.0, -49.2)), list(hold.stator.holes))
+link = part.cut(part.box(70.0, 34.0, 4.0, origin=(-20.0, -17.0, 0.0)), list(hold.output.holes))
+result = {"bracket": bracket, "qdd": qdd.body, "link": link}
+c_bracket = assembly.component(bracket, grounded=True)
+c_qdd = assembly.component(qdd.body)
+c_link = assembly.component(link)
+comps = [c_bracket, c_qdd, c_link]
+def at(c):
+    return assembly.connector(c, "origin", offset={"position": [0.0, 0.0, 0.0], "axis": [0.0, 0.0, 1.0], "angle_degrees": 0.0})
+joints = [assembly.joint("fixed", at(c_bracket), at(c_qdd)),
+          assembly.joint("revolute", at(c_qdd), at(c_link), angle_limits_degrees=(-90.0, 90.0))]
+contacts = [(c_qdd, c_link)]
+stators = len(hold.stator.screws)
+for i, screw in enumerate(list(hold.stator.screws) + list(hold.output.screws)):
+    result["screw%d" % i] = screw.body
+    c = assembly.component(screw.body)
+    comps.append(c)
+    joints.append(assembly.joint("fixed", at(c_link if i >= stators else c_bracket), at(c)))
+    contacts.append((c_qdd, c))
+for i, comp in enumerate(comps):
+    result["component_%d" % i] = comp
+for i, joint in enumerate(joints):
+    result["joint_%d" % i] = joint
+asm = assembly.assembly(comps, joints, contacts=contacts, sweep_step_degrees=15.0)
+result["asm"] = asm
+result["diag"] = assembly.solve(asm)
+"""
+
+
+def test_a_bolt_in_a_qdd_output_flange_turns_with_it_in_the_sweep():
+    """ADR-609, on a published value: an output-axis bolt is not swept
+    against its drive, and the output axes never count as holding it."""
+    qdd = _row("qdd", "qdd", "cubemars-ak45-10-v3",
+               axes=[((10.0, 0.0, -45.2), (0.0, 0.0, -1.0))])
+    qdd["mount_axes"].append({"origin": [13.5, 0.0, 0.0], "axis": [0.0, 0.0, 1.0],
+                              "thread_dia_mm": 2.5, "output": True})
+    bolt = _row("out_bolt", "bolt", "m2.5x10-socket",
+                axes=[((13.5, 0.0, 4.0), (0.0, 0.0, 1.0))])
+    stray = _row("stray_bolt", "bolt", "m2.5x10-socket",
+                 axes=[((0.0, 13.5, 4.0), (0.0, 0.0, 1.0))])
+    link = _row("link")
+    value = {
+        "components": [qdd, bolt, stray, link],
+        "pairs": [_pair("out_bolt", "qdd", 0.0), _pair("stray_bolt", "qdd", 0.0),
+                  _pair("out_bolt", "link", 0.0), _pair("qdd", "link", 0.0)],
+        "clearance_sweep": {"status": "complete", "joints": [{
+            "joint": "j", "kind": "revolute", "unit": "degrees", "status": "complete",
+            "pairs": [
+                {"first": "out_bolt", "second": "qdd", "minimum_distance_mm": 0.0,
+                 "maximum_common_volume_mm3": 12.0, "relative_motion": True},
+                {"first": "stray_bolt", "second": "qdd", "minimum_distance_mm": 0.0,
+                 "maximum_common_volume_mm3": 12.0, "relative_motion": True},
+            ]}]},
+    }
+    assert CadexFitReport.output_bolt_pairs(value) == {frozenset(("out_bolt", "qdd"))}
+    sweep = CadexFitReport.sweep_summary(value)
+    assert [(r["first"], r["status"]) for r in sweep["failing"]] == [
+        ("stray_bolt", "intersection")]
+    # The output bolt touches the drive and the link on an output axis: that
+    # holds the link to the flange, never the drive in place.
+    assert _by_component(mounting_summary(value))["qdd"]["status"] != "held"
+    # Overlapping the drive at the solved pose already, it turns with nothing.
+    value["pairs"][0]["common_volume_mm3"] = 1.0
+    assert CadexFitReport.output_bolt_pairs(value) == set()
+
+
+@_NEEDS_KERNEL
+def test_a_qdd_on_its_own_mounting_is_held_and_its_output_screws_turn_on_the_real_kernel(tmp_path):
+    """ADR-608, ADR-609: the AK45-10 on .mounting()'s rear screws is held by
+    them; neither side's screws intersect it at the solved pose or through
+    the swing, though the raw sweep shows the output screws in the case."""
+    from test_cadexd_lifecycle import _spawn_cadexd, _stop
+
+    client = None
+    try:
+        client = _spawn_cadexd()
+        assert client.request("open_project", {"project_root": str(tmp_path)})["ok"]
+        written = client.request("write_script", {"source": _QDD_ON_A_BRACKET,
+                                                  "expected_revision": ""})
+        assert written["ok"], written
+        value = _read_all(client, {"scope": "clearance", "target": ""}, "")
+    finally:
+        _stop(client)
+    fit = fit_summary(value)
+    view = fit_view(fit)
+    qdd = next(row for row in view["mounting"]["reported"] + view["mounting"]["held"]
+               if row["part"] == "qdd/cubemars-ak45-10-v3")
+    assert (qdd["status"], qdd["by"]) == ("held", "screws"), qdd
+    # 6 front and 4 rear stator holes; the 3 output holes never count. The
+    # rear screws at 90 and 270 degrees also lie on two front holes' axes
+    # (23.5 against 23.75 mm out), so 4 screws carry 6 of the 10.
+    assert qdd["detail"].startswith("6 of 10 mounting holes"), qdd
+    assert qdd["detail"].count("component_") == 4, qdd
+    assert "unthreaded" not in qdd and "misfits" not in qdd
+    assert view["mounting"]["verdict"] == "pass", view["mounting"]
+    assert fit["verdict"] == "pass", fit["failing"]
+    turning = CadexFitReport.output_bolt_pairs(value)
+    assert len(turning) == 3
+    sweep = fit["sweep"]
+    assert sweep["joints_complete"] == 1 and sweep["failing_count"] == 0, sweep["failing"]
+    raw = [row for joint in value["clearance_sweep"]["joints"] for row in joint["pairs"]
+           if frozenset((row["first"], row["second"])) in turning]
+    assert len(raw) == 3 and all(row["maximum_common_volume_mm3"] > 1.0 for row in raw), raw
