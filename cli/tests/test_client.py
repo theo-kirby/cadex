@@ -221,7 +221,7 @@ def test_every_page_of_the_live_contract_fits_one_tool_result(client, tmp_path) 
     for section in api_sections(raw):
         sizes[section] = len(rendered(api_view(raw, section)))
     assert all(size <= API_VIEW_CHAR_BUDGET for size in sizes.values()), sizes
-    assert set(api_sections(raw)) == set(raw["domains"]) | {"library"}
+    assert set(api_sections(raw)) == set(raw["domains"]) | {"library", "library_parts"}
     assert '"signature":' not in rendered(api_view(raw))
 
     def signatures(exports):

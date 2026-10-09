@@ -19,6 +19,7 @@ from collections.abc import Callable
 import base64
 from dataclasses import dataclass, field
 import json
+import re
 from pathlib import Path
 import sys
 import tempfile
@@ -605,11 +606,19 @@ API_VIEW_CHAR_BUDGET = 21_500
 #: The name of the one section that is not a domain.
 API_LIBRARY_SECTION = "library"
 
+#: ...and of the page of what the lib generators return (ADR-619): each part
+#: class with its methods (``QddPart.actuator``, ``ServoPart.horn``,
+#: ``BoardPart.mounting``). Served from ``library.part_classes``, a page of
+#: its own because the library section is already most of one tool result.
+API_LIBRARY_PARTS_SECTION = "library_parts"
+
 #: The index's line saying where the signatures are.
 API_VIEW_SECTIONS_NOTE = (
     "This index carries only names. Every signature is in a section: call "
     "describe_api section=<name> for one of the domains listed under "
-    "`domains`, or section=library for the catalog and the lib exports. A "
+    "`domains`, section=library for the catalog and the lib exports, or "
+    "section=library_parts for the methods of the parts lib returns "
+    "(QddPart.actuator, ServoPart.horn, BoardPart.mounting, .bay). A "
     "section carries every export's name, full signature and the first "
     "paragraph of its documentation, and fits one tool result."
 )
@@ -657,8 +666,11 @@ def api_sections(reply: dict[str, Any]) -> list[str]:
 
     domains = reply.get("domains")
     names = list(domains) if isinstance(domains, dict) else []
-    if isinstance(reply.get(API_LIBRARY_SECTION), dict):
+    library = reply.get(API_LIBRARY_SECTION)
+    if isinstance(library, dict):
         names.append(API_LIBRARY_SECTION)
+        if isinstance(library.get("part_classes"), list):
+            names.append(API_LIBRARY_PARTS_SECTION)
     return names
 
 
@@ -687,10 +699,18 @@ def api_index(reply: dict[str, Any]) -> dict[str, Any]:
     if isinstance(library, dict):
         catalog = library.get("catalog")
         view[API_LIBRARY_SECTION] = {
-            **{key: value for key, value in library.items() if key != "notes"},
+            **{key: value for key, value in library.items()
+               if key not in {"notes", "part_classes"}},
             "exports": _export_names(library.get("exports")),
             "catalog": sorted(catalog) if isinstance(catalog, dict) else catalog,
         }
+        classes = library.get("part_classes")
+        if isinstance(classes, list):
+            view[API_LIBRARY_SECTION]["part_classes"] = {
+                str(item.get("name")): _export_names(item.get("methods"))
+                for item in classes
+                if isinstance(item, dict)
+            }
     view["sections"] = API_VIEW_SECTIONS_NOTE
     return view
 
@@ -704,8 +724,36 @@ def api_section(reply: dict[str, Any], section: str) -> dict[str, Any]:
     ``section`` must be one of :func:`api_sections`.
     """
 
+    if section == API_LIBRARY_PARTS_SECTION:
+        library = reply.get(API_LIBRARY_SECTION)
+        classes = library.get("part_classes") if isinstance(library, dict) else None
+        if not isinstance(classes, list):
+            raise KeyError(section)
+        return {
+            "ok": True,
+            "section": section,
+            "part_classes": [
+                {**item, "methods": _summarised_exports(item.get("methods"))}
+                if isinstance(item, dict)
+                else item
+                for item in classes
+            ],
+            "descriptions": (
+                "What each lib generator returns (`returned_by`) and every "
+                "public method on it, with its full signature and the first "
+                "paragraph of its documentation. The whole text of class C's "
+                "method M is inspect scope=api "
+                f"path=/{API_LIBRARY_SECTION}/part_classes/C/methods/M/description "
+                "(C and M counting from 0 in this order)."
+            ),
+        }
     if section == API_LIBRARY_SECTION:
         block, prefix = reply.get(API_LIBRARY_SECTION), f"/{API_LIBRARY_SECTION}"
+        block = (
+            {key: value for key, value in block.items() if key != "part_classes"}
+            if isinstance(block, dict)
+            else block
+        )
     else:
         domains = reply.get("domains")
         block = domains.get(section) if isinstance(domains, dict) else None
@@ -769,6 +817,8 @@ def _model_view(
     """
 
     view = {key: value for key, value in reply.items() if key not in {"display", "id"}}
+    if reply.get("ok") is not True:
+        view = refusal_view(view)
     if tool == "describe_api" and reply.get("ok") is True:
         view = api_view(view, (view_args or {}).get("section"))
     if tool in MODELLING_OPS and reply.get("ok") is True:
@@ -776,6 +826,79 @@ def _model_view(
         view["outputs"] = outputs_view(reply)
     if "expected_revision" in args:
         view["expected_revision_used"] = args["expected_revision"]
+    return view
+
+
+#: The tail of a refused worker's stderr and traceback the model sees
+#: (ADR-618). Each is whole in the session row.
+REFUSAL_STDERR_CHARS = 3_000
+REFUSAL_TRACEBACK_CHARS = 3_000
+
+#: OCCT's progress meter, which a worker's stderr is mostly made of: tens of
+#: thousands of "\r\t\t\t(37 %)\t" frames and nothing a model can use.
+_PROGRESS_NOISE = re.compile(r"[\r\t]*\(\s*\d+ %\)[\r\t]*|[\r\t]{2,}")
+
+
+def _tail(text: Any, limit: int) -> Any:
+    if not isinstance(text, str) or len(text) <= limit:
+        return text
+    return f"[{len(text) - limit} earlier characters omitted] " + text[-limit:]
+
+
+def refusal_view(view: dict[str, Any]) -> dict[str, Any]:
+    """A refusal as the model should see it: the diagnosis first (ADR-618).
+
+    On cbase-deinonychus-a a ``solver_error`` refusal was 293,000
+    characters -- every one of 125 components' placement matrices, then a
+    stderr of OCCT progress-meter frames -- and the agent harness kept its
+    first and last 5,000. The solver's message and the joints it blamed sat
+    in the middle and were never read. The envelope keeps every key; what
+    is bounded is the bulk inside ``observed``: the progress meter is
+    dropped from stderr, stderr and the traceback keep their tails, the
+    placements become a count, and the per-joint solver rows keep the ones
+    that were not satisfied. The script's stdout stays whole (the engine
+    already bounds it).
+    """
+
+    observed = view.get("observed")
+    if not isinstance(observed, dict):
+        return view
+    observed = dict(observed)
+    stderr = observed.get("stderr")
+    if isinstance(stderr, str):
+        observed["stderr"] = _tail(_PROGRESS_NOISE.sub("", stderr).strip(), REFUSAL_STDERR_CHARS)
+    observed["traceback"] = _tail(observed.get("traceback"), REFUSAL_TRACEBACK_CHARS)
+    if observed["traceback"] is None:
+        observed.pop("traceback")
+    details = observed.get("details")
+    if isinstance(details, dict):
+        details = dict(details)
+        placements = details.get("component_placements")
+        if isinstance(placements, dict) and placements:
+            details["component_placements"] = {
+                "count": len(placements),
+                "note": "placements omitted from the model view of a refusal",
+            }
+        native = details.get("native")
+        if isinstance(native, dict) and isinstance(native.get("joints"), list):
+            native = dict(native)
+            rows = native["joints"]
+            unsatisfied = [
+                row for row in rows
+                if not (isinstance(row, dict) and row.get("status") == "satisfied")
+            ]
+            native["joints"] = unsatisfied
+            native["satisfied_joint_count"] = len(rows) - len(unsatisfied)
+            details["native"] = native
+        for key in ("joint_outputs", "component_occurrence_counts"):
+            value = details.get(key)
+            if isinstance(value, list) and len(value) > BUILD_VIEW_LIST_LIMIT:
+                _cut(details, key, value, "the session row keeps the whole list")
+            elif isinstance(value, dict) and len(value) > BUILD_VIEW_LIST_LIMIT:
+                details[key] = {"count": len(value)}
+        observed["details"] = details
+    view = dict(view)
+    view["observed"] = observed
     return view
 
 
