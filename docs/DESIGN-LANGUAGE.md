@@ -448,12 +448,12 @@ machine; the style adds what it fixes at step 1 and step 4:
 
 ## 11. The creature style (ADR-626)
 
-**Where it comes from.** The owner's rated reference set
-(`reference/v2/`, gitignored: 47 images deduplicated from
-`reference/Cadex-Reference.pdf`, rated and grouped by the owner on
-2026-10-09, seven of them starred as north stars), and a blind-rated
-baseline sweep of six design-only QDD creatures on the Cadex of that day
-(`reference/v2/cbase-findings.md`). The sweep's mean was 2.3 of 5 overall
+**Where it comes from.** The owner's rated reference set (gitignored and
+kept outside the docs: 47 images deduplicated from the owner's reference
+PDF, rated and grouped by the owner on 2026-10-09, seven of them starred as
+north stars), and a blind-rated baseline sweep of six design-only QDD
+creatures on the Cadex of that day, whose findings are kept beside the
+reference set. The sweep's mean was 2.3 of 5 overall
 and 2.6 for "every part designed"; no design jointed a head, jaw, tail,
 arm or wing, and the only two designs with a jointed neck rated best.
 
