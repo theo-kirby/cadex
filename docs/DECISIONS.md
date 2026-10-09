@@ -37880,8 +37880,9 @@ op, argument or golden changes.
 visible: on `cbase-heron-a` with its regions declared, the real engine
 reports the neck `articulated` (one QDD and three loop joints), the head
 `rigid, no reason` welded to the neck with `w_head` protruding 152 mm along
-+x, both feet rigid with no reason, and seven actuated DOF; undeclared,
-`cbase-deinonychus-a`'s welded tail is found protruding 450 mm along −x.
++x, both feet rigid with no reason, and seven actuated DOF; and the same
+summary over `cbase-deinonychus-a`'s accepted graph, undeclared, finds its
+welded tail protruding 450 mm along −x.
 Graph-only, so a build pays no geometry call for it.
 
 **Tests.** `test_anatomy.py` (stamp, summary, loop drive, shared bodies,
