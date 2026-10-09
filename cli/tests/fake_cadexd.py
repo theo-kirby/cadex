@@ -174,6 +174,25 @@ def inventory_value(
     }
 
 
+def anatomy_value(
+    regions: list[dict[str, Any]] | None = None, *, verdict: str | None = None,
+    appendages: list[dict[str, Any]] | None = None, revision: str = "rev-1",
+) -> dict[str, Any]:
+    """An ``inspect scope=anatomy`` value (ADR-614): ``undeclared`` with no
+    regions, the way an engine reports a script that declares none."""
+
+    return {
+        "revision": revision, "assembly": "asm",
+        "verdict": verdict or ("complete" if regions else "undeclared"),
+        "source": "the accepted revision's joint graph",
+        "regions": list(regions or []),
+        "rigid_appendages": list(appendages or []),
+        "unacknowledged_appendages": sum(1 for a in appendages or [] if not a.get("acknowledged")),
+        "actuated_dof": sum(int(r.get("actuated_dof") or 0) for r in regions or []),
+        "note": "",
+    }
+
+
 def rejected_reply(revision: str, *, error: str = "no") -> dict[str, Any]:
     """A tool-level refusal — which still moves the working revision."""
 
@@ -224,7 +243,8 @@ class FakeCadexd:
             # assembly, so both are honestly unavailable rather than a
             # shape-check failure.
             scope = str((args or {}).get("scope") or "")
-            value = inventory_value() if scope == "inventory" else clearance_value()
+            value = (inventory_value() if scope == "inventory"
+                     else anatomy_value() if scope == "anatomy" else clearance_value())
             reply = inspect_reply(dict(args or {}), value)
         if reply is None:
             reply = accepted_reply(op, "rev-1")

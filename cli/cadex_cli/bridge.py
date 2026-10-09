@@ -30,9 +30,9 @@ from . import evaluate as evaluation
 from . import loop
 from .clearance import read_fit
 from .client import CadexdClient
-from .inventory import InventoryError, inventory_summary, read_inventory, read_inventory_summary
+from .inventory import InventoryError, _read_path, inventory_summary, read_inventory, read_inventory_summary
 from .revision_meshes import retain as retain_revision_meshes
-from .studio import FIT_REPORT, STUDIO
+from .studio import ANATOMY, FIT_REPORT, STUDIO
 from .tools import (
     BRIDGE_TOOLS, STANDARD_DISPLAY, VIEW_ARGS, injects_display, injects_revision,
     tool_definitions,
@@ -85,6 +85,9 @@ class BridgeState:
     #: The catalog identity of the most recent successful modelling reply,
     #: as the model saw it.
     last_inventory: dict[str, Any] | None = None
+    #: The anatomy block of the most recent successful modelling reply
+    #: (ADR-614), whole; the model saw its bounded view.
+    last_anatomy: dict[str, Any] | None = None
     calls: list[ToolCall] = field(default_factory=list)
 
 
@@ -193,6 +196,14 @@ class Bridge:
             inventory = (
                 self._read_inventory() if ok and tool in MODELLING_OPS else None
             )
+            # ...and the creature's moving anatomy (ADR-614): per declared
+            # region, the joints that move it and whether one is driven, and
+            # every large welded piece sticking out of a rigid body. Graph
+            # only; advisory, like the inventory.
+            anatomy = (
+                self._read_anatomy()
+                if ok and tool in MODELLING_OPS and ANATOMY is not None else None
+            )
             # ...and the accepted model is kept under its revision's
             # ordinal, for the timeline (ADR-546). Never fails the call.
             if ok and tool in MODELLING_OPS and self.project_root is not None:
@@ -205,6 +216,8 @@ class Bridge:
         if inventory is not None:
             summary += "  " + _inventory_line(inventory)
             self.state.last_inventory = inventory
+        if anatomy is not None:
+            self.state.last_anatomy = anatomy
         call = ToolCall(
             tool, args, ok, summary, str(reply.get("failure_code") or ""), fit,
             inventory,
@@ -217,6 +230,8 @@ class Bridge:
             view["fit"] = fit_view(fit)
         if inventory is not None:
             view["inventory"] = inventory_view(inventory)
+        if anatomy is not None:
+            view["anatomy"] = ANATOMY.anatomy_view(anatomy)
         return _content(
             json.dumps(view, indent=2, sort_keys=True, default=str),
             is_error=not ok,
@@ -254,6 +269,11 @@ class Bridge:
                 call = ToolCall("look", dict(arguments), False, str(exc))
                 self._record(call)
                 return _content(str(exc), is_error=True)
+            # Beside the design-language measures: whether the declared
+            # anatomy moves (ADR-614). Added here, not in the renderer, so
+            # the renderer's bars are untouched.
+            if ANATOMY is not None and isinstance(facts.get("measures"), dict):
+                facts["measures"]["anatomy"] = ANATOMY.anatomy_measure(self.state.last_anatomy)
         text = json.dumps(facts, indent=2)
         content = [{"type": "text", "text": text}]
         for view, data, _details in shots:
@@ -286,6 +306,8 @@ class Bridge:
                 # the floor frames the view and every part is one palette.
                 self.state.last_fit = self._read_fit()
                 self.state.last_inventory = self._read_inventory()
+                if ANATOMY is not None:
+                    self.state.last_anatomy = self._read_anatomy()
         return reply
 
     # -- drawing sheets (ADR-516) -----------------------------------------
@@ -561,6 +583,27 @@ class Bridge:
                 "uncatalogued_sources": [],
                 "derived_catalog_sources": [],
                 "error": f"inventory could not be read: {exc}",
+            }
+
+    def _read_anatomy(self) -> dict[str, Any]:
+        """The anatomy block for a build that just succeeded; never raised.
+
+        Same terms as :meth:`_read_fit`: a block the bridge cannot read is
+        reported as ``verdict: unavailable`` with the reason.
+        """
+
+        try:
+            value = _read_path(self.client, {"scope": "anatomy", "target": ""}, "")
+            if not isinstance(value, dict) or "verdict" not in value:
+                raise InventoryError("the engine published no anatomy block")
+            return value
+        except Exception as exc:  # any failure is an anatomy the model cannot see
+            return {
+                "verdict": "unavailable",
+                "regions": [],
+                "rigid_appendages": [],
+                "actuated_dof": 0,
+                "error": f"anatomy could not be read: {exc}",
             }
 
     def _record(self, call: ToolCall) -> None:

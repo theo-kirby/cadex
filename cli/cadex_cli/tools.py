@@ -133,7 +133,8 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "Read engine state. This is how you verify your work in numbers; "
         "`look` is how you see it. scope=clearance is the "
         "measured fit of the accepted assembly, every pair; a build reply's "
-        "`fit` block is its summary."
+        "`fit` block is its summary. scope=anatomy is the moving-anatomy "
+        "check behind a build reply's `anatomy` block."
     ),
     "link_part": (
         "Pull one accepted solid out of ANOTHER project directory and store "
@@ -465,7 +466,12 @@ ARG_DESCRIPTIONS: dict[tuple[str, str], str] = {
         "parts' COLLISION SHAPES already touch at rest, at the pose every "
         "simulation starts from, per assembly.mjcf export — a pair you did "
         "not mean to rest together, or any `penetrating` pair, is a "
-        "collision shape in the wrong place; `api` is the tool surface."
+        "collision shape in the wrong place; `anatomy` is the creature's "
+        "MOVING ANATOMY — per region assembly.anatomy declared, the joints "
+        "that move it and which an actuator drives, its status (articulated, "
+        "rigid with a reason, rigid with no reason, passive only), and every "
+        "large welded piece that sticks out of its rigid body (a fused head, "
+        "a rigid tail); `api` is the tool surface."
     ),
     ("inspect", "target"): (
         "The exact name the scope keys on — an output name for `output`, an "
@@ -514,6 +520,9 @@ INSPECT_SCOPES = (
     # export's t=0 contacts, so the agent reads what the dashboard's
     # collision view shows without a person looking.
     "contacts",
+    # The creature's moving anatomy (ADR-614): the `anatomy` block on a
+    # build reply is a bounded view of exactly this scope.
+    "anatomy",
     "blueprint",
     "api",
 )

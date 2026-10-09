@@ -471,6 +471,9 @@ def test_render_and_bridge_look_report_the_proxies(tmp_path, monkeypatch, small_
         bridge.state.last_fit = fit
         bridge.state.last_inventory = _declared_inventory()
         facts = json.loads(bridge.call('look', {'views': ['top']})['content'][0]['text'])
+    # The bridge adds the anatomy measure beside the renderer's (ADR-614);
+    # this session built nothing, so it has no block to read.
+    assert facts['measures'].pop('anatomy')['value'] == 'unavailable'
     assert facts['measures'] == {key: {k: proxies[key][k] for k in ('value', 'bar', 'meets')}
                                  for key in ('hardware_silhouette_share', 'sharp_outside_edge_share',
                                              'material_count')}
