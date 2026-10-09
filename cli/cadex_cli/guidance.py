@@ -108,7 +108,10 @@ Write it with write_script, change it with edit_script, change only its \
 numbers with set_params. Never edit the project's script.json or its \
 stores by hand: the tools are the only way into the design. Running the \
 script twice gives the same model: nothing random, no clock, no network, \
-nothing read from outside the project. +Z IS UP. Name every output short \
+nothing read from outside the project. `import` is refused, but `math` \
+is provided as it is (`math.sin`, `math.atan2`, `math.pi`), and so are \
+`getattr`, `hasattr`, `dir`, `type` and `isinstance` for public names: \
+never write your own trigonometry. +Z IS UP. Name every output short \
 and for what it is -- `left_thigh`, `deck`, `hip_cap` -- because the person, \
 the dashboard and every later change refer to a part by that name.
 

@@ -38540,3 +38540,36 @@ A revision accepted before this ADR publishes no `shell_gaps`, and its rows
 say `"gap": "unmeasured"`.
 
 Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-627 — The base guidance: anatomy is part of the concept, a met bar is a floor, and the new tools are taught (2026-10-09)
+
+**Context.** In the blind-rated baseline sweep of six QDD creatures, every
+agent fixed its joint count in the first minutes and stopped when "every
+bar is met"; no head, jaw, tail, arm or wing moved. ADR-608 to ADR-623 added
+the light QDD tier, `QddPart.mounting()`, `lib.panel`, `lib.housing`, the
+shell check, `assembly.anatomy` and its block, closed-loop sweeps, and
+refusals that name the failing call, none of which the guidance named.
+
+**Decision.** `CadexAgentGuidance.md`:
+- Step 1 gains A MACHINE IN AN ANIMAL'S FORM MOVES LIKE ONE: list the
+  moving anatomy, joint every region or record a measured reason, declare
+  the regions with `assembly.anatomy`, and do not finish while the
+  `anatomy` verdict is `incomplete` or an appendage is unacknowledged.
+- Step 6: "A met bar is a floor, never a reason to stop"; stop only when
+  every check in the build reply is clear or answered with a recorded
+  reason. The hardware share is described as having no bar (ADR-624).
+- The QDD bullet names both tiers, says to size each actuator from its
+  joint's load, and teaches `.mounting()`.
+- HOLD EVERY PART teaches `lib.housing`; FINISH teaches A PANEL IS GROWN
+  FROM WHAT IT COVERS (`lib.panel`) and `fit.shells`.
+- The sweep paragraph says how a closed loop is swept; the linkage
+  paragraph says a planar revolute loop is accepted per linkage and that
+  the sweep now proves its clearance.
+- WHEN A CALL IS REFUSED names `failure_site`, crash operations, solver
+  messages and `stdout`, and says not to bisect in throwaway revisions.
+- The overlay says `math` and the introspection builtins are provided.
+
+**Tests.** `cli/tests/test_agent_guidance.py`,
+`cadex_tests/test_agent_guidance.py`.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).

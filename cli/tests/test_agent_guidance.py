@@ -262,15 +262,16 @@ def test_the_sensor_rule_grounds_position_and_load_on_real_parts():
 
 def test_the_linkage_rule_says_when_to_close_a_chain_and_how_it_is_proved():
     # ADR-596: when a closed chain beats serial joints and why, how a loop
-    # is declared and driven, what is refused, and that the sweep does not
-    # prove a loop's motion while smoke does.
+    # is declared and driven, and what is refused. Since ADR-621 the sweep
+    # drives a loop from its limited joints and a planar revolute loop is
+    # accepted per linkage.
     text = " ".join(instructions().split())
     rule = _rule(text, "CLOSE A LINKAGE WHERE THE BUILT MACHINE WOULD HAVE ONE", 2000)
     for claim in ("A serial stand-in for a linkage is a different machine",
                   "the actuator should stay on the frame", "choose serial joints when",
                   "dead point", "A loop closes with an ordinary joint", "equality constraint",
-                  "over-constrained", "ball joint", "reports each loop joint as not swept",
-                  "the smoke check", "never by the sweep"):
+                  "over-constrained", "ball joint", "parallel revolute pins is accepted",
+                  "drives the loop from its limited joints", "the smoke check"):
         assert claim in rule, claim
 
 
