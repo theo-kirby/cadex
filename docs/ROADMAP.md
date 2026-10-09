@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-10-04
+Verified against source: 2026-10-09
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -1550,6 +1550,12 @@ supplying only the gesture (O3).
       is what answers `docs/VISION.md`'s open question about interactive mesh
       editing: as engine ops, on a declared table, with the shell supplying
       only the gesture.
+- [x] **O3b — Panels grown from the mechanism** (ADR-610..612, 2026-10-09).
+      `lib.panel` fits a ring per station of what a panel covers and screws
+      each seam-split piece to the frame; `lib.housing` wraps a QDD or servo
+      and screws it through its own holes; `fit.shells` measures every
+      declared shell as floating, solid or unmounted. Proved on a trunk whose
+      panels measured 2.5-4.7 mm and an egg over the same parts 31.3 mm.
 - [x] **O3b — A loft that is not the shape its own table describes**
       (ADR-129, 2026-08-05). `part.loft` and `part.loft_cage` measure how far
       the surface escapes the sections it was built from and refuse past a

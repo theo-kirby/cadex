@@ -2318,15 +2318,13 @@ class LibraryAPI:
 
     # -- grown parts: panels and housings (ADR-610, ADR-611) ------------------
 
-    def panel(
-        self, over: Any, *, axis: Sequence[float] = (1.0, 0.0, 0.0),
-        up: Sequence[float] | None = None, span: Sequence[float] | None = None,
-        offset: float = 1.5, thickness: float = 2.0, exponent: float | None = None,
-        step: float = 12.0, seams: Sequence[float] = (), split: str | None = None,
-        split_at: float | None = None, seam_gap: float = 0.4, mount_to: Any = None, screw: str = "m2",
-        screws_per_panel: int = 2, spacing: float = 3.0, label: str = "",
-    ) -> Any:
-        """A curved panel grown from what it covers, split and screwed down.
+    def panel(self, over, *, axis=(1, 0, 0), up=None, span=None, offset=1.5,
+              thickness=2.0, exponent=None, step=12.0, seams=(), split=None,
+              split_at=None, mount_to=None, screw="m2", screws_per_panel=2,
+              label=""):
+        # Unannotated on purpose: describe_api's library page is held under
+        # one tool result (ADR-360); the types are the docstring's.
+        """A panel grown from what it covers.
 
         ``over`` is the solids or lib parts the panel wraps (the frame is
         added when ``mount_to`` names it). Stations stand every ``step`` mm
@@ -2339,7 +2337,7 @@ class LibraryAPI:
         those rings, ``thickness`` thick (covers are 1.6-2.4 mm), open at
         both ends. ``seams`` are axial positions it is split at;
         ``split='top_bottom'``/``'left_right'`` parts it along the axis too,
-        ``seam_gap`` apart, at ``split_at`` (world coordinate along ``up`` or
+        0.4 mm apart, at ``split_at`` (world coordinate along ``up`` or
         across; default the plane nearest the rings' mean centre that cuts
         every ring across its middle). With ``mount_to`` (the frame), each piece gets up
         to ``screws_per_panel`` bosses that stand down from the skin onto
@@ -2358,17 +2356,14 @@ class LibraryAPI:
             return build_panel(
                 self, over, axis=axis, up=up, span=span, offset=offset,
                 thickness=thickness, exponent=exponent, step=step, seams=seams,
-                split=split, split_at=split_at, seam_gap=seam_gap, mount_to=mount_to, screw=screw,
-                screws_per_panel=screws_per_panel, spacing=spacing, label=label)
+                split=split, split_at=split_at, mount_to=mount_to, screw=screw,
+                screws_per_panel=screws_per_panel, label=label)
         except PanelError as exc:
             raise LibraryError(f"lib.panel: {exc}") from exc
 
-    def housing(
-        self, drive: Any, *, wall: float = 2.0, clearance: float = 0.5,
-        seat: str | None = None, plate: float | None = None,
-        lead_room: float | None = None, label: str = "",
-    ) -> Any:
-        """A printed housing grown around a drive: the limb around the motor.
+    def housing(self, drive, *, wall=2.0, clearance=0.5, seat=None, plate=None,
+                lead_room=None, label=""):
+        """A housing grown round a drive.
 
         ``drive`` is a ``lib.qdd(...)`` or ``lib.servo(...)`` part, placed.
         A QDD gets a drum concentric with its axis, ``clearance`` off its

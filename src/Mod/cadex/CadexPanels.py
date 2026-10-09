@@ -1060,7 +1060,13 @@ def _plan_bosses(plan, cover, frame, screw, wanted, engagement, spacing):
             else:
                 def spread(o):
                     return min(math.dist(o["seat_point"], c["seat_point"]) for c in chosen)
-                pick = max(options, key=spread)
+
+                # Spread out, square to the frame where it can be: a screw
+                # aimed across a deck's edge rather than through a face is
+                # the last resort.
+                def score(o):
+                    return spread(o) - (0.0 if o["angle"] % 90.0 == 0.0 else 40.0)
+                pick = max(options, key=score)
                 if spread(pick) < 2.5 * boss_r:
                     break
             chosen.append(pick)
@@ -1213,7 +1219,7 @@ def _boss_option(plan, w, angle, fraction, nearby, tests, boss_r, head_h, engage
                         max(inner[1] - margin, 0.5), exponent) >= 1.0:
                     return None
     # Nothing else may stand between the frame and the skin under the boss.
-    clear = boss_r + 0.6
+    clear = boss_r + plan["offset"]  # bosses clear the contents as the skin does
     for q in other_pts:
         if abs(q[2] - w) > clear:
             continue
@@ -1238,7 +1244,14 @@ def _boss_option(plan, w, angle, fraction, nearby, tests, boss_r, head_h, engage
         r = r_frame - 0.25
         while r > r_frame - 40.0 and frame_contains(axis_point(r)) is True:
             r -= 0.25
-        longest = (r_frame - r) - 0.3
+        lo, hi = r, r + 0.25  # lo outside the material, hi inside
+        for _ in range(12):
+            mid = (lo + hi) / 2.0
+            if frame_contains(axis_point(mid)) is True:
+                hi = mid
+            else:
+                lo = mid
+        longest = (r_frame - hi) - 0.3
         if longest < 1.5 * diameter:
             return None
     clear = seat - r_frame

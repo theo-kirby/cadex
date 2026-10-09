@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-08
+Verified against source: 2026-10-09
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -1031,6 +1031,91 @@ The envelope is coaxial cylinders with tapped bores. Pilots, dowels,
 connectors and the rotor/stator mass split are omitted. There is no thermal
 model and no corner speed. Sources and approximations: PROVENANCE §8i.
 
+#### Panels and housings grown from the mechanism `[ADR-610, ADR-611]`
+
+A shell sized by eye floats: blind-rated robot animals scored worst on
+"every part designed, shells included" because their covers were
+superellipse eggs over electronics they never touched, and no drive had a
+housing. Both helpers draw the printed part **from** what it covers.
+
+```python
+deck  = part.box(158, 50, 4, origin=(-78, -25, -2))
+pack  = lib.battery("gensace-gea2s100045d", origin=(-30, 0, 2))
+board = lib.board("esp32-devkitc-v4", origin=(18, -14, 2))
+rear  = lib.qdd("cubemars-ak80-9-v3", origin=(-121.5, 0, 0), direction=(-1, 0, 0))
+
+skin = lib.panel([pack, board], axis=(1, 0, 0), mount_to=deck, span=(-74, 76),
+                 seams=[0.0], split="top_bottom")       # 4 panels, 8 M2 screws
+deck = part.cut(deck, skin.holes)                       # the screws' pilots
+drum = lib.housing(rear)                                # drum, plate, 8 M3 screws
+hip  = drum.fuse(part.box(2, 24, 49, origin=(-80, -12, -2)))  # a link grown on
+```
+
+`lib.panel(over, *, axis=(1,0,0), up=None, span=None, offset=1.5,
+thickness=2.0, exponent=None, step=12.0, seams=(), split=None,
+split_at=None, mount_to=None, screw="m2", screws_per_panel=2, label="")`
+returns a `PanelSet`:
+
+- **How the skin is found.** Every covered value (and `mount_to`, which is
+  covered too) is read as a recipe -- primitives, transforms, booleans,
+  lofts -- into surface points and, where the tree allows
+  it, a point-membership test (`CadexPanels.sample`, every 3 mm). An imported or meshed
+  part is refused by name. Stations stand every `step` mm along `axis` over
+  `span` (world coordinates along the axis; default the contents' extent).
+  At each, the points within one station either side are fitted with the
+  tightest superellipse about their own centre (`CadexCage`'s ring, off
+  axis), grown until every point clears its inner face by `offset` mm, and
+  each half-axis is then a slope-limited envelope (at most 0.15 mm per mm),
+  so a skin bends gently over what it covers instead of dimpling. `exponent`
+  `None` picks, for the whole panel, the one of 2, 2.5, 3, 4 and 6 that
+  encloses the least section. The skin is the loft through those rings,
+  outer minus inner, `thickness` thick, open at both ends.
+- **Seams.** `seams=[x, ...]` split it at axial positions; `split=
+  "top_bottom"` or `"left_right"` parts it along the axis at `split_at`
+  (default: the plane nearest the rings' mean centre that crosses every ring
+  across its middle -- on a deck, its top face). Pieces are 0.4 mm apart.
+  `.parts` and `.names` (`"0_top"`, `"0_bottom"`, `"1_top"`...) are aligned.
+- **Screws.** With `mount_to` (the frame), each piece gets up to
+  `screws_per_panel` bosses: a line aimed into the frame (down, up, across or
+  diagonal, on the ring's centre or offset to the sides beside what it
+  covers), refused where anything else stands in the way, where the skin is
+  steeper than 40 degrees, where it crosses the parting plane or another
+  piece's screw, or where the frame is too thin for 1.5 diameters of thread.
+  The boss stands from the frame's own surface (the frame is cut from it) to
+  the skin, with a counterbore that sets the head flush and a clearance hole;
+  the screw is a `lib.bolt` of a stocked length whose thread stops 0.3 mm
+  short of the frame's far face. `.screws` (flat), `.screws_by_part`
+  (aligned with `.parts`), `.holes` (tap-drill pilots: cut them from the
+  frame), `.unmounted` (pieces no boss could reach from) and `.notes`.
+- `.rings` reads back each station (`position`, `centre`, `inner`, `outer`)
+  and `.spec` the numbers, including every boss's station, angle, screw
+  length, engagement and standoff.
+
+`lib.housing(drive, *, wall=2.0, clearance=0.5, seat=None, plate=None,
+lead_room=None, label="")` returns a `Housing`:
+
+- A **QDD** gets a drum concentric with its axis, `clearance` off the case
+  and `wall` thick, seated on a `plate` (default 3 mm) against its stator
+  face -- `seat="rear"` (default) or `"front"` -- with a clearance hole and a
+  `lib.bolt` on every stator hole, sized to the drive's own thread and
+  stocked to its hole depth; the output side is open, and the plate's
+  central opening passes the rear cover (or, front-seated, the output) and
+  the leads.
+- A **tab servo** gets a tub whose rim the tabs screw down onto (pads
+  under the tabs, tap-drill pilots, one bolt per tab hole sized to it); a
+  **bus servo** a tub whose floor its rear face screws to. Both are cut with
+  the servo's own `.bay()`, so the mounting check reads the bay too.
+- `.body`, `.screws`, `.cavity`, `.holes`, `.spec`, and `.fuse(link, ...)`:
+  the housing with links grown on and the cavity and screw holes cut
+  again -- the limb grown around the actuator.
+
+Assemble them like any printed part: each panel and housing is a component
+with `appearance="shell"` (or `"mechanism"`), welded to the frame with a
+fixed joint, and each screw is its own component welded to what it clamps.
+A housing's screws sit in the drive's tapped holes at 0.0 mm, so declare
+them `contacts=[(screw, drive)]`. The shell check (below) measures the
+result.
+
 ### Naming geometry: selectors, not indices `[Phase 10b, ADR-029]`
 
 Five part ops — `subshape`, `defeature`, `fillet`, `chamfer`, `thicken` —
@@ -2053,6 +2138,56 @@ exactly how a floating servo horn survives acceptance. `attachments` is
 **absent** on a revision accepted before ADR-370 and an **empty list** on an
 assembly with no fixed joint: no published report and no welded pair are
 different facts.
+
+### Shells: wrapped, thin and held (ADR-612)
+
+`fit.shells` judges every component declared `appearance="shell"` (an
+undeclared printed part is not judged). The assembly worker samples about
+400 points over each shell's faces by area, with their outward normals,
+and measures each exactly (point to triangle) to the tessellated surface of
+the non-shell, non-world components whose boxes come within 5 mm of the
+shell's box (`/shell_gaps` in `inspect scope=clearance`). A sample whose
+normal points at its nearest content point is on the **inner face**; its
+distance is the gap a designer means. The block then reads each shell's
+volume and area and the published pairs and fixed joints:
+
+| finding | when |
+|---|---|
+| `floating` | the inner face's median gap exceeds `floating_gap_mm` (6.0), or no sample faces what the shell covers |
+| `covers nothing` | no non-shell component lies inside its box |
+| `solid` | its wall estimate `2 * volume / area` exceeds `solid_wall_mm` (4.0): a filled loft, not a 1.6-2.4 mm panel |
+| `unmounted` | no `lib.bolt` touching it threads (0.1 mm³ or more) into a non-shell part, and no touching fixed joint welds it to one |
+
+The thresholds, measured on the real engine (ADR-612): `lib.panel` over a deck,
+a 2S pack and an ESP32 measured median gaps of 2.5-4.7 mm per panel (a
+superellipse stands off a box's flat faces by a few mm); `lib.housing` 0.5
+mm; a hollow egg sized by eye over the same parts 31.3 mm, with 0.5% of its
+inner face within 4 mm. A printed panel's wall estimate is 1.9-2.0 mm with
+its bosses; a filled loft's is a third of its own width or more.
+
+```json
+"shells": {
+  "verdict": "reported", "shell_count": 2, "reported_count": 1,
+  "thresholds": {"floating_gap_mm": 6.0, "solid_wall_mm": 4.0,
+                 "contact_mm": 0.5, "thread_engagement_mm3": 0.1},
+  "reported": [{"component": "c_egg", "findings": ["floating", "unmounted"],
+                "covers_count": 12, "gap_median_mm": 31.304, "gap_p25_mm": 20.783,
+                "gap_p90_mm": 39.668, "hug_fraction": 0.005, "inner_samples": 199,
+                "wall_mm": 1.933, "mounted": null,
+                "detail": "its inner face stands a median 31.304 mm off what it covers; ..."}],
+  "fitted": [{"component": "c_drum", "findings": [], "gap_median_mm": 0.5,
+              "hug_fraction": 1.0, "wall_mm": 2.048, "mounted": "welded",
+              "held_by": ["c_deck", "c_rear"]}],
+  "note": "A shell is a panel that wraps the mechanism: ..."
+}
+```
+
+Rows are worst first (most findings, then the widest gap); the build
+reply's view cuts each list to 12. Advisory like `fit.mounting`: its own
+verdict, counted among no fit failure, and the progress line adds
+`shells: N of M reported`. A revision accepted before ADR-612 has no
+`shell_gaps`: its rows say `"gap": "unmeasured"` and the block a
+`gap_note`.
 
 ## Sampled hinge and slider fit (ADR-349, ADR-351)
 

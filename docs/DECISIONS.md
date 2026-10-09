@@ -37821,3 +37821,126 @@ parent access are blocked and its origin is `"null"`).
 schema name.
 
 Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-610 — `lib.panel`: a panel grown from what it covers, split and screwed down (2026-10-09)
+
+**Decision.** `lib.panel(over, *, axis, up, span, offset=1.5, thickness=2.0,
+exponent=None, step=12.0, seams, split, split_at, mount_to,
+screw="m2", screws_per_panel=2, label)` returns a `PanelSet`
+(`parts`, `names`, `screws`, `screws_by_part`, `holes`, `rings`,
+`unmounted`, `notes`, `spec`). The covered recipes (and the frame) are read
+into surface points and a membership test by a small CSG evaluator over the
+part payloads (`CadexPanels.sample`; an imported or meshed part is refused
+by name). Stations stand every `step` mm; each station's points are fitted
+with the tightest superellipse of one exponent about their own centre,
+grown until every point clears the inner face by `offset`; each half-axis
+is a slope-limited envelope (0.15 mm/mm). `exponent=None` picks, per panel,
+the one of 2-6 enclosing the least section. The panel is the outer loft
+less the inner through the same stations, cut into pieces at `seams` and
+a parting plane. Each piece gets bosses standing from the frame's own
+surface (the frame is cut from the piece) to the skin, a flush counterbore,
+a clearance hole, a stocked `lib.bolt` whose thread stops 0.3 mm short of
+the frame's far face, and a tap-drill pilot in `holes`. Pure planning in
+`CadexPanels.py`; `cadex_library_api.LibraryAPI.panel` is a thin binding.
+
+**Why.** Blind-rated robot animals scored worst on "every part designed,
+shells included"; the owner: agents "made a biped and then put some
+cosmetic half-assed revolutions on it". Shells were `loft_cage` rings sized
+by eye, floating over the electronics. The owner's liked references have
+gently curved panels form-fitting the mechanism, thin, at real seams,
+screwed to the frame. Rejected: measuring the contents in the worker, which
+would leave the screws' positions unknown to the script; one ring per
+station with a searched aspect, which jumped station to station and
+dimpled the skin; an inner loft extended past the outer's ends, whose
+spline crossed the outer skin and split pieces; trimming bosses to the skin
+before cutting their holes, which OCCT can collapse to no solid (holes are
+cut first, refine is off on every panel boolean).
+
+**Tests.** `cadex_tests/test_panels.py` (sampling, ring fit and clearance,
+the skin following the contents, seams and parting plane, every screw into
+the deck and none out of it, opposing screws apart, describe_api, and a
+real-kernel build: four valid single solids, wall 1.6-3.0 mm, clear of the
+contents, touching and not entering the deck).
+
+**Consequences.** A ring is convex: one panel over a tall narrow part on a
+wide deck stands off the deck's sides by the step (p90 9.6-10.5 mm on the
+proof trunk's top halves). The panel is open at both ends; caps are not
+drawn. A frame built from lofts or offsets has no membership test, so its
+bosses rest on sampled points (`exact_frame: false` in `spec.bosses`).
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-611 — `lib.housing`: the limb grown around the drive (2026-10-09)
+
+**Decision.** `lib.housing(drive, *, wall=2.0, clearance=0.5, seat=None,
+plate=None, lead_room=None, label)` returns a `Housing` (`body`, `screws`,
+`cavity`, `holes`, `drive`, `spec`, `.fuse(*links)`). A `lib.qdd` gets a
+drum concentric with its axis (case diameter + 2 x (clearance + wall)), a
+`plate` (default 3 mm) seated on its rear or front stator face, a
+clearance hole and a `lib.bolt` of the drive's own thread on every stator
+hole, the longest stocked length that stops 0.3 mm short of the hole's
+depth, and a central opening for the rear cover or output and the leads. A
+tab servo gets a tub cut with its `.bay(ledge=4)`, pads under the tabs and
+tap-drill pilots for one bolt per tab hole (the largest catalogued screw the
+hole takes); a bus servo a tub whose floor its rear face screws to.
+`.fuse(link)` fuses links on and cuts the cavity and holes again.
+
+**Why.** No drive in the rated sweep had a housing: only servos had the
+prose "the limb wraps the servo's .bay() with a 1.6-2.4 mm wall", done by
+hand. The one good example grew drums round its knee motors. A QDD housing
+does not use `.bay()`, whose grown rear face would remove the seat; it is
+held by screws the mounting check counts.
+
+**Tests.** `cadex_tests/test_panels.py` (stator screws on the drive's own
+hole axes for both seats and both QDDs, stocked lengths within the hole
+depth, servo housings cut with their own bay, `.fuse` re-cutting, and on the
+kernel a valid single solid touching and not entering the motor).
+
+**Consequences.** A housing's screws touch the drive's tapped bores at 0.0
+mm: declare `contacts=[(screw, drive)]`. A front seat that leaves under
+0.6 mm between the opening and the screw holes is refused naming the other
+face.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-612 — The shell check: floating, solid, unmounted, measured (2026-10-09)
+
+**Decision.** The assembly worker measures every component declared
+`appearance="shell"` after the static fit (`_measure_shell_gaps`, published
+as the assembly output's `shell_gaps` and in `inspect scope=clearance` as
+`/shell_gaps`): about 400 area-weighted surface samples with outward
+normals, each measured exactly (point to triangle, numpy) against the
+tessellation of the non-shell, non-world components whose boxes come within
+5 mm of the shell's; samples whose normal points at their nearest content
+point are the inner face. `CadexFitReport.shell_summary` (in `fit.shells`)
+reports per shell `gap_median_mm`, `gap_p25_mm`, `gap_p90_mm`,
+`hug_fraction` (inner face within 4 mm), `wall_mm` (2 x volume / area),
+`mounted` (`screws` | `welded` | null) and findings `floating` (median
+gap over 6.0 mm, or no sample facing the contents), `covers nothing`,
+`solid` (wall over 4.0 mm) and `unmounted` (no touching bolt bites 0.1 mm³
+into a non-shell part, no touching fixed joint to one), worst first. Its
+own verdict (`pass`, `reported`, `none`, `unavailable`); counted among no
+fit failure; the progress line adds `shells: N of M reported`.
+
+**Why.** The fit block cannot see an egg: it passes every pair at any
+clearance over 0.1 mm. Thresholds from the real-engine proof: `lib.panel`
+panels measured a median 2.5-4.7 mm, `lib.housing` 0.5 mm, a hollow egg by
+eye over the same parts 31.3 mm (hug 0.5%); a printed panel's wall estimate
+is 1.9-2.0 mm with bosses, a filled loft's a third of its width or more.
+6 mm keeps a superellipse over a box's flat faces fitted; 4 mm is twice the
+thickest printed panel. Cheap: a box prefilter per shell and one
+tessellation per component, about a second per shell on the proof trunk.
+
+**Tests.** `cadex_tests/test_panels.py` (gap statistics on a cube, inner
+face only; the block passing a screwed thin hugging panel, reporting an
+egg as floating and unmounted, a lump as solid and a cap as covering
+nothing, worst first; riding in `fit_summary` and cut in `fit_view`; an
+older revision reported as unmeasured), `cli/tests/test_clearance.py`
+(progress line).
+
+**Consequences.** Only declared shells are judged; an undeclared printed
+part is not. The gap is to the contents' tessellation at 0.3 mm deflection.
+A revision accepted before this ADR publishes no `shell_gaps`, and its rows
+say `"gap": "unmeasured"`.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
