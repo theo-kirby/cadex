@@ -193,17 +193,21 @@ def test_build_reply_resolves_late_fit_pages_or_reports_unavailable(
     else:
         assert fit['verdict'] == 'fail' and fit['pairs_checked'] == 60
         assert fit['counts'] == {'clear': 57, 'intersection': 1, 'below clearance': 0,
-                                 'unknown': 1, 'missed contact': 1, 'world geometry': 1}
-        assert fit['failing_count'] == 4
+                                 'unknown': 1, 'missed contact': 1}
+        assert fit['failing_count'] == 3
         # Worst first in the model's view (ADR-435): the rows with no
-        # numbers, then the overlap, then the gap.
+        # numbers, then the overlap, then the gap. The world geometry is
+        # named beside them and is not one of them (ADR-623).
         assert [(f['first'], f['second'], f['status']) for f in fit['failing']] == [
-            ('base', 'link57', 'unknown'), ('environment', '', 'world geometry'),
+            ('base', 'link57', 'unknown'),
             ('base', 'link58', 'intersection'), ('base', 'link59', 'missed contact')]
+        assert fit['world_geometry'] == [{'component': 'environment',
+                                          'reason': 'declared world geometry'}]
+        assert fit['world_geometry_count'] == 1
         assert fit['failing'][0]['error'] == pairs[57]['error']
-        assert fit['failing'][2]['common_volume_mm3'] == 248.2
-        assert fit['failing'][3]['distance_mm'] == 0.2
-        assert fit['failing'][3]['intent'] == {'kind': 'contact'}
+        assert fit['failing'][1]['common_volume_mm3'] == 248.2
+        assert fit['failing'][2]['distance_mm'] == 0.2
+        assert fit['failing'][2]['intent'] == {'kind': 'contact'}
 
 
 def test_the_prose_report_prints_the_fit_and_each_failing_pair():
@@ -375,7 +379,8 @@ def test_fit_intent_survives_acceptance_and_reopen(engine, tmp_path):
         assert failures['a', 'b']['status'] == 'missed contact'
         assert failures['a', 'b']['distance_mm'] == pytest.approx(0.2)
         assert failures['b', 'c']['status'] == 'intersection'
-        assert failures['a', '']['status'] == 'world geometry'
+        assert ('a', '') not in failures
+        assert [row['component'] for row in fit['world_geometry']] == ['a']
     before = json.loads((root / 'script.json').read_text())
     with CadexdClient(engine) as client:
         open_project(client, root)
@@ -1362,14 +1367,17 @@ def test_a_foot_resting_on_the_floor_is_reported_not_failed():
 
     ``ot10-hexapod-6``'s six ball feet rest on ``c_floor`` at 0.0 mm with no
     common volume, and each read ``below clearance``. They are published
-    under ``world_geometry_contacts``; only the floor's own row still fails.
+    under ``world_geometry_contacts``, and the floor itself is named under
+    ``world_geometry`` and never fails either (ADR-623), so the stance passes.
     """
 
     from cadex_cli.bridge import _fit_line
     foot = {'first': 'c_floor', 'second': 'c_foot_fl', 'distance_mm': 0.0,
             'common_volume_mm3': 0.0, 'intent': {}}
     fit = fit_summary(_floor_stance(foot))
-    assert [f['status'] for f in fit['failing']] == ['world geometry']
+    assert fit['failing'] == [] and fit['verdict'] == 'pass'
+    assert fit['world_geometry'] == [{
+        'component': 'c_floor', 'reason': 'collision plane declared on design component'}]
     assert fit['counts']['below clearance'] == 0
     assert fit['counts']['world geometry contact'] == 1
     assert fit['world_geometry_contact_count'] == 1
@@ -1380,7 +1388,7 @@ def test_a_foot_resting_on_the_floor_is_reported_not_failed():
                            'reason': 'collision plane declared on design component'}}]
     assert fit['world_geometry_note'].startswith('Reported, never')
     assert _fit_line(fit).startswith(
-        'fit fail: 1 failing of 2 pair(s); 1 resting on world geometry (advisory)')
+        'fit pass: 0 failing of 2 pair(s); 1 resting on world geometry (advisory)')
 
 
 @pytest.mark.parametrize('foot, status', [
@@ -1397,6 +1405,6 @@ def test_a_foot_resting_on_the_floor_is_reported_not_failed():
 def test_only_resting_on_world_geometry_is_advisory_at_the_solved_pose(foot, status):
     fit = fit_summary(_floor_stance(foot))
     assert [(f['first'], f['second'], f['status']) for f in fit['failing']] == [
-        (foot['first'], foot['second'], status), ('c_floor', '', 'world geometry')]
+        (foot['first'], foot['second'], status)]
     assert fit['world_geometry_contact_count'] == 0
     assert 'world_geometry_note' not in fit

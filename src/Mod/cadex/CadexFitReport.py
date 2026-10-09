@@ -1071,11 +1071,13 @@ def fit_summary(
         if row.get("error"):
             item["error"] = str(row["error"])
         failing.append(item)
-    for world in value.get("world_geometry", []):
-        counts["world geometry"] = counts.get("world geometry", 0) + 1
-        failing.append({"first": world["component"], "second": "",
-                        "status": "world geometry", "distance_mm": None,
-                        "common_volume_mm3": None, "error": world["reason"]})
+    # The world geometry itself -- a floor declared ``world=True``, a
+    # collision plane -- is the stage, not a pair (ADR-623). It used to be a
+    # failing row of its own, so a design that declared its floor exactly as
+    # asked could never pass; it is named here and never moves the verdict.
+    environment = [{"component": str(row["component"]), "reason": str(row.get("reason") or "")}
+                   for row in value.get("world_geometry") or []
+                   if isinstance(row, dict) and row.get("component")]
     available = bool(value.get("available")) or bool(pairs)
     if not available:
         verdict = "unavailable"
@@ -1100,6 +1102,9 @@ def fit_summary(
         "threaded_count": threaded,
         "failing_count": len(failing),
         "failing": failing,
+        # The world geometry itself (ADR-623): named, never failing.
+        "world_geometry_count": len(environment),
+        "world_geometry": environment,
         # Parts standing on world geometry (ADR-427): named, never failing.
         "world_geometry_contact_count": len(resting),
         "world_geometry_contacts": resting,
