@@ -1494,7 +1494,7 @@ def catalog_families() -> dict[str, Any]:
         },
         "qdd_actuators": {
             "skus": sorted(QDD_ACTUATORS),
-            "notes": "lib.qdd(sku): quasi-direct-drive joint actuators (motor, planetary stage, FOC driver) as a sourced coaxial envelope with stator and output bolt circles; .actuator(joint) is a torque motor at the datasheet peak (or rated) output torque, .joint_dynamics(joint) the peak-to-no-load torque-speed line, reflected rotor inertia and back-drive friction; .mounting() the stator and output screws (lib.bolt, sized to the drawn thread depth) and the clearance holes to cut for them. Two tiers: cubemars-ak70-10 (621 g, 24.8 N*m peak) and cubemars-ak80-9-v3 (490 g, 22 N*m) for hips and knees; cubemars-ak60-6-v3 (380 g, 9 N*m) and cubemars-ak45-10-v3 (262 g, 7 N*m, 24 V) for necks, heads, jaws, tails and arms. No thermal model.",
+            "notes": "lib.qdd(sku): quasi-direct-drive joint actuators (motor, planetary, FOC driver) as a sourced coaxial envelope with stator and output bolt circles; methods in section=library_parts. Two tiers: cubemars-ak70-10 (621 g, 24.8 N*m peak) and cubemars-ak80-9-v3 (490 g, 22 N*m) for hips and knees; cubemars-ak60-6-v3 (380 g, 9 N*m) and cubemars-ak45-10-v3 (262 g, 7 N*m, 24 V) for necks, heads, jaws, tails and arms. No thermal model.",
         },
         "gearmotors": {
             "skus": sorted(GEARMOTORS),
@@ -1543,12 +1543,9 @@ def catalog_families() -> dict[str, Any]:
                 "part; .horn(style) the matching horn (micro family only so "
                 "far), where style is exactly one of "
                 + ", ".join(repr(name) for name in sorted(MICRO_HORNS))
-                + " and defaults to 'single_arm'; .actuator(joint, "
-                "control_deg=...) a position actuator "
-                "bounded by the real stall torque; .spec the numbers, with "
-                "spec['approximate'] naming any field no datasheet "
-                "dimensions. Full dimension rows live in lib.servo(sku).spec "
-                "rather than here. The bus servo (family 'bus', sts3215) has "
+                + " and defaults to 'single_arm'; .actuator, .bay and .spec "
+                "(spec['approximate'] names any undimensioned field) are in "
+                "section=library_parts. The bus servo (family 'bus', sts3215) has "
                 "no tabs: it is held by M2 self-tapping screws into four holes "
                 "on its output face and four on its rear face, listed in "
                 "spec['mount_points'] with the axis each screw enters along; "
