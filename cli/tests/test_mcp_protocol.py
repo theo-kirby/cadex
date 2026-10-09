@@ -24,6 +24,7 @@ from cadex_cli.bridge import BUILD_VIEW_LIST_LIMIT, Bridge
 from cadex_cli.tools import BRIDGE_TOOLS, CLI_TOOL_OPS, tool_definitions
 
 from fake_cadexd import (
+    anatomy_value,
     inventory_value,
     FakeCadexd, accepted_reply, clearance_value, inspect_reply, rejected_reply,
 )
@@ -196,6 +197,8 @@ def _fit_client(pairs, inventory=None, sweep=None, **replies):
     def inspect(args):
         if args["scope"] == "inventory":
             return inspect_reply(args, inventory_value(inventory))
+        if args["scope"] == "anatomy":
+            return inspect_reply(args, anatomy_value())
         assert args["scope"] == "clearance", args
         return inspect_reply(args, clearance_value(pairs, sweep=sweep))
     write = accepted_reply("write", "rev-2")
@@ -229,8 +232,8 @@ def test_a_build_reply_carries_the_measured_fit_beside_the_stdout() -> None:
     assert failing["common_volume_mm3"] == 100.0 and failing["distance_mm"] == 0.0
     assert "stdout" in fit["source"] and "inspect scope=clearance" in fit["source"]
     # It was read from the store the build published to, after the build.
-    assert [op for op, _ in client.calls] == ["write_script", "inspect", "inspect"]
-    assert [a["scope"] for a in client.args_for("inspect")] == ["clearance", "inventory"]
+    assert [op for op, _ in client.calls] == ["write_script", "inspect", "inspect", "inspect"]
+    assert [a["scope"] for a in client.args_for("inspect")] == ["clearance", "inventory", "anatomy"]
     # ...and the parent saw the same thing the model did: one failing pair
     # is under the view's limit, so the bounded view is the whole block.
     assert call.fit == last_fit
@@ -384,8 +387,9 @@ def test_every_modelling_op_carries_a_fit_block_and_no_read_does() -> None:
             assert "fit" not in payload, tool
             assert "inventory" not in payload, tool
     calls = [op for op, _ in client.calls]
-    # Four fit reads, four inventory reads and the model's own.
-    assert calls.count("inspect") == 9
+    # Four fit reads, four inventory reads, four anatomy reads (ADR-614)
+    # and the model's own.
+    assert calls.count("inspect") == 13
 
 
 def test_a_refused_build_carries_no_fit_block() -> None:
@@ -878,3 +882,64 @@ def test_a_section_the_contract_lacks_is_refused_by_name() -> None:
     assert view["sections"] == ["assembly", "library"]
     assert "'sketch'" in view["error"] and "assembly, library" in view["error"]
     assert client.args_for("describe_api") == [{}]
+
+
+# -- the anatomy block (ADR-614) ---------------------------------------------
+
+
+def test_a_build_reply_carries_the_anatomy_block_bounded() -> None:
+    """A heron's head welded to its neck reads rigid with no reason beside
+    the articulated neck, and the parent keeps the whole block."""
+
+    neck = {"region": "neck", "status": "articulated", "components": ["lower_neck", "upper_neck"],
+            "joints": [{"joint": "neck", "kind": "revolute", "dof": 1, "drive": "actuated",
+                        "actuators": 1}],
+            "joint_dof": 1, "actuated_dof": 1, "parent_region": "spine"}
+    head = {"region": "head", "status": "rigid, no reason",
+            "components": [f"part_{i}" for i in range(9)], "joints": [],
+            "joint_dof": 0, "actuated_dof": 0, "welded_to": ["neck"]}
+    welded = {"components": ["head", "tof"], "welded_to": "upper_neck", "joint": "w_head",
+              "extent_mm": [225.0, 30.0, 53.4], "protrudes_mm": 152.1, "toward": "+x",
+              "regions": ["head"], "acknowledged": False, "component_count": 2}
+    value = anatomy_value([neck, head], verdict="incomplete", appendages=[welded])
+
+    def inspect(args):
+        if args["scope"] == "anatomy":
+            return inspect_reply(args, value)
+        return inspect_reply(args, inventory_value() if args["scope"] == "inventory"
+                             else clearance_value())
+
+    client = FakeCadexd(replies={"inspect": inspect})
+    with Bridge(client, initial_revision="rev-1") as bridge:
+        payload = json.loads(bridge.call("write_script", {"source": "x"})["content"][0]["text"])
+        assert bridge.state.last_anatomy == value
+    block = payload["anatomy"]
+    assert block["verdict"] == "incomplete" and block["full"] == "inspect scope=anatomy"
+    assert block["actuated_dof"] == 1 and block["unacknowledged_appendages"] == 1
+    assert [r["status"] for r in block["regions"]] == ["articulated", "rigid, no reason"]
+    assert block["regions"][0]["joints"] == ["neck (revolute, actuated)"]
+    assert block["regions"][1]["components"] == {
+        "first": [f"part_{i}" for i in range(6)], "count": 9}
+    assert block["rigid_appendages"][0]["joint"] == "w_head"
+    assert "source" not in block
+
+
+def test_an_engine_without_the_scope_reports_anatomy_unavailable() -> None:
+    """An older engine refuses the scope; the build is still accepted."""
+
+    def inspect(args):
+        if args["scope"] == "anatomy":
+            return {
+                "ok": False, "tool": "core.inspect", "error": "Unknown core.inspect scope",
+                "failure_code": "INSPECTION_FAILED", "failure_stage": "precondition",
+                "observed": {}, "normalized": {}, "requested": {}, "retry": False,
+                "candidates": [], "allowed_values": [], "native_diagnostics": [],
+                "state_change": "none",
+            }
+        return inspect_reply(args, clearance_value())
+
+    with Bridge(FakeCadexd(replies={"inspect": inspect}), initial_revision="rev-1") as bridge:
+        reply = bridge.call("write_script", {"source": "x"})
+    assert reply["is_error"] is False
+    block = json.loads(reply["content"][0]["text"])["anatomy"]
+    assert block["verdict"] == "unavailable" and "Unknown core.inspect scope" in block["error"]

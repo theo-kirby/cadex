@@ -52,3 +52,9 @@ STUDIO = load_studio(ENGINE_MODULE_DIR)
 FIT_REPORT = load_studio(ENGINE_MODULE_DIR, "CadexFitReport")
 #: Which outputs have a surface to print (ADR-156, ADR-158), as the export reads it.
 PRINTABLES = load_studio(ENGINE_MODULE_DIR, "CadexPrintables")
+#: The anatomy block's bounded view and ``look`` measure (ADR-614). None on
+#: an engine staged before it, which then carries no anatomy block at all.
+try:
+    ANATOMY = load_studio(ENGINE_MODULE_DIR, "CadexAnatomy")
+except StudioUnavailable:
+    ANATOMY = None

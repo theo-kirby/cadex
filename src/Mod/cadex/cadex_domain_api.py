@@ -147,6 +147,9 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # from the reward it must never read (ADR-456).
         "success": "success",
         "exploded_view": "exploded_view",
+        # A creature's moving region -- an argument to the assembly, never
+        # published on its own (ADR-613).
+        "anatomy": "anatomy",
     },
     "material": {
         "material": "material_assignment",

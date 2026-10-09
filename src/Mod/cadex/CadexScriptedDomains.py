@@ -330,6 +330,9 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             # success spec (ADR-462).
             "goal",
             "exploded_view",
+            # ...and a region of a creature's moving anatomy, an argument to
+            # api.assembly (ADR-613).
+            "anatomy",
         ),
         production_ready=True,
     ),

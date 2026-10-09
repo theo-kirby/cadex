@@ -5,6 +5,7 @@ set(Cadex_Scripts
     Init.py
     CadexEngineSettings.py
     CadexInspection.py
+    CadexAnatomy.py
     CadexModelingSurface.py
     CadexPinResolution.py
     CadexReferenceContracts.py

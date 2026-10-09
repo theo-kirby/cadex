@@ -268,6 +268,12 @@ def test_clearance_is_a_served_inspect_scope_the_cli_offers(tmp_path) -> None:
     assert "contacts" in offered
     captured = capture_inspection(_service(tmp_path), {"scope": "contacts"})
     assert captured["kind"] == "contacts"
+    # ...and `anatomy` (ADR-614): the `anatomy` block on a build reply is a
+    # bounded view of exactly this scope, the declared regions and the
+    # welded appendages read off the accepted joint graph.
+    assert "anatomy" in offered
+    captured = capture_inspection(_service(tmp_path), {"scope": "anatomy"})
+    assert captured["kind"] == "anatomy"
     assert "image" not in offered
     for scope in offered:
         # Every scope the CLI offers is one the engine knows: an offered

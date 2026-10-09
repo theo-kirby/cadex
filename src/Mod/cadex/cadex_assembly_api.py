@@ -1242,6 +1242,9 @@ class AssemblyDomainAPI:
         # to its success spec (ADR-462).
         "goal",
         "exploded_view",
+        # A creature's moving anatomy: an argument to api.assembly, which
+        # the build reply's anatomy block checks (ADR-613).
+        "anatomy",
     )
 
     def __init__(self, exports: Iterable[str], output_types: Iterable[str]) -> None:
@@ -1521,6 +1524,53 @@ class AssemblyDomainAPI:
             label=label,
         )
 
+    def anatomy(
+        self,
+        region: str,
+        components: Sequence[DomainValue],
+        *,
+        reason: str | None = None,
+        label: str = "",
+    ) -> DomainValue:
+        """Name one region of a creature's moving anatomy and the components it is.
+
+        ``region`` is free text; the vocabulary the build reply reads best is
+        spine, neck, head, jaw, tail, arm_l/arm_r, leg_fl/leg_fr/leg_rl/leg_rr
+        (or leg_l/leg_r), wing_l/wing_r, toe. ``components`` are the
+        ``api.component`` values that region is made of (each in at most one
+        region). ``reason=`` is how a region is deliberately rigid -- say why,
+        with the measurement ("ossified tail: raptor tails were stiff; a tail
+        joint costs 0.4 kg the hip torque margin cannot carry"). Pass the list
+        to ``api.assembly(..., anatomy=[...])``; do not return it. Every build
+        reply then carries an ``anatomy`` block: per region, the joints that
+        move it relative to the region it hangs off, which an ``api.actuator``
+        drives, and ``articulated`` / ``rigid`` / ``rigid, no reason`` /
+        ``passive only`` (ADR-613, ADR-614).
+        """
+
+        operation = "anatomy"
+        clean_region = " ".join(str(region or "").split())
+        if not clean_region or len(clean_region) > 48:
+            raise _error(operation, "region", "expected a region name of 1 to 48 characters", region)
+        values = _values(operation, "components", components,
+                         output_type="component_link", minimum=1)
+        clean_reason = None
+        if reason is not None:
+            if not isinstance(reason, str) or not reason.strip():
+                raise _error(operation, "reason",
+                             "expected the reason this region is rigid, or None", reason)
+            clean_reason = " ".join(reason.split())
+            if len(clean_reason) > 600:
+                raise _error(operation, "reason", "is limited to 600 characters", len(clean_reason))
+        return self._value(
+            operation,
+            "anatomy",
+            *values,
+            region=clean_region,
+            **({"reason": clean_reason} if clean_reason else {}),
+            label=label,
+        )
+
     def assembly(
         self,
         components: Sequence[DomainValue],
@@ -1531,6 +1581,7 @@ class AssemblyDomainAPI:
         contacts: Sequence[Sequence[DomainValue]] = (),
         clearances: Sequence[Sequence[Any]] = (),
         palette: Mapping[str, str] | None = None,
+        anatomy: Sequence[DomainValue] = (),
         label: str = "",
     ) -> DomainValue:
         """Build one assembly graph from returned component and joint variables.
@@ -1551,6 +1602,8 @@ class AssemblyDomainAPI:
         ``palette={"shell": "#E9E6DF", "accent": "#F26A1B"}`` sets the colour
         of any appearance role; an unnamed role keeps its default (bone
         shell, graphite mechanism, signal-orange accent).
+        ``anatomy=[api.anatomy(...), ...]`` declares a creature's moving
+        regions, which every build reply's ``anatomy`` block checks.
         """
 
         operation = "assembly"
@@ -1599,11 +1652,30 @@ class AssemblyDomainAPI:
                 if kind == "clearance":
                     row["minimum_mm"] = _number(operation, "minimum_mm", entry[2], minimum=0)
                 intent.append(row)
+        regions = _values(operation, "anatomy", anatomy, output_type="anatomy", minimum=0)
+        named: set[str] = set()
+        placed: set[int] = set()
+        for index, region in enumerate(regions):
+            name = str(region.properties.get("region") or "")
+            if name in named:
+                raise _error(operation, f"anatomy[{index}]",
+                             "names a region another entry already declared", name)
+            named.add(name)
+            for component in region.arguments:
+                if id(component) not in component_ids:
+                    raise _error(operation, f"anatomy[{index}]",
+                                 "references a component that is not listed in components", name)
+                if id(component) in placed:
+                    raise _error(operation, f"anatomy[{index}]",
+                                 "lists a component another region already holds; a "
+                                 "component belongs to one region", name)
+                placed.add(id(component))
         return self._value(
             operation,
             "assembly",
             components=component_values,
             joints=joint_values,
+            **({"anatomy": regions} if regions else {}),
             **({"fit_intent": intent} if intent else {}),
             **({"sweep_step_degrees": sweep_step_degrees} if sweep_step_degrees is not None else {}),
             **({"sweep_step_mm": sweep_step_mm} if sweep_step_mm is not None else {}),

@@ -2799,6 +2799,45 @@ not be read; neither refuses the build. `inventory` is an `inspect` scope
 on the model's surface for the same reason, and the last accepted build's
 block is the envelope's `inventory`.
 
+### Every build reply carries the creature's moving anatomy (ADR-614)
+
+Beside `fit` and `inventory`, the same four replies carry an `anatomy`
+block, read from `inspect scope=anatomy` under the same lock. It is the
+bounded view (`CadexAnatomy.anatomy_view`) of the regions the script
+declared with `assembly.anatomy` (`docs/XSCRIPT.md` "Anatomy"), computed from
+the accepted joint graph only. On `cbase-heron-a` with seven regions
+declared (abridged):
+
+```json
+"anatomy": {
+  "verdict": "incomplete", "actuated_dof": 7, "joint_dof": 25,
+  "mobile_joints": 16, "actuated_joints": 7, "rigid_bodies": 14,
+  "root_component": "bulkhead", "unacknowledged_appendages": 3,
+  "regions": [
+    {"region": "spine", "status": "root", "components": ["bulkhead", "spine", "mantle"], "joints": []},
+    {"region": "neck", "status": "articulated", "joint_dof": 7, "actuated_dof": 1,
+     "joints": ["neck (revolute, actuated)", "neck_mid (revolute, loop)",
+                "neck_rod_base (cylindrical, loop)", "neck_rod_head (ball, loop)"],
+     "welded_to": ["spine"]},
+    {"region": "head", "status": "rigid, no reason", "components": ["head", "tof"],
+     "joints": [], "welded_to": ["neck"]}
+  ],
+  "rigid_appendages": [
+    {"joint": "w_head", "welded_to": "upper_neck", "components": ["head", "tof", "tof_screw_0", "tof_screw_1"],
+     "extent_mm": [225.0, 30.0, 53.38], "protrudes_mm": 152.063, "toward": "+x",
+     "regions": ["head"], "acknowledged": false}
+  ],
+  "full": "inspect scope=anatomy"
+}
+```
+
+**The block is advisory**: no verdict refuses a build. `undeclared` (no
+`anatomy=`) still carries the totals and the welded appendages; an engine
+without the scope, or a block that cannot be read, gives `verdict:
+unavailable` with the `error`. The whole block is the bridge's
+`last_anatomy`, and `look` adds `measures.anatomy` (verdict, `meets`,
+`open_regions`, `actuated_dof`) beside the design-language measures.
+
 ### What the agent is told
 
 One text (`guidance.py`, ADR-538), printed by `cadex guidance`. `cadex mcp`
