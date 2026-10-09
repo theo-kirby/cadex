@@ -37821,3 +37821,197 @@ parent access are blocked and its origin is `"null"`).
 schema name.
 
 Verified against source: 2026-10-08. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-615 — The xscript sandbox provides `math` (2026-10-09)
+
+**Decision.** The sandbox's builtins carry `math`: a read-only namespace
+(`cadex_domain_worker.SANDBOX_MATH`), not the module object, holding the
+deterministic whitelist `SANDBOX_MATH_NAMES` — the constants `pi e tau inf
+nan`, the trigonometric and hyperbolic functions and their inverses,
+`atan2`, `sqrt cbrt hypot dist exp expm1 exp2 log log2 log10 log1p pow`,
+`radians degrees`, `floor ceil trunc fabs fmod remainder modf copysign`,
+`isclose isfinite isinf isnan` and `fsum prod gcd lcm isqrt`. `factorial`,
+`comb` and `perm` are left out. `import` stays refused (ADR-138); `import
+math` and `from math import …` are refused with "`math` is already provided
+-- delete the import and call math.sin(...) … directly". The project pack's
+`instructions` say so.
+
+**Why.** Six audited sessions (cbase-*, 2026-10-09) wrote Taylor-series
+sin/cos and Rodrigues rotations by hand because the sandbox had no `math`.
+Every name kept is a pure function of its arguments or a constant, so the
+determinism contract holds: the same script built in two fresh projects on
+the real engine gave the same digest (`090d85f4…`). A namespace rather than
+the module keeps `__spec__`/`__loader__` out of reach of a computed
+`getattr` (ADR-616).
+
+**Tests.** `src/Mod/cadex/cadex_tests/test_script_refusal_diagnostics.py`
+(`test_math_is_provided_and_deterministic`,
+`test_math_is_read_only_and_only_the_whitelist`,
+`test_import_math_is_refused_with_the_fix`).
+
+**Consequences.** A script may call `math.*` with no import. The source
+policy's import refusal is unchanged in substance.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-616 — Safe introspection in the sandbox: getattr, hasattr, dir, type (2026-10-09)
+
+**Decision.** The sandbox's builtins gain `getattr(obj, name[, default])`
+and `hasattr(obj, name)`, which refuse a non-`str` name, a name starting
+with `_`, and the frame attributes `SANDBOX_BLOCKED_ATTRIBUTES` (`gi_frame
+gi_code cr_frame cr_code ag_frame ag_code tb_frame tb_next f_back f_globals
+f_locals f_builtins f_code`); `dir(obj)` listing public names only and
+`dir()` the script's own; one-argument `type(obj)` (the class factory is
+refused); `isinstance`, `callable`, `repr`; and `AttributeError`,
+`KeyError`, `IndexError`, `ZeroDivisionError`. The AST source policy also
+refuses those frame attributes written as attributes
+(`CadexScriptedDomains._BLOCKED_ATTRIBUTES`, test-held equal to the
+worker's set).
+
+**Why.** The sessions probed lib parts by trial refusal because `dir`,
+`hasattr`, `getattr` and `type` were undefined names. The security model is
+the AST policy's "no private attribute", so the computed forms apply the
+same rule at run time. The frame attributes were already a gap in that
+rule -- a generator's `gi_frame.f_back.f_globals` reaches the worker's own
+module globals with no underscore -- and a `getattr` that honoured only the
+underscore would have been a second door to it, so both doors close.
+
+**Tests.** `test_script_refusal_diagnostics.py`
+(`test_safe_introspection_works_on_public_names`,
+`test_introspection_refuses_private_dunder_and_frame_names`,
+`test_type_is_one_argument_and_frames_are_refused_by_the_policy`,
+`test_the_two_frame_attribute_lists_are_one_list`); real engine: a script
+using `getattr(part, "box")`, `hasattr`, `dir(lib)` and `isinstance` was
+accepted.
+
+**Consequences.** A script naming a frame attribute is now refused by the
+source policy (none in the tree did).
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-617 — A kernel refusal names the failing call; a kernel crash is a refusal (2026-10-09)
+
+**Decision.** (1) While a project worker runs, every `DomainValue` records
+the script line that made it (`cadex_domain_api.track_creation_sites`,
+`creation_lines`), in a registry beside the payload and never in it. A part
+build that raises keeps the payload it failed on and appends each enclosing
+call (`cadex_part_worker._note_failure_site`); the worker's failure report
+turns that into `details.failure_site` -- `output`, `call`, `lines`, the
+script's `names` for the value (globals, list and dict entries, result
+keys), `inside`, and `operands` located the same way -- and appends a
+sentence to `error`. An exception the script raised itself gets `Raised at
+script line N.` (2) Around each crash-prone part operation (fillet,
+chamfer, fuse, cut, common, section, general_fuse, slice, defeature,
+offset, offset2d, thicken, loft, loft_cage, sweep, mate) the worker writes
+`kernel.json` beside its CPU ledger and clears it on exit. A worker that
+leaves no `result.json` with a breadcrumb in flight is refused as
+`DOMAIN_WORKER_NO_RESULT` with `domain_failure_stage: "kernel_crash"`,
+`observed.kernel_operation`, a message naming the call, and a correction.
+
+**Why.** "api.fuse: declared solid but OpenCascade produced Compound
+containing 2 solids" in a script with forty fuses, and a fillet segfault in
+`ChFi3d_FilBuilder::PerformTwoCorner` that came back as "exited without a
+result", were bisected by hand in the audited sessions. On the real engine
+now: `… Compound containing 2 solids. Failing call: result['pelvis'],
+pelvis = part.fuse (script line 5), while building output 'pelvis';
+operands: argument 0[0]: hip_l = part.box (script line 2); argument 0[1]:
+hip_r = part.box (script line 3).` -- and the cbase-heron-a crash, rebuilt
+from its transcript: `The isolated domain worker crashed (SIGSEGV) inside
+OpenCascade while running part.fillet made at script line 328 (arg1=2.0,
+on_failure=skip), during 'output foot_l_body'.` Line 328 is that fillet.
+Lines stay out of the payload so definitions, memo keys and digests do not
+move when a comment does.
+
+**Tests.** `test_script_refusal_diagnostics.py` (creation lines beside the
+payload, the named fuse refusal, nesting, script-raised lines, the crash
+refusal through `execute_candidate`, the breadcrumb written and cleared).
+
+**Consequences.** The failure envelope's keys are unchanged; `error` grows
+a sentence. Each crash-prone build costs two small file writes.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-618 — A solver refusal says what the solver said, and reaches the model whole (2026-10-09)
+
+**Decision.** A native-solver refusal appends the solver's own message,
+every joint it did not report satisfied (mapped from document names such
+as `CandidateJoint12` to output names) and the remaining degrees of
+freedom (`cadex_assembly_worker._solver_failure_summary`); `details` adds
+`solver_message` and `implicated_joints`. A silent failure says what a
+silent failure usually is. The bridge's model view of every refusal
+(`bridge.refusal_view`) keeps every envelope key and bounds the bulk in
+`observed`: OCCT's progress meter is dropped from `stderr`, `stderr` and
+`traceback` keep 3,000-character tails, `component_placements` becomes a
+count, `native.joints` keeps the unsatisfied rows, and long
+`joint_outputs` lists are cut.
+
+**Why.** The `solver_error (code -1)` detail was not truncated by the
+engine but by the agent harness: on cbase-deinonychus-a the refusal was
+293,000 characters -- 125 placement matrices first in sorted order, an
+OCCT progress meter last -- and the harness kept the first and last 5,000.
+The solver's message and the blamed joints were in the cut middle. On the
+real engine now (two crossed hinges on one lever): `…solver_error (code
+-1), reporting conflicting constraints, redundant constraints, partially
+redundant constraints. The solver said: 'vector::_M_range_check: …'. Joints
+it implicated: hinge_a (conflicting), hinge_b (conflicting). Remaining
+degrees of freedom: 0.`, and the MCP result was 9,059 characters.
+
+**Tests.** `test_script_refusal_diagnostics.py` (summary by output name,
+silent failure); `cli/tests/test_refusal_view.py` (a 250,000-character
+refusal reaches the model under 15,000 with its diagnosis).
+
+**Consequences.** The engine reply and the session row are unchanged; only
+the model's view is bounded.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-619 — describe_api lists what each lib part can do (2026-10-09)
+
+**Decision.** `describe_api.library.part_classes` lists every public class
+of `cadex_library_api` but the API and its error -- `QddPart`, `ServoPart`,
+`BoardPart`, `BoardMounting`, `WheelPart`, `FootPadPart`, `BatteryPart`,
+`LibraryPart` -- with `returned_by` (the calls annotated as returning it),
+public `attributes`, and each public method's name, signature (no `self`)
+and first paragraph, generated from the classes
+(`CadexScriptedRuntime._library_part_classes`). The bridge serves it as
+its own page, `describe_api section=library_parts` (7,251 characters); the
+index lists each class's method names, and the library section leaves the
+classes out, because it is already 20,963 of the 21,500-character budget.
+
+**Why.** The audited sessions could not find `QddPart.actuator`,
+`.joint_dynamics`, `.bay`, `ServoPart.horn` or `BoardPart.mounting()`: the
+library section listed only the generators.
+
+**Tests.** `test_script_refusal_diagnostics.py::test_describe_api_lists_every_lib_part_method`;
+`cli/tests/test_refusal_view.py` (the section, the index, the library
+page); `cli/tests/test_client.py` (the live page under budget); the golden
+`response_schemas/describe_api.json` carries the shape.
+
+**Consequences.** One new section name; `VIEW_ARGS`, the describe_api tool
+text and the CLI guidance name it. `cadex_library_api.py` is unchanged.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-620 — A refused build carries the script's prints (2026-10-09)
+
+**Decision.** The project worker keeps the script's stdout whether or not
+it raised and sends it in its failure report; the runtime puts the
+worker's `stdout` in the refusal's `observed.stdout` (the process's own
+stdout only from a worker that sent none). The CLI envelope gains
+`stdout`, accepted or refused, and the prose report prints a refused run's
+prints under its error.
+
+**Why.** The StringIO holding a script's prints was dropped with the
+exception, so a print was readable only when the build worked -- exactly
+when it was needed least. Real engine: a script printing three leg lengths
+then dividing by zero now reports `division by zero. Raised at script line
+4.` followed by the three lines.
+
+**Tests.** `test_script_refusal_diagnostics.py`
+(`test_prints_survive_a_script_that_raises`,
+`test_the_worker_failure_report_carries_stdout_and_the_site`).
+
+**Consequences.** `observed.stdout` on a refusal is now the script's
+output, not FreeCADCmd's.
+
+Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).

@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-10-04
+Verified against source: 2026-10-09
 
 **This document is the contract between the engine and its client.** Cadex
 is three things (ADR-500): the **engine** (`cadexd`, at the repo root), the
@@ -151,6 +151,22 @@ discovered through the existing library exports. The new `pi-5`,
 existing `boards` and `servos` shapes. No request op or client dispatch
 changes. `tb6612-adafruit-2448` (ADR-490) is one more `boards` row on the same
 terms.
+
+`describe_api.library.part_classes` (ADR-619) is a list of `{name,
+description, returned_by, attributes, methods}`, `methods` in the exports'
+`{name, signature, description}` shape: what each lib generator returns
+and what can be called on it. It is nested inside `library`, so the
+top-level response table is unchanged; the golden carries its shape.
+
+A refused build's envelope is unchanged in keys (ADR-617, ADR-618,
+ADR-620). Inside it: `error` may end with a `Failing call: …` or
+`Raised at script line N.` sentence and `observed.details.failure_site`
+carries the same as data; a worker that crashed inside a kernel call is
+still `DOMAIN_WORKER_NO_RESULT`, now with `domain_failure_stage:
+"kernel_crash"`, `observed.kernel_operation` and a `retry.required_changes`
+entry; a solver refusal's `observed.details` adds `solver_message` and
+`implicated_joints`; and `observed.stdout` is the script's own prints
+(previously the worker process's stdout, which never held them).
 
 The `describe_api.library.catalog.bldc_motors` family (ADR-206) adds
 `skus` and `notes`; `lib.bldc` uses existing library exports. No request
