@@ -1,3 +1,5 @@
+> **HISTORICAL (moved to `docs/history/` 2026-10-10, ADR-628).** A dated, finished audit; never cite it as current. The live record is `docs/FREECAD.md`.
+
 # Translation updater dependency audit
 
 *Dated record (2026-09-07) of the ADR-232 audit and its disable. The Blender manifest counts below predate the shell's deletion (ADR-498).*

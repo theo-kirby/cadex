@@ -1,6 +1,6 @@
 # Shell parity ledger (orun2, W1)
 
-Verified against source: 2026-10-04. Rows first written 2026-10-03 at
+Verified against source: 2026-10-10. Rows first written 2026-10-03 at
 `a375745c`, before any deletion; audited row by row on 2026-10-04 (§5);
 repointed after ADR-537 and ADR-538 the same day.
 `shell/` is now deleted (ADR-498); every row was written before it was, and
@@ -111,7 +111,7 @@ Owner's defaults (charter A1):
 | `cadex_studio.py` | 135 | Ran `CadexStudio.py` in a subprocess; filled tool names into the guidance | already covered | `cli/cadex_cli/studio.py` `load_studio`; `guidance.py` `agent_guidance` |
 | `cadex_terminal_pick.py` | 1,132 | Fit a hole or pad to selected vertices → terminal, board or mount rows | dropped (ADR-498) | Hands-on wiring and modelling. The engine keeps `CadexBoards` / `CadexMounts.row_from_world` |
 | `cadex_training.py` | 205 | Read live and retained training progress, 2 s poll, ETA | already covered | `review_server.py` `training_telemetry`; `review_record.py` |
-| `cadex_training_plot.py` | 354 | Reward curve with a best-so-far marker | already covered | The 2D viewport's Plots (`review.js`): reward, loss and episode length per run (ADR-534) |
+| `cadex_training_plot.py` | 354 | Reward curve with a best-so-far marker | already covered | The 2D viewport's Plots (`review.js`): reward, loss, episode length and action std per run (ADR-534), and the Status editor's charts with axes and the best iteration and checkpoints marked (`status.js`, ADR-606) |
 | `cadex_views.py` | 195 | Ordering registry for viewport overlays | dropped (ADR-498) | Blender-specific plumbing |
 | `cadex_wire_path.py` | 462 | Edit a cable route as a curve, then send its waypoints to the agent | dropped (ADR-498) | Wiring editor (drop list). The engine keeps `CadexRouting.route_path` |
 | `capture.py` | 915 | Viewport screenshot, four fitted views, image loading for attachments, blueprint sheet rendering | ported (ADR-516) sheet rendering; already covered: looking; image attach ported (ADR-507), then removed (ADR-537, ADR-538) | Agent looking is `CadexStudio.look` (the bridge's `look`). Sheet rendering is `CadexStudio.blueprint_sheet` (see `cadex_sheet.py`; `cli/tests/test_blueprint.py`). Image attach was `cadex -p --image` and the dashboard's **Attach image**; both are gone, and an image now reaches the person's own agent however that agent takes one |

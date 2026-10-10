@@ -1,3 +1,5 @@
+> **HISTORICAL (moved to `docs/history/` 2026-10-10, ADR-628).** A dated, finished audit; never cite it as current. The live record is `docs/FREECAD.md`.
+
 # Help whole-tree removal audit
 
 *Dated record (2026-09-07): Help was disabled (ADR-217), then deleted (ADR-218). The Blender manifest counts below predate the shell's deletion (ADR-498).*

@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-09
+Verified against source: 2026-10-10
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -27,7 +27,7 @@ replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
   a `.cxpart` by reading another project's accepted attempt, and
   `inspect scope="assets"` lists what is there.
 - Sidecar state: `<project>/script.json` (schema `cadex-project-script-v1`,
-  `CadexScriptStore.py:62`, class `CadexProjectScriptStore` — split out of
+  `CadexScriptStore.py:25`, class `CadexProjectScriptStore` — split out of
   `CadexProject.py` in C1) — cached `param_specs`,
   `param_values`, working/accepted revision, accepted contract (output
   names/types/domains), `accepted_digest`, latest candidate/failure.
@@ -47,7 +47,8 @@ replaced the VibeCAD-era per-domain multi-program surface `[Cadex-new]`.
 - Execution artifacts live under `<project>/script_artifacts/<revision>/`.
 - Revision = `project_script_revision` over `{schema, domain: "project",
   source, param_specs, param_values}` (`CadexScriptedDomains.py`) —
-  content-addressed, key-order independent. Every mutation tool carries an
+  content-addressed, key-order independent. `write_script`, `edit_script`
+  and `set_params` (and the read `preview_params`) carry an
   `expected_revision` guard; a mismatch returns `STALE_PROGRAM_REVISION`
   with the observed current revision.
 
@@ -789,7 +790,7 @@ call.
   region row carries `status`, `components`, `joints` (`{joint, kind, dof,
   drive, actuators, driven_dof, driver?, within?}`), `joint_dof`,
   `actuated_dof` (declared actuators, or 1 per catalog drive),
-  `parent_region` and, where present, `welded_to` and `reason`.
+  and, where present, `parent_region`, `welded_to` and `reason`.
 - **Status**: `articulated` (a joint of its own, actuated, catalog-driven or
   loop-driven),
   `passive only` (joints, none driven), `root` (the body everything hangs
@@ -876,12 +877,14 @@ Browse before modelling standard hardware by hand: `describe_api`'s
 `library` section lists the families, part numbers and deciding specs
 (`lib.catalog()` serves the same thing inside a script). Catalogued today:
 metric fasteners m2–m8 and m1.6 (socket/countersunk bolts, hex/nyloc nuts,
-flat washers; m1.6 is socket bolts, hex nuts and washers only, ADR-488), heat-set inserts m2–m5, the common ball bearings plus a
+flat washers; nyloc nuts m3–m8 only; m1.6 is socket bolts, hex nuts and washers only, ADR-488), heat-set inserts m2–m5, the common ball bearings plus a
 parametric `lib.bushing`, five servos — SG90, MG90S, MG996R, DS3218 and
 the STS3215 bus servo — with measured micro horns, the nine boards below,
 the 2S pack, the N20 gearmotor with its press-on `lib.wheel` and tyre, a
 screw-on `lib.foot_pad`, and the families that have their own headings
-below. `describe_api section=library` is the authoritative list. The 25T horns and the servo
+below. `describe_api section=library` is the authoritative list, and
+`section=library_parts` what each part can do (`.bay`, `.actuator`, `.horn`,
+`.mounting`, ADR-619). The 25T horns and the servo
 pigtail terminals are deliberately absent until a dimensioned source
 exists.
 
@@ -1247,7 +1250,8 @@ returns a `PanelSet`:
 lead_room=None, label="")` returns a `Housing`:
 
 - A **QDD** gets a drum concentric with its axis, `clearance` off the case
-  and `wall` thick, seated on a `plate` (default 3 mm) against its stator
+  and `wall` thick, seated on a `plate` (default the larger of 3 mm and
+  1.5 × `wall`) against its stator
   face -- `seat="rear"` (default) or `"front"` -- with a clearance hole and a
   `lib.bolt` on every stator hole, sized to the drive's own thread and
   stocked to its hole depth; the output side is open, and the plate's
@@ -1426,7 +1430,7 @@ points, defaulting to world +Z (or +Y for a cage that runs along Z). A
 A ring is a row, so a silhouette changes through `set_params` without a
 script rewrite — which is the whole reason to spell a section table
 this way rather than as literals. (The viewport ring-drag that once wrote
-these rows went with the Blender shell, ADR-500.) `set_params(cages=[...])` replaces a
+these rows went with the Blender shell, ADR-498.) `set_params(cages=[...])` replaces a
 cage's rings wholesale; a ring carries **no name**, because its identity is
 its place in its cage's order.
 
@@ -1567,7 +1571,7 @@ mouth on both ends. The gesture a user actually has is "the rim on top of the
 hole", and the answer they want is "the wire ends there".
 
 `depth` is optional on a declared row and purely descriptive — the bore is
-still that deep and the canvas still reports it, but nothing geometric reads
+still that deep and `inspect scope="wiring"` still reports it, but nothing geometric reads
 it. It used to be the classifier (`depth=0` meant a pad, and `hole_dia` with
 no `depth` was refused); it cannot be one now that it sizes nothing, so
 **`hole_dia` is what makes a row a row of holes.**
@@ -1899,7 +1903,7 @@ The dissolved per-domain operations (`create_program`, `edit_source`,
 asserts no registered tool may carry them again. Reads go through the
 bounded **`core.inspect`** tool (`CadexInspection.py`; scopes `document`,
 `object`, `script`, `api`, `image`, `output`, `assets`, `history`, `wiring`,
-`inventory`, `clearance`, `contacts`, `blueprint` — `script`
+`inventory`, `clearance`, `contacts`, `anatomy`, `blueprint` — `script`
 pages the source and reports specs/values, revisions, accepted contract +
 digest, and the latest candidate; `output` serves any accepted output's
 measured facts from the pinned accepted attempt, so they are readable long
@@ -1918,7 +1922,8 @@ Source is validated before any worker runs (AST policy in
   `breakpoint`, `globals`, `help`, … (`_BLOCKED_NAMES`); no dunder access;
   size and syntax limits; NUL bytes and unsafe project-relative paths
   rejected.
-- Violations return `SOURCE_POLICY_VIOLATION` with offending line numbers —
+- Violations return `INVALID_PROGRAM_SOURCE` (`XScript source policy violation:
+  line N: …`) with offending line numbers —
   structured failure payloads, not exceptions.
 - **`math` is provided, not imported** (ADR-615). The name `math` is a
   read-only namespace (`cadex_domain_worker.SANDBOX_MATH`) holding the
@@ -1965,7 +1970,7 @@ Source is validated before any worker runs (AST policy in
   ledger and clears it on the way out. A worker that dies with no
   `result.json` and a breadcrumb in flight comes back as
   `DOMAIN_WORKER_NO_RESULT` with `domain_failure_stage: kernel_crash`,
-  `observed.kernel_operation`, and a correction:
+  `observed.kernel_operation`, and an error naming the call:
   `The isolated domain worker crashed (SIGSEGV) inside OpenCascade while
   running part.fillet made at script line 328 (arg1=2.0, on_failure=skip),
   during 'output foot_l_body'.`
@@ -1981,12 +1986,14 @@ Source is validated before any worker runs (AST policy in
 - One attempt = one windowless `FreeCADCmd --safe-mode -c …` subprocess
   (runner in `CadexScriptedProcess.py`). The project bundle stages all five
   `cadex_<domain>_{api,worker}.py` modules with entry
-  `cadex_project_worker.py` — **and thirteen more modules by filename**:
-  `CadexSubshapeQuery.py`, `CadexRouting.py`, `CadexBundle.py`,
+  `cadex_project_worker.py` — **and seventeen more modules by filename**:
+  `CadexSubshapeQuery.py`, `CadexGeometryDigest.py` (ADR-389),
+  `CadexStress.py` (ADR-145), `CadexEvaluation.py`, `CadexScriptedProcess.py`,
+  `CadexRouting.py`, `CadexBundle.py`,
   `CadexTerminals.py`, `CadexSolder.py`, `CadexNets.py`, `CadexBoards.py`,
   `CadexMounts.py`, `CadexCage.py`, `CadexLinkedPart.py`,
   `CadexDynamics.py`, `cadex_tessellation.py` and `cadex_preview_worker.py`
-  (`_DOMAIN_WORKER_BUNDLES["project"]`, `CadexScriptedRuntime.py:38`). Copied
+  (`_DOMAIN_WORKER_BUNDLES["project"]`, `CadexScriptedRuntime.py:44`). Copied
   in rather than imported, so a worker module can `import` them inside the
   sandbox while `cadexd`'s own module closure never reaches them — which for
   `CadexDynamics.py` is a test-pinned invariant rather than a convenience.
@@ -1994,7 +2001,7 @@ Source is validated before any worker runs (AST policy in
   known suffixes only).
 - Hard bounds from the project's budgets (`agent.json`, ADR-517), else
   the engine's defaults of 300 s and 6144 MB (ADR-530); a parent-side watchdog kills over-budget
-  workers and reports `MEMORY_LIMIT_EXCEEDED` with observed usage.
+  workers and reports `DOMAIN_MEMORY_LIMIT_EXCEEDED` with observed usage.
   **The worker carries the same two numbers again as kernel limits, in
   different units**: `_resource_limits` sets `RLIMIT_CPU` to the timeout in
   *CPU*-seconds, charged across every thread, while the watchdog counts it
@@ -2364,7 +2371,7 @@ volume and area and the published pairs and fixed joints:
 | finding | when |
 |---|---|
 | `floating` | the inner face's median gap exceeds `floating_gap_mm` (6.0), or no sample faces what the shell covers |
-| `covers nothing` | no non-shell component lies inside its box |
+| `covers nothing` | no non-shell, non-world component's box comes within 5 mm of its box |
 | `solid` | its wall estimate `2 * volume / area` exceeds `solid_wall_mm` (4.0): a filled loft, not a 1.6-2.4 mm panel |
 | `unmounted` | no `lib.bolt` touching it threads (0.1 mm³ or more) into a non-shell part, and no touching fixed joint welds it to one |
 

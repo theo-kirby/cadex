@@ -1,3 +1,5 @@
+> **HISTORICAL (moved to `docs/history/` 2026-10-10, ADR-628).** A dated, finished audit; never cite it as current. The live record is `docs/PROVENANCE.md`.
+
 # Manufacturer STEP horn and pigtail audit
 
 *Dated record (2026-09-07, ADR-231). No manufacturer STEP horn or pigtail has shipped since; the library's horns are the measured micro horns (ADR-181).*

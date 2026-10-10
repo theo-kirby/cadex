@@ -1,6 +1,6 @@
 # AGENTS.md — Agent Entry Point
 
-Verified against source: 2026-10-04. **This is the single agent contract.**
+Verified against source: 2026-10-10. **This is the single agent contract.**
 `CLAUDE.md` only imports it (`@AGENTS.md`), so there is one file to read and
 one to edit (ADR-137).
 
@@ -26,9 +26,10 @@ Cadex is an AI-native CAD app for designing robots and mechanisms, and it is
    person brings one — Claude Code, Codex, Pi — and it drives the engine
    through `cadex mcp --project DIR`, an MCP stdio server with one tool
    surface (`cli/cadex_cli/tools.py`) and one guidance source
-   (`CadexAgentGuidance.md` plus `cli/cadex_cli/guidance.py`, sent as the
-   server's instructions and printed by `cadex guidance`), and through the
-   `cadex` commands. No API key, provider SDK or model loop;
+   (`CadexAgentGuidance.md`, an optional `CadexAgentStyle.<name>.md`, and
+   `cli/cadex_cli/guidance.py`: printed whole by `cadex guidance`, while the
+   server's instructions are a short brief telling the agent to run it),
+   and through the `cadex` commands. No API key, provider SDK or model loop;
    `./cadex params --set k=v` sweeps parameters with no model at all.
 
 **This repository is the whole product** (ADR-030): clone it, `pixi run

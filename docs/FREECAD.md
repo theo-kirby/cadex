@@ -1,6 +1,6 @@
 # FREECAD.md — Inherited Substrate Inventory
 
-Verified against source: 2026-10-04
+Verified against source: 2026-10-10
 
 Cadex's **engine** is a FreeCAD fork. This is the ledger of what we keep,
 what is slated for removal, and what is already gone. It is the only
@@ -23,7 +23,7 @@ Everything in this file is `[FreeCAD-inherited]` unless noted.
 | `src/Gui` | **Deleted** with all eleven workbench Gui directories and tests/src/Gui (Phase 8, ADR-214). Retained headless metatypes live in App/MetaTypes.h. |
 | `src/Main` | Headless Python module / `FreeCADCmd` entry points. `FreeCADCmd` is load-bearing: every xscript worker is a `FreeCADCmd --safe-mode` subprocess. |
 
-### Capability workbenches (the product's four areas)
+### Capability workbenches (four of the five domains; `mesh` is under support trees)
 
 | Tree | Backs |
 |---|---|
@@ -39,7 +39,7 @@ Everything in this file is `[FreeCAD-inherited]` unless noted.
 | `src/Mod/Import` | STEP/IGES exchange. |
 | `src/Mod/Material` | Part material properties referenced by kept workbenches. |
 | `src/Mod/Measure` | Measurement backend. |
-| `src/Mod/Show` | Visibility automation used by TreeView/ViewProviders. |
+| `src/Mod/Show` | Visibility automation (`TempoVis`) for the deleted GUI's tree and view providers. Still built (`BUILD_SHOW`) and in the payload keep-list; its only remaining importer is Part's GUI-lineage `AttachmentEditor/TaskAttachmentEditor.py`. Unaudited; a removal candidate. |
 | `src/Mod/Mesh`, `src/Mod/MeshPart` | Substrate for the minimal `mesh` domain (landed, Phase 4 / ADR-016): import, tessellate, boolean, decimate, export. |
 | `src/Mod/cadex` | `[Cadex-new]` — the engine itself (`docs/ARCHITECTURE.md`). |
 
@@ -50,9 +50,9 @@ listed, Start and Help, are deleted and stay here as the record:
 
 | Tree | Status |
 |---|---|
-| `src/Mod/Start` | The launch screen. It was shown by the Qt shell's Experimental Mode, which was deleted in Phase 7 (ADR-021) — nothing displays it now. **Disabled (ADR-220), then deleted 2026-09-07 (ADR-221, [START-AUDIT.md](START-AUDIT.md)).** All 27 module/test sources, three gates, option, report and maintenance references are gone. Neither `Mod/Start` nor `lib/Start.so` installs or stages. |
+| `src/Mod/Start` | The launch screen. It was shown by the Qt shell's Experimental Mode, which was deleted in Phase 7 (ADR-021) — nothing displays it now. **Disabled (ADR-220), then deleted 2026-09-07 (ADR-221, [history/START-AUDIT.md](history/START-AUDIT.md)).** All 27 module/test sources, three gates, option, report and maintenance references are gone. Neither `Mod/Start` nor `lib/Start.so` installs or stages. |
 | `src/Mod/Test` | FreeCAD's own Python test harness. Nothing in `cadex_tests/` uses it. |
-| `src/Mod/Help` | In-app help plumbing for a UI that no longer exists here. **Disabled (ADR-217), then deleted 2026-09-07 (ADR-218)**: the 85 tracked files, the `BUILD_HELP` option, its parent gate and report line, and its crowdin row are gone. The first engine-side whole-tree removal under the two-commit protocol; [HELP-AUDIT.md](HELP-AUDIT.md) holds both halves' gates. |
+| `src/Mod/Help` | In-app help plumbing for a UI that no longer exists here. **Disabled (ADR-217), then deleted 2026-09-07 (ADR-218)**: the 85 tracked files, the `BUILD_HELP` option, its parent gate and report line, and its crowdin row are gone. The first engine-side whole-tree removal under the two-commit protocol; [history/HELP-AUDIT.md](history/HELP-AUDIT.md) holds both halves' gates. |
 
 ## 2. Kept elsewhere
 
@@ -70,6 +70,12 @@ listed, Start and Help, are deleted and stay here as the record:
   build hard-fails if it cannot import it.
 - `src/Tools`, `tests/` — upstream tooling and native test trees (audited,
   not blanket-kept, during Phase 1).
+- `src/Build`, `src/Doc`, `src/Ext` — version header, Doxygen config and the
+  `freecad` Python package; all three are `add_subdirectory`'d by
+  `src/CMakeLists.txt`. `src/MacAppBundle` (macOS app bundle and QuickLook
+  plugin, configured only on Apple) and `src/XDGData` (a desktop entry and
+  thumbnailer, which no CMake file references) are desktop-app packaging
+  residue, not yet audited for removal.
 
 ## 2a. Our delta against upstream — additions inside the inherited tree
 
@@ -122,6 +128,8 @@ comment there triggers whole-file formatting; this listing is their notice.
   headless imports and native publication. Modified Gui files are deleted.
 - **Kernel features** (ADR-128): `src/Mod/Part/App` bindings listed in §2a.
 - **Test residue**: `src/Mod/Part/TestPartApp.py` trims retired-feature tests.
+- **Translation tooling** (ADR-218, ADR-221, ADR-232): `src/Tools/updatecrowdin.py`
+  drops the Help and Start rows and the retired GUI translation writer.
 
 **The pre-import bound, stated rather than hidden**: the import commit is
 a squashed snapshot of VibeCAD's `cadex-teardown` branch, itself a FreeCAD
@@ -144,7 +152,7 @@ live at the root: `NOTICE` and `THIRD_PARTY_LICENSES.md`.
 ## 3. Removal protocol and remaining boundaries
 
 **Surviving modification audit (2026-09-07, ADR-227).**
-[SURVIVING-DIFF-AUDIT.md](SURVIVING-DIFF-AUDIT.md) inventories all 56 FreeCAD
+[history/SURVIVING-DIFF-AUDIT.md](history/SURVIVING-DIFF-AUDIT.md) inventories all 56 FreeCAD
 M entries; the qualified JointObject Preferences guard removal has landed.
 FreeCAD M totals fall from 56/1637/1819 to 56/1634/1819; inherited remaining
 stays 3434. Manifest membership and ledger-only notice remain accurate.
@@ -237,19 +245,19 @@ itself, in the Phase 7 Qt-shell deletion (ADR-021).
   translator writer. Its apply/install tail and updateTranslator dispatch are
   disabled; the helper and exclusive PySide import are now deleted in a
   separate verified commit
-  (ADR-232, [TRANSLATION-UPDATER-AUDIT.md](TRANSLATION-UPDATER-AUDIT.md)).
+  (ADR-232, [history/TRANSLATION-UPDATER-AUDIT.md](history/TRANSLATION-UPDATER-AUDIT.md)).
   App and Base translations and their headless Qt consumers remain live;
   no whole-tool removal is qualified.
 
 - Does `src/Mod/Material` reduce to just the property types the five domains
   touch, or stay whole?
 - `src/Mod/Help` is gone (ADR-217 disable, ADR-218 delete,
-  [HELP-AUDIT.md](HELP-AUDIT.md)): one whole-tree removal, counted once.
+  [history/HELP-AUDIT.md](history/HELP-AUDIT.md)): one whole-tree removal, counted once.
   `Start` is also deleted after its separate disable (ADR-219..221,
-  [START-AUDIT.md](START-AUDIT.md)); it has no App or MainCmd dependant.
+  [history/START-AUDIT.md](history/START-AUDIT.md)); it has no App or MainCmd dependant.
   `Test` is retained: `MainCmd` depends on `TestSources` and Test installs
   the App tests. Its standalone Tk runner source is deleted after the separate
-  verified copy/install disable (ADR-230, [TEST-TK-AUDIT.md](TEST-TK-AUDIT.md)).
+  verified copy/install disable (ADR-230, [history/TEST-TK-AUDIT.md](history/TEST-TK-AUDIT.md)).
   The rest of Test remains unaudited; payload exclusion alone is insufficient.
 - Which `tests/` subtrees cover removed workbenches and go with them?
 - `cadex_assembly_worker.py` imported `CommandCreateView` — GUI-lineage
@@ -270,5 +278,5 @@ itself, in the Phase 7 Qt-shell deletion (ADR-021).
   appear in the payload — ADR-047 was exactly that. **Narrowed:** `pixi run
   build-engine` now installs the `BUILD_GUI=OFF` build into that
   environment (ADR-060), and it carries no `FreeCADGui.so` (checked
-  2026-10-04). The environment still differs from the payload in what the
+  2026-10-10). The environment still differs from the payload in what the
   prune removes, so the packaged gate (ADR-023) stays the proof.

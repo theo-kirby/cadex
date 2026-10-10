@@ -1,3 +1,5 @@
+> **HISTORICAL (moved to `docs/history/` 2026-10-10, ADR-628).** A dated, finished audit; never cite it as current. The live record is `docs/FREECAD.md`.
+
 # Test harness Tk runner removal audit
 
 *Dated record (2026-09-07): `unittestgui.py` is disabled and deleted (ADR-230). The Blender manifest counts below predate the shell's deletion (ADR-498).*

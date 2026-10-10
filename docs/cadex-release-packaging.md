@@ -1,6 +1,6 @@
 # Packaging — The Engine Payload
 
-Verified against source: 2026-10-04
+Verified against source: 2026-10-10
 
 **One repository builds one engine payload** (ADR-030, ADR-498). The
 *engine payload* is a relocatable directory the CLI finds by manifest
@@ -25,16 +25,19 @@ discovery by manifest, and a gate that runs against the packaged tree.
 ```
 cadex-engine-<version>-<os>-<arch>/
   cadex-engine.json     the discovery manifest
-  bin/freecadcmd        the engine host; cadexd runs inside it
+  bin/freecadcmd        the engine host; cadexd runs inside it (`FreeCADCmd`
+                        on Linux, which the manifest then names)
   bin/CadexGeometryWorker
   bin/python            a real interpreter, not the dangling symlink the
-                        payload shipped until M0 caught it
-  lib/                  Qt6 Core/Xml/Concurrent/Network/DBus only
+                        payload shipped until M0 caught it (with the
+                        `python3.11` it points at)
+  lib/                  the runtime; of Qt, Core/Xml/Concurrent/Network/DBus only
   lib/python3.11/site-packages/mujoco/
                         53.5 MB (ADR-075, ADR-076)
   Mod/cadex/            cadexd + the xscript pipeline
   Mod/{Part,PartDesign,Sketcher,Assembly,Mesh,MeshPart,Import,Material,
        Measure,Show}
+  share/                what the prune leaves of the environment's share/
   LICENSE, NOTICE, THIRD_PARTY_LICENSES.md
                         copied from the repo root (ADR-171)
   licenses/             per-package license texts harvested from the source
@@ -47,7 +50,7 @@ The manifest is the contract (schema in ADR-020; consumed by the CLI, `cli/cadex
 ```json
 {
   "schema": "cadex-engine-v1",
-  "version": "0.0.1",
+  "version": "0.0.0",
   "protocol": "cadex-cadexd-v1",
   "freecadcmd": "bin/freecadcmd",
   "module_dir": "Mod/cadex"
@@ -79,8 +82,11 @@ own files are package-managed — see "Staged, or relocated" below.
 
 **The product version** (ADR-166): `VERSION` at the repo root is the single
 source of truth, bumped deliberately with `package/app/bump_version.sh`.
-The engine payload is named from `CMakeLists.txt`'s `PACKAGE_VERSION`
-instead; the shell bundle that used to stamp `VERSION` into its window title
+The engine payload is meant to be named from `CMakeLists.txt`'s
+`PACKAGE_VERSION` (from `version.json`, 0.0.1) instead, but the script's
+`sed` looks for a literal `PACKAGE_VERSION "x"` line that `CMakeLists.txt`
+(`set(PACKAGE_VERSION "${...}")`) does not have, so every payload is named
+and stamped `0.0.0` today; the shell bundle that used to stamp `VERSION` into its window title
 is gone (ADR-495), so committing a changed `VERSION` is the release act.
 
 ## What is deliberately in the payload
@@ -258,7 +264,7 @@ not a quality setting.
 ## Building and releasing
 
 `.github/workflows/cadex-app.yml` runs on a schedule (Sundays and
-Wednesdays, 08:00 UTC), on manual dispatch, on `main`, and on tags matching `v*` or `cadex-*`. It has two
+Wednesdays, 08:00 UTC), on manual dispatch, on pushes to and pull requests against `main`, and on tags matching `v*` or `cadex-*`. It has two
 engine-only jobs, macOS arm64 and Linux x64. Each sets up and builds the
 engine, runs the engine and CLI suites, stages the payload, and gates it
 through `test_cadexd_lifecycle` against the *packaged* tree; the Linux job
@@ -268,8 +274,8 @@ also drives the packaged engine through the CLI.
 reached its gate** (ADR-060). They failed at `Engine unit suite` — `pixi run
 python -m pytest src/Mod/cadex/cadex_tests` — with `No module named pytest`,
 because `pytest` was not declared in `pixi.toml` until ADR-060, and every
-later step was skipped. Declaring it did not turn them green: the runs of
-2026-10-04 (`gh run list --workflow cadex-app.yml`) still fail at `Engine
+later step was skipped. Declaring it did not turn them green: every run from
+2026-10-04 to 2026-10-09 (`gh run list --workflow cadex-app.yml`) still fails at `Engine
 unit suite` on both platforms, with every later step skipped; why has not
 been read from their logs here. So the sentence above describes an intent, not an
 observation: the packaged gate has never run in CI on either platform, which
