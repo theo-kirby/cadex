@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-10-09
+Verified against source: 2026-10-10
 
 **This document is the contract between the engine and its client.** Cadex
 is three things (ADR-500): the **engine** (`cadexd`, at the repo root), the
@@ -41,8 +41,8 @@ The two sides of the boundary:
 
 Two consequences worth knowing when editing the tables below: the CLI
 validates **every** reply against `OP_RESPONSE_SPECS` as a hard error rather
-than tolerating an undeclared key, and it generates the agent's whole
-model-facing tool surface from `OP_ARG_SPECS`. An op-table change therefore
+than tolerating an undeclared key, and it generates the engine-op half of
+the agent's tool surface (`tools.CLI_TOOL_OPS`) from `OP_ARG_SPECS`. An op-table change therefore
 lands in three places — `CadexdProtocol.py`, this document and the client —
 in the same PR.
 
@@ -487,8 +487,8 @@ The client does not build the engine; it finds a payload built here
 cadex-engine-<version>-<os>-<arch>/
   cadex-engine.json     {schema, version, protocol, freecadcmd, module_dir}
   bin/{freecadcmd,CadexGeometryWorker,python}
-  lib/                  Qt6 Core/Xml/Concurrent/Network only — no Qt GUI,
-                        no PySide, no Coin
+  lib/                  the runtime; of Qt, Core/Xml/Concurrent/Network/DBus
+                        only — no Qt GUI, no PySide, no Coin
   Mod/{cadex,Part,PartDesign,Sketcher,Assembly,Mesh,MeshPart,Import,
        Material,Measure,Show}
 ```
@@ -513,6 +513,10 @@ about transport — one bundle, discovery by manifest, and a payload gate that
 runs the lifecycle test against the *packaged* tree, because a source tree
 that passes proves nothing about a payload.
 
+Non-GUI Qt (Core, Xml, Concurrent, Network, DBus) is unavoidable — FreeCAD's App
+layer links it and `FreeCADCmd` inherits that. Qt **GUI**, PySide and Coin
+are absent, and asserted absent by the payload build (`docs/cadex-release-packaging.md`).
+
 ### The studio renderer: engine code clients load by path `[Cadex-new — ADR-445, ADR-529]`
 
 `Mod/cadex/CadexStudio.py` draws the review views, the studio hero, the
@@ -533,16 +537,15 @@ deleted Blender shell, which could import no engine code, and left with it
 
 `Mod/cadex/CadexAgentGuidance.md` is the part of the agent's guidance (what
 `cadex guidance` prints, ADR-538) that is about designing well rather than about the client: proof
-by measured facts, the design language, a complete robot, what a policy may
-read, how a walking task is rewarded. It is read as a file -- the CLI reads
+by measured facts, the domain-neutral base of the design language, what a
+self-moving machine carries, what a policy may read, how a walking task is
+rewarded. A rule for one kind of machine only is a named, optional style,
+`Mod/cadex/CadexAgentStyle.<name>.md`, read the same way and with the same
+placeholders (ADR-560). It is read as a file -- the CLI reads
 it from the engine it resolved -- so reading it crosses no import boundary. Everything below the `<!-- guidance -->` line is
 the text; `{{look}}`, `{{inspect}}`, `{{write_script}}`, `{{edit_script}}`,
 `{{set_params}}` and `{{rebuild}}` are tool names each client fills with its
 own, and a placeholder a client leaves unfilled is refused by that client.
-
-Non-GUI Qt (Core, Xml, Concurrent, Network) is unavoidable — FreeCAD's App
-layer links it and `FreeCADCmd` inherits that. Qt **GUI**, PySide and Coin
-are absent, and asserted absent by the payload build.
 
 ## Decision gate (historical: before Phase 5 committed to the split)
 

@@ -1,3 +1,5 @@
+> **HISTORICAL (moved to `docs/history/` 2026-10-10, ADR-628).** A dated, finished audit; never cite it as current. The live record is `docs/FREECAD.md`.
+
 # Start whole-tree removal audit
 
 *Dated record (2026-09-07): Start is deleted (ADR-221). The Blender manifest counts below predate the shell's deletion (ADR-498).*

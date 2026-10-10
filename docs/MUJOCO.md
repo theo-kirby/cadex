@@ -1456,8 +1456,8 @@ no protocol change and no shell diff. The packaged gate is **11 tests**.
 
 `assembly.rollout(policy, frames_per_second=..., seed=...)` — the verified
 policy plays against the model its task bundle names, and the rollout leaves
-as `cadex-assembly-simulation-trace-v1`. The shell bakes it with the code it
-has had since ADR-050. **No protocol change and no shell diff**, for the
+as `cadex-assembly-simulation-trace-v1`. The shell baked it with the code it
+had had since ADR-050 (since ADR-498 the dashboard plays it). **No protocol change and no shell diff**, for the
 third slice running.
 
 **A new operation and no new output type**, which is the whole design. A
@@ -1693,7 +1693,7 @@ going to fail it.
 everything downstream reads. `remote_train.sh` gained `train --detach`,
 `watch`, `pull` and `stop`; `watch` mirrors the file to
 `training-progress.json` beside the project, which is what the shell's
-Training panel polls. **No ssh in the shell, no protocol change, no engine
+Training panel polled (deleted with the shell, ADR-498). **No ssh in the shell, no protocol change, no engine
 change** — and nothing parses a log, which is ADR-093's finding kept.
 
 **Two bugs the dispatch work surfaced, both silent:**
@@ -2747,6 +2747,22 @@ carries three small driver scripts of about a hundred lines — `rebuild.py`,
 need no application running. What is reproducible is the *method*, not a
 model file.
 
+**Several of those project scripts now have a command in the product**,
+and the steps below name the script because that is what the three
+machines were driven with. Today (`docs/CLI.md` is the contract):
+`cadex smoke` is the short stock-MuJoCo hold or zero-action rollout that
+answers step 7's "does it stand, does it fall, does a loop stay closed"
+without a trainer (ADR-352, ADR-594); `cadex train` and `cadex walk`
+(`--remote`, `--detach`/`--complete`) are steps 8 and 11 as one command,
+or the `train_start` / `train_status` / `train_stop` tools `cadex mcp`
+serves (ADR-464); `--checkpoint-every N` on a local run rolls each
+checkpoint out through the engine while it trains (ADR-544), which is
+step 10's comparison, live; and `cadex evaluate` holds the declared policy
+against the script's `assembly.success` spec — behaviour predicates on
+frozen seeds, never the reward (ADR-455..457, motion predicates ADR-587;
+`docs/XSCRIPT.md`) — which is step 12's report and §7's rule below, "judge
+a checkpoint by what it did", as a command.
+
 ### The order
 
 1. **Check what is actually there.** `grep -c "assembly\." script.py`. A
@@ -3043,7 +3059,8 @@ This is the identical arc run **entirely on one machine** — an M4 Mac Mini,
 16 GB, no GPU — at toy scale, measured on 2026-08-29 with a desk balance
 toy (ADR-170): an 80 mm puck, a 15 × 15 × 120 mm post, and a 90 mm arm on
 one revolute hinge with an MG90-class torque motor (200 N·mm), all PLA at
-1240 kg/m³, authored by the agent through `./cadex -p` in one turn. The
+1240 kg/m³, authored by the agent through `./cadex -p` in one turn (Cadex's own agent
+turn, removed by ADR-538; today the agent a person brings, through `cadex mcp`). The
 project lives at `~/cadex-balance` — outside this repository, per ADR-088;
 what is recorded here is the method and the numbers.
 
@@ -3065,7 +3082,7 @@ the dashboard plots a run under `<project>/runs/<run>/`). Policy home through `p
   local loop is for.
 - **The rollout**: 215.0 total reward against 87.8 for zero torque, the
   full 100-step horizon, 52 frames at 25 fps, baked into the shell as
-  ordinary keyframes.
+  ordinary keyframes (the dashboard plays the same trace since ADR-498).
 - **Recovery** (§7 step 6's metric): 32/32 episodes survive the declared
   shove band. But the declared band was toothless — 0.15 N peak against
   200 N·mm of authority — so the capability sweep (§7 step 9) is what
@@ -3101,7 +3118,7 @@ the dashboard plots a run under `<project>/runs/<run>/`). Policy home through `p
 
 **The rehearsal: the same toy, agent-driven, one prompt.** The arc was
 then repeated on a fresh project as a single prompt to the product agent
-(`./cadex -p`, 2026-08-29), with the two traps above given one sentence
+(`./cadex -p`, 2026-08-29, since removed by ADR-538), with the two traps above given one sentence
 each and nothing else. Three turns and two human legs later the engine's
 own trace reads **+1729.95 against a −302.17 zero-torque baseline**, full
 horizon, arm 2.1° off vertical at t = 3 s — and the agent checked the
@@ -3154,7 +3171,7 @@ row below was actually run, and the numbers are this run's.
 | 12 | The same walk with training on a remote machine | `training/remote_train.sh` (ADR-089) | **Scripted 2026-09-06** (ADR-200): `cadex train --remote` / `cadex walk --remote` run the train leg through `remote_train.sh train <bundle> <out> -- <the same flags>`, verify the returned policy against the receipt, and change nothing else — same `DIR/train` artifacts, same store, same `review.json`. Offline evidence only: `cli/tests/test_train.py` pins the command against the script's usage line and runs the leg end to end against a stand-in dispatcher (real engine, real store, three refusals). **Not executed**: no dispatch, the box's checkout untouched; B7 stays blocked. **A warm start travels since 2026-09-08** (ADR-268): the dispatcher lifts `--init-from` and `--init-from-parent-task` out of the trailing flags, copies both files into the run directory's `warm/` and re-points the flags, so an iterate has the same shape in both modes; tested against the real script with stand-in `ssh`/`rsync` | none; a person for `check` and the box's config |
 
 **One agent turn on top, to see the refusals today.** The same scratch
-project was given one `./cadex -p` turn asking it to retrain at toy scale,
+project was given one `./cadex -p` turn (removed, ADR-538) asking it to retrain at toy scale,
 bring the policy home and report the rollout. It did rows 6–7 itself
 (rebuilt, reported 1719.23 and the per-term totals) and refused rows 4
 and 5 cleanly and resumably — but the command it handed back for row 4

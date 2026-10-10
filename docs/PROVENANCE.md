@@ -24,22 +24,22 @@ detail. The shell's ledger is history now:
 | [Blender](https://projects.blender.org/blender/blender) | the shell, until it was deleted (ADR-498) — nothing of it remains | GPL-2.0-or-later |
 | VibeCAD (ours, predecessor) | the scripted-modeling engine inside `src/Mod/cadex/` | LGPL-2.1-or-later |
 
-Cadex adds roughly **200,000 lines** of its own, or about **104,000** if
+Cadex adds roughly **220,000 lines** of its own, or about **118,000** if
 you do not count its suites:
 
 | Ours | Lines | Where |
 |---|---|---|
-| the engine, Python | 72,119 | `src/Mod/cadex/**/*.py`, suites excluded |
-| the engine's suites | 65,696 | `src/Mod/cadex/cadex_tests/*.py` |
+| the engine, Python | 80,255 | `src/Mod/cadex/**/*.py`, suites excluded |
+| the engine's suites | 70,739 | `src/Mod/cadex/cadex_tests/*.py` |
 | the engine, C++ | 1,032 | `CadexGeometryWorker.cpp` |
-| the CLI, the MCP server and the dashboard server | 17,411 | `cli/cadex_cli/*.py` (ADR-061) |
-| the CLI's suites | 25,578 | `cli/tests/*.py` |
-| the dashboard pages | 2,393 | `cli/cadex_cli/review_static/` JS, CSS and HTML, vendored three.js excluded |
-| the offboard trainer | 4,234 | `training/` — **not part of the product** (§5) |
-| the offboard analysis | 6,986 | `analysis/` — **not part of the product** (§5) |
+| the CLI, the MCP server and the dashboard server | 21,186 | `cli/cadex_cli/*.py` (ADR-061) |
+| the CLI's suites | 30,960 | `cli/tests/*.py` |
+| the dashboard pages | 4,002 | `cli/cadex_cli/review_static/` JS, CSS and HTML, vendored three.js excluded |
+| the offboard trainer | 4,493 | `training/` (`*.py`, `*.sh`) — **not part of the product** (§5) |
+| the offboard analysis | 6,986 | `analysis/*.py` — **not part of the product** (§5) |
 
 Everything else in this repository, which is the overwhelming majority of
-it, belongs to FreeCAD. Measured 2026-10-04 with `wc -l` over the tracked
+it, belongs to FreeCAD. Measured 2026-10-10 with `wc -l` over the tracked
 files `git ls-files` lists for each row; these numbers drift as the trees
 grow, so treat the date as part of the claim.
 
@@ -515,7 +515,7 @@ interface (ADR-498). A desktop app, if one comes, copies the dashboard,
 behind the unchanged cadexd protocol.
 
 Phase 11 is not scheduled and blocks nothing. Until then this document
-describes the truth: Cadex is one fork and about two hundred thousand lines
+describes the truth: Cadex is one fork and about two hundred and twenty thousand lines
 of our own, and the parts that are not ours are the parts that make it work.
 
 
@@ -955,7 +955,7 @@ width 8) rather than a citation.
 
 ### Fifth servo candidates (2026-09-07; ADR-229)
 
-[Cadex-new] The [bounded source audit](FIFTH-SERVO-AUDIT.md) pins two Hitec
+[Cadex-new] The [bounded source audit](history/FIFTH-SERVO-AUDIT.md) pins two Hitec
 manufacturer sheets by URL, revision and SHA-256. Neither HS-311 nor HS-422
 qualifies for the unchanged recipe: mounting-slot and output-datum evidence
 must be resolved before delivery. No source assets or public SKU were added;
@@ -963,7 +963,7 @@ the four existing servo identities remain the catalog's coverage.
 
 ### Manufacturer horn and pigtail STEP qualification (2026-09-07; ADR-231)
 
-[Cadex-new] [The bounded audit](HORN-PIGTAIL-AUDIT.md) pins and probes
+[Cadex-new] [The bounded audit](history/HORN-PIGTAIL-AUDIT.md) pins and probes
 goBILDA 1900-0025-0104 STEP, checks the named DS3218 archive lead and
 rejects a generic cable listing without manufacturer CAD. Neither category
 qualifies: asset permissions and exact horn compatibility remain unresolved;

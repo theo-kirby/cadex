@@ -7,7 +7,7 @@
 
 # Cadex
 
-Verified against source: 2026-10-03
+Verified against source: 2026-10-10
 
 Author:
 "Cadex is an experimental side project, far from production software.
@@ -88,8 +88,9 @@ pixi run app            # the dashboard at http://127.0.0.1:8765/
 
 `pixi run app` (or a bare `./cadex`) serves the dashboard over a projects
 directory — `~/cadex-projects`, created if absent, unless `--projects` or
-`CADEX_PROJECTS` names another — bound to 127.0.0.1. Its first page lists
-every project there; each opens its review page. To watch from another
+`CADEX_PROJECTS` names another — bound to 127.0.0.1. Its home page puts
+the most recently active project in a spotlight and every project there in
+a card (ADR-605); each opens its project page. To watch from another
 device, put `tailscale serve` in front of it rather than binding a public
 address. `./cadex review --project <dir>` serves one project alone.
 
@@ -112,7 +113,8 @@ by a process boundary:
   [docs/DASHBOARD.md](docs/DASHBOARD.md).
 - **the agent bindings** (`cli/`) — `cadex mcp`, an MCP stdio server over
   one tool surface (`cli/cadex_cli/tools.py`) and one guidance source
-  (`cli/cadex_cli/guidance.py`), and the `cadex` commands. Any agent uses
+  (`cli/cadex_cli/guidance.py` over the engine's base guidance and its
+  optional named styles, ADR-560), and the `cadex` commands. Any agent uses
   them; Cadex runs none. The CLI finds an engine in the build tree or,
   staged, by reading its `cadex-engine.json` manifest.
 
@@ -169,7 +171,7 @@ the doc set under [`docs/`](docs/):
 [VISION](docs/VISION.md) · [ARCHITECTURE](docs/ARCHITECTURE.md) ·
 [XSCRIPT](docs/XSCRIPT.md) · [MUJOCO](docs/MUJOCO.md) ·
 [ORGANIC](docs/ORGANIC.md) · [STRUCTURAL](docs/STRUCTURAL.md) ·
-[INTEGRATION](docs/INTEGRATION.md) ·
+[DESIGN-LANGUAGE](docs/DESIGN-LANGUAGE.md) · [INTEGRATION](docs/INTEGRATION.md) ·
 [DASHBOARD](docs/DASHBOARD.md) · [CLI](docs/CLI.md) · [FREECAD](docs/FREECAD.md) ·
 [PROVENANCE](docs/PROVENANCE.md) ·
 [ROADMAP](docs/ROADMAP.md) · [DECISIONS](docs/DECISIONS.md).

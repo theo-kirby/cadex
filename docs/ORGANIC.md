@@ -1,9 +1,10 @@
 # ORGANIC.md — Organic Modelling, and the CAD/Mesh Interface
 
-Verified against source: 2026-10-09
+Verified against source: 2026-10-10
 Status: **O0 closed (ADR-124), O1 closed (ADR-125), O2 closed (ADR-126),
-O3 closed (ADR-127).** The phase's four slices are done; O2b and O4 are
-parked by decision.
+O3 closed (ADR-127).** The phase's four slices are done, and so are O1b
+(ADR-128), O2b (ADR-130) and the October O3b (ADR-610..612); O4 is parked by
+decision.
 
 **Native Blender recipe bridge (ADR-185, 2026-09-05) — retired (ADR-496).**
 `mesh.blender` went with the shell; its contract is in
@@ -27,7 +28,7 @@ table is edited as numbers, in the script or through `set_params`.
 
 ## 1. The measurement: a robot wolf
 
-ADR-123 made `describe_cad_api` serve whole domains, which put `part`'s
+ADR-123 made `describe_cad_api` (today's `describe_api`) serve whole domains, which put `part`'s
 surfacing operations in front of the model for the first time. The robot
 wolf was re-run against that surface. The project it produced is
 `~/arch/woof.cadex` — **read-only; copy it before touching it** — and this
@@ -244,8 +245,9 @@ fastener metadata. **Extend, do not parallel-build.**
   `board_specs`/`board_values`; applied through the same `set_params(...)`
   path. A mount row is a terminal row plus `roll` (so the frame is fully
   determined, not just an axis), `fastener` and `clearance`.
-- `part.mate(shape, "a", other, "b", *, flip=False, offset=0.0)` — pure frame
-  arithmetic, so it lives where `CadexTerminals`'s placement arithmetic
+- `part.mate(shape, source, target, *, flip=False, offset=0.0,
+  check_interference=True)`, the two mounts subscripted out of `mounts(...)`
+  tables (`m["leg"]["root"]`) — pure frame arithmetic, so it lives where `CadexTerminals`'s placement arithmetic
   lives: a module importing nothing from FreeCAD, unit-testable headless.
 - **Static interference, refused with numbers** — after a mate, boolean the
   two and refuse a non-zero common volume, naming the millimetres.
@@ -430,7 +432,6 @@ the shell); back the script up before every rebuild, because a refused
 | baseline | 2026-08-05 | 154 lines, 8 params, 16 lofted solids, one `part.fuse`, hard creases at every join. Three weld attempts refused (§1). 11 accepted revisions in 17 minutes. |
 | O0 | 2026-08-05 | No model change — O0 authors nothing. The agent can now see the silhouette it is iterating on: four fitted views, 1024×1024, one call. |
 | O1 | 2026-08-05 | **The weld lands.** `fuse(blend=8.0, blend_on_failure="skip")` builds the wolf with 25 of its 48 seams rounded, in 25.04 s against a 13.61 s baseline. `blend=15.0, "reduce"` rounds every seam at a reduced radius. The refusal path quotes a workable radius instead of `StdFail_NotDone`. Turns: **one** — the change is one keyword on the `fuse` the script already had. |
-
 | O2 | 2026-08-05 | No wolf change — it has no mechanism to mount yet. What O2 adds is the check: a mate that overlaps refuses with the cubic millimetres, so the skin/mechanism interface stops being two copied numbers. |
 | O1b | 2026-08-05 | No wolf change from the ops themselves — but raising the blend probe cap to 15 s means its refusals stop being timeouts. |
 | O3b | 2026-08-05 | **The wolf is rebuilt on cages, and the plate is gone.** Eleven of thirteen solids are `part.loft_cage` over a declared table — torso, four legs, four paws, two ears — each with its own exponent per ring. The neck and tail are not, because a cage is straight and both follow a curve. Model half-width **±150.2 mm → ±73.0 mm** against a 70 mm chest half-width; Z max 426.6 → 388.9. The fix was not the cage: it was ADR-129's loft guard finding that one loft in thirteen enclosed 4.5× the volume of a straight loft through its own sections. |

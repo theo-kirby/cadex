@@ -1,3 +1,5 @@
+> **HISTORICAL (moved to `docs/history/` 2026-10-10, ADR-628).** A dated, finished audit; never cite it as current. The live record is `docs/FREECAD.md`.
+
 # Surviving FreeCAD diff audit
 
 *Dated record (2026-09-07): ADR-227's one change landed. The Blender manifest counts below predate the shell's deletion (ADR-498); `docs/FREECAD.md` is the live ledger.*

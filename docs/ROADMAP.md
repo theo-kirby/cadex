@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-10-09
+Verified against source: 2026-10-10
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -12,7 +12,8 @@ is the dynamics and control vertical** — closed, built on a branch of its
 own (ADR-086) and on the one branch since ADR-102. **Phase 15 is the organic-modelling vertical**, opened by
 the measurement ADR-123 asked for (`docs/ORGANIC.md`). **Phase 16 is the
 structural vertical** — stress, topology optimisation and shape search
-(`docs/STRUCTURAL.md`), whose first slice is offboard by construction.
+(`docs/STRUCTURAL.md`), whose first slice is offboard by construction. **Phase 17
+is the parts library** (`lib`, ADR-181).
 
 **Phase 13a came early (ADR-030).** Merging the repositories never depended
 on owning the engine or the shell — it was a repo-layout and
@@ -606,7 +607,10 @@ depends on. Independent of Phase 8.
 green; slider median materially below 0.548 s *(met: 0.496 s end-to-end,
 0.389–0.42 s engine-only; and 5.6 ms end-to-end for a motion slider, which
 is a different path rather than a better number on this one)*;
-`CADEX-BLENDER-GATE` still ok.
+`CADEX-BLENDER-GATE` still ok. *Met at the time. The shell-side items of
+this phase (slider dispatch, section view, exploded view, blueprints,
+printable parts) went with the shell (ADR-498); `docs/SHELL-PARITY.md`
+says which were ported, kept headless or dropped.*
 
 ## Phase 10 — Probe, then characterize `(the go/no-go gate)`
 
@@ -660,11 +664,10 @@ Three things the work turned up:
   while every source-tree gate stayed green. Now pinned by
   `test_every_engine_module_is_installed_by_cmake`.
 
-Still open on the shell side (`shell/scripts/startup/mesh_agent/`):
-nothing yet *writes* a selector into a script from a click, so click →
-durable argument is half built. `resolve_pin` gives the shell the
-fingerprint; turning that into a selector argument in the script is the
-missing step.
+~~Still open on the shell side~~ — **closed by deletion (ADR-498)**: there
+is no click to write from. Was: nothing *wrote* a selector into a script
+from a click, so click → durable argument was half built; `resolve_pin`
+gave the shell the fingerprint. The agent writes selectors itself.
 
 **10c — Characterization corpus, time-boxed.** Record golden outputs from
 the *current* engine before it is touched. Three tiers: ~500 op
@@ -737,16 +740,18 @@ deadline pressure is gone.
       the solution is gauge-free.
 - [ ] **STEP import/export.** `file.export_model` / `file.import_model` are
       named in `CadexModelingSurface.py` with no implementation and no
-      cadexd op; the only export today is `bpy.ops.wm.stl_export` of
-      *display tessellation*. First-class engine deliverable (ADR-025).
+      cadexd op. Export today is `cadex export` (ADR-061): STEP, STL or
+      BREP of the accepted solids, written by a `FreeCADCmd` subprocess
+      outside the protocol. An engine op is still the deliverable (ADR-025).
 
 There is no "11g". Removing `App::Document` is not a final phase — 11d, 11e
 and 11f each carry their own "invent a documentless execution model" clause.
 Only the publication residue is left over at the end.
 
 **Exit criteria:** no `import FreeCAD` anywhere under `src/Mod/cadex/`; the
-differential harness green per domain; `CADEX-BLENDER-GATE` still ok on the
-unchanged protocol.
+differential harness green per domain; the packaged lifecycle gate and the
+CLI suite still green on the unchanged protocol (`CADEX-BLENDER-GATE` was
+the bar until it went with the shell, ADR-498).
 
 ## Phase 12 — The shell becomes ours `(superseded by ADR-500)`
 
@@ -858,13 +863,13 @@ Not a phase that "completes" — a standing mode of work.
       half pending — then the VSE, grease pencil, the compositor, most of
       `shell/tests/files/` (784 MB), the unused `shell/release/datafiles`.
 - [x] Audit the Help whole-tree candidate (2026-09-07, ADR-216,
-      `docs/HELP-AUDIT.md`). Qualified for a separate disable; no source or
+      `docs/history/HELP-AUDIT.md`). Qualified for a separate disable; no source or
       build-rule change yet. Start/Test qualification remains open.
 - [x] Disable Help at the audited boundary (2026-09-07, ADR-217): `BUILD_HELP`
       forced OFF over stale ON caches, fresh caches and explicit ON requests;
       source retained. The code landed in `a04ca822` and the ADR in
       `504b46bc`, both unrecorded and ungated; the gates ran two units later
-      (iteration 31) and are in `docs/HELP-AUDIT.md` §"Disable landed": full
+      (iteration 31) and are in `docs/history/HELP-AUDIT.md` §"Disable landed": full
       engine suite, one release build, install, stage, the four Cadex ctests,
       serial inherited CTest against the baseline, and the packaged
       lifecycle/licensing gate.
@@ -872,10 +877,10 @@ Not a phase that "completes" — a standing mode of work.
       (85 files), its parent gate, the `BUILD_HELP` option and report line,
       the crowdin row and two developer-config path entries. The same gate
       set reran on the delete commit in the same unit; evidence is in
-      `docs/HELP-AUDIT.md` §"Delete landed". Help is the **first** engine-side
+      `docs/history/HELP-AUDIT.md` §"Delete landed". Help is the **first** engine-side
       whole-tree removal; Start subsequently follows under ADR-220/221.
 - [x] Audit the Start whole-tree candidate (2026-09-07, ADR-219,
-      `docs/START-AUDIT.md`). Qualifies for a separate disable at the same
+      `docs/history/START-AUDIT.md`). Qualifies for a separate disable at the same
       forced-OFF boundary Help used; documentation only, no build. The audit
       found `lib/Start.so` still in the staged payload and Start as the sole
       GSL-submodule consumer, and records how whole-tree deletions should
@@ -883,11 +888,11 @@ Not a phase that "completes" — a standing mode of work.
 - [x] Disable Start at the audited boundary (2026-09-07, ADR-220): forced-OFF
       cache entry, all 27 source files and three gates retained. Both existing
       configurations reject explicit ON; installed and staged Start module
-      and library are absent. Verification: `docs/START-AUDIT.md`
+      and library are absent. Verification: `docs/history/START-AUDIT.md`
       §"Disable verification (ADR-220)". The separate delete follows below.
 - [x] Delete Start after its separate disable (2026-09-07, ADR-221): all 27
       module/test files and the audited build/config references removed.
-      `docs/START-AUDIT.md` §"Delete verification (ADR-221)" records the gates
+      `docs/history/START-AUDIT.md` §"Delete verification (ADR-221)" records the gates
       and both fork-delta measures. With Help, two engine-side whole-tree
       removals have landed under the two-commit protocol.
 - [x] Remove the unused Microsoft GSL submodule after Start (2026-09-07,
@@ -895,17 +900,17 @@ Not a phase that "completes" — a standing mode of work.
       plus the legacy build helper no longer request its checkout. Setup,
       release configure/build and licensing/purity verification pass.
 - [x] Audit all 56 surviving FreeCAD modifications (2026-09-07, ADR-227,
-      `docs/SURVIVING-DIFF-AUDIT.md`); qualify only the redundant JointObject
+      `docs/history/SURVIVING-DIFF-AUDIT.md`); qualify only the redundant JointObject
       Preferences import guard with a GUI-denied retained-behavior probe.
 - [x] Remove only the qualified Preferences guard (2026-09-07, ADR-227);
       retain headless solver dispatch and all Qt/Coin guards. Verification
-      and separate surviving-diff measures: `SURVIVING-DIFF-AUDIT.md`.
+      and separate surviving-diff measures: `history/SURVIVING-DIFF-AUDIT.md`.
 - [x] Remove that qualified guard and run fresh implementation gates;
       expected saving is three inserted lines, with no file-count change.
       *Landed 2026-09-07: the item above; ADR-227's implementation note
       carries the gates.*
 - [x] Audit Test's standalone Tk runner (2026-09-07, ADR-230,
-      `docs/TEST-TK-AUDIT.md`); qualify only unittestgui.py and preserve the
+      `docs/history/TEST-TK-AUDIT.md`); qualify only unittestgui.py and preserve the
       MainCmd/TestSources text-runner dependency.
 - [x] Disable the qualified Test Tk runner copy/install row (2026-09-07),
       retaining its source and the headless Test harness (ADR-230).
@@ -916,12 +921,12 @@ Not a phase that "completes" — a standing mode of work.
       2026-09-07): qualify at most one subtractive boundary with retained App
       translation consumers and removal gates explicit; no network execution
       or implementation is authorized by the planning evidence alone.
-      Evidence: TRANSLATION-UPDATER-AUDIT.md; only the deleted GUI translator
+      Evidence: history/TRANSLATION-UPDATER-AUDIT.md; only the deleted GUI translator
       writer qualifies, pending a later bet and separate disable/delete commits.
 - [x] Dispose of the updater audit as evidence only (2026-09-07, ADR-232):
       only the deleted GUI writer qualifies; exact files, retained behavior,
       compatibility cost and separate disable/delete gates are recorded in
-      TRANSLATION-UPDATER-AUDIT.md. Maintainer reconciliation and a later
+      history/TRANSLATION-UPDATER-AUDIT.md. Maintainer reconciliation and a later
       planner bet are required before either implementation stage.
 - [x] Disable only the translation updater's deleted GUI writer dispatch
       (2026-09-07, ADR-232); preserve App/Base installation and retain the
@@ -935,7 +940,7 @@ Not a phase that "completes" — a standing mode of work.
       boundary (ADR-230), with the rest still needing dependency audits.
       Test builds and installs, with `Mod/Test`
       pruned from the payload. Start no longer installs or stages
-      (`docs/START-AUDIT.md`). The staged payload was **2.4 GB**, most of
+      (`docs/history/START-AUDIT.md`). The staged payload was **2.4 GB**, most of
       it development environment; ADR-531 pruned LLVM and clang and
       ADR-532 OpenCV, PCL, Node and Perl, leaving it at **2.2 GB**
       (2,213,397,834 B, 32.1% less than before ADR-531), with more of the
@@ -1322,8 +1327,12 @@ the order they had to happen:
       (29× real time) and a **1.72 ms** median `live_step` round trip
       against a 33 ms bar, identical from the staged payload. Driven end to
       end on mg-legs it runs at real time, takes 1.5 N from three sides, and
-      goes over at 8 N.
-- [x] **A live session you can analyse** (ADR-110). The instrument was still
+      goes over at 8 N. *Removed by ADR-528: the three live ops, the host
+      and the live worker left the engine once their one client, the
+      shell's Live editor, was deleted; a recorded rollout with drawn
+      disturbances replaces it.*
+- [x] **A live session you can analyse** (ADR-110, removed with live mode
+      by ADR-528). The instrument was still
       unreadable: every session opened with the whole declared episode
       running, so a hand push landed on top of four other forces. Three
       changes. **Calm mode** is one `variation` boolean on `live_open` and
@@ -1343,7 +1352,9 @@ the order they had to happen:
       applied forces and stands; a 0.75 N push reports **0.7500 N at
       90.00°** at the pelvis centre of mass; a held push is constant across
       26 ticks and stops **0.142 s** after release.
-- [x] **A live session that does not stop on its own** (ADR-136). Live mode
+- [x] **A live session that does not stop on its own** (ADR-136; the
+      `endless` keyword went with live mode, ADR-528, and
+      `record_steps=False` stays). Live mode
       truncated every six seconds, because it played the *task's* episode —
       the length a trainer wanted, not a viewer. Nothing physical is there:
       an observation carries no clock, so the policy cannot tell step 301
@@ -1357,12 +1368,14 @@ the order they had to happen:
       fall still holds a second and resets. No protocol change: `live_open`
       still answers `episode_seconds`, now stated as the horizon the policy
       was *trained* at, and the panel says so. Nine tests, engine suite green.
-- [ ] **The GPU run and the policy it produces.** Blocked, not skipped: the
-      training box runs its **own** checkout of `training/cadex_train.py`
-      and it predates ADR-104, so a dispatch would silently ignore both new
+- [x] **The GPU run and the policy it produces.** Was blocked: the
+      training box ran its **own** checkout of `training/cadex_train.py`
+      and it predated ADR-104, so a dispatch would silently ignore both new
       draws while recording the new algorithm string in the policy header.
-      The CPU sanity run is green (50 iterations, σ 0.3006, witness
-      4.07e-08).
+      The CPU sanity run was green (50 iterations, σ 0.3006, witness
+      4.07e-08). *Unblocked: `remote_train.sh` now hashes the box's
+      trainer against this repository's and refuses a mismatch, and the
+      runs through B6 below were trained there (ADR-112).*
 - [x] **The reward learns where the feet are** (ADR-112). Five runs — m9c,
       B2, B3, B4, B5 — produced a machine that stands, absorbs a shove with
       its joints and never lands a recovery step. B3/B4/B5 each changed the
@@ -1476,9 +1489,10 @@ lose by accident:
   *compiled* model, which is where a release changing a default would land.
   Moving one is a measurement, not an edit.
 
-## Phase 15 — Organic modelling and the CAD/mesh interface `(O0–O3 closed 2026-08-05, ADR-124…127; O2b and O4 parked)`
+## Phase 15 — Organic modelling and the CAD/mesh interface `(O0–O3 closed 2026-08-05, ADR-124…127; O2b closed 2026-08-05, ADR-130; O4 parked)`
 
-- [x] **Native Blender recipe bridge (ADR-185).** `mesh.blender` composes
+- [x] **Native Blender recipe bridge (ADR-185; `mesh.blender` retired with
+      the shell, ADR-496).** `mesh.blender` composes
       script-owned native bpy recipes with named CAD-derived mesh inputs and
       JSON dimensions/frames. OS-isolated evaluation, actual topology/runtime
       identity, existing acceptance/rollback/reopen/undo, and a hybrid
@@ -1606,7 +1620,7 @@ pytest src/Mod/cadex/cadex_tests/test_subshape_selectors.py    # selectors resol
 #   the real-kernel case also runs against a payload:
 #   CADEX_ENGINE_ROOT=<payload> pytest .../test_subshape_selectors.py
 
-# new in Phase 14 — the dynamics vertical (39 test_dynamics_*.py suites)
+# new in Phase 14 — the dynamics vertical (39 test_dynamics_*.py suites then, 61 now)
 pytest src/Mod/cadex/cadex_tests -k dynamics       # headless, no build, no GPU
 #   naming convention across the arc, four files a slice:
 #     *_api       the authoring surface and its refusals
@@ -1615,7 +1629,7 @@ pytest src/Mod/cadex/cadex_tests -k dynamics       # headless, no build, no GPU
 #     *_live      the whole path through a real worker
 pytest src/Mod/cadex/cadex_tests/test_dynamics_units.py          # the one conversion boundary
 pytest src/Mod/cadex/cadex_tests/test_engine_purity_guardrails.py  # the three invariants
-#   the packaged gate is 12 tests at M8, up from 6 at M0:
+#   the packaged gate is 12 tests at M8, up from 6 at M0 (21 today):
 #   CADEX_ENGINE_ROOT=<payload> pytest .../test_cadexd_lifecycle.py
 #   MJX-gated tests (phase 0 measurements, real training runs) SKIP in the pixi
 #   env by design — 12 skips is the expected count. To run them, use a venv
@@ -1725,6 +1739,45 @@ the items below are what made that true. `AGENTS.md` describes the result.
       `QddPart.mounting()`: stator and output screws sized to the drawn
       thread, clearance holes, and output-flange bolts that turn with the
       flange in the clearance sweep (ADR-609).
+- [x] The read-only dashboard grows back what a watcher needs (orun3–orun5):
+      evaluation films in the 2D viewport (ADR-541); a stage overlay, then
+      Status as an editor of its own with charts, the evaluation and the
+      runs (ADR-542, ADR-572, ADR-606) and an agent-authored sandboxed panel
+      (ADR-607); each checkpoint rolled out by the engine while the run
+      trains, in the machine's training slot, and looped on a scrubber
+      (ADR-543 to ADR-545, ADR-554, ADR-576, ADR-577); a revision timeline over models kept per accepted
+      revision, with `cadex revision backfill` (ADR-546 to ADR-548); the
+      agent's last tool call, from the activity log `cadex mcp` writes
+      (ADR-549, ADR-550, ADR-553, ADR-555); relative URLs and an HTTP API
+      table (ADR-551, ADR-552); pan, layout presets, the design's own floor,
+      physical materials and Wireframe (ADR-561, ADR-573, ADR-600 to
+      ADR-604); a project listed from its agent's first tool call and a
+      viewer's home page (ADR-575, ADR-605).
+- [x] Guidance is a domain-neutral base plus named, optional styles a
+      project chooses with `cadex style` (ADR-560): `printed-legged-robot`
+      (ADR-565 to ADR-567) and `creature` (ADR-626), the brief's style
+      chosen by the agent (ADR-625), and the base teaching sensors, closed
+      linkages, motion and anatomy (ADR-596, ADR-627).
+- [x] A passed evaluation is presented: Noto Sans lettering (ADR-568), the
+      print-bed hero (ADR-569, ADR-570) and the shove film (ADR-571).
+- [x] Dynamics for the orun5 briefs: motion predicates (ADR-587), a
+      position tracker and a load sensor (ADR-588 to ADR-591), goals in a
+      body's frame and the `phase` clock (ADR-592, ADR-598), a curriculum
+      step that revises the success spec (ADR-597), and closed linkages
+      driven from the crank, measured by `cadex smoke` and swept from their
+      limited joints (ADR-593 to ADR-595, ADR-621). `cadex smoke`'s
+      first frame and fit are corrected (ADR-581 to ADR-584, ADR-599); a policy plays
+      under the command filter it trained with, and a run reads stopped or
+      failed (ADR-558, ADR-559, ADR-574).
+- [x] The creature fixes (ADR-610 to ADR-627): `lib.panel`, `lib.housing`
+      and the shell check (Phase 15, O3b); `assembly.anatomy` and the
+      `anatomy` block in every build reply (ADR-613, ADR-614); `math` and
+      safe introspection in the sandbox (ADR-615, ADR-616); refusals that
+      name the failing call, say what the solver said and keep the script's
+      prints (ADR-617, ADR-618, ADR-620); `describe_api` listing what each
+      lib part can do (ADR-619); the fit measured once per geometry, world
+      geometry never failing it, and the hardware-silhouette share reported
+      rather than capped (ADR-622 to ADR-624).
 
 ## Off-phase — the harness ops, experimental (ADR-056, ADR-057, ADR-062, ADR-063, ADR-065, 2026-07-27 → 2026-08-01)
 
@@ -1959,6 +2012,11 @@ What makes them experimental, and what would settle it:
 
 ## Later — identified, not scheduled
 
+*Many items below are walk, prompt and shell work from before ADR-498 and
+ADR-538. The walk survives as the tokenless legs (`cadex walk`, no
+`--prompt`, `--model` or `$CADEX_MODEL`); items about a design turn's
+prompt, its model or the shell are marked where they stand.*
+
 - **A1: `display` on `open_project`.** Would fold the restore pass and the
   hydration rebuild into one script run; measured cost of not having it is
   0.49 s on the first engine request against a project.
@@ -1990,7 +2048,7 @@ What makes them experimental, and what would settle it:
   claim was corrected against this shipped behavior on 2026-09-08 (ADR-187).
 - [x] **Qualify assembly camera visibility** (2026-09-07, ADR-228):
       actual hydration and EEVEE render reproduce unposed source leakage;
-      `ASSEMBLY-VISIBILITY-AUDIT.md` defines ownership and regression gates.
+      `docs/history/ASSEMBLY-VISIBILITY-AUDIT.md` defines ownership and regression gates.
 - [x] **Hide instanced sources from camera renders** (2026-09-07) with
       independent render ownership and a hydration/EEVEE regression failing
       on old source (ADR-228). Pre-hidden sources retain their render flags.
@@ -2013,7 +2071,7 @@ What makes them experimental, and what would settle it:
   warm start), by `cli/tests/test_walk.py` with the real engine and trainer.
   The domain-doc convention is exercised by the caller (`docs/sensors.md`),
   not generated. The second mechanism is qualified below; the GUI-attached
-  mode is documented in ADR-201, below. *Since ADR-538 the walk runs no
+  mode was documented in ADR-201, below. *Since ADR-538 the walk runs no
   design turns (`walk --prompt` is gone); the agent designs, and the walk
   runs the tokenless legs.*
 - [x] **Portable walk output labels** (ADR-246). `PROGRESS.md` and the
@@ -2078,6 +2136,7 @@ What makes them experimental, and what would settle it:
   before the next GUI edit. The in-app agent has no shell or file tool;
   project docs stay the CLI's and a person's. **GUI not exercised.**
   *Three modes, one shape* is headless exercised, remote scripted, GUI documented.
+  *The GUI-attached mode went with the shell (ADR-498).*
 - [x] **...and leg by leg, with the difference column pinned** (ADR-269,
   `docs/CLI.md` §2). Every leg the walk spawns, plus the review it runs
   itself, with its command, its artifacts and what an open window changes:
@@ -2085,7 +2144,8 @@ What makes them experimental, and what would settle it:
   resolution. Two tests hold the table's leg column equal to
   `__main__.py`'s `run_leg` names and pin the four `mesh_agent` facts
   beneath it. Reading the source corrected the handler count from two to
-  four. **GUI still not exercised.**
+  four. **GUI still not exercised.** *The `mesh_agent` facts went with the
+  shell (ADR-498).*
 - [x] **Inventory resolves large inspection previews** (ADR-236 follow-up).
   Page catalog totals and uncatalogued outputs as well as components; expand
   previewed rows and their fields before rendering. Regression uses the real
@@ -2180,7 +2240,7 @@ What makes them experimental, and what would settle it:
   `docs/CLI.md` §2's GUI-attached paragraph now says so, and a test pins the
   fact rather than the sentence. ADR-200's remote handoff was re-read in the
   same pass and is current: the box runs no engine and no turn, so neither
-  ADR-249 nor ADR-250 reaches it.
+  ADR-249 nor ADR-250 reaches it. *Gone with `cadex -p` (ADR-538).*
 - [x] **`assembly.mjcf` never returns for a ten-component rig** — fixed
   (ADR-250, 2026-09-08, found on the Linux GPU box). The first prompt walk
   there designed a one-servo swing rig — MG90S from the catalog, printed
@@ -2200,7 +2260,8 @@ What makes them experimental, and what would settle it:
   `policy_on=1`: **300.0 s / exit 3 → 2.0 s**; the full dynamics layer with
   collisions, actuator, joint dynamics, observations, reward, termination,
   randomisation and both ranged disturbances accepts in **1.2 s**.
-- [x] **The prompt walk runs end to end on the Linux GPU box** (2026-09-08,
+- [x] **The prompt walk runs end to end on the Linux GPU box** (2026-09-08;
+  this and the two items after it ran `walk --prompt`, gone since ADR-538;
   the evidence ADR-249 and ADR-250 were cleared for). `cadex walk --prompt`
   took a one-servo swing-arm rig from a prompt to a verified policy with no
   human step past documented flags: **exit 0, 17:43 wall clock, 2,640 MB peak
@@ -2351,6 +2412,7 @@ What makes them experimental, and what would settle it:
 - [x] **Retain recent decisions in prompt context** (2026-09-08, ADR-265).
   Keep the bounded ADR tail; overflowing-log regressions cover fresh and resumed
   turns, unchanged limits, architecture/domain selection and preserved source files.
+  *Gone with `cadex -p` (ADR-538).*
 - [x] **Preserve project docs on failed updates** (2026-09-08, ADR-264).
   Progress, decisions and domain notes replace only fully written files; partial
   write and replacement-failure regressions preserve history and verify retry.
@@ -2358,6 +2420,7 @@ What makes them experimental, and what would settle it:
   regression delivers prior decisions/domain notes and between-visit edits to
   the resumed prompt, and preserves old notes when new decisions/notes land.
   Provider behavior and a history-guided trained iterate remain unmeasured.
+  *Gone with `cadex -p` (ADR-538).*
 - [x] **Identify comparison seeds, objective and action scaling** (2026-09-08,
   ADR-263). Train/walk rows carry current and prior evidence; review JSON keeps
   exported objective fields and actions. Legacy rows remain explicitly unknown.
@@ -2501,6 +2564,7 @@ What makes them experimental, and what would settle it:
   Current engine stale responses omit that guard; the prior claimed overwrite
   was not reproduced. The dormant retry is removed defensively.
   Shared locking and simultaneous acceptance remain outside this fix.
+  *The shell went with ADR-498.*
 - [x] **A trained policy comes home headlessly** (ADR-190). `cadex asset
   --put walk.cxpolicy` for a pipeline and `put_asset` in the CLI agent's
   tool surface, both on the op the shell has had since ADR-043; the
@@ -2527,11 +2591,13 @@ What makes them experimental, and what would settle it:
   accepted run with the numbers, and turns a turn's closing `DECISION:`
   lines into numbered `DECISIONS.md` entries; `docs/<subject>.md` is the
   domain-doc convention. No engine change, no file tool for the agent.
-  §7c row 10 closes.
+  §7c row 10 closes. *Since ADR-538 the CLI scaffolds and appends
+  `PROGRESS.md` only; the person's agent reads the documents and writes
+  `DECISIONS.md` and the notes itself (`cli/cadex_cli/project_docs.py`).*
 - [x] **A project's own architecture survives its guide** (ADR-279). Prompt
   context bounds `ARCHITECTURE.md` from both ends, so a scaffold that outgrows
   the budget no longer evicts what the project wrote below it; regression built
-  on the real scaffold.
+  on the real scaffold. *Gone with `cadex -p` (ADR-538).*
 - [x] **The walk detaches in two halves** (ADR-282). `walk --remote --detach`
   stops at pending with `walk-pending.json` under `--out` — the locator, the
   bundle it was launched against, the seed, and the two commands that finish
@@ -2547,10 +2613,13 @@ What makes them experimental, and what would settle it:
 - [x] **Project model continuity survives a refused override** (ADR-276).
   Prompt and walk turns resolve flag, environment, recorded model, default;
   failed turns with the same session ID preserve the previous record.
+  *Gone with `cadex -p` (ADR-538).*
 - [x] **Unchanged CLI sessions preserve their metadata** (ADR-247).
   Refused and successful turns retain agent.json when session ID and model
   match; changed session IDs persist even on failure. Restore attempt metadata
   remains truthful; offline walk regressions preserve pre-existing user edits.
+  *The turn's session half went with `cadex -p` (ADR-538); `agent.json`
+  remains the CLI's own state file.*
 - [x] **A domain note lands the way a decision does** (ADR-245). The
   `docs/<subject>.md` convention was documented and unreachable — the
   agent has no file tool and the instruction told it to ask its caller,
@@ -2560,7 +2629,8 @@ What makes them experimental, and what would settle it:
   design instruction asks for `docs/actuators.md` and `docs/sensors.md`
   from any mechanism with actuators or sensors. `inventory.md` and
   `clearance.md` are the CLI's generated reports and are refused as
-  subjects. CLI suite 197 passed, no skips.
+  subjects. CLI suite 197 passed, no skips. *The `NOTE` and `DECISION:`
+  lines went with `cadex -p` (ADR-538): the agent has files of its own now.*
 - [x] **Compare and record, in a repository the project owns** (ADR-194).
   A `PROGRESS.md` number an earlier row carried is written with its
   change against that row (delta, digest, value), so the comparison is
@@ -2576,8 +2646,8 @@ What makes them experimental, and what would settle it:
   inspect exception reaches the validating CLI as a refusal rather than a
   hard client error. §7c item 5 closes; the lifecycle frontier is empty
   on the engine side.
-- **Linux and Windows shell bundles.** The engine payload builds for both;
-  only macOS arm64 has shell CI. Moot once Phase 12 lands — revisit then.
+- ~~**Linux and Windows shell bundles.**~~ Moot: the shell is deleted
+  (ADR-498) and Phase 12 superseded (ADR-500).
 
 ## Phase 16 — Structural analysis, topology optimisation and shape search `(S0–S4 closed; S0/S1 2026-08-10 ADR-141/ADR-142, S2/S3/S4 2026-08-11 ADR-143/ADR-144/ADR-145/ADR-146/ADR-147)`
 
@@ -2711,7 +2781,7 @@ field, and every client gets it through the surface it already reads.
       and tap-drill data, the common ball bearings, parametric bushing.
 - [x] **Fifth-servo bounded source audit.** Two Hitec candidates inspected;
       neither qualifies for unchanged ServoPart. Interface blockers and next
-      acceptance checks in `FIFTH-SERVO-AUDIT.md` (ADR-229); no fifth SKU delivered.
+      acceptance checks in `history/FIFTH-SERVO-AUDIT.md` (ADR-229); no fifth SKU delivered.
 - [x] **L1 — servos.** SG90 / MG90S / MG996R / DS3218: datasheet mounting
       interfaces, measured micro horns, effective density for
       `assembly.body`, `.actuator(...)` bounded by real stall torque.
@@ -2722,7 +2792,7 @@ field, and every client gets it through the surface it already reads.
 - [x] **Manufacturer horn/pigtail bounded STEP audit.** One horn imported and
       measured; neither category qualifies for delivery. Source hashes,
       interface/rights/access blockers and import-path limit are recorded in
-      `HORN-PIGTAIL-AUDIT.md` (ADR-231). No horn or pigtail shipped.
+      `history/HORN-PIGTAIL-AUDIT.md` (ADR-231). No horn or pigtail shipped.
 - [x] **L2 — boards.** ESP32 DevKitC V4 (WROOM-32E), Pi Zero 2 W,
       Adafruit PCA9685 rev C: `lib.board`, mounting-hole rows and placed
       solder-pad terminal tables for `boards(...)` (ADR-202). Sources and
@@ -2800,6 +2870,16 @@ field, and every client gets it through the surface it already reads.
       phase fails the 1e-6 mm³ overlap bound (0.000354806 mm³); reproducible
       probe in `docs/experiments/planetary_mesh_probe.py` (ADR-235).
       Publication and multi-phase qualification remain open.
+- [x] **The parts an engineered robot is built round** (ADR-407, ADR-485
+      to ADR-494). A BNO085 IMU, a D36V50F6 regulator and a battery
+      (ADR-407); a fifth servo, the Feetech STS3215 bus servo, a Pi 5, a
+      camera, a VL53L1X range sensor, a wheel and a foot (ADR-485); a
+      TB6612 motor driver (ADR-490); the wheel's round bore, spoked rim and
+      tyre (ADR-487, ADR-489). Every build reply says what holds each
+      purchased part, a bolt holding only by a thread that fits its hole,
+      and a board is screwed down by its own `.mounting()` (ADR-486,
+      ADR-488, ADR-492, ADR-493). The QDD tiers are in the three-part
+      product section (ADR-540, ADR-608, ADR-609).
 - [ ] **L3 — motors and mechanisms.** Common BLDC sizes with kV/torque
       data, N20 gearmotor, linear actuator, solenoid, joints; involute gear
       and rack values exist (ADR-233) and the rack and pinion is composed
@@ -2807,7 +2887,13 @@ field, and every client gets it through the surface it already reads.
       still its own slice.
 
 
-## Live headless project review (ADR-284)
+## Live headless project review (ADR-284) `(run ot5, closed 2026-09-13)`
+
+*Closed: the owner ticked D1–D11 on 2026-09-13 (`STATE.md`, `crisp-sun-1239`),
+so the "remains open" clauses below are as written at the time. The
+persistent operator server (`tools/operator_review.py`, ADR-299) is deleted
+(ADR-536), and since ADR-537 the dashboard (`cadex app`, `cadex review`)
+writes nothing.*
 
 - [x] Lark interruption, retry and retry video on the working copy (ADR-315):
       a real GPU attempt interrupted by SIGINT and shown failed with retry

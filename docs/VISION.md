@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-10-04
+Verified against source: 2026-10-10
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -13,7 +13,8 @@ One agentic CAD app for robots and mechanisms, made of **three things and
 nothing else** (ADR-500): **the engine**, which builds, verifies, measures,
 renders, simulates and exports a design from its script; **the dashboard**,
 where a person watches that work, read-only; and **the agent bindings** —
-one tool surface over MCP, one guidance text and the `cadex` commands —
+one tool surface over MCP, one guidance text (a domain-neutral base and
+optional named styles, ADR-560) and the `cadex` commands —
 through which the person's own agent, whichever it is, does the work
 (ADR-537, ADR-538). It is a derivative of, but not dependent on,
 FreeCAD (ADR-025), and it combines:
@@ -166,7 +167,7 @@ facts make that honest rather than a walk-back:
   the same physics.
 - **There is no sixth domain.** It is one operation on `part`, so by the test
   the line above sets for scope it costs no protocol op, no new
-  `artifact_kind` and no shell diff. The count of domains is still five.
+  `artifact_kind` and no front-end change. The count of domains is still five.
 - **The expensive half stays offboard.** Topology optimisation, refinement
   sweeps, CalculiX as a second opinion and load cases measured off a MuJoCo
   rollout all live in `analysis/`, which is not the engine and never will be

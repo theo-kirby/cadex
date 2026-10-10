@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -73,7 +73,7 @@ Flags, valid on either side of the subcommand:
 
 | Flag | Meaning |
 |---|---|
-| `--project DIR` | Project root; **created if absent**. Default `./.cadex`, or `$CADEX_PROJECT`. |
+| `--project DIR` | Project root; **created if absent** by a command that runs the engine. Default `./.cadex`, or `$CADEX_PROJECT`. `review`, `budgets`, `style` and `revision` read or write a project that exists, and a missing one is a usage error. |
 | `--out DIR` | Write exported files here. Omit and nothing is written. |
 | `--format step,stl` | Any of `step`, `stl`, `brep`. Default `step,stl`. |
 | `--offset-mm N` | `section`: where along the plane normal to cut. **Omit it** to derive the offset from the accepted bounds (ADR-275); the old default was the constant 0.0, which on a mechanism standing off that plane draws an empty page and calls it `empty`. |
@@ -122,7 +122,7 @@ to run `<repo>/cadex guidance --project <project>` in its shell before its
 first tool call, and says which design style the project chose, if any.
 Claude Code cuts a server's instructions at 2,048 characters unless
 `CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH` says otherwise, and the whole
-guidance is about 34,000, so it travels through the agent's shell, which
+guidance is about 48,000 (the base alone, 2026-10-10), so it travels through the agent's shell, which
 every agent this serves has. `tools/list` answers with the tool
 surface — `describe_api`, `write_script`, `edit_script`, `set_params`,
 `rebuild`, `inspect`, `link_part`, `put_asset`, `look`, `draw_blueprint`,
@@ -274,9 +274,11 @@ of doing any of them:
 3. `cadex train --out DIR/train --put` with the trainer's flags carried by
    name (`--iterations`, `--envs`, `--seed`, `--label`, `--name`,
    `--task`, `--timeout` (the trainer's own bound, not the walk's — see
-   `--leg-timeout` below), `--trainer-python`, and the warm-start triple
+   `--leg-timeout` below), `--trainer-python`, `--checkpoint-every`,
+   `--allow-ungrounded`, and the warm-start triple
    `--init-from`, `--init-from-parent-task`, `--init-from-task-change`) —
    and `--remote` / `--allow-cpu`, which go to this leg and nowhere else.
+   The walk always adds `--stop-on-collapse` (ADR-410).
 4. **The digest edit**, which was the one leg that was a person's: the
    walk reads the script (`cadex script`), rewrites the two string
    literals of its one `assembly.policy(task, weights="…", sha256="…")`
@@ -668,12 +670,11 @@ or nothing with the reason. Each geom is listed in its component's frame in
 mm and xyzw with MuJoCo's size meaning (half-sizes for a box, radius and
 half-length for a capsule or cylinder), inline mesh assets as vertices and
 faces, planes and unknown types listed but not drawn, and contact-free geoms
-counted as `skipped`. The page draws them only while **show collision
-geometry** is on (`#show-collision`, disabled with the reason when none are
-retained), as outlines over the solids that follow the solids' poses; the
-model status line ends `· showing: tessellated solids` or `… with collision
-proxies` (`data-showing`), and each component's line says what it has
-(`collision: 1 box`). A recording never contains them.
+counted as `skipped`. The shared scene (`review_scene.js`) can draw them as
+outlines over the solids that follow the solids' poses, but the dashboard
+page has no control that turns them on (its **show collision geometry**
+toggle went with ADR-533), so the block is data on the reply. A recording
+never contains them.
 
 A project whose first design never landed (as when a `walk --prompt` design
 turn was refused, before ADR-538) has scaffold documents and no accepted
@@ -1278,11 +1279,13 @@ or `NOTE <subject>:` line was landed for it. `docs/inventory.md` and
 `docs/clearance.md` are the CLI's own generated reports and are not note
 subjects — a note never appends to a measurement. `PROGRESS.md` is the CLI's, so it records
 what happened rather than what a model said would: `params`, `script
---set`, `export`, `link`, `asset --put`, `train` and an MCP session that
-accepted a build each land one row, with the exported trace's `total_reward` and the trainer's
+--set`, `export`, `render`, `section`, `clearance`, `inventory`, `link`,
+`asset --put`, `train`, `smoke`, `evaluate`, `walk`, `revision
+reject|restore` and an MCP session that accepted a build each land one row, with the exported trace's `total_reward` and the trainer's
 `reward_per_step`, wall time and sha256 in the numbers column when the
-run produced them. Printing the script and listing the store change
-nothing and get no row.
+run produced them. Printing the script, listing the store, `revision
+list|backfill`, `review`, `app`, `budgets` and `style` change nothing
+the row records and get no row and no commit.
 
 **The comparison is one recorded row** (ADR-194). A number an earlier
 row also carried is written with its change against that row — the
@@ -1402,10 +1405,11 @@ other command keeps the restore.
 The page's layout, type and colour follow `docs/DASHBOARD.md`: a dark
 theme by default and a light one, one type scale. **Since ADR-534 the
 project page is the app**: a screen tiled by resizable, movable areas after
-Blender's, each showing one editor — the 3D viewport and the 2D viewport — and one
+Blender's, each showing one editor — the 3D viewport, the 2D viewport and
+Status (an editor since ADR-572) — and one
 editor at a time, picked from a tab bar, on a phone; since ADR-539 the
-settings are a File, Revisions and View menu bar and the default screen is
-one 3D viewport. ADR-533 had cut what it shows to the accepted model, a design turn, the
+settings are a File, Revisions and View menu bar, and the default screen is
+the 3D viewport with Status beside it. ADR-533 had cut what it shows to the accepted model, a design turn, the
 parameter sliders and the revisions; ADR-534 adds back run models and
 playback, drawings, images, documents and training plots, all read from
 routes that were already served. **Since ADR-537 it writes nothing**: the
@@ -1421,9 +1425,9 @@ run selector, that page element was removed by ADR-533 and is not on the
 page; the data it drew is still in the `GET /api/...` reply the paragraph
 names, for the CLI, the agent, or a panel added back later.
 
-**The page leads with the design (ADR-430).** When the project has a
-concept sheet, the desk stage opens on its **Concept** tab and the phone
-column reads it before the model. `GET /api/project` carries a
+**The design's pictures (ADR-430).** The concept sheet and the hero are
+among the 2D viewport's sources (the **Concept** tab that once opened on
+them went with ADR-533). `GET /api/project` carries a
 `presentation` block, read from the render's `summary.json`: `available`,
 the `revision` and `digest` it was drawn from, its `relation` to the
 accepted revision now (`current`, `historical`, `unknown`), the `source`
@@ -1548,10 +1552,9 @@ viewport plots one of a run's curves, and for Status only while its
 **Project** panel is shown, at most every 10 s and only when the run has
 moved (ADR-607), so an idle poll adds a constant number of DOM nodes
 whatever the run count. `window.cadexReview.lastPoll()` reports the last
-poll's list bytes, detail bytes and wall time. The `test_review_history_scale.py`
-suite pins this over sixty-three runs with 512-sample histories and three
-checkpoints each, then grows the history by twenty runs under a deliberately
-selected historical run whose video keeps playing.
+poll's `project_bytes` and wall time (`ms`). The `test_review_history_scale.py`
+suite pins the bounded summary over HTTP across sixty-three runs with
+512-sample histories and three checkpoints each.
 The snapshots and checkpoints belong to the run: retain and copy its whole
 `train/` directory with the project. No server or browser is needed to retain
 them. Older trainers may lack loss/episode histories; the page labels these
@@ -2082,7 +2085,9 @@ revision and commits views under a revision directory. The same snapshot supplie
 }
 ```
 
-`error` is present instead of `notes` when `ok` is false. `stdout` is what
+`error` is present, beside any `notes`, when `ok` is false. Commands add
+their own block, described with the command: `training_plan`, `walk`,
+`smoke`, `evaluation`, `revisions`, `budgets`, `style`. `stdout` is what
 the script printed on that run, accepted or refused, when it printed
 anything (ADR-620): a refused build's prints used to be lost with it. The
 prose report prints them under the error, one `  | ` line each. `outputs` entries
@@ -2170,6 +2175,8 @@ cli/cadex_cli/
                        child, film.py its filmstrip and video (ADR-459)
   video.py             a retained, engine-verified rollout drawn without an engine
   revisions.py         `cadex revision`: the trail and going back (ADR-506)
+  revision_meshes.py   each accepted revision's model kept by part digest (ADR-546)
+  shoves.py            the shove video of a passed evaluation (ADR-571)
   review_record.py     the run record and the project review reader (ADR-285)
   review_server.py     the read-only dashboard server (ADR-286, ADR-537),
                        with review_static/ the page
@@ -2876,7 +2883,7 @@ resolved, with the tool names filled in. That is the **base**, and it is
 domain-neutral: form follows function, and nothing in it assumes a kind of
 machine or a look (ADR-560). A **style** is a named, optional
 `Mod/cadex/CadexAgentStyle.<name>.md` beside it — today
-`printed-legged-robot` — and a project chooses at most one with `cadex
+`printed-legged-robot` and `creature` — and a project chooses at most one with `cadex
 style`. `cadex guidance --project` then appends that style's rules after the
 whole base; with none chosen it prints the base alone, and no style is on by
 default. The base tells the agent how to choose one. Around it is the situation: the
@@ -3016,7 +3023,7 @@ Fast, and honest about what it did not run.
 | `test_activity.py` | The activity log (ADR-549): arguments summarised never whole, the 64 KiB cap keeping the newest calls (with two lines a call too), a torn line skipped; a call in flight until it returns and then one entry, and `lost` once its server is gone (ADR-553); and a real `cadex mcp` process's calls read back from `/api/project`, including a slow `evaluate` seen in flight with the stage `evaluating` — that half **skips** without a built engine. |
 | `test_agent_guidance.py` | The guidance: the engine's text carried verbatim, nothing left from the CLI's own turns, and `cadex guidance` printing exactly what `cadex mcp` sends. The base and styles (ADR-560): the base names no kind of machine, no style's text appears unless the project chose it, `cadex style` chooses, lists, refuses and clears, and no text an agent is given names a project. |
 | `test_dashboard_prefix.py` | Portability (ADR-551): no `url` or `mesh` the server builds is root-absolute, the `p/<name>` redirect is relative, and in Chromium the index and a project page, and a `cadex review` page, load and draw through a non-rewriting proxy at `/some/prefix/` with no request leaving it. |
-| `test_http_api.py` | The HTTP API contract (ADR-552): the "HTTP API" table above, `API_ROUTES` and `API_RESPONSE_KEYS` agree; the router dispatches from the table alone; every route's replies on a fixture biped that reaches each shape carry their always-keys and nothing unlisted, and every unknown `api/` path is a `404`; the page stores only the four per-viewer `localStorage` keys. |
+| `test_http_api.py` | The HTTP API contract (ADR-552): the "HTTP API" table above, `API_ROUTES` and `API_RESPONSE_KEYS` agree; the router dispatches from the table alone; every route's replies on a fixture biped that reaches each shape carry their always-keys and nothing unlisted, and every unknown `api/` path is a `404`; the page stores only the six per-viewer `localStorage` keys. |
 | `test_dashboard_read_only.py` | The read-only dashboard (ADR-537): every former write route refused for every method with the project unchanged, and in Chromium an open page following a `cadex params` run outside it. |
 | `test_client.py` | A real `cadexd`. **Skips** without a built engine. |
 | `test_export.py` | Plan-building directly; conversion against a real engine. |
@@ -3024,7 +3031,7 @@ Fast, and honest about what it did not run.
 | `test_walk.py` | `cadex walk` against a fake `cadex` (leg order, flags, refusals; no engine), and the toy through two real walks with the real engine and trainer — **skips** the latter without the training venv. |
 | `test_review_server.py` | The review dashboard (ADR-286): the API, the allowlist and its refusals, the CLI command, and the page in a headless Chromium over its DevTools pipe (`cdp_browser.py`) — **skips** the browser half without a Chromium (`CADEX_BROWSER` names one); the private-address smoke runs only with `CADEX_REVIEW_HOST` set. |
 | `test_review_lifecycle.py` | The dashboard across restart and copy (D6/D7): the real `cadex review` command stopped and restarted on the same port while an independent telemetry producer keeps writing; the open page recovers without reloading, a fresh page reads the same project, the producer is neither stopped nor duplicated, and no project file changes. Whole-directory copy coverage checks independent accepted fixtures and historical model/curves/video access with the original path unavailable. **Skips** without a Chromium or FFmpeg. Fixture coverage, not the required fresh-biped pass. |
-| `test_review_history_scale.py` | Bounded operation over a long run history (ADR-321): sixty-three runs with 512-sample histories and three verified checkpoints each. Over HTTP, the run list carries a telemetry summary under 1.5 KB per run with no histories and no checkpoint hashing, the per-run detail carries both, and missing/invalid/mismatched states survive the summary. In the browser, a deliberately selected historical run keeps its selection, histories and playing video while twenty runs are added and the newest run's telemetry grows; an idle poll adds no more DOM nodes after the growth than before; a fresh visit selects the training run and the current-run button reaches it with its growing history within five seconds. **Skips** the browser half without a Chromium or FFmpeg. |
+| `test_review_history_scale.py` | Bounded operation over a long run history (ADR-321): sixty-three runs with 512-sample histories and three verified checkpoints each. Over HTTP, the run list carries a telemetry summary under 1.5 KB per run with no histories and no checkpoint hashing, the per-run detail carries both, and missing/invalid/mismatched states survive the summary; `default_run` picks the newest run, then a training one. It has no browser half now. |
 | `test_evaluate.py` | `cadex evaluate` (ADR-457) in three layers: what it reads from a hand-built retained attempt, and the shove episode's slices, pushes, ending and skips (ADR-571) (no engine); the child run for real on the engine suite's own fixtures, which needs `mujoco` here and **skips** without it; and the command against a script a live engine accepted with a policy it verified — **skips** without a built engine. |
 | `test_loop.py` | The training loop (ADR-464) in three layers: the registry and the supervisor against a hand-built retained attempt and a fake trainer, with the supervisor really detached — registration whole before launch and each refusal, a run outliving the process that started it, stop, budget, collapse against crash, SIGTERM and SIGKILL as interruptions, one run at a time per project and per machine; the four tools through `Bridge.call`; and whole rounds through the `cadex mcp` session host against a live engine — a run started in one session, its policy declared and evaluated in the next — which **skip** without a built engine, the real-trainer round also without the training venv. It also refuses behaviour words in the loop, its tools and its guidance paragraph. |
 | `test_film.py` | The evaluation's film (ADR-459) on a hand-built retained attempt and hand-written traces, with no engine: which seeds `--film` picks; the solids read from the attempt's own tessellation and refused outside it; materials from the inventory; both sheets' frame times, views, floor and dark backdrop read back from the PNGs; the detail window centred on the evaluation's base while a part is left behind, fixed for a mechanism with no floating base, and refused for a base that is not drawn (ADR-460); the early-ending and no-disturbance windows; the target marker (ADR-463): a ring read back from both sheets' pixels at the projected target of each frame's own time, hollow, drawn over the solids, jumping where the target does, held in a fixed window and in the video's, absent from a trace with no point goal, and refused for a point goal the trace cannot place; the trace digest check; the report rewritten with its film; `--film-only`'s refusals. The video tests need FFmpeg and **skip** without it. |

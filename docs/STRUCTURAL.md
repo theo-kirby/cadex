@@ -1,6 +1,6 @@
 # Structural analysis, topology optimisation and shape search
 
-Verified against source: 2026-10-04. Provenance: `[Cadex-new]`.
+Verified against source: 2026-10-10. Provenance: `[Cadex-new]`.
 Slices **S0–S4, all closed.** ADR-141 authorises the tree, ADR-142 closes S1,
 ADR-143 closes S2, ADR-144/ADR-145 close S3 — the two halves that earned their
 way in-engine — and ADR-146/ADR-147 close S4, which is where the loop stops
@@ -48,14 +48,15 @@ most. All of the following was measured, not assumed.
 case by name, FEA included: an expensive model turn authors a *parametric*
 script once, and a cheap loop then sweeps its parameters with no model in
 the loop at all, while an external simulator feeds numbers back.
-`docs/VISION.md:151-158` makes the same commitment as the justification for
-`cli/` existing. So the outer loop of every optimisation here is
+`docs/VISION.md` makes the same commitment in its no-modeling-tools
+principle: the agent writes script, and `cadex params` sweeps declared
+parameters without the agent in the loop. So the outer loop of every optimisation here is
 `./cadex params --set k=v --out DIR --json`, and it shipped long ago.
 
 **The search space is already machine-readable.** `params()`/`num()` carry
-`min=` / `max=` / `unit=`, and those reach a client as `param_specs` through
-`inspect scope="script"` (`CadexInspection.py:305-308`, produced at
-`cadex_project_worker.py:822`). An optimiser can read a project's own
+`min=` / `max=` / `unit=`, and those reach a client as `params.specs` through
+`inspect scope="script"` (`CadexInspection.py:339`, from the `param_specs`
+produced at `cadex_project_worker.py:1074`). An optimiser can read a project's own
 bounded search space over the protocol with **zero engine change**.
 
 **numpy and scipy already ship in the payload** — 23 MB and 50 MB, measured
@@ -74,7 +75,8 @@ workbench trees):
 `Fem` went in Phase 1 batch A (ADR-007), and commit `e85fe5ea` removed 3,589
 files including the NETGEN find logic. There is nothing to re-enable.
 
-**Nothing computes stress and there is no material stiffness.** Zero hits for
+**Nothing computed stress and there was no material stiffness** (before S3
+added `part.stress`, §6.2). Zero hits for
 `stress`, `strain`, `von_mises` or `yield` across the engine. Bodies are
 rigid by construction and `assembly.body` carries **density only**.
 
@@ -84,13 +86,13 @@ so an S2 result arrives through `put_asset` and is read by
 `mesh.import_file` — the path an imported STL always travelled.
 
 **`part.measurement` is the template for a geometry-free result** (ADR-139,
-`cadex_part_api.py:2596`): a declared output that carries no geometry and is
+`cadex_part_api.py:2599`): a declared output that carries no geometry and is
 recomputed from the shape rather than remembered. A stress result is the
 same species of thing, and S3 should copy it rather than invent.
 
 **Voxelisation is free.** `Shape.isInside` exists
 (`src/Mod/Part/App/TopoShapePyImp.cpp:2123`) and `CadexRouting.py` already
-runs A* on a 26-connected voxel lattice (`_astar` at :300-363), so the
+runs A* on a 26-connected voxel lattice (`_astar` at :301-365), so the
 vocabulary is not new here either.
 
 ## 3. Slice S0 — a stress number we can trust
@@ -203,7 +205,7 @@ engine reads:
 So the load case for "is this thigh strong enough" is the worst wrench that
 body saw across a rollout, read out of the same MJCF `assembly.mjcf` already
 exports. `contact_force` being a *deferred engine observation*
-(`CadexDynamics.py:5532`) does not matter, because this runs offboard in
+(`CadexDynamics.py:6692`) does not matter, because this runs offboard in
 stock MuJoCo.
 
 `analysis/loads_from_rollout.py` does not run a policy. It replays a
@@ -262,8 +264,8 @@ requires them to agree.
 protocol change and no payload bytes.
 
 Sweep or optimise a project's declared parameters against an objective, with
-no model in the loop. This is the loop `docs/CLI.md` §1 and
-`docs/VISION.md`:151-158 describe as the reason `cli/` exists at all, so the
+no model in the loop. This is the loop `docs/CLI.md` §1 describes as the reason the CLI exists at
+all, so the
 outer half of it has shipped since Phase 9; S1 is the part that decides
 where to look next.
 
@@ -308,7 +310,7 @@ point, which the measurement says is noise next to the rebuild.
   unused declared parameter: two design points, two rebuilds, **one**
   objective evaluation.
 
-Compare `digest`, never the files (`docs/CLI.md`:126-131): STEP embeds a
+Compare `digest`, never the files (`docs/CLI.md` §3): STEP embeds a
 wall-clock timestamp in `FILE_NAME`, so two exports of an identical model
 differ byte for byte across a second boundary.
 
@@ -535,7 +537,7 @@ In the order it catches things:
   back through `cadex_stress.py` — that is a real second measurement rather
   than a number the loop produced about itself.
 * **No new asset suffix**, so nothing can be silently dropped. A
-  `.cxdensity` or a sidecar receipt would have been dropped by the shell's
+  `.cxdensity` or a sidecar receipt would have been dropped by the since-deleted shell's
   Save-As — the bug ADR-046 recorded and ADR-138 fixed for `.cxpart` — and
   the project store today stages only the suffixes it knows
   (`_STORED_ASSET_SUFFIXES`). The density field and the receipt stay offboard, in the run

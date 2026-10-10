@@ -1,6 +1,6 @@
 # IDEAS.md — Parking Lot
 
-Verified against source: 2026-10-04 (ideas the shell's deletion, ADR-498, and ADR-537/538 settled are marked)
+Verified against source: 2026-10-10 (ideas the shell's deletion, ADR-498, and ADR-537/538 settled are marked)
 
 Uncommitted ideas surfaced during exploration. Nothing here is planned or
 approved — promoting an idea means writing a `docs/DECISIONS.md` entry and a
@@ -31,7 +31,9 @@ roadmap item. Add freely, prune ruthlessly.
   revision hash would make cadexd `set_params` responses for previously seen
   param values instant, and a `cadex params` sweep that revisits values
   would be free. (The dashboard already keeps each converted mesh by its
-  tessellation hash, ADR-535; this idea is the engine-side cache.)
+  tessellation hash, ADR-535, and the CLI keeps every accepted revision's
+tessellation per part digest under `review/revisions/`, ADR-546; this idea
+is the engine-side cache that would make a revisited value skip the worker.)
 
 - ~~**Blender scene as a second cache tier.**~~ **Moot**: no front end keeps
   a scene file since the shell's deletion (ADR-498). Post-Phase 6, the Blender file

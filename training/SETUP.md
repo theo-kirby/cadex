@@ -1,6 +1,6 @@
 # Training a policy: the four ways
 
-Verified against source: 2026-10-04. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-10. Provenance: `[Cadex-new]`. See
 ADR-084 (training is offboard) and ADR-089
 (remote dispatch).
 
@@ -77,11 +77,13 @@ It prints its reward curve on **stderr** as it goes and exactly one line of
 goes into the script (see [Bringing it home](#bringing-it-home)), and
 `device` in it is how you find out afterwards that it trained on CPU.
 
-Each stderr line carries three numbers, and the third is the one to watch:
+Each stderr line carries four numbers, and the third is the one to watch:
 
 ```
-iteration  419  reward/step +0.391  loss +0.0021  episode 137.5
+iteration  419  reward/step +0.391  loss +0.0021  episode 137.5  sigma 0.3180
 ```
+
+(`sigma` is `action_std`, the exploration width, `training/README.md`.)
 
 `episode` is the mean episode length in control steps (ADR-101). **A reward
 that climbs while it falls is a policy failing sooner and being paid more
@@ -264,8 +266,9 @@ through. `cadex train --remote --detach` returns a pending launch receipt in
 is verified or stored, even with `--put`. Use its run ID with `watch`/`pull`
 into a fresh destination, then verify and store the returned policy explicitly.
 The same locator is printed as the last JSON line by the dispatcher itself.
-`walk` remains blocking; detached collection and continuation are not automated.
-A warm start goes too (below). Run `check` first: the CLI reads none of
+`cadex walk --remote --detach` stops at pending in the same way and writes
+`--out/walk-pending.json`; once `watch`/`pull` has brought the run home,
+`cadex walk --complete` runs the remaining legs (ADR-282). A warm start goes too (below). Run `check` first: the CLI reads none of
 `.remote.env` and repairs nothing. See ADR-278 and `docs/CLI.md` for pending
 semantics and the timeout limit (ending SSH does not stop remote training).
 `docs/CLI.md` §2 is the contract.

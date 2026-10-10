@@ -1,6 +1,6 @@
 # The Cadex design language — a base, and named styles
 
-Verified against source: 2026-10-08. Provenance: `[Cadex-new]`.
+Verified against source: 2026-10-10. Provenance: `[Cadex-new]`.
 
 This is how a machine that Cadex designs should be designed, and it is in
 two layers (ADR-560):
@@ -18,9 +18,13 @@ two layers (ADR-560):
   its look. A project chooses at most one, `cadex style --project DIR
   NAME`, stored in its `agent.json`, and only then does `cadex guidance
   --project DIR` print the style's rules after the base. With none chosen,
-  the base is the whole of the design guidance. Each style is one engine
-  file, `Mod/cadex/CadexAgentStyle.<name>.md`. A style is written from
-  reference images or projects the owner supplies, never invented.
+  the base is the whole of the design guidance. No style is on by default:
+  the agent runs `cadex style --project DIR --json`, which lists each style
+  with one sentence on what it is for, and chooses the one its brief names
+  (an animal or a character is the `creature` style's), else none
+  (ADR-625). Each style is one engine file,
+  `Mod/cadex/CadexAgentStyle.<name>.md`. A style is written from reference
+  images or projects the owner supplies, never invented.
 
 | style | for | file |
 |---|---|---|
@@ -89,8 +93,8 @@ held-out set has had its one use.
 
 **What reaches the agent.** Only the rules reach the agent, as plain
 instructions: the base in every project, the style only in a project that
-chose it (ADR-560). Neither quotes no rating and no design id,
-shows no sweep render, and contains nothing of the judge's prompt. This
+chose it (ADR-560). Neither quotes a rating or a design id, shows
+a sweep render, or contains anything of the judge's prompt. This
 document is the evidence for the rules, and it is not in any prompt.
 
 **Exists today versus target.** The base teaches §6, §8 and the general
@@ -480,7 +484,10 @@ sensor read as the eye, and allows curved panels as long as they wrap what
 they cover. Its scale is set by its actuators, not by a servo horn.
 
 **Exists today versus target.** The style, the anatomy block, the shell
-check, `lib.panel`, `lib.housing` and the small QDDs exist. Whether designs
-made with them rate higher is measured by re-running the baseline's six
-briefs into the same blind pool.
+check, `lib.panel`, `lib.housing` and the small QDDs exist. The baseline's
+six briefs were re-run with them on 2026-10-09 (record `small-brook-2395`):
+every design that declared its anatomy jointed a head, jaw, tail, arm or
+wing, but most runs stopped before the design was done and none has yet
+been blind-rated into the same pool. Whether designs made with them rate
+higher is still that rating's to say.
 

@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-07. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-10. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -220,8 +220,8 @@ iteration:
 `CURVE_POINTS_CAP` (512) points with the first and last always kept —
 about 12 KB at the cap, which is what makes rewriting it every iteration
 free. Additive under the same schema, on the same terms as the two rows
-below; it is what the dashboard's 2D viewport plots, for a run under the
-project's `runs/<run>/train/`.
+below; it is what the dashboard's 2D viewport plots and its Status charts draw, for a run
+under the project's `runs/<run>/train/`.
 
 `episode_steps` is the row to actually watch (ADR-101): mean episode length,
 steps in the batch over episodes that ended in it. **A reward that climbs
@@ -421,8 +421,8 @@ recorded in ADR-084. **The gate does not prove the GPU path.**
 ## Retained review telemetry (ADR-287)
 
 The atomic `progress.json` snapshot now includes `updated_at` (Unix seconds),
-`task_sha256`, `model_sha256`, `loss_curve` and `episode_steps_curve`, additively
-under `cadex-training-progress-v1`. Like `curve`, each history is capped at 512
+`task_sha256`, `model_sha256`, `loss_curve` and `episode_steps_curve` (and,
+since ADR-606, `action_std_curve`), additively under `cadex-training-progress-v1`. Like `curve`, each history is capped at 512
 uniformly selected samples including the first and last. These are retained
 sampled histories, not full-resolution logs. Checkpoint names and digests stay
 in `checkpoints`; files are written before their progress snapshot is committed.

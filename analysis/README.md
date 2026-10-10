@@ -1,6 +1,6 @@
 # analysis/ — offboard structural analysis
 
-Verified against source: 2026-10-04. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-10. Provenance: `[Cadex-new]`. See
 `docs/STRUCTURAL.md` slices S0–S4, ADR-141, ADR-142, ADR-143, ADR-146 and
 ADR-147.
 
@@ -176,7 +176,7 @@ is the case S2 was specified around — or `{"solid": "part.stl"}`, which is
 the same code path with a different starting occupancy and is how you lighten
 a part you already have.
 
-Four things worth knowing before you read the answer:
+Five things worth knowing before you read the answer:
 
 - **`filter_radius_mm` is not a printing parameter.** It is here because
   without it SIMP checkerboards: the discretised problem has no minimiser and

@@ -38591,3 +38591,43 @@ refusals that name the failing call, none of which the guidance named.
 `cadex_tests/test_agent_guidance.py`.
 
 Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-628 — Seven finished one-off audits move to `docs/history/`; a docs audit corrects the live docs (2026-10-10)
+
+**Context.** `docs/` held ten dated audit and review records beside the
+live docs. Seven of them recorded a qualification or a removal that is
+finished: FIFTH-SERVO-AUDIT (ADR-229), HELP-AUDIT (ADR-216..218),
+HORN-PIGTAIL-AUDIT (ADR-231), START-AUDIT (ADR-219..221),
+SURVIVING-DIFF-AUDIT (ADR-227), TEST-TK-AUDIT (ADR-230) and
+TRANSLATION-UPDATER-AUDIT (ADR-232). Each already opened with a "dated
+record" banner, and `docs/FREECAD.md` and `docs/PROVENANCE.md` are the
+live ledgers for what they found. `docs/history/` already holds the same
+kind of record (`ASSEMBLY-VISIBILITY-AUDIT.md`, ADR-228).
+
+**Decision.**
+- The seven move to `docs/history/` unchanged except for a one-line
+  HISTORICAL banner naming the live ledger. The links in
+  `docs/FREECAD.md`, `docs/PROVENANCE.md` and `docs/ROADMAP.md` follow
+  them.
+- Three stay in `docs/`: `PHASE8-AUDIT.md`, because the `BUILD_GUI=ON`
+  error in `cMake/FreeCAD_Helpers/InitializeFreeCADBuildOptions.cmake`
+  points at it (moving it waits on that inherited-zone message);
+  `HEADLESS-BIPED-REVIEW.md`, because `test_lark_fresh_evidence.py`,
+  `test_wren_fresh_evidence.py` and `docs/probes/reed-lifecycle/report.py`
+  read it by path; and `L3-COVERAGE.md`, the evidence for the still-open
+  Phase 17 L3 item.
+- The same audit corrected the live docs against the source (code wins,
+  AGENTS.md). Every issue, fix and open owner question is listed in
+  `docs/DOCS-AUDIT.md`. No code behaviour changes.
+
+**Numbering note.** The log's header records the vacant ADR-054 and
+ADR-069..072. Also vacant, and not recorded there: ADR-111 and ADR-258.
+ADR-260 is used twice (2026-09-08), and the second entry follows ADR-259.
+The log is append-only, so the numbers stay as they are; cite the second
+ADR-260 by its title.
+
+**Tests.** `cli/tests/test_project_docs.py`,
+`src/Mod/cadex/cadex_tests/test_licensing_compliance.py`, both suites in
+full (`docs/DOCS-AUDIT.md` §Tests).
+
+Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
