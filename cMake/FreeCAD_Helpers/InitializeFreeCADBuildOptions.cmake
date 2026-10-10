@@ -121,10 +121,13 @@ macro(InitializeFreeCADBuildOptions)
 
     ChooseQtVersion()
 
-    option(BUILD_DESIGNER_PLUGIN "Build and install the designer plugin" OFF)
+    # Cadex (ADR-629): the Qt Designer widget plugin is disabled ahead of its
+    # deletion; the forced entry normalises stale or explicit ON requests.
+    set(BUILD_DESIGNER_PLUGIN OFF CACHE BOOL "Disabled by Cadex (ADR-629)" FORCE)
 
     if(APPLE)
-        option(FREECAD_CREATE_MAC_APP "Create app bundle on install" OFF)
+        # Cadex (ADR-629): there is no application bundle to create.
+        set(FREECAD_CREATE_MAC_APP OFF CACHE BOOL "Disabled by Cadex (ADR-629)" FORCE)
 
         if(FREECAD_CREATE_MAC_APP)
             install(
@@ -152,7 +155,8 @@ macro(InitializeFreeCADBuildOptions)
     # deleted. BUILD_HELP no longer exists; src/Mod/CMakeLists.txt has no
     # Help gate to consult it.
     option(BUILD_IMPORT "Build the FreeCAD import module" ON)
-    option(BUILD_JTREADER "Build the FreeCAD jt reader module" OFF)
+    # Cadex (ADR-629): src/Mod/JtReader does not exist; the gate is dead.
+    set(BUILD_JTREADER OFF CACHE BOOL "Disabled by Cadex (ADR-629)" FORCE)
     option(BUILD_MATERIAL "Build the FreeCAD material module" ON)
     option(BUILD_MATERIAL_EXTERNAL "Build the FreeCAD material external interface module" OFF)
     option(BUILD_MESH "Build the FreeCAD mesh module" ON)
@@ -161,20 +165,20 @@ macro(InitializeFreeCADBuildOptions)
     option(BUILD_PART "Build the FreeCAD part module" ON)
     option(BUILD_PART_DESIGN "Build the FreeCAD part design module" ON)
     option(BUILD_ASSEMBLY "Build the FreeCAD Assembly module" ON)
-    option(BUILD_SHOW "Build the FreeCAD Show module (helper module for visibility automation)" ON)
+    # Cadex (ADR-629): Show served the deleted GUI; disabled ahead of deletion.
+    set(BUILD_SHOW OFF CACHE BOOL "Disabled by Cadex (ADR-629)" FORCE)
     option(BUILD_SKETCHER "Build the FreeCAD sketcher module" ON)
     # Start was deleted after its separate disable (ADR-220, ADR-221).
     option(BUILD_TEST "Build the FreeCAD test module" ON)
     option(BUILD_MEASURE "Build the FreeCAD Measure module" ON)
-    option(BUILD_VR "Build the FreeCAD Oculus Rift support (need Oculus SDK 4.x or higher)" OFF)
+    # Cadex (ADR-629): the Oculus Rift support lived in the deleted GUI.
+    set(BUILD_VR OFF CACHE BOOL "Disabled by Cadex (ADR-629)" FORCE)
     option(ENABLE_DEVELOPER_TESTS "Build the FreeCAD unit tests suit" ON)
 
-    if(MSVC OR APPLE)
-        set(FREECAD_3DCONNEXION_SUPPORT "NavLib" CACHE STRING "Select version of the 3Dconnexion device integration")
-        set_property(CACHE FREECAD_3DCONNEXION_SUPPORT PROPERTY STRINGS "None" "NavLib" "Legacy" "Both")
-    else(MSVC OR APPLE)
-        option(FREECAD_USE_3DCONNEXION_LEGACY "Enable support for 3Dconnexion devices." ON)
-    endif(MSVC OR APPLE)
+    # Cadex (ADR-629): 3Dconnexion device support was consumed only by the
+    # deleted src/Gui; forced off ahead of deleting the options.
+    set(FREECAD_3DCONNEXION_SUPPORT "None" CACHE STRING "Disabled by Cadex (ADR-629)" FORCE)
+    set(FREECAD_USE_3DCONNEXION_LEGACY OFF CACHE BOOL "Disabled by Cadex (ADR-629)" FORCE)
 
     if(FREECAD_3DCONNEXION_SUPPORT STREQUAL "NavLib")
         set(FREECAD_USE_3DCONNEXION_NAVLIB ON)

@@ -30,16 +30,6 @@ if [[ ${HOST} =~ .*darwin.* ]]; then
     # add hacks for osx here!
     echo "adding hacks for osx"
 
-    # Install 3DConnexion (SpaceMouse) driver
-    # Note: For local builds, comment out the following lines if you encounter issues
-    # installing the driver or don't need SpaceMouse support
-    /usr/bin/curl -o /tmp/3dFW.dmg -L 'https://download.3dconnexion.com/drivers/mac/10-7-0_B564CC6A-6E81-42b0-82EC-418EA823B81A/3DxWareMac_v10-7-0_r3411.dmg'
-    hdiutil attach -readonly /tmp/3dFW.dmg
-    sudo installer -package /Volumes/3Dconnexion\ Software/Install\ 3Dconnexion\ software.pkg -target /
-    diskutil eject /Volumes/3Dconnexion\ Software
-    CMAKE_PLATFORM_FLAGS+=(-DFREECAD_USE_3DCONNEXION:BOOL=ON)
-    CMAKE_PLATFORM_FLAGS+=(-D3DCONNEXIONCLIENT_FRAMEWORK:FILEPATH="/Library/Frameworks/3DconnexionClient.framework")
-
     CXXFLAGS="${CXXFLAGS} -D_LIBCPP_DISABLE_AVAILABILITY"
 
     # Use MACOS_DEPLOYMENT_TARGET from environment, default to 11.0 for backwards compat.
