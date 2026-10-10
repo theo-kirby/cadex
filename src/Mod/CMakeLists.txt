@@ -7,10 +7,6 @@ if(BUILD_IMPORT)
   add_subdirectory(Import)
 endif(BUILD_IMPORT)
 
-if(BUILD_JTREADER)
-  add_subdirectory(JtReader)
-endif(BUILD_JTREADER)
-
 if(BUILD_MATERIAL)
   add_subdirectory(Material)
 endif(BUILD_MATERIAL)
@@ -30,10 +26,6 @@ endif(BUILD_PART)
 if(BUILD_PART_DESIGN)
   add_subdirectory(PartDesign)
 endif(BUILD_PART_DESIGN)
-
-if(BUILD_SHOW)
-    add_subdirectory(Show)
-endif(BUILD_SHOW)
 
 if(BUILD_SKETCHER)
     if(EIGEN3_FOUND)

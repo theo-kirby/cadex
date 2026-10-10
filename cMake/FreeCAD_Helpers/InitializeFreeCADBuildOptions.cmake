@@ -121,29 +121,11 @@ macro(InitializeFreeCADBuildOptions)
 
     ChooseQtVersion()
 
-    option(BUILD_DESIGNER_PLUGIN "Build and install the designer plugin" OFF)
+    # Cadex (ADR-632): BUILD_DESIGNER_PLUGIN, FREECAD_CREATE_MAC_APP,
+    # BUILD_JTREADER, BUILD_SHOW, BUILD_VR and the 3Dconnexion options were
+    # disabled, then deleted with what they built.
 
     if(APPLE)
-        option(FREECAD_CREATE_MAC_APP "Create app bundle on install" OFF)
-
-        if(FREECAD_CREATE_MAC_APP)
-            install(
-                DIRECTORY ${CMAKE_SOURCE_DIR}/src/MacAppBundle/FreeCAD.app/
-                DESTINATION ${CMAKE_INSTALL_PREFIX}/${PROJECT_NAME}.app
-            )
-
-            # It should be safe to assume we've got sed on OSX...
-            install(CODE "
-                execute_process(COMMAND
-                    sed -i \"\" -e s/VERSION_STRING_FROM_CMAKE/${PACKAGE_VERSION}/
-                    -e s/NAME_STRING_FROM_CMAKE/${PROJECT_NAME}/
-                    ${CMAKE_INSTALL_PREFIX}/${PROJECT_NAME}.app/Contents/Info.plist)
-                   ")
-
-            set(CMAKE_INSTALL_PREFIX
-                ${CMAKE_INSTALL_PREFIX}/${PROJECT_NAME}.app/Contents)
-            set(CMAKE_INSTALL_LIBDIR ${CMAKE_INSTALL_PREFIX}/lib )
-        endif(FREECAD_CREATE_MAC_APP)
         set(CMAKE_MACOSX_RPATH TRUE )
     endif(APPLE)
 
@@ -152,7 +134,6 @@ macro(InitializeFreeCADBuildOptions)
     # deleted. BUILD_HELP no longer exists; src/Mod/CMakeLists.txt has no
     # Help gate to consult it.
     option(BUILD_IMPORT "Build the FreeCAD import module" ON)
-    option(BUILD_JTREADER "Build the FreeCAD jt reader module" OFF)
     option(BUILD_MATERIAL "Build the FreeCAD material module" ON)
     option(BUILD_MATERIAL_EXTERNAL "Build the FreeCAD material external interface module" OFF)
     option(BUILD_MESH "Build the FreeCAD mesh module" ON)
@@ -161,39 +142,11 @@ macro(InitializeFreeCADBuildOptions)
     option(BUILD_PART "Build the FreeCAD part module" ON)
     option(BUILD_PART_DESIGN "Build the FreeCAD part design module" ON)
     option(BUILD_ASSEMBLY "Build the FreeCAD Assembly module" ON)
-    option(BUILD_SHOW "Build the FreeCAD Show module (helper module for visibility automation)" ON)
     option(BUILD_SKETCHER "Build the FreeCAD sketcher module" ON)
     # Start was deleted after its separate disable (ADR-220, ADR-221).
     option(BUILD_TEST "Build the FreeCAD test module" ON)
     option(BUILD_MEASURE "Build the FreeCAD Measure module" ON)
-    option(BUILD_VR "Build the FreeCAD Oculus Rift support (need Oculus SDK 4.x or higher)" OFF)
     option(ENABLE_DEVELOPER_TESTS "Build the FreeCAD unit tests suit" ON)
-
-    if(MSVC OR APPLE)
-        set(FREECAD_3DCONNEXION_SUPPORT "NavLib" CACHE STRING "Select version of the 3Dconnexion device integration")
-        set_property(CACHE FREECAD_3DCONNEXION_SUPPORT PROPERTY STRINGS "None" "NavLib" "Legacy" "Both")
-    else(MSVC OR APPLE)
-        option(FREECAD_USE_3DCONNEXION_LEGACY "Enable support for 3Dconnexion devices." ON)
-    endif(MSVC OR APPLE)
-
-    if(FREECAD_3DCONNEXION_SUPPORT STREQUAL "NavLib")
-        set(FREECAD_USE_3DCONNEXION_NAVLIB ON)
-    elseif(FREECAD_3DCONNEXION_SUPPORT STREQUAL "Both")
-        set(FREECAD_USE_3DCONNEXION_NAVLIB ON)
-        set(FREECAD_USE_3DCONNEXION_LEGACY ON)
-    elseif(FREECAD_3DCONNEXION_SUPPORT STREQUAL "Legacy")
-        set(FREECAD_USE_3DCONNEXION_LEGACY ON)
-    elseif(FREECAD_3DCONNEXION_SUPPORT STREQUAL "None")
-        set(FREECAD_USE_3DCONNEXION_NAVLIB OFF)
-        set(FREECAD_USE_3DCONNEXION_LEGACY OFF)
-    endif()
-
-    if(APPLE AND FREECAD_USE_3DCONNEXION_LEGACY)
-        find_library(3DCONNEXIONCLIENT_FRAMEWORK 3DconnexionClient)
-        if(NOT (IS_DIRECTORY ${3DCONNEXIONCLIENT_FRAMEWORK}))
-            set(FREECAD_USE_3DCONNEXION_LEGACY OFF)
-        endif()
-    endif()
 
     option(FREECAD_USE_PCL "Build the features that use PCL libs" OFF)
 

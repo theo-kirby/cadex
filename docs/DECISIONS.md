@@ -38768,4 +38768,106 @@ MUJOCO.md's M0–M9 development slices. The owner approved the move.
 `cli/tests/test_evaluate.py::test_the_report_block_is_documented` (the
 pins on these docs), and both suites in full.
 
+## ADR-632 — Unused inherited trees and options are deleted: Show, XDGData, MacAppBundle, the 3rdParty GUI residue, VR, the designer plugin and the JtReader gate (2026-10-10)
+
+**Context.** `docs/DOCS-AUDIT.md` §4 item 10 listed seven removal candidates
+under `docs/FREECAD.md` §3, and the owner approved deleting them. The
+engine builds with `BUILD_GUI=OFF` (ADR-022, ADR-213) and `src/Gui` is gone
+(ADR-214), so anything that only served the GUI or a desktop application is
+dead weight.
+
+**Dependency audit** (grep over CMake, `src/`, `tests/`, `pixi.toml`,
+`package/`, `tools/`, `cli/tests` and `cadex_tests`):
+- `src/Mod/Show` (16 files): pure Python, built by `BUILD_SHOW` (ON) and in
+  the payload keep-list. Importers: Part's GUI-lineage
+  `AttachmentEditor/TaskAttachmentEditor.py`, inside a `try/except
+  ImportError` fallback it always had (it only runs under a GUI), and one
+  inherited test case, `Document.py`'s `testContainerChainGroupInPart`,
+  which tested Show's own `ContainerChain`. No `cadex` code, no C++, no
+  ctest and no Cadex test imports it.
+- `src/XDGData` (5 files): a Linux desktop entry, metainfo and thumbnailer.
+  No CMake file references it, so its disable half is vacuous.
+- `src/MacAppBundle` (23 files): the macOS app bundle and the QuickLook
+  plugins, added by `src/CMakeLists.txt` and configured on Apple conda
+  builds or under `FREECAD_CREATE_MAC_APP`. Its only other consumer was the
+  QuickLook signing step of `package/scripts/macos_sign_and_notarize.zsh`,
+  which signs an application bundle the product no longer has.
+- `src/3rdParty/3Dconnexion` (34 files) and `src/3rdParty/OpenGL`
+  (`glext.h`): no CMake file adds either. Their consumers were in `src/Gui`.
+  The `FREECAD_3DCONNEXION_SUPPORT` / `FREECAD_USE_3DCONNEXION_*` options had
+  no consumer left either; the rattler build still downloaded and installed
+  the 3Dconnexion macOS driver, and `audit_macos_bundle.py` allowed a weak
+  link from `libFreeCADGui.dylib`, which no longer exists.
+- `BUILD_VR` (OFF): `find_package(Rift)` and a report line; its consumer was
+  in `src/Gui`. `cMake/FindRift.cmake` goes with it.
+- `BUILD_DESIGNER_PLUGIN` (OFF): built `src/Tools/plugins/widget`, a Qt
+  Designer plugin for FreeCAD's GUI widgets, through
+  `BuildAndInstallDesignerPlugin.cmake`, and added Qt Designer to
+  `SetupQt.cmake`.
+- `BUILD_JTREADER` (OFF): a gate on `src/Mod/JtReader`, which does not exist
+  in this tree, plus a `REQUIRES_MODS` line and a report line.
+
+Nothing was kept: no item has a used dependant.
+
+**Decision, disable commit (`c911a5d8`).** `BUILD_SHOW`, `BUILD_VR`,
+`BUILD_JTREADER`, `BUILD_DESIGNER_PLUGIN` and `FREECAD_CREATE_MAC_APP` became
+forced-OFF cache entries, and the 3Dconnexion support was forced to
+`None`/OFF, so a stale or explicit ON is normalised (the ADR-217 pattern).
+`src/CMakeLists.txt` stopped adding `src/MacAppBundle`; the payload's
+`keep_mods` dropped `Show`; `Document.py` dropped the one Show-importing case
+(the file is now manifested and carries the notice); the rattler build
+stopped installing the 3Dconnexion driver.
+
+**Decision, delete commit.** 88 tracked files (30,586 lines) are deleted:
+the five trees, `src/Tools/plugins`, `cMake/FindRift.cmake` and
+`cMake/FreeCAD_Helpers/BuildAndInstallDesignerPlugin.cmake`. The options,
+gates, `REQUIRES_MODS` line, report lines, the Designer Qt component, the
+`FREECAD_3DCONNEXION_SUPPORT` preset entries, the QuickLook signing block,
+the dead weak-link allowance and the Show/JtReader developer-config entries
+go too. `THIRD_PARTY_LICENSES.md` §2 drops the two rows (thirteen trees to
+eleven); `docs/FREECAD.md`, `ARCHITECTURE.md`, `INTEGRATION.md` and
+`cadex-release-packaging.md` follow.
+
+**Boundary.** Every inherited file touched was already manifested except
+`src/Mod/Test/Document.py` (now 57 manifest entries). Left alone, by the
+smallest-diff rule: `TaskAttachmentEditor.py`'s guarded Show import,
+`src/Tools/MakeMacBundleRelocatable.py`, `src/Tools/makedist.py`, the
+Doxygen `AppJtReaderExport=` macro and `src/Mod/.gitattributes`'s JtReader
+rows. `SetupSpaceball`/`FindSpnav` (GUI-only, inside `BUILD_GUI`) are not
+part of this decision.
+
+**Evidence.** Baseline at `091e962a` (unmodified, in the same worktree):
+release build 2,120 steps exit 0; CTest 1,526 run, 1 failed
+(`ImporterTest.TestOBJ`); `FreeCADCmd -t Document` 121 run, 1 failure
+(`testColorList`); test-engine 2,777 passed / 62 skipped; cli/tests 1,259
+passed / 1 skipped (both CPU-only, `CUDA_VISIBLE_DEVICES=`).
+- Disable: configure and an explicit `-DBUILD_SHOW=ON -DBUILD_VR=ON
+  -DBUILD_JTREADER=ON -DBUILD_DESIGNER_PLUGIN=ON
+  -DFREECAD_3DCONNEXION_SUPPORT=Both` reconfigure both left every option OFF
+  / `None`, with no Show or widget rule in `build.ninja`. The stale
+  `build/release/Mod/Show` copy was moved out. Build exit 0 (34 steps); CTest
+  1,526 run, the same one failure; `FreeCADCmd -t Document` 120 run, the
+  same one failure; an installed-tree probe imports ten retained modules,
+  makes a box (volume 6.0) and fails `import Show`. Licensing, headless
+  import guardrails and build-option tests: 21 passed / 3 skipped.
+- Delete: the removed cache entries were dropped (`cmake -U`), then
+  configure and build exit 0 (31 steps); a fresh-cache configure into an
+  empty directory exits 0, with no removed option in its cache or report and
+  no Show, MacAppBundle or widget rule. CTest 1,526 run, the same one
+  failure, no new names. `FreeCADCmd -t Document` and the probe as above.
+  test-engine 2,777 passed / 62 skipped and cli/tests 1,259 passed /
+  1 skipped, both CPU-only and identical to the baseline. `install-release`
+  and `stage-engine` exit 0; the installed `Mod/` and the payload's `Mod/`
+  carry no Show. The packaged gate (`CADEX_ENGINE_ROOT=<payload>` over
+  `test_cadexd_lifecycle.py` and `test_licensing_compliance.py`): 36 passed.
+
+**Not run.** No macOS or Windows build: the MacAppBundle, QuickLook signing
+and 3Dconnexion-driver changes are unexercised on Apple; they remove steps
+for an application bundle the product does not ship.
+
+**Tests.** `test_licensing_compliance.py` (manifest, notices,
+`THIRD_PARTY_LICENSES.md` covers every `src/3rdParty` tree),
+`test_headless_build_options.py`, `test_headless_import_guardrails.py`
+(`keep_mods`), both suites in full, inherited CTest.
+
 Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).

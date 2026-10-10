@@ -17,13 +17,10 @@ SYSTEM_PREFIXES = (
     Path("/Library/Apple/System/Library"),
 )
 MACHO_SUFFIXES = {".dylib", ".so", ".bundle"}
-ALLOWED_WEAK_EXTERNAL_DEPENDENCIES = {
-    (
-        "Contents/Resources/lib/libFreeCADGui.dylib",
-        "/Library/Frameworks/3DconnexionClient.framework/Versions/A/"
-        "3DconnexionClient",
-    )
-}
+# (bundle-relative file, weak dylib) pairs allowed to point outside the bundle.
+# Empty since the 3Dconnexion driver's weak link left with libFreeCADGui
+# (ADR-214, ADR-632).
+ALLOWED_WEAK_EXTERNAL_DEPENDENCIES: set[tuple[str, str]] = set()
 
 
 def _parse_arguments() -> argparse.Namespace:
@@ -92,8 +89,6 @@ def _validate_path(
         command == "LC_LOAD_WEAK_DYLIB"
         and (relative_file, value) in ALLOWED_WEAK_EXTERNAL_DEPENDENCIES
     ):
-        # FreeCAD deliberately weak-links the optional 3Dconnexion driver.
-        # The application remains launchable when the framework is absent.
         return
 
     if value.startswith("/DLC/"):

@@ -512,7 +512,8 @@ What the engine stands on (details and the removal ledger in
 - `src/Base` — units, vectors, persistence primitives.
 - `src/Mod/{Part,PartDesign,Sketcher,Assembly}` — the original capability
   areas; `src/Mod/{Mesh,MeshPart}` — the Phase 4 mesh domain substrate.
-- Support trees: `Import`, `Material`, `Measure`, `Show`, `Test`.
+- Support trees: `Import`, `Material`, `Measure`, `Test`. `Show` is
+  deleted (ADR-632).
 - The 17 unused workbench trees were removed in Phase 1 (ADR-007..010).
   `docs/FREECAD.md` §3 records the Phase 8 directory deletion and the
   remaining GUI-lineage sources outside that boundary, still to audit.

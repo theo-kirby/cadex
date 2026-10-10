@@ -1,6 +1,6 @@
 # THIRD_PARTY_LICENSES.md — the component-level license map
 
-Verified against source: 2026-10-04
+Verified against source: 2026-10-10
 
 What third-party material this repository contains and redistributes, under
 which license, and where each obligation is satisfied in the staged
@@ -24,13 +24,12 @@ vendored code and its library submodules (ADR-498); the tag
 
 ## 2. Vendored source — `src/3rdParty/`
 
-Thirteen directories. Where the directory carries no license file, the
+Eleven directories. Where the directory carries no license file, the
 license is stated in the source headers and named here — that is the
 record for them.
 
 | Directory | License | License file in-tree |
 |---|---|---|
-| `3Dconnexion` | LGPL (3DxWare SDK, per file headers) | **none** — the headers reference a `LICENSE` file the partial vendoring did not carry |
 | `Clipper2` | BSL-1.0 | `LICENSE` |
 | `FastSignals` | MIT | `LICENSE` |
 | `json` (nlohmann/json) | MIT | **none** — in-file SPDX tags in both headers |
@@ -39,7 +38,6 @@ record for them.
 | `libkdtree` | Artistic-2.0 | `COPYING` |
 | `lru-cache` | MIT | `LICENSE` |
 | `OndselSolver` (submodule) | LGPL-2.1 | `LICENSE` |
-| `OpenGL` | Khronos (MIT-style, per header) | **none** — stated in each header (`api/GL/`) |
 | `PyCXX` | BSD-3-Clause-style (LLNL/UC Regents) | `CXX/COPYRIGHT` |
 | `salomesmesh` | LGPL-2.1 | `LICENCE.lgpl.txt` |
 | `zipios++` | LGPL | **none** — trailing per-file notices; some files carry none, which is upstream's state, not ours |

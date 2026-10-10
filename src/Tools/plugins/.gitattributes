@@ -1,2 +1,0 @@
-#git archive --worktree-attributes --prefix=freecad-0.13/ --output=freecad.tar.gz HEAD
-imageformats    export-ignore

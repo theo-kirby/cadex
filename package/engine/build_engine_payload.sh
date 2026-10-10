@@ -13,7 +13,7 @@
 #     bin/{freecadcmd,CadexGeometryWorker,python}
 #     lib/                       no Qt, no PySide, no Coin
 #     Mod/{cadex,Part,PartDesign,Sketcher,Assembly,Mesh,MeshPart,Import,
-#          Material,Measure,Show}
+#          Material,Measure}
 #
 # Descended from osx/create_bundle.sh minus the .app wrapper, the icon
 # pipeline, the DMG, and the two provider-install scripts -- none of which
@@ -105,7 +105,7 @@ rm -rf "${payload}/bin_all"
 
 # Workbenches the xscript domains actually load. Everything else FreeCAD
 # ships is out of scope (docs/VISION.md) and simply is not carried.
-keep_mods="cadex Part PartDesign Sketcher Assembly Mesh MeshPart Import Material Measure Show"
+keep_mods="cadex Part PartDesign Sketcher Assembly Mesh MeshPart Import Material Measure"
 if [ -d "${payload}/Mod" ]; then
     for mod in "${payload}/Mod"/*; do
         name="$(basename "${mod}")"

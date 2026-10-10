@@ -490,7 +490,7 @@ cadex-engine-<version>-<os>-<arch>/
   lib/                  the runtime; of Qt, Core/Xml/Concurrent/Network/DBus
                         only — no Qt GUI, no PySide, no Coin
   Mod/{cadex,Part,PartDesign,Sketcher,Assembly,Mesh,MeshPart,Import,
-       Material,Measure,Show}
+       Material,Measure}
 ```
 
 **Finding the manifest is the whole of discovery.** `freecadcmd` and
