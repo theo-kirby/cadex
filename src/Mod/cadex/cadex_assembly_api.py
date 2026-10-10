@@ -89,6 +89,11 @@ _MOTION_NAMES = frozenset({"time", "initialValue", "pi"})
 #: the printed outer forms, the joints and purchased hardware that show, and
 #: the one saturated colour on a few deliberate features.
 APPEARANCE_ROLES = ("shell", "mechanism", "accent")
+#: What a component *is* in the design, apart from the colour it draws in
+#: (ADR-633). Only ``panel`` is judged: ``fit.panels`` measures every
+#: component declared ``role="panel"`` against the components its
+#: ``covers=`` names. The others say what a part is for and change no check.
+STRUCTURAL_ROLES = ("panel", "frame", "link", "housing", "hardware")
 _HEX_COLOUR = re.compile(r"^#[0-9A-Fa-f]{6}$")
 _OCCURRENCE_PATH = re.compile(
     r"^[A-Za-z_][A-Za-z0-9_]*(?:/[A-Za-z_][A-Za-z0-9_]*){0,15}$"
@@ -1320,6 +1325,8 @@ class AssemblyDomainAPI:
         flexible: bool = False,
         world: bool = False,
         appearance: str | None = None,
+        role: str | None = None,
+        covers: Sequence[DomainValue] = (),
         label: str = "",
     ) -> DomainValue:
         """Create one linked occurrence from a stable input reference.
@@ -1335,7 +1342,12 @@ class AssemblyDomainAPI:
         (printed outer forms), ``"mechanism"`` (joints, links and purchased
         hardware that show) or ``"accent"`` (one saturated colour on a few
         features). Undeclared, a purchased part draws as mechanism and a
-        printed one as shell.
+        printed one as shell. Appearance is colour only; ``role`` is what the
+        part is: ``"panel"``, ``"frame"``, ``"link"``, ``"housing"`` or
+        ``"hardware"``. A ``role="panel"`` component names the components it
+        covers, ``covers=[...]`` (declared before it), and ``fit.panels``
+        judges it against them: its gap, its wall, what holds it, and whether
+        it collides at rest or through the joints' motion (ADR-633).
         Reuse the returned variable in connectors and return it exactly once as
         a ``component_link`` output.
         """
@@ -1354,6 +1366,22 @@ class AssemblyDomainAPI:
                 "a native flexible subassembly cannot be grounded; ground a rigid base "
                 "component in the parent assembly instead",
             )
+        structural: dict[str, Any] = {}
+        if role is not None:
+            clean_role = str(role).strip().lower() if isinstance(role, str) else role
+            if clean_role not in STRUCTURAL_ROLES:
+                raise _error(operation, "role", f"must be one of {list(STRUCTURAL_ROLES)}", role)
+            structural["role"] = clean_role
+        covered = _values(operation, "covers", covers, output_type="component_link", minimum=0)
+        if covered and structural.get("role") != "panel":
+            raise _error(operation, "covers",
+                         'names what a panel covers; declare role="panel" with it')
+        if structural.get("role") == "panel" and not covered:
+            raise _error(operation, "covers",
+                         'a role="panel" component names the components it covers, e.g. '
+                         "covers=[board, pack]: fit.panels judges it against them")
+        if covered:
+            structural["covers"] = covered
         return self._value(
             operation,
             "component_link",
@@ -1363,6 +1391,7 @@ class AssemblyDomainAPI:
             flexible=flexible,
             **({"world": True} if world else {}),
             **({"appearance": _appearance(operation, appearance)} if appearance is not None else {}),
+            **structural,
             label=label,
         )
 

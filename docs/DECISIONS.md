@@ -37904,6 +37904,10 @@ catalog tapped hole does. The worker bundle imports the installed
 
 ## ADR-610 — `lib.panel`: a panel grown from what it covers, split and screwed down (2026-10-09)
 
+**Superseded by ADR-635 (2026-10-10):** `lib.panel` and its recipe sampler
+are deleted; panels are `part.panel(part.envelope(...))`, built in the
+worker on the exact solids.
+
 **Decision.** `lib.panel(over, *, axis, up, span, offset=1.5, thickness=2.0,
 exponent=None, step=12.0, seams, split, split_at, mount_to,
 screw="m2", screws_per_panel=2, label)` returns a `PanelSet`
@@ -37984,6 +37988,11 @@ face.
 Verified against source: 2026-10-09. Provenance: [Cadex-new] (ADR-061).
 
 ## ADR-612 — The shell check: floating, solid, unmounted, measured (2026-10-09)
+
+**Superseded by ADR-633, ADR-634 and ADR-636 (2026-10-10):** panels are
+declared with `role="panel", covers=[...]`, measured against what they
+declare, and judged by `fit.panels`, where a floating, colliding or
+unmounted panel fails the fit.
 
 **Decision.** The assembly worker measures every component declared
 `appearance="shell"` after the static fit (`_measure_shell_gaps`, published
@@ -38872,6 +38881,212 @@ for an application bundle the product does not ship.
 
 Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
 
+
+## ADR-633 — A panel is declared: `role=` and `covers=` on a component, apart from its colour (2026-10-10)
+
+**Decision.** `assembly.component(..., role=None, covers=())` (and the
+project wrapper of it) takes a structural `role` from a small closed set --
+`panel`, `frame`, `link`, `housing`, `hardware` -- and, with `role="panel"`
+only, the components it covers (`covers=[...]`, component values declared
+before it; required with that role, refused with any other). Neither key
+enters the definition unless set, so no existing digest moves. The
+inventory row carries `role`; the panel check (ADR-634, ADR-636) judges
+only `role="panel"` components and only against their declared covers.
+`appearance` is colour only again: ADR-612's trigger on
+`appearance="shell"` and its "whatever's box comes within 5 mm" covers
+inference are retired.
+
+**Why.** `docs/ARCHITECTURE-REVIEW.md` §2.2, root cause 8: agents painted
+thighs, jaws and neck links "shell" for the light tone, the shell check then
+judged them as panels and flagged them, and taught nothing about panels; and
+a cover's covers were guessed from boxes. A panel says what it covers.
+
+**Tests.** `cadex_tests/test_panel_check.py` (role and covers declared apart
+from colour; a role without covers, covers without the role and an unknown
+role refused; a part painted shell is not judged).
+
+**Consequences.** A design with no `role="panel"` component gets a `none`
+panel block, with a note when something is painted shell. `frame`, `link`,
+`housing` and `hardware` change no check today.
+
+Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-634 — The assembly worker measures each declared panel against what it covers (2026-10-10)
+
+**Decision.** `_measure_panels` replaces `_measure_shell_gaps`: for every
+`role="panel"` component, at the solved pose, about 400 area-weighted
+surface samples with normals are measured exactly (point to triangle)
+against the covered components and the components it is welded to: the
+inner face's `gap_p10/p25/median/p90/max_mm`, `hug_fraction`, and
+`air_volume_mm3` (the gap summed over the inner face); `covered_volume_mm3`
+and `egg_ratio` = 1 + air / covered volume; the wall by rays from each
+sample inward against the panel's own mesh (`wall_p10/median/p90_mm`,
+`CadexPanels.first_hits`, Möller-Trumbore); `coverage`, the share of the
+covered parts' outward-facing samples whose normal ray meets a panel within
+80 mm; `size_mm` (optimal box) and 48 `points`. Published as the assembly
+output's `panels` and `inspect scope=clearance` `/panels` (was
+`/shell_gaps`). Component rows carry a `part.panel` piece's own facts
+(`panel`: group, piece, clearance, radius, hull, thickness, fasteners).
+
+**Why.** The review's §2.2 root cause 9: the median gap let a sleeve that
+hugged a deck's top stand 10 mm off its sides, and nothing measured
+coverage, form, wall or motion. p90 catches the side; the egg ratio
+separates a wrap from an egg; rays measure a wall where 2V/A could not.
+
+**Tests.** `test_panel_check.py` (inner-face gap and air volume on a cube;
+first hits). The real-kernel measurement is exercised by every probe build.
+
+**Consequences.** Cost: one tessellation per involved component and
+numpy over triangles boxed to the panel's reach; seconds per panel on the
+probes, within the static fit's budget. Coverage is a ray test, not the
+26-view owner buffer the review sketched; `exposes` (how much of a drive a
+panel buries) is not measured.
+
+Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-635 — Panels are cut from an envelope in the worker: `part.envelope`, `part.panel`; `lib.panel` is deleted (2026-10-10)
+
+**Decision.** Two part ops replace `lib.panel` (ADR-610):
+
+- `part.envelope(over, *, clearance=1.5, radius=20.0, motion=(),
+  resolution=None)` declares the surface panels are cut from: the covered
+  solids (and the space declared hinges or sliders sweep) closed by a
+  rolling ball of `radius` and offset by `clearance`, or with
+  `radius="hull"` the convex hull by its face planes. A script value, not a
+  shape.
+- `part.panel(env, *, side, max_angle, within, thickness, seams, seam_gap,
+  inset, openings, flange, frame, screw, screws, max_piece, avoid, label)`
+  is one region of it seen from `side`, built in the part worker
+  (`CadexEnvelope.build_panel_plan`, once per build, memoised by spec): a
+  voxel signed distance field (parity fill, closing by two Euclidean
+  distance transforms), the inner face as the first crossing from `side`,
+  the region (`max_angle`, `within`, openings, no cliffs or specks)
+  contoured into smooth outlines, a B-spline height surface smoothed to a
+  third of the radius without coming nearer than the clearance, trimmed by
+  its outline as a pcurve and thickened along its normal (`makeOffsetShape`,
+  fill), an optional skirt (`flange=mm | "frame"`) from four sewn ruled
+  faces under a small overhang of the panel, cut short wherever the
+  envelope, an opening's keep-out or the frame would be entered; seams as
+  slab commons (`p0`, `p1`, ... per seam cell); openings round parts swept
+  through their motion, sensor cones and round holes; bosses sifted on
+  voxels, spread farthest-first, cast exactly onto the frame's BREP (centre
+  and four rim points), checked by rays against the covered parts, each
+  counterbored so the one stocked `screw` seats with 2.5 diameters of thread
+  (less in a thin frame), with tap-drill pilots for the frame, and kept off
+  the screw paths of the panels in `avoid`. `Panel.screws` are `lib.bolt`s
+  `part.mate`d onto `PanelMount`s, deferred mounts the worker fills in from
+  the plan (`_panel_fastener_mount`), and catalogued as the bolts they are.
+  Diagnostics publish the fastener table per piece.
+- `lib.panel`, `CadexPanels.sample` (the ~330-line recipe CSG evaluator),
+  the station ring fit, `plan_panel`, the boss planner and `PanelSet` are
+  deleted: `CadexPanels.py` 1,410 lines out, 335 in (the declarations),
+  `cadex_library_api.py` 44 out; `CadexEnvelope.py` is 1,535 new lines.
+  `lib.housing` stays as it was: the envelope of one drive at an infinite
+  radius about its axis, exact already.
+- A sheet-metal path is the same op: `radius="hull"` gives flat faces that
+  meet square at the hull's edges, panels per side meet at their `inset`,
+  and `flange` folds an edge where the form allows. Bend radii, K-factors
+  and flat patterns are not drawn.
+
+**Why.** `docs/ARCHITECTURE-REVIEW.md` §2.3 and recommendations 1 and 2:
+the sleeve was the wrong primitive (a hull per station along one axis,
+wrapped round the frame), its points came from a second geometry kernel, it
+knew nothing of motion, had no openings, and its bosses missed frames whose
+recipes it could not read. Nine creature runs kept none.
+
+**Rejected.** Exact OCCT offsets of the fused contents (fragile on unions,
+and a closing is two of them); marching cubes to a mesh solid (faceted,
+heavy booleans); a cylindrical wrap mode (left open: one side's height field
+covers covers, decks, lids, hoods and enclosure sides); the worker choosing
+each screw's length (the script must know the part number, so one stocked
+length is seated by counterbore depth instead).
+
+**Tests.** `cadex_tests/test_panels.py` (declarations: pieces, deferred
+mounts, mated and catalogued screws, refusals; the arrays: parity fill,
+closing bridges a gap narrower than twice the radius, the height field,
+outlines and holes, site spreading, seam cells; the real kernel: a two-piece
+cover with a skirt to the deck and six M2s builds valid single solids
+clear of the contents, its screws threading the deck), the part pack's
+exports, `test_engine_purity_guardrails.py` (the module list).
+
+**Consequences.** Probes in `docs/probes/panels/`. A panel plan costs 2-15
+s on the probes, most of it B-spline booleans (a skirt that does not join
+at the first tuck costs one more fuse); the fit's exact pair checks between
+a panel and a large frame cost tens of CPU-seconds, so the leopard probe
+needed a 1200 s budget. Limits: one side's height field per panel (wrap at
+most to `max_angle`), vertical skirts, butt seams only, no draft, socket
+heads only, no tabs or snaps. Base guidance still teaching `lib.panel` is
+stale until the guidance rewrite takes this ADR's paragraph.
+
+Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-636 — `fit.panels` replaces `fit.shells`, and a floating, colliding or unmounted panel fails the fit (2026-10-10)
+
+**Decision.** `CadexFitReport.panel_summary` (in `fit.panels`) judges each
+`role="panel"` component from ADR-634's measurements, the pair rows at rest
+and through every swept joint (`relative_motion` rows), the attachments and
+the piece's own facts. Failing findings: `floating` (p90 gap past the
+piece's clearance + radius/2 + 2 mm, or 8 mm for a hand-made panel; a
+`radius="hull"` enclosure is not judged), `colliding` (overlap with a
+non-bolt component at rest beyond a bolt's thread allowance), `colliding in
+motion`, `unmounted` (no bolt through it threads into a non-panel part and
+no touching weld). Advisory: `egg` (egg ratio past 2.5), `solid`/`thin`
+(wall median past 4 mm / p10 under 1 mm), `larger than the bed` (256³,
+held equal to `CadexStudio.BED_MM` by a test), `under-held` (a point over
+150 mm from any fastener), `seam closed` (pieces of one panel touching).
+Rows carry `closest_in_motion`, `farthest_from_fastener_mm`, `seam_gap_mm`;
+the block a `motion_note` naming unswept joints. A failing panel sets
+`fit.verdict` to `fail` and `fit.panel_failing_count`; `failing_count`
+stays the pairs'. The progress line says `panels: N of M failing, K
+reported`. `fit_view` cuts each list to 12.
+
+**Why.** "An advisory block is the reason nine agents could leave panels
+'to come'" (the review, §2.3). The egg is advisory because an enclosure
+round a gantry encloses its working space on purpose.
+
+**Tests.** `test_panel_check.py` (a screwed hugging panel passes; floating,
+colliding, motion-struck and unmounted panels fail the fit; a grown panel
+held to its own clearance and radius; advisory findings do not fail;
+seams; the block in `fit_summary` and `fit_view`; an older revision
+unmeasured), `cli/tests` (the progress line).
+
+**Consequences.** On the leopard probe the check named the first draft's
+front cover through the neck drive and its head cover struck by the
+nodding neck link; both were fixed by `within=` and a motion opening.
+
+Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-637 — A panel plan's memory is bounded before it is allocated (2026-10-10)
+
+**Decision.** `CadexEnvelope` counts before it allocates: the grid is
+coarsened to at most 9 M voxels or refused (`MAX_VOXELS`), triangle-column
+pairs are expanded in batches of 2 M (`PAIR_BUDGET`) with one triangle
+whose columns alone pass it refused by name, a sweep's poses are counted
+before they are copied (`MAX_TRIANGLES`, 1.5 M), hull planes are evaluated
+4 M plane-cells at a time, and every shape the kernel returns (thickened
+face, fused skirt, piece) is refused if its box is far past the field it
+was drawn in -- before anything tessellates it. The kernel test's direct
+`FreeCADCmd` driver sets `RLIMIT_AS` (6 GB) on itself, as a cadexd worker
+does.
+
+**Why.** Two probe runs on 2026-10-10, each a `FreeCADCmd` started directly
+outside cadexd (so without the worker's `RLIMIT_AS`), reached 58-60 GB
+resident and were OOM-killed, taking the whole tmux session down. Measured
+afterwards under a 25 GB cap: a skirt fused onto its panel had returned a
+"valid" solid 1e29 mm across, and tessellating that one shape was the
+allocation; the voxel fill's all-at-once column expansion was the other
+unbounded allocation. Peak resident memory of the probes after the fix:
+1.0-1.7 GB.
+
+**Tests.** `test_panels.py::test_a_field_is_bounded_before_it_is_allocated`
+(coarsening, refusal of an oversized grid, a batched fill equal to the
+unbatched one, a too-large triangle and a too-long sweep refused), the
+kernel test under its own cap.
+
+**Consequences.** Every probe and suite run in this work was capped with
+`ulimit -v`. A very large or very finely swept panel is refused with the
+reason rather than attempted.
+
 ## ADR-640 — A slider on a closed loop is a tree edge, and the loop closes on a pin (2026-10-10)
 
 **Context.** `extract_tree` grew the spanning forest breadth-first by joint
@@ -39233,5 +39448,21 @@ Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
 **Decision.** Extrusion is structure that holds, as a printed part does (`STRUCTURAL_FAMILIES`); `extrusion_hardware` takes a bolt's thread; steppers and spindles are drives; pulleys and hubbed tyres are drive outputs, held when their drive is. The base guidance's motion-parts placeholder (ADR-654) is replaced by the real paragraph in the same change.
 
 **Tests.** `test_mounting_check.py` (a rail through a T-nut into extrusion; a pulley on a bayed stepper); `test_agent_guidance.py`; both full suites.
+
+Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-638 — The base guidance teaches the panel system; ADR-654's placeholders are filled (2026-10-10)
+
+**Context.** ADR-654 left two marked placeholder paragraphs in the base guidance for work landing beside it. The motion parts filled theirs (ADR-647). The panel system (ADR-633..637) has now landed too.
+
+**Decision.** The COVERS AND PANELS paragraph teaches the following, drawn from the panel work's own report:
+- `part.envelope` (clearance, radius, `"hull"`, `motion=`);
+- `part.panel` (seams, openings around a moving part or a sensor's view, bosses cast onto the frame);
+- `role="panel", covers=[...]` per piece, with its screws welded to it and `panel.pilots` cut from the frame;
+- that `fit.panels` fails a floating, colliding or unmounted panel.
+
+The paragraph keeps a reason in front, so that a cover has a job. The base's block list names the panel check, not the shell check. Both placeholder comment lines are gone, so the base stays at its 2,700-word budget. The tests now pin the content the filled paragraphs must carry, where they used to pin the placeholders.
+
+**Tests.** Both `test_agent_guidance.py` files; both full suites.
 
 Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).

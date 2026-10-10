@@ -1200,6 +1200,10 @@ def _complete_contacts(captured: Mapping[str, Any]) -> Any:
 #: What an inventory row reports about the shape a component places. Kept
 #: short on purpose: this scope answers "what is this made of", and the full
 #: measurement of any one part is one ``inspect scope="output"`` away.
+#: What a component row carries of a part.panel piece's own facts (ADR-635).
+_PANEL_ROW_KEYS = ("group", "piece", "clearance_mm", "radius_mm", "hull", "thickness_mm",
+                   "fasteners", "screw")
+
 _INVENTORY_FACT_KEYS = (
     "shape_type",
     "solids",
@@ -1346,6 +1350,15 @@ def _join_inventory(captured: Mapping[str, Any]) -> Any:
         # none, so a reader can tell undeclared from a default.
         if properties.get("appearance"):
             row["appearance"] = str(properties["appearance"])
+        # ...and what it is (ADR-633), apart from the colour it draws in.
+        if properties.get("role"):
+            row["role"] = str(properties["role"])
+        # A panel grown by part.panel says how it was grown (ADR-635): the
+        # clearance and radius fit.panels holds its gap to, its group and
+        # piece, and the fasteners the worker placed for it.
+        grown = (source.get("operation_diagnostics") or {}).get("panel")
+        if isinstance(grown, Mapping):
+            row["panel"] = {key: grown[key] for key in _PANEL_ROW_KEYS if key in grown}
         catalog = source.get("catalog")
         if isinstance(catalog, Mapping):
             row["catalog"] = {
@@ -1432,9 +1445,9 @@ def _join_inventory(captured: Mapping[str, Any]) -> Any:
             # ADR-370: no fixed-joint pair and no published report are
             # different facts, and a reader must not read one as the other.
             "attachments": by_name.get(assembly, {}).get("attachments"),
-            # How far each declared shell stands off what it covers (ADR-612);
-            # absent on a revision accepted before it, like attachments.
-            "shell_gaps": by_name.get(assembly, {}).get("shell_gaps"),
+            # What each role="panel" component measures against what it
+            # covers (ADR-634); absent on a revision accepted before it.
+            "panels": by_name.get(assembly, {}).get("panels"),
             # Each declared tool's reach against its work area (ADR-645);
             # present only when the assembly declares a tool.
             **({"workspace": by_name[assembly]["workspace"]}

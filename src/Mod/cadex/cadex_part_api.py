@@ -306,6 +306,9 @@ def _mount(operation: str, parameter: str, value: Any) -> dict[str, Any]:
         )
     row = dict(value.row)
     component = value.component
+    # A part.panel fastener (ADR-635): its frame is the worker's, cast onto
+    # the frame's BREP, so the handle carries the piece and the boss name.
+    deferred = {"panel_fastener": str(row["panel_fastener"])} if row.get("panel_fastener") else {}
     payload = None
     if isinstance(component, DomainValue):
         payload = component.to_payload()
@@ -329,6 +332,7 @@ def _mount(operation: str, parameter: str, value: Any) -> dict[str, Any]:
         ),
         "fastener": row.get("fastener"),
         "shape": payload,
+        **deferred,
     }
 
 
@@ -3324,6 +3328,78 @@ class PartDomainAPI:
             label=label,
         )
 
+    def envelope(self, over, *, clearance=1.5, radius=20.0, motion=(), resolution=None):
+        # Unannotated on purpose, like lib's: describe_api's part page is held
+        # under one tool result; the types are the docstring's.
+        """The surface panels are cut from: what they cover, at a clearance (ADR-635).
+
+        ``over`` -- the solids or lib parts the panels cover (exact solids,
+        catalog parts, meshes made solid). ``clearance`` -- the gap from the
+        panel's inner face to them, mm. ``radius`` -- the rolling ball the
+        covered parts are closed with before the offset: 0 shrink-wraps,
+        15-40 bridges the gaps between parts and still dips between masses
+        further apart, a large one is the hull (the egg); it is also the
+        tightest curve the panel takes. ``motion`` -- moving parts the
+        panels must clear through their range, each
+        ``{"shape": link, "origin": o, "axis": a, "range": (lo, hi)}`` (a
+        hinge, degrees) or ``{"shape": s, "direction": d, "range": (lo,
+        hi)}`` (a slider, mm): their swept space is covered too.
+        ``resolution`` -- the field's voxel, mm (default: chosen for the
+        size, 0.6-4). Not a shape: pass it to ``part.panel``. The frame the
+        panels screw to is not wrapped unless ``over`` names it.
+        """
+
+        from CadexPanels import PanelError, envelope
+
+        try:
+            return envelope(over, clearance=clearance, radius=radius, motion=motion,
+                            resolution=resolution)
+        except PanelError as exc:
+            raise _error("envelope", "envelope", str(exc)) from exc
+
+    def panel(self, envelope, *, side=(0.0, 0.0, 1.0), max_angle=60.0, within=None,
+              thickness=2.0, seams=(), seam_gap=0.6, inset=0.0, openings=(), flange=0.0,
+              frame=None, screw=None, screws=2, max_piece=None, avoid=(), label=""):
+        """A thin, open panel: one region of an envelope, split and screwed down (ADR-635).
+
+        The region is the envelope seen from ``side`` where its face turns
+        less than ``max_angle`` degrees from that direction (60 for a cover
+        that wraps down its sides; 40-50 where it meets side panels), inside
+        ``within=((x0, y0, z0), (x1, y1, z1))`` if given, pulled in by
+        ``inset`` mm (half the gap where two panels meet). Its inner face is
+        the envelope; it is ``thickness`` thick outward (covers print
+        1.6-2.4). ``seams`` -- groups of parallel parting planes,
+        ``[(normal, [positions])]``, normal . p = position, ``seam_gap`` mm
+        apart: pieces ``p0``, ``p1``, ... per cell. ``openings`` -- what it
+        must clear: ``{"around": part, "clearance": mm, "motion": {"origin":
+        o, "axis": a, "range": (lo, hi)}}`` (a part, swept), ``{"cone":
+        (apex, axis, half_angle)}`` (a sensor's view) or ``{"at": point,
+        "radius": mm}`` (a round hole). ``flange`` -- a return edge hanging
+        that far down its outline where the form allows (a box lid's folded
+        edge; none over a dome). ``frame`` and ``screw=lib.bolt(size,
+        length)`` -- each piece gets ``screws`` bosses cast exactly along
+        ``-side`` onto the frame, counterbored so that one stocked screw
+        fits every one. ``max_piece`` -- the print bed, mm: a piece larger
+        is refused. ``avoid`` -- panels declared earlier whose screws these
+        must miss (two covers meeting at one corner post). Returns a Panel:
+        ``.parts``/``.names`` (one component each, ``role="panel",
+        covers=[...]``), ``.screws`` (lib.bolt parts
+        already mated on their bosses, one component each), ``.pilots``
+        (``frame = part.cut(frame, p.pilots)``), ``.mounts[piece][boss]``
+        (for ``part.mate``). The worker builds it on the exact solids;
+        ``inspect scope=output`` names where each boss landed.
+        """
+
+        from CadexPanels import PanelError, panel
+
+        try:
+            return panel(self, envelope, side=side, max_angle=max_angle, within=within,
+                         thickness=thickness, seams=seams, seam_gap=seam_gap, inset=inset,
+                         openings=openings, flange=flange, frame=frame, screw=screw,
+                         screws=screws, max_piece=max_piece, avoid=avoid, label=label)
+        except PanelError as exc:
+            raise _error("panel", "panel", str(exc)) from exc
+
     def refine(self, shape: DomainValue, *, label: str = "") -> DomainValue:
         """Copy a shape and remove redundant splitter edges and faces."""
 
@@ -3398,4 +3474,6 @@ class PartDomainAPI:
             "mirror",
             "project",
             "refine",
+            "envelope",
+            "panel",
         )

@@ -1554,6 +1554,21 @@ supplying only the gesture (O3).
       and screws it through its own holes; `fit.shells` measures every
       declared shell as floating, solid or unmounted. Proved on a trunk whose
       panels measured 2.5-4.7 mm and an egg over the same parts 31.3 mm.
+- [x] **O3c — Panels cut from the envelope; the panel check fails the fit**
+      (ADR-633..637, 2026-10-10). `role="panel", covers=[...]` on components,
+      apart from colour; `part.envelope` (rolling-ball closing and offset in
+      a worker distance field, motion swept in, or the hull) and
+      `part.panel` (a side's region, B-spline face, seams, openings, skirt to
+      the frame, bosses cast onto the frame BREP for one stocked screw,
+      screws mated onto published fastener frames); `fit.panels` judges
+      declared covers on p90 gap, motion, mounting, wall, egg ratio,
+      coverage, bed and seams, and fails floating, colliding and unmounted
+      panels. `lib.panel` and its recipe sampler are deleted. Proved on an
+      electronics cover, a gantry enclosure and the leopard
+      (`docs/probes/panels/`).
+- [ ] Panels that wrap past one side's height field (a cylindrical wrap),
+      lap and tongue seams, draft, countersunk and tab fasteners; side panels
+      over a creature's hips with openings round each housing.
 - [x] **O3b — A loft that is not the shape its own table describes**
       (ADR-129, 2026-08-05). `part.loft` and `part.loft_cage` measure how far
       the surface escapes the sections it was built from and refuse past a

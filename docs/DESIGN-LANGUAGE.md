@@ -16,9 +16,10 @@ two layers (ADR-560):
   agent of its own, ADR-538). Since ADR-650 it is about 2,500 words, down
   from about 6,000: the design loop, measured-not-guessed, the build
   reply's blocks as floors (each block explains itself in its own `source`
-  and `note`), and honesty about what is unfinished. Two paragraphs are
-  marked placeholders for work landing beside it, the panel system and the
-  motion parts (ADR-654).
+  and `note`), and honesty about what is unfinished. Its covers-and-panels
+  and motion-parts paragraphs teach the panel system (ADR-638) and the
+  machine joints and parts (ADR-647), which replaced the placeholders
+  ADR-654 left for them.
 - **A style** is named and optional: the conventions of one family of
   machines and its look. A project chooses at most one, `cadex style
   --project DIR NAME`, stored in its `agent.json`, and only then does
@@ -64,8 +65,8 @@ in a style.
 | members follow the load, checked by naming the load; what meets the ground or the work is a designed part | base | the general form of §5's limb and foot rules |
 | a made part is makeable by its process; FDM's 45° and ~1.6 mm with their reasons (§6) | base | conditional on a process |
 | hardware that shows is ordered; detail is real; finished edges sized to the part and process; colour follows role | base | form follows function, stated without a finish; the 10–20 % fillet figure went (ADR-651) |
-| covers have a reason and wrap what they cover | base, placeholder | the panel system replaces it (ADR-654) |
-| each axis is the joint its real part makes; a missing catalog part is a named stand-in | base, placeholder | the motion parts replace it (ADR-654) |
+| covers have a reason and are cut from what they cover, open where a part moves, screwed to the frame | base | `part.envelope`/`part.panel`, checked by `fit.panels` (ADR-633..638) |
+| each axis is the joint its real part makes, bought where a real machine buys it; a missing catalog part is a named stand-in | base | `lib.part`, `screw`, `rack_pinion`, couplings, cylinders, `assembly.tool` (ADR-640..647) |
 | declare the moving regions (`assembly.anatomy`) | base | any machine's steering, hitch or arm (ADR-655) |
 | a self-moving machine carries what runs it, no SKUs | base | conditional on the machine moving itself |
 | a solid of tangent primitives is measured; a joint's limit and spacing come from its sweep | base | true of any mechanism (ADR-565) |
@@ -386,7 +387,10 @@ carried over from the overlay and ot10:
   its own filament, never paint and never a multi-material print;
 - covers and panels are 1.6–2.4 mm thick, screwed to the structure that
   carries them, with clearance from what they cover through every joint's
-  range;
+  range: cut from the envelope of what they cover (`part.envelope` /
+  `part.panel`), declared `role="panel", covers=[...]`, and measured by
+  `fit.panels` -- the colour role below says nothing about what a part is
+  (ADR-633..637);
 - fasteners are deliberate: where they show, they form an even pattern
   (`balancer-c-exposed-mechanism`, Love: "three evenly spaced M3 screws per
   cheek").
@@ -495,7 +499,7 @@ arm or wing, and the only two designs with a jointed neck rated best.
 |---|---|
 | the actuator is the joint and shows: housings grown around drives, a ring or face in the accent | THE ACTUATOR IS THE JOINT, AND IT SHOWS |
 | the shell sits on the masses; slender links do the work | SHELLS SIT ON THE MASSES; LINKS DO THE WORK |
-| gently bent or curved panels that form-fit the mechanism (owner, 2026-10-09: curved is fine; a cosmetic shell is the defect) | PANELS WRAP THE MECHANISM, checked by the build's shell check |
+| gently bent or curved panels that form-fit the mechanism (owner, 2026-10-09: curved is fine; a cosmetic shell is the defect) | PANELS WRAP THE MECHANISM, checked by the build's `fit.panels` (ADR-636) |
 | necks and tails broken into discrete segments with joint rings | SEGMENTS, NOT A SKIN, WHERE IT BENDS |
 | a camera head; a ring eye that is a real part | THE CHARACTER IS A REAL SENSOR |
 | two tones plus one functional accent | TWO TONES AND ONE FUNCTIONAL ACCENT |
@@ -513,8 +517,8 @@ and never one soft skin. This one keeps no face, but lets the head's real
 sensor read as the eye, and allows curved panels as long as they wrap what
 they cover. Its scale is set by its actuators, not by a servo horn.
 
-**Exists today versus target.** The style, the anatomy block, the shell
-check, `lib.panel`, `lib.housing` and the small QDDs exist. The baseline's
+**Exists today versus target.** The style, the anatomy block, the panel
+check (`fit.panels`), `part.envelope` and `part.panel` (ADR-633..637, which replaced `lib.panel`), `lib.housing` and the small QDDs exist. The baseline's
 six briefs were re-run with them on 2026-10-09 (record `small-brook-2395`):
 every design that declared its anatomy jointed a head, jaw, tail, arm or
 wing, but most runs stopped before the design was done and none has yet
@@ -543,9 +547,8 @@ the machine moves and works, and take what it needs of the other's look
 into its concept: a robot mower is a `vehicle` whose body is product-like.
 
 **Exists today versus target.** The three styles exist and are offered by
-`cadex style`. None has been tried on a brief. The catalog does not yet
-carry rails, belts, leadscrews, steppers, cylinders or extrusion; the base's
-motion-parts placeholder tells the agent to model a named stand-in and
-record it. Whether designs made with these styles rate well is for a
+`cadex style`. None has been tried on a brief. The catalog carries rails,
+belts, leadscrews, steppers, cylinders and extrusion (ADR-646); a part it
+lacks is still modelled as a named stand-in and recorded. Whether designs made with these styles rate well is for a
 blind rating to say, and a style that rates poorly is rewritten from that
 rating like §1–§11.

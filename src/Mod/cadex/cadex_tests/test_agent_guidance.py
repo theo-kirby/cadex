@@ -37,7 +37,7 @@ BASE_WORD_BUDGET = 2700
 PROVISIONAL_WORD_BUDGET = 600
 #: The placeholder each parallel line of work replaces, and the paragraph
 #: that follows it (ADR-654).
-PLACEHOLDERS_FOR = {'panels': 'COVERS AND PANELS.'}
+PLACEHOLDERS_FOR: dict[str, str] = {}
 #: How a project's name reads: the reference and probe projects, the run
 #: families' scratch copies, the ot5-ot11 fixtures. No guidance text names one.
 PROJECT_NAME = (r'biped-sts|biped-mg90|quad-qdd|mg-legs|\bhex\d|\bot\d+\b|\borun\d|'
@@ -118,22 +118,20 @@ def test_the_base_is_short_and_states_its_checks_as_floors():
     assert 'A WALKING TASK' not in body
 
 
-def test_the_base_leaves_a_marked_placeholder_for_each_parallel_line_of_work():
-    # ADR-654: the panel system and the motion parts are being built beside
-    # this; each has one paragraph in the base, under a comment line that
-    # names it, written so it can be replaced whole. Neither names an API as
-    # if it existed: they point at describe_api.
+def test_the_base_placeholders_are_all_filled():
+    # ADR-654 left a marked placeholder for the panel system and the motion
+    # parts; both have landed and replaced theirs (ADR-638, ADR-647).
     lines = _body().splitlines()
     for name, paragraph in PLACEHOLDERS_FOR.items():
         (at,) = [i for i, line in enumerate(lines) if line.startswith(f'<!-- placeholder: {name}.')]
         assert lines[at + 1].startswith(paragraph), name
         assert 'describe_api' in lines[at + 1], name
-    for unbuilt in ('fit.panels', 'covers=', 'part.envelope', 'part.panel('):
-        assert unbuilt not in _body(), unbuilt
+    assert '<!-- placeholder:' not in _body()
 
 
 def test_the_motion_parts_paragraph_teaches_the_machine_joints_and_parts():
-    # ADR-640..646 landed, so the motion-parts placeholder is replaced (ADR-656).
+    # ADR-640..646 landed, so the motion-parts placeholder is replaced (ADR-647).
+    # The panels one went the same way with ADR-633..637 (ADR-638).
     body = _body()
     assert '<!-- placeholder: motion parts' not in body
     (paragraph,) = [line for line in body.splitlines() if line.startswith('MOTION PARTS.')]
@@ -141,6 +139,10 @@ def test_the_motion_parts_paragraph_teaches_the_machine_joints_and_parts():
                  'assembly.coupling(', 'kind="cylinder"', 'assembly.joint_dynamics',
                  'assembly.tool(', '`workspace` block', 'stand-in'):
         assert name in paragraph, name
+    (covers,) = [line for line in body.splitlines() if line.startswith('COVERS AND PANELS.')]
+    for name in ('part.envelope(', 'part.panel(', 'role="panel", covers=[...]', 'fit.panels',
+                 'panel.pilots', 'motion='):
+        assert name in covers, name
 
 
 def test_there_is_a_printed_legged_robot_style_and_every_style_is_well_formed():
@@ -308,5 +310,5 @@ def test_the_creature_style_carries_the_north_star_rules_and_not_the_legged_ones
     assert 'may curve' in body and 'grown from what it covers' in body
     assert 'never one soft skin' not in body
     # It points at the helpers and the measured blocks that back it.
-    for name in ('lib.housing', 'lib.panel(over=', 'shell check', 'anatomy block', '`reason=`'):
+    for name in ('lib.housing', 'part.envelope(over=', 'panel check', 'role="panel"', 'anatomy block', '`reason=`'):
         assert name in body, name

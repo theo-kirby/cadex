@@ -185,8 +185,6 @@ def test_a_placeholder_line_is_dropped_before_the_agent_reads_it():
     body = agent_guidance(ENGINE_MODULE_DIR, TOOL_NAMES)
     assert '<!--' not in body and '<!--' not in instructions(STYLE)
     assert '\nCOVERS AND PANELS.' in body and '\nMOTION PARTS.' in body
-    assert '<!-- placeholder: panels' in (Path(ENGINE_MODULE_DIR) / GUIDANCE_FILE).read_text(
-        encoding='utf-8')
 
 
 def test_a_stored_style_the_engine_does_not_carry_is_refused_not_dropped(tmp_path, capsys):

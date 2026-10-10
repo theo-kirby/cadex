@@ -2413,9 +2413,8 @@ design loop, measured-not-guessed, the build reply's blocks as floors (each
 block's own `source` and `note` say how to read it, so the base no longer
 does), and saying what is unfinished. Its rules are principles with a
 reason and a check, not fixed taste numbers (ADR-651). A line of it that is
-wholly an HTML comment is dropped before the agent reads it; two such lines
-mark the placeholder paragraphs *covers and panels* and *motion parts*,
-which parallel work replaces (ADR-654). A **style** is a named, optional
+wholly an HTML comment is dropped before the agent reads it (ADR-654); the
+two placeholder paragraphs it once marked are filled (ADR-638, ADR-647). A **style** is a named, optional
 `Mod/cadex/CadexAgentStyle.<name>.md` beside it — today the rated
 `printed-legged-robot` and `creature`, and the provisional `gantry-machine`,
 `vehicle` and `product` (ADR-653) — and a project chooses at most one with `cadex
@@ -2452,7 +2451,7 @@ The overlay says:
   `look`**, which reads the `measures` first, then names the crudest
   thing, fixes it and looks again. A style adds its family's look — the
   finishes, joint caps and no-face rule are `printed-legged-robot`'s.
-  Tests hold the headings, the word budget, the placeholders, and that no
+  Tests hold the headings, the word budget, the filled covers and motion-parts paragraphs, and that no
   kind of machine, animal or servo tier is in the base.
 - **Fit is measured, not printed** (ADR-346). The `fit` block on every
   build reply is the evidence that parts fit; the script's `stdout` is a

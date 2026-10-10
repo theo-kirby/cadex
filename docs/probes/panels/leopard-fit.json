@@ -1,0 +1,210 @@
+{
+ "verdict": "pass",
+ "failing_count": 0,
+ "failing": [],
+ "sweep_verdict": "incomplete",
+ "panels": {
+  "verdict": "pass",
+  "source": "engine measurements of the accepted revision (inspect scope=clearance path=/panels, /pairs, /clearance_sweep and /components): for every component declared role=\"panel\", its inner face's distance to the components its covers= names (and what it is welded to) at about 400 points, its wall read by rays, the share of what it covers that it hides, its pair rows at rest and through each swept joint, and the bolts and fixed joints that hold it. Appearance is colour only and is never judged. Not the script's stdout.",
+  "thresholds": {
+   "floating_gap_mm": 8.0,
+   "floating_slack_mm": 2.0,
+   "solid_wall_mm": 4.0,
+   "thin_wall_mm": 1.0,
+   "egg_ratio": 2.5,
+   "motion_clearance_mm": 0.5,
+   "max_span_mm": 150.0,
+   "bed_mm": [
+    256.0,
+    256.0,
+    256.0
+   ],
+   "contact_mm": 0.5,
+   "thread_engagement_mm3": 0.1
+  },
+  "panel_count": 4,
+  "failing_count": 0,
+  "reported_count": 0,
+  "failing": [],
+  "reported": [],
+  "fitted": [
+   {
+    "component": "c_rear_cover_p0",
+    "findings": [],
+    "grown": {
+     "group": "446735950827",
+     "piece": "p0",
+     "clearance_mm": 2.0,
+     "hull": false,
+     "radius_mm": 30.0,
+     "thickness_mm": 2.0
+    },
+    "floating_at_mm": 19.0,
+    "covers": [
+     "c_imu",
+     "c_pi5",
+     "c_torso_rear"
+    ],
+    "gap_p10_mm": 3.714,
+    "gap_median_mm": 4.786,
+    "gap_p90_mm": 8.444,
+    "gap_max_mm": 11.948,
+    "hug_fraction": 0.197,
+    "inner_samples": 188,
+    "egg_ratio": 1.095,
+    "coverage": 0.535,
+    "wall_p10_mm": 1.955,
+    "wall_median_mm": 1.994,
+    "wall_p90_mm": 2.054,
+    "size_mm": [
+     114.55,
+     70.23,
+     29.95
+    ],
+    "mounted": "screws",
+    "screws": [
+     "c_rear_cover_screw_0",
+     "c_rear_cover_screw_1"
+    ],
+    "held_by": [
+     "c_torso_rear"
+    ],
+    "farthest_from_fastener_mm": 98.9,
+    "seam_gap_mm": 0.6,
+    "failing": false
+   },
+   {
+    "component": "c_rear_cover_p1",
+    "findings": [],
+    "grown": {
+     "group": "446735950827",
+     "piece": "p1",
+     "clearance_mm": 2.0,
+     "hull": false,
+     "radius_mm": 30.0,
+     "thickness_mm": 2.0
+    },
+    "floating_at_mm": 19.0,
+    "covers": [
+     "c_imu",
+     "c_pi5",
+     "c_torso_rear"
+    ],
+    "gap_p10_mm": 3.706,
+    "gap_median_mm": 4.78,
+    "gap_p90_mm": 10.024,
+    "gap_max_mm": 14.054,
+    "hug_fraction": 0.216,
+    "inner_samples": 190,
+    "egg_ratio": 1.094,
+    "coverage": 0.522,
+    "wall_p10_mm": 1.895,
+    "wall_median_mm": 1.995,
+    "wall_p90_mm": 2.111,
+    "size_mm": [
+     103.01,
+     71.02,
+     29.06
+    ],
+    "mounted": "screws",
+    "screws": [
+     "c_rear_cover_screw_2",
+     "c_rear_cover_screw_3"
+    ],
+    "held_by": [
+     "c_torso_rear"
+    ],
+    "farthest_from_fastener_mm": 57.9,
+    "seam_gap_mm": 0.6,
+    "failing": false
+   },
+   {
+    "component": "c_front_cover_p0",
+    "findings": [],
+    "grown": {
+     "group": "f1ae9bfb3ac2",
+     "piece": "p0",
+     "clearance_mm": 2.0,
+     "hull": false,
+     "radius_mm": 30.0,
+     "thickness_mm": 2.0
+    },
+    "floating_at_mm": 19.0,
+    "covers": [
+     "c_torso_front"
+    ],
+    "gap_p10_mm": 3.066,
+    "gap_median_mm": 3.568,
+    "gap_p90_mm": 4.143,
+    "gap_max_mm": 5.223,
+    "hug_fraction": 0.895,
+    "inner_samples": 190,
+    "egg_ratio": 1.077,
+    "coverage": 0.099,
+    "wall_p10_mm": 1.933,
+    "wall_median_mm": 1.997,
+    "wall_p90_mm": 2.05,
+    "size_mm": [
+     217.37,
+     58.48,
+     6.22
+    ],
+    "mounted": "screws",
+    "screws": [
+     "c_front_cover_screw_0",
+     "c_front_cover_screw_1",
+     "c_front_cover_screw_2"
+    ],
+    "held_by": [
+     "c_torso_front"
+    ],
+    "farthest_from_fastener_mm": 56.2,
+    "failing": false
+   },
+   {
+    "component": "c_head_cover_p0",
+    "findings": [],
+    "grown": {
+     "group": "c06294645ccd",
+     "piece": "p0",
+     "clearance_mm": 2.0,
+     "hull": false,
+     "radius_mm": 20.0,
+     "thickness_mm": 2.0
+    },
+    "floating_at_mm": 14.0,
+    "covers": [
+     "c_camera",
+     "c_head"
+    ],
+    "gap_p10_mm": 2.987,
+    "gap_median_mm": 3.316,
+    "gap_p90_mm": 3.491,
+    "gap_max_mm": 6.096,
+    "hug_fraction": 0.948,
+    "inner_samples": 191,
+    "egg_ratio": 1.132,
+    "coverage": 0.078,
+    "wall_p10_mm": 1.916,
+    "wall_median_mm": 1.997,
+    "wall_p90_mm": 2.498,
+    "size_mm": [
+     100.21,
+     54.3,
+     17.86
+    ],
+    "mounted": "screws",
+    "screws": [
+     "c_head_cover_screw_0",
+     "c_head_cover_screw_1"
+    ],
+    "held_by": [
+     "c_head"
+    ],
+    "farthest_from_fastener_mm": 50.7,
+    "failing": false
+   }
+  ],
+  "motion_note": "19 joint(s) were not swept to completion, so motion clearance is unmeasured through them: j_head, j_hip_pitch_fl, j_hip_pitch_fr, j_hip_pitch_rl, j_hip_pitch_rr, j_hip_roll_fl, j_hip_roll_fr, j_hip_roll_rl"
+ }
+}

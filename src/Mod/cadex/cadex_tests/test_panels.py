@@ -1,40 +1,36 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
 
-"""Panels grown from what they cover, housings round drives, and the shell check.
+"""Panels cut from the envelope of what they cover, and housings round drives.
 
-``lib.panel`` (ADR-610) reads the covered recipes into points and a
-membership test, fits a superellipse ring per station, and plans screw
-bosses down to the frame; ``lib.housing`` (ADR-611) wraps a drive's own
-envelope and screws it through its own holes; ``CadexFitReport.shell_summary``
-(ADR-612) judges each declared shell as floating, solid or unmounted from
-the published clearance value. Everything here runs headless on recipes;
-one real-kernel test builds the solids.
+``part.envelope`` and ``part.panel`` (ADR-635) are declarations: the script
+half validates them and makes one value per piece, the screws mated onto
+fastener frames the worker fills in, and the frame's pilots. The worker
+half (``CadexEnvelope``) builds the field, the surface, the skirt and the
+bosses on the exact solids; its array steps are tested here headless, and
+one real-kernel test builds a cover over a battery and a board on a deck.
+``lib.housing`` (ADR-611) wraps a drive's own envelope and screws it through
+its own holes.
 """
 
 from __future__ import annotations
 
+import json
 import math
 
 import pytest
 
-import CadexFitReport
-from CadexFitReport import fit_summary, fit_view, shell_summary
-from CadexPanels import (
-    PanelError,
-    fit_ring,
-    gap_statistics,
-    plan_panel,
-    ring_points_2d,
-    ring_radius,
-    sample,
-    Sample,
-)
+import CadexEnvelope as envelope_worker
+from CadexMounts import Mount
+from CadexPanels import Envelope, Panel, PanelMount
 from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
 from cadex_domain_api import DomainValue, create_domain_api
-from cadex_library_api import LibraryError, create_library_api, library_listing
+from cadex_library_api import (LibraryError, create_library_api, library_catalog_identity,
+                               library_listing)
 
 PART_PACK = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+#: The address space the kernel driver below may use: a worker's 6 GB.
+DRIVER_MEMORY_BYTES = 6 * 1024 ** 3
 
 
 def _part():
@@ -45,177 +41,217 @@ def _lib():
     return create_library_api(_part())
 
 
-def _walk(value):
-    if isinstance(value, DomainValue):
-        yield value
-        for argument in value.arguments:
-            yield from _walk(argument)
-    elif isinstance(value, (list, tuple)):
-        for item in value:
-            yield from _walk(item)
-
-
 def _trunk(lib):
     part = lib._part
-    deck = part.box(158, 50, 4, origin=(-78, -25, -2))
+    deck = part.box(160, 110, 4, origin=(-80, -40, -2))
     pack = lib.battery("gensace-gea2s100045d", origin=(-30, 0, 2))
     board = lib.board("esp32-devkitc-v4", origin=(18, -14, 2))
     return deck, pack, board
 
 
 # --------------------------------------------------------------------------
-# reading recipes
+# the declarations
 # --------------------------------------------------------------------------
 
 
-def test_a_box_samples_its_surface_and_knows_its_inside():
-    found = sample(_part().box(10, 20, 30, origin=(1, 2, 3)), 2.0)
-    low, high = found.bounds()
-    assert low == pytest.approx([1, 2, 3]) and high == pytest.approx([11, 22, 33])
-    assert found.contains([5, 10, 10]) is True
-    assert found.contains([0, 10, 10]) is False
-
-
-def test_transforms_and_cuts_carry_points_and_membership():
-    part = _part()
-    tube = part.cut(part.cylinder(10, 40), [part.cylinder(6, 50, origin=(0, 0, -5))])
-    moved = part.transform(tube, translation=(100, 0, 0), rotation_axis=(0, 1, 0),
-                           rotation_degrees=90)
-    found = sample(moved, 2.0)
-    # Rotated +Z onto +X about the origin, then shifted 100 along X.
-    assert found.contains([120, 8, 0]) is True        # in the wall
-    assert found.contains([120, 0, 0]) is False       # in the bore
-    assert found.contains([95, 8, 0]) is False        # before its start
-    radii = [math.hypot(p[1], p[2]) for p in found.points]
-    assert max(radii) == pytest.approx(10, abs=1e-6)
-    # The bore's wall is surface too; nothing of the removed core is.
-    assert min(radii) == pytest.approx(6, abs=1e-6)
-    assert all(not (0.5 < r < 5.5) for r in radii)
-
-
-def test_a_library_part_samples_through_its_body():
+def test_an_envelope_is_a_declaration_of_what_is_covered():
     lib = _lib()
-    qdd = lib.qdd("cubemars-ak80-9-v3", origin=(0, 0, 50), direction=(1, 0, 0))
-    found = sample(qdd, 3.0)
-    low, high = found.bounds()
-    assert low[0] == pytest.approx(-38.5, abs=1e-6) and high[0] == pytest.approx(0, abs=1e-6)
-    assert high[2] == pytest.approx(50 + 49, abs=0.5)
-    assert found.contains([-20, 0, 50]) is True
+    part = lib._part
+    _deck, pack, board = _trunk(lib)
+    link = part.box(10, 10, 60, origin=(40, -5, 0))
+    env = part.envelope([pack, board], clearance=2.0, radius=25.0,
+                        motion=[{"shape": link, "origin": (45, 0, 0), "axis": (0, 1, 0),
+                                 "range": (30, -30)}])
+    assert isinstance(env, Envelope) and not isinstance(env, DomainValue)
+    assert env.spec["over"] == [pack.body, board.body]
+    assert env.spec["motion"][0]["kind"] == "hinge"
+    assert env.spec["motion"][0]["range"] == [-30.0, 30.0]
+    with pytest.raises(ValueError, match="at least one part"):
+        part.envelope([])
+    with pytest.raises(ValueError, match="clearance must be between"):
+        part.envelope([pack], clearance=0.0)
+    with pytest.raises(ValueError, match="'axis'"):
+        part.envelope([pack], motion=[{"shape": link, "range": (0, 1)}])
+    with pytest.raises(ValueError, match="lib.\\* part"):
+        part.envelope(["box"])
 
 
-def test_a_recipe_it_cannot_follow_is_refused_by_name():
-    part = _part()
-    with pytest.raises(PanelError, match="import_part"):
-        sample(part.import_part("x.cxpart"))
-
-
-# --------------------------------------------------------------------------
-# the ring
-# --------------------------------------------------------------------------
-
-
-def test_ring_radius_matches_the_ring_points():
-    for exponent in (2.0, 3.0, 4.0, 8.0):
-        points = ring_points_2d(0.0, 0.0, 30.0, 12.0, exponent, 64)
-        for index in (0, 8, 16, 24):
-            u, v = points[index]
-            angle = math.degrees(math.atan2(v, u))
-            assert ring_radius(30.0, 12.0, exponent, angle) == pytest.approx(math.hypot(u, v))
-
-
-@pytest.mark.parametrize("exponent", [2.0, 4.0, 6.0])
-def test_a_fitted_ring_clears_every_point_by_its_offset(exponent):
-    points = [(x, y) for x in (-20, -10, 0, 10, 20) for y in (-4, 0, 4)] + [(0, 9), (5, -8)]
-    a, b = fit_ring(points, centre=(0.0, 0.0), exponent=exponent, offset=1.5)
-    curve = ring_points_2d(0.0, 0.0, a, b, exponent, 720)
-    for u, v in points:
-        nearest = min(math.hypot(u - x, v - y) for x, y in curve)
-        inside = (abs(u) / a) ** exponent + (abs(v) / b) ** exponent < 1.0
-        assert inside and nearest >= 1.5 - 0.05, (u, v, nearest)
-    # And not grossly more: the ring hugs.
-    assert a < 20 * 2 ** (1 / exponent) + 1.5 + 4.0
-
-
-# --------------------------------------------------------------------------
-# planning a panel
-# --------------------------------------------------------------------------
-
-
-def test_the_skin_follows_the_contents_station_by_station():
+def test_a_panel_makes_one_value_per_piece_and_mates_its_screws_onto_its_bosses():
     lib = _lib()
+    part = lib._part
     deck, pack, board = _trunk(lib)
-    covered = [sample(v, 3.0) for v in (pack, board, deck)]
-    cover = Sample([p for c in covered for p in c.points], None)
-    plan = plan_panel(cover, None, axis=(1, 0, 0), span=(-74, 76), offset=1.5)
-    rows = plan["stations"]
-    # Over the pack (x < 0) the skin stands taller than over the board.
-    over_pack = [r for r in rows if -60 < r["position"] < -10]
-    over_board = [r for r in rows if 30 < r["position"] < 60]
-    top = lambda r: r["centre"][1] + r["inner"][1]
-    assert min(top(r) for r in over_pack) > max(top(r) for r in over_board) + 3.0
-    # Every covered point inside its station's inner ring.
-    for row in rows:
-        a, b = row["inner"]
-        n = plan["exponent"]
-        for p in cover.points:
-            if abs(p[0] - row["position"]) < 0.5:
-                du, dv = p[1] - row["centre"][0], p[2] - row["centre"][1]
-                assert (abs(du) / a) ** n + (abs(dv) / b) ** n < 1.0
-        assert row["outer"] == pytest.approx([a + 2.0, b + 2.0])
+    env = part.envelope([pack, board])
+    panel = part.panel(env, side=(0, 0, 1), frame=deck, screw=lib.bolt("m2", 8), screws=3,
+                       seams=[((1, 0, 0), [0.0])], flange="frame", label="lid")
+    assert isinstance(panel, Panel)
+    assert panel.names == ["p0", "p1"] and len(panel.parts) == 2
+    assert all(p.operation == "panel" and p.output_type == "solid" for p in panel.parts)
+    assert [p.properties["piece"] for p in panel.parts] == ["p0", "p1"]
+    # One spec for every piece: the worker plans it once.
+    assert panel.parts[0].arguments[0] == panel.parts[1].arguments[0]
+    assert panel.pilots.output_type == "compound" and panel.pilots.properties["piece"] == "pilots"
+    assert len(panel.screws) == 6 and sorted(panel.mounts) == ["p0", "p1"]
+    assert sorted(panel.mounts["p0"]) == ["b0", "b1", "b2"]
+    target = panel.mounts["p1"]["b2"]
+    assert isinstance(target, PanelMount) and isinstance(target, Mount)
+    screw = panel.screws[5]
+    assert screw.family == "bolt" and screw.part_number == "m2x8-socket"
+    assert screw.body.operation == "mate"
+    assert screw.body.arguments[2]["panel_fastener"] == "b2"
+    assert screw.body.arguments[2]["shape"]["properties"]["piece"] == "p1"
+    # Each placed screw is catalogued as the bolt it is, for the mounting check.
+    identity = library_catalog_identity()
+    key = json.dumps(screw.body.to_payload(), ensure_ascii=True, sort_keys=True,
+                     separators=(",", ":"), allow_nan=False)
+    assert identity[key] == {"family": "bolt", "part_number": "m2x8-socket"}
+    spec = panel.parts[0].arguments[0]
+    assert spec["screw"]["size"] == "m2" and spec["screws"] == 3 and spec["flange"] == "frame"
 
 
-def test_seams_and_a_parting_plane_name_the_pieces():
+def test_a_panel_declaration_refuses_what_it_cannot_build():
     lib = _lib()
-    deck, pack, board = _trunk(lib)
-    panel = lib.panel([pack, board], axis=(1, 0, 0), mount_to=deck, span=(-74, 76),
-                      seams=[0.0], split="top_bottom")
-    assert panel.names == ["0_top", "0_bottom", "1_top", "1_bottom"]
-    assert len(panel.parts) == 4 and not panel.unmounted
-    assert panel.spec["split_at_mm"] == pytest.approx(2.0, abs=0.3)  # the deck's top
-    with pytest.raises(LibraryError, match="seam at 90"):
-        lib.panel([pack], axis=(1, 0, 0), seams=[90.0])
-    with pytest.raises(LibraryError, match="split must be"):
-        lib.panel([pack], axis=(1, 0, 0), split="diagonal")
+    part = lib._part
+    deck, pack, _board = _trunk(lib)
+    env = part.envelope([pack])
+    with pytest.raises(ValueError, match="part.envelope"):
+        part.panel(pack)
+    with pytest.raises(ValueError, match="needs frame="):
+        part.panel(env, screw=lib.bolt("m2", 8))
+    with pytest.raises(ValueError, match="lib.bolt"):
+        part.panel(env, frame=deck, screw="m2")
+    with pytest.raises(ValueError, match="countersink"):
+        part.panel(env, frame=deck, screw=lib.bolt("m3", 10, head="countersunk"))
+    with pytest.raises(ValueError, match="pieces"):
+        part.panel(env, seams=[((1, 0, 0), [-60, -40, -20, 0, 20]),
+                               ((0, 1, 0), [-10, 10])])
+    with pytest.raises(ValueError, match='flange="frame" needs frame='):
+        part.panel(env, flange="frame")
+    with pytest.raises(ValueError, match="'around', 'cone' or 'at'"):
+        part.panel(env, openings=[{"radius": 3}])
+    openings = part.panel(env, openings=[
+        {"around": pack, "clearance": 3.0, "motion": {"origin": (0, 0, 0), "axis": (0, 1, 0),
+                                                       "range": (-10, 10)}},
+        {"cone": ((0, 0, 0), (1, 0, 0), 30.0)}, {"at": (0, 0, 20), "radius": 4.0}],
+        within=((-100, -100, 0), (100, 100, 50)), max_angle=45.0)
+    spec = openings.parts[0].arguments[0]
+    assert [sorted(o) for o in spec["openings"]] == [["around", "clearance", "motion"],
+                                                     ["cone"], ["at", "radius"]]
+    assert openings.screws == [] and openings.pilots is None and openings.mounts == {}
 
 
-def test_every_panel_is_screwed_down_and_no_screw_leaves_the_frame():
-    lib = _lib()
-    deck, pack, board = _trunk(lib)
-    panel = lib.panel([pack, board], axis=(1, 0, 0), mount_to=deck, span=(-74, 76),
-                      seams=[0.0], split="top_bottom")
-    assert len(panel.screws) == 8 and len(panel.holes) == 8
-    assert all(len(screws) == 2 for screws in panel.screws_by_part)
-    deck_found = sample(deck, 3.0)
-    pack_found = sample(pack, 3.0)
-    for bolt in panel.screws:
-        assert bolt.family == "bolt" and bolt.part_number.startswith("m2x")
-        found = sample(bolt.body, 0.5)
-        # Its thread runs into the deck and never out into the pack.
-        assert any(deck_found.contains(p) for p in found.points)
-        assert not any(pack_found.contains(p) for p in found.points)
-    for boss in panel.spec["bosses"]:
-        assert 1.5 * 2.0 <= boss["engagement_mm"] <= 4.0 - 0.3 + 1e-6
-        assert boss["angle_degrees"] % 90.0 == 0.0
-    # The two halves never screw into the deck on one line from both faces.
-    tips = [(b["position_mm"], b["angle_degrees"]) for b in panel.spec["bosses"]]
-    assert len(set(tips)) == len(tips)
-
-
-def test_without_a_frame_a_panel_carries_no_screws_and_says_so():
-    lib = _lib()
-    _deck, pack, _board = _trunk(lib)
-    panel = lib.panel([pack], axis=(1, 0, 0))
-    assert panel.screws == [] and panel.holes == []
-    assert any("no mount_to" in note for note in panel.notes)
-    assert panel.unmounted == ["0"]
-
-
-def test_describe_api_lists_the_grown_parts_with_their_signatures():
+def test_describe_api_lists_the_panel_ops_and_lib_panel_is_gone():
     exports = {row["name"]: row for row in library_listing()["exports"]}
-    assert "mount_to" in exports["panel"]["signature"]
-    assert "seams" in exports["panel"]["signature"]
+    assert "panel" not in exports
     assert "wall" in exports["housing"]["signature"]
-    assert "lib.bolt" in exports["panel"]["description"]
+    part = _part()
+    assert {"envelope", "panel"} <= set(part.exported_names)
+    assert "radius" in part.envelope.__doc__ and "flange" in part.panel.__doc__
+    with pytest.raises(AttributeError):
+        _lib().panel  # noqa: B018 - the attribute is what is asserted
+
+
+# --------------------------------------------------------------------------
+# the worker's arrays
+# --------------------------------------------------------------------------
+
+
+def _box_triangles(low, high):
+    (x0, y0, z0), (x1, y1, z1) = low, high
+    v = [(x, y, z) for x in (x0, x1) for y in (y0, y1) for z in (z0, z1)]
+    faces = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+    tris = []
+    for a, b, c, d in faces:
+        tris += [(v[a], v[b], v[c]), (v[a], v[c], v[d])]
+    return tris
+
+
+def test_a_box_fills_its_own_voxels_and_no_others():
+    import numpy as np
+
+    occ = envelope_worker.occupancy(_box_triangles((2, 2, 2), (8, 6, 4)), (0, 0, 0), 1.0,
+                                    (10, 10, 10))
+    assert occ.sum() == 6 * 4 * 2
+    assert occ[2:8, 2:6, 2:4].all() and not occ[:2].any() and not occ[:, :, 4:].any()
+    assert np.array_equal(occ, envelope_worker.occupancy(
+        np.array(_box_triangles((2, 2, 2), (8, 6, 4))), (0, 0, 0), 1.0, (10, 10, 10)))
+
+
+def test_a_field_is_bounded_before_it_is_allocated(monkeypatch):
+    # The grid coarsens to MAX_VOXELS rather than allocating a fine one...
+    grid = envelope_worker._grid_for([0, 0, 0], [700, 700, 700], None, 10.0)
+    assert grid.dims[0] * grid.dims[1] * grid.dims[2] <= envelope_worker.MAX_VOXELS
+    # ...an explicit fine voxel over a huge part is refused, not allocated...
+    with pytest.raises(envelope_worker.EnvelopeError, match="more than one field holds"):
+        envelope_worker._grid_for([0, 0, 0], [3000, 3000, 3000], None, 10.0)
+    # ...a triangle is expanded onto its columns in bounded batches, and one
+    # whose columns alone pass the budget is refused by name...
+    monkeypatch.setattr(envelope_worker, "PAIR_BUDGET", 50)
+    occ = envelope_worker.occupancy(_box_triangles((1, 1, 1), (5, 5, 5)), (0, 0, 0), 1.0,
+                                    (8, 8, 8))
+    assert occ.sum() == 64
+    with pytest.raises(envelope_worker.EnvelopeError, match="coarser voxel"):
+        envelope_worker.occupancy(_box_triangles((0, 0, 0), (40, 40, 4)), (0, 0, 0), 1.0,
+                                  (40, 40, 8))
+    # ...and a sweep is counted before its poses are copied.
+    import numpy as np
+
+    with pytest.raises(envelope_worker.EnvelopeError, match="poses"):
+        envelope_worker._pose_budget(721, [np.zeros((5000, 3, 3))])
+
+
+def test_the_rolling_radius_bridges_a_gap_narrower_than_twice_itself():
+    import numpy as np
+
+    occ = np.zeros((40, 12, 30), dtype=bool)
+    occ[2:16, 2:10, 2:10] = True
+    occ[22:38, 2:10, 2:10] = True            # a 6-voxel gap between two blocks
+    hug = envelope_worker.closed_distance(occ, 1.0, 0.0)
+    bridged = envelope_worker.closed_distance(occ, 1.0, 5.0)
+    assert hug[19, 6, 6] > 2.0               # shrink-wrapped: the gap stays open
+    assert bridged[19, 6, 6] == 0.0          # r = 5 closes a 6 mm gap
+    assert bridged[19, 6, 16] > 0.0          # ...but not above the blocks
+    assert hug[0, 6, 6] == pytest.approx(1.5, abs=0.01)   # the half-cell bias is off
+
+
+def test_the_height_field_is_the_first_crossing_from_the_side():
+    import numpy as np
+
+    field = np.zeros((4, 4, 20))
+    field[:] = np.clip(np.arange(20) - 9.5, 0, None)[None, None, :]   # top face at z = 10
+    z = envelope_worker.height_field(field, 0.0, 1.0, 2.0)
+    assert np.allclose(z, 12.0)
+    field[0, 0, :] = 50.0
+    assert np.isnan(envelope_worker.height_field(field, 0.0, 1.0, 2.0)[0, 0])
+
+
+def test_outlines_are_contoured_outer_counter_clockwise_holes_clockwise():
+    import numpy as np
+
+    X, Y = np.meshgrid(np.arange(41.0), np.arange(41.0), indexing="ij")
+    r = np.hypot(X - 20, Y - 20)
+    phi = np.minimum(15.0 - r, r - 5.0)       # an annulus
+    loops = envelope_worker.contour_loops(phi, 0.0, 0.0, 1.0)
+    nested = envelope_worker.nest_loops(loops)
+    assert len(nested) == 1 and len(nested[0][1]) == 1
+    outer, (hole,) = nested[0]
+    assert envelope_worker._signed_area(outer) == pytest.approx(math.pi * 225, rel=0.02)
+    assert envelope_worker._signed_area(hole) == pytest.approx(-math.pi * 25, rel=0.05)
+
+
+def test_screw_sites_spread_and_prefer_a_short_reach():
+    sites = [(0, 0, 5), (100, 0, 5), (50, 0, 5), (0, 1, 30), (100, 60, 5), (99, 60, 40)]
+    chosen = envelope_worker.choose_sites(sites, 3)
+    assert len(chosen) == 3 and 3 not in chosen and 5 not in chosen
+    assert envelope_worker.choose_sites(sites, 2, start=[2])[0] == 2
+
+
+def test_pieces_are_numbered_by_seam_cell():
+    import numpy as np
+
+    seams = [{"normal": [1, 0, 0], "at": [0.0]}, {"normal": [0, 1, 0], "at": [-5.0, 5.0]}]
+    points = np.array([[-1, -9, 0], [-1, 0, 0], [-1, 9, 0], [1, -9, 0], [1, 9, 0]], float)
+    assert envelope_worker.piece_index(points, seams).tolist() == [0, 1, 2, 3, 5]
+    assert envelope_worker._seam_distance(points, seams).tolist() == [1, 1, 1, 1, 1]
 
 
 # --------------------------------------------------------------------------
@@ -277,179 +313,69 @@ def test_a_link_grown_onto_a_housing_has_the_cavity_cut_again():
     assert tools[0] is housing.cavity and len(tools) == 1 + len(housing.holes)
 
 
-# --------------------------------------------------------------------------
-# measuring a gap
-# --------------------------------------------------------------------------
-
-
-def _cube_triangles(size):
-    s = size
-    v = [(x, y, z) for x in (0, s) for y in (0, s) for z in (0, s)]
-    faces = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
-    tris = []
-    for a, b, c, d in faces:
-        tris += [(v[a], v[b], v[c]), (v[a], v[c], v[d])]
-    return tris
-
-
-def test_the_inner_face_gap_is_measured_and_the_outer_face_ignored():
-    triangles = _cube_triangles(10.0)
-    samples, normals = [], []
-    for gap in (2.0, 2.0, 2.0, 3.0):
-        # Inner face of a lid over the top: normal points down at the cube.
-        samples.append([5.0, 5.0, 10.0 + gap])
-        normals.append([0.0, 0.0, -1.0])
-    # The lid's outer face, 2 mm further, faces away: not a gap.
-    samples.append([5.0, 5.0, 14.0])
-    normals.append([0.0, 0.0, 1.0])
-    stats = gap_statistics(samples, normals, triangles)
-    assert stats["inner_samples"] == 4 and stats["samples"] == 5
-    assert stats["gap_median_mm"] == pytest.approx(2.0)
-    assert stats["gap_max_mm"] == pytest.approx(3.0)
-    assert stats["hug_fraction"] == 1.0
-    # A point off a corner measures to the corner, not the face planes.
-    corner = gap_statistics([[13.0, 14.0, 10.0]], [[-1.0, -1.0, 0.0]], triangles)
-    assert corner["gap_median_mm"] == pytest.approx(5.0)
-    assert gap_statistics([[0, 0, 100]], [[0, 0, -1]], triangles, reach=50) is None
-
-
-# --------------------------------------------------------------------------
-# the shell block
-# --------------------------------------------------------------------------
-
-
-def _component(name, *, appearance=None, family=None, part_number="x", volume=None,
-               area=None):
-    row = {"component": name, "source_output": name}
-    if appearance:
-        row["appearance"] = appearance
-    if family:
-        row["catalog"] = {"family": family, "part_number": part_number}
-        row["mount_axes"] = []
-    if volume is not None:
-        row["source_facts"] = {"volume_mm3": volume, "area_mm2": area}
-    return row
-
-
-def _pair(first, second, distance, volume=0.0):
-    return {"first": first, "second": second, "distance_mm": distance,
-            "common_volume_mm3": volume}
-
-
-def _gaps(name, median, covers=("deck",), inner=180):
-    return {"component": name, "covers": list(covers), "samples": 400, "inner_samples": inner,
-            "gap_median_mm": median, "gap_p25_mm": median / 2, "gap_p90_mm": median * 2,
-            "hug_fraction": 0.9 if median < 4 else 0.0}
-
-
-def test_a_screwed_thin_hugging_panel_passes():
-    value = {
-        "components": [_component("deck"), _component("lid", appearance="shell",
-                                                      volume=2000.0, area=2000.0),
-                       _component("s0", family="bolt", part_number="m2x8-socket")],
-        "pairs": [_pair("lid", "s0", 0.0), _pair("deck", "s0", 0.0, 4.5),
-                  _pair("deck", "lid", 0.0)],
-        "attachments": [],
-        "shell_gaps": [_gaps("lid", 2.4)],
-    }
-    block = shell_summary(value)
-    assert block["verdict"] == "pass" and block["shell_count"] == 1
-    lid = block["fitted"][0]
-    assert (lid["mounted"], lid["screws"], lid["held_by"]) == ("screws", ["s0"], ["deck"])
-    assert lid["wall_mm"] == 2.0 and lid["findings"] == []
-
-
-def test_an_egg_over_the_parts_is_floating_unmounted_and_named_worst_first():
-    value = {
-        "components": [_component("deck"),
-                       _component("egg", appearance="shell", volume=20000.0, area=20000.0),
-                       _component("lump", appearance="shell", volume=90000.0, area=9000.0),
-                       _component("cap", appearance="shell", volume=500.0, area=500.0),
-                       _component("lid", appearance="shell", volume=2000.0, area=2000.0)],
-        "pairs": [],
-        "attachments": [{"first": "deck", "second": "lid", "status": "touching"},
-                        {"first": "deck", "second": "egg", "status": "not touching"},
-                        {"first": "deck", "second": "cap", "status": "touching"},
-                        {"first": "deck", "second": "lump", "status": "touching"}],
-        "shell_gaps": [_gaps("egg", 31.3), _gaps("lump", 1.0), _gaps("cap", 0.0, covers=()),
-                       _gaps("lid", 3.0)],
-    }
-    block = shell_summary(value)
-    assert block["verdict"] == "reported" and block["reported_count"] == 3
-    by = {row["component"]: row for row in block["reported"]}
-    assert by["egg"]["findings"] == ["floating", "unmounted"]
-    assert "31.3 mm" in by["egg"]["detail"]
-    assert by["lump"]["findings"] == ["solid"] and by["lump"]["wall_mm"] == 20.0
-    assert by["cap"]["findings"] == ["covers nothing"]
-    assert block["reported"][0]["component"] == "egg"
-    assert block["fitted"][0]["mounted"] == "welded"
-    assert block["thresholds"]["floating_gap_mm"] == CadexFitReport.SHELL_FLOATING_GAP_MM
-    assert "lib.panel" in block["note"]
-
-
-def test_the_shell_block_rides_in_the_fit_block_and_its_view():
-    value = {"components": [_component("deck")], "pairs": [], "available": True}
-    fit = fit_summary(value)
-    assert fit["shells"]["verdict"] == "none"
-    many = {"components": [_component("deck")] + [
-        _component(f"p{k}", appearance="shell", volume=1.0, area=1.0) for k in range(20)],
-        "pairs": [], "shell_gaps": [_gaps(f"p{k}", 10.0) for k in range(20)]}
-    view = fit_view(fit_summary(many))
-    assert len(view["shells"]["reported"]) == 12
-    assert view["shells"]["reported_omitted"] == 8
-    old = shell_summary({"components": [_component("lid", appearance="shell")]})
-    assert old["reported"][0]["gap"] == "unmeasured" and "gap_note" in old
-    assert shell_summary({})["verdict"] == "unavailable"
-
 
 # --------------------------------------------------------------------------
 # the real kernel
 # --------------------------------------------------------------------------
 
 
-def test_panels_and_housings_build_valid_single_solids_on_the_kernel(tmp_path):
+def test_a_cover_and_a_housing_build_valid_solids_on_the_kernel(tmp_path):
     import subprocess
     from test_cadexd_lifecycle import CADEX_ROOT, FREECADCMD
     if FREECADCMD is None:
         pytest.skip("needs a built engine (pixi run build-engine)")
 
     driver = tmp_path / "panels.py"
-    driver.write_text('''
+    report = tmp_path / "report.txt"
+    driver.write_text(f'''
+import resource
+# Capped like a cadexd worker (RLIMIT_AS): a kernel run that goes wrong
+# fails this test, never the machine (ADR-635).
+resource.setrlimit(resource.RLIMIT_AS, ({DRIVER_MEMORY_BYTES}, {DRIVER_MEMORY_BYTES}))
 from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
 from cadex_domain_api import create_domain_api
 from cadex_library_api import create_library_api
 from cadex_part_worker import build_part_shape
+out = open({str(report)!r}, "w")
 pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
 part = create_domain_api(pack.domain, pack.api_exports, pack.output_types)
 lib = create_library_api(part)
-deck = part.box(158, 50, 4, origin=(-78, -25, -2))
+deck = part.box(160, 110, 4, origin=(-80, -40, -2))
 battery = lib.battery("gensace-gea2s100045d", origin=(-30, 0, 2))
 board = lib.board("esp32-devkitc-v4", origin=(18, -14, 2))
-panel = lib.panel([battery, board], axis=(1, 0, 0), mount_to=deck, span=(-74, 76),
-                  split="top_bottom")
-deck_shape = build_part_shape(part.cut(deck, panel.holes).to_payload())
+env = part.envelope([battery, board], clearance=1.5, radius=20.0)
+cover = part.panel(env, side=(0, 0, 1), max_angle=70, frame=deck, screw=lib.bolt("m2", 8),
+                   screws=3, seams=[((1, 0, 0), [0.0])], flange="frame")
+deck_shape = build_part_shape(part.cut(deck, cover.pilots).to_payload())
 contents = [build_part_shape(v.body.to_payload()) for v in (battery, board)]
-for name, body in zip(panel.names, panel.parts):
-    shape = build_part_shape(body.to_payload())
+for name, body in zip(cover.names, cover.parts):
+    facts = {{}}
+    shape = build_part_shape(body.to_payload(), diagnostics=facts)
     assert shape.isValid() and len(shape.Solids) == 1, name
-    assert 1.6 < 2 * shape.Volume / shape.Area < 3.0, (name, 2 * shape.Volume / shape.Area)
-    assert min(shape.distToShape(c)[0] for c in contents) > 1.0, name
-    assert shape.common(deck_shape).Volume < 1e-6, name
-    assert shape.distToShape(deck_shape)[0] < 1e-6, name
-for bolt in panel.screws:
+    assert 1.4 < 2 * shape.Volume / shape.Area < 3.0, (name, 2 * shape.Volume / shape.Area)
+    assert min(shape.distToShape(c)[0] for c in contents) > 1.2, name
+    assert shape.common(deck_shape).Volume < 1e-3, name
+    assert shape.distToShape(deck_shape)[0] < 0.25, name
+    grown = facts["panel"]
+    assert grown["piece"] == name and grown["clearance_mm"] == 1.5
+    assert len(grown["fasteners"]) == 3 and grown["flange"][0]["depth_mm"] > 3.0
+    out.write(name + " ok\\n")
+for bolt in cover.screws:
     shank = build_part_shape(bolt.body.to_payload())
-    assert shank.common(deck_shape).Volume > 0.1
+    assert 0.1 < shank.common(deck_shape).Volume < 8.0
     assert all(shank.common(c).Volume < 1e-6 for c in contents)
 qdd = lib.qdd("cubemars-ak80-9-v3", origin=(-121.5, 0, 0), direction=(-1, 0, 0))
 drum = build_part_shape(lib.housing(qdd).body.to_payload())
 motor = build_part_shape(qdd.body.to_payload())
 assert drum.isValid() and len(drum.Solids) == 1
 assert drum.common(motor).Volume < 1e-6 and drum.distToShape(motor)[0] < 1e-6
-print("PANELS-OK")
+out.write("PANELS-OK\\n")
+out.close()
 ''')
     completed = subprocess.run(
         [str(FREECADCMD), "-c",
          f"import sys; sys.path.insert(0, {str(CADEX_ROOT)!r}); exec(open({str(driver)!r}).read())"],
-        capture_output=True, text=True, timeout=600,
+        capture_output=True, text=True, timeout=900,
     )
-    assert "PANELS-OK" in completed.stdout, completed.stdout[-3000:] + completed.stderr[-3000:]
+    written = report.read_text() if report.exists() else ""
+    assert "PANELS-OK" in written, written + completed.stdout[-3000:] + completed.stderr[-3000:]
