@@ -1555,6 +1555,92 @@ def _lofted_cage(
 _MATE_INTERFERENCE_MM3 = 1.0e-6
 
 
+#: One part.panel's plan per request, keyed by its spec (ADR-635): every
+#: piece, its screws and the frame's pilots read the same field and bosses.
+_PANEL_PLANS: dict[str, dict[str, Any]] = {}
+
+
+def _panel_plan(operation: str, spec: Any) -> dict[str, Any]:
+    from CadexEnvelope import EnvelopeError, build_panel_plan
+
+    if not isinstance(spec, dict) or "envelope" not in spec:
+        raise _error(operation, "spec", "expected the declaration part.panel made")
+    key = _memo_key(spec)
+    plan = _PANEL_PLANS.get(key)
+    if plan is None:
+        try:
+            plan = build_panel_plan(spec, build_part_shape,
+                                    plan_of=lambda other: _panel_plan(operation, other))
+        except EnvelopeError as exc:
+            raise PartOperationError(
+                f"api.panel: {exc}",
+                stage="part_argument",
+                operation="panel",
+                correction=(
+                    "Change the declaration the message names: the covered parts, side=, "
+                    "max_angle=, within=, the seams, the frame under the bosses or the screw."
+                ),
+            ) from exc
+        plan["key"] = key[4:16]
+        _PANEL_PLANS[key] = plan
+    return plan
+
+
+def _panel_output(operation: str, payload: dict[str, Any], properties: dict[str, Any],
+                  diagnostics: dict[str, Any] | None) -> Any:
+    """One piece of a part.panel, or its frame pilots, from the request's plan."""
+
+    import Part
+
+    spec = _argument(payload, 0, "spec")
+    plan = _panel_plan(operation, spec)
+    piece = str(properties.get("piece") or "")
+    if piece == "pilots":
+        if plan["pilots"] is None:
+            raise _error(operation, "pilots", "this panel places no screws")
+        return plan["pilots"].copy()
+    if piece not in plan["pieces"]:
+        raise _error(operation, "piece", f"is not one of {sorted(plan['pieces'])}")
+    if diagnostics is not None:
+        envelope = spec["envelope"]
+        diagnostics["panel"] = {
+            "group": plan["key"],
+            "piece": piece,
+            "pieces": sorted(plan["pieces"]),
+            "clearance_mm": float(envelope["clearance"]),
+            "radius_mm": None if envelope["radius"] == "hull" else float(envelope["radius"]),
+            "hull": envelope["radius"] == "hull",
+            "thickness_mm": float(spec["thickness"]),
+            "side": list(spec["side"]),
+            "screw": (spec.get("screw") or {}).get("size"),
+            "fasteners": plan["fasteners"].get(piece, []),
+            **plan["facts"],
+        }
+    shape = plan["pieces"][piece]
+    return shape.copy() if hasattr(shape, "copy") else Part.Shape(shape)
+
+
+def _panel_fastener_mount(operation: str, target: dict[str, Any]) -> dict[str, Any]:
+    """A part.panel fastener handle with its frame filled in from the plan."""
+
+    piece_payload = target.get("shape")
+    if not isinstance(piece_payload, dict) or piece_payload.get("operation") != "panel":
+        raise _error(operation, "target", "a panel fastener names its piece")
+    spec = (piece_payload.get("arguments") or [None])[0]
+    piece = str((piece_payload.get("properties") or {}).get("piece") or "")
+    plan = _panel_plan(operation, spec)
+    rows = {row["name"]: row for row in plan["fasteners"].get(piece, [])}
+    row = rows.get(str(target["panel_fastener"]))
+    if row is None:
+        raise _error(operation, "target",
+                     f"piece {piece} has no fastener {target['panel_fastener']!r}")
+    resolved = dict(target)
+    resolved.update(origin=list(row["head_seat"]), axis=list(row["axis"]),
+                    roll=list(row["roll"]))
+    resolved.pop("panel_fastener", None)
+    return resolved
+
+
 def _mated(operation: str, payload: dict[str, Any], properties: dict[str, Any]) -> Any:
     """Place a shape so its mount lands on another's, and prove it fits.
 
@@ -1575,6 +1661,8 @@ def _mated(operation: str, payload: dict[str, Any], properties: dict[str, Any]) 
     for name, row in (("source", source), ("target", target)):
         if not isinstance(row, dict):
             raise _error(operation, name, "must be a mount")
+    if target.get("panel_fastener"):
+        target = _panel_fastener_mount(operation, target)
     try:
         values = mate_matrix(
             source,
@@ -4342,6 +4430,8 @@ def _build(
         )
     if operation == "mate":
         return _mated(operation, payload, properties)
+    if operation == "panel":
+        return _panel_output(operation, payload, properties, diagnostics)
     if operation == "loft_cage":
         return _lofted_cage(operation, payload, properties)
     if operation == "transform":
@@ -4457,6 +4547,7 @@ def reset_part_shape_memo() -> None:
     """Drop every memoised shape. One request must never see another's."""
 
     _SHAPE_MEMO.clear()
+    _PANEL_PLANS.clear()
     _BUNDLE_ROUTES.clear()
     _PUBLISHED_ROUTES.clear()
     _TERMINAL_SETS.clear()

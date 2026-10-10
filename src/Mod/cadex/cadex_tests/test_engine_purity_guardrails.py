@@ -116,10 +116,14 @@ DECLARED_ENGINE_MODULES = frozenset(
         # because the script calls the generators.
         "CadexCatalog",
         "cadex_library_api",
-        # lib.panel / lib.housing and the shell check's gap arithmetic
-        # (ADR-610..612): pure at module scope; numpy only when the assembly
-        # worker measures a shell.
+        # part.envelope/part.panel declarations, lib.housing and the panel check's
+        # arithmetic (ADR-611, ADR-634..636): pure at module scope; numpy only
+        # when the assembly worker measures a panel.
         "CadexPanels",
+        # ...and the worker half of part.panel (ADR-635): the field, the
+        # surface, the skirt and the bosses. numpy, scipy and Part are
+        # imported inside its functions, only when a panel is built.
+        "CadexEnvelope",
         # Which outputs are parts to print, and what an STL is named
         # (ADR-156). Pure Python beside the five table modules above, and the
         # one of the six whose specs the script never declares: the roster is

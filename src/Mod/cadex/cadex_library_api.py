@@ -2477,50 +2477,7 @@ class LibraryAPI:
 
     # -- browsing ----------------------------------------------------------
 
-    # -- grown parts: panels and housings (ADR-610, ADR-611) ------------------
-
-    def panel(self, over, *, axis=(1, 0, 0), up=None, span=None, offset=1.5,
-              thickness=2.0, exponent=None, step=12.0, seams=(), split=None,
-              split_at=None, mount_to=None, screw="m2", screws_per_panel=2,
-              label=""):
-        # Unannotated on purpose: describe_api's library page is held under
-        # one tool result (ADR-360); the types are the docstring's.
-        """A panel grown from what it covers.
-
-        ``over`` is the solids or lib parts the panel wraps (the frame is
-        added when ``mount_to`` names it). Stations stand every ``step`` mm
-        along ``axis`` across ``span`` (default the contents' extent, as
-        world coordinates along the axis); at each, the contents' section is
-        fitted with the tightest superellipse of ``exponent`` (2 ellipse, 4
-        muscled, 8 boxy; default None picks, for the whole panel, the one of
-        2-6 enclosing the least section), its own centre and aspect, grown
-        so every point clears its inner face by ``offset``. The skin is the loft through
-        those rings, ``thickness`` thick (covers are 1.6-2.4 mm), open at
-        both ends. ``seams`` are axial positions it is split at;
-        ``split='top_bottom'``/``'left_right'`` parts it along the axis too,
-        0.4 mm apart, at ``split_at`` (world coordinate along ``up`` or
-        across; default the plane nearest the rings' mean centre that cuts
-        every ring across its middle). With ``mount_to`` (the frame), each piece gets up
-        to ``screws_per_panel`` bosses that stand down from the skin onto
-        the frame, a counterbored clearance hole and a ``lib.bolt`` of
-        ``screw`` size and stocked length. Returns a PanelSet: ``.parts``
-        (one solid per piece, ``.names`` beside them), ``.screws`` (one
-        component each; weld each to its panel), ``.holes`` (tap-drill
-        pilots: ``frame = part.cut(frame, panel.holes)``), ``.rings`` (the
-        fitted stations), ``.unmounted`` and ``.notes``. Covered values must
-        be built from primitives and booleans (lib parts are); an imported
-        mesh is refused by name.
-        """
-        from CadexPanels import PanelError, build_panel
-
-        try:
-            return build_panel(
-                self, over, axis=axis, up=up, span=span, offset=offset,
-                thickness=thickness, exponent=exponent, step=step, seams=seams,
-                split=split, split_at=split_at, mount_to=mount_to, screw=screw,
-                screws_per_panel=screws_per_panel, label=label)
-        except PanelError as exc:
-            raise LibraryError(f"lib.panel: {exc}") from exc
+    # -- grown parts: housings (ADR-611); panels are part.panel (ADR-635) -----
 
     def housing(self, drive, *, wall=2.0, clearance=0.5, seat=None, plate=None,
                 lead_room=None, label=""):

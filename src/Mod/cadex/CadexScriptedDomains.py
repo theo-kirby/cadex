@@ -241,6 +241,10 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "mirror",
             "project",
             "refine",
+            # Panels cut from the envelope of what they cover (ADR-635):
+            # `envelope` declares the surface, `panel` one region of it.
+            "envelope",
+            "panel",
         ),
         production_ready=True,
     ),

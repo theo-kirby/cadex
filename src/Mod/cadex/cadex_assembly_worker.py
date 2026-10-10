@@ -7377,23 +7377,27 @@ def _fixed_joint_pairs(joint_data, assembly_output):
     return pairs
 
 
-#: Shell samples per shell, and how far past a shell's box a part may stand
-#: and still be among what it covers (ADR-612).
-_SHELL_SAMPLES = 400
-_SHELL_ENVELOPE_MM = 5.0
-#: Contents tessellation: coarse, since a gap is read to a tenth of a mm.
-_SHELL_DEFLECTION_MM = 0.3
+#: Samples per panel, per covered part, and the tessellation they are read
+#: against: coarse, since a gap is read to a tenth of a mm (ADR-634).
+_PANEL_SAMPLES = 400
+_PANEL_COVER_SAMPLES = 240
+_PANEL_DEFLECTION_MM = 0.3
+#: How far past a panel's box a part's triangles are kept for its rays.
+_PANEL_REACH_MM = 80.0
+#: Points of each panel published for the fasteners' spacing (fit.panels).
+_PANEL_PUBLISHED_POINTS = 48
 
 
-def _shell_surface_samples(shape, limit=_SHELL_SAMPLES):
-    """Points spread over a shape's faces by area, each with its outward normal."""
+def _panel_surface_samples(shape, limit):
+    """Points spread over a shape's faces by area, their outward normals, and
+    the area each stands for."""
 
     import FreeCAD as App
 
     triangles = []
     for face in shape.Faces:
         try:
-            points, facets = face.tessellate(_SHELL_DEFLECTION_MM)
+            points, facets = face.tessellate(_PANEL_DEFLECTION_MM)
         except Exception:
             continue
         for i, j, k in facets:
@@ -7402,7 +7406,7 @@ def _shell_surface_samples(shape, limit=_SHELL_SAMPLES):
             if area > 1e-9:
                 triangles.append((area, face, (a + b + c) * (1.0 / 3.0)))
     if not triangles:
-        return [], []
+        return [], [], 0.0
     total = sum(row[0] for row in triangles)
     step = total / float(limit)
     samples, normals = [], []
@@ -7418,74 +7422,140 @@ def _shell_surface_samples(shape, limit=_SHELL_SAMPLES):
                 continue
             samples.append([centre.x, centre.y, centre.z])
             normals.append([normal.x, normal.y, normal.z])
-    return samples, normals
+    return samples, normals, total / float(max(len(samples), 1))
 
 
-def _measure_shell_gaps(components, properties, component_outputs, solved):
-    """How far each ``appearance="shell"`` component stands off what it covers (ADR-612).
+def _measure_panels(components, properties, component_outputs, solved, joint_data,
+                    assembly_output):
+    """What each ``role="panel"`` component does to what it covers (ADR-634).
 
-    For each shell: the non-shell, non-world components whose exact boxes
-    reach within :data:`_SHELL_ENVELOPE_MM` of its box are what it covers;
-    its surface is sampled by area and every sample's distance to their
-    tessellated surface measured exactly (``CadexPanels.gap_statistics``).
-    Samples whose outward normal points at that nearest point are the inner
-    face, and their gap is the one a designer means. Advisory, like the
-    rest of the derived fit: a failure is the row's ``error``.
+    A panel is judged against the components its ``covers=`` declares --
+    never against what happens to lie near its box, and never because of
+    the colour it draws in. For each panel, measured exactly on the solved
+    pose:
+
+    - ``gap_*``: its inner face's distance to what it covers and what it is
+      welded to (``CadexPanels.gap_statistics``), percentiles p10..max, and
+      ``air_volume_mm3``, that gap summed over the inner face;
+    - ``covered_volume_mm3`` and ``egg_ratio`` = 1 + air / covered volume:
+      a panel drawn round its contents is near 1, an egg over them is many;
+    - ``wall_*``: its thickness, read by rays from its faces inward
+      (``CadexPanels.first_hits``), p10/median/p90;
+    - ``coverage``: of the covered parts' surface that faces out (a ray from
+      it along its normal meets no other covered or welded part within 2
+      mm), the share whose ray meets any panel;
+    - ``size_mm`` (its box, for the print bed) and ``points``, a few of its
+      surface points, so the fit report can say how far any of it is from
+      a fastener.
+
+    What collides, at rest or through the motion, and what holds it are
+    read from the pair rows by ``CadexFitReport.panel_summary``; this only
+    measures. A failure is the row's ``error``, never a refused build.
     """
 
-    values = list(properties.get("components") or [])
-    roles = {component_outputs[id(v)]: str(v.properties.get("appearance") or "")
-             for v in values if id(v) in component_outputs}
-    world = {component_outputs[id(v)] for v in values
-             if id(v) in component_outputs and v.properties.get("world")}
-    shells = [name for name, role in roles.items() if role == "shell"]
-    if not shells:
-        return []
-    from CadexPanels import gap_statistics
+    import numpy as np
 
-    shapes, boxes, meshes = {}, {}, {}
+    values = list(properties.get("components") or [])
+    named = {id(v): component_outputs[id(v)] for v in values if id(v) in component_outputs}
+    roles = {named[id(v)]: str(v.properties.get("role") or "") for v in values if id(v) in named}
+    panels = []
+    for value in values:
+        if id(value) not in named or roles.get(named[id(value)]) != "panel":
+            continue
+        covers = [named.get(id(item)) for item in value.properties.get("covers") or ()]
+        panels.append((named[id(value)], covers))
+    if not panels:
+        return []
+    from CadexPanels import first_hits, gap_statistics
+
+    welded: dict[str, set[str]] = {}
+    for pair in _fixed_joint_pairs(joint_data, assembly_output):
+        first, second = sorted(pair)
+        welded.setdefault(first, set()).add(second)
+        welded.setdefault(second, set()).add(first)
+    panel_names = {name for name, _covers in panels}
+    shapes, meshes = {}, {}
 
     def world_shape(name):
         if name not in shapes:
             shapes[name] = _component_world_shape(components[name])
-            boxes[name] = shapes[name].BoundBox
         return shapes[name]
 
     def mesh(name):
         if name not in meshes:
-            points, facets = world_shape(name).tessellate(_SHELL_DEFLECTION_MM)
-            meshes[name] = [[[points[i].x, points[i].y, points[i].z] for i in tri]
-                            for tri in facets]
+            points, facets = world_shape(name).tessellate(_PANEL_DEFLECTION_MM)
+            vertices = np.array([[p.x, p.y, p.z] for p in points], dtype=float)
+            meshes[name] = (vertices[np.array(facets, dtype=int)] if len(facets)
+                            else np.zeros((0, 3, 3)))
         return meshes[name]
 
+    def near(names, low, high):
+        """The triangles of ``names`` whose boxes reach the box low..high."""
+
+        kept = []
+        for other in names:
+            triangles = mesh(other)
+            if not len(triangles):
+                continue
+            tri_low, tri_high = triangles.min(axis=1), triangles.max(axis=1)
+            keep = np.all(tri_high >= low, axis=1) & np.all(tri_low <= high, axis=1)
+            if keep.any():
+                kept.append(triangles[keep])
+        return np.concatenate(kept) if kept else np.zeros((0, 3, 3))
+
     rows = []
-    for name in shells:
-        row: dict[str, Any] = {"component": name}
+    for name, covers in panels:
+        row: dict[str, Any] = {"component": name, "covers": sorted(c for c in covers if c)}
         try:
+            if None in covers:
+                raise ValueError("covers= names a component this assembly does not place")
             if not solved:
                 raise ValueError("Assembly solver did not produce a solved pose")
             shape = world_shape(name)
             if shape.isNull() or not shape.Solids:
-                raise ValueError("Shell has no solid to measure")
-            _cpu_stage(f"shell gaps {name}")
-            box = boxes[name]
-            grown = (box.XMin - _SHELL_ENVELOPE_MM, box.XMax + _SHELL_ENVELOPE_MM,
-                     box.YMin - _SHELL_ENVELOPE_MM, box.YMax + _SHELL_ENVELOPE_MM,
-                     box.ZMin - _SHELL_ENVELOPE_MM, box.ZMax + _SHELL_ENVELOPE_MM)
-            covered = []
-            for other in components:
-                if other == name or roles.get(other) == "shell" or other in world:
-                    continue
-                other_box = world_shape(other).BoundBox
-                if (other_box.XMax >= grown[0] and other_box.XMin <= grown[1]
-                        and other_box.YMax >= grown[2] and other_box.YMin <= grown[3]
-                        and other_box.ZMax >= grown[4] and other_box.ZMin <= grown[5]):
-                    covered.append(other)
-            row["covers"] = sorted(covered)
-            triangles = [tri for other in covered for tri in mesh(other)]
-            samples, normals = _shell_surface_samples(shape)
-            stats = gap_statistics(samples, normals, triangles) if triangles else None
+                raise ValueError("The panel has no solid to measure")
+            _cpu_stage(f"panel {name}")
+            box = shape.optimalBoundingBox()
+            row["size_mm"] = [round(box.XLength, 2), round(box.YLength, 2), round(box.ZLength, 2)]
+            low = np.array([box.XMin, box.YMin, box.ZMin]) - _PANEL_REACH_MM
+            high = np.array([box.XMax, box.YMax, box.ZMax]) + _PANEL_REACH_MM
+            holders = sorted((welded.get(name, set()) - panel_names) - set(covers))
+            row["welded_to"] = holders
+            samples, normals, each = _panel_surface_samples(shape, _PANEL_SAMPLES)
+            stats = gap_statistics(samples, normals, near(list(covers) + holders, low, high),
+                                   sample_area=each)
             row.update(stats or {"samples": len(samples), "inner_samples": 0})
+            covered_volume = sum(abs(float(world_shape(c).Volume)) for c in covers)
+            row["covered_volume_mm3"] = round(covered_volume, 1)
+            if stats and covered_volume > 0.0:
+                row["egg_ratio"] = round(1.0 + stats["air_volume_mm3"] / covered_volume, 3)
+            P, N = np.asarray(samples, dtype=float), np.asarray(normals, dtype=float)
+            if len(P):
+                wall = first_hits(P - 1e-3 * N, -N, mesh(name), reach=60.0)
+                wall = wall[np.isfinite(wall)]
+                if len(wall):
+                    row["wall_p10_mm"] = round(float(np.percentile(wall, 10)), 3)
+                    row["wall_median_mm"] = round(float(np.percentile(wall, 50)), 3)
+                    row["wall_p90_mm"] = round(float(np.percentile(wall, 90)), 3)
+                stride = max(1, len(P) // _PANEL_PUBLISHED_POINTS)
+                row["points"] = [[round(float(v), 1) for v in p] for p in P[::stride]]
+            # Coverage: rays out of the covered parts' faces.
+            hiders = near(sorted(panel_names), low, high)
+            others = near(list(covers) + holders, low, high)
+            outward = hidden = 0
+            for cover in covers:
+                points, directions, _ = _panel_surface_samples(world_shape(cover),
+                                                               _PANEL_COVER_SAMPLES)
+                if not points:
+                    continue
+                O, D = np.asarray(points, dtype=float), np.asarray(directions, dtype=float)
+                blocked = first_hits(O + 1e-2 * D, D, others, reach=_PANEL_REACH_MM)
+                to_panel = first_hits(O + 1e-2 * D, D, hiders, reach=_PANEL_REACH_MM)
+                facing_out = ~((blocked <= 2.0) | (blocked < to_panel))
+                outward += int(np.sum(facing_out))
+                hidden += int(np.sum(facing_out & np.isfinite(to_panel)))
+            if outward:
+                row["coverage"] = round(hidden / float(outward), 3)
         except Exception as exc:
             row["error"] = str(exc)
         rows.append(row)
@@ -8158,7 +8228,7 @@ def validate_and_solve_assembly(
         # 0.72 s of a 0.77 s warm preview on the latency bar's part: exact
         # bounding boxes and a boolean common over BREP the preview never
         # returns (ADR-527). The accepting run measures it, as it always did.
-        clearance = world_geometry = attachments = clearance_sweep = shell_gaps = None
+        clearance = world_geometry = attachments = clearance_sweep = panel_rows = None
     else:
         _cpu_stage("assembly static fit")
         fit_cache = _FitCache.open()
@@ -8168,13 +8238,15 @@ def validate_and_solve_assembly(
         world_geometry = _check_fit(clearance, components, assembly_properties, component_outputs,
                                     raw_result, joint_data, assembly_output)
         attachments = _check_attachments(clearance, joint_data, assembly_output)
-        # How far each declared shell stands off what it covers (ADR-612).
-        _cpu_stage("assembly shell gaps")
+        # What each declared panel does to what it covers (ADR-634). The
+        # measuring never refuses a build; fit.panels judges the numbers.
+        _cpu_stage("assembly panels")
         try:
-            shell_gaps = _measure_shell_gaps(components, assembly_properties, component_outputs,
-                                             diagnostics["status"] == "solved")
-        except Exception as exc:  # advisory: never refuses a build
-            shell_gaps = [{"component": "", "error": str(exc)}]
+            panel_rows = _measure_panels(components, assembly_properties, component_outputs,
+                                         diagnostics["status"] == "solved", joint_data,
+                                         assembly_output)
+        except Exception as exc:
+            panel_rows = [{"component": "", "error": str(exc)}]
         sweep_steps = {key: assembly_properties[key] for key in ("sweep_step_degrees", "sweep_step_mm")
                        if assembly_properties.get(key) is not None}
         # Coverage is reported even when neither step is declared (ADR-367).
@@ -8462,7 +8534,7 @@ def validate_and_solve_assembly(
     by_name[assembly_output]["world_geometry"] = world_geometry
     by_name[assembly_output]["attachments"] = attachments
     by_name[assembly_output]["anatomy"] = anatomy
-    by_name[assembly_output]["shell_gaps"] = shell_gaps
+    by_name[assembly_output]["panels"] = panel_rows
     by_name[assembly_output]["assembly_data"] = {
         "component_outputs": [component_outputs[id(value)] for value in component_values],
         "joint_outputs": [joint_outputs[id(value)] for value in joint_values],
