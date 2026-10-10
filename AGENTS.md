@@ -70,6 +70,7 @@ Read `docs/VISION.md` before designing anything.
 | `docs/cadex-release-packaging.md` | The engine payload: what ships, how it is gated. |
 | `training/README.md`, `training/SETUP.md` | The offboard trainer, and four ways to run it (ADR-089). |
 | `analysis/README.md` | The offboard structural analysis and its licence rule. |
+| `docs/PERFORMANCE-AUDIT.md` | Where build and read time goes on a large assembly, measured; what ADR-628 fixed and what remains, ranked. |
 | `docs/IDEAS.md`; `docs/history/` | Parking lot; superseded docs (never cite as current). |
 
 Each doc carries a `Verified against source:` date and keeps *exists today*
