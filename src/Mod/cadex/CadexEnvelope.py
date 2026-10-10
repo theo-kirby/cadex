@@ -81,6 +81,10 @@ SWEEP_STEP_DEGREES = 5.0
 BOSS_REACH_MM = 60.0
 #: Material kept under a screw head, and around a hole, mm.
 SEAT_FLOOR_MM = 1.6
+#: How far a skirt stands outside the outline, plus 0.6 of a voxel: the outline
+#: is where the face turns max_angle, a vertical side below it is nearer, and the
+#: outline's rounded corners are drawn a little inside the field's own.
+SKIRT_STEP_MM = 0.6
 BOSS_WALL_MM = 1.4
 
 
@@ -744,7 +748,7 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
     # the skirt's top runs inside the panel's wall: a lid over its walls, one
     # solid without any face of one lying on a face of the other.
     flange = spec.get("flange")
-    grow = (0.6 + 0.25 * h + 1.5 * thickness) if flange else 0.0
+    grow = (SKIRT_STEP_MM + 0.6 * h + 1.5 * thickness) if flange else 0.0
     grown_outers = [outer for outer, _h in nest_loops(
         contour_loops(phi + grow, float(xs[0]), float(ys[0]), h))] if grow else []
     faces, planar, drawn_already = [], [], []
@@ -1091,7 +1095,7 @@ def _skirt(planar, surface_z, outer_s, frame_z, field, xs, ys, grid, clearance, 
         # The outline is on the envelope where it turns max_angle from side;
         # straight down from there a vertical side is a little nearer than
         # the clearance, so the wall stands just outside it.
-        P = P + normal * (0.6 + 0.25 * h)
+        P = P + normal * (SKIRT_STEP_MM + 0.6 * h)
         Q = P + normal * thickness
         rim = _sample2d(surface_z, xs, ys, P[:, 0], P[:, 1])
         # The wall's top edge is tucked just inside the outline, at the
@@ -1116,10 +1120,17 @@ def _skirt(planar, surface_z, outer_s, frame_z, field, xs, ys, grid, clearance, 
             ((zs - grid.origin[2]) / h - 0.5).ravel()])
         f = ndimage.map_coordinates(field, coords, order=1, mode="nearest").reshape(zs.shape)
         bad = f < clearance - 0.25 * h
-        # ...and never into what an opening keeps out (a part swept past the rim).
-        for reach, keep_out in keepouts:
-            near = ndimage.map_coordinates(reach, coords, order=1, mode="nearest")
-            bad |= near.reshape(zs.shape) <= keep_out
+        # ...and never into what an opening or the frame keeps out, across the
+        # wall's whole thickness (its inner face, its middle and its outer face).
+        for across in (0.1, 0.5 * thickness, thickness - 0.1):
+            line = P + normal * across
+            here = np.vstack([
+                np.repeat((line[:, 0] - grid.origin[0]) / h - 0.5, len(steps)),
+                np.repeat((line[:, 1] - grid.origin[1]) / h - 0.5, len(steps)),
+                coords[2]])
+            for reach, keep_out in keepouts:
+                near = ndimage.map_coordinates(reach, here, order=1, mode="nearest")
+                bad |= near.reshape(zs.shape) <= keep_out + 0.25 * h
         first_bad = np.where(bad.any(axis=1), np.argmax(bad, axis=1), len(steps) - 1)
         allowed = steps[np.maximum(first_bad - 1, 0)]
         bottom = rim - np.minimum(allowed, depth)

@@ -22,7 +22,7 @@ is flat over the pack, bends down over the lower board in a 20 mm-radius
 curve, hangs a skirt to the deck (15 mm median, cut short where the board's
 pins come near), and is held by six M2x8s: towers inside the skirt and lugs
 outside it, each counterbored so the one stocked length seats with 3.4 mm
-of thread in the deck. Nearest approach to the contents 1.39-1.75 mm (the
+of thread in the deck. Nearest approach to the contents 1.27-1.53 mm (the
 clearance is 1.5). This is the real-kernel test in `test_panels.py`.
 
 ## Gantry enclosure
@@ -51,7 +51,7 @@ opens round the neck link swept through the head's ±35° nod. The first
 draft failed `fit.panels` twice, correctly: the front cover ran through the
 neck drive and the neck link, and the head cover's skirt was struck by the
 nodding neck link. After the fixes, `leopard-fit.json`: fit `pass`, four
-panels `pass`, p90 gaps 3.5-9.6 mm, egg ratios 1.06-1.17, wall 2.0 mm.
+panels `pass`, p90 gaps 3.5-10.0 mm, egg ratios 1.08-1.13, wall 2.0 mm.
 
 **What it does not yet show.** The leopard's torso is a slim keel between
 twelve exposed drives, so its covers are lids, not a body shell: covering

@@ -2450,10 +2450,10 @@ reply's view cuts each list to 12. A revision accepted before ADR-634 has no
 `/panels`: its rows say `"gap": "unmeasured"` and the block a `gap_note`.
 
 Measured on the probes (`docs/probes/panels/`): the electronics cover over a
-2S pack and an ESP32 hugs at 1.4-1.8 mm with a 15 mm skirt and six M2s;
+2S pack and an ESP32 comes no nearer than 1.3 mm, with a 15 mm skirt and six M2s;
 the gantry enclosure's eight pieces pass with egg ratios 1.4-1.6 and 0.6 mm
-seams; the leopard's four covers pass at p90 gaps of 3.5-9.6 mm and egg
-ratios 1.06-1.17, after the check had named the front cover through the
+seams; the leopard's four covers pass at p90 gaps of 3.5-10.0 mm and egg
+ratios 1.08-1.13, after the check had named the front cover through the
 neck drive and the head cover struck by the nodding neck link.
 
 ## Sampled hinge and slider fit (ADR-349, ADR-351)

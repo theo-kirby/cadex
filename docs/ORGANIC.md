@@ -337,7 +337,7 @@ deck  = part.cut(deck, cover.pilots)
 ```
 
 Measured (`docs/probes/panels/`): over a 2S pack and an ESP32 on a deck, two
-pieces 1.4-1.8 mm off the parts with a 15 mm skirt to the deck and six M2s
+pieces 1.3-1.5 mm off the parts at their nearest, with a 15 mm skirt to the deck and six M2s
 into it; a gantry enclosure of eight hull pieces, all passing; the
 leopard's two rear covers, keel cover and head cover passing after the check
 named the first draft's front cover through the neck drive and its head

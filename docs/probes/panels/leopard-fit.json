@@ -45,20 +45,20 @@
      "c_pi5",
      "c_torso_rear"
     ],
-    "gap_p10_mm": 3.671,
-    "gap_median_mm": 4.769,
-    "gap_p90_mm": 9.276,
-    "gap_max_mm": 11.565,
-    "hug_fraction": 0.181,
+    "gap_p10_mm": 3.714,
+    "gap_median_mm": 4.786,
+    "gap_p90_mm": 8.444,
+    "gap_max_mm": 11.948,
+    "hug_fraction": 0.197,
     "inner_samples": 188,
-    "egg_ratio": 1.094,
+    "egg_ratio": 1.095,
     "coverage": 0.535,
-    "wall_p10_mm": 1.86,
-    "wall_median_mm": 1.993,
-    "wall_p90_mm": 2.012,
+    "wall_p10_mm": 1.955,
+    "wall_median_mm": 1.994,
+    "wall_p90_mm": 2.054,
     "size_mm": [
-     114.14,
-     69.4,
+     114.55,
+     70.23,
      29.95
     ],
     "mounted": "screws",
@@ -69,7 +69,7 @@
     "held_by": [
      "c_torso_rear"
     ],
-    "farthest_from_fastener_mm": 101.2,
+    "farthest_from_fastener_mm": 98.9,
     "seam_gap_mm": 0.6,
     "failing": false
    },
@@ -90,21 +90,21 @@
      "c_pi5",
      "c_torso_rear"
     ],
-    "gap_p10_mm": 3.642,
-    "gap_median_mm": 4.675,
-    "gap_p90_mm": 9.639,
+    "gap_p10_mm": 3.706,
+    "gap_median_mm": 4.78,
+    "gap_p90_mm": 10.024,
     "gap_max_mm": 14.054,
-    "hug_fraction": 0.291,
-    "inner_samples": 189,
-    "egg_ratio": 1.09,
+    "hug_fraction": 0.216,
+    "inner_samples": 190,
+    "egg_ratio": 1.094,
     "coverage": 0.522,
-    "wall_p10_mm": 1.914,
+    "wall_p10_mm": 1.895,
     "wall_median_mm": 1.995,
-    "wall_p90_mm": 2.08,
+    "wall_p90_mm": 2.111,
     "size_mm": [
-     102.58,
-     70.16,
-     29.04
+     103.01,
+     71.02,
+     29.06
     ],
     "mounted": "screws",
     "screws": [
@@ -114,7 +114,7 @@
     "held_by": [
      "c_torso_rear"
     ],
-    "farthest_from_fastener_mm": 58.3,
+    "farthest_from_fastener_mm": 57.9,
     "seam_gap_mm": 0.6,
     "failing": false
    },
@@ -133,21 +133,21 @@
     "covers": [
      "c_torso_front"
     ],
-    "gap_p10_mm": 2.645,
-    "gap_median_mm": 3.222,
-    "gap_p90_mm": 3.581,
-    "gap_max_mm": 4.445,
-    "hug_fraction": 0.948,
-    "inner_samples": 191,
-    "egg_ratio": 1.069,
+    "gap_p10_mm": 3.066,
+    "gap_median_mm": 3.568,
+    "gap_p90_mm": 4.143,
+    "gap_max_mm": 5.223,
+    "hug_fraction": 0.895,
+    "inner_samples": 190,
+    "egg_ratio": 1.077,
     "coverage": 0.099,
-    "wall_p10_mm": 1.978,
+    "wall_p10_mm": 1.933,
     "wall_median_mm": 1.997,
-    "wall_p90_mm": 2.456,
+    "wall_p90_mm": 2.05,
     "size_mm": [
-     217.51,
-     58.74,
-     6.7
+     217.37,
+     58.48,
+     6.22
     ],
     "mounted": "screws",
     "screws": [
@@ -158,7 +158,7 @@
     "held_by": [
      "c_torso_front"
     ],
-    "farthest_from_fastener_mm": 59.7,
+    "farthest_from_fastener_mm": 56.2,
     "failing": false
    },
    {
@@ -177,21 +177,21 @@
      "c_camera",
      "c_head"
     ],
-    "gap_p10_mm": 2.711,
-    "gap_median_mm": 3.274,
-    "gap_p90_mm": 3.488,
-    "gap_max_mm": 5.969,
-    "hug_fraction": 0.958,
-    "inner_samples": 189,
-    "egg_ratio": 1.127,
+    "gap_p10_mm": 2.987,
+    "gap_median_mm": 3.316,
+    "gap_p90_mm": 3.491,
+    "gap_max_mm": 6.096,
+    "hug_fraction": 0.948,
+    "inner_samples": 191,
+    "egg_ratio": 1.132,
     "coverage": 0.078,
-    "wall_p10_mm": 1.913,
-    "wall_median_mm": 1.999,
-    "wall_p90_mm": 2.056,
+    "wall_p10_mm": 1.916,
+    "wall_median_mm": 1.997,
+    "wall_p90_mm": 2.498,
     "size_mm": [
-     99.51,
-     53.59,
-     17.8
+     100.21,
+     54.3,
+     17.86
     ],
     "mounted": "screws",
     "screws": [
@@ -201,7 +201,7 @@
     "held_by": [
      "c_head"
     ],
-    "farthest_from_fastener_mm": 50.1,
+    "farthest_from_fastener_mm": 50.7,
     "failing": false
    }
   ],
