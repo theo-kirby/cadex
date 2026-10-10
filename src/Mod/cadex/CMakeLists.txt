@@ -30,7 +30,10 @@ set(Cadex_Scripts
     CadexEvaluation.py
     CadexAgentGuidance.md
     CadexAgentStyle.creature.md
+    CadexAgentStyle.gantry-machine.md
     CadexAgentStyle.printed-legged-robot.md
+    CadexAgentStyle.product.md
+    CadexAgentStyle.vehicle.md
     CadexLinkedPart.py
     CadexProject.py
     CadexScriptStore.py

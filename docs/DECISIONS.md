@@ -38871,3 +38871,148 @@ for an application bundle the product does not ship.
 (`keep_mods`), both suites in full, inherited CTest.
 
 Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-650 — The base guidance is short and domain-neutral (2026-10-10)
+
+**Context.** `docs/ARCHITECTURE-REVIEW.md` recommendation 5: the base,
+`CadexAgentGuidance.md`, had grown to about 5,800 words of body (6,012 with
+its header), and every brief read it first. About 1,800 words taught the
+agent the shape of JSON blocks that already carry their own `source` and
+`note`; the rest had drifted towards legged robots: "A MACHINE IN AN
+ANIMAL'S FORM MOVES LIKE ONE", the QDD and servo tiers, a walking task paid
+by its stride. Cadex is about to be given printers, CNCs, mowers, tractors,
+loaders, rovers, linkage walkers and lab robots (`docs/MACHINES.md`).
+
+**Decision.** The base is about 2,500 words (2,493 of body) and keeps only
+what is true of any machine: the six-step design loop (whose concept step
+now asks how real machines of this kind are built), measured-not-guessed,
+the build reply's blocks as floors, each named in one line with "read the
+`note`", and a new paragraph, SAY WHAT IS UNFINISHED. The walking task
+becomes A LEARNED MOTION PAYS FOR THE MOTION, NOT THE DISTANCE, with every
+ADR-565 lesson kept in neutral words. The sensor paragraphs keep the
+principle and leave the datasheet arguments to `assembly.sensor`'s
+docstring, which `describe_api` serves. What one family needs moved to its
+style (ADR-652). The overlay's examples lose their legs (`left_thigh` and
+`hip_cap` became `left_rail` and `motor_mount`).
+
+**Tests.** `cadex_tests/test_agent_guidance.py`: the headings, a word
+budget of 2,700, and a longer list of words the base may not use (animal,
+creature, neck, tail, jaw, gait, stride, foot, servo, qdd, the kit SKUs).
+`cli/tests/test_agent_guidance.py`: the sensor rule's principle-level
+claims.
+
+## ADR-651 — Guidance rules are principles with a reason and a check (2026-10-10)
+
+**Context.** The owner, 2026-10-10, of a hard placement rule: "we shouldnt
+have hard rules like that. we need to be more open and flexible." The
+styles stated taste as law: a sole "no longer than a quarter of [the
+standing height] and no wider than an eighth", a thigh and shin "each at
+least 2.5 times the joint cap's diameter", a leg "about 60% of its hip
+section or less near the foot", fillets "10-20% of the part's smallest
+overall size", "do not add a second disc".
+
+**Decision.** A rule says what it is for and how the agent can check it. A
+taste proportion is a starting point: the foot ratio is "a good start;
+past that, show the swing still clears the floor and the feet still pass,
+by the sweep"; the leg length is "about 2.5 is a good start", from what a
+limb is for (segments, not joints, are most of what you see; a longer shin
+is a longer stride); the leg taper follows the falling bending moment; the
+fillet is "sized to the part and its process", measured by `look`. A
+number stays a number where it is a measured engineering need, and then
+it says why: FDM's ~45 degrees and ~1.6 mm wall (four 0.4 mm perimeters),
+the roll limit two sweep steps short of contact (contact can begin between
+two samples), a drive's torque from mass, slope and wheel radius. The
+creature's "a long neck has at least two joints" became a question asked
+of the animal, with the anatomy block as the check. The no-face and
+mascot-box rules stay, as rules of their style, with their reason.
+
+**Tests.** `test_taste_numbers_are_starting_points_and_kept_numbers_say_why`;
+the ADR-566 test now pins COMPACT IS MEASURED and the recorded ratio.
+
+## ADR-652 — What the base said of one family moves into that family's style (2026-10-10)
+
+**Decision.** `printed-legged-robot` gains THE KIT (ESP32, PCA9685,
+BNO085, the 2S pack and 6 V regulator, a front sensor, the STS3215 at
+6 V, and a PWM servo's missing encoder) and SERVOS SIT IN THE LINK (the
+wrapped bay, `servo.bay(ledge=4)`, the foot pad). `creature` gains the
+moving-anatomy rule that ADR-627 put in the base, the QDD tiers and
+`qdd.mounting()`, and the 24-48 V and CAN assumption. The new `vehicle`
+style carries the N20 gearmotor, the TB6612 and the Pololu wheel and tyre.
+The base keeps their neutral halves: size each actuator from its axis's
+load; a self-moving machine carries what runs it.
+
+**Tests.** `test_the_style_carries_what_left_the_base`,
+`test_what_the_base_said_of_one_family_is_in_that_family_s_style`.
+
+## ADR-653 — Three provisional styles: `gantry-machine`, `vehicle`, `product` (2026-10-10)
+
+**Context.** Recommendation 5 asked for gantry, vehicle and
+enclosure/industrial styles. There are no rated designs of any of them.
+
+**Decision.** Three short styles (about 370-530 words), each marked in
+the text the agent reads as provisional -- written from how such machines
+are built, and outranked by a measurement:
+- `gantry-machine` (printers, CNCs, laser cutters, pick-and-place, liquid
+  handlers): the tool point is the spec, stiffness first, linear motion is
+  bought, cables move with the axes, an enclosure has a job, an
+  electronics bay;
+- `vehicle` (mowers, tractors, loaders, rovers): the duty is the spec, the
+  drivetrain from the load, steering and suspension are swept joints,
+  stability measured, the body covers a chassis, the small kit;
+- `product` (appliances, instruments, consumer devices whose enclosure is
+  most of what shows): the enclosure designed from the inside for its
+  process, split where assembled and serviced, every opening has a reason,
+  touch points sized for a hand.
+"Enclosure" was folded into `product`: a gantry's or a vehicle's enclosure
+is its own style's. The overlay's CHOOSE THE STYLE THE BRIEF NAMES names
+each family by example, says to choose by how the machine moves when two
+fit ("a robot mower is a vehicle first"), and to choose none for a machine
+no style describes. `docs/DESIGN-LANGUAGE.md` §12 is their record.
+
+**Tests.** `test_the_provisional_styles_are_short_marked_and_carry_their_family_s_conventions`
+(600-word budget); `test_the_style_choice_lands_each_kind_of_brief_on_one_style`
+(each brief word -- animal, 3D printer, CNC, mower, tractor, appliance ...
+-- is in exactly one style's sentence); the payload check.
+
+## ADR-654 — Placeholder paragraphs for the panel system and the motion parts (2026-10-10)
+
+**Context.** Two lines of work run beside this one: a panel system (roles,
+`covers=`, envelope and panel operations, a panel fit check) and new
+joints, actuators and parts (slider loop closure, rack-and-pinion,
+couplings, cylinders, rails, belts, leadscrews, steppers, extrusion, task
+metrics). Neither has landed, so the base must not name their APIs.
+
+**Decision.** The base carries COVERS AND PANELS and MOTION PARTS, each one
+paragraph under a line `<!-- placeholder: <name>. Replace this paragraph
+when ... lands. -->`. Each says only what is true today (the shell check,
+the helpers `describe_api` lists; a stand-in for a part the catalog lacks,
+listed as unfinished). `guidance.agent_guidance` drops every body line that
+is wholly an HTML comment, so the markers never reach the agent.
+
+**Tests.** `test_the_base_leaves_a_marked_placeholder_for_each_parallel_line_of_work`
+(each marker is followed by its paragraph, and no unbuilt API name appears);
+`test_a_placeholder_line_is_dropped_before_the_agent_reads_it`.
+
+## ADR-655 — Anatomy is the moving-regions declaration; the code name stays (2026-10-10)
+
+**Context.** Recommendation 6: `assembly.anatomy` is a creature concept in
+the general assembly API, though what it checks -- which declared
+subassemblies have driven joints, and which rigid pieces protrude -- is
+what a tractor's steering, hitch and PTO need too.
+
+**Decision.** The language is renamed, the code is not. The guidance calls
+it MOVING REGIONS and says `assembly.anatomy` is "the regions declaration,
+under its older name"; its docstring (served by `describe_api`), the
+block's undeclared note, the `inspect` tool's descriptions and
+`CadexAnatomy`'s docstring speak of a machine's moving regions, with
+creature regions as one example. `CadexAnatomy.SUGGESTED_REGIONS` (a
+creature vocabulary nothing read) is deleted. Renaming the call, the
+`anatomy=` argument, the reply block and the `inspect` scope would change
+the pinned tool surface and the protocol goldens while two other agents
+edit the same assembly API; that rename, with a compatibility alias, is
+left for when they have landed.
+
+**Tests.** `test_anatomy.py` pins the docstring's new first line; the tool
+surface is unchanged.
+
+Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).

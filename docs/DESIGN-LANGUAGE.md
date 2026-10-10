@@ -5,62 +5,90 @@ Verified against source: 2026-10-10. Provenance: `[Cadex-new]`.
 This is how a machine that Cadex designs should be designed, and it is in
 two layers (ADR-560):
 
-- **The base** holds for any machine Cadex designs: a crane, a wheeled
-  base, a fixed arm, a vacuum robot, a whole mechanism, as well as a small
-  printed robot. Its principle is **form follows function**: every part
-  takes its shape from what it does — the load it carries, the part it
-  holds, the motion it allows, how it is made — and nothing is added to
-  imitate engineering. It names no kind of machine as the default and no
-  look. It is the engine's `Mod/cadex/CadexAgentGuidance.md`, which every
-  agent reads (`cadex guidance` prints it; `cadex mcp` points the agent at
-  it; Cadex has no agent of its own, ADR-538).
-- **A style** is named and optional: the rules for one kind of machine and
-  its look. A project chooses at most one, `cadex style --project DIR
-  NAME`, stored in its `agent.json`, and only then does `cadex guidance
-  --project DIR` print the style's rules after the base. With none chosen,
-  the base is the whole of the design guidance. No style is on by default:
-  the agent runs `cadex style --project DIR --json`, which lists each style
-  with one sentence on what it is for, and chooses the one its brief names
-  (an animal or a character is the `creature` style's), else none
-  (ADR-625). Each style is one engine file,
-  `Mod/cadex/CadexAgentStyle.<name>.md`. A style is written from reference
-  images or projects the owner supplies, never invented.
+- **The base** holds for any machine Cadex designs: a printer, a CNC, a
+  mower, a tractor, a rover, a lab robot, a linkage walker, a creature. Its
+  principle is **form follows function**: every part takes its shape from
+  what it does — the load it carries, the part it holds, the motion it
+  allows, how it is made — and nothing is added to imitate engineering. It
+  names no kind of machine as the default and no look. It is the engine's
+  `Mod/cadex/CadexAgentGuidance.md`, which every agent reads (`cadex
+  guidance` prints it; `cadex mcp` points the agent at it; Cadex has no
+  agent of its own, ADR-538). Since ADR-650 it is about 2,500 words, down
+  from about 6,000: the design loop, measured-not-guessed, the build
+  reply's blocks as floors (each block explains itself in its own `source`
+  and `note`), and honesty about what is unfinished. Two paragraphs are
+  marked placeholders for work landing beside it, the panel system and the
+  motion parts (ADR-654).
+- **A style** is named and optional: the conventions of one family of
+  machines and its look. A project chooses at most one, `cadex style
+  --project DIR NAME`, stored in its `agent.json`, and only then does
+  `cadex guidance --project DIR` print the style's rules after the base.
+  With none chosen, the base is the whole of the design guidance. No style
+  is on by default: the agent runs `cadex style --project DIR --json`,
+  which lists each style with one sentence on what it is for, and chooses
+  the one its brief names, by what the machine is and how it moves, else
+  none (ADR-625, ADR-653). Each style is one engine file,
+  `Mod/cadex/CadexAgentStyle.<name>.md`. A rated style is written from
+  reference images or projects the owner supplies; a **provisional** style
+  is written from how such machines are built, says so, and yields to a
+  measurement, until designs made with it are rated (ADR-653).
 
-| style | for | file |
-|---|---|---|
-| `printed-legged-robot` | a small robot printed around hobby or bus servos, boards, a battery and sensors, that stands and walks on legs | `CadexAgentStyle.printed-legged-robot.md` |
-| `creature` | a robot in an animal's or a character's form, articulated like the animal and built as a real machine (§11) | `CadexAgentStyle.creature.md` |
+**Rules are principles with a check (ADR-651).** The owner, 2026-10-10:
+"we shouldnt have hard rules like that. we need to be more open and
+flexible." So a rule says what it is for and how the agent can check it,
+and a taste proportion is a starting point, never a bound. A number stays a
+number only where it is a measured engineering need, and then it says why:
+a printable wall (four perimeters of a 0.4 mm nozzle), a roll limit two
+sweep steps short of contact (contact can begin between samples), a drive's
+torque from mass, slope and wheel radius.
+
+| style | for | status | file |
+|---|---|---|---|
+| `printed-legged-robot` | a small robot printed around hobby or bus servos, boards, a battery and sensors, that stands and walks on legs | rated (§1–§10) | `CadexAgentStyle.printed-legged-robot.md` |
+| `creature` | a robot in an animal's or a character's form, articulated like the animal and built as a real machine | rated (§11) | `CadexAgentStyle.creature.md` |
+| `gantry-machine` | a tool point moved over a work area on linear axes: printers, CNCs, laser cutters, pick-and-place, liquid handlers | provisional (§12) | `CadexAgentStyle.gantry-machine.md` |
+| `vehicle` | a machine that drives over the ground on wheels or tracks: mowers, tractors, loaders, rovers | provisional (§12) | `CadexAgentStyle.vehicle.md` |
+| `product` | an appliance, instrument or consumer device whose enclosure is most of what shows | provisional (§12) | `CadexAgentStyle.product.md` |
 
 **Which rule is where.** The question asked of every rule is whether it
-would be wrong for a crane, a wheeled base or a fixed arm. If it would, it
-is in a style.
+would be wrong for a printer, a tractor or a fixed arm. If it would, it is
+in a style.
 
 | rule | where | why there |
 |---|---|---|
-| prove it with facts: `look`, `inspect`, the `fit` block | base | holds for any design |
-| inside out: concept, parts, place, structure, finish, refine (§8) | base | the order holds for any machine with purchased parts |
+| prove it with facts: `look`, `inspect`, the build reply's blocks; each block's own `note` says how to read it | base | holds for any design; the how-to-read prose moved into the blocks (ADR-650) |
+| a met check is a floor, not the goal; the bar is a real product | base | the owner's bar (ADR-627, ADR-650) |
+| inside out: concept (including how real machines of this kind are built), parts, place, structure, finish, refine (§8) | base | the order holds for any machine with purchased parts |
+| size each actuator from its axis's load | base | was the QDD bullet's; true of any drive (ADR-652) |
 | hold every part; nothing stuck on; mirror what has sides | base | mechanical, not a look |
-| members follow the load; what meets the ground or the work is a designed part | base | the general form of §5's limb and foot rules |
-| a printed part is printable (§6) | base | conditional on a part being printed |
-| hardware that shows is ordered; detail is real; finished edges; colour follows role | base | form follows function, stated without a finish |
-| a self-moving machine carries what runs it | base | conditional on the machine moving itself |
-| one of two finishes, exposed or panelled (§1) | style | rated on small printed robots only |
-| two materials and one small accent (§2) | style | rated on small printed robots only |
-| joints are horn caps, one design for the robot (§3) | style | servo-horn specific |
-| no face, and not the mascot box (§1, §4) | style | a robot's look; a crane has neither risk |
-| legs taper both ways, are long against their joints, end in a designed foot (§5) | style | legged only |
+| members follow the load, checked by naming the load; what meets the ground or the work is a designed part | base | the general form of §5's limb and foot rules |
+| a made part is makeable by its process; FDM's 45° and ~1.6 mm with their reasons (§6) | base | conditional on a process |
+| hardware that shows is ordered; detail is real; finished edges sized to the part and process; colour follows role | base | form follows function, stated without a finish; the 10–20 % fillet figure went (ADR-651) |
+| covers have a reason and wrap what they cover | base, placeholder | the panel system replaces it (ADR-654) |
+| each axis is the joint its real part makes; a missing catalog part is a named stand-in | base, placeholder | the motion parts replace it (ADR-654) |
+| declare the moving regions (`assembly.anatomy`) | base | any machine's steering, hitch or arm (ADR-655) |
+| a self-moving machine carries what runs it, no SKUs | base | conditional on the machine moving itself |
 | a solid of tangent primitives is measured; a joint's limit and spacing come from its sweep | base | true of any mechanism (ADR-565) |
 | the simulated body is the built body: contacts are unions of collision primitives, the support under the measured centre of mass | base | a crane on outriggers tips the same way (ADR-565) |
-| a learned task: speed bounded both ways, a target the intended motion reaches most easily, command range centred on the rest pose, progress only while upright, a ceiling on anti-degenerate charges | base | true of any learned motion (ADR-565) |
-| training practice: checkpoints on, keep the policy `evaluate` passes, when to warm-start, never tighten the filter on one | base (CLI guidance) | true of any task (ADR-565) |
-| tapered limb plates with a lightening window and round bosses | style | a legged look (ADR-565); where an actuator sits is the design's call, not a rule (ADR-629) |
-| a machine in an animal's form lists its moving anatomy and joints every region, or records a measured reason; the design is not done while a region is rigid without one | base | conditional on the brief, like a self-moving machine's kit (ADR-627) |
-| the look bars never decide that a design is done | base | a met bar is a floor (ADR-627) |
+| a learned motion: speed bounded both ways, a target the intended motion reaches most easily, command range centred on the rest pose, progress only while upright, a ceiling on anti-degenerate charges, an alive bonus | base | true of any learned motion (ADR-565, ADR-650) |
+| training practice: checkpoints, keep the policy `evaluate` passes, when to warm-start | base (CLI guidance) | true of any task (ADR-565) |
+| say what is unfinished: stand-ins, unswept joints, assumed parts | base | honesty holds for any machine (ADR-650) |
+| the small-robot kit: ESP32, PCA9685, BNO085, 2S pack and 6 V regulator, STS3215, a PWM servo's missing encoder | style `printed-legged-robot` | servo-tier (ADR-652) |
+| one of two finishes, exposed or panelled (§1); two materials and one small accent (§2) | style `printed-legged-robot` | rated on small printed robots only |
+| joints are horn caps, one design for the robot (§3) | style `printed-legged-robot` | servo-horn specific |
+| no face, and not the mascot box (§1, §4) | style `printed-legged-robot` | a robot's look; a printer has neither risk |
+| legs taper both ways and end in a designed foot; long against their joints (about 2.5 cap diameters as a start) | style `printed-legged-robot` | legged only; the ratio is a start since ADR-651 |
+| tapered limb plates with a lightening window and round bosses | style `printed-legged-robot` | a legged look (ADR-565) |
+| compact twin-keel feet, the sole recorded against the standing height (a quarter by an eighth as a start, past it shown by the sweep); hips wide enough for the feet; the roll limit from where the feet meet; pay for the step | style `printed-legged-robot` | legged only (ADR-565, ADR-566, ADR-651) |
+| a machine in an animal's form moves like one: its anatomy is the joint list, each rigid region with a measured reason | style `creature` | moved from the base (ADR-627, ADR-652) |
+| the QDD tiers and their mounting | style `creature` | the creatures' actuator (ADR-652) |
 | the actuator is the joint and shows; panels wrap the mechanism; segments where it bends; a real sensor as the eye; likeness by silhouette | style `creature` | an animal's look (§11, ADR-626) |
-| compact hull feet with a flat strip between twin keels; hips wide enough, inward roll limited, for the feet to pass; pay for the step; a sole bounded by the standing height; the roll limit from where the feet meet | style | legged only (ADR-565, ADR-566) |
+| the tool point is the spec; stiffness first; linear motion is bought; cables move with the axes; an enclosure has a job | style `gantry-machine` | gantry conventions (§12) |
+| the duty is the spec; the drivetrain from the load; steering and suspension are swept joints; stability measured; the body covers a chassis; the small wheel-and-gearmotor kit | style `vehicle` | vehicle conventions (§12, ADR-652) |
+| the enclosure designed from the inside for its process; it comes apart where it is assembled and serviced; every opening has a reason; touch points for a hand | style `product` | product conventions (§12) |
 
 **§1–§10 are the `printed-legged-robot` style's evidence; §11 is the
-`creature` style's**, from orun1's ratings, together with the base rules that came
+`creature` style's; §12 says where the provisional styles come from**, §1–§10 from orun1's ratings, together with the base rules that came
 out of the same work (marked *base* where they appear). The ledger of what
 the reference legged-robot project added to the base and the style, row by
 row with its evidence, is `docs/probes/orun4/LESSONS.md` (ADR-565).
@@ -474,9 +502,11 @@ arm or wing, and the only two designs with a jointed neck rated best.
 | likeness from silhouette and proportion, not surface | LIKENESS BY SILHOUETTE AND PROPORTION |
 | the real-product bar (a production arm, a precision hexapod) | THE BAR IS A REAL PRODUCT |
 
-The articulation rule is split: the base says a machine in an animal's form
-joints its anatomy or records why not (ADR-627), and the style gives the
-starting joint list and the actuator sizing that makes it affordable.
+The articulation rule is the style's: a machine in an animal's form joints
+its anatomy or records why not (ADR-627), with the starting joint list and
+the QDD tiers that make it affordable. It moved out of the base in ADR-652;
+the base keeps only the neutral half, declaring a machine's moving regions
+(ADR-655).
 
 **Where it differs from `printed-legged-robot`.** That style says no face
 and never one soft skin. This one keeps no face, but lets the head's real
@@ -491,3 +521,31 @@ wing, but most runs stopped before the design was done and none has yet
 been blind-rated into the same pool. Whether designs made with them rate
 higher is still that rating's to say.
 
+## 12. The provisional styles (ADR-653)
+
+**Where they come from.** Not from ratings: there are none yet. Each is
+written from how its family of machines is built (the conventions behind
+`docs/MACHINES.md`'s first wave), kept short, and marked provisional in the
+text the agent reads, which also tells it that a measurement outranks the
+style. They exist so that the breadth bench's first briefs — an enclosed
+CoreXY printer, a robot mower, a compact tractor, a CNC router, a skid
+steer, a rover, a liquid handler — meet their family's conventions rather
+than a creature's.
+
+| style | what it asks for | the check it names |
+|---|---|---|
+| `gantry-machine` | the work envelope, tool loads, accuracy and speed first; a closed, stiff frame; bought guides and drives chosen from load and accuracy; cable chains; an enclosure only where the process needs one; an electronics bay | sweep each axis and measure the tool point against the stated envelope; the load path, and `part.stress` where a process load matters |
+| `vehicle` | the duty first (ground, slope, step, payload, run time); drive torque from mass, wheel radius and slope; a layout chosen from the duty; a body over a chassis with service access and guards | sweep steering to full lock and suspension through travel; the tip slope measured on the model at both ends of a moving load |
+| `product` | an enclosure designed from the internals for its process (draft, bosses, ribs, or bends); split where assembled and serviced; every opening with a reason; touch points sized for a hand | look inside the shell: every boss has a screw, every rib carries something |
+
+**When the brief fits two.** The overlay says to choose the style for how
+the machine moves and works, and take what it needs of the other's look
+into its concept: a robot mower is a `vehicle` whose body is product-like.
+
+**Exists today versus target.** The three styles exist and are offered by
+`cadex style`. None has been tried on a brief. The catalog does not yet
+carry rails, belts, leadscrews, steppers, cylinders or extrusion; the base's
+motion-parts placeholder tells the agent to model a named stand-in and
+record it. Whether designs made with these styles rate well is for a
+blind rating to say, and a style that rates poorly is rewritten from that
+rating like §1–§11.

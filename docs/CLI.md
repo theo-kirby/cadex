@@ -122,7 +122,7 @@ to run `<repo>/cadex guidance --project <project>` in its shell before its
 first tool call, and says which design style the project chose, if any.
 Claude Code cuts a server's instructions at 2,048 characters unless
 `CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH` says otherwise, and the whole
-guidance is about 48,000 (the base alone, 2026-10-10), so it travels through the agent's shell, which
+guidance is about 30,000 (the base alone, 2026-10-10, ADR-650), so it travels through the agent's shell, which
 every agent this serves has. `tools/list` answers with the tool
 surface — `describe_api`, `write_script`, `edit_script`, `set_params`,
 `rebuild`, `inspect`, `link_part`, `put_asset`, `look`, `draw_blueprint`,
@@ -2408,12 +2408,23 @@ call is refused* -- is the engine's agent guidance,
 `Mod/cadex/CadexAgentGuidance.md` (ADR-446), read from the engine the CLI
 resolved, with the tool names filled in. That is the **base**, and it is
 domain-neutral: form follows function, and nothing in it assumes a kind of
-machine or a look (ADR-560). A **style** is a named, optional
-`Mod/cadex/CadexAgentStyle.<name>.md` beside it — today
-`printed-legged-robot` and `creature` — and a project chooses at most one with `cadex
+machine or a look (ADR-560). Since ADR-650 it is about 2,500 words: the
+design loop, measured-not-guessed, the build reply's blocks as floors (each
+block's own `source` and `note` say how to read it, so the base no longer
+does), and saying what is unfinished. Its rules are principles with a
+reason and a check, not fixed taste numbers (ADR-651). A line of it that is
+wholly an HTML comment is dropped before the agent reads it; two such lines
+mark the placeholder paragraphs *covers and panels* and *motion parts*,
+which parallel work replaces (ADR-654). A **style** is a named, optional
+`Mod/cadex/CadexAgentStyle.<name>.md` beside it — today the rated
+`printed-legged-robot` and `creature`, and the provisional `gantry-machine`,
+`vehicle` and `product` (ADR-653) — and a project chooses at most one with `cadex
 style`. `cadex guidance --project` then appends that style's rules after the
 whole base; with none chosen it prints the base alone, and no style is on by
-default. The base tells the agent how to choose one. Around it is the situation: the
+default. The overlay tells the agent how to choose one: match the brief to
+each style's sentence by what the machine is and how it moves, prefer the
+one for how it moves when two fit (a robot mower is a vehicle), and choose
+none when none fits. Around it is the situation: the
 person watches the read-only dashboard and talks to the agent directly,
 *build it parametric*, purchased hardware, `describe_api` first, the CLI
 for the legs the tools do not cover (with `--wait`), assets and policies,
@@ -2430,20 +2441,19 @@ The overlay says:
 - **Design it; do not only make it fit** (ADR-406, ADR-479). The
   design language of `docs/DESIGN-LANGUAGE.md`, taught from the inside out
   as six steps in order: a **concept** before any geometry (what the
-  machine is, its palette, and its finish, an exposed mechanism or a
-  panelled hard surface, recorded in the project's `DECISIONS.md`); the **parts**, each
-  purchased part and the cable path chosen from the catalog; **placing**
-  them and checking their fit alone; the **structure that carries them**
-  (hold every part by something named, nothing stuck on, mirror what has
-  sides, one joint cap per axis, load-carrying limbs with designed feet,
-  printable); the **finish** (not the mascot box, no face, hardware that
-  shows is ordered, detail is real, finished edges, two materials and one
-  small functional accent by appearance role); and **refinement with
+  machine is, its scale, process, proportions and palette, and how real
+  machines of its kind are built, recorded in the project's
+  `DECISIONS.md`); the **parts**, each actuator sized from its axis's
+  load; **placing** them and checking their fit alone; the **structure
+  that carries them** (hold every part by something named, nothing stuck
+  on, mirror what has sides, members that follow the load, makeable by
+  its process); the **finish** (hardware that shows is ordered, detail is
+  real, finished edges, colour by appearance role); and **refinement with
   `look`**, which reads the `measures` first, then names the crudest
-  thing, fixes it and looks again. Tests hold the order, hold that no face
-  or hidden-hardware rule comes back (ADR-480 to ADR-483), hold that the
-  overlay quotes no owner rating, sweep id or judge text, and hold that
-  every paragraph and bullet is a finished sentence.
+  thing, fixes it and looks again. A style adds its family's look — the
+  finishes, joint caps and no-face rule are `printed-legged-robot`'s.
+  Tests hold the headings, the word budget, the placeholders, and that no
+  kind of machine, animal or servo tier is in the base.
 - **Fit is measured, not printed** (ADR-346). The `fit` block on every
   build reply is the evidence that parts fit; the script's `stdout` is a
   claim the script makes about itself, and a `fit` naming a failing pair
@@ -2548,7 +2558,7 @@ Fast, and honest about what it did not run.
 | `test_engine_resolution.py` | Hand-built payload directories; no engine needed. |
 | `test_mcp_protocol.py` | `cadex mcp`'s wire, the stdio loop and its idle callback, and the bridge against `fake_cadexd.py`; no engine needed. |
 | `test_activity.py` | The activity log (ADR-549): arguments summarised never whole, the 64 KiB cap keeping the newest calls (with two lines a call too), a torn line skipped; a call in flight until it returns and then one entry, and `lost` once its server is gone (ADR-553); and a real `cadex mcp` process's calls read back from `/api/project`, including a slow `evaluate` seen in flight with the stage `evaluating` — that half **skips** without a built engine. |
-| `test_agent_guidance.py` | The guidance: the engine's text carried verbatim, nothing left from the CLI's own turns, and `cadex guidance` printing exactly what `cadex mcp` sends. The base and styles (ADR-560): the base names no kind of machine, no style's text appears unless the project chose it, `cadex style` chooses, lists, refuses and clears, and no text an agent is given names a project. |
+| `test_agent_guidance.py` | The guidance: the engine's text carried verbatim, nothing left from the CLI's own turns, and `cadex guidance` printing exactly what `cadex mcp` sends. The base and styles (ADR-560): the base names no kind of machine, no style's text appears unless the project chose it, `cadex style` chooses, lists, refuses and clears, each kind of brief lands on one style (ADR-653), a placeholder comment line never reaches the agent (ADR-654), and no text an agent is given names a project. |
 | `test_dashboard_prefix.py` | Portability (ADR-551): no `url` or `mesh` the server builds is root-absolute, the `p/<name>` redirect is relative, and in Chromium the index and a project page, and a `cadex review` page, load and draw through a non-rewriting proxy at `/some/prefix/` with no request leaving it. |
 | `test_http_api.py` | The HTTP API contract (ADR-552): the "HTTP API" table above, `API_ROUTES` and `API_RESPONSE_KEYS` agree; the router dispatches from the table alone; every route's replies on a fixture biped that reaches each shape carry their always-keys and nothing unlisted, and every unknown `api/` path is a `404`; the page stores only the six per-viewer `localStorage` keys. |
 | `test_dashboard_read_only.py` | The read-only dashboard (ADR-537): every former write route refused for every method with the project unchanged, and in Chromium an open page following a `cadex params` run outside it. |

@@ -1532,15 +1532,16 @@ class AssemblyDomainAPI:
         reason: str | None = None,
         label: str = "",
     ) -> DomainValue:
-        """Name one region of a creature's moving anatomy and the components it is.
+        """Name one moving region of the machine and the components it is.
 
-        ``region`` is free text; the vocabulary the build reply reads best is
-        spine, neck, head, jaw, tail, arm_l/arm_r, leg_fl/leg_fr/leg_rl/leg_rr
-        (or leg_l/leg_r), wing_l/wing_r, toe. ``components`` are the
+        The regions declaration (ADR-655): a steering axle, a hitch, a lift
+        arm, a gripper, or a creature's neck, tail or leg. ``region`` is free
+        text -- name it for what it is (``steering``, ``hitch``, ``tail``,
+        ``leg_l``). ``components`` are the
         ``api.component`` values that region is made of (each in at most one
         region). ``reason=`` is how a region is deliberately rigid -- say why,
-        with the measurement ("ossified tail: raptor tails were stiff; a tail
-        joint costs 0.4 kg the hip torque margin cannot carry"). Pass the list
+        with the measurement ("fixed front axle: the deck is 0.6 m wide and a
+        pivot costs 40 mm of ground clearance"). Pass the list
         to ``api.assembly(..., anatomy=[...])``; do not return it. Every build
         reply then carries an ``anatomy`` block: per region, the joints that
         move it relative to the region it hangs off, which an ``api.actuator``
@@ -1602,7 +1603,7 @@ class AssemblyDomainAPI:
         ``palette={"shell": "#E9E6DF", "accent": "#F26A1B"}`` sets the colour
         of any appearance role; an unnamed role keeps its default (bone
         shell, graphite mechanism, signal-orange accent).
-        ``anatomy=[api.anatomy(...), ...]`` declares a creature's moving
+        ``anatomy=[api.anatomy(...), ...]`` declares the machine's moving
         regions, which every build reply's ``anatomy`` block checks.
         """
 

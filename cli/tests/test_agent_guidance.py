@@ -125,6 +125,8 @@ def test_a_project_chooses_a_style_and_its_guidance_carries_it(tmp_path, capsys)
     # one its brief names (ADR-625).
     assert [f'{name}: {text}' for name, text in about.items()] == listed['notes']
     assert 'creature' in about and 'animal' in about['creature']
+    for name in ('gantry-machine', 'vehicle', 'product'):
+        assert name in about and 'provisional' not in about[name], name
 
     assert main(['style', '--project', str(tmp_path), STYLE, '--json']) == 0
     assert json.loads(capsys.readouterr().out)['style']['chosen'] == STYLE
@@ -146,6 +148,45 @@ def test_a_project_chooses_a_style_and_its_guidance_carries_it(tmp_path, capsys)
     assert read_agent_state(tmp_path).style == ''
     assert main(['guidance', '--project', str(tmp_path)]) == 0
     assert capsys.readouterr().out == OVERLAY
+
+
+#: What a brief says, and the one style whose sentence it should land on
+#: (ADR-653). The overlay names each family by example; `cadex style
+#: --json`'s `about` is what the agent matches.
+BRIEFS = {
+    'animal': 'creature', '3D printer': 'gantry-machine', 'CNC': 'gantry-machine',
+    'laser cutter': 'gantry-machine', 'liquid handler': 'gantry-machine',
+    'mower': 'vehicle', 'tractor': 'vehicle', 'loader': 'vehicle', 'rover': 'vehicle',
+    'appliance': 'product', 'instrument': 'product',
+}
+
+
+def test_the_style_choice_lands_each_kind_of_brief_on_one_style():
+    """The overlay tells the agent how to match a brief, and each family it
+    names by example lands on exactly one style's sentence."""
+
+    about = {name: style_summary(name) for name in styles()}
+    text = " ".join(OVERLAY.split())
+    choose = _rule(text, "CHOOSE THE STYLE THE BRIEF NAMES", 2200)
+    for word, style in BRIEFS.items():
+        assert [name for name, said in about.items() if word in said] == [style], word
+    for example in ('an animal or a character', 'a printer, a CNC or a liquid handler',
+                    'a mower, a tractor, a loader or a rover', 'appliance or instrument',
+                    'When two fit', 'a robot mower is a vehicle first', 'choose none',
+                    'provisional', 'the measurement wins'):
+        assert example in choose, example
+
+
+def test_a_placeholder_line_is_dropped_before_the_agent_reads_it():
+    """ADR-654: a guidance line that is wholly an HTML comment marks a
+    placeholder for maintainers; the paragraph after it reaches the agent,
+    the comment never does."""
+
+    body = agent_guidance(ENGINE_MODULE_DIR, TOOL_NAMES)
+    assert '<!--' not in body and '<!--' not in instructions(STYLE)
+    assert '\nCOVERS AND PANELS.' in body and '\nMOTION PARTS.' in body
+    assert '<!-- placeholder: panels' in (Path(ENGINE_MODULE_DIR) / GUIDANCE_FILE).read_text(
+        encoding='utf-8')
 
 
 def test_a_stored_style_the_engine_does_not_carry_is_refused_not_dropped(tmp_path, capsys):
@@ -252,10 +293,12 @@ def test_the_sensor_rule_grounds_position_and_load_on_real_parts():
     # that reports it, a goal in the moving base's frame, and privileged
     # when no part on the market would measure it.
     text = " ".join(instructions().split())
-    rule = _rule(text, "CHOOSE A SENSOR A REAL PART COULD BE", 2600)
-    for claim in ("cannot run on the machine", '"position_tracker"', "range_mm=", "resolution_mm=",
-                  "rate_hz=", "noise_mm=", '"tracked_position"', "terminate on that flag",
-                  ".load_sensor(actuator", "`actuator_force`", "A PWM servo",
+    # Since ADR-650 the datasheet arguments are describe_api's to give
+    # (assembly.sensor's own docstring); the rule keeps the principle.
+    rule = _rule(text, "CHOOSE A SENSOR A REAL PART COULD BE", 1200)
+    for claim in ("cannot run on the machine", "declare its datasheet figures", '"position_tracker"',
+                  '"tracked_position"', "terminated on its `_in_range` flag",
+                  ".load_sensor(actuator", "only on an actuator that reports effort",
                   "frame=base", "it is privileged", 'role="privileged"'):
         assert claim in rule, claim
 
@@ -299,6 +342,6 @@ def test_the_style_s_foot_thigh_and_roll_rules_reach_a_project_that_chose_it(tmp
     assert main(['guidance', '--project', str(tmp_path)]) == 0
     chosen = " ".join(capsys.readouterr().out.split())
     base = " ".join(instructions().split())
-    for rule in ('COMPACT HAS A NUMBER', 'no wider than an eighth of it', 'A SPRAWLED LEG',
+    for rule in ('COMPACT IS MEASURED', 'an eighth wide is a good start', 'A SPRAWLED LEG',
                  'MEASURE WHERE THE FEET MEET', 'bracket it outward from the standing pose'):
         assert rule in chosen and rule not in base, rule

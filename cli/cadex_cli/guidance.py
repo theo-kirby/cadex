@@ -29,11 +29,14 @@ import re
 
 from .studio import ENGINE_MODULE_DIR
 
-#: The engine's agent guidance (ADR-446): proof by measured facts, the design
-#: language, a complete robot, what a policy may read, how a walk is paid.
+#: The engine's agent guidance (ADR-446, ADR-650): the design loop, proof by
+#: measured facts, a complete machine, what a policy may read, how a motion is paid.
 #: Engine data, read from the engine the CLI resolved.
 GUIDANCE_FILE = "CadexAgentGuidance.md"
 GUIDANCE_MARKER = "<!-- guidance -->\n"
+#: A guidance line that is wholly an HTML comment: a maintainers' marker,
+#: dropped before the agent reads the text (ADR-654).
+COMMENT_LINE = re.compile(r"<!--.*-->")
 #: A style's file is ``<STYLE_PREFIX><name>.md`` beside the base (ADR-560).
 STYLE_PREFIX = "CadexAgentStyle."
 #: The tool name for each placeholder the guidance uses.
@@ -56,6 +59,10 @@ def agent_guidance(module_dir: Path | str, names: dict[str, str],
     head, marker, body = text.partition(GUIDANCE_MARKER)
     if not marker:
         raise RuntimeError(f"{source} has no {GUIDANCE_MARKER.strip()} line.")
+    # A line that is wholly an HTML comment marks a placeholder for the
+    # maintainers (ADR-654); the agent never reads it.
+    body = "".join(line for line in body.splitlines(keepends=True)
+                   if not COMMENT_LINE.fullmatch(line.strip()))
     for placeholder, name in names.items():
         body = body.replace("{{" + placeholder + "}}", name)
     left = sorted(set(re.findall(r"\{\{(\w+)\}\}", body)))
@@ -95,7 +102,7 @@ def style_summary(style: str, module_dir: Path | str = ENGINE_MODULE_DIR) -> str
 #: The situation, before the engine's guidance. Everything about the *API*
 #: is left to describe_api; this text is only about where the agent is.
 OVERLAY = """\
-YOU ARE DRIVING CADEX, a CAD engine for robots and mechanisms. The `cadex` \
+YOU ARE DRIVING CADEX, a CAD engine for machines, robots and mechanisms. The `cadex` \
 MCP server holds one project directory, and its tools build, measure and \
 render that project's design. The person you are working with talks to \
 you here. They watch the design in the Cadex dashboard (`cadex app`), \
@@ -112,7 +119,7 @@ nothing read from outside the project. `import` is refused, but `math` \
 is provided as it is (`math.sin`, `math.atan2`, `math.pi`), and so are \
 `getattr`, `hasattr`, `dir`, `type` and `isinstance` for public names: \
 never write your own trigonometry. +Z IS UP. Name every output short \
-and for what it is -- `left_thigh`, `deck`, `hip_cap` -- because the person, \
+and for what it is -- `left_rail`, `deck`, `motor_mount` -- because the person, \
 the dashboard and every later change refer to a part by that name.
 
 BUILD IT PARAMETRIC. Declare every dimension a caller might want to vary \
@@ -122,7 +129,7 @@ and use `p.wall` throughout rather than repeating the literal. A sweep \
 then runs `cadex params --set wall=6` with no agent at all. Keep parameter \
 names stable: a pipeline is holding them. Make the few primary dimensions \
 parameters and compute the rest from them -- a bore from its bearing, a \
-wall's outside from its inside plus `p.wall`, a cap from its horn -- so one \
+wall's outside from its inside plus `p.wall`, a pulley from its belt -- so one \
 parameter moves a consistent design instead of breaking it.
 
 EVERY BUILD COSTS SECONDS. Each write_script, edit_script and set_params \
@@ -151,17 +158,26 @@ from memory.
 
 """ + agent_guidance(ENGINE_MODULE_DIR, TOOL_NAMES) + """\
 CHOOSE THE STYLE THE BRIEF NAMES, BEFORE STEP 1. The design rules above \
-hold for any machine. A style is a named, optional set of rules for one \
-kind of machine and its look, added to them. Before your concept, run \
+hold for any machine. A style is a named, optional set of conventions for \
+one family of machines, added to them. Before your concept, run \
 `cadex style --project <the project> --json`: it lists every style the \
 engine carries with one sentence on what each is for, and says which one \
-the project chose. When the brief asks for the kind of machine a style \
-describes -- an animal or a character is one -- or the person names a \
-style, choose it with `cadex style --project <the project> NAME` and \
-record the choice in DECISIONS.md; when none describes it, choose none. \
-`--clear` goes back to none. Then run `cadex guidance --project <the \
-project>` again: it prints these rules with the chosen style's after them. \
-With no style chosen, this text is the whole of the design guidance.
+the project chose. Match the brief to those sentences by what the machine \
+is and how it works: an animal or a character; a machine that moves a tool \
+over a work area on linear axes, such as a printer, a CNC or a liquid \
+handler; one that drives over the ground, such as a mower, a tractor, a \
+loader or a rover; an appliance or instrument whose enclosure is most of \
+what shows. When two fit, choose the one for how it moves and works, and \
+take what you need of the other's look into your concept: a robot mower is \
+a vehicle first. When the person names a style, choose it. Choose with \
+`cadex style --project <the project> NAME` and record the choice in \
+DECISIONS.md; when none describes the machine -- a linkage sculpture, a \
+fixed arm -- choose none, and the base is enough. `--clear` goes back to \
+none. A style marked provisional is written from how such machines are \
+built, not yet from rated designs: where it and a measurement disagree, \
+the measurement wins. Then run `cadex guidance --project <the project>` \
+again: it prints these rules with the chosen style's after them. With no \
+style chosen, this text is the whole of the design guidance.
 
 THE CLI COVERS WHAT THE TOOLS DO NOT. `cadex <command> --project <the \
 project> --wait --json` runs one leg and prints a machine-readable \
@@ -356,7 +372,7 @@ def brief(project: str = "<the project>", command: str = CADEX_COMMAND, style: s
     client cuts it, and the one step that gets the agent the rest."""
 
     text = (
-        "You are driving Cadex, a CAD engine for robots and mechanisms, through "
+        "You are driving Cadex, a CAD engine for machines, robots and mechanisms, through "
         "this server's tools; the person watches every revision you land in the "
         "read-only Cadex dashboard. BEFORE YOUR FIRST TOOL CALL, run "
         f"`{command} guidance --project {project}` in your shell and follow what "

@@ -1,9 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""The anatomy block every build reply carries (ADR-613, ADR-614).
+"""The moving-regions block every build reply carries (ADR-613, ADR-614).
 
-A creature's moving anatomy -- spine, neck, head, jaw, tail, limbs, toes,
-wings -- is declared with ``assembly.anatomy(region, components, reason=)``
+It keeps its first name, ``anatomy``, in the API, the reply and ``inspect``;
+what it checks is any machine's moving regions (ADR-655) -- a steering
+axle, a hitch, a lift arm, or a creature's neck and tail. The region names
+come from the script, never from here. A region
+is declared with ``assembly.anatomy(region, components, reason=)``
 and passed to ``assembly.assembly(..., anatomy=[...])``. The assembly
 worker stamps the graph facts beside the definition (``anatomy`` on the
 assembly's row: the declared regions, every unsuppressed joint with its
@@ -40,13 +43,6 @@ APPENDAGE_PROTRUSION_SHARE = 0.08
 #: ...and holds at most this share of its rigid body's solid volume.
 APPENDAGE_MAX_VOLUME_SHARE = 0.5
 
-#: The region names the guidance suggests. Free text is accepted; these
-#: are what the block names when it says what a creature usually moves.
-SUGGESTED_REGIONS = (
-    "spine", "neck", "head", "jaw", "tail", "arm_l", "arm_r", "leg_fl",
-    "leg_fr", "leg_rl", "leg_rr", "leg_l", "leg_r", "wing_l", "wing_r", "toe",
-)
-
 ANATOMY_SOURCE = (
     "the accepted revision's joint graph (inspect scope=anatomy): the regions "
     "assembly.anatomy declared, every unsuppressed joint, which ones an "
@@ -68,10 +64,11 @@ ANATOMY_NOTE = (
 )
 
 UNDECLARED_NOTE = (
-    "The script declares no anatomy. If the brief names an animal or a "
-    "character, list its moving anatomy (spine, neck, head, jaw, tail, "
-    "limbs, toes, wings) with assembly.anatomy(region, components, "
-    "reason=None) and pass the list to assembly.assembly(..., anatomy=[...])."
+    "The script declares no moving regions. Where what the machine is "
+    "depends on what moves -- a steering axle, a hitch, a lift arm, a "
+    "gripper, a creature's neck or tail -- declare each region with "
+    "assembly.anatomy(region, components, reason=None) and pass the list "
+    "to assembly.assembly(..., anatomy=[...])."
 )
 
 NO_PUBLISHED = (

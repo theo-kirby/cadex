@@ -56,7 +56,7 @@ def test_describe_api_lists_the_declaration_and_the_assembly_argument() -> None:
     (listed,) = [entry for entry in exports if entry["name"] == "anatomy"]
     for parameter in ("region", "components", "reason"):
         assert parameter in listed["signature"], parameter
-    assert listed["description"].startswith("Name one region of a creature's moving anatomy")
+    assert listed["description"].startswith("Name one moving region of the machine")
     (assembly,) = [entry for entry in exports if entry["name"] == "assembly"]
     assert "anatomy" in assembly["signature"]
 
