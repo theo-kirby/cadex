@@ -36,7 +36,7 @@ cadex-engine-<version>-<os>-<arch>/
                         53.5 MB (ADR-075, ADR-076)
   Mod/cadex/            cadexd + the xscript pipeline
   Mod/{Part,PartDesign,Sketcher,Assembly,Mesh,MeshPart,Import,Material,
-       Measure,Show}
+       Measure}
   share/                what the prune leaves of the environment's share/
   LICENSE, NOTICE, THIRD_PARTY_LICENSES.md
                         copied from the repo root (ADR-171)

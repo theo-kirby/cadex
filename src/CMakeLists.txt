@@ -15,6 +15,3 @@ if(BUILD_TEMPLATE)
     add_subdirectory(Tools/_TEMPLATE_)
 endif(BUILD_TEMPLATE)
 
-# Cadex (ADR-629): src/MacAppBundle (the macOS app bundle and QuickLook
-# plugin) is no longer configured; there is no application to bundle.
-

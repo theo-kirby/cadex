@@ -39,25 +39,27 @@ Everything in this file is `[FreeCAD-inherited]` unless noted.
 | `src/Mod/Import` | STEP/IGES exchange. |
 | `src/Mod/Material` | Part material properties referenced by kept workbenches. |
 | `src/Mod/Measure` | Measurement backend. |
-| `src/Mod/Show` | Visibility automation (`TempoVis`) for the deleted GUI's tree and view providers. Still built (`BUILD_SHOW`) and in the payload keep-list; its only remaining importer is Part's GUI-lineage `AttachmentEditor/TaskAttachmentEditor.py`. Unaudited; a removal candidate. |
 | `src/Mod/Mesh`, `src/Mod/MeshPart` | Substrate for the minimal `mesh` domain (landed, Phase 4 / ADR-016): import, tessellate, boolean, decimate, export. |
 | `src/Mod/cadex` | `[Cadex-new]` — the engine itself (`docs/ARCHITECTURE.md`). |
 
 **Built but not shipped.** One tree, `src/Mod/Test`, still builds and is not
 in the engine payload's keep-list (`package/engine/build_engine_payload.sh`),
-so nothing the product installs contains it. The other two this table
-listed, Start and Help, are deleted and stay here as the record:
+so nothing the product installs contains it. The others this table
+lists, Start, Help and Show, are deleted and stay here as the record:
 
 | Tree | Status |
 |---|---|
 | `src/Mod/Start` | The launch screen. It was shown by the Qt shell's Experimental Mode, which was deleted in Phase 7 (ADR-021) — nothing displays it now. **Disabled (ADR-220), then deleted 2026-09-07 (ADR-221, [history/START-AUDIT.md](history/START-AUDIT.md)).** All 27 module/test sources, three gates, option, report and maintenance references are gone. Neither `Mod/Start` nor `lib/Start.so` installs or stages. |
 | `src/Mod/Test` | FreeCAD's own Python test harness. Nothing in `cadex_tests/` uses it. |
+| `src/Mod/Show` | Visibility automation (`TempoVis`, `ContainerChain`) for the deleted GUI's tree and view providers. **Disabled, then deleted 2026-10-10 (ADR-629)**: the 16 tracked files, the `BUILD_SHOW` option, its gate and report line, its payload keep-list entry and the one Test case that imported it (`Document.py`'s `testContainerChainGroupInPart`) are gone. Part's GUI-lineage `AttachmentEditor/TaskAttachmentEditor.py` still names it inside its own `try/except ImportError` fallback, which it always had. |
 | `src/Mod/Help` | In-app help plumbing for a UI that no longer exists here. **Disabled (ADR-217), then deleted 2026-09-07 (ADR-218)**: the 85 tracked files, the `BUILD_HELP` option, its parent gate and report line, and its crowdin row are gone. The first engine-side whole-tree removal under the two-commit protocol; [history/HELP-AUDIT.md](history/HELP-AUDIT.md) holds both halves' gates. |
 
 ## 2. Kept elsewhere
 
 - `src/3rdParty`, `cMake`, `pixi.toml` — build substrate (OCCT and Qt6
-  come from pixi/conda deps). `pixi.toml` still lists GUI-era packages the
+  come from pixi/conda deps). `src/3rdParty` holds eleven trees; the
+  GUI-era `3Dconnexion` SpaceMouse SDK and `OpenGL` `glext.h`, which no
+  CMake file built, are deleted with the 3Dconnexion options (ADR-629). `pixi.toml` still lists GUI-era packages the
   headless build does not use (`coin3d`, `pivy`, `pyside6`, `opencv`,
   `pcl`); the payload prunes what reaches it (ADR-531, ADR-532), and the
   environment's own audit is deferred.
@@ -72,10 +74,11 @@ listed, Start and Help, are deleted and stay here as the record:
   not blanket-kept, during Phase 1).
 - `src/Build`, `src/Doc`, `src/Ext` — version header, Doxygen config and the
   `freecad` Python package; all three are `add_subdirectory`'d by
-  `src/CMakeLists.txt`. `src/MacAppBundle` (macOS app bundle and QuickLook
-  plugin, configured only on Apple) and `src/XDGData` (a desktop entry and
-  thumbnailer, which no CMake file references) are desktop-app packaging
-  residue, not yet audited for removal.
+  `src/CMakeLists.txt`. The desktop-app packaging residue is deleted
+  (ADR-629): `src/MacAppBundle` (the macOS app bundle and QuickLook
+  plugin, configured only on Apple, with `FREECAD_CREATE_MAC_APP`) and
+  `src/XDGData` (a desktop entry and thumbnailer that no CMake file
+  referenced).
 
 ## 2a. Our delta against upstream — additions inside the inherited tree
 
@@ -100,8 +103,8 @@ fork delta and was wrong — `Part.BRepOffsetAPI.MakePipeShell` already had
 
 §2a is the *additions*; this is the ledger of every inherited FreeCAD file
 this repository has **modified** since its import
-(`c2ccddfb3bbcbcff8cecd859968a8750d95832db`, 2026-07-23) — 56 files,
-40 under `src/` and 16 in the build substrate. The machine-readable list
+(`c2ccddfb3bbcbcff8cecd859968a8750d95832db`, 2026-07-23) — 57 files,
+41 under `src/` and 16 in the build substrate. The machine-readable list
 is `docs/inherited-modifications.json`, pinned to git by the licensing suite.
 Every modified file carries a Cadex modification notice except the four
 `ledger-only` entries: `Interpreter.cpp`, `JointObject.py`,
@@ -127,7 +130,9 @@ comment there triggers whole-file formatting; this listing is their notice.
   InitGui}.py`, `App/AppAssembly.cpp` and its CMake registration preserve
   headless imports and native publication. Modified Gui files are deleted.
 - **Kernel features** (ADR-128): `src/Mod/Part/App` bindings listed in §2a.
-- **Test residue**: `src/Mod/Part/TestPartApp.py` trims retired-feature tests.
+- **Test residue**: `src/Mod/Part/TestPartApp.py` trims retired-feature tests;
+  `src/Mod/Test/Document.py` drops the one case that imported the deleted
+  Show module (ADR-629).
 - **Translation tooling** (ADR-218, ADR-221, ADR-232): `src/Tools/updatecrowdin.py`
   drops the Help and Start rows and the retired GUI translation writer.
 
@@ -165,6 +170,20 @@ entry and three checkout references are removed. No retained CMake consumer
 exists; the Import DXF `gsl::owner` mention is only a TODO comment.
 OndselSolver remains; the shell library submodules went with the shell
 (ADR-498).
+
+**Unused inherited trees and options removed (2026-10-10, ADR-629).**
+Owner-approved (docs/DOCS-AUDIT.md §4, item 10). The audit found no
+built, shipped or tested consumer of: `src/Mod/Show`, `src/XDGData`,
+`src/MacAppBundle`, `src/3rdParty/3Dconnexion`, `src/3rdParty/OpenGL`,
+the `BUILD_VR` option (with `cMake/FindRift.cmake`), the
+`BUILD_DESIGNER_PLUGIN` option (with its macro and the
+`src/Tools/plugins/widget` source it built), the dead `BUILD_JTREADER`
+gate (`src/Mod/JtReader` never existed here), `FREECAD_CREATE_MAC_APP` and
+the 3Dconnexion options. The disable commit (`c911a5d8`) forced every option
+OFF (an explicit `-D…=ON` stays OFF), stopped configuring MacAppBundle and
+dropped Show from the payload; the delete commit removed 88 tracked files
+(30,586 lines), the options, gates and report lines. Gates for both halves
+are in ADR-629.
 
 ### `src/Gui` (+ every `src/Mod/*/Gui`, `tests/src/Gui`) — Phase 8
 

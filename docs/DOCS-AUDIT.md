@@ -295,11 +295,12 @@ The `src/Mod` list and every count against
 - FIXED: `updatecrowdin.py` gets a bullet.
 - FIXED: §5 is re-dated.
 - FIXED: the links to the audits moved to history.
-- OPEN: these are removal candidates under the removal protocol: the dead
-  `BUILD_JTREADER` gate (`src/Mod/JtReader` does not exist),
-  `src/3rdParty/3Dconnexion` and `OpenGL`, the `BUILD_VR` and
+- RESOLVED (ADR-629): these were removal candidates under the removal
+  protocol: the dead `BUILD_JTREADER` gate (`src/Mod/JtReader` does not
+  exist), `src/3rdParty/3Dconnexion` and `OpenGL`, the `BUILD_VR` and
   `BUILD_DESIGNER_PLUGIN` options, `src/XDGData` (nothing builds it), and
-  Show. → OWNER.
+  Show. The owner approved; all are disabled, then deleted, with
+  MacAppBundle.
 
 ### docs/PROVENANCE.md (partly checked; date kept)
 - FIXED: §1's size table is re-measured, with its scopes stated.
@@ -411,9 +412,12 @@ name in the text was checked and exists:
    gone.
 9. **PLAN.md.** This generated plan view was last reconciled on
    2026-09-09. Regenerate it, list it in AGENTS.md, or delete it.
-10. **Removal candidates** under `docs/FREECAD.md` §3: Show, XDGData,
+10. ~~**Removal candidates** under `docs/FREECAD.md` §3: Show, XDGData,
     MacAppBundle, the 3rdParty GUI residue, `BUILD_VR`,
-    `BUILD_DESIGNER_PLUGIN` and the JtReader gate.
+    `BUILD_DESIGNER_PLUGIN` and the JtReader gate.~~ **RESOLVED
+    2026-10-10 (ADR-629):** the owner approved deleting all seven; each was
+    disabled, then deleted, under the removal protocol, and nothing was
+    kept.
 11. **MUJOCO.md success-spec section.** Should the dynamics vertical cover
     `assembly.success` and motion predicates itself, or keep pointing at
     XSCRIPT?

@@ -17,7 +17,6 @@ files: |
         src/Mod/Fem|
         src/Mod/Import|
         src/Mod/Inspection|
-        src/Mod/JtReader|
         src/Mod/Measure|
         src/Mod/MeshPart|
         src/Mod/Mesh|
@@ -27,7 +26,6 @@ files: |
         src/Mod/Points|
         src/Mod/ReverseEngineering|
         src/Mod/Robot|
-        src/Mod/Show|
         src/Mod/Sketcher|
         src/Mod/Spreadsheet|
         src/Mod/Surface|

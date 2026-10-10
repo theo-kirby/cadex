@@ -173,10 +173,6 @@
           "type": "FILEPATH",
           "value": "$env{CONDA_PREFIX}"
         },
-        "FREECAD_3DCONNEXION_SUPPORT": {
-          "type": "STRING",
-          "value": "Both"
-        },
         "OCC_INCLUDE_DIR": {
           "type": "FILEPATH",
           "value": "$env{CONDA_PREFIX}/include/opencascade"
@@ -203,10 +199,6 @@
         "CMAKE_PREFIX_PATH": {
           "type": "FILEPATH",
           "value": "$env{CONDA_PREFIX}/Library"
-        },
-        "FREECAD_3DCONNEXION_SUPPORT": {
-          "type": "STRING",
-          "value": "Both"
         },
         "OCC_INCLUDE_DIR": {
           "type": "FILEPATH",

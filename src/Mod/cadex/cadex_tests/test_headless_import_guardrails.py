@@ -99,8 +99,8 @@ def _imported_roots(body: list[ast.stmt]) -> set[str]:
     """Top-level package names imported anywhere in ``body``.
 
     The ``try`` body only — an import inside the ``except`` handler is the
-    recovery path, not a casualty of it (``Show/ShowUtils.py`` does exactly
-    that, legitimately).
+    recovery path, not a casualty of it (the deleted ``Show/ShowUtils.py``
+    did exactly that, legitimately; ADR-629).
     """
     roots: set[str] = set()
     for statement in (node for stmt in body for node in ast.walk(stmt)):

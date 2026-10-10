@@ -32,10 +32,6 @@ if(BUILD_GUI)
     endif()
 
     list (APPEND FREECAD_QT_COMPONENTS OpenGL PrintSupport Svg UiTools Widgets)
-
-    if(BUILD_DESIGNER_PLUGIN)
-        list (APPEND FREECAD_QT_COMPONENTS Designer)
-    endif()
 endif()
 
 if (ENABLE_DEVELOPER_TESTS)
