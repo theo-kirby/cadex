@@ -2240,6 +2240,24 @@ field, and every client gets it through the surface it already reads.
       and rack values exist (ADR-233) and the rack and pinion is composed
       with mesh and clearance evidence (ADR-234); the planetary gearbox is
       still its own slice.
+- [x] **Machine parts as data** (ADR-646). `CadexParts.json`, one family
+      per entry with its interface, fields, provenance and rows, built by
+      one generator per interface behind `lib.part(sku, ...)`: MGN9/12
+      rails and carriages, GT2 pulleys, idlers and belts, T8 and SFU1204
+      screws and nuts, NEMA17/23 steppers, 2020/2040 extrusion with T-nuts
+      and brackets, pneumatic and hydraulic cylinders, router spindles,
+      casters, pneumatic tyres on hubs, compression springs; fasteners to
+      M12. Converting the existing dict tables to rows is open.
+- [x] **Machine drives in dynamics** (ADR-640..645). Slider loop closure,
+      `rack_pinion`, n-joint `assembly.coupling` (fixed tendons), the
+      `cylinder` actuator, coupled sweeps, and `assembly.tool` with the
+      `workspace` reach block; proved on `proof-corexy`, `proof-loader` and
+      `proof-axis` (`docs/MACHINES.md` first wave).
+- [ ] **Machine tasks.** Path-following and area-coverage readings exist
+      in `CadexEvaluation` (`path_metrics`, `coverage_metrics`); wiring
+      them into `assembly.success` (a tool and a path or region on the
+      spec), terrain and workpieces in the world, odometry and cycle time
+      are open (ADR-645).
 
 
 ## Live headless project review (ADR-284) `(run ot5, closed 2026-09-13)`

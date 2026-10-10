@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-09
+Verified against source: 2026-10-10
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -113,7 +113,7 @@ Our thirteen map in three groups:
 | Group | Cadex joints | How |
 |---|---|---|
 | **Direct** (5) | `fixed`, `revolute`, `slider`, `ball`, `cylindrical` | no joint / `hinge` / `slide` / `ball` / `hinge`+`slide` on one axis |
-| **Coupled** (4) | `screw`, `gears`, `belt`, `rack_pinion` | `equality/joint` between coordinates *other* joints own — they attach nothing (M2, ADR-077). `rack_pinion` is refused until its convention is measured |
+| **Coupled** (4) | `screw`, `gears`, `belt`, `rack_pinion` | `equality/joint` between coordinates *other* joints own — they attach nothing (M2, ADR-077). `rack_pinion` follows OndselSolver's `x + R·θ` over the tree path from rack to pinion (ADR-641) |
 | **No equivalent** (4) | `distance`, `parallel`, `perpendicular`, `angle` | these are *placement* constraints, not runtime ones. **Refuse with a sentence.** |
 
 **Loops.** Our assembly graph is a constraint graph and may contain loops;
@@ -196,6 +196,49 @@ refusal. Built live with four `revolute` pins and driven 225 °/s at
 circle intersection (0.0066 mm at its 120 mm tip); the worst closure
 residual was 0.0061 mm, and the dynamics evidence now carries it beside
 `closure_tolerance_mm` (0.01) and `closure_within_tolerance`.
+
+**Machine drives (ADR-640..645, 2026-10-10).** Four refusals that stopped
+a printer, a router, a loader and a tractor hitch are gone, each measured
+in `cadex_tests/test_dynamics_machines.py` and on three proof projects.
+
+* **A slider on a loop.** Breadth-first by joint order still builds every
+  tree it always built; only a graph that would close a loop on a slider or
+  cylindrical joint is grown again with every sliding joint taken into the
+  tree when its first component is reached, so the loop closes on a pin. A
+  cylinder between two pins builds whatever order its joints are listed
+  in; a loop of sliders alone (two parallel rails on one pair) is still
+  refused, saying to make them one slider.
+* **`rack_pinion`.** OndselSolver's own law, read from
+  `RackPinConstraintIJ` and `getRackPinionMarkers` rather than measured:
+  the rack's marker has X along the rack connector's +Z and Z along the
+  pinion's, and `x + R·θ` is constant. Each tree joint on the path from
+  rack to pinion contributes its share of `ẋ + R·θ̇` at the solved pose;
+  exactly one slider and one revolute may, and every turning joint must
+  turn about the pinion's centre, which keeps the law linear. So a rack
+  fixed to the frame with the pinion riding a carriage (the gantry) works,
+  as does a rack on a slider beside a fixed pinion. Fixture: R = 10 mm, a
+  pinion turned 90 °/s for 1 s rolls its carriage −15.7 mm (−R·Δθ, within
+  5%); `lib.rack_and_pinion`'s datum gives slope +R.
+* **n-joint couplings.** `assembly.coupling` is `sum(c_i·q_i)` held at its
+  solved value: an `equality/joint` row for two terms, a `fixed` tendon and
+  an `equality/tendon` row for three or more, coefficients scaled so the
+  residual is metres of the largest slider. CoreXY is two tendons; with
+  both motors turned 90° the same way the carriage moves 10 mm in X and
+  the equalities hold to 1e-12. **A coupled motor needs its rotor
+  inertia**: a 18 g pulley under a velocity gain of 50 N·mm·s/deg left the
+  soft tendon equality 20 mm open; with a NEMA17's 5.4 kg·mm² armature
+  and 0.05 N·mm·s/deg, 0.008 mm (0.015 mm on `proof-corexy`).
+* **The cylinder.** `kind='cylinder'` is a position actuator with an
+  asymmetric `forcerange`: `−p·π(bore²−rod²)/4` to `+p·π·bore²/4`. **Give
+  the stroke an armature** (`joint_dynamics(armature_kg=...)`, the piston,
+  rod and oil): on `proof-loader` (an 11.5 kg boom, a 40/18 bore at
+  120 bar, a 0.7 kg rod) the servo rang against the closure and opened it
+  4.6 mm at 0.5 ms; with 5 kg the boom rose smoothly and the loop held to
+  0.0004 mm.
+* **Sweeps** move every coordinate a coupling ties to the swept joint
+  (`coupled_sweep`): unlimited followers turn, limited ones hold, so a
+  swept nut turns its screw and a swept CoreXY axis turns both motors and
+  holds the other axis.
 
 **Free base (ADR-335, 2026-09-13).** An assembly that grounds *nothing* is
 not an error: it is a mechanism whose fixed frame is not part of the design

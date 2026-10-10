@@ -212,8 +212,14 @@ def test_a_fixed_tree_edge_attaches_a_body_with_no_joint() -> None:
     assert tree["closures"] == []
 
 
-def test_a_sliding_loop_closure_is_refused_with_the_reorder_to_make() -> None:
-    """A tendon is real design work; M3's, not M2's."""
+def test_a_sliding_joint_on_a_loop_is_taken_into_the_tree() -> None:
+    """ADR-640: the loop closes on a pin, so a cylinder in a linkage builds.
+
+    Breadth-first by joint order would reach ``slide`` through ``b`` and
+    leave the slider ``c`` to close the loop, which no site equality can
+    express. The second growth takes ``c`` into the tree the moment
+    ``crank`` is reached, and the revolute ``b`` closes instead.
+    """
 
     components = [
         _component("ground", grounded=True),
@@ -225,30 +231,59 @@ def test_a_sliding_loop_closure_is_refused_with_the_reorder_to_make() -> None:
         _joint("b", "revolute", "ground", "slide"),
         _joint("c", "slider", "crank", "slide"),
     ]
+    tree = dyn.extract_tree(components, joints)
+    slide = next(body for body in tree["bodies"] if body["name"] == "slide")
+    assert slide["joint"] == "c" and slide["parent"] == "crank"
+    assert slide["mujoco_joints"] == ["slide"]
+    assert [(item["joint"], item["closure_kind"]) for item in tree["closures"]] == [
+        ("b", "connect")
+    ]
+
+
+def test_a_tree_that_always_built_keeps_its_shape() -> None:
+    """The second growth runs only when the first would refuse."""
+
+    components = [
+        _component("ground", grounded=True),
+        _component("crank"),
+        _component("slide"),
+    ]
+    joints = [
+        _joint("a", "revolute", "ground", "crank"),
+        _joint("c", "slider", "ground", "slide"),
+        _joint("b", "revolute", "crank", "slide"),
+    ]
+    tree = dyn.extract_tree(components, joints)
+    assert [body["joint"] for body in tree["bodies"]] == [None, "a", "c"]
+    assert [item["joint"] for item in tree["closures"]] == ["b"]
+
+
+def test_a_loop_of_sliders_alone_is_still_refused() -> None:
+    """Two parallel guides on one pair: nothing on the loop can close it."""
+
+    components = [_component("ground", grounded=True), _component("carriage")]
+    joints = [
+        _joint("rail_left", "slider", "ground", "carriage"),
+        _joint("rail_right", "slider", "ground", "carriage"),
+    ]
     with pytest.raises(dyn.DynamicsError) as excinfo:
         dyn.extract_tree(components, joints)
     assert excinfo.value.reason == "unclosable_loop_joint"
-    # The advice names the joints that did reach both components, because
-    # "reorder your joints" is not actionable when breadth-first search
-    # reached both of them more directly than this joint ever could.
-    assert excinfo.value.observed["reached_by"] == ["a", "b"]
-    assert "'a'" in excinfo.value.correction and "'b'" in excinfo.value.correction
+    assert excinfo.value.observed["reached_by"] == ["", "rail_left"]
+    assert "one slider joint" in excinfo.value.correction
 
 
-def test_two_joints_on_one_pair_take_the_earlier_one_into_the_tree() -> None:
-    """The case where reordering genuinely is the fix, so the advice is true."""
-
+def test_two_joints_on_one_pair_put_the_slider_in_the_tree_either_way() -> None:
     components = [_component("ground", grounded=True), _component("carriage")]
     revolute = _joint("spin", "revolute", "ground", "carriage")
     slider = _joint("travel", "slider", "ground", "carriage")
-    with pytest.raises(dyn.DynamicsError):
-        dyn.extract_tree(components, [revolute, slider])
-    tree = dyn.extract_tree(components, [slider, revolute])
-    assert tree["bodies"][1]["mujoco_joints"] == ["slide"]
-    assert [item["joint"] for item in tree["closures"]] == ["spin"]
+    for joints in ([revolute, slider], [slider, revolute]):
+        tree = dyn.extract_tree(components, joints)
+        assert tree["bodies"][1]["mujoco_joints"] == ["slide"]
+        assert [item["joint"] for item in tree["closures"]] == ["spin"]
 
 
-def test_a_cylindrical_loop_closure_is_refused_too() -> None:
+def test_a_cylindrical_joint_on_a_loop_is_taken_into_the_tree_too() -> None:
     components = [
         _component("ground", grounded=True),
         _component("crank"),
@@ -259,9 +294,10 @@ def test_a_cylindrical_loop_closure_is_refused_too() -> None:
         _joint("b", "revolute", "ground", "barrel"),
         _joint("c", "cylindrical", "crank", "barrel"),
     ]
-    with pytest.raises(dyn.DynamicsError) as excinfo:
-        dyn.extract_tree(components, joints)
-    assert excinfo.value.reason == "unclosable_loop_joint"
+    tree = dyn.extract_tree(components, joints)
+    barrel = next(body for body in tree["bodies"] if body["name"] == "barrel")
+    assert barrel["mujoco_joints"] == ["slide", "hinge"]
+    assert [item["joint"] for item in tree["closures"]] == ["b"]
 
 
 @pytest.mark.parametrize("kind", ["distance", "parallel", "perpendicular", "angle"])

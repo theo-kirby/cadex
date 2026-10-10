@@ -150,6 +150,9 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # A creature's moving region -- an argument to the assembly, never
         # published on its own (ADR-613).
         "anatomy": "anatomy",
+        # Arguments to the assembly too (ADR-642, ADR-645).
+        "coupling": "coupling",
+        "tool": "tool",
     },
     "material": {
         "material": "material_assignment",

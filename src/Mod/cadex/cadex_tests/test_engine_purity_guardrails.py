@@ -116,6 +116,9 @@ DECLARED_ENGINE_MODULES = frozenset(
         # because the script calls the generators.
         "CadexCatalog",
         "cadex_library_api",
+        # Machine parts as data (ADR-646): the one generator per interface
+        # lib.part dispatches to. Pure, like the catalog it reads.
+        "CadexMachineParts",
         # lib.panel / lib.housing and the shell check's gap arithmetic
         # (ADR-610..612): pure at module scope; numpy only when the assembly
         # worker measures a shell.

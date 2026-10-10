@@ -672,6 +672,34 @@ _ACTUATOR_KINDS = {
 }
 
 
+def _cylinder(operation: str, coordinate: str, bore_mm: Any, rod_mm: Any,
+              pressure_bar: Any, force_limit_n: Any) -> dict[str, float | None]:
+    """A cylinder's bore, rod and pressure, and the two forces they make (ADR-643)."""
+
+    if coordinate != "linear":
+        raise _error(operation, "kind", "a cylinder drives a slider: its coordinate is linear",
+                     "cylinder")
+    if force_limit_n is not None:
+        raise _error(operation, "force_limit_n",
+                     "is derived for a cylinder from bore_mm and pressure_bar, not given",
+                     force_limit_n)
+    for name, given in (("bore_mm", bore_mm), ("pressure_bar", pressure_bar)):
+        if given is None:
+            raise _error(operation, name, "is required for kind='cylinder'")
+    bore = _number(operation, "bore_mm", bore_mm, minimum=0.0, strict_minimum=True)
+    pressure = _number(operation, "pressure_bar", pressure_bar, minimum=0.0,
+                       maximum=1000.0, strict_minimum=True)
+    rod = None
+    if rod_mm is not None:
+        rod = _number(operation, "rod_mm", rod_mm, minimum=0.0, strict_minimum=True)
+        if rod >= bore:
+            raise _error(operation, "rod_mm", "must be smaller than bore_mm", rod_mm)
+    # The forces are CadexDynamics' to compute: every unit conversion is
+    # there (test_dynamics_units), so the declaration carries only what
+    # the script wrote.
+    return {"bore_mm": bore, "rod_mm": rod, "pressure_bar": pressure}
+
+
 def _coordinate(operation: str, joint: DomainValue, motion_type: Any) -> str:
     """Which unit family this joint's coordinate speaks, or a refusal.
 
@@ -1245,6 +1273,11 @@ class AssemblyDomainAPI:
         # A creature's moving anatomy: an argument to api.assembly, which
         # the build reply's anatomy block checks (ADR-613).
         "anatomy",
+        # A linear relation between joint coordinates -- a belt, a cable, a
+        # differential -- and a declared tool point with the work area it
+        # must reach: both arguments to api.assembly (ADR-642, ADR-645).
+        "coupling",
+        "tool",
     )
 
     def __init__(self, exports: Iterable[str], output_types: Iterable[str]) -> None:
@@ -1524,6 +1557,88 @@ class AssemblyDomainAPI:
             label=label,
         )
 
+    def coupling(self, terms, *, label=""):
+        # Unannotated on purpose: the assembly page is held under one tool
+        # result (ADR-360); the types are the docstring's.
+        """Hold sum(ratio * change) = 0 over two or more joint coordinates.
+
+        ``terms`` is ``[(joint, ratio), ...]`` -- or ``(joint, ratio,
+        motion_type)`` for a cylindrical joint -- each change in mm (slider)
+        or degrees (revolute) from the solved pose. It is what a belt, a
+        cable or a differential holds, and FreeCAD's two-joint ``gears``,
+        ``belt``, ``screw`` and ``rack_pinion`` cannot: CoreXY is two of
+        them, ``[(x, 1), (motor_a, -k/2), (motor_b, -k/2)]`` and ``[(y, 1),
+        (motor_a, -k/2), (motor_b, k/2)]`` with ``k`` the belt mm per motor
+        degree (a 20-tooth GT2 pulley: 40/360); a differential is ``[(carrier,
+        2), (left, -1), (right, -1)]``. Joints must be revolute, slider or
+        cylindrical tree joints of the same assembly. The dynamics model
+        holds it as a joint equality (two terms) or a fixed tendon (three or
+        more); the fit sweep moves every coupled coordinate with the swept
+        one, unlimited ones following. Pass it to ``api.assembly(...,
+        couplings=[...])``; do not return it.
+        """
+
+        operation = "coupling"
+        if not isinstance(terms, (list, tuple)) or len(terms) < 2:
+            raise _error(operation, "terms", "expected two or more (joint, ratio) terms", terms)
+        joints, ratios, motions = [], [], []
+        for index, term in enumerate(terms):
+            if not isinstance(term, (list, tuple)) or len(term) not in (2, 3):
+                raise _error(operation, f"terms[{index}]",
+                             "expected (joint, ratio) or (joint, ratio, motion_type)", term)
+            value = _domain_value(operation, f"terms[{index}]", term[0], output_type="joint")
+            motion = _coordinate(operation, value, term[2] if len(term) == 3 else "auto")
+            ratio = _number(operation, f"terms[{index}] ratio", term[1])
+            if abs(ratio) <= 1.0e-12:
+                raise _error(operation, f"terms[{index}]", "ratio must be non-zero", term[1])
+            if any(other is value and m == motion for other, m in zip(joints, motions)):
+                raise _error(operation, f"terms[{index}]", "names a coordinate twice")
+            joints.append(value)
+            ratios.append(ratio)
+            motions.append(motion)
+        return self._value(operation, "coupling", *joints, ratios=ratios,
+                           motion_types=motions, label=label)
+
+    def tool(self, component, *, origin_mm=(0, 0, 0), axis=(0, 0, -1), work_area_mm=None,
+             work_frame=None, label=""):
+        # Unannotated on purpose, as coupling.
+        """Declare a tool point (a nozzle, a spindle, a blade) and its work area.
+
+        ``origin_mm`` is the point on ``component`` in its own frame, and
+        ``axis`` the direction the tool points (default -Z, down). With
+        ``work_area_mm=[[x0, y0, z0], [x1, y1, z1]]`` -- a box in
+        ``work_frame``'s frame (a component, such as the bed or the
+        workpiece, that may itself move; default the world) -- every build
+        reply's ``workspace`` block samples the limited joints that move the
+        tool against that frame across their ranges, coupled joints
+        following, and says whether the tool point reaches every corner of
+        the box, the box it does reach, and the corners it misses. A zero
+        extent on one axis is a face (a print bed's plane). Pass it to
+        ``api.assembly(..., tools=[...])``; do not return it.
+        """
+
+        operation = "tool"
+        value = _domain_value(operation, "component", component, output_type="component_link")
+        origin = _vector(operation, "origin_mm", origin_mm, size=3)
+        direction = _vector(operation, "axis", axis, size=3)
+        if math.sqrt(sum(v * v for v in direction)) <= 1.0e-12:
+            raise _error(operation, "axis", "must not be zero", axis)
+        area = None
+        if work_area_mm is not None:
+            if not isinstance(work_area_mm, (list, tuple)) or len(work_area_mm) != 2:
+                raise _error(operation, "work_area_mm", "expected [[x0, y0, z0], [x1, y1, z1]]",
+                             work_area_mm)
+            low, high = (_vector(operation, "work_area_mm", corner, size=3) for corner in work_area_mm)
+            area = [[min(a, b) for a, b in zip(low, high)], [max(a, b) for a, b in zip(low, high)]]
+        arguments = [value]
+        if work_frame is not None:
+            if area is None:
+                raise _error(operation, "work_frame", "applies only with work_area_mm")
+            arguments.append(_domain_value(operation, "work_frame", work_frame,
+                                           output_type="component_link"))
+        return self._value(operation, "tool", *arguments, origin_mm=origin, axis=direction,
+                           **({"work_area_mm": area} if area is not None else {}), label=label)
+
     def anatomy(
         self,
         region: str,
@@ -1582,6 +1697,8 @@ class AssemblyDomainAPI:
         clearances: Sequence[Sequence[Any]] = (),
         palette: Mapping[str, str] | None = None,
         anatomy: Sequence[DomainValue] = (),
+        couplings=(),
+        tools=(),
         label: str = "",
     ) -> DomainValue:
         """Build one assembly graph from returned component and joint variables.
@@ -1604,6 +1721,9 @@ class AssemblyDomainAPI:
         shell, graphite mechanism, signal-orange accent).
         ``anatomy=[api.anatomy(...), ...]`` declares a creature's moving
         regions, which every build reply's ``anatomy`` block checks.
+        ``couplings=[api.coupling(...)]`` ties joint coordinates together
+        (belts, cables, differentials); ``tools=[api.tool(...)]`` declares
+        tool points and the work areas each must reach (``workspace``).
         """
 
         operation = "assembly"
@@ -1652,6 +1772,17 @@ class AssemblyDomainAPI:
                 if kind == "clearance":
                     row["minimum_mm"] = _number(operation, "minimum_mm", entry[2], minimum=0)
                 intent.append(row)
+        joint_ids = {id(item) for item in joint_values}
+        coupling_values = _values(operation, "couplings", couplings, output_type="coupling", minimum=0)
+        for index, coupling in enumerate(coupling_values):
+            if any(id(joint) not in joint_ids for joint in coupling.arguments):
+                raise _error(operation, f"couplings[{index}]",
+                             "relates a joint that is not listed in joints")
+        tool_values = _values(operation, "tools", tools, output_type="tool", minimum=0)
+        for index, tool in enumerate(tool_values):
+            if any(id(item) not in component_ids for item in tool.arguments):
+                raise _error(operation, f"tools[{index}]",
+                             "names a component that is not listed in components")
         regions = _values(operation, "anatomy", anatomy, output_type="anatomy", minimum=0)
         named: set[str] = set()
         placed: set[int] = set()
@@ -1676,6 +1807,8 @@ class AssemblyDomainAPI:
             components=component_values,
             joints=joint_values,
             **({"anatomy": regions} if regions else {}),
+            **({"couplings": coupling_values} if coupling_values else {}),
+            **({"tools": tool_values} if tool_values else {}),
             **({"fit_intent": intent} if intent else {}),
             **({"sweep_step_degrees": sweep_step_degrees} if sweep_step_degrees is not None else {}),
             **({"sweep_step_mm": sweep_step_mm} if sweep_step_mm is not None else {}),
@@ -2394,6 +2527,9 @@ class AssemblyDomainAPI:
         force_limit_n: float | None = None,
         command_limits_degrees: Any = None,
         command_limits_mm: Any = None,
+        bore_mm=None,
+        rod_mm=None,
+        pressure_bar=None,
         label: str = "",
     ) -> DomainValue:
         """Put a motor on one joint, and tell it what to hold.
@@ -2411,6 +2547,17 @@ class AssemblyDomainAPI:
           fast the joint should turn and ``damping_*`` is the gain.
         * ``motor`` -- no loop at all. ``control_nmm`` *is* the torque, and
           nothing corrects it.
+        * ``cylinder`` -- a hydraulic or pneumatic cylinder on a slider
+          (ADR-643): a position servo (the proportional valve) whose force
+          is what the oil can push, ``pressure_bar`` x the piston area.
+          ``bore_mm`` and ``pressure_bar`` are required, ``rod_mm``
+          optional: extending pushes ``p*pi*bore^2/4``, retracting pulls
+          ``p*pi*(bore^2-rod^2)/4``, and the slider's +Z is the extending
+          direction (barrel on the first connector, rod on the second).
+          ``control_mm``, ``stiffness_n_per_mm`` and ``damping_ns_per_mm``
+          are a position servo's; ``force_limit_n`` is derived, never
+          given. It reads back as a ``position`` actuator carrying a
+          ``cylinder`` block.
 
         **The control is a formula of ``time``, in seconds**, written as a
         string exactly as ``api.motion`` writes one: ``"30"`` holds thirty
@@ -2473,11 +2620,21 @@ class AssemblyDomainAPI:
         value = _domain_value(operation, "joint", joint, output_type="joint")
         coordinate = _coordinate(operation, value, motion_type)
         clean_kind = str(kind or "").strip().lower()
+        cylinder = None
+        if clean_kind == "cylinder":
+            cylinder = _cylinder(operation, coordinate, bore_mm, rod_mm, pressure_bar,
+                                 force_limit_n)
+            clean_kind = "position"
+        else:
+            for name, given in (("bore_mm", bore_mm), ("rod_mm", rod_mm),
+                                ("pressure_bar", pressure_bar)):
+                if given is not None:
+                    raise _error(operation, name, "applies only to kind='cylinder'", given)
         if clean_kind not in _ACTUATOR_KINDS:
             raise _error(
                 operation,
                 "kind",
-                f"must be one of {sorted(_ACTUATOR_KINDS)}",
+                f"must be one of {sorted([*_ACTUATOR_KINDS, 'cylinder'])}",
                 kind,
             )
         controls = {
@@ -2603,6 +2760,10 @@ class AssemblyDomainAPI:
         for entry in (stiffness, damping, effort, command_limits):
             if entry is not None:
                 properties[entry[0]] = entry[1]
+        if cylinder is not None:
+            # Present only on a cylinder, so every other actuator's value --
+            # and the digest it carries -- is what it was before ADR-643.
+            properties["cylinder"] = cylinder
         return self._value(operation, "actuator", value, label=label, **properties)
 
     def body(

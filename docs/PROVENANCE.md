@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-10-09
+Verified against source: 2026-10-10
 
 Cadex is not written from scratch. It is a **derivative work of a large
 free-software project, FreeCAD**, carrying the design lessons of two more
@@ -482,6 +482,34 @@ The AK70-10's 48 V speed-torque chart on the same page starts near 380 rpm,
 below its tabulated no-load figure; the catalog keeps the table's number and
 the note. No manufacturer artwork, CAD, or code is redistributed; no new
 dependency.
+
+## 8k. Machine parts data `[Cadex-new, ADR-646]`
+
+`src/Mod/cadex/CadexParts.json` and `CadexMachineParts.py` are independently
+authored LGPL Cadex data and code. Every family states its source and its
+approximations in the file itself, and `lib.part(...).spec` carries both. No
+vendor CAD, drawing or artwork is copied; the numbers were transcribed
+2026-10-10.
+
+- **Standards** (the numbers are the standard's): NEMA ICS 16 frame 17 and
+  23 faces, bolt squares, pilots and shafts; the GT2 (2GT) 2.000 mm pitch
+  and 0.254 mm pitch-line offset (Gates PowerGrip GT2 design manual);
+  DIN 103 Tr8 trapezoidal screws; ISO 6432, ISO 15552 and ISO 6020-2 bores,
+  rods and pressure ratings; DIN 6499 ER collet capacities; tyre size codes
+  (outer diameter, section and rim are the code); EN 10270-1 music wire,
+  with the spring rate computed from `G d^4 / (8 D^3 n)`; ISO 261/273/4762/
+  10642/4032/7089 for M10 and M12.
+- **Vendor tables**: HIWIN's MG miniature guideway catalogue for the
+  MGNR9/12 rails and MGN9/12 C/H blocks (cross-checked against an
+  interchange listing, lily-bearing.com, which gives MGN12H 47.6 mm long with
+  seals against HIWIN's 45.4); the SFU1204 ball-nut table common to the SFU
+  series; the vendor datasheets of the 17HS4401, StepperOnline 17HS19-2004S1,
+  23HS22-2804S and 23HS30-2804S steppers for length, torque, rotor inertia
+  and mass.
+- **Typical, not one maker's** (named `approximate` in each family): the T8
+  brass flange nut, GT2 pulley hubs and idlers, 20-series T-nut and corner
+  bracket, cylinder dead lengths, barrel diameters and clevises, spindle
+  lengths and masses, the plate casters, and the tyres' hubs and masses.
 
 ## 8j. The render font `[third-party, OFL-1.1, ADR-568]`
 

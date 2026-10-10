@@ -38871,3 +38871,214 @@ for an application bundle the product does not ship.
 (`keep_mods`), both suites in full, inherited CTest.
 
 Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-640 — A slider on a closed loop is a tree edge, and the loop closes on a pin (2026-10-10)
+
+**Context.** `extract_tree` grew the spanning forest breadth-first by joint
+order, and a joint the tree did not take became a loop closure. A slider or
+cylindrical closure has no site equality to become (`connect` pins a point,
+`weld` everything), so it was refused (`CadexDynamics.py:1836`, "a sliding
+closure needs a tendon"). That refused every hydraulic linkage -- a loader
+arm, an excavator boom, a three-point hitch -- unless the script happened to
+list the cylinder's slider before the rod's pin (docs/ARCHITECTURE-REVIEW.md
+§3.3 item 2, recommendation 3).
+
+**Decision.** The breadth-first growth is unchanged and runs first, so every
+tree that built before builds identically (body order, MJCF and digests).
+Only when it would close a loop on a sliding joint is the forest grown again
+with `prefer_sliding`: the moment a component is attached, every slider and
+cylindrical joint from it is taken into the tree, transitively, before
+anything breadth-first could reach the far side by a pin. The loop then
+closes on a revolute, ball or weld. A loop made of sliding joints only (two
+parallel rails on one pair) is still refused, and the refusal now says to
+model parallel guides as one slider.
+
+**Evidence.** `test_dynamics_tree.py` (the three old refusal tests became
+the new behaviour, plus "a tree that always built keeps its shape" and "a
+loop of sliders alone is still refused"); `test_dynamics_machines.py`: a
+lift arm whose rod pin is listed before the stroke builds with the stroke in
+the tree and closes on the pin, export mobility 1, and a cylinder driving it
+keeps the boom pin within 0.01 mm of the rod's length from its base at
+0.25 ms. Live: `proof-loader` (frame, boom, ISO 6020-2 40/18 barrel and rod)
+builds through FreeCAD (ADR-595's redundancy count accepts the planar loop),
+the fit sweep drives the stroke through its whole range
+[-61.2, 188.8] mm re-closing at every sample (residual 2e-13 mm), and the
+dynamics run holds the closure to 0.0004 mm.
+
+## ADR-641 — `rack_pinion` follows OndselSolver's law over the tree path (2026-10-10)
+
+**Context.** `rack_pinion` was refused in dynamics (`:2381`) because one
+measurement run did not give a clean `x = R·θ` and a rack running backwards
+looks like a working mechanism (hazard 7). The review counts it among the
+blockers for every belt- or rack-driven gantry.
+
+**Decision.** The law is read from OndselSolver's source, not guessed:
+`AssemblyObject::getRackPinionMarkers` gives the rack a marker with X along
+the rack connector's +Z and Z along the pinion connector's +Z, and
+`RackPinConstraintIJ` holds `x + R·θ` constant, `x` the pinion's travel along
+that X and `θ` its turn about that Z, both relative to the rack. With
+R > 0 that is a rack on the marker's -Y side, which is `lib.rack_and_pinion`'s
+datum; the sign of `pitch_radius_mm` chooses the other side, as FreeCAD lets
+it. The two coordinates it relates are the tree joints on the path from rack
+to pinion (`_tree_path`), each contributing its share of `ẋ + R·θ̇` at the
+solved pose; exactly one slider and one revolute may, and every turning
+joint on the path must turn about the pinion's centre (else the law is not
+linear in it and it is refused). So the travelling-pinion gantry (rack is the
+frame, pinion on the carriage) works as well as a rack on a slider. The
+worker's connector compatibility now also accepts component origins for
+`rack_pinion`, whose offsets are explicit frames.
+
+**Evidence.** `test_dynamics_machines.py`: the sliding rack's slope is +R
+and holds `efc_pos` to 1e-12; the travelling pinion's is -R, and a pinion
+turned 90°/s for 1 s rolls its carriage -15.7 mm (within 5% of -R·Δθ); a
+negative radius flips the slope; the model exports and reloads.
+`test_dynamics_coupled.py`'s refusal test is now "a rack running along its
+pinion's axis is refused". Live: `proof-axis` (an m1 z20 pinion on a
+NEMA17 riding an MGN12 carriage along an m1 rack) builds, sweeps x with the
+pinion following, and its dynamics run moves the carriage -15.7 mm for a
+quarter turn.
+
+## ADR-642 — `assembly.coupling`: n-joint linear couplings as fixed tendons (2026-10-10)
+
+**Context.** FreeCAD's coupled joints relate two coordinates. CoreXY
+(x = k/2 (a+b), y = k/2 (a-b)), a differential and a cable need three or
+more, and MuJoCo's `equality/joint` relates two (review §3.3 item 1).
+
+**Decision.** `assembly.coupling([(joint, ratio), ...], label=)` declares
+`sum(ratio·Δq) = 0`, Δq in mm or degrees from the solved pose, over two or
+more revolute, slider or cylindrical tree coordinates; it is an intermediate
+(like `anatomy`) passed as `assembly.assembly(..., couplings=[...])`, the
+property present only when declared so every existing definition is
+unchanged. It never reaches FreeCAD: the solved pose satisfies it by
+construction (its constant is taken there). `build_model(couplings=)`
+resolves each term against the tree (a loop closure or coupled joint is
+refused with the tree's reason), converts ratios once to SI, scales them so
+the largest slider's coefficient is one (the residual is metres), and writes
+an `equality/joint` row for two terms or a `fixed` tendon plus an
+`equality/tendon` row for three or more. The evidence carries
+`linear_couplings` only when there are some.
+
+**Evidence.** `test_dynamics_machines.py`: CoreXY is two tendons holding to
+1e-12 at the solved pose, with both motors +90° (pure X, 10 mm) and with
+them opposed (pure Y); driven by one motor the carriage moves at 45° (dx =
+dy within 2%); a two-term coupling is a joint equality with slope
+k·180/π/1000; a coupling on a loop closure is refused; the MJCF carries the
+tendons and reloads. Measured hazard: a coupled motor with no rotor inertia
+under a 50 N·mm·s/deg velocity gain left the tendon equality 20 mm open; a
+NEMA17's 5.4 kg·mm² armature and 0.05 N·mm·s/deg gave 0.008 mm. Live:
+`proof-corexy` builds, its sweeps of x and y each turn both motors and hold
+the other axis, and 0.5 s of motor A at 361°/s moves the head (9.93, 9.87)
+mm with the belts holding to 0.015 mm. MJX support for tendon equalities
+is not checked.
+
+## ADR-643 — The `cylinder` actuator: a position servo with bore × pressure force (2026-10-10)
+
+**Context.** Actuators were `motor`, `position` and `velocity` with a
+symmetric effort limit. A hydraulic or pneumatic cylinder pushes with the
+bore's area and pulls with the annulus's.
+
+**Decision.** `assembly.actuator(slider, kind='cylinder', bore_mm=,
+rod_mm=None, pressure_bar=, control_mm=, stiffness_n_per_mm=, ...)` is a
+position actuator (the proportional valve) whose properties carry a
+`cylinder` block (bore, rod, pressure as written) -- present only on a
+cylinder, so no other actuator's value or digest moves. It reads back as
+`kind: position`. `CadexDynamics.cylinder_forces_n` turns the block into
+`[-p·π(bore²-rod²)/4, +p·π·bore²/4]` (the unit conversion stays in the pure
+module, test_dynamics_units), `build_model` writes that asymmetric `forcerange`,
+the flag check compares it, and the evidence carries `effort_range_si`. The
+slider's +Z is the extending direction. `force_limit_n` given with a
+cylinder, `bore_mm` given without one, and a cylinder on a turning
+coordinate are refused. `test_dynamics_task_api.py`'s pinned actuator
+signature gains the three parameters.
+
+**Evidence.** `test_machine_api.py` (forces, refusals, absent keys);
+`test_dynamics_machines.py` (forcerange compiled as declared; at 2 bar a
+40 mm bore saturates holding the boom). Measured hazard, on `proof-loader`:
+the servo on a 0.7 kg rod rang against an 11.5 kg boom and opened the loop
+4.6 mm at 0.5 ms; a 5 kg `armature_kg` on the stroke (piston, rod and oil
+column) gave a smooth rise and 0.0004 mm. The docs say to give it one.
+
+## ADR-644 — The fit sweep moves what a coupling ties to the swept joint (2026-10-10)
+
+**Context.** `_sweep_joint` refused any graph with a coupling or a joint
+between two grounded components ("coupled or static-joint graph is
+unsupported"), so no leadscrew, gear train or belt could be swept, and a
+coupled joint's own row read as an unsupported kind.
+
+**Decision.** `CadexDynamics.coupled_sweep` collects every coupling (the
+joint kinds and `assembly.coupling`) that reaches the swept joint, directly
+or through another, and solves the other coordinates least motion first:
+unlimited joints (motors, pulleys, screws) follow, limited ones hold unless
+the equations cannot be met without them. The poses are measured exactly as
+a loop sweep's. A coupled joint kind's row is `passive`, and so is an
+unlimited joint a coupling ties to a limited one. The static-joint refusal
+is dropped: such a joint holds rigidly through any sweep.
+
+**Evidence.** `test_dynamics_machines.py` (a swept CoreXY axis turns both
+motors 180° per 20 mm and holds the other axis; a swept nut turns its screw
+-2π per lead); `test_dynamics_linkages.py` unchanged. Live: all three proof
+projects report sweep coverage `complete`.
+
+## ADR-645 — `assembly.tool` and the `workspace` block; path and coverage readings (2026-10-10)
+
+**Context.** The task vocabulary is legged (review §1.6, recommendation 8):
+nothing declares a tool point, and nothing says whether a printer's nozzle
+reaches its bed or a router's spindle its stock.
+
+**Decision.** `assembly.tool(component, origin_mm=, axis=, work_area_mm=,
+work_frame=)` (an intermediate, `assembly.assembly(..., tools=[...])`)
+declares a tool point. Every build then samples the limited joints on the
+tree path between the work frame (world, or a component such as the bed)
+and the tool -- both ends and three between, at most 4,096 poses -- and
+publishes `workspace` on the assembly output and in `inspect
+scope=clearance`: the reach box, `covers`, each work-area corner's nearest
+pose, `corners_missed` and `short_by_mm`. It is exact for sliders and an
+outer bound for turning joints; a path through a closed loop is not sampled
+and says so. `CadexEvaluation.path_metrics` (max and mean error to a
+polyline, progress along it) and `coverage_metrics` (the share of a plan
+polygon a footprint swept) are the machine readings of a trace. Not done:
+wiring them into `assembly.success` (the spec would name a tool and a path
+or region; the success schema, the trainer's reader and `cadex evaluate`
+move with it), terrain and workpieces in the world, odometry and cycle time.
+The gait metrics already need `feet`, so they stay behind a legged rig.
+
+**Evidence.** `test_dynamics_machines.py` (a CoreXY nozzle's reach box is
+±150 mm exactly, it covers a 280 mm bed and misses a 300 mm one by 10 mm;
+read in the gantry's frame only X moves it; a tool on a loop is
+unmeasured); `test_machine_api.py` (path error and progress, stripe
+coverage). Live: `proof-corexy`'s nozzle reaches its 220 × 220 bed (reach
+box 240 × 230).
+
+## ADR-646 — Machine parts as data: `CadexParts.json` and `lib.part` (2026-10-10)
+
+**Context.** The catalog is 1,559 lines of Python dicts, and each family has
+meant a table, a generator, a describe_api entry and an ADR (review §3.3
+item 7, recommendation 4). The first-wave machines need rails, belts,
+screws, steppers, extrusion, cylinders, spindles, casters, tyres and
+springs, none of which existed.
+
+**Decision.** Incrementally, without rewriting the existing tables:
+`CadexParts.json` holds machine families as data -- each with its
+*interface*, its fields and units, its provenance (source and
+approximations) and its rows by part number -- validated on load
+(`CadexCatalog.PARTS_DATA`, `part_spec`). `CadexMachineParts.py` has one
+generator per interface (rail, carriage, pulley, belt, screw, screw_nut,
+motor_face, profile, slot_hardware, cylinder, spindle, caster, wheel_hub,
+spring), and `lib.part(sku, **options)` dispatches on it, returning a
+`MachinePart` whose `.members` are the pieces that move apart. 46 rows in 14
+families; M10 and M12 join the fastener tables (not the nyloc nuts, whose
+DIN 985 across-flats differ). To stay inside the describe_api page budget
+(ADR-360) the library page carries only a note and the part numbers ride on
+`MachinePart`'s generated description on `section=library_parts`; to pay
+for the additions the gears and QDD notes were shortened (the QDD note
+loses its creature-specific uses) and the assembly notes' policy passage
+compressed (library 21,462 and assembly 21,479 of 21,500 characters).
+Converting the existing tables to rows is left for later; nothing old moved.
+
+**Evidence.** `test_parts_data.py`: every row builds and states its source;
+GT2 pitch diameters, NEMA faces, cylinder forces, spring rate and tyre codes
+pinned; options refused by name; M10/M12. Live: the three proof projects are
+built from these parts and render as expected. Provenance in
+`docs/PROVENANCE.md` §8k.
+
+Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).

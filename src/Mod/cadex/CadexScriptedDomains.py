@@ -333,6 +333,10 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             # ...and a region of a creature's moving anatomy, an argument to
             # api.assembly (ADR-613).
             "anatomy",
+            # ...and a coupling and a tool point, arguments to api.assembly
+            # (ADR-642, ADR-645).
+            "coupling",
+            "tool",
         ),
         production_ready=True,
     ),

@@ -87,7 +87,9 @@ _BAY_OF: dict[str, str] = {}
 _DRIVE_AXES: dict[str, dict[str, Any]] = {}
 #: The families whose output drives a joint, and how.
 DRIVE_MOTION = {"servo": "rotary", "qdd": "rotary", "gearmotor": "rotary",
-                "bldc": "rotary", "linear_actuator": "linear"}
+                "bldc": "rotary", "linear_actuator": "linear",
+                # Machine parts as data (ADR-646): the families that drive.
+                "steppers": "rotary", "spindles": "rotary", "cylinders": "linear"}
 
 
 def _definition_key(body: Any) -> str:
@@ -301,6 +303,32 @@ def _bay_allowance(operation: str, name: str, value: Any) -> float:
         raise LibraryError(f"{operation}: {name} must be a finite number of "
                            f"millimetres, 0 or more; got {value!r}.")
     return float(value)
+
+
+class MachinePart(LibraryPart):
+    """A ``lib.part`` result: a catalog row built by its interface (ADR-646).
+
+    (The first paragraph is generated: the part numbers by family.)
+
+    ``.members maps a name to a placed :class:`LibraryPart` for the
+    pieces a mechanism needs apart -- a cylinder's ``barrel`` and ``rod``,
+    a caster's ``yoke`` and ``wheel``, a wheel's ``rim`` and ``tyre`` --
+    each its own component; ``.body`` is them all, for a picture.
+    """
+
+    __slots__ = ("members",)
+
+    def __init__(self, family, part_number, body, spec, members, drive_frame):
+        super().__init__(family, part_number, body, spec, drive_frame=drive_frame)
+        object.__setattr__(self, "members", MappingProxyType(dict(members)))
+
+
+# The listing's description of MachinePart is its first paragraph, so the
+# part numbers -- data, not code -- are written into it once, here.
+MachinePart.__doc__ = (
+    "A lib.part(sku, ...) result; part numbers by family: "
+    + catalog.machine_parts_by_family() + ".\n\n" + MachinePart.__doc__.split("\n\n", 2)[2]
+)
 
 
 class _BayPart(LibraryPart):
@@ -2421,6 +2449,69 @@ class LibraryAPI:
         return LibraryPart("rack", part_number,
                            self._place(operation, body, origin, direction, roll_degrees),
                            spec)
+
+    def part(self, sku, **options) -> "MachinePart":
+        # ``**options`` on purpose, as lib.panel is unannotated: the library
+        # page is held under one tool result (ADR-360). The names are
+        # length, extension, span, pitch_radius, origin, direction,
+        # roll_degrees and label, checked below.
+        """A machine part from the data catalog, built by its family's interface.
+
+        Options: length, extension, span, pitch_radius, origin, direction,
+        roll_degrees, label. The rows are CadexParts.json (catalog family ``machine_parts``):
+        rails and carriages (MGN9/12), GT2 pulleys, idlers and belts, T8
+        lead screws, the SFU1204 ball screw and their nuts, NEMA17/23
+        steppers, 2020/2040 extrusion with T-nuts and corner brackets,
+        pneumatic and hydraulic cylinders, router spindles, casters,
+        pneumatic tyres on hubs and compression springs. ``.spec`` is the
+        row plus its source, approximations, ``datums`` and the numbers a
+        joint or an actuator takes (``pitch_radius_mm``, ``lead_mm``,
+        ``rotor_inertia_kgmm2``, ``rate_n_per_mm``, ``extend_force_n``);
+        ``.spec['drive_note']`` says how to drive it. ``.members`` holds the
+        pieces that move apart (a cylinder's barrel and rod).
+
+        Datums, before ``origin``/``direction``/``roll_degrees``: a rail
+        runs +Z from its datum end, base on Y = 0, and its carriage in the
+        same frame rides +Z (``length=`` required); a profile runs +Z from
+        Z = 0, section centred (``length=``); a screw +Z from 0
+        (``length=``), its nut's flange on Z = 0; a pulley's hub end on
+        Z = 0; a belt lies in XY round pitch circles at X = 0 and X =
+        ``span`` (``span=``, ``pitch_radius=``); a stepper's front face on
+        Z = 0 with the shaft +Z; a cylinder's rear pin at the origin
+        (axis X), rod out +Z by ``extension=``; a spindle's collet nose at
+        the origin, body +Z, tool -Z; a caster's plate face at the origin,
+        +Z to the floor; a wheel's hub from Z = 0 along the axle; a
+        spring +Z from Z = 0 at free length.
+        """
+
+        import CadexMachineParts
+
+        unknown = sorted(set(options) - {"length", "extension", "span", "pitch_radius", "origin",
+                                         "direction", "roll_degrees", "label"})
+        if unknown:
+            raise LibraryError(f"lib.part: no option {unknown[0]!r}; the options are length, "
+                               "extension, span, pitch_radius, origin, direction, roll_degrees, label.")
+        length, extension = options.get("length"), options.get("extension")
+        span, pitch_radius = options.get("span"), options.get("pitch_radius")
+        origin = options.get("origin", _DEFAULT_ORIGIN)
+        direction = options.get("direction", _DEFAULT_DIRECTION)
+        roll_degrees, label = options.get("roll_degrees", 0.0), options.get("label", "")
+        try:
+            spec = catalog.part_spec(sku)
+            body, members = CadexMachineParts.build(self._part, spec, {
+                "length": length, "extension": extension, "span": span,
+                "pitch_radius": pitch_radius})
+        except (CatalogError, CadexMachineParts.PartBuildError) as exc:
+            raise LibraryError(f"lib.part: {exc}") from exc
+        frame = self._frame("part", origin, direction, roll_degrees)
+        family, number = spec["family"], spec["part_number"]
+        placed = {name: LibraryPart(family, f"{number}:{name}",
+                                    self._place_frame("part", member, frame), spec)
+                  for name, member in members.items()}
+        if label:
+            body = self._part.transform(body, label=label)
+        return MachinePart(family, number, self._place_frame("part", body, frame), spec,
+                           placed, frame)
 
     def rack_and_pinion(
         self, module: float, pinion_teeth: int, rack_teeth: int, face_width: float, *,

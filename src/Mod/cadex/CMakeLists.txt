@@ -17,6 +17,8 @@ set(Cadex_Scripts
     CadexStress.py
     CadexNets.py
     CadexCatalog.py
+    CadexParts.json
+    CadexMachineParts.py
     CadexBoards.py
     CadexMounts.py
     CadexCage.py
