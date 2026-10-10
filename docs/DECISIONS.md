@@ -38631,3 +38631,41 @@ ADR-260 by its title.
 full (`docs/DOCS-AUDIT.md` §Tests).
 
 Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-629 — Dated history moves out of ROADMAP, CLI and MUJOCO into `docs/history/` (2026-10-10)
+
+**Context.** The docs audit (ADR-628, `docs/DOCS-AUDIT.md` §4 item 5)
+found that the three largest live docs carried mostly dated history:
+ROADMAP's finished "Later" items, the ot5 run log and a dependency diagram
+that still drew the Blender shell and Qt; CLI.md's dated walk rehearsals,
+copy and restart proofs, and dashboard prose that duplicated
+`docs/DASHBOARD.md` and described page elements ADR-533 removed; and
+MUJOCO.md's M0–M9 development slices. The owner approved the move.
+
+**Decision.**
+- `docs/history/ROADMAP-RUNS.md` takes the dependency diagram and its
+  prose, every finished (`[x]`) or struck item of "Later — identified, not
+  scheduled", and the body of "Live headless project review (ADR-284)".
+  ROADMAP keeps every phase, every open item and checkbox, both headings,
+  and a one-line pointer at each cut. ROADMAP: 3,014 → 2,248 lines.
+- `docs/history/CLI-EVIDENCE.md` takes the ot4 carriage, quill,
+  crank-slider, mix and cart rehearsals, the Wren/Lark/Reed copy proofs,
+  the dashboard browser and restart proofs, and the page prose (layout,
+  the "What the page shows" list, page-only behaviour). CLI.md keeps the
+  command reference, the HTTP API table, the server's routes and blocks,
+  the MJX geom-pair rule, a pointer to `docs/DASHBOARD.md` for the page,
+  and a short summary of where each view's model comes from. CLI.md:
+  3,651 → 3,159 lines.
+- `docs/history/MUJOCO-SLICES.md` takes §4's M0–M9. MUJOCO.md keeps the
+  §4 heading with a pointer, so the code's "`docs/MUJOCO.md` M2"-style
+  citations resolve through it; §7c stays where it is (code cites its rows).
+  MUJOCO.md: 3,420 → 1,796 lines.
+- Each history file carries a HISTORICAL banner; the moved text is
+  verbatim except that relative links are rewritten to resolve from
+  `docs/history/`. No code behaviour changes.
+
+**Tests.** `cli/tests/test_project_docs.py`, `cli/tests/test_http_api.py`,
+`cli/tests/test_evaluate.py::test_the_report_block_is_documented` (the
+pins on these docs), and both suites in full.
+
+Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).

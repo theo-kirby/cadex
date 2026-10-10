@@ -147,12 +147,12 @@ undocumented.
   blocks are now named.
 - FIXED: `revision_meshes.py` and `shoves.py` are added to the §4 map.
 - FIXED: the styles list.
-- OPEN: the long dashboard section (about lines 1418–1880) still describes
+- RESOLVED (ADR-629): the long dashboard section (about lines 1418–1880) still describes
   page elements that ADR-533 removed. A caveat covers it, but it should be
   trimmed or moved to DASHBOARD.md. → OWNER.
-- OPEN: much of the dashboard prose duplicates DASHBOARD.md. The HTTP API
+- RESOLVED (ADR-629): much of the dashboard prose duplicates DASHBOARD.md. The HTTP API
   table must stay in CLI.md, because `test_http_api.py` parses it.
-- OWNER: the dated evidence blocks (the ot4 quill, crank, mix and cart runs,
+- RESOLVED (ADR-629): the dated evidence blocks (the ot4 quill, crank, mix and cart runs,
   and the copy and restart proofs) make up about a third of the doc. Should
   they move to `docs/history/` or `docs/probes/`?
 
@@ -248,9 +248,9 @@ The op table matches `OP_ARG_SPECS` (15 ops), and the response table matches
 - FIXED: the links to the audits moved to history.
 - OPEN: "12 skips is the expected count" for MJX was not re-measured.
 - OPEN: the Phase 13b payload "no GUI" `lib/` gap was not re-verified.
-- OWNER: about 900 lines of pre-ADR-538 run logs ("Later", "Live headless
+- RESOLVED (ADR-629): about 900 lines of pre-ADR-538 run logs ("Later", "Live headless
   project review") belong in history.
-- OWNER: the opening dependency diagram still draws the Blender shell, "our
+- RESOLVED (ADR-629): the opening dependency diagram still draws the Blender shell, "our
   shell" and Qt.
 
 ### docs/MUJOCO.md (partly checked; date kept)
@@ -262,7 +262,7 @@ The op table matches `OP_ARG_SPECS` (15 ops), and the response table matches
   `train_*` tools, `--checkpoint-every`, and `evaluate`).
 - OPEN: no section covers `assembly.success`, motion predicates (ADR-587)
   or ADR-597. They live in XSCRIPT, CLI and training.
-- OWNER: should M0–M9 and §7c's history move to `docs/history/`?
+- RESOLVED (ADR-629, M0–M9 only; §7c stays): should M0–M9 and §7c's history move to `docs/history/`?
 
 ### training/README.md, training/SETUP.md (re-dated)
 - FIXED: `action_std_curve` in progress.json.
@@ -396,13 +396,15 @@ name in the text was checked and exists:
    instruction.
 4. **`PHASE8-AUDIT.md` to history.** This needs the inherited-zone CMake
    message (§3, item 2) changed first.
-5. **History moves inside the large docs:**
-   - CLI.md's dated evidence blocks and its stale dashboard prose (also a
-     dedupe with DASHBOARD.md);
-   - ROADMAP's roughly 900 lines of run logs, and its dependency diagram;
-   - MUJOCO.md's M0–M9 and §7c.
-
-   Each is a doc move with an ADR.
+5. **History moves inside the large docs.** RESOLVED (2026-10-10,
+   ADR-629): the owner approved the move.
+   - CLI.md's dated evidence blocks and its stale dashboard prose went to
+     `docs/history/CLI-EVIDENCE.md`, with a pointer to DASHBOARD.md for
+     the page (3,651 → 3,159 lines);
+   - ROADMAP's finished "Later" items, the ot5 run log and the dependency
+     diagram went to `docs/history/ROADMAP-RUNS.md` (3,014 → 2,248);
+   - MUJOCO.md's M0–M9 went to `docs/history/MUJOCO-SLICES.md`
+     (3,420 → 1,796). §7c stays, because code cites its rows.
 6. **O3b name collision.** Rename either the October panels or the August
    cages benchmark, in ORGANIC.md and ROADMAP.md.
 7. **The knee actuator inside the thigh.** It is marked "owner to confirm".
