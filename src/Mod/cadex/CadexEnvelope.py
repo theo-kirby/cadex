@@ -62,7 +62,16 @@ class EnvelopeError(ValueError):
 
 
 #: The largest grid one field may use. A creature torso at 1 mm is ~4 M.
+#: With the float fields kept beside it (closing, distance, room) one plan
+#: peaks at a few hundred MB; the voxel count is checked before anything
+#: is allocated, and the resolution coarsened to fit.
 MAX_VOXELS = 9_000_000
+#: Triangle-column pairs expanded at once while filling the voxels.
+PAIR_BUDGET = 2_000_000
+#: Covered triangles one plan reads, motion poses included.
+MAX_TRIANGLES = 1_500_000
+#: Hull planes x grid cells evaluated at once.
+HULL_BUDGET = 4_000_000
 #: The finest and coarsest automatic voxel, mm.
 MIN_RESOLUTION_MM = 0.6
 MAX_RESOLUTION_MM = 4.0
@@ -146,26 +155,44 @@ def occupancy(triangles, origin, h, dims):
     j1 = np.clip(np.floor((hi[:, 1] - oy - jy) / h - 0.5) + 1, 0, ny).astype(int)
     ni, nj = np.maximum(i1 - i0, 0), np.maximum(j1 - j0, 0)
     count = ni * nj
-    total = int(count.sum())
-    if not total:
+    if not int(count.sum()):
         return occ
-    tri = np.repeat(np.arange(len(T)), count)
-    start = np.repeat(np.cumsum(count) - count, count)
-    local = np.arange(total) - start
-    rows = np.maximum(nj[tri], 1)
-    ci = i0[tri] + local // rows
-    cj = j0[tri] + local % rows
-    qx = ox + (ci + 0.5) * h + jx - a[tri, 0]
-    qy = oy + (cj + 0.5) * h + jy - a[tri, 1]
-    d = det[tri]
-    u = (qx * ac[tri, 1] - qy * ac[tri, 0]) / d
-    v = (qy * ab[tri, 0] - qx * ab[tri, 1]) / d
-    inside = (u >= 0.0) & (v >= 0.0) & (u + v <= 1.0)
-    if not inside.any():
+    # Triangle-column pairs are expanded a batch at a time, never more than
+    # PAIR_BUDGET at once: one large triangle on a fine grid is a million
+    # columns, and expanding every triangle's columns at once is how a
+    # probe once took 58 GB (ADR-635).
+    columns, heights = [], []
+    ends = np.cumsum(count)
+    first_tri = 0
+    while first_tri < len(T):
+        limit = (ends[first_tri - 1] if first_tri else 0) + PAIR_BUDGET
+        last = max(int(np.searchsorted(ends, limit, side="right")), first_tri + 1)
+        if int(count[first_tri]) > PAIR_BUDGET:
+            raise EnvelopeError(
+                "one covered triangle spans more grid columns than a field may expand "
+                f"({int(count[first_tri])}); give resolution= a coarser voxel")
+        sub = np.arange(first_tri, last)
+        c = count[sub]
+        tri = np.repeat(sub, c)
+        start = np.repeat(np.cumsum(c) - c, c)
+        local = np.arange(int(c.sum())) - start
+        rows = np.maximum(nj[tri], 1)
+        ci = i0[tri] + local // rows
+        cj = j0[tri] + local % rows
+        qx = ox + (ci + 0.5) * h + jx - a[tri, 0]
+        qy = oy + (cj + 0.5) * h + jy - a[tri, 1]
+        d = det[tri]
+        u = (qx * ac[tri, 1] - qy * ac[tri, 0]) / d
+        v = (qy * ab[tri, 0] - qx * ab[tri, 1]) / d
+        inside = (u >= 0.0) & (v >= 0.0) & (u + v <= 1.0)
+        if inside.any():
+            z = a[tri, 2] + u * ab[tri, 2] + v * ac[tri, 2]
+            columns.append(ci[inside] * ny + cj[inside])
+            heights.append(z[inside])
+        first_tri = last
+    if not columns:
         return occ
-    z = a[tri, 2] + u * ab[tri, 2] + v * ac[tri, 2]
-    ci, cj, z = ci[inside], cj[inside], z[inside]
-    column = ci * ny + cj
+    column, z = np.concatenate(columns), np.concatenate(heights)
     order = np.lexsort((z, column))
     column, z = column[order], z[order]
     # Collapse coincident crossings (a ray through a shared edge).
@@ -214,12 +241,16 @@ def hull_field(points, origin, h, dims):
     ys = origin[1] + (np.arange(ny) + 0.5) * h
     X, Y = np.meshgrid(xs, ys, indexing="ij")
     flat = np.stack([X.ravel(), Y.ravel()], axis=1)
-    base = flat @ equations[:, :2].T + equations[:, 3]          # (cells, planes)
-    field = np.zeros((nx, ny, nz))
-    for k in range(nz):
-        z = origin[2] + (k + 0.5) * h
-        field[:, :, k] = np.maximum(np.max(base + z * equations[:, 2], axis=1), 0.0).reshape(nx, ny)
-    return field
+    field = np.zeros((nx * ny, nz))
+    zs = origin[2] + (np.arange(nz) + 0.5) * h
+    # Cells a chunk at a time, so cells x planes never passes HULL_BUDGET.
+    chunk = max(1, HULL_BUDGET // max(len(equations), 1))
+    for start in range(0, len(flat), chunk):
+        base = flat[start:start + chunk] @ equations[:, :2].T + equations[:, 3]
+        for k, z in enumerate(zs):
+            field[start:start + chunk, k] = np.maximum(
+                np.max(base + z * equations[:, 2], axis=1), 0.0)
+    return field.reshape(nx, ny, nz)
 
 
 def closed_distance(occ, h, radius):
@@ -456,6 +487,17 @@ def _vec(value, n=3):
     return [float(v) for v in list(value)[:n]]
 
 
+def _pose_budget(steps, sets):
+    """Refuse a motion whose sampled poses would pass MAX_TRIANGLES, before copying."""
+
+    count = steps * sum(len(t) for t in sets)
+    if count > MAX_TRIANGLES:
+        raise EnvelopeError(
+            f"a declared motion samples {steps} poses of {count // steps} triangles, "
+            f"{count} in all, more than one envelope reads ({MAX_TRIANGLES}); sweep a "
+            "shorter range or a simpler part")
+
+
 class _Grid:
     __slots__ = ("origin", "h", "dims")
 
@@ -550,6 +592,7 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
             origin = np.array(_vec(entry["origin"]))
             axis = np.array(_unit(entry["axis"], "motion axis"))
             steps = max(2, int(math.ceil(abs(hi - lo) / SWEEP_STEP_DEGREES)) + 1)
+            _pose_budget(steps, sets)
             result = []
             for angle in np.linspace(lo, hi, steps):
                 t = math.radians(angle)
@@ -560,6 +603,7 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
             return result
         direction = np.array(_unit(entry["direction"], "motion direction"))
         steps = max(2, int(math.ceil(abs(hi - lo) / 2.0)) + 1)
+        _pose_budget(steps, sets)
         result = []
         for offset in np.linspace(lo, hi, steps):
             result += placed(sets, translation=direction * offset)
@@ -601,6 +645,11 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
         sets = poses(entry, shape_sets(entry["shape"], rough))
         covered_world += sets
         covered_is_frame += [False] * len(sets)
+    triangles = sum(len(t) for t in covered_world)
+    if triangles > MAX_TRIANGLES:
+        raise EnvelopeError(
+            f"the covered parts and their motion are {triangles} triangles, more than one "
+            f"envelope reads ({MAX_TRIANGLES}); cover fewer parts, or sweep a shorter range")
     covered = [local(t.reshape(-1, 3)).reshape(-1, 3, 3) for t in covered_world]
     allpts = np.concatenate([t.reshape(-1, 3) for t in covered])
     low, high = allpts.min(axis=0), allpts.max(axis=0)
@@ -608,6 +657,7 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
     pad = radius + clearance + thickness + 8.0
     grid = _grid_for(list(low), list(high), envelope.get("resolution"), pad)
     h = grid.h
+    _SANE_DIAGONAL[0] = 1.5 * math.sqrt(sum((d * h) ** 2 for d in grid.dims)) + 100.0
     occ = np.zeros(grid.dims, dtype=bool)
     if hull:
         field = hull_field(allpts, grid.origin, h, grid.dims)
@@ -690,12 +740,27 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
     bottom = float(np.nanmin(filled[region])) - 5.0
     loops = contour_loops(phi, float(xs[0]), float(ys[0]), h)
     spacing = max(3.0 * h, 3.0)
-    faces, planar = [], []
+    # With a skirt the panel overhangs its own outline by the skirt's wall, so
+    # the skirt's top runs inside the panel's wall: a lid over its walls, one
+    # solid without any face of one lying on a face of the other.
+    flange = spec.get("flange")
+    grow = (0.6 + 0.25 * h + 1.5 * thickness) if flange else 0.0
+    grown_outers = [outer for outer, _h in nest_loops(
+        contour_loops(phi + grow, float(xs[0]), float(ys[0]), h))] if grow else []
+    faces, planar, drawn_already = [], [], []
     for outer, holes in nest_loops(loops):
         if abs(_signed_area(outer)) < 25.0:
             continue
         holes = [hole for hole in holes if abs(_signed_area(hole)) >= 4.0]
-        face = Part.Face(surface, _param_wire(outer, surface, spacing, App, Part))
+        drawn = outer
+        if grow:
+            around = [g for g in grown_outers if _inside(outer[0], g)]
+            drawn = min(around, key=lambda g: abs(_signed_area(g))) if around else outer
+            if any(drawn is used for used in drawn_already):
+                planar.append((outer, holes))     # two outlines grown into one face
+                continue
+            drawn_already.append(drawn)
+        face = Part.Face(surface, _param_wire(drawn, surface, spacing, App, Part))
         if holes:
             face.cutHoles([_param_wire(hole, surface, spacing, App, Part) for hole in holes])
         face.validate()
@@ -746,16 +811,33 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
     # -- edge: a skirt down the outline ---------------------------------------
     flange = spec.get("flange")
     flange_facts = None
+    skirted = False
     if flange:
         depth = BOSS_REACH_MM if flange == "frame" else float(flange)
         if flange == "frame" and frame_z is None:
             raise EnvelopeError('flange="frame" needs frame=: the part the skirt comes down to')
-        walls, flange_facts = _skirt(planar, surface_z, outer_s,
-                                     frame_z if flange == "frame" else None, field, xs, ys,
-                                     grid, clearance, thickness, depth, App, Part, np)
-        if walls:
-            body_local = body_local.fuse(walls)
-            body_local = _refined(body_local)
+        # The wall's top is tucked under the panel's rim by the least that
+        # makes the two one solid: the less it tucks, the less it eats into
+        # the clearance at the rim.
+        for tuck in (0.0, 0.5, 1.0):
+            walls, facts_now = _skirt(planar, surface_z, outer_s,
+                                      frame_z if flange == "frame" else None, field, xs, ys,
+                                      grid, clearance, thickness, depth, App, Part, np,
+                                      tuck=tuck)
+            walls = [wall for wall in walls if _wall_sane(wall)]
+            flange_facts = facts_now
+            if not walls:
+                break
+            # The wall overlaps the panel's overhang by volume: a plain fuse.
+            fused = body_local.fuse(walls)
+            if len(fused.Solids) == 1 and fused.isValid() and \
+                    fused.BoundBox.DiagonalLength <= _SANE_DIAGONAL[0]:
+                body_local = _refined(fused)
+                skirted = True
+                break
+        else:
+            flange_facts = (flange_facts or []) + [
+                {"depth_mm": 0.0, "reason": "the skirt did not join the panel; it is left off"}]
     body = body_local.copy()
     body.transformShape(to_world, False, False)
     # -- seams ----------------------------------------------------------------
@@ -771,7 +853,7 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
                     if not is_frame]
         fasteners, pilots, pieces = _mount(
             pieces, frame_shape, screw, per_piece, phi, surface_z, outer_s, frame_z,
-            column_room, bool(flange), xs, ys, R, s, h, spec,
+            column_room, skirted, xs, ys, R, s, h, spec,
             np.concatenate(blockers) if blockers else None, App, Part, np, ndimage,
             taken=_taken_screws(spec, plan_of))
     max_piece = spec.get("max_piece")
@@ -960,7 +1042,7 @@ def _sample2d(values, xs, ys, x, y):
 
 
 def _skirt(planar, surface_z, outer_s, frame_z, field, xs, ys, grid, clearance, thickness,
-           depth, App, Part, np):
+           depth, App, Part, np, tuck=0.6):
     """A wall round each outline, hanging from the panel down to the frame.
 
     The skirt is the panel's return edge: ``thickness`` thick just outside
@@ -993,12 +1075,18 @@ def _skirt(planar, surface_z, outer_s, frame_z, field, xs, ys, grid, clearance, 
         P = P + normal * (0.6 + 0.25 * h)
         Q = P + normal * thickness
         rim = _sample2d(surface_z, xs, ys, P[:, 0], P[:, 1])
-        # Up into the panel's wall, so the two are one solid however the rim slopes.
-        top_in = np.maximum(rim + 0.5 * thickness,
-                            _sample2d(outer_s, xs, ys, P[:, 0], P[:, 1]) - 0.4)
-        top_out = np.minimum(_sample2d(outer_s, xs, ys, Q[:, 0], Q[:, 1]) - 0.3,
-                             rim + thickness)
-        top_out = np.maximum(top_out, top_in)
+        # The wall's top edge is tucked just inside the outline, at the
+        # middle of the panel's own wall: the two overlap by volume, and no
+        # face of one lies nearly on a face of the other (which is what makes
+        # the fuse, and the seam cut after it, fail).
+        P_top = P - normal * tuck
+        Q_top = P_top + normal * thickness
+
+        def midwall(points):
+            return 0.5 * (_sample2d(surface_z, xs, ys, points[:, 0], points[:, 1])
+                          + _sample2d(outer_s, xs, ys, points[:, 0], points[:, 1]))
+
+        top_in, top_out = midwall(P_top), midwall(Q_top)
         # How far down the wall may hang, column by column.
         mid = P + normal * 0.1
         steps = np.arange(0.0, depth + h, 0.5 * h)
@@ -1040,10 +1128,8 @@ def _skirt(planar, surface_z, outer_s, frame_z, field, xs, ys, grid, clearance, 
                           PeriodicFlag=True)
             return c.toShape()
 
-        # The top edge starts inside the outline, in the panel's own wall.
-        tucked = P - normal * (1.2 + 0.25 * h + 0.5 * thickness)
-        ti, bi = curve(tucked, top_in), curve(P, bottom)
-        to, bo = curve(Q - normal * (1.2 + 0.25 * h + 0.5 * thickness), top_out), curve(Q, bottom)
+        ti, bi = curve(P_top, top_in), curve(P, bottom)
+        to, bo = curve(Q_top, top_out), curve(Q, bottom)
         faces = [Part.makeRuledSurface(ti, bi), Part.makeRuledSurface(to, bo),
                  Part.makeRuledSurface(ti, to), Part.makeRuledSurface(bi, bo)]
         try:
@@ -1342,9 +1428,32 @@ def _segment_distance(first, second):
     return float(np.linalg.norm(p + d1 * s - q - d2 * t))
 
 
-def _sound(shape, what):
-    """``shape`` if the kernel calls it valid, after one shape-healing pass if not."""
+#: The largest a panel's box may be, as a diagonal in mm, set per plan from
+#: its field: a boolean or a ruled face gone wrong can return a "valid"
+#: solid 1e29 mm across, and tessellating that is what once ate 58 GB.
+_SANE_DIAGONAL = [math.inf]
 
+
+def _sane(shape, what):
+    box = shape.BoundBox
+    if not (math.isfinite(box.DiagonalLength) and box.DiagonalLength <= _SANE_DIAGONAL[0]):
+        raise EnvelopeError(
+            f"{what} came out {box.DiagonalLength:.3g} mm across, far past the field it was "
+            "drawn in: the kernel failed on it; move a seam, an opening or the screws a "
+            "few mm, or change resolution=")
+    return shape
+
+
+def _wall_sane(wall):
+    box = wall.BoundBox
+    return wall.isValid() and math.isfinite(box.DiagonalLength) and \
+        box.DiagonalLength <= _SANE_DIAGONAL[0] and wall.Volume > 0
+
+
+def _sound(shape, what):
+    """``shape`` if the kernel calls it valid and sane, after one healing pass if not."""
+
+    _sane(shape, what)
     if shape.isValid():
         return shape
     healed = shape.copy()

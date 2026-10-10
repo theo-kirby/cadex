@@ -29,6 +29,8 @@ from cadex_library_api import (LibraryError, create_library_api, library_catalog
                                library_listing)
 
 PART_PACK = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
+#: The address space the kernel driver below may use: a worker's 6 GB.
+DRIVER_MEMORY_BYTES = 6 * 1024 ** 3
 
 
 def _part():
@@ -174,6 +176,29 @@ def test_a_box_fills_its_own_voxels_and_no_others():
         np.array(_box_triangles((2, 2, 2), (8, 6, 4))), (0, 0, 0), 1.0, (10, 10, 10)))
 
 
+def test_a_field_is_bounded_before_it_is_allocated(monkeypatch):
+    # The grid coarsens to MAX_VOXELS rather than allocating a fine one...
+    grid = envelope_worker._grid_for([0, 0, 0], [3000, 3000, 3000], None, 10.0)
+    assert grid.dims[0] * grid.dims[1] * grid.dims[2] <= envelope_worker.MAX_VOXELS
+    # ...an explicit fine voxel over a huge part is refused, not allocated...
+    with pytest.raises(envelope_worker.EnvelopeError, match="more than one field holds"):
+        envelope_worker._grid_for([0, 0, 0], [30000, 30000, 30000], None, 10.0)
+    # ...a triangle is expanded onto its columns in bounded batches, and one
+    # whose columns alone pass the budget is refused by name...
+    monkeypatch.setattr(envelope_worker, "PAIR_BUDGET", 50)
+    occ = envelope_worker.occupancy(_box_triangles((1, 1, 1), (5, 5, 5)), (0, 0, 0), 1.0,
+                                    (8, 8, 8))
+    assert occ.sum() == 64
+    with pytest.raises(envelope_worker.EnvelopeError, match="coarser voxel"):
+        envelope_worker.occupancy(_box_triangles((0, 0, 0), (40, 40, 4)), (0, 0, 0), 1.0,
+                                  (40, 40, 8))
+    # ...and a sweep is counted before its poses are copied.
+    import numpy as np
+
+    with pytest.raises(envelope_worker.EnvelopeError, match="poses"):
+        envelope_worker._pose_budget(721, [np.zeros((5000, 3, 3))])
+
+
 def test_the_rolling_radius_bridges_a_gap_narrower_than_twice_itself():
     import numpy as np
 
@@ -303,6 +328,10 @@ def test_a_cover_and_a_housing_build_valid_solids_on_the_kernel(tmp_path):
     driver = tmp_path / "panels.py"
     report = tmp_path / "report.txt"
     driver.write_text(f'''
+import resource
+# Capped like a cadexd worker (RLIMIT_AS): a kernel run that goes wrong
+# fails this test, never the machine (ADR-635).
+resource.setrlimit(resource.RLIMIT_AS, ({DRIVER_MEMORY_BYTES}, {DRIVER_MEMORY_BYTES}))
 from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
 from cadex_domain_api import create_domain_api
 from cadex_library_api import create_library_api
