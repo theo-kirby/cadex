@@ -358,7 +358,10 @@ carried over from the overlay and ot10:
   its own filament, never paint and never a multi-material print;
 - covers and panels are 1.6–2.4 mm thick, screwed to the structure that
   carries them, with clearance from what they cover through every joint's
-  range;
+  range: cut from the envelope of what they cover (`part.envelope` /
+  `part.panel`), declared `role="panel", covers=[...]`, and measured by
+  `fit.panels` -- the colour role below says nothing about what a part is
+  (ADR-633..637);
 - fasteners are deliberate: where they show, they form an even pattern
   (`balancer-c-exposed-mechanism`, Love: "three evenly spaced M3 screws per
   cheek").
@@ -467,7 +470,7 @@ arm or wing, and the only two designs with a jointed neck rated best.
 |---|---|
 | the actuator is the joint and shows: housings grown around drives, a ring or face in the accent | THE ACTUATOR IS THE JOINT, AND IT SHOWS |
 | the shell sits on the masses; slender links do the work | SHELLS SIT ON THE MASSES; LINKS DO THE WORK |
-| gently bent or curved panels that form-fit the mechanism (owner, 2026-10-09: curved is fine; a cosmetic shell is the defect) | PANELS WRAP THE MECHANISM, checked by the build's shell check |
+| gently bent or curved panels that form-fit the mechanism (owner, 2026-10-09: curved is fine; a cosmetic shell is the defect) | PANELS WRAP THE MECHANISM, checked by the build's `fit.panels` (ADR-636) |
 | necks and tails broken into discrete segments with joint rings | SEGMENTS, NOT A SKIN, WHERE IT BENDS |
 | a camera head; a ring eye that is a real part | THE CHARACTER IS A REAL SENSOR |
 | two tones plus one functional accent | TWO TONES AND ONE FUNCTIONAL ACCENT |
@@ -483,8 +486,8 @@ and never one soft skin. This one keeps no face, but lets the head's real
 sensor read as the eye, and allows curved panels as long as they wrap what
 they cover. Its scale is set by its actuators, not by a servo horn.
 
-**Exists today versus target.** The style, the anatomy block, the shell
-check, `lib.panel`, `lib.housing` and the small QDDs exist. The baseline's
+**Exists today versus target.** The style, the anatomy block, the panel
+check (`fit.panels`), `part.envelope` and `part.panel` (ADR-633..637, which replaced `lib.panel`), `lib.housing` and the small QDDs exist. The baseline's
 six briefs were re-run with them on 2026-10-09 (record `small-brook-2395`):
 every design that declared its anatomy jointed a head, jaw, tail, arm or
 wing, but most runs stopped before the design was done and none has yet

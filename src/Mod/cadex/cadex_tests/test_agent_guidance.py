@@ -191,5 +191,5 @@ def test_the_creature_style_carries_the_north_star_rules_and_not_the_legged_ones
     assert 'may curve' in body and 'grown from what it covers' in body
     assert 'never one soft skin' not in body
     # It points at the helpers and the measured blocks that back it.
-    for name in ('lib.housing', 'lib.panel(over=', 'shell check', 'anatomy block', '`reason=`'):
+    for name in ('lib.housing', 'part.envelope(over=', 'panel check', 'role="panel"', 'anatomy block', '`reason=`'):
         assert name in body, name

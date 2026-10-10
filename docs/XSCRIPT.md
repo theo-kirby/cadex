@@ -689,6 +689,12 @@ asm  = assembly.assembly([hood, knee, eye], joints,
   outer forms), `mechanism` (joints, links and purchased hardware that show)
   or `accent` (one saturated colour on a few deliberate features). Case and
   surrounding space are forgiven; any other word is refused naming the three.
+- Appearance is colour only. What a part **is** is `role=` (ADR-633): one of
+  `panel`, `frame`, `link`, `housing`, `hardware`. A `role="panel"`
+  component names the components it covers, `covers=[...]` (declared before
+  it; required with that role and refused with any other), and only those
+  are judged by `fit.panels` (§ Panels below). Painting a thigh `shell` no
+  longer makes it a panel. Neither key enters the definition unless set.
 - `palette=` on `assembly.assembly` maps any of those roles to a `#RRGGBB`
   colour, stored upper case in role order. An unnamed role keeps its default:
   bone `#E9E6DF` shell, graphite `#2F3237` mechanism, signal orange
@@ -1186,68 +1192,117 @@ The envelope is coaxial cylinders with tapped bores. Pilots, dowels,
 connectors and the rotor/stator mass split are omitted. There is no thermal
 model and no corner speed. Sources and approximations: PROVENANCE §8i.
 
-#### Panels and housings grown from the mechanism `[ADR-610, ADR-611]`
+#### Panels cut from the envelope of what they cover `[ADR-633..637]`
 
-A shell sized by eye floats: blind-rated robot animals scored worst on
-"every part designed, shells included" because their covers were
-superellipse eggs over electronics they never touched, and no drive had a
-housing. Both helpers draw the printed part **from** what it covers.
+A cover sized by eye floats: blind-rated robot animals scored worst on
+"every part designed, shells included", and the October `lib.panel` (a
+convex sleeve lofted along one axis, round the frame too) was tried once in
+nine creature runs and removed (`docs/ARCHITECTURE-REVIEW.md` §2). A panel
+is a **thin, open patch of a smooth offset surface of the mechanism it
+covers**, bounded by seams, screwed to the frame, clear of what moves. Two
+part ops declare it; the worker builds it on the exact solids
+(`CadexEnvelope.py`).
 
 ```python
-deck  = part.box(158, 50, 4, origin=(-78, -25, -2))
+deck  = part.box(160, 110, 4, origin=(-80, -40, -2))
 pack  = lib.battery("gensace-gea2s100045d", origin=(-30, 0, 2))
 board = lib.board("esp32-devkitc-v4", origin=(18, -14, 2))
-rear  = lib.qdd("cubemars-ak80-9-v3", origin=(-121.5, 0, 0), direction=(-1, 0, 0))
 
-skin = lib.panel([pack, board], axis=(1, 0, 0), mount_to=deck, span=(-74, 76),
-                 seams=[0.0], split="top_bottom")       # 4 panels, 8 M2 screws
-deck = part.cut(deck, skin.holes)                       # the screws' pilots
-drum = lib.housing(rear)                                # drum, plate, 8 M3 screws
-hip  = drum.fuse(part.box(2, 24, 49, origin=(-80, -12, -2)))  # a link grown on
+env   = part.envelope([pack, board], clearance=1.5, radius=20.0)
+cover = part.panel(env, side=(0, 0, 1), max_angle=70, thickness=2.0,
+                   seams=[((1, 0, 0), [0.0])],        # two pieces, split at x = 0
+                   flange="frame",                    # a skirt down to the deck
+                   frame=deck, screw=lib.bolt("m2", 8), screws=3)
+deck  = part.cut(deck, cover.pilots)                 # the frame's tap-drill pilots
+# components: each piece role="panel", covers=[...]; each screw its own component,
+# welded to its piece; the pieces welded to the frame
 ```
 
-`lib.panel(over, *, axis=(1,0,0), up=None, span=None, offset=1.5,
-thickness=2.0, exponent=None, step=12.0, seams=(), split=None,
-split_at=None, mount_to=None, screw="m2", screws_per_panel=2, label="")`
-returns a `PanelSet`:
+`part.envelope(over, *, clearance=1.5, radius=20.0, motion=(), resolution=None)`
+declares the surface panels are cut from -- not a shape on its own:
 
-- **How the skin is found.** Every covered value (and `mount_to`, which is
-  covered too) is read as a recipe -- primitives, transforms, booleans,
-  lofts -- into surface points and, where the tree allows
-  it, a point-membership test (`CadexPanels.sample`, every 3 mm). An imported or meshed
-  part is refused by name. Stations stand every `step` mm along `axis` over
-  `span` (world coordinates along the axis; default the contents' extent).
-  At each, the points within one station either side are fitted with the
-  tightest superellipse about their own centre (`CadexCage`'s ring, off
-  axis), grown until every point clears its inner face by `offset` mm, and
-  each half-axis is then a slope-limited envelope (at most 0.15 mm per mm),
-  so a skin bends gently over what it covers instead of dimpling. `exponent`
-  `None` picks, for the whole panel, the one of 2, 2.5, 3, 4 and 6 that
-  encloses the least section. The skin is the loft through those rings,
-  outer minus inner, `thickness` thick, open at both ends.
-- **Seams.** `seams=[x, ...]` split it at axial positions; `split=
-  "top_bottom"` or `"left_right"` parts it along the axis at `split_at`
-  (default: the plane nearest the rings' mean centre that crosses every ring
-  across its middle -- on a deck, its top face). Pieces are 0.4 mm apart.
-  `.parts` and `.names` (`"0_top"`, `"0_bottom"`, `"1_top"`...) are aligned.
-- **Screws.** With `mount_to` (the frame), each piece gets up to
-  `screws_per_panel` bosses: a line aimed into the frame (down, up, across or
-  diagonal, on the ring's centre or offset to the sides beside what it
-  covers), refused where anything else stands in the way, where the skin is
-  steeper than 40 degrees, where it crosses the parting plane or another
-  piece's screw, or where the frame is too thin for 1.5 diameters of thread.
-  The boss stands from the frame's own surface (the frame is cut from it) to
-  the skin, with a counterbore that sets the head flush and a clearance hole;
-  the screw is a `lib.bolt` of a stocked length whose thread stops 0.3 mm
-  short of the frame's far face. `.screws` (flat), `.screws_by_part`
-  (aligned with `.parts`), `.holes` (tap-drill pilots: cut them from the
-  frame), `.unmounted` (pieces no boss could reach from) and `.notes`.
-- `.rings` reads back each station (`position`, `centre`, `inner`, `outer`)
-  and `.spec` the numbers, including every boss's station, angle, screw
-  length, engagement and standoff.
+- `over`: the solids or `lib.*` parts covered. The frame the panels bolt to
+  is **not** wrapped unless `over` names it (or a part of it, such as the
+  keel block it was fused from).
+- `clearance`: the gap from the panel's inner face to them, mm.
+- `radius`: the rolling ball the covered set is *closed* with before the
+  offset: 0 shrink-wraps, 15-40 bridges the gaps between parts and still
+  dips between masses further apart than twice it, a large one is the egg.
+  It is also the curvature the panel's face is smoothed to. `radius="hull"`
+  is the ball at infinity, the convex hull, drawn by its face planes: an
+  enclosure round an open frame (a finite ball always dips into an open
+  face). A hull panel's gap is not judged (see below).
+- `motion`: what moves under the panels, `{"shape": link, "origin": o,
+  "axis": a, "range": (lo, hi)}` (a hinge, degrees) or `{"shape": s,
+  "direction": d, "range": (lo, hi)}` (a slider, mm): its swept space is
+  covered too, sampled every 5 degrees or 2 mm.
+- `resolution`: the field's voxel, mm; default chosen for the size
+  (0.6-4 mm, at most 9 M voxels).
+
+`part.panel(env, *, side=(0,0,1), max_angle=60, within=None, thickness=2.0,
+seams=(), seam_gap=0.6, inset=0.0, openings=(), flange=0.0, frame=None,
+screw=None, screws=2, max_piece=None, avoid=(), label="")` returns a
+`Panel`:
+
+- **The region.** The envelope seen from `side`: where its face turns less
+  than `max_angle` degrees from that direction (60 for a cover that wraps
+  down its sides; 40-50 where it meets side panels, with `inset` = half the
+  gap), inside `within=((x0,y0,z0),(x1,y1,z1))`. Sudden drops are edges, not
+  slopes; specks are dropped. A region that falls apart into islands is
+  refused by name: narrow `within` or seam between them.
+- **The surface.** The inner face is the envelope there, smoothed to a third
+  of `radius` without coming closer than `clearance`, fitted with a B-spline
+  surface, trimmed by the outline (a smooth periodic curve on the surface),
+  and thickened outward along its normal by `thickness`: edges stand square
+  to the panel.
+- **Seams.** Groups of parallel parting planes, `[(normal, [positions])]`
+  (`normal . p = position`), `seam_gap` apart: pieces `p0`, `p1`, ... per
+  cell of the groups, first group slowest. An empty cell is refused.
+- **Openings.** `{"around": part, "clearance": mm, "motion": {...}}` takes
+  out every column where the part, swept through its motion, comes within
+  `clearance` of the panel's wall (and keeps the skirt out of it);
+  `{"cone": (apex, axis, half_angle)}` a sensor's view; `{"at": point,
+  "radius": mm}` a round hole (a gland, a cable exit).
+- **Edge.** `flange=mm` hangs a skirt that far down the outline, `flange=
+  "frame"` down to the frame under it: one wall thick, just outside the
+  outline, cut short wherever it would enter the clearance band, an
+  opening's keep-out or the frame. Over a box it reaches the deck; over a
+  form that curves under its rim it is short or absent (the build facts say
+  which). With a skirt the panel overhangs its own outline so the two are
+  one solid. A skirt the kernel cannot join is left off and said so.
+- **Mounts.** With `frame` and `screw=lib.bolt(size, length)` (socket head),
+  each piece gets `screws` bosses: a column along `-side` from the panel to
+  the frame, inside it where the space beneath is free, in its skirt, or as
+  a lug just outside it. Candidates are sifted on voxels (frame under the
+  whole boss and flat to 2.5 mm, the column a boss radius plus the clearance
+  clear of everything covered but the frame, clear of seams), spread
+  farthest-first with a short reach preferred, then **cast exactly** onto
+  the frame's BREP at the centre and four rim points and checked by rays
+  against the covered parts. Each boss gets a clearance hole and a
+  counterbore deep enough that the **one stocked screw** seats with 2.5
+  diameters of thread (less where the frame is thinner), and the frame a
+  tap-drill pilot. `avoid=[earlier panels]` keeps these screws off those
+  panels' screw paths (two covers meeting at one corner post).
+- **The bed.** `max_piece=(x, y, z)` refuses a piece that will not print.
+- `.parts`/`.names` (one component each, `role="panel", covers=[...]`),
+  `.screws` (the bolts, already `part.mate`d onto their bosses: one
+  component each, welded to their piece), `.pilots` (`frame =
+  part.cut(frame, p.pilots)`), `.mounts[piece][boss]` (the fastener frames,
+  for `part.mate` of anything else onto a boss), `.spec`. Every number the
+  worker measured -- where each boss landed, its reach, seat depth and
+  engagement, the skirt's depth, the field's voxel -- is the piece's build
+  facts: `inspect scope=output target=<piece>` → `operation_diagnostics.panel`.
+
+The worker plans one panel once per build, however many pieces, screws and
+pilots read it. Its memory is bounded by construction (voxels, triangle
+columns, sweep poses and hull planes are counted before they are allocated,
+and a shape the kernel returns far larger than its field is refused rather
+than tessellated; ADR-637). Cost on the probes: 2-15 s per panel plan;
+the fit check's exact pair measurements against a large frame add more.
 
 `lib.housing(drive, *, wall=2.0, clearance=0.5, seat=None, plate=None,
-lead_room=None, label="")` returns a `Housing`:
+lead_room=None, label="")` returns a `Housing` -- the envelope of one drive
+at an infinite radius about its axis, exact already (ADR-611):
 
 - A **QDD** gets a drum concentric with its axis, `clearance` off the case
   and `wall` thick, seated on a `plate` (default the larger of 3 mm and
@@ -1265,12 +1320,12 @@ lead_room=None, label="")` returns a `Housing`:
   the housing with links grown on and the cavity and screw holes cut
   again -- the limb grown around the actuator.
 
-Assemble them like any printed part: each panel and housing is a component
-with `appearance="shell"` (or `"mechanism"`), welded to the frame with a
-fixed joint, and each screw is its own component welded to what it clamps.
-A housing's screws sit in the drive's tapped holes at 0.0 mm, so declare
-them `contacts=[(screw, drive)]`. The shell check (below) measures the
-result.
+Assemble them like any printed part: each panel piece and housing is a
+component welded to the frame with a fixed joint; a panel piece declares
+`role="panel", covers=[...]`, and each screw is its own component welded to
+what it clamps. A housing's screws sit in the drive's tapped holes at 0.0
+mm, so declare them `contacts=[(screw, drive)]`. The panel check (below)
+measures the result.
 
 ### Naming geometry: selectors, not indices `[Phase 10b, ADR-029]`
 
@@ -2356,55 +2411,50 @@ exactly how a floating servo horn survives acceptance. `attachments` is
 assembly with no fixed joint: no published report and no welded pair are
 different facts.
 
-### Shells: wrapped, thin and held (ADR-612)
+### Panels: wrapped, clear, thin and held (ADR-633, ADR-634, ADR-636)
 
-`fit.shells` judges every component declared `appearance="shell"` (an
-undeclared printed part is not judged). The assembly worker samples about
-400 points over each shell's faces by area, with their outward normals,
-and measures each exactly (point to triangle) to the tessellated surface of
-the non-shell, non-world components whose boxes come within 5 mm of the
-shell's box (`/shell_gaps` in `inspect scope=clearance`). A sample whose
-normal points at its nearest content point is on the **inner face**; its
-distance is the gap a designer means. The block then reads each shell's
-volume and area and the published pairs and fixed joints:
+`fit.panels` judges every component declared `role="panel"` against the
+components its `covers=[...]` names -- never against whatever lies near its
+box, and never because of its colour: `appearance="shell"` is a palette tone
+only. The assembly worker measures each panel at the solved pose
+(`/panels` in `inspect scope=clearance`): about 400 points of its faces,
+their distance to what it covers and to what it is welded to (the inner
+face's p10/median/p90/max gap, and that gap summed into `air_volume_mm3`),
+`egg_ratio` = 1 + air / covered volume, its wall by rays from its faces
+inward (p10/median/p90), `coverage` (of the covered parts' outward-facing
+surface, the share a ray along its normal finds hidden by a panel), its box,
+and a few of its points. The block then reads the pair rows at rest and
+through every swept joint, the fixed joints, and each `part.panel` piece's
+own facts (its clearance, radius, group and piece):
 
-| finding | when |
-|---|---|
-| `floating` | the inner face's median gap exceeds `floating_gap_mm` (6.0), or no sample faces what the shell covers |
-| `covers nothing` | no non-shell, non-world component's box comes within 5 mm of its box |
-| `solid` | its wall estimate `2 * volume / area` exceeds `solid_wall_mm` (4.0): a filled loft, not a 1.6-2.4 mm panel |
-| `unmounted` | no `lib.bolt` touching it threads (0.1 mm³ or more) into a non-shell part, and no touching fixed joint welds it to one |
+| finding | when | fails the fit |
+|---|---|---|
+| `floating` | the inner face's p90 gap passes its clearance + radius/2 + 2 mm (a hand-made panel: 8 mm), or nothing of it faces what it covers; a `radius="hull"` enclosure is not judged | yes |
+| `colliding` | it overlaps a component that is not a bolt at rest (a bolt's thread allowance excepted) | yes |
+| `colliding in motion` | a swept joint drives a component it is not welded to into it | yes |
+| `unmounted` | no `lib.bolt` touching it threads into a non-panel part, and no touching fixed joint welds it to one | yes |
+| `egg` | `egg_ratio` past 2.5 | no |
+| `solid` / `thin` | wall median past 4 mm / p10 under 1 mm | no |
+| `larger than the bed` | its box does not fit 256³ mm | no |
+| `under-held` | some of it is more than 150 mm from any of its screws | no |
+| `seam closed` | it touches another piece of the same `part.panel` | no |
 
-The thresholds, measured on the real engine (ADR-612): `lib.panel` over a deck,
-a 2S pack and an ESP32 measured median gaps of 2.5-4.7 mm per panel (a
-superellipse stands off a box's flat faces by a few mm); `lib.housing` 0.5
-mm; a hollow egg sized by eye over the same parts 31.3 mm, with 0.5% of its
-inner face within 4 mm. A printed panel's wall estimate is 1.9-2.0 mm with
-its bosses; a filled loft's is a third of its own width or more.
+Beside the findings each row carries `closest_in_motion` (the nearest a
+moving part passes it), `screws`/`held_by`, `farthest_from_fastener_mm` and
+`seam_gap_mm`; the block a `motion_note` naming the joints not swept to
+completion, through which motion clearance is unmeasured. A failing panel
+fails the fit: `fit.verdict` is `fail` and `fit.panel_failing_count` counts
+them (the pair count `failing_count` is unchanged), and the progress line
+adds `panels: N of M failing, K reported`. Rows are failing first; the build
+reply's view cuts each list to 12. A revision accepted before ADR-634 has no
+`/panels`: its rows say `"gap": "unmeasured"` and the block a `gap_note`.
 
-```json
-"shells": {
-  "verdict": "reported", "shell_count": 2, "reported_count": 1,
-  "thresholds": {"floating_gap_mm": 6.0, "solid_wall_mm": 4.0,
-                 "contact_mm": 0.5, "thread_engagement_mm3": 0.1},
-  "reported": [{"component": "c_egg", "findings": ["floating", "unmounted"],
-                "covers_count": 12, "gap_median_mm": 31.304, "gap_p25_mm": 20.783,
-                "gap_p90_mm": 39.668, "hug_fraction": 0.005, "inner_samples": 199,
-                "wall_mm": 1.933, "mounted": null,
-                "detail": "its inner face stands a median 31.304 mm off what it covers; ..."}],
-  "fitted": [{"component": "c_drum", "findings": [], "gap_median_mm": 0.5,
-              "hug_fraction": 1.0, "wall_mm": 2.048, "mounted": "welded",
-              "held_by": ["c_deck", "c_rear"]}],
-  "note": "A shell is a panel that wraps the mechanism: ..."
-}
-```
-
-Rows are worst first (most findings, then the widest gap); the build
-reply's view cuts each list to 12. Advisory like `fit.mounting`: its own
-verdict, counted among no fit failure, and the progress line adds
-`shells: N of M reported`. A revision accepted before ADR-612 has no
-`shell_gaps`: its rows say `"gap": "unmeasured"` and the block a
-`gap_note`.
+Measured on the probes (`docs/probes/panels/`): the electronics cover over a
+2S pack and an ESP32 hugs at 1.4-1.8 mm with a 15 mm skirt and six M2s;
+the gantry enclosure's eight pieces pass with egg ratios 1.4-1.6 and 0.6 mm
+seams; the leopard's four covers pass at p90 gaps of 3.5-9.6 mm and egg
+ratios 1.06-1.17, after the check had named the front cover through the
+neck drive and the head cover struck by the nodding neck link.
 
 ## Sampled hinge and slider fit (ADR-349, ADR-351)
 

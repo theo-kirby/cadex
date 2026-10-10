@@ -3,7 +3,7 @@
 Verified against source: 2026-10-10
 Status: **O0 closed (ADR-124), O1 closed (ADR-125), O2 closed (ADR-126),
 O3 closed (ADR-127).** The phase's four slices are done, and so are O1b
-(ADR-128), O2b (ADR-130) and the October O3b (ADR-610..612); O4 is parked by
+(ADR-128), O2b (ADR-130) and the October O3b (ADR-610..612, rebuilt by ADR-633..637); O4 is parked by
 decision.
 
 **Native Blender recipe bridge (ADR-185, 2026-09-05) — retired (ADR-496).**
@@ -293,50 +293,61 @@ become its exponent. Both stay editable as numbers. Inventing a value from a
 gesture the user may have made by accident is the quiet reinterpretation a
 declared table exists to prevent.
 
-### O3b — Panels grown from the mechanism, and the shell check — **closed (ADR-610..612)**
+### O3b — Panels cut from the envelope of the mechanism, and the panel check — **closed (ADR-610..612, rebuilt by ADR-633..637)**
 
 The cage made a shape cheap to draw and said nothing about what it was
 drawn over. Agents sized rings by eye, and blind-rated robot animals scored
 worst on "every part designed, shells included": eggs, domes and sausages
 floating over the electronics, no drive housed. The owner's liked
-references have gently bent panels that form-fit the mechanism; the one
-good agent example had trunk ends coaxial with the ab/ad motors at 2.5 mm
-and drums grown round the knee motors.
+references have gently bent panels that form-fit the mechanism.
 
-- `lib.panel(over=[...], axis=..., mount_to=frame, seams=[...],
-  split="top_bottom")` stands the cage's ring on each station of what it
-  covers instead of a guess: the covered recipes are read into points
-  (`CadexPanels.sample`), each station's points fitted with the tightest
-  superellipse about their own centre and grown by `offset`, each half-axis
-  slope-limited so the skin bends gently, and the outer loft less the inner
-  is the panel, 2 mm thick, split at real seams and screwed down through
-  counterbored bosses that stand on the frame. `docs/XSCRIPT.md` has the
-  whole contract.
+October's first answer, `lib.panel` (ADR-610), lofted a convex superellipse
+sleeve along one axis round everything it covered, the frame included, from
+recipe points a Python CSG evaluator read (`CadexPanels.sample`). None of the
+nine creature runs kept one; the one that tried removed it twice
+(`docs/ARCHITECTURE-REVIEW.md` §2). It is deleted (ADR-635). What replaced it:
+
+- `part.envelope(over=[...], clearance=, radius=, motion=)` -- the covered
+  solids closed with a rolling ball and offset by the clearance, in a signed
+  distance field built in the worker on the exact solids (any solid, meshes
+  made solid included). `radius` is the one knob: small hugs, 15-40 bridges
+  between parts and still dips between masses, `"hull"` is the convex hull
+  an enclosure wants.
+- `part.panel(env, side=, max_angle=, within=, seams=, openings=, flange=,
+  frame=, screw=, screws=)` -- an open patch of it seen from one side,
+  B-spline-fitted, thickened, split at seams, a skirt hung to the frame,
+  openings round parts swept through their motion and sensor cones, and
+  bosses cast exactly onto the frame's BREP for one stocked screw, the screws
+  placed by `part.mate` onto the published fastener frames.
+  `docs/XSCRIPT.md` has the whole contract.
 - `lib.housing(qdd_or_servo)` wraps a drive's own envelope at a wall,
   seated on its own mounting face and screwed through its own holes; a link
-  is grown on with `.fuse(link)`.
-- `fit.shells` measures every declared shell on the real solids: the
-  median gap from its inner face to what it covers (`floating` over 6 mm),
-  its wall estimate (`solid` over 4 mm) and what holds it (`unmounted`).
+  is grown on with `.fuse(link)`. Unchanged.
+- `fit.panels` measures every `role="panel"` component against the parts it
+  declares it `covers=` (not its colour, not its box): p10..max gap, egg
+  ratio, coverage, wall by rays, motion through the sweep, screws and their
+  spread, bed fit, seam gaps. A floating, colliding or unmounted panel fails
+  the fit.
 
 ```python
-skin = lib.panel([pack, board], axis=(1, 0, 0), mount_to=deck, span=(-74, 76),
-                 seams=[0.0], split="top_bottom")
-for name, body, screws in zip(skin.names, skin.parts, skin.screws_by_part):
-    ...  # one shell component per panel, welded to the deck; one per screw
+env   = part.envelope([pack, board], clearance=1.5, radius=20.0)
+cover = part.panel(env, side=(0, 0, 1), max_angle=70, seams=[((1, 0, 0), [0.0])],
+                   flange="frame", frame=deck, screw=lib.bolt("m2", 8), screws=3)
+deck  = part.cut(deck, cover.pilots)
 ```
 
-Measured on that trunk (deck, 2S pack, ESP32, an AK80-9 at each end, the
-rear one housed): fit passes on 325 pairs; the four panels' inner faces
-stand a median 2.5-4.7 mm off what they cover, each screwed into the deck
-with two M2s; the drum 0.5 mm. A hollow egg sized by eye over the same
-parts is `floating` at 31.3 mm and `unmounted`, while fit still passes --
-the gap the fit block could not see.
+Measured (`docs/probes/panels/`): over a 2S pack and an ESP32 on a deck, two
+pieces 1.4-1.8 mm off the parts with a 15 mm skirt to the deck and six M2s
+into it; a gantry enclosure of eight hull pieces, all passing; the
+leopard's two rear covers, keel cover and head cover passing after the check
+named the first draft's front cover through the neck drive and its head
+cover struck by the nodding neck link.
 
-**Still the cage's limit:** a ring is convex, so one panel over a tall
-narrow part on a wide deck stands off the deck's sides by the step
-between them (p90 9.6-10.5 mm on the trunk's top halves). Split it, or panel
-the deck and the part separately.
+**Limits, today:** a panel is a height field seen from one side, so a cover
+wraps at most to `max_angle` and its skirt is vertical; a form that must
+wrap further takes several panels meeting at a seam (`inset`), and side
+panels over a creature's hips need openings round each housing. Lap and
+tongue seam joints, draft and countersunk screws are not drawn.
 
 ### O2b — Swept-volume clearance — **closed (ADR-130)**
 
