@@ -1338,11 +1338,10 @@ class AssemblyDomainAPI:
         its internal joints and stable occurrence paths then participate in the
         parent solve. A flexible occurrence cannot be grounded.
         ``world=True`` marks environment geometry for an advisory fit failure.
-        ``appearance`` is the part's role in the design language: ``"shell"``
-        (printed outer forms), ``"mechanism"`` (joints, links and purchased
-        hardware that show) or ``"accent"`` (one saturated colour on a few
-        features). Undeclared, a purchased part draws as mechanism and a
-        printed one as shell. Appearance is colour only; ``role`` is what the
+        ``appearance`` is colour only: ``"shell"`` (outer forms),
+        ``"mechanism"`` (joints, links, hardware that shows) or ``"accent"``
+        (one saturated colour on a few features); undeclared, a purchased part
+        draws as mechanism and a printed one as shell. ``role`` is what the
         part is: ``"panel"``, ``"frame"``, ``"link"``, ``"housing"`` or
         ``"hardware"``. A ``role="panel"`` component names the components it
         covers, ``covers=[...]`` (declared before it), and ``fit.panels``

@@ -2546,7 +2546,7 @@ def _capability_api_listing() -> dict[str, dict[str, Any]]:
         "'capsule' primitives placed with offset=, 'plane' for ground, or "
         "'mesh' for the component's own shape. A plane's surface passes "
         "through the component origin facing local +Z, so a floor needs no "
-        "offset (size_mm: see assembly.collision). Prefer it for ground. "
+        "offset. "
         "Prefer primitives: MuJoCo collides with the "
         "convex hull of any mesh, so 'mesh' refuses a concave part and names "
         "its volume error, and 'hull' is how a script accepts that hull "
