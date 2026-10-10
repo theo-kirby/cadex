@@ -178,11 +178,11 @@ def test_a_box_fills_its_own_voxels_and_no_others():
 
 def test_a_field_is_bounded_before_it_is_allocated(monkeypatch):
     # The grid coarsens to MAX_VOXELS rather than allocating a fine one...
-    grid = envelope_worker._grid_for([0, 0, 0], [3000, 3000, 3000], None, 10.0)
+    grid = envelope_worker._grid_for([0, 0, 0], [700, 700, 700], None, 10.0)
     assert grid.dims[0] * grid.dims[1] * grid.dims[2] <= envelope_worker.MAX_VOXELS
     # ...an explicit fine voxel over a huge part is refused, not allocated...
     with pytest.raises(envelope_worker.EnvelopeError, match="more than one field holds"):
-        envelope_worker._grid_for([0, 0, 0], [30000, 30000, 30000], None, 10.0)
+        envelope_worker._grid_for([0, 0, 0], [3000, 3000, 3000], None, 10.0)
     # ...a triangle is expanded onto its columns in bounded batches, and one
     # whose columns alone pass the budget is refused by name...
     monkeypatch.setattr(envelope_worker, "PAIR_BUDGET", 50)

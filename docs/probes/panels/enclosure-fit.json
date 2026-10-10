@@ -1,0 +1,401 @@
+{
+ "verdict": "pass",
+ "failing_count": 0,
+ "failing": [],
+ "sweep_verdict": "pass",
+ "panels": {
+  "verdict": "pass",
+  "source": "engine measurements of the accepted revision (inspect scope=clearance path=/panels, /pairs, /clearance_sweep and /components): for every component declared role=\"panel\", its inner face's distance to the components its covers= names (and what it is welded to) at about 400 points, its wall read by rays, the share of what it covers that it hides, its pair rows at rest and through each swept joint, and the bolts and fixed joints that hold it. Appearance is colour only and is never judged. Not the script's stdout.",
+  "thresholds": {
+   "floating_gap_mm": 8.0,
+   "floating_slack_mm": 2.0,
+   "solid_wall_mm": 4.0,
+   "thin_wall_mm": 1.0,
+   "egg_ratio": 2.5,
+   "motion_clearance_mm": 0.5,
+   "max_span_mm": 150.0,
+   "bed_mm": [
+    256.0,
+    256.0,
+    256.0
+   ],
+   "contact_mm": 0.5,
+   "thread_engagement_mm3": 0.1
+  },
+  "panel_count": 8,
+  "failing_count": 0,
+  "reported_count": 0,
+  "failing": [],
+  "reported": [],
+  "fitted": [
+   {
+    "component": "c_lid_p0",
+    "findings": [],
+    "grown": {
+     "group": "4a79a2c31427",
+     "piece": "p0",
+     "clearance_mm": 1.5,
+     "hull": true,
+     "radius_mm": null,
+     "thickness_mm": 1.5
+    },
+    "floating_at_mm": null,
+    "covers": [
+     "c_frame",
+     "c_gantry",
+     "c_head"
+    ],
+    "gap_p10_mm": 1.5,
+    "gap_median_mm": 15.392,
+    "gap_p90_mm": 57.5,
+    "gap_max_mm": 57.5,
+    "hug_fraction": 0.223,
+    "inner_samples": 197,
+    "egg_ratio": 1.529,
+    "coverage": 0.225,
+    "wall_p10_mm": 1.499,
+    "wall_median_mm": 1.499,
+    "wall_p90_mm": 1.499,
+    "size_mm": [
+     119.71,
+     240.0,
+     3.0
+    ],
+    "mounted": "screws",
+    "screws": [
+     "c_lid_screw_0",
+     "c_lid_screw_1",
+     "c_lid_screw_2"
+    ],
+    "held_by": [
+     "c_frame"
+    ],
+    "farthest_from_fastener_mm": 131.5,
+    "seam_gap_mm": 0.6,
+    "failing": false
+   },
+   {
+    "component": "c_lid_p1",
+    "findings": [],
+    "grown": {
+     "group": "4a79a2c31427",
+     "piece": "p1",
+     "clearance_mm": 1.5,
+     "hull": true,
+     "radius_mm": null,
+     "thickness_mm": 1.5
+    },
+    "floating_at_mm": null,
+    "covers": [
+     "c_frame",
+     "c_gantry",
+     "c_head"
+    ],
+    "gap_p10_mm": 1.5,
+    "gap_median_mm": 9.724,
+    "gap_p90_mm": 57.5,
+    "gap_max_mm": 58.5,
+    "hug_fraction": 0.241,
+    "inner_samples": 199,
+    "egg_ratio": 1.537,
+    "coverage": 0.227,
+    "wall_p10_mm": 1.499,
+    "wall_median_mm": 1.499,
+    "wall_p90_mm": 1.499,
+    "size_mm": [
+     119.72,
+     240.02,
+     3.01
+    ],
+    "mounted": "screws",
+    "screws": [
+     "c_lid_screw_3",
+     "c_lid_screw_4",
+     "c_lid_screw_5"
+    ],
+    "held_by": [
+     "c_frame"
+    ],
+    "farthest_from_fastener_mm": 107.1,
+    "seam_gap_mm": 0.6,
+    "failing": false
+   },
+   {
+    "component": "c_left_p0",
+    "findings": [],
+    "grown": {
+     "group": "40355bfb3888",
+     "piece": "p0",
+     "clearance_mm": 1.5,
+     "hull": true,
+     "radius_mm": null,
+     "thickness_mm": 1.5
+    },
+    "floating_at_mm": null,
+    "covers": [
+     "c_frame",
+     "c_gantry",
+     "c_head"
+    ],
+    "gap_p10_mm": 1.5,
+    "gap_median_mm": 23.323,
+    "gap_p90_mm": 47.459,
+    "gap_max_mm": 67.675,
+    "hug_fraction": 0.221,
+    "inner_samples": 199,
+    "egg_ratio": 1.432,
+    "coverage": 0.122,
+    "wall_p10_mm": 1.499,
+    "wall_median_mm": 1.499,
+    "wall_p90_mm": 1.499,
+    "size_mm": [
+     3.01,
+     119.72,
+     220.91
+    ],
+    "mounted": "screws",
+    "screws": [
+     "c_left_screw_0",
+     "c_left_screw_1",
+     "c_left_screw_2"
+    ],
+    "held_by": [
+     "c_frame"
+    ],
+    "farthest_from_fastener_mm": 105.5,
+    "seam_gap_mm": 0.6,
+    "failing": false
+   },
+   {
+    "component": "c_left_p1",
+    "findings": [],
+    "grown": {
+     "group": "40355bfb3888",
+     "piece": "p1",
+     "clearance_mm": 1.5,
+     "hull": true,
+     "radius_mm": null,
+     "thickness_mm": 1.5
+    },
+    "floating_at_mm": null,
+    "covers": [
+     "c_frame",
+     "c_gantry",
+     "c_head"
+    ],
+    "gap_p10_mm": 1.5,
+    "gap_median_mm": 21.5,
+    "gap_p90_mm": 47.469,
+    "gap_max_mm": 47.469,
+    "hug_fraction": 0.204,
+    "inner_samples": 201,
+    "egg_ratio": 1.432,
+    "coverage": 0.128,
+    "wall_p10_mm": 1.499,
+    "wall_median_mm": 1.499,
+    "wall_p90_mm": 1.499,
+    "size_mm": [
+     3.02,
+     119.73,
+     220.9
+    ],
+    "mounted": "screws",
+    "screws": [
+     "c_left_screw_3",
+     "c_left_screw_4",
+     "c_left_screw_5"
+    ],
+    "held_by": [
+     "c_frame"
+    ],
+    "farthest_from_fastener_mm": 105.5,
+    "seam_gap_mm": 0.6,
+    "failing": false
+   },
+   {
+    "component": "c_right_p0",
+    "findings": [],
+    "grown": {
+     "group": "9614dac41a4c",
+     "piece": "p0",
+     "clearance_mm": 1.5,
+     "hull": true,
+     "radius_mm": null,
+     "thickness_mm": 1.5
+    },
+    "floating_at_mm": null,
+    "covers": [
+     "c_frame",
+     "c_gantry",
+     "c_head"
+    ],
+    "gap_p10_mm": 1.5,
+    "gap_median_mm": 21.5,
+    "gap_p90_mm": 47.469,
+    "gap_max_mm": 67.84,
+    "hug_fraction": 0.201,
+    "inner_samples": 199,
+    "egg_ratio": 1.42,
+    "coverage": 0.128,
+    "wall_p10_mm": 1.499,
+    "wall_median_mm": 1.499,
+    "wall_p90_mm": 1.499,
+    "size_mm": [
+     3.02,
+     119.73,
+     220.9
+    ],
+    "mounted": "screws",
+    "screws": [
+     "c_right_screw_0",
+     "c_right_screw_1",
+     "c_right_screw_2"
+    ],
+    "held_by": [
+     "c_frame"
+    ],
+    "farthest_from_fastener_mm": 105.5,
+    "seam_gap_mm": 0.6,
+    "failing": false
+   },
+   {
+    "component": "c_right_p1",
+    "findings": [],
+    "grown": {
+     "group": "9614dac41a4c",
+     "piece": "p1",
+     "clearance_mm": 1.5,
+     "hull": true,
+     "radius_mm": null,
+     "thickness_mm": 1.5
+    },
+    "floating_at_mm": null,
+    "covers": [
+     "c_frame",
+     "c_gantry",
+     "c_head"
+    ],
+    "gap_p10_mm": 1.5,
+    "gap_median_mm": 23.323,
+    "gap_p90_mm": 47.448,
+    "gap_max_mm": 47.448,
+    "hug_fraction": 0.222,
+    "inner_samples": 198,
+    "egg_ratio": 1.407,
+    "coverage": 0.134,
+    "wall_p10_mm": 1.499,
+    "wall_median_mm": 1.499,
+    "wall_p90_mm": 1.499,
+    "size_mm": [
+     3.01,
+     119.72,
+     220.91
+    ],
+    "mounted": "screws",
+    "screws": [
+     "c_right_screw_3",
+     "c_right_screw_4",
+     "c_right_screw_5"
+    ],
+    "held_by": [
+     "c_frame"
+    ],
+    "farthest_from_fastener_mm": 105.5,
+    "seam_gap_mm": 0.6,
+    "failing": false
+   },
+   {
+    "component": "c_back_p0",
+    "findings": [],
+    "grown": {
+     "group": "6c8d680274d8",
+     "piece": "p0",
+     "clearance_mm": 1.5,
+     "hull": true,
+     "radius_mm": null,
+     "thickness_mm": 1.5
+    },
+    "floating_at_mm": null,
+    "covers": [
+     "c_frame",
+     "c_gantry",
+     "c_head"
+    ],
+    "gap_p10_mm": 1.5,
+    "gap_median_mm": 26.526,
+    "gap_p90_mm": 84.307,
+    "gap_max_mm": 84.307,
+    "hug_fraction": 0.236,
+    "inner_samples": 199,
+    "egg_ratio": 1.601,
+    "coverage": 0.19,
+    "wall_p10_mm": 1.499,
+    "wall_median_mm": 1.499,
+    "wall_p90_mm": 1.499,
+    "size_mm": [
+     119.71,
+     3.01,
+     220.9
+    ],
+    "mounted": "screws",
+    "screws": [
+     "c_back_screw_0",
+     "c_back_screw_1",
+     "c_back_screw_2"
+    ],
+    "held_by": [
+     "c_frame"
+    ],
+    "farthest_from_fastener_mm": 100.4,
+    "seam_gap_mm": 0.6,
+    "failing": false
+   },
+   {
+    "component": "c_back_p1",
+    "findings": [],
+    "grown": {
+     "group": "6c8d680274d8",
+     "piece": "p1",
+     "clearance_mm": 1.5,
+     "hull": true,
+     "radius_mm": null,
+     "thickness_mm": 1.5
+    },
+    "floating_at_mm": null,
+    "covers": [
+     "c_frame",
+     "c_gantry",
+     "c_head"
+    ],
+    "gap_p10_mm": 1.5,
+    "gap_median_mm": 21.359,
+    "gap_p90_mm": 84.285,
+    "gap_max_mm": 84.285,
+    "hug_fraction": 0.231,
+    "inner_samples": 199,
+    "egg_ratio": 1.582,
+    "coverage": 0.187,
+    "wall_p10_mm": 1.499,
+    "wall_median_mm": 1.499,
+    "wall_p90_mm": 1.499,
+    "size_mm": [
+     119.71,
+     3.01,
+     220.9
+    ],
+    "mounted": "screws",
+    "screws": [
+     "c_back_screw_3",
+     "c_back_screw_4",
+     "c_back_screw_5"
+    ],
+    "held_by": [
+     "c_frame"
+    ],
+    "farthest_from_fastener_mm": 100.4,
+    "seam_gap_mm": 0.6,
+    "failing": false
+   }
+  ]
+ }
+}

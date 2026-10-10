@@ -688,10 +688,10 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
     # -- openings ------------------------------------------------------------
     outer_face = filled + thickness * np.sqrt(1.0 + gx * gx + gy * gy)
     open_mask = np.zeros_like(region)
-    openings_facts = []
+    openings_facts, keepouts = [], []
     for entry in spec.get("openings") or []:
         hole = _opening_mask(entry, X, Y, filled, outer_face, R, grid, h, shape_sets, poses,
-                             local, occupancy, closed_distance)
+                             local, occupancy, closed_distance, keepouts)
         openings_facts.append(int(hole.sum()))
         open_mask |= hole
     region &= ~open_mask
@@ -716,7 +716,7 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
     i0, i1 = max(rows[0] - margin, 0), min(rows[-1] + margin, nx - 1)
     j0, j1 = max(cols[0] - margin, 0), min(cols[-1] + margin, ny - 1)
     surface_z = _smooth_cover(filled, region, h, radius)
-    stride = max(1, int(math.ceil(max(i1 - i0, j1 - j0) / 70.0)))
+    stride = max(1, int(math.ceil(max(i1 - i0, j1 - j0) / 40.0)))
     sub_i = list(range(i0, i1 + 1, stride))
     sub_j = list(range(j0, j1 + 1, stride))
     if sub_i[-1] != i1:
@@ -739,7 +739,7 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
     top = float(np.nanmax(outer_face[region])) + 5.0
     bottom = float(np.nanmin(filled[region])) - 5.0
     loops = contour_loops(phi, float(xs[0]), float(ys[0]), h)
-    spacing = max(3.0 * h, 3.0)
+    spacing = max(4.0 * h, 4.0)
     # With a skirt the panel overhangs its own outline by the skirt's wall, so
     # the skirt's top runs inside the panel's wall: a lid over its walls, one
     # solid without any face of one lying on a face of the other.
@@ -797,6 +797,9 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
         under = frame_occ & (zc[None, None, :] < surface_z[..., None])
         top_k = np.where(under, np.arange(nz)[None, None, :], -1).max(axis=2)
         frame_z = np.where(top_k >= 0, grid.origin[2] + (top_k + 1.0) * h, np.nan)
+        # A skirt runs beside the frame, never into it: the frame keeps it out too.
+        if frame_occ.any():
+            keepouts.append((ndimage.distance_transform_edt(~frame_occ) * h - 0.5 * h, 0.3))
         # How close each column, from the frame up to the panel, passes the
         # covered parts that are not the frame: a boss there must clear them.
         occ_free = np.zeros(grid.dims, dtype=bool)
@@ -812,17 +815,19 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
     flange = spec.get("flange")
     flange_facts = None
     skirted = False
+    bare_local = body_local
     if flange:
         depth = BOSS_REACH_MM if flange == "frame" else float(flange)
         if flange == "frame" and frame_z is None:
             raise EnvelopeError('flange="frame" needs frame=: the part the skirt comes down to')
-        # The wall's top is tucked under the panel's rim by the least that
-        # makes the two one solid: the less it tucks, the less it eats into
-        # the clearance at the rim.
+        # The wall's top is tucked under the panel's overhang by the least that
+        # joins the two: the more it tucks, the more it eats into the clearance at
+        # the rim; each failed attempt costs one more B-spline fuse (seconds).
         for tuck in (0.0, 0.5, 1.0):
             walls, facts_now = _skirt(planar, surface_z, outer_s,
                                       frame_z if flange == "frame" else None, field, xs, ys,
                                       grid, clearance, thickness, depth, App, Part, np,
+                                      keepouts=keepouts,
                                       tuck=tuck)
             walls = [wall for wall in walls if _wall_sane(wall)]
             flange_facts = facts_now
@@ -834,28 +839,40 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
                     fused.BoundBox.DiagonalLength <= _SANE_DIAGONAL[0]:
                 body_local = _refined(fused)
                 skirted = True
+                flange_facts = [dict(row, tuck_mm=tuck) for row in flange_facts]
                 break
         else:
             flange_facts = (flange_facts or []) + [
                 {"depth_mm": 0.0, "reason": "the skirt did not join the panel; it is left off"}]
-    body = body_local.copy()
-    body.transformShape(to_world, False, False)
-    # -- seams ----------------------------------------------------------------
-    pieces = _split(body, spec.get("seams") or [], float(spec.get("seam_gap") or 0.6),
-                    App, Part)
-    # -- mounts ------------------------------------------------------------------
-    fasteners: dict[str, list] = {name: [] for name in pieces}
-    pilots = []
     screw = spec.get("screw")
     per_piece = int(spec.get("screws") or 0)
-    if frame_shape is not None and screw is not None and per_piece > 0:
-        blockers = [tris for tris, is_frame in zip(covered_world, covered_is_frame)
-                    if not is_frame]
-        fasteners, pilots, pieces = _mount(
-            pieces, frame_shape, screw, per_piece, phi, surface_z, outer_s, frame_z,
-            column_room, skirted, xs, ys, R, s, h, spec,
-            np.concatenate(blockers) if blockers else None, App, Part, np, ndimage,
-            taken=_taken_screws(spec, plan_of))
+    blockers = [tris for tris, is_frame in zip(covered_world, covered_is_frame) if not is_frame]
+
+    def cut_and_mount(local_body, with_skirt):
+        body = local_body.copy()
+        body.transformShape(to_world, False, False)
+        # -- seams ------------------------------------------------------------
+        pieces = _split(body, spec.get("seams") or [], float(spec.get("seam_gap") or 0.6),
+                        App, Part)
+        # -- mounts -----------------------------------------------------------
+        if frame_shape is None or screw is None or per_piece <= 0:
+            return {name: [] for name in pieces}, [], pieces
+        return _mount(pieces, frame_shape, screw, per_piece, phi, surface_z, outer_s, frame_z,
+                      column_room, with_skirt, xs, ys, R, s, h, spec,
+                      np.concatenate(blockers) if blockers else None, App, Part, np, ndimage,
+                      taken=_taken_screws(spec, plan_of))
+
+    try:
+        fasteners, pilots, pieces = cut_and_mount(body_local, skirted)
+    except EnvelopeError as exc:
+        # A skirt the fuse accepted can still be refused by the next boolean;
+        # the panel is drawn without it rather than not at all, and says so.
+        if not skirted or "kernel refused" not in str(exc):
+            raise
+        fasteners, pilots, pieces = cut_and_mount(bare_local, False)
+        flange_facts = (flange_facts or []) + [
+            {"depth_mm": 0.0, "reason": "the skirt was refused by the seam or boss booleans; "
+                                        "it is left off"}]
     max_piece = spec.get("max_piece")
     if max_piece is not None:
         bed = sorted(float(v) for v in max_piece)
@@ -986,7 +1003,7 @@ def _plane_wire(loop, z, spacing, App, Part):
 
 
 def _opening_mask(entry, X, Y, inner, outer, R, grid, h, shape_sets, poses, local,
-                  occupancy_fn, distance_fn):
+                  occupancy_fn, distance_fn, keepouts=None):
     """The columns an opening takes out: where its keep-out meets the panel."""
 
     import numpy as np
@@ -1027,6 +1044,8 @@ def _opening_mask(entry, X, Y, inner, outer, R, grid, h, shape_sets, poses, loca
         k = np.clip(np.floor((z - grid.origin[2]) / h - 0.5).astype(int), 0, nz - 1)
         near = np.take_along_axis(reach, k[..., None], axis=2)[..., 0]
         mask |= near <= keep_out
+    if keepouts is not None:
+        keepouts.append((reach, keep_out))
     return mask
 
 
@@ -1042,7 +1061,7 @@ def _sample2d(values, xs, ys, x, y):
 
 
 def _skirt(planar, surface_z, outer_s, frame_z, field, xs, ys, grid, clearance, thickness,
-           depth, App, Part, np, tuck=0.6):
+           depth, App, Part, np, tuck=0.6, keepouts=()):
     """A wall round each outline, hanging from the panel down to the frame.
 
     The skirt is the panel's return edge: ``thickness`` thick just outside
@@ -1058,7 +1077,7 @@ def _skirt(planar, surface_z, outer_s, frame_z, field, xs, ys, grid, clearance, 
     from scipy import ndimage
 
     h = grid.h
-    spacing = max(3.0 * h, 3.0)
+    spacing = max(4.0 * h, 4.0)
     walls, facts = [], []
     for outer, _holes in planar:
         pts = _loop_points(outer, spacing)
@@ -1097,6 +1116,10 @@ def _skirt(planar, surface_z, outer_s, frame_z, field, xs, ys, grid, clearance, 
             ((zs - grid.origin[2]) / h - 0.5).ravel()])
         f = ndimage.map_coordinates(field, coords, order=1, mode="nearest").reshape(zs.shape)
         bad = f < clearance - 0.25 * h
+        # ...and never into what an opening keeps out (a part swept past the rim).
+        for reach, keep_out in keepouts:
+            near = ndimage.map_coordinates(reach, coords, order=1, mode="nearest")
+            bad |= near.reshape(zs.shape) <= keep_out
         first_bad = np.where(bad.any(axis=1), np.argmax(bad, axis=1), len(steps) - 1)
         allowed = steps[np.maximum(first_bad - 1, 0)]
         bottom = rim - np.minimum(allowed, depth)
@@ -1106,7 +1129,8 @@ def _skirt(planar, surface_z, outer_s, frame_z, field, xs, ys, grid, clearance, 
             if not seated.any():
                 facts.append({"depth_mm": 0.0, "reason": "no frame under the outline"})
                 continue
-            bottom = np.maximum(bottom, np.where(seated, under + 0.2, bottom))
+            # A voxel's top is the frame's face to within half a cell: stand clear of it.
+            bottom = np.maximum(bottom, np.where(seated, under + 0.5 * h + 0.2, bottom))
             # Where the outline runs past the frame, carry the hem on from
             # the nearest points that sit on it, round the loop.
             if not seated.all():
@@ -1172,7 +1196,12 @@ def _split(body, seams, gap, App, Part):
             slab = Part.makeBox(2 * reach, 2 * reach, hi - lo, App.Vector(-reach, -reach, lo))
             slab.Placement = App.Placement(centre - n * here,
                                            App.Rotation(App.Vector(0, 0, 1), n))
-            piece = piece.common(slab)
+            try:
+                piece = piece.common(slab)
+            except Exception as exc:
+                raise EnvelopeError(
+                    f"piece {name}: the kernel refused the seam cut "
+                    f"({str(exc).splitlines()[0]}); move the seam a few mm or drop flange=") from None
         name = f"p{index}"
         if not piece.Solids:
             raise EnvelopeError(
@@ -1348,7 +1377,13 @@ def _mount(pieces, frame, screw, per_piece, phi, inner, outer, frame_z, column_r
                 "engagement_mm": round(engagement, 2),
                 "kind": "lug" if phi[site[3], site[4]] < boss_r else "boss",
             })
-        grown = solid.fuse(bosses).cut(holes)
+        try:
+            grown = solid.fuse(bosses).cut(holes)
+        except Exception as exc:
+            raise EnvelopeError(
+                f"piece {name}: the kernel refused the bosses ({str(exc).splitlines()[0]}); "
+                "a skirt that only just meets the panel is the usual cause: drop flange= or "
+                "move the screws") from None
         solids = list(grown.Solids)
         if len(solids) != 1:
             raise EnvelopeError(f"piece {name}: the bosses did not fuse into one solid")
