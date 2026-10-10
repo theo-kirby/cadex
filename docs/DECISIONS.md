@@ -39225,3 +39225,13 @@ left for when they have landed.
 surface is unchanged.
 
 Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-647 — The mounting check knows the machine parts' families (2026-10-10)
+
+**Context.** `lib.part` (ADR-646) tags each part with its `CadexParts.json` family (`extrusions`, `extrusion_hardware`, `steppers`, `spindles`, `belt_pulleys`, `tyres`, ...). The mounting check knew none of them, so a rail bolted through a T-nut into extrusion read "held by nothing".
+
+**Decision.** Extrusion is structure that holds, as a printed part does (`STRUCTURAL_FAMILIES`); `extrusion_hardware` takes a bolt's thread; steppers and spindles are drives; pulleys and hubbed tyres are drive outputs. **Open:** a pulley on a stepper's shaft still reads "held by nothing" in the unit fixture, which is not yet diagnosed. The base guidance's motion-parts placeholder (ADR-654) is replaced by the real paragraph in the same change.
+
+**Tests.** `test_mounting_check.py` (the T-nut case); `test_agent_guidance.py`. The full suites were not run on this commit.
+
+Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).

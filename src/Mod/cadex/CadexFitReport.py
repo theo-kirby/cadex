@@ -63,7 +63,7 @@ def thread_allowances(value: Any) -> dict[frozenset, float]:
 
     printed = [str(r["component"]) for r in rows
                if not r.get("catalog") and not r.get("catalog_derived_from")
-               or catalog(r).get("family") in PRINTED_FAMILIES]
+               or catalog(r).get("family") in HOLDER_FAMILIES]
     allowances: dict[frozenset, float] = {}
     for row in rows:
         if row.get("catalog_derived_from") or catalog(row).get("family") != "bolt":
@@ -632,11 +632,15 @@ FASTENER_FAMILIES = frozenset({"bolt", "nut", "washer", "heat_insert"})
 #: Catalogued shapes that are printed, not bought: they hold, like any
 #: printed part.
 PRINTED_FAMILIES = frozenset({"gear", "rack", "rack_and_pinion"})
+#: Bought structure that holds what is screwed to it, as a printed part
+#: does: aluminium extrusion, with T-nuts in its slots (ADR-647).
+STRUCTURAL_FAMILIES = frozenset({"extrusions"})
+HOLDER_FAMILIES = PRINTED_FAMILIES | STRUCTURAL_FAMILIES
 #: Held by being pressed into a printed bore.
 PRESS_FIT_FAMILIES = frozenset({"bearing", "bushing", "joint"})
 #: Held on the output of a drive, which must itself be held.
-OUTPUT_FAMILIES = frozenset({"servo_horn", "wheel"})
-DRIVE_FAMILIES = frozenset({"servo", "gearmotor", "bldc", "qdd"})
+OUTPUT_FAMILIES = frozenset({"servo_horn", "wheel", "belt_pulleys", "tyres"})
+DRIVE_FAMILIES = frozenset({"servo", "gearmotor", "bldc", "qdd", "steppers", "spindles"})
 #: Held on the rim of a wheel, which must itself be held (ADR-489).
 RIM_FAMILIES = frozenset({"tyre"})
 RIM_HOLDERS = frozenset({"wheel"})
@@ -651,7 +655,7 @@ MOUNT_CONTACT_MM = 0.5
 #: thread -- far above the kernel's noise, far below any real engagement.
 THREAD_ENGAGEMENT_MM3 = 0.1
 #: What a bolt may thread into besides a printed part or the held part.
-THREADED_FAMILIES = frozenset({"nut", "heat_insert"})
+THREADED_FAMILIES = frozenset({"nut", "heat_insert", "extrusion_hardware"})
 MOUNT_AXIS_RADIUS_MM = 0.5
 MOUNT_AXIS_ANGLE_DEGREES = 5.0
 
@@ -839,7 +843,7 @@ def mounting_summary(value: Any) -> dict[str, Any]:
 
     printed = {str(r["component"]) for r in rows
                if not r.get("catalog") and not r.get("catalog_derived_from")
-               or family(r) in PRINTED_FAMILIES}
+               or family(r) in HOLDER_FAMILIES}
     bolts = {str(r["component"]): r for r in rows if family(r) == "bolt"}
     purchased = [r for r in rows if str(r["component"]) not in printed
                  and family(r) not in FASTENER_FAMILIES]

@@ -909,3 +909,23 @@ def test_a_qdd_on_its_own_mounting_is_held_and_its_output_screws_turn_on_the_rea
     raw = [row for joint in value["clearance_sweep"]["joints"] for row in joint["pairs"]
            if frozenset((row["first"], row["second"])) in turning]
     assert len(raw) == 3 and all(row["maximum_common_volume_mm3"] > 1.0 for row in raw), raw
+
+
+def test_a_rail_bolted_through_a_t_nut_into_extrusion_holds():
+    # ADR-647: extrusion holds like a printed part and a T-nut takes the thread.
+    # (A pulley on a stepper's shaft still reads 'held by nothing': open.)
+    value = {"components": [
+        _row("beam", "extrusions", "2020"),
+        _row("rail", "linear_rails", "MGNR12", axes=[((10.0, 0.0, 0.0), (0, 0, 1))]),
+        _row("bolt0", "bolt", "m3x8-socket", axes=[((10.0, 0.0, 1.0), (0, 0, 1))]),
+        _row("tnut0", "extrusion_hardware", "t-nut-m3"),
+        _row("motor", "steppers", "nema17-48", bounds=((0, 0, 0), (42, 42, 48))),
+        _row("pulley", "belt_pulleys", "gt2-20t-5"),
+    ], "pairs": [
+        _pair("beam", "rail", 0.0), _pair("bolt0", "rail", 0.0),
+        _pair("bolt0", "beam", 0.0), _pair("bolt0", "tnut0", 0.0, 1.5),
+        _pair("motor", "pulley", 0.0),
+    ]}
+    held = _by_component(mounting_summary(value))
+    assert (held["rail"]["status"], held["rail"]["by"]) == ("held", "screws")
+    assert "beam" not in held

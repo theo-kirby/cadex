@@ -37,7 +37,7 @@ BASE_WORD_BUDGET = 2700
 PROVISIONAL_WORD_BUDGET = 600
 #: The placeholder each parallel line of work replaces, and the paragraph
 #: that follows it (ADR-654).
-PLACEHOLDERS_FOR = {'panels': 'COVERS AND PANELS.', 'motion parts': 'MOTION PARTS.'}
+PLACEHOLDERS_FOR = {'panels': 'COVERS AND PANELS.'}
 #: How a project's name reads: the reference and probe projects, the run
 #: families' scratch copies, the ot5-ot11 fixtures. No guidance text names one.
 PROJECT_NAME = (r'biped-sts|biped-mg90|quad-qdd|mg-legs|\bhex\d|\bot\d+\b|\borun\d|'
@@ -128,9 +128,19 @@ def test_the_base_leaves_a_marked_placeholder_for_each_parallel_line_of_work():
         (at,) = [i for i, line in enumerate(lines) if line.startswith(f'<!-- placeholder: {name}.')]
         assert lines[at + 1].startswith(paragraph), name
         assert 'describe_api' in lines[at + 1], name
-    for unbuilt in ('fit.panels', 'covers=', 'part.envelope', 'part.panel(', 'rack_pinion',
-                    'lib.rail', 'lib.belt', 'lib.stepper', 'lib.leadscrew', 'assembly.tool('):
+    for unbuilt in ('fit.panels', 'covers=', 'part.envelope', 'part.panel('):
         assert unbuilt not in _body(), unbuilt
+
+
+def test_the_motion_parts_paragraph_teaches_the_machine_joints_and_parts():
+    # ADR-640..646 landed, so the motion-parts placeholder is replaced (ADR-656).
+    body = _body()
+    assert '<!-- placeholder: motion parts' not in body
+    (paragraph,) = [line for line in body.splitlines() if line.startswith('MOTION PARTS.')]
+    for name in ('lib.part(sku', 'section=library_parts', '`screw` joint', '`rack_pinion` joint',
+                 'assembly.coupling(', 'kind="cylinder"', 'assembly.joint_dynamics',
+                 'assembly.tool(', '`workspace` block', 'stand-in'):
+        assert name in paragraph, name
 
 
 def test_there_is_a_printed_legged_robot_style_and_every_style_is_well_formed():
