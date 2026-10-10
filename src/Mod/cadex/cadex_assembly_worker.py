@@ -7641,8 +7641,14 @@ def validate_and_solve_assembly(
     artifact_root: Path | None = None,
     *,
     skip_derived: bool = False,
+    skip_fit: bool = False,
 ) -> dict[str, Any]:
     """Build, solve, and annotate one exact native assembly candidate.
+
+    ``skip_fit`` drops only the static and swept fit and the shell gaps, for
+    a restore that proves the accepted digest (ADR-630): none of them is
+    digest material, and the replay is never the attempt a read is served
+    from, so measuring them there was the most expensive part of an open.
 
     ``skip_derived`` drops the simulation trace and the exploded views after
     validating their contracts, and the static and swept fit (ADR-527), and
@@ -8146,7 +8152,7 @@ def validate_and_solve_assembly(
                      **diagnostics},
         )
 
-    if skip_derived:
+    if skip_derived or skip_fit:
         # Fit is derived too, and advisory (_check_fit never refuses), so it
         # can neither move a solved placement nor decline a preview. It was
         # 0.72 s of a 0.77 s warm preview on the latency bar's part: exact

@@ -1049,6 +1049,9 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
                 dict(grouped["assembly"]),
                 assembly_outputs,
                 root,
+                # A restore's digest proof (ADR-630): the fit is not digest
+                # material and the replay is not the attempt reads serve.
+                skip_fit=request.get("measure_fit") is False,
             )
 
         # Digest first, display second: display artifacts are opt-in derived

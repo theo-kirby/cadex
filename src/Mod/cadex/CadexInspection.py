@@ -1223,7 +1223,58 @@ def _inventory_position(matrix: Any) -> list[float] | None:
         return None
 
 
+#: The last accepted report's joined inventory scopes (ADR-630): one entry,
+#: ``(file identity, {(kind, target): raw})``. A client reads a scope a page
+#: of 50 at a time, and every page re-parsed the attempt's ``result.json``
+#: and re-joined every pair: on ``castra-deinonychus`` (290 components,
+#: 41,905 pairs, a 65 MB report) one page cost over a second and the fit
+#: block alone is thousands of pages. The report is an attempt's immutable
+#: evidence, so its stat identity is its version; a new accepted attempt is
+#: a new file and a miss.
+_INVENTORY_MEMO: list[Any] = [None, {}]
+
+
+def _report_identity(path: Path) -> tuple[Any, ...] | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return (str(path), stat.st_ino, stat.st_size, stat.st_mtime_ns)
+
+
 def _complete_inventory(captured: Mapping[str, Any]) -> Any:
+    """One inventory-family scope, memoised on the accepted report (ADR-630).
+
+    The value is exactly :func:`_join_inventory`'s; only the second and later
+    pages of the same scope over the same report stop recomputing it. The
+    memo holds values the pager only reads, never mutates.
+    """
+
+    root = str(captured.get("project_root") or "")
+    if not root:
+        return _join_inventory(captured)
+    try:
+        from CadexPinResolution import accepted_attempt_dir
+        from CadexScriptStore import CadexProjectScriptStore
+
+        state = CadexProjectScriptStore(root).read_state()
+        identity = _report_identity(
+            accepted_attempt_dir(Path(root), state) / "result.json")
+    except Exception:
+        identity = None
+    if identity is None:
+        return _join_inventory(captured)
+    key = (str(captured.get("kind") or ""), str(captured.get("target") or ""),
+           str(state.get("accepted_revision") or ""))
+    if _INVENTORY_MEMO[0] != identity:
+        _INVENTORY_MEMO[0], _INVENTORY_MEMO[1] = identity, {}
+    memo = _INVENTORY_MEMO[1]
+    if key not in memo:
+        memo[key] = _join_inventory(captured)
+    return memo[key]
+
+
+def _join_inventory(captured: Mapping[str, Any]) -> Any:
     """The parts of the accepted assembly, with catalog ids (ADR-233).
 
     Everything here already existed and none of it was joined up. A
@@ -1466,8 +1517,27 @@ def _encoded_bytes(value: Any) -> int:
     )
 
 
+def _encodes_within(value: Any, limit: int) -> bool:
+    """``_encoded_bytes(value) <= limit``, without encoding past the limit.
+
+    A preview only asks whether a value is small. Encoding a 41,905-row pair
+    list in full to learn that it is not cost more than the page it sits on
+    (ADR-630). The chunks are the same encoder's, ASCII-only, so their
+    lengths are the bytes ``_encoded_bytes`` counts.
+    """
+
+    encoder = json.JSONEncoder(
+        ensure_ascii=True, sort_keys=True, separators=(",", ":"), default=str)
+    total = 0
+    for chunk in encoder.iterencode(value):
+        total += len(chunk)
+        if total > limit:
+            return False
+    return True
+
+
 def _preview(value: Any, pointer: str) -> Any:
-    if _encoded_bytes(value) <= _PREVIEW_BYTES:
+    if _encodes_within(value, _PREVIEW_BYTES):
         return value
     if isinstance(value, Mapping):
         return {"type": "object", "entry_count": len(value), "inspect_path": pointer}

@@ -38662,4 +38662,74 @@ payload-version and inherited-tree decisions.
 
 **Tests.** `pixi run test-engine`; `pixi run python -m pytest cli/tests`.
 
+## ADR-630 — Inspection pages are served from one join, and the restore pass measures no fit (2026-10-10)
+
+**Context.** The 2026-10-09 creature runs (`castra-deinonychus`, 290
+components, 41,905 pairs, a 65 MB accepted report; `castra-leopard`, 281
+and 39,340) saw `timed out awaiting tools/call after 300s` on
+`write_script`, then on the `inspect` and `look` that queued behind it, and
+a read-only status script (`open_project` with a 900 s budget, then the
+anatomy and fit reads) ran 36 minutes at full CPU before it was killed.
+Measured on copies (`docs/PERFORMANCE-AUDIT.md`): the worker build was
+58 s warm and 130-143 s cold, the restore 52 s warm and 133 s cold. The
+time went to **the bridge's fit read**: `read_fit` pages `inspect
+scope=clearance` 50 rows at a time, 5,942 pages here, and every page
+re-parsed the 65 MB `result.json` and re-joined all 41,905 pairs, about
+0.48 s a page — 48 minutes for one build reply. The `write_script` was
+accepted about 85 s in; the reply never came. Codex's 300 s tool timeout
+equalled the engine's default 300 s budget besides.
+
+**Decision.**
+1. **One join per accepted report.** `CadexInspection._complete_inventory`
+   memoises the joined inventory, clearance and anatomy values on the
+   accepted `result.json`'s stat identity (path, inode, size, mtime) and
+   the accepted revision, one report at a time. The pages are the same
+   bytes; a new accepted attempt is a new file and a miss. `_preview` asks
+   whether a value encodes within its 1 KiB with an encoder that stops at
+   the limit (`_encodes_within`) instead of encoding a 41,905-row list to
+   learn that it does not.
+2. **The restore pass measures no fit when its replay cannot be served.**
+   When the working revision is the accepted one and the pinned accepted
+   attempt's report is on disk, an identical acceptance keeps that attempt
+   pinned and a mismatch puts it back, so the replay's static fit, sweeps
+   and shell gaps were measured and discarded. `cadexd` passes
+   `measure_fit=False` to `run_project_lifecycle`, the request carries
+   `measure_fit: false` (not a recipe key, so ADR-476's comparison is
+   unchanged), and `validate_and_solve_assembly(skip_fit=True)` skips
+   exactly what the preview's `skip_derived` skips of the fit, nothing
+   else: exports, traces and policies, which are digest material, are
+   still built. Otherwise the fit is measured as before.
+3. **The client's tool timeout is documented against the engine budget.**
+   `docs/CLI.md` §2a says to give the client the engine budget plus a
+   minute; a build reply arrives after the worker run, the publication and
+   the reads.
+
+**Measured** (copies under the scratchpad; the 32-core box was shared,
+load 7-20). `castra-deinonychus` fit read: **~2,900 s → 12.2 s** (0.48 s →
+2 ms a page, same 5,942 pages, same verdict and 65 failing pairs);
+`castra-leopard` **~1,020 s → 5.8 s** (2,419 pages). Open (restore) with a
+cold fit cache: deinonychus **133 s → 43 s**, leopard 43 s. The status
+script's whole job — open, anatomy, fit — **>36 min (killed) → 57 s**.
+Worker builds are unchanged.
+
+**Tried and backed out.** 15 of the deinonychus's 21 joints and 16 of the
+leopard's 18 are never swept: `pair budget exceeded: 14784 moving pairs`
+counts every moving pair before the box cull, though only 21-34 per joint
+are near enough to measure. Counting after the cull swept them, but each
+complete joint republishes all 41,905 pairs: the cold build went 143 →
+270 s (the whole ADR-622 sweep budget), the next build swept 21/21 and
+wrote a **191 MB** report, and the fit read would be ~17,600 pages. It
+waits on publishing only the moving rows (`docs/PERFORMANCE-AUDIT.md` R1),
+a published-shape change for the owner.
+
+**Not taken.** The 50-row page and 32 KiB reply limits (protocol). The
+incremental solve in `setJointConnectors` (17-19 s of every build) changes
+solved placements and so digests.
+
+**Tests.** `cadex_tests/test_inspection_memo.py` (pages identical with and
+without the memo; one join per report; a rewritten report is re-read;
+`_encodes_within` agrees with `_encoded_bytes`),
+`cadex_tests/test_restore_measures_no_fit.py` (the flag is passed only when
+the pinned report exists and the working revision is the accepted one).
+
 Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).

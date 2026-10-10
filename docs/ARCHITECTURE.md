@@ -81,7 +81,8 @@ from `src/` (ADR-061).
   `pixi run cadexd` for a standalone instance. Serial dispatch, `CADEXD_BUSY` refusal for a second
   modeling request, mid-run `cancel`, stdin-EOF lifetime, fd-1 hijack so
   only protocol frames reach the parent. Hosts the persistent ephemeral
-  document and runs a digest-verified **restore pass** on every open.
+  document and runs a digest-verified **restore pass** on every open; the
+  pass measures no fit when the attempt it keeps pinned is on disk (ADR-630).
 - **Runtime** (`src/Mod/cadex/CadexScriptedRuntime.py`): the project
   lifecycle, engine-side. `run_project_lifecycle` (shared by cadexd and
   `cadex_rebuild`) captures bounded state (`capture_project_state`; budgets

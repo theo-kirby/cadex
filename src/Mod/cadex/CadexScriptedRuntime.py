@@ -1725,6 +1725,10 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         }
         if display_request is not None:
             request["display"] = display_request
+        if captured.get("measure_fit") is False:
+            # A restore proving the accepted digest (ADR-630). Not a recipe
+            # key, so the drift comparison reads this attempt as it did.
+            request["measure_fit"] = False
         _atomic_json(staging / "request.json", request)
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
@@ -2326,6 +2330,7 @@ def run_project_lifecycle(
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
     result_sink: dict[str, Any] | None = None,
     prune_artifacts: bool = True,
+    measure_fit: bool = True,
 ) -> dict[str, Any]:
     """One complete inline project lifecycle: capture → prepare → execute →
     validate → publish → accept.
@@ -2339,6 +2344,9 @@ def run_project_lifecycle(
     on success so the caller can reach staged artifacts (display buffers).
     A restore caller passes ``prune_artifacts=False`` and prunes only after
     settling the accepted pin: this acceptance is provisional until then.
+    It may also pass ``measure_fit=False`` (ADR-630): the worker then skips
+    the static and swept fit, which no digest covers, because the attempt
+    reads are served from stays the one the project already accepted.
     """
 
     from CadexScriptedDomainPublication import publish_project_candidate
@@ -2363,6 +2371,8 @@ def run_project_lifecycle(
     prepared = None
     try:
         captured = capture_project_state(service, tool_name, args)
+        if not measure_fit:
+            captured = {**captured, "measure_fit": False}
         prepared = prepare_project_candidate(captured)
         emit(
             {

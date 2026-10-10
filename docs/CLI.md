@@ -133,6 +133,18 @@ go after `--idle` seconds with no call (default 30, `0` to hold them until
 the client goes) and opens them again on the next call. So the agent's own
 `cadex render`, `export`, `section`, `train` or `walk` on the same project
 runs between bursts of tool calls, with `--wait`; the guidance tells it so.
+
+**The client's tool timeout must outlast the engine budget** (ADR-630). A
+build reply arrives after the worker run (bounded by the project's
+`timeout_seconds`, 300 s unless `cadex budgets` says otherwise), the
+publication, and the bridge's fit, inventory and anatomy reads. Codex
+gave up on `tools/call` after 300 s on the creature runs of 2026-10-09 —
+the same number as the engine's default budget, so a build that used its
+budget always timed out in the client first, and the next calls queued
+behind the bridge's lock timed out too. Give the client at least the
+engine budget plus a minute, e.g. `tool_timeout_sec = 420` under
+`[mcp_servers.cadex]`, and raise both together with `cadex budgets --set
+timeout_seconds=…`.
 A reopen costs one restore pass, the same as any `cadex params`.
 
 Each tool call prints one line on stderr (` · write_script  plate
@@ -2560,6 +2572,13 @@ If any later page cannot be read, the whole fit block is `unavailable` with
 the read error, rather than a verdict on the readable prefix. The successful
 build and its accepted revision still reach the agent. The paged build-reply
 fixture in `cli/tests/test_clearance.py` pins both outcomes.
+
+The read pages the whole `inspect scope=clearance` value, sweep rows
+included, 50 rows a page: 5,942 pages on `castra-deinonychus` (290
+components, 41,905 pairs). The engine joins the scope once per accepted
+report and serves later pages from that join (ADR-630); before, every page
+re-parsed the 65 MB report, about 0.48 s a page, 48 minutes for one reply's fit
+block. It is now 12 s.
 
 ### A build reply fits one tool result (ADR-435)
 

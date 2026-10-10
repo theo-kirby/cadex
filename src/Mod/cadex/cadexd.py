@@ -568,6 +568,25 @@ class CadexdServer:
             # Restore pass: re-run THE script into the fresh ephemeral
             # document and assert digest equality — every open re-proves
             # restart determinism and makes document/object inspect live.
+            #
+            # The proof measures no fit (ADR-630) when the replay cannot
+            # become the attempt reads are served from: the working script is
+            # the accepted one and that attempt's report is on disk, so an
+            # identical acceptance keeps it pinned and a mismatch puts it
+            # back. The fit is not digest material; on castra-deinonychus
+            # with a cold fit cache it was most of a 299 s open.
+            pinned = state.get("accepted_attempt")
+            pinned_report = (
+                root / str(pinned.get("staging") or "") / "result.json"
+                if isinstance(pinned, Mapping) and pinned.get("staging") else None
+            )
+            proof_only = bool(
+                pinned_report is not None
+                and pinned_report.is_file()
+                and str(state.get("working_revision") or "")
+                == str(state.get("accepted_revision") or "")
+            )
+
             def rerun(text: str) -> dict[str, Any]:
                 return self._run_lifecycle(
                     service,
@@ -583,6 +602,7 @@ class CadexdServer:
                         {"id": request_id, "event": event}
                     ),
                     prune_artifacts=False,
+                    measure_fit=not proof_only,
                 )
 
             payload = rerun(source)
