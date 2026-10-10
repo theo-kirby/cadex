@@ -869,18 +869,19 @@ def test_the_progress_line_says_what_the_welds_hold(attachments, phrase):
     assert _fit_line(fit) == 'fit pass: 0 failing of 105 pair(s)' + phrase
 
 
-@pytest.mark.parametrize('shells,phrase', [
+@pytest.mark.parametrize('panels,phrase', [
     (None, ''),
-    ({'shell_count': 0, 'reported_count': 0}, ''),
-    ({'shell_count': 5, 'reported_count': 1}, '  shells: 1 of 5 reported'),
+    ({'panel_count': 0, 'failing_count': 0, 'reported_count': 0}, ''),
+    ({'panel_count': 5, 'failing_count': 2, 'reported_count': 1},
+     '  panels: 2 of 5 failing, 1 reported'),
 ])
-def test_the_progress_line_says_how_many_shells_are_reported(shells, phrase):
-    """ADR-612: a floating, solid or unmounted shell is worth a phrase."""
+def test_the_progress_line_says_how_many_panels_fail(panels, phrase):
+    """ADR-636: a failing or reported panel is worth a phrase."""
 
     from cadex_cli.bridge import _fit_line
     fit = {'verdict': 'pass', 'failing_count': 0, 'pairs_checked': 105}
-    if shells is not None:
-        fit['shells'] = shells
+    if panels is not None:
+        fit['panels'] = panels
     assert _fit_line(fit) == 'fit pass: 0 failing of 105 pair(s)' + phrase
 
 
