@@ -508,6 +508,10 @@ def test_the_actuator_surface_is_exactly_this() -> None:
     addition. They narrow what a *policy* may command without narrowing the
     joint, and they are deliberately not a fifth control: the fallback
     formula is still required and still means the same thing.
+
+    ``bore_mm``, ``rod_mm`` and ``pressure_bar`` are the cylinder's (ADR-643):
+    a ``kind='cylinder'`` actuator is a position servo whose force range
+    they derive, so they add no control either.
     """
 
     parameters = inspect.signature(AssemblyDomainAPI.actuator).parameters
@@ -518,7 +522,8 @@ def test_the_actuator_surface_is_exactly_this() -> None:
         "stiffness_nmm_per_deg", "stiffness_n_per_mm",
         "damping_nmms_per_deg", "damping_ns_per_mm",
         "torque_limit_nmm", "force_limit_n",
-        "command_limits_degrees", "command_limits_mm", "label",
+        "command_limits_degrees", "command_limits_mm",
+        "bore_mm", "rod_mm", "pressure_bar", "label",
     }
     api = _api()
     _assembly_value, _components, joints = _assembly(api)

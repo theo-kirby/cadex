@@ -3621,6 +3621,7 @@ def _mujoco_model_inputs(
     joint_data: Mapping[str, Mapping[str, Any]],
     joint_outputs: Mapping[int, str],
     operation: str,
+    assembly_value: Any = None,
 ) -> dict[str, Any]:
     """Read one solved assembly into the plain dicts CadexDynamics takes.
 
@@ -3719,6 +3720,12 @@ def _mujoco_model_inputs(
     return {
         "components": model_components,
         "joints": model_joints,
+        # ADR-642: the assembly's api.coupling values, by joint output name.
+        "couplings": (
+            []
+            if assembly_value is None
+            else coupling_entries(_properties(assembly_value, "assembly"), joint_outputs)
+        ),
         "joint_dynamics": [
             {
                 "joint": joint_outputs[id(entry.arguments[0])],
@@ -3839,6 +3846,7 @@ def _execute_dynamics_simulation(
         joint_data=joint_data,
         joint_outputs=joint_outputs,
         operation="dynamics",
+        assembly_value=simulation_value.arguments[0],
     )
     dynamics_components = model_inputs["components"]
     dynamics_joints = model_inputs["joints"]
@@ -3872,6 +3880,7 @@ def _execute_dynamics_simulation(
             ),
             joint_dynamics=dynamics_joint_dynamics,
             actuators=dynamics_actuators,
+            couplings=model_inputs["couplings"],
         )
     except CadexDynamics.DynamicsError as error:
         raise _dynamics_failure(simulation_output, error) from error
@@ -4001,6 +4010,7 @@ def _execute_mjcf_export(
         joint_data=joint_data,
         joint_outputs=joint_outputs,
         operation="mjcf",
+        assembly_value=value.arguments[0],
     )
     # ``None`` means the script did not say, so the module's own default
     # applies -- read from the module rather than restated here, the same
@@ -4023,6 +4033,7 @@ def _execute_mjcf_export(
             ),
             joint_dynamics=model_inputs["joint_dynamics"],
             actuators=model_inputs["actuators"],
+            couplings=model_inputs["couplings"],
         )
         # Resolved against the tree that was just built, not against the
         # graph: a channel on a joint the spanning forest turned into a loop
@@ -5500,10 +5511,15 @@ def _compatibility(kind: str, connectors: list[dict[str, Any]]) -> dict[str, Any
         criteria = "both connectors must define linear axes or plane normals"
         compatible = all(item in linear | {"component_origin"} for item in geometry)
     elif kind == "rack_pinion":
-        criteria = "one linear connector and one circular/cylindrical connector"
-        compatible = any(item in linear for item in geometry) and any(
-            item in rotary for item in geometry
-        )
+        # A component origin with an offset is an explicit frame, which is
+        # all the dynamics law reads (ADR-641): its +Z is the rack's travel
+        # on the first connector and the pinion's axis on the second.
+        criteria = ("one linear connector and one circular/cylindrical connector, "
+                    "or component origins whose +Z are the rack's travel and the pinion's axis")
+        origins = [item == "component_origin" for item in geometry]
+        compatible = (
+            any(item in linear for item in geometry) or origins[0]
+        ) and (any(item in rotary for item in geometry) or origins[1])
     elif kind in {"parallel", "perpendicular", "angle"}:
         criteria = "both connectors must define orientations"
         compatible = all(item in axis_capable for item in geometry)
@@ -6444,7 +6460,8 @@ def _sweep_payload_components(components):
     return payload
 
 
-def _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, step, seconds):
+def _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, step, seconds,
+                        couplings=()):
     import FreeCAD as App
     import subprocess
     import tempfile
@@ -6453,7 +6470,8 @@ def _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, 
     try:
         payload = {"components": serialised,
             "component_data": component_data, "joint_data": joint_data,
-            "baseline": baseline, "name": name, "step": step, "seconds": seconds}
+            "baseline": baseline, "name": name, "step": step, "seconds": seconds,
+            "couplings": list(couplings)}
         with tempfile.TemporaryDirectory(prefix="cadex-fit-sweep-") as directory:
             source = Path(directory) / "input.json"
             target = Path(directory) / "output.json"
@@ -6504,7 +6522,8 @@ def _sweep_child(source, target):
         deadline = None if seconds is None else started + float(seconds) - _SWEEP_CHILD_MARGIN_SECONDS
         result = _sweep_joint(components, data["component_data"], data["joint_data"],
                               data["baseline"], data["name"], data["step"],
-                              cache=cache, digests=digests, deadline=deadline)
+                              cache=cache, digests=digests, deadline=deadline,
+                              couplings=data.get("couplings") or ())
         if cache.added:
             result["cache_entries"] = cache.added
     except _SweepDeadline as stopped:
@@ -6620,7 +6639,7 @@ def _box_gap(first, second):
 
 
 def _sweep_joint(components, component_data, joint_data, baseline, name, step, *, cache=None, digests=None,
-                 deadline=None):
+                 deadline=None, couplings=()):
     """Sample one limited hinge or slider with exact solids.
 
     A hinge turns its subtree about the solved connector +Z; a slider
@@ -6658,8 +6677,6 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step, *
         for c in data["connectors"]]} for key, data in joint_data.items()]
     tree = extract_tree([{"name": n, "grounded": d["grounded"], "flexible": d.get("flexible", False)}
                          for n, d in component_data.items()], joints)
-    if tree["couplings"] or tree["static_joints"]:
-        raise ValueError("coupled or static-joint graph is unsupported")
     joint = next(j for j in joints if j["name"] == name)
     if joint["kind"] not in _SWEEP_KINDS or joint["suppressed"]:
         raise ValueError("only unsuppressed limited tree hinges and sliders are supported")
@@ -6667,6 +6684,11 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step, *
     if any(name in loop["joints"] for loop in loops):
         return _sweep_loop_joint(components, joint_data, baseline, name, step, tree, joints, loops,
                                  cache=cache, digests=digests, deadline=deadline)
+    if tree["couplings"] or couplings:
+        coupled = _sweep_coupled_joint(components, baseline, name, step, tree, joints, couplings,
+                                       cache=cache, digests=digests, deadline=deadline)
+        if coupled is not None:
+            return coupled
     limits_key, _step_key, unit = _SWEEP_KINDS[joint["kind"]]
     values = _sweep_values(joint, limits_key, step)
     body = next(b for b in tree["bodies"] if b["joint"] == name)
@@ -6995,6 +7017,149 @@ def _sweep_loop_joint(components, joint_data, baseline, name, step, tree, joints
     return result
 
 
+def _sweep_coupled_joint(components, baseline, name, step, tree, joints, couplings, *,
+                         cache=None, digests=None, deadline=None):
+    """Sweep a joint a coupling ties to others, moving them with it (ADR-644).
+
+    ``CadexDynamics.coupled_sweep`` solves every coordinate the gear, belt,
+    screw, rack-and-pinion and ``api.coupling`` laws tie to this one at each
+    sample -- the unlimited ones follow, the limited ones hold -- and the
+    poses it returns are measured as a loop sweep's are. ``None`` when no
+    coupling reaches the joint, so the ordinary subtree sweep runs.
+    """
+    import FreeCAD as App
+    from CadexDynamics import coupled_sweep, joint_coordinates, joint_transform, length_mm
+    joint = next(j for j in joints if j["name"] == name)
+    limits_key, _step_key, unit = _SWEEP_KINDS[joint["kind"]]
+    values = _sweep_values(joint, limits_key, step)
+    poses = {n: obj.Placement for n, obj in components.items()}
+    placements = {n: list(p.toMatrix().A) for n, p in poses.items()}
+    connectors = joint["connectors"]
+    a, b = [c["component"] for c in connectors]
+    coords = joint_coordinates(joint["kind"], joint_transform(
+        placements[a], connectors[0]["local_matrix"],
+        placements[b], connectors[1]["local_matrix"]), context=name)
+    if coords["residual_mm"] > 1e-4 or coords["residual_radians"] > 1e-6:
+        raise ValueError(f"solved {joint['kind']} joint has a residual its kind cannot express")
+    initial = (math.degrees(coords["values"][0]) if unit == "degrees"
+               else length_mm(coords["values"][0]))
+    travels = [math.radians(v - initial) if unit == "degrees" else v - initial for v in values]
+    solved = coupled_sweep(tree, {j["name"]: j for j in joints}, placements, couplings, name, travels)
+    if solved is None:
+        return None
+    motions, signatures = [], {}
+    for pose in solved["poses"]:
+        sample = {}
+        for body, matrix in pose["bodies"].items():
+            signatures.setdefault(body, []).append(matrix)
+            if any(abs(x - y) > _LOOP_RIGID_TOLERANCE for x, y in zip(matrix, _IDENTITY_MATRIX)):
+                sample[body] = App.Placement(App.Matrix(*matrix))
+        motions.append(sample)
+
+    def moves(first, second):
+        p, q = signatures.get(first, ()), signatures.get(second, ())
+        return any(abs(x - y) > _LOOP_RIGID_TOLERANCE for m, n in zip(p, q) for x, y in zip(m, n))
+
+    rows = _measure_samples(components, baseline, values, motions, moves, "first_contact_" + unit,
+                            cache=cache, digests=digests, deadline=deadline)
+    low, high = joint[limits_key]
+    return {"status": "complete", "kind": joint["kind"], "unit": unit, "step": step,
+            "sample_count": len(values), "range_" + unit: [low, high],
+            "initial_" + unit: initial, "solved_pose_agreement": True,
+            "coupled": {"followers": sorted({row["joint"] for row in solved["followers"].values()}),
+                        "held": solved["held"]},
+            "pairs": rows}
+
+
+#: The joints that relate coordinates other joints own (ADR-644): each is
+#: swept through the joints it relates, never on its own.
+_COUPLED_SWEEP_KINDS = frozenset({"screw", "gears", "belt", "rack_pinion"})
+
+
+def _coupled_followers(component_data, joint_data, couplings):
+    """Each joint a coupling ties to a limited joint, and the limited joints it follows (ADR-644)."""
+    from CadexDynamics import DynamicsError, extract_tree
+    groups = [[str(term["joint"]) for term in entry["terms"]] for entry in couplings]
+    joints = [{**data, "name": key, "connectors": [
+        {"component": c["component_output"], "local_matrix": c["local_frame"]["matrix"]}
+        for c in data["connectors"]]} for key, data in joint_data.items()]
+    if any(data.get("kind") in _COUPLED_SWEEP_KINDS for data in joint_data.values()):
+        try:
+            tree = extract_tree([{"name": n, "grounded": d["grounded"], "flexible": d.get("flexible", False)}
+                                 for n, d in component_data.items()], joints)
+        except (DynamicsError, KeyError, TypeError, ValueError):
+            tree = None
+        if tree is not None:
+            from CadexDynamics import _tree_path
+            bodies = {body["name"]: body for body in tree["bodies"]}
+            for coupling in tree["couplings"]:
+                # The joints the law relates: those on the tree path between
+                # the two components (a rack on the frame, a pinion on a
+                # carriage: the carriage's slider and the pinion's revolute).
+                path = _tree_path(bodies, *coupling["components"]) or []
+                groups.append([str(body["joint"]) for body, _sign in path
+                               if body.get("joint") and body["mujoco_joints"]])
+
+    def limited(name):
+        data = joint_data.get(name) or {}
+        return data.get("angle_limits_degrees") is not None or data.get("length_limits_mm") is not None
+
+    followers = {}
+    for group in groups:
+        drivers = [name for name in group if limited(name)]
+        for name in group:
+            if name not in drivers and drivers:
+                followers.setdefault(name, [])
+                followers[name] += [d for d in drivers if d not in followers[name]]
+    return followers
+
+
+def coupling_entries(assembly_properties, joint_outputs):
+    """``api.coupling`` values on an assembly, as the dicts CadexDynamics reads (ADR-642)."""
+    entries = []
+    for index, value in enumerate(list(assembly_properties.get("couplings") or ())):
+        properties = _properties(value, "coupling")
+        label = str(properties.get("label") or "") or str(index)
+        entries.append({
+            "name": f"coupling/{label}",
+            "terms": [{"joint": joint_outputs[id(joint)], "motion_type": str(motion), "ratio": float(ratio)}
+                      for joint, motion, ratio in zip(value.arguments, properties["motion_types"],
+                                                      properties["ratios"], strict=True)],
+        })
+    return entries
+
+
+def _tool_workspaces(assembly_properties, component_outputs, components, component_data, joint_data,
+                     solved):
+    """Each declared ``api.tool``'s reach against its work area (ADR-645)."""
+    from CadexDynamics import DynamicsError, extract_tree, tool_workspace
+    rows = []
+    for index, value in enumerate(list(assembly_properties.get("tools") or ())):
+        properties = _properties(value, "tool")
+        tool = {"component": component_outputs[id(value.arguments[0])],
+                "origin_mm": list(properties.get("origin_mm") or (0.0, 0.0, 0.0)),
+                "axis": list(properties.get("axis") or (0.0, 0.0, -1.0)),
+                "work_area_mm": properties.get("work_area_mm"),
+                "work_frame": (component_outputs[id(value.arguments[1])]
+                               if len(value.arguments) > 1 else None)}
+        label = str(properties.get("label") or "") or f"tool {index}"
+        if not solved:
+            rows.append({"tool": label, "status": "unmeasured", "reason": "the assembly did not solve"})
+            continue
+        try:
+            joints = [{**data, "name": key, "connectors": [
+                {"component": c["component_output"], "local_matrix": c["local_frame"]["matrix"]}
+                for c in data["connectors"]]} for key, data in joint_data.items()]
+            tree = extract_tree([{"name": n, "grounded": d["grounded"], "flexible": d.get("flexible", False)}
+                                 for n, d in component_data.items()], joints)
+            placements = {n: list(obj.Placement.toMatrix().A) for n, obj in components.items()}
+            rows.append({"tool": label, **tool_workspace(tree, {j["name"]: j for j in joints},
+                                                         placements, tool)})
+        except (DynamicsError, KeyError, ValueError) as exc:
+            rows.append({"tool": label, "status": "unmeasured", "reason": str(exc)})
+    return rows
+
+
 _IDENTITY_MATRIX = (1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0)
 
 
@@ -7041,7 +7206,8 @@ def _closed_loops(component_data, joint_data):
     return loops
 
 
-def _measure_joint_sweeps(components, component_data, joint_data, baseline, steps, solved, *, cache=None):
+def _measure_joint_sweeps(components, component_data, joint_data, baseline, steps, solved, *, cache=None,
+                          couplings=()):
     """Sweep every limited joint; ``steps`` maps each declared step name to its value.
 
     A limited joint whose kind's step is undeclared, or whose kind is not
@@ -7091,6 +7257,7 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
     loops = _closed_loops(component_data, joint_data)
     from CadexDynamics import loop_groups
     groups = loop_groups(loops)
+    followers = _coupled_followers(component_data, joint_data, couplings)
     for name, joint in joint_data.items():
         kind = joint.get("kind")
         limited = (joint.get("angle_limits_degrees") is not None
@@ -7137,6 +7304,19 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
                                     "declare angle_limits_degrees (or length_limits_mm) on the "
                                     "loop's input -- the joint its actuator turns -- for the loop "
                                     "to be swept from it"}
+        elif not limited and name in followers:
+            # An unlimited motor or pulley a coupling ties to a limited
+            # joint turns in that joint's sweep (ADR-644): it is moved,
+            # not a coverage hole.
+            result = {"status": "passive", "driven_by": followers[name],
+                      "reason": f"this unlimited {kind} joint is coupled to {followers[name]}, and "
+                                "turns with them at every sample of their sweeps"}
+        elif kind in _COUPLED_SWEEP_KINDS:
+            # A coupling attaches nothing and holds no range: it is moved by
+            # the joints it relates, whose sweeps solve it (ADR-644).
+            result = {"status": "passive",
+                      "reason": f"this {kind} joint relates coordinates other joints own; it is "
+                                "held at every sample of the sweeps of the joints it relates"}
         elif kind not in _SWEEP_KINDS:
             result = {"status": "incomplete",
                       "reason": f"only unsuppressed limited tree hinges and sliders are supported, not {kind}"}
@@ -7165,7 +7345,7 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
         if remaining <= 0:
             return {"status": "incomplete", "reason": "unsolved assembly or total runtime budget exceeded"}
         return _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, step,
-                                   min(remaining, _SWEEP_JOINT_SECONDS))
+                                   min(remaining, _SWEEP_JOINT_SECONDS), *((couplings,) if couplings else ()))
 
     if pending:
         from concurrent.futures import ThreadPoolExecutor
@@ -8187,7 +8367,8 @@ def validate_and_solve_assembly(
         _cpu_stage("assembly swept fit")
         clearance_sweep = _measure_joint_sweeps(
             components, component_data, joint_data, clearance,
-            sweep_steps, diagnostics["status"] == "solved", cache=fit_cache)
+            sweep_steps, diagnostics["status"] == "solved", cache=fit_cache,
+            couplings=coupling_entries(assembly_properties, joint_outputs))
         fit_cache.save()
     # The anatomy graph (ADR-614): graph facts only, so a preview pays for
     # it too and it costs nothing a person would notice.
@@ -8462,6 +8643,11 @@ def validate_and_solve_assembly(
     by_name[assembly_output]["world_geometry"] = world_geometry
     by_name[assembly_output]["attachments"] = attachments
     by_name[assembly_output]["anatomy"] = anatomy
+    # ADR-645: present only when the assembly declares a tool.
+    if assembly_properties.get("tools"):
+        by_name[assembly_output]["workspace"] = _tool_workspaces(
+            assembly_properties, component_outputs, components, component_data, joint_data,
+            diagnostics["status"] == "solved")
     by_name[assembly_output]["shell_gaps"] = shell_gaps
     by_name[assembly_output]["assembly_data"] = {
         "component_outputs": [component_outputs[id(value)] for value in component_values],

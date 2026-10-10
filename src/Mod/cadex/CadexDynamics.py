@@ -1835,18 +1835,19 @@ def _closure_refusal(
         for component in (first, second)
     }
     return DynamicsError(
-        f"Joint {name!r} closes a loop and is a {kind} joint, which M2 cannot "
-        "express as an equality constraint: a sliding closure needs a tendon, "
-        "which is real design work and belongs to a later slice.",
+        f"Joint {name!r} closes a loop and is a {kind} joint, and every other "
+        "joint on that loop slides too: a loop closes on a pin, a ball or a "
+        "weld, which a site equality can hold, and a sliding closure has none "
+        "(ADR-640).",
         reason="unclosable_loop_joint",
         correction=(
             f"The spanning tree already reaches {first!r} through "
-            f"{reached_by[first]} and {second!r} through {reached_by[second]}, "
-            f"so {name!r} has no body left to attach. Make it the way one of "
-            "them is reached: ground a different component, remove the more "
-            "direct joint, or -- when two joints connect the same pair of "
-            f"components -- list {name!r} first, because the tree takes the "
-            "earlier joint and closes the later one."
+            f"{reached_by[first]} and {second!r} through {reached_by[second]}. "
+            "Sliding joints are taken into the tree before pins, so this "
+            "refusal means the loop has nothing else to close on: two "
+            "parallel guides between one pair of parts (a carriage on two "
+            "rails) are one slider joint, not two, and a cylinder needs a "
+            "revolute or ball at each end."
         ),
         observed={
             "joint": name,
@@ -1924,152 +1925,201 @@ def extract_tree(
                     observed={"joint": joint["name"], "component": name},
                 )
 
-    #: Adjacency in joint order: only joints that can attach a body.
-    adjacency: dict[str, list[int]] = {name: [] for name in ordered}
-    for joint in classified:
-        if joint["suppressed"] or joint["tree"] is None:
-            continue
-        first, second = joint["components"]
-        adjacency[first].append(joint["index"])
-        adjacency[second].append(joint["index"])
     by_index = {joint["index"]: joint for joint in classified}
 
-    def _other_index(joint_index: int, component: str) -> int:
-        first, second = by_index[joint_index]["components"]
-        return positions[second if first == component else first]
-
-    bodies: list[dict[str, Any]] = []
-    attached: dict[str, int] = {}
-    used_joints: set[int] = set()
-
-    def _attach(
-        name: str,
-        *,
-        parent: str | None,
-        joint: Mapping[str, Any] | None,
-        attachment: str,
-        depth: int,
-    ) -> None:
-        record: dict[str, Any] = {
-            "name": name,
-            "parent": parent,
-            "depth": depth,
-            "attachment": attachment,
-            "joint": None if joint is None else str(joint["name"]),
-            "joint_kind": None if joint is None else str(joint["kind"]),
-            "mujoco_joints": (
-                ["free"]
-                if attachment == "free"
-                else ([] if joint is None else list(joint["tree"]))
-            ),
-            "parent_local_matrix": None,
-            "child_local_matrix": None,
-        }
-        if joint is not None:
-            first, second = joint["components"]
-            parent_side = 0 if first == parent else 1
-            record["parent_local_matrix"] = joint["local_matrices"][parent_side]
-            record["child_local_matrix"] = joint["local_matrices"][1 - parent_side]
-        attached[name] = len(bodies)
-        bodies.append(record)
-
-    def _expand(root: str) -> None:
-        # (depth, joint index, component index, parent): a total order, so
-        # the same graph produces the same tree on every run, and depth
-        # first so the traversal stays breadth-first.
-        frontier = sorted(
-            (1, joint_index, _other_index(joint_index, root), root)
-            for joint_index in sorted(adjacency[root])
-        )
-        while frontier:
-            depth, joint_index, component_index, parent = frontier.pop(0)
-            child = ordered[component_index]
-            if child in attached:
+    def _grow(prefer_sliding: bool) -> tuple[Any, ...]:
+        #: Adjacency in joint order: only joints that can attach a body.
+        adjacency: dict[str, list[int]] = {name: [] for name in ordered}
+        for joint in classified:
+            if joint["suppressed"] or joint["tree"] is None:
                 continue
-            used_joints.add(joint_index)
-            _attach(
-                child,
-                parent=parent,
-                joint=by_index[joint_index],
-                attachment="tree",
-                depth=depth,
-            )
-            for next_joint in sorted(adjacency[child]):
-                next_component = _other_index(next_joint, child)
-                if ordered[next_component] in attached:
-                    continue
-                frontier.append((depth + 1, next_joint, next_component, child))
+            first, second = joint["components"]
+            adjacency[first].append(joint["index"])
+            adjacency[second].append(joint["index"])
+
+        def _other_index(joint_index: int, component: str) -> int:
+            first, second = by_index[joint_index]["components"]
+            return positions[second if first == component else first]
+
+        bodies: list[dict[str, Any]] = []
+        attached: dict[str, int] = {}
+        used_joints: set[int] = set()
+
+        def _attach(
+            name: str,
+            *,
+            parent: str | None,
+            joint: Mapping[str, Any] | None,
+            attachment: str,
+            depth: int,
+        ) -> None:
+            record: dict[str, Any] = {
+                "name": name,
+                "parent": parent,
+                "depth": depth,
+                "attachment": attachment,
+                "joint": None if joint is None else str(joint["name"]),
+                "joint_kind": None if joint is None else str(joint["kind"]),
+                "mujoco_joints": (
+                    ["free"]
+                    if attachment == "free"
+                    else ([] if joint is None else list(joint["tree"]))
+                ),
+                "parent_local_matrix": None,
+                "child_local_matrix": None,
+            }
+            if joint is not None:
+                first, second = joint["components"]
+                parent_side = 0 if first == parent else 1
+                record["parent_local_matrix"] = joint["local_matrices"][parent_side]
+                record["child_local_matrix"] = joint["local_matrices"][1 - parent_side]
+            attached[name] = len(bodies)
+            bodies.append(record)
+
+        def _attach_sliding(start: str) -> list[str]:
+            # ADR-640: with ``prefer_sliding``, a component's sliding joints
+            # (slider, cylindrical) are tree edges the moment it is reached,
+            # before anything breadth-first could reach their far side by a
+            # pin -- so the loop they sit on closes on that pin instead.
+            if not prefer_sliding:
+                return []
+            added: list[str] = []
+            queue = [start]
+            while queue:
+                node = queue.pop(0)
+                for joint_index in sorted(adjacency[node]):
+                    if by_index[joint_index]["closure"] is not None:
+                        continue
+                    other = ordered[_other_index(joint_index, node)]
+                    if other in attached:
+                        continue
+                    used_joints.add(joint_index)
+                    _attach(
+                        other,
+                        parent=node,
+                        joint=by_index[joint_index],
+                        attachment="tree",
+                        depth=int(bodies[attached[node]]["depth"]) + 1,
+                    )
+                    added.append(other)
+                    queue.append(other)
+            return added
+
+        def _push(frontier: list, members: Sequence[str]) -> None:
+            for member in members:
+                depth = int(bodies[attached[member]]["depth"])
+                for next_joint in sorted(adjacency[member]):
+                    next_component = _other_index(next_joint, member)
+                    if ordered[next_component] in attached:
+                        continue
+                    frontier.append((depth + 1, next_joint, next_component, member))
             frontier.sort()
 
-    # Every grounded component is a static root *before* any traversal
-    # starts. A grounded component may not become another body's child: it
-    # is fixed to the world, and hanging it off a moving parent would give
-    # it degrees of freedom FreeCAD's solver says it does not have. A joint
-    # between two grounded components therefore reaches neither the tree nor
-    # the closures -- it is already satisfied, permanently.
-    for name in ordered:
-        if name in grounded:
-            _attach(name, parent=None, joint=None, attachment="grounded", depth=0)
-    for name in grounded:
-        _expand(name)
-    for name in ordered:
-        if name not in attached:
-            # An island the joints never reach from ground. Its first
-            # component in script order gets a free joint and falls; the rest
-            # of the island hangs off it as an ordinary subtree.
-            _attach(name, parent=None, joint=None, attachment="free", depth=0)
-            _expand(name)
+        def _expand(root: str, members: Sequence[str] = ()) -> None:
+            # (depth, joint index, component index, parent): a total order, so
+            # the same graph produces the same tree on every run, and depth
+            # first so the traversal stays breadth-first.
+            frontier: list = []
+            _push(frontier, [root, *members])
+            while frontier:
+                depth, joint_index, component_index, parent = frontier.pop(0)
+                child = ordered[component_index]
+                if child in attached:
+                    continue
+                used_joints.add(joint_index)
+                _attach(
+                    child,
+                    parent=parent,
+                    joint=by_index[joint_index],
+                    attachment="tree",
+                    depth=depth,
+                )
+                _push(frontier, [child, *_attach_sliding(child)])
 
-    closures: list[dict[str, Any]] = []
-    couplings: list[dict[str, Any]] = []
-    static_joints: list[dict[str, Any]] = []
-    grounded_names = frozenset(grounded)
-    for joint in classified:
-        if joint["suppressed"]:
-            continue
-        if joint["coupling"]:
-            couplings.append(joint)
-        if joint["tree"] is None or joint["index"] in used_joints:
-            continue
-        first_component, second_component = joint["components"]
-        if (
-            first_component in grounded_names
-            and second_component in grounded_names
-        ):
-            static_joints.append(
+        # Every grounded component is a static root *before* any traversal
+        # starts. A grounded component may not become another body's child: it
+        # is fixed to the world, and hanging it off a moving parent would give
+        # it degrees of freedom FreeCAD's solver says it does not have. A joint
+        # between two grounded components therefore reaches neither the tree nor
+        # the closures -- it is already satisfied, permanently.
+        for name in ordered:
+            if name in grounded:
+                _attach(name, parent=None, joint=None, attachment="grounded", depth=0)
+        sliding_members = {name: _attach_sliding(name) for name in grounded}
+        for name in grounded:
+            _expand(name, sliding_members[name])
+        for name in ordered:
+            if name not in attached:
+                # An island the joints never reach from ground. Its first
+                # component in script order gets a free joint and falls; the rest
+                # of the island hangs off it as an ordinary subtree.
+                _attach(name, parent=None, joint=None, attachment="free", depth=0)
+                _expand(name, _attach_sliding(name))
+
+        closures: list[dict[str, Any]] = []
+        couplings: list[dict[str, Any]] = []
+        static_joints: list[dict[str, Any]] = []
+        grounded_names = frozenset(grounded)
+        for joint in classified:
+            if joint["suppressed"]:
+                continue
+            if joint["coupling"]:
+                couplings.append(joint)
+            if joint["tree"] is None or joint["index"] in used_joints:
+                continue
+            first_component, second_component = joint["components"]
+            if (
+                first_component in grounded_names
+                and second_component in grounded_names
+            ):
+                static_joints.append(
+                    {
+                        "joint": joint["name"],
+                        "kind": joint["kind"],
+                        "components": [first_component, second_component],
+                        "note": (
+                            "Both components are grounded, so this joint is "
+                            "satisfied by the solved placements and needs no "
+                            "constraint in the dynamics model."
+                        ),
+                    }
+                )
+                continue
+            closure = joint["closure"]
+            if closure is None:
+                raise _closure_refusal(
+                    joint, {body["name"]: body for body in bodies}
+                )
+            evidence = _CLOSURE_EVIDENCE[closure]
+            first, second = joint["components"]
+            closures.append(
                 {
                     "joint": joint["name"],
                     "kind": joint["kind"],
-                    "components": [first_component, second_component],
-                    "note": (
-                        "Both components are grounded, so this joint is "
-                        "satisfied by the solved placements and needs no "
-                        "constraint in the dynamics model."
-                    ),
+                    "closure_kind": closure,
+                    "constrained_dof": evidence["constrained_dof"],
+                    "note": evidence["note"],
+                    "components": [first, second],
+                    "local_matrices": [
+                        joint["local_matrices"][0],
+                        joint["local_matrices"][1],
+                    ],
                 }
             )
-            continue
-        closure = joint["closure"]
-        if closure is None:
-            raise _closure_refusal(
-                joint, {body["name"]: body for body in bodies}
-            )
-        evidence = _CLOSURE_EVIDENCE[closure]
-        first, second = joint["components"]
-        closures.append(
-            {
-                "joint": joint["name"],
-                "kind": joint["kind"],
-                "closure_kind": closure,
-                "constrained_dof": evidence["constrained_dof"],
-                "note": evidence["note"],
-                "components": [first, second],
-                "local_matrices": [
-                    joint["local_matrices"][0],
-                    joint["local_matrices"][1],
-                ],
-            }
-        )
+        return bodies, closures, couplings, static_joints, used_joints
+
+    # Breadth-first by joint order first: every tree that has always built
+    # keeps the shape it had. Only a graph that would close a loop on a
+    # sliding joint -- which a site equality cannot express -- is grown
+    # again with every slider and cylindrical joint taken into the tree the
+    # moment either of its components is reached (ADR-640), so the loop
+    # closes on a pin instead: a hydraulic cylinder between two links.
+    try:
+        bodies, closures, couplings, static_joints, used_joints = _grow(False)
+    except DynamicsError as refusal:
+        if refusal.reason != "unclosable_loop_joint":
+            raise
+        bodies, closures, couplings, static_joints, used_joints = _grow(True)
     return {
         "bodies": bodies,
         "closures": closures,
@@ -2217,7 +2267,7 @@ def closure_residuals(
             joint["local_matrices"][1],
         )
         kind = joint["kind"]
-        if kind in {"gears", "belt"}:
+        if kind in {"gears", "belt", "rack_pinion"}:
             # A gear pair constrains rates, not poses: there is no residual
             # to take, and pretending otherwise would refuse working models.
             continue
@@ -2378,11 +2428,9 @@ def _coupling_records(
       experiment; OndselSolver's own ``ScrewConstraintIJ`` agrees
       (``2π·z − pitch·θz = const``).
 
-    ``rack_pinion`` is refused. Its native constraint acts along a marker
-    frame OndselSolver builds specially (``getRackPinionMarkers``), the one
-    measurement run on it did not produce the clean ``x = R·θ`` the sign
-    convention would need, and shipping the guess is precisely what hazard 7
-    warns against.
+    ``rack_pinion`` is :func:`_rack_pinion_record` (ADR-641): OndselSolver's
+    own law, read off its source rather than off a measurement, over the
+    tree path between the rack and the pinion.
 
     Every coupling also carries strict preconditions, because a coupling is
     only expressible as a scalar relation when each side *is* one scalar
@@ -2396,19 +2444,8 @@ def _coupling_records(
         name = str(coupling["name"])
         kind = str(coupling["kind"])
         if kind == "rack_pinion":
-            raise DynamicsError(
-                f"Joint {name!r} is a rack-and-pinion, which M2 does not "
-                "translate.",
-                reason="unmapped_coupled_joint",
-                correction=(
-                    "The native rack constraint acts along a marker frame "
-                    "OndselSolver derives from the rack's geometry, and this "
-                    "slice will not guess its sign: a rack running backwards "
-                    "looks like a working mechanism. Model the pair as a "
-                    "gears joint, or leave it out of the dynamics assembly."
-                ),
-                observed={"joint": name, "kind": kind},
-            )
+            records.append(_rack_pinion_record(coupling, bodies, placements, solved_values))
+            continue
         first, second = coupling["components"]
         axis = _axis_normalised(
             matrix_z_axis(
@@ -2558,6 +2595,273 @@ def _coupling_records(
                 "parameters": parameters,
             }
         )
+    return records
+
+
+def _tree_path(
+    bodies: Mapping[str, Mapping[str, Any]], first: str, second: str
+) -> list[tuple[Mapping[str, Any], float]] | None:
+    """The tree joints between two bodies, each signed by how it moves ``second``.
+
+    Up from ``first`` to the common ancestor, each joint moves ``first``
+    and so moves ``second`` relative to it backwards (-1); down to
+    ``second``, forwards (+1). Two grounded roots are one rigid world, so a
+    path may pass between them. ``None`` when the two hang off different
+    free bodies or a free body and the world: nothing fixes how they move
+    relative to each other.
+    """
+
+    def chain(name: str) -> list[str]:
+        names = [name]
+        while bodies[names[-1]]["parent"] is not None:
+            names.append(str(bodies[names[-1]]["parent"]))
+        return names
+
+    up, down = chain(first), chain(second)
+    common = next((name for name in up if name in down), None)
+    if common is None:
+        roots = (bodies[up[-1]], bodies[down[-1]])
+        if any(root["attachment"] != "grounded" for root in roots):
+            return None
+        up_part, down_part = up, down
+    else:
+        up_part, down_part = up[: up.index(common)], down[: down.index(common)]
+    return [(bodies[name], -1.0) for name in up_part if bodies[name]["parent"] is not None] + [
+        (bodies[name], 1.0) for name in reversed(down_part) if bodies[name]["parent"] is not None
+    ]
+
+
+#: How far a rack may lean off square to its pinion's axis, and how far a
+#: turning joint's axis may pass from the pinion's centre, before the
+#: rack-and-pinion law stops being linear in the joint coordinates.
+_RACK_SQUARE_TOLERANCE = 1.0e-6
+_RACK_OFF_AXIS_MM = 1.0e-4
+
+
+def _rack_pinion_record(
+    coupling: Mapping[str, Any],
+    bodies: Mapping[str, Mapping[str, Any]],
+    placements: Mapping[str, Sequence[float]],
+    solved_values: Mapping[str, Sequence[float]],
+) -> dict[str, Any]:
+    """A rack-and-pinion as one ``equality/joint`` row (ADR-641).
+
+    The law is OndselSolver's, read off ``RackPinConstraintIJ`` and
+    ``AssemblyObject::getRackPinionMarkers``: the rack's marker has its X
+    along the rack connector's +Z (the sliding direction) and its Z along
+    the pinion connector's +Z, and ``x + R·θ`` is constant, where ``x`` is
+    the pinion connector's travel along that X and ``θ`` its turn about
+    that Z, both relative to the rack. With R > 0 that is a pinion rolling
+    on a rack that lies on the marker's -Y side (Y = Z × X): turned
+    anticlockwise about its +Z, the pinion moves -X along the rack, so the
+    rack moves +X against the pinion -- ``lib.rack_and_pinion``'s datum.
+    A rack on the other side is ``pitch_radius_mm < 0``, the sign FreeCAD
+    lets a script choose; a belt that drives a carriage is the same law,
+    the pulley's pitch radius signed by which span carries the carriage.
+
+    The two coordinates it relates are the tree joints on the path from
+    the rack to the pinion, which is what lets the rack be the frame and
+    the pinion ride a carriage (the travelling-pinion gantry) as well as
+    the rack ride a slider beside a fixed pinion. Each joint's share of
+    ``ẋ + R·θ̇`` at the solved pose is its coefficient; the law is linear
+    in them exactly when every turning joint on the path turns about the
+    pinion's own axis, which is checked, and exactly two coefficients may
+    be non-zero: one slider's and one revolute's.
+    """
+
+    name = str(coupling["name"])
+    rack, pinion = (str(item) for item in coupling["components"])
+    radius_m = length_m(float(coupling["parameters"]["pitch_radius_mm"]))
+    rack_world = matrix_multiply(placements[rack], coupling["local_matrices"][0])
+    pinion_world = matrix_multiply(placements[pinion], coupling["local_matrices"][1])
+    z_axis = _axis_normalised(matrix_z_axis(pinion_world), context=f"joint {name!r}")
+    x_axis = _axis_normalised(matrix_z_axis(rack_world), context=f"joint {name!r}")
+    square = sum(a * b for a, b in zip(x_axis, z_axis, strict=True))
+    if abs(square) > _RACK_SQUARE_TOLERANCE:
+        raise DynamicsError(
+            f"Joint {name!r} is a rack-and-pinion whose rack connector's +Z "
+            f"(its sliding direction) is not square to the pinion's axis "
+            f"(cosine {square:.6f}).",
+            reason="coupled_axes_not_parallel",
+            correction=(
+                "The first connector is the rack's, with +Z along the rack; "
+                "the second is the pinion's, with +Z along its axis. Point the "
+                "rack connector along the rack, at right angles to the pinion."
+            ),
+            observed={"joint": name, "cosine": square},
+        )
+    centre = matrix_translation_mm(pinion_world)
+    path = _tree_path(bodies, rack, pinion)
+    if path is None:
+        raise DynamicsError(
+            f"Joint {name!r} meshes components that no chain of joints relates: "
+            f"{rack!r} and {pinion!r} hang off different free bodies.",
+            reason="coupled_parents_differ",
+            correction=(
+                "A rack-and-pinion relates the motion of the pinion against the "
+                "rack. Join both to one mechanism."
+            ),
+            observed={"joint": name},
+        )
+    terms: list[dict[str, Any]] = []
+    for body, sign in path:
+        kinds = list(body["mujoco_joints"])
+        if not kinds:
+            continue
+        if len(kinds) != 1 or kinds[0] not in ("hinge", "slide"):
+            raise DynamicsError(
+                f"Joint {name!r} meshes across joint {body['joint']!r}, a "
+                f"{body['joint_kind']} joint, which has no single coordinate "
+                "for the law to relate.",
+                reason="uncouplable_component",
+                correction=(
+                    "Place the rack and the pinion with sliders, revolutes and "
+                    "fixed joints only: one slider carries the travel, one "
+                    "revolute the pinion's turn."
+                ),
+                observed={"joint": name, "through": str(body["joint"])},
+            )
+        frame = matrix_multiply(placements[str(body["name"])], body["child_local_matrix"])
+        axis = _axis_normalised(matrix_z_axis(frame), context=f"joint {body['joint']!r}")
+        if kinds[0] == "slide":
+            coefficient = sum(a * b for a, b in zip(x_axis, axis, strict=True))
+        else:
+            arm = [c - p for c, p in zip(centre, matrix_translation_mm(frame), strict=True)]
+            off_axis = _cross(axis, arm)
+            if math.sqrt(sum(v * v for v in off_axis)) > _RACK_OFF_AXIS_MM:
+                raise DynamicsError(
+                    f"Joint {name!r} meshes across revolute {body['joint']!r}, "
+                    "whose axis does not pass through the pinion's centre, so "
+                    "the rack-and-pinion law is not linear in its angle.",
+                    reason="coupled_joint_kind",
+                    correction=(
+                        "Put the pinion connector on the pinion's own revolute "
+                        "axis, and carry the pinion on a slider or a fixed "
+                        "joint, not on an arm that swings it."
+                    ),
+                    observed={"joint": name, "through": str(body["joint"])},
+                )
+            coefficient = radius_m * sum(a * b for a, b in zip(z_axis, axis, strict=True))
+        if abs(coefficient) > 1.0e-12:
+            terms.append(
+                {
+                    "joint": str(body["joint"]),
+                    "kind": str(body["joint_kind"]),
+                    "coefficient": sign * coefficient,
+                    "value": float(solved_values[str(body["joint"])][0]),
+                }
+            )
+    kinds = sorted(term["kind"] for term in terms)
+    if kinds != ["revolute", "slider"]:
+        raise DynamicsError(
+            f"Joint {name!r} is a rack-and-pinion, which needs one slider "
+            "carrying the travel and one revolute carrying the pinion's turn "
+            f"between the rack and the pinion; the path has {kinds}.",
+            reason="coupled_joint_kind",
+            correction=(
+                "Give the rack (or the carriage the pinion rides) a slider "
+                "along the rack, and the pinion a revolute about its own axis."
+            ),
+            observed={"joint": name, "terms": [term["joint"] for term in terms]},
+        )
+    dependent = next(term for term in terms if term["kind"] == "slider")
+    independent = next(term for term in terms if term["kind"] == "revolute")
+    slope = -independent["coefficient"] / dependent["coefficient"]
+    return {
+        "joint_output": name,
+        "joint_kind": "rack_pinion",
+        "dependent_joint": dependent["joint"],
+        "independent_joint": independent["joint"],
+        "slope": slope,
+        "intercept": dependent["value"] - slope * independent["value"],
+        "parameters": dict(coupling["parameters"]),
+    }
+
+#: Per unit of a script's coordinate, in the model's: a coupling's ratio is
+#: written against millimetres and degrees, and the model's coordinates
+#: are metres and radians.
+_COUPLING_SI_PER_SURFACE = {"linear": 1000.0, "angular": 180.0 / math.pi}
+
+
+def linear_coupling_records(
+    entries: Sequence[Mapping[str, Any]],
+    tree: Mapping[str, Any],
+    joint_records: Sequence[Mapping[str, Any]],
+    solved_values: Mapping[str, Sequence[float]],
+) -> list[dict[str, Any]]:
+    """``api.coupling`` values, resolved to model coordinates (ADR-642).
+
+    Each entry is ``{"name", "terms": [{"joint", "motion_type", "ratio"}]}``
+    and states ``sum(ratio_i * dq_i) = 0``, each ``dq`` in millimetres or
+    degrees from the solved pose -- the relation a belt, a cable or a
+    differential holds between joint coordinates. Every term must name a
+    coordinate the tree owns, refused with the tree's own reason when it
+    does not (a loop closure, a coupled joint, a suppressed one). The ratio
+    is converted once here: per millimetre is a thousand per metre, per
+    degree is 180/pi per radian.
+    """
+
+    table = _coordinate_table(tree, joint_records)
+    refusals = _coordinate_refusals(tree)
+    records: list[dict[str, Any]] = []
+    names: set[str] = set()
+    for entry in entries:
+        name = str(entry.get("name") or "")
+        if not name or name in names:
+            raise DynamicsError(
+                f"Coupling {name!r} needs a name no other coupling has.",
+                reason="malformed_coupling",
+                observed={"coupling": name},
+            )
+        names.add(name)
+        terms: list[dict[str, Any]] = []
+        seen: set[tuple[str, str]] = set()
+        for term in list(entry.get("terms") or []):
+            joint = str(term.get("joint") or "")
+            motion = str(term.get("motion_type") or "")
+            what = f"coupling {name!r} on {_coordinate_context(joint, motion)}"
+            record = _resolve_coordinate(term, table, refusals, what=what)
+            if (joint, motion) in seen:
+                raise DynamicsError(
+                    f"{what} names that coordinate twice.",
+                    reason="malformed_coupling",
+                    observed={"coupling": name, "joint": joint},
+                )
+            seen.add((joint, motion))
+            ratio = float(term["ratio"])
+            values = list(solved_values.get(joint) or [0.0])
+            index = 1 if record["kind"] == "cylindrical" and motion == "angular" else 0
+            terms.append(
+                {
+                    "joint": joint,
+                    "motion_type": motion,
+                    "ratio": ratio,
+                    "mujoco_joint": str(record["mujoco_joint"]),
+                    "coefficient_si": ratio * _COUPLING_SI_PER_SURFACE[motion],
+                    "solved_si": float(values[index]),
+                }
+            )
+        if len(terms) < 2 or any(abs(term["ratio"]) <= 1.0e-12 for term in terms):
+            raise DynamicsError(
+                f"Coupling {name!r} relates {len(terms)} coordinate(s) with a "
+                "zero ratio or fewer than two terms.",
+                reason="malformed_coupling",
+                correction=(
+                    "A coupling relates two or more joint coordinates, each with "
+                    "a non-zero ratio. A coordinate held still is a fixed joint."
+                ),
+                observed={"coupling": name},
+            )
+        # Scaled so the largest sliding coefficient is one (or the largest
+        # turning one, with no slider): the row's residual is then metres
+        # of that slider's travel, which is what every closure residual
+        # check reads, and not a thousand times it. A constraint is the
+        # same constraint at any scale.
+        linear = [abs(t["coefficient_si"]) for t in terms if t["motion_type"] == "linear"]
+        scale = max(linear) if linear else max(abs(t["coefficient_si"]) for t in terms)
+        for term in terms:
+            term["coefficient_si"] /= scale
+        records.append({"name": name, "terms": terms})
     return records
 
 
@@ -2851,6 +3155,19 @@ def control_si(value: float, *, kind: str, motion_type: str, context: str) -> fl
     return float(convert(float(value)))
 
 
+def cylinder_forces_n(cylinder: Mapping[str, Any]) -> tuple[float, float]:
+    """A cylinder's retracting pull and extending push, in newtons (ADR-643).
+
+    ``(-p·π(bore² - rod²)/4, +p·π·bore²/4)`` from the declaration's bore and
+    rod in millimetres and pressure in bar -- the actuator's ``forcerange``.
+    """
+
+    pascal = float(cylinder["pressure_bar"]) * 1.0e5
+    bore = length_m(float(cylinder["bore_mm"]))
+    rod = length_m(float(cylinder.get("rod_mm") or 0.0))
+    return (-pascal * math.pi * (bore * bore - rod * rod) / 4.0, pascal * math.pi * bore * bore / 4.0)
+
+
 def actuator_records(
     entries: Sequence[Mapping[str, Any]],
     tree: Mapping[str, Any],
@@ -2900,6 +3217,9 @@ def actuator_records(
         stiffness = _declared("stiffness_nmm_per_deg", "stiffness_n_per_mm")
         damping = _declared("damping_nmms_per_deg", "damping_ns_per_mm")
         effort = _declared("torque_limit_nmm", "force_limit_n")
+        cylinder_range = cylinder_forces_n(entry["cylinder"]) if entry.get("cylinder") else None
+        if cylinder_range is not None:
+            effort = cylinder_range[1]
         raw_command_limits = entry.get(
             "command_limits_degrees" if angular else "command_limits_mm"
         )
@@ -2963,6 +3283,13 @@ def actuator_records(
                     None
                     if effort is None
                     else (torque_nm(effort) if angular else float(effort))
+                ),
+                # A cylinder pushes harder than it pulls (ADR-643): its rod
+                # takes area off the retracting side. Present only then.
+                **(
+                    {"effort_range_si": list(cylinder_range)}
+                    if cylinder_range is not None
+                    else {}
                 ),
                 "declared": {
                     "control": control,
@@ -3256,6 +3583,7 @@ def build_model(
     time_step_s: float = DEFAULT_TIME_STEP_S,
     joint_dynamics: Sequence[Mapping[str, Any]] = (),
     actuators: Sequence[Mapping[str, Any]] = (),
+    couplings: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """One assembly, as a compiled MuJoCo model plus the evidence for it.
 
@@ -3288,6 +3616,9 @@ def build_model(
     """
 
     mujoco = _mujoco_module()
+    # ``couplings`` below is the joint-kind couplings' records; the
+    # api.coupling entries are kept under their own name (ADR-642).
+    linear_entries = list(couplings)
     tree = extract_tree(components, joints)
     placements = {
         str(component["name"]): checked_rigid_matrix(
@@ -3528,7 +3859,7 @@ def build_model(
         else:
             limit = float(record["effort_limit_si"])
             native_actuator.forcelimited = mujoco.mjtLimited.mjLIMITED_TRUE
-            native_actuator.forcerange = [-limit, limit]
+            native_actuator.forcerange = list(record.get("effort_range_si") or [-limit, limit])
 
     # Closures are written against *sites* placed at the two connector
     # frames, not against bodies. Measured, and it matters: a body-anchored
@@ -3629,6 +3960,48 @@ def build_model(
         equality.solref = [2.0 * float(time_step_s), 1.0]
         equality.solimp = list(_EQUALITY_SOLIMP)
 
+    # ADR-642: an ``api.coupling`` -- sum of ratio x coordinate held where
+    # the assembly solved it, over any number of joints. Two joints are one
+    # ``equality/joint`` row like a gear's; three or more are a fixed
+    # tendon, the weighted sum of its joints, held by ``equality/tendon``
+    # (MuJoCo's joint equality relates two joints and no more). CoreXY is
+    # two of these, a differential one.
+    linear_couplings = linear_coupling_records(
+        linear_entries, tree, joint_records, solved_values
+    )
+    for record in linear_couplings:
+        terms = record["terms"]
+        equality = spec.add_equality()
+        equality.name = str(record["name"])
+        data = list(equality.data)
+        if len(terms) == 2:
+            dependent, independent = terms
+            slope = -independent["coefficient_si"] / dependent["coefficient_si"]
+            equality.type = mujoco.mjtEq.mjEQ_JOINT
+            equality.objtype = mujoco.mjtObj.mjOBJ_JOINT
+            equality.name1 = str(dependent["mujoco_joint"])
+            equality.name2 = str(independent["mujoco_joint"])
+            data[0] = float(dependent["solved_si"]) - slope * float(independent["solved_si"])
+            data[1] = float(slope)
+            record["slope"] = slope
+        else:
+            tendon = spec.add_tendon()
+            tendon.name = str(record["name"])
+            tendon.limited = mujoco.mjtLimited.mjLIMITED_FALSE
+            for term in terms:
+                tendon.wrap_joint(str(term["mujoco_joint"]), float(term["coefficient_si"]))
+            equality.type = mujoco.mjtEq.mjEQ_TENDON
+            equality.objtype = mujoco.mjtObj.mjOBJ_TENDON
+            equality.name1 = str(record["name"])
+            # L - L0 = a0, and the reference configuration is every joint at
+            # zero, so L0 is zero and a0 is the sum at the solved pose.
+            data[0] = float(
+                sum(term["coefficient_si"] * term["solved_si"] for term in terms)
+            )
+        equality.data = data
+        equality.solref = [2.0 * float(time_step_s), 1.0]
+        equality.solimp = list(_EQUALITY_SOLIMP)
+
     try:
         model = spec.compile()
     except Exception as exc:
@@ -3695,6 +4068,7 @@ def build_model(
         "inertials": inertials,
         "joint_records": joint_records,
         "couplings": couplings,
+        "linear_couplings": linear_couplings,
         "qpos_solved": qpos,
         "placements": placements,
         "time_step_s": float(time_step_s),
@@ -4337,6 +4711,317 @@ def loop_sweep(
             "free_freedoms": free, "poses": [results[i] for i in range(len(travels))]}
 
 
+def _tree_joint_records(tree: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The joint records ``build_model`` would write, read off the tree alone."""
+
+    records: list[dict[str, Any]] = []
+    for body in tree["bodies"]:
+        kinds = list(body["mujoco_joints"])
+        if body["attachment"] == "free" or not body.get("joint"):
+            continue
+        for mujoco_type in kinds:
+            records.append(
+                {
+                    "body": str(body["name"]),
+                    "joint": str(body["joint"]),
+                    "kind": str(body["joint_kind"]),
+                    "mujoco_joint": (
+                        str(body["joint"]) if len(kinds) == 1 else f"{body['joint']}/{mujoco_type}"
+                    ),
+                    "mujoco_type": mujoco_type,
+                    "limits": None,
+                }
+            )
+    return records
+
+
+def coupled_sweep(
+    tree: Mapping[str, Any],
+    joints: Mapping[str, Mapping[str, Any]],
+    placements: Mapping[str, Sequence[float]],
+    couplings: Sequence[Mapping[str, Any]],
+    driven: str,
+    travels: Sequence[float],
+) -> dict[str, Any] | None:
+    """Move one tree joint and every joint a coupling ties to it (ADR-644).
+
+    A gear, belt, screw or rack-and-pinion joint, and an ``api.coupling``,
+    relate joint coordinates linearly; a sweep that turned only ``driven``
+    would turn a leadscrew without moving its nut. Here every coupling that
+    reaches ``driven`` -- directly or through another coupling -- is one
+    equation over the coordinates it names, and the coordinates other than
+    ``driven`` are solved for, least motion first: an **unlimited** joint
+    (a motor, a pulley, a pinion that spins) follows, and a limited one
+    holds unless the equations cannot be met without it (CoreXY's other
+    axis holds while both motors turn). ``travels`` are ``driven``'s
+    changes in its own coordinate, connector 0 to connector 1, radians or
+    mm. Returns ``None`` when no coupling reaches ``driven``; otherwise
+    ``poses`` (each body's world motion as in :func:`loop_sweep`) and
+    ``followers``, every coordinate that moved and its change per unit of
+    ``driven``'s.
+    """
+
+    solved = _solved_joint_values(tree, placements)
+    records = _tree_joint_records(tree)
+    rows: list[dict[str, float]] = []
+    for coupling in _coupling_records(tree, placements, solved):
+        rows.append({str(coupling["dependent_joint"]): 1.0,
+                     str(coupling["independent_joint"]): -float(coupling["slope"])})
+    for coupling in linear_coupling_records(couplings, tree, records, solved):
+        row: dict[str, float] = {}
+        for term in coupling["terms"]:
+            row[str(term["mujoco_joint"])] = float(term["coefficient_si"])
+        rows.append(row)
+    by_mujoco = {str(record["mujoco_joint"]): record for record in records}
+    reached = {driven}
+    group: list[dict[str, float]] = []
+    changed = True
+    while changed:
+        changed = False
+        for row in rows:
+            if row in group or not (set(row) & reached):
+                continue
+            group.append(row)
+            reached |= set(row)
+            changed = True
+    if not group:
+        return None
+    bodies = {str(body["name"]): body for body in tree["bodies"]}
+    body = next(item for item in tree["bodies"] if item.get("joint") == driven)
+    first = str(joints[driven]["connectors"][0]["component"])
+    side = 1.0 if first == body["parent"] else -1.0
+    kind = str(joints[driven]["kind"])
+    scale = 1.0 if kind == "revolute" else 1.0e-3  # the sweep's mm, the model's m
+    others = [name for name in dict.fromkeys(n for row in group for n in row) if name != driven]
+
+    def unlimited(name: str) -> bool:
+        joint = joints.get(str(by_mujoco[name]["joint"])) or {}
+        angular = by_mujoco[name]["mujoco_type"] == "hinge"
+        return joint.get("angle_limits_degrees" if angular else "length_limits_mm") is None
+
+    def solve(unknowns: list[str]) -> tuple[list[float] | None, float]:
+        # Per unit of driven travel: A x = -a_driven, least squares, damped.
+        columns = [[row.get(name, 0.0) for row in group] for name in unknowns]
+        target = [-row.get(driven, 0.0) for row in group]
+        if not unknowns:
+            return [], math.sqrt(sum(v * v for v in target))
+        normal = [[sum(a * b for a, b in zip(ci, cj)) for cj in columns] for ci in columns]
+        for i in range(len(unknowns)):
+            normal[i][i] += 1.0e-14 * max(1.0, normal[i][i])
+        x = _solve_linear(normal, [sum(a * b for a, b in zip(c, target)) for c in columns])
+        if x is None:
+            return None, math.inf
+        residual = [sum(columns[j][i] * x[j] for j in range(len(unknowns))) - target[i]
+                    for i in range(len(group))]
+        # Relative to the driven coordinate's own coefficients, which carry
+        # the unit (a thousand per metre), so the test is scale-free.
+        size = max(1.0, math.sqrt(sum(v * v for v in target)))
+        return x, math.sqrt(sum(v * v for v in residual)) / size
+
+    free = [name for name in others if unlimited(name)]
+    unknowns = free
+    ratios, residual = solve(free)
+    if ratios is None or residual > 1.0e-8:
+        unknowns = others
+        ratios, residual = solve(others)
+    if ratios is None or residual > 1.0e-8:
+        raise ValueError(
+            f"the couplings on {driven!r} cannot all hold while it moves: they lock it")
+    followers = {name: ratio for name, ratio in zip(unknowns, ratios) if abs(ratio) > 1.0e-15}
+    frames = {}
+    for item in tree["bodies"]:
+        if item.get("joint"):
+            frames[str(item["joint"])] = matrix_multiply(
+                placements[str(item["parent"])], item["parent_local_matrix"])
+    poses = []
+    for travel in travels:
+        delta = side * float(travel) * scale
+        values: dict[str, dict[str, float]] = {}
+        for name, ratio in [(driven, 1.0), *followers.items()]:
+            record = by_mujoco[name]
+            values.setdefault(str(record["joint"]), {})[str(record["mujoco_type"])] = ratio * delta
+        motions = {}
+        for joint, coordinates in values.items():
+            joint_kind = str(joints[joint]["kind"])
+            slide_mm = length_mm(coordinates.get("slide", 0.0))
+            angle = coordinates.get("hinge", 0.0)
+            local = (_joint_motion("slider", [slide_mm]) if joint_kind == "slider"
+                     else _joint_motion("cylindrical", [slide_mm, angle]))
+            if joint_kind == "revolute":
+                local = _joint_motion("revolute", [angle])
+            motions[joint] = matrix_multiply(matrix_multiply(frames[joint], local),
+                                             matrix_inverse(frames[joint]))
+        world: dict[str, list[float]] = {}
+        for item in tree["bodies"]:
+            parent = item["parent"]
+            moved = (world[str(parent)] if parent is not None
+                     else matrix_from_rotation_translation((1, 0, 0, 0, 1, 0, 0, 0, 1), (0, 0, 0)))
+            if item.get("joint") in motions:
+                moved = matrix_multiply(moved, motions[item["joint"]])
+            world[str(item["name"])] = moved
+        poses.append({"travel": float(travel), "closed": True, "residual_mm": 0.0, "bodies": world})
+    return {
+        "driven": driven,
+        "followers": {
+            name: {"joint": str(by_mujoco[name]["joint"]),
+                   "motion_type": _MOTION_BY_MUJOCO_TYPE[str(by_mujoco[name]["mujoco_type"])],
+                   "per_unit_si": ratio}
+            for name, ratio in followers.items()
+        },
+        "held": [name for name in others if name not in followers],
+        "poses": poses,
+    }
+
+
+#: How many samples each limited joint is taken at when a tool's reach is
+#: measured, and the most combinations one tool may cost (ADR-645).
+WORKSPACE_SAMPLES_PER_JOINT = 5
+WORKSPACE_MAXIMUM_POSES = 4096
+#: A work-area corner this close to the reach box is reached.
+WORKSPACE_TOLERANCE_MM = 1.0e-3
+
+
+def tool_workspace(
+    tree: Mapping[str, Any],
+    joints: Mapping[str, Mapping[str, Any]],
+    placements: Mapping[str, Sequence[float]],
+    tool: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Where a declared tool point can go against its work frame (ADR-645).
+
+    ``tool`` is ``{"component", "origin_mm", "axis", "work_area_mm"?,
+    "work_frame"?}``. Every limited revolute and slider on the tree path
+    between the work frame (the world when none) and the tool's component is
+    sampled across its declared range -- both ends and evenly between, each
+    combination one pose -- and the tool point is read in the work frame's
+    solved coordinates at each. A joint with no limits on that path holds
+    its solved value and is named in ``unsampled``: its range is not stated,
+    so nothing can be said about it. A path through a loop closure is not
+    sampled at all (the loop solve is per joint), and says so.
+
+    ``reach_box_mm`` is the box the samples span. For sliders on mutually
+    square axes -- a gantry -- it is exact; for turning joints it is an
+    outer bound, so each work-area corner also carries the distance to the
+    nearest sampled pose, which is what an arm's reach is judged by.
+    """
+
+    component = str(tool["component"])
+    frame_component = tool.get("work_frame")
+    bodies = {str(body["name"]): body for body in tree["bodies"]}
+    path = _tree_path(bodies, str(frame_component), component) if frame_component else None
+    if frame_component is None:
+        chain, name = [], component
+        while bodies[name]["parent"] is not None:
+            chain.append((bodies[name], 1.0))
+            name = str(bodies[name]["parent"])
+        path = list(reversed(chain))
+        if bodies[name]["attachment"] != "grounded":
+            path = None
+    report: dict[str, Any] = {"component": component, "work_frame": frame_component,
+                              "origin_mm": list(tool.get("origin_mm") or (0.0, 0.0, 0.0)),
+                              "axis": list(tool.get("axis") or (0.0, 0.0, -1.0))}
+    if path is None:
+        return {**report, "status": "unmeasured",
+                "reason": "nothing grounded relates the tool to its work frame"}
+    solved = _solved_joint_values(tree, placements)
+    sampled, unsampled = [], []
+    for body, _sign in path:
+        joint = str(body.get("joint") or "")
+        kinds = list(body["mujoco_joints"])
+        if not kinds:
+            continue
+        declared = joints[joint]
+        kind = str(declared["kind"])
+        limits = declared.get("angle_limits_degrees" if kind == "revolute" else "length_limits_mm")
+        if kind not in ("revolute", "slider") or not limits or None in list(limits):
+            unsampled.append(joint)
+            continue
+        first = str(declared["connectors"][0]["component"])
+        side = 1.0 if first == body["parent"] else -1.0
+        value = float(solved[joint][0])
+        initial = math.degrees(side * value) if kind == "revolute" else length_mm(side * value)
+        sampled.append({"joint": joint, "kind": kind, "body": body, "side": side,
+                        "initial": initial, "range": [float(limits[0]), float(limits[1])]})
+    on_loops: set[str] = set()
+    for closure in tree["closures"]:
+        cycle = _tree_path(bodies, *(str(c) for c in closure["components"])) or []
+        on_loops |= {str(body.get("joint")) for body, _sign in cycle}
+    looped = [item["joint"] for item in sampled if item["joint"] in on_loops]
+    if looped:
+        return {**report, "status": "unmeasured",
+                "reason": f"the tool's path runs through {looped}, on a closed loop, which the "
+                          "fit sweep moves joint by joint instead"}
+    per = WORKSPACE_SAMPLES_PER_JOINT
+    while sampled and per > 2 and per ** len(sampled) > WORKSPACE_MAXIMUM_POSES:
+        per -= 1
+    if sampled and per ** len(sampled) > WORKSPACE_MAXIMUM_POSES:
+        return {**report, "status": "unmeasured",
+                "reason": f"{len(sampled)} limited joints are more than {WORKSPACE_MAXIMUM_POSES} poses"}
+    frames = {str(item["joint"]): matrix_multiply(placements[str(item["body"]["parent"])],
+                                                  item["body"]["parent_local_matrix"])
+              for item in sampled}
+    origin = [float(v) for v in report["origin_mm"]]
+    tool_world = matrix_multiply(placements[component],
+                                 matrix_from_rotation_translation((1, 0, 0, 0, 1, 0, 0, 0, 1), origin))
+    reference = placements[str(frame_component)] if frame_component else None
+    points: list[list[float]] = []
+
+    def grid(index: int, chosen: dict[str, float]) -> None:
+        if index == len(sampled):
+            motions: dict[str, list[float]] = {}
+            for item in sampled:
+                delta = item["side"] * (chosen[item["joint"]] - item["initial"])
+                local = (_joint_motion("revolute", [math.radians(delta)]) if item["kind"] == "revolute"
+                         else _joint_motion("slider", [delta]))
+                frame = frames[item["joint"]]
+                motions[item["joint"]] = matrix_multiply(matrix_multiply(frame, local),
+                                                         matrix_inverse(frame))
+            world: dict[str, list[float]] = {}
+            for body in tree["bodies"]:
+                parent = body["parent"]
+                moved = (world[str(parent)] if parent is not None
+                         else matrix_from_rotation_translation((1, 0, 0, 0, 1, 0, 0, 0, 1), (0, 0, 0)))
+                if body.get("joint") in motions:
+                    moved = matrix_multiply(moved, motions[body["joint"]])
+                world[str(body["name"])] = moved
+            point = matrix_translation_mm(matrix_multiply(world[component], tool_world))
+            if reference is not None:
+                frame_now = matrix_multiply(world[str(frame_component)], reference)
+                point = matrix_translation_mm(matrix_multiply(
+                    matrix_inverse(frame_now),
+                    matrix_from_rotation_translation((1, 0, 0, 0, 1, 0, 0, 0, 1), point)))
+            points.append([float(v) for v in point])
+            return
+        low, high = sampled[index]["range"]
+        for k in range(per):
+            chosen[sampled[index]["joint"]] = low + (high - low) * k / (per - 1)
+            grid(index + 1, chosen)
+
+    grid(0, {})
+    box = [[min(p[i] for p in points) for i in range(3)], [max(p[i] for p in points) for i in range(3)]]
+    report.update({"status": "measured", "sampled_joints": [item["joint"] for item in sampled],
+                   "samples_per_joint": per if sampled else 0, "poses": len(points),
+                   "unsampled": unsampled, "reach_box_mm": box,
+                   "exact": all(item["kind"] == "slider" for item in sampled)})
+    area = tool.get("work_area_mm")
+    if area is not None:
+        low, high = ([float(v) for v in corner] for corner in area)
+        corners = [[(low, high)[(index >> axis) & 1][axis] for axis in range(3)] for index in range(8)]
+        corners = [list(c) for c in dict.fromkeys(tuple(c) for c in corners)]
+        rows, missed = [], []
+        for corner in corners:
+            inside = all(box[0][i] - WORKSPACE_TOLERANCE_MM <= corner[i] <= box[1][i] + WORKSPACE_TOLERANCE_MM
+                         for i in range(3))
+            nearest = min(math.dist(corner, p) for p in points)
+            rows.append({"corner_mm": corner, "inside_reach_box": inside, "nearest_pose_mm": nearest})
+            if not inside:
+                missed.append(corner)
+        short = [max(0.0, box[0][i] - low[i]) for i in range(3)], [max(0.0, high[i] - box[1][i]) for i in range(3)]
+        report.update({"work_area_mm": [low, high], "covers": not missed, "corners": rows,
+                       "corners_missed": missed, "short_by_mm": {"low": short[0], "high": short[1]}})
+    return report
+
+
 def _loop_mobility(
     mujoco: Any,
     model: Any,
@@ -4511,6 +5196,7 @@ def simulate(
     gravity_m_s2: Sequence[float] = DEFAULT_GRAVITY_M_S2,
     joint_dynamics: Sequence[Mapping[str, Any]] = (),
     actuators: Sequence[Mapping[str, Any]] = (),
+    couplings: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Run the model and return trace frames in the schema the shell plays.
 
@@ -4600,6 +5286,7 @@ def simulate(
         time_step_s=solver_step,
         joint_dynamics=joint_dynamics,
         actuators=actuators,
+        couplings=couplings,
     )
     model = built["model"]
     names = [str(component["name"]) for component in components]
@@ -4915,6 +5602,29 @@ def model_evidence(
             }
             for coupling in built["couplings"]
         ],
+        # Present only when a script declared one, so the evidence of every
+        # model built before ADR-642 is unchanged.
+        **(
+            {
+                "linear_couplings": [
+                    {
+                        "name": str(record["name"]),
+                        "terms": [
+                            {
+                                "joint_output": str(term["joint"]),
+                                "motion_type": str(term["motion_type"]),
+                                "ratio": float(term["ratio"]),
+                            }
+                            for term in record["terms"]
+                        ],
+                        "constraint": "joint" if len(record["terms"]) == 2 else "tendon",
+                    }
+                    for record in built.get("linear_couplings") or []
+                ]
+            }
+            if built.get("linear_couplings")
+            else {}
+        ),
         "tree_joint_count": int(tree["tree_joint_count"]),
         "maximum_depth": int(tree["maximum_depth"]),
         "grounded_components": list(tree["grounded"]),
@@ -5002,6 +5712,11 @@ def model_evidence(
                 "stiffness_si": record["stiffness_si"],
                 "damping_si": record["damping_si"],
                 "effort_limit_si": record["effort_limit_si"],
+                **(
+                    {"effort_range_si": list(record["effort_range_si"])}
+                    if record.get("effort_range_si")
+                    else {}
+                ),
                 "peak_effort_si": (
                     float(peak_effort[index]) if index < len(peak_effort) else None
                 ),
@@ -5737,13 +6452,14 @@ def _verify_actuator_flags(
             )
         if record["effort_limit_si"] is not None:
             expected = float(record["effort_limit_si"])
+            wanted = list(record.get("effort_range_si") or [-expected, expected])
             compiled = [
                 float(value) for value in model.actuator_forcerange[actuator_id]
             ]
-            if compiled != [-expected, expected]:
+            if compiled != wanted:
                 raise DynamicsError(
                     f"Actuator {record['mujoco_actuator']!r} compiled with a "
-                    f"force range of {compiled}, not {[-expected, expected]}.",
+                    f"force range of {compiled}, not {wanted}.",
                     reason="actuator_flags_changed",
                     observed={"actuator": str(record["mujoco_actuator"])},
                 )

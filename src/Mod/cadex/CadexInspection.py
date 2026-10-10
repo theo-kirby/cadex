@@ -1435,6 +1435,10 @@ def _join_inventory(captured: Mapping[str, Any]) -> Any:
             # How far each declared shell stands off what it covers (ADR-612);
             # absent on a revision accepted before it, like attachments.
             "shell_gaps": by_name.get(assembly, {}).get("shell_gaps"),
+            # Each declared tool's reach against its work area (ADR-645);
+            # present only when the assembly declares a tool.
+            **({"workspace": by_name[assembly]["workspace"]}
+               if by_name.get(assembly, {}).get("workspace") is not None else {}),
             # The placed components, for the mounting check (ADR-486): it
             # reads catalog identity, placement, bounds, mount axes and
             # housed outputs beside the pair distances above.

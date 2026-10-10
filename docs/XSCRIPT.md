@@ -281,8 +281,40 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   joint's behaviour from the falling.
   Refused rather than approximated: `distance`/`parallel`/
   `perpendicular`/`angle` joints (they constrain where the solver *put* a
-  part, not how it moves), `rack_pinion`, slider and cylindrical loop
-  closures, flexible subassemblies, and any component without a body.
+  part, not how it moves), a loop made of sliding joints only (two parallel
+  guides on one pair are one slider), flexible subassemblies, and any
+  component without a body.
+- **Machine drives** (ADR-640..645). A slider or cylindrical joint on a
+  loop -- a hydraulic cylinder between two links -- is taken into the
+  spanning tree and the loop closes on one of its pins. `rack_pinion`
+  (first connector the rack, +Z along its travel; second the pinion, +Z
+  its axis; `pitch_radius_mm` signed, positive for a rack on the pinion's
+  -Y side, Y = Z x X) follows OndselSolver's own `x + R·θ` law over the
+  tree path between them, so the rack may be the frame and the pinion ride
+  a carriage; a belt driving a carriage is the same joint with the
+  pulley's pitch radius. `assembly.coupling([(joint, ratio), ...])` holds
+  `sum(ratio·Δq) = 0`, Δq in mm or degrees, over two or more coordinates
+  -- CoreXY's two belts, a differential -- as a joint equality (two terms)
+  or a MuJoCo fixed tendon (more); pass it as `assembly.assembly(...,
+  couplings=[...])`. `assembly.actuator(slider, kind='cylinder',
+  bore_mm=, rod_mm=, pressure_bar=, control_mm=, stiffness_n_per_mm=)` is a
+  position servo whose force range is `[-p·annulus, +p·bore area]`; give the
+  stroke an `assembly.joint_dynamics(armature_kg=...)` of a few kg (piston,
+  rod and oil column), or a light rod rings against its load and opens the
+  loop (measured on `proof-loader`: 4.6 mm with none, 0.0005 mm with 5 kg).
+  A coupled motor wants its rotor inertia the same way (`armature_kgmm2`,
+  a NEMA17's 5.4): without it a velocity gain stretches the belt.
+  The fit sweep moves every coordinate a coupling ties to the swept joint
+  -- an unlimited motor, pulley or screw follows, a limited joint holds --
+  and reports those followers `passive`.
+- **Tool points** (ADR-645). `assembly.tool(component, origin_mm=,
+  axis=, work_area_mm=[[x0,y0,z0],[x1,y1,z1]], work_frame=None)` in
+  `assembly.assembly(..., tools=[...])` makes every build sample the
+  limited joints between the work frame (world, or a component such as the
+  bed) and the tool across their ranges; `inspect scope=clearance` carries
+  `workspace`: the reach box, whether it covers the work area, and each
+  corner's nearest pose. Exact for sliders; an outer bound for turning
+  joints; not sampled through a closed loop.
 - `assembly.mjcf()` exports that same model as a MuJoCo MJCF file instead of
   running it (ADR-081, **experimental**): the six parameters it shares with
   `assembly.dynamics` mean what they mean there and are validated by the same
@@ -872,6 +904,23 @@ Three rules the library holds itself to:
 - **A spec correction is an engine change** (ADR-181): it moves geometry
   under an unchanged script revision, the accepted digest detects the
   drift, and the correction is logged like any behaviour change.
+
+**Machine parts as data** (ADR-646). `lib.part(sku, ...)` builds a row of
+`CadexParts.json` by its family's *interface* -- one generator per
+interface, so a new part number is a data change: MGN9/MGN12 rails
+(`length=`) and carriages; GT2 pulleys, idlers and belts (`span=`,
+`pitch_radius=`); T8 lead screws and the SFU1204 ball screw (`length=`)
+with their nuts; NEMA17/23 steppers; 2020/2040 extrusion (`length=`), its
+M5 T-nut and corner bracket; ISO 6432/15552 pneumatic and ISO 6020-2
+hydraulic cylinders (`extension=`, `.members['barrel']`/`['rod']`); ER11/ER16
+router spindles; plate swivel casters (`.members['yoke']`/`['wheel']`);
+pneumatic tyres on hubs by size code; music-wire compression springs with
+a computed rate. `.spec` carries the row, its source and approximations,
+`datums`, and the numbers a joint or an actuator takes (`pitch_radius_mm`,
+`belt_mm_per_degree`, `lead_mm`, `rotor_inertia_kgmm2`, `rate_n_per_mm`,
+`extend_force_n`) with a `drive_note`. The part numbers are listed on
+`section=library_parts` (MachinePart). Fasteners now run to M12 (socket
+and countersunk screws, hex nuts and washers).
 
 Browse before modelling standard hardware by hand: `describe_api`'s
 `library` section lists the families, part numbers and deciding specs

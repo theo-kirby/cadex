@@ -72,6 +72,9 @@ __all__ = [
     "normalise_thread_size",
     "normalise_bearing_code",
     "normalise_servo_sku",
+    "PARTS_DATA",
+    "PART_INTERFACES",
+    "part_spec",
 ]
 
 
@@ -158,6 +161,23 @@ METRIC_THREADS: Mapping[str, Mapping[str, float]] = {
         "clearance_close_mm": 8.4,
         "clearance_normal_mm": 9.0,
     },
+    # M10 and M12 for machine frames (ADR-646): ISO 261/724 and ISO 273.
+    "m10": {
+        "nominal_dia_mm": 10.0,
+        "pitch_mm": 1.5,
+        "minor_dia_mm": 8.376,
+        "tap_drill_mm": 8.5,
+        "clearance_close_mm": 10.5,
+        "clearance_normal_mm": 11.0,
+    },
+    "m12": {
+        "nominal_dia_mm": 12.0,
+        "pitch_mm": 1.75,
+        "minor_dia_mm": 10.106,
+        "tap_drill_mm": 10.2,
+        "clearance_close_mm": 13.0,
+        "clearance_normal_mm": 13.5,
+    },
 }
 
 
@@ -175,6 +195,8 @@ SOCKET_HEAD_SCREWS: Mapping[str, Mapping[str, float]] = {
     "m5": {"head_dia_mm": 8.5, "head_height_mm": 5.0, "socket_mm": 4.0},
     "m6": {"head_dia_mm": 10.0, "head_height_mm": 6.0, "socket_mm": 5.0},
     "m8": {"head_dia_mm": 13.0, "head_height_mm": 8.0, "socket_mm": 6.0},
+    "m10": {"head_dia_mm": 16.0, "head_height_mm": 10.0, "socket_mm": 8.0},
+    "m12": {"head_dia_mm": 18.0, "head_height_mm": 12.0, "socket_mm": 10.0},
 }
 
 
@@ -190,6 +212,8 @@ COUNTERSUNK_SCREWS: Mapping[str, Mapping[str, float]] = {
     "m5": {"head_dia_mm": 10.0, "head_height_mm": 2.8},
     "m6": {"head_dia_mm": 12.0, "head_height_mm": 3.3},
     "m8": {"head_dia_mm": 16.0, "head_height_mm": 4.4},
+    "m10": {"head_dia_mm": 20.0, "head_height_mm": 5.5},
+    "m12": {"head_dia_mm": 24.0, "head_height_mm": 6.5},
 }
 
 
@@ -205,6 +229,8 @@ HEX_NUTS: Mapping[str, Mapping[str, float]] = {
     "m5": {"across_flats_mm": 8.0, "height_mm": 4.7},
     "m6": {"across_flats_mm": 10.0, "height_mm": 5.2},
     "m8": {"across_flats_mm": 13.0, "height_mm": 6.8},
+    "m10": {"across_flats_mm": 16.0, "height_mm": 8.4},
+    "m12": {"across_flats_mm": 18.0, "height_mm": 10.8},
 }
 
 
@@ -235,6 +261,8 @@ FLAT_WASHERS: Mapping[str, Mapping[str, float]] = {
     "m5": {"bore_mm": 5.3, "od_mm": 10.0, "thickness_mm": 1.0},
     "m6": {"bore_mm": 6.4, "od_mm": 12.0, "thickness_mm": 1.6},
     "m8": {"bore_mm": 8.4, "od_mm": 16.0, "thickness_mm": 1.6},
+    "m10": {"bore_mm": 10.5, "od_mm": 20.0, "thickness_mm": 2.0},
+    "m12": {"bore_mm": 13.0, "od_mm": 24.0, "thickness_mm": 2.5},
 }
 
 
@@ -1438,6 +1466,105 @@ def rack_and_pinion_spec(module: Any, pinion_teeth: Any, rack_teeth: Any, *,
     return spec
 
 
+# --------------------------------------------------------------------------
+# Machine parts as data (ADR-646).
+#
+# ``CadexParts.json`` beside this module holds one family per entry: the
+# interface it is built by, the fields its rows carry, its provenance and
+# its rows. Adding a part number is a row there; ``lib.part(sku, ...)``
+# dispatches on the family's interface to one generator per interface.
+# --------------------------------------------------------------------------
+
+#: The interfaces ``lib.part`` builds, and what each needs beyond a row.
+PART_INTERFACES: Mapping[str, str] = {
+    "rail": "length",
+    "carriage": "",
+    "pulley": "",
+    "belt": "span and pitch_radius",
+    "screw": "length",
+    "screw_nut": "",
+    "motor_face": "",
+    "profile": "length",
+    "slot_hardware": "",
+    "cylinder": "extension",
+    "spindle": "",
+    "caster": "",
+    "wheel_hub": "",
+    "spring": "",
+}
+
+
+def _load_parts_data() -> dict[str, Any]:
+    import json
+    from pathlib import Path
+
+    data = json.loads((Path(__file__).with_name("CadexParts.json")).read_text(encoding="utf-8"))
+    if data.get("schema") != "cadex-parts-data-v1":
+        raise CatalogError("CadexParts.json has an unknown schema.")
+    seen: dict[str, str] = {}
+    for family, entry in data["families"].items():
+        if entry.get("interface") not in PART_INTERFACES:
+            raise CatalogError(f"Part family {family!r} names no known interface.")
+        provenance = entry.get("provenance") or {}
+        if not provenance.get("source") or not isinstance(provenance.get("approximate"), list):
+            raise CatalogError(f"Part family {family!r} states no source or approximations.")
+        fields = dict(entry.get("fields") or {})
+        for sku, row in entry["rows"].items():
+            if sku != sku.strip().lower() or sku in seen:
+                raise CatalogError(f"Part number {sku!r} is not a unique lowercase key.")
+            seen[sku] = family
+            missing = sorted(set(fields) - set(row))
+            if missing:
+                raise CatalogError(f"Part {sku!r} lacks {missing}.")
+            for name, value in row.items():
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    if not math.isfinite(value) or value < 0.0:
+                        raise CatalogError(f"Part {sku!r} field {name!r} must be finite and >= 0.")
+    data["index"] = seen
+    return data
+
+
+PARTS_DATA: Mapping[str, Any] = _load_parts_data()
+
+
+def part_spec(sku: Any) -> dict[str, Any]:
+    """One machine part's row, with its family, interface and provenance (ADR-646)."""
+
+    key = str(sku or "").strip().lower()
+    family = PARTS_DATA["index"].get(key)
+    if family is None:
+        raise CatalogError(
+            f"Unknown part {sku!r}. Known machine parts: {sorted(PARTS_DATA['index'])}."
+        )
+    entry = PARTS_DATA["families"][family]
+    spec = deepcopy(dict(entry["rows"][key]))
+    spec.update({
+        "part_number": key,
+        "family": family,
+        "interface": entry["interface"],
+        "sources": [entry["provenance"]["source"]],
+        "approximate": list(entry["provenance"]["approximate"]),
+    })
+    return spec
+
+
+def _machine_parts_listing() -> dict[str, Any]:
+    # Short on purpose: the library page is held under one tool result
+    # (ADR-360), so the part numbers are on section=library_parts, in
+    # MachinePart's description, which is generated from this data.
+    return {
+        "notes": "lib.part(sku, ...); families and part numbers on section=library_parts (MachinePart).",
+    }
+
+
+def machine_parts_by_family() -> str:
+    """Every machine part number, by family, as one line (ADR-646)."""
+
+    return "; ".join(
+        f"{family}: {', '.join(sorted(entry['rows']))}"
+        for family, entry in sorted(PARTS_DATA["families"].items())
+    )
+
 def catalog_families() -> dict[str, Any]:
     """The browsable catalog: every family, its part numbers, key specs.
 
@@ -1455,6 +1582,7 @@ def catalog_families() -> dict[str, Any]:
         ]
 
     return {
+        "machine_parts": _machine_parts_listing(),
         "fasteners": {
             "sizes": sorted(METRIC_THREADS),
             "bolt_heads": ["socket", "countersunk"],
@@ -1494,7 +1622,7 @@ def catalog_families() -> dict[str, Any]:
         },
         "qdd_actuators": {
             "skus": sorted(QDD_ACTUATORS),
-            "notes": "lib.qdd(sku): quasi-direct-drive joint actuators (motor, planetary, FOC driver) as a sourced coaxial envelope with stator and output bolt circles; methods in section=library_parts. Two tiers: cubemars-ak70-10 (621 g, 24.8 N*m peak) and cubemars-ak80-9-v3 (490 g, 22 N*m) for hips and knees; cubemars-ak60-6-v3 (380 g, 9 N*m) and cubemars-ak45-10-v3 (262 g, 7 N*m, 24 V) for necks, heads, jaws, tails and arms. No thermal model.",
+            "notes": "lib.qdd(sku): quasi-direct-drive joint actuators (motor, planetary, FOC driver) as a sourced coaxial envelope with stator and output bolt circles; methods in section=library_parts. ak70-10 621 g 24.8 N*m peak, ak80-9-v3 490 g 22 N*m, ak60-6-v3 380 g 9 N*m, ak45-10-v3 262 g 7 N*m at 24 V. No thermal model.",
         },
         "gearmotors": {
             "skus": sorted(GEARMOTORS),
@@ -1504,7 +1632,7 @@ def catalog_families() -> dict[str, Any]:
             "preferred_modules_mm": list(GEAR_STANDARD["preferred_modules_mm"]),
             "pressure_angle_degrees": GEAR_STANDARD["pressure_angle_degrees"],
             "teeth_range": [GEAR_STANDARD["minimum_teeth"], GEAR_STANDARD["maximum_teeth"]],
-            "notes": "lib.spur_gear(module, teeth, face_width, bore=None) and lib.rack(module, teeth, face_width, height): ISO 53 type A profile on ISO 54 series I modules, one sampled-involute polygon extruded; spec carries the pitch, base, root and tip diameters and the undercut warning below 17 teeth. No fillets, backlash, strength rating or density. lib.rack_and_pinion(module, pinion_teeth, rack_teeth, face_width, backlash=0, bore=None, rack_height=None, rotation_degrees=0) composes both at the standard centre distance as one compound; spec carries centre distance, travel per revolution and the datums.",
+            "notes": "lib.spur_gear, lib.rack and lib.rack_and_pinion (both meshed, one compound): ISO 53 profile on ISO 54 series I modules, a sampled involute; spec carries pitch/base/root/tip diameters, the undercut warning, centre distance and travel per revolution. No fillets, backlash or strength. Couple them with assembly.joint('gears' or 'rack_pinion').",
         },
         "batteries": {
             "skus": sorted(BATTERIES),

@@ -1,0 +1,150 @@
+{
+  "schema": "cadex-parts-data-v1",
+  "notes": "Machine parts as data (ADR-646). One family per entry: the interface it is built by (one generator per interface in cadex_library_api.LibraryAPI.part), the fields every row carries with their units, where the numbers came from, what is approximate, and the rows keyed by part number. Adding a part number is a data change: a row here, checked by test_parts_data.py, and no code. Millimetres, newtons, N*mm, kg, kg*mm^2 and bar throughout.",
+  "families": {
+    "linear_rails": {
+      "interface": "rail",
+      "fields": {"width_mm": "mm", "height_mm": "mm", "hole_pitch_mm": "mm", "hole_dia_mm": "mm", "counterbore_dia_mm": "mm", "counterbore_depth_mm": "mm", "end_distance_mm": "mm", "mass_kg_per_m": "kg/m", "density_kg_m3": "kg/m^3"},
+      "provenance": {"source": "HIWIN MG miniature linear guideway catalogue, MGNR rail table (W_R, H_R, D, h, d, P, E); cross-checked against an interchange listing (lily-bearing.com MGN12H/MGNR12R) on 2026-10-10.", "approximate": ["The rail is its rectangular envelope with counterbored holes; the ball grooves are not modelled.", "Hole positions start at end_distance_mm from the rail's datum end; a rail cut to another length is the user's choice."]},
+      "rows": {
+        "mgnr9": {"width_mm": 9.0, "height_mm": 6.5, "hole_pitch_mm": 20.0, "hole_dia_mm": 3.5, "counterbore_dia_mm": 6.0, "counterbore_depth_mm": 3.3, "end_distance_mm": 7.5, "mass_kg_per_m": 0.38, "density_kg_m3": 7850.0, "carriages": ["mgn9c", "mgn9h"]},
+        "mgnr12": {"width_mm": 12.0, "height_mm": 8.0, "hole_pitch_mm": 25.0, "hole_dia_mm": 3.5, "counterbore_dia_mm": 6.0, "counterbore_depth_mm": 4.5, "end_distance_mm": 10.0, "mass_kg_per_m": 0.65, "density_kg_m3": 7850.0, "carriages": ["mgn12c", "mgn12h"]}
+      }
+    },
+    "linear_carriages": {
+      "interface": "carriage",
+      "fields": {"rail": "part number", "assembly_height_mm": "mm (H, rail base to carriage top)", "clearance_mm": "mm (H1, rail base to carriage underside)", "width_mm": "mm (W)", "length_mm": "mm (L)", "hole_spacing_width_mm": "mm (B)", "hole_spacing_length_mm": "mm (C)", "thread": "metric size", "mass_kg": "kg", "dynamic_load_n": "N (C)"},
+      "provenance": {"source": "HIWIN MG miniature linear guideway catalogue, MGN block table (H, H1, W, L, B, C, M); cross-checked on 2026-10-10 against an interchange listing, which gives L 47.6 mm for MGN12H with end seals where HIWIN's table gives 45.4.", "approximate": ["The carriage is its envelope with the rail channel and four tapped holes; recirculation caps, seals and grease nipple are not modelled.", "dynamic_load_n is the catalogue's basic dynamic load rating, kept as quoted."]},
+      "rows": {
+        "mgn9c": {"rail": "mgnr9", "assembly_height_mm": 10.0, "clearance_mm": 2.0, "width_mm": 20.0, "length_mm": 28.9, "hole_spacing_width_mm": 15.0, "hole_spacing_length_mm": 10.0, "thread": "m3", "mass_kg": 0.016, "dynamic_load_n": 1860.0},
+        "mgn9h": {"rail": "mgnr9", "assembly_height_mm": 10.0, "clearance_mm": 2.0, "width_mm": 20.0, "length_mm": 39.9, "hole_spacing_width_mm": 15.0, "hole_spacing_length_mm": 16.0, "thread": "m3", "mass_kg": 0.026, "dynamic_load_n": 2550.0},
+        "mgn12c": {"rail": "mgnr12", "assembly_height_mm": 13.0, "clearance_mm": 3.0, "width_mm": 27.0, "length_mm": 34.7, "hole_spacing_width_mm": 20.0, "hole_spacing_length_mm": 15.0, "thread": "m3", "mass_kg": 0.034, "dynamic_load_n": 2840.0},
+        "mgn12h": {"rail": "mgnr12", "assembly_height_mm": 13.0, "clearance_mm": 3.0, "width_mm": 27.0, "length_mm": 45.4, "hole_spacing_width_mm": 20.0, "hole_spacing_length_mm": 20.0, "thread": "m3", "mass_kg": 0.054, "dynamic_load_n": 3720.0}
+      }
+    },
+    "belt_pulleys": {
+      "interface": "pulley",
+      "fields": {"teeth": "count", "pitch_mm": "mm (belt pitch)", "belt_width_mm": "mm", "bore_mm": "mm", "flange_dia_mm": "mm", "hub_dia_mm": "mm", "hub_length_mm": "mm", "overall_length_mm": "mm", "toothed": "bool", "density_kg_m3": "kg/m^3"},
+      "provenance": {"source": "GT2 (2GT) profile: 2.000 mm pitch, pitch line 0.254 mm outside the tooth tips (Gates PowerGrip GT2 design manual). Hub, flange and bore are the common 3D-printer pulley and idler (e.g. the 20T 5 mm bore 6 mm belt pulley and the F623-based 20T idler) as sold by many vendors.", "approximate": ["Teeth are not modelled: the toothed band is a cylinder at the outside diameter. pitch_radius_mm is the tooth count's exact pitch circle.", "Hub, flange and length vary a few tenths between vendors."]},
+      "rows": {
+        "gt2-16t-5mm": {"teeth": 16, "pitch_mm": 2.0, "belt_width_mm": 6.0, "bore_mm": 5.0, "flange_dia_mm": 13.0, "hub_dia_mm": 13.0, "hub_length_mm": 7.0, "overall_length_mm": 16.0, "toothed": true, "density_kg_m3": 2700.0},
+        "gt2-20t-5mm": {"teeth": 20, "pitch_mm": 2.0, "belt_width_mm": 6.0, "bore_mm": 5.0, "flange_dia_mm": 16.0, "hub_dia_mm": 16.0, "hub_length_mm": 7.0, "overall_length_mm": 16.0, "toothed": true, "density_kg_m3": 2700.0},
+        "gt2-20t-8mm-10w": {"teeth": 20, "pitch_mm": 2.0, "belt_width_mm": 10.0, "bore_mm": 8.0, "flange_dia_mm": 16.0, "hub_dia_mm": 16.0, "hub_length_mm": 7.0, "overall_length_mm": 21.0, "toothed": true, "density_kg_m3": 2700.0},
+        "gt2-20t-idler-3mm": {"teeth": 20, "pitch_mm": 2.0, "belt_width_mm": 6.0, "bore_mm": 3.0, "flange_dia_mm": 18.0, "hub_dia_mm": 0.0, "hub_length_mm": 0.0, "overall_length_mm": 8.5, "toothed": true, "density_kg_m3": 2700.0},
+        "gt2-smooth-idler-5mm": {"teeth": 20, "pitch_mm": 2.0, "belt_width_mm": 6.0, "bore_mm": 5.0, "flange_dia_mm": 18.0, "hub_dia_mm": 0.0, "hub_length_mm": 0.0, "overall_length_mm": 8.5, "toothed": false, "density_kg_m3": 2700.0}
+      }
+    },
+    "belts": {
+      "interface": "belt",
+      "fields": {"pitch_mm": "mm", "width_mm": "mm", "thickness_mm": "mm", "pitch_line_offset_mm": "mm", "density_kg_m3": "kg/m^3"},
+      "provenance": {"source": "Gates PowerGrip GT2 2MGT: 2.000 mm pitch, 1.38 mm overall thickness, 0.254 mm pitch-line differential.", "approximate": ["The belt is a smooth band of its overall thickness laid on the pitch circles; teeth are not modelled.", "density is a glass-fibre-reinforced neoprene figure, not a measured one."]},
+      "rows": {
+        "gt2-6mm": {"pitch_mm": 2.0, "width_mm": 6.0, "thickness_mm": 1.38, "pitch_line_offset_mm": 0.254, "density_kg_m3": 1300.0},
+        "gt2-10mm": {"pitch_mm": 2.0, "width_mm": 10.0, "thickness_mm": 1.38, "pitch_line_offset_mm": 0.254, "density_kg_m3": 1300.0}
+      }
+    },
+    "screws": {
+      "interface": "screw",
+      "fields": {"nominal_dia_mm": "mm", "lead_mm": "mm per revolution", "pitch_mm": "mm", "starts": "count", "kind": "lead or ball", "efficiency": "fraction", "density_kg_m3": "kg/m^3"},
+      "provenance": {"source": "Tr8x8(P2) and Tr8x2 trapezoidal lead screws per DIN 103 (nominal diameter, pitch, starts); SFU1204 rolled ball screw per the common SFU/DIN 69051 series table (d 12, lead 4).", "approximate": ["The screw is its nominal-diameter cylinder; threads are not modelled. lead_mm is what assembly.joint('screw', thread_pitch_mm=...) takes.", "efficiency is a typical figure (lead screw ~0.3-0.4 dry, ball screw ~0.9), not a rating."]},
+      "rows": {
+        "t8-lead8": {"nominal_dia_mm": 8.0, "lead_mm": 8.0, "pitch_mm": 2.0, "starts": 4, "kind": "lead", "efficiency": 0.4, "density_kg_m3": 7900.0, "nuts": ["t8-flange-nut-lead8"]},
+        "t8-lead2": {"nominal_dia_mm": 8.0, "lead_mm": 2.0, "pitch_mm": 2.0, "starts": 1, "kind": "lead", "efficiency": 0.3, "density_kg_m3": 7900.0, "nuts": ["t8-flange-nut-lead2"]},
+        "sfu1204": {"nominal_dia_mm": 12.0, "lead_mm": 4.0, "pitch_mm": 4.0, "starts": 1, "kind": "ball", "efficiency": 0.9, "density_kg_m3": 7850.0, "nuts": ["sfu1204-nut"]}
+      }
+    },
+    "screw_nuts": {
+      "interface": "screw_nut",
+      "fields": {"screw": "part number", "body_dia_mm": "mm", "body_length_mm": "mm", "flange_dia_mm": "mm", "flange_thickness_mm": "mm", "flange_offset_mm": "mm (flange's datum face from the nut's datum end)", "bolt_circle_mm": "mm", "bolt_hole_dia_mm": "mm", "bolt_holes": "count", "flat_width_mm": "mm, 0 for a round flange", "density_kg_m3": "kg/m^3"},
+      "provenance": {"source": "T8 brass flange nut as sold for 3D printers (body 10.2 mm, flange 22 mm with four 3.5 mm holes on 16 mm); SFU1204 ball nut per the SFU series table (D 24, A 40, B 10, L 40, W 32, X 4.5, flats H 30).", "approximate": ["Internal threads and ball recirculation are not modelled; the bore is the screw's nominal diameter."]},
+      "rows": {
+        "t8-flange-nut-lead8": {"screw": "t8-lead8", "body_dia_mm": 10.2, "body_length_mm": 15.0, "flange_dia_mm": 22.0, "flange_thickness_mm": 3.5, "flange_offset_mm": 0.0, "bolt_circle_mm": 16.0, "bolt_hole_dia_mm": 3.5, "bolt_holes": 4, "flat_width_mm": 0.0, "density_kg_m3": 8500.0},
+        "t8-flange-nut-lead2": {"screw": "t8-lead2", "body_dia_mm": 10.2, "body_length_mm": 15.0, "flange_dia_mm": 22.0, "flange_thickness_mm": 3.5, "flange_offset_mm": 0.0, "bolt_circle_mm": 16.0, "bolt_hole_dia_mm": 3.5, "bolt_holes": 4, "flat_width_mm": 0.0, "density_kg_m3": 8500.0},
+        "sfu1204-nut": {"screw": "sfu1204", "body_dia_mm": 24.0, "body_length_mm": 40.0, "flange_dia_mm": 40.0, "flange_thickness_mm": 10.0, "flange_offset_mm": 0.0, "bolt_circle_mm": 32.0, "bolt_hole_dia_mm": 4.5, "bolt_holes": 6, "flat_width_mm": 30.0, "density_kg_m3": 7850.0}
+      }
+    },
+    "steppers": {
+      "interface": "motor_face",
+      "fields": {"frame_mm": "mm (square face)", "body_length_mm": "mm", "hole_spacing_mm": "mm (square bolt pattern)", "thread": "metric size", "thread_depth_mm": "mm", "pilot_dia_mm": "mm", "pilot_height_mm": "mm", "shaft_dia_mm": "mm", "shaft_length_mm": "mm", "holding_torque_nmm": "N*mm", "rotor_inertia_kgmm2": "kg*mm^2", "rated_current_a": "A", "step_degrees": "degrees", "mass_kg": "kg"},
+      "provenance": {"source": "Face, bolt pattern, pilot and shaft: NEMA ICS 16 frame sizes 17 and 23 (42.3 / 56.4 mm square, 31.0 / 47.14 mm bolt square, 22.0 / 38.1 mm pilot). Lengths, torques, inertias and masses: the vendors' datasheets for 17HS4401, StepperOnline 17HS19-2004S1, 23HS22-2804S and 23HS30-2804S.", "approximate": ["The case is a square block with the pilot boss and a round shaft (the D flat is not modelled), corner chamfers omitted.", "holding_torque_nmm is static holding torque, not running torque at speed: size a drive's torque_limit_nmm well under it.", "rotor_inertia_kgmm2 is the datasheet's rotor inertia; give it to assembly.joint_dynamics(armature_kgmm2=...) on the motor's joint."]},
+      "rows": {
+        "nema17-40": {"frame_mm": 42.3, "body_length_mm": 40.0, "hole_spacing_mm": 31.0, "thread": "m3", "thread_depth_mm": 4.5, "pilot_dia_mm": 22.0, "pilot_height_mm": 2.0, "shaft_dia_mm": 5.0, "shaft_length_mm": 24.0, "holding_torque_nmm": 400.0, "rotor_inertia_kgmm2": 5.4, "rated_current_a": 1.7, "step_degrees": 1.8, "mass_kg": 0.28, "model": "17HS4401"},
+        "nema17-48": {"frame_mm": 42.3, "body_length_mm": 48.0, "hole_spacing_mm": 31.0, "thread": "m3", "thread_depth_mm": 4.5, "pilot_dia_mm": 22.0, "pilot_height_mm": 2.0, "shaft_dia_mm": 5.0, "shaft_length_mm": 24.0, "holding_torque_nmm": 590.0, "rotor_inertia_kgmm2": 8.2, "rated_current_a": 2.0, "step_degrees": 1.8, "mass_kg": 0.39, "model": "17HS19-2004S1"},
+        "nema23-56": {"frame_mm": 56.4, "body_length_mm": 56.0, "hole_spacing_mm": 47.14, "thread": "m5", "thread_depth_mm": 6.0, "pilot_dia_mm": 38.1, "pilot_height_mm": 1.6, "shaft_dia_mm": 6.35, "shaft_length_mm": 20.6, "holding_torque_nmm": 1260.0, "rotor_inertia_kgmm2": 30.0, "rated_current_a": 2.8, "step_degrees": 1.8, "mass_kg": 0.7, "model": "23HS22-2804S"},
+        "nema23-76": {"frame_mm": 56.4, "body_length_mm": 76.0, "hole_spacing_mm": 47.14, "thread": "m5", "thread_depth_mm": 6.0, "pilot_dia_mm": 38.1, "pilot_height_mm": 1.6, "shaft_dia_mm": 8.0, "shaft_length_mm": 20.6, "holding_torque_nmm": 1890.0, "rotor_inertia_kgmm2": 48.0, "rated_current_a": 2.8, "step_degrees": 1.8, "mass_kg": 1.0, "model": "23HS30-2804S"}
+      }
+    },
+    "extrusions": {
+      "interface": "profile",
+      "fields": {"width_mm": "mm", "height_mm": "mm", "slot_opening_mm": "mm", "slot_depth_mm": "mm", "slot_inner_width_mm": "mm", "lip_mm": "mm", "bore_dia_mm": "mm", "tap": "metric size for the end bores", "mass_kg_per_m": "kg/m", "density_kg_m3": "kg/m^3"},
+      "provenance": {"source": "20-series 6 mm slot aluminium profile (Misumi HFS5-2020 / HFS5-2040, Bosch Rexroth 20x20 B-type and their V-slot equivalents): 20 mm module, 6.2 mm slot opening, 4.2 mm centre bore for an M5 tap, 1.8 mm slot lip.", "approximate": ["The slot is a T: the 6.2 mm opening through the 1.8 mm lip, then an 8 mm undercut to 5 mm deep (the real slot is about 6 mm deep and its trapezoid undercut wider, reaching under diagonal webs a rectangle cannot keep); the V-groove is squared off and the core is solid.", "density is the profile's quoted mass over the modelled section, so the mass is the vendor's."]},
+      "rows": {
+        "2020": {"width_mm": 20.0, "height_mm": 20.0, "slot_opening_mm": 6.2, "slot_depth_mm": 5.0, "slot_inner_width_mm": 8.0, "lip_mm": 1.8, "bore_dia_mm": 4.2, "tap": "m5", "mass_kg_per_m": 0.5, "density_kg_m3": 2700.0},
+        "2040": {"width_mm": 40.0, "height_mm": 20.0, "slot_opening_mm": 6.2, "slot_depth_mm": 5.0, "slot_inner_width_mm": 8.0, "lip_mm": 1.8, "bore_dia_mm": 4.2, "tap": "m5", "mass_kg_per_m": 0.83, "density_kg_m3": 2700.0}
+      }
+    },
+    "extrusion_hardware": {
+      "interface": "slot_hardware",
+      "fields": {"kind": "tnut or bracket", "series": "profile family", "length_mm": "mm", "width_mm": "mm", "height_mm": "mm", "thread": "metric size", "hole_dia_mm": "mm", "thickness_mm": "mm (bracket wall)", "density_kg_m3": "kg/m^3"},
+      "provenance": {"source": "20-series M5 roll-in T-nut and 20x20x20 cast corner bracket as sold for 2020 profile.", "approximate": ["The T-nut is a block with its thread's tap hole; the spring ball and the roll-in radius are not modelled.", "The bracket is an L of two plates with one clearance hole each; the gusset is not modelled."]},
+      "rows": {
+        "2020-tnut-m5": {"kind": "tnut", "series": "2020", "length_mm": 10.0, "width_mm": 10.0, "height_mm": 4.5, "thread": "m5", "hole_dia_mm": 4.2, "thickness_mm": 0.0, "density_kg_m3": 7850.0},
+        "2020-corner-bracket": {"kind": "bracket", "series": "2020", "length_mm": 20.0, "width_mm": 20.0, "height_mm": 20.0, "thread": "m5", "hole_dia_mm": 5.5, "thickness_mm": 3.0, "density_kg_m3": 2700.0}
+      }
+    },
+    "cylinders": {
+      "interface": "cylinder",
+      "fields": {"kind": "pneumatic or hydraulic", "bore_mm": "mm", "rod_mm": "mm", "stroke_mm": "mm", "barrel_od_mm": "mm", "dead_length_mm": "mm (pin to pin at zero stroke, minus nothing)", "pin_dia_mm": "mm", "clevis_width_mm": "mm", "max_pressure_bar": "bar", "working_pressure_bar": "bar", "mass_kg": "kg"},
+      "provenance": {"source": "Pneumatic: ISO 6432 (bore 16/20/25, rods 6/8/10) and ISO 15552 (bore 32/40, rods 12/16) round and profile cylinders, 10 bar maximum, 6 bar working. Hydraulic: ISO 6020-2 160 bar series (bore 25 rod 12, bore 40 rod 18, bore 50 rod 22). Bore, rod and pressure are the standards'.", "approximate": ["dead_length_mm (retracted pin centres less the stroke), barrel_od_mm, pin_dia_mm and clevis_width_mm are typical of the catalogue families, not one maker's drawing.", "The barrel and rod are plain cylinders and the clevises plain eyes; ports, cushions and tie rods are not modelled.", "Drive it with assembly.actuator(joint, kind='cylinder', bore_mm=..., rod_mm=..., pressure_bar=working_pressure_bar, ...)."]},
+      "rows": {
+        "iso6432-20x100": {"kind": "pneumatic", "bore_mm": 20.0, "rod_mm": 8.0, "stroke_mm": 100.0, "barrel_od_mm": 22.0, "dead_length_mm": 132.0, "pin_dia_mm": 8.0, "clevis_width_mm": 8.0, "max_pressure_bar": 10.0, "working_pressure_bar": 6.0, "mass_kg": 0.25},
+        "iso15552-32x200": {"kind": "pneumatic", "bore_mm": 32.0, "rod_mm": 12.0, "stroke_mm": 200.0, "barrel_od_mm": 45.0, "dead_length_mm": 142.0, "pin_dia_mm": 10.0, "clevis_width_mm": 26.0, "max_pressure_bar": 10.0, "working_pressure_bar": 6.0, "mass_kg": 1.2},
+        "iso15552-40x300": {"kind": "pneumatic", "bore_mm": 40.0, "rod_mm": 16.0, "stroke_mm": 300.0, "barrel_od_mm": 52.0, "dead_length_mm": 163.0, "pin_dia_mm": 12.0, "clevis_width_mm": 28.0, "max_pressure_bar": 10.0, "working_pressure_bar": 6.0, "mass_kg": 2.1},
+        "iso6020-25x150": {"kind": "hydraulic", "bore_mm": 25.0, "rod_mm": 12.0, "stroke_mm": 150.0, "barrel_od_mm": 40.0, "dead_length_mm": 180.0, "pin_dia_mm": 12.0, "clevis_width_mm": 16.0, "max_pressure_bar": 160.0, "working_pressure_bar": 100.0, "mass_kg": 1.9},
+        "iso6020-40x250": {"kind": "hydraulic", "bore_mm": 40.0, "rod_mm": 18.0, "stroke_mm": 250.0, "barrel_od_mm": 55.0, "dead_length_mm": 230.0, "pin_dia_mm": 16.0, "clevis_width_mm": 20.0, "max_pressure_bar": 160.0, "working_pressure_bar": 120.0, "mass_kg": 4.6},
+        "iso6020-50x400": {"kind": "hydraulic", "bore_mm": 50.0, "rod_mm": 22.0, "stroke_mm": 400.0, "barrel_od_mm": 65.0, "dead_length_mm": 260.0, "pin_dia_mm": 20.0, "clevis_width_mm": 25.0, "max_pressure_bar": 160.0, "working_pressure_bar": 140.0, "mass_kg": 8.5}
+      }
+    },
+    "spindles": {
+      "interface": "spindle",
+      "fields": {"body_dia_mm": "mm (the clamp diameter)", "body_length_mm": "mm", "nose_dia_mm": "mm", "nose_length_mm": "mm", "collet": "ER size", "max_tool_shank_mm": "mm", "power_w": "W", "max_rpm": "rpm", "mass_kg": "kg"},
+      "provenance": {"source": "Clamp diameters and collet sizes of the common router spindles: the 52 mm 300-500 W DC ER11 spindle, the 65 mm 800 W ER11 spindle and the 80 mm 1.5 kW 24 000 rpm water-cooled ER16 spindle (GDZ80-1.5). ER collet capacities per DIN 6499 (ER11 7 mm, ER16 10 mm).", "approximate": ["body_length_mm, nose dimensions and mass are typical of the families, not one maker's drawing; the cooling ports and cable gland are not modelled."]},
+      "rows": {
+        "er11-52-500w": {"body_dia_mm": 52.0, "body_length_mm": 160.0, "nose_dia_mm": 19.0, "nose_length_mm": 18.0, "collet": "ER11", "max_tool_shank_mm": 7.0, "power_w": 500.0, "max_rpm": 12000.0, "mass_kg": 1.0},
+        "er11-65-800w": {"body_dia_mm": 65.0, "body_length_mm": 175.0, "nose_dia_mm": 19.0, "nose_length_mm": 20.0, "collet": "ER11", "max_tool_shank_mm": 7.0, "power_w": 800.0, "max_rpm": 24000.0, "mass_kg": 2.2},
+        "er16-80-1500w": {"body_dia_mm": 80.0, "body_length_mm": 195.0, "nose_dia_mm": 28.0, "nose_length_mm": 25.0, "collet": "ER16", "max_tool_shank_mm": 10.0, "power_w": 1500.0, "max_rpm": 24000.0, "mass_kg": 4.0}
+      }
+    },
+    "casters": {
+      "interface": "caster",
+      "fields": {"wheel_dia_mm": "mm", "wheel_width_mm": "mm", "overall_height_mm": "mm (plate top to floor)", "plate_length_mm": "mm", "plate_width_mm": "mm", "plate_thickness_mm": "mm", "hole_spacing_length_mm": "mm", "hole_spacing_width_mm": "mm", "hole_dia_mm": "mm", "swivel_offset_mm": "mm", "load_n": "N", "mass_kg": "kg"},
+      "provenance": {"source": "Light-duty plate swivel casters in the common 50 mm (2 in) and 75 mm (3 in) wheel sizes; plate and hole pattern of the usual 60x45 / 67x67 mm top plates.", "approximate": ["A generic catalogue caster, not one maker's part: the yoke is two plates and an axle, the swivel bearing a disc; overall_height_mm and swivel_offset_mm are typical."]},
+      "rows": {
+        "caster-50": {"wheel_dia_mm": 50.0, "wheel_width_mm": 18.0, "overall_height_mm": 68.0, "plate_length_mm": 60.0, "plate_width_mm": 45.0, "plate_thickness_mm": 2.5, "hole_spacing_length_mm": 45.0, "hole_spacing_width_mm": 30.0, "hole_dia_mm": 6.0, "swivel_offset_mm": 20.0, "load_n": 300.0, "mass_kg": 0.12},
+        "caster-75": {"wheel_dia_mm": 75.0, "wheel_width_mm": 24.0, "overall_height_mm": 100.0, "plate_length_mm": 67.0, "plate_width_mm": 67.0, "plate_thickness_mm": 3.0, "hole_spacing_length_mm": 50.0, "hole_spacing_width_mm": 50.0, "hole_dia_mm": 8.0, "swivel_offset_mm": 28.0, "load_n": 500.0, "mass_kg": 0.35}
+      }
+    },
+    "tyres": {
+      "interface": "wheel_hub",
+      "fields": {"outer_dia_mm": "mm", "section_width_mm": "mm", "rim_dia_mm": "mm", "hub_length_mm": "mm", "hub_dia_mm": "mm", "bore_mm": "mm", "load_n": "N", "mass_kg": "kg"},
+      "provenance": {"source": "Tyre size codes, which are the dimensions: 13x5.00-6 is a 13 in (330 mm) outer diameter, 5.00 in (127 mm) section, 6 in (152 mm) rim; 16x6.50-8 and 20x10.00-8 likewise; 4.10/3.50-4 is a 4.10 in section on a 4 in rim, about 260 mm outside.", "approximate": ["The tyre is a cylinder with its shoulders rounded by the section; tread is not modelled.", "hub_length_mm, hub_dia_mm, bore_mm and mass_kg are typical of a steel-rim wheel with a plain bearing hub."]},
+      "rows": {
+        "4.10-3.50-4": {"outer_dia_mm": 260.0, "section_width_mm": 85.0, "rim_dia_mm": 101.6, "hub_length_mm": 75.0, "hub_dia_mm": 40.0, "bore_mm": 20.0, "load_n": 1300.0, "mass_kg": 2.2},
+        "13x5.00-6": {"outer_dia_mm": 330.2, "section_width_mm": 127.0, "rim_dia_mm": 152.4, "hub_length_mm": 90.0, "hub_dia_mm": 50.0, "bore_mm": 25.4, "load_n": 2200.0, "mass_kg": 4.0},
+        "16x6.50-8": {"outer_dia_mm": 406.4, "section_width_mm": 165.1, "rim_dia_mm": 203.2, "hub_length_mm": 110.0, "hub_dia_mm": 60.0, "bore_mm": 25.4, "load_n": 3500.0, "mass_kg": 6.5},
+        "20x10.00-8": {"outer_dia_mm": 508.0, "section_width_mm": 254.0, "rim_dia_mm": 203.2, "hub_length_mm": 180.0, "hub_dia_mm": 70.0, "bore_mm": 31.75, "load_n": 5500.0, "mass_kg": 11.0}
+      }
+    },
+    "springs": {
+      "interface": "spring",
+      "fields": {"wire_dia_mm": "mm", "outer_dia_mm": "mm", "free_length_mm": "mm", "active_coils": "count", "total_coils": "count", "shear_modulus_mpa": "MPa", "density_kg_m3": "kg/m^3"},
+      "provenance": {"source": "Closed-and-ground music-wire compression springs (EN 10270-1 SH, G = 81 500 MPa) in common stock sizes; the rate is computed, not quoted: k = G d^4 / (8 D^3 n), D the mean diameter.", "approximate": ["The spring is a tube of its outer and inner diameters at free length; the coil is not modelled. spec carries rate_n_per_mm for assembly.joint_dynamics/actuator stiffness, solid_length_mm and the deflection to solid."]},
+      "rows": {
+        "spring-1x10x30": {"wire_dia_mm": 1.0, "outer_dia_mm": 10.0, "free_length_mm": 30.0, "active_coils": 8.0, "total_coils": 10.0, "shear_modulus_mpa": 81500.0, "density_kg_m3": 7850.0},
+        "spring-1.5x12x40": {"wire_dia_mm": 1.5, "outer_dia_mm": 12.0, "free_length_mm": 40.0, "active_coils": 8.0, "total_coils": 10.0, "shear_modulus_mpa": 81500.0, "density_kg_m3": 7850.0},
+        "spring-2x20x60": {"wire_dia_mm": 2.0, "outer_dia_mm": 20.0, "free_length_mm": 60.0, "active_coils": 8.0, "total_coils": 10.0, "shear_modulus_mpa": 81500.0, "density_kg_m3": 7850.0},
+        "spring-4x40x120": {"wire_dia_mm": 4.0, "outer_dia_mm": 40.0, "free_length_mm": 120.0, "active_coils": 8.0, "total_coils": 10.0, "shear_modulus_mpa": 81500.0, "density_kg_m3": 7850.0}
+      }
+    }
+  }
+}

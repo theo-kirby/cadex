@@ -21,10 +21,8 @@ which looks exactly like a working mechanism. Driving one revolution gave:
 * screw, pitch 4 mm: one full turn moved the nut **−4.000 mm**, settling
   the 2π ambiguity -- ``pitch`` is millimetres per revolution.
 
-``rack_pinion`` is refused, with the reason. Its native constraint acts
-along a marker frame OndselSolver derives specially, the measurement run did
-not produce a clean ``x = R·θ``, and shipping a guess is exactly what the
-hazard warns against.
+``rack_pinion`` follows OndselSolver's own law, read off its source
+(ADR-641); test_dynamics_machines.py measures it.
 """
 
 from __future__ import annotations
@@ -287,14 +285,20 @@ def test_an_opposed_axis_flips_the_coupling_sign() -> None:
     assert flipped["couplings"][0]["slope"] == pytest.approx(2.0)
 
 
-def test_a_rack_and_pinion_is_refused_rather_than_guessed() -> None:
+def test_a_rack_running_along_its_pinions_axis_is_refused() -> None:
+    """The screw's geometry is no rack: its slide is the pinion's own axis.
+
+    The rack-and-pinion law itself is measured in test_dynamics_machines.py
+    (ADR-641); a rack must run square to the pinion it meshes with.
+    """
+
     components, joints, _placements = _screw_stack()
     joints[-1]["kind"] = "rack_pinion"
     joints[-1]["parameters"] = {"pitch_radius_mm": 15.0}
     with pytest.raises(dyn.DynamicsError) as excinfo:
         dyn.build_model(components, joints)
-    assert excinfo.value.reason == "unmapped_coupled_joint"
-    assert "backwards" in excinfo.value.correction
+    assert excinfo.value.reason == "coupled_axes_not_parallel"
+    assert "square" in str(excinfo.value)
 
 
 def test_a_gear_on_a_component_nothing_places_is_refused() -> None:

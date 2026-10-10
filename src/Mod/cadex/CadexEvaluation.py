@@ -650,6 +650,106 @@ def reach_metrics(samples, rig: Mapping[str, Any], segments: Sequence[Mapping[st
     }
 
 
+# -- a tool along a path, and over an area (ADR-645) -------------------------
+#
+# The machine readings of a trace: a tool point (``tip_series``'s point) held
+# against a declared polyline, and swept over a declared region. Pure and
+# in millimetres like the rest; a success spec does not name them yet --
+# they are read by whoever holds the path or the region (ADR-645 says what
+# wiring them into api.success needs).
+
+
+def _point_to_segment(point: Sequence[float], a: Sequence[float], b: Sequence[float]) -> tuple[float, float]:
+    """Distance from ``point`` to segment ``ab``, and how far along it (0-1) the foot lies."""
+
+    ab = _sub(b, a)
+    length2 = sum(v * v for v in ab)
+    t = 0.0 if length2 <= _EPS else max(0.0, min(1.0, sum(x * y for x, y in zip(_sub(point, a), ab)) / length2))
+    foot = tuple(a[i] + t * ab[i] for i in range(3))
+    return math.dist(point, foot), t
+
+
+def path_metrics(points: Sequence[Sequence[float]], path_mm: Sequence[Sequence[float]]) -> dict[str, Any]:
+    """How closely a tool followed a polyline, and how much of it it covered.
+
+    ``points`` are the tool point per frame (``tip_series``) and ``path_mm``
+    the polyline's vertices, both in one frame. ``max_path_error_mm`` and
+    ``mean_path_error_mm`` are the tool's distance to the nearest point of
+    the polyline; ``path_progress`` is the share of the polyline's length
+    up to the furthest point the tool came within ``tolerance`` of, so a
+    tool that stays on the line but stops halfway reads 0.5.
+    """
+
+    if len(path_mm) < 2:
+        raise ValueError("a path needs at least two vertices")
+    vertices = [tuple(float(v) for v in p) for p in path_mm]
+    lengths = [math.dist(a, b) for a, b in zip(vertices, vertices[1:])]
+    total = sum(lengths)
+    errors, furthest = [], 0.0
+    for point in points:
+        best, along = math.inf, 0.0
+        start = 0.0
+        for (a, b), length in zip(zip(vertices, vertices[1:]), lengths):
+            distance, t = _point_to_segment(point, a, b)
+            if distance < best - _EPS:
+                best, along = distance, start + t * length
+            start += length
+        errors.append(best)
+        furthest = max(furthest, along)
+    return {
+        "max_path_error_mm": max(errors) if errors else None,
+        "mean_path_error_mm": sum(errors) / len(errors) if errors else None,
+        "path_progress": furthest / total if total > _EPS else None,
+        "path_length_mm": total,
+    }
+
+
+def coverage_metrics(points: Sequence[Sequence[float]], region_mm: Sequence[Sequence[float]], *,
+                     footprint_mm: float, cell_mm: float | None = None) -> dict[str, Any]:
+    """The share of a plan region a tool's footprint swept (a mower, a sprayer).
+
+    ``region_mm`` is a polygon in XY (counter-clockwise or not); the tool's
+    footprint is a disc of diameter ``footprint_mm`` about its point, swept
+    between frames along the straight line joining them. The region is
+    rasterised at ``cell_mm`` (default a quarter of the footprint) and a
+    cell is covered when its centre came within half the footprint of the
+    tool's path. ``coverage`` is covered cells over cells inside the region.
+    """
+
+    radius = float(footprint_mm) / 2.0
+    if radius <= 0.0:
+        raise ValueError("footprint_mm must be positive")
+    cell = float(cell_mm) if cell_mm else radius / 2.0
+    polygon = [(float(p[0]), float(p[1])) for p in region_mm]
+    if len(polygon) < 3:
+        raise ValueError("a region needs at least three vertices")
+
+    def inside(x: float, y: float) -> bool:
+        crossing = False
+        for (x1, y1), (x2, y2) in zip(polygon, polygon[1:] + polygon[:1]):
+            if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+                crossing = not crossing
+        return crossing
+
+    xs, ys = [p[0] for p in polygon], [p[1] for p in polygon]
+    track = [(float(p[0]), float(p[1]), 0.0) for p in points]
+    cells = covered = 0
+    y = min(ys) + cell / 2.0
+    while y < max(ys):
+        x = min(xs) + cell / 2.0
+        while x < max(xs):
+            if inside(x, y):
+                cells += 1
+                centre = (x, y, 0.0)
+                if any(_point_to_segment(centre, a, b)[0] <= radius
+                       for a, b in zip(track, track[1:] or track)):
+                    covered += 1
+            x += cell
+        y += cell
+    return {"coverage": covered / cells if cells else None, "cells": cells, "cell_mm": cell,
+            "footprint_mm": float(footprint_mm)}
+
+
 # -- a body about a centre --------------------------------------------------
 
 #: A body this close to the axis has no bearing about it, and a frame there
