@@ -343,7 +343,9 @@ name in the text was checked and exists:
   ADR-260 is used twice, and its second use follows ADR-259. The log is
   append-only, so this is noted in ADR-628 and not renumbered.
 
-## 3. Code bugs and stale code strings (not fixed)
+## 3. Code bugs and stale code strings
+
+Items 3–11 and 14 were fixed on 2026-10-10 (ADR-629). Item 13 goes with the inherited-tree removal. Items 1, 2 and 12 are open.
 
 1. `package/engine/build_engine_payload.sh:38` reads `PACKAGE_VERSION` with a
    `sed` pattern that never matches `CMakeLists.txt:66`, so every payload is
@@ -389,8 +391,8 @@ name in the text was checked and exists:
    says it is the source of truth), `version.json` or CMake? Then fix
    §3, item 1.
 2. **Client-less protocol ops.** Should `preview_params`,
-   `export_printable` and `resolve_pin` be subtracted? That needs an ADR,
-   an `OP_ARG_SPECS` change and test changes.
+   `export_printable` and `resolve_pin` be subtracted? RESOLVED (ADR-629):
+   they stay.
 3. **`build/ctest_baseline_failures.txt`.** Five files cite it, but it is
    untracked and absent. Regenerate it, commit a baseline, or drop the
    instruction.
@@ -405,10 +407,10 @@ name in the text was checked and exists:
    Each is a doc move with an ADR.
 6. **O3b name collision.** Rename either the October panels or the August
    cages benchmark, in ORGANIC.md and ROADMAP.md.
-7. **The knee actuator inside the thigh.** It is marked "owner to confirm".
-   Is it a confirmed rule, or a preference?
-8. **`~/arch/woof.cadex`.** Give the benchmark's real location, or mark it
-   gone.
+7. **The knee actuator inside the thigh.** RESOLVED (ADR-629): not a rule. The
+   owner wants guidance that is open and flexible, so the style drops it.
+8. **`~/arch/woof.cadex`.** RESOLVED (ADR-629): it is gone, and ORGANIC.md no
+   longer cites it as a live project.
 9. **PLAN.md.** This generated plan view was last reconciled on
    2026-09-09. Regenerate it, list it in AGENTS.md, or delete it.
 10. **Removal candidates** under `docs/FREECAD.md` §3: Show, XDGData,

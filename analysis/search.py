@@ -163,7 +163,7 @@ def read_design_space(project: Path) -> list[ParameterSpec]:
         raise SearchError(
             f"{state_path} does not exist, so this project has no declared "
             "parameters yet. Build the script once first -- `cadex script "
-            "--set` or one `./cadex -p` turn."
+            "--set` or your agent's `write_script`."
         )
     state = json.loads(state_path.read_text(encoding="utf-8"))
     specs = []

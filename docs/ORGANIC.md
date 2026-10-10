@@ -30,9 +30,8 @@ table is edited as numbers, in the script or through `set_params`.
 
 ADR-123 made `describe_cad_api` (today's `describe_api`) serve whole domains, which put `part`'s
 surfacing operations in front of the model for the first time. The robot
-wolf was re-run against that surface. The project it produced is
-`~/arch/woof.cadex` — **read-only; copy it before touching it** — and this
-section is measured from its store, not from the conversation that made it.
+wolf was re-run against that surface. This section was measured from the store of the project it produced, not
+from the conversation that made it; that project is no longer kept.
 
 **What the agent built.** 154 lines, eight parameters, and it is 100%
 `part`: not one mesh operation. Sixteen solids, every one a `part.loft`
@@ -417,10 +416,11 @@ stops being needed.
 
 ## 4. The benchmark log
 
-**The wolf is the standing benchmark.** After each slice, rebuild it and
-record what changed: does the blend land, does the silhouette hold, how many
-turns did it take. Copy `~/arch/woof.cadex` to a scratch directory first —
-**never build or probe in `~/arch`, those projects are live.** Drive
+**The wolf was the standing benchmark.** After each slice it was rebuilt
+and what changed was recorded: did the blend land, did the silhouette hold,
+how many turns did it take. Its project is no longer kept (ADR-629), so the
+log below is history. A new organic benchmark copies its project to a
+scratch directory before building or probing. Drive
 rebuilds through the agent's `write_script` (`cadex mcp`) or `./cadex params`
 rather than hand-editing `script.py`, which breaks `cadex params` (the
 `test_project_rebuild` driver this log was first measured with went with

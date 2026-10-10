@@ -1198,7 +1198,7 @@ def shell_summary(value: Any) -> dict[str, Any]:
                     item.get("gap_median_mm", "?")) if item.get("inner_samples")
                 else "no part of it faces what it covers")
         if "covers nothing" in item["findings"]:
-            details.append("no non-shell part lies inside its box")
+            details.append("no non-shell part of the design reaches within 5 mm of its box")
         if "solid" in item["findings"]:
             details.append(f"2 x volume / area is {item['wall_mm']} mm, a lump, not a panel")
         if "unmounted" in item["findings"]:

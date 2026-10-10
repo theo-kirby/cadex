@@ -410,6 +410,8 @@ def test_the_shell_block_rides_in_the_fit_block_and_its_view():
 def test_panels_and_housings_build_valid_single_solids_on_the_kernel(tmp_path):
     import subprocess
     from test_cadexd_lifecycle import CADEX_ROOT, FREECADCMD
+    if FREECADCMD is None:
+        pytest.skip("needs a built engine (pixi run build-engine)")
 
     driver = tmp_path / "panels.py"
     driver.write_text('''

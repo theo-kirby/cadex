@@ -121,7 +121,7 @@ The shared mode artifacts table in `docs/CLI.md` is the walk contract.
 `--out/training-receipt.json`. No policy is verified or stored, even with
 `--put`; old files stay intact. Use its run ID and the same remote configuration
 with `remote_train.sh watch/pull` into a fresh destination, then verify before
-storing and declaring. Detached walk continuation is not automated.
+storing and declaring. `cadex walk --detach` and `--complete` continue a walk unattended (ADR-282).
 On a leg timeout, the process group gets a full five-second SIGTERM cleanup
 grace even if its direct child exits early, then an unconditional SIGKILL.
 For toy CPU runs, use `JAX_PLATFORMS=cpu`; `training/SETUP.md` §b gives

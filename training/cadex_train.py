@@ -83,7 +83,7 @@ _POLICY_ACTION_FIELDS = ("actuator", "index", "unit", "low", "high", "scale")
 
 #: The schema of ``progress.json`` -- the one artifact a run publishes while
 #: it is still running, and the only thing ``remote_train.sh watch`` and the
-#: shell's Training panel read. Versioned like every other file this tree
+#: dashboard read. Versioned like every other file this tree
 #: writes, because two of its three readers are on other machines.
 PROGRESS_SCHEMA = "cadex-training-progress-v1"
 
@@ -2566,7 +2566,7 @@ def train(
                 best["written"] = best["iteration"]
         # Rewritten every iteration whether or not anything was checkpointed.
         # This file is the one artifact everything downstream reads -- the
-        # `watch` subcommand, the shell's Training panel -- and a run you can
+        # `watch` subcommand, the dashboard -- and a run you can
         # only see the state of once every hundred iterations is a run you
         # still cannot decide about.
         progress(
@@ -2989,7 +2989,7 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
         help=(
             "where to rewrite the progress file; defaults to progress.json "
             "beside --out. This is the artifact `remote_train.sh watch` and "
-            "the shell's Training panel read"
+            "the dashboard read"
         ),
     )
     return parser.parse_args(list(argv))
@@ -3054,7 +3054,7 @@ def main(argv: Sequence[str]) -> int:
         """``progress.json``, rewritten atomically.
 
         The one artifact everything downstream reads: `remote_train.sh
-        watch` polls it over rsync, and the shell's Training panel polls the
+        watch` polls it over rsync, and the dashboard reads the
         copy that lands next to the project. Neither of them parses this
         program's stderr, and that is deliberate -- ADR-093's finding was
         that a receipt taken from a stream is a receipt something else can
@@ -3095,7 +3095,7 @@ def main(argv: Sequence[str]) -> int:
                 float(curve[-1]["reward_per_step"]) if curve else None
             ),
             "loss": float(curve[-1]["loss"]) if curve else None,
-            # Additive under the same schema: `cadex_training.py` reads with
+            # Additive under the same schema: its readers use
             # `.get`, so a `progress.json` written before ADR-101 still
             # renders -- it renders this row as "-".
             "episode_steps": (

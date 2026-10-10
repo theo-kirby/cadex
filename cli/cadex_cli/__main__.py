@@ -277,7 +277,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Also copy the project's stored blueprint sheets into --out "
-        "(the shell renders them; this only reads the store).",
+        "(draw_blueprint draws them; this only reads the store).",
     )
     _common(export_parser, inherit=True)
 
@@ -847,7 +847,7 @@ def _common(parser: argparse.ArgumentParser, *, inherit: bool = False) -> None:
     parser.add_argument(
         "--project",
         default=default(os.environ.get("CADEX_PROJECT", "") or DEFAULT_PROJECT_DIRNAME),
-        help=f"Project root (created if absent). Default: ./{DEFAULT_PROJECT_DIRNAME}",
+        help=f"Project root (commands that build create it if absent). Default: ./{DEFAULT_PROJECT_DIRNAME}",
     )
     parser.add_argument(
         "--out",
@@ -1066,7 +1066,7 @@ def _parse_assignments(raw: Sequence[str]) -> dict[str, Any]:
 def command_budgets(args: argparse.Namespace, report: RunReport) -> int:
     """``cadex budgets [--set NAME=VALUE ...]``: the project's engine budgets (ADR-517).
 
-    Stored in the project's ``agent.json`` beside the conversation, read by
+    Stored in the project's ``agent.json``, beside its style, and read by
     every later run's ``open_project``. With no ``--set`` it only reports.
     It touches no engine, so what it reports is what is *stored*; a run's
     own envelope says what was in force.

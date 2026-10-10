@@ -4,8 +4,8 @@ SPDX-License-Identifier: LGPL-2.1-or-later
 
 A named style for the agent guidance (ADR-560, ADR-626): the robot creature,
 a machine that takes an animal's or a character's form. A project chooses it
-in its agent.json (`cadex style --project DIR creature`); the base tells an
-agent to choose it when the brief names an animal. It adds to the base and
+in its agent.json (`cadex style --project DIR creature`); the guidance overlay
+tells an agent to choose it when the brief names an animal. It adds to the base and
 never restates it. Its evidence is the owner's rated reference set and the
 blind-rated baseline sweep of 2026-10-09 (docs/DESIGN-LANGUAGE.md, the
 style's section). Same format as the base: everything below the marker line

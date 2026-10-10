@@ -139,8 +139,8 @@ def read_agent_state(project_root: Path | str) -> AgentState:
     Unreadable is not an error on purpose. The worst a corrupt state file may
     do is cost the stored budgets — refusing to model over it would be a far
     bigger failure than the one it is reporting. A file an older CLI wrote,
-    with a conversation's ``session_id`` and ``model`` beside the budgets, is
-    read for its budgets alone.
+    which also held a conversation's ``session_id`` and ``model`` (gone since
+    ADR-538), is read for its budgets alone.
     """
 
     path = agent_state_path(project_root)

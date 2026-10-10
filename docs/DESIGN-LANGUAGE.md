@@ -53,7 +53,7 @@ is in a style.
 | the simulated body is the built body: contacts are unions of collision primitives, the support under the measured centre of mass | base | a crane on outriggers tips the same way (ADR-565) |
 | a learned task: speed bounded both ways, a target the intended motion reaches most easily, command range centred on the rest pose, progress only while upright, a ceiling on anti-degenerate charges | base | true of any learned motion (ADR-565) |
 | training practice: checkpoints on, keep the policy `evaluate` passes, when to warm-start, never tighten the filter on one | base (CLI guidance) | true of any task (ADR-565) |
-| tapered limb plates with a lightening window and round bosses; the knee actuator inside the thigh | style | a legged look; the actuator placement is the owner's taste, *owner to confirm* (ADR-565) |
+| tapered limb plates with a lightening window and round bosses | style | a legged look (ADR-565); where an actuator sits is the design's call, not a rule (ADR-629) |
 | a machine in an animal's form lists its moving anatomy and joints every region, or records a measured reason; the design is not done while a region is rigid without one | base | conditional on the brief, like a self-moving machine's kit (ADR-627) |
 | the look bars never decide that a design is done | base | a met bar is a floor (ADR-627) |
 | the actuator is the joint and shows; panels wrap the mechanism; segments where it bends; a real sensor as the eye; likeness by silhouette | style `creature` | an animal's look (§11, ADR-626) |

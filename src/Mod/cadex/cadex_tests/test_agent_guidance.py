@@ -115,7 +115,7 @@ BASE_LESSONS = ('A SOLID BUILT FROM TANGENT PRIMITIVES IS MEASURED', 'SET A LIMI
                 'Bound it on both sides', 'THE TARGET SPEED MAKES THE INTENDED MOTION THE EASY ONE',
                 'CENTRE THE COMMAND RANGE ON THE REST POSE', 'PAY FOR PROGRESS ONLY WHILE UPRIGHT',
                 'A CHARGE AGAINST A DEGENERATE MOTION HAS A CEILING')
-STYLE_LESSONS = ('THE LOOK OF A LIMB', 'lightening window', 'ACTUATORS INSIDE THE LIMB',
+STYLE_LESSONS = ('THE LOOK OF A LIMB', 'lightening window', 
                  'FEET ARE COMPACT HULLS WITH A FLAT STRIP', 'never a large or flat plate',
                  'two keels with a flat strip between them', 'HIPS WIDE ENOUGH FOR THE FEET TO PASS',
                  'inward much tighter than outward', 'THE STEP IS WHAT IS PAID')

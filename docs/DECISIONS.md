@@ -38631,3 +38631,35 @@ ADR-260 by its title.
 full (`docs/DOCS-AUDIT.md` §Tests).
 
 Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-629 — Owner answers to the docs audit: no knee-in-thigh rule, the wolf benchmark is gone, the unused protocol ops stay (2026-10-10)
+
+**Context.** `docs/DOCS-AUDIT.md` §4 asked the owner eleven questions. Five
+were answered on 2026-10-10. Two of those, removing the unused inherited
+trees and moving history out of the large docs, are carried out under
+their own ADRs.
+
+**Decision.**
+- **The knee actuator inside the thigh is not a rule.** The owner: "we
+  shouldnt have hard rules like that. we need to be more open and
+  flexible." The `printed-legged-robot` style drops its ACTUATORS INSIDE
+  THE LIMB item. Where an actuator sits is the design's own call, made
+  from its load path and recorded in its DECISIONS.md. The
+  DESIGN-LANGUAGE lesson table no longer lists it, and
+  `test_agent_guidance.py` no longer pins it. Guidance states measured
+  needs and the owner's evidence-backed taste as reasons, not
+  unconditional placements.
+- **The wolf benchmark is gone.** `~/arch/woof.cadex` is not kept, and
+  `docs/ORGANIC.md` stops citing it as a live project. Its measurements
+  stay in the ORGANIC log as history. The ADR log keeps its past mentions
+  unchanged, because the log is append-only.
+- **`preview_params`, `export_printable` and `resolve_pin` stay** in the
+  protocol, although no CLI code calls them.
+
+The same change fixes the stale strings and the test skip that the audit
+listed in §3, items 3–11 and 14. Items 1, 2, 12 and 13 are left to the
+payload-version and inherited-tree decisions.
+
+**Tests.** `pixi run test-engine`; `pixi run python -m pytest cli/tests`.
+
+Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).

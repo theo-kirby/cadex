@@ -1174,7 +1174,7 @@ def test_the_trainer_reports_episode_length(tmp_path) -> None:
     which is both why two runs went wrong unnoticed and why the fix could not
     be checked from outside. It has to reach the curve rows -- the policy
     file's own record of the run -- and ``progress.json``, which is what
-    ``remote_train.sh watch`` and the shell's Training panel poll.
+    ``remote_train.sh watch`` and the dashboard read.
     """
 
     python = _venv_python()
