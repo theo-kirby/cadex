@@ -26,5 +26,5 @@ Report failures honestly. -->
 - [ ] A removal or direction change has a `docs/DECISIONS.md` entry.
 - [ ] Docs that describe the changed behaviour are updated, with their `Verified against source:` date.
 - [ ] `docs/ROADMAP.md` checkboxes are updated if a work item landed.
-- [ ] The work is recorded in the record graph (`hypergraph-record`), and `hypergraph check` exits 0.
+- [ ] The work is recorded in the governor graph (`governor-record`), and `governor check` exits 0.
 - [ ] New files carry `SPDX-License-Identifier: LGPL-2.1-or-later`; no GPL code, prebuilt library, secret or machine path is added.

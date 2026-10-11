@@ -1,1 +1,0 @@
-../../hypergraph-references/state-node.md

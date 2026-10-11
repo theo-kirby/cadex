@@ -1,1 +1,0 @@
-../../hypergraph-references/record-node.md

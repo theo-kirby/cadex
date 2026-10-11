@@ -163,7 +163,6 @@ SHELL_HISTORY_DOCS = (
     "docs/SHELL-PARITY.md",    # the ledger of the shell, module by module
     "docs/ROADMAP.md",         # phase history; the charter forbids hand edits
     "STATE.md",                # generated from the state graph
-    ".hypergraph/",            # the append-only record
     ".ouroboros/",             # run logs
 )
 SHELL_TOKEN = re.compile(

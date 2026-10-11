@@ -1,1 +1,0 @@
-../../hypergraph-references/spec.md

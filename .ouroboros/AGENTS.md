@@ -114,7 +114,7 @@ operator, including you, reads first.
 
 - **Pre-flight, learned the hard way:** `git status` must be clean *including
   untracked directories* -- an untracked `src/3rdParty/GSL/` blocked ot4's
-  launch. Check `hypergraph --version` matches what `.ouroboros/config.yml`
-  expects. Confirm both harnesses are logged in.
+  launch. Check `governor version` runs (memory is the governor graph, ADR-672).
+  Confirm both harnesses are logged in.
 - **Never:** hand-edit `STATE.md`, `PLAN.md` or `ROADMAP.md`; they are generated
-  from the hypergraph. Never squash a run branch: record nodes cite commit SHAs.
+  from the governor graph. Never squash a run branch: records cite commit SHAs.

@@ -3,7 +3,7 @@ reference/
 .*
 !*.gitattributes
 !*.gitignore
-# The hypergraph skills are the workflows AGENTS.md tells an agent to run, so
+# The governor skills are the workflows AGENTS.md tells an agent to run, so
 # they have to travel with the repo — `.*` above would otherwise hide them and a
 # fresh clone would get the contract without the means to follow it. Only
 # skills/ is un-ignored; the rest of .claude/ stays local.
@@ -17,14 +17,10 @@ reference/
 !/.github/
 !/.gitignore
 !/.gitmodules
-!/.hypergraph/
 !/.ouroboros/
-/.hypergraph/cache/
-# The graphs live in the Flywheel local repository at the checkout root (`.flywheel/`,
-# hidden by `.*` above; ADR-671). .hypergraph/graph/ is its working copy, and
-# .hypergraph/store/ holds the sync index and lock: both local and never committed.
-/.hypergraph/graph/
-/.hypergraph/store/
+# The governor graph lives in the Flywheel local repository at the checkout root
+# (`.flywheel/`) with governor's lock and snapshot cache in `.governor/`; `.*` above
+# keeps both out of git (ADR-671, ADR-672).
 !/.packit.yaml
 !/.pre-commit-config.yaml
 !/.pylintrc

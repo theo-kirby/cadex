@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -779,7 +779,7 @@ JAX_PLATFORMS=cpu ./cadex --project "$P" walk --out "$P/runs/walk-recovered" \
 ```
 
 The test pins preserved artifacts/history, verified policy, all four reviews and
-last-success comparison references. The [measured rehearsal](../.hypergraph/graph/record/dusty-vale-2809.md)
+last-success comparison references. The measured rehearsal (record `dusty-vale-2809`)
 reported reward −83.7819 versus −55.3476 under changed weights: recovery, not improvement.
 
 The same entry point also runs the vertical linear carriage in

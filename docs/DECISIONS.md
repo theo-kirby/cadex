@@ -39663,3 +39663,72 @@ Ouroboros: 382 passed. The Cadex import and verify results are in the record tha
 lands with this ADR.
 
 Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-672 — The project's memory becomes one governor graph; Hypergraph is removed (2026-10-11)
+
+**Context.** ADR-671 put the Hypergraph graphs in a Flywheel local repository but kept
+Hypergraph's two graphs, its node-file working copy and its CLI. The owner wants
+Hypergraph gone entirely. They want to keep the record/state split, but in one graph:
+the root at the centre, state around it, and records around state. They also want the
+tooling (skills, utilities and the viewer) in its own repository, **governor**
+(github.com/theo-kirby/governor), which Cadex and Ouroboros use on top of the
+published Flywheel package.
+
+**Decision.** Cadex's memory is one governor graph in `.flywheel/` at the checkout
+root.
+- **The model** (governor `docs/CONVENTIONS.md`): one root tagged `governor`, with every
+  node contained in it.
+  - Kind tags `record`, `state` and `plan`; a status tag on each claim; a `folded` tag
+    on records a fold has applied.
+  - Lineage carries causality among records and the architecture among claims.
+  - Impacts are a record's generated `## State Impact` lines. Citations are a claim's
+    `## Evidence` list and its `[rec: slug]` mentions.
+  - Rules G1–G7, enforced by `governor check`. G7: only a `governor fold` commit
+    writes state.
+- **Writes**: `governor record` and `governor fold`, one Flywheel commit each, under a
+  lock every git worktree shares.
+- **Reads**: replayed from the repository log in about a second, with no node files.
+- **The import**: `governor migrate-hypergraph` rebuilt the graph from a fresh
+  `hypergraph export`.
+  - The record and state roots folded into the root `odd-banner-6071`; the plan root
+    became a plan component.
+  - Slugs, titles and bodies carried over. `Status:` lines became tags, and each
+    record gained a `## Recorded` section with its creation time.
+  - Records inside the old high-water mark are tagged `folded`.
+- **Removed**: `.hypergraph/` and the `hypergraph-*` skills. The `governor-orient`,
+  `governor-record` and `governor-fold` skills replace them.
+- **Ouroboros** (`reporter` 384fd4b) picks the governor memory automatically.
+- `STATE.md` and `PLAN.md` are now `governor render` output.
+
+**Why relations are content, not Flywheel edges.** Governor first wrote impacts and
+citations as Flywheel semantic edges, but the rehearsal had to stop. Flywheel 0.2.78
+re-validates every semantic edge on every staged operation, and each validation is a
+recursive containment query that scans the table at every step. One `edge:add` took
+33 s with 200 edges staged, and Cadex needs about 4,000. If Flywheel validates
+incrementally, a one-off migration can turn the lines into edges.
+
+**Consequences.**
+- There is no `hypergraph` command in Cadex's workflow. `governor check` replaces
+  `hypergraph export` and `hypergraph check`.
+- Report tests resolve cited record slugs through `governor snapshot`
+  (`cli/tests/record_graph.py`), and skip where there is no graph. Old probe
+  reports' links into `.hypergraph/graph/record/` no longer resolve on any
+  checkout; they are frozen evidence and keep their words.
+- `hypergraph-dispatch` has no governor counterpart. Lanes are not carried over.
+- **Rollback**: the old store and its export are in
+  `~/cadex-graph-backup-2026-10-11/` on sb1x, and git history keeps `.hypergraph/` up
+  to the commit before this one.
+- The repository is still not hosted. A hosted push needs the owner's go-ahead after a
+  dry run.
+
+**Evidence.** Record `golden-leaf-8250`.
+- **The import** (governor b2658ff): 1,134 nodes (987 records, 142 state, 4 plan and
+  the root), 1,772 impacts and 2,319 citations, 0 dangling references, and 966 records
+  folded. It took 31 minutes and 5,700 Flywheel calls.
+- **Check**: `governor check` reports 0 violations and 0 warnings. The frontier is the
+  same four open claims as Hypergraph's STATE.md.
+- **Tests**: governor's suite has 40 passing. Ouroboros has 407 passing. The Cadex
+  report tests resolve 987 slugs through `governor snapshot`. Under pixi this needs
+  governor a80346b, which re-runs under a system Node because pixi ships 25.2.1.
+
+Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).

@@ -1,6 +1,6 @@
 run: orun5
 goal: .ouroboros/goal.md
-memory: auto            # -> hypergraph (config + CLI present)
+memory: auto            # -> governor (.flywheel/ + CLI present, ADR-672)
 backend: headless       # tmux: one streaming window per harness call in the run session
 # Two roles. The critic is one read-only call after every actor turn: it grades the
 # diff against the quality bar, answers as the sleeping user, refuses false "done",
@@ -54,7 +54,7 @@ stop:
   max_stuck: 25           # `stuck` is a loop that changed nothing; backoff makes 25 ~3.8h
 handoff:
   recent: 3
-hypergraph:
+hypergraph:             # housekeeping cadence; applies to the governor memory too
   reconcile_every: 5      # housekeeping is due after this many worked iterations...
   pressure: 3             # ...or at this many unreconciled record nodes
   budget_units: 1
