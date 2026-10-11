@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-10
+Verified against source: 2026-10-11
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -726,7 +726,10 @@ asm  = assembly.assembly([hood, knee, eye], joints,
   component names the components it covers, `covers=[...]` (declared before
   it; required with that role and refused with any other), and only those
   are judged by `fit.panels` (§ Panels below). Painting a thigh `shell` no
-  longer makes it a panel. Neither key enters the definition unless set.
+  longer makes it a panel. A lid, door or enclosure wall also names the
+  frame it closes, `closes=[...]` (a panel only; ADR-666): it is judged
+  seated on that frame instead of by its gap to what it covers. No key
+  enters the definition unless set.
 - `palette=` on `assembly.assembly` maps any of those roles to a `#RRGGBB`
   colour, stored upper case in role order. An unnamed role keeps its default:
   bone `#E9E6DF` shell, graphite `#2F3237` mechanism, signal orange
@@ -803,8 +806,9 @@ call.
   joints (`revolute` 1, `slider` 1, `cylindrical` 2, `ball` 3 coordinates)
   join them, oriented away from the root (the first grounded non-world
   component, else the free base the dynamics tree roots at). Coupling and
-  constraint kinds (`gears`, `belt`, `distance`, …) are left out.
-- **A joint's drive** is one of four, first match wins:
+  constraint kinds (`gears`, `belt`, `distance`, …) are not edges; the
+  coupled ones tie the edges' coordinates (below).
+- **A joint's drive** is one of five, first match wins:
   - `actuated` — an `assembly.actuator` is declared on it;
   - `catalog drive` — no actuator is declared, but a catalog actuator
     (`lib.qdd`, `lib.servo`, `lib.gearmotor`, `lib.bldc`; `lib.linear_actuator`
@@ -812,10 +816,20 @@ call.
     output axis on the joint's axis at the solved pose: within 3° (either
     sense) and 1.5 mm. A rotary drive counts on a `revolute` or
     `cylindrical` joint, a linear one on a `slider` or `cylindrical`. The
-    row names it as `driver`. This is the motor a design-only project placed
+    row names it as `driver` (of two on one line, the nearer; ADR-665). This is the motor a design-only project placed
     and never declared;
-  - `loop` — passive, but in a closed loop an actuated or catalog-driven
-    joint is also in (a four-bar's pins);
+  - `loop` — passive, but in a closed loop a driven joint is also in (a
+    four-bar's pins);
+  - `coupled` (ADR-665) — tied to a driven joint by a link: a `screw`,
+    `gears`, `belt` or `rack_pinion` joint relates the mobile joints on the
+    graph path between its two components (the screw's revolute and the
+    nut's slider, as the dynamics tree reads it), and an `assembly.coupling`
+    the joints it names (the stamp carries them as `couplings: [{coupling,
+    joints}]`, only when declared). One driven joint in a link drives the
+    rest of it; `driver` names the driving joints and `through` the link
+    (`screw lead`, `coupling corexy_x`). Loops and links are followed until
+    nothing changes. A coupled joint adds no `driven_dof`: its motor is
+    already counted;
   - `passive`.
   Each library drive records its output axis (canonical +Z through its
   datum) beside the definition as `catalog_drive_axis`, served on its
@@ -826,11 +840,11 @@ call.
   region reaching nearest the root owns a body two regions share, ties to
   the one declared first, and the others in it are `welded_to` it. Each
   region row carries `status`, `components`, `joints` (`{joint, kind, dof,
-  drive, actuators, driven_dof, driver?, within?}`), `joint_dof`,
+  drive, actuators, driven_dof, driver?, through?, within?}`), `joint_dof`,
   `actuated_dof` (declared actuators, or 1 per catalog drive),
   and, where present, `parent_region`, `welded_to` and `reason`.
-- **Status**: `articulated` (a joint of its own, actuated, catalog-driven or
-  loop-driven),
+- **Status**: `articulated` (a joint of its own, actuated, catalog-driven,
+  loop-driven or coupled),
   `passive only` (joints, none driven), `root` (the body everything hangs
   off, no joint of its own), `rigid` (no joint, a reason) or
   `rigid, no reason`.
@@ -849,12 +863,13 @@ call.
   `acknowledged` — true when every region it holds is articulated, the root,
   or carries a reason. A fused head and a welded tail are what this finds.
 - Plus `actuated_dof`, `joint_dof`, `mobile_joints`, `actuated_joints`
-  (declared or catalog-driven), `catalog_driven_joints`,
+  (declared or catalog-driven), `catalog_driven_joints`, `coupled_joints`,
   `rigid_bodies`, `root_component`, `unacknowledged_appendages` and
   `undeclared_joints` (mobile joints into a body no region holds).
 - The build reply shows it bounded (`CadexAnatomy.anatomy_view`: component
   lists cut to six with a count, joints as `name (kind, drive)` or
-  `name (kind, catalog drive: <component>)`, twelve
+  `name (kind, catalog drive: <component>)` or `name (kind, coupled:
+  <joints> through <link>)`, twelve
   appendages); `look`'s `measures` add `anatomy`
   (`CadexAnatomy.anatomy_measure`: the verdict, `meets`, `open_regions`).
   A design-only project with no `assembly.mjcf` or dynamics run declares no
@@ -2487,6 +2502,22 @@ own facts (its clearance, radius, group and piece):
 | `larger than the bed` | its box does not fit 256³ mm | no |
 | `under-held` | some of it is more than 150 mm from any of its screws | no |
 | `seam closed` | it touches another piece of the same `part.panel` | no |
+| `unseated` | a closing panel (`closes=`) comes no closer than 1 mm to what it closes (the pair rows' distance) | yes |
+| `open seam` | a closing panel's seam -- the surface of what it closes within 15 mm of it whose normal points at it (\|cos\| ≥ 0.7: a rim, a jamb face) -- stands off it more than 2 mm at the median, or there is none | yes |
+
+**A closing panel** (ADR-666) -- a lid, a door, an enclosure wall, declared
+`role="panel", covers=[...], closes=[tub]` -- closes a volume, so it is far
+from what it covers by design: `floating` and `egg` are not judged (its
+`floating_at_mm` is `null`), and `unseated` and `open seam` are. The worker
+spreads 3,000 points over the closed frame's triangles near the panel's box
+(`CadexPanels.sample_triangles`) and reads `seam_samples`,
+`seam_gap_median_mm`/`_p90_mm`/`_max_mm` and `seat_gap_mm`
+(`CadexPanels.seam_statistics`); the block reports `closes`, `seat_gap_mm`
+(from the pair rows) and those. A lid seated true reads 0 at the median; one
+hinged open along a side reads about half the band; a tub's walls beside the
+lid's edge do not face it, and its floor, deeper than the band, is not rim.
+A tray shallower than 15 mm would read its floor as an open seam. Colliding,
+in motion, mounting, wall, bed and fastener checks are as for any panel.
 
 Beside the findings each row carries `closest_in_motion` (the nearest a
 moving part passes it), `screws`/`held_by`, `farthest_from_fastener_mm` and

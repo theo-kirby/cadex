@@ -1,6 +1,6 @@
 # The Cadex design language — a base, and named styles
 
-Verified against source: 2026-10-10. Provenance: `[Cadex-new]`.
+Verified against source: 2026-10-11. Provenance: `[Cadex-new]`.
 
 This is how a machine that Cadex designs should be designed, and it is in
 two layers (ADR-560):
@@ -390,7 +390,9 @@ carried over from the overlay and ot10:
   range: cut from the envelope of what they cover (`part.envelope` /
   `part.panel`), declared `role="panel", covers=[...]`, and measured by
   `fit.panels` -- the colour role below says nothing about what a part is
-  (ADR-633..637);
+  (ADR-633..637); a lid, a door or an enclosure wall closes a volume rather
+  than wrapping it: it adds `closes=[frame]` and is judged seated on that
+  frame with closed seams, not by its gap to what it covers (ADR-666);
 - fasteners are deliberate: where they show, they form an even pattern
   (`balancer-c-exposed-mechanism`, Love: "three evenly spaced M3 screws per
   cheek").

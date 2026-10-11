@@ -500,6 +500,23 @@ def test_a_stepper_and_leadscrew_drive_the_slider_through_the_screw() -> None:
     assert (row["drive"], row["through"]) == ("coupled", "coupling z_leadscrew")
 
 
+def test_of_two_motors_on_one_line_the_nearer_drives_each_pulley() -> None:
+    # A gantry's left and right Y steppers face each other along X.
+    line = {"axis": [1.0, 0.0, 0.0]}
+    joints = [_joint("w_l", "fixed", "frame", "motor_l"), _joint("w_r", "fixed", "frame", "motor_r"),
+              {**_joint("pulley_l_turn", "revolute", "frame", "pulley_a"),
+               "axis": {**line, "origin": [-180.0, 0.0, 50.0]}},
+              {**_joint("pulley_r_turn", "revolute", "frame", "pulley_b"),
+               "axis": {**line, "origin": [180.0, 0.0, 50.0]}}]
+    stamp, rows = _axis_stamp(joints, [{"region": "frame", "components": ["frame"]},
+                                       {"region": "drive", "components": ["pulley_a", "pulley_b"]}])
+    stamp["components"] += ["motor_l", "motor_r"]
+    rows += [_drive_row("motor_l", (-200.0, 0.0, 50.0), (1.0, 0.0, 0.0)),
+             _drive_row("motor_r", (200.0, 0.0, 50.0), (-1.0, 0.0, 0.0))]
+    drives = {j["joint"]: j["driver"] for j in _region(anatomy.anatomy_summary(stamp, rows), "drive")["joints"]}
+    assert drives == {"pulley_l_turn": "motor_l", "pulley_r_turn": "motor_r"}
+
+
 def test_a_corexy_coupling_drives_both_sliders_from_two_motors() -> None:
     joints = [_joint("motor_a", "revolute", "frame", "pulley_a", actuators=1),
               _joint("motor_b", "revolute", "frame", "pulley_b", actuators=1),

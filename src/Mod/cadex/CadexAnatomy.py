@@ -186,13 +186,22 @@ def _catalog_driver(joint: Mapping[str, Any], drives: Mapping[str, Mapping[str, 
     line = joint.get("axis")
     if not isinstance(line, Mapping) or not drives:
         return ""
+    found = []
     for side in joint["components"]:
         for name in members.get(clusters.find(str(side)), ()):
             drive = drives.get(name)
             if (drive and joint.get("kind") in DRIVE_KINDS.get(drive["motion"], ())
                     and _coaxial(drive, line)):
-                return name
-    return ""
+                found.append(name)
+    if not found:
+        return ""
+    # Two motors on one line (a gantry's left and right Y steppers, facing
+    # each other across the frame): the one nearest the joint drives it.
+    try:
+        origin = [float(v) for v in line["origin"]][:3]
+        return min(found, key=lambda name: math.dist(drives[name]["origin"], origin))
+    except (KeyError, TypeError, ValueError):
+        return found[0]
 
 
 #: The joint kinds that relate coordinates other joints own and attach
