@@ -68,6 +68,11 @@ corrupt, because no dispatched agent writes state.
 ## Workflow
 
 1. **Orient.** Run hypergraph-orient (or read STATE.md). Land on the frontier.
+   If orient's pressure trigger fired — a fat unreconciled tail, and you are the
+   coordinator standing on the default branch — run hypergraph-reconcile *before*
+   cutting any lane, so every lane starts from a fresh checkpoint instead of
+   replaying the same stale tail N times. Inside a lane the rule is unchanged:
+   never reconcile (guardrails below).
 2. **Resolve the target and read the claims.** Live claims are found by:
    - `hypergraph hwm --record … --state …` — every unreconciled node;
    - among those, `grep -l "^title: 'Dispatch:" .hypergraph/graph/record/` (any

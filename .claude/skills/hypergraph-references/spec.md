@@ -327,6 +327,34 @@ across a batch produces one coherent claim where N passes produce N overlapping 
   means something else entirely: starting a *new* project from someone else's graph,
   which mints new identity and files the source under `archive:` (see below).
 
+### Staleness and the reconcile trigger
+
+The state graph is a **checkpoint over the record log**, and the unreconciled tail
+is **replayable**: every record node past the high-water mark carries its declared
+impact (I2), so a reader can lay the tail's deltas over the state graph without
+writing anything — `hypergraph hwm --impacts` prints exactly that tail. Orientation
+therefore *reads through* the checkpoint: state first, pending impacts on top. A
+stale HWM is compaction debt, not a correctness hole.
+
+Replay degrades as the tail grows — declared deltas are uncompacted and
+un-cross-checked, which is what makes reconcile worth running at all. So reconcile
+triggers on **pressure, never calendar or operator discipline**: orientation
+measures the tail, and on the default branch a tail past a small threshold (the
+orient skill's constant, ~3 nodes) makes "reconcile first, then the task" the
+brief's leading recommendation. Session start is also where the trigger belongs
+structurally: a fresh context is exactly the librarian condition reconcile wants.
+Off the default branch the recommendation is never made — record on any branch,
+reconcile only where the one writer lives — and the brief says instead that the
+tail folds in on the default branch after merge.
+
+Two consequences of being git-shaped, stated plainly. A side branch replays only
+the tail *it can see*: nodes merged to the default branch after the fork point are
+invisible to it, and the remedy is the ordinary one (merge the default branch in).
+And the measurement must never trust a stale cache — the exports are gitignored and
+go stale exactly when the tail gets fat, right after a merge — so orientation
+re-exports before it measures: the after-a-merge `sync` rule, applied at
+orientation time.
+
 ### Dispatch and lanes
 
 Dispatch is the act of pointing an agent at a target — a frontier node, a stated
@@ -528,10 +556,15 @@ depends on how they are kept. No network, no account, no service to be signed in
 the graphs travel with the repo, work offline, and merge through git.
 
 The protocol is nonetheless written against ~10 abstract operations
-([backend/INTERFACE.md](backend/INTERFACE.md)). That is a **portability property, not a
-choice to be made at init**: it states what a *replacement* store would have to
-satisfy, and it is why nothing above this section mentions files. One implementation
-ships.
+([backend/INTERFACE.md](backend/INTERFACE.md)). That is a **portability property**: it
+states what a store has to satisfy, and it is why nothing above this section mentions
+files. A second implementation ships and is opt-in: a `store: {kind: flywheel-repo}`
+block makes a Flywheel local repository the store of record and the node files its
+gitignored working copy, shared by every git worktree of the checkout
+([backend/flywheel-repo-adapter.md](backend/flywheel-repo-adapter.md)). It trades
+"the graphs travel with the repo and merge through git" for "the graph does not fork
+with the code"; under it, `check --since` counts record nodes created after the fork
+point instead of record files the branch added.
 
 Op 7 ("refuse a stale write") is satisfied by a body-hash compare-and-swap, and
 `--reconcile` is the mechanical I3 gate — the only commands that write state nodes

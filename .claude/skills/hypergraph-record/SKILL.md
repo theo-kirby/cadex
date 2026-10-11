@@ -85,7 +85,10 @@ the pull request.
    The CLI generates `## Repo` and `## State Impact`, validates the node against the
    checker, and prints the minted slug. Exit 2 = nothing was written; fix and retry.
    Then `hypergraph export --config .hypergraph/config.yml` and **commit the node file
-   to git** — an uncommitted node file is as invisible as no node at all.
+   to git** — an uncommitted node file is as invisible as no node at all. *Exception:*
+   when the config has a `store:` block the node files are gitignored, and the `new`
+   you just ran already committed the node to the Flywheel store (it prints
+   `store … committed`). There is nothing to `git add`.
 7. **Attach evidence** when it exists (logs, plots, data). Three things, and the
    third is the one that is easy to skip:
    - **Commit the files** — or don't. Gitignoring a 40 GB dataset is a legitimate
