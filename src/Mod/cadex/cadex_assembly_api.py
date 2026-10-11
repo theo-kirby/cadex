@@ -1326,7 +1326,10 @@ class AssemblyDomainAPI:
         world: bool = False,
         appearance: str | None = None,
         role: str | None = None,
-        covers: Sequence[DomainValue] = (),
+        # Unannotated on purpose, like coupling's: the assembly page is
+        # held under one tool result (ADR-360); the types are the docstring's.
+        covers=(),
+        closes=(),
         label: str = "",
     ) -> DomainValue:
         """Create one linked occurrence from a stable input reference.
@@ -1346,7 +1349,10 @@ class AssemblyDomainAPI:
         ``"hardware"``. A ``role="panel"`` component names the components it
         covers, ``covers=[...]`` (declared before it), and ``fit.panels``
         judges it against them: its gap, its wall, what holds it, and whether
-        it collides at rest or through the joints' motion (ADR-633).
+        it collides at rest or through the joints' motion (ADR-633). A lid,
+        door or enclosure wall also names the frame it closes,
+        ``closes=[tub]``: it is judged seated on that frame with no open
+        seam, never by its gap to what it covers (ADR-666).
         Reuse the returned variable in connectors and return it exactly once as
         a ``component_link`` output.
         """
@@ -1381,6 +1387,13 @@ class AssemblyDomainAPI:
                          "covers=[board, pack]: fit.panels judges it against them")
         if covered:
             structural["covers"] = covered
+        closed = _values(operation, "closes", closes, output_type="component_link", minimum=0)
+        if closed and structural.get("role") != "panel":
+            raise _error(operation, "closes",
+                         'names the frame a lid, door or wall closes; declare role="panel", '
+                         "covers=[...] with it")
+        if closed:
+            structural["closes"] = closed
         return self._value(
             operation,
             "component_link",
@@ -1688,8 +1701,11 @@ class AssemblyDomainAPI:
         to ``api.assembly(..., anatomy=[...])``; do not return it. Every build
         reply then carries an ``anatomy`` block: per region, the joints that
         move it relative to the region it hangs off, which an ``api.actuator``
-        or a catalog motor welded on the joint's axis drives, and ``articulated`` / ``rigid`` / ``rigid, no reason`` /
-        ``passive only`` (ADR-613, ADR-614).
+        or a catalog motor welded on the joint's axis drives -- directly, or
+        ``coupled`` through a screw, gears, belt, rack_pinion or
+        ``api.coupling`` to a driven joint, naming it (ADR-665) -- and
+        ``articulated`` / ``rigid`` / ``rigid, no reason`` / ``passive only``
+        (ADR-613, ADR-614).
         """
 
         operation = "anatomy"

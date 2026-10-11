@@ -39508,6 +39508,108 @@ Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).
 
 **Tests.** `test_parts_data.py` checks the nut's section corners against the slot polygon, each with the 0.1 mm clearance floor, and checks `.slot()` on a placed 2040. The real-kernel gantry test (ADR-660) checks that four T-nuts in a 2020 share no volume with it and that each bolt through one reads as threaded.
 
+## ADR-665 — The regions check follows belts, leadscrews and couplings (2026-10-11)
+
+**Context.** The first breadth wave's liquid handler drove each of its four
+axes the way the machine is built: a stepper turning a pulley or a lead
+screw on a revolute, tied to the carriage's slider by `assembly.coupling`
+(ADR-642). The regions block (`CadexAnatomy`, ADR-614, ADR-655) knew only a
+declared actuator, a catalog motor on the joint's axis and a closed loop, so
+all four slider regions read `passive only` and the verdict `incomplete`;
+the run had to record "an engine reporting limit" in its DECISIONS.md.
+
+**Decision.** A fifth drive, `coupled`: a joint tied to a driven joint by a
+link is driven through it. A `screw`, `gears`, `belt` or `rack_pinion`
+joint relates the mobile joints on the spanning-tree path between its two
+components' rigid bodies (how `CadexDynamics._tree_path` reads it); an
+`assembly.coupling` relates the joints it names, which the worker now stamps
+beside the graph as `couplings: [{coupling, joints}]`, present only when one
+is declared. One driven joint in a link drives the rest of it; loops and
+links are followed together until nothing changes. The row names the
+driving joints as `driver` and the link as `through` (`z_axis (slider,
+coupled: z_screw_turn through coupling z_leadscrew)`), the block counts
+`coupled_joints`, and a coupled joint adds no `driven_dof`: its motor is
+already counted. A slider a coupling ties only to undriven joints stays
+`passive`. Also, of two catalog motors coaxial with one joint (a gantry's
+left and right Y steppers face each other on one line), the nearer drives
+it: the liquid handler's right pulley had read the left motor.
+
+The fit sweep's `passive` (ADR-644) was checked for consistency and is left
+as it is: it is sweep coverage, not actuation -- a joint moved by another
+joint's sweep is not a coverage hole -- and its `driven_by` names the joints
+whose sweeps move it, which for an unlimited motor is the limited slider it
+follows. The two blocks answer different questions and do not contradict.
+
+**Evidence.** `test_anatomy.py`: a stepper and lead screw drive the slider
+through a `screw` joint and through an `assembly.coupling`; CoreXY's two
+couplings drive both sliders from two motors (`driver: motor_a, motor_b`);
+a slider tied by a belt and a coupling only to an idler stays passive; the
+nearer of two coaxial motors drives each pulley; the stamp carries
+couplings only when declared. Live: a scratch copy of
+`wave1-liquid-handler`'s script rebuilt with this engine reads `complete`,
+`coupled_joints: 4`, each of `y_axis`, `x_axis`, `z_axis`, `p_axis`
+coupled through its belt or lead-screw coupling, and `y_pulley_r_turn` driven
+by `y_motor_r`.
+
+Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-666 — A lid, door or enclosure wall closes a frame: `closes=[...]` (2026-10-11)
+
+**Context.** The panel check (ADR-633..638) judges a panel by its gap to
+what it covers: past about 8 mm at p90 it is `floating`, and its egg ratio
+is reported. A lid, a door or an enclosure wall is far from what it covers
+by design; its job is to close a volume. The wave's rover put flat lids on
+its tub as `role="housing"` and skipped the check; its printer declared its
+walls `role="frame"` and its doors and lid `role="housing"` to avoid being
+judged floating. Every closing part went unjudged.
+
+**Decision.** `assembly.component(..., role="panel", covers=[...],
+closes=[frame, ...])`: a closing panel names the frame it closes and seats
+on (a panel only; absent unless set, so no definition moves). The worker
+measures it against that frame instead of its covers: 3,000 points spread
+over the frame's triangles near the panel's box
+(`CadexPanels.sample_triangles`), and of those within 15 mm of the panel
+whose outward normal points at it (cos ≥ 0.7: a rim, a jamb face; not the
+walls beside its edge, not a thin lip's underside, nor a floor deeper than
+the band), the gap to it --
+`seam_samples`, `seam_gap_median_mm`/`_p90_mm`/`_max_mm`
+(`CadexPanels.seam_statistics`). `fit.panels` then keeps `floating` and
+`egg` off for it and judges two new failing findings: `unseated` (the pair
+rows put it more than 1 mm from everything it closes) and `open seam` (the
+seam's median gap past 2 mm, or no seam at all). The median, not the p90,
+because an extrusion's slots face a wall it closes over a minority of the
+face. Colliding at rest and in motion, mounting, wall, bed and fastener
+checks are as for any panel. A tray shallower than the band would read its
+floor as an open seam; a hinged door is still held only by a bolt or a
+weld, as any panel is.
+
+The API cost is one unannotated keyword, and `covers` lost its annotation
+too, so the assembly page of `describe_api` shrinks (21,463 of 21,500, from 21,479): the
+types are in the docstring, as for `assembly.coupling`. The component
+docstring and the base guidance's COVERS AND PANELS paragraph teach it in
+one sentence each; the paragraph traded words to stay at the 2,700-word
+budget.
+
+**Evidence.** `test_panel_check.py`: the declaration; on a tub's triangles a
+seated lid's seam reads 0 and its floor is not rim, a lid lifted 10 mm reads
+10, a lid hinged open reads past the bar; a lid seated on a tub's rim
+passes, one floating 10 mm fails `unseated`, one propped open fails `open
+seam`, one struck by a moving arm fails `colliding in motion`, and a
+hugging panel without `closes=` is judged as before. Live, on a probe tub
+built by this engine: seated, the seam reads 0.0 mm over 75 samples and the
+lid passes; lifted 0.5 mm, still seated (0.5 mm); lifted 11 mm, `unseated`
+(11.0 mm); tilted 7°, `open seam` (median 4.37 mm). On a scratch copy of
+`wave1-rover`'s script with its two lids declared `role="panel",
+covers=[deck or battery tray], closes=[chassis]` instead of `housing`, both
+pass the seat and the seam (median 0.0 mm over 175 and 195 samples), with
+only the advisory bed and fastener findings. A first version took the
+normal's sense as either way: there the rover's 2 mm lip underside, facing
+away from the lid, put the median at exactly 2.0 mm. The outward sense
+(FreeCAD's tessellation winds outward, checked on a cut box) is what the
+check reads.
+
+Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).
+
 ## ADR-670 — One output definition may be 4 MiB, and the refusal says why (2026-10-11)
 
 **Context.** The first breadth wave's enclosed printer (`wave1-printer`) hit `cadex_domain_worker.MAX_DEFINITION_BYTES`, 1,000,000 bytes on one output's serialized definition, and worked around it by putting screws only at each rail's end holes and dropping its spool holder. Measured from its accepted attempt, the assembly definition is 634 kB for 354 components and 295 joints. It grows about 1.3 kB per joint, because each joint carries both connectors and their component references in full. That growth is linear, but a real machine with every fastener outgrows 1 MB.

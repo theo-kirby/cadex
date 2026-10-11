@@ -278,3 +278,142 @@ def test_the_bed_is_the_studio_bed():
     import CadexStudio
 
     assert tuple(CadexFitReport.PANEL_BED_MM) == tuple(CadexStudio.BED_MM)
+
+
+# --------------------------------------------------------------------------
+# a closing panel: a lid, door or enclosure wall (ADR-666)
+# --------------------------------------------------------------------------
+
+
+def test_closes_is_declared_on_a_panel_only():
+    assembly = _assembly_api()
+    board = assembly.component(dict(SOURCE, object_name="board"))
+    tub = assembly.component(dict(SOURCE, object_name="tub"), role="frame")
+    lid = assembly.component(SOURCE, role="panel", covers=[board], closes=[tub])
+    assert list(lid.properties["closes"]) == [tub]
+    # A panel that closes nothing is byte-identical to one written before.
+    assert "closes" not in assembly.component(SOURCE, role="panel", covers=[board]).properties
+    with pytest.raises(ValueError, match="names the frame a lid"):
+        assembly.component(SOURCE, role="frame", closes=[tub])
+
+
+def _open_tub(width=100.0, depth=60.0, height=40.0, wall=3.0):
+    """A tub as triangles: a floor and four walls round an open top at z = height."""
+
+    def slab(x0, x1, y0, y1, top=height):
+        v = [(x, y, z) for x in (x0, x1) for y in (y0, y1) for z in (0.0, top)]
+        faces = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+        tris = []
+        for a, b, c, d in faces:
+            tris += [(v[a], v[b], v[c]), (v[a], v[c], v[d])]
+        return tris
+
+    return (slab(0, width, 0, wall) + slab(0, width, depth - wall, depth)
+            + slab(0, wall, 0, depth) + slab(width - wall, width, 0, depth)
+            + slab(0, width, 0, depth, top=wall))
+
+
+def _lid(z0, z1=None, *, width=100.0, depth=60.0, thickness=2.0):
+    """A flat lid over the tub, its underside from z0 (at x = 0) to z1 (at x = width)."""
+
+    z1 = z0 if z1 is None else z1
+    v = [(x, y, (z0 if x == 0 else z1) + dz) for x in (0.0, width) for y in (0.0, depth)
+         for dz in (0.0, thickness)]
+    faces = [(0, 2, 6, 4), (1, 5, 7, 3), (0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6)]
+    tris = []
+    for a, b, c, d in faces:
+        tris += [(v[a], v[b], v[c]), (v[a], v[c], v[d])]
+    return tris
+
+
+def _seam(lid):
+    from CadexPanels import SEAM_BAND_MM, sample_triangles, seam_statistics
+
+    low = [-SEAM_BAND_MM, -SEAM_BAND_MM, -1.0]
+    high = [100.0 + SEAM_BAND_MM, 60.0 + SEAM_BAND_MM, 60.0]
+    points, normals = sample_triangles(_open_tub(), 3000, low=low, high=high)
+    return seam_statistics(points, normals, lid)
+
+
+def test_a_seated_lid_meets_its_rim_and_a_lifted_or_tilted_one_does_not():
+    seated = _seam(_lid(40.0))
+    # The rim faces the lid and touches it; the walls beside its edge do not count.
+    assert seated["seam_samples"] > 20 and seated["seat_gap_mm"] == pytest.approx(0.0, abs=1e-6)
+    assert seated["seam_gap_median_mm"] == pytest.approx(0.0, abs=1e-6)
+    assert seated["seam_gap_p90_mm"] == pytest.approx(0.0, abs=1e-6)
+    # The floor, 37 mm under it, is not rim. Lifted 10 mm, the whole rim stands off.
+    lifted = _seam(_lid(50.0))
+    assert lifted["seam_samples"] == seated["seam_samples"]
+    assert lifted["seat_gap_mm"] == pytest.approx(10.0, abs=0.1)
+    assert lifted["seam_gap_median_mm"] == pytest.approx(10.0, abs=0.1)
+    # A face turned away from the lid (a thin lip's underside) is not seam.
+    from CadexPanels import seam_statistics
+    away = seam_statistics([[50.0, 1.5, 38.0]], [[0.0, 0.0, -1.0]], _lid(40.0))
+    toward = seam_statistics([[50.0, 1.5, 38.0]], [[0.0, 0.0, 1.0]], _lid(40.0))
+    assert away["seam_samples"] == 0 and toward["seam_samples"] == 1
+    # Hinged up at one end: seated on one edge, the seam opens along the rest.
+    tilted = _seam(_lid(40.0, 60.0))
+    assert tilted["seat_gap_mm"] < 0.1  # sampled, so near the hinge edge rather than on it
+    assert tilted["seam_gap_median_mm"] > CadexFitReport.PANEL_SEAM_GAP_MM, tilted
+
+
+def _closing(seat=0.0, seam=0.0, samples=320, **extra):
+    """A lid screwed onto a tub's rim, over a board 40 mm below it."""
+
+    value = _screwed()
+    value["components"][0] = _component("tub", role="frame")
+    value["pairs"] = [_pair("lid", "s0", 0.0), _pair("tub", "s0", 0.0, 4.5),
+                      _pair("lid", "s1", 0.0), _pair("tub", "s1", 0.0, 4.5),
+                      _pair("tub", "lid", seat), _pair("board", "lid", 40.0)]
+    row = {"component": "lid", "covers": ["board"], "closes": ["tub"], "samples": 400,
+           "seam_samples": samples, "coverage": 0.9, "wall_p10_mm": 1.9, "wall_median_mm": 2.0,
+           "wall_p90_mm": 2.4, "size_mm": [120.0, 80.0, 2.0],
+           "points": [[0.0, 0.0, 10.0], [100.0, 0.0, 10.0]], **extra}
+    if samples:
+        row.update(seam_gap_median_mm=seam, seam_gap_p90_mm=seam * 1.5, seam_gap_max_mm=seam * 2)
+    value["panels"] = [row]
+    return value
+
+
+def test_a_lid_seated_on_its_tubs_rim_passes():
+    block = panel_summary(_closing())
+    assert block["verdict"] == "pass", block
+    lid = block["fitted"][0]
+    assert lid["closes"] == ["tub"] and lid["floating_at_mm"] is None
+    assert lid["seat_gap_mm"] == 0.0 and lid["seam_gap_median_mm"] == 0.0
+    assert lid["mounted"] == "screws" and lid["held_by"] == ["tub"]
+    assert fit_summary(_closing())["verdict"] == "pass"
+
+
+def test_a_lid_floating_above_its_rim_fails():
+    block = panel_summary(_closing(seat=10.0, samples=0))
+    assert block["verdict"] == "fail"
+    lid = block["failing"][0]
+    assert lid["findings"] == ["unseated"] and lid["seat_gap_mm"] == 10.0
+    assert "10.0 mm to tub" in lid["detail"]
+    # Seated at one edge but propped open along the rest: the seam is open.
+    propped = panel_summary(_closing(seam=4.0))["failing"][0]
+    assert propped["findings"] == ["open seam"] and "4.0 mm at the median" in propped["detail"]
+
+
+def test_a_lid_struck_by_a_moving_part_fails():
+    value = _closing()
+    value["components"].append(_component("arm"))
+    value["clearance_sweep"] = {"status": "complete", "joints": [
+        {"joint": "elbow", "status": "complete", "pairs": [
+            {"first": "arm", "second": "lid", "minimum_distance_mm": 0.0,
+             "maximum_common_volume_mm3": 25.0, "relative_motion": True}]}]}
+    lid = panel_summary(value)["failing"][0]
+    assert lid["findings"] == ["colliding in motion"]
+    assert lid["colliding_in_motion"][0] == {"joint": "elbow", "with": "arm",
+                                             "common_volume_mm3": 25.0}
+
+
+def test_a_hugging_panel_is_judged_as_before():
+    # No closes=: the gap to what it covers is judged, and an egg is named.
+    value = _screwed()
+    value["panels"] = [_measured("lid", 9.0, egg_ratio=3.0)]
+    lid = panel_summary(value)["failing"][0]
+    assert lid["findings"] == ["floating", "egg"]
+    assert lid["floating_at_mm"] == CadexFitReport.PANEL_FLOATING_GAP_MM
+    assert "closes" not in lid and "seat_gap_mm" not in lid

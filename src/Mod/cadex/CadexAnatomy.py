@@ -47,7 +47,8 @@ ANATOMY_SOURCE = (
     "the accepted revision's joint graph (inspect scope=anatomy): the regions "
     "assembly.anatomy declared, every unsuppressed joint, which ones an "
     "api.actuator drives in any export or a catalog actuator drives on its "
-    "axis, the weld clusters fixed joints make, "
+    "axis, the screws, gears, belts, racks and couplings that tie joints "
+    "together, the weld clusters fixed joints make, "
     "and the bounding boxes the inventory already carries. Not a motion or "
     "strength check."
 )
@@ -57,7 +58,9 @@ ANATOMY_NOTE = (
     "hangs off (or between its own segments) and something drives that "
     "joint: an api.actuator declared on it (actuated), a catalog actuator "
     "welded to one side with its output on the joint axis (catalog drive), "
-    "or either through a closed loop (loop). A region with no joint of its "
+    "or any of these through a closed loop (loop) or through a screw, gears, "
+    "belt, rack_pinion or assembly.coupling tying it to a driven joint "
+    "(coupled: the driver, through the link). A region with no joint of its "
     "own is rigid; declare reason= when that is deliberate, with the "
     "measurement that says so. The verdict is complete only when every "
     "declared region is articulated, the root, or carries a reason."
@@ -114,7 +117,7 @@ def world_boxes(components: Sequence[Mapping[str, Any]]) -> dict[str, tuple]:
 
 #: The drives that make a region articulated: an api.actuator declared on
 #: the joint, a catalog actuator on its axis, or a closed loop either drives.
-DRIVEN = ("actuated", "catalog drive", "loop")
+DRIVEN = ("actuated", "catalog drive", "loop", "coupled")
 #: How far a catalog actuator's output axis may sit off a joint's axis and
 #: still be read as driving it: a degree-scale aim and a millimetre-scale
 #: offset, far tighter than any motor placed for another joint.
@@ -183,13 +186,97 @@ def _catalog_driver(joint: Mapping[str, Any], drives: Mapping[str, Mapping[str, 
     line = joint.get("axis")
     if not isinstance(line, Mapping) or not drives:
         return ""
+    found = []
     for side in joint["components"]:
         for name in members.get(clusters.find(str(side)), ()):
             drive = drives.get(name)
             if (drive and joint.get("kind") in DRIVE_KINDS.get(drive["motion"], ())
                     and _coaxial(drive, line)):
-                return name
-    return ""
+                found.append(name)
+    if not found:
+        return ""
+    # Two motors on one line (a gantry's left and right Y steppers, facing
+    # each other across the frame): the one nearest the joint drives it.
+    try:
+        origin = [float(v) for v in line["origin"]][:3]
+        return min(found, key=lambda name: math.dist(drives[name]["origin"], origin))
+    except (KeyError, TypeError, ValueError):
+        return found[0]
+
+
+#: The joint kinds that relate coordinates other joints own and attach
+#: nothing (CadexDynamics.JOINT_TABLE's coupled kinds).
+COUPLING_KINDS = ("screw", "rack_pinion", "gears", "belt")
+
+
+def _coupling_groups(stamp: Mapping[str, Any], joints: Sequence[Mapping[str, Any]],
+                     mobile: Sequence[Mapping[str, Any]], edges: Sequence[tuple[str, str, int]],
+                     clusters: Any, root: str, members: Mapping[str, Any]) -> list[tuple[str, list[int]]]:
+    """Each coordinate link as ``(label, [mobile joint index, ...])`` (ADR-665).
+
+    A coupled joint kind relates the mobile joints on the spanning-tree path
+    between its two components' rigid bodies -- the screw's revolute and
+    the nut's slider, the pinion's revolute and the carriage's slider --
+    which is how the dynamics tree reads it (``CadexDynamics._tree_path``).
+    An ``assembly.coupling`` names its joints.
+    """
+
+    adjacency: dict[str, list[tuple[str, int]]] = {key: [] for key in members}
+    for first, second, index in edges:
+        adjacency[first].append((second, index))
+        adjacency[second].append((first, index))
+    parent: dict[str, tuple[str, int] | None] = {}
+    for start in [root, *members]:
+        if not start or start in parent:
+            continue
+        parent[start] = None
+        queue = [start]
+        for node in queue:
+            for other, index in adjacency[node]:
+                if other not in parent:
+                    parent[other] = (node, index)
+                    queue.append(other)
+
+    def lineage(node: str) -> list[tuple[str, int | None]]:
+        # Each node up to its tree's root, with the edge that leads up from it.
+        chain: list[tuple[str, int | None]] = []
+        while parent.get(node):
+            up, index = parent[node]
+            chain.append((node, index))
+            node = up
+        chain.append((node, None))
+        return chain
+
+    def path(first: str, second: str) -> list[int]:
+        a, b = lineage(first), lineage(second)
+        above = {node for node, _ in b}
+        meet = next((node for node, _ in a if node in above), None)
+        if meet is None:
+            return []
+        found: list[int] = []
+        for chain in (a, b):
+            for node, index in chain:
+                if node == meet:
+                    break
+                if index is not None:
+                    found.append(index)
+        return found
+
+    groups: list[tuple[str, list[int]]] = []
+    for joint in joints:
+        if joint.get("kind") in COUPLING_KINDS:
+            first, second = (clusters.find(str(c)) for c in joint["components"])
+            group = path(first, second)
+            if len(group) >= 2:
+                groups.append(("{} {}".format(joint["kind"], joint.get("joint") or ""), group))
+    in_graph = {str(mobile[index].get("joint") or ""): index for _a, _b, index in edges}
+    for entry in stamp.get("couplings") or []:
+        if not isinstance(entry, Mapping):
+            continue
+        group = [in_graph[str(name)] for name in entry.get("joints") or [] if str(name) in in_graph]
+        if len(group) >= 2:
+            groups.append(("coupling {}".format(entry.get("coupling") or ""), group))
+    return groups
 
 
 def _union(boxes: Sequence[tuple]) -> tuple | None:
@@ -453,19 +540,40 @@ def anatomy_summary(stamp: Any, components: Sequence[Mapping[str, Any]] = ()) ->
     for first, second, index in edges:
         if index not in bridges:
             loop_parts.join(first, second)
-    driven_loops = {loop_parts.find(clusters.find(str(mobile[i]["components"][0])))
-                    for _a, _b, i in edges if i not in bridges and driven(i)}
+
+    # The links that tie coordinates together (ADR-665): a screw, gears,
+    # belt or rack_pinion joint relates the mobile joints on the graph path
+    # between its two components, an assembly.coupling the joints it names.
+    # Any one of them driven drives the rest of its group, through it; a
+    # loop driven that way is driven, and so on until nothing changes.
+    groups = _coupling_groups(stamp, joints, mobile, edges, clusters, root_cluster, members)
+    drive_of: dict[int, str] = {}
+    for _a, _b, index in edges:
+        if int(mobile[index].get("actuators") or 0) > 0:
+            drive_of[index] = "actuated"
+        elif index in catalog_driver:
+            drive_of[index] = "catalog drive"
+    through: dict[int, tuple[list[str], str]] = {}
+    changed = True
+    while changed:
+        changed = False
+        for link, group in groups:
+            drivers = [str(mobile[i].get("joint") or "") for i in group if i in drive_of]
+            for index in group:
+                if drivers and index not in drive_of:
+                    drive_of[index] = "coupled"
+                    through[index] = (drivers, link)
+                    changed = True
+        driven_loops = {loop_parts.find(clusters.find(str(mobile[i]["components"][0])))
+                        for i in drive_of if i not in bridges}
+        for _a, _b, index in edges:
+            side = loop_parts.find(clusters.find(str(mobile[index]["components"][0])))
+            if index not in drive_of and index not in bridges and side in driven_loops:
+                drive_of[index] = "loop"
+                changed = True
 
     def drive(index: int) -> str:
-        joint = mobile[index]
-        if int(joint.get("actuators") or 0) > 0:
-            return "actuated"
-        if index in catalog_driver:
-            return "catalog drive"
-        if index in bridges:
-            return "passive"
-        side = loop_parts.find(clusters.find(str(joint["components"][0])))
-        return "loop" if side in driven_loops else "passive"
+        return drive_of.get(index, "passive")
 
     def driven_dof(index: int) -> int:
         dof = JOINT_DOF[str(mobile[index]["kind"])]
@@ -513,6 +621,9 @@ def anatomy_summary(stamp: Any, components: Sequence[Mapping[str, Any]] = ()) ->
                "driven_dof": driven_dof(index)}
         if index in catalog_driver:
             row["driver"] = catalog_driver[index]
+        elif index in through:
+            row["driver"] = ", ".join(through[index][0])
+            row["through"] = through[index][1]
         if child_owner in in_cluster.get(a, []):
             row["within"] = True
         else:
@@ -621,6 +732,7 @@ def anatomy_summary(stamp: Any, components: Sequence[Mapping[str, Any]] = ()) ->
         "mobile_joints": len(edges),
         "actuated_joints": sum(1 for _a, _b, i in edges if driven(i)),
         "catalog_driven_joints": len(catalog_driver),
+        "coupled_joints": len(through),
         "joint_dof": sum(JOINT_DOF[str(mobile[i]["kind"])] for _a, _b, i in edges),
         "actuated_dof": sum(driven_dof(i) for _a, _b, i in edges),
         "root_component": root,
@@ -639,7 +751,7 @@ VIEW_COMPONENT_LIMIT = 6
 #: The block's scalar keys the view carries whole.
 VIEW_KEYS = (
     "verdict", "revision", "assembly", "actuated_dof", "joint_dof", "mobile_joints",
-    "actuated_joints", "catalog_driven_joints", "rigid_bodies", "root_component", "unacknowledged_appendages",
+    "actuated_joints", "catalog_driven_joints", "coupled_joints", "rigid_bodies", "root_component", "unacknowledged_appendages",
     "undeclared_joints", "note", "reason", "error",
 )
 
@@ -664,8 +776,9 @@ def anatomy_view(block: Mapping[str, Any]) -> dict[str, Any]:
     for row in list(block.get("regions") or [])[:VIEW_LIST_LIMIT * 2]:
         item = {key: value for key, value in row.items() if key not in ("components", "joints")}
         item["components"] = cut(row.get("components"))
-        item["joints"] = ["{:s} ({:s}, {:s}{:s})".format(
-            j["joint"], j["kind"], j["drive"], ": " + j["driver"] if j.get("driver") else "")
+        item["joints"] = ["{:s} ({:s}, {:s}{:s}{:s})".format(
+            j["joint"], j["kind"], j["drive"], ": " + j["driver"] if j.get("driver") else "",
+            " through " + j["through"] if j.get("through") else "")
             for j in row.get("joints") or []]
         regions.append(item)
     view["regions"] = regions
