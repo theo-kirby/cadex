@@ -52,6 +52,34 @@ def _unused(options: Mapping[str, Any], interface: str, allowed: tuple[str, ...]
         raise PartBuildError(f"a {interface} part does not take {extra[0]}=")
 
 
+def _thread_dia(thread: str) -> float:
+    """``'m3'`` -> 3.0: the nominal diameter a tapped hole is modelled at."""
+
+    return float(str(thread).strip().lower().lstrip("m"))
+
+
+def _hole(origin, axis, *, thread: str | None = None, hole_dia: float | None = None,
+          output: bool = False) -> dict[str, Any]:
+    """One mounting hole in the part's own frame (ADR-660).
+
+    ``origin`` is where a screw's head seats (or, for a tapped hole, the
+    hole's mouth) and ``axis`` is the ``direction`` a ``lib.bolt`` placed
+    at ``origin`` takes, its shank running back along ``-axis``; a tapped
+    hole names its thread, a clearance hole its diameter. ``lib.part``
+    carries these through the placement into the mounting check, which
+    credits a screw on the axis either way round.
+    """
+
+    row: dict[str, Any] = {"origin": [float(v) for v in origin], "axis": [float(v) for v in axis]}
+    if thread is not None:
+        row["thread_dia_mm"] = _thread_dia(thread)
+    elif hole_dia is not None:
+        row["hole_dia_mm"] = float(hole_dia)
+    if output:
+        row["output"] = True
+    return row
+
+
 def _density(spec: dict[str, Any], volume_mm3: float, mass_kg: float | None) -> None:
     if mass_kg is not None and volume_mm3 > 0.0:
         spec["density_kg_m3"] = mass_kg / (volume_mm3 * 1.0e-9)
@@ -64,24 +92,32 @@ def rail(part, spec, options):
     _unused(options, "rail", ("length",))
     length = _need(options, "length", "rail")
     w, h = spec["width_mm"], spec["height_mm"]
+    pitch, least = spec["hole_pitch_mm"], spec["end_distance_mm"]
     body = part.box(w, h, length, origin=(-w / 2.0, 0.0, 0.0))
-    holes, count = [], 0
-    z = spec["end_distance_mm"]
-    while z <= length - spec["end_distance_mm"] + 1e-9:
+    # The pattern is centred, as the catalogue's standard lengths are
+    # (L = (n - 1) P + 2E): as many holes as keep each end at least the
+    # catalogue's end distance, and the two ends equal (ADR-660).
+    count = int(math.floor((length - 2.0 * least) / pitch + 1e-9)) + 1 if length >= 2.0 * least else 0
+    end = (length - (count - 1) * pitch) / 2.0 if count else 0.0
+    seat = h - spec["counterbore_depth_mm"]
+    holes, points = [], []
+    for index in range(count):
+        z = end + index * pitch
         holes.append(part.cylinder(spec["hole_dia_mm"] / 2.0, h + 2.0, origin=(0.0, -1.0, z),
                                    direction=(0.0, 1.0, 0.0)))
         holes.append(part.cylinder(spec["counterbore_dia_mm"] / 2.0, spec["counterbore_depth_mm"] + 1.0,
-                                   origin=(0.0, h - spec["counterbore_depth_mm"], z),
-                                   direction=(0.0, 1.0, 0.0)))
-        count += 1
-        z += spec["hole_pitch_mm"]
+                                   origin=(0.0, seat, z), direction=(0.0, 1.0, 0.0)))
+        points.append(_hole((0.0, seat, z), (0.0, 1.0, 0.0), hole_dia=spec["hole_dia_mm"]))
     if holes:
         body = part.cut(body, holes)
     volume = w * h * length - count * (_cyl(spec["hole_dia_mm"] / 2, h - spec["counterbore_depth_mm"])
                                        + _cyl(spec["counterbore_dia_mm"] / 2, spec["counterbore_depth_mm"]))
-    spec.update(length_mm=length, mounting_holes=count,
+    spec.update(length_mm=length, mounting_holes=count, end_offset_mm=end, mount_points=points,
                 datums={"rail": "+Z along the rail from its datum end; base on Y = 0, centred in X; "
                                 "mounting face +Y",
+                        "holes": f"{count} counterbored M3 clearance holes on X = 0, {pitch:g} apart "
+                                 f"from Z = {end:g}; each mount_points origin is a counterbore floor "
+                                 f"(Y = {seat:g}), where a screw head seats, axis +Y",
                         "carriage": "a carriage placed with the rail's origin and direction, moved "
                                     "along +Z, rides it: a slider joint on +Z"})
     _density(spec, volume, spec["mass_kg_per_m"] * length / 1000.0)
@@ -100,18 +136,26 @@ def carriage(part, spec, options):
     channel_w = rail_row["width_mm"] + 0.6
     channel_h = rail_row["height_mm"] + 0.3 - low
     channel = part.box(channel_w, channel_h, l + 2.0, origin=(-channel_w / 2.0, low - 0.01, -l / 2.0 - 1.0))
-    tap = {"m2": 1.6, "m2.5": 2.05, "m3": 2.5, "m4": 3.3, "m5": 4.2}.get(spec["thread"], 2.5)
+    # A tapped hole is an open bore at the thread's nominal diameter, as a
+    # catalog part's always is (ADR-660): a screw that reaches it is in its
+    # thread and shares no volume with the block. HIWIN's thread depth is
+    # 3.5 mm on MGN12 and 3 on MGN9, what the block over the rail allows.
+    radius = _thread_dia(spec["thread"]) / 2.0
     depth = min(3.5, top - rail_row["height_mm"] - 0.5)
-    holes = [part.cylinder(tap / 2.0, depth + 1.0, origin=(sx * spec["hole_spacing_width_mm"] / 2.0,
-                                                            top - depth, sz * spec["hole_spacing_length_mm"] / 2.0),
-                           direction=(0.0, 1.0, 0.0))
-             for sx in (-1, 1) for sz in (-1, 1)]
+    centres = [(sx * spec["hole_spacing_width_mm"] / 2.0, sz * spec["hole_spacing_length_mm"] / 2.0)
+               for sx in (-1, 1) for sz in (-1, 1)]
+    holes = [part.cylinder(radius, depth + 1.0, origin=(x, top - depth, z), direction=(0.0, 1.0, 0.0))
+             for x, z in centres]
     body = part.cut(block, [channel, *holes])
-    volume = w * (top - low) * l - channel_w * channel_h * l
+    volume = w * (top - low) * l - channel_w * channel_h * l - 4.0 * _cyl(radius, depth)
     spec.update(datums={"carriage": "the rail's frame: centred on Z = 0, mounting face at Y = "
-                                    f"{top:g}, four {spec['thread']} holes on {spec['hole_spacing_width_mm']:g} x "
-                                    f"{spec['hole_spacing_length_mm']:g}"},
-                mount_face_y_mm=top)
+                                    f"{top:g}, four {spec['thread']} holes {depth:g} deep on "
+                                    f"{spec['hole_spacing_width_mm']:g} (X) x "
+                                    f"{spec['hole_spacing_length_mm']:g} (Z); each mount_points "
+                                    "origin is a hole's mouth, axis +Y"},
+                mount_face_y_mm=top, mount_thread=spec["thread"], thread_depth_mm=depth,
+                mount_points=[_hole((x, top, z), (0.0, 1.0, 0.0), thread=spec["thread"])
+                              for x, z in centres])
     _density(spec, volume, spec["mass_kg"])
     return body, {}
 
@@ -146,8 +190,12 @@ def pulley(part, spec, options):
     spec.update(pitch_radius_mm=r_pitch, pitch_dia_mm=2.0 * r_pitch, outside_dia_mm=2.0 * r_band,
                 belt_mm_per_degree=spec["teeth"] * spec["pitch_mm"] / 360.0,
                 belt_centre_z_mm=belt_z, length_mm=z,
+                # The bore is the pulley's one axis (ADR-660): a drive's
+                # shaft on it, or an axle screw through an idler.
+                mount_points=[_hole((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), hole_dia=spec["bore_mm"])],
                 datums={"pulley": "+Z along the shaft, base face (hub end) on Z = 0; the belt runs "
-                                  f"centred on Z = {belt_z:g} at the pitch radius {r_pitch:.4g}"},
+                                  f"centred on Z = {belt_z:g} at the pitch radius {r_pitch:.4g}; "
+                                  "the bore is its mount_points axis"},
                 drive_note=("A belt carrying a carriage is assembly.joint('rack_pinion', "
                             "pitch_radius_mm=spec['pitch_radius_mm']); an n-joint belt (CoreXY) "
                             "is assembly.coupling with spec['belt_mm_per_degree']."))
@@ -217,15 +265,29 @@ def screw_nut(part, spec, options):
     nut = part.fuse([flange, part.cylinder(spec["body_dia_mm"] / 2.0, length)])
     volume += _cyl(spec["body_dia_mm"] / 2.0, length - t)
     holes = [part.cylinder(bore / 2.0, length + 2.0, origin=(0.0, 0.0, -1.0))]
-    for index in range(int(spec["bolt_holes"])):
-        angle = 2.0 * math.pi * index / int(spec["bolt_holes"]) + math.pi / 4.0
-        holes.append(part.cylinder(spec["bolt_hole_dia_mm"] / 2.0, t + 2.0,
-                                   origin=(spec["bolt_circle_mm"] / 2.0 * math.cos(angle),
-                                           spec["bolt_circle_mm"] / 2.0 * math.sin(angle), -1.0)))
+    count, r = int(spec["bolt_holes"]), spec["bolt_circle_mm"] / 2.0
+    if spec["flat_width_mm"] > 0.0 and count % 2 == 0:
+        # A flatted flange (DIN 69051 form B) keeps its holes off the flats:
+        # half each side of the axis across them, 360 / (count + 2) apart
+        # (six at 0 and +-45 degrees, each side).
+        step = 2.0 * math.pi / (count + 2)
+        side = [(k - (count // 2 - 1) / 2.0) * step for k in range(count // 2)]
+        angles = side + [math.pi + a for a in side]
+    else:
+        angles = [2.0 * math.pi * index / count + math.pi / 4.0 for index in range(count)]
+    centres = [(r * math.cos(a), r * math.sin(a)) for a in angles]
+    for x, y in centres:
+        holes.append(part.cylinder(spec["bolt_hole_dia_mm"] / 2.0, t + 2.0, origin=(x, y, -1.0)))
     body = part.cut(nut, holes)
-    volume -= _cyl(bore / 2.0, length)
-    spec.update(bore_mm=bore, datums={"nut": "+Z along the screw axis; flange face on Z = 0, "
-                                             "body towards +Z"})
+    volume -= _cyl(bore / 2.0, length) + len(centres) * _cyl(spec["bolt_hole_dia_mm"] / 2.0, t)
+    spec.update(bore_mm=bore,
+                mount_points=[_hole((x, y, 0.0), (0.0, 0.0, -1.0), hole_dia=spec["bolt_hole_dia_mm"])
+                              for x, y in centres],
+                datums={"nut": "+Z along the screw axis; flange face on Z = 0, body towards +Z",
+                        "holes": f"{len(centres)} {spec['bolt_hole_dia_mm']:g} mm clearance holes "
+                                 f"through the flange on a {spec['bolt_circle_mm']:g} circle; each "
+                                 "mount_points origin is on the Z = 0 face, axis -Z (a screw head "
+                                 "there, its shank through the flange along +Z)"})
     _density(spec, volume, None)
     return body, {}
 
@@ -238,18 +300,24 @@ def motor_face(part, spec, options):
     case = part.box(f, f, length, origin=(-f / 2.0, -f / 2.0, -length))
     pilot = part.cylinder(spec["pilot_dia_mm"] / 2.0, spec["pilot_height_mm"])
     shaft = part.cylinder(spec["shaft_dia_mm"] / 2.0, spec["shaft_length_mm"])
-    tap = {"m3": 2.5, "m4": 3.3, "m5": 4.2}.get(spec["thread"], 2.5)
+    # Tapped holes are open bores at the thread's nominal diameter (ADR-660).
+    radius = _thread_dia(spec["thread"]) / 2.0
+    depth = spec["thread_depth_mm"]
     s = spec["hole_spacing_mm"] / 2.0
-    holes = [part.cylinder(tap / 2.0, spec["thread_depth_mm"] + 1.0,
-                           origin=(sx * s, sy * s, -spec["thread_depth_mm"]))
-             for sx in (-1, 1) for sy in (-1, 1)]
+    centres = [(sx * s, sy * s) for sx in (-1, 1) for sy in (-1, 1)]
+    holes = [part.cylinder(radius, depth + 1.0, origin=(x, y, -depth)) for x, y in centres]
     body = part.cut(part.fuse([case, pilot, shaft]), holes)
     volume = f * f * length + _cyl(spec["pilot_dia_mm"] / 2.0, spec["pilot_height_mm"]) \
-        + _cyl(spec["shaft_dia_mm"] / 2.0, spec["shaft_length_mm"])
+        + _cyl(spec["shaft_dia_mm"] / 2.0, spec["shaft_length_mm"]) - 4.0 * _cyl(radius, depth)
     spec.update(mount_thread=spec["thread"],
-                mount_holes_mm=[[sx * s, sy * s, 0.0] for sx in (-1, 1) for sy in (-1, 1)],
+                mount_holes_mm=[[x, y, 0.0] for x, y in centres],
+                mount_points=[_hole((x, y, 0.0), (0.0, 0.0, 1.0), thread=spec["thread"])
+                              for x, y in centres],
                 datums={"motor": "front face on Z = 0, shaft along +Z, case to Z = "
-                                 f"{-length:g}; four {spec['thread']} holes on a {spec['hole_spacing_mm']:g} square"},
+                                 f"{-length:g}; four {spec['thread']} holes {depth:g} deep on a "
+                                 f"{spec['hole_spacing_mm']:g} square, mouths on Z = 0 (mount_points); "
+                                 "the shaft is the drive's output axis (+Z through the origin), so a "
+                                 "pulley on it is on the output"},
                 drive_note=("assembly.actuator(joint, torque_limit_nmm=<well under "
                             f"{spec['holding_torque_nmm']:g}>) and assembly.joint_dynamics(joint, "
                             f"armature_kgmm2={spec['rotor_inertia_kgmm2']:g}): a coupled motor "
@@ -264,33 +332,38 @@ def profile(part, spec, options):
     _unused(options, "profile", ("length",))
     length = _need(options, "length", "profile")
     w, h = spec["width_mm"], spec["height_mm"]
-    o, d, iw, lip = (spec[k] for k in ("slot_opening_mm", "slot_depth_mm", "slot_inner_width_mm", "lip_mm"))
+    o, d, iw, lip, wall = (spec[k] for k in ("slot_opening_mm", "slot_depth_mm", "slot_inner_width_mm",
+                                             "lip_mm", "slot_wall_mm"))
+    bottom = iw / 2.0 - (d - lip - wall)
+    if bottom <= 0.0:
+        raise PartBuildError("the slot's 45-degree undercut closes before its depth")
     body = part.box(w, h, length, origin=(-w / 2.0, -h / 2.0, 0.0))
-    cuts, removed = [], 0.0
     module = 20.0
     centres_x = [-w / 2.0 + module / 2.0 + module * i for i in range(int(round(w / module)))]
     centres_y = [-h / 2.0 + module / 2.0 + module * i for i in range(int(round(h / module)))]
-    def span(edge: float, side: float, near: float, far: float) -> tuple[float, float]:
-        # The band from ``near`` to ``far`` mm in from a face, as (low, size).
-        a, b = edge - side * near, edge - side * far
-        return min(a, b), abs(b - a)
-
-    for x in centres_x:
-        for side in (-1.0, 1.0):
-            edge = side * h / 2.0
-            low, size = span(edge, side, -0.02, lip)
-            cuts.append(part.box(o, size, length + 2.0, origin=(x - o / 2.0, low, -1.0)))
-            low, size = span(edge, side, lip - 0.01, d)
-            cuts.append(part.box(iw, size, length + 2.0, origin=(x - iw / 2.0, low, -1.0)))
-            removed += o * lip + iw * (d - lip)
-    for y in centres_y:
-        for side in (-1.0, 1.0):
-            edge = side * w / 2.0
-            low, size = span(edge, side, -0.02, lip)
-            cuts.append(part.box(size, o, length + 2.0, origin=(low, y - o / 2.0, -1.0)))
-            low, size = span(edge, side, lip - 0.01, d)
-            cuts.append(part.box(size, iw, length + 2.0, origin=(low, y - iw / 2.0, -1.0)))
-            removed += o * lip + iw * (d - lip)
+    # The B-type slot as (across, depth in from the face) (ADR-661): the
+    # opening through the lip, the undercut's straight wall, then 45-degree
+    # flanks down to the bottom -- the flanks keep the diagonal webs that
+    # tie the corners to the core, which a rectangular undercut this wide
+    # would cut through.
+    outline = [(-o / 2.0, -0.02), (o / 2.0, -0.02), (o / 2.0, lip), (iw / 2.0, lip),
+               (iw / 2.0, lip + wall), (bottom, d), (-bottom, d), (-iw / 2.0, lip + wall),
+               (-iw / 2.0, lip), (-o / 2.0, lip)]
+    slot_area = sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(outline, outline[1:] + outline[:1])) / 2.0
+    faces = [("+y", (0.0, 1.0), (1.0, 0.0), h / 2.0, centres_x),
+             ("-y", (0.0, -1.0), (1.0, 0.0), h / 2.0, centres_x),
+             ("+x", (1.0, 0.0), (0.0, 1.0), w / 2.0, centres_y),
+             ("-x", (-1.0, 0.0), (0.0, 1.0), w / 2.0, centres_y)]
+    cuts, removed, datums = [], 0.0, []
+    for name, n, t, edge, centres in faces:
+        for index, c in enumerate(centres):
+            def at(u, s, z):
+                return (n[0] * (edge - s) + t[0] * (c + u), n[1] * (edge - s) + t[1] * (c + u), z)
+            wire = part.wire([at(u, s, -1.0) for u, s in outline], closed=True)
+            cuts.append(part.extrude(part.face(wire), (0.0, 0.0, length + 2.0)))
+            removed += abs(slot_area)
+            datums.append({"face": name, "index": index, "origin": list(at(0.0, lip, 0.0)),
+                           "normal": [n[0], n[1], 0.0]})
     for x in centres_x:
         for y in centres_y:
             cuts.append(part.cylinder(spec["bore_dia_mm"] / 2.0, length + 2.0, origin=(x, y, -1.0)))
@@ -299,9 +372,15 @@ def profile(part, spec, options):
     volume = (w * h - removed) * length
     spec.update(length_mm=length,
                 slot_centres_mm={"x": centres_x, "y": centres_y},
+                slot_datums=datums,
                 datums={"profile": "+Z along the profile from Z = 0; section centred on the axis, "
                                    f"{w:g} along X and {h:g} along Y; slots at the 20 mm module, "
-                                   f"end bores tapped {spec['tap']}"})
+                                   f"end bores tapped {spec['tap']}",
+                        "slot": "each slot's datum (slot_datums: face '+x', '-x', '+y' or '-y', its "
+                                "index along that face, origin at Z = 0, outward normal) is the "
+                                f"underside of its lip ({lip:g} mm in from the face) on the slot's "
+                                "centreline; .slot(face, along, index) places a T-nut there: "
+                                "lib.part('2020-tnut-m5', **beam.slot('+y', 40.0))"})
     _density(spec, volume, spec["mass_kg_per_m"] * length / 1000.0)
     return body, {}
 
@@ -312,21 +391,39 @@ def slot_hardware(part, spec, options):
     _unused(options, "slot_hardware")
     l, w, h = spec["length_mm"], spec["width_mm"], spec["height_mm"]
     if spec["kind"] == "tnut":
-        body = part.cut(part.box(l, w, h, origin=(-l / 2.0, -w / 2.0, -h)),
-                        part.cylinder(spec["hole_dia_mm"] / 2.0, h + 2.0, origin=(0.0, 0.0, -h - 1.0)))
-        volume = l * w * h - _cyl(spec["hole_dia_mm"] / 2.0, h)
-        datum = "clamp face (under the slot's lip) on Z = 0, the screw along +Z out of the slot"
+        # The slide-in nut's section (ADR-661): a neck that enters the slot
+        # opening above the clamp face, the body under the lip, its lower
+        # edges chamfered at 45 degrees to clear the undercut's flanks. Its
+        # thread is the tap drill, so a screw in it cuts a thread's volume.
+        nw, nh, c = spec["neck_width_mm"], spec["neck_height_mm"], spec["chamfer_mm"]
+        section = [(-nw / 2.0, nh), (nw / 2.0, nh), (nw / 2.0, 0.0), (w / 2.0, 0.0),
+                   (w / 2.0, -(h - c)), (w / 2.0 - c, -h), (-(w / 2.0 - c), -h),
+                   (-w / 2.0, -(h - c)), (-w / 2.0, 0.0), (-nw / 2.0, 0.0)]
+        wire = part.wire([(-l / 2.0, y, z) for y, z in section], closed=True)
+        block = part.extrude(part.face(wire), (l, 0.0, 0.0))
+        r = spec["hole_dia_mm"] / 2.0
+        body = part.cut(block, part.cylinder(r, h + nh + 2.0, origin=(0.0, 0.0, -h - 1.0)))
+        volume = (nw * nh + w * h - c * c) * l - _cyl(r, h + nh)
+        datum = ("clamp face (against the underside of the slot's lip) on Z = 0, the neck up to Z = "
+                 f"{nh:g} into the opening, the body down to Z = {-h:g}; length along X (the slot), "
+                 "the screw along +Z out of the slot; place it with a profile's .slot(...)")
+        points = [_hole((0.0, 0.0, 0.0), (0.0, 0.0, 1.0), thread=spec["thread"])]
     else:
         t = spec["thickness_mm"]
         legs = part.fuse([part.box(l, w, t, origin=(0.0, -w / 2.0, 0.0)),
                           part.box(t, w, h, origin=(0.0, -w / 2.0, 0.0))])
         r = spec["hole_dia_mm"] / 2.0
-        body = part.cut(legs, [part.cylinder(r, t + 2.0, origin=(l / 2.0 + t / 2.0, 0.0, -1.0)),
-                               part.cylinder(r, t + 2.0, origin=(-1.0, 0.0, h / 2.0 + t / 2.0),
+        at = l / 2.0 + t / 2.0
+        body = part.cut(legs, [part.cylinder(r, t + 2.0, origin=(at, 0.0, -1.0)),
+                               part.cylinder(r, t + 2.0, origin=(-1.0, 0.0, at),
                                              direction=(1.0, 0.0, 0.0))])
         volume = (l * w + (h - t) * w) * t - 2.0 * _cyl(r, t)
-        datum = "inside corner at the origin: one leg on Z = 0 along +X, the other on X = 0 up +Z"
-    spec.update(datums={spec["kind"]: datum})
+        datum = ("outer corner at the origin: one leg's outer face on Z = 0 along +X, the other's on "
+                 f"X = 0 up +Z, {t:g} thick; one {spec['hole_dia_mm']:g} mm hole in each, {at:g} from "
+                 "the corner, its mount_points origin on the leg's inner face (where a screw head seats)")
+        points = [_hole((at, 0.0, t), (0.0, 0.0, 1.0), hole_dia=spec["hole_dia_mm"]),
+                  _hole((t, 0.0, at), (1.0, 0.0, 0.0), hole_dia=spec["hole_dia_mm"])]
+    spec.update(datums={spec["kind"]: datum}, mount_points=points)
     _density(spec, volume, None)
     return body, {}
 
@@ -394,8 +491,13 @@ def spindle(part, spec, options):
     volume = _cyl(nose_r, nose) + _cyl(spec["body_dia_mm"] / 2.0, spec["body_length_mm"])
     spec.update(clamp_dia_mm=spec["body_dia_mm"],
                 tool_point_mm=[0.0, 0.0, 0.0], tool_axis=[0.0, 0.0, -1.0],
+                clamp_from_mm=nose, clamp_to_mm=nose + spec["body_length_mm"],
                 datums={"spindle": "collet nose at the origin, body up +Z; the cutter points -Z "
-                                   "(assembly.tool(component, origin_mm=[0, 0, -stick_out], axis=[0, 0, -1]))"})
+                                   "(assembly.tool(component, origin_mm=[0, 0, -stick_out], axis=[0, 0, -1]))",
+                        "clamp": f"held round its {spec['body_dia_mm']:g} mm body between Z = {nose:g} "
+                                 f"and {nose + spec['body_length_mm']:g} by a clamp (a printed or "
+                                 "bought ring that touches it and encloses its axis there); it has "
+                                 "no screw holes, and its axis is the drive's output"})
     _density(spec, volume, spec["mass_kg"])
     return body, {}
 
@@ -410,10 +512,14 @@ def caster(part, spec, options):
     axle_z = height - r
     offset = spec["swivel_offset_mm"]
     plate = part.box(pl, pw, pt, origin=(-pl / 2.0, -pw / 2.0, 0.0))
-    holes = [part.cylinder(spec["hole_dia_mm"] / 2.0, pt + 2.0,
-                           origin=(sx * spec["hole_spacing_length_mm"] / 2.0,
-                                   sy * spec["hole_spacing_width_mm"] / 2.0, -1.0))
-             for sx in (-1, 1) for sy in (-1, 1)]
+    centres = [(sx * spec["hole_spacing_length_mm"] / 2.0, sy * spec["hole_spacing_width_mm"] / 2.0)
+               for sx in (-1, 1) for sy in (-1, 1)]
+    holes = [part.cylinder(spec["hole_dia_mm"] / 2.0, pt + 2.0, origin=(x, y, -1.0)) for x, y in centres]
+    # The plate's four holes; a screw head seated under the plate (Z = pt)
+    # drives its shank up -Z into the chassis (ADR-660).
+    spec["mount_points"] = [_hole((x, y, pt), (0.0, 0.0, 1.0), hole_dia=spec["hole_dia_mm"])
+                            for x, y in centres]
+    spec["mount_member"] = "yoke"
     cheek = 2.5
     yoke = part.fuse([part.cut(plate, holes)] + [
         part.box(offset + r * 0.6, cheek, axle_z - pt + 4.0,
