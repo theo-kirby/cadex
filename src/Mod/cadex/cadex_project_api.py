@@ -217,6 +217,7 @@ def create_project_assembly_api(
             appearance: str | None = None,
             role: str | None = None,
             covers: Any = (),
+            closes: Any = (),
             label: str = "",
         ) -> DomainValue:
             if not isinstance(source, DomainValue) or source.domain not in {
@@ -240,6 +241,7 @@ def create_project_assembly_api(
                 appearance=appearance,
                 role=role,
                 covers=covers,
+                closes=closes,
                 label=label,
             )
 

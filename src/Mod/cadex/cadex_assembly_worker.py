@@ -7566,6 +7566,8 @@ _PANEL_DEFLECTION_MM = 0.3
 _PANEL_REACH_MM = 80.0
 #: Points of each panel published for the fasteners' spacing (fit.panels).
 _PANEL_PUBLISHED_POINTS = 48
+#: Points spread over the frame a closing panel closes, near it (ADR-666).
+_PANEL_SEAM_SAMPLES = 3000
 
 
 def _panel_surface_samples(shape, limit):
@@ -7643,17 +7645,18 @@ def _measure_panels(components, properties, component_outputs, solved, joint_dat
         if id(value) not in named or roles.get(named[id(value)]) != "panel":
             continue
         covers = [named.get(id(item)) for item in value.properties.get("covers") or ()]
-        panels.append((named[id(value)], covers))
+        closes = [named.get(id(item)) for item in value.properties.get("closes") or ()]
+        panels.append((named[id(value)], covers, closes))
     if not panels:
         return []
-    from CadexPanels import first_hits, gap_statistics
+    from CadexPanels import SEAM_BAND_MM, first_hits, gap_statistics, sample_triangles, seam_statistics
 
     welded: dict[str, set[str]] = {}
     for pair in _fixed_joint_pairs(joint_data, assembly_output):
         first, second = sorted(pair)
         welded.setdefault(first, set()).add(second)
         welded.setdefault(second, set()).add(first)
-    panel_names = {name for name, _covers in panels}
+    panel_names = {name for name, _covers, _closes in panels}
     shapes, meshes = {}, {}
 
     def world_shape(name):
@@ -7684,11 +7687,15 @@ def _measure_panels(components, properties, component_outputs, solved, joint_dat
         return np.concatenate(kept) if kept else np.zeros((0, 3, 3))
 
     rows = []
-    for name, covers in panels:
+    for name, covers, closes in panels:
         row: dict[str, Any] = {"component": name, "covers": sorted(c for c in covers if c)}
+        if closes:
+            row["closes"] = sorted(c for c in closes if c)
         try:
             if None in covers:
                 raise ValueError("covers= names a component this assembly does not place")
+            if None in closes:
+                raise ValueError("closes= names a component this assembly does not place")
             if not solved:
                 raise ValueError("Assembly solver did not produce a solved pose")
             shape = world_shape(name)
@@ -7702,13 +7709,25 @@ def _measure_panels(components, properties, component_outputs, solved, joint_dat
             holders = sorted((welded.get(name, set()) - panel_names) - set(covers))
             row["welded_to"] = holders
             samples, normals, each = _panel_surface_samples(shape, _PANEL_SAMPLES)
-            stats = gap_statistics(samples, normals, near(list(covers) + holders, low, high),
-                                   sample_area=each)
-            row.update(stats or {"samples": len(samples), "inner_samples": 0})
-            covered_volume = sum(abs(float(world_shape(c).Volume)) for c in covers)
-            row["covered_volume_mm3"] = round(covered_volume, 1)
-            if stats and covered_volume > 0.0:
-                row["egg_ratio"] = round(1.0 + stats["air_volume_mm3"] / covered_volume, 3)
+            if closes:
+                # A lid, door or wall (ADR-666): judged on the frame it
+                # closes -- its seat and its seam -- not by its gap to what
+                # it covers, which is large by design.
+                seam_low = np.array([box.XMin, box.YMin, box.ZMin]) - SEAM_BAND_MM
+                seam_high = np.array([box.XMax, box.YMax, box.ZMax]) + SEAM_BAND_MM
+                frame_points, frame_normals = sample_triangles(
+                    near(list(closes), seam_low, seam_high), _PANEL_SEAM_SAMPLES,
+                    low=seam_low, high=seam_high)
+                row.update(seam_statistics(frame_points, frame_normals, mesh(name)))
+                row["samples"] = len(samples)
+            else:
+                stats = gap_statistics(samples, normals, near(list(covers) + holders, low, high),
+                                       sample_area=each)
+                row.update(stats or {"samples": len(samples), "inner_samples": 0})
+                covered_volume = sum(abs(float(world_shape(c).Volume)) for c in covers)
+                row["covered_volume_mm3"] = round(covered_volume, 1)
+                if stats and covered_volume > 0.0:
+                    row["egg_ratio"] = round(1.0 + stats["air_volume_mm3"] / covered_volume, 3)
             P, N = np.asarray(samples, dtype=float), np.asarray(normals, dtype=float)
             if len(P):
                 wall = first_hits(P - 1e-3 * N, -N, mesh(name), reach=60.0)
@@ -7875,13 +7894,21 @@ def _anatomy_stamp(raw_result, assembly_properties, component_outputs, joint_out
         if region.properties.get("reason"):
             row["reason"] = str(region.properties["reason"])
         regions.append(row)
-    return {
+    stamp = {
         "regions": regions,
         "components": [component_outputs[id(value)] for value in component_values],
         "world_components": world,
         "root_component": root,
         "joints": joints,
     }
+    # The assembly.coupling links (ADR-642), so a joint a driven one is
+    # coupled to reads driven through it (ADR-665); absent when none.
+    couplings = [{"coupling": entry["name"].split("/", 1)[-1],
+                  "joints": list(dict.fromkeys(term["joint"] for term in entry["terms"]))}
+                 for entry in coupling_entries(assembly_properties, joint_outputs)]
+    if couplings:
+        stamp["couplings"] = couplings
+    return stamp
 
 
 def validate_and_solve_assembly(

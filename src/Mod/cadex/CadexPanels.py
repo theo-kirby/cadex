@@ -29,8 +29,9 @@ holes, open where the output and the leads come out. It is the envelope of
 one drive at an infinite radius about its axis, and it is exact already.
 
 Like ``CadexCage`` this module imports nothing from FreeCAD at module scope;
-only :func:`gap_statistics` and :func:`first_hits` (the check's measuring
-half, run in the assembly worker) import numpy, and only when called.
+only :func:`gap_statistics`, :func:`first_hits`, :func:`sample_triangles`
+and :func:`seam_statistics` (the check's measuring half, run in the
+assembly worker) import numpy, and only when called.
 """
 
 from __future__ import annotations
@@ -51,6 +52,8 @@ __all__ = [
     "Housing",
     "gap_statistics",
     "first_hits",
+    "sample_triangles",
+    "seam_statistics",
     "STANDARD_SCREW_LENGTHS_MM",
 ]
 
@@ -744,6 +747,111 @@ def first_hits(origins, directions, triangles, *, reach=float("inf")):
 
 #: A sample of a shell's inner face within this of what it covers "hugs" it.
 HUG_GAP_MM = 4.0
+
+#: A closing panel's seam (ADR-666): the surface of the frame it closes
+#: within this of it, facing it (|cos| at least SEAM_FACING_COS between the
+#: frame's normal and the way to the panel). A rim under a lid faces it; the
+#: tub's walls beside the lid's edge do not. The band is wide enough that a
+#: lid hinged open along one side shows its open seam, and narrower than a
+#: tub is deep, so its floor is not read as rim; a tray shallower than this
+#: under its lid would read its floor as an open seam.
+SEAM_BAND_MM = 15.0
+SEAM_FACING_COS = 0.7
+
+
+def sample_triangles(triangles, count, *, low=None, high=None):
+    """``count`` points spread over triangles by area, with their unit normals.
+
+    Deterministic (a fixed stratified spread, no random state). With ``low``
+    and ``high`` the points outside that box are dropped afterwards, so a
+    tall wall's two triangles give only the points near the box.
+    """
+
+    import numpy as np
+
+    T = np.asarray(triangles, dtype=float).reshape(-1, 3, 3)
+    if not len(T) or count <= 0:
+        return np.zeros((0, 3)), np.zeros((0, 3))
+    cross = np.cross(T[:, 1] - T[:, 0], T[:, 2] - T[:, 0])
+    area = np.linalg.norm(cross, axis=1) / 2.0
+    keep = area > 1e-12
+    T, cross, area = T[keep], cross[keep], area[keep]
+    if not len(T):
+        return np.zeros((0, 3)), np.zeros((0, 3))
+    edges = np.cumsum(area)
+    marks = (np.arange(count) + 0.5) * (edges[-1] / count)
+    which = np.searchsorted(edges, marks)
+    which = np.minimum(which, len(T) - 1)
+    # A low-discrepancy spread inside each triangle (golden-ratio sequence).
+    k = np.arange(count, dtype=float)
+    u, v = (k * 0.6180339887498949) % 1.0, (k * 0.7548776662466927) % 1.0
+    flip = u + v > 1.0
+    u, v = np.where(flip, 1.0 - u, u), np.where(flip, 1.0 - v, v)
+    chosen = T[which]
+    points = chosen[:, 0] + u[:, None] * (chosen[:, 1] - chosen[:, 0]) \
+        + v[:, None] * (chosen[:, 2] - chosen[:, 0])
+    normals = cross[which] / (2.0 * area[which])[:, None]
+    if low is not None and high is not None:
+        inside = np.all(points >= np.asarray(low) - 1e-9, axis=1) & \
+            np.all(points <= np.asarray(high) + 1e-9, axis=1)
+        points, normals = points[inside], normals[inside]
+    return points, normals
+
+
+def _nearest(P, T):
+    """Distance from each point to the nearest triangle, and that nearest point."""
+
+    import numpy as np
+
+    best_d = np.full(len(P), np.inf)
+    best_q = np.zeros_like(P)
+    for first in range(0, len(P), 1024):
+        rows = slice(first, first + 1024)
+        part = P[rows]
+        for start in range(0, len(T), 256):
+            q = _closest_on_triangles(part, T[start:start + 256])
+            d = np.linalg.norm(q - part[:, None, :], axis=2)
+            index = np.argmin(d, axis=1)
+            dmin = d[np.arange(len(part)), index]
+            better = dmin < best_d[rows]
+            best_d[rows] = np.where(better, dmin, best_d[rows])
+            best_q[rows] = np.where(better[:, None], q[np.arange(len(part)), index], best_q[rows])
+    return best_d, best_q
+
+
+def seam_statistics(samples, normals, triangles, *, band=SEAM_BAND_MM,
+                    facing_cos=SEAM_FACING_COS):
+    """How a closing panel meets the frame it closes (ADR-666).
+
+    ``samples`` and ``normals`` are points on the frame near the panel and
+    the frame's normals there (either sense); ``triangles`` the panel's
+    surface. A sample is on the seam when the panel is within ``band`` of it
+    and the way to the panel's nearest point runs along the frame's normal
+    (a lid's rim, a door's jamb face); its distance is the seam's gap there.
+    Returns ``seam_samples`` and the gap's median, p90 and max (absent with
+    no seam sample), and ``seat_gap_mm``, the closest any sample comes.
+    """
+
+    import numpy as np
+
+    P = np.asarray(samples, dtype=float).reshape(-1, 3)
+    N = np.asarray(normals, dtype=float).reshape(-1, 3)
+    T = np.asarray(triangles, dtype=float).reshape(-1, 3, 3)
+    if not len(P) or not len(T):
+        return {"seam_samples": 0}
+    d, q = _nearest(P, T)
+    lengths = np.linalg.norm(N, axis=1)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        along = np.abs(np.einsum("ij,ij->i", N, q - P)) / (lengths * d)
+    facing = (d <= 1e-6) | (along >= facing_cos)
+    seam = np.sort(d[facing & (d <= band)])
+    stats: dict[str, Any] = {"seam_samples": int(len(seam)),
+                             "seat_gap_mm": round(float(d.min()), 3)}
+    if len(seam):
+        stats.update(seam_gap_median_mm=round(float(np.percentile(seam, 50)), 3),
+                     seam_gap_p90_mm=round(float(np.percentile(seam, 90)), 3),
+                     seam_gap_max_mm=round(float(seam[-1]), 3))
+    return stats
 
 
 def _closest_on_triangles(P, T):

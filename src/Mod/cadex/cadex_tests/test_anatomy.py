@@ -458,3 +458,99 @@ def test_a_loop_a_catalog_drive_closes_is_driven_through_it() -> None:
     ])
     drives = {j["joint"]: j["drive"] for j in _region(block, "arm_r")["joints"]}
     assert drives == {"shoulder": "catalog drive", "rod_base": "loop", "rod_top": "loop"}
+
+
+# -- driven through a coupling (ADR-665) -----------------------------------
+
+def _axis_stamp(joints, regions, couplings=None):
+    rows = [_box(name, (0, 0, 0), (10, 10, 10))
+            for name in ("frame", "screw", "carriage", "pulley_a", "pulley_b", "gantry", "head")]
+    stamp = {"regions": regions, "components": [r["component"] for r in rows],
+             "world_components": [], "root_component": "frame", "joints": joints}
+    if couplings is not None:
+        stamp["couplings"] = couplings
+    return stamp, rows
+
+
+_SCREW_AXIS = {"origin": [5.0, 5.0, 0.0], "axis": [0.0, 0.0, 1.0]}
+
+
+def test_a_stepper_and_leadscrew_drive_the_slider_through_the_screw() -> None:
+    joints = [_joint("w_motor", "fixed", "frame", "z_motor"),
+              {**_joint("screw_turn", "revolute", "frame", "screw"), "axis": _SCREW_AXIS},
+              _joint("z", "slider", "frame", "carriage"),
+              _joint("lead", "screw", "screw", "carriage")]
+    stamp, rows = _axis_stamp(joints, [{"region": "base", "components": ["frame", "z_motor"]},
+                                       {"region": "z_axis", "components": ["carriage"]}])
+    stamp["components"].append("z_motor")
+    rows.append(_drive_row("z_motor", (5.0, 5.0, -40.0), (0.0, 0.0, 1.0)))
+    block = anatomy.anatomy_summary(stamp, rows)
+    z_axis = _region(block, "z_axis")
+    assert z_axis["status"] == "articulated"
+    (row,) = z_axis["joints"]
+    assert (row["drive"], row["driver"], row["through"]) == ("coupled", "screw_turn", "screw lead")
+    assert row["driven_dof"] == 0 and block["coupled_joints"] == 1
+    assert block["verdict"] == "complete"
+    view = anatomy.anatomy_view(block)
+    assert "z (slider, coupled: screw_turn through screw lead)" in view["regions"][1]["joints"]
+    # The same axis written as an assembly.coupling reads the same way.
+    stamp["joints"] = joints[:3]
+    stamp["couplings"] = [{"coupling": "z_leadscrew", "joints": ["z", "screw_turn"]}]
+    row = _region(anatomy.anatomy_summary(stamp, rows), "z_axis")["joints"][0]
+    assert (row["drive"], row["through"]) == ("coupled", "coupling z_leadscrew")
+
+
+def test_a_corexy_coupling_drives_both_sliders_from_two_motors() -> None:
+    joints = [_joint("motor_a", "revolute", "frame", "pulley_a", actuators=1),
+              _joint("motor_b", "revolute", "frame", "pulley_b", actuators=1),
+              _joint("y", "slider", "frame", "gantry"),
+              _joint("x", "slider", "gantry", "head")]
+    couplings = [{"coupling": "corexy_x", "joints": ["x", "motor_a", "motor_b"]},
+                 {"coupling": "corexy_y", "joints": ["y", "motor_a", "motor_b"]}]
+    stamp, rows = _axis_stamp(joints, [{"region": "frame", "components": ["frame"]},
+                                       {"region": "gantry", "components": ["gantry"]},
+                                       {"region": "head", "components": ["head"]}], couplings)
+    block = anatomy.anatomy_summary(stamp, rows)
+    for region, joint, link in (("gantry", "y", "coupling corexy_y"), ("head", "x", "coupling corexy_x")):
+        item = _region(block, region)
+        assert item["status"] == "articulated", region
+        (row,) = item["joints"]
+        assert row["joint"] == joint
+        assert (row["drive"], row["driver"], row["through"]) == ("coupled", "motor_a, motor_b", link)
+    assert block["actuated_joints"] == 2 and block["coupled_joints"] == 2
+    assert block["actuated_dof"] == 2 and block["verdict"] == "complete"
+
+
+def test_a_slider_tied_to_nothing_actuated_stays_passive() -> None:
+    joints = [_joint("idler", "revolute", "frame", "pulley_a"),
+              _joint("y", "slider", "frame", "gantry"),
+              _joint("x", "slider", "gantry", "head"),
+              _joint("strap", "belt", "pulley_a", "gantry")]
+    stamp, rows = _axis_stamp(joints, [{"region": "frame", "components": ["frame"]},
+                                       {"region": "gantry", "components": ["gantry"]},
+                                       {"region": "head", "components": ["head"]}],
+                              [{"coupling": "loose", "joints": ["x", "idler"]}])
+    block = anatomy.anatomy_summary(stamp, rows)
+    for region in ("gantry", "head"):
+        item = _region(block, region)
+        assert item["status"] == "passive only", region
+        assert item["joints"][0]["drive"] == "passive" and "through" not in item["joints"][0]
+    assert block["coupled_joints"] == 0 and block["verdict"] == "incomplete"
+
+
+def test_the_stamp_carries_assembly_couplings_only_when_declared() -> None:
+    api = _api()
+    frame, screw, nut = (api.component(_source(n)) for n in ("frame", "screw", "nut"))
+    turn = api.joint("revolute", api.connector(frame), api.connector(screw))
+    z = api.joint("slider", api.connector(frame), api.connector(nut))
+    lead = api.coupling([(z, 1.0), (turn, -2.0 / 360.0)], label="z_lead")
+    raw = {"frame": frame, "screw": screw, "nut": nut, "turn": turn, "z": z}
+    components = {id(v): k for k, v in raw.items() if v.output_type == "component_link"}
+    joint_names = {id(v): k for k, v in raw.items() if v.output_type == "joint"}
+    data = _joint_data([("turn", "revolute", "frame", "screw", False),
+                        ("z", "slider", "frame", "nut", False)])
+    for couplings, expected in (([lead], [{"coupling": "z_lead", "joints": ["z", "turn"]}]), ([], None)):
+        built = api.assembly([frame, screw, nut], [turn, z], couplings=couplings)
+        stamp = _anatomy_stamp({**raw, "asm": built}, built.properties, components, joint_names,
+                               data, "asm", root="frame", world_geometry=None)
+        assert stamp.get("couplings") == expected

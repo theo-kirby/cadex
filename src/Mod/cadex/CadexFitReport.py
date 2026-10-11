@@ -1086,8 +1086,19 @@ PANEL_SEAM_MIN_MM = 0.1
 #: The print bed a piece must fit (CadexStudio.BED_MM, held equal by a test;
 #: copied because this module is loaded by path and imports nothing).
 PANEL_BED_MM = (256.0, 256.0, 256.0)
-#: The findings that fail the fit, like any interference (ADR-636).
-PANEL_FAILING = ("floating", "colliding", "colliding in motion", "unmounted")
+#: A closing panel -- a lid, door or enclosure wall, ``closes=[...]``
+#: (ADR-666) -- sits on the frame it closes: the closest it comes to that
+#: frame may be no more than this...
+PANEL_SEAT_GAP_MM = 1.0
+#: ...and the frame's surface facing it within CadexPanels.SEAM_BAND_MM
+#: (its rim, its jambs) stands off it by no more than this at the median.
+#: A lid seated true reads 0 there; one propped open along a side, or
+#: tilted, reads half the band. Extrusion slots facing a wall are a
+#: minority of the face, so they do not move the median.
+PANEL_SEAM_GAP_MM = 2.0
+#: The findings that fail the fit, like any interference (ADR-636, ADR-666).
+PANEL_FAILING = ("floating", "colliding", "colliding in motion", "unmounted", "unseated",
+                 "open seam")
 
 #: Said whenever a panel is reported.
 PANEL_NOTE = (
@@ -1100,7 +1111,10 @@ PANEL_NOTE = (
     "four fail the fit. Also named, advisory: egg (it encloses far more than it "
     "covers), solid or thin (its wall), larger than the bed, under-held (a point of it "
     "far from any fastener) and seam closed. part.panel(part.envelope(over=[...]), "
-    "...) grows such a panel from what it covers."
+    "...) grows such a panel from what it covers. A lid, door or enclosure wall "
+    "declares closes=[frame]: it is judged seated on that frame (unseated: it comes "
+    "no closer than 1 mm) with no open seam (the frame facing it stands off it), "
+    "and not by its gap or egg ratio."
 )
 
 
@@ -1134,6 +1148,8 @@ def panel_summary(value: Any) -> dict[str, Any]:
         "solid_wall_mm": PANEL_SOLID_WALL_MM,
         "thin_wall_mm": PANEL_THIN_WALL_MM,
         "egg_ratio": PANEL_EGG_RATIO,
+        "seat_gap_mm": PANEL_SEAT_GAP_MM,
+        "seam_gap_mm": PANEL_SEAM_GAP_MM,
         "motion_clearance_mm": PANEL_MOTION_CLEARANCE_MM,
         "max_span_mm": PANEL_MAX_SPAN_MM,
         "bed_mm": list(PANEL_BED_MM),
@@ -1163,6 +1179,8 @@ def panel_summary(value: Any) -> dict[str, Any]:
     bites: dict[str, set[str]] = {}
     colliding: dict[str, list[dict[str, Any]]] = {}
     nearest_sibling: dict[str, float] = {}
+    # How close each panel comes to each other part (ADR-666's seat).
+    closest: dict[str, dict[str, float]] = {}
     group_of = {name: str((by_name[name].get("panel") or {}).get("group") or "")
                 for name in panel_names}
     for pair in value.get("pairs") or []:
@@ -1182,6 +1200,8 @@ def panel_summary(value: Any) -> dict[str, Any]:
         for side, other in ((first, second), (second, first)):
             if side not in panel_names:
                 continue
+            closest.setdefault(side, {})[other] = 0.0 if volume > MAXIMUM_COMMON_VOLUME_MM3 \
+                else float(distance)
             if other in panel_names and group_of[side] and group_of[side] == group_of.get(other):
                 nearest_sibling[side] = min(nearest_sibling.get(side, math.inf),
                                             0.0 if volume > MAXIMUM_COMMON_VOLUME_MM3
@@ -1263,6 +1283,13 @@ def panel_summary(value: Any) -> dict[str, Any]:
             floating_at = PANEL_FLOATING_GAP_MM
         item["floating_at_mm"] = round(floating_at, 3) if math.isfinite(floating_at) else None
         measured = gaps.get(name)
+        closes = list((measured or {}).get("closes") or []) if isinstance(measured, Mapping) else []
+        if closes:
+            # A lid, door or wall closes a volume: far from what it covers
+            # by design, so neither its gap nor its egg ratio is judged.
+            floating_at = math.inf
+            item["floating_at_mm"] = None
+            item["closes"] = closes
         if measured is None:
             item["gap"] = "unmeasured" if gaps_published is None else "missing"
         elif measured.get("error"):
@@ -1275,11 +1302,28 @@ def panel_summary(value: Any) -> dict[str, Any]:
                         "wall_p10_mm", "wall_median_mm", "wall_p90_mm", "size_mm"):
                 if key in measured:
                     item[key] = measured[key]
-            if not measured.get("inner_samples"):
+            if closes:
+                for key in ("seam_samples", "seam_gap_median_mm", "seam_gap_p90_mm",
+                            "seam_gap_max_mm"):
+                    if key in measured:
+                        item[key] = measured[key]
+                near = [closest.get(name, {}).get(c) for c in closes]
+                near = [d for d in near if _finite(d)]
+                seat = min(near) if near else measured.get("seat_gap_mm")
+                if _finite(seat):
+                    item["seat_gap_mm"] = round(float(seat), 3)
+                if not _finite(seat) or seat > PANEL_SEAT_GAP_MM:
+                    item["findings"].append("unseated")
+                elif not measured.get("seam_samples") or (
+                        _finite(measured.get("seam_gap_median_mm"))
+                        and measured["seam_gap_median_mm"] > PANEL_SEAM_GAP_MM):
+                    item["findings"].append("open seam")
+            elif not measured.get("inner_samples"):
                 item["findings"].append("floating")
             elif _finite(measured.get("gap_p90_mm")) and measured["gap_p90_mm"] > floating_at:
                 item["findings"].append("floating")
-            if _finite(measured.get("egg_ratio")) and measured["egg_ratio"] > PANEL_EGG_RATIO:
+            if not closes and _finite(measured.get("egg_ratio")) and \
+                    measured["egg_ratio"] > PANEL_EGG_RATIO:
                 item["findings"].append("egg")
             if _finite(measured.get("wall_median_mm")) and \
                     measured["wall_median_mm"] > PANEL_SOLID_WALL_MM:
@@ -1335,6 +1379,16 @@ def panel_summary(value: Any) -> dict[str, Any]:
                 "its inner face's p90 gap is {} mm, past {} mm".format(
                     item.get("gap_p90_mm", "?"), item["floating_at_mm"])
                 if item.get("inner_samples") else "no part of it faces what it covers")
+        if "unseated" in item["findings"]:
+            details.append(
+                "it comes no closer than {} mm to {} it closes, past {} mm".format(
+                    item.get("seat_gap_mm", "?"), ", ".join(closes), PANEL_SEAT_GAP_MM))
+        if "open seam" in item["findings"]:
+            details.append(
+                "the frame facing it stands off it {} mm at the median, past {} mm".format(
+                    item["seam_gap_median_mm"], PANEL_SEAM_GAP_MM)
+                if item.get("seam_samples") else
+                "no face of what it closes faces it within the seam band")
         if "colliding" in item["findings"]:
             details.append("it overlaps " + ", ".join(r["with"] for r in item["colliding_with"]))
         if "colliding in motion" in item["findings"]:
