@@ -30,6 +30,7 @@ import json
 import pytest
 
 from test_review_server import _model_state, browser, needs_browser, served  # noqa: F401
+from record_graph import is_record_link, record_slugs
 
 REPO = Path(__file__).resolve().parents[2]
 SPEC = REPO / "docs" / "DASHBOARD.md"
@@ -852,9 +853,6 @@ def test_final_regression_receipt_shows_everything_ot5_proved_still_holds():
 
 
 REPORT = REPO / "docs/probes/ot6/REPORT.md"
-RECORDS = REPO / ".hypergraph/graph/record"
-# The record graph's node files are a gitignored working copy of the Flywheel store
-# (ADR-671): a checkout without one has no record files to resolve, so those checks skip.
 
 
 def test_closing_report_links_every_criterion_to_committed_evidence():
@@ -869,13 +867,14 @@ def test_closing_report_links_every_criterion_to_committed_evidence():
         assert re.search(rf"^## D{n}\. ", text, re.M), f"D{n} has no section"
     assert "## What remains open" in text
     for link in re.findall(r"\]\(([^)]+)\)", text):
-        if not RECORDS.is_dir() and RECORDS in (REPORT.parent / link).resolve().parents:
+        if is_record_link(REPORT.parent / link):
             continue
         assert (REPORT.parent / link).is_file(), link
     slugs = set(re.findall(r"\[rec: ([a-z]+-[a-z]+-\d{4})\]", text))
     assert len(slugs) >= 15
-    for slug in slugs if RECORDS.is_dir() else ():
-        assert (RECORDS / f"{slug}.md").is_file(), slug
+    known = record_slugs()  # None without a governor graph
+    for slug in slugs if known else ():
+        assert slug in known, slug
     decisions = (REPO / "docs/DECISIONS.md").read_text()
     adrs = set(re.findall(r"ADR-(\d{3})", text))
     assert {"328", "329", "330", "331", "332", "333", "334", "335", "336", "337", "338", "339", "340"} <= adrs

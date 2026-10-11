@@ -24,6 +24,7 @@ import re
 import pytest
 
 from conftest import REPO_ROOT
+from record_graph import record_slugs
 
 LIFECYCLE = REPO_ROOT / "docs" / "probes" / "reed-lifecycle"
 
@@ -99,7 +100,7 @@ def test_summarize_seed_rows_refuses_mixed_policies():
 
 def test_evidence_index_links_resolve(report):
     adr_headings = set(re.findall(r"^## (ADR-\d+)", (REPO_ROOT / "docs" / "DECISIONS.md").read_text(), re.M))
-    records = REPO_ROOT / ".hypergraph" / "graph" / "record"
+    known = record_slugs()  # None without a governor graph
     assert set(report["evidence_index"]) == {f"D{n}" for n in range(1, 9)}
     for criterion, entry in report["evidence_index"].items():
         for key in ("docs", "probes", "tests"):
@@ -107,9 +108,8 @@ def test_evidence_index_links_resolve(report):
                 assert (REPO_ROOT / relative).is_file(), (criterion, relative)
         for adr in entry["adrs"]:
             assert adr in adr_headings, (criterion, adr)
-        # gitignored working copy of the Flywheel store (ADR-671): absent on a bare checkout
-        for slug in entry["records"] if records.is_dir() else ():
-            assert (records / f"{slug}.md").is_file(), (criterion, slug)
+        for slug in entry["records"] if known else ():
+            assert slug in known, (criterion, slug)
 
 
 def test_readme_discloses_every_incomplete_or_absent_model_view(report, readme):

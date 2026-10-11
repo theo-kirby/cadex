@@ -26,11 +26,10 @@ import re
 import socket
 from pathlib import Path
 
+from record_graph import is_record_link, record_slugs
+
 REPO = Path(__file__).resolve().parents[2]
 REPORT = REPO / "docs/probes/ot8/REPORT.md"
-RECORDS = REPO / ".hypergraph/graph/record"
-# The record graph's node files are a gitignored working copy of the Flywheel store
-# (ADR-671): a checkout without one has no record files to resolve, so those checks skip.
 PROMPTS = REPO / "docs/probes/ot8/prompts"
 PRIVATE_ADDRESS = re.compile(r"\b(?:10|100|172|192)\.\d{1,3}\.\d{1,3}\.\d{1,3}\b")
 SECTIONS = (
@@ -180,7 +179,7 @@ def test_every_link_record_and_adr_the_report_cites_exists():
     text = _text()
     for link in re.findall(r"\]\(([^)#][^)]*)\)", text):
         target = (REPORT.parent / link.split("#")[0]).resolve()
-        if not RECORDS.is_dir() and RECORDS in target.parents:
+        if is_record_link(target):
             continue
         assert target.is_file() or target.is_dir(), link
     headings = {re.sub(r"[^a-z0-9 -]", "", h.lower()).replace(" ", "-")
@@ -189,8 +188,9 @@ def test_every_link_record_and_adr_the_report_cites_exists():
         assert anchor in headings, anchor
     slugs = set(re.findall(r"record/([a-z]+-[a-z]+-\d{4})\.md", text))
     assert len(slugs) >= 6
-    for slug in slugs if RECORDS.is_dir() else ():
-        assert (RECORDS / f"{slug}.md").is_file(), slug
+    known = record_slugs()  # None without a governor graph
+    for slug in slugs if known else ():
+        assert slug in known, slug
     decisions = (REPO / "docs/DECISIONS.md").read_text()
     adrs = set(re.findall(r"ADR-(\d{3})", text))
     assert {"355", "392", "395", "398", "399", "400", "401", "402"} <= adrs
