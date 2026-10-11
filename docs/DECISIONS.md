@@ -39467,6 +39467,47 @@ The paragraph keeps a reason in front, so that a cover has a job. The base's blo
 
 Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
 
+## ADR-660 — Machine parts publish their mounting holes (2026-10-11)
+
+**Context.** Parts made with `lib.part` (ADR-646) published `mount_axes: []`. So `fit.mounting` could never credit a screw holding a rail, a carriage, a stepper, a nut or a bracket, and it reported each one "contact only". The tapped holes of the carriage and the stepper were drilled at the tap drill. A screw in one therefore overlapped the part by its thread ring, and because the thread allowance (ADR-492) applied only to printed parts, that overlap read as an intersection. The wave-1 runs modelled their screws to the hole's mouth to avoid it.
+
+**Decision.** Each interface draws its holes and returns them as `.spec['mount_points']`, in the part's own frame. Each hole gives its seat or mouth, its axis (the `direction` of a `lib.bolt` placed there), and what fits it (`thread_dia_mm` or `hole_dia_mm`). `lib.part` carries the holes through the placement into the body's mount axes. `LibraryPart` keeps a row's own size facts in place of the part-wide one. The holes, at datasheet positions:
+- **Rail:** M3 counterbores. The pattern is centred, keeping both ends at least E (HIWIN's standard lengths are L = (n - 1) P + 2E), and `end_offset_mm` reports the end distance.
+- **Carriage:** four M3 holes, 3.5 mm deep on MGN12 and 3 mm on MGN9.
+- **NEMA face:** four holes on the bolt square, tapped M3 (17) or M5 (23).
+- **Nut flanges:** clearance holes. The SFU1204's six holes now sit at 0 and +-45 degrees on each side of its flats; two of them used to break through the flats.
+- **T-nut:** its thread.
+- **Corner bracket:** one hole in each leg.
+- **Caster:** the four plate holes, on its `yoke` member too.
+- **Pulley:** its bore, as the axle an idler's screw runs through.
+
+Tapped holes are open bores at the nominal size, as every catalog part's are (the QDD's, the N20's). Steppers and spindles already published their output axis (ADR-614), and a stepper's face holes are stator holes; nothing on it is an output flange. Pulley set screws are not modelled: a grub screw bites the shaft, not a printed part, so it holds nothing the check could credit.
+
+The mounting check gains three rules:
+- **Through a nut.** A screw that touches no printed part but threads into a T-nut, nut or insert holds the part to whatever that nut is clamped against. A rail's screw runs down the open middle of the slot and touches only the nut.
+- **Threaded families.** The ADR-492 thread allowance covers nuts, inserts and T-nuts (`takes_thread`). A corner bracket, which is in the T-nut's family but has clearance holes, does not get it.
+- **Pulleys and spindles.** A pulley is on a drive's output only when its bore lies on the drive's published axis. A spindle is held `by: clamp` when a printed part touches it and that part's box contains its axis strictly inside the body, so a plate it merely stands on does not count.
+
+**Tests.**
+- `test_parts_data.py`: every holed part's count and size, the datasheet positions, placement.
+- `test_mounting_check.py`: a T-nut screw holding a rail to its beam, a pulley on and off the shaft's axis, a spindle in a ring or on a plate.
+- `test_a_rail_on_t_nuts_a_carriage_and_a_stepper_are_held_on_the_real_kernel`: a live cadexd builds a rail on four T-nuts in 2020, a carriage under a plate, and a NEMA17 on a printed mount with a pulley. Every part reads `held` with no intersection, and the T-nuts' four screws read `threaded`.
+- Both full suites.
+
+Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-661 — The 20-series slot is the B-type's, and the catalog T-nut fits it (2026-10-11)
+
+**Context.** The wave-1 liquid handler could not place a catalog T-nut in a catalog profile. The `2020-tnut-m5` was a 10 x 10 x 4.5 block, while the modelled slot was 8 mm wide under the lip and 5 mm deep, which left 3.2 mm below the lip. Each nut intersected the 2040 by about 176 mm^3. A real 2020 B-type slot is a 6.2 mm opening through a 1.8 mm lip, with an undercut about 11 mm wide and 6.1 mm deep. The profile was wrong. The nut was a plausible size but the wrong shape: a real slide-in nut is about 9.8 mm wide and 4 mm thick under a 6 x 1 mm neck.
+
+**Decision.**
+- **The profile.** The slot is the B-type section in straight lines: the opening, an 11 mm undercut with a 1.2 mm straight wall (`slot_wall_mm`), then 45-degree flanks down to 6.1 mm. A rectangular undercut that wide would cut through the diagonal webs and leave the corners detached from the core; the flanks keep them. The modelled 2020 section is 191 mm^2, against Misumi's 183.
+- **The T-nuts.** `2020-tnut-m3` is added beside `2020-tnut-m5`. Both are the slide-in nut's section: neck, body, and 45-degree chamfers that clear the flanks by 0.14 mm. The thread is drilled at the tap drill.
+- **Placing them.** Each profile carries `.spec['slot_datums']`: for each face and slot, the lip's underside on the slot's centreline and the outward normal. `MachinePart.slot(face, along, index)` turns a slot datum into the world `origin`, `direction` and `roll_degrees` that put the nut's clamp face on the lip, its length along the slot and its thread out of the slot.
+- **Provenance.** Recorded in `docs/PROVENANCE.md` §8k.
+
+**Tests.** `test_parts_data.py` checks the nut's section corners against the slot polygon, each with the 0.1 mm clearance floor, and checks `.slot()` on a placed 2040. The real-kernel gantry test (ADR-660) checks that four T-nuts in a 2020 share no volume with it and that each bolt through one reads as threaded.
+
 ## ADR-670 — One output definition may be 4 MiB, and the refusal says why (2026-10-11)
 
 **Context.** The first breadth wave's enclosed printer (`wave1-printer`) hit `cadex_domain_worker.MAX_DEFINITION_BYTES`, 1,000,000 bytes on one output's serialized definition, and worked around it by putting screws only at each rail's end holes and dropping its spool holder. Measured from its accepted attempt, the assembly definition is 634 kB for 354 components and 295 joints. It grows about 1.3 kB per joint, because each joint carries both connectors and their component references in full. That growth is linear, but a real machine with every fastener outgrows 1 MB.

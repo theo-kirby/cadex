@@ -149,6 +149,10 @@ def _size_facts(family: str, spec: Mapping[str, Any]) -> dict[str, float]:
     return {}
 
 
+#: The size facts a mount row may carry itself, before the part's own.
+_ROW_FACTS = ("thread_dia_mm", "hole_dia_mm")
+
+
 def _frame_axes(frame: tuple, rows: Sequence[tuple]) -> list[dict[str, list[float]]]:
     """Local ``(origin, axis)`` rows carried into a placed body's coordinates."""
 
@@ -199,7 +203,12 @@ class LibraryPart:
                 sizes = _size_facts(family, spec)
                 _MOUNT_AXES[key] = [
                     {"origin": [float(v) for v in row["origin"]],
-                     "axis": [float(v) for v in row["axis"]], **sizes}
+                     "axis": [float(v) for v in row["axis"]],
+                     # A row that says what fits it (a machine part's
+                     # tapped or clearance hole, ADR-660) speaks for itself.
+                     **({k: row[k] for k in _ROW_FACTS if k in row}
+                        if any(k in row for k in _ROW_FACTS) else sizes),
+                     **({"output": True} if row.get("output") is True else {})}
                     for row in mount_axes
                 ]
             if drive_frame is not None and family in DRIVE_MOTION:
@@ -314,13 +323,66 @@ class MachinePart(LibraryPart):
     pieces a mechanism needs apart -- a cylinder's ``barrel`` and ``rod``,
     a caster's ``yoke`` and ``wheel``, a wheel's ``rim`` and ``tyre`` --
     each its own component; ``.body`` is them all, for a picture.
+
+    ``.spec['mount_points']`` are the part's mounting holes in its own
+    frame, before ``origin``/``direction``: each ``origin`` where a screw
+    head seats (a tapped hole's mouth) and ``axis`` the ``direction`` a
+    ``lib.bolt`` there takes, with the hole's ``thread_dia_mm`` (tapped,
+    modelled as an open bore at that size) or ``hole_dia_mm`` (clearance).
+    A screw on one, touching the part and threading into a printed part,
+    extrusion or a T-nut, is what the mounting check credits (ADR-660).
     """
 
-    __slots__ = ("members",)
+    __slots__ = ("members", "_frame_placement")
 
-    def __init__(self, family, part_number, body, spec, members, drive_frame):
-        super().__init__(family, part_number, body, spec, drive_frame=drive_frame)
+    def __init__(self, family, part_number, body, spec, members, drive_frame, mount_axes=()):
+        super().__init__(family, part_number, body, spec, mount_axes, drive_frame=drive_frame)
         object.__setattr__(self, "members", MappingProxyType(dict(members)))
+        object.__setattr__(self, "_frame_placement", drive_frame)
+
+    def slot(self, face: str = "+y", along: float = 0.0, index: int = 0) -> dict:
+        """A T-nut's seat in a profile's slot: lib.part('2020-tnut-m5', **beam.slot('+y', along)) (ADR-661).
+
+        ``face`` is ``'+x'``, ``'-x'``, ``'+y'`` or ``'-y'`` of the profile's
+        section, ``index`` the slot along that face (a 2040's long faces
+        have two), ``along`` the distance from the profile's Z = 0 end. The
+        result is ``{'origin', 'direction', 'roll_degrees'}`` in world
+        coordinates, the profile's own placement applied: pass it to
+        ``lib.part('2020-tnut-m5', **beam.slot('+y', 40.0))`` and the nut's
+        clamp face meets the underside of the slot's lip on its centreline,
+        its length along the slot and its thread out of the slot. A screw
+        through what sits on that face, on ``direction`` at ``origin``,
+        runs down the nut's thread.
+        """
+        datums = self.spec.get("slot_datums")
+        if not datums:
+            raise LibraryError(f"lib.part: {self.part_number} has no slots; .slot() is a profile's.")
+        key = str(face or "").strip().lower()
+        found = [row for row in datums if row["face"] == key]
+        if not found:
+            raise LibraryError(f"{self.part_number}.slot: face must be one of "
+                               f"{sorted({row['face'] for row in datums})}, got {face!r}.")
+        if isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(found):
+            raise LibraryError(f"{self.part_number}.slot: index must be 0..{len(found) - 1} "
+                               f"on face {key!r}, got {index!r}.")
+        if isinstance(along, bool) or not isinstance(along, (int, float)) \
+                or not 0.0 <= float(along) <= float(self.spec["length_mm"]):
+            raise LibraryError(f"{self.part_number}.slot: along must be within the profile's "
+                               f"0..{self.spec['length_mm']:g} mm, got {along!r}.")
+        row = found[index]
+        local = (row["origin"][0], row["origin"][1], float(along))
+        (placed,) = _frame_axes(self._frame_placement, [(local, row["normal"])])
+        (slot_axis,) = _frame_axes(self._frame_placement, [((0.0, 0.0, 0.0), (0.0, 0.0, 1.0))])
+        direction = placed["axis"]
+        # The roll that turns the nut's +X onto the slot's run: lib places a
+        # part by rolling it about its own +Z and then aiming +Z.
+        align = _alignment_quaternion(direction)
+        w, x, y, z = align
+        run = _rotate((w, -x, -y, -z), slot_axis["axis"])
+        roll = math.degrees(math.atan2(run[1], run[0]))
+        return {"origin": [round(v, 9) for v in placed["origin"]],
+                "direction": [round(v, 12) for v in direction],
+                "roll_degrees": round(roll, 9)}
 
 
 # The listing's description of MachinePart is its first paragraph, so the
@@ -2482,6 +2544,14 @@ class LibraryAPI:
         the origin, body +Z, tool -Z; a caster's plate face at the origin,
         +Z to the floor; a wheel's hub from Z = 0 along the axle; a
         spring +Z from Z = 0 at free length.
+
+        Holes and slots (ADR-660, ADR-661): ``.spec['mount_points']`` are
+        the mounting holes (rail counterbores, carriage and stepper tapped
+        holes, nut flanges, T-nut threads, bracket legs, caster plates, a
+        pulley's bore), ``.spec['datums']`` says where each sits. A profile
+        carries ``.spec['slot_datums']`` and ``.slot(face, along)``, the
+        placement that seats a T-nut under a slot's lip. A spindle has no
+        holes: a clamp that touches it round its body holds it.
         """
 
         import CadexMachineParts
@@ -2505,13 +2575,20 @@ class LibraryAPI:
             raise LibraryError(f"lib.part: {exc}") from exc
         frame = self._frame("part", origin, direction, roll_degrees)
         family, number = spec["family"], spec["part_number"]
+        # Each mounting hole the interface drew (ADR-660), carried through
+        # the placement with what fits it, for the mounting check.
+        points = list(spec.get("mount_points") or [])
+        axes = [{**{k: v for k, v in row.items() if k not in ("origin", "axis")}, **placed}
+                for row, placed in zip(points, _frame_axes(
+                    frame, [(row["origin"], row["axis"]) for row in points]))]
         placed = {name: LibraryPart(family, f"{number}:{name}",
-                                    self._place_frame("part", member, frame), spec)
+                                    self._place_frame("part", member, frame), spec,
+                                    axes if spec.get("mount_member") == name else ())
                   for name, member in members.items()}
         if label:
             body = self._part.transform(body, label=label)
         return MachinePart(family, number, self._place_frame("part", body, frame), spec,
-                           placed, frame)
+                           placed, frame, axes)
 
     def rack_and_pinion(
         self, module: float, pinion_teeth: int, rack_teeth: int, face_width: float, *,

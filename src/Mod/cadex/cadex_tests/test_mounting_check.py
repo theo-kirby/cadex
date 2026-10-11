@@ -918,7 +918,7 @@ def test_a_rail_bolted_through_a_t_nut_into_extrusion_holds_and_a_pulley_rides_a
         _row("beam", "extrusions", "2020"),
         _row("rail", "linear_rails", "MGNR12", axes=[((10.0, 0.0, 0.0), (0, 0, 1))]),
         _row("bolt0", "bolt", "m3x8-socket", axes=[((10.0, 0.0, 1.0), (0, 0, 1))]),
-        _row("tnut0", "extrusion_hardware", "t-nut-m3"),
+        _row("tnut0", "extrusion_hardware", "2020-tnut-m3"),
         _row("motor", "steppers", "nema17-48", bounds=((0, 0, 0), (42, 42, 48))),
         _row("pulley", "belt_pulleys", "gt2-20t-5"),
         _row("mount", houses=["motor"]),
@@ -932,3 +932,182 @@ def test_a_rail_bolted_through_a_t_nut_into_extrusion_holds_and_a_pulley_rides_a
     assert (held["motor"]["status"], held["motor"]["by"]) == ("held", "bay")
     assert (held["pulley"]["status"], held["pulley"]["by"]) == ("held", "output")
     assert "beam" not in held
+
+
+# --------------------------------------------------------------------------
+# machine parts' own holes (ADR-660) and the slot (ADR-661)
+# --------------------------------------------------------------------------
+
+
+def _rail_on_a_t_nut(*, nut_contacts=("beam",), bite=8.0, part_number="2020-tnut-m3"):
+    """A rail's screw runs down a slot's open middle into a T-nut: it
+    touches the rail and the nut, never the extrusion."""
+    value = {"available": True, "components": [
+        _row("beam", "extrusions", "2020"),
+        _row("rail", "linear_rails", "mgnr12", axes=[((0.0, 13.5, 62.5), (0, 1, 0))]),
+        _row("bolt0", "bolt", "m3x8-socket", axes=[((0.0, 13.5, 62.5), (0, 1, 0))]),
+        _row("tnut0", "extrusion_hardware", part_number, axes=[((0.0, 8.2, 62.5), (0, 1, 0))]),
+    ], "pairs": [
+        _pair("beam", "rail", 0.0), _pair("bolt0", "rail", 0.0), _pair("bolt0", "beam", 1.6),
+        _pair("bolt0", "tnut0", 0.0, bite), _pair("rail", "tnut0", 1.0),
+    ] + [_pair("tnut0", name, 0.0) for name in nut_contacts]}
+    value["components"][1]["mount_axes"][0]["hole_dia_mm"] = 3.5
+    value["components"][2]["mount_axes"][0]["bolt_dia_mm"] = 3.0
+    value["components"][3]["mount_axes"][0]["thread_dia_mm"] = 3.0
+    return value
+
+
+def test_a_screw_into_a_t_nut_holds_a_rail_to_the_extrusion_the_nut_is_clamped_in():
+    value = _rail_on_a_t_nut()
+    held = _by_component(mounting_summary(value))
+    assert (held["rail"]["status"], held["rail"]["by"], held["rail"]["holders"]) == (
+        "held", "screws", ["beam"])
+    # The nut itself is held by the same screw, against the slot's lip.
+    assert (held["tnut0"]["status"], held["tnut0"]["holders"]) == ("held", ["beam"])
+    # The screw's thread in the nut's tap drill is engagement, not a collision.
+    fit = fit_summary(value)
+    assert fit["threaded_count"] == 1
+    assert not [r for r in fit["failing"] if r["status"] == "intersection"], fit["failing"]
+    # A nut loose in the air holds nothing; a screw through its solid is a collision.
+    assert _by_component(mounting_summary(_rail_on_a_t_nut(nut_contacts=())))["rail"][
+        "status"] == "contact only"
+    solid = fit_summary(_rail_on_a_t_nut(bite=math.pi / 4.0 * 9.0 * 8.0))
+    assert [r["status"] for r in solid["failing"] if r["first"] == "bolt0"
+            and r["second"] == "tnut0"] == ["intersection"]
+    # A corner bracket shares the T-nut's family but not its thread.
+    bracket = _rail_on_a_t_nut(part_number="2020-corner-bracket")
+    assert _by_component(mounting_summary(bracket))["rail"]["status"] == "contact only"
+    assert not CadexFitReport.takes_thread({"family": "extrusion_hardware",
+                                            "part_number": "2020-corner-bracket"})
+    assert CadexFitReport.takes_thread({"family": "nut", "part_number": "m3-hex"})
+
+
+def _pulley_on_a_stepper(offset):
+    motor = _row("motor", "steppers", "nema17-40", axes=[((15.5, 15.5, 0.0), (0, 0, 1))])
+    motor["drive_axis"] = {"origin": [0.0, 0.0, 0.0], "axis": [0.0, 0.0, 1.0], "motion": "rotary"}
+    pulley = _row("pulley", "belt_pulleys", "gt2-20t-5mm",
+                  axes=[((offset, 0.0, 7.0), (0, 0, 1))])
+    return {"components": [motor, pulley, _row("mount", houses=["motor"])], "pairs": [
+        _pair("motor", "pulley", 0.0), _pair("mount", "motor", 0.0)]}
+
+
+def test_a_pulley_is_on_a_steppers_output_only_on_its_shaft():
+    held = _by_component(mounting_summary(_pulley_on_a_stepper(0.0)))
+    assert (held["pulley"]["status"], held["pulley"]["holders"]) == ("held", ["motor"])
+    # Touching the case off the shaft's axis is not riding the output.
+    beside = _by_component(mounting_summary(_pulley_on_a_stepper(25.0)))["pulley"]
+    assert beside["status"] != "held"
+
+
+def _spindle_in(holder_bounds, contact=True):
+    spindle = _row("spindle", "spindles", "er11-52-500w",
+                   bounds=((-26.0, -26.0, 0.0), (26.0, 26.0, 178.0)))
+    spindle["drive_axis"] = {"origin": [0.0, 0.0, 0.0], "axis": [0.0, 0.0, 1.0], "motion": "rotary"}
+    holder = _row("clamp", bounds=holder_bounds)
+    return {"components": [spindle, holder],
+            "pairs": [_pair("spindle", "clamp", 0.0 if contact else 5.0)]}
+
+
+def test_a_spindle_is_held_by_a_clamp_round_its_body_not_a_plate_it_stands_on():
+    ring = ((-40.0, -40.0, 80.0), (40.0, 40.0, 120.0))
+    held = _by_component(mounting_summary(_spindle_in(ring)))["spindle"]
+    assert (held["status"], held["by"], held["holders"]) == ("held", "clamp", ["clamp"])
+    plate = ((-60.0, -60.0, -5.0), (60.0, 60.0, 0.0))
+    assert _by_component(mounting_summary(_spindle_in(plate)))["spindle"]["status"] == "contact only"
+    assert _by_component(mounting_summary(_spindle_in(ring, contact=False)))["spindle"][
+        "status"] != "held"
+
+
+# ADR-660, ADR-661: wave 1's gantry joints on the real kernel. A rail screwed
+# through T-nuts into 2020 extrusion, a carriage screwed to a plate, and a
+# NEMA17 screwed to a printed mount with a pulley on its shaft.
+_GANTRY_JOINTS = """
+beam = lib.part("2020", length=200.0)
+rail = lib.part("mgnr12", length=100.0, origin=(0.0, 10.0, 50.0))
+pieces = {"beam": (beam.body, True), "rail": (rail.body, False)}
+for i, hole in enumerate(rail.spec["mount_points"]):
+    x, y, z = hole["origin"]
+    pieces["rail_bolt%d" % i] = (lib.bolt("m3", 8.0, origin=(x, 10.0 + y, 50.0 + z),
+                                          direction=(0, 1, 0)).body, False)
+    nut = lib.part("2020-tnut-m3", **beam.slot("+y", 50.0 + z))
+    pieces["tnut%d" % i] = (nut.body, False)
+car = lib.part("mgn12h", origin=(0.0, 10.0, 100.0))
+top = 10.0 + car.spec["mount_face_y_mm"]
+clear = lib.clearance_hole("m3") / 2.0
+pts = [(p["origin"][0], 100.0 + p["origin"][2]) for p in car.spec["mount_points"]]
+plate = part.cut(part.box(40.0, 5.0, 60.0, origin=(-20.0, top, 70.0)),
+                 [part.cylinder(clear, 7.0, origin=(x, top - 1.0, z), direction=(0, 1, 0))
+                  for x, z in pts])
+pieces["carriage"] = (car.body, False)
+pieces["plate"] = (plate, False)
+for i, (x, z) in enumerate(pts):
+    pieces["car_bolt%d" % i] = (lib.bolt("m3", 8.0, origin=(x, top + 5.0, z),
+                                         direction=(0, 1, 0)).body, False)
+motor = lib.part("nema17-40", origin=(100.0, 0.0, 0.0))
+holes = [part.cylinder(motor.spec["pilot_dia_mm"] / 2.0 + 0.25, 7.0, origin=(100.0, 0.0, -1.0))]
+holes += [part.cylinder(clear, 7.0, origin=(100.0 + p["origin"][0], p["origin"][1], -1.0))
+          for p in motor.spec["mount_points"]]
+mount = part.cut(part.box(50.0, 50.0, 5.0, origin=(75.0, -25.0, 0.0)), holes)
+pieces["motor"] = (motor.body, False)
+pieces["mount"] = (mount, False)
+for i, p in enumerate(motor.spec["mount_points"]):
+    pieces["motor_bolt%d" % i] = (lib.bolt("m3", 8.0, origin=(100.0 + p["origin"][0],
+                                                               p["origin"][1], 5.0)).body, False)
+pieces["pulley"] = (lib.part("gt2-20t-5mm", origin=(100.0, 0.0, 7.0)).body, False)
+result = {}
+comps = []
+for name, (body, grounded) in pieces.items():
+    result[name] = body
+    comp = assembly.component(body, grounded=grounded)
+    comps.append(comp)
+    result["c_" + name] = comp
+asm = assembly.assembly(comps)
+result["asm"] = asm
+result["diag"] = assembly.solve(asm)
+"""
+
+
+@_NEEDS_KERNEL
+def test_a_rail_on_t_nuts_a_carriage_and_a_stepper_are_held_on_the_real_kernel(tmp_path):
+    """ADR-660, ADR-661. Each catalog part is held by its own holes' screws,
+    the T-nuts sit in the slot clear of the profile, and no screw's thread
+    reads as an intersection: in a T-nut it is threaded, in a carriage's or
+    a stepper's tapped hole it reaches an open bore."""
+    from test_cadexd_lifecycle import _spawn_cadexd, _stop
+
+    client = None
+    try:
+        client = _spawn_cadexd()
+        assert client.request("open_project", {"project_root": str(tmp_path)})["ok"]
+        written = client.request("write_script", {"source": _GANTRY_JOINTS,
+                                                  "expected_revision": ""})
+        assert written["ok"], written
+        value = _read_all(client, {"scope": "clearance", "target": ""}, "")
+    finally:
+        _stop(client)
+    fit = fit_summary(value)
+    mounting = fit_view(fit)["mounting"]
+    rows = {row["component"]: row for row in mounting["reported"] + mounting["held"]}
+    for name, detail in (("c_rail", "4 of 4"), ("c_carriage", "4 of 4"), ("c_motor", "4 of 4")):
+        row = rows[name]
+        assert (row["status"], row["by"]) == ("held", "screws"), row
+        assert row["detail"].startswith(detail), row
+        assert "misfits" not in row and "unthreaded" not in row, row
+    assert rows["c_rail"]["holders"] == ["c_beam"]
+    assert rows["c_carriage"]["holders"] == ["c_plate"]
+    assert rows["c_motor"]["holders"] == ["c_mount"]
+    assert (rows["c_pulley"]["status"], rows["c_pulley"]["by"]) == ("held", "output")
+    for i in range(4):
+        assert (rows["c_tnut%d" % i]["status"], rows["c_tnut%d" % i]["holders"]) == (
+            "held", ["c_beam"])
+    assert mounting["verdict"] == "pass", mounting
+    assert not [row for row in fit["failing"] if row["status"] == "intersection"], fit["failing"]
+    # Only the T-nuts' tap drills take a thread's volume; the tapped holes
+    # of the carriage and the motor are open bores at the nominal size.
+    assert fit["threaded_count"] == 4
+    nuts = [pair for pair in value["pairs"]
+            if {pair["first"], pair["second"]} & {"c_tnut%d" % i for i in range(4)}
+            and "c_beam" in (pair["first"], pair["second"])]
+    assert len(nuts) == 4
+    assert all(pair["common_volume_mm3"] <= 1e-6 and pair["distance_mm"] <= 1e-6
+               for pair in nuts), nuts

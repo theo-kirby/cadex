@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-10
+Verified against source: 2026-10-11
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -917,7 +917,7 @@ interface, so a new part number is a data change: MGN9/MGN12 rails
 (`length=`) and carriages; GT2 pulleys, idlers and belts (`span=`,
 `pitch_radius=`); T8 lead screws and the SFU1204 ball screw (`length=`)
 with their nuts; NEMA17/23 steppers; 2020/2040 extrusion (`length=`), its
-M5 T-nut and corner bracket; ISO 6432/15552 pneumatic and ISO 6020-2
+M3 and M5 T-nuts and corner bracket; ISO 6432/15552 pneumatic and ISO 6020-2
 hydraulic cylinders (`extension=`, `.members['barrel']`/`['rod']`); ER11/ER16
 router spindles; plate swivel casters (`.members['yoke']`/`['wheel']`);
 pneumatic tyres on hubs by size code; music-wire compression springs with
@@ -927,6 +927,45 @@ a computed rate. `.spec` carries the row, its source and approximations,
 `extend_force_n`) with a `drive_note`. The part numbers are listed on
 `section=library_parts` (MachinePart). Fasteners now run to M12 (socket
 and countersunk screws, hex nuts and washers).
+
+*Holes and slots* (ADR-660, ADR-661). Every machine part with mounting
+holes publishes them as `.spec['mount_points']`, in its own frame: `origin`
+where a screw head seats (a tapped hole's mouth), `axis` the `direction` a
+`lib.bolt` there takes, and `thread_dia_mm` or `hole_dia_mm`. They are
+also published to the mounting check as each body's mount axes. The parts
+and their holes:
+- the rail: M3 counterbores, pitch P, centred with both ends at least E;
+- the carriage: four tapped M3 holes;
+- the stepper's face: four tapped holes;
+- the screw nuts: flange clearance holes;
+- the T-nut: its thread;
+- the corner bracket: one clearance hole in each leg;
+- the caster: four plate holes, on `.members['yoke']` too;
+- the pulley: its bore.
+
+Tapped holes are open bores at the nominal size, so a screw in one shares
+no volume with the part. A spindle has no holes; it is held by a clamp,
+which is a printed part that touches it and whose box contains its axis
+inside the body (`by: clamp`).
+
+A pulley is on a drive's output only when its bore lies on the drive's
+published output axis. A stepper's or spindle's output axis is +Z through
+its datum.
+
+A screw into a T-nut, a nut or an insert holds the part to whatever the
+nut is clamped against. A rail screwed through T-nuts into extrusion is
+therefore held by the extrusion, and the screw's thread in the nut's tap
+drill reads as `threaded`, not as an intersection. The thread allowance
+of ADR-492 now covers nuts, inserts and T-nuts as well as printed parts.
+
+The 2020/2040 slot is the B-type slot: a 6.2 mm opening, a 1.8 mm lip,
+and an 11 mm undercut whose 45-degree flanks reach 6.1 mm deep. The
+slide-in T-nuts (`2020-tnut-m3`, `2020-tnut-m5`) are 9.8 mm wide, 4 mm
+under a 6 x 1 mm neck, and chamfered to clear the flanks. A profile's
+`.spec['slot_datums']` names each slot's lip underside on its centreline,
+and `beam.slot(face, along, index)` returns the world `origin`,
+`direction` and `roll_degrees` that seat a T-nut there:
+`lib.part('2020-tnut-m5', **beam.slot('+y', 40.0))`.
 
 Browse before modelling standard hardware by hand: `describe_api`'s
 `library` section lists the families, part numbers and deciding specs

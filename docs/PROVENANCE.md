@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-10-10
+Verified against source: 2026-10-11
 
 Cadex is not written from scratch. It is a **derivative work of a large
 free-software project, FreeCAD**, carrying the design lessons of two more
@@ -510,6 +510,30 @@ vendor CAD, drawing or artwork is copied; the numbers were transcribed
   brass flange nut, GT2 pulley hubs and idlers, 20-series T-nut and corner
   bracket, cylinder dead lengths, barrel diameters and clevises, spindle
   lengths and masses, the plate casters, and the tyres' hubs and masses.
+- **Mounting holes** (ADR-660, transcribed 2026-10-11 from the same
+  tables): the rail's M3 counterbores at pitch P from an end distance of at
+  least E, centred as on HIWIN's standard lengths L = (n - 1) P + 2E; the
+  MGN block's four M3 holes on B x C at HIWIN's thread depth (3.5 mm MGN12,
+  3 mm MGN9); the NEMA ICS 16 face's four tapped holes on the bolt square;
+  the nut flanges' bolt circles, the SFU1204's six holes at 0 and +-45
+  degrees each side of its flats (the DIN 69051 form B pattern). Tapped
+  holes are modelled as open bores at the nominal size, as every catalog
+  part's are.
+- **The 20-series slot and its T-nut** (ADR-661, checked 2026-10-11).
+  The slot is the B-type 6 mm slot of Misumi HFS5-2020 / Bosch Rexroth
+  20x20: a 6.2 mm opening through a 1.8 mm lip, an undercut about 11 mm
+  wide and 6.1 mm deep from the face. Misumi's HFS5-2020 table gives a
+  section of 183 mm^2 at 0.5 kg/m; the modelled section is 191 mm^2. The
+  M3 and M5 slide-in T-nuts are 10 mm long, 9.8 mm wide and 5 mm overall,
+  with a 6 x 1 mm neck. That figure comes from the vendors' listings
+  (e.g. VXB, "M5 sliding T-nuts for 2020 aluminum extrusion 6 mm"); one
+  other listing gives 9.5 x 4.5, so the numbers vary by a few tenths
+  between vendors. The 45-degree chamfer that clears the slot's flanks is
+  Cadex's own. Before ADR-661 the modelled slot was 8 mm wide and 5 mm
+  deep, and the T-nut was a 10 x 10 x 4.5 block. That block was wider than
+  the undercut and taller than its 3.2 mm depth, so the catalog nut could
+  not sit in the catalog slot. The wave-1 liquid-handler run found this
+  (its `docs/rejected.md`).
 
 ## 8j. The render font `[third-party, OFL-1.1, ADR-568]`
 
