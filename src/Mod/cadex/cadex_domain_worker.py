@@ -22,7 +22,13 @@ REQUEST_ENV = "CADEX_XSCRIPT_DOMAIN_REQUEST"
 RESULT_ENV = "CADEX_XSCRIPT_DOMAIN_RESULT"
 SCHEMA = "cadex-xscript-domain-worker-v2"
 MAX_STDOUT_CHARS = 16_000
-MAX_DEFINITION_BYTES = 1_000_000
+#: One output's serialized definition (ADR-670). An assembly's grows about
+#: 1.3 kB per joint, because each joint carries both connectors and their
+#: component references in full: a 354-component, 295-joint printer
+#: measured 634 kB, and screwing every rail hole took it past the old 1 MB.
+#: Definitions travel in files and the document, never in one protocol frame
+#: (CadexdProtocol.MAX_FRAME_BYTES is 8 MiB), so 4 MiB leaves a full machine room.
+MAX_DEFINITION_BYTES = 4 * 1024 * 1024
 MAX_PART_OUTPUT_SUBELEMENT_DETAILS = 256
 PART_OUTPUT_SUBELEMENT_DETAIL_BUDGET = 2_048
 
@@ -675,7 +681,10 @@ def _payload(value: Any, *, serialized: bool = False) -> dict[str, Any]:
     ).encode("utf-8")
     if len(encoded) > MAX_DEFINITION_BYTES:
         raise ValueError(
-            f"One XScript output definition exceeds {MAX_DEFINITION_BYTES} bytes."
+            f"One XScript output definition is {len(encoded)} bytes, past the "
+            f"{MAX_DEFINITION_BYTES}-byte cap: an assembly's grows about 1.3 kB "
+            "per joint, so merge parts that never move apart rather than "
+            "joining each one."
         )
     return payload
 

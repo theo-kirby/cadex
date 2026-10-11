@@ -39466,3 +39466,13 @@ The paragraph keeps a reason in front, so that a cover has a job. The base's blo
 **Tests.** Both `test_agent_guidance.py` files; both full suites.
 
 Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-670 — One output definition may be 4 MiB, and the refusal says why (2026-10-11)
+
+**Context.** The first breadth wave's enclosed printer (`wave1-printer`) hit `cadex_domain_worker.MAX_DEFINITION_BYTES`, 1,000,000 bytes on one output's serialized definition, and worked around it by putting screws only at each rail's end holes and dropping its spool holder. Measured from its accepted attempt, the assembly definition is 634 kB for 354 components and 295 joints. It grows about 1.3 kB per joint, because each joint carries both connectors and their component references in full. That growth is linear, but a real machine with every fastener outgrows 1 MB.
+
+**Decision.** The cap becomes 4 MiB. Definitions travel in files and the document, never in one protocol frame (`CadexdProtocol.MAX_FRAME_BYTES` is 8 MiB), and the rollback property cap is 16 MiB uncompressed, so nothing downstream is smaller. The refusal now names the definition's size and the cap, and suggests merging parts that never move apart. Making joints reference components by name instead of inlining them would shrink the definition several-fold. That would change the definition's shape and so the digest, so it is left for a later change.
+
+**Tests.** `cadex_tests/test_definition_cap.py`; both full suites.
+
+Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).
