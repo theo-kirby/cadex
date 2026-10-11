@@ -2503,7 +2503,7 @@ own facts (its clearance, radius, group and piece):
 | `under-held` | some of it is more than 150 mm from any of its screws | no |
 | `seam closed` | it touches another piece of the same `part.panel` | no |
 | `unseated` | a closing panel (`closes=`) comes no closer than 1 mm to what it closes (the pair rows' distance) | yes |
-| `open seam` | a closing panel's seam -- the surface of what it closes within 15 mm of it whose normal points at it (\|cos\| ≥ 0.7: a rim, a jamb face) -- stands off it more than 2 mm at the median, or there is none | yes |
+| `open seam` | a closing panel's seam -- the surface of what it closes within 15 mm of it whose outward normal points at it (cos ≥ 0.7: a rim, a jamb face; not a thin lip's underside) -- stands off it more than 2 mm at the median, or there is none | yes |
 
 **A closing panel** (ADR-666) -- a lid, a door, an enclosure wall, declared
 `role="panel", covers=[...], closes=[tub]` -- closes a volume, so it is far

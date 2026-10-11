@@ -346,6 +346,11 @@ def test_a_seated_lid_meets_its_rim_and_a_lifted_or_tilted_one_does_not():
     assert lifted["seam_samples"] == seated["seam_samples"]
     assert lifted["seat_gap_mm"] == pytest.approx(10.0, abs=0.1)
     assert lifted["seam_gap_median_mm"] == pytest.approx(10.0, abs=0.1)
+    # A face turned away from the lid (a thin lip's underside) is not seam.
+    from CadexPanels import seam_statistics
+    away = seam_statistics([[50.0, 1.5, 38.0]], [[0.0, 0.0, -1.0]], _lid(40.0))
+    toward = seam_statistics([[50.0, 1.5, 38.0]], [[0.0, 0.0, 1.0]], _lid(40.0))
+    assert away["seam_samples"] == 0 and toward["seam_samples"] == 1
     # Hinged up at one end: seated on one edge, the seam opens along the rest.
     tilted = _seam(_lid(40.0, 60.0))
     assert tilted["seat_gap_mm"] < 0.1  # sampled, so near the hinge edge rather than on it

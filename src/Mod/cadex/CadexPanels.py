@@ -749,9 +749,10 @@ def first_hits(origins, directions, triangles, *, reach=float("inf")):
 HUG_GAP_MM = 4.0
 
 #: A closing panel's seam (ADR-666): the surface of the frame it closes
-#: within this of it, facing it (|cos| at least SEAM_FACING_COS between the
-#: frame's normal and the way to the panel). A rim under a lid faces it; the
-#: tub's walls beside the lid's edge do not. The band is wide enough that a
+#: within this of it, facing it (cos at least SEAM_FACING_COS between the
+#: frame's outward normal and the way to the panel). A rim under a lid faces
+#: it; the tub's walls beside the lid's edge do not, nor does a thin lip's
+#: underside a few mm below it, which faces away. The band is wide enough that a
 #: lid hinged open along one side shows its open seam, and narrower than a
 #: tub is deep, so its floor is not read as rim; a tray shallower than this
 #: under its lid would read its floor as an open seam.
@@ -824,7 +825,7 @@ def seam_statistics(samples, normals, triangles, *, band=SEAM_BAND_MM,
     """How a closing panel meets the frame it closes (ADR-666).
 
     ``samples`` and ``normals`` are points on the frame near the panel and
-    the frame's normals there (either sense); ``triangles`` the panel's
+    the frame's outward normals there; ``triangles`` the panel's
     surface. A sample is on the seam when the panel is within ``band`` of it
     and the way to the panel's nearest point runs along the frame's normal
     (a lid's rim, a door's jamb face); its distance is the seam's gap there.
@@ -842,7 +843,7 @@ def seam_statistics(samples, normals, triangles, *, band=SEAM_BAND_MM,
     d, q = _nearest(P, T)
     lengths = np.linalg.norm(N, axis=1)
     with np.errstate(divide="ignore", invalid="ignore"):
-        along = np.abs(np.einsum("ij,ij->i", N, q - P)) / (lengths * d)
+        along = np.einsum("ij,ij->i", N, q - P) / (lengths * d)
     facing = (d <= 1e-6) | (along >= facing_cos)
     seam = np.sort(d[facing & (d <= band)])
     stats: dict[str, Any] = {"seam_samples": int(len(seam)),

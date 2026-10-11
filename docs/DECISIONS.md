@@ -39528,8 +39528,9 @@ on (a panel only; absent unless set, so no definition moves). The worker
 measures it against that frame instead of its covers: 3,000 points spread
 over the frame's triangles near the panel's box
 (`CadexPanels.sample_triangles`), and of those within 15 mm of the panel
-whose normal points at it (|cos| ≥ 0.7: a rim, a jamb face; not the walls
-beside its edge, nor a floor deeper than the band), the gap to it --
+whose outward normal points at it (cos ≥ 0.7: a rim, a jamb face; not the
+walls beside its edge, not a thin lip's underside, nor a floor deeper than
+the band), the gap to it --
 `seam_samples`, `seam_gap_median_mm`/`_p90_mm`/`_max_mm`
 (`CadexPanels.seam_statistics`). `fit.panels` then keeps `floating` and
 `egg` off for it and judges two new failing findings: `unseated` (the pair
@@ -39555,7 +39556,15 @@ passes, one floating 10 mm fails `unseated`, one propped open fails `open
 seam`, one struck by a moving arm fails `colliding in motion`, and a
 hugging panel without `closes=` is judged as before. Live, on a probe tub
 built by this engine: seated, the seam reads 0.0 mm over 75 samples and the
-lid passes; lifted 10 mm, `unseated` (10.0 mm); tilted 8°, `open seam`
-(median 3.83 mm).
+lid passes; lifted 0.5 mm, still seated (0.5 mm); lifted 11 mm, `unseated`
+(11.0 mm); tilted 7°, `open seam` (median 4.37 mm). On a scratch copy of
+`wave1-rover`'s script with its two lids declared `role="panel",
+covers=[deck or battery tray], closes=[chassis]` instead of `housing`, both
+pass the seat and the seam (median 0.0 mm over 175 and 195 samples), with
+only the advisory bed and fastener findings. A first version took the
+normal's sense as either way: there the rover's 2 mm lip underside, facing
+away from the lid, put the median at exactly 2.0 mm. The outward sense
+(FreeCAD's tessellation winds outward, checked on a cut box) is what the
+check reads.
 
 Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).
