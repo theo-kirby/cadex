@@ -20,6 +20,11 @@ reference/
 !/.hypergraph/
 !/.ouroboros/
 /.hypergraph/cache/
+# The graphs live in the Flywheel local repository at the checkout root (`.flywheel/`,
+# hidden by `.*` above; ADR-671). .hypergraph/graph/ is its working copy, and
+# .hypergraph/store/ holds the sync index and lock: both local and never committed.
+/.hypergraph/graph/
+/.hypergraph/store/
 !/.packit.yaml
 !/.pre-commit-config.yaml
 !/.pylintrc

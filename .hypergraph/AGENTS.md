@@ -1,10 +1,16 @@
 # Hypergraph onboarding — cadex
 
-Verified against source: 2026-10-04
+Verified against source: 2026-10-11
 
-This repository keeps its memory in **two graphs**, committed as markdown node
-files under `.hypergraph/graph/`. They are storage, not a cache: they travel
-with the repo, work offline and merge through git.
+This repository keeps its memory in **two graphs**, stored in a **Flywheel local
+repository** at the checkout root (`.flywheel/`, gitignored; ADR-671). The
+markdown node files under `.hypergraph/graph/` are its working copy, also
+gitignored. Every tool reads them as before. Every writing `hypergraph` command
+(`new`, `update`, `sync`, …) commits what it changed to the store itself, under a
+lock that every git worktree of this checkout shares, so worktree agents write
+into one graph rather than a branch slice. There is nothing to `git add` for a
+node. Between machines the repository moves through a hosted Flywheel repository
+(`flywheel repo:push` / `repo:pull`); see "A new machine" below.
 
 - **Record graph** — the append-only log of everything that happened: decisions,
   experiments, evidence, dead ends. Topology is causal.
@@ -70,8 +76,27 @@ hypergraph check --record .hypergraph/cache/record.json \
                  --config .hypergraph/config.yml
 ```
 
-`check` must **exit 0**. `.hypergraph/cache/` is gitignored and regenerated;
-the node files under `.hypergraph/graph/` are the storage and are committed.
+`check` must **exit 0**. `.hypergraph/cache/` is gitignored and regenerated.
+`hypergraph store status` shows the store's head and any node file not yet
+committed to it; `hypergraph store verify` rebuilds every node from the store and
+compares bytes.
+
+## A new machine
+
+The store does not come with `git clone`. Install the pinned CLI
+(`store.flywheel_cli` in `.hypergraph/config.yml`; it needs Node ≥ 24.15), then put
+the repository at the checkout root:
+
+```bash
+npm install -g @paradigma-inc/flywheel@0.2.78
+flywheel repo:clone <repository-id> /tmp/cadex-graph   # once it is hosted
+mv /tmp/cadex-graph/.flywheel .                        # or: flywheel repo:restore <backup> …
+hypergraph store pull --full --config .hypergraph/config.yml   # writes .hypergraph/graph/
+```
+
+Until the repository is hosted, `flywheel repo:backup <file>` archives it from this
+machine. Never run `flywheel update` while a `hypergraph` command is running: it
+replaces the binary mid-call.
 
 ## Getting the tool
 

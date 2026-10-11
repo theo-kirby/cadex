@@ -17,6 +17,14 @@ cache_dir: .hypergraph/cache
 state_md: STATE.md
 graph_dir: .hypergraph/graph
 
+# The store of record is a Flywheel local repository at the checkout root (ADR-671,
+# backend/flywheel-repo-adapter.md in hypergraph-protocol). .hypergraph/graph/ is its
+# gitignored working copy; every writing hypergraph command commits to it. The CLI is
+# pinned, because a newer one can upgrade the repository format.
+store:
+  kind: flywheel-repo
+  flywheel_cli: 0.2.78
+
 # Adoption epoch (SPEC: Adoption epochs). Record nodes created strictly
 # before this marker are legacy history, exempt from I2 in `check`.
 epoch:

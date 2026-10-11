@@ -39619,3 +39619,47 @@ Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).
 **Tests.** `cadex_tests/test_definition_cap.py`; both full suites.
 
 Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-671 — The graphs move into a Flywheel local repository; the node files become its working copy (2026-10-11)
+
+**Context.** The owner asked to move the Hypergraph graphs onto Flywheel's new local
+repositories (`flywheel repo:*`, CLI 0.2.78, Node ≥ 24.15), to be hosted later on their
+Flywheel account and pushed and pulled between machines. They accepted that the
+graph would stop living in git. A rehearsal (record `cold-hollow-1327`) imported all
+1,133 nodes losslessly. It also found the constraints the design answers: the store is
+one SQLite file, there is one staging area per repository, git worktrees do not
+discover the main checkout's `.flywheel/`, node ids and creation times cannot be set,
+and a full read takes 155 s against 0.31 s for `hypergraph export`.
+
+**Decision.** Cadex's `.hypergraph/config.yml` declares `store: {kind: flywheel-repo,
+flywheel_cli: 0.2.78}`, the Flywheel repository store shipped in hypergraph-protocol
+(`backend/flywheel-repo-adapter.md`, its record `wise-stone-8848`). The repository at
+the checkout root is the store of record. `.hypergraph/graph/` stays the same node
+files every tool reads, now a gitignored working copy. Every writing `hypergraph`
+command refreshes it from the store, runs unchanged, and commits what it changed as
+one Flywheel commit, under a lock that every worktree shares. Each node's Flywheel
+content carries its frontmatter in an invisible trailer, so files rebuild byte for
+byte. `git rm --cached` takes the node files out of the index; their history stays in
+git up to this commit, which is the rollback. Ouroboros (`reporter` 3a0ffd0) reads the
+working copy at the main checkout and no longer tells actors to `git add` node files.
+
+**Consequences.**
+- Record nodes no longer appear in commits or travel with `git clone`. A new machine
+  needs the repository (`.hypergraph/AGENTS.md`, "A new machine").
+- The probe reports' links into `.hypergraph/graph/record/` resolve only where a
+  working copy exists. The four CLI tests that check them skip that half on a bare
+  checkout (ADR comment in each).
+- `hypergraph check --since` now counts record nodes created after the fork point,
+  which is weaker than counting files the branch added.
+- Each record node costs about 2 s of Flywheel calls.
+- The repository is not hosted yet. Until it is, `flywheel repo:backup` is its only
+  copy off this disk.
+
+**Evidence.** hypergraph-protocol `tests/test_flywheel_store.py`: 10 tests against the
+real CLI, covering byte-identical rebuild, lineage and containment, worktree writes,
+three concurrent writers getting three commits, pull of a store-side edit, refusal of
+a racing local edit, the version pin, and `--since`. Its full suite: 397 passed.
+Ouroboros: 382 passed. The Cadex import and verify results are in the record that
+lands with this ADR.
+
+Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).

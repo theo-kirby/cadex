@@ -107,7 +107,8 @@ def test_evidence_index_links_resolve(report):
                 assert (REPO_ROOT / relative).is_file(), (criterion, relative)
         for adr in entry["adrs"]:
             assert adr in adr_headings, (criterion, adr)
-        for slug in entry["records"]:
+        # gitignored working copy of the Flywheel store (ADR-671): absent on a bare checkout
+        for slug in entry["records"] if records.is_dir() else ():
             assert (records / f"{slug}.md").is_file(), (criterion, slug)
 
 
