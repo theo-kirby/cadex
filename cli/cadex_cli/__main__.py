@@ -2189,10 +2189,13 @@ class McpSession:
         in flight as it starts, finished as it returns (ADR-553). A name the
         surface does not publish is refused before the engine is opened."""
 
-        if tool not in {definition["name"] for definition in self.tools()}:
-            return {"content": [{"type": "text", "text": f"No such tool: {tool!r}."}], "is_error": True}
         started = time.monotonic()
         call = begin_activity(self.args.project, tool, arguments)
+        if tool not in {definition["name"] for definition in self.tools()}:
+            reply = {"content": [{"type": "text", "text": f"No such tool: {tool!r}."}], "is_error": True}
+            append_activity(self.args.project, tool, arguments, ok=False, detail=reply_error(reply),
+                            ms=(time.monotonic() - started) * 1000, call=call)
+            return reply
         before = len(self._bridge.state.calls) if self._bridge is not None else 0
         try:
             reply = self._open().call(tool, arguments)
