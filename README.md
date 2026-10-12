@@ -65,7 +65,8 @@ iteration — ending in a part sheet, print files, a BOM, a trained policy
 and a gait video. Every vertical in this repository exists because that
 sentence needs it.
 
-> **Status:** under active development, pre-release — currently **0.1.0**.
+> **Status:** under active development, pre-release — currently **0.2.0**
+> ([`VERSION`](VERSION); release notes in [`docs/releases/`](docs/releases/)).
 
 Beyond dynamics, two more verticals are closed: **organic modelling**
 ([docs/ORGANIC.md](docs/ORGANIC.md)) and **structural analysis** — stress,

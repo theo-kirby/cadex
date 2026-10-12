@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 
-from cadex_cli import mcp
+from cadex_cli import __version__, mcp
 from cadex_cli.bridge import BUILD_VIEW_LIST_LIMIT, Bridge
 from cadex_cli.tools import BRIDGE_TOOLS, CLI_TOOL_OPS, tool_definitions
 
@@ -76,8 +76,24 @@ def test_initialize_echoes_the_client_protocol_version(bridge) -> None:
     reply = _rpc(bridge, "initialize", {"protocolVersion": "2025-06-18"})
     assert reply["result"]["protocolVersion"] == "2025-06-18"
     assert reply["result"]["capabilities"] == {"tools": {}}
-    assert reply["result"]["serverInfo"]["name"] == "cadex"
+    assert reply["result"]["serverInfo"] == {"name": "cadex", "version": __version__}
     assert reply["result"]["instructions"] == "the guidance"
+
+
+def test_initialize_offers_its_newest_version_for_one_it_does_not_speak(bridge) -> None:
+    reply = _rpc(bridge, "initialize", {"protocolVersion": "2099-01-01"})
+    assert reply["result"]["protocolVersion"] == mcp.SUPPORTED_PROTOCOL_VERSIONS[-1]
+
+
+def test_a_method_that_raises_is_an_internal_error_not_a_dead_server(bridge) -> None:
+    class Broken(_Host):
+        def tools(self):
+            raise RuntimeError("boom")
+
+    stream = io.StringIO()
+    mcp.handle({"jsonrpc": "2.0", "id": 7, "method": "tools/list"}, Broken(bridge), stream)
+    reply = json.loads(stream.getvalue())
+    assert reply["id"] == 7 and reply["error"]["code"] == -32603
 
 
 def test_initialized_and_ping_behave(bridge) -> None:
@@ -709,7 +725,9 @@ def test_serve_reads_newline_delimited_messages(bridge) -> None:
         json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"})
         + "\n"
         + "\n"  # a blank line is not a message
-        + "{not json}\n"  # nor is garbage
+        + "{not json}\n"  # garbage is a parse error, answered with no id
+        + json.dumps([{"jsonrpc": "2.0", "id": 9, "method": "ping"}])
+        + "\n"  # a batch is not one message
         + json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
         + "\n"
     )
@@ -717,8 +735,9 @@ def test_serve_reads_newline_delimited_messages(bridge) -> None:
     mcp.serve(_Host(bridge), stdin, stdout)
 
     replies = [json.loads(line) for line in stdout.getvalue().splitlines() if line]
-    assert [reply["id"] for reply in replies] == [1, 2]
-    assert len(replies[1]["result"]["tools"]) == len(CLI_TOOL_OPS) + len(BRIDGE_TOOLS)
+    assert [reply["id"] for reply in replies] == [1, None, None, 2]
+    assert [reply["error"]["code"] for reply in replies[1:3]] == [-32700, -32600]
+    assert len(replies[3]["result"]["tools"]) == len(CLI_TOOL_OPS) + len(BRIDGE_TOOLS)
 
 
 def test_a_quiet_client_lets_the_host_go_once_per_quiet_spell(bridge) -> None:

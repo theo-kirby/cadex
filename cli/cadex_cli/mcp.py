@@ -31,9 +31,14 @@ import os
 import select
 from typing import Any, BinaryIO, Protocol
 
+from . import __version__
+
 SERVER_NAME = "cadex"
-SERVER_VERSION = "0.2.0"
-DEFAULT_PROTOCOL_VERSION = "2024-11-05"
+SERVER_VERSION = __version__
+#: The MCP revisions this server answers, oldest first. It speaks the subset
+#: they all share, so a client asking for one of these gets it echoed; any
+#: other request gets the newest, which the spec lets the client refuse.
+SUPPORTED_PROTOCOL_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18")
 
 
 class ToolHost(Protocol):
@@ -65,19 +70,32 @@ def _error(message_id: Any, code: int, message: str, stream: Any) -> None:
 
 
 def handle(message: dict[str, Any], host: ToolHost, stream: Any) -> None:
-    """Answer one JSON-RPC message. Split out so the tests can drive it."""
+    """Answer one JSON-RPC message. Split out so the tests can drive it.
 
+    A method that raises is answered with an internal error rather than
+    ending :func:`serve`, so one bad request never takes the server down.
+    """
+
+    message_id = message.get("id")
+    try:
+        _dispatch(message, host, stream)
+    except Exception as exc:
+        if message_id is not None:
+            _error(message_id, -32603, f"Internal error: {exc}", stream)
+
+
+def _dispatch(message: dict[str, Any], host: ToolHost, stream: Any) -> None:
     method = str(message.get("method") or "")
     message_id = message.get("id")
 
     if method == "initialize":
         params = message.get("params") or {}
+        requested = params.get("protocolVersion")
         _result(
             message_id,
             {
-                # Echo the client's version: this server speaks the subset
-                # every revision of MCP shares.
-                "protocolVersion": params.get("protocolVersion", DEFAULT_PROTOCOL_VERSION),
+                "protocolVersion": (requested if requested in SUPPORTED_PROTOCOL_VERSIONS
+                                    else SUPPORTED_PROTOCOL_VERSIONS[-1]),
                 "capabilities": {"tools": {}},
                 "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
                 "instructions": host.instructions(),
@@ -136,7 +154,10 @@ def serve(host: ToolHost, stdin: BinaryIO, stdout: Any, *, idle_seconds: float =
         try:
             message = json.loads(line.decode("utf-8"))
         except (UnicodeDecodeError, ValueError):
+            _error(None, -32700, "Parse error", stdout)
             continue
         if isinstance(message, dict):
             handle(message, host, stdout)
             quiet_since_idle = False
+        else:  # a batch or a bare value: MCP sends one object per line
+            _error(None, -32600, "Invalid request: expected one JSON object", stdout)

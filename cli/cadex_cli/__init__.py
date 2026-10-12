@@ -24,10 +24,25 @@ checking). See ADR-061.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 __all__ = ["CLI_SCHEMA", "__version__"]
 
 #: The ``--json`` envelope's schema tag. Bump it when the envelope's shape
 #: changes, so a pipeline can tell what it is parsing.
 CLI_SCHEMA = "cadex-cli-v1"
 
-__version__ = "0.0.1"
+
+def _read_version() -> str:
+    """The product version: ``VERSION`` at the repo root, the one source (ADR-673).
+
+    The CLI runs from the repository (the ``cadex`` shim), so the file is
+    two directories up; ``0+unknown`` marks a copy that left it behind.
+    """
+    try:
+        return (Path(__file__).resolve().parents[2] / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        return "0+unknown"
+
+
+__version__ = _read_version()

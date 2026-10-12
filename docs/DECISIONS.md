@@ -39732,3 +39732,47 @@ incrementally, a one-off migration can turn the lines into edges.
   governor a80346b, which re-runs under a system Node because pixi ships 25.2.1.
 
 Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-673 — One product version, read from `VERSION`; the MCP server answers every message (2026-10-12)
+
+**Context.** The v0.2.0 release audit found five copies of the version and
+no agreement between them. `VERSION` said 0.1.0 and was called the single
+source of truth (ADR-166), but nothing read it after the shell went
+(ADR-495, ADR-498). `version.json`, `pixi.toml` and the rattler manifests
+said 0.0.1. The CLI's `__version__` said 0.0.1. The MCP server's
+`serverInfo.version` was hardcoded at 0.2.0 (ADR-538). And
+`build_engine_payload.sh` named and stamped every payload 0.0.0, because its
+`sed` looked for a `PACKAGE_VERSION "x"` line `CMakeLists.txt` does not
+have. The same audit drove `cadex mcp` with malformed input. It accepted any
+`protocolVersion` a client asked for. It dropped unparsable lines and
+batches without a reply. A host method that raised ended the stdio server.
+And an unknown tool name opened the engine, scaffolded the project and ran
+`git init` before it was refused.
+
+**Decision.**
+- `VERSION` is the one source, and it is now 0.2.0. The CLI's `__version__`
+  reads it, `cadex --version` prints it, and `mcp.SERVER_VERSION` is
+  `__version__`. The payload is named from it
+  (`cadex-engine-<VERSION>-<os>-<arch>`).
+- `package/app/bump_version.sh` moves to `package/bump_version.sh`, since
+  there is no app. It now also writes `version.json`'s major, minor and patch,
+  and runs `src/Tools/sync_version.py --update` for the pixi manifests.
+- `cli/tests/test_version.py` fails when any copy drifts.
+- `version.json` keeps `name: "FreeCAD"`, because renaming it moves the CMake
+  project and install paths (unchanged since v0.0.1).
+- `docs/cadex-release-packaging.md` gains "Cutting a release": bump, notes,
+  build, stage and gate, CI, then an annotated tag. No payload is attached
+  (ADR-030).
+- `initialize` echoes a `protocolVersion` in `SUPPORTED_PROTOCOL_VERSIONS`
+  (2024-11-05, 2025-03-26, 2025-06-18) and otherwise answers the newest. A
+  parse error is answered `-32700`, a non-object `-32600`, and a raising
+  method `-32603`, each without ending `serve()`. `McpSession.call` refuses a
+  name the surface does not publish before it opens anything.
+
+**Consequences.** A version bump changes no digest, golden or MJCF export.
+The only thing it reaches is `_fit_cache_version`, which hashes
+`App.Version()`, so each project re-measures its fit once after the engine
+is rebuilt. `test_initialize_echoes_the_client_protocol_version` still
+holds, and two MCP tests are added: one for a version the server does not
+speak, one for a raising method. The stdio test now expects the two error
+replies.
