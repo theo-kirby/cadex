@@ -87,8 +87,9 @@ STATIC_FILES = {
     "review.js": ("text/javascript; charset=utf-8", STATIC_DIR / "review.js"),
     **{name: ("text/javascript; charset=utf-8", STATIC_DIR / name) for name in
        ("three.module.js", "floor.js", "environment.js", "review_scene.js", "shading.js", "stl.js", "capture.js",
-        "layout.js", "theme.js", "status.js", "outliner.js")},
+        "layout.js", "theme.js", "status.js", "outliner.js", "hero.js")},
     "capture.html": ("text/html; charset=utf-8", STATIC_DIR / "capture.html"),
+    "hero.html": ("text/html; charset=utf-8", STATIC_DIR / "hero.html"),
     "viewer.js": ("text/javascript; charset=utf-8", STATIC_DIR / "viewer.js"),
 }
 #: The projects index's own files (``cadex app``); the review page's files

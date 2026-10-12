@@ -162,10 +162,10 @@ export function boardColours(mm, board, base) {
 // The rooms the solids reflect, and are lit by, are shading.js's lighting setups (ADR-676); the
 // first was ADR-601's procedural studio, which is Studio's room still.
 
-export function create(canvas) {
+export function create(canvas, {labels=true}={}) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, draw(){}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, screenBox(){return null;}, draw(){}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   // Soft shadows (ADR-676): a variance shadow map, blurred, so a shadow's edge widens with its
@@ -185,7 +185,8 @@ export function create(canvas) {
   sun.castShadow = true; sun.shadow.mapSize.set(2048,2048); sun.shadow.radius = 10; sun.shadow.blurSamples = 16;
   const fill = new THREE.DirectionalLight(0xdfe6ff,1.0); fill.position.set(-12,6,-9);
   scene.add(hemi, sun, sun.target, fill);
-  const environment = createEnvironment({scene,world,camera,renderer,lights:{hemi,sun,fill}}, {labels:true});
+  // `labels: false` is the product shot's clean mat (the hero page, ADR-677): the grid without its text.
+  const environment = createEnvironment({scene,world,camera,renderer,lights:{hemi,sun,fill}}, {labels});
   // The look (ADR-676): a lighting setup or a matcap, occlusion and surface detail.
   const looks=createLooks(renderer), occlusion=createOcclusion(renderer), outline=createOutline(renderer);
   let look='studio', occluded=true, detailed=true, keyDir=LIGHTING.studio.key.dir;
@@ -717,6 +718,25 @@ export function create(canvas) {
     const w=canvas.clientWidth||canvas.width, h=canvas.clientHeight||canvas.height;
     return [(projected.x+1)/2*w, (1-projected.y)/2*h];
   }
+  // The box, in canvas pixels with [0,0] top left, round every drawn vertex of the design at the
+  // camera now (world geometry left out); null when nothing is in front of the camera. The hero
+  // page frames its shots by it (ADR-677), tighter than a bounding sphere.
+  function screenBox() {
+    draw(); model.updateMatrixWorld(true);
+    const w=canvas.clientWidth||canvas.width, h=canvas.clientHeight||canvas.height, v=new THREE.Vector3();
+    let x0=Infinity, y0=Infinity, x1=-Infinity, y1=-Infinity;
+    meshes.forEach(m=> {
+      if (!m.visible||m.userData.world) return;
+      const a=m.geometry.attributes.position;
+      for (let i=0;i<a.count;i++) {
+        v.fromBufferAttribute(a,i).applyMatrix4(m.matrixWorld).project(camera);
+        if (v.z>1||v.z<-1) continue;
+        const x=(v.x+1)/2*w, y=(1-v.y)/2*h;
+        if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
+      }
+    });
+    return x1>=x0?[x0,y0,x1,y1]:null;
+  }
   // The selection glows in the page's --select; [] clears it. Never set by a capture. World
   // geometry is never selected. highlight(name) selects that one part (or none) and returns it.
   const SELECT={glow:0x0c1e36, tint:0xc8dcf6};
@@ -809,7 +829,7 @@ export function create(canvas) {
     setSection,setLines,showLines,setStyle,style:()=>style,setMeshLines,meshLines:()=>({...meshLines}),setReflections,reflections:()=>reflections,
     setLook,look:()=>look,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
     setHidden,hidden:()=>[...hiddenNames],select,selected:()=>selectedNames.slice(),parts,fitTo,
-    pick,screenPoint,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
+    pick,screenPoint,screenBox,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,
       world:[...meshes].filter(([,m])=>m.userData.world).map(([n])=>n),style:STYLE,render_style:style,stage,showing:showing(),
       proxies:{shown:proxiesShown,drawn:proxiesDrawn,listed:proxyGeoms.length}, ghost:ghost.children.map(m=>m.name),

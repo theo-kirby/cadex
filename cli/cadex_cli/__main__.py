@@ -52,7 +52,9 @@ from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine, source_comparison
 from .export import ExportedOutput, ExportError, export_blueprints, export_outputs, parse_formats
 from .inventory import InventoryError, inventory_summary, read_inventory, write_inventory
-from .render import acquire_snapshot, describe_proxies, write_render
+from .render import acquire_snapshot, describe_proxies, retained_snapshot, write_render
+from .hero import ITEMS as HERO_ITEMS, hero_dir, make as make_hero
+from .review_record import PROJECT_SCRIPT_FILENAME
 from .section import write_section
 from .revision_meshes import (
     backfill as backfill_revision_meshes, retain as retain_revision_meshes, revision_models,
@@ -300,6 +302,35 @@ def build_parser() -> argparse.ArgumentParser:
     render_parser = subparsers.add_parser(
         "render", help="Write accepted front/top/right/iso views to review/render/.")
     _common(render_parser, inherit=True)
+    hero_parser = subparsers.add_parser(
+        "hero",
+        help="Write the project's presentation folder, hero/ (ADR-677): stills "
+        "of the accepted design in several looks, a dashboard screenshot, the "
+        "concept sheet, the best rollout as a video, and the hero videos "
+        "(landscape and square): a full turn that wipes from clay to aluminium "
+        "to wireframe to its own materials, then the rollout and the training "
+        "curves. Never runs on its own. Needs headless Chromium and FFmpeg; "
+        "opens the engine only to draw a concept sheet no render has drawn yet.",
+    )
+    _common(hero_parser, inherit=True)
+    hero_parser.add_argument(
+        "--only", default="", metavar="ITEMS",
+        help="Comma-separated subset of: " + ", ".join(HERO_ITEMS) + " (default: all).",
+    )
+    hero_parser.add_argument(
+        "--run", default="", metavar="NAME",
+        help="Show this run's rollout and training curves. Default: the "
+        "rollout any run's policy lasted longest in, the newest among equals.",
+    )
+    hero_parser.add_argument(
+        "--software", action="store_true",
+        help="Draw with Chromium's software WebGL instead of the GPU (slow).",
+    )
+    hero_parser.add_argument(
+        "--no-engine", dest="no_engine", action="store_true",
+        help="Never open the engine: the sheet is copied when a render drew "
+        "one of the accepted revision, else reported missing.",
+    )
     section_parser = subparsers.add_parser("section", help="Cut accepted geometry through a named world plane.")
     _common(section_parser, inherit=True)
     section_parser.add_argument("--plane", choices=("XY", "XZ", "YZ"), required=True)
@@ -1352,6 +1383,42 @@ def command_render(args: argparse.Namespace, report: RunReport) -> int:
         report.notes.append("measures: " + describe_proxies(value["proxies"]) + ".")
         report.ok = True
         return EXIT_OK
+
+
+def command_hero(args: argparse.Namespace, report: RunReport) -> int:
+    """Write ``hero/`` for the project (ADR-677); each item stands alone."""
+
+    root = Path(args.project).expanduser()
+    if not (root / PROJECT_SCRIPT_FILENAME).is_file():
+        raise ValueError(f"hero: not a project (no {PROJECT_SCRIPT_FILENAME}): {root}")
+    only = tuple(item.strip() for item in args.only.split(",") if item.strip()) or HERO_ITEMS
+    unknown = sorted(set(only) - set(HERO_ITEMS))
+    if unknown:
+        raise ValueError("hero: unknown --only item(s): " + ", ".join(unknown) + "; choose from " + ", ".join(HERO_ITEMS))
+    report.project_root = str(root.resolve())
+
+    def draw_sheet(project_root: Path) -> dict[str, Any]:
+        # As `cadex render` draws it, from the retained accepted attempt: no rebuild.
+        _progress(" · sheet: opening the engine for the design's fit and inventory")
+        with _engine_session(args, report) as (_engine, client):
+            try:
+                fit = read_fit(client)
+            except Exception:  # noqa: BLE001 - as cadex render: an unreadable fit leaves every part drawn
+                fit = None
+            path, value = write_render(client, project_root, accepted_snapshot=retained_snapshot(project_root, fit))
+        return {"drawn": True, "render": str(path.parent.relative_to(project_root)), "revision": value["revision"]}
+
+    manifest = make_hero(root, out=Path(args.out) if args.out else None, run=args.run or None, only=only,
+                         gpu=not args.software, sheet=None if args.no_engine else draw_sheet, progress=_progress)
+    report.revision = manifest.get("revision") or ""
+    folder = hero_dir(root.resolve(), Path(args.out) if args.out else None)
+    made = sorted(key for key in manifest["items"])
+    report.notes.append(f"hero: made {', '.join(made) if made else 'nothing'} in {folder} "
+                        f"({manifest['seconds']:.0f} s; {manifest.get('renderer') or 'no WebGL used'}).")
+    for key, text in manifest["errors"].items():
+        report.notes.append(f"hero: {key} not made: {text}")
+    report.ok = not manifest["errors"]
+    return EXIT_OK if report.ok else EXIT_REJECTED
 
 
 def command_section(args: argparse.Namespace, report: RunReport) -> int:
@@ -2981,6 +3048,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_section(args, report)
         elif command == "render":
             code = command_render(args, report)
+        elif command == "hero":
+            code = command_hero(args, report)
         elif command == "clearance":
             code = command_clearance(args, report)
         elif command == "inventory":
@@ -3208,7 +3277,7 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command in ("review", "app", "budgets", "style"):  # no run: no row, no commit (ADR-286)
+    if command in ("review", "app", "budgets", "style", "hero"):  # no run: no row, no commit (ADR-286, ADR-677)
         return
     if command == "revision" and args.action in ("list", "backfill"):  # a read; a store fill (ADR-548)
         return
@@ -3256,7 +3325,7 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command in ("review", "app", "budgets", "style"):
+    if command in ("review", "app", "budgets", "style", "hero"):
         return
     if command == "revision" and args.action in ("list", "backfill"):
         return

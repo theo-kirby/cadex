@@ -983,3 +983,35 @@ lasts as long as the page; nothing is written (§18). The grouping and the
 folded groups are this browser's (`cadex.outliner.group`,
 `cadex.outliner.folded`). `cli/tests/test_dashboard_outliner.py` proves it
 in headless Chromium.
+
+## 26. The hero folder (ADR-677)
+
+`cadex hero --project DIR` writes a project's presentation into `DIR/hero/`.
+It runs only when a person or their agent runs it; nothing schedules it. Every
+image and video in it except the sheet is drawn by this page's own scene
+(`review_scene.js`, §10) in headless Chromium, on `hero.html`: the 3D
+viewport's renderer on the clean mat (the floor without its baked text,
+`labels: false`) and none of the page's chrome. Python drives the page a frame
+at a time and FFmpeg encodes. Chromium draws on the GPU through ANGLE over Vulkan
+when it has one (`--software` forces SwiftShader, about thirty times slower).
+
+| File | What it is |
+|---|---|
+| `still-studio.png`, `still-dramatic.png`, `still-softbox.png`, `still-aluminium.png` | The accepted design at 2560×1440, drawn at twice that and filtered down. Each is a lighting setup or matcap (§10) from its own side, framed by the design's own outline (`screenBox`), centred and filling 80% of the frame. |
+| `dashboard.png` | This page at 1920×1080 CSS pixels, scale 2. The 3D viewport (the accepted design, fitted) is on the left half and Status, on its Training tab, is on the right, showing the charts. It is set through the layout key, as a person's own layout would be. |
+| `sheet.png` | The concept sheet `cadex render` draws (ADR-430), of the accepted revision. It is copied when a render already drew it. Otherwise the CLI opens the engine for the design's fit and inventory and draws it from the retained accepted attempt, without a rebuild. With `--no-engine` it is reported missing instead. |
+| `rollout.mp4` | The chosen rollout at 1920×1080 and 30 fps, with the clock. The camera is this page's follow rig (§10), framed so the design's standing height is 42% of the frame. The last pose is held for 0.8 s. |
+| `hero-landscape.mp4`, `hero-square.mp4` | 1920×1080 and 1080×1080, 30 fps, H.264. **The turn** is one revolution in 12 s at constant speed, at one distance that holds at every angle. It starts in Clay, then a diagonal edge with a lit rim wipes from the top left to Aluminium at 2.6 s, to the wireframe at 5.8 s and to the design's own materials (Studio) at 9.0 s, each wipe taking 1.3 s. **The rollout** follows: its first 6 s, without the clock. **The training curves** come last: reward per step (with the best marked) and loss, drawn left to right over 3 s and then held, side by side or stacked to fit the frame. A 0.6 s crossfade joins the parts. |
+| `hero.json` | What was made, from which revision, run and checkpoint, with each camera and the renderer. Each item that was not made is listed with its reason. |
+
+**Which rollout.** The candidates are each run's own rollout and every
+checkpoint rollout the engine made while the run trained (ADR-544). The one
+whose episode lasted longest is chosen, and the newest among equals, a run's
+own rollout after its checkpoints. `--run NAME` limits the choice to that
+run. The curves are that run's, or else the newest run's that has any.
+
+**Each item stands alone.** One that cannot be made, such as a project with no
+run (no rollout or curves), no Chromium or a busy engine, is named in
+`hero.json` and the rest are made. The folder's `.gitignore` keeps all of it
+out of the project's history, because it is drawn again on request.
+`--only stills,dashboard,sheet,rollout,video` makes a subset.

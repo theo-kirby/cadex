@@ -40003,3 +40003,69 @@ Screenshots of three wave-3 models in the ADR-601 look showed what was wrong:
   - `test_dashboard_viewport_look.py` covers each look, the matcap's one material,
     occlusion, detail and persistence.
   - The layout, design, status and HTTP-API tests follow the new default and keys.
+
+## ADR-677 — The hero folder: `cadex hero` writes a project's presentation on request (2026-10-12, owner)
+
+**Context.** The owner asked for a hero folder in each project. It should never be made
+automatically, but a person or their agent should be able to make it with one terminal
+command. It should hold:
+- a couple of hero images in different styles and lighting, with no UI;
+- a screenshot of the interface with the viewport on the left half and Status, showing the
+  training charts, on the right half;
+- the project sheet, which already exists;
+- a video of the most recent or best run doing what it was trained for;
+- a hero video in landscape and square: a full 360° turn round the model, with no UI at
+  first, where a diagonal sweeps across the screen to change the viewport style ("all clay
+  spinning around and then a diagonal comes down across the screen and shows the other half
+  in aluminium, ... then another diagonal ... with maybe the wireframe style"), then a short
+  clip of the animation or one animated plot of how training went.
+
+The wave-3 velociraptor was the test case.
+
+**Decision.** `cadex hero --project DIR` writes `DIR/hero/` (`cli/cadex_cli/hero.py`;
+`docs/DASHBOARD.md` §26).
+- **One renderer.** Every still and video is drawn by the dashboard's own scene
+  (`review_scene.js`) on a new chrome-free page, `hero.html` and `hero.js`, in headless
+  Chromium. The data comes from what the review server already serves, so the hero look is
+  the viewport's look (ADR-676) and no second renderer is built. `review_scene.create` takes
+  `labels` (the clean mat) and gains `screenBox()`, the design's outline on screen, which
+  frames each shot tighter than the bounding sphere.
+- **The GPU when there is one.** Headless Chromium drew a 775k-triangle frame at 1080p in
+  about 2.9 s on SwiftShader and about 0.1 s on the GPU through ANGLE. ANGLE over EGL dropped whole
+  parts from the odd frame of a turn (3 of 20 frames in a replay), while Vulkan and SwiftShader drew
+  every frame whole, so `cadex hero` asks for ANGLE over Vulkan. `--software` keeps SwiftShader. `HeadlessBrowser` takes the GPU flags
+  as an option, and the dashboard tests keep SwiftShader.
+- **The wipe** is a straight edge leaning 28° off vertical, sweeping from the top left. Each
+  side is a full render of the frame, composited in a 2D canvas with a clip path and a lit
+  rim. The turn goes Clay → Aluminium → wireframe → the design's own materials, so it ends in
+  the colours the rollout clip that follows is drawn in.
+- **The tail** is the rollout clip, then the reward and loss curves drawing themselves. The
+  owner named both options. Reward is how training went, and loss is the plot they named.
+- **Which rollout.** The candidates are each run's own rollout and every checkpoint rollout
+  (ADR-544). The longest episode wins, and the newest among equals. This makes "the most
+  recent / best" one rule: a policy that stays up longer is doing more of its task, and among
+  full-length episodes the most trained is newest.
+- **The sheet** is the concept sheet. It is copied when a render drew it for the accepted
+  revision. Otherwise it is drawn as `cadex render` draws it, from the retained accepted
+  attempt with no rebuild. Only that step opens the engine, because the sheet needs the fit
+  and inventory, and `--no-engine` skips it.
+- **Each item stands alone.** `hero.json` records what was made, from what, and why anything
+  was not. The folder ignores itself in the project's git.
+- Outputs are H.264 `.mp4` (limited-range BT.709 4:2:0, which players read alike), made to be shared, unlike the dashboard's VP9 `.webm`.
+
+**Consequences.**
+- The velociraptor's folder (775k triangles; everything but the sheet) took 135 s on sb1x's
+  RTX 5090. Drawing the sheet with the engine took 39 s on the wave-2 tower crane.
+- Opening the engine for the sheet re-runs the accepted script on open, as every engine
+  session does. The revision and digest are unchanged, but `script.json` records a new attempt.
+- `cadex hero` writes no PROGRESS row and makes no project commit. An early run did make one,
+  and it swept a live agent's uncommitted files into a commit named "cadex hero". That
+  commit was undone with a mixed reset that kept every file.
+- The page only reads, and the folder lives under the project, so the dashboard stays
+  read-only (ADR-537). The dashboard does not show the folder yet.
+- Tests: `test_hero.py` covers:
+  - the turn's order and timing;
+  - the rollout choice;
+  - items standing alone;
+  - the page's framing, wipe and plot on known geometry;
+  - the crossfaded encode's length.
