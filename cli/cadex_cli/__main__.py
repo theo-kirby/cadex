@@ -53,7 +53,7 @@ from .engine import Engine, EngineError, resolve_engine, source_comparison
 from .export import ExportedOutput, ExportError, export_blueprints, export_outputs, parse_formats
 from .inventory import InventoryError, inventory_summary, read_inventory, write_inventory
 from .render import acquire_snapshot, describe_proxies, retained_snapshot, write_render
-from .hero import ITEMS as HERO_ITEMS, hero_dir, make as make_hero
+from .hero import ITEMS as HERO_ITEMS, grid as hero_grid, hero_dir, make as make_hero
 from .review_record import PROJECT_SCRIPT_FILENAME
 from .section import write_section
 from .revision_meshes import (
@@ -331,6 +331,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Never open the engine: the sheet is copied when a render drew "
         "one of the accepted revision, else reported missing.",
     )
+    grid_parser = subparsers.add_parser(
+        "hero-grid",
+        help="Tile one still from several projects' hero folders into one image "
+        "(ADR-677): two to a row, in the order given, left to right and top to "
+        "bottom. Run `cadex hero --only stills` on each first. No engine.",
+    )
+    _common(grid_parser, inherit=True)
+    grid_parser.add_argument("projects", nargs="+", metavar="PROJECT", help="Project roots, in reading order.")
+    grid_parser.add_argument("--still", default="wireframe", metavar="NAME",
+                             help="Which still: studio, softbox, dramatic, aluminium or wireframe (default).")
+    grid_parser.add_argument("--columns", type=int, default=2, metavar="N", help="Tiles to a row (default 2).")
     section_parser = subparsers.add_parser("section", help="Cut accepted geometry through a named world plane.")
     _common(section_parser, inherit=True)
     section_parser.add_argument("--plane", choices=("XY", "XZ", "YZ"), required=True)
@@ -1412,13 +1423,27 @@ def command_hero(args: argparse.Namespace, report: RunReport) -> int:
                          gpu=not args.software, sheet=None if args.no_engine else draw_sheet, progress=_progress)
     report.revision = manifest.get("revision") or ""
     folder = hero_dir(root.resolve(), Path(args.out) if args.out else None)
-    made = sorted(key for key in manifest["items"])
+    made = sorted(key for key in manifest["items"] if key in only)
     report.notes.append(f"hero: made {', '.join(made) if made else 'nothing'} in {folder} "
                         f"({manifest['seconds']:.0f} s; {manifest.get('renderer') or 'no WebGL used'}).")
-    for key, text in manifest["errors"].items():
+    # What this run tried; entries a partial run carried over from the folder are not its errors.
+    errors = {key: text for key, text in manifest["errors"].items() if key in only or key not in HERO_ITEMS}
+    for key, text in errors.items():
         report.notes.append(f"hero: {key} not made: {text}")
-    report.ok = not manifest["errors"]
+    report.ok = not errors
     return EXIT_OK if report.ok else EXIT_REJECTED
+
+
+def command_hero_grid(args: argparse.Namespace, report: RunReport) -> int:
+    """Tile one hero still from several projects into ``--out`` (ADR-677)."""
+
+    if not args.out:
+        raise ValueError("hero-grid needs --out FILE.png")
+    made = hero_grid([Path(p) for p in args.projects], Path(args.out), still=args.still, columns=args.columns)
+    report.notes.append(f"hero-grid: {made['rows']}x{made['columns']} of still-{made['still']} "
+                        f"({', '.join(made['projects'])}) -> {made['file']}.")
+    report.ok = True
+    return EXIT_OK
 
 
 def command_section(args: argparse.Namespace, report: RunReport) -> int:
@@ -3050,6 +3075,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             code = command_render(args, report)
         elif command == "hero":
             code = command_hero(args, report)
+        elif command == "hero-grid":
+            code = command_hero_grid(args, report)
         elif command == "clearance":
             code = command_clearance(args, report)
         elif command == "inventory":
@@ -3277,7 +3304,7 @@ def _record_progress(command: str, args: argparse.Namespace, report: RunReport) 
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command in ("review", "app", "budgets", "style", "hero"):  # no run: no row, no commit (ADR-286, ADR-677)
+    if command in ("review", "app", "budgets", "style", "hero", "hero-grid"):  # no run: no row, no commit (ADR-286, ADR-677)
         return
     if command == "revision" and args.action in ("list", "backfill"):  # a read; a store fill (ADR-548)
         return
@@ -3325,7 +3352,7 @@ def _commit_run(command: str, args: argparse.Namespace, report: RunReport) -> No
 
     if command == "asset" and not getattr(args, "put_files", None):
         return
-    if command in ("review", "app", "budgets", "style", "hero"):
+    if command in ("review", "app", "budgets", "style", "hero", "hero-grid"):
         return
     if command == "revision" and args.action in ("list", "backfill"):
         return

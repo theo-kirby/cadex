@@ -153,7 +153,7 @@ def test_the_parts_are_crossfaded_into_one_video(tmp_path) -> None:
         directory = tmp_path / name
         directory.mkdir()
         subprocess.run([encoder, "-v", "error", "-f", "lavfi", "-i", f"color=c={colour}:s=64x64:d={seconds}:r={hero.FPS}",
-                        str(directory / "%05d.jpg")], check=True)
+                        str(directory / "%05d.png")], check=True)
         parts.append(directory)
     made = hero.encode(parts, tmp_path / "out.mp4")
     assert made["seconds"] == pytest.approx(1.0 + 2.0 - hero.FADE_S)
@@ -189,3 +189,39 @@ def test_a_partial_run_keeps_what_the_folder_says_of_the_other_items(tmp_path) -
     manifest = hero.make(root, only=("sheet",))
     assert manifest["items"]["video"] == {"landscape": {}} and manifest["errors"]["rollout"] == "no run"
     assert "sheet" in manifest["errors"]
+
+
+def test_the_grid_tiles_each_projects_still_in_reading_order(tmp_path) -> None:
+    try:
+        encoder = hero.ffmpeg()
+    except ValueError:
+        pytest.skip("no FFmpeg")
+    colours = ("red", "green", "blue")
+    projects = []
+    for name, colour in zip("abc", colours):
+        folder = tmp_path / name / "hero"
+        folder.mkdir(parents=True)
+        subprocess.run([encoder, "-v", "error", "-f", "lavfi", "-i", f"color=c={colour}:s=32x18:d=1",
+                        "-frames:v", "1", str(folder / "still-wireframe.png")], check=True)
+        projects.append(tmp_path / name)
+    made = hero.grid(projects, tmp_path / "out" / "grid.png")
+    assert (made["rows"], made["columns"], made["projects"]) == (2, 2, ["a", "b", "c"])
+    raw = subprocess.run([encoder, "-v", "error", "-i", str(tmp_path / "out" / "grid.png"), "-f", "rawvideo",
+                          "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
+    assert len(raw) == 64 * 36 * 3
+
+    def pixel(x, y):
+        k = 3 * (y * 64 + x)
+        return tuple(raw[k:k + 3])
+
+    # Left to right, then top to bottom; the missing fourth tile is the dark mat.
+    assert pixel(8, 8)[0] > 200 and pixel(40, 8)[1] > 100 and pixel(8, 26)[2] > 200
+    assert max(pixel(40, 26)) < 40
+    with pytest.raises(hero.HeroError, match="still-studio.png is missing"):
+        hero.grid(projects, tmp_path / "x.png", still="studio")
+
+
+def test_the_stills_include_a_wireframe_three_quarter_view() -> None:
+    wire = [s for s in hero.STILLS if s.get("style") == "wireframe"]
+    assert len(wire) == 1 and wire[0]["name"] == "wireframe"
+    assert hero.WIRE_TURN["seconds"] < hero.TURNTABLE["seconds"] and hero.WIRE_TURN["layers"] == ({"style": "wireframe"},)

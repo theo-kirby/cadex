@@ -58,6 +58,7 @@ STILLS = (
     {"name": "softbox", "look": "softbox", "yaw": -0.8, "pitch": 0.5},
     {"name": "dramatic", "look": "dramatic", "yaw": 2.35, "pitch": 0.24},
     {"name": "aluminium", "look": "aluminium", "yaw": -2.35, "pitch": 0.55},
+    {"name": "wireframe", "style": "wireframe", "yaw": 0.8, "pitch": 0.42},
 )
 STILL = {"size": (2560, 1440), "supersample": 2, "fill": 0.8}
 #: The two hero videos' frames.
@@ -66,10 +67,12 @@ FORMATS = {"landscape": (1920, 1080), "square": (1080, 1080)}
 #: camera cranes down from ``pitch[0]`` to ``pitch[1]`` and pushes in by ``push`` of its distance,
 #: both eased. Each layer after the first wipes over the one before at ``at`` seconds, taking ``wipe_s``.
 TURNTABLE = {
-    "seconds": 12.0, "yaw": 0.8, "pitch": (0.62, 0.36), "push": 0.12, "fill": 0.9, "wipe_s": 1.0,
+    "seconds": 12.0, "yaw": 0.8, "pitch": (0.62, 0.36), "push": 0.12, "fill": 0.9, "wipe_s": 0.55,
     "layers": ({"look": "clay"}, {"look": "aluminium", "at": 2.7},
                {"style": "wireframe", "at": 5.9}, {"look": "studio", "at": 9.1}),
 }
+#: The wireframe turn: the same move in half the time, in the wireframe alone.
+WIRE_TURN = {**TURNTABLE, "seconds": 6.0, "layers": ({"style": "wireframe"},)}
 #: The rollout as the hero videos show it (at most ``clip_s`` of it), and as rollout.mp4 does.
 #: ``fraction`` is the subject's standing height over the frame height (the follow rig's framing).
 ROLLOUT = {"fraction": 0.42, "yaw": 0.8, "pitch": 0.3, "hold_s": 0.8, "clip_s": 6.0}
@@ -111,10 +114,9 @@ def _snap(x: float) -> float:
     return 4 * x ** 3 if x < 0.5 else 1 - (-2 * x + 2) ** 3 / 2
 
 
-def turntable_camera(t: float, fitted: dict[str, Any]) -> dict[str, Any]:
+def turntable_camera(t: float, fitted: dict[str, Any], spec: dict[str, Any] = TURNTABLE) -> dict[str, Any]:
     """The turn's camera at ``t`` seconds: round once, craning down and pushing in, eased."""
 
-    spec = TURNTABLE
     u = max(0.0, min(1.0, t / spec["seconds"]))
     eased = _smooth(u)
     pitch = spec["pitch"][0] + (spec["pitch"][1] - spec["pitch"][0]) * eased
@@ -122,10 +124,9 @@ def turntable_camera(t: float, fitted: dict[str, Any]) -> dict[str, Any]:
             "distance": fitted["distance"] * (1 - spec["push"] * eased)}
 
 
-def turntable_layers(t: float) -> list[dict[str, Any]]:
+def turntable_layers(t: float, spec: dict[str, Any] = TURNTABLE) -> list[dict[str, Any]]:
     """The layers at ``t`` seconds into the turn, each later one with its wipe's progress."""
 
-    spec = TURNTABLE
     layers = []
     for layer in spec["layers"]:
         entry = {k: v for k, v in layer.items() if k != "at"}
@@ -271,7 +272,7 @@ class Stage:
     def size(self, width: int, height: int, supersample: int = 1) -> None:
         self.call(f"cadexHero.size({width},{height},{supersample})")
 
-    def grab(self, path: Path, kind: str = "jpeg") -> None:
+    def grab(self, path: Path, kind: str = "png") -> None:
         data = self.call(f"cadexHero.image({json.dumps(kind)}, .95)", timeout=120)
         path.write_bytes(base64.b64decode(data))
 
@@ -290,31 +291,33 @@ def make_stills(stage: Stage, out: Path) -> list[dict[str, Any]]:
     for spec in STILLS:
         camera = stage.call("cadexHero.fitCamera(" + json.dumps(
             {"yaw": spec["yaw"], "pitch": spec["pitch"], "fill": STILL["fill"]}) + ")")
-        stage.call("cadexHero.shot(" + json.dumps({"camera": camera, "layers": [{"look": spec["look"]}]}) + ")")
+        layer = {"style": "wireframe"} if spec.get("style") == "wireframe" else {"look": spec["look"]}
+        stage.call("cadexHero.shot(" + json.dumps({"camera": camera, "layers": [layer]}) + ")")
         path = out / f"still-{spec['name']}.png"
         stage.grab(path, "png")
-        made.append({"file": path.name, "look": spec["look"], "size": [width, height],
+        made.append({"file": path.name, **layer, "size": [width, height],
                      "supersample": STILL["supersample"], "camera": camera, "revision": facts.get("revision")})
     return made
 
 
-def turntable_frames(stage: Stage, directory: Path, width: int, height: int) -> dict[str, Any]:
+def turntable_frames(stage: Stage, directory: Path, width: int, height: int,
+                     spec: dict[str, Any] = TURNTABLE) -> dict[str, Any]:
     facts = stage.load("api/model/accepted")
     stage.size(width, height, 1)
-    spec, count = TURNTABLE, round(TURNTABLE["seconds"] * FPS)
+    count = round(spec["seconds"] * FPS)
     # One base distance that frames every view of the move, each at its own pitch and push.
     probe = {"yaw": spec["yaw"], "pitch": spec["pitch"][0], "distance": 1.0, "target": [0, 0, 0]}
     views = []
     for j in range(49):
-        view = turntable_camera(spec["seconds"] * j / 48, probe)
+        view = turntable_camera(spec["seconds"] * j / 48, probe, spec)
         views.append({"yaw": view["yaw"], "pitch": view["pitch"], "scale": view["distance"]})
     camera = stage.call("cadexHero.fitCamera(" + json.dumps(
         {"yaw": spec["yaw"], "pitch": spec["pitch"][0], "fill": spec["fill"], "views": views}) + ")")
     for i in range(count):
         t = i / FPS
-        stage.call("cadexHero.shot(" + json.dumps({"camera": turntable_camera(t, camera),
-                                                    "layers": turntable_layers(t)}) + ")")
-        stage.grab(directory / f"{i:05d}.jpg")
+        stage.call("cadexHero.shot(" + json.dumps({"camera": turntable_camera(t, camera, spec),
+                                                    "layers": turntable_layers(t, spec)}) + ")")
+        stage.grab(directory / f"{i:05d}.png")
     return {"frames": count, "seconds": count / FPS, "camera": camera, "revision": facts.get("revision"),
             "layers": [dict(layer) for layer in spec["layers"]], "wipe_s": spec["wipe_s"]}
 
@@ -332,7 +335,7 @@ def rollout_frames(stage: Stage, choice: dict[str, Any], directory: Path, width:
     count = rig["frames"] if limit_s is None else min(rig["frames"], round(limit_s * FPS))
     for i in range(count):
         stage.call(f"cadexHero.rolloutFrame({i}, " + json.dumps({"clock": clock}) + ")")
-        stage.grab(directory / f"{i:05d}.jpg")
+        stage.grab(directory / f"{i:05d}.png")
     return {"frames": count, "seconds": count / FPS, "sim_seconds": rig["sim_seconds"], "model": facts,
             "rig": rig["rig"], "source": rig.get("source")}
 
@@ -346,19 +349,19 @@ def plot_frames(stage: Stage, curves: dict[str, Any], directory: Path, width: in
         stage.call("cadexHero.plot(" + json.dumps({"title": title, "subtitle": curves["subtitle"],
                                                     "panels": curves["panels"], "progress": progress,
                                                     "layout": layout}) + ")")
-        stage.grab(directory / f"{i:05d}.jpg")
+        stage.grab(directory / f"{i:05d}.png")
     return {"frames": draw + hold, "seconds": (draw + hold) / FPS, "run": curves["run"],
             "panels": [p["label"] for p in curves["panels"]]}
 
 
 def encode(segments: list[Path], target: Path, *, fade_s: float = FADE_S) -> dict[str, Any]:
-    """The JPEG frame sequences in ``segments``, crossfaded in order, as H.264 at ``target``."""
+    """The PNG frame sequences in ``segments``, crossfaded in order, as H.264 at ``target``."""
 
     encoder = ffmpeg()
-    lengths = [len(list(d.glob("*.jpg"))) / FPS for d in segments]
+    lengths = [len(list(d.glob("*.png"))) / FPS for d in segments]
     argv = [encoder, "-v", "error", "-nostdin", "-y"]
     for directory in segments:
-        argv += ["-framerate", str(FPS), "-i", str(directory / "%05d.jpg")]
+        argv += ["-framerate", str(FPS), "-i", str(directory / "%05d.png")]
     if len(segments) == 1:
         graph, label = "[0:v]" + TO_VIDEO + "[v]", "[v]"
     else:
@@ -371,8 +374,10 @@ def encode(segments: list[Path], target: Path, *, fade_s: float = FADE_S) -> dic
         parts.append(f"{previous}{TO_VIDEO}[v]")
         graph, label = ";".join(parts), "[v]"
     partial = target.with_name(target.stem + ".partial.mp4")
+    # The frames carry a fine dither (hero.js) so the dark sky and the fog fade do not band in
+    # 8 bits; `tune grain` and adaptive quantisation keep x264 from smoothing it away.
     argv += ["-filter_complex", graph, "-map", label, "-an", "-c:v", "libx264", "-preset", "slow",
-             "-crf", "16", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
+             "-tune", "grain", "-x264-params", "aq-mode=3", "-crf", "15", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
              "-color_range", "tv", "-r", str(FPS), "-movflags", "+faststart", str(partial)]
     result = subprocess.run(argv, capture_output=True, timeout=1800)
     if result.returncode != 0:
@@ -381,7 +386,7 @@ def encode(segments: list[Path], target: Path, *, fade_s: float = FADE_S) -> dic
     partial.replace(target)
     seconds = sum(lengths) - fade_s * (len(segments) - 1)
     return {"file": target.name, "bytes": target.stat().st_size, "seconds": round(seconds, 3), "fps": FPS,
-            "codec": "H.264 (libx264, crf 16), yuv420p, BT.709 limited range"}
+            "codec": "H.264 (libx264, crf 15, tune grain, aq-mode 3), yuv420p, BT.709 limited range"}
 
 
 def make_dashboard(stage: Stage, out: Path) -> dict[str, Any]:
@@ -526,6 +531,11 @@ def make(root: Path | str, *, out: Path | None = None, run: str | None = None,
                                 segments[name] = [_frames(work, f"{name}-turn")]
                                 videos[name] = {"size": [width, height], "parts": {
                                     "turntable": turntable_frames(stage, segments[name][0], width, height)}}
+                                progress(f" · video: the wireframe turn, {name}")
+                                wire = _frames(work, f"{name}-wire")
+                                turn = turntable_frames(stage, wire, width, height, WIRE_TURN)
+                                videos[f"wireframe-{name}"] = {"size": [width, height], "parts": {"turntable": turn},
+                                                               **encode([wire], target / f"hero-wireframe-{name}.mp4")}
                         except Exception as exc:  # noqa: BLE001
                             manifest["errors"]["video"] = f"{type(exc).__name__}: {exc}"
                             videos = {}
@@ -584,3 +594,45 @@ def _style_digest() -> str:
         h.update(name.encode())
         h.update((STATIC_DIR / name).read_bytes())
     return h.hexdigest()
+
+
+def grid(projects: list[Path], out: Path, *, still: str = "wireframe", columns: int = 2) -> dict[str, Any]:
+    """Tile each project's ``hero/still-<still>.png`` into one image, ``columns`` to a row, in reading
+    order (left to right, top to bottom). The stills are all one size, so the tiles line up."""
+
+    if not projects:
+        raise HeroError("hero-grid needs at least one project")
+    images = []
+    for root in projects:
+        path = hero_dir(Path(root).expanduser()) / f"still-{still}.png"
+        if not path.is_file():
+            raise HeroError(f"{path} is missing: run cadex hero --project {root} --only stills")
+        images.append(path)
+    out = Path(out).expanduser()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    encoder = ffmpeg()
+    argv = [encoder, "-v", "error", "-nostdin", "-y"]
+    for path in images:
+        argv += ["-i", str(path)]
+    columns = max(1, min(columns, len(images)))
+    rows = math.ceil(len(images) / columns)
+    # A missing last tile is filled with the dark mat, so the grid stays a rectangle.
+    pad = rows * columns - len(images)
+    if pad:
+        argv += ["-f", "lavfi", "-i", "color=c=0x141414:s=16x16:d=1"]
+    parts, inputs = [], []
+    for k in range(rows * columns):
+        if k < len(images):
+            inputs.append(f"[{k}:v]")
+        else:
+            parts.append(f"[{len(images)}:v][0:v]scale2ref[blank{k}][ref{k}];[ref{k}]nullsink")
+            inputs.append(f"[blank{k}]")
+    layout = "|".join(("+".join(["w0"] * (k % columns)) or "0") + "_" + ("+".join(["h0"] * (k // columns)) or "0")
+                      for k in range(rows * columns))
+    graph = ";".join(parts + ["".join(inputs) + f"xstack=inputs={rows * columns}:layout={layout}[v]"])
+    argv += ["-filter_complex", graph, "-map", "[v]", "-frames:v", "1", str(out)]
+    result = subprocess.run(argv, capture_output=True, timeout=300)
+    if result.returncode != 0:
+        raise HeroError("FFmpeg failed: " + result.stderr.decode("utf-8", "replace")[-400:])
+    return {"file": str(out), "still": still, "columns": columns, "rows": rows,
+            "projects": [Path(p).expanduser().name for p in projects]}

@@ -19,7 +19,7 @@
 import {create} from './review_scene.js';
 
 const stage = document.getElementById('stage');
-const viewer = create(stage, {labels: false});
+const viewer = create(stage, {labels: true});
 //: The lens: longer than the viewport's 55 degrees, so a product shot keeps the design's proportions.
 const LENS = 30;
 viewer.setFov(LENS);
@@ -305,7 +305,21 @@ function plot({title = '', subtitle = '', panels = [], progress = 1, layout = 'r
   return true;
 }
 
+// A fine dither, a level and a half either way per channel, so the dark sky and the fog's fade do
+// not band once the frame is 8 bits a channel (and 4:2:0 in a video).
+const DITHER = 1.5;
+function dither() {
+  const frame = ctx.getImageData(0, 0, W, H), d = frame.data;
+  let seed = 0x9e3779b9;
+  for (let i = 0; i < d.length; i += 4) {
+    seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5;
+    const n = ((seed >>> 0) / 4294967296 - .5) * 2 * DITHER;
+    d[i] += n; d[i + 1] += n; d[i + 2] += n;
+  }
+  ctx.putImageData(frame, 0, 0);
+}
 function image(type = 'png', quality = .92) {
+  dither();
   return out.toDataURL(type === 'jpeg' ? 'image/jpeg' : 'image/png', quality).split(',')[1];
 }
 

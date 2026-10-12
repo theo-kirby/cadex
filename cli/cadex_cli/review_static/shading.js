@@ -191,17 +191,37 @@ const FULLSCREEN = 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(posi
 
 export function createOcclusion(renderer) {
   let target = null, aoA = null, aoB = null, w = 0, h = 0;
-  const normals = new THREE.MeshNormalMaterial({side: THREE.DoubleSide});
+  // The pre-pass writes each pixel's view-space normal and its linear distance from the camera
+  // (alpha), so positions are rebuilt from a distance, not from the depth buffer: with the near plane
+  // at a fraction of the camera's distance, depth read back near 1.0 stepped by metres across the
+  // far floor, and each step, read as a crease, striped the mat with false occlusion.
+  const normals = new THREE.ShaderMaterial({
+    side: THREE.DoubleSide, clipping: true,
+    vertexShader: `#include <common>
+      #include <clipping_planes_pars_vertex>
+      varying vec3 vN; varying float vZ;
+      void main(){ vec4 mvPosition = modelViewMatrix * vec4(position, 1.); vN = normalize(normalMatrix * normal); vZ = -mvPosition.z;
+        gl_Position = projectionMatrix * mvPosition;
+        #include <clipping_planes_vertex>
+      }`,
+    fragmentShader: `#include <common>
+      #include <clipping_planes_pars_fragment>
+      varying vec3 vN; varying float vZ;
+      void main(){
+        #include <clipping_planes_fragment>
+        vec3 n = normalize(vN) * (gl_FrontFacing ? 1. : -1.);
+        gl_FragColor = vec4(n * .5 + .5, vZ);
+      }`});
   const occlude = new THREE.ShaderMaterial({
-    uniforms: {tNormal: {value: null}, tDepth: {value: null}, proj: {value: new THREE.Matrix4()}, invProj: {value: new THREE.Matrix4()},
+    uniforms: {tNormal: {value: null}, proj: {value: new THREE.Matrix4()}, invProj: {value: new THREE.Matrix4()},
                radius: {value: .05}, strength: {value: OCCLUSION.strength}, size: {value: new THREE.Vector2()}, far: {value: 10}},
     vertexShader: FULLSCREEN,
-    fragmentShader: `uniform sampler2D tNormal, tDepth; uniform mat4 proj, invProj; uniform float radius, strength, far; uniform vec2 size;
+    fragmentShader: `uniform sampler2D tNormal; uniform mat4 proj, invProj; uniform float radius, strength, far; uniform vec2 size;
       varying vec2 vUv;
-      vec3 viewAt(vec2 uv){ float d=texture2D(tDepth,uv).x; vec4 p=invProj*vec4(uv*2.-1., d*2.-1., 1.); return p.xyz/p.w; }
+      // The view-space point under uv: along its ray, at the distance the pre-pass wrote.
+      vec3 viewAt(vec2 uv){ float z=texture2D(tNormal,uv).a; vec4 r=invProj*vec4(uv*2.-1., 1., 1.); r.xyz/=r.w; return r.xyz*(z/max(1e-9,-r.z)); }
       void main(){
-        float d=texture2D(tDepth,vUv).x;
-        if (d>=1.) { gl_FragColor=vec4(1.); return; }
+        if (texture2D(tNormal,vUv).a<=0.) { gl_FragColor=vec4(1.); return; }
         vec3 P=viewAt(vUv), N=normalize(texture2D(tNormal,vUv).xyz*2.-1.);
         // The radius on screen, in uv, at this depth.
         float r=radius*proj[1][1]/max(1e-6,-P.z)*.5;
@@ -222,10 +242,10 @@ export function createOcclusion(renderer) {
     depthTest: false, depthWrite: false, toneMapped: false});
   // A depth-aware blur, one axis a pass, so occlusion never bleeds across a silhouette.
   const blur = new THREE.ShaderMaterial({
-    uniforms: {tAO: {value: null}, tDepth: {value: null}, step: {value: new THREE.Vector2()}, invProj: {value: new THREE.Matrix4()}},
+    uniforms: {tAO: {value: null}, tNormal: {value: null}, step: {value: new THREE.Vector2()}},
     vertexShader: FULLSCREEN,
-    fragmentShader: `uniform sampler2D tAO, tDepth; uniform vec2 step; uniform mat4 invProj; varying vec2 vUv;
-      float viewZ(vec2 uv){ float d=texture2D(tDepth,uv).x; vec4 p=invProj*vec4(uv*2.-1., d*2.-1., 1.); return p.z/p.w; }
+    fragmentShader: `uniform sampler2D tAO, tNormal; uniform vec2 step; varying vec2 vUv;
+      float viewZ(vec2 uv){ return -texture2D(tNormal,uv).a; }
       void main(){
         float z0=viewZ(vUv), sum=0., wsum=0.;
         for (int i=-3;i<=3;i++) {
@@ -248,9 +268,11 @@ export function createOcclusion(renderer) {
   const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), occlude); passScene.add(quad);
   function size(width, height) {
     if (target && width === w && height === h) return;
-    if (target) {target.depthTexture.dispose(); target.dispose(); aoA.dispose(); aoB.dispose();}
+    if (target) {target.dispose(); aoA.dispose(); aoB.dispose();}
     w = width; h = height;
-    target = new THREE.WebGLRenderTarget(w, h, {depthTexture: new THREE.DepthTexture(w, h), minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter});
+    // Float, for the distance in alpha; half float where full float cannot be rendered to.
+    const type = renderer.extensions.has('EXT_color_buffer_float') ? THREE.FloatType : THREE.HalfFloatType;
+    target = new THREE.WebGLRenderTarget(w, h, {type, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter});
     const opts = {minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false};
     aoA = new THREE.WebGLRenderTarget(w, h, opts); aoB = new THREE.WebGLRenderTarget(w, h, opts);
   }
@@ -266,10 +288,10 @@ export function createOcclusion(renderer) {
     renderer.setRenderTarget(target); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, camera);
     scene.background = background; scene.fog = fog; scene.overrideMaterial = null; hide(false);
     const u = occlude.uniforms;
-    u.tNormal.value = target.texture; u.tDepth.value = target.depthTexture; u.radius.value = radius; u.far.value = OCCLUSION.fade * distance;
+    u.tNormal.value = target.texture; u.radius.value = radius; u.far.value = OCCLUSION.fade * distance;
     u.proj.value.copy(camera.projectionMatrix); u.invProj.value.copy(camera.projectionMatrixInverse); u.size.value.set(w, h);
     quad.material = occlude; renderer.setRenderTarget(aoA); renderer.render(passScene, passCamera);
-    const b = blur.uniforms; b.tDepth.value = target.depthTexture; b.invProj.value.copy(camera.projectionMatrixInverse);
+    const b = blur.uniforms; b.tNormal.value = target.texture;
     b.tAO.value = aoA.texture; b.step.value.set(1 / w, 0); quad.material = blur; renderer.setRenderTarget(aoB); renderer.render(passScene, passCamera);
     b.tAO.value = aoB.texture; b.step.value.set(0, 1 / h); renderer.setRenderTarget(aoA); renderer.render(passScene, passCamera);
     renderer.setRenderTarget(null); renderer.setClearColor(clear, alpha);

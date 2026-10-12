@@ -40091,3 +40091,25 @@ that the camera angle should be better. The wave-1 CNC was the next test case.
   pass no longer reproduces the accepted digest. `cadex render` fails the same way. A sheet drawn
   without the engine is in index colours with no numbers, so `hero` reports the failure instead of
   presenting that.
+
+**Revised again 2026-10-12.** The owner asked for the mat's words back, noticed banding in the
+videos, and asked for faster diagonal switches. They also wanted a faster turn in the wireframe
+alone, and a wireframe three-quarter still of each design tiled four to a grid: CNC top left, heron
+top right, velociraptor bottom left, walking excavator bottom right. The grid is to be kept
+gitignored.
+- The mat keeps its baked "PROTOTYPE" and "1 METER" text (`labels: true`), as in the viewport.
+- **Banding.** Every frame gets a fixed ±1.5-level dither, the frames go to FFmpeg as PNG rather
+  than JPEG, and x264 runs with `tune grain`, `aq-mode=3` and crf 15.
+- The wipes take 0.55 s.
+- `hero-wireframe-{landscape,square}.mp4` is the same move in 6 s, in the wireframe alone.
+- `still-wireframe.png` is the fifth still.
+- `cadex hero-grid` tiles one still from several projects with FFmpeg's `xstack`. `showcase/` in
+  the checkout is ignored.
+- **The floor stripes**, found while checking the banding, were in the dashboard too. ADR-676's
+  occlusion rebuilt each position from the depth buffer. With the near plane at 0.2% of the camera's
+  distance, depth read back near 1.0 stepped by metres across the far floor, even as 32-bit float,
+  and the occlusion read each step as a crease: horizontal light and dark stripes across the mat,
+  on in occlusion and gone without it. The pre-pass now writes the view normal and the linear
+  distance into a float target (half float where full float cannot be rendered to), and positions
+  are rebuilt along each pixel's ray. The creases still darken, and the stripes are gone at a 7×
+  boost of the dark levels.

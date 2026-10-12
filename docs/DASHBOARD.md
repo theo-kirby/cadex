@@ -474,12 +474,16 @@ picks how the solids take light, after Blender's viewport shading
 
 **Ambient occlusion (ADR-676).** Where two surfaces meet, or a part stands on
 the mat, less of the room reaches it: after the frame is drawn, the solids'
-view normals and depth are drawn again at CSS resolution, sixteen samples
+view normals and their linear distance from the camera are drawn again, into a
+float target at CSS resolution, and each sample's position is rebuilt along its
+ray at that distance. (Rebuilt from the depth buffer instead, with the near plane
+at a fraction of the camera's distance, the far floor stepped by metres and
+striped the mat.) Sixteen samples
 round each pixel within a radius of 0.12 of the design's size (never more
 than 0.08 of the camera's distance, so a close-up does not darken half the
 frame) measure how much of its hemisphere is closed, a depth-aware blur
 smooths it, and the frame is multiplied by it. Past three times the camera's
-distance it fades out, where the depth buffer is too coarse to trust. View →
+distance it fades out. View →
 **Ambient occlusion** turns it off (`setOcclusion`).
 
 **Surface detail (ADR-676).** A CAD skin is perfectly smooth and one flat
@@ -990,19 +994,30 @@ in headless Chromium.
 It runs only when a person or their agent runs it; nothing schedules it. Every
 image and video in it except the sheet is drawn by this page's own scene
 (`review_scene.js`, §10) in headless Chromium, on `hero.html`: the 3D
-viewport's renderer on the clean mat (the floor without its baked text,
-`labels: false`) and none of the page's chrome. Python drives the page a frame
+viewport's renderer on the prototype mat, with its baked "PROTOTYPE" and "1 METER" text, and
+none of the page's chrome. Python drives the page a frame
 at a time and FFmpeg encodes. Chromium draws on the GPU through ANGLE over Vulkan, with its 2D canvas in software,
 when it has one (`--software` forces SwiftShader, about thirty times slower).
 
 | File | What it is |
 |---|---|
-| `still-studio.png`, `still-dramatic.png`, `still-softbox.png`, `still-aluminium.png` | The accepted design at 2560×1440, drawn at twice that and filtered down. Each is a lighting setup or matcap (§10) from its own three-quarter view, through a 30° lens rather than the viewport's 55° so the design keeps its proportions. Each is framed by the design's own outline (`screenBox`), centred and filling 80% of the frame. |
+| `still-studio.png`, `still-softbox.png`, `still-dramatic.png`, `still-aluminium.png`, `still-wireframe.png` | The accepted design at 2560×1440, drawn at twice that and filtered down. Each is a lighting setup or matcap (§10) from its own three-quarter view, through a 30° lens rather than the viewport's 55° so the design keeps its proportions. Each is framed by the design's own outline (`screenBox`), centred and filling 80% of the frame. |
 | `dashboard.png` | This page at 1920×1080 CSS pixels, scale 2. The 3D viewport (the accepted design, fitted) is on the left half and Status, on its Training tab, is on the right, showing the charts. It is set through the layout key, as a person's own layout would be. |
 | `sheet.png` | The concept sheet `cadex render` draws (ADR-430), of the accepted revision. It is copied when a render already drew it. Otherwise the CLI opens the engine for the design's fit and inventory and draws it from the retained accepted attempt, without a rebuild. With `--no-engine` it is reported missing instead. |
 | `rollout.mp4` | The chosen rollout at 1920×1080 and 30 fps, with the clock. The camera is this page's follow rig (§10), framed so the design's standing height is 42% of the frame. The last pose is held for 0.8 s. |
-| `hero-landscape.mp4`, `hero-square.mp4` | 1920×1080 and 1080×1080, 30 fps, H.264. **The turn** is one revolution in 12 s at constant speed through the 30° lens. Meanwhile the camera cranes down from 36° to 21° above the floor and pushes in by 12%, both eased. It is framed so that every view of that move fills 90% of the frame, centred. It starts in Clay. At 2.7 s a diagonal edge sweeps from the top left to Aluminium, at 5.9 s to the wireframe, and at 9.1 s to the design's own materials (Studio). Each wipe takes 1.0 s, eased in and out (cubic), and the edge turns from 38° to 16° off vertical as it crosses. The edge is drawn additively: a white core, a cyan fringe behind it and an amber one ahead, a narrow band of light, a glint running along it, and a flash over what it has just uncovered. **The rollout** follows: its first 6 s, without the clock. **The training curves** come last: reward per step (with the best marked) and loss, drawn left to right over 3 s and then held, side by side or stacked to fit the frame. A 0.6 s crossfade joins the parts. |
+| `hero-landscape.mp4`, `hero-square.mp4` | 1920×1080 and 1080×1080, 30 fps, H.264. **The turn** is one revolution in 12 s at constant speed through the 30° lens. Meanwhile the camera cranes down from 36° to 21° above the floor and pushes in by 12%, both eased. It is framed so that every view of that move fills 90% of the frame, centred. It starts in Clay. At 2.7 s a diagonal edge sweeps from the top left to Aluminium, at 5.9 s to the wireframe, and at 9.1 s to the design's own materials (Studio). Each wipe takes 0.55 s, eased in and out (cubic), and the edge turns from 38° to 16° off vertical as it crosses. The edge is drawn additively: a white core, a cyan fringe behind it and an amber one ahead, a narrow band of light, a glint running along it, and a flash over what it has just uncovered. **The rollout** follows: its first 6 s, without the clock. **The training curves** come last: reward per step (with the best marked) and loss, drawn left to right over 3 s and then held, side by side or stacked to fit the frame. A 0.6 s crossfade joins the parts. |
+| `hero-wireframe-landscape.mp4`, `hero-wireframe-square.mp4` | The same move in the wireframe alone, in 6 s. |
 | `hero.json` | What was made, from which revision, run and checkpoint, with each camera and the renderer. Each item that was not made is listed with its reason. |
+
+**Banding.** Every frame carries a fixed dither, a level and a half either way, so the dark sky
+and the fog's fade do not step once they are 8 bits a channel. The frames go to FFmpeg as PNG, and
+x264 encodes with `tune grain` and `aq-mode=3` at crf 15, so the dither is not smoothed back into
+bands.
+
+**A grid of projects.** `cadex hero-grid A B C D --out FILE.png [--still NAME] [--columns N]`
+tiles one still from each project's hero folder, two to a row by default, in the order given (left
+to right, top to bottom), and fills a missing last tile with the mat. The Cadex checkout ignores
+`showcase/`, where such grids are kept.
 
 **Which rollout.** The candidates are each run's own rollout and every
 checkpoint rollout the engine made while the run trained (ADR-544). The one
