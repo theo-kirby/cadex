@@ -329,8 +329,11 @@ def test_a_cover_and_a_housing_build_valid_solids_on_the_kernel(tmp_path):
     report = tmp_path / "report.txt"
     driver.write_text(f'''
 import resource
-# Capped like a cadexd worker (RLIMIT_AS): a kernel run that goes wrong
-# fails this test, never the machine (ADR-635).
+from cadex_domain_worker import _pin_worker_cpus
+# Pinned and capped like a cadexd worker (RLIMIT_AS): a kernel run that goes
+# wrong fails this test, never the machine (ADR-635). Unpinned on a many-core
+# host, the kernel's per-thread arenas reserve past the cap before any work.
+_pin_worker_cpus()
 resource.setrlimit(resource.RLIMIT_AS, ({DRIVER_MEMORY_BYTES}, {DRIVER_MEMORY_BYTES}))
 from CadexScriptedDomains import XSCRIPT_WORKBENCH_PACKS
 from cadex_domain_api import create_domain_api

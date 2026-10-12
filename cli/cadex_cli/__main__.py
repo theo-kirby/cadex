@@ -46,6 +46,7 @@ from typing import Any, Iterator, Mapping, Sequence
 
 from contextlib import ExitStack
 
+from . import __version__
 from .bridge import MODELLING_OPS, Bridge, ToolCall
 from .client import CadexdClient, CadexdError, open_project
 from .engine import Engine, EngineError, resolve_engine, source_comparison
@@ -211,6 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
         "by your own agent (cadex mcp) or by parameters alone. A bare `cadex` "
         "serves the dashboard.",
     )
+    parser.add_argument("--version", action="version", version=f"cadex {__version__}")
     _common(parser)
     subparsers = parser.add_subparsers(dest="command")
 
@@ -704,8 +706,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--host",
         default="127.0.0.1",
         help="Address to bind. Default 127.0.0.1 (this machine only); give "
-        "the machine's Tailscale or LAN address to reach it from another "
-        "device, or 0.0.0.0 for every interface.",
+        "the machine's Tailscale address to reach it from another device, "
+        "or better, put `tailscale serve` in front of 127.0.0.1. There is no "
+        "authentication: never bind a public or shared-LAN address.",
     )
     review_parser.add_argument(
         "--port",
@@ -2183,10 +2186,16 @@ class McpSession:
 
     def call(self, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
         """Run one tool, and write it to the project's activity log (ADR-549):
-        in flight as it starts, finished as it returns (ADR-553)."""
+        in flight as it starts, finished as it returns (ADR-553). A name the
+        surface does not publish is refused before the engine is opened."""
 
         started = time.monotonic()
         call = begin_activity(self.args.project, tool, arguments)
+        if tool not in {definition["name"] for definition in self.tools()}:
+            reply = {"content": [{"type": "text", "text": f"No such tool: {tool!r}."}], "is_error": True}
+            append_activity(self.args.project, tool, arguments, ok=False, detail=reply_error(reply),
+                            ms=(time.monotonic() - started) * 1000, call=call)
+            return reply
         before = len(self._bridge.state.calls) if self._bridge is not None else 0
         try:
             reply = self._open().call(tool, arguments)

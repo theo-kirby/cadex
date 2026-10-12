@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Cadex Authors
+# SPDX-License-Identifier: LGPL-2.1-or-later
+
 """The record slugs in the project's governor graph, for tests that check a report's citations.
 
 The graph lives in the main checkout's Flywheel repository (`.flywheel/`) and is

@@ -1,6 +1,6 @@
 # Packaging — The Engine Payload
 
-Verified against source: 2026-10-10
+Verified against source: 2026-10-12
 
 **One repository builds one engine payload** (ADR-030, ADR-498). The
 *engine payload* is a relocatable directory the CLI finds by manifest
@@ -50,7 +50,7 @@ The manifest is the contract (schema in ADR-020; consumed by the CLI, `cli/cadex
 ```json
 {
   "schema": "cadex-engine-v1",
-  "version": "0.0.0",
+  "version": "0.2.0",
   "protocol": "cadex-cadexd-v1",
   "freecadcmd": "bin/freecadcmd",
   "module_dir": "Mod/cadex"
@@ -80,14 +80,35 @@ run the gate.
 Full relocation requires a rattler-built conda package, where the engine's
 own files are package-managed — see "Staged, or relocated" below.
 
-**The product version** (ADR-166): `VERSION` at the repo root is the single
-source of truth, bumped deliberately with `package/app/bump_version.sh`.
-The engine payload is meant to be named from `CMakeLists.txt`'s
-`PACKAGE_VERSION` (from `version.json`, 0.0.1) instead, but the script's
-`sed` looks for a literal `PACKAGE_VERSION "x"` line that `CMakeLists.txt`
-(`set(PACKAGE_VERSION "${...}")`) does not have, so every payload is named
-and stamped `0.0.0` today; the shell bundle that used to stamp `VERSION` into its window title
-is gone (ADR-495), so committing a changed `VERSION` is the release act.
+**The product version** (ADR-166, ADR-673): `VERSION` at the repo root is
+the one source. The payload is named and stamped from it
+(`cadex-engine-<VERSION>-<os>-<arch>`), the CLI's `__version__`, `cadex
+--version` and the MCP server's `serverInfo` read it, and
+`package/bump_version.sh [patch|minor|major]` writes it into `version.json`
+(CMake's `PACKAGE_VERSION`, so `App.Version()`) and, through
+`src/Tools/sync_version.py`, into the pixi manifests.
+`cli/tests/test_version.py` fails if any copy drifts. `version.json` keeps
+`name: "FreeCAD"`: renaming it moves the CMake project name and install
+paths, a separate decision. A version bump changes no digest, golden or
+MJCF export; it only invalidates each project's on-disk fit cache once
+(`_fit_cache_version`), which re-measures on the next build.
+
+## Cutting a release
+
+1. `package/bump_version.sh minor` (or `patch`/`major`), and commit the
+   files it changed.
+2. Write `docs/releases/vX.Y.Z.md`: what changed since the last tag, grouped,
+   with ADR citations; breaking changes and removals; known limitations.
+3. `pixi run build-engine && pixi run stage-engine`, and confirm
+   `build/engine/cadex-engine-X.Y.Z-<os>-<arch>/cadex-engine.json` says the
+   new version. Run `pixi run test-engine`, `pixi run python -m pytest
+   cli/tests`, and the packaged gate (`CADEX_ENGINE_ROOT=<payload> pytest
+   src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py`).
+4. Merge to `main`, wait for `cadex-app.yml` on that commit, and read it.
+5. Tag annotated, on `main`: `git tag -a vX.Y.Z -m "Cadex vX.Y.Z"`, push the
+   tag, and optionally `gh release create vX.Y.Z --notes-file
+   docs/releases/vX.Y.Z.md`. No payload is attached (ADR-030): a release is
+   source, built with `pixi run setup-engine && pixi run build-engine`.
 
 ## What is deliberately in the payload
 
@@ -264,7 +285,7 @@ not a quality setting.
 ## Building and releasing
 
 `.github/workflows/cadex-app.yml` runs on a schedule (Sundays and
-Wednesdays, 08:00 UTC), on manual dispatch, on pushes to and pull requests against `main`, and on tags matching `v*` or `cadex-*`. It has two
+Wednesdays, 08:00 UTC), on manual dispatch, on pushes to and pull requests against `main`, and on tags matching `v*`. It has two
 engine-only jobs, macOS arm64 and Linux x64. Each sets up and builds the
 engine, runs the engine and CLI suites, stages the payload, and gates it
 through `test_cadexd_lifecycle` against the *packaged* tree; the Linux job
@@ -274,11 +295,17 @@ also drives the packaged engine through the CLI.
 reached its gate** (ADR-060). They failed at `Engine unit suite` — `pixi run
 python -m pytest src/Mod/cadex/cadex_tests` — with `No module named pytest`,
 because `pytest` was not declared in `pixi.toml` until ADR-060, and every
-later step was skipped. Declaring it did not turn them green: every run from
-2026-10-04 to 2026-10-09 (`gh run list --workflow cadex-app.yml`) still fails at `Engine
-unit suite` on both platforms, with every later step skipped; why has not
-been read from their logs here. So the sentence above describes an intent, not an
-observation: the packaged gate has never run in CI on either platform, which
+later step was skipped. Declaring it did not turn them green: every run through
+2026-10-11 (`gh run list --workflow cadex-app.yml`) still fails at `Engine
+unit suite` on both platforms, with every later step skipped. The release
+audit (ADR-674) read the logs of the last run, 38159570649. On Linux it found
+2 failures out of 2,858. One was `test_licensing_compliance` (an SPDX header
+missing from `cli/tests/record_graph.py`, since fixed). The other was
+`test_a_cpu_killed_pass_leaves_the_document_as_accepted`, whose worker hit
+its wall-clock budget before its CPU one on the runner. On macOS it found
+`test_panels`' kernel test (fixed: its driver was capped but not pinned like
+a worker) and three crashes in `test_part_sharp_edges`. So the sentence above
+describes an intent, not an observation: the packaged gate has never run in CI on either platform, which
 is how a payload that broke every assembly joint shipped on both. Verified
 locally on Linux; what the macOS gates say when they first run is not yet
 known.

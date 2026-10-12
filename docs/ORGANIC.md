@@ -305,7 +305,7 @@ October's first answer, `lib.panel` (ADR-610), lofted a convex superellipse
 sleeve along one axis round everything it covered, the frame included, from
 recipe points a Python CSG evaluator read (`CadexPanels.sample`). None of the
 nine creature runs kept one; the one that tried removed it twice
-(`docs/ARCHITECTURE-REVIEW.md` §2). It is deleted (ADR-635). What replaced it:
+(`docs/history/ARCHITECTURE-REVIEW.md` §2). It is deleted (ADR-635). What replaced it:
 
 - `part.envelope(over=[...], clearance=, radius=, motion=)` -- the covered
   solids closed with a rolling ball and offset by the clearance, in a signed

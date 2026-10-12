@@ -1,6 +1,6 @@
 {
   "project": "ot5-lark",
-  "url_host": "100.104.232.88:8765",
+  "url_host": "100.64.0.1:8765",
   "evidence": "create80",
   "accepted_revision": "753cf0cc460098ac606ef8e1946e7cf7eed1ea9b79e63e2709690955c7fc9aa7",
   "accepted_digest": "3b704a3fc1c45fe2685b95a531fedbac2e9152b0c9e11c4df02439a950f6a254",

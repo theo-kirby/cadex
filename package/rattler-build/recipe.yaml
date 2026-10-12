@@ -7,7 +7,7 @@ about:
   repository: https://github.com/theo-kirby/cadex
 
 context:
-  version: "0.0.1"
+  version: "0.2.0"
 
 package:
   name: freecad

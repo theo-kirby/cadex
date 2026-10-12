@@ -17,8 +17,8 @@ bindings, the cadexd protocol, the payload, or inherited FreeCAD code
 - src/Mod/cadex/: pixi run test-engine
 - cli/: pixi run python -m pytest cli/tests (its engine-needing half skips
   without a built engine; say whether it ran)
-- C++/CMake: pixi run build-release, ctest diffed against
-  build/ctest_baseline_failures.txt
+- C++/CMake: pixi run build-release and pixi run test-release (the
+  inherited ctest passes in full; any failure is new)
 - protocol or payload: the packaged gate against a staged payload
 Report failures honestly. -->
 

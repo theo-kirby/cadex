@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-12. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -88,6 +88,7 @@ Flags, valid on either side of the subcommand:
 | `--engine ROOT` | A staged engine payload. Default: `$CADEX_ENGINE_ROOT`, then the dev tree. |
 | `--engine-timeout S`, `--engine-memory MB` | The engine budgets for this call only (ADR-517), each over the project's stored one (`cadex budgets`); `walk` hands them to every leg. Out of range is a usage error before an engine starts. Every engine run's envelope carries `budgets`: `in_force` (what the engine resolved), `stored`, and each one's `source` — `override`, `project` or `engine`. |
 | `--json` | Emit the machine-readable envelope on stdout. |
+| `--version` | Print `cadex <VERSION>` and exit (ADR-673). |
 | `--wait` | Block for the project lock instead of failing. |
 
 `script --set` also takes `--replace`, which is you saying you mean to drop
@@ -133,6 +134,15 @@ go after `--idle` seconds with no call (default 30, `0` to hold them until
 the client goes) and opens them again on the next call. So the agent's own
 `cadex render`, `export`, `section`, `train` or `walk` on the same project
 runs between bursts of tool calls, with `--wait`; the guidance tells it so.
+
+The transport is JSON-RPC 2.0, one object per line. `initialize` echoes the
+client's `protocolVersion` when it is one of
+`mcp.SUPPORTED_PROTOCOL_VERSIONS` (2024-11-05, 2025-03-26, 2025-06-18) and
+answers the newest otherwise; `serverInfo.version` is the product version
+(`VERSION`, ADR-673). An unparsable line is answered `-32700`, a batch or
+bare value `-32600`, and a method that raises `-32603`, so one bad message
+never ends the server. A `tools/call` naming a tool the surface does not
+publish is refused as a tool error before any engine opens.
 
 **The client's tool timeout must outlast the engine budget** (ADR-630). A
 build reply arrives after the worker run (bounded by the project's
@@ -2582,8 +2592,11 @@ there and failing live.
 Everything that needs an engine **skips** without one, so a green run on a
 bare checkout proves less than it looks like.
 
-CI runs the suite in both jobs of `.github/workflows/cadex-app.yml`, after
-the engine build for that reason. The Linux job runs it twice — once against
+CI is meant to run the suite in both jobs of `.github/workflows/cadex-app.yml`,
+after the engine build for that reason, but no run through 2026-10-11 has
+reached this step: each failed earlier, at `Engine unit suite`
+(`docs/cadex-release-packaging.md`, "Building and releasing"). The Linux job
+is set to run it twice — once against
 the build tree and once against the staged payload — on the same argument
 the packaged engine gate rests on: a source tree that passes proves nothing
 about a payload (ADR-023).

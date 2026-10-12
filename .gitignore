@@ -24,7 +24,6 @@ reference/
 !/.packit.yaml
 !/.pre-commit-config.yaml
 !/.pylintrc
-!/contrib/.vscode/
 *.clangd
 *.DS_Store
 *.dep
@@ -34,6 +33,7 @@ reference/
 *.manifest
 *.o
 *.obj
+!/data/tests/mesh.obj
 *.orig
 *.output
 *.pch

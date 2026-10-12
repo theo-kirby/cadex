@@ -1,8 +1,8 @@
 {
   "name": "FreeCAD",
   "version_major": 0,
-  "version_minor": 0,
-  "version_patch": 1,
+  "version_minor": 2,
+  "version_patch": 0,
   "version_patch_note": "number of patch release (e.g. 4 for the 0.18.4 release)",
   "version_suffix": "",
   "version_suffix_note": "either 'dev' for development snapshot, 'RC1' etc. for release candidate, or empty string for release",

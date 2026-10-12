@@ -7,7 +7,7 @@
 
 # Cadex
 
-Verified against source: 2026-10-10
+Verified against source: 2026-10-12
 
 Author:
 "Cadex is an experimental side project, far from production software.
@@ -23,6 +23,10 @@ I make no claims towards its reliability nor robustness, though anecdotally I ha
 been quite satisfied. This project will forever be free and open source.
 If you are looking for a more serious project with similar themes, I highly recommend 
 checking out [VibeCAD](https://github.com/10-X-eng/vibecad) or [Smith](https://arche.co)"
+
+*(2026-10: the Blender half has since been deleted (ADR-498). Cadex is now
+a headless engine, a read-only dashboard in the browser, and the agent you
+already use, as below.)*
 
 AI:
 **Cadex is an AI-native CAD app for designing robots and mechanisms, and
@@ -65,7 +69,8 @@ iteration — ending in a part sheet, print files, a BOM, a trained policy
 and a gait video. Every vertical in this repository exists because that
 sentence needs it.
 
-> **Status:** under active development, pre-release — currently **0.1.0**.
+> **Status:** under active development, pre-release — currently **0.2.0**
+> ([`VERSION`](VERSION); release notes in [`docs/releases/`](docs/releases/)).
 
 Beyond dynamics, two more verticals are closed: **organic modelling**
 ([docs/ORGANIC.md](docs/ORGANIC.md)) and **structural analysis** — stress,
@@ -75,9 +80,11 @@ back into a *parametric script* a person can edit
 
 ## Build and run
 
-Requires [pixi](https://pixi.sh). The Blender shell is deleted (ADR-498),
-so git-lfs, Xcode and its 1.3 GB library checkout are not needed. The old
-application is tagged `v1-blender-shell`.
+Requires [pixi](https://pixi.sh). Built and tested on Linux x86-64; macOS
+arm64 should build but is not yet verified end to end, and Windows is not
+supported ([docs/CLI.md](docs/CLI.md) §8). The Blender shell is deleted
+(ADR-498), so git-lfs, Xcode and its 1.3 GB library checkout are not
+needed; the old application is tagged `v1-blender-shell`.
 
 ```bash
 git clone <this repo> && cd cadex
@@ -143,10 +150,10 @@ Everything runs headless; your agent is where you talk and the dashboard is
 where you look ([`docs/CLI.md`](docs/CLI.md)).
 
 ```bash
-claude mcp add cadex -- "$PWD/cadex" mcp --project "$PWD/b"   # or your client's equivalent
-./cadex app --projects .        # watch it, and every project beside it, in a browser
+claude mcp add cadex -- "$PWD/cadex" mcp --project ~/cadex-projects/bracket   # or your client's equivalent
+# the dashboard from `pixi run app` lists it from the agent's first tool call
 # ...then ask your agent: "a mounting bracket for a NEMA17, 4 mm wall"
-./cadex params --project ./b --set wall=6 --out ./b/wall6   # no AI, no tokens
+./cadex params --project ~/cadex-projects/bracket --set wall=6 --out /tmp/wall6   # no AI, no tokens
 ```
 
 The agent writes a *parametric* script once; after that a loop sweeps
@@ -160,8 +167,7 @@ shape must change.
 pixi run test-engine                                  # engine suite, no build needed
                                                       # (the MJX-gated skips are by design)
 pixi run python -m pytest cli/tests                   # the CLI suite
-pixi run test-release                                 # ctest (diff against
-                                                      # build/ctest_baseline_failures.txt)
+pixi run test-release                                 # the inherited ctest (passes in full)
 ```
 
 ## Documentation

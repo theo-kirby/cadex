@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-10-10
+Verified against source: 2026-10-12
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -52,7 +52,8 @@ end to end on one CPU-only desk machine at toy scale (ADR-170,
 `docs/MUJOCO.md` §7b). Its full form is the product's North Star — *"design
 me a quadruped robot, all 3D-printable, MG90 servos, and train it to walk
 and wave"*, one prompt ending in a part sheet, print files, a BOM, a policy
-and a gait video — and 0.1.0 roughly means that sentence works.
+and a gait video. That sentence working unattended is still the open
+frontier (`STATE.md`), and each release is measured against it.
 
 ### Everything is driven by the script
 

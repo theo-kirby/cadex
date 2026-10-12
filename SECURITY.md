@@ -14,8 +14,8 @@ Report privately, through GitHub's security advisory tool:
 **<https://github.com/theo-kirby/cadex/security/advisories/new>**
 
 Please do not open a public issue for a security problem. Include what you
-did, what happened, and — if you have one — a minimal reproduction. A commit
-hash helps; this project has no release series yet.
+did, what happened, and — if you have one — a minimal reproduction. Say which release
+(`./cadex --version`) or commit (`git rev-parse --short HEAD`) you ran.
 
 Expect a first response within a week. Cadex is maintained by one person on
 a pre-release codebase: there is no security team, no SLA, and no bounty
@@ -54,9 +54,10 @@ came from where.
 
 ## Supported versions
 
-None yet, in the usual sense. Cadex has made no release; `main` is the only
-supported branch and fixes land there. There is no backport policy because
-there is nothing to backport to.
+Cadex is pre-1.0. Releases are tags on `main` (`v0.1.0`, `v0.2.0`; notes in
+[`docs/releases/`](docs/releases/)), and only the latest release and `main`
+are supported: fixes land on `main` and ship in the next release. There are
+no release branches and no backports.
 
 ## The security model
 

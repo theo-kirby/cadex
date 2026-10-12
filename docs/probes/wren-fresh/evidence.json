@@ -1,6 +1,6 @@
 {
   "project": "ot5-wren",
-  "url_host": "100.104.232.88:8765",
+  "url_host": "100.64.0.1:8765",
   "evidence": "lifecycle46",
   "accepted_revision": "5309bebc6597f7f792edea73265591480228f0ffb7e0b756b8fb755d9aa28f46",
   "accepted_digest": "dbd02d7c12a0553b9ffadb3466e73da4055521264dd52e0bea40b2cc16588714",

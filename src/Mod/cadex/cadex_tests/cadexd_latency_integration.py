@@ -50,7 +50,7 @@ payload (ADR-023). The report names the engine it measured (``engine``,
 ``engine_root``), so the two runs are told apart in a log::
 
     pixi run python src/Mod/cadex/cadex_tests/cadexd_latency_integration.py
-    CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.0.0-macos-arm64 \
+    CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.2.0-macos-arm64 \
         pixi run python src/Mod/cadex/cadex_tests/cadexd_latency_integration.py
 """
 

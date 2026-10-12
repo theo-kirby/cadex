@@ -46,8 +46,9 @@ SPDX_SCOPES = {
     "analysis": ("LGPL-2.1-or-later", {".py"}),
     "training": ("LGPL-2.1-or-later", {".py", ".sh"}),
     "package": ("LGPL-2.1-or-later", {".py", ".sh"}),
-    # tools/ is deliberately absent: it mixes our helpers with inherited
-    # FreeCAD lint scripts (tools/lint/*) that carry no headers upstream.
+    # tools/ held inherited FreeCAD lint and GUI-harness scripts with no
+    # headers until ADR-675 removed them; what is left is ours.
+    "tools": ("LGPL-2.1-or-later", {".py"}),
 }
 
 # Exemptions carry their reason; test_the_exemption_list_is_not_stale keeps

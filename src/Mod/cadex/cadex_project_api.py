@@ -201,7 +201,7 @@ def create_project_assembly_api(
     part/partdesign output of the same script: the worker refuses undeclared
     sources so publication can link each live component to a published stable
     output object. Cross-document references are retired in the project
-    domain: v0.0.1 assemblies are rigid, same-script solids.
+    domain: every component comes from the same script.
     """
 
     from cadex_assembly_api import AssemblyDomainAPI

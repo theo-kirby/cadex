@@ -35,6 +35,17 @@ Their commits, `57be248a` and `6c4dca31`, still say 123 and 124. The only
 code citing either was `--init-from`'s two references to the command range,
 repointed at ADR-131 in the merge.
 
+**Vacancies and one duplicate, recorded at the v0.2.0 audit (2026-10-12).**
+Also vacant: ADR-111 and ADR-258 (noted under ADR-628), and ADR-639, 648,
+649, 656…659, 662…664 and 667…669, which no entry, doc, code or commit
+message on any branch cites (numbers taken by parallel runs that did not
+merge). Do not reuse them. **ADR-260 is used twice**, by two entries of
+2026-09-08: "The walk's mechanism-blindness is a test, not a claim", and
+"The walk's `PROGRESS.md` row carries a delta". Both are cited by number, so
+neither is renumbered; a citation means whichever its context names.
+Entries are in writing order, not number order, where parallel runs merged:
+ADR-259 follows the first ADR-260, and ADR-647 and ADR-638 sit after ADR-655.
+
 ---
 
 ## ADR-001 — Single-engine xscript (inherited, 2026-07)
@@ -19902,7 +19913,7 @@ removals, or the broad GUI-source/fork-delta criteria.
 
 ## ADR-216 — Qualify Help for a separate whole-tree disable (2026-09-07)
 
-[Cadex-new] **Decision.** The bounded audit in [HELP-AUDIT.md](HELP-AUDIT.md)
+[Cadex-new] **Decision.** The bounded audit in [HELP-AUDIT.md](history/HELP-AUDIT.md)
 qualifies src/Mod/Help for the disable half of the two-commit removal protocol.
 It has no tracked product importer or required App target, although Help.show
 has an inherited console API. Retiring that unused API is within the product
@@ -20016,7 +20027,7 @@ complete; the second needs Start or Test to qualify through its own audit.
 
 ## ADR-219 — Qualify Start for a separate whole-tree disable (2026-09-07)
 
-[Cadex-new] **Decision.** The bounded audit in [START-AUDIT.md](START-AUDIT.md)
+[Cadex-new] **Decision.** The bounded audit in [START-AUDIT.md](history/START-AUDIT.md)
 qualifies `src/Mod/Start` (with `tests/src/Mod/Start`) for the disable half of
 the two-commit removal protocol. Start has a native App target, `Start.so`,
 linking only `FreeCADApp`; its sole link consumer is its own gtest executable,
@@ -20154,7 +20165,7 @@ joints. This is a reversible sampling contract, not market prevalence.
 Every member needs mounting evidence, kV, a thermally qualified torque point,
 independent placed/canonical geometry proof and packaged publication.
 
-The [source audit](L3-COVERAGE.md#additional-bldc-source-audit--ri50-kv100-adr-223)
+The [source audit](history/L3-COVERAGE.md#additional-bldc-source-audit--ri50-kv100-adr-223)
 cites the inspected CubeMars product page, parameter sheet, no-Hall drawing
 and fixture archive. RI50 KV100 without Hall sensors remains unqualified:
 ratings lack cooling/duration conditions and a revision link to its drawing;
@@ -20167,7 +20178,7 @@ hypergraph validation are the gates; no build or runtime suite is required.
 
 
 ADR-223 follow-up (2026-09-07): the
-[fixture/BOM audit](L3-COVERAGE.md#fixture-follow-up--ri50-parked-2026-09-07)
+[fixture/BOM audit](history/L3-COVERAGE.md#fixture-follow-up--ri50-parked-2026-09-07)
 inspects new archive contents and cites the manufacturer support index and
 thermal-design article. Neither rating thermal conditions nor revision linkage
 is established. Park RI50; the next source unit should qualify a shafted
@@ -20176,7 +20187,7 @@ the installation video remain unverified; this is a bounded evidence result,
 not a claim that evidence cannot exist. No API or coverage-gate relaxation.
 
 ADR-223 shafted-alternative follow-up (2026-09-07): the
-[AT2814 Long Shaft KV900 audit](L3-COVERAGE.md#shafted-alternative--at2814-long-shaft-kv900-2026-09-07)
+[AT2814 Long Shaft KV900 audit](history/L3-COVERAGE.md#shafted-alternative--at2814-long-shaft-kv900-2026-09-07)
 inspects T-MOTOR's [bench report](https://uav-en.tmotor.com/2019/Motors_0226/214.html),
 [store](https://store.tmotor.com/product/at2814-long-shaft-fixed-wing-motor.html),
 [download index](https://uav-en.tmotor.com/download/33.html) and
@@ -39732,3 +39743,195 @@ incrementally, a one-off migration can turn the lines into edges.
   governor a80346b, which re-runs under a system Node because pixi ships 25.2.1.
 
 Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).
+
+## ADR-673 — One product version, read from `VERSION`; the MCP server answers every message (2026-10-12)
+
+**Context.** The v0.2.0 release audit found five copies of the version and
+no agreement between them. `VERSION` said 0.1.0 and was called the single
+source of truth (ADR-166), but nothing read it after the shell went
+(ADR-495, ADR-498). `version.json`, `pixi.toml` and the rattler manifests
+said 0.0.1. The CLI's `__version__` said 0.0.1. The MCP server's
+`serverInfo.version` was hardcoded at 0.2.0 (ADR-538). And
+`build_engine_payload.sh` named and stamped every payload 0.0.0, because its
+`sed` looked for a `PACKAGE_VERSION "x"` line `CMakeLists.txt` does not
+have. The same audit drove `cadex mcp` with malformed input. It accepted any
+`protocolVersion` a client asked for. It dropped unparsable lines and
+batches without a reply. A host method that raised ended the stdio server.
+And an unknown tool name opened the engine, scaffolded the project and ran
+`git init` before it was refused.
+
+**Decision.**
+- `VERSION` is the one source, and it is now 0.2.0. The CLI's `__version__`
+  reads it, `cadex --version` prints it, and `mcp.SERVER_VERSION` is
+  `__version__`. The payload is named from it
+  (`cadex-engine-<VERSION>-<os>-<arch>`).
+- `package/app/bump_version.sh` moves to `package/bump_version.sh`, since
+  there is no app. It now also writes `version.json`'s major, minor and patch,
+  and runs `src/Tools/sync_version.py --update` for the pixi manifests.
+- `cli/tests/test_version.py` fails when any copy drifts.
+- `version.json` keeps `name: "FreeCAD"`, because renaming it moves the CMake
+  project and install paths (unchanged since v0.0.1).
+- `docs/cadex-release-packaging.md` gains "Cutting a release": bump, notes,
+  build, stage and gate, CI, then an annotated tag. No payload is attached
+  (ADR-030).
+- `initialize` echoes a `protocolVersion` in `SUPPORTED_PROTOCOL_VERSIONS`
+  (2024-11-05, 2025-03-26, 2025-06-18) and otherwise answers the newest. A
+  parse error is answered `-32700`, a non-object `-32600`, and a raising
+  method `-32603`, each without ending `serve()`. `McpSession.call` refuses a
+  name the surface does not publish before it opens anything.
+
+**Consequences.** A version bump changes no digest, golden or MJCF export.
+The only thing it reaches is `_fit_cache_version`, which hashes
+`App.Version()`, so each project re-measures its fit once after the engine
+is rebuilt. `test_initialize_echoes_the_client_protocol_version` still
+holds, and two MCP tests are added: one for a version the server does not
+speak, one for a raising method. The stdio test now expects the two error
+replies.
+
+## ADR-674 — The v0.2.0 release audit: CI's blockers fixed, the docs told the truth, removals proposed (2026-10-12)
+
+**Context.** Before tagging v0.2.0, the owner asked for a full audit and
+hygiene pass. Seven parallel read-only audits covered:
+- versioning and release plumbing;
+- the core docs against the code;
+- doc sprawl and links;
+- configs, dependencies and layout;
+- the CLI, MCP and dashboard;
+- the engine;
+- licensing, secrets and privacy.
+
+Then both suites and the inherited ctest were run.
+
+What they found:
+- **CI.** `cadex-app.yml` had been red since 2026-09-13. The causes were a
+  missing SPDX header and, on macOS, a panels kernel test.
+- **ctest.** Six docs told contributors to diff the inherited ctest against
+  `build/ctest_baseline_failures.txt`, a file that never existed, and quoted
+  "~160 environmental failures". A real run has one failure in 1,526.
+- **Inherited leftovers.** The issue templates, a NOTICE stanza and a CMake
+  error message still described FreeCAD or the deleted shell.
+- **Secrets and privacy.** None found. The engine and CLI phone nowhere.
+
+**Decision.** This change fixes what can be fixed without a removal, a
+re-solve or a C++ build cycle (the version and MCP work is ADR-673):
+
+- **Tests.**
+  - `cli/tests/record_graph.py` gets its SPDX header, so the licensing gate
+    passes.
+  - `test_panels.py`'s kernel driver is pinned to `WORKER_CPUS` before it is
+    capped, as a real worker is. Unpinned on a many-core host, the kernel's
+    per-thread arenas reserved past 6 GB and OCCT threw
+    `Standard_OutOfMemory` before any work. The uncapped peak is 1.2 GB.
+  - `data/tests/mesh.obj`, which `*.obj` in `.gitignore` had kept out of the
+    import, is added as an 8-vertex cube with an ignore exception.
+    `ImporterTest.TestOBJ` passes, so the inherited ctest passes in full, and
+    the docs now say any failure there is new.
+- **Engine.** `CadexScriptedProcess._terminate` kills the whole process
+  group when the leader ignores SIGTERM as well. It used to kill only the
+  leader, so a nested worker outlived a cancel. A test covers it.
+- **Docs.**
+  - VISION's "0.1.0 roughly means that sentence works" is rewritten.
+  - README: a dated note under the author's Blender-era paragraph, a
+    platform statement, and getting-started commands that neither clash on
+    port 8765 nor create a project inside the clone.
+  - CLI.md and the packaging doc stop claiming CI runs steps it never
+    reached, and say what its last logs showed.
+  - `.ouroboros/AGENTS.md` stops calling ROADMAP generated.
+  - Stale counts and broken history links in ROADMAP and DECISIONS are
+    fixed.
+  - The AGENTS.md table gains MACHINES, `docs/releases/` and `docs/probes/`.
+  - The DECISIONS header records the vacant numbers and the duplicate
+    ADR-260.
+  - `docs/releases/v0.2.0.md` is written, and v0.0.1's notes are marked
+    historical.
+- **Repo files.**
+  - The issue templates and `config.yml` are rewritten for Cadex.
+  - The CI header says the shell is deleted, and the dead `cadex-*` tag
+    trigger is dropped.
+  - NOTICE's OpenTheme credit is past tense.
+  - SECURITY states the supported versions.
+  - The `BUILD_GUI=ON` error no longer says "the application is the shell".
+    This is a one-line inherited-zone edit to a file already in the ledger.
+  - `pixi.toml` loses the `freecad*` tasks, which launch a binary no build
+    produces, and gains Cadex metadata. Tasks are not in the lock, and
+    `pixi install --locked` still passes.
+- **CLI.** `cadex review --help` no longer suggests `0.0.0.0`.
+
+**Proposed, not done here.** These are removals that need owner sign-off and
+their own ADRs:
+- `demo/` (Blender `.blend`/`.blend1`, stale artifacts, 17 MB), `contrib/`,
+  `requirements-freecad-venv.txt`, and the GUI harness in `tools/` (all but
+  `apply_modification_notices.py`).
+- From `.github/`: the backport template, `images/`, `scripts/` and
+  `codespellignore`.
+- Three unreferenced shell-era images in `docs/`.
+- Moving DOCS-AUDIT, PHASE8-AUDIT, L3-COVERAGE and ARCHITECTURE-REVIEW to
+  `docs/history/`.
+- Dead engine code: `CadexProject.py` and about 22 unreferenced functions.
+- The GUI-era pixi dependencies, which need a re-solve.
+- `libE57Format`, `salomesmesh`, the dead CMake presets and modules.
+
+**Follow-ups.** These also need owner decisions:
+- A `Host` check on the dashboard against DNS rebinding, with an allow-list
+  so `tailscale serve` keeps working.
+- A memory cap on every direct `FreeCADCmd` launch in the engine tests.
+- Clamping project budgets.
+- A hard memory cap on the preview worker.
+- Redacting the tailnet IP from probe evidence.
+- If a payload binary is ever published: its GPL contents (ffmpeg with
+  x264/x265, mysql-libs, readline) and the licence manifest.
+
+**Consequences.** The licensing gate and the panels test pass locally. The
+first CI run on this branch shows what remains on the runners.
+
+## ADR-675 — The release audit's removals: demo/, contrib/, the tools/ GUI harness and the .github leftovers; four audits to history; no tailnet address in evidence (2026-10-12, owner)
+
+**Context.** ADR-674 proposed these removals and left them for the owner's
+sign-off. The owner approved them, together with replacing the tailnet
+address found in probe evidence.
+
+**Decision.**
+- **Deleted.** Each item was checked to have no reference outside itself,
+  `docs/history/`, `docs/probes/` and this log.
+  - `demo/`: 176 files, about 17 MB. It held the deleted landing page's
+    biped, a Blender document and its autosave, a stale `biped.cadex/`
+    attempt tree, and seven `.cxpolicy` smoke checkpoints.
+    `docs/SHELL-PARITY.md` already recorded it as dropped (ADR-498), with
+    the owner's confirmation.
+  - `contrib/`: FreeCAD's VS Code and CLion debug launchers, and the Qt
+    pretty printers.
+  - `requirements-freecad-venv.txt`, which held BIM's venv pins.
+  - Everything in `tools/` except `apply_modification_notices.py`: 67 files
+    of FreeCAD GUI harness, UI-style gates, lint wrappers, Coin baselines and
+    profiling scripts. They all hung off a `run_ui_test_baseline.sh` that
+    nothing called.
+  - From `.github/`: the backport template, `images/` (FreeCAD workbench
+    art), `scripts/run_gui_tests.py` and `codespellignore`.
+  - `docs/cadex-example.png`, `docs/images/cadex-workspace.png` and
+    `docs/images/cadex-grok-provider-setup.png`. These were shell-era
+    screenshots that nothing referenced.
+- **Moved to `docs/history/`.** Citations were repointed in FREECAD,
+  ORGANIC, ROADMAP, XSCRIPT, one test docstring and three link targets in
+  this log.
+  - `DOCS-AUDIT.md`: its open owner questions were settled by ADR-673 and
+    ADR-674, or carried in ADR-674's follow-ups.
+  - `PHASE8-AUDIT.md`: the `BUILD_GUI` error no longer names it (ADR-674).
+  - `L3-COVERAGE.md`.
+  - `ARCHITECTURE-REVIEW.md`, with its `cli/` paths corrected.
+- **The licensing gate now covers `tools/`.** It had been left out only
+  because of the headerless inherited lint scripts.
+- **The tailnet address replaced.** It appeared 19 times in 13 files under
+  `docs/probes/{lark-fresh,wren-fresh,reed-agentrev}/`. It is now
+  `100.64.0.1`, a placeholder in the same CGNAT range, so the tests that
+  require a non-loopback host on `:8765` still hold. The published history
+  keeps the old value; only a history rewrite would remove it, and that was
+  not done.
+
+**Consequences.**
+- About 159k lines leave the tree.
+- No build input changes. CMake referenced none of these files, and the
+  pixi lock is unchanged.
+- The engine and CLI suites, the licensing gate and the evidence tests pass.
+- The removals ADR-674 left for later still need a re-solve or a C++ build
+  cycle and their own ADRs: dead engine code, the GUI-era pixi dependencies,
+  libE57Format and salomesmesh, and the dead CMake presets and modules.

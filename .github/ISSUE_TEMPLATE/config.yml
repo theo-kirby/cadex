@@ -1,20 +1,9 @@
-
-blank_issues_enabled : false
+blank_issues_enabled: true
 
 contact_links:
-
--   about : Join the community on our Discord.
-    name : 💬 𝗗𝗶𝘀𝗰𝗼𝗿𝗱
-    url : https://discord.gg/w2cTKGzccC
-
--   about : Join the community on our Forum.
-    name : 💬 𝗙𝗼𝗿𝘂𝗺
-    url : https://forum.freecad.org
-
--   about : Read on how FreeCAD is developed.
-    name : 📕 𝗛𝗮𝗻𝗱𝗯𝗼𝗼𝗸
-    url : https://freecad.github.io/DevelopersHandbook
-
--   about : Look up information about FreeCAD.
-    name : 🌐 𝗪𝗶𝗸𝗶
-    url : https://wiki.freecad.org
+  - name: Security vulnerability
+    about: Report it privately, not as an issue (see SECURITY.md).
+    url: https://github.com/theo-kirby/cadex/security/advisories/new
+  - name: A problem in FreeCAD itself
+    about: Cadex is a fork. A bug that reproduces in upstream FreeCAD belongs there.
+    url: https://github.com/FreeCAD/FreeCAD/issues

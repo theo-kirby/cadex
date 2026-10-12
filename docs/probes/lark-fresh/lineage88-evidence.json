@@ -1,7 +1,7 @@
 {
   "schema": "lark-lineage-evidence-v1",
   "project": "ot5-lark-copy85",
-  "url": "http://100.104.232.88:8765/",
+  "url": "http://100.64.0.1:8765/",
   "persistent_server_restarted": false,
   "trainer_active": false,
   "checker": "docs/probes/wren-fresh/check_video.py",
@@ -13,7 +13,7 @@
   "checks": {
     "lark86-retry-video": {
       "persistent_server": true,
-      "url": "http://100.104.232.88:8765/",
+      "url": "http://100.64.0.1:8765/",
       "private_address_same_machine": true,
       "browser_playback": true,
       "params_checked": [
@@ -73,7 +73,7 @@
     },
     "lark1-final": {
       "persistent_server": true,
-      "url": "http://100.104.232.88:8765/",
+      "url": "http://100.64.0.1:8765/",
       "private_address_same_machine": true,
       "browser_playback": true,
       "params_checked": [

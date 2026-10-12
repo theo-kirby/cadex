@@ -1300,7 +1300,7 @@ model and no corner speed. Sources and approximations: PROVENANCE §8i.
 A cover sized by eye floats: blind-rated robot animals scored worst on
 "every part designed, shells included", and the October `lib.panel` (a
 convex sleeve lofted along one axis, round the frame too) was tried once in
-nine creature runs and removed (`docs/ARCHITECTURE-REVIEW.md` §2). A panel
+nine creature runs and removed (`docs/history/ARCHITECTURE-REVIEW.md` §2). A panel
 is a **thin, open patch of a smooth offset surface of the mechanism it
 covers**, bounded by seams, screwed to the frame, clear of what moves. Two
 part ops declare it; the worker builds it on the exact solids

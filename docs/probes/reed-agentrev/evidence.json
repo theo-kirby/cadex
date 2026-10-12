@@ -59,7 +59,7 @@
     ]
   },
   "persistent_dashboard_during_training": {
-    "url": "http://100.104.232.88:8765/",
+    "url": "http://100.64.0.1:8765/",
     "ok": true,
     "project_name": "ot5-biped-copy29 \u2014 review",
     "default_view_on_fresh_visit": "RUN shin55",
@@ -205,7 +205,7 @@
   "browser_video_checks": {
     "shin55-checkpoint20": {
       "persistent_server": true,
-      "url": "http://100.104.232.88:8765/",
+      "url": "http://100.64.0.1:8765/",
       "private_address_same_machine": true,
       "browser_playback": true,
       "download_sha256": "89bfc9ecde0e6e1e36ee2f8d1bb208677c899c065cb13c29d7608edc87e4887d",
@@ -222,7 +222,7 @@
     },
     "shin55-final": {
       "persistent_server": true,
-      "url": "http://100.104.232.88:8765/",
+      "url": "http://100.64.0.1:8765/",
       "private_address_same_machine": true,
       "browser_playback": true,
       "download_sha256": "c23508ad3e92e4742164ecdc6d7d97dd5dd83f32194f56944d8d459275f6ddb1",

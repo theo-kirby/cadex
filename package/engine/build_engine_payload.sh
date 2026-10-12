@@ -35,7 +35,7 @@ repo="$(cd "${here}/../.." && pwd)"
 source_env="${1:-${repo}/.pixi/envs/default}"
 out_root="${2:-${repo}/build/engine}"
 
-version="$(sed -n 's/^ *PACKAGE_VERSION *"\([^"]*\)".*/\1/p' "${repo}/CMakeLists.txt" | head -1)"
+version="$(tr -d '[:space:]' < "${repo}/VERSION")"
 version="${version:-0.0.0}"
 case "$(uname -s)" in
     Darwin) os="macos" ;;

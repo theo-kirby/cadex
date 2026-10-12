@@ -1,6 +1,6 @@
 {
   "project": "ot5-wren-copy54",
-  "url_host": "100.104.232.88:8765",
+  "url_host": "100.64.0.1:8765",
   "evidence": "restart69-final",
   "unit": "cadex-operator-review",
   "accepted_revision": "de9692bd4ee57c387b17adf5ac10d67f0f7db5f76f2529f860a85d3121261e47",

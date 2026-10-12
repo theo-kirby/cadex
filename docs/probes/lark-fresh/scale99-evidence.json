@@ -1,7 +1,7 @@
 {
   "iteration": 99,
   "adr": "ADR-321",
-  "url": "http://100.104.232.88:8765/",
+  "url": "http://100.64.0.1:8765/",
   "project": "ot5-lark-copy85",
   "checked_at": "2026-09-13T11:00:41Z",
   "default_run_rule": "lark98-final",

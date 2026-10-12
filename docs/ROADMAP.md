@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-10-10
+Verified against source: 2026-10-12
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -225,7 +225,7 @@ are kept as the record of what was built, not as live status.
 *(Built in `/Users/theo/mesh`; that tree is `shell/` in this repository
 since ADR-030, and the paths below now read relative to it.)*
 
-**Goal:** `mesh_agent` gets a cadex backend (`docs/BLENDER.md` §5).
+**Goal:** `mesh_agent` gets a cadex backend (`docs/history/BLENDER.md` §5).
 
 - [x] Backend proxying to cadexd (alongside the existing local-exec path) —
       "Cadex CAD" mode; `cadexd_client.py` (GPL NDJSON client, no cadex
@@ -281,7 +281,7 @@ restart rehydration. Evidence in ADR-019 and
       failures reach the user.
 - [x] Docs follow the shell: `docs/INTEGRATION.md` becomes the two-repo
       contract (its op table is now test-enforced against
-      `CadexdProtocol.OP_ARG_SPECS`), `docs/BLENDER.md` the primary
+      `CadexdProtocol.OP_ARG_SPECS`), `docs/history/BLENDER.md` the primary
       integration reference, `docs/cadex-release-packaging.md` the
       engine-payload doc.
 
@@ -305,7 +305,7 @@ cancellation answered `RUN_CANCELLED`, and 120 main-thread ticks during a
 this phase.
 
 - [x] Dependency audit: `src/Gui`, every `src/Mod/*/Gui`, `tests/src/Gui`
-      and `setup_qt_test` — [measured boundary and gates](PHASE8-AUDIT.md),
+      and `setup_qt_test` — [measured boundary and gates](history/PHASE8-AUDIT.md),
       2026-09-07 (ADR-213). 3,731 tracked files across thirteen directories.
 - [x] Preserve Material's headless metatype contract in `App/MetaTypes.h`,
       with a forwarding Gui header and all 18 retained includes migrated
@@ -322,12 +322,12 @@ this phase.
       native document object from it, which this deletion does not touch.
 - [x] Delete the thirteen audited Gui directories and retired Main GUI sources,
       InventorBuilder test and registrations, removing obsolete GUI guards
-      (ADR-214, 2026-09-07; validation in PHASE8-AUDIT.md).
+      (ADR-214, 2026-09-07; validation in history/PHASE8-AUDIT.md).
 - [x] `docs/FREECAD.md` §1 row moves from "present, not built" to deleted;
       ADR-214 records the delete boundary.
 - [x] Audit remaining GUI-lineage source and unconditional Python install
       lists outside that boundary; preserve required headless Assembly publication
-      (ADR-215, PHASE8-AUDIT.md). Consumer audit only; residual removal and
+      (ADR-215, history/PHASE8-AUDIT.md). Consumer audit only; residual removal and
       the broader exit criterion remain open.
 - [x] Disable Measure/MassPropertiesGui.py in its shared copy/install list
       (ADR-215); preserve the source and headless Measure/Assembly consumers.
@@ -336,7 +336,7 @@ this phase.
 
 - [x] Qualify MeshPart/InitGui.py for a separate install-only disable, with
       loader/worker consumers and stale installed copies audited
-      (ADR-224, PHASE8-AUDIT.md, 2026-09-07).
+      (ADR-224, history/PHASE8-AUDIT.md, 2026-09-07).
 - [x] Disable MeshPart/InitGui.py installation with stale-copy cleanup;
       preserve its source, MeshPart App and Init.py (ADR-224, 2026-09-07).
 - [x] Delete the disabled MeshPart/InitGui.py source in a separate verified
@@ -344,7 +344,7 @@ this phase.
 
 - [x] Audit Material's GUI copy/install registrations and retained consumers;
       qualify only InitGui.py, MaterialEditor.py and TestMaterialsGui.py
-      (ADR-225, PHASE8-AUDIT.md, 2026-09-07).
+      (ADR-225, history/PHASE8-AUDIT.md, 2026-09-07).
 - [x] Disable those three Material registrations, retaining source and App/
       tests/resources, with stale-copy cleanup and fresh gates (ADR-225).
 - [x] Separately delete the qualified Material sources after verified disable
@@ -352,7 +352,7 @@ this phase.
 
 - [x] Audit the four inactive Main GUI launcher branches and unused resource
       template; retain Windows command-line behavior and state Windows
-      validation limits (ADR-226, PHASE8-AUDIT.md, 2026-09-07).
+      validation limits (ADR-226, history/PHASE8-AUDIT.md, 2026-09-07).
 - [x] Delete only the previously disabled Main freecad.rc.cmake template;
       retain command-line resources (ADR-226, 2026-09-07).
 - [ ] Separately plan and gate removal of the four inactive shared Main launcher
@@ -817,7 +817,7 @@ build-orchestration job, not an architecture one.
       into one in-tree `cadex-app.yml`.
 - [x] One application identity: `Cadex.app`, product name and bundle id.
 - [x] Docs reconciled: `docs/INTEGRATION.md` is the *process* contract,
-      `docs/BLENDER-TREE.md` is the shell's inherited-tree ledger,
+      `docs/history/BLENDER-TREE.md` is the shell's inherited-tree ledger,
       `README.md` is clone-and-build.
 
 **Exit criteria.** A fresh clone plus `pixi run setup && pixi run app`
@@ -1180,7 +1180,7 @@ the order they had to happen:
         writes. **No ssh, no protocol change, no engine change, no mujoco**;
         its module imports `json`, `os` and `bpy` and a gate check asserts
         exactly that. Zero lines to the inherited Blender tree, so
-        `docs/BLENDER-TREE.md` §2a stays eight files.
+        `docs/history/BLENDER-TREE.md` §2a stays eight files.
       - **The re-rating and the gate re-spec (ADR-099).** 216 → **86 N·mm**,
         ~40 % of stall, an engineering judgment stated rather than buried.
         `feasibility.py`'s arithmetic column stops gating and stays printed
@@ -1295,10 +1295,10 @@ the order they had to happen:
       model disagrees with. The foot-lift claim was the same class of error
       and is corrected: the left foot lifts **5.91 mm at 2.090 s**.
 - [x] **Four Cadex editors** (ADR-108). Environment, Policy, Training and
-      Live become space types 27–30. Reverses `docs/BLENDER.md`'s "no new
+      Live become space types 27–30. Reverses `docs/history/BLENDER.md`'s "no new
       editor and no new space type" for these panels — right for a readout,
       wrong for four independently arrangeable workspaces — and ships the
-      sixteen-touch-point recipe as a checklist in `docs/BLENDER-TREE.md`
+      sixteen-touch-point recipe as a checklist in `docs/history/BLENDER-TREE.md`
       §2b so the next one is mechanical. §2a is untouched and still eight
       files.
 - [x] **Live mode** (ADR-109): a running mechanism you can push, in the
@@ -1480,7 +1480,7 @@ lose by accident:
       script-owned native bpy recipes with named CAD-derived mesh inputs and
       JSON dimensions/frames. OS-isolated evaluation, actual topology/runtime
       identity, existing acceptance/rollback/reopen/undo, and a hybrid
-      enclosure example. `docs/BLENDER-RECIPES.md`. This does not close O4's
+      enclosure example. `docs/history/BLENDER-RECIPES.md`. This does not close O4's
       separate mesh-to-NURBS fitting work.
 
 **Goal:** make the shapes a person asks for — a body, a limb, a skin over a
@@ -1619,7 +1619,7 @@ pytest src/Mod/cadex/cadex_tests/test_subshape_selectors.py    # selectors resol
 #   the real-kernel case also runs against a payload:
 #   CADEX_ENGINE_ROOT=<payload> pytest .../test_subshape_selectors.py
 
-# new in Phase 14 — the dynamics vertical (39 test_dynamics_*.py suites then, 61 now)
+# new in Phase 14 — the dynamics vertical (39 test_dynamics_*.py suites then, 62 now)
 pytest src/Mod/cadex/cadex_tests -k dynamics       # headless, no build, no GPU
 #   naming convention across the arc, four files a slice:
 #     *_api       the authoring surface and its refusals
@@ -1634,7 +1634,7 @@ pytest src/Mod/cadex/cadex_tests/test_engine_purity_guardrails.py  # the three i
 #   env by design — 12 skips is the expected count. To run them, use a venv
 #   built from training/requirements.txt; the suites run from either interpreter.
 
-# new in Phase 11 — the differential harness, both engines in one FreeCADCmd
+# Phase 11 (unscheduled, not yet written) — the differential harness, both engines in one FreeCADCmd
 pytest src/Mod/cadex/cadex_tests/differential/ --domain=<mesh|part|sketcher|partdesign|assembly>
 #   volume (rel 1e-9) / area (rel 1e-6) / COM / bbox, counts, ordering,
 #   two-sided Hausdorff; tolerances reported, not asserted
@@ -1693,7 +1693,8 @@ loop then sweeps it while an external simulator feeds results back. It is
 also the first *second* caller the protocol has ever had, which is direct
 evidence for the Phase 11/12 claim that either half is replaceable.
 
-**Known gaps**, all deliberate and all recorded in ADR-061: export runs as a
+**Known gaps** as of 2026-07-31, all deliberate and all recorded in ADR-061
+(offscreen rendering has since come: `cadex render` and the `look` tool): export runs as a
 `FreeCADCmd` subprocess rather than an `export_model` op; BREP outputs only,
 with mesh and component outputs reported `skipped`; no `resolve_pin`, no
 offscreen rendering, so the agent verifies through `inspect` facts and
@@ -1768,7 +1769,8 @@ the items below are what made that true. `AGENTS.md` describes the result.
       first frame and fit are corrected (ADR-581 to ADR-584, ADR-599); a policy plays
       under the command filter it trained with, and a run reads stopped or
       failed (ADR-558, ADR-559, ADR-574).
-- [x] The creature fixes (ADR-610 to ADR-627): `lib.panel`, `lib.housing`
+- [x] The creature fixes (ADR-610 to ADR-627): `lib.panel` (since deleted for
+      `part.envelope` and `part.panel`, ADR-635), `lib.housing`
       and the shell check (Phase 15, O3b); `assembly.anatomy` and the
       `anatomy` block in every build reply (ADR-613, ADR-614); `math` and
       safe introspection in the sandbox (ADR-615, ADR-616); refusals that
@@ -1777,6 +1779,18 @@ the items below are what made that true. `AGENTS.md` describes the result.
       lib part can do (ADR-619); the fit measured once per geometry, world
       geometry never failing it, and the hardware-silhouette share reported
       rather than capped (ADR-622 to ADR-624).
+- [x] Panels are declared and cut in the worker: `part.envelope`,
+      `part.panel`, `fit.panels` (ADR-633 to ADR-637). The base guidance is
+      short and domain-neutral, with three provisional styles beside the
+      first two: `gantry-machine`, `vehicle` and `product` (ADR-650 to
+      ADR-655). Machine parts are data and publish their mounting holes, and
+      `closes=[...]` declares lids, doors and enclosure walls (ADR-646,
+      ADR-647, ADR-660, ADR-661, ADR-665, ADR-666). One output definition
+      may be 4 MiB (ADR-670).
+- [x] v0.2.0 release hygiene: one product version read from `VERSION`, the
+      MCP server answering every message (ADR-673), the pre-release
+      audit's fixes (ADR-674), and its removals: `demo/`, `contrib/`, the
+      `tools/` GUI harness and the `.github` leftovers (ADR-675).
 
 ## Off-phase — the harness ops, experimental (ADR-056, ADR-057, ADR-062, ADR-063, ADR-065, 2026-07-27 → 2026-08-01)
 
@@ -2210,13 +2224,13 @@ field, and every client gets it through the surface it already reads.
 - [x] **L3 joint implementation.** `lib.joint("skf-ge-6-c")` delivers the
       qualified two-ring approximation with bounded tilt, source metadata,
       real-worker interfaces and packaged publication (ADR-211). No fit guarantee.
-- [x] **L3 remaining-coverage audit.** [Coverage/evidence matrix](L3-COVERAGE.md)
+- [x] **L3 remaining-coverage audit.** [Coverage/evidence matrix](history/L3-COVERAGE.md)
       distinguishes four delivered SKUs from missing BLDC size/torque scope,
       deferred solenoid interfaces and separate compound gearing (ADR-212).
       Full L3 stays open; Phase 8 deletion has since landed.
 - [x] **L3 additional BLDC source audit.** Set A defines three required
       classes; RI50 KV100 no-Hall qualification is blocked on thermal and
-      revision evidence (ADR-223, `docs/L3-COVERAGE.md`). No delivery claimed.
+      revision evidence (ADR-223, `docs/history/L3-COVERAGE.md`). No delivery claimed.
 - [x] **RI50 fixture evidence follow-up.** BOM/STEP-header and new support-page
       inspection closes neither qualification gap; candidate parked (ADR-223).
       Followed by the shafted set-A source audit below.

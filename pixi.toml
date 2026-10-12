@@ -1,8 +1,8 @@
 [workspace]
 name = "cadex"
-version = "0.0.1"
-description = "pixi instructions for cadex"
-authors = ["looooo <sppedflyer@gmail.com>"]
+version = "0.2.0"
+description = "Cadex: a headless CAD engine for robots and mechanisms, its read-only dashboard, and MCP agent bindings"
+authors = ["Cadex Authors"]
 channels = ["conda-forge"]
 platforms = [ "linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64" ]
 requires-pixi = ">=0.48"
@@ -190,7 +190,7 @@ freecad-stubs = "*"
 # MJCF file. See docs/DECISIONS.md ADR-075, ADR-076 and docs/MUJOCO.md M0.
 mujoco = "==3.10.0"
 
-## Qt 6 Configuration Presets
+## Configure presets (all headless: BUILD_GUI=ON is rejected, ADR-022)
 [target.linux-64.tasks]
 configure-debug = { cmd = [ "cmake", "--preset", "conda-linux-debug", "{{ extra_args }}" ], args = [{ "arg" ="extra_args", "default" = "" }], depends-on = ["initialize"], env={ CFLAGS="", CXXFLAGS="", DEBUG_CFLAGS="", DEBUG_CXXFLAGS="" }}
 configure-release = { cmd = [ "cmake", "--preset", "conda-linux-release" ], depends-on = ["initialize"], env={ CFLAGS="", CXXFLAGS="", DEBUG_CFLAGS="", DEBUG_CXXFLAGS="" }}
@@ -206,26 +206,17 @@ configure-release = { cmd = [ "cmake", "--preset", "conda-macos-release" ], depe
 [target.osx-arm64.tasks]
 configure-debug = { cmd = [ "cmake", "--preset", "conda-macos-debug", "{{ extra_args }}" ], args = [{ "arg" = "extra_args", "default" = "" }], depends-on = ["initialize"], env={ CFLAGS="", CXXFLAGS="", DEBUG_CFLAGS="", DEBUG_CXXFLAGS="" }}
 configure-release = { cmd = [ "cmake", "--preset", "conda-macos-release" ], depends-on = ["initialize"], env={ CFLAGS="", CXXFLAGS="", DEBUG_CFLAGS="", DEBUG_CXXFLAGS="" }}
-# Run the INSTALLED binary, not build/release/bin/FreeCAD. The build-tree binary
-# has both .pixi and build/release/lib on its rpath, so macOS loads two copies of
-# libFreeCADApp -> duplicate App::GeoFeature type IDs -> PartDesign::Body is not
-# recognized as a GeoFeature and PartDesign documents fail to restore. The
-# installed tree loads everything from one prefix, so type registration is sound.
-freecad-debug = { cmd = [ ".pixi/envs/default/bin/FreeCAD" ], depends-on = ["install-debug"]}
-freecad-release = { cmd = [ ".pixi/envs/default/bin/FreeCAD" ], depends-on = ["install-release"]}
 
 [target.win-64.tasks]
 configure-debug = { cmd = [ "cmake", "--preset", "conda-windows-debug", "-DCMAKE_GENERATOR_PLATFORM=", "-DCMAKE_GENERATOR_TOOLSET=", "{{ extra_args }}" ], args = [{ "arg" = "extra_args", "default" = "" }], depends-on = ["initialize"], env={ CFLAGS="", CXXFLAGS="", DEBUG_CFLAGS="", DEBUG_CXXFLAGS="" }}
 configure-release = { cmd = [ "cmake", "--preset", "conda-windows-release", "-DCMAKE_GENERATOR_PLATFORM=", "-DCMAKE_GENERATOR_TOOLSET=" ], depends-on = ["initialize"], env={ CFLAGS="", CXXFLAGS="", DEBUG_CFLAGS="", DEBUG_CXXFLAGS="" }}
-freecad-debug = { cmd = [ ".pixi/envs/default/Library/bin/FreeCAD.exe" ], depends-on = ["install-debug"]}
-freecad-release = { cmd = [ ".pixi/envs/default/Library/bin/FreeCAD.exe" ], depends-on = ["install-release"]}
 
 [tasks]
 initialize = { cmd = ["git", "submodule", "update", "--init", "--recursive"]}
 
 # ---------------------------------------------------------------------------
-# The engine.  One repo, one build (ADR-030); the Blender shell is disabled
-# (ADR-495), so there is no application bundle to build or launch.
+# The engine.  One repo, one build (ADR-030); the Blender shell is deleted
+# (ADR-498), so there is no application bundle to build or launch.
 #
 #   pixi run setup-engine && pixi run build-engine
 #
@@ -255,13 +246,11 @@ configure = [{ task = "configure-debug" }]
 build = [{ task = "build-debug" }]
 install = [{ task = "install-debug" }]
 test = [{ task = "test-debug" }]
-freecad = [{ task = "freecad-debug" }]
 
 # The suite this project actually lives on: the tests over src/Mod/cadex/,
-# headless, no build needed (conftest.py stubs FreeCAD). `test` above is the
-# *inherited FreeCAD* ctest, which is a different and much noisier thing --
-# ~160 pre-existing environmental failures, diffed against
-# build/ctest_baseline_failures.txt. Naming both makes which is which
+# headless, no build needed (conftest.py stubs FreeCAD). `test-release` below is
+# the *inherited FreeCAD* ctest, which is a different thing (it passes in full,
+# 1,526 tests on 2026-10-12, so any failure there is new). Naming both makes which is which
 # obvious at the command line instead of in a doc.
 #
 # A task, not a dependency: ADR-084's pixi.toml prohibition is about
@@ -283,12 +272,6 @@ rebuild = { cmd = [".pixi/envs/default/bin/FreeCADCmd", "-c", "import sys; sys.p
 # NDJSON over stdio (docs/INTEGRATION.md, ADR-017). One process per project;
 # the client (the CLI, or a test harness) owns stdin/stdout.
 cadexd = { cmd = [".pixi/envs/default/bin/FreeCADCmd", "-c", "import sys; sys.path.insert(0, 'src/Mod/cadex'); import cadexd; raise SystemExit(cadexd.main())"]}
-# NOTE: there are deliberately no platform-neutral `freecad-debug` /
-# `freecad-release` definitions here. They used to point at
-# build/{debug,release}/bin/FreeCAD -- exactly the build-tree binary the
-# comment above the osx/win definitions says must never be run, because it
-# carries both .pixi and build/release/lib on its rpath and PartDesign
-# documents then fail to restore. macOS and Windows shadowed them with the
-# installed binary; Linux did not, so `pixi run freecad` there hit the
-# forbidden path. Vestigial upstream definitions, removed rather than fixed:
-# a release build has no FreeCAD binary at all (ADR-022).
+# There is no task that launches a FreeCAD application: no build produces one
+# (BUILD_GUI is always OFF, ADR-022, ADR-214). The `freecad*` tasks went in
+# ADR-674.

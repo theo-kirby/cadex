@@ -109,12 +109,13 @@ operator, including you, reads first.
   alone does not establish product access.
 - **Green means** both suites, from `~/cadex`:
 
-      pixi run test-engine                     # the engine, ~2100 tests, 4 min
-      pixi run python -m pytest cli/tests      # the CLI, ~300 tests, 4 min
+      pixi run test-engine                     # the engine, ~2,900 tests, 7 min
+      pixi run python -m pytest cli/tests      # the CLI, ~1,260 tests, 9 min
 
 - **Pre-flight, learned the hard way:** `git status` must be clean *including
   untracked directories* -- an untracked `src/3rdParty/GSL/` blocked ot4's
   launch. Check `governor version` runs (memory is the governor graph, ADR-672).
   Confirm both harnesses are logged in.
-- **Never:** hand-edit `STATE.md`, `PLAN.md` or `ROADMAP.md`; they are generated
-  from the governor graph. Never squash a run branch: records cite commit SHAs.
+- **Never:** hand-edit `STATE.md` or `PLAN.md`; they are generated from the
+  governor graph. `docs/ROADMAP.md` is hand-maintained: tick its checkboxes
+  when a work item lands (AGENTS.md, Methodology 7). Never squash a run branch: records cite commit SHAs.

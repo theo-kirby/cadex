@@ -1,12 +1,11 @@
 name: Report a Code Quality Issue
 description: Report problems related to code structure, maintainability, performance, correctness, or technical debt that do not directly affect end-user behavior.
-labels: ["Status: Needs triage", "Status: Needs confirmation", "Type: Code Quality"]
-type: "Code Quality"
+labels: ["Status: Needs triage", "Type: Code Quality"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to help improve FreeCAD's code quality!
+        Thanks for taking the time to help improve Cadex's code quality!
 
         > [!NOTE]
         > This form is intended **only for code quality issues**, such as:
@@ -17,29 +16,20 @@ body:
         >
         > If the issue affects user-visible behavior, workflows, or UI, please use the regular **Report Problem** form instead.
 
-        Please [search existing issues](https://github.com/FreeCAD/FreeCAD/issues) before submitting.
-        By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/FreeCAD/FreeCAD/blob/main/CODE_OF_CONDUCT.md).
+        Please [search existing issues](https://github.com/theo-kirby/cadex/issues) before submitting.
+        By submitting this issue, you agree to follow our [Code of Conduct](https://github.com/theo-kirby/cadex/blob/main/CODE_OF_CONDUCT.md).
 
   - type: dropdown
     id: wb
     attributes:
-      label: Area / Workbench affected
+      label: Area affected
       description: Select the primary area affected by the code quality issue.
       options:
-        - Assembly
-        - BIM
-        - CAM
-        - Core (App, Gui, Base, ...)
-        - Draft
-        - FEM
-        - Material
-        - Measurement
-        - Mesh
-        - Part
-        - Part Design
-        - Sketcher
-        - Spreadsheet
-        - TechDraw
+        - Engine (src/Mod/cadex)
+        - Inherited FreeCAD core (src/App, src/Base) or capability modules
+        - CLI and agent bindings (cli/cadex_cli)
+        - Dashboard (review_server, review_static)
+        - training/ or analysis/
         - Build system / CI
         - Documentation
         - Other (specify below)
@@ -96,8 +86,7 @@ body:
     attributes:
       label: Development version (if relevant)
       description: |
-        If the issue is version-specific or recently introduced, paste the output from the
-        **About FreeCAD** dialog of a development build.
-        Otherwise, this can be left empty.
-      placeholder: Paste About FreeCAD information here.
+        If the issue is version-specific or recently introduced, paste `./cadex --version`
+        and the commit (`git rev-parse --short HEAD`). Otherwise, this can be left empty.
+      placeholder: cadex 0.2.0 at abc1234
       render: shell
