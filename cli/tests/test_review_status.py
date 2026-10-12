@@ -411,10 +411,10 @@ def test_status_is_an_area_at_a_desk_a_tab_on_a_phone_and_docks_like_the_others(
         page.evaluate("window.cadexReview.layout().reset()")
         page.wait_for("document.getElementById('status').dataset.stage === 'training'")
         desk = page.evaluate(STATUS)
-        # The default: the 3D viewport, Status to its right, side by side and not overlapping.
-        assert desk["areas"] == ["view3d", "status"], desk["areas"]
+        # The default: the 3D viewport, Status to its right under the Outliner (ADR-676), not overlapping.
+        assert desk["areas"] == ["view3d", "outliner", "status"], desk["areas"]
         s, v = desk["status"], desk["model"]
-        assert s["x"] >= v["right"] - 1 and abs(s["y"] - v["y"]) <= 1 and abs(s["height"] - v["height"]) <= 1
+        assert s["x"] >= v["right"] - 1 and abs(s["bottom"] - v["bottom"]) <= 1 and s["height"] >= 0.5 * v["height"]
         assert v["width"] > 2 * s["width"]
         assert desk["chip_in_header"] and desk["chip"] == "training"
         assert desk["warning"] and desk["reward"] and not desk["in_model"] and desk["timelines_in_model"]
@@ -425,10 +425,10 @@ def test_status_is_an_area_at_a_desk_a_tab_on_a_phone_and_docks_like_the_others(
         page.drag(grip[0], grip[1], v["x"] + v["width"] / 2, v["y"] + v["height"] / 2)
         page.wait_for("document.querySelector('#screen .area').dataset.editor === 'status'", timeout=5)
         swapped = page.evaluate(STATUS)
-        assert swapped["areas"] == ["status", "view3d"] and swapped["status"]["x"] < swapped["model"]["x"]
+        assert swapped["areas"] == ["status", "outliner", "view3d"] and swapped["status"]["x"] < swapped["model"]["x"]
         # Its own header picks it in any area, and Reset puts the default back.
         page.evaluate("window.cadexReview.layout().reset()")
-        assert page.evaluate(STATUS)["areas"] == ["view3d", "status"]
+        assert page.evaluate(STATUS)["areas"] == ["view3d", "outliner", "status"]
 
         phone = browser.page("about:blank")
         phone.send("Emulation.setDeviceMetricsOverride",
@@ -439,7 +439,7 @@ def test_status_is_an_area_at_a_desk_a_tab_on_a_phone_and_docks_like_the_others(
         phone.evaluate("window.cadexReview.ready", await_promise=True)
         first = phone.evaluate(STATUS)
         # A phone has a tab per editor; the 3D one is first and nothing sits over its model.
-        assert first["tabs"] == ["3D", "Status", "2D"] and first["areas"] == ["view3d"], first
+        assert first["tabs"] == ["3D", "Status", "2D", "Parts"] and first["areas"] == ["view3d"], first
         assert not first["in_model"] and first["timelines_in_model"]
         phone.click("#screen .tab[data-editor=status]")
         shown = phone.evaluate(STATUS)

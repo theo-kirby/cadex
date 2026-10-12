@@ -39935,3 +39935,71 @@ address found in probe evidence.
 - The removals ADR-674 left for later still need a re-solve or a C++ build
   cycle and their own ADRs: dead engine code, the GUI-era pixi dependencies,
   libE57Format and salomesmesh, and the dead CMake presets and modules.
+
+## ADR-676 — The Outliner, and a shaded viewport that looks less fake: lighting setups, matcaps, occlusion, soft shadows, surface detail (2026-10-12, owner)
+
+**Context.** The owner asked for two dashboard features:
+- "the ability to see each mesh in a list and select/show/hide them, just like the old
+  outliner in blender, or any cad software";
+- another attempt at shaded rendering, because "everything just looks super fake". They
+  suspected the lighting, and the plain diffuse surfaces being "too perfect and smooth and
+  flat". They also wanted toggleable lighting setups and a "shiny light aluminum style, kind
+  of like matcap in blender".
+
+Screenshots of three wave-3 models in the ADR-601 look showed what was wrong:
+- Two hemisphere lights (1.6 and 1.2) lit every face alike. A part's sides differed by only
+  a few levels, and the plastics took 0.4 of the studio's reflection.
+- Nothing darkened where surfaces met.
+- Shadows were a hard cut-out.
+- Every face was a single flat value.
+
+**Decision.**
+- **The Outliner** (`outliner.js`, `docs/DASHBOARD.md` §25) is a fourth editor. Its pieces:
+  - Parts are grouped by type (hardware starts folded), by role, or not at all.
+  - Each part has an eye and a row. Ctrl on an eye isolates the part.
+  - There is a filter, and Show all.
+  - Blender's keys work: H, Shift+H, Alt+H, F and Esc.
+  - Selection is shared with the viewport: a click on a solid selects its row.
+  - The viewer (`setHidden`, `select`, `parts`, `fitTo`) keeps hidden and selected parts by
+    name, so they outlive the agent's next write. They are the page's own: nothing is
+    written, so ADR-537 holds.
+  - The default layout puts the Outliner over Status beside the viewport.
+  - The layout key moves to `cadex.layout.v5`.
+- **Looks** (`shading.js`, §10). There are four lighting setups and two matcaps:
+  - **Studio** is the default and every capture's look. It reuses ADR-601's room, with dim
+    walls, a 45° key and the hemisphere and bounce cut to 0.18 and 0.12.
+  - **Softbox**, **Dramatic** and **Daylight** are the other setups. Each is a procedural
+    room prefiltered into an environment map, plus a key, a fill, an exposure and a lift for
+    the mat.
+  - **Aluminium** and **Clay** are matcaps, each baked once from a lit physical sphere.
+  - The plastics now take 0.9 of the room, and printed parts drop the sheen.
+- **Ambient occlusion.** A screen-space pass at CSS resolution: 16 samples, a radius tied to
+  the design's size and capped by the camera's distance, and a depth-aware blur. The result
+  is multiplied over the frame.
+- **Soft shadows.** A blurred variance shadow map, with a shadow camera that hugs the design.
+  A camera reaching 40 m streaked the map on a 10 cm part.
+- **Surface detail.** It goes through a patch to the finish's shader, on the part's own frame:
+  - printed layer lines 0.2 mm apart;
+  - a micro grain;
+  - a slow drift in roughness and colour.
+  Each feature fades out before it would alias. Occlusion and detail are each a switch in the
+  View menu.
+- **The selection** is ringed in `#58a6ff`, dimmer where it is hidden behind another part.
+
+**Consequences.**
+- The viewport's look and a `--style scene` capture change together. The capture keeps the
+  defaults: Studio, with occlusion and detail on. `video.style_digest` now covers
+  `shading.js`, so cached scene videos re-render.
+- The page keeps five more conveniences in the browser: `cadex.look`, `cadex.occlusion`,
+  `cadex.detail`, `cadex.outliner.group` and `cadex.outliner.folded` (`docs/CLI.md`).
+- Each frame now costs more:
+  - a normal and depth pass, the occlusion and two blur passes;
+  - a mask pass while something is selected;
+  - blurred shadows.
+  On a phone, occlusion is the switch to turn off.
+- Tests:
+  - `test_dashboard_outliner.py` covers grouping, hiding, isolating, Fit, the filter,
+    keeping state by name, selection both ways, the outline and the keys.
+  - `test_dashboard_viewport_look.py` covers each look, the matcap's one material,
+    occlusion, detail and persistence.
+  - The layout, design, status and HTTP-API tests follow the new default and keys.

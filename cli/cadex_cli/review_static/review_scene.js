@@ -3,8 +3,9 @@
 // Common inspection/capture scene. Public poses, bounds and cameras are mm,
 // Z-up, xyzw. One uniform conversion to metres; no component enlargement.
 import * as THREE from './three.module.js';
-import {createEnvironment, KEY_DIR} from './environment.js';
+import {createEnvironment} from './environment.js';
 import {parseStl} from './stl.js';
+import {LOOKS, MATCAPS, LIGHTING, OCCLUSION, createLooks, createOcclusion, createOutline, addDetail, detailSwitch} from './shading.js';
 export const STYLE = 'cadex-prototype-dark-v1';
 const PALETTE = [0x5b9dcd, 0xde8f47, 0x6ab270, 0xc468b4, 0xdcc85a, 0x7878c8, 0xc86e6e, 0x6ebebe];
 const FOV = 55;
@@ -48,9 +49,9 @@ export const CREASE_DEGREES = 40;
 // `colour` is the fallback when a part carries none; `env` is how much of the studio it reflects
 // (a metal is mostly reflection; a plastic mostly its own colour under the lights).
 export const FINISHES = {
-  printed:  {roughness:.55, metalness:0, clearcoat:.08, clearcoatRoughness:.5, sheen:.2, sheenRoughness:.6, env:.4},
-  purchased:{roughness:.42, metalness:0, clearcoat:.1, clearcoatRoughness:.35, env:.45},
-  board:    {roughness:.45, metalness:0, clearcoat:.3, clearcoatRoughness:.3, env:.45, colour:'#1f6b3c'},
+  printed:  {roughness:.46, metalness:0, clearcoat:0, clearcoatRoughness:.5, env:.9},
+  purchased:{roughness:.45, metalness:0, clearcoat:.1, clearcoatRoughness:.35, env:.9},
+  board:    {roughness:.45, metalness:0, clearcoat:.3, clearcoatRoughness:.3, env:.9, colour:'#1f6b3c'},
   black_oxide:{roughness:.4, metalness:.85, env:1, colour:'#2a2b2e'},
   steel:    {roughness:.28, metalness:.92, env:1, colour:'#c4c8ce'},
   brass:    {roughness:.32, metalness:.92, env:1, colour:'#c9a24a'},
@@ -158,35 +159,21 @@ export function boardColours(mm, board, base) {
   return {colours, chip:chips, pad:padFacets};
 }
 
-// A small procedural studio for reflections (ADR-601): a dim box room, y up, lit by a large soft
-// panel overhead, a key panel to one side, a cooler fill and a rim behind, prefiltered once into
-// a PMREM. Nothing of it is drawn; the solids only see it in their reflections and ambient light.
-function studioEnvironment(renderer) {
-  const room=new THREE.Scene(), box=new THREE.BoxGeometry(1,1,1), made=[];
-  const add=(colour,intensity,scale,position,side=THREE.FrontSide)=> {
-    const m=new THREE.MeshBasicMaterial({color:new THREE.Color(colour).multiplyScalar(intensity),side,toneMapped:false});
-    const mesh=new THREE.Mesh(box,m); mesh.scale.set(...scale); mesh.position.set(...position); room.add(mesh); made.push(m);
-  };
-  add(0x9a9a9a,.35,[16,9,16],[0,3.5,0],THREE.BackSide);    // walls, ceiling and floor
-  add(0x202020,1,[16,.1,16],[0,-.9,0]);                    // a darker floor, so the lower half reads as ground
-  add(0xffffff,3.5,[6,.1,4],[0,7.8,0]);                     // the overhead softbox
-  add(0xfff4e8,9,[.1,3,4],[-7.8,3,1.5]);                    // key, warm, to one side
-  add(0xdfe8ff,3.5,[.1,2.4,5],[7.8,2.5,-1]);                // fill, cool, opposite
-  add(0xffffff,6,[5,1.6,.1],[0,3.5,-7.8]);                  // rim strip behind
-  const pmrem=new THREE.PMREMGenerator(renderer), target=pmrem.fromScene(room,.03);
-  pmrem.dispose(); box.dispose(); made.forEach(m=>m.dispose());
-  return target.texture;
-}
+// The rooms the solids reflect, and are lit by, are shading.js's lighting setups (ADR-676); the
+// first was ADR-601's procedural studio, which is Studio's room still.
 
 export function create(canvas) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, draw(){}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, draw(){}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // Soft shadows (ADR-676): a variance shadow map, blurred, so a shadow's edge widens with its
+  // distance from what casts it, as under a real softbox, instead of the old hard cut-out.
+  renderer.shadowMap.type = THREE.VSMShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.95;
+  const STAGE_EXPOSURE = 0.95;
+  renderer.toneMappingExposure = STAGE_EXPOSURE;
   renderer.localClippingEnabled = true;
   const scene = new THREE.Scene(), world = new THREE.Group(), model = new THREE.Group();
   world.rotation.x = -Math.PI/2; scene.add(world); world.add(model);
@@ -195,12 +182,17 @@ export function create(canvas) {
   // from its one dark palette (ADR-331) when it is built over them.
   const hemi = new THREE.HemisphereLight(0xffffff, 0x2a2a2a, 1.6);
   const sun = new THREE.DirectionalLight(0xffffff, 2.7);
-  sun.castShadow = true; sun.shadow.mapSize.set(2048,2048);
+  sun.castShadow = true; sun.shadow.mapSize.set(2048,2048); sun.shadow.radius = 10; sun.shadow.blurSamples = 16;
   const fill = new THREE.DirectionalLight(0xdfe6ff,1.0); fill.position.set(-12,6,-9);
   scene.add(hemi, sun, sun.target, fill);
   const environment = createEnvironment({scene,world,camera,renderer,lights:{hemi,sun,fill}}, {labels:true});
-  let envMap=null; try { envMap=studioEnvironment(renderer); } catch (_) { envMap=null; }
+  // The look (ADR-676): a lighting setup or a matcap, occlusion and surface detail.
+  const looks=createLooks(renderer), occlusion=createOcclusion(renderer), outline=createOutline(renderer);
+  let look='studio', occluded=true, detailed=true, keyDir=LIGHTING.studio.key.dir;
+  let envMap=looks.environment(look);
   let reflections=REFLECTIONS.strength;
+  // Which parts the page hides and which it has selected, by name; both outlive a reload of the model.
+  const hiddenNames=new Set(); let selectedNames=[];
   let bounds=null, triangleCount=0, staged='', stage=null;
   let c={yaw:.8,pitch:.5,distance:100,target:[0,0,0]}, floorZ=0;
   const meshes = new Map();
@@ -239,7 +231,7 @@ export function create(canvas) {
       model.updateMatrixWorld(true);
       clipPlane.set(new THREE.Vector3(...SECTION_NORMALS[section.plane]).negate(), section.offset_mm*.001).applyMatrix4(model.matrixWorld);
     }
-    meshes.forEach(m=>{m.material.clippingPlanes=section?[clipPlane]:null; m.material.clipShadows=true; m.material.needsUpdate=true;});
+    meshes.forEach(m=>Object.values(m.userData.materials||{parts:m.material}).forEach(mat=>{mat.clippingPlanes=section?[clipPlane]:null; mat.clipShadows=true; mat.needsUpdate=true;}));
     lineMaterial.clippingPlanes=section?[clipPlane]:null; lineMaterial.needsUpdate=true;
   }
   function setSection(plane, offset) {
@@ -400,12 +392,30 @@ export function create(canvas) {
   }
   let onDraw=null;
   function paint() {
-    if (style==='wireframe') {paintWireframe(); if (onDraw) onDraw(); return;}
+    if (style==='wireframe') {paintWireframe(); paintOutline(); if (onDraw) onDraw(); return;}
     renderer.render(scene,camera);
+    if (occluded&&meshes.size&&model.visible) paintOcclusion();
+    paintOutline();
     if (onDraw) onDraw();
     if (clock===null) return;
     paintClock(canvas.clientWidth||canvas.width,canvas.clientHeight||canvas.height);
     renderer.autoClear=false; renderer.clearDepth(); renderer.render(hud,hudCamera); renderer.autoClear=true;
+  }
+  // Occlusion over the frame just drawn: the solids and the mat, without the ghost, the lines or
+  // the timer. Its radius follows the design's size, capped by the camera's distance.
+  function paintOcclusion() {
+    const size=(bounds?.radius||100)*.001, radius=Math.max(1e-4,Math.min(OCCLUSION.radius*size,OCCLUSION.maxRadius*c.distance*.001));
+    const lines=[];
+    occlusion.apply(scene,camera,{radius, distance:c.distance*.001, clipping:section?[clipPlane]:null, hide:on=> {
+      if (on) {ghost.visible=false; scene.traverse(o=>{if((o.isLine||o.isPoints)&&o.visible){o.visible=false;lines.push(o);}});}
+      else {ghost.visible=true; lines.forEach(o=>{o.visible=true;}); lines.length=0;}
+    }});
+  }
+  // The selection's outline (ADR-676), over everything but the timer.
+  function paintOutline() {
+    if (!selectedNames.length||!model.visible) return;
+    const solids=[...meshes.values()].filter(m=>m.visible), chosen=selectedNames.map(n=>meshes.get(n)).filter(m=>m&&m.visible);
+    outline.apply(scene,camera,chosen,solids,section?[clipPlane]:null);
   }
   function pose(mesh,p) {
     if (!p) return;
@@ -449,13 +459,14 @@ export function create(canvas) {
   function frameBounds(b) {
     bounds=JSON.parse(JSON.stringify(b)); floorZ=matZ(b);
     const focus=new THREE.Vector3(b.center[0]/1000,b.center[2]/1000,-b.center[1]/1000);
-    sun.target.position.copy(focus); sun.position.copy(focus).add(new THREE.Vector3(...KEY_DIR).normalize().multiplyScalar(20));
-    const h=Math.max(.01,b.radius/1000*1.2);
-    Object.assign(sun.shadow.camera,{left:-h,right:h,top:h,bottom:-h,near:.1,far:40+h*2});
+    // The shadow camera hugs the design (ADR-676): its depth range is the design's own, so the
+    // soft (variance) map keeps its precision at any scale and never streaks. It is wide enough
+    // for a shadow cast at the lowest key any lighting setup uses.
+    const h=Math.max(.01,b.radius/1000*1.7), reach=4*h;
+    sun.target.position.copy(focus); sun.position.copy(focus).add(new THREE.Vector3(...keyDir).normalize().multiplyScalar(reach));
+    Object.assign(sun.shadow.camera,{left:-h,right:h,top:h,bottom:-h,near:reach-2*h,far:reach+2*h});
     sun.shadow.camera.updateProjectionMatrix();
-    // Two shadow-map texels of normal offset: a flat face lit at a grazing angle no longer
-    // shades itself in stripes (acne), and a part still meets its shadow.
-    sun.shadow.normalBias=h/512;
+    sun.shadow.normalBias=0;
     staged='';
   }
   // The camera's clip planes (ADR-600): near is a fixed fraction of the camera's distance, so the
@@ -478,6 +489,8 @@ export function create(canvas) {
   }
   function fit() {
     if (!bounds) return;
+    // With parts hidden, Fit frames what is shown.
+    if (hiddenNames.size&&fitTo([...meshes.keys()].filter(n=>meshes.get(n).visible&&!meshes.get(n).userData.world))) return;
     // Frame the bounding sphere in the narrower field of view: a canvas at least as wide as it is tall frames by
     // the vertical one (as it always has), a portrait one — a stage between two wide sidebars — by the horizontal.
     const w=canvas.clientWidth||canvas.width,h=canvas.clientHeight||canvas.height,tanV=Math.tan(55*Math.PI/360);
@@ -488,7 +501,7 @@ export function create(canvas) {
   function clear() {
     disposeProxies(); proxyGeoms=[]; setLines([]);
     meshes.forEach(m=> {
-      model.remove(m); m.geometry.dispose(); m.material.dispose(); m.userData.meshLines?.geometry.dispose();
+      model.remove(m); m.geometry.dispose(); Object.values(m.userData.materials).forEach(mat=>mat.dispose()); m.userData.meshLines?.geometry.dispose();
     });
     meshes.clear(); clearGhost(); bounds=null;triangleCount=0;picked=null;draw();
   }
@@ -507,8 +520,8 @@ export function create(canvas) {
     const colour=new THREE.Color(hex||!f.colour?colourOf(entry,i):parseInt(f.colour.slice(1),16));
     const m=new THREE.MeshPhysicalMaterial({color:colour, roughness:f.roughness, metalness:f.metalness,
       clearcoat:f.clearcoat||0, clearcoatRoughness:f.clearcoatRoughness||0,
-      sheen:f.sheen||0, sheenRoughness:f.sheenRoughness||1, sheenColor:0xffffff,
       envMap, envMapIntensity:f.env*reflections, side:THREE.DoubleSide});
+    addDetail(m, f.metalness>.5?'metal':finish==='printed'?'printed':finish==='board'?'board':'purchased');
     let board=null;
     if (finish==='board'&&entry.board) {
       board=boardColours(entry.positions, entry.board, colour);
@@ -529,13 +542,18 @@ export function create(canvas) {
       if (!hidden) g.setAttribute('normal',new THREE.Float32BufferAttribute(creaseNormals(entry.positions),3));
       g.computeBoundingBox();
       const {m:mat, finish, colour, board}=material(entry,i,g);
+      // Its matcap twin (ADR-676) shares the page's one baked sphere; a look swaps between them.
+      const twin=new THREE.MeshMatcapMaterial({color:0xffffff, side:THREE.DoubleSide});
       const m=new THREE.Mesh(g,mat);
+      m.userData.materials={parts:mat, matcap:twin};
       m.userData.mmBounds=new THREE.Box3().setFromArray(entry.positions);
       m.userData.world=entry.world===true; m.userData.finish=finish; m.userData.env=FINISHES[finish].env; m.userData.colour=colour; m.userData.board=board;
-      m.visible=!hidden;
+      m.visible=!hidden&&!(entry.world!==true&&hiddenNames.has(entry.name));
       m.castShadow=true;m.receiveShadow=true;pose(m,entry.placement);
       meshes.set(entry.name,m);model.add(m);triangleCount+=entry.positions.length/9;
     });
+    selectedNames=selectedNames.filter(n=>meshes.has(n)&&!meshes.get(n).userData.world);
+    applyLook(); applySelection();
     updateBounds();if(bounds)frameBounds(bounds);applySection();fit();
     return entries.map((e,i)=>({name:e.name,triangles:e.positions.length/9,color:[16,8,0].map(shift=>(colourOf(e,i)>>shift)&255)}));
   }
@@ -699,8 +717,69 @@ export function create(canvas) {
     const w=canvas.clientWidth||canvas.width, h=canvas.clientHeight||canvas.height;
     return [(projected.x+1)/2*w, (1-projected.y)/2*h];
   }
-  // The picked solid glows faintly; null clears it. Never set by a capture.
-  function highlight(name) {picked=meshes.has(name)?name:null; meshes.forEach((m,n)=>{if(m.material.emissive)m.material.emissive.setHex(n===picked?0x3a3a3a:0);}); draw(); return picked;}
+  // The selection glows in the page's --select; [] clears it. Never set by a capture. World
+  // geometry is never selected. highlight(name) selects that one part (or none) and returns it.
+  const SELECT={glow:0x0c1e36, tint:0xc8dcf6};
+  function applySelection() {
+    const on=new Set(selectedNames);
+    meshes.forEach((m,n)=> {
+      const {parts:p, matcap:t}=m.userData.materials;
+      p.emissive.setHex(on.has(n)?SELECT.glow:0); t.color.setHex(on.has(n)?SELECT.tint:0xffffff);
+    });
+    picked=selectedNames.length?selectedNames[selectedNames.length-1]:null;
+  }
+  function select(names) {
+    const seen=new Set();
+    selectedNames=(Array.isArray(names)?names:[]).filter(n=>meshes.has(n)&&!meshes.get(n).userData.world&&!seen.has(n)&&seen.add(n));
+    applySelection(); draw(); return selectedNames.slice();
+  }
+  function highlight(name) {select(meshes.has(name)?[name]:[]); return picked;}
+  // Hide the named parts and show every other (ADR-676): the page's outliner. World geometry
+  // stays as ADR-600 has it. Returns the names hidden that are in the model.
+  function setHidden(names) {
+    hiddenNames.clear(); (Array.isArray(names)?names:[]).forEach(n=>hiddenNames.add(String(n)));
+    meshes.forEach((m,n)=>{if(!m.userData.world) m.visible=!hiddenNames.has(n);});
+    draw(); return [...meshes.keys()].filter(n=>hiddenNames.has(n)&&!meshes.get(n).userData.world);
+  }
+  // The parts as the outliner lists them, in the model's order, world geometry left out.
+  function parts() {
+    return [...meshes].filter(([,m])=>!m.userData.world).map(([n,m])=>({name:n, visible:m.visible, selected:selectedNames.includes(n),
+      finish:m.userData.finish, colour:'#'+m.userData.colour.getHexString(), triangles:m.geometry.attributes.position.count/3}));
+  }
+  // Frame the named parts at their poses now, keeping the view's direction. False when none is there.
+  function fitTo(names) {
+    const box=new THREE.Box3(), v=new THREE.Vector3();
+    (names||[]).forEach(n=> {
+      const m=meshes.get(n); if (!m) return;
+      m.updateMatrix(); const a=m.geometry.attributes.position;
+      for (let i=0;i<a.count;i++) box.expandByPoint(v.fromBufferAttribute(a,i).applyMatrix4(m.matrix).multiplyScalar(1000));
+    });
+    if (box.isEmpty()) return false;
+    const w=canvas.clientWidth||canvas.width,h=canvas.clientHeight||canvas.height,tanV=Math.tan(55*Math.PI/360);
+    const half=Math.min(Math.atan(tanV),Math.atan(tanV*Math.min(1,w/h))), radius=Math.max(1,box.getSize(v).length()/2);
+    c={yaw:c.yaw,pitch:c.pitch,distance:radius/Math.sin(half)*1.15,target:box.getCenter(v).toArray()};
+    draw(); return true;
+  }
+  // The look (ADR-676): a lighting setup lights the physical materials from its room, its key and
+  // its fill; a matcap puts every part in the one baked material. Unknown names keep the look.
+  function applyLook() {
+    const matcap=MATCAPS.includes(look), lighting=LIGHTING[matcap?'studio':look];
+    envMap=looks.environment(matcap?'studio':look);
+    const texture=matcap?looks.matcap(look):null;
+    keyDir=lighting.key.dir; environment.setLighting(lighting);
+    renderer.toneMappingExposure=lighting.exposure*STAGE_EXPOSURE;
+    meshes.forEach(m=> {
+      const {parts:p, matcap:t}=m.userData.materials;
+      if (p.envMap!==envMap) {p.envMap=envMap; p.needsUpdate=true;}
+      p.envMapIntensity=m.userData.env*reflections*lighting.env;
+      if (t.matcap!==texture) {t.matcap=texture; t.needsUpdate=true;}
+      m.material=matcap&&texture?t:p;
+    });
+    if (bounds) frameBounds(bounds);
+  }
+  function setLook(name) {if (LOOKS.includes(name)) {look=name; applyLook();} draw(); return look;}
+  function setOcclusion(flag) {occluded=!!flag; draw(); return occluded;}
+  function setDetail(flag) {detailed=!!flag; detailSwitch.value=detailed?1:0; draw(); return detailed;}
   canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);pointers.set(e.pointerId,[e.clientX,e.clientY]);press=pointers.size===1?[e.clientX,e.clientY]:null;panning=pointers.size===1&&(e.shiftKey||e.button===1);if(pointers.size===2){pinch=span();mid=centre();}e.preventDefault();});
   canvas.addEventListener('pointermove',e=>{
     const p=pointers.get(e.pointerId);if(!p)return;
@@ -712,7 +791,7 @@ export function create(canvas) {
     draw();
   });
   const lift=e=>{
-    if (e.type==='pointerup'&&press&&pointers.size===1&&Math.hypot(e.clientX-press[0],e.clientY-press[1])<5&&onPick) onPick(pick(e.clientX,e.clientY));
+    if (e.type==='pointerup'&&press&&pointers.size===1&&Math.hypot(e.clientX-press[0],e.clientY-press[1])<5&&onPick) onPick(pick(e.clientX,e.clientY),{add:e.shiftKey||e.ctrlKey||e.metaKey});
     press=null; pointers.delete(e.pointerId);pinch=0;mid=null;panning=false;
   };
   canvas.addEventListener('pointerup',lift);canvas.addEventListener('pointercancel',lift);
@@ -722,10 +801,14 @@ export function create(canvas) {
   // The reflections' strength: a multiple (0..REFLECTIONS.max) of each finish's own.
   function setReflections(value) {
     const v=Number(value); if (Number.isFinite(v)) reflections=Math.max(0,Math.min(REFLECTIONS.max,v));
-    meshes.forEach(m=>{m.material.envMapIntensity=m.userData.env*reflections;}); draw(); return reflections;
+    const lighting=LIGHTING[MATCAPS.includes(look)?'studio':look];
+    meshes.forEach(m=>{m.userData.materials.parts.envMapIntensity=m.userData.env*reflections*lighting.env;}); draw(); return reflections;
   }
+  applyLook();
   return {available:true,load,install,clear,fit,draw,setPoses,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
     setSection,setLines,showLines,setStyle,style:()=>style,setMeshLines,meshLines:()=>({...meshLines}),setReflections,reflections:()=>reflections,
+    setLook,look:()=>look,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
+    setHidden,hidden:()=>[...hiddenNames],select,selected:()=>selectedNames.slice(),parts,fitTo,
     pick,screenPoint,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,
       world:[...meshes].filter(([,m])=>m.userData.world).map(([n])=>n),style:STYLE,render_style:style,stage,showing:showing(),
@@ -737,6 +820,8 @@ export function create(canvas) {
       finishes:Object.fromEntries([...meshes].map(([n,m])=>[n,m.userData.finish])),
       boards:Object.fromEntries([...meshes].filter(([,m])=>m.userData.board).map(([n,m])=>[n,{...m.userData.board}])),
       reflections:{strength:reflections, environment:!!envMap},
+      look:{name:look, occlusion:occluded, detail:detailed, matcap:MATCAPS.includes(look)&&!!looks.matcap(look)},
+      hidden:[...meshes].filter(([,m])=>!m.userData.world&&!m.visible).map(([n])=>n), selected:selectedNames.slice(),
       mesh_lines:{...meshLines, drawn:meshLineCount()},
       section:section&&{...section}, leaders:{drawn:leaders?leaders.geometry.attributes.position.count/2:0,shown:!!(leaders&&leaders.visible)},
       poses:Object.fromEntries([...meshes].map(([n,m])=>[n,{position_mm:m.position.toArray().map(v=>v*1000),rotation_xyzw:m.quaternion.toArray()}]))}),

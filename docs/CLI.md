@@ -1400,13 +1400,17 @@ assembly every one of these is `null`.
 **What the browser keeps.** The page keeps no project state of its own:
 everything it shows is read from these routes on each poll. What it keeps in
 `localStorage` is per-viewer conveniences — `cadex.theme` (dark, light
-or system), `cadex.layout.v4` (the screen's areas), `cadex.render` (the
+or system), `cadex.layout.v5` (the screen's areas), `cadex.render` (the
 viewport's render style, shaded or wireframe; a stored `hairline` is read as
 wireframe), `cadex.meshlines` and `cadex.meshlines.strength` (the wireframe's
-mesh lines, on or off, and their strength) and `cadex.reflections` (the shaded
-solids' reflection strength) — and the test fails if the page stores any other key. A picked
-checkpoint, a scrubbed revision or a selected run lasts only as long as the
-page.
+mesh lines, on or off, and their strength), `cadex.reflections` (the shaded
+solids' reflection strength), `cadex.look`, `cadex.occlusion` and
+`cadex.detail` (the shaded look's lighting setup or matcap, its ambient
+occlusion and its surface detail, ADR-676), and `cadex.outliner.group` and
+`cadex.outliner.folded` (how the Outliner groups the parts, and which groups
+are folded) — and the test fails if the page stores any other key. A picked
+checkpoint, a scrubbed revision, a selected run, and the parts hidden or
+selected in the Outliner last only as long as the page.
 
 ### Exit codes
 

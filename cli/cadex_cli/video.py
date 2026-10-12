@@ -607,7 +607,7 @@ def studio_digest():
 def style_digest():
     """Identity of all shipped code that determines pixels, including the library."""
     h = hashlib.sha256()
-    for name in ('review_scene.js', 'environment.js', 'floor.js', 'three.module.js', 'stl.js'):
+    for name in ('review_scene.js', 'shading.js', 'environment.js', 'floor.js', 'three.module.js', 'stl.js'):
         h.update(name.encode())
         h.update((STATIC_DIR / name).read_bytes())
     return h.hexdigest()

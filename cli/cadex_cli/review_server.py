@@ -86,8 +86,8 @@ STATIC_FILES = {
     "review.css": ("text/css; charset=utf-8", STATIC_DIR / "review.css"),
     "review.js": ("text/javascript; charset=utf-8", STATIC_DIR / "review.js"),
     **{name: ("text/javascript; charset=utf-8", STATIC_DIR / name) for name in
-       ("three.module.js", "floor.js", "environment.js", "review_scene.js", "stl.js", "capture.js",
-        "layout.js", "theme.js", "status.js")},
+       ("three.module.js", "floor.js", "environment.js", "review_scene.js", "shading.js", "stl.js", "capture.js",
+        "layout.js", "theme.js", "status.js", "outliner.js")},
     "capture.html": ("text/html; charset=utf-8", STATIC_DIR / "capture.html"),
     "viewer.js": ("text/javascript; charset=utf-8", STATIC_DIR / "viewer.js"),
 }

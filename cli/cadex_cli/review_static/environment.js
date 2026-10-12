@@ -6,7 +6,7 @@
 // a fogged cyclorama — and ONE palette, the reference's dark one (ADR-331): no walled variant and
 // no light theme, so a clip and the dashboard cannot show different places.
 //
-// `createEnvironment(view, { labels })` -> { setStage, setSize, setFog, dispose }.
+// `createEnvironment(view, { labels })` -> { setStage, setSize, setFog, setLighting, dispose }.
 // `labels: false` builds the floor without the baked pitch / "PROTOTYPE" text (the grid still
 // carries the scale) — a clean backdrop for a product shot.
 //   - the palette is applied once at construction: scene.background / fog / ground tint / light
@@ -16,6 +16,9 @@
 //     what it derived, so a caller can report the numbers rather than recompute them;
 //   - setSize / setFog are the primitives setStage drives; call them directly only to override one
 //     axis of the derivation.
+//   - setLighting takes a lighting setup's light levels (shading.js, ADR-676) over the palette's:
+//     key, fill, the hemisphere and the room's bounce, and how far the mat is lifted so it reads
+//     alike under every setup; `null` restores the palette's own;
 //   - dispose tears the whole thing down (floor geometry + texture + the extra fill light).
 
 import * as THREE from "./three.module.js";
@@ -85,6 +88,7 @@ export function createEnvironment(view, { labels = true } = {}) {
   let size = { footprint: 10, floorZ: 0 };
   let fogOverride = null;                 // {near, far} set by setFog; survives restaging
   let room = null;
+  let lighting = null;                    // a setup's light levels over the palette's (setLighting)
 
   // An extra hemisphere fill so the greybox floor reads even; its intensity and ground colour come
   // from the palette like the view's own lights.
@@ -108,6 +112,7 @@ export function createEnvironment(view, { labels = true } = {}) {
       size: size.footprint, floorZ: size.floorZ,
       palette: PALETTE.tile, labels,
     });
+    liftFloor();
   }
 
   function applyChrome() {
@@ -118,11 +123,34 @@ export function createEnvironment(view, { labels = true } = {}) {
       s.bg, fogOverride ? fogOverride.near : s.fogNear, fogOverride ? fogOverride.far : s.fogFar);
     if (view.ground) view.ground.material.color.setHex(s.bg);
     const L = view.lights || {};
-    if (L.hemi) { L.hemi.intensity = s.hemiIntensity; L.hemi.groundColor.setHex(s.hemiGround); }
-    if (L.sun) L.sun.intensity = s.sunIntensity;
-    if (L.fill) L.fill.intensity = s.fillIntensity;
-    roomFill.intensity = s.roomFillIntensity;
+    if (L.hemi) { L.hemi.intensity = lighting ? lighting.hemi : s.hemiIntensity; L.hemi.groundColor.setHex(s.hemiGround); }
+    if (L.sun) { L.sun.intensity = lighting ? lighting.key.intensity : s.sunIntensity; L.sun.color.setHex(lighting ? lighting.key.colour : 0xffffff); }
+    if (L.fill) {
+      L.fill.intensity = lighting ? lighting.fill.intensity : s.fillIntensity;
+      L.fill.color.setHex(lighting ? lighting.fill.colour : 0xdfe6ff);
+      if (lighting) L.fill.position.set(...lighting.fill.dir).normalize().multiplyScalar(15);
+    }
+    roomFill.intensity = lighting ? lighting.bounce : s.roomFillIntensity;
     roomFill.groundColor.setHex(s.roomFillGround);
+    liftFloor();
+  }
+
+  // The mat glows by its own texture a little under a setup that lights it less than the palette
+  // did, so its tiles and labels read the same under every setup.
+  function liftFloor() {
+    room?.traverse((o) => {
+      const m = o.material;
+      if (!m || !m.map || !m.emissive) return;
+      m.emissive.setHex(lighting ? 0xffffff : 0x000000);
+      m.emissiveMap = lighting ? m.map : null;
+      m.emissiveIntensity = lighting ? lighting.floor : 1;
+      m.needsUpdate = true;
+    });
+  }
+
+  function setLighting(l) {
+    lighting = l || null;
+    applyChrome();
   }
 
   function setSize(sz = {}) {
@@ -195,5 +223,5 @@ export function createEnvironment(view, { labels = true } = {}) {
   // orbit, the capturer once per clip); this only has to be right enough that the floor outruns
   // its own fade.
   setStage({ camDist: Math.max(1, view.camera.position.length()) });
-  return { setStage, setSize, setFog, dispose };
+  return { setStage, setSize, setFog, setLighting, dispose };
 }
