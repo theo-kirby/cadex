@@ -165,7 +165,7 @@ export function boardColours(mm, board, base) {
 export function create(canvas, {labels=true}={}) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, screenBox(){return null;}, draw(){}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setFov(){return 55;}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, screenBox(){return null;}, draw(){}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   // Soft shadows (ADR-676): a variance shadow map, blurred, so a shadow's edge widens with its
@@ -177,7 +177,7 @@ export function create(canvas, {labels=true}={}) {
   renderer.localClippingEnabled = true;
   const scene = new THREE.Scene(), world = new THREE.Group(), model = new THREE.Group();
   world.rotation.x = -Math.PI/2; scene.add(world); world.add(model);
-  const camera = new THREE.PerspectiveCamera(55, 1, .0001, 800);
+  const camera = new THREE.PerspectiveCamera(FOV, 1, .0001, 800);
   // Key, hemisphere and opposite fill; the environment sets their intensities and ground tints
   // from its one dark palette (ADR-331) when it is built over them.
   const hemi = new THREE.HemisphereLight(0xffffff, 0x2a2a2a, 1.6);
@@ -494,7 +494,7 @@ export function create(canvas, {labels=true}={}) {
     if (hiddenNames.size&&fitTo([...meshes.keys()].filter(n=>meshes.get(n).visible&&!meshes.get(n).userData.world))) return;
     // Frame the bounding sphere in the narrower field of view: a canvas at least as wide as it is tall frames by
     // the vertical one (as it always has), a portrait one — a stage between two wide sidebars — by the horizontal.
-    const w=canvas.clientWidth||canvas.width,h=canvas.clientHeight||canvas.height,tanV=Math.tan(55*Math.PI/360);
+    const w=canvas.clientWidth||canvas.width,h=canvas.clientHeight||canvas.height,tanV=Math.tan(camera.fov*Math.PI/360);
     const half=Math.min(Math.atan(tanV),Math.atan(tanV*Math.min(1,w/h)));
     c={yaw:.8,pitch:.5,distance:bounds.radius/Math.sin(half)*1.15,target:bounds.center.slice()};
     draw();
@@ -628,7 +628,7 @@ export function create(canvas, {labels=true}={}) {
     const height=o.subject_height_mm??(bounds?bounds.max[2]-bounds.min[2]:0);
     if (!(height>0)||!Array.isArray(track)||!track.length||!track.every(p=>Array.isArray(p)&&p.length===3&&p.every(Number.isFinite))) throw new Error('follow needs a subject height and a finite track');
     const w=canvas.clientWidth||canvas.width, h=canvas.clientHeight||canvas.height;
-    const tanV=Math.tan(FOV*Math.PI/360), tanH=tanV*w/h, d=height/(2*tanV*Math.max(.001,fraction));
+    const tanV=Math.tan(camera.fov*Math.PI/360), tanH=tanV*w/h, d=height/(2*tanV*Math.max(.001,fraction));
     // Camera basis in sim coordinates (z up) for the fixed yaw and pitch: `dir` from subject to camera.
     const cp=Math.cos(c.pitch), dir=[cp*Math.cos(c.yaw),cp*Math.sin(c.yaw),Math.sin(c.pitch)];
     const right=[-Math.sin(c.yaw),Math.cos(c.yaw),0], up=[-dir[2]*right[1],dir[2]*right[0],right[1]*dir[0]-right[0]*dir[1]];
@@ -775,7 +775,7 @@ export function create(canvas, {labels=true}={}) {
       for (let i=0;i<a.count;i++) box.expandByPoint(v.fromBufferAttribute(a,i).applyMatrix4(m.matrix).multiplyScalar(1000));
     });
     if (box.isEmpty()) return false;
-    const w=canvas.clientWidth||canvas.width,h=canvas.clientHeight||canvas.height,tanV=Math.tan(55*Math.PI/360);
+    const w=canvas.clientWidth||canvas.width,h=canvas.clientHeight||canvas.height,tanV=Math.tan(camera.fov*Math.PI/360);
     const half=Math.min(Math.atan(tanV),Math.atan(tanV*Math.min(1,w/h))), radius=Math.max(1,box.getSize(v).length()/2);
     c={yaw:c.yaw,pitch:c.pitch,distance:radius/Math.sin(half)*1.15,target:box.getCenter(v).toArray()};
     draw(); return true;
@@ -797,6 +797,9 @@ export function create(canvas, {labels=true}={}) {
     });
     if (bounds) frameBounds(bounds);
   }
+  // The lens, as a vertical field of view in degrees (the viewport's is FOV): the hero page
+  // shoots its product shots longer (ADR-677), so a design keeps its proportions.
+  function setFov(degrees) {const d=Number(degrees); if (Number.isFinite(d)&&d>=10&&d<=90) {camera.fov=d; staged=''; draw();} return camera.fov;}
   function setLook(name) {if (LOOKS.includes(name)) {look=name; applyLook();} draw(); return look;}
   function setOcclusion(flag) {occluded=!!flag; draw(); return occluded;}
   function setDetail(flag) {detailed=!!flag; detailSwitch.value=detailed?1:0; draw(); return detailed;}
@@ -827,7 +830,7 @@ export function create(canvas, {labels=true}={}) {
   applyLook();
   return {available:true,load,install,clear,fit,draw,setPoses,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
     setSection,setLines,showLines,setStyle,style:()=>style,setMeshLines,meshLines:()=>({...meshLines}),setReflections,reflections:()=>reflections,
-    setLook,look:()=>look,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
+    setLook,look:()=>look,setFov,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
     setHidden,hidden:()=>[...hiddenNames],select,selected:()=>selectedNames.slice(),parts,fitTo,
     pick,screenPoint,screenBox,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,

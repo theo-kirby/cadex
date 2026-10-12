@@ -177,3 +177,15 @@ def test_the_command_writes_no_progress_row_and_makes_no_commit(tmp_path, monkey
     assert cli.main(["hero", "--project", str(root), "--no-engine"]) == cli.EXIT_OK
     assert calls == []
     assert cli.main(["hero", "--project", str(root), "--only", "bogus"]) == cli.EXIT_USAGE
+
+
+def test_a_partial_run_keeps_what_the_folder_says_of_the_other_items(tmp_path) -> None:
+    root = _project(tmp_path)
+    _manifest(root, REVISION_B)
+    folder = root / "hero"
+    folder.mkdir()
+    (folder / "hero.json").write_text(json.dumps({"schema": hero.SCHEMA, "items": {"video": {"landscape": {}}},
+                                                  "errors": {"rollout": "no run"}}))
+    manifest = hero.make(root, only=("sheet",))
+    assert manifest["items"]["video"] == {"landscape": {}} and manifest["errors"]["rollout"] == "no run"
+    assert "sheet" in manifest["errors"]

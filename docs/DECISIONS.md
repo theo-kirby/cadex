@@ -40069,3 +40069,25 @@ The wave-3 velociraptor was the test case.
   - items standing alone;
   - the page's framing, wipe and plot on known geometry;
   - the crossfaded encode's length.
+
+**Revised 2026-10-12, after the owner reviewed the velociraptor videos.** The owner said the
+diagonal "should be more flashy and animated / dynamic". They also said the environment and
+lighting "looks way off. it doesnt seem to be on the grid floor with the faded fog horizon", and
+that the camera angle should be better. The wave-1 CNC was the next test case.
+- **The floor.** The floor really was missing. Headless Chromium's GPU-accelerated 2D canvas,
+  copied into WebGL, came through black on most runs, so the mat's grid texture drew as a black
+  floor, with no grid, no shadow and no fog horizon. The first velociraptor stills were from a run
+  where it happened to work. With a white material the floor was bright, which proved the texture
+  was at fault. The GPU flags now add `--disable-accelerated-2d-canvas`, and the floor drew on
+  three of three fresh browsers.
+- **The camera.** A 30° lens is used (`review_scene` gains `setFov`; the follow rig and `fitTo`
+  read the camera's lens rather than the constant). The turn cranes down from 36° to 21° and
+  pushes in by 12%. It is fitted with every view at its own pitch and distance, and centred
+  vertically, at 90% fill. The stills are all three-quarter views.
+- **The wipe.** The edge now turns as it sweeps (38° to 16°) and eases in and out cubically over
+  1.0 s. It is drawn additively: a core, a cyan and amber fringe, a narrow band, a glint running
+  along it, and a flash over what it has just uncovered.
+- **The CNC's sheet is not made.** The engine will not open the project, because its restore
+  pass no longer reproduces the accepted digest. `cadex render` fails the same way. A sheet drawn
+  without the engine is in index colours with no numbers, so `hero` reports the failure instead of
+  presenting that.

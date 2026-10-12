@@ -50,23 +50,25 @@ HERO_DIRNAME = "hero"
 SCHEMA = "cadex-hero-v1"
 ITEMS = ("stills", "dashboard", "sheet", "rollout", "video")
 FPS = 30
-#: The stills: each a look (shading.js) seen from its own side, yaw and pitch in radians as the
-#: viewport's camera has them (yaw 0.8, pitch 0.5 is its Fit).
+#: The stills: each a look (shading.js) from its own three-quarter view, yaw and pitch in radians as
+#: the viewport's camera has them (yaw 0.8, pitch 0.5 is its Fit). Three-quarter views show two
+#: faces of any design whichever way it faces; a side-on view of a box is a rectangle.
 STILLS = (
-    {"name": "studio", "look": "studio", "yaw": 0.8, "pitch": 0.3},
-    {"name": "dramatic", "look": "dramatic", "yaw": 1.45, "pitch": 0.12},
-    {"name": "softbox", "look": "softbox", "yaw": -0.75, "pitch": 0.42},
-    {"name": "aluminium", "look": "aluminium", "yaw": -1.1, "pitch": 0.45},
+    {"name": "studio", "look": "studio", "yaw": 0.8, "pitch": 0.42},
+    {"name": "softbox", "look": "softbox", "yaw": -0.8, "pitch": 0.5},
+    {"name": "dramatic", "look": "dramatic", "yaw": 2.35, "pitch": 0.24},
+    {"name": "aluminium", "look": "aluminium", "yaw": -2.35, "pitch": 0.55},
 )
 STILL = {"size": (2560, 1440), "supersample": 2, "fill": 0.8}
 #: The two hero videos' frames.
 FORMATS = {"landscape": (1920, 1080), "square": (1080, 1080)}
-#: The turn: one full revolution at constant speed, starting from the viewport's yaw. Each layer
-#: after the first wipes over the one before at ``at`` seconds, taking ``wipe_s``.
+#: The turn: one full revolution at constant speed, starting from the viewport's yaw, while the
+#: camera cranes down from ``pitch[0]`` to ``pitch[1]`` and pushes in by ``push`` of its distance,
+#: both eased. Each layer after the first wipes over the one before at ``at`` seconds, taking ``wipe_s``.
 TURNTABLE = {
-    "seconds": 12.0, "yaw": 0.8, "pitch": 0.3, "fill": 0.86, "wipe_s": 1.3,
-    "layers": ({"look": "clay"}, {"look": "aluminium", "at": 2.6},
-               {"style": "wireframe", "at": 5.8}, {"look": "studio", "at": 9.0}),
+    "seconds": 12.0, "yaw": 0.8, "pitch": (0.62, 0.36), "push": 0.12, "fill": 0.9, "wipe_s": 1.0,
+    "layers": ({"look": "clay"}, {"look": "aluminium", "at": 2.7},
+               {"style": "wireframe", "at": 5.9}, {"look": "studio", "at": 9.1}),
 }
 #: The rollout as the hero videos show it (at most ``clip_s`` of it), and as rollout.mp4 does.
 #: ``fraction`` is the subject's standing height over the frame height (the follow rig's framing).
@@ -81,7 +83,10 @@ DASHBOARD = {"size": (1920, 1080), "scale": 2, "settle_s": 25.0}
 #: Chromium's GPU path: ANGLE over Vulkan. ANGLE over EGL dropped whole parts from the odd frame of
 #: a turn on an NVIDIA driver (ADR-677); Vulkan and SwiftShader drew every frame whole. Without a
 #: GPU Chromium falls back to SwiftShader.
-GPU_FLAGS = ("--use-angle=vulkan", "--enable-features=Vulkan", "--ignore-gpu-blocklist")
+#: The 2D canvas stays in software: a GPU-accelerated canvas copied into WebGL came through black in
+#: headless Chromium on most runs, which drew the mat's grid texture as a black floor.
+GPU_FLAGS = ("--use-angle=vulkan", "--enable-features=Vulkan", "--ignore-gpu-blocklist",
+             "--disable-accelerated-2d-canvas")
 LAYOUT_KEY = "cadex.layout.v5"
 #: Generous: a 775k-triangle model takes ~40 s to load into the page.
 LOAD_TIMEOUT_S = 900.0
@@ -100,6 +105,23 @@ def _smooth(x: float) -> float:
     return x * x * (3 - 2 * x)
 
 
+def _snap(x: float) -> float:
+    """Ease in and out, cubic: slow off the mark, fast across the middle, settling at the end."""
+    x = max(0.0, min(1.0, x))
+    return 4 * x ** 3 if x < 0.5 else 1 - (-2 * x + 2) ** 3 / 2
+
+
+def turntable_camera(t: float, fitted: dict[str, Any]) -> dict[str, Any]:
+    """The turn's camera at ``t`` seconds: round once, craning down and pushing in, eased."""
+
+    spec = TURNTABLE
+    u = max(0.0, min(1.0, t / spec["seconds"]))
+    eased = _smooth(u)
+    pitch = spec["pitch"][0] + (spec["pitch"][1] - spec["pitch"][0]) * eased
+    return {**fitted, "yaw": spec["yaw"] + 2 * math.pi * u, "pitch": pitch,
+            "distance": fitted["distance"] * (1 - spec["push"] * eased)}
+
+
 def turntable_layers(t: float) -> list[dict[str, Any]]:
     """The layers at ``t`` seconds into the turn, each later one with its wipe's progress."""
 
@@ -108,7 +130,7 @@ def turntable_layers(t: float) -> list[dict[str, Any]]:
     for layer in spec["layers"]:
         entry = {k: v for k, v in layer.items() if k != "at"}
         if "at" in layer:
-            entry["wipe"] = round(_smooth((t - layer["at"]) / spec["wipe_s"]), 5)
+            entry["wipe"] = round(_snap((t - layer["at"]) / spec["wipe_s"]), 5)
         layers.append(entry)
     return layers
 
@@ -280,13 +302,18 @@ def turntable_frames(stage: Stage, directory: Path, width: int, height: int) -> 
     facts = stage.load("api/model/accepted")
     stage.size(width, height, 1)
     spec, count = TURNTABLE, round(TURNTABLE["seconds"] * FPS)
-    yaws = [spec["yaw"] + 2 * math.pi * k / 24 for k in range(24)]
+    # One base distance that frames every view of the move, each at its own pitch and push.
+    probe = {"yaw": spec["yaw"], "pitch": spec["pitch"][0], "distance": 1.0, "target": [0, 0, 0]}
+    views = []
+    for j in range(49):
+        view = turntable_camera(spec["seconds"] * j / 48, probe)
+        views.append({"yaw": view["yaw"], "pitch": view["pitch"], "scale": view["distance"]})
     camera = stage.call("cadexHero.fitCamera(" + json.dumps(
-        {"yaw": spec["yaw"], "pitch": spec["pitch"], "fill": spec["fill"], "yaws": yaws}) + ")")
+        {"yaw": spec["yaw"], "pitch": spec["pitch"][0], "fill": spec["fill"], "views": views}) + ")")
     for i in range(count):
         t = i / FPS
-        frame = {**camera, "yaw": spec["yaw"] + 2 * math.pi * i / count}
-        stage.call("cadexHero.shot(" + json.dumps({"camera": frame, "layers": turntable_layers(t)}) + ")")
+        stage.call("cadexHero.shot(" + json.dumps({"camera": turntable_camera(t, camera),
+                                                    "layers": turntable_layers(t)}) + ")")
         stage.grab(directory / f"{i:05d}.jpg")
     return {"frames": count, "seconds": count / FPS, "camera": camera, "revision": facts.get("revision"),
             "layers": [dict(layer) for layer in spec["layers"]], "wipe_s": spec["wipe_s"]}
@@ -425,6 +452,16 @@ def make(root: Path | str, *, out: Path | None = None, run: str | None = None,
     }
     if not accepted.get("available"):
         manifest["errors"]["model"] = "no accepted model: " + str(accepted.get("reason"))
+    # A partial run (--only) keeps what the folder already says of the items it does not remake.
+    try:
+        previous = json.loads((target / "hero.json").read_text())
+    except (OSError, ValueError):
+        previous = {}
+    if previous.get("schema") == SCHEMA:
+        for block in ("items", "errors"):
+            for key, value in (previous.get(block) or {}).items():
+                if key in ITEMS and key not in only:
+                    manifest[block][key] = value
 
     def attempt(key: str, work: Callable[[], Any]) -> None:
         if key not in only:

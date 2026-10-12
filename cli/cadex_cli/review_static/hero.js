@@ -20,13 +20,18 @@ import {create} from './review_scene.js';
 
 const stage = document.getElementById('stage');
 const viewer = create(stage, {labels: false});
+//: The lens: longer than the viewport's 55 degrees, so a product shot keeps the design's proportions.
+const LENS = 30;
+viewer.setFov(LENS);
 const out = document.createElement('canvas'), ctx = out.getContext('2d');
 //: The dark page's tokens (review.css): the wireframe's paper and ink, and the plot's chrome.
 const DARK = {paper: '#1b1b1b', ink: '#d6d6d6'};
 const PLOT = {bg: '#141414', ink: '#ededed', ink2: '#9a9a9a', rule: '#3a3a3a', accent: '#dcdcdc', ok: '#8be0b0',
               font: 'system-ui, "Segoe UI", "Helvetica Neue", Arial, sans-serif'};
-//: The wipe: a straight edge leaning this far off vertical, sweeping from the top left, with a lit rim.
-const WIPE = {angle: 28, rim: 1 / 420, glow: 1 / 80};
+//: The wipe: a straight edge sweeping from the top left that turns from `from` to `to` degrees off
+//: vertical as it goes, its core lit, a broad band of light round it, a split cyan and amber fringe,
+//: a glint running along it and a flash over what it has just revealed.
+const WIPE = {from: 38, to: 16, core: 1 / 380, glow: 1 / 45, band: 0.055, fringe: 1 / 260, flash: 0.2, trail: 0.12};
 let W = 0, H = 0, model = null, roll = null;
 
 function size(w, h, supersample = 1) {
@@ -54,30 +59,36 @@ function basis(c) {
   const sy = Math.sin(c.yaw), cy = Math.cos(c.yaw), sp = Math.sin(c.pitch), cp = Math.cos(c.pitch);
   return {right: [-sy, cy, 0], up: [-sp * cy, -sp * sy, cp]};
 }
-function mmPerPixel(c) { return 2 * c.distance * Math.tan(55 * Math.PI / 360) / (stage.clientHeight || 1); }
+function mmPerPixel(c) { return 2 * c.distance * Math.tan(LENS * Math.PI / 360) / (stage.clientHeight || 1); }
 
-function fitCamera({yaw = .8, pitch = .35, fill = .78, yaws = null, centre = true, lift = 0} = {}) {
+function fitCamera({yaw = .8, pitch = .35, fill = .78, yaws = null, views = null, centre = true, lift = 0} = {}) {
   const b = viewer.stats().bounds;
   if (!b) throw new Error('nothing to frame');
-  const w = stage.clientWidth, h = stage.clientHeight, views = Array.isArray(yaws) && yaws.length ? yaws : [yaw];
+  const w = stage.clientWidth, h = stage.clientHeight;
+  // Every view the shot will take, {yaw, pitch}: one distance must hold at all of them.
+  const shots = Array.isArray(views) && views.length ? views
+              : (Array.isArray(yaws) && yaws.length ? yaws : [yaw]).map(y => ({yaw: y, pitch}));
   let c = {yaw, pitch, distance: b.radius * 4, target: b.center.slice()};
   for (let k = 0; k < 8; k++) {
-    let need = 0, dx = 0, dy = 0;
-    for (const y of views) {
-      viewer.setCamera({...c, yaw: y});
+    let need = 0, dx = 0, dy = 0, rise = 0;
+    for (const v of shots) {
+      viewer.setCamera({...c, yaw: v.yaw, pitch: v.pitch, distance: c.distance * (v.scale || 1)});
       const box = viewer.screenBox();
       if (!box) continue;
-      if (views.length === 1 && centre) {
+      if (shots.length === 1 && centre) {
         // One view: centre the design, then fill by its own extent.
         dx = (box[0] + box[2]) / 2 - w / 2; dy = (box[1] + box[3]) / 2 - h / 2;
         need = Math.max(need, (box[2] - box[0]) / (fill * w), (box[3] - box[1]) / (fill * h));
       } else {
-        // A turntable pivots on the centre, so it fills by the reach either side of it.
+        // A turntable pivots on the centre, so it fills by the reach either side of it; it is
+        // centred up and down by the mean of its views.
+        rise += ((box[1] + box[3]) / 2 - h / 2) / shots.length;
         need = Math.max(need, Math.max(w / 2 - box[0], box[2] - w / 2) / (fill * w / 2),
                         Math.max(h / 2 - box[1], box[3] - h / 2) / (fill * h / 2));
       }
     }
     if (!(need > 0)) break;
+    if (shots.length > 1 && centre) dy = rise;
     const {right, up} = basis(c), mm = mmPerPixel(c);
     c = {...c, distance: c.distance * need, target: c.target.map((t, i) => t + right[i] * dx * mm - up[i] * dy * mm)};
   }
@@ -99,7 +110,7 @@ function blit() {
 }
 // The part of the frame a wipe at `p` has passed: the frame cut by the edge n·x = s.
 function wipeEdge(p) {
-  const a = WIPE.angle * Math.PI / 180, n = [Math.cos(a), Math.sin(a)];
+  const a = (WIPE.from + (WIPE.to - WIPE.from) * p) * Math.PI / 180, n = [Math.cos(a), Math.sin(a)];
   const corners = [[0, 0], [W, 0], [W, H], [0, H]], d = corners.map(q => q[0] * n[0] + q[1] * n[1]);
   const lo = Math.min(...d), hi = Math.max(...d), s = lo + (hi - lo) * p;
   const poly = [];
@@ -108,7 +119,36 @@ function wipeEdge(p) {
     if (dq <= 0) poly.push(q);
     if ((dq < 0) !== (dr < 0)) { const t = dq / (dq - dr); poly.push([q[0] + (r[0] - q[0]) * t, q[1] + (r[1] - q[1]) * t]); }
   });
-  return {n, s, poly};
+  return {n, s, poly, lo, hi};
+}
+// The edge, drawn additively over the frame: a broad band of light, a split fringe, the core and
+// a glint that runs along it. Strongest mid-sweep; nothing at either end.
+function edge(n, s, p, span) {
+  const along = [-n[1], n[0]], L = W + H, o = [n[0] * s, n[1] * s], k = Math.sin(Math.PI * p);
+  const line = (offset, colour, width, blur) => {
+    const q = [o[0] + n[0] * offset, o[1] + n[1] * offset];
+    ctx.strokeStyle = colour; ctx.lineWidth = width; ctx.shadowColor = colour; ctx.shadowBlur = blur;
+    ctx.beginPath(); ctx.moveTo(q[0] - along[0] * L, q[1] - along[1] * L); ctx.lineTo(q[0] + along[0] * L, q[1] + along[1] * L); ctx.stroke();
+  };
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  // The band: light either side of the edge, wider than the core by far.
+  const b = span * WIPE.band * (.6 + .4 * k), band = ctx.createLinearGradient(o[0] - n[0] * b, o[1] - n[1] * b, o[0] + n[0] * b, o[1] + n[1] * b);
+  band.addColorStop(0, 'rgba(120,170,255,0)'); band.addColorStop(.5, `rgba(170,205,255,${.24 * k})`); band.addColorStop(1, 'rgba(255,190,120,0)');
+  ctx.fillStyle = band; ctx.fillRect(0, 0, W, H);
+  // The fringe: cyan behind the edge, amber ahead of it.
+  const f = H * WIPE.fringe * (1 + 2 * k);
+  line(-f, `rgba(60,220,255,${.55 * k})`, Math.max(1, H * WIPE.core * .8), H * WIPE.glow * .5);
+  line(f, `rgba(255,170,60,${.5 * k})`, Math.max(1, H * WIPE.core * .8), H * WIPE.glow * .5);
+  // The core.
+  line(0, `rgba(255,255,255,${Math.min(1, 1.6 * k)})`, Math.max(1.5, H * WIPE.core * (1 + k)), H * WIPE.glow);
+  line(0, `rgba(255,255,255,${.9 * k})`, Math.max(1, H * WIPE.core * .5), 0);
+  // The glint: a hot spot running down the edge faster than the edge crosses the frame.
+  const t = (p * 1.6) % 1, g = [o[0] + along[0] * (t - .5) * L * .9, o[1] + along[1] * (t - .5) * L * .9], r = H * .12;
+  const glint = ctx.createRadialGradient(g[0], g[1], 0, g[0], g[1], r);
+  glint.addColorStop(0, `rgba(255,255,255,${.95 * k})`); glint.addColorStop(.15, `rgba(200,230,255,${.45 * k})`); glint.addColorStop(1, 'rgba(120,170,255,0)');
+  ctx.shadowBlur = 0; ctx.fillStyle = glint; ctx.beginPath(); ctx.arc(g[0], g[1], r, 0, 2 * Math.PI); ctx.fill();
+  ctx.restore();
 }
 function shot({camera = null, layers = [{look: 'studio'}]} = {}) {
   if (camera) viewer.setCamera(camera);
@@ -119,18 +159,18 @@ function shot({camera = null, layers = [{look: 'studio'}]} = {}) {
   for (let i = base + 1; i < layers.length; i++) {
     const p = layers[i].wipe ?? 0;
     if (!(p > 0)) continue;
-    const {n, s, poly} = wipeEdge(p);
+    const {n, s, poly, lo, hi} = wipeEdge(p);
     if (poly.length < 3) continue;
     paint(layers[i]);
     ctx.save(); ctx.beginPath(); poly.forEach((q, k) => k ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])); ctx.closePath();
-    ctx.clip(); blit(); ctx.restore();
-    // The rim: a lit line on the edge, strongest mid-sweep.
-    const along = [-n[1], n[0]], L = W + H, o = [n[0] * s, n[1] * s], alpha = Math.min(1, 6 * Math.min(p, 1 - p));
-    ctx.save();
-    ctx.strokeStyle = `rgba(255,255,255,${.9 * alpha})`; ctx.lineWidth = Math.max(1.5, H * WIPE.rim);
-    ctx.shadowColor = `rgba(255,255,255,${.75 * alpha})`; ctx.shadowBlur = H * WIPE.glow;
-    ctx.beginPath(); ctx.moveTo(o[0] - along[0] * L, o[1] - along[1] * L); ctx.lineTo(o[0] + along[0] * L, o[1] + along[1] * L); ctx.stroke();
+    ctx.clip(); blit();
+    // The flash: what the edge has just uncovered is lit, fading behind it.
+    const trail = (hi - lo) * WIPE.trail, f0 = s - trail;
+    const sheen = ctx.createLinearGradient(n[0] * f0, n[1] * f0, n[0] * s, n[1] * s);
+    sheen.addColorStop(0, 'rgba(255,255,255,0)'); sheen.addColorStop(1, `rgba(220,235,255,${WIPE.flash * Math.sin(Math.PI * p)})`);
+    ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = sheen; ctx.fillRect(0, 0, W, H);
     ctx.restore();
+    edge(n, s, p, hi - lo);
   }
   return true;
 }

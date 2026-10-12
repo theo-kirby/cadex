@@ -983,7 +983,9 @@
 
   window.cadexReview = {
     ready: ready,
-    refresh: poll,
+    // A read that starts after this call: a poll already in flight may have asked before the
+    // change the caller is waiting for, so it is waited out, not returned.
+    refresh: function () { return (pendingPoll || Promise.resolve()).then(function () { return poll(); }); },
     viewer: function () { return state.viewer; },
     layout: function () { return state.layout; },
     setStyle: applyStyle,
