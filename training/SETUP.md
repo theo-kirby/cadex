@@ -1,6 +1,6 @@
 # Training a policy: the four ways
 
-Verified against source: 2026-10-10. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-12. Provenance: `[Cadex-new]`. See
 ADR-084 (training is offboard) and ADR-089
 (remote dispatch).
 
@@ -104,7 +104,7 @@ Homebrew 3.13 is the recommended one, and all four pins have arm64 wheels
 for cp312/cp313/cp314:
 
 ```bash
-/opt/homebrew/bin/python3.13 -m venv .venv           # repo root; gitignored
+python3.13 -m venv .venv    # repo root, gitignored; Homebrew's is /opt/homebrew/bin/python3.13
 .venv/bin/pip install -r training/requirements.txt   # pinned trainer dependencies
 .venv/bin/pip install pytest                         # to run the venv-gated suites
 ```

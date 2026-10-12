@@ -57,6 +57,25 @@ def test_cancel_kills_a_nested_worker_that_ignores_sigterm(tmp_path):
     )
     leader = ("import subprocess,sys,time; "
               f"subprocess.Popen([sys.executable, '-c', {child!r}]); time.sleep(30)")
+    _assert_cancel_kills_the_group(tmp_path, leader, ready, heartbeat)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX process groups")
+def test_cancel_kills_the_group_when_the_leader_also_ignores_sigterm(tmp_path):
+    ready = tmp_path / "ready"
+    heartbeat = tmp_path / "heartbeat"
+    child = (
+        "import os,signal,time; from pathlib import Path; "
+        "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+        f"Path({str(ready)!r}).write_text(str(os.getpid())); "
+        f"\nwhile True: Path({str(heartbeat)!r}).write_text(str(time.monotonic())); time.sleep(.01)"
+    )
+    leader = ("import signal,subprocess,sys,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+              f"subprocess.Popen([sys.executable, '-c', {child!r}]); time.sleep(30)")
+    _assert_cancel_kills_the_group(tmp_path, leader, ready, heartbeat)
+
+
+def _assert_cancel_kills_the_group(tmp_path, leader, ready, heartbeat):
     try:
         result = run_process([sys.executable, "-c", leader], cwd=tmp_path,
                              environment=dict(os.environ),

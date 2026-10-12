@@ -110,6 +110,13 @@ def _terminate(process: subprocess.Popen[str], *, own_process_group: bool = True
             except ProcessLookupError:
                 pass
     except Exception:
+        # The leader ignored SIGTERM too (the wait timed out): kill the whole
+        # group, not only the leader, or its children outlive the cancel.
+        if own_process_group and sys.platform != "win32":
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
         process.kill()
         process.wait(timeout=3.0)
 

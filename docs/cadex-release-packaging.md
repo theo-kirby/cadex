@@ -285,7 +285,7 @@ not a quality setting.
 ## Building and releasing
 
 `.github/workflows/cadex-app.yml` runs on a schedule (Sundays and
-Wednesdays, 08:00 UTC), on manual dispatch, on pushes to and pull requests against `main`, and on tags matching `v*` or `cadex-*`. It has two
+Wednesdays, 08:00 UTC), on manual dispatch, on pushes to and pull requests against `main`, and on tags matching `v*`. It has two
 engine-only jobs, macOS arm64 and Linux x64. Each sets up and builds the
 engine, runs the engine and CLI suites, stages the payload, and gates it
 through `test_cadexd_lifecycle` against the *packaged* tree; the Linux job
@@ -295,11 +295,17 @@ also drives the packaged engine through the CLI.
 reached its gate** (ADR-060). They failed at `Engine unit suite` — `pixi run
 python -m pytest src/Mod/cadex/cadex_tests` — with `No module named pytest`,
 because `pytest` was not declared in `pixi.toml` until ADR-060, and every
-later step was skipped. Declaring it did not turn them green: every run from
-2026-10-04 to 2026-10-09 (`gh run list --workflow cadex-app.yml`) still fails at `Engine
-unit suite` on both platforms, with every later step skipped; why has not
-been read from their logs here. So the sentence above describes an intent, not an
-observation: the packaged gate has never run in CI on either platform, which
+later step was skipped. Declaring it did not turn them green: every run through
+2026-10-11 (`gh run list --workflow cadex-app.yml`) still fails at `Engine
+unit suite` on both platforms, with every later step skipped. The release
+audit (ADR-674) read the logs of the last run, 38159570649. On Linux it found
+2 failures out of 2,858. One was `test_licensing_compliance` (an SPDX header
+missing from `cli/tests/record_graph.py`, since fixed). The other was
+`test_a_cpu_killed_pass_leaves_the_document_as_accepted`, whose worker hit
+its wall-clock budget before its CPU one on the runner. On macOS it found
+`test_panels`' kernel test (fixed: its driver was capped but not pinned like
+a worker) and three crashes in `test_part_sharp_edges`. So the sentence above
+describes an intent, not an observation: the packaged gate has never run in CI on either platform, which
 is how a payload that broke every assembly joint shipped on both. Verified
 locally on Linux; what the macOS gates say when they first run is not yet
 known.

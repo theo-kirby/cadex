@@ -706,8 +706,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--host",
         default="127.0.0.1",
         help="Address to bind. Default 127.0.0.1 (this machine only); give "
-        "the machine's Tailscale or LAN address to reach it from another "
-        "device, or 0.0.0.0 for every interface.",
+        "the machine's Tailscale address to reach it from another device, "
+        "or better, put `tailscale serve` in front of 127.0.0.1. There is no "
+        "authentication: never bind a public or shared-LAN address.",
     )
     review_parser.add_argument(
         "--port",

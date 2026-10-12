@@ -1,6 +1,6 @@
 # AGENTS.md — Agent Entry Point
 
-Verified against source: 2026-10-11. **This is the single agent contract.**
+Verified against source: 2026-10-12. **This is the single agent contract.**
 `CLAUDE.md` only imports it (`@AGENTS.md`), so there is one file to read and
 one to edit (ADR-137).
 
@@ -71,6 +71,9 @@ Read `docs/VISION.md` before designing anything.
 | `training/README.md`, `training/SETUP.md` | The offboard trainer, and four ways to run it (ADR-089). |
 | `analysis/README.md` | The offboard structural analysis and its licence rule. |
 | `docs/PERFORMANCE-AUDIT.md` | Where build and read time goes on a large assembly, measured; what ADR-630 fixed and what remains, ranked. |
+| `docs/MACHINES.md` | The breadth bench: the machine briefs beyond robots, and what each run is for. |
+| `docs/releases/` | Release notes, one file per tag; the procedure is in `docs/cadex-release-packaging.md`. |
+| `docs/probes/` | Frozen run evidence (reports, receipts, renders); some is pinned by tests. Read it, never cite it as current. |
 | `docs/IDEAS.md`; `docs/history/` | Parking lot; superseded docs (never cite as current). |
 
 Each doc carries a `Verified against source:` date and keeps *exists today*
@@ -152,9 +155,9 @@ The philosophy is **remove more than we add** (`docs/VISION.md`).
 2. **Verify by running.** `src/Mod/cadex/`: `pixi run test-engine` minimum.
    `cli/`: `pixi run python -m pytest cli/tests` too — it *skips* its
    engine-needing half on a bare checkout, so a green run there proves less
-   than it looks. C++/CMake: `pixi run build-release`, and diff ctest
-   against `build/ctest_baseline_failures.txt` (~160 environmental
-   failures). Protocol or payload: the packaged gate,
+   than it looks. C++/CMake: `pixi run build-release` and `pixi run
+   test-release` (the inherited ctest passes in full, 1,526 tests on
+   2026-10-12, so any failure is new). Protocol or payload: the packaged gate,
    `CADEX_ENGINE_ROOT=<payload> pytest
    src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py` — a passing source
    tree proves nothing about a payload (ADR-023). Report failures honestly.

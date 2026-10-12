@@ -1,6 +1,6 @@
 # IDEAS.md — Parking Lot
 
-Verified against source: 2026-10-10 (ideas the shell's deletion, ADR-498, and ADR-537/538 settled are marked)
+Verified against source: 2026-10-12 (ideas the shell's deletion, ADR-498, and ADR-537/538 settled are marked)
 
 Uncommitted ideas surfaced during exploration. Nothing here is planned or
 approved — promoting an idea means writing a `docs/DECISIONS.md` entry and a
@@ -57,7 +57,7 @@ is the engine-side cache that would make a revisited value skip the worker.)
   `inspect` is a cadexd op and one of the agent's tools
   (`cli/cadex_cli/tools.py`). The original entry: The bounded
   inspection contract already looks like a service API; keeping it verbatim
-  across the split would keep provider prompts stable through Phase 5.
+  across the split would keep the agent's prompts stable through Phase 5.
 
 - **Assembly source camera visibility — shipped (ADR-228), then gone with
   the shell (ADR-498).** It was the shell's hydrator; the original entry: The hydrator

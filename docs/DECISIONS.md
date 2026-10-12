@@ -35,6 +35,17 @@ Their commits, `57be248a` and `6c4dca31`, still say 123 and 124. The only
 code citing either was `--init-from`'s two references to the command range,
 repointed at ADR-131 in the merge.
 
+**Vacancies and one duplicate, recorded at the v0.2.0 audit (2026-10-12).**
+Also vacant: ADR-111 and ADR-258 (noted under ADR-628), and ADR-639, 648,
+649, 656…659, 662…664 and 667…669, which no entry, doc, code or commit
+message on any branch cites (numbers taken by parallel runs that did not
+merge). Do not reuse them. **ADR-260 is used twice**, by two entries of
+2026-09-08: "The walk's mechanism-blindness is a test, not a claim", and
+"The walk's `PROGRESS.md` row carries a delta". Both are cited by number, so
+neither is renumbered; a citation means whichever its context names.
+Entries are in writing order, not number order, where parallel runs merged:
+ADR-259 follows the first ADR-260, and ADR-647 and ADR-638 sit after ADR-655.
+
 ---
 
 ## ADR-001 — Single-engine xscript (inherited, 2026-07)
@@ -19902,7 +19913,7 @@ removals, or the broad GUI-source/fork-delta criteria.
 
 ## ADR-216 — Qualify Help for a separate whole-tree disable (2026-09-07)
 
-[Cadex-new] **Decision.** The bounded audit in [HELP-AUDIT.md](HELP-AUDIT.md)
+[Cadex-new] **Decision.** The bounded audit in [HELP-AUDIT.md](history/HELP-AUDIT.md)
 qualifies src/Mod/Help for the disable half of the two-commit removal protocol.
 It has no tracked product importer or required App target, although Help.show
 has an inherited console API. Retiring that unused API is within the product
@@ -20016,7 +20027,7 @@ complete; the second needs Start or Test to qualify through its own audit.
 
 ## ADR-219 — Qualify Start for a separate whole-tree disable (2026-09-07)
 
-[Cadex-new] **Decision.** The bounded audit in [START-AUDIT.md](START-AUDIT.md)
+[Cadex-new] **Decision.** The bounded audit in [START-AUDIT.md](history/START-AUDIT.md)
 qualifies `src/Mod/Start` (with `tests/src/Mod/Start`) for the disable half of
 the two-commit removal protocol. Start has a native App target, `Start.so`,
 linking only `FreeCADApp`; its sole link consumer is its own gtest executable,
@@ -39776,3 +39787,99 @@ is rebuilt. `test_initialize_echoes_the_client_protocol_version` still
 holds, and two MCP tests are added: one for a version the server does not
 speak, one for a raising method. The stdio test now expects the two error
 replies.
+
+## ADR-674 — The v0.2.0 release audit: CI's blockers fixed, the docs told the truth, removals proposed (2026-10-12)
+
+**Context.** Before tagging v0.2.0, the owner asked for a full audit and
+hygiene pass. Seven parallel read-only audits covered:
+- versioning and release plumbing;
+- the core docs against the code;
+- doc sprawl and links;
+- configs, dependencies and layout;
+- the CLI, MCP and dashboard;
+- the engine;
+- licensing, secrets and privacy.
+
+Then both suites and the inherited ctest were run.
+
+What they found:
+- **CI.** `cadex-app.yml` had been red since 2026-09-13. The causes were a
+  missing SPDX header and, on macOS, a panels kernel test.
+- **ctest.** Six docs told contributors to diff the inherited ctest against
+  `build/ctest_baseline_failures.txt`, a file that never existed, and quoted
+  "~160 environmental failures". A real run has one failure in 1,526.
+- **Inherited leftovers.** The issue templates, a NOTICE stanza and a CMake
+  error message still described FreeCAD or the deleted shell.
+- **Secrets and privacy.** None found. The engine and CLI phone nowhere.
+
+**Decision.** This change fixes what can be fixed without a removal, a
+re-solve or a C++ build cycle (the version and MCP work is ADR-673):
+
+- **Tests.**
+  - `cli/tests/record_graph.py` gets its SPDX header, so the licensing gate
+    passes.
+  - `test_panels.py`'s kernel driver is pinned to `WORKER_CPUS` before it is
+    capped, as a real worker is. Unpinned on a many-core host, the kernel's
+    per-thread arenas reserved past 6 GB and OCCT threw
+    `Standard_OutOfMemory` before any work. The uncapped peak is 1.2 GB.
+  - `data/tests/mesh.obj`, which `*.obj` in `.gitignore` had kept out of the
+    import, is added as an 8-vertex cube with an ignore exception.
+    `ImporterTest.TestOBJ` passes, so the inherited ctest passes in full, and
+    the docs now say any failure there is new.
+- **Engine.** `CadexScriptedProcess._terminate` kills the whole process
+  group when the leader ignores SIGTERM as well. It used to kill only the
+  leader, so a nested worker outlived a cancel. A test covers it.
+- **Docs.**
+  - VISION's "0.1.0 roughly means that sentence works" is rewritten.
+  - README: a dated note under the author's Blender-era paragraph, a
+    platform statement, and getting-started commands that neither clash on
+    port 8765 nor create a project inside the clone.
+  - CLI.md and the packaging doc stop claiming CI runs steps it never
+    reached, and say what its last logs showed.
+  - `.ouroboros/AGENTS.md` stops calling ROADMAP generated.
+  - Stale counts and broken history links in ROADMAP and DECISIONS are
+    fixed.
+  - The AGENTS.md table gains MACHINES, `docs/releases/` and `docs/probes/`.
+  - The DECISIONS header records the vacant numbers and the duplicate
+    ADR-260.
+  - `docs/releases/v0.2.0.md` is written, and v0.0.1's notes are marked
+    historical.
+- **Repo files.**
+  - The issue templates and `config.yml` are rewritten for Cadex.
+  - The CI header says the shell is deleted, and the dead `cadex-*` tag
+    trigger is dropped.
+  - NOTICE's OpenTheme credit is past tense.
+  - SECURITY states the supported versions.
+  - The `BUILD_GUI=ON` error no longer says "the application is the shell".
+    This is a one-line inherited-zone edit to a file already in the ledger.
+  - `pixi.toml` loses the `freecad*` tasks, which launch a binary no build
+    produces, and gains Cadex metadata. Tasks are not in the lock, and
+    `pixi install --locked` still passes.
+- **CLI.** `cadex review --help` no longer suggests `0.0.0.0`.
+
+**Proposed, not done here.** These are removals that need owner sign-off and
+their own ADRs:
+- `demo/` (Blender `.blend`/`.blend1`, stale artifacts, 17 MB), `contrib/`,
+  `requirements-freecad-venv.txt`, and the GUI harness in `tools/` (all but
+  `apply_modification_notices.py`).
+- From `.github/`: the backport template, `images/`, `scripts/` and
+  `codespellignore`.
+- Three unreferenced shell-era images in `docs/`.
+- Moving DOCS-AUDIT, PHASE8-AUDIT, L3-COVERAGE and ARCHITECTURE-REVIEW to
+  `docs/history/`.
+- Dead engine code: `CadexProject.py` and about 22 unreferenced functions.
+- The GUI-era pixi dependencies, which need a re-solve.
+- `libE57Format`, `salomesmesh`, the dead CMake presets and modules.
+
+**Follow-ups.** These also need owner decisions:
+- A `Host` check on the dashboard against DNS rebinding, with an allow-list
+  so `tailscale serve` keeps working.
+- A memory cap on every direct `FreeCADCmd` launch in the engine tests.
+- Clamping project budgets.
+- A hard memory cap on the preview worker.
+- Redacting the tailnet IP from probe evidence.
+- If a payload binary is ever published: its GPL contents (ffmpeg with
+  x264/x265, mysql-libs, readline) and the licence manifest.
+
+**Consequences.** The licensing gate and the panels test pass locally. The
+first CI run on this branch shows what remains on the runners.

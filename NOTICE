@@ -59,9 +59,10 @@ Copyright Obelisk79
 Licensed under the GNU Lesser General Public License version 2.1.
 https://github.com/obelisk79/OpenTheme
 
-The CadexLight, CadexDark and CadexMono themes
-(src/Gui/Stylesheets/Cadex*.qss and their overlay variants) are based on
-OpenTheme's OpenLight and OpenDark preference packs.
+The CadexLight, CadexDark and CadexMono themes were based on OpenTheme's
+OpenLight and OpenDark preference packs. They lived in
+src/Gui/Stylesheets/ and were deleted with src/Gui (ADR-214); the credit is
+kept because earlier trees, and the published history, carry them.
 
 --------------------------------------------------------------------------
 

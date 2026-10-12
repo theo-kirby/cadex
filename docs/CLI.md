@@ -2592,8 +2592,11 @@ there and failing live.
 Everything that needs an engine **skips** without one, so a green run on a
 bare checkout proves less than it looks like.
 
-CI runs the suite in both jobs of `.github/workflows/cadex-app.yml`, after
-the engine build for that reason. The Linux job runs it twice — once against
+CI is meant to run the suite in both jobs of `.github/workflows/cadex-app.yml`,
+after the engine build for that reason, but no run through 2026-10-11 has
+reached this step: each failed earlier, at `Engine unit suite`
+(`docs/cadex-release-packaging.md`, "Building and releasing"). The Linux job
+is set to run it twice — once against
 the build tree and once against the staged payload — on the same argument
 the packaged engine gate rests on: a source tree that passes proves nothing
 about a payload (ADR-023).
