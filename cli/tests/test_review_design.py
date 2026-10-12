@@ -167,9 +167,9 @@ def test_the_spec_itself_names_no_private_address():
 
 # -- the rendered page ---------------------------------------------------------
 
-# §2: one 3D viewport over the whole screen by default, and the menu bar's
-# three menus (ADR-539).
-EDITORS = ["view3d", "status"]
+# §2, §12: the 3D viewport with the Outliner over Status beside it by default
+# (ADR-572, ADR-676), and the menu bar's three menus (ADR-539).
+EDITORS = ["view3d", "outliner", "status"]
 HEADINGS = ["File", "Revisions", "View"]
 
 MEASURE = """(function () {
@@ -253,7 +253,7 @@ def _assert_follows_the_spec(browser, server, size) -> None:
     # The 3D viewport's canvas fills its area's body.
     assert m["canvas"]["width"] >= 0.98 * m["model"]["width"] and m["canvas"]["height"] >= 0.98 * m["model"]["height"]
     if size == "desk":
-        # §12: the default layout is the 3D viewport with Status beside it (ADR-572).
+        # §12: the default layout is the 3D viewport with the Outliner over Status beside it (ADR-676).
         assert m["mode"] == "areas"
         assert [a["editor"] for a in m["areas"]] == EDITORS
         assert [h["text"] for h in m["headings"]] == HEADINGS
@@ -267,7 +267,7 @@ def _assert_follows_the_spec(browser, server, size) -> None:
     # §6: on the phone one editor fills the screen, the 3D viewport first, and a tab bar picks it.
     assert m["mode"] == "tabs"
     assert [a["editor"] for a in m["areas"]] == ["view3d"]
-    assert m["tabs"] == ["view3d", "status", "view2d"]
+    assert m["tabs"] == ["view3d", "status", "view2d", "outliner"]
     assert m["canvas"]["width"] >= width - 1
 
 

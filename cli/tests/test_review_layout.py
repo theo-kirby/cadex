@@ -3,11 +3,12 @@
 """Layout presets and a discoverable drag (ADR-573, orun4 D3).
 
 View → Layout offers eight presets; one click lays the screen out afresh
-with the editors in their order (3D viewport, Status, 2D viewport) and any
-area past the third empty, with only its editor picker. Each is applied
-through the menu and its areas measured against the shape it names; then an
-area is dragged by its grip onto another, the drop preview naming where it
-will land, and Reset returns the default.
+with the editors in their order (3D viewport, Status, 2D viewport, Outliner;
+ADR-676) and any area past the fourth empty, with only its editor picker.
+Each is applied through the menu and its areas measured against the shape
+it names; then an area is emptied and refilled, an area is dragged by its
+grip onto another, the drop preview naming where it will land, and Reset
+returns the default.
 """
 
 from __future__ import annotations
@@ -28,7 +29,7 @@ EXPECTED = {
     "one_over_two": [("view3d", 0, 0, 1, H), ("status", 0, H, H, H), ("view2d", H, H, H, H)],
     "columns": [("view3d", 0, 0, T, 1), ("status", T, 0, T, 1), ("view2d", 2 * T, 0, T, 1)],
     "rows": [("view3d", 0, 0, 1, T), ("status", 0, T, 1, T), ("view2d", 0, 2 * T, 1, T)],
-    "quad": [("view3d", 0, 0, H, H), ("status", H, 0, H, H), ("view2d", 0, H, H, H), ("empty", H, H, H, H)],
+    "quad": [("view3d", 0, 0, H, H), ("status", H, 0, H, H), ("view2d", 0, H, H, H), ("outliner", H, H, H, H)],
 }
 
 AREAS = """(function () {
@@ -69,18 +70,20 @@ def test_every_preset_lays_the_screen_out_in_one_click_and_areas_drag_with_a_pre
             assert all(a["picker"] for a in areas), name
             # The menu closes behind the click, and the layout is kept.
             assert page.evaluate("document.getElementById('view-panel').open") is False
-            kept = json.loads(page.evaluate("localStorage.getItem('cadex.layout.v4')"))
+            kept = json.loads(page.evaluate("localStorage.getItem('cadex.layout.v5')"))
             assert kept == page.evaluate("window.cadexReview.layout().tree()")
             measured[name] = len(areas)
 
-        # Quad's fourth area is empty, with a picker; picking the 2D viewport
+        # Quad's fourth area emptied has only a picker; picking the 2D viewport
         # there moves it in and leaves its old area empty.
         page.click("#view-panel > summary")
         page.click("#layout-presets button[data-preset=quad]")
+        assert page.evaluate("window.cadexReview.layout().setEditor("
+                             "document.querySelector('.area[data-editor=outliner]').dataset.area, 'empty')") is True
         empty = page.evaluate("(function () { var a = document.querySelector('.area[data-editor=empty]');"
                               " return {text: a.querySelector('.area-empty').textContent,"
                               " options: Array.from(a.querySelectorAll('select.area-type option')).map(function (o) { return o.value; })}; })()")
-        assert "pick an editor" in empty["text"] and empty["options"] == ["view3d", "status", "view2d", "empty"]
+        assert "pick an editor" in empty["text"] and empty["options"] == ["view3d", "status", "view2d", "outliner", "empty"]
         page.evaluate("(function () { var s = document.querySelector('.area[data-editor=empty] select.area-type');"
                       " s.value = 'view2d'; s.dispatchEvent(new Event('change')); })()")
         assert [a["editor"] for a in page.evaluate(AREAS)] == ["view3d", "status", "empty", "view2d"]
@@ -118,10 +121,12 @@ def test_every_preset_lays_the_screen_out_in_one_click_and_areas_drag_with_a_pre
         assert page.evaluate("document.querySelector('.drop-hint')") is None
         assert [a["editor"] for a in page.evaluate(AREAS)] == ["status", "view3d"]
 
-        # Reset puts the default back: the 3D viewport, Status beside it.
+        # Reset puts the default back: the 3D viewport, the Outliner over Status beside it.
         page.click("#layout-reset")
         assert page.evaluate("window.cadexReview.layout().tree()") == {
-            "dir": "row", "sizes": [0.75, 0.25], "children": [{"editor": "view3d"}, {"editor": "status"}]}
+            "dir": "row", "sizes": [0.75, 0.25], "children": [
+                {"editor": "view3d"},
+                {"dir": "col", "sizes": [0.4, 0.6], "children": [{"editor": "outliner"}, {"editor": "status"}]}]}
         print(json.dumps({"presets": measured}))
     finally:
         server.shutdown()

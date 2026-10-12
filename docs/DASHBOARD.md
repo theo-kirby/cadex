@@ -1,6 +1,6 @@
 # DASHBOARD.md — The dashboard, Cadex's only UI
 
-Verified against source: 2026-10-10. [Cadex-new]
+Verified against source: 2026-10-12. [Cadex-new]
 
 This is the design specification for the dashboard: the pages `cadex app`
 and `cadex review` serve (`cli/cadex_cli/review_server.py` and
@@ -34,8 +34,9 @@ the page before and after the first spec, kept because the tests check them.
 **The project page is the app (ADR-534).** The same day the owner asked for
 the page to stop being a dashboard and be the app, in Blender's design
 language: the screen is tiled by **areas**, each showing one **editor** —
-the 3D viewport, Status (ADR-572) and the 2D viewport — and each area can be
-resized, moved, split, maximized or closed (§12). There is a light theme
+the 3D viewport, Status (ADR-572), the 2D viewport and the Outliner
+(ADR-676, §25) — and each area can be resized, moved, split, maximized or
+closed (§12). There is a light theme
 beside the dark one (§4), and the 3D viewport draws shaded by default or as
 a wireframe diagram (§10; called hairline until ADR-602). Still no build step: `layout.js` tiles the
 screen, `theme.js` picks the theme, and both are plain scripts.
@@ -427,35 +428,96 @@ ink (default 0.12, 0–1). They are on by default; View → **Mesh lines** turns
 them off and its slider sets the strength (`setMeshLines`). The edges are
 built the first time they are drawn and kept with the solid.
 
-**Materials (ADR-601).** A shaded solid is a physical material over its role
-colour (the role colours and the hover glow are unchanged), lit
-by the stage's lights and by a small procedural studio — a dim box room
-with an overhead softbox, a warm key, a cool fill and a rim strip,
-prefiltered once into an environment map (`studioEnvironment`) — that is
-seen only in reflections. Its normals are crease-angle normals: at each
+**Materials (ADR-601, ADR-676).** A shaded solid is a physical material over
+its role colour (the role colours are unchanged), lit by the look's room,
+key and fill (below). Its normals are crease-angle normals: at each
 vertex the facets within 40° of each other (the engine's `CREASE_DEGREES`)
 are averaged, weighted by their corner angles, so a fillet, a bore or a ball
 reads smooth and an edge that turns further stays crisp. The finish comes
 from the manifest's `finish` (`printed`, `purchased`, `hardware`, `board`;
 without one, `purchased` when the supplier says so, else `printed`):
-printed plastic roughness 0.55 with a faint clearcoat and sheen; purchased
-bodies a satin plastic (0.42); hardware metal by catalog family — bolts,
+printed plastic a satin roughness 0.46; purchased bodies a satin plastic
+(0.45) with a faint clearcoat; hardware metal by catalog family — bolts,
 screws, nuts and standoffs black oxide, washers, bearings, bushings, shafts
 and dowels bright steel, heat-set inserts brass; boards a satin solder mask
-(`#1f6b3c` when the part has no colour). A board whose manifest carries its
+(`#1f6b3c` when the part has no colour). The plastics take 0.9 of the room
+(ADR-601 had 0.4, with a hemisphere light flooding every face alike; that
+flood was most of why a part looked flat), the metals all of it. A board
+whose manifest carries its
 own `board` geometry (the chip's box and the pads' centres and diameters, mm,
 in the mesh's frame) is coloured facet by facet: a facet wholly in the
 chip's box near-black, one wholly within a pad's radius plus 0.6 mm (across
 the board's face) tin, the rest the mask; a facet is coloured whole, so a
 long one never smears. The floor takes no reflection. View →
 **Reflections** scales every finish's reflection 0–2× (default 1×,
-`setReflections`). The sun's shadow is offset two shadow-map texels along
-the normal, so a flat face lit at a grazing angle no longer stripes itself.
+`setReflections`); under a matcap it has nothing to scale and is disabled.
 
-The style, the mesh lines and the reflections are this browser's
+**Looks (ADR-676).** The header's **Lighting** menu (and View → Lighting)
+picks how the solids take light, after Blender's viewport shading
+(`shading.js`, `setLook`):
+
+- four **lighting setups** — **Studio** (the default, and every capture's),
+  **Softbox** (a large overhead panel and bright walls: low contrast, soft
+  shadow), **Dramatic** (a dark room, a low warm key, a cool rim) and
+  **Daylight** (a warm sun and a blue sky over a brown ground). Each is a
+  procedural room of emissive panels prefiltered once into an environment
+  map — seen in reflections and, as image-based light, in every face's
+  ambient — plus a directional key (which casts the shadow) and a fill, a
+  small flat hemisphere and bounce, a tone-mapping exposure, and a lift for
+  the mat (it glows a little by its own texture) so it reads alike under
+  every setup;
+- two **matcaps** — **Aluminium** and **Clay**: every part in the one
+  material, whatever its finish or role colour, from a sphere of that
+  material rendered once in its own room into a half-float texture and
+  looked up by the view-space normal. Shadows, the mat and occlusion are
+  unchanged.
+
+**Ambient occlusion (ADR-676).** Where two surfaces meet, or a part stands on
+the mat, less of the room reaches it: after the frame is drawn, the solids'
+view normals and their linear distance from the camera are drawn again, into a
+float target at CSS resolution, and each sample's position is rebuilt along its
+ray at that distance. (Rebuilt from the depth buffer instead, with the near plane
+at a fraction of the camera's distance, the far floor stepped by metres and
+striped the mat.) Sixteen samples
+round each pixel within a radius of 0.12 of the design's size (never more
+than 0.08 of the camera's distance, so a close-up does not darken half the
+frame) measure how much of its hemisphere is closed, a depth-aware blur
+smooths it, and the frame is multiplied by it. Past three times the camera's
+distance it fades out. View →
+**Ambient occlusion** turns it off (`setOcclusion`).
+
+**Surface detail (ADR-676).** A CAD skin is perfectly smooth and one flat
+value, which is much of what looks fake. Each finish's shader (patched in
+`shading.js`, on the part's own frame so the detail moves with it) adds: on
+printed parts, **layer lines** 0.2 mm apart across the part's own Z, a
+0.035 mm bead each; a faint **grain** (a value noise a few microns high); a
+slow **drift** in roughness (±0.16 printed, ±0.1–0.12 otherwise) and in
+colour (±6 % printed, ±2–4 % otherwise). Every feature fades out before it
+is too small to draw (where it spans less than a few pixels), so nothing
+aliases or shimmers; from a fit view it is mostly the drift that shows, and
+the lines appear as the camera closes in. View → **Surface detail** turns it
+off (`setDetail`); one shared uniform, so the switch costs no recompile.
+
+**Shadows (ADR-676).** The key's shadow is a variance shadow map, blurred
+(radius 10, 16 samples), so its edge softens with distance from what casts
+it, as under a softbox, instead of ADR-601's hard cut-out. The shadow camera
+hugs the design — ±1.7 of its radius across, its depth range four radii
+either side of it — so the map keeps its precision at any scale and never
+streaks.
+
+**The selection (ADR-676).** The parts the Outliner (§25) has selected are
+ringed in `#58a6ff`, two pixels wide (at most four on a high-DPI screen):
+full strength where the part is in view and a third of it where another
+part hides it. They are drawn alone into a mask, through the solids that
+may hide them, and the ring is drawn round the mask over the frame. A
+selected part also glows faintly (a matcap one is tinted). A capture never
+selects anything.
+
+The style, the mesh lines, the reflections and the look are this browser's
 (`cadex.render`, `cadex.meshlines`, `cadex.meshlines.strength`,
-`cadex.reflections`); a capture never uses them and draws shaded at the
-default strength.
+`cadex.reflections`, `cadex.look`, `cadex.occlusion`, `cadex.detail`); a
+capture never uses them and draws shaded in Studio with occlusion and detail
+on, at the default strength.
 
 The environment module behind the viewport and the video capturer has one
 palette, the reference's dark one (ADR-331); the light palette and its theme
@@ -542,9 +604,11 @@ and the assessment are the second half of
 
 After Blender's screen. The screen is a tree: a split (`row` or `col`, with
 each child's share) or an area showing one editor. The default is the 3D
-viewport over three quarters of the width with **Status** to its right
-(ADR-572; before it, one 3D viewport, ADR-539); split an area to bring in
-the 2D viewport. The settings live in the menu bar (§2), not in an editor.
+viewport over three quarters of the width with the **Outliner** (§25) over
+**Status** to its right, two fifths and three fifths of that column, as
+Blender has its Outliner over its Properties (ADR-676; before it, Status
+alone beside the viewport, ADR-572, and before that one 3D viewport,
+ADR-539); split an area to bring in the 2D viewport. The settings live in the menu bar (§2), not in an editor.
 
 - **Resize**: drag the 4 px gutter between two areas; it moves that boundary
   only, and no area goes below 120 px.
@@ -558,18 +622,19 @@ the 2D viewport. The settings live in the menu bar (§2), not in an editor.
 - **Presets** (ADR-573): View → Layout in the menu bar lays the screen out
   afresh in one click — **single**, **side by side**, **stacked**, **2 over
   1**, **1 over 2**, **three columns**, **three rows** and **quad** — each
-  area an equal share, filled in reading order with the 3D viewport, Status
-  and the 2D viewport. An editor shows at most once, so quad's fourth area is
-  **empty**: it has only its editor picker and a line saying so, and picking
-  an editor there moves that editor in. Showing an editor (a link to a film,
-  say) fills an empty area before it splits one.
+  area an equal share, filled in reading order with the 3D viewport, Status,
+  the 2D viewport and the Outliner, so quad shows all four. An editor shows
+  at most once; an area left without one is **empty**: it has only its
+  editor picker and a line saying so, and picking an editor there moves that
+  editor in. Showing an editor (a link to a film, say) fills an empty area
+  before it splits one.
 - **Split, maximize, close**: the four buttons at the right of the header.
-  A split opens an editor not shown yet beside the area, so with all three
+  A split opens an editor not shown yet beside the area, so with all four
   shown there is nothing to split. Maximize (or Ctrl+Space over the area)
   gives the area the whole screen until it is pressed again. The last area
   cannot close.
 - **Kept**: the layout is this browser's (`localStorage`
-  `cadex.layout.v4`, empty areas included; `v3` had no Status editor, and earlier keys held the Chat and Settings editors); View → Layout → **Reset** in the menu bar returns the
+  `cadex.layout.v5`, empty areas included; `v4` had no Outliner, so a layout kept before ADR-676 opens as the new default, `v3` had no Status editor, and earlier keys held the Chat and Settings editors); View → Layout → **Reset** in the menu bar returns the
   default. A browser that refuses storage gets the default every visit.
 
 An editor's markup is never rebuilt by a layout change: the area moves the
@@ -877,3 +942,91 @@ parent.postMessage({ type: 'cadex-status-ready' }, '*');
 `cadex guidance` tells the agent it may write one and points here;
 `test_review_status_panel.py` holds the route's headers, its containment,
 the frame's sandbox and a panel that draws from the message.
+
+## 25. The Outliner (ADR-676)
+
+After Blender's Outliner: every part of the model the 3D viewport shows, to
+show, hide, isolate, select and frame. It is an editor like the others
+(`outliner.js`), above Status by default (§12), and **Parts** on a phone's
+tab bar. The task's world geometry is not listed: it is never drawn beside a
+design (ADR-600, §10).
+
+- **Groups.** By **type** — printed parts, purchased parts, hardware, boards,
+  from the manifest's `finish` — by appearance **role** (shell, mechanism,
+  accent, and *No role*), or **none**, from the menu in the Outliner's bar.
+  A group folds by its arrow and shows its count; **Hardware** starts folded,
+  since a robot's screws run to a hundred rows. A click on a group's name
+  selects all of it.
+- **Rows.** Each part's eye, its colour, its name, and on the right its
+  catalog family and part number (or its finish) and its role. A click
+  selects it; **Shift** or **Ctrl** (**Cmd**) adds or removes it, and Shift
+  after a click selects the run between; a double click frames it. The
+  summary under the tree counts the parts, the hidden and the selected, or
+  names the one part selected.
+- **Eyes.** A part's eye hides it, a group's eye all of the group;
+  **Ctrl** on an eye **isolates** that part or group, hiding everything
+  else; the eye in the bar shows every part again. A hidden part leaves the
+  selection, is not drawn, does not cast a shadow and cannot be picked, and
+  **Fit** frames what is still shown.
+- **The viewport.** A click on a solid selects its row (Shift, Ctrl or Cmd
+  adds or removes it; a click on empty floor clears the selection), and the
+  row scrolls into view, its group unfolding. The selection is outlined in
+  the viewport (§10).
+- **Keys**, with the pointer over the 3D viewport or the Outliner and no
+  field focused, as in Blender: **H** hides the selection, **Shift+H** hides
+  everything else, **Alt+H** shows everything, **F** frames the selection
+  (or everything), **Esc** clears the selection.
+- **Filter.** The field in the bar narrows the rows to names containing
+  what is typed.
+
+What is hidden and selected is the viewer's (`setHidden`, `select`,
+`parts`, `fitTo` in `review_scene.js`), kept by part name, so it outlives
+the agent's next write: a part of the same name is still hidden in the next
+revision, a run's model or the revision timeline. It is the page's own and
+lasts as long as the page; nothing is written (§18). The grouping and the
+folded groups are this browser's (`cadex.outliner.group`,
+`cadex.outliner.folded`). `cli/tests/test_dashboard_outliner.py` proves it
+in headless Chromium.
+
+## 26. The hero folder (ADR-677)
+
+`cadex hero --project DIR` writes a project's presentation into `DIR/hero/`.
+It runs only when a person or their agent runs it; nothing schedules it. Every
+image and video in it except the sheet is drawn by this page's own scene
+(`review_scene.js`, §10) in headless Chromium, on `hero.html`: the 3D
+viewport's renderer on the prototype mat, with its baked "PROTOTYPE" and "1 METER" text, and
+none of the page's chrome. Python drives the page a frame
+at a time and FFmpeg encodes. Chromium draws on the GPU through ANGLE over Vulkan, with its 2D canvas in software,
+when it has one (`--software` forces SwiftShader, about thirty times slower).
+
+| File | What it is |
+|---|---|
+| `still-studio.png`, `still-softbox.png`, `still-dramatic.png`, `still-aluminium.png`, `still-wireframe.png` | The accepted design at 2560×1440, drawn at twice that and filtered down. Each is a lighting setup or matcap (§10) from its own three-quarter view, through a 30° lens rather than the viewport's 55° so the design keeps its proportions. Each is framed by the design's own outline (`screenBox`), centred and filling 80% of the frame. |
+| `dashboard.png` | This page at 1920×1080 CSS pixels, scale 2. The 3D viewport (the accepted design, fitted) is on the left half and Status, on its Training tab, is on the right, showing the charts. It is set through the layout key, as a person's own layout would be. |
+| `sheet.png` | The concept sheet `cadex render` draws (ADR-430), of the accepted revision. It is copied when a render already drew it. Otherwise the CLI opens the engine for the design's fit and inventory and draws it from the retained accepted attempt, without a rebuild. With `--no-engine` it is reported missing instead. |
+| `rollout.mp4` | The chosen rollout at 1920×1080 and 30 fps, with the clock. The camera is this page's follow rig (§10), framed so the design's standing height is 42% of the frame. The last pose is held for 0.8 s. |
+| `hero-landscape.mp4`, `hero-square.mp4` | 1920×1080 and 1080×1080, 30 fps, H.264. **The turn** is one revolution in 12 s at constant speed through the 30° lens. Meanwhile the camera cranes down from 36° to 21° above the floor and pushes in by 12%, both eased. It is framed so that every view of that move fills 90% of the frame, centred. It starts in Clay. At 2.7 s a diagonal edge sweeps from the top left to Aluminium, at 5.9 s to the wireframe, and at 9.1 s to the design's own materials (Studio). Each wipe takes 0.55 s, eased in and out (cubic), and the edge turns from 38° to 16° off vertical as it crosses. The edge is drawn additively: a white core, a cyan fringe behind it and an amber one ahead, a narrow band of light, a glint running along it, and a flash over what it has just uncovered. **The rollout** follows: its first 6 s, without the clock. **The training curves** come last: reward per step (with the best marked) and loss, drawn left to right over 3 s and then held, side by side or stacked to fit the frame. A 0.6 s crossfade joins the parts. |
+| `hero-wireframe-landscape.mp4`, `hero-wireframe-square.mp4` | The same move in the wireframe alone, in 6 s. |
+| `hero.json` | What was made, from which revision, run and checkpoint, with each camera and the renderer. Each item that was not made is listed with its reason. |
+
+**Banding.** Every frame carries a fixed dither, a level and a half either way, so the dark sky
+and the fog's fade do not step once they are 8 bits a channel. The frames go to FFmpeg as PNG, and
+x264 encodes with `tune grain` and `aq-mode=3` at crf 15, so the dither is not smoothed back into
+bands.
+
+**A grid of projects.** `cadex hero-grid A B C D --out FILE.png [--still NAME] [--columns N]`
+tiles one still from each project's hero folder, two to a row by default, in the order given (left
+to right, top to bottom), and fills a missing last tile with the mat. The Cadex checkout ignores
+`showcase/`, where such grids are kept.
+
+**Which rollout.** The candidates are each run's own rollout and every
+checkpoint rollout the engine made while the run trained (ADR-544). The one
+whose episode lasted longest is chosen, and the newest among equals, a run's
+own rollout after its checkpoints. `--run NAME` limits the choice to that
+run. The curves are that run's, or else the newest run's that has any.
+
+**Each item stands alone.** One that cannot be made, such as a project with no
+run (no rollout or curves), no Chromium or a busy engine, is named in
+`hero.json` and the rest are made. The folder's `.gitignore` keeps all of it
+out of the project's history, because it is drawn again on request.
+`--only stills,dashboard,sheet,rollout,video` makes a subset.

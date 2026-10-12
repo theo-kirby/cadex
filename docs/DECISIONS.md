@@ -39935,3 +39935,181 @@ address found in probe evidence.
 - The removals ADR-674 left for later still need a re-solve or a C++ build
   cycle and their own ADRs: dead engine code, the GUI-era pixi dependencies,
   libE57Format and salomesmesh, and the dead CMake presets and modules.
+
+## ADR-676 — The Outliner, and a shaded viewport that looks less fake: lighting setups, matcaps, occlusion, soft shadows, surface detail (2026-10-12, owner)
+
+**Context.** The owner asked for two dashboard features:
+- "the ability to see each mesh in a list and select/show/hide them, just like the old
+  outliner in blender, or any cad software";
+- another attempt at shaded rendering, because "everything just looks super fake". They
+  suspected the lighting, and the plain diffuse surfaces being "too perfect and smooth and
+  flat". They also wanted toggleable lighting setups and a "shiny light aluminum style, kind
+  of like matcap in blender".
+
+Screenshots of three wave-3 models in the ADR-601 look showed what was wrong:
+- Two hemisphere lights (1.6 and 1.2) lit every face alike. A part's sides differed by only
+  a few levels, and the plastics took 0.4 of the studio's reflection.
+- Nothing darkened where surfaces met.
+- Shadows were a hard cut-out.
+- Every face was a single flat value.
+
+**Decision.**
+- **The Outliner** (`outliner.js`, `docs/DASHBOARD.md` §25) is a fourth editor. Its pieces:
+  - Parts are grouped by type (hardware starts folded), by role, or not at all.
+  - Each part has an eye and a row. Ctrl on an eye isolates the part.
+  - There is a filter, and Show all.
+  - Blender's keys work: H, Shift+H, Alt+H, F and Esc.
+  - Selection is shared with the viewport: a click on a solid selects its row.
+  - The viewer (`setHidden`, `select`, `parts`, `fitTo`) keeps hidden and selected parts by
+    name, so they outlive the agent's next write. They are the page's own: nothing is
+    written, so ADR-537 holds.
+  - The default layout puts the Outliner over Status beside the viewport.
+  - The layout key moves to `cadex.layout.v5`.
+- **Looks** (`shading.js`, §10). There are four lighting setups and two matcaps:
+  - **Studio** is the default and every capture's look. It reuses ADR-601's room, with dim
+    walls, a 45° key and the hemisphere and bounce cut to 0.18 and 0.12.
+  - **Softbox**, **Dramatic** and **Daylight** are the other setups. Each is a procedural
+    room prefiltered into an environment map, plus a key, a fill, an exposure and a lift for
+    the mat.
+  - **Aluminium** and **Clay** are matcaps, each baked once from a lit physical sphere.
+  - The plastics now take 0.9 of the room, and printed parts drop the sheen.
+- **Ambient occlusion.** A screen-space pass at CSS resolution: 16 samples, a radius tied to
+  the design's size and capped by the camera's distance, and a depth-aware blur. The result
+  is multiplied over the frame.
+- **Soft shadows.** A blurred variance shadow map, with a shadow camera that hugs the design.
+  A camera reaching 40 m streaked the map on a 10 cm part.
+- **Surface detail.** It goes through a patch to the finish's shader, on the part's own frame:
+  - printed layer lines 0.2 mm apart;
+  - a micro grain;
+  - a slow drift in roughness and colour.
+  Each feature fades out before it would alias. Occlusion and detail are each a switch in the
+  View menu.
+- **The selection** is ringed in `#58a6ff`, dimmer where it is hidden behind another part.
+
+**Consequences.**
+- The viewport's look and a `--style scene` capture change together. The capture keeps the
+  defaults: Studio, with occlusion and detail on. `video.style_digest` now covers
+  `shading.js`, so cached scene videos re-render.
+- The page keeps five more conveniences in the browser: `cadex.look`, `cadex.occlusion`,
+  `cadex.detail`, `cadex.outliner.group` and `cadex.outliner.folded` (`docs/CLI.md`).
+- Each frame now costs more:
+  - a normal and depth pass, the occlusion and two blur passes;
+  - a mask pass while something is selected;
+  - blurred shadows.
+  On a phone, occlusion is the switch to turn off.
+- Tests:
+  - `test_dashboard_outliner.py` covers grouping, hiding, isolating, Fit, the filter,
+    keeping state by name, selection both ways, the outline and the keys.
+  - `test_dashboard_viewport_look.py` covers each look, the matcap's one material,
+    occlusion, detail and persistence.
+  - The layout, design, status and HTTP-API tests follow the new default and keys.
+
+## ADR-677 — The hero folder: `cadex hero` writes a project's presentation on request (2026-10-12, owner)
+
+**Context.** The owner asked for a hero folder in each project. It should never be made
+automatically, but a person or their agent should be able to make it with one terminal
+command. It should hold:
+- a couple of hero images in different styles and lighting, with no UI;
+- a screenshot of the interface with the viewport on the left half and Status, showing the
+  training charts, on the right half;
+- the project sheet, which already exists;
+- a video of the most recent or best run doing what it was trained for;
+- a hero video in landscape and square: a full 360° turn round the model, with no UI at
+  first, where a diagonal sweeps across the screen to change the viewport style ("all clay
+  spinning around and then a diagonal comes down across the screen and shows the other half
+  in aluminium, ... then another diagonal ... with maybe the wireframe style"), then a short
+  clip of the animation or one animated plot of how training went.
+
+The wave-3 velociraptor was the test case.
+
+**Decision.** `cadex hero --project DIR` writes `DIR/hero/` (`cli/cadex_cli/hero.py`;
+`docs/DASHBOARD.md` §26).
+- **One renderer.** Every still and video is drawn by the dashboard's own scene
+  (`review_scene.js`) on a new chrome-free page, `hero.html` and `hero.js`, in headless
+  Chromium. The data comes from what the review server already serves, so the hero look is
+  the viewport's look (ADR-676) and no second renderer is built. `review_scene.create` takes
+  `labels` (the clean mat) and gains `screenBox()`, the design's outline on screen, which
+  frames each shot tighter than the bounding sphere.
+- **The GPU when there is one.** Headless Chromium drew a 775k-triangle frame at 1080p in
+  about 2.9 s on SwiftShader and about 0.1 s on the GPU through ANGLE. ANGLE over EGL dropped whole
+  parts from the odd frame of a turn (3 of 20 frames in a replay), while Vulkan and SwiftShader drew
+  every frame whole, so `cadex hero` asks for ANGLE over Vulkan. `--software` keeps SwiftShader. `HeadlessBrowser` takes the GPU flags
+  as an option, and the dashboard tests keep SwiftShader.
+- **The wipe** is a straight edge leaning 28° off vertical, sweeping from the top left. Each
+  side is a full render of the frame, composited in a 2D canvas with a clip path and a lit
+  rim. The turn goes Clay → Aluminium → wireframe → the design's own materials, so it ends in
+  the colours the rollout clip that follows is drawn in.
+- **The tail** is the rollout clip, then the reward and loss curves drawing themselves. The
+  owner named both options. Reward is how training went, and loss is the plot they named.
+- **Which rollout.** The candidates are each run's own rollout and every checkpoint rollout
+  (ADR-544). The longest episode wins, and the newest among equals. This makes "the most
+  recent / best" one rule: a policy that stays up longer is doing more of its task, and among
+  full-length episodes the most trained is newest.
+- **The sheet** is the concept sheet. It is copied when a render drew it for the accepted
+  revision. Otherwise it is drawn as `cadex render` draws it, from the retained accepted
+  attempt with no rebuild. Only that step opens the engine, because the sheet needs the fit
+  and inventory, and `--no-engine` skips it.
+- **Each item stands alone.** `hero.json` records what was made, from what, and why anything
+  was not. The folder ignores itself in the project's git.
+- Outputs are H.264 `.mp4` (limited-range BT.709 4:2:0, which players read alike), made to be shared, unlike the dashboard's VP9 `.webm`.
+
+**Consequences.**
+- The velociraptor's folder (775k triangles; everything but the sheet) took 135 s on sb1x's
+  RTX 5090. Drawing the sheet with the engine took 39 s on the wave-2 tower crane.
+- Opening the engine for the sheet re-runs the accepted script on open, as every engine
+  session does. The revision and digest are unchanged, but `script.json` records a new attempt.
+- `cadex hero` writes no PROGRESS row and makes no project commit. An early run did make one,
+  and it swept a live agent's uncommitted files into a commit named "cadex hero". That
+  commit was undone with a mixed reset that kept every file.
+- The page only reads, and the folder lives under the project, so the dashboard stays
+  read-only (ADR-537). The dashboard does not show the folder yet.
+- Tests: `test_hero.py` covers:
+  - the turn's order and timing;
+  - the rollout choice;
+  - items standing alone;
+  - the page's framing, wipe and plot on known geometry;
+  - the crossfaded encode's length.
+
+**Revised 2026-10-12, after the owner reviewed the velociraptor videos.** The owner said the
+diagonal "should be more flashy and animated / dynamic". They also said the environment and
+lighting "looks way off. it doesnt seem to be on the grid floor with the faded fog horizon", and
+that the camera angle should be better. The wave-1 CNC was the next test case.
+- **The floor.** The floor really was missing. Headless Chromium's GPU-accelerated 2D canvas,
+  copied into WebGL, came through black on most runs, so the mat's grid texture drew as a black
+  floor, with no grid, no shadow and no fog horizon. The first velociraptor stills were from a run
+  where it happened to work. With a white material the floor was bright, which proved the texture
+  was at fault. The GPU flags now add `--disable-accelerated-2d-canvas`, and the floor drew on
+  three of three fresh browsers.
+- **The camera.** A 30° lens is used (`review_scene` gains `setFov`; the follow rig and `fitTo`
+  read the camera's lens rather than the constant). The turn cranes down from 36° to 21° and
+  pushes in by 12%. It is fitted with every view at its own pitch and distance, and centred
+  vertically, at 90% fill. The stills are all three-quarter views.
+- **The wipe.** The edge now turns as it sweeps (38° to 16°) and eases in and out cubically over
+  1.0 s. It is drawn additively: a core, a cyan and amber fringe, a narrow band, a glint running
+  along it, and a flash over what it has just uncovered.
+- **The CNC's sheet is not made.** The engine will not open the project, because its restore
+  pass no longer reproduces the accepted digest. `cadex render` fails the same way. A sheet drawn
+  without the engine is in index colours with no numbers, so `hero` reports the failure instead of
+  presenting that.
+
+**Revised again 2026-10-12.** The owner asked for the mat's words back, noticed banding in the
+videos, and asked for faster diagonal switches. They also wanted a faster turn in the wireframe
+alone, and a wireframe three-quarter still of each design tiled four to a grid: CNC top left, heron
+top right, velociraptor bottom left, walking excavator bottom right. The grid is to be kept
+gitignored.
+- The mat keeps its baked "PROTOTYPE" and "1 METER" text (`labels: true`), as in the viewport.
+- **Banding.** Every frame gets a fixed ±1.5-level dither, the frames go to FFmpeg as PNG rather
+  than JPEG, and x264 runs with `tune grain`, `aq-mode=3` and crf 15.
+- The wipes take 0.55 s.
+- `hero-wireframe-{landscape,square}.mp4` is the same move in 6 s, in the wireframe alone.
+- `still-wireframe.png` is the fifth still.
+- `cadex hero-grid` tiles one still from several projects with FFmpeg's `xstack`. `showcase/` in
+  the checkout is ignored.
+- **The floor stripes**, found while checking the banding, were in the dashboard too. ADR-676's
+  occlusion rebuilt each position from the depth buffer. With the near plane at 0.2% of the camera's
+  distance, depth read back near 1.0 stepped by metres across the far floor, even as 32-bit float,
+  and the occlusion read each step as a crease: horizontal light and dark stripes across the mat,
+  on in occlusion and gone without it. The pre-pass now writes the view normal and the linear
+  distance into a float target (half float where full float cannot be rendered to), and positions
+  are rebuilt along each pixel's ray. The creases still darken, and the stripes are gone at a 7×
+  boost of the dark levels.

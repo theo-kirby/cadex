@@ -262,3 +262,102 @@ def test_mesh_lines_show_facets_under_the_ink_and_their_choice_persists(served, 
     assert page.evaluate("document.getElementById('mesh-lines').disabled") is True
     assert page.evaluate("document.getElementById('reflections').disabled") is False
     page.evaluate("localStorage.clear()")
+
+
+# -- ADR-676: the looks, occlusion and surface detail ------------------------------------
+
+def test_the_looks_are_one_list_in_the_scene_the_page_and_its_menus():
+    shading = (STATIC / "shading.js").read_text()
+    review = (STATIC / "review.js").read_text()
+    html = (STATIC / "index.html").read_text()
+    looks = re.findall(r"'(\w+)'", re.search(r"export const LOOKS = \[([^\]]*)\]", shading).group(1))
+    assert looks == ["studio", "softbox", "dramatic", "daylight", "aluminium", "clay"]
+    assert re.findall(r"'(\w+)'", re.search(r"var LOOKS = \[([^\]]*)\]", review).group(1)) == looks
+    for select in ("view3d-look", "look-choice"):
+        block = re.search(r'<select id="%s"[^>]*>(.*?)</select>' % select, html, re.S).group(1)
+        assert re.findall(r'<option value="(\w+)"', block) == looks, select
+
+
+def _mean(page, region=None):
+    pixels = _pixels(page)
+    return [sum(p[i] for p in pixels) / len(pixels) for i in range(3)]
+
+
+@needs_browser
+def test_each_look_lights_the_parts_and_a_matcap_makes_them_one_material(served, browser) -> None:
+    _root, server = served
+    page = _page(browser, server)
+    _install(page, "T.entry('red', T.box(-40,-20,0,-5,20,30), {color:'#c0392b'}),"
+                   "T.entry('blue', T.box(5,-20,0,40,20,30), {color:'#2c5fa8'})")
+    stats = page.evaluate("window.cadexReview.viewer().stats()")
+    assert stats["look"] == {"name": "studio", "occlusion": True, "detail": True, "matcap": False}
+    studio = _pixels(page)
+    seen = {}
+    for name in ("softbox", "dramatic", "daylight", "aluminium", "clay"):
+        assert page.evaluate(f"window.cadexReview.setLook({{name: '{name}'}})")["name"] == name
+        look = page.evaluate("window.cadexReview.viewer().stats().look")
+        assert look["name"] == name and look["matcap"] is (name in ("aluminium", "clay"))
+        frame = _pixels(page)
+        seen[name] = sum(1 for a, b in zip(frame, studio) if sum(abs(x - y) for x, y in zip(a, b)) > 12)
+    assert all(count > 500 for count in seen.values()), seen
+
+    # Under the aluminium matcap a red part and a blue one are the same grey metal.
+    def tone(name):
+        x, y = page.evaluate(f"(function(){{ var v=window.cadexReview.viewer(), r=document.getElementById('viewer').getBoundingClientRect(),"
+                             f" p=v.screenPoint('{name}'); return [p[0]-r.left, p[1]-r.top]; }})()")
+        return page.evaluate(f"""(function () {{
+          var c=document.getElementById('viewer'), g=document.createElement('canvas'); g.width=c.width; g.height=c.height;
+          var x=g.getContext('2d'); window.cadexReview.viewer().draw(); x.drawImage(c,0,0);
+          var s=c.width/c.clientWidth, d=x.getImageData(Math.round({x}*s)-3, Math.round({y}*s)-3, 6, 6).data, t=[0,0,0];
+          for (var i=0;i<d.length;i+=4) {{ t[0]+=d[i]; t[1]+=d[i+1]; t[2]+=d[i+2]; }}
+          return t.map(function (v) {{ return v/(d.length/4); }}); }})()""")
+    page.evaluate("window.cadexReview.setLook({name: 'aluminium'})")
+    red, blue = tone("red"), tone("blue")
+    # Both grey metal (each face as bright as its normal makes it), neither red nor blue.
+    assert max(red) - min(red) < 20 and max(blue) - min(blue) < 20, (red, blue)
+    page.evaluate("window.cadexReview.setLook({name: 'studio'})")
+    red, blue = tone("red"), tone("blue")
+    assert red[0] > red[2] + 30 and blue[2] > blue[0] + 30, (red, blue)
+    # The header's menu and the View menu are one choice, kept by this browser; a matcap has no
+    # reflections to scale, and the wireframe none of the shaded look.
+    page.evaluate("var s=document.getElementById('view3d-look'); s.value='clay'; s.dispatchEvent(new Event('change'))")
+    assert page.evaluate("document.getElementById('look-choice').value") == "clay"
+    assert page.evaluate("document.getElementById('reflections').disabled") is True
+    page.send("Page.reload", {})
+    page.wait_for("document.readyState === 'complete' && !!window.cadexReview")
+    page.evaluate("window.cadexReview.ready", await_promise=True)
+    assert page.evaluate("window.cadexReview.look()") == {"name": "clay", "occlusion": True, "detail": True}
+    assert page.evaluate("window.cadexReview.viewer().look()") == "clay"
+    assert page.evaluate("window.cadexReview.setStyle('wireframe')") == "wireframe"
+    assert page.evaluate("['view3d-look','look-choice','occlusion','detail'].every(function (id) {"
+                         " return document.getElementById(id).disabled; })") is True
+    page.evaluate("localStorage.clear()")
+
+
+@needs_browser
+def test_occlusion_darkens_where_surfaces_meet_and_detail_shows_close_up(served, browser) -> None:
+    _root, server = served
+    page = _page(browser, server)
+    # A block standing on a plate: the occlusion gathers in the corner between them and on the mat.
+    _install(page, "T.entry('plate', T.box(-60,-60,0,60,60,6), {color:'#d9d4cb', finish:'printed'}),"
+                   "T.entry('block', T.box(-20,-20,6,20,20,46), {color:'#d9d4cb', finish:'printed'})")
+    lit = _pixels(page)
+    assert page.evaluate("window.cadexReview.setLook({occlusion: false})")["occlusion"] is False
+    flat = _pixels(page)
+    darker = sum(1 for a, b in zip(lit, flat) if sum(b) - sum(a) > 9)
+    lighter = sum(1 for a, b in zip(lit, flat) if sum(a) - sum(b) > 9)
+    assert darker > 1000 and lighter < darker / 20, (darker, lighter)
+    page.click("#view-panel summary")
+    page.click("#occlusion")
+    assert page.evaluate("window.cadexReview.look().occlusion") is True
+    page.click("#view-panel summary")
+    # A printed drum, close up: its layer lines and grain are there with detail on, and gone with it off.
+    _install(page, "T.entry('drum', T.cylinder(15, 30, 96), {color:'#d9d4cb', finish:'printed'})")
+    page.evaluate("(function(){ var v=window.cadexReview.viewer(), c=v.camera(); c.distance=55; c.pitch=0.15; c.target=[0,0,15]; v.setCamera(c); })()")
+    textured = _pixels(page)
+    assert page.evaluate("window.cadexReview.setLook({detail: false})")["detail"] is False
+    smooth = _pixels(page)
+    changed = sum(1 for a, b in zip(textured, smooth) if sum(abs(x - y) for x, y in zip(a, b)) > 3)
+    assert changed > 2000, changed
+    assert page.evaluate("localStorage.getItem('cadex.detail')") == "off"
+    page.evaluate("localStorage.clear()")

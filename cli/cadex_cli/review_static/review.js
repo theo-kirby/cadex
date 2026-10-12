@@ -14,9 +14,12 @@
 //                ADR-572) -- an area beside the 3D viewport by default;
 //   2D viewport  the project's drawings, images, documents, evaluation films and training plots,
 //                a split away;
+//   Outliner     every part the 3D viewport shows, to show, hide, isolate,
+//                select and frame (ADR-676; outliner.js) -- above Status by default;
 //   Menu bar     File (the project), Revisions (the trail), View (theme,
-//                render style, mesh lines, reflections, layout presets
-//                and reset, ADR-573, ADR-602).
+//                render style, lighting, occlusion, surface detail, mesh
+//                lines, reflections, layout presets and reset, ADR-573,
+//                ADR-602, ADR-676).
 //
 // Read-only (ADR-537): the agent working the project changes it, through
 // the CLI or `cadex mcp`, and the page follows. Polls /api/project for what
@@ -30,11 +33,15 @@
   // (`cadex app`) it is `p/<name>/` under the index, and NAME is that project.
   var NAME = (location.pathname.match(/\/p\/([^/]+)\/(?:index\.html)?$/) || [null, null])[1];
   var POLL_MS = 2000;
-  var ORDER = ['view3d', 'status', 'view2d'];
-  // The 3D viewport with Status beside it; split an area for the 2D one.
-  var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.75, 0.25], children: [{ editor: 'view3d' }, { editor: 'status' }] };
+  var ORDER = ['view3d', 'status', 'view2d', 'outliner'];
+  // The 3D viewport with the Outliner over Status beside it, as Blender has its Outliner over its
+  // Properties; split an area for the 2D one.
+  var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.75, 0.25], children: [{ editor: 'view3d' },
+    { dir: 'col', sizes: [0.4, 0.6], children: [{ editor: 'outliner' }, { editor: 'status' }] }] };
   var STYLES = ['shaded', 'wireframe'];
-  var state = { review: null, lastOk: null, stale: false, error: null, model: null, viewer: null, layout: null };
+  // The shaded look (ADR-676): four lighting setups and two matcaps (shading.js LOOKS).
+  var LOOKS = ['studio', 'softbox', 'dramatic', 'daylight', 'aluminium', 'clay'];
+  var state = { review: null, lastOk: null, stale: false, error: null, model: null, viewer: null, layout: null, outliner: null };
   var pendingPoll = null;
   var lastPoll = { project_bytes: 0, ms: 0 };
   var readyResolve;
@@ -188,6 +195,8 @@
   var meshLines = { shown: readPref('cadex.meshlines', ['on', 'off'], 'on') === 'on',
                     strength: readNumber('cadex.meshlines.strength', 0, 1, 0.12) };
   var reflections = readNumber('cadex.reflections', 0, 2, 1);
+  var look = { name: readPref('cadex.look', LOOKS, 'studio'), occlusion: readPref('cadex.occlusion', ['on', 'off'], 'on') === 'on',
+               detail: readPref('cadex.detail', ['on', 'off'], 'on') === 'on' };
 
   function renderSources() {
     var runs = (state.review.runs || []).map(function (run) { return run.run; });
@@ -245,6 +254,7 @@
       if (manifest.view === 'revision') renderRevisionTimeline();
       if (!manifest.available) {
         state.viewer.clear();
+        state.outliner.setModel(null);
         status.dataset.state = 'missing';
         status.textContent = 'no model: ' + manifest.reason;
         return;
@@ -260,6 +270,7 @@
       if (manifest.view === 'revision') manifest = tintRevision(manifest);
       return state.viewer.load(manifest, fetchMesh).then(function () {
         if (ticket !== modelLoad) return;
+        state.outliner.setModel(manifest);
         if (manifest.view === 'revision') return state.viewer.loadGhost(ghostOf(manifest), fetchMesh, parseInt(token('--ink-2').slice(1), 16), 0.22);
       }).then(function () {
         if (ticket !== modelLoad) return;
@@ -290,8 +301,26 @@
     if (state.viewer) state.viewer.setStyle(name, { paper: token('--paper'), ink: token('--paper-ink') });
     $('mesh-lines').disabled = name !== 'wireframe';
     $('mesh-strength').disabled = name !== 'wireframe' || !meshLines.shown;
-    $('reflections').disabled = name !== 'shaded';
+    $('reflections').disabled = name !== 'shaded' || look.name === 'aluminium' || look.name === 'clay';
+    ['view3d-look', 'look-choice', 'occlusion', 'detail'].forEach(function (id) { $(id).disabled = name !== 'shaded'; });
     return name;
+  }
+  // The shaded look: a lighting setup or a matcap, occlusion and surface detail; any may be left out.
+  function applyLook(next) {
+    next = next || {};
+    if (LOOKS.indexOf(next.name) >= 0) look.name = next.name;
+    if (typeof next.occlusion === 'boolean') look.occlusion = next.occlusion;
+    if (typeof next.detail === 'boolean') look.detail = next.detail;
+    writePref('cadex.look', look.name);
+    writePref('cadex.occlusion', look.occlusion ? 'on' : 'off');
+    writePref('cadex.detail', look.detail ? 'on' : 'off');
+    $('view3d-look').value = look.name; $('look-choice').value = look.name;
+    $('occlusion').checked = look.occlusion; $('detail').checked = look.detail;
+    $('reflections').disabled = renderStyle !== 'shaded' || look.name === 'aluminium' || look.name === 'clay';
+    if (state.viewer && state.viewer.setLook) {
+      state.viewer.setLook(look.name); state.viewer.setOcclusion(look.occlusion); state.viewer.setDetail(look.detail);
+    }
+    return { name: look.name, occlusion: look.occlusion, detail: look.detail };
   }
   // Mesh lines: on or off, and how strong, of the ink (0-1). Either may be left out.
   function applyMeshLines(next) {
@@ -877,10 +906,16 @@
                         tools: home.querySelector('.editor-tools'), body: home.querySelector('.editor-body') };
     });
     state.layout = window.CadexLayout.create({ root: $('screen'), shelf: $('editor-shelf'), editors: editors, order: ORDER,
-                                               storageKey: 'cadex.layout.v4', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
+                                               storageKey: 'cadex.layout.v5', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
     state.viewer = window.CadexViewer.create($('viewer'));
+    state.outliner = window.CadexOutliner.create({ tree: $('outliner-tree'), filter: $('outliner-filter'), group: $('outliner-group'),
+                                                   showAll: $('outliner-show-all'), summary: $('outliner-summary'), scope: $('model'),
+                                                   viewer: function () { return state.viewer; } });
+    // A click on a solid selects its row; Shift, Ctrl or Cmd adds or removes it.
+    if (state.viewer.setOnPick) state.viewer.setOnPick(function (name, how) { state.outliner.pick(name, !!(how && how.add)); });
     applyMeshLines();
     applyReflections();
+    applyLook();
     applyStyle(renderStyle);
 
     $('model-fit').addEventListener('click', function () { state.viewer.fit(); });
@@ -894,6 +929,11 @@
     $('mesh-lines').addEventListener('change', function () { applyMeshLines({ shown: $('mesh-lines').checked }); });
     $('mesh-strength').addEventListener('input', function () { applyMeshLines({ strength: $('mesh-strength').value }); });
     $('reflections').addEventListener('input', function () { applyReflections($('reflections').value); });
+    ['view3d-look', 'look-choice'].forEach(function (id) {
+      $(id).addEventListener('change', function () { applyLook({ name: $(id).value }); });
+    });
+    $('occlusion').addEventListener('change', function () { applyLook({ occlusion: $('occlusion').checked }); });
+    $('detail').addEventListener('change', function () { applyLook({ detail: $('detail').checked }); });
     $('play-toggle').addEventListener('click', function () { ckpt.paused = !!playing; togglePlayback(); });
     $('checkpoint-pick').addEventListener('input', function () { pickCheckpoint(Number($('checkpoint-pick').value)); });
     $('revision-pick').addEventListener('input', function () { pickRevision(Number($('revision-pick').value)); });
@@ -943,7 +983,9 @@
 
   window.cadexReview = {
     ready: ready,
-    refresh: poll,
+    // A read that starts after this call: a poll already in flight may have asked before the
+    // change the caller is waiting for, so it is waited out, not returned.
+    refresh: function () { return (pendingPoll || Promise.resolve()).then(function () { return poll(); }); },
     viewer: function () { return state.viewer; },
     layout: function () { return state.layout; },
     setStyle: applyStyle,
@@ -952,6 +994,9 @@
     meshLines: function () { return { shown: meshLines.shown, strength: meshLines.strength }; },
     setReflections: applyReflections,
     reflections: function () { return reflections; },
+    setLook: applyLook,
+    look: function () { return { name: look.name, occlusion: look.occlusion, detail: look.detail }; },
+    outliner: function () { return state.outliner; },
     setSource: function (value) { ckpt.chosenSource = true; return setSource(value); },
     setSheet: setSheet,
     sheets: function () { return sheet.list.map(function (item) { return { key: item.key, group: item.group, kind: item.kind, label: item.label }; }); },

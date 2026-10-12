@@ -64,8 +64,32 @@
             <button type="button" data-style="wireframe">Wireframe</button>
           </span>
         </div>
-        <!-- The viewport's look, this browser's own (ADR-601, ADR-602): the wireframe's soft mesh
-             lines and their strength, and the shaded solids' reflections. -->
+        <!-- The viewport's look, this browser's own (ADR-601, ADR-602, ADR-676): the shaded solids'
+             lighting or matcap, occlusion, surface detail and reflections; the wireframe's soft
+             mesh lines and their strength. -->
+        <div class="field">
+          <label for="look-choice">Lighting</label>
+          <select id="look-choice">
+        <optgroup label="Lighting">
+            <option value="studio">Studio</option>
+            <option value="softbox">Softbox</option>
+            <option value="dramatic">Dramatic</option>
+            <option value="daylight">Daylight</option>
+          </optgroup>
+          <optgroup label="MatCap">
+            <option value="aluminium">Aluminium</option>
+            <option value="clay">Clay</option>
+          </optgroup>
+          </select>
+        </div>
+        <div class="field">
+          <label for="occlusion">Ambient occlusion</label>
+          <span class="look-control"><input type="checkbox" id="occlusion" checked></span>
+        </div>
+        <div class="field">
+          <label for="detail">Surface detail</label>
+          <span class="look-control"><input type="checkbox" id="detail" checked></span>
+        </div>
         <div class="field">
           <label for="mesh-lines">Mesh lines</label>
           <span class="look-control">
@@ -114,6 +138,18 @@
         <button type="button" data-style="shaded" aria-pressed="true">Shaded</button>
         <button type="button" data-style="wireframe" aria-pressed="false">Wireframe</button>
       </span>
+      <select id="view3d-look" aria-label="Lighting">
+        <optgroup label="Lighting">
+          <option value="studio">Studio</option>
+          <option value="softbox">Softbox</option>
+          <option value="dramatic">Dramatic</option>
+          <option value="daylight">Daylight</option>
+        </optgroup>
+        <optgroup label="MatCap">
+          <option value="aluminium">Aluminium</option>
+          <option value="clay">Clay</option>
+        </optgroup>
+      </select>
       <button id="model-fit" type="button">Fit</button>
     </div>
     <div class="editor-body" id="model">
@@ -212,8 +248,30 @@
     </div>
   </section>
 
+  <!-- Every part of the model in the 3D viewport, to show, hide and select (ADR-676), after
+       Blender's Outliner; drawn by outliner.js. -->
+  <section class="editor" id="editor-outliner" data-editor="outliner" data-title="Outliner" data-short="Parts">
+    <div class="editor-tools"></div>
+    <div class="editor-body" id="outliner">
+      <div id="outliner-bar">
+        <input id="outliner-filter" type="search" placeholder="Filter parts" aria-label="Filter parts" autocomplete="off">
+        <select id="outliner-group" aria-label="Group parts by">
+          <option value="type">By type</option>
+          <option value="role">By role</option>
+          <option value="none">No groups</option>
+        </select>
+        <button id="outliner-show-all" class="icon-button" type="button" title="Show every part (Alt+H)" aria-label="Show every part">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg>
+        </button>
+      </div>
+      <ul id="outliner-tree" role="tree" aria-label="Parts" aria-multiselectable="true"></ul>
+      <p id="outliner-summary"></p>
+    </div>
+  </section>
+
 </div>
 <script src="status.js"></script>
+<script src="outliner.js"></script>
 <script type="module" src="viewer.js"></script>
 </body>
 </html>

@@ -55,6 +55,8 @@ The agent's two requests cost tokens. The loop between them does not.
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
 | `cadex section --plane XY [--offset-mm 8]` | Cut accepted tessellation through a world plane; revision-bearing SVG and JSON under `review/section/` (ADR-240). **`--offset-mm` is optional**: omitted, the offset is derived from the accepted bounds the way the walk derives it — every candidate is cut and the one covering the most objects wins (ADR-273, ADR-275). The note reports the offset, whether it was `explicit` or `derived`, and how many of the model's objects the cut reached. | no |
 | `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews, a 1024 px studio `hero.png` (ADR-412), the concept sheet `sheet.png` (ADR-430) and `review/render/summary.json`, bearing the full accepted revision (ADR-239). CPU only; no graphics runtime. | no |
+| `cadex hero [--only ITEMS] [--run NAME] [--software] [--no-engine]` | Write the project's presentation folder, `hero/` (ADR-677, `docs/DASHBOARD.md` §26). It holds five stills of the accepted design in different looks (one in the wireframe), a dashboard screenshot (viewport left, Status with the training charts right), the concept sheet, the chosen rollout as `rollout.mp4`, and `hero-landscape.mp4` and `hero-square.mp4`. Each hero video is a full turn that wipes from clay to aluminium to wireframe to the design's own materials, then the rollout, then the training curves, and a faster wireframe-only turn in both formats. The rollout is the longest episode any run's policy lasted, the newest among equals, or `--run`'s. Never run on its own. It needs headless Chromium (on the GPU when there is one; `--software` forces software WebGL) and FFmpeg, and opens the engine only to draw a concept sheet no render has drawn for the accepted revision (`--no-engine`: never). Each item stands alone: `hero/hero.json` names what was made and why anything was not, and the exit is 0 only when everything asked for was made. `--only` takes a comma-separated subset of `stills`, `dashboard`, `sheet`, `rollout` and `video`. The folder keeps itself out of the project's git. | no |
+| `cadex hero-grid PROJECT... --out FILE [--still NAME] [--columns N]` | Tile one still (default `wireframe`) from each project's `hero/` folder into one image, two to a row by default, in the order given: left to right, then top to bottom (ADR-677). Run `cadex hero --only stills` on each project first. FFmpeg; no engine, no row, no commit. | no |
 | `cadex clearance` | Write `docs/clearance.md` naming every component pair, labels and catalog ids, minimum distance (mm), common volume (mm³) and verdict. Reads published measurements at the initial solved pose with no rebuild or tokens; not a swept-motion check (ADR-237). Missing measurements remain unknown. Exit 0 means the report was written, not that all pairs are clear. The same rows reach the agent as `inspect scope=clearance` and, summarised, as the `fit` block on every build reply (ADR-346), whose `sweep` half carries the published joint sweeps (ADR-366). | no |
 | `cadex inventory` | List the parts of the accepted assembly with catalog ids: one row per component with the output it places, its catalog family and part number where a `lib.*` generator built it, the appearance role it declares (ADR-413), and the pose the solver settled on; a declared palette is listed under the table. Writes `docs/inventory.md` in the project (ADR-236). Reads the pinned accepted attempt — no rebuild. Resolves all inspection pages and previews, including catalog totals, uncatalogued names and large component rows. | no |
 | `cadex link --from DIR` | Bring a part in from another project, or refresh one. | no |
@@ -1400,13 +1402,17 @@ assembly every one of these is `null`.
 **What the browser keeps.** The page keeps no project state of its own:
 everything it shows is read from these routes on each poll. What it keeps in
 `localStorage` is per-viewer conveniences — `cadex.theme` (dark, light
-or system), `cadex.layout.v4` (the screen's areas), `cadex.render` (the
+or system), `cadex.layout.v5` (the screen's areas), `cadex.render` (the
 viewport's render style, shaded or wireframe; a stored `hairline` is read as
 wireframe), `cadex.meshlines` and `cadex.meshlines.strength` (the wireframe's
-mesh lines, on or off, and their strength) and `cadex.reflections` (the shaded
-solids' reflection strength) — and the test fails if the page stores any other key. A picked
-checkpoint, a scrubbed revision or a selected run lasts only as long as the
-page.
+mesh lines, on or off, and their strength), `cadex.reflections` (the shaded
+solids' reflection strength), `cadex.look`, `cadex.occlusion` and
+`cadex.detail` (the shaded look's lighting setup or matcap, its ambient
+occlusion and its surface detail, ADR-676), and `cadex.outliner.group` and
+`cadex.outliner.folded` (how the Outliner groups the parts, and which groups
+are folded) — and the test fails if the page stores any other key. A picked
+checkpoint, a scrubbed revision, a selected run, and the parts hidden or
+selected in the Outliner last only as long as the page.
 
 ### Exit codes
 

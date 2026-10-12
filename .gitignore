@@ -107,3 +107,6 @@ MUJOCO_LOG.TXT
 
 # ouroboros run state
 .ouroboros/runs/
+
+# presentation images tiled from several projects (cadex hero-grid, ADR-677)
+/showcase/

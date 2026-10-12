@@ -77,7 +77,8 @@ class Download(NamedTuple):
 class HeadlessBrowser:
     """One headless Chromium; ``page(url)`` opens a tab on a URL."""
 
-    def __init__(self, executable: str, *, width: int = 1280, height: int = 900) -> None:
+    def __init__(self, executable: str, *, width: int = 1280, height: int = 900,
+                 gpu: tuple[str, ...] = ()) -> None:
         self.executable = executable
         self.confined = snap_confined(executable)
         self._downloads: str | None = None
@@ -86,8 +87,10 @@ class HeadlessBrowser:
         r_in, w_in = os.pipe()
         r_out, w_out = os.pipe()
         null = os.open(os.devnull, os.O_RDWR)
-        argv = [executable, "--headless=new", "--remote-debugging-pipe", "--disable-gpu",
-                "--enable-unsafe-swiftshader", "--no-sandbox", "--no-first-run",
+        # Software WebGL (SwiftShader) unless the caller names the GPU flags to use instead.
+        renderer = list(gpu) if gpu else ["--disable-gpu", "--enable-unsafe-swiftshader"]
+        argv = [executable, "--headless=new", "--remote-debugging-pipe", *renderer,
+                "--no-sandbox", "--no-first-run",
                 "--disable-dev-shm-usage", f"--window-size={width},{height}",
                 f"--user-data-dir={self.profile}", "about:blank"]
         # posix_spawn, because subprocess closes descriptors 3 and 4 after
@@ -216,15 +219,15 @@ class Page:
         self.browser = browser
         self.session = session
 
-    def send(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        return self.browser.send(method, params, session=self.session)
+    def send(self, method: str, params: dict[str, Any] | None = None, timeout: float = 30.0) -> dict[str, Any]:
+        return self.browser.send(method, params, session=self.session, timeout=timeout)
 
-    def evaluate(self, expression: str, *, await_promise: bool = False) -> Any:
+    def evaluate(self, expression: str, *, await_promise: bool = False, timeout: float = 30.0) -> Any:
         """Evaluate JavaScript in the page and return its value (by value)."""
 
         result = self.send("Runtime.evaluate", {
             "expression": expression, "returnByValue": True, "awaitPromise": await_promise,
-        })
+        }, timeout=timeout)
         if "exceptionDetails" in result:
             details = result["exceptionDetails"]
             text = (details.get("exception") or {}).get("description") or details.get("text")
