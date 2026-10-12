@@ -13,7 +13,8 @@ the message the next iteration starts from. When the memory says a reconcile
 is due, the actor's next iteration is housekeeping instead of a unit. A
 separate maintainer and planner exist but are off unless the config turns them
 on (they were on for nt1 through ot4; see RUNS.md for what that bought). It
-runs on a branch (`ouroboros/<run>`), inside tmux, for as long as the charter's
+runs on a branch (`ouroboros/<run>`), as a systemd user unit
+(`ouroboros-<run>.service`, `launcher: systemd`), for as long as the charter's
 stop rules allow.
 
 The human owns exactly one document: `.ouroboros/goal.md`, the charter. No agent
@@ -46,11 +47,17 @@ from the logs.
 Check the harnesses are authenticated and their usage windows have room; a
 subscription window that is nearly full will stall the run rather than fail it.
 
-Started from inside a tmux session -- yours, where the human is talking to you --
-the loop takes a new window of that session, named `ouroboros-<run>`, and you
-both stay where you are. Tell the human to open another window for
-`ouroboros top`. From a bare terminal, or with `--own-session`, it gets a
-detached session of its own instead.
+`launcher: systemd` in `config.yml` puts the loop in a transient user unit,
+`ouroboros-<run>.service`, started straight from your shell: no second session,
+and no tmux or tern to keep alive. It belongs to no terminal, so restarting tern
+(whose daemon lives inside the `tern-remote` service) or tmux cannot end it, and
+lingering keeps it past logout. `memory_max: 40G` caps the run and everything it
+starts, so a runaway engine is killed alone. Do not wrap `ouroboros run` in
+`tmux`, `tern new` or `systemd-run` yourself: the launcher does that, and records
+what it started so `ouroboros stop` takes it down. For a short run you want to
+watch in a pane instead, pass `--launcher tern` (a tern session of its own,
+`ouroboros-<run>`) or `--launcher tmux`. Tell the human to open
+`ouroboros top` in a tab of their own, e.g. `tern new tab --cwd ~/cadex -- ouroboros top`.
 
 **4. While it runs**, do not touch the files the loop is working in. An operator charter
 edit applies at the next iteration boundary; the current actor and critic finish
@@ -60,7 +67,8 @@ under their original charter. Save edits atomically and check loop.log for
     ouroboros refresh         # after switching accounts or restoring credits
     ouroboros status          # one shot
     ouroboros top             # the live view, in a window of its own
-    <prefix> n                # tmux: the loop's own log is the next window over
+    journalctl --user -u ouroboros-<run>.service -f   # the loop's console log
+    systemctl --user status ouroboros-<run>.service    # the unit, its memory and its processes
 
 After switching a harness login or restoring credits, `ouroboros refresh`
 (alias `ouroboros --refresh`) rechecks configured providers and wakes backoff.
@@ -98,7 +106,7 @@ operator, including you, reads first.
 
 - **Where runs happen:** the GPU box, `sb1x`, over Tailscale. It has the 5090,
   so it is the only machine where a run can train a policy and check the result.
-  Work in `~/cadex` there, in a tmux session of its own. nt1 to nt3 ran on the
+  Work in `~/cadex` there; the run is a systemd user unit (above). nt1 to nt3 ran on the
   Mac (`mmini`) and could not train.
 - **Naming:** `orun<n>`, from orun1 (2026-10-02). ot1 to ot11 were `ot<n>`,
   Ouroboros Test; nt1 to nt3 before them. Runs are not nights: one may start

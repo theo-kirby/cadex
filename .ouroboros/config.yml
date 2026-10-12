@@ -2,6 +2,12 @@ run: orun5
 goal: .ouroboros/goal.md
 memory: auto            # -> governor (.flywheel/ + CLI present, ADR-672)
 backend: headless       # tmux: one streaming window per harness call in the run session
+# Where the loop lives: a systemd user unit, ouroboros-<run>.service, tied to no
+# terminal, so a tern or tmux restart cannot end a run. memory_max caps the run and
+# everything it starts, engines and trainers included: a runaway FreeCADCmd (60 GB
+# once, which took the tmux session down) is killed alone. sb1x has 60 GB.
+launcher: systemd
+memory_max: 40G
 # Two roles. The critic is one read-only call after every actor turn: it grades the
 # diff against the quality bar, answers as the sleeping user, refuses false "done",
 # and writes the next prompt. The maintainer and planner are off: a due reconcile is
