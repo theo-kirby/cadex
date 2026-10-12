@@ -20165,7 +20165,7 @@ joints. This is a reversible sampling contract, not market prevalence.
 Every member needs mounting evidence, kV, a thermally qualified torque point,
 independent placed/canonical geometry proof and packaged publication.
 
-The [source audit](L3-COVERAGE.md#additional-bldc-source-audit--ri50-kv100-adr-223)
+The [source audit](history/L3-COVERAGE.md#additional-bldc-source-audit--ri50-kv100-adr-223)
 cites the inspected CubeMars product page, parameter sheet, no-Hall drawing
 and fixture archive. RI50 KV100 without Hall sensors remains unqualified:
 ratings lack cooling/duration conditions and a revision link to its drawing;
@@ -20178,7 +20178,7 @@ hypergraph validation are the gates; no build or runtime suite is required.
 
 
 ADR-223 follow-up (2026-09-07): the
-[fixture/BOM audit](L3-COVERAGE.md#fixture-follow-up--ri50-parked-2026-09-07)
+[fixture/BOM audit](history/L3-COVERAGE.md#fixture-follow-up--ri50-parked-2026-09-07)
 inspects new archive contents and cites the manufacturer support index and
 thermal-design article. Neither rating thermal conditions nor revision linkage
 is established. Park RI50; the next source unit should qualify a shafted
@@ -20187,7 +20187,7 @@ the installation video remain unverified; this is a bounded evidence result,
 not a claim that evidence cannot exist. No API or coverage-gate relaxation.
 
 ADR-223 shafted-alternative follow-up (2026-09-07): the
-[AT2814 Long Shaft KV900 audit](L3-COVERAGE.md#shafted-alternative--at2814-long-shaft-kv900-2026-09-07)
+[AT2814 Long Shaft KV900 audit](history/L3-COVERAGE.md#shafted-alternative--at2814-long-shaft-kv900-2026-09-07)
 inspects T-MOTOR's [bench report](https://uav-en.tmotor.com/2019/Motors_0226/214.html),
 [store](https://store.tmotor.com/product/at2814-long-shaft-fixed-wing-motor.html),
 [download index](https://uav-en.tmotor.com/download/33.html) and
@@ -39883,3 +39883,55 @@ their own ADRs:
 
 **Consequences.** The licensing gate and the panels test pass locally. The
 first CI run on this branch shows what remains on the runners.
+
+## ADR-675 — The release audit's removals: demo/, contrib/, the tools/ GUI harness and the .github leftovers; four audits to history; no tailnet address in evidence (2026-10-12, owner)
+
+**Context.** ADR-674 proposed these removals and left them for the owner's
+sign-off. The owner approved them, together with replacing the tailnet
+address found in probe evidence.
+
+**Decision.**
+- **Deleted.** Each item was checked to have no reference outside itself,
+  `docs/history/`, `docs/probes/` and this log.
+  - `demo/`: 176 files, about 17 MB. It held the deleted landing page's
+    biped, a Blender document and its autosave, a stale `biped.cadex/`
+    attempt tree, and seven `.cxpolicy` smoke checkpoints.
+    `docs/SHELL-PARITY.md` already recorded it as dropped (ADR-498), with
+    the owner's confirmation.
+  - `contrib/`: FreeCAD's VS Code and CLion debug launchers, and the Qt
+    pretty printers.
+  - `requirements-freecad-venv.txt`, which held BIM's venv pins.
+  - Everything in `tools/` except `apply_modification_notices.py`: 67 files
+    of FreeCAD GUI harness, UI-style gates, lint wrappers, Coin baselines and
+    profiling scripts. They all hung off a `run_ui_test_baseline.sh` that
+    nothing called.
+  - From `.github/`: the backport template, `images/` (FreeCAD workbench
+    art), `scripts/run_gui_tests.py` and `codespellignore`.
+  - `docs/cadex-example.png`, `docs/images/cadex-workspace.png` and
+    `docs/images/cadex-grok-provider-setup.png`. These were shell-era
+    screenshots that nothing referenced.
+- **Moved to `docs/history/`.** Citations were repointed in FREECAD,
+  ORGANIC, ROADMAP, XSCRIPT, one test docstring and three link targets in
+  this log.
+  - `DOCS-AUDIT.md`: its open owner questions were settled by ADR-673 and
+    ADR-674, or carried in ADR-674's follow-ups.
+  - `PHASE8-AUDIT.md`: the `BUILD_GUI` error no longer names it (ADR-674).
+  - `L3-COVERAGE.md`.
+  - `ARCHITECTURE-REVIEW.md`, with its `cli/` paths corrected.
+- **The licensing gate now covers `tools/`.** It had been left out only
+  because of the headerless inherited lint scripts.
+- **The tailnet address replaced.** It appeared 19 times in 13 files under
+  `docs/probes/{lark-fresh,wren-fresh,reed-agentrev}/`. It is now
+  `100.64.0.1`, a placeholder in the same CGNAT range, so the tests that
+  require a non-loopback host on `:8765` still hold. The published history
+  keeps the old value; only a history rewrite would remove it, and that was
+  not done.
+
+**Consequences.**
+- About 159k lines leave the tree.
+- No build input changes. CMake referenced none of these files, and the
+  pixi lock is unchanged.
+- The engine and CLI suites, the licensing gate and the evidence tests pass.
+- The removals ADR-674 left for later still need a re-solve or a C++ build
+  cycle and their own ADRs: dead engine code, the GUI-era pixi dependencies,
+  libE57Format and salomesmesh, and the dead CMake presets and modules.

@@ -322,7 +322,7 @@
   "original_unchanged": true,
   "retained_files": 250,
   "retained_sha256": "f54adac1ae335f4c5579838f1f2257d48c169ecd0db3d8d06184d499b06ab1f9",
-  "persistent_url_host": "100.104.232.88:8765",
+  "persistent_url_host": "100.64.0.1:8765",
   "persistent_private_address_same_machine": true,
   "product_agent_authorship": false,
   "retraining": false,

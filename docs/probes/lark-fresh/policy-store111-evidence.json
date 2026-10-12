@@ -6,7 +6,7 @@
     "lark96-restart",
     "lark109-engine2"
   ],
-  "url": "http://100.104.232.88:8765/",
+  "url": "http://100.64.0.1:8765/",
   "persistent_port": 8765,
   "private_address_same_machine": true,
   "accepted_revision": "6f826037044ad80adfbc0156e8b72959f4c76fff9a2ba7f2912b88df6ce9c58b",

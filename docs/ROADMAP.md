@@ -305,7 +305,7 @@ cancellation answered `RUN_CANCELLED`, and 120 main-thread ticks during a
 this phase.
 
 - [x] Dependency audit: `src/Gui`, every `src/Mod/*/Gui`, `tests/src/Gui`
-      and `setup_qt_test` — [measured boundary and gates](PHASE8-AUDIT.md),
+      and `setup_qt_test` — [measured boundary and gates](history/PHASE8-AUDIT.md),
       2026-09-07 (ADR-213). 3,731 tracked files across thirteen directories.
 - [x] Preserve Material's headless metatype contract in `App/MetaTypes.h`,
       with a forwarding Gui header and all 18 retained includes migrated
@@ -322,12 +322,12 @@ this phase.
       native document object from it, which this deletion does not touch.
 - [x] Delete the thirteen audited Gui directories and retired Main GUI sources,
       InventorBuilder test and registrations, removing obsolete GUI guards
-      (ADR-214, 2026-09-07; validation in PHASE8-AUDIT.md).
+      (ADR-214, 2026-09-07; validation in history/PHASE8-AUDIT.md).
 - [x] `docs/FREECAD.md` §1 row moves from "present, not built" to deleted;
       ADR-214 records the delete boundary.
 - [x] Audit remaining GUI-lineage source and unconditional Python install
       lists outside that boundary; preserve required headless Assembly publication
-      (ADR-215, PHASE8-AUDIT.md). Consumer audit only; residual removal and
+      (ADR-215, history/PHASE8-AUDIT.md). Consumer audit only; residual removal and
       the broader exit criterion remain open.
 - [x] Disable Measure/MassPropertiesGui.py in its shared copy/install list
       (ADR-215); preserve the source and headless Measure/Assembly consumers.
@@ -336,7 +336,7 @@ this phase.
 
 - [x] Qualify MeshPart/InitGui.py for a separate install-only disable, with
       loader/worker consumers and stale installed copies audited
-      (ADR-224, PHASE8-AUDIT.md, 2026-09-07).
+      (ADR-224, history/PHASE8-AUDIT.md, 2026-09-07).
 - [x] Disable MeshPart/InitGui.py installation with stale-copy cleanup;
       preserve its source, MeshPart App and Init.py (ADR-224, 2026-09-07).
 - [x] Delete the disabled MeshPart/InitGui.py source in a separate verified
@@ -344,7 +344,7 @@ this phase.
 
 - [x] Audit Material's GUI copy/install registrations and retained consumers;
       qualify only InitGui.py, MaterialEditor.py and TestMaterialsGui.py
-      (ADR-225, PHASE8-AUDIT.md, 2026-09-07).
+      (ADR-225, history/PHASE8-AUDIT.md, 2026-09-07).
 - [x] Disable those three Material registrations, retaining source and App/
       tests/resources, with stale-copy cleanup and fresh gates (ADR-225).
 - [x] Separately delete the qualified Material sources after verified disable
@@ -352,7 +352,7 @@ this phase.
 
 - [x] Audit the four inactive Main GUI launcher branches and unused resource
       template; retain Windows command-line behavior and state Windows
-      validation limits (ADR-226, PHASE8-AUDIT.md, 2026-09-07).
+      validation limits (ADR-226, history/PHASE8-AUDIT.md, 2026-09-07).
 - [x] Delete only the previously disabled Main freecad.rc.cmake template;
       retain command-line resources (ADR-226, 2026-09-07).
 - [ ] Separately plan and gate removal of the four inactive shared Main launcher
@@ -1788,8 +1788,9 @@ the items below are what made that true. `AGENTS.md` describes the result.
       ADR-647, ADR-660, ADR-661, ADR-665, ADR-666). One output definition
       may be 4 MiB (ADR-670).
 - [x] v0.2.0 release hygiene: one product version read from `VERSION`, the
-      MCP server answering every message (ADR-673), and the pre-release
-      audit's fixes (ADR-674).
+      MCP server answering every message (ADR-673), the pre-release
+      audit's fixes (ADR-674), and its removals: `demo/`, `contrib/`, the
+      `tools/` GUI harness and the `.github` leftovers (ADR-675).
 
 ## Off-phase — the harness ops, experimental (ADR-056, ADR-057, ADR-062, ADR-063, ADR-065, 2026-07-27 → 2026-08-01)
 
@@ -2223,13 +2224,13 @@ field, and every client gets it through the surface it already reads.
 - [x] **L3 joint implementation.** `lib.joint("skf-ge-6-c")` delivers the
       qualified two-ring approximation with bounded tilt, source metadata,
       real-worker interfaces and packaged publication (ADR-211). No fit guarantee.
-- [x] **L3 remaining-coverage audit.** [Coverage/evidence matrix](L3-COVERAGE.md)
+- [x] **L3 remaining-coverage audit.** [Coverage/evidence matrix](history/L3-COVERAGE.md)
       distinguishes four delivered SKUs from missing BLDC size/torque scope,
       deferred solenoid interfaces and separate compound gearing (ADR-212).
       Full L3 stays open; Phase 8 deletion has since landed.
 - [x] **L3 additional BLDC source audit.** Set A defines three required
       classes; RI50 KV100 no-Hall qualification is blocked on thermal and
-      revision evidence (ADR-223, `docs/L3-COVERAGE.md`). No delivery claimed.
+      revision evidence (ADR-223, `docs/history/L3-COVERAGE.md`). No delivery claimed.
 - [x] **RI50 fixture evidence follow-up.** BOM/STEP-header and new support-page
       inspection closes neither qualification gap; candidate parked (ADR-223).
       Followed by the shafted set-A source audit below.

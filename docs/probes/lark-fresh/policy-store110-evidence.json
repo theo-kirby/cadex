@@ -3,7 +3,7 @@
   "ok": true,
   "project": "ot5-lark-copy85",
   "run": "lark109-engine",
-  "url": "http://100.104.232.88:8765/",
+  "url": "http://100.64.0.1:8765/",
   "persistent_port": 8765,
   "private_address_same_machine": true,
   "policy_name": "lark109-engine.cxpolicy",
@@ -30,7 +30,7 @@
     "store_copy_status": "missing"
   },
   "page_download": {
-    "url": "http://100.104.232.88:8765/artifact/run/lark109-engine/policy?download=1",
+    "url": "http://100.64.0.1:8765/artifact/run/lark109-engine/policy?download=1",
     "bytes": 64384,
     "sha256_matches_record": true
   },

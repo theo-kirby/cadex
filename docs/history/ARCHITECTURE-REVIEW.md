@@ -66,8 +66,8 @@ The largest modules, from `wc -l` on 2026-10-10:
 | `cadex_part_worker.py` | 4,713 |
 | `CadexScriptedDomainPublication.py` | 4,153 |
 | `cadex_part_api.py` | 3,401 |
-| `cli/__main__.py` | 3,267 |
-| `cli/review_server.py` | 3,176 |
+| `cli/cadex_cli/__main__.py` | 3,267 |
+| `cli/cadex_cli/review_server.py` | 3,176 |
 | `CadexScriptedRuntime.py` | 3,003 |
 | `CadexStudio.py` | 2,643 |
 | `cadex_library_api.py` | 2,624 |
@@ -79,10 +79,10 @@ Across the engine and CLI there are 2,722 functions: 169 are over 100 lines, and
 |---|---|---|
 | `_build` | `cadex_part_worker.py:3560` | 875 |
 | `validate_and_solve_assembly` | `cadex_assembly_worker.py:7637` | 874 |
-| `build_parser` | `cli/__main__.py:207` | 576 |
-| `_command_walk` | `cli/__main__.py:2404` | 539 |
+| `build_parser` | `cli/cadex_cli/__main__.py:207` | 576 |
+| `_command_walk` | `cli/cadex_cli/__main__.py:2404` | 539 |
 | `build_model` | `CadexDynamics.py:3251` | 461 |
-| `run` | `cli/smoke_runner.py:173` | 425 |
+| `run` | `cli/cadex_cli/smoke_runner.py:173` | 425 |
 
 Tests outweigh code roughly 1:1, which is healthy. But the engine suite is nearly as large as
 the engine, and many tests pin prose and numbers that ADRs then amend. That is part of why
@@ -283,8 +283,8 @@ nine paths that measure interference or clearance:
 | 4 | Mounting, "held", attachments | from pair rows | `mounting_summary :790`, `attachment_summary :536` |
 | 5 | Clearance along a simulation trace | `_clearance_over_trace :3228`, `_declared_clearance :3176` | |
 | 6 | MuJoCo contacts | `CadexDynamics.collision_geoms :1309`, `_measure_reset_clearance :8513`, `contact_offsets :11767`; `CadexInspection.contact_pairs :1081`; `review_server.collision_proxies :669` | |
-| 7 | Smoke penetration in stock MuJoCo | `cli/smoke_runner.py` | |
-| 8 | Exact BREP re-measurement in a separate FreeCAD child | `cli/smoke_geometry.py`; `smoke.thread_allowances :241` re-reads the engine's thread rule | |
+| 7 | Smoke penetration in stock MuJoCo | `cli/cadex_cli/smoke_runner.py` | |
+| 8 | Exact BREP re-measurement in a separate FreeCAD child | `cli/cadex_cli/smoke_geometry.py`; `smoke.thread_allowances :241` re-reads the engine's thread rule | |
 | 9 | Bounds agreement | `clearance.bounds_agreement :179` | |
 
 Plus the anatomy block (graph only) and the image proxies (`CadexStudio.PROXY_BARS :201`).

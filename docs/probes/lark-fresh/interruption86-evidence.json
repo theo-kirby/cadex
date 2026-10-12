@@ -3,7 +3,7 @@
   "project": "ot5-lark-copy85",
   "original": "ot5-lark",
   "prefix": "lark86",
-  "persistent_url_host": "100.104.232.88:8765",
+  "persistent_url_host": "100.64.0.1:8765",
   "persistent_private_address_same_machine": true,
   "persistent_server": true,
   "server_restarted": false,
@@ -324,7 +324,7 @@
     },
     "browser": {
       "persistent_server": true,
-      "url": "http://100.104.232.88:8765/",
+      "url": "http://100.64.0.1:8765/",
       "private_address_same_machine": true,
       "browser_playback": true,
       "foot_len_mm": 90.0,

@@ -172,7 +172,7 @@ OndselSolver remains; the shell library submodules went with the shell
 (ADR-498).
 
 **Unused inherited trees and options removed (2026-10-10, ADR-632).**
-Owner-approved (docs/DOCS-AUDIT.md §4, item 10). The audit found no
+Owner-approved (docs/history/DOCS-AUDIT.md §4, item 10). The audit found no
 built, shipped or tested consumer of: `src/Mod/Show`, `src/XDGData`,
 `src/MacAppBundle`, `src/3rdParty/3Dconnexion`, `src/3rdParty/OpenGL`,
 the `BUILD_VR` option (with `cMake/FindRift.cmake`), the
@@ -196,21 +196,21 @@ line of it. Measured effect on this tree: `lib/` 43 MB → 8.3 MB, `Mod/`
 **Directory delete: 2026-09-07 (ADR-214).** Following the retained metatype
 move and complete GUI disable (ADR-213), delete all thirteen audited directory
 trees, MainGui.cpp, FreeCADGuiPy.cpp and the orphan InventorBuilder test.
-The exact removed volume and gate evidence are in [PHASE8-AUDIT.md](PHASE8-AUDIT.md).
+The exact removed volume and gate evidence are in [history/PHASE8-AUDIT.md](history/PHASE8-AUDIT.md).
 `App/MetaTypes.h`, all eighteen migrated Material includes, QtCore,
 QtConcurrent and LinguistTools remain. All presets stay headless and explicit
 GUI-on requests are rejected.
 
 **Residual GUI lineage remains open.** Mixed Assembly publication modules,
 unconditional GUI Python install lists and other sources outside the audited
-directories remain. ADR-215 and PHASE8-AUDIT.md trace the named consumers:
+directories remain. ADR-215 and history/PHASE8-AUDIT.md trace the named consumers:
 Assembly App proxies are required. Measure/MassPropertiesGui.py was disabled
 in the shared copy/install list, then deleted separately (ADR-215). The other four Measure scripts and App identity are retained.
 ADR-225 disabled the shared copy/install entries for Material/InitGui.py,
 MaterialEditor.py and TestMaterialsGui.py in `d7e2b59c`, then deleted exactly
 those three sources separately (2026-09-07). App/tests/resources and TestMaterialDocument.py remain. MeshPart/InitGui.py
 was deleted after the separately verified install disable; App, Init.py,
-meshFromShape and export macros remain (ADR-224, PHASE8-AUDIT.md);
+meshFromShape and export macros remain (ADR-224, history/PHASE8-AUDIT.md);
 Help is deleted (ADR-217, ADR-218). Start is deleted after its separate disable (ADR-220, ADR-221); neither `Mod/Start` nor `lib/Start.so` installs or stages. Test still builds and installs; its `Mod/` directory is pruned from the payload.
 The residual audit is complete at this bounded scope, not the broader ROADMAP
 exit claim that no GUI source exists. Mixed Part/PartDesign helpers and the
@@ -219,7 +219,7 @@ previously disabled freecad.rc.cmake template
 (2026-09-07). The shared launcher is unchanged; its four inactive GUI arms
 remain deferred pending a separate bet and Windows validation path.
 Command-line behavior/resources remain; Windows execution has not been
-verified (PHASE8-AUDIT.md).
+verified (history/PHASE8-AUDIT.md).
 
 ### Phase 1 workbench trees — complete
 

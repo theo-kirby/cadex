@@ -3,7 +3,7 @@
 
 """Machine drives in the dynamics model (ADR-640..644).
 
-The four refusals docs/ARCHITECTURE-REVIEW.md §3.3 names as what stops a
+The four refusals docs/history/ARCHITECTURE-REVIEW.md §3.3 names as what stops a
 printer, a CNC router, a loader or a tractor hitch, each removed and
 measured here on a fixture built forwards from known joint values:
 
