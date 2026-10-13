@@ -123,7 +123,7 @@ def publish(source):
     working = (store.read_state() or {}).get("working_revision", "")
     prepared, validated = lifecycle._run_lifecycle(
         service, "xscript.project.write_script",
-        {"source": source, "expected_revision": working},
+        {"source": source, "expected_revision": working, "replace": True},
     )
     try:
         publication = publish_project_candidate(service, prepared, validated)
