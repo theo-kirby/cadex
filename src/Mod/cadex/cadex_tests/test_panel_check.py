@@ -452,3 +452,64 @@ def test_a_hugging_panel_is_judged_as_before():
     assert lid["findings"] == ["floating", "egg"]
     assert lid["floating_at_mm"] == CadexFitReport.PANEL_FLOATING_GAP_MM
     assert "closes" not in lid and "seat_gap_mm" not in lid
+
+
+# --------------------------------------------------------------------------
+# a skin's forms: coverage, the mechanism outside, and a short piece (ADR-687)
+# --------------------------------------------------------------------------
+
+
+def _skinned():
+    value = _screwed()
+    value["components"][2]["panel"] = {
+        "group": "g1", "piece": "p0", "clearance_mm": 2.0, "thickness_mm": 2.5,
+        "formed": True, "skin": True, "area_mm2": 3000.0, "covered_fraction": 0.3,
+        "form_key": "chestkey", "form_label": "chest", "form_area_mm2": 10000.0}
+    value["components"].append(_component("rib", role="panel", panel={
+        "group": "g1", "piece": "p1", "skin": True, "formed": True, "clearance_mm": 2.0,
+        "area_mm2": 1000.0, "form_key": "chestkey", "form_label": "chest",
+        "form_area_mm2": 10000.0,
+        "boss_shortfall": {"wanted": 2, "placed": 1,
+                           "rejected": {"not flat under the boss": 7}}}))
+    value["pairs"] += [_pair("deck", "rib", 0.0)]
+    value["attachments"] = [{"first": "deck", "second": "rib", "status": "touching"}]
+    value["panels"].append(_measured("rib", 3.0))
+    value["form_containment"] = {
+        "forms": ["chest"], "voxel_mm": 4.0, "measured_count": 2,
+        "mechanism_volume_mm3": 1.0e6, "outside_volume_mm3": 2.0e5, "outside_fraction": 0.2,
+        "components": [{"component": "c_qdd_hip_l", "volume_mm3": 4.0e5,
+                        "outside_fraction": 0.46, "outside_volume_mm3": 1.84e5,
+                        "protrusion_mm": 22.0},
+                       {"component": "deck", "volume_mm3": 6.0e5, "outside_fraction": 0.02,
+                        "outside_volume_mm3": 1.2e4, "protrusion_mm": 3.0}]}
+    return value
+
+
+def test_each_skin_form_reports_its_coverage_and_the_mechanism_outside_it():
+    block = panel_summary(_skinned())
+    forms = block["forms"]
+    assert forms["coverage"] == [{"form": "chest", "pieces": 2, "form_area_mm2": 10000.0,
+                                  "covered_mm2": 4000.0, "covered_fraction": 0.4}]
+    assert forms["under_covered"] == ["chest"] and forms["covered_min"] == 0.5
+    outside = forms["outside"]
+    # Only components past the listing share; the deck at 2 % is not named.
+    assert [r["component"] for r in outside["worst"]] == ["c_qdd_hip_l"]
+    assert outside["phrases"] == ["c_qdd_hip_l: 46% of its volume outside the forms, 22 mm out"]
+    assert outside["outside_fraction"] == 0.2
+    # Advisory: neither moves the verdict.
+    assert block["failing_count"] == 0 and fit_summary(_skinned())["verdict"] == "pass"
+    # It rides in the fit view the build reply carries.
+    assert fit_view(fit_summary(_skinned()))["panels"]["forms"]["under_covered"] == ["chest"]
+    # A model with no skin carries no forms block.
+    assert "forms" not in panel_summary(_screwed())
+
+
+def test_a_skin_piece_short_of_screws_is_reported_not_failed():
+    block = panel_summary(_skinned())
+    rib = next(r for r in block["reported"] if r["component"] == "rib")
+    assert rib["findings"] == ["short of screws"] and rib["mounted"] == "welded"
+    assert rib["boss_shortfall"]["placed"] == 1
+    assert "it seats 1 of its 2 screws (turned down: not flat under the boss: 7)" in rib["detail"]
+    import CadexInspection
+    assert {"boss_shortfall", "form_key", "form_label", "form_area_mm2"} <= set(
+        CadexInspection._PANEL_ROW_KEYS)

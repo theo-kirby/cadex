@@ -1202,7 +1202,8 @@ def _complete_contacts(captured: Mapping[str, Any]) -> Any:
 #: measurement of any one part is one ``inspect scope="output"`` away.
 #: What a component row carries of a part.panel piece's own facts (ADR-635).
 _PANEL_ROW_KEYS = ("group", "piece", "clearance_mm", "radius_mm", "hull", "thickness_mm",
-                   "fasteners", "screw", "formed", "skin", "area_mm2", "covered_fraction")
+                   "fasteners", "screw", "formed", "skin", "area_mm2", "covered_fraction",
+                   "form_key", "form_label", "form_area_mm2", "boss_shortfall")
 
 _INVENTORY_FACT_KEYS = (
     "shape_type",
@@ -1448,6 +1449,10 @@ def _join_inventory(captured: Mapping[str, Any]) -> Any:
             # What each role="panel" component measures against what it
             # covers (ADR-634); absent on a revision accepted before it.
             "panels": by_name.get(assembly, {}).get("panels"),
+            # How much of the mechanism stands outside the skins' forms
+            # (ADR-687); present only when the model has a part.skin.
+            **({"form_containment": by_name[assembly]["form_containment"]}
+               if by_name.get(assembly, {}).get("form_containment") is not None else {}),
             # Each declared tool's reach against its work area (ADR-645);
             # present only when the assembly declares a tool.
             **({"workspace": by_name[assembly]["workspace"]}

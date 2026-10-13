@@ -8252,6 +8252,120 @@ def _measure_panels(components, properties, component_outputs, solved, joint_dat
     return rows
 
 
+#: The form-containment measure (ADR-687): the grid it fills, at most this
+#: many voxels and no finer than the floor; a component smaller than a few
+#: voxels is not measured, and the worst this many are listed.
+_FORM_GRID_VOXELS = 6_000_000
+_FORM_GRID_FLOOR_MM = 2.0
+_FORM_MIN_VOXELS = 8
+_FORM_LISTED = 12
+
+
+def _measure_form_containment(components, properties, component_outputs, solved):
+    """How much of each non-panel component lies outside the skins' forms (ADR-687).
+
+    Measured only when the model has a ``part.skin``: the forms its skins
+    were cut from (``cadex_part_worker.skin_forms``, this run's) and every
+    placed component that is not a panel or world geometry are filled onto
+    one voxel grid; each component's share of voxels outside every form is
+    its ``outside_fraction``, and the farthest of them from a form its
+    ``protrusion_mm``. Advisory, never a refusal: ``None`` when there is no
+    skin, a row with ``error`` when it cannot be measured.
+    """
+
+    from cadex_part_worker import build_part_shape, skin_forms
+
+    forms = skin_forms()
+    if not forms:
+        return None
+    if not solved:
+        return {"error": "Assembly solver did not produce a solved pose"}
+    import numpy as np
+    from scipy.ndimage import distance_transform_edt
+    from CadexEnvelope import occupancy
+
+    def triangles(shape, deflection):
+        points, facets = shape.tessellate(deflection)
+        if not facets:
+            return np.zeros((0, 3, 3))
+        vertices = np.array([[p.x, p.y, p.z] for p in points], dtype=float)
+        return vertices[np.array(facets, dtype=int)]
+
+    form_sets, labels = [], []
+    for key, entry in forms.items():
+        for payload in entry["payloads"]:
+            form_sets.append(triangles(build_part_shape(payload), 0.5))
+        labels.append(entry["label"] or key[:6])
+    values = list(properties.get("components") or [])
+    rows_in = []
+    for value in values:
+        name = component_outputs.get(id(value))
+        if name is None or name not in components:
+            continue
+        if str(value.properties.get("role") or "") == "panel" or value.properties.get("world"):
+            continue
+        rows_in.append(name)
+    if not rows_in:
+        return {"forms": labels, "components": [], "measured_count": 0}
+    meshes = {}
+    for name in rows_in:
+        try:
+            meshes[name] = triangles(_component_world_shape(components[name]), 0.5)
+        except Exception:
+            continue
+    every = [t for t in form_sets if len(t)] + [t for t in meshes.values() if len(t)]
+    low = np.min([t.reshape(-1, 3).min(axis=0) for t in every], axis=0) - 2.0
+    high = np.max([t.reshape(-1, 3).max(axis=0) for t in every], axis=0) + 2.0
+    span = high - low
+    h = max(_FORM_GRID_FLOOR_MM, float((np.prod(span) / _FORM_GRID_VOXELS) ** (1.0 / 3.0)))
+    dims = [max(int(math.ceil(v / h)), 4) for v in span]
+    origin = list(low)
+    inside = np.zeros(dims, dtype=bool)
+    for tris in form_sets:
+        if len(tris):
+            inside |= occupancy(tris, origin, h, dims)
+    if not inside.any():
+        return {"error": "the skins' forms fill no voxel", "forms": labels}
+    distance = distance_transform_edt(~inside) * h
+    cell = h ** 3
+    rows, total, outside_total = [], 0.0, 0.0
+    for name, tris in meshes.items():
+        if not len(tris):
+            continue
+        lo = np.floor((tris.reshape(-1, 3).min(axis=0) - low) / h).astype(int) - 1
+        hi = np.ceil((tris.reshape(-1, 3).max(axis=0) - low) / h).astype(int) + 1
+        lo, hi = np.maximum(lo, 0), np.minimum(hi, dims)
+        sub_dims = [int(b - a) for a, b in zip(lo, hi)]
+        if min(sub_dims) <= 0:
+            continue
+        sub_origin = [origin[k] + lo[k] * h for k in range(3)]
+        occ = occupancy(tris, sub_origin, h, sub_dims)
+        count = int(occ.sum())
+        if count < _FORM_MIN_VOXELS:
+            continue
+        window = tuple(slice(int(a), int(b)) for a, b in zip(lo, hi))
+        out = occ & ~inside[window]
+        outside = int(out.sum())
+        total += count * cell
+        outside_total += outside * cell
+        row = {"component": name, "volume_mm3": round(count * cell, 1),
+               "outside_fraction": round(outside / count, 3)}
+        if outside:
+            row["outside_volume_mm3"] = round(outside * cell, 1)
+            row["protrusion_mm"] = round(float(distance[window][out].max()), 1)
+        rows.append(row)
+    rows.sort(key=lambda r: (-r["outside_fraction"], -r.get("outside_volume_mm3", 0.0)))
+    return {
+        "forms": labels,
+        "voxel_mm": round(h, 2),
+        "measured_count": len(rows),
+        "mechanism_volume_mm3": round(total, 1),
+        "outside_volume_mm3": round(outside_total, 1),
+        "outside_fraction": round(outside_total / total, 3) if total > 0 else 0.0,
+        "components": [r for r in rows if r["outside_fraction"] > 0.0][:_FORM_LISTED],
+    }
+
+
 def _check_attachments(rows, joint_data, assembly_output):
     """Measure whether each fixed-joint pair's solids actually touch (ADR-370).
 
@@ -8927,6 +9041,7 @@ def validate_and_solve_assembly(
         # bounding boxes and a boolean common over BREP the preview never
         # returns (ADR-527). The accepting run measures it, as it always did.
         clearance = world_geometry = attachments = clearance_sweep = panel_rows = None
+        form_containment = None
     else:
         _cpu_stage("assembly static fit")
         fit_cache = _FitCache.open()
@@ -8945,6 +9060,13 @@ def validate_and_solve_assembly(
                                          assembly_output)
         except Exception as exc:
             panel_rows = [{"component": "", "error": str(exc)}]
+        # How much of the mechanism stands outside the skins' forms (ADR-687).
+        try:
+            form_containment = _measure_form_containment(
+                components, assembly_properties, component_outputs,
+                diagnostics["status"] == "solved")
+        except Exception as exc:
+            form_containment = {"error": str(exc)}
         sweep_steps = {key: assembly_properties[key] for key in ("sweep_step_degrees", "sweep_step_mm")
                        if assembly_properties.get(key) is not None}
         # Coverage is reported even when neither step is declared (ADR-367).
@@ -9239,6 +9361,8 @@ def validate_and_solve_assembly(
             assembly_properties, component_outputs, components, component_data, joint_data,
             diagnostics["status"] == "solved")
     by_name[assembly_output]["panels"] = panel_rows
+    if form_containment is not None:
+        by_name[assembly_output]["form_containment"] = form_containment
     by_name[assembly_output]["assembly_data"] = {
         "component_outputs": [component_outputs[id(value)] for value in component_values],
         "joint_outputs": [joint_outputs[id(value)] for value in joint_values],

@@ -73,6 +73,11 @@ def _reset_script_run() -> None:
 
     _SCRIPT_RUN.clear()
     track_creation_sites(True)
+    try:
+        from cadex_part_worker import reset_skin_forms
+    except ImportError:  # a headless test without the part worker's imports
+        return
+    reset_skin_forms()
 
 
 #: Most operands and names one failure report lists.
@@ -100,6 +105,13 @@ def _script_names(value: Any) -> list[str]:
     for key, item in namespace.items():
         if key.startswith("_") or key == "result" or key in _SCRIPT_RUN.get("staged", ()):
             continue
+        if type(item).__name__ == "Panel":
+            # A part.skin or part.panel: its pilots and pieces by attribute.
+            if getattr(item, "pilots", None) is value:
+                names.append(f"{key}.pilots")
+            names.extend(f"{key}.parts[{index}]" for index, piece
+                         in enumerate(getattr(item, "parts", None) or []) if piece is value)
+            continue
         if matches(item):
             names.append(key)
         elif isinstance(item, (list, tuple)) and len(item) <= 256:
@@ -123,6 +135,17 @@ def _describe_definition(payload: Mapping[str, Any]) -> dict[str, Any]:
     for value in values_with_payload(payload)[:4]:
         names.extend(_script_names(value))
     described: dict[str, Any] = {"call": call, "lines": creation_lines(payload)[:5]}
+    arguments = payload.get("arguments") if isinstance(payload.get("arguments"), list) else []
+    properties = payload.get("properties") if isinstance(payload.get("properties"), dict) else {}
+    if payload.get("operation") == "panel" and arguments and isinstance(arguments[0], dict) \
+            and arguments[0].get("skin"):
+        # A skin's pieces and pilots are part.panel values; the script wrote
+        # part.skin, under its label (ADR-687).
+        described["call"] = "part.skin"
+        if properties.get("label"):
+            described["skin"] = str(properties["label"])
+        if properties.get("piece"):
+            described["piece"] = str(properties["piece"])
     if names:
         described["names"] = list(dict.fromkeys(names))[:_FAILURE_SITE_NAMES]
     return described
@@ -158,6 +181,10 @@ def _site_phrase(described: Mapping[str, Any]) -> str:
     lines = list(described.get("lines") or [])
     names = list(described.get("names") or [])
     phrase = str(described.get("call") or "")
+    if described.get("skin"):
+        phrase += f" {described['skin']!r}"
+    if described.get("piece"):
+        phrase += f" ({described['piece']})"
     if names:
         phrase = f"{', '.join(names)} = {phrase}"
     if lines:
@@ -204,6 +231,8 @@ def failure_site(exc: BaseException) -> tuple[dict[str, Any], str] | None:
             sentence += f", nested in {' -> '.join(f'part.{op}' for op in inside)}"
         if output:
             sentence += f", while building output {output!r}"
+            if site.get("call") == "part.skin" and site.get("piece") == "pilots":
+                sentence += " (the skin's pilots are cut into it; the skin is the failing call)"
         if operands:
             sentence += "; operands: " + "; ".join(
                 f"{item['parameter']}: {_site_phrase(item)}" for item in operands

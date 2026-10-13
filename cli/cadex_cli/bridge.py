@@ -290,6 +290,13 @@ class Bridge:
             # the renderer's bars are untouched.
             if ANATOMY is not None and isinstance(facts.get("measures"), dict):
                 facts["measures"]["anatomy"] = ANATOMY.anatomy_measure(self.state.last_anatomy)
+            # ...and how much of each skin form is panelled, and what of the
+            # mechanism stands out of the forms (ADR-687): advisory numbers
+            # to read against the reference beside the pictures.
+            panels = (fit or {}).get("panels") if isinstance(fit, dict) else None
+            if isinstance(facts.get("measures"), dict) and isinstance(panels, dict) \
+                    and isinstance(panels.get("forms"), dict):
+                facts["measures"]["forms"] = panels["forms"]
         text = json.dumps(facts, indent=2)
         content = [{"type": "text", "text": text}]
         for view, data, _details in shots:

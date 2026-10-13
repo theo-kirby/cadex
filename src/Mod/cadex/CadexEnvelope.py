@@ -1393,7 +1393,8 @@ def _mount(pieces, frame, screw, per_piece, phi, inner, outer, frame_z, column_r
         bosses, holes, rows_out = [], [], []
         for index, (site, exact) in enumerate(accepted):
             boss, cut, pilot, row = _boss(name, exact, sv, R[0], frame, screw, Part)
-            bosses.append(boss)
+            if boss is not None:
+                bosses.append(boss)
             holes += cut
             pilots.append(pilot)
             rows_out.append({"name": f"b{index}", **row,
@@ -1413,7 +1414,7 @@ def _mount(pieces, frame, screw, per_piece, phi, inner, outer, frame_z, column_r
     return fasteners, pilots, out
 
 
-def _boss(name, exact, sv, roll, frame, screw, Part):
+def _boss(name, exact, sv, roll, frame, screw, Part, *, inner_gap=None, support="the frame"):
     """One boss of piece ``name``: ``(boss, [holes], pilot, row)``.
 
     ``exact`` is :func:`_exact_boss`'s ``(frame point, boss top, well top,
@@ -1421,24 +1422,71 @@ def _boss(name, exact, sv, roll, frame, screw, Part):
     across it. The boss is started inside the frame and cut by it, so its
     foot is the frame's own surface: a flat foot on a curved former bit into
     it or stood off it by microns, either way a failing check (ADR-681).
+
+    A support closer under the boss's top than :data:`SEAT_FLOOR_MM` leaves
+    no boss to stand. When it is no nearer than the panel's inner face
+    (``inner_gap`` >= 0, the frame meeting the panel there), the screw goes
+    straight through the plate: no boss (``boss`` is None), a clearance hole
+    through the wall, the head on the wall with at least SEAT_FLOOR_MM under
+    it, recessed as deep as that allows, and a pilot in the support. A
+    support inside the wall pierces the panel, and that is refused by its
+    cause (ADR-687).
     """
 
     d = float(screw["nominal_dia_mm"])
     length = float(screw["length_mm"])
     head_r = float(screw["head_dia_mm"]) / 2.0 + 0.3
+    head_h = float(screw.get("head_height_mm") or d)
     clear_r = float(screw["clearance_normal_mm"]) / 2.0
     tap_r = float(screw["tap_drill_mm"]) / 2.0
     boss_r = head_r + BOSS_WALL_MM
     q, top_point, well_top, frame_thick = exact
     total = (top_point - q).Length
+    size = f"{str(screw['size']).upper()}x{length:g}"
+    where = f"({q.x:.0f}, {q.y:.0f}, {q.z:.0f})"
+    if total < SEAT_FLOOR_MM - 1e-6:
+        if inner_gap is None or inner_gap < -0.05:
+            inside = "" if inner_gap is None else f", {-inner_gap:.1f} mm inside the panel's wall"
+            raise EnvelopeError(
+                f"piece {name}: {support} at {where} stands {total:.1f} mm under the boss's "
+                f"top{inside}, under the {SEAT_FLOOR_MM:g} mm a boss needs, so no screw length "
+                "fits: the part there pierces the panel. Inset that support deeper (a "
+                "part.former's inset= at least thickness + clearance), move that part, open the "
+                "panel round it (openings=), or weld the piece to it and give it fewer screws=")
+        # Straight through the plate into the support (ADR-687).
+        room = (well_top - q).dot(sv)
+        if room < SEAT_FLOOR_MM - 1e-6:
+            raise EnvelopeError(
+                f"piece {name}: {support} at {where} meets the panel, and its wall leaves "
+                f"{room:.1f} mm under a screw head, under {SEAT_FLOOR_MM:g} mm; thicken the "
+                "panel (thickness=) or weld the piece there and give it fewer screws=")
+        under = max(SEAT_FLOOR_MM, room - head_h)
+        engagement = length - under
+        if engagement < 1.5 * d - 1e-6:
+            raise EnvelopeError(
+                f"piece {name}: an {size} through the plate at {where} bites {engagement:.1f} "
+                f"mm into {support}, under {1.5 * d:g} mm; choose a longer screw")
+        head_seat = q + sv * under
+        holes = [Part.makeCylinder(clear_r, room + 4.0, q - sv * 1.0, sv)]
+        if room - under > 0.05:
+            holes.append(Part.makeCylinder(head_r, room - under + 2.0, head_seat, sv))
+        pilot = Part.makeCylinder(tap_r, engagement + 1.5, q - sv * (engagement + 1.5), sv)
+        row = {
+            "head_seat": [round(v, 4) for v in (head_seat.x, head_seat.y, head_seat.z)],
+            "axis": [round(float(v), 6) for v in (sv.x, sv.y, sv.z)],
+            "roll": [round(float(v), 6) for v in roll],
+            "frame_point": [round(v, 3) for v in (q.x, q.y, q.z)],
+            "boss_length_mm": 0.0,
+            "seat_depth_mm": round(max(room - under, 0.0), 2),
+            "engagement_mm": round(engagement, 2),
+            "through": True,
+            "head_proud_mm": round(max(0.0, head_h - (room - under)), 2),
+        }
+        return None, holes, pilot, row
     engage = min(max(2.5 * d, 4.0), length - SEAT_FLOOR_MM - 0.2)
     if frame_thick is not None:
         engage = min(engage, max(frame_thick - 0.6, 1.5 * d))
     seat = max(0.0, total + engage - length)
-    if total - seat < SEAT_FLOOR_MM - 1e-6:
-        raise EnvelopeError(
-            f"piece {name}: an {str(screw['size']).upper()}x{length:g} reaches "
-            f"{total + engage:.1f} mm of boss here; choose a longer screw")
     engagement = seat + length - total
     head_seat = top_point - sv * seat
     boss = _seated(Part.makeCylinder(boss_r, total + BOSS_SEAT_MM, q - sv * BOSS_SEAT_MM, sv),
@@ -1711,12 +1759,19 @@ def build_former(form, keep_out, origin, normal, width, depth, web, *, inset=0.0
     start = n * (-width / 2.0)
     hoop = ring.extrude(n * width)
     hoop.translate(start)
+    tools = Part.makeCompound(list(keep_out)) if keep_out else None
+    if tools is not None:
+        # The hoop clears keep_out as the web does (ADR-687): a link or drum
+        # passing through the band would otherwise stand in the hoop.
+        hoop = hoop.cut(tools)
+        if not hoop.Solids:
+            raise EnvelopeError("keep_out takes the whole hoop: move the former or keep_out")
     body = hoop
     if web > 0:
         plate = inner.extrude(n * web)
         plate.translate(n * (-web / 2.0))
-        if keep_out:
-            plate = plate.cut(Part.makeCompound(list(keep_out)))
+        if tools is not None:
+            plate = plate.cut(tools)
         if plate.Solids:
             body = hoop.fuse(plate)
     body = body.removeSplitter()
@@ -1724,10 +1779,26 @@ def build_former(form, keep_out, origin, normal, width, depth, web, *, inset=0.0
     if not solids:
         raise EnvelopeError("the former came out empty")
     if len(solids) > 1:
-        # A web cut through by keep_out leaves islands; the one the hoop is
-        # part of is the former.
-        solids.sort(key=lambda s: -abs(s.Volume))
-        body = solids[0]
+        # A web cut through by keep_out leaves islands, and they go. The
+        # hoop's arcs are kept or refused, never dropped unseen: an arc that
+        # no web ties to the rest is a second former.
+        hoop_volume = abs(hoop.Volume)
+
+        def arc(solid):
+            try:
+                return abs(solid.common(hoop).Volume)
+            except Exception:
+                return 0.0
+
+        arcs = sorted(((arc(s), s) for s in solids), key=lambda pair: -pair[0])
+        rest = [v for v, _s in arcs[1:] if v >= SPECK_FRACTION * arcs[0][0]
+                and v >= 0.02 * hoop_volume]
+        if rest:
+            raise EnvelopeError(
+                f"keep_out cuts the hoop into {len(rest) + 1} arcs that nothing ties together "
+                f"({arcs[0][0]:.0f} and {rest[0]:.0f} mm3 of hoop): give it a web= that ties "
+                "them, or declare one former per arc (part.common of the former and a box)")
+        body = arcs[0][1]
     else:
         body = solids[0]
     return _sound(body, "the former")
@@ -1918,13 +1989,26 @@ def _local_hits(first_hits, starts, dirs, tris, reach, np, chunk=128):
 
 def _skin_sites(name, piece, inner_faces, thickness, frame, frame_tris, blockers, screw,
                 per_piece, clearance, taken, App, Part, np):
-    """The exact boss sites of one skin piece: ``[(exact, sv, roll), ...]``."""
+    """The boss sites of one skin piece and why the others were turned down.
+
+    ``([(exact, sv, roll, inner_gap), ...], rejected)``: ``rejected`` counts
+    the lattice candidates each screen dropped -- ``no support within reach``,
+    ``support pierces the wall``, ``not flat under the boss``, ``keep_clear in
+    the way`` -- and the chosen sites the exact cast turned down. Fewer sites
+    than ``per_piece`` is the caller's to judge (ADR-687).
+    """
 
     from CadexPanels import first_hits
 
     d = float(screw["nominal_dia_mm"])
     length = float(screw["length_mm"])
     boss_r = float(screw["head_dia_mm"]) / 2.0 + 0.3 + BOSS_WALL_MM
+    rejected: dict[str, int] = {}
+
+    def drop(reason, count=1):
+        if count:
+            rejected[reason] = rejected.get(reason, 0) + int(count)
+
     starts, downs = [], []
     for face in inner_faces:
         S_f, D_f = _face_samples(face, piece, thickness, boss_r + 1.0, App, np)
@@ -1940,7 +2024,8 @@ def _skin_sites(name, piece, inner_faces, thickness, frame, frame_tris, blockers
         keep = np.linspace(0, len(starts) - 1, SKIN_MAX_CANDIDATES).astype(int)
         starts, downs = starts[keep], downs[keep]
     S, D = starts, downs
-    tops = S - D * (SKIN_BOSS_TOP * thickness)
+    top_depth = SKIN_BOSS_TOP * thickness
+    tops = S - D * top_depth
     # Only the triangles a boss from this piece could reach: the screen is
     # rays against triangles, all pairs at once.
     low = tops.min(axis=0) - (BOSS_REACH_MM + 20.0)
@@ -1956,16 +2041,24 @@ def _skin_sites(name, piece, inner_faces, thickness, frame, frame_tris, blockers
     frame_tris, blockers = near(frame_tris), near(blockers)
     reach = _local_hits(first_hits, tops, D, frame_tris, BOSS_REACH_MM + 10.0, np)
     ok = np.isfinite(reach) & (reach <= BOSS_REACH_MM)
+    drop("no support within reach", int(np.sum(~ok)))
+    # A support nearer than the inner face is inside the wall: it pierces
+    # the panel, and no boss or screw there is sound.
+    pierced = ok & (reach < top_depth - 0.05)
+    drop("support pierces the wall", int(np.sum(pierced)))
+    ok &= ~pierced
     helper = np.where(np.abs(D[:, 2:3]) < 0.9, np.array([[0.0, 0.0, 1.0]]), np.array([[1.0, 0.0, 0.0]]))
     ex = np.cross(D, helper)
     ex /= np.linalg.norm(ex, axis=1, keepdims=True)
     ey = np.cross(D, ex)
 
-    def screen(test):
+    def screen(test, reason):
         # Each screen runs on the candidates the ones before it kept.
         live = np.nonzero(ok)[0]
         if len(live):
-            ok[live] = test(live)
+            passed = test(live)
+            drop(reason, int(np.sum(~passed)))
+            ok[live] = passed
 
     # Flat enough under the disc: four rim rays land within 3 mm of the centre's.
     for a in (0.0, 0.5 * math.pi, math.pi, 1.5 * math.pi):
@@ -1974,7 +2067,7 @@ def _skin_sites(name, piece, inner_faces, thickness, frame, frame_tris, blockers
             rim_reach = _local_hits(first_hits, tops[live] + offset, D[live], frame_tris,
                                     BOSS_REACH_MM + 15.0, np)
             return np.isfinite(rim_reach) & (np.abs(rim_reach - reach[live]) <= 3.0)
-        screen(flat)
+        screen(flat, "not flat under the boss")
     if blockers is not None:
         for a in [None] + list(np.linspace(0.0, 2 * math.pi, 9)[:-1]):
             def clear_of(live, a=a):
@@ -1983,7 +2076,7 @@ def _skin_sites(name, piece, inner_faces, thickness, frame, frame_tris, blockers
                 blocked = _local_hits(first_hits, tops[live] + offset, D[live], blockers,
                                       float(reach[live].max()) + 0.5, np)
                 return ~(np.isfinite(blocked) & (blocked < reach[live] + 0.5))
-            screen(clear_of)
+            screen(clear_of, "keep_clear in the way")
     candidates = [(float(tops[k, 0]), float(tops[k, 1]), float(tops[k, 2]), float(reach[k]), int(k))
                   for k in np.nonzero(ok)[0]]
     accepted, tried = [], 0
@@ -1994,6 +2087,14 @@ def _skin_sites(name, piece, inner_faces, thickness, frame, frame_tris, blockers
         if not fresh:
             break
         for site in fresh:
+            if site not in candidates:
+                continue            # pruned beside a site accepted in this round
+            if any(math.dist(site[:3], other[:3]) < 2.0 * boss_r + 1.0 for other, _e in accepted):
+                # Two bosses of one piece may not overlap: their holes would
+                # cut each other's walls apart.
+                candidates.remove(site)
+                drop("crowded by its other bosses")
+                continue
             tried += 1
             candidates.remove(site)
             k = site[4]
@@ -2002,7 +2103,7 @@ def _skin_sites(name, piece, inner_faces, thickness, frame, frame_tris, blockers
             top_point = App.Vector(*tops[k])
             well_top = App.Vector(*S[k]) + sv * thickness
             hit = _first_frame_hit(frame, top_point, down, Part)
-            exact = None
+            exact, why = None, "the exact cast found no flat support"
             if hit is not None and hit <= BOSS_REACH_MM + 10.0:
                 rims = []
                 for a in (0.0, 0.5 * math.pi, math.pi, 1.5 * math.pi):
@@ -2013,24 +2114,314 @@ def _skin_sites(name, piece, inner_faces, thickness, frame, frame_tris, blockers
                         break
                     rims.append(rim_hit)
                 if rims is not None:
-                    q = top_point + down * min(rims + [hit])
-                    through = _frame_hits(frame, q, down, Part)
-                    exact = (q, top_point, well_top, next((t for t in through if t > 0.05), None))
+                    seat_on = min(rims + [hit])
+                    if seat_on < top_depth - 0.05:
+                        why = "support pierces the wall"
+                    else:
+                        q = top_point + down * seat_on
+                        through = _frame_hits(frame, q, down, Part)
+                        exact = (q, top_point, well_top, next((t for t in through if t > 0.05), None))
             if exact is not None and taken:
                 tip = exact[0] + down * (length + 1.0)
                 path = ([top_point.x, top_point.y, top_point.z], [tip.x, tip.y, tip.z])
                 if min(_segment_distance(path, other) for other in taken) < d + 1.5:
-                    exact = None
+                    exact, why = None, "another panel's screw in the way"
             if exact is None:
+                drop(why)
                 break
-            accepted.append((site, (exact, sv, App.Vector(*ex[k]))))
-    if len(accepted) < per_piece:
+            gap = (exact[0] - top_point).dot(down) - top_depth
+            accepted.append((site, (exact, sv, App.Vector(*ex[k]), gap)))
+            near_it = [c for c in candidates if math.dist(c[:3], site[:3]) < 2.0 * boss_r + 1.0]
+            if near_it:
+                drop("crowded by its other bosses", len(near_it))
+                candidates = [c for c in candidates if c not in near_it]
+    return [entry for _site, entry in accepted], rejected
+
+
+def _reasons(rejected):
+    return "; ".join(f"{reason}: {count}" for reason, count in
+                     sorted(rejected.items(), key=lambda kv: -kv[1])) or "none screened"
+
+
+# ---------------------------------------------------------------------------
+# what a skin opens round: a part, at rest or swept through its motion (ADR-687)
+
+#: The part is cut into slabs this long along its longest axis (at most
+#: SKIN_SWEEP_MAX_SLABS of them); each slab is hulled, at rest or over each
+#: pair of neighbouring poses, so the opening follows a long part's shape
+#: rather than the hull of all of it.
+SKIN_SWEEP_SLAB_MM = 40.0
+SKIN_SWEEP_MAX_SLABS = 8
+#: The part's surface is sampled this far apart, at most this many points.
+SKIN_SWEEP_SPACING_MM = 4.0
+SKIN_SWEEP_MAX_SAMPLES = 20_000
+#: Facets of a slab's hull within this of one another are merged; every hull
+#: grows by it on top of its clearance, so the merge never uncovers a point.
+SKIN_SWEEP_MERGE_MM = 1.0
+#: The most an arc between two sampled poses bulges past their chord, mm: the
+#: hinge's step is chosen from the part's farthest reach from the axis, and
+#: every hull grows by that bulge too.
+SKIN_SWEEP_SAG_MM = 2.0
+#: The coarsest and the most steps one hinge sweep takes.
+SKIN_SWEEP_MAX_STEP_DEGREES = 15.0
+SKIN_SWEEP_MAX_STEPS = 48
+#: At most this many hulls one opening makes.
+SKIN_SWEEP_MAX_HULLS = 400
+
+
+def _motion_poses(motion, points, np):
+    """``([(R, t), ...], bulge)``: the sampled poses ``p' = R p + t`` of a declared motion, and
+    how far an arc between two of them stands past their chord."""
+
+    if not motion:
+        return [(np.eye(3), np.zeros(3))], 0.0
+    lo, hi = (float(v) for v in motion["range"])
+    if str(motion.get("kind") or "hinge") != "hinge":
+        direction = np.array(_unit(motion["direction"], "motion direction"))
+        # A hull over the two ends is the exact sweep of a convex cell.
+        return [(np.eye(3), direction * lo), (np.eye(3), direction * hi)], 0.0
+    origin = np.array(_vec(motion["origin"]))
+    axis = np.array(_unit(motion["axis"], "motion axis"))
+    rel = points - origin
+    radius = float(np.max(np.linalg.norm(rel - np.outer(rel @ axis, axis), axis=1))) \
+        if len(points) else 0.0
+    step = SKIN_SWEEP_MAX_STEP_DEGREES
+    if radius > SKIN_SWEEP_SAG_MM:
+        step = min(step, math.degrees(2.0 * math.acos(1.0 - SKIN_SWEEP_SAG_MM / radius)))
+    count = min(SKIN_SWEEP_MAX_STEPS, max(1, int(math.ceil(abs(hi - lo) / step - 1e-9))))
+    angles = np.linspace(lo, hi, count + 1)
+    half = math.radians(abs(hi - lo) / count) / 2.0
+    bulge = radius * (1.0 - math.cos(half))
+    K = np.array([[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]])
+    poses = []
+    for angle in angles:
+        t = math.radians(angle)
+        rot = np.eye(3) + math.sin(t) * K + (1 - math.cos(t)) * K @ K
+        poses.append((rot, origin - rot @ origin))
+    return poses, bulge
+
+
+
+
+def _cell_points(shape, np, deflection=0.5):
+    """The shape's surface points, in slabs of SKIN_SWEEP_SLAB_MM along its longest axis."""
+
+    from CadexPanels import sample_triangles
+
+    points, facets = shape.tessellate(deflection)
+    V = np.array([[p.x, p.y, p.z] for p in points], dtype=float)
+    if not len(V) or not facets:
+        return []
+    # A flat face tessellates to its corners: the surface is sampled too, so
+    # every slab it crosses holds its points.
+    tris = V[np.array(facets, dtype=int)]
+    area = float(np.sum(np.linalg.norm(np.cross(tris[:, 1] - tris[:, 0],
+                                                tris[:, 2] - tris[:, 0]), axis=1)) / 2.0)
+    count = int(min(SKIN_SWEEP_MAX_SAMPLES, max(64, area / SKIN_SWEEP_SPACING_MM ** 2)))
+    samples, _normals = sample_triangles(tris, count)
+    V = np.vstack([V, samples])
+    centred = V - V.mean(axis=0)
+    _u, _s, vt = np.linalg.svd(centred[:: max(1, len(V) // 4000)], full_matrices=False)
+    along = centred @ vt[0]
+    low, high = float(along.min()), float(along.max())
+    slabs = max(1, min(SKIN_SWEEP_MAX_SLABS, int(math.ceil((high - low) / SKIN_SWEEP_SLAB_MM))))
+    edges = np.linspace(low, high, slabs + 1)
+    # Neighbouring slabs share a millimetre so their hulls overlap.
+    return [V[(along >= edges[k] - 1.0) & (along <= edges[k + 1] + 1.0)] for k in range(slabs)]
+
+
+def _grown_hull(P, grow, np):
+    """The vertices of ``P``'s convex hull with every facet pushed out ``grow`` mm.
+
+    Facets within SKIN_SWEEP_MERGE_MM are merged first, and the push is that
+    much more, so the polytope stays a few dozen exact planes; a box ``grow``
+    round the points bounds the push at a sharp corner.
+    """
+
+    from scipy.spatial import ConvexHull, HalfspaceIntersection
+
+    try:
+        hull = ConvexHull(P, qhull_options=f"Qt C{SKIN_SWEEP_MERGE_MM:g}")
+    except Exception:
+        hull = None
+    low, high = P.min(axis=0) - grow, P.max(axis=0) + grow
+    box = np.array([[-1, 0, 0, low[0]], [1, 0, 0, -high[0]], [0, -1, 0, low[1]],
+                    [0, 1, 0, -high[1]], [0, 0, -1, low[2]], [0, 0, 1, -high[2]]], dtype=float)
+    if hull is None:
+        # A flat or tiny cell: its box, grown.
+        planes = box
+    else:
+        planes = np.unique(np.round(hull.equations, 9), axis=0)
+        planes[:, 3] -= grow + SKIN_SWEEP_MERGE_MM
+        planes = np.vstack([planes, box])
+    inside = (low + high) / 2.0
+    try:
+        return HalfspaceIntersection(planes, inside).intersections
+    except Exception:
+        corners = np.array([[x, y, z] for x in (low[0], high[0]) for y in (low[1], high[1])
+                            for z in (low[2], high[2])])
+        return corners
+
+
+def _hulls(shape, motion, grow, np):
+    """Convex cells covering what ``shape`` sweeps through ``motion``, grown by ``grow`` mm:
+    ``[(low, high, vertices), ...]`` (each cell is the convex hull of its vertices)."""
+
+    cells = _cell_points(shape, np)
+    every = np.concatenate(cells) if cells else np.zeros((0, 3))
+    poses, bulge = _motion_poses(motion, every, np)
+    pairs = [(poses[0], poses[0])] if len(poses) == 1 else list(zip(poses[:-1], poses[1:]))
+    if len(cells) * len(pairs) > SKIN_SWEEP_MAX_HULLS:
         raise EnvelopeError(
-            f"piece {name}: only {len(accepted)} of {per_piece} boss sites reach the frame "
-            f"within {BOSS_REACH_MM:g} mm along the skin's inward normal, flat under the boss "
-            "and clear of keep_clear=; put a part.former of the form under the piece, lower "
-            "screws=, or move the region")
-    return [entry for _site, entry in accepted]
+            f"an opening's sweep makes {len(cells) * len(pairs)} cells, more than "
+            f"{SKIN_SWEEP_MAX_HULLS}; name a smaller part (the drum, the foot) or a shorter range")
+    hulls = []
+    for points in cells:
+        for (R0, t0), (R1, t1) in pairs:
+            P = np.vstack([points @ R0.T + t0, points @ R1.T + t1])
+            G = _grown_hull(P, max(grow + bulge, 0.05), np)
+            hulls.append((G.min(axis=0), G.max(axis=0), G))
+    return hulls
+
+
+def _hull_solid(points, App, Part):
+    """The convex hull of ``points`` as an exact solid: one planar face per hull facet."""
+
+    import numpy as np
+    from scipy.spatial import ConvexHull
+
+    hull = ConvexHull(points)
+    groups: dict[tuple, list[int]] = {}
+    for index, equation in enumerate(hull.equations):
+        groups.setdefault(tuple(np.round(equation, 7)), []).append(index)
+    faces = []
+    for key, members in groups.items():
+        normal = np.array(key[:3])
+        corners = sorted({int(v) for m in members for v in hull.simplices[m]})
+        P = points[corners]
+        centre = P.mean(axis=0)
+        u = P[int(np.argmax(np.linalg.norm(P - centre, axis=1)))] - centre
+        u = u - normal * (u @ normal)
+        u /= np.linalg.norm(u)
+        v = np.cross(normal, u)
+        order = np.argsort(np.arctan2((P - centre) @ v, (P - centre) @ u))
+        loop = [App.Vector(*map(float, P[k])) for k in order]
+        try:
+            face = Part.Face(Part.makePolygon(loop + [loop[0]]))
+            if not face.isValid():
+                raise ValueError("invalid facet")
+            faces.append(face)
+        except Exception:
+            # A facet the kernel will not take flat: its triangles instead.
+            for m in members:
+                tri = [App.Vector(*map(float, points[int(k)])) for k in hull.simplices[m]]
+                faces.append(Part.Face(Part.makePolygon(tri + [tri[0]])))
+    solid = Part.Solid(Part.Shell(faces))
+    if solid.Volume < 0:
+        solid.reverse()
+    return solid
+
+
+#: A piece's surface is sampled this far apart to find the cells that meet it;
+#: a cell is tested grown by twice this, so a sparse spot never hides one.
+SKIN_SWEEP_PROBE_MM = 3.0
+
+
+def _piece_samples(piece, np):
+    """Points over ``piece``'s surface, about SKIN_SWEEP_PROBE_MM apart."""
+
+    from CadexPanels import sample_triangles
+
+    tris = _triangles([piece], 0.3)
+    if tris is None:
+        return np.zeros((0, 3))
+    area = float(np.sum(np.linalg.norm(np.cross(tris[:, 1] - tris[:, 0],
+                                                tris[:, 2] - tris[:, 0]), axis=1)) / 2.0)
+    count = int(min(400_000, max(256, 2.0 * area / SKIN_SWEEP_PROBE_MM ** 2)))
+    points, _normals = sample_triangles(tris, count)
+    return np.vstack([tris.reshape(-1, 3), points])
+
+
+class _SweptOpening:
+    """An opening round a part, at rest or swept: convex cells, built as solids on demand."""
+
+    def __init__(self, shape, entry, np):
+        from scipy.spatial import ConvexHull
+
+        self.hulls = _hulls(shape, entry.get("motion"), float(entry.get("clearance") or 0.0), np)
+        self.planes = [ConvexHull(points).equations for _low, _high, points in self.hulls]
+        self.solids: dict[int, Any] = {}
+
+    def cut(self, piece, App, Part, np, samples=None):
+        """``piece`` less every cell that meets it.
+
+        Only a cell holding a point of the piece's surface (within twice the
+        sampling) is cut: most of a moving link's cells are inside the body,
+        and a boolean against each cost seconds on a curved skin.
+        """
+
+        if samples is None:
+            samples = _piece_samples(piece, np)
+        margin = 2.0 * SKIN_SWEEP_PROBE_MM
+        for index, (low, high, points) in enumerate(self.hulls):
+            near = np.all((samples >= low - margin) & (samples <= high + margin), axis=1)
+            if not near.any():
+                continue
+            planes = self.planes[index]
+            inside = np.all(samples[near] @ planes[:, :3].T + planes[:, 3] <= margin, axis=1)
+            if not inside.any():
+                continue
+            solid = self.solids.get(index)
+            if solid is None:
+                solid = self.solids[index] = _hull_solid(points, App, Part)
+            if not piece.Solids:
+                break
+            piece = piece.cut(solid)
+        return piece
+
+
+def _posed_triangles(shape, motion, np):
+    """``shape``'s triangles at every SWEEP_STEP_DEGREES pose of ``motion`` (a keep_clear)."""
+
+    tris = _triangles([shape], 1.0)
+    if tris is None or not motion:
+        return tris
+    lo, hi = (float(v) for v in motion["range"])
+    if str(motion.get("kind") or "hinge") == "hinge":
+        steps = max(2, int(math.ceil(abs(hi - lo) / SWEEP_STEP_DEGREES)) + 1)
+    else:
+        steps = max(2, int(math.ceil(abs(hi - lo) / 2.0)) + 1)
+    _pose_budget(steps, [tris])
+    flat = tris.reshape(-1, 3)
+    if str(motion.get("kind") or "hinge") == "hinge":
+        origin = np.array(_vec(motion["origin"]))
+        axis = np.array(_unit(motion["axis"], "motion axis"))
+        K = np.array([[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]])
+        out = []
+        for angle in np.linspace(lo, hi, steps):
+            t = math.radians(angle)
+            rot = np.eye(3) + math.sin(t) * K + (1 - math.cos(t)) * K @ K
+            out.append(((flat - origin) @ rot.T + origin).reshape(-1, 3, 3))
+        return np.concatenate(out)
+    direction = np.array(_unit(motion["direction"], "motion direction"))
+    return np.concatenate([(flat + direction * offset).reshape(-1, 3, 3)
+                           for offset in np.linspace(lo, hi, steps)])
+
+
+def _form_identity(values):
+    """``(key, label)`` of a skin's forms: one key per set of form definitions, the labels the
+    script gave them (ADR-687)."""
+
+    import hashlib
+    import json
+
+    canonical = sorted(json.dumps(v, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+                                  default=str) for v in values)
+    key = hashlib.sha256("\n".join(canonical).encode("utf-8")).hexdigest()[:16]
+    labels = [str(((v.get("properties") or {}) if isinstance(v, Mapping) else {}).get("label")
+                  or "") for v in values]
+    named = [label for label in labels if label]
+    return key, "+".join(named) if named else f"form {key[:6]}"
 
 
 def build_skin_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]], Any],
@@ -2039,9 +2430,13 @@ def build_skin_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]]
 
     The skin is the designed form's own surface, ``thickness`` thick inward;
     each region cuts one piece of it, less the regions before it (grown by
-    the gap) and the openings. Bosses are cast from each piece's inner face
-    along its inward normal onto the frame. Returns what
-    :func:`build_panel_plan` returns.
+    the gap) and the openings -- a part, or what a part sweeps through its
+    joint's motion, grown by its clearance. Bosses are cast from each
+    piece's inner face along its inward normal onto the frame. Every piece
+    is tried; one refusal names each piece that failed (ADR-687). A piece
+    that seats fewer bosses than asked keeps the ones it has, and the plan's
+    ``shortfall`` says why the rest were turned down. Returns what
+    :func:`build_panel_plan` returns, with ``shortfall``.
     """
 
     import numpy as np
@@ -2066,80 +2461,160 @@ def build_skin_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]]
         raise EnvelopeError(f"the kernel refused the skin's wall ({str(exc).splitlines()[0]})") \
             from None
     shell = _sound(shell, "the skin's wall")
-    openings = [build(value) for value in skin.get("openings") or []]
+    solid_openings, swept = [], []
+    for index, entry in enumerate(skin.get("openings") or []):
+        if isinstance(entry, Mapping) and "around" in entry:
+            try:
+                swept.append(_SweptOpening(build(entry["around"]), entry, np))
+            except EnvelopeError as exc:
+                raise EnvelopeError(f"openings[{index}]: {exc}") from None
+        else:
+            solid_openings.append(build(entry))
+    regions = list(skin["regions"])
+    names = [f"p{index}" for index in range(len(regions))]
+    failures: dict[str, str] = {}
+
+    def failed(name, message):
+        failures[name] = message if message.startswith(f"piece {name}") else \
+            f"piece {name}: {message}"
+
     grown, pieces = [], {}
-    for index, value in enumerate(skin["regions"]):
+    for index, value in enumerate(regions):
+        name = names[index]
         region = build(value)
         try:
             piece = shell.common(region)
-            cutters = grown + openings
+            cutters = grown + solid_openings
             if cutters and piece.Solids:
                 piece = piece.cut(cutters)
+            samples = _piece_samples(piece, np) if swept and piece.Solids else None
+            for opening in swept:
+                if piece.Solids:
+                    # The samples of the piece before any cell is cut: a cut
+                    # only removes surface, so they still find every cell.
+                    piece = opening.cut(piece, App, Part, np, samples)
+            pieces[name] = _one_patch(piece, index)
+        except EnvelopeError as exc:
+            failed(name, str(exc))
         except Exception as exc:
-            raise EnvelopeError(
-                f"regions[{index}]: the kernel refused the cut ({str(exc).splitlines()[0]}); "
-                "move the region a few mm") from None
-        pieces[f"p{index}"] = _one_patch(piece, index)
+            failed(name, f"regions[{index}]: the kernel refused the cut "
+                         f"({str(exc).splitlines()[0] if str(exc) else type(exc).__name__}); "
+                         "move the region a few mm")
+        # Every region keeps its gap, built or not, so the pieces after it
+        # keep the outline they will have once it is fixed.
         grown.append(_grown_region(region, gap))
     max_piece = spec.get("max_piece")
     if max_piece is not None:
         bed = sorted(float(v) for v in max_piece)
-        for name, solid in pieces.items():
+        for name, solid in list(pieces.items()):
             box = solid.optimalBoundingBox()
             size = sorted([box.XLength, box.YLength, box.ZLength])
             if any(a > b + 1e-6 for a, b in zip(size, bed)):
-                raise EnvelopeError(
-                    f"piece {name} is {box.XLength:.0f} x {box.YLength:.0f} x "
-                    f"{box.ZLength:.0f} mm, larger than max_piece={list(max_piece)}; split its region")
+                failed(name, f"piece {name} is {box.XLength:.0f} x {box.YLength:.0f} x "
+                             f"{box.ZLength:.0f} mm, larger than max_piece={list(max_piece)}; "
+                             "split its region")
+                del pieces[name]
     outer_surface = Part.Compound(form.Faces)
     inner_surface = Part.Compound(inner.Faces)
     areas = {name: sum(f.Area for f in _faces_on(solid, outer_surface))
              for name, solid in pieces.items()}
-    fasteners = {name: [] for name in pieces}
+    fasteners = {name: [] for name in names}
+    shortfall: dict[str, dict[str, Any]] = {}
     pilots = []
     screw = spec.get("screw")
-    per_piece = int(spec.get("screws") or 0)
-    if spec.get("frame") is not None and screw is not None and per_piece > 0:
+    counts = list(skin.get("screws") or [int(spec.get("screws") or 0)] * len(names))
+    if spec.get("frame") is not None and screw is not None and max(counts + [0]) > 0:
         frame = build(spec["frame"])
+        frame_label = str((spec["frame"].get("properties") or {}).get("label") or "") \
+            if isinstance(spec["frame"], Mapping) else ""
+        support = f"the frame ('{frame_label}')" if frame_label else "the frame (frame=)"
         # Screens only: every site chosen is cast on the exact BREP.
         frame_tris = _triangles([frame], 1.0)
-        blockers = _triangles([build(value) for value in skin.get("keep_clear") or []], 1.0)
+        blocking = []
+        for entry in skin.get("keep_clear") or []:
+            if isinstance(entry, Mapping) and "around" in entry:
+                tris = _posed_triangles(build(entry["around"]), entry.get("motion"), np)
+            else:
+                tris = _triangles([build(entry)], 1.0)
+            if tris is not None:
+                blocking.append(tris)
+        blockers = np.concatenate(blocking) if blocking else None
         clearance = float(spec["envelope"]["clearance"])
         taken = _taken_screws(spec, plan_of)
-        for name in list(pieces):
+        for name, per_piece in zip(names, counts):
+            if name not in pieces or per_piece <= 0:
+                continue
             solid = pieces[name]
             faces = _faces_on(solid, inner_surface)
             if not faces:
-                raise EnvelopeError(f"piece {name} has no inner face to cast its bosses from")
-            sites = _skin_sites(name, solid, faces, thickness, frame, frame_tris, blockers,
-                                screw, per_piece, clearance, taken, App, Part, np)
-            bosses, holes, rows = [], [], []
-            for index, (exact, sv, roll) in enumerate(sites):
-                boss, cut, pilot, row = _boss(name, exact, sv, roll, frame, screw, Part)
-                bosses.append(boss)
-                holes += cut
-                pilots.append(pilot)
-                rows.append({"name": f"b{index}", **row, "kind": "boss"})
+                failed(name, f"piece {name} has no inner face to cast its bosses from")
+                continue
             try:
-                with_bosses = solid.fuse(bosses).cut(holes)
+                sites, rejected = _skin_sites(name, solid, faces, thickness, frame, frame_tris,
+                                              blockers, screw, per_piece, clearance, taken,
+                                              App, Part, np)
+                if not sites:
+                    raise EnvelopeError(
+                        f"piece {name}: none of its {per_piece} boss sites reach the frame "
+                        f"within {BOSS_REACH_MM:g} mm along the skin's inward normal, flat under "
+                        f"the boss and clear of keep_clear= (turned down: {_reasons(rejected)}); "
+                        "put a part.former of the form under the piece, move the region, or "
+                        "weld the piece to what it meets and give it screws=0 in a per-region "
+                        "screws=[...]")
+                bosses, holes, rows, piece_pilots = [], [], [], []
+                for index, (exact, sv, roll, inner_gap) in enumerate(sites):
+                    boss, cut, pilot, row = _boss(name, exact, sv, roll, frame, screw, Part,
+                                                  inner_gap=inner_gap, support=support)
+                    if boss is not None:
+                        bosses.append(boss)
+                    holes += cut
+                    piece_pilots.append(pilot)
+                    rows.append({"name": f"b{index}", **row,
+                                 "kind": "through" if boss is None else "boss"})
+                with_bosses = solid.fuse(bosses) if bosses else solid
+                with_bosses = with_bosses.cut(holes)
+            except EnvelopeError as exc:
+                failed(name, str(exc))
+                continue
             except Exception as exc:
-                raise EnvelopeError(
-                    f"piece {name}: the kernel refused the bosses ({str(exc).splitlines()[0]}); "
-                    "move the region a few mm") from None
+                failed(name, f"piece {name}: the kernel refused the bosses "
+                             f"({str(exc).splitlines()[0] if str(exc) else type(exc).__name__}); "
+                             "move the region a few mm")
+                continue
             if len(with_bosses.Solids) != 1:
-                raise EnvelopeError(f"piece {name}: the bosses did not fuse into one solid")
-            pieces[name] = _sound(_refined(with_bosses.Solids[0]), f"piece {name} with its bosses")
+                failed(name, f"piece {name}: the bosses did not fuse into one solid")
+                continue
+            try:
+                pieces[name] = _sound(_refined(with_bosses.Solids[0]),
+                                      f"piece {name} with its bosses")
+            except EnvelopeError as exc:
+                failed(name, str(exc))
+                continue
+            pilots += piece_pilots
             fasteners[name] = rows
+            if len(sites) < per_piece:
+                # Held by the sites that qualify and by its weld: an advisory
+                # on its row, never a refusal (ADR-687).
+                shortfall[name] = {"wanted": per_piece, "placed": len(sites),
+                                   "rejected": dict(rejected)}
+    if failures:
+        lines = [failures[name] for name in names if name in failures]
+        raise EnvelopeError(
+            f"{len(lines)} of {len(names)} pieces cannot be built; every piece was tried, "
+            "one line each:\n" + "\n".join(f"  - {line}" for line in lines))
     form_area = float(form.Area)
     covered = sum(areas.values())
+    form_key, form_label = _form_identity(list(spec["envelope"]["form"]))
     facts = {
         "skin": True,
         "form": len(forms),
+        "form_key": form_key,
+        "form_label": form_label,
         "form_area_mm2": round(form_area, 1),
         "region_area_mm2": round(covered, 1),
         "covered_fraction": round(covered / form_area, 4) if form_area > 0 else 0.0,
         "piece_area_mm2": {name: round(area, 1) for name, area in areas.items()},
         "gap_designed_mm": float(spec["envelope"]["clearance"]),
     }
-    return {"pieces": pieces, "fasteners": fasteners,
+    return {"pieces": pieces, "fasteners": fasteners, "shortfall": shortfall,
             "pilots": Part.makeCompound(pilots) if pilots else None, "facts": facts}
