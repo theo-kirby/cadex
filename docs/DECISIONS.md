@@ -40675,3 +40675,37 @@ reads a bound in (10, 16] where it read 16. It is never within 10 mm.
 - The point arithmetic uses NumPy without BLAS (`_carried`), so it adds no
   threads beside the children's own.
 - Sampling still cannot exclude contact between samples (`docs/XSCRIPT.md`).
+
+## ADR-690 — A joint sweep's pair budget counts the pairs its boxes leave near; a longer run sweeps for longer (2026-10-13)
+
+**Context.** On `panel-cat-3` (a 23-joint robot cat with 2400 s builds),
+17 of 23 joints refused with `pair budget exceeded: N moving pairs, more
+than 2000` (N from 2,120 to 6,992) once about 210 screws were components.
+The agent dropped every screw from the model, and planned one plate per
+limb segment instead of two, to stay under the cap. With the screws gone,
+`j_elbow_l`, `j_neckyaw` and `j_headpitch` still ended every build with
+`runtime budget exceeded` and no pair measured: the assembly's 180 s total,
+shared by 23 children that each pay their start and the model's load, ran
+out before the joints scheduled last began, the same ones on every build,
+so the cache (ADR-622) never carried them on.
+
+**Decision.**
+- `_SWEEP_MAX_PAIRS` (2,000) counts the moving pairs that the boxes and
+  extents carried to every sample leave within the pair's margin: the only
+  ones measured. A moving pair bound past its margin at every sample by its
+  boxes is culled as before, and does not count. A ceiling of 40,000 moving
+  pairs (`_SWEEP_MAX_MOVING_PAIRS`) keeps the box pass itself bounded.
+- Both budgets go to the sweep's child process in its payload, so the
+  child holds the parent's numbers.
+- The assembly's sweep budget is 180 s, or a quarter of the run's own
+  budget where that is more, up to 900 s: 600 s for a 2400 s project. It is
+  still cut to what the run leaves after the outputs' reserve (ADR-622), so
+  a sweep cannot time a build out.
+
+**Consequences.** A screw, a panel or a former on a moving link costs a box
+pass per sample unless it comes near something; the cap now names the
+pairs that do (`pair budget exceeded: N moving pairs come within reach of
+each other`). A long project's build can take up to 600 s more on a sweep
+that has work left; once its pairs are cached, the sweep finishes in
+seconds as before. `test_joint_fit_sweep.py` checks both caps through the
+child: one near pair over a budget of none, and the moving-pair ceiling.

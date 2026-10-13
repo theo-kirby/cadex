@@ -2766,12 +2766,16 @@ at the solved pose.
 
 Each joint's native queries run in a fresh FreeCAD subprocess with a 90-second
 timeout, up to four at once (ADR-622); the assembly shares 180 seconds of
-sweep budget, cut to what the run's own wall budget leaves after a reserve
+sweep budget, or a quarter of the run's own budget where that is more, up to
+900 s (ADR-690: a 2400 s project sweeps for 600 s), cut to what the run's own wall budget leaves after a reserve
 for the outputs that follow (20 s plus a quarter of the time the build has
 taken), so a first sweep of a loop cannot turn an accepted build into a
 timed-out one. Preparation and
-process cleanup add overhead. At most 73 poses and 2,000 moving pairs are
-allowed per joint; rigid pairs are copied, not measured, and do not count
+process cleanup add overhead. At most 73 poses are allowed per joint, and
+2,000 moving pairs that come within reach of each other: a moving pair whose
+boxes stay apart at every sample is bound by them and does not count, so a
+screw on a thigh far from the chassis costs nothing (ADR-690), up to 40,000
+moving pairs in all. Rigid pairs are copied, not measured, and do not count
 (ADR-426). Reports carry the limits and measured elapsed seconds. Timeout, malformed
 or unsupported geometry, limited joints of any other kind (cylindrical included),
 flexible components, coupled/static-joint graphs, and unsolved
