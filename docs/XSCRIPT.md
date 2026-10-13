@@ -1358,7 +1358,7 @@ the centre along `up`, so a back can be flat and a belly deep), and optional
 section is square to the path through the centres.
 
 `part.former(form, origin, normal, *, width=16, depth=8, web=0, keep_out=(),
-label="")` is the hoop that carries a form's panels: the band of `form`
+inset=0, label="")` is the hoop that carries a form's panels: the band of `form`
 `width` thick along `normal` through `origin`, `depth` deep inward from its
 surface, its outer face the form (kept inside where the form tapers across
 the band), so a form panel lands on it at the envelope's clearance and its
@@ -1368,6 +1368,36 @@ less `keep_out` (the frame and what passes through): a bulkhead. It is built
 in the plane -- the form sliced at the band's faces and middle, the
 outlines intersected, the inset fitted through the sampled outline -- in a
 second or two, where 3D booleans of the form's B-spline skin took minutes.
+`inset` pulls its outer face that far inside the form: under a `part.skin`,
+whose wall is inside the form, it is the skin's thickness plus its clearance
+(ADR-684).
+
+`part.skin(form, regions, *, thickness=2.5, gap=1.2, openings=(), frame=None,
+screw=None, screws=2, keep_clear=(), clearance=2.0, max_piece=None, avoid=(),
+label="")` cuts panels from a designed form itself (ADR-684), and returns a
+`Panel` as `part.panel` does:
+
+- **The skin.** `form` is one solid or a list (fused into one: a torso with
+  its shoulder and haunch masses sunk into it). The skin is the form's own
+  surface, `thickness` thick inward -- all the way round, so a plate wraps a
+  limb or a shoulder, where a `part.panel` is one side's height field.
+- **The pieces.** One per region, `p0`, `p1`, ...: the skin inside
+  `regions[k]`, outside the regions before it grown by `gap`, less every
+  `openings` solid. The outline is where the region's surface crosses the
+  form, so a sphere or a small `lib.form` makes an oval plate, a slab a
+  straight band, and a closed `part.bspline` profile extruded across the
+  body the outline drawn in that view. A region that meets the form in two
+  separate patches (one that passes through the body) is refused with each
+  patch's box; specks under a tenth of the piece are dropped.
+- **The screws.** With `frame` and `screw=lib.bolt(size, length)`, each
+  piece gets `screws` bosses cast from its inner face along the face's own
+  inward normal onto the frame, within 60 mm, the frame flat to 3 mm under
+  the boss and the column clear of `keep_clear` (the mechanism): screened
+  on triangles, then cast on the exact BREP. Each boss row carries its own
+  `axis`. `pilots` and `mounts` are as for `part.panel`.
+- **The facts.** Each piece's build facts carry `skin`, its `area_mm2` and
+  the skin's `covered_fraction` (its pieces' outer area over the form's);
+  `fit.panels` reads a skin as a formed panel with `clearance` as its gap.
 
 `part.panel(env, *, side=(0,0,1), max_angle=60, within=None, thickness=2.0,
 seams=(), seam_gap=0.6, inset=0.0, openings=(), flange=0.0, frame=None,

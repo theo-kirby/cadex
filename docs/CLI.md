@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-12. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-13. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -47,7 +47,7 @@ The agent's two requests cost tokens. The loop between them does not.
 
 | Command | What it does | Spends tokens |
 |---|---|---|
-| `cadex mcp [--idle S]` | Serve the project's tools to an agent over MCP stdio (ADR-538; §2a below). The engine opens on the first tool call and closes after `--idle` quiet seconds (default 30; 0 holds it), releasing the project for the agent's own `cadex … --wait` commands; a session that accepted a build lands one `PROGRESS.md` row and one project commit as it closes. Every tool call appends one line to the project's activity log, `review/activity.jsonl` (ADR-549): `t`, `tool`, `args` (a summary — a long or multi-line string only by its length, a list only by its size, an object only by its keys, 160 characters at most), `outcome` (`ok` or `error`), `detail` (the call's one-line summary or its error), `ms` and `call`. A call also writes an in-flight line as it starts (ADR-553): `outcome: running`, `t` its start, and the server's `pid`; its finished line, with the same `call`, hides it on read, and an in-flight line whose process has gone reads `lost`. An in-flight `evaluate` makes `/api/project`'s `stage` `evaluating`. The log is capped at 64 KiB: past that it is rewritten keeping the newest lines within 32 KiB. The project's git ignores it (`/review/`), and `GET /api/project`'s `activity` carries its newest ten entries, newest first, or `available: false` and the `reason`. | no (the agent's own) |
+| `cadex mcp [--idle S]` | Serve the project's tools to an agent over MCP stdio (ADR-538; §2a below). The engine opens on the first tool call and closes after `--idle` quiet seconds (default 30, held three times as long as the engine took to open, at most 900 s, because reopening restores the accepted model (ADR-685); 0 holds it), releasing the project for the agent's own `cadex … --wait` commands; a session that accepted a build lands one `PROGRESS.md` row and one project commit as it closes. Every tool call appends one line to the project's activity log, `review/activity.jsonl` (ADR-549): `t`, `tool`, `args` (a summary — a long or multi-line string only by its length, a list only by its size, an object only by its keys, 160 characters at most), `outcome` (`ok` or `error`), `detail` (the call's one-line summary or its error), `ms` and `call`. A call also writes an in-flight line as it starts (ADR-553): `outcome: running`, `t` its start, and the server's `pid`; its finished line, with the same `call`, hides it on read, and an in-flight line whose process has gone reads `lost`. An in-flight `evaluate` makes `/api/project`'s `stage` `evaluating`. The log is capped at 64 KiB: past that it is rewritten keeping the newest lines within 32 KiB. The project's git ignores it (`/review/`), and `GET /api/project`'s `activity` carries its newest ten entries, newest first, or `available: false` and the `reason`. | no (the agent's own) |
 | `cadex guidance [--project DIR]` | Print the whole guidance an agent driving Cadex follows: the domain-neutral base, and the project's chosen style after it when it chose one (`cadex style`, ADR-560). `cadex mcp`'s `instructions` are a short brief that tells the agent to run this (§2a). A stored style the engine does not carry is a usage error. No engine. | no |
 | `cadex params --set k=v` | Set declared parameters and rebuild. | no |
 | `cadex script` | Print the project script. | no |
@@ -96,7 +96,9 @@ Flags, valid on either side of the subcommand:
 `script --set` also takes `--replace`, which is you saying you mean to drop
 an output the accepted revision declares — without it such a script is
 refused, because `write_script` replaces *the whole* script and losing an
-output by accident is easy (ADR-045). Only an accepted script persists, so
+output by accident is easy (ADR-045). The refusal needs only the names
+the script returns, so it comes as soon as the script has run, before any
+output is built (ADR-682). Only an accepted script persists, so
 a refused one edited in place as `script.py` can be put back to the
 accepted revision; the refused source is kept at
 `review/script.rejected.py`, and a `script:` note says so, and says when
@@ -133,7 +135,9 @@ surface — `describe_api`, `write_script`, `edit_script`, `set_params`,
 opens an engine. The first tool call takes the project lock (waiting for a
 `cadex` command that holds it) and opens the engine; the server lets both
 go after `--idle` seconds with no call (default 30, `0` to hold them until
-the client goes) and opens them again on the next call. So the agent's own
+the client goes) and opens them again on the next call. Opening restores the
+accepted model, which on a large design takes minutes, so the hold stretches
+to three times as long as the last opening took, at most 900 s (ADR-685). So the agent's own
 `cadex render`, `export`, `section`, `train` or `walk` on the same project
 runs between bursts of tool calls, with `--wait`; the guidance tells it so.
 

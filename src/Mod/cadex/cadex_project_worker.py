@@ -215,6 +215,39 @@ def failure_site(exc: BaseException) -> tuple[dict[str, Any], str] | None:
     return None
 
 
+class OutputsDropped(ValueError):
+    """The script leaves out outputs the accepted revision declares (ADR-045).
+
+    Carries the names in ``details`` so the runtime answers with the same
+    ``PROJECT_OUTPUTS_DROPPED`` refusal it gives after a build (ADR-682).
+    """
+
+    def __init__(self, dropped: list[str]) -> None:
+        super().__init__(
+            "This script drops outputs that the accepted revision declares: "
+            + ", ".join(dropped)
+            + "."
+        )
+        self.details = {"stage": "outputs_dropped", "dropped_outputs": list(dropped)}
+
+
+def _refuse_dropped_outputs(request: Mapping[str, Any], result: Mapping[str, Any]) -> None:
+    """Raise :class:`OutputsDropped` when ``result`` omits a protected name.
+
+    ``protected_outputs`` is in the request only when the runtime wants the
+    check -- a ``write_script`` without ``replace=true`` over an accepted
+    contract -- so a restore, an edit and a parameter change never see it.
+    """
+
+    protected = request.get("protected_outputs")
+    if not isinstance(protected, list) or not protected:
+        return
+    names = {str(name) for name in result}
+    dropped = sorted({str(name) for name in protected} - names)
+    if dropped:
+        raise OutputsDropped(dropped)
+
+
 def _execute_project_source(
     *,
     source: str,
@@ -927,6 +960,10 @@ def _run(request: dict[str, Any], root: Path) -> dict[str, Any]:
         )
         if not result:
             raise ValueError("A project script must return at least one output.")
+        # Names only, so refused before a single output is built (ADR-682):
+        # this check used to run after the whole build, and an 18-minute
+        # model paid every second of it to learn it had left parts out.
+        _refuse_dropped_outputs(request, result)
         grouped = _group_result_by_domain(result)
 
         shape_detail_limit = max(

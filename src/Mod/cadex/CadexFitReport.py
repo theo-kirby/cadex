@@ -1371,7 +1371,8 @@ def panel_summary(value: Any) -> dict[str, Any]:
         item: dict[str, Any] = {"component": name, "findings": []}
         if grown:
             item["grown"] = {key: grown[key] for key in ("group", "piece", "clearance_mm", "hull",
-                                                         "radius_mm", "thickness_mm", "formed")
+                                                         "radius_mm", "thickness_mm", "formed",
+                                                         "skin", "area_mm2", "covered_fraction")
                              if key in grown}
         clearance = float(grown.get("clearance_mm") or 0.0) if _finite(
             grown.get("clearance_mm")) else 0.0
