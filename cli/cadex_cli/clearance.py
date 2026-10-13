@@ -48,6 +48,272 @@ def read_fit(
     return fit_summary(value, minimum=minimum, maximum_volume=maximum_volume)
 
 
+def read_fit_or_unavailable(client: Any) -> dict[str, Any]:
+    """:func:`read_fit` for a build that was just accepted; never raised.
+
+    The build was accepted whatever happens here, and a reply that fails
+    because its *measurement* could not be read would refuse a design for a
+    reason the design did not cause. So a read failure is the block itself,
+    ``verdict: unavailable`` with the reason (ADR-346).
+    """
+
+    try:
+        return read_fit(client)
+    except Exception as exc:  # any failure is a fit the agent cannot see
+        return {
+            "verdict": "unavailable",
+            "source": "",
+            "pairs_checked": 0,
+            "failing_count": 0,
+            "failing": [],
+            "error": f"fit measurements could not be read: {exc}",
+        }
+
+
+# -- the verdict brief (ADR-689) ---------------------------------------------
+
+#: The most failing rows each list of the brief names; past it, a count.
+VERDICT_BRIEF_LIMIT = 8
+#: ...and the most advisory rows (findings that fail nothing).
+VERDICT_BRIEF_ADVISORY_LIMIT = 4
+#: Where every row the brief cut is, said once in the brief.
+VERDICT_BRIEF_REST = (
+    "Every row: inspect scope=clearance path=/pairs, /panels (each row carries its "
+    "verdict and findings), /clearance_sweep/joints, /components, /attachments; "
+    "`cadex clearance` writes docs/clearance.md. Never rebuild only to read these."
+)
+
+
+def _number(value: Any) -> str:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return "—"
+    return f"{float(value):.4g}"
+
+
+def _capped(brief: dict[str, Any], key: str, rows: list[str], limit: int) -> None:
+    """``rows`` under ``key``, at most ``limit``, with ``<key>_more`` past it."""
+
+    if not rows:
+        return
+    brief[key] = rows[:limit]
+    if len(rows) > limit:
+        brief[key + "_more"] = len(rows) - limit
+
+
+def _pair_phrase(row: dict[str, Any]) -> str:
+    status = str(row.get("status") or "")
+    head = f"{row.get('first')} ∩ {row.get('second')}: {status}"
+    if row.get("error"):
+        return f"{head} ({row['error']})"
+    volume, distance = row.get("common_volume_mm3"), row.get("distance_mm")
+    if status == "intersection":
+        return f"{head} {_number(volume)} mm³"
+    return f"{head} {_number(distance)} mm"
+
+
+def _swept_phrase(row: dict[str, Any]) -> str:
+    status = str(row.get("status") or "")
+    head = f"{row.get('first')} ∩ {row.get('second')} through {row.get('joint')}: {status}"
+    volume = row.get("maximum_common_volume_mm3")
+    if isinstance(volume, (int, float)) and volume > 0:
+        return f"{head} {_number(volume)} mm³"
+    return f"{head} min {_number(row.get('minimum_distance_mm'))} mm"
+
+
+def verdict_brief(fit: dict[str, Any] | None, *, limit: int = VERDICT_BRIEF_LIMIT,
+                  advisory: int = VERDICT_BRIEF_ADVISORY_LIMIT) -> dict[str, Any]:
+    """The fit block as a few lines an agent can act on (ADR-689).
+
+    Every verdict and count is the whole block's; only the rows are cut, the
+    worst ``limit`` failing ones per list (``advisory`` for findings that fail
+    nothing) with ``<list>_more`` counting the rest. Each row is one string:
+    who, what verdict, and the block's own one-line reason. Nothing is
+    re-judged -- this reads :func:`fit_summary`'s block and nothing else, so
+    the MCP build reply and ``cadex script --json`` say the same thing.
+    """
+
+    fit = fit if isinstance(fit, dict) else {}
+    verdict = str(fit.get("verdict") or "unavailable")
+    brief: dict[str, Any] = {"revision": str(fit.get("revision") or "")[:12], "fit": verdict}
+    if verdict == "unavailable":
+        brief["reason"] = str(fit.get("error") or fit.get("note") or "no fit was measured")
+        return brief
+    brief["pairs_checked"] = int(fit.get("pairs_checked") or 0)
+    brief["failing_pairs"] = int(fit.get("failing_count") or 0)
+    _capped(brief, "pairs", [_pair_phrase(row) for row in FIT_REPORT._worst_first(
+        fit.get("failing")) if isinstance(row, dict)], limit)
+
+    sweep = fit.get("sweep")
+    if isinstance(sweep, dict):
+        checked = int(sweep.get("joints_checked") or 0)
+        skipped = int(sweep.get("joints_skipped") or 0) + int(sweep.get("joints_passive") or 0)
+        block: dict[str, Any] = {
+            "verdict": str(sweep.get("verdict") or ""),
+            "joints_swept": int(sweep.get("joints_complete") or 0),
+            "joints_limited": checked - skipped,
+            "failing_pairs": int(sweep.get("failing_count") or 0),
+        }
+        if block["verdict"] == "unavailable":
+            block["reason"] = str(sweep.get("reason") or sweep.get("note") or "")
+        _capped(block, "unswept", [
+            f"{joint.get('joint')}: {joint.get('status')}, {joint.get('reason') or 'no reason given'}"
+            for joint in (sweep.get("joints") or [])
+            if isinstance(joint, dict)
+            and joint.get("status") not in ("complete", "passive", "skipped")], limit)
+        _capped(block, "pairs", [_swept_phrase(row) for row in FIT_REPORT._worst_first(
+            sweep.get("failing")) if isinstance(row, dict)], limit)
+        brief["sweep"] = block
+
+    panels = fit.get("panels")
+    if isinstance(panels, dict) and int(panels.get("panel_count") or 0):
+        block = {
+            "verdict": str(panels.get("verdict") or ""),
+            "panel_count": int(panels.get("panel_count") or 0),
+            "failing": int(panels.get("failing_count") or 0),
+            "advisory": int(panels.get("reported_count") or 0),
+        }
+
+        def panel(row: dict[str, Any]) -> str:
+            line = f"{row.get('component')}: {', '.join(row.get('findings') or [])}"
+            return line + (f" -- {row['detail']}" if row.get("detail") else "")
+
+        _capped(block, "failing_panels", [panel(row) for row in panels.get("failing") or []
+                                          if isinstance(row, dict)], limit)
+        _capped(block, "advisory_panels", [panel(row) for row in panels.get("reported") or []
+                                           if isinstance(row, dict)], advisory)
+        if panels.get("motion_note"):
+            block["motion_note"] = str(panels["motion_note"])
+        brief["panels"] = block
+
+    mounting = fit.get("mounting")
+    if isinstance(mounting, dict) and int(mounting.get("purchased_count") or 0):
+        block = {
+            "verdict": str(mounting.get("verdict") or ""),
+            "purchased": int(mounting.get("purchased_count") or 0),
+            "held": int(mounting.get("held_count") or 0),
+        }
+        _capped(block, "not_held", [
+            f"{row.get('component')}: {row.get('status')} -- {row.get('detail') or ''}".rstrip(" -")
+            for row in mounting.get("reported") or [] if isinstance(row, dict)], limit)
+        brief["mounting"] = block
+
+    attachments = fit.get("attachments")
+    if isinstance(attachments, dict) and int(attachments.get("pairs_checked") or 0):
+        block = {
+            "verdict": str(attachments.get("verdict") or ""),
+            "welded_pairs": int(attachments["pairs_checked"]),
+            "not_touching": int(attachments.get("reported_count") or 0),
+        }
+        _capped(block, "gaps", [
+            f"{row.get('first')} -- {row.get('second')} ({', '.join(row.get('joints') or [])}): "
+            f"{row.get('status')} {_number(row.get('distance_mm'))} mm"
+            # The widest gap first: it is the weld least likely to be a shim.
+            for row in sorted((row for row in attachments.get("reported") or []
+                               if isinstance(row, dict)),
+                              key=lambda row: -(row["distance_mm"] if isinstance(
+                                  row.get("distance_mm"), (int, float)) else math.inf))],
+            advisory)
+        brief["attachments"] = block
+
+    blocks = [brief] + [value for value in brief.values() if isinstance(value, dict)]
+    # Pointed at only when the brief named a row: a clean build needs no map.
+    if any(isinstance(item, list) for block in blocks for item in block.values()):
+        brief["rest"] = VERDICT_BRIEF_REST
+    return brief
+
+
+def verdict_lines(brief: dict[str, Any]) -> list[str]:
+    """The brief as the prose report prints it, one finding a line."""
+
+    if not brief:
+        return []
+    lines: list[str] = []
+
+    def rows(block: dict[str, Any], key: str) -> None:
+        lines.extend(f"  {row}" for row in block.get(key) or [])
+        if block.get(key + "_more"):
+            lines.append(f"  ... and {block[key + '_more']} more")
+
+    verdict = str(brief.get("fit") or "")
+    if verdict == "unavailable":
+        lines.append(f"fit    unavailable: {brief.get('reason') or ''}")
+        return lines
+    lines.append("fit    {:s}  {:d} failing of {:d} pair(s)  (revision {:s})".format(
+        verdict, int(brief.get("failing_pairs") or 0), int(brief.get("pairs_checked") or 0),
+        str(brief.get("revision") or "")))
+    rows(brief, "pairs")
+    sweep = brief.get("sweep")
+    if isinstance(sweep, dict):
+        if sweep.get("verdict") == "unavailable":
+            lines.append(f"sweep  unavailable: {sweep.get('reason') or ''}")
+        else:
+            lines.append("sweep  {:s}  {:d} of {:d} joint(s) swept, {:d} failing pair(s)".format(
+                str(sweep.get("verdict")), int(sweep.get("joints_swept") or 0),
+                int(sweep.get("joints_limited") or 0), int(sweep.get("failing_pairs") or 0)))
+        rows(sweep, "unswept")
+        rows(sweep, "pairs")
+    panels = brief.get("panels")
+    if isinstance(panels, dict):
+        lines.append("panels {:s}  {:d} of {:d} failing, {:d} advisory".format(
+            str(panels.get("verdict")), int(panels.get("failing") or 0),
+            int(panels.get("panel_count") or 0), int(panels.get("advisory") or 0)))
+        rows(panels, "failing_panels")
+        rows(panels, "advisory_panels")
+    mounting = brief.get("mounting")
+    if isinstance(mounting, dict):
+        lines.append("mount  {:s}  {:d} of {:d} purchased part(s) held".format(
+            str(mounting.get("verdict")), int(mounting.get("held") or 0),
+            int(mounting.get("purchased") or 0)))
+        rows(mounting, "not_held")
+    attachments = brief.get("attachments")
+    if isinstance(attachments, dict) and attachments.get("not_touching"):
+        lines.append("welds  {:s}  {:d} of {:d} welded pair(s) not touching (advisory)".format(
+            str(attachments.get("verdict")), int(attachments.get("not_touching") or 0),
+            int(attachments.get("welded_pairs") or 0)))
+        rows(attachments, "gaps")
+    if brief.get("rest"):
+        lines.append(f"       {brief['rest']}")
+    return lines
+
+
+def judge_panel_rows(value: Any, fit: dict[str, Any] | None) -> Any:
+    """``inspect scope=clearance`` panel rows with the fit's verdict on each (ADR-689).
+
+    ``value`` is the page an ``inspect`` of ``/panels`` or ``/panels/N``
+    returned: a list of rows or one row, each naming its ``component``. The
+    engine publishes what each panel measures; whether that fails is
+    :func:`panel_summary`'s judgement, made on this side (the service never
+    imports the fit code, ADR-445). Each row gains that judgement --
+    ``verdict`` (``fail``, ``reported`` or ``pass``), ``findings`` and the
+    one-line ``detail`` -- read from ``fit``'s panel block, never re-judged.
+    A row the block does not name is left as published.
+    """
+
+    panels = (fit or {}).get("panels") if isinstance(fit, dict) else None
+    if not isinstance(panels, dict):
+        return value
+    judged: dict[str, tuple[str, dict[str, Any]]] = {}
+    for key, verdict in (("failing", "fail"), ("reported", "reported"), ("fitted", "pass")):
+        for item in panels.get(key) or []:
+            if isinstance(item, dict) and item.get("component"):
+                judged[str(item["component"])] = (verdict, item)
+
+    def judge(row: Any) -> Any:
+        if not isinstance(row, dict) or str(row.get("component") or "") not in judged:
+            return row
+        verdict, item = judged[str(row["component"])]
+        row = {**row, "verdict": verdict, "findings": list(item.get("findings") or [])}
+        for key in ("detail", "mounted", "held_by", "floating_at_mm", "colliding_with",
+                    "colliding_in_motion", "closest_in_motion"):
+            if key in item:
+                row[key] = item[key]
+        return row
+
+    if isinstance(value, list):
+        return [judge(row) for row in value]
+    return judge(value)
+
+
 def write_clearance(
     client: Any, root: Path | str, *, target: str = "",
     minimum: float = MINIMUM_CLEARANCE_MM,

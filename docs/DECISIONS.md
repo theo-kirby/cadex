@@ -40676,6 +40676,78 @@ reads a bound in (10, 16] where it read 16. It is never within 10 mm.
   threads beside the children's own.
 - Sampling still cannot exclude contact between samples (`docs/XSCRIPT.md`).
 
+## ADR-689 — Every build path carries a verdict brief; a panel row says its verdict; `cadex mcp` opens unrestored and `look` draws the retained attempt (2026-10-13)
+
+**Context.** `panel-cat-3` (2026-10-13, 4 h 32 min) built from the shell
+after rev 2, with `cadex script --set FILE --replace --wait --json`. That
+envelope carried no fit at all. `inspect scope=clearance path=/panels/N`
+carried each panel's measurements but not whether it failed. So in each of
+seven repair cycles the agent ran an MCP `rebuild` only to read the panel
+verdicts: 6.6 to 9.5 minutes each, about 57 minutes in all. Its looks
+cost about 19 minutes. The rev 8 look took 657 s: the MCP session had let
+the engine go so the shell build could run, and its next call reopened
+with the restore pass (a full replay of the accepted script), then
+`look` rebuilt, because that bridge held no build reply.
+
+**Decision.**
+1. `clearance.verdict_brief(fit)` turns the fit block into a brief. It
+   carries every verdict and count of the static fit, the sweep, the
+   panels, mounting and welds. It carries the worst rows of each as one
+   line each, up to 8 failing and 4 advisory, and counts the rest. A
+   successful MCP build reply carries it as `verdicts` beside the bounded
+   `fit`. `cadex script --set`'s envelope carries the same one as
+   `verdicts`, and its prose report prints it (`verdict_lines`). The
+   whole block stays out of the envelope; `cadex clearance` or `inspect`
+   has it.
+2. The bridge joins the fit block's judgement onto `inspect
+   scope=clearance path=/panels` and `/panels/N` rows: `verdict`,
+   `findings`, `detail`, `mounted`, `held_by`, `floating_at_mm` and any
+   collision rows. If the session has built nothing, it reads the stored
+   accepted revision's fit once and keeps it. The engine is unchanged:
+   the judgement is `CadexFitReport.panel_summary`, which the service may
+   not import (ADR-445, `test_studio_standing.py`).
+3. `look` and `draw_blueprint` in a session that has built nothing draw
+   the accepted attempt the store retained (`render.retained_reply`, the
+   display block `retained_snapshot` and `cadex evaluate` already drew
+   from). They read the fit, inventory and anatomy as before. They
+   rebuild only when no attempt was retained.
+4. `cadex mcp` opens the engine without the restore pass. The only
+   exception is an `inspect` of `scope=document` or `scope=object`, which
+   read cadexd's live document. A session that opened unrestored and has
+   built nothing reopens with the restore for those.
+
+**Reason.** Every MCP tool except those two scopes either reads the stored
+accepted attempt (`inspect` of the output, clearance, inventory, anatomy,
+script, history and assets scopes, `look`, `draw_blueprint`, the loop
+tools) or runs the script afresh (`write_script`, `edit_script`,
+`set_params`, `rebuild`). ADR-272 already dropped the restore from both
+forms of `cadex script` for that reason. ADR-685 measured the restore as
+all of a 268 s `inspect` on `panel-cat-2`, and stretched the idle hold to
+avoid paying it. This removes the cost instead. The restore's other job,
+re-proving restart determinism, is still done by every other command and
+by `rebuild` on request.
+
+**Consequences.**
+- The MCP build reply and the `script` envelope each gain one key; no
+  tool, argument or schema changed (`test_project_tool_surface.py` is
+  untouched). On `panel-cat-3`'s accepted revision the brief is 1,583
+  characters, and the bounded `fit` beside it is 23,402.
+- An MCP session no longer gets the restore's stale-policy note (ADR-520)
+  or its repair from the accepted source (ADR-044) on open. A build in the
+  session still runs the stored or given script and refuses as it would.
+- Opening is now fast, so ADR-685's hold falls back to `--idle` for most
+  designs. That is intended: a reopen no longer costs a replay.
+- The guidance (`guidance.py` OVERLAY) tells the agent that the `script`
+  envelope's `verdicts` is the build reply's brief, that it never needs to
+  rebuild just to read verdicts, that a panel row carries its verdict, and
+  that after a shell build `look`/`inspect` rebuild nothing.
+- `cli/tests/test_verdict_brief.py` covers this: the brief and its cuts,
+  `unavailable`, a judged panel row, the MCP reply and the `script`
+  envelope carrying the same brief, a panel `inspect` with no build (one
+  fit read, no rebuild), `look` from a retained attempt with no rebuild,
+  and an MCP session that opens unrestored and restores only for the live
+  document.
+
 ## ADR-690 — A joint sweep's pair budget counts the pairs its boxes leave near; a longer run sweeps for longer (2026-10-13)
 
 **Context.** On `panel-cat-3` (a 23-joint robot cat with 2400 s builds),
