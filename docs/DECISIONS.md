@@ -39744,105 +39744,6 @@ incrementally, a one-off migration can turn the lines into edges.
 
 Verified against source: 2026-10-11. Provenance: [Cadex-new] (ADR-061).
 
-## ADR-678 — The static fit measures a panel face pair by face pair, on its geometry's boxes (2026-10-13)
-
-**Context.** A robot cat's torso carries eleven `part.panel` pieces screwed to
-one 451-face frame. Its build ran out of a 3,600 CPU-s budget inside the
-static fit. The costliest stages were `c_frame / c_waist_r_p0` (181 CPU-s),
-`c_frame / c_cowl_r_p0` (138), `c_frame / c_cowl_l_p0` (112) and
-`c_frame / c_dorsal_p0` (99). The pieces' BREPs, timed in a harness, showed
-two causes.
-- **The pieces carry vast tolerances.** Each slow piece has B-spline boss
-  seams with edge tolerances of 1e12 to 1e18 mm. The piece's volume and
-  validity are sound, but the kernel's toleranced box around it is
-  unbounded, and its point classifier calls a point 10 m away inside it.
-  - `_boundary_distance` took the frame to lie inside the panel and sent
-    the pair to the solids' `distToShape`. Every frame face then met every
-    panel face (ADR-425's fallback): 170-386 CPU-s for a 0.0.
-  - No pair with such a piece was ever culled (ADR-423), so every pair
-    with it was measured exactly.
-  - The cut `common` (ADR-438) cut nothing, since the region came from
-    the unbounded box: 22 CPU-s per touching pair.
-- **The housing search met each face against the whole other shell.**
-  With the guard fixed alone, the frame's faces all reach the panel's box,
-  and each was measured against the whole panel, B-spline skin and all:
-  still 178 CPU-s for the cowl.
-
-**Decision** (`cadex_assembly_worker.py`, static fit only unless stated).
-1. **Geometry boxes.** `_face_boxes` boxes each face's surface and its
-   edges' curves without tolerances, grown by 1e-3 mm
-   (`_CONTAINMENT_SLACK_MM`). `_geometry_box` is their union. Every point
-   `distToShape` meets on a face lies in its box.
-2. **Containment.** In `_boundary_distance` (static and swept fit), a solid
-   whose first vertex the classifier calls inside is tried again. If any
-   of its vertices lies outside the other side's geometry box, it is
-   outside that solid, and the shells are measured.
-3. **Face pairs.** `_shell_distance` keeps ADR-437's face search and its two
-   bounds, now on the geometry boxes. A refined face is split into pairs
-   with the other side's faces, each bounded by the face's bound and the
-   gap between the two face boxes. The pair with the least bound is
-   measured face to face, in the pair's argument order. Among equal bounds,
-   the pair whose larger face is smaller goes first. The search stops when
-   no bound is below the best distance, so a 0.0 ends it.
-4. **The cut `common`.** Its region and its face counts use the geometry
-   boxes. It still decides only a zero.
-5. **The cull.** A component whose largest tolerance is over 1 mm
-   (`_VAST_TOLERANCE_MM`) is culled on its geometry box. Every other
-   component keeps its toleranced box and the numbers it was culled with.
-
-**Measured.**
-- **Harness.** `_measure_clearance` was run over the frame, the eleven torso
-  pieces and two head parts (91 pairs), from the build's own BREPs.
-  - Before: 1,604.8 CPU-s. After: 92.2.
-    - `frame/waist_r_p0`: 386.0 → 0.5.
-    - `frame/dorsal_p0`: 242.9 → 4.8.
-    - `frame/cowl_r`: 197.5 → 1.3.
-    - `frame/cowl_l`: 191.3 → 1.7.
-  - **All 28 exactly measured rows are identical to the old worker's, to
-    the last digit.** So are all 30 rows it culled.
-  - 33 rows the old worker measured exactly, because a piece's box was
-    unbounded, are now culled. Each is over 10 mm apart. Each reads a
-    lower bound at or below its old distance (ADR-423), with volume 0.0.
-  - With items 1-4 and the old cull, the run took 248.2 CPU-s and all 91
-    rows were identical.
-  - With the guard alone, `frame/cowl_l` still took 178.3 CPU-s.
-  - The touching pairs' `common` fell from 22 to 0.4-1.7 CPU-s, still 0.0.
-- **Full rebuild.** The cat's script was rebuilt (`cadex script --set`,
-  `--engine-timeout 3600`, cold fit cache) on a `/tmp` project copy. Before,
-  it died in the static fit at 3,600 CPU-s. Now it builds `ok`, and display
-  tessellation starts at 812 CPU-s. The costliest fit stages left are near
-  pairs with a piece:
-  - `c_bracket_fl / c_cowl_l_p0`: 34 CPU-s.
-  - `c_thigh_fr / c_cowl_r_p0`: 27.
-  - `c_abad_fl / c_cowl_l_p0`: 24.
-
-**Not changed.** Unchanged:
-- the 10 mm cull for shapes of ordinary tolerance;
-- the 0.001 mm recheck and disjoint rules;
-- the fit thresholds, the verdicts and the CPU ledger stages;
-- the fit cache, whose key holds this module's source;
-- the sweep's bounds (it passes no boxes) and every protocol op.
-
-**Not fixed here.** The vast tolerances come from `part.panel`'s boss fuse
-(`CadexEnvelope.build_panel_plan`). `Shape.fix` does not lower them. They
-also make every boolean and distance on a piece slower, outside the fit.
-That is the next unit.
-
-**Regression.**
-- `cadex_tests/test_panel_fit_distance.py`:
-  - A fake panel whose classifier calls everything inside is proved
-    touching by its boss's end against the frame's pad, after two box
-    bounds. There is no solids call and no whole-shell call.
-  - A paw 92 mm from the panel's geometry is culled.
-  - On real OCCT, a drilled beam is measured against a 2 mm B-spline panel
-    with a boss, a capped post under the skin, and the panel with one seam's
-    tolerance set to 1e15 mm. In both orders, the result equals the
-    whole-shell and solid `distToShape` and the whole `common`, to the last
-    digit.
-- `test_housed_fit_distance.py` now pins the pair order. Its real-OCCT
-  driver now runs the face search.
-
-Verified against source: 2026-10-13. Provenance: [Cadex-new] (ADR-061).
 ## ADR-673 — One product version, read from `VERSION`; the MCP server answers every message (2026-10-12)
 
 **Context.** The v0.2.0 release audit found five copies of the version and
@@ -40213,6 +40114,105 @@ gitignored.
   are rebuilt along each pixel's ray. The creases still darken, and the stripes are gone at a 7×
   boost of the dark levels.
 
+## ADR-678 — The static fit measures a panel face pair by face pair, on its geometry's boxes (2026-10-13)
+
+**Context.** A robot cat's torso carries eleven `part.panel` pieces screwed to
+one 451-face frame. Its build ran out of a 3,600 CPU-s budget inside the
+static fit. The costliest stages were `c_frame / c_waist_r_p0` (181 CPU-s),
+`c_frame / c_cowl_r_p0` (138), `c_frame / c_cowl_l_p0` (112) and
+`c_frame / c_dorsal_p0` (99). The pieces' BREPs, timed in a harness, showed
+two causes.
+- **The pieces carry vast tolerances.** Each slow piece has B-spline boss
+  seams with edge tolerances of 1e12 to 1e18 mm. The piece's volume and
+  validity are sound, but the kernel's toleranced box around it is
+  unbounded, and its point classifier calls a point 10 m away inside it.
+  - `_boundary_distance` took the frame to lie inside the panel and sent
+    the pair to the solids' `distToShape`. Every frame face then met every
+    panel face (ADR-425's fallback): 170-386 CPU-s for a 0.0.
+  - No pair with such a piece was ever culled (ADR-423), so every pair
+    with it was measured exactly.
+  - The cut `common` (ADR-438) cut nothing, since the region came from
+    the unbounded box: 22 CPU-s per touching pair.
+- **The housing search met each face against the whole other shell.**
+  With the guard fixed alone, the frame's faces all reach the panel's box,
+  and each was measured against the whole panel, B-spline skin and all:
+  still 178 CPU-s for the cowl.
+
+**Decision** (`cadex_assembly_worker.py`, static fit only unless stated).
+1. **Geometry boxes.** `_face_boxes` boxes each face's surface and its
+   edges' curves without tolerances, grown by 1e-3 mm
+   (`_CONTAINMENT_SLACK_MM`). `_geometry_box` is their union. Every point
+   `distToShape` meets on a face lies in its box.
+2. **Containment.** In `_boundary_distance` (static and swept fit), a solid
+   whose first vertex the classifier calls inside is tried again. If any
+   of its vertices lies outside the other side's geometry box, it is
+   outside that solid, and the shells are measured.
+3. **Face pairs.** `_shell_distance` keeps ADR-437's face search and its two
+   bounds, now on the geometry boxes. A refined face is split into pairs
+   with the other side's faces, each bounded by the face's bound and the
+   gap between the two face boxes. The pair with the least bound is
+   measured face to face, in the pair's argument order. Among equal bounds,
+   the pair whose larger face is smaller goes first. The search stops when
+   no bound is below the best distance, so a 0.0 ends it.
+4. **The cut `common`.** Its region and its face counts use the geometry
+   boxes. It still decides only a zero.
+5. **The cull.** A component whose largest tolerance is over 1 mm
+   (`_VAST_TOLERANCE_MM`) is culled on its geometry box. Every other
+   component keeps its toleranced box and the numbers it was culled with.
+
+**Measured.**
+- **Harness.** `_measure_clearance` was run over the frame, the eleven torso
+  pieces and two head parts (91 pairs), from the build's own BREPs.
+  - Before: 1,604.8 CPU-s. After: 92.2.
+    - `frame/waist_r_p0`: 386.0 → 0.5.
+    - `frame/dorsal_p0`: 242.9 → 4.8.
+    - `frame/cowl_r`: 197.5 → 1.3.
+    - `frame/cowl_l`: 191.3 → 1.7.
+  - **All 28 exactly measured rows are identical to the old worker's, to
+    the last digit.** So are all 30 rows it culled.
+  - 33 rows the old worker measured exactly, because a piece's box was
+    unbounded, are now culled. Each is over 10 mm apart. Each reads a
+    lower bound at or below its old distance (ADR-423), with volume 0.0.
+  - With items 1-4 and the old cull, the run took 248.2 CPU-s and all 91
+    rows were identical.
+  - With the guard alone, `frame/cowl_l` still took 178.3 CPU-s.
+  - The touching pairs' `common` fell from 22 to 0.4-1.7 CPU-s, still 0.0.
+- **Full rebuild.** The cat's script was rebuilt (`cadex script --set`,
+  `--engine-timeout 3600`, cold fit cache) on a `/tmp` project copy. Before,
+  it died in the static fit at 3,600 CPU-s. Now it builds `ok`, and display
+  tessellation starts at 812 CPU-s. The costliest fit stages left are near
+  pairs with a piece:
+  - `c_bracket_fl / c_cowl_l_p0`: 34 CPU-s.
+  - `c_thigh_fr / c_cowl_r_p0`: 27.
+  - `c_abad_fl / c_cowl_l_p0`: 24.
+
+**Not changed.** Unchanged:
+- the 10 mm cull for shapes of ordinary tolerance;
+- the 0.001 mm recheck and disjoint rules;
+- the fit thresholds, the verdicts and the CPU ledger stages;
+- the fit cache, whose key holds this module's source;
+- the sweep's bounds (it passes no boxes) and every protocol op.
+
+**Not fixed here.** The vast tolerances come from `part.panel`'s boss fuse
+(`CadexEnvelope.build_panel_plan`). `Shape.fix` does not lower them. They
+also make every boolean and distance on a piece slower, outside the fit.
+That is the next unit.
+
+**Regression.**
+- `cadex_tests/test_panel_fit_distance.py`:
+  - A fake panel whose classifier calls everything inside is proved
+    touching by its boss's end against the frame's pad, after two box
+    bounds. There is no solids call and no whole-shell call.
+  - A paw 92 mm from the panel's geometry is culled.
+  - On real OCCT, a drilled beam is measured against a 2 mm B-spline panel
+    with a boss, a capped post under the skin, and the panel with one seam's
+    tolerance set to 1e15 mm. In both orders, the result equals the
+    whole-shell and solid `distToShape` and the whole `common`, to the last
+    digit.
+- `test_housed_fit_distance.py` now pins the pair order. Its real-OCCT
+  driver now runs the face search.
+
+Verified against source: 2026-10-13. Provenance: [Cadex-new] (ADR-061).
 ## ADR-679 — A panel takes a designed form: `part.envelope(form=...)`, `lib.form`, `part.former`; the creature style puts the form first (2026-10-13, owner)
 
 **Context.** The owner ran `panel-cat`, a design-only Opus run on the
