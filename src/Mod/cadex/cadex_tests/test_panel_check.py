@@ -232,6 +232,22 @@ def test_a_grown_panel_is_held_to_its_own_clearance_and_radius():
         CadexFitReport.PANEL_FLOATING_GAP_MM
 
 
+def test_a_form_panel_is_held_to_its_span_to_the_support_under_it():
+    # A panel cut from a designed form stands off what it covers by design
+    # (ADR-679): it floats only past half the span a cover carries.
+    value = _screwed()
+    value["components"][2]["panel"] = {"group": "g1", "piece": "p0", "clearance_mm": 1.5,
+                                       "radius_mm": 30.0, "thickness_mm": 2.0, "formed": True}
+    value["panels"] = [_measured("lid", 38.0)]
+    block = panel_summary(value)
+    assert block["verdict"] == "pass", block
+    assert block["fitted"][0]["floating_at_mm"] == pytest.approx(
+        1.5 + CadexFitReport.PANEL_FORM_SPAN_MM / 2.0 + CadexFitReport.PANEL_FLOATING_SLACK_MM)
+    assert block["fitted"][0]["grown"]["formed"] is True
+    value["panels"] = [_measured("lid", 46.0)]
+    assert panel_summary(value)["failing"][0]["findings"] == ["floating"]
+
+
 def test_advisory_findings_are_named_and_do_not_fail():
     value = _screwed()
     value["panels"] = [_measured("lid", 3.0, egg_ratio=3.1, wall_median_mm=6.0,

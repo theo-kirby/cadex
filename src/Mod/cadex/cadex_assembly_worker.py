@@ -6268,6 +6268,10 @@ def _measure_clearance(
                 boxes[name] = App.BoundBox(*known)
             else:
                 boxes[name] = world(name).optimalBoundingBox(False, True)
+                # A seam of vast tolerance makes that box unbounded, and no
+                # pair with it was ever culled: its geometry's box (ADR-678).
+                if world(name).getTolerance(1) > _VAST_TOLERANCE_MM:
+                    boxes[name] = _geometry_box(world(name), face_boxes)
                 if key is not None:
                     found = boxes[name]
                     cache.put(key, [found.XMin, found.YMin, found.ZMin,
@@ -6385,12 +6389,17 @@ def _clipped_common_is_zero(first, second, boxes, face_boxes):
     otherwise the cut is a second boolean that removes little -- and the cut
     decides only a zero: any other answer, or a failed cut, returns False
     and the whole solids are measured as before, so a volume that is not
-    zero is always the one the uncut boolean gives.
+    zero is always the one the uncut boolean gives. The boxes are the
+    geometry's (:func:`_face_boxes`, ADR-678): a panel's toleranced box was
+    unbounded, cut nothing, and its frame's ``common`` cost 22 CPU-s, not 2.
     """
 
     try:
         import FreeCAD as App
         import Part
+        # The geometry's boxes: a toleranced box is unbounded around an edge
+        # with a vast tolerance, and would cut nothing (ADR-678).
+        boxes = tuple(_geometry_box(shape, face_boxes) for shape in (first, second))
         lo = [max(a, b) - _CLIP_MARGIN_MM for a, b in (
             (boxes[0].XMin, boxes[1].XMin), (boxes[0].YMin, boxes[1].YMin), (boxes[0].ZMin, boxes[1].ZMin))]
         hi = [min(a, b) + _CLIP_MARGIN_MM for a, b in (
@@ -6399,12 +6408,11 @@ def _clipped_common_is_zero(first, second, boxes, face_boxes):
             return False
         cut = []
         for shape in (first, second):
-            if id(shape) not in face_boxes:
-                face_boxes[id(shape)] = [face.optimalBoundingBox(False, True) for face in shape.Faces]
-            meeting = sum(1 for box in face_boxes[id(shape)] if (
+            found = _face_boxes(shape, face_boxes)
+            meeting = sum(1 for box in found if (
                 box.XMin <= hi[0] and box.XMax >= lo[0] and box.YMin <= hi[1]
                 and box.YMax >= lo[1] and box.ZMin <= hi[2] and box.ZMax >= lo[2]))
-            cut.append(2 * meeting < len(face_boxes[id(shape)]))
+            cut.append(2 * meeting < len(found))
         if not any(cut):
             return False
         region = Part.makeBox(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2], App.Vector(*lo))
@@ -6547,6 +6555,15 @@ _SWEEP_KINDS = {
 _SHELL_DISTANCE_RECHECK_MM = 1e-3
 
 
+#: How far a vertex must lie outside a solid's geometry box to be outside
+#: the solid: far above the kernel's rounding of that box (ADR-678).
+_CONTAINMENT_SLACK_MM = 1e-3
+#: A shape with a tolerance above this is bounded for the static fit's cull
+#: by its geometry's box, not its toleranced one (ADR-678). Any other shape
+#: keeps the toleranced box, and every number it was culled with.
+_VAST_TOLERANCE_MM = 1.0
+
+
 def _boundary_distance(first, second, boxes=None, face_boxes=None):
     """The minimum distance between two solid shapes, on their shells when that is exact.
 
@@ -6559,12 +6576,28 @@ def _boundary_distance(first, second, boxes=None, face_boxes=None):
     the boundaries come within :data:`_SHELL_DISTANCE_RECHECK_MM`, the solids
     are measured as before. ``boxes`` and ``face_boxes`` let the static fit
     cull a housing's faces (:func:`_shell_distance`).
+
+    A vertex the classifier calls inside is tried once more, against the
+    other side's geometry box (:func:`_geometry_box`), and so is every other
+    vertex: one outside that box is outside the solid (ADR-678). A
+    ``part.panel`` piece with a boss seam of tolerance 1e15 mm has a
+    classifier that calls a point 10 m away inside it, so the frame it is
+    screwed to read as lying inside the panel, and the pair went to the
+    solids' ``distToShape``, which no box prunes there: up to 386 CPU-s.
     """
 
     import Part
     for inner, outer in ((first, second), (second, first)):
+        reach = None
         for solid in inner.Solids:
-            if not solid.Vertexes or outer.isInside(solid.Vertexes[0].Point, 1e-7, True):
+            if solid.Vertexes and not outer.isInside(solid.Vertexes[0].Point, 1e-7, True):
+                continue
+            # A vertex outside the other's geometry box is outside it too: the
+            # classifier can call a far point inside a solid with a vast edge
+            # tolerance, and the toleranced box is then unbounded (ADR-678).
+            if reach is None:
+                reach = _geometry_box(outer, face_boxes)
+            if not any(_outside_box(vertex.Point, reach) for vertex in solid.Vertexes):
                 return float(first.distToShape(second)[0])
     distance = _shell_distance(first, second, boxes, face_boxes)
     # The solids contain their shells, so shells that touch prove the solids
@@ -6588,12 +6621,25 @@ def _shell_distance(first, second, boxes=None, face_boxes=None):
     between its exact box and that side's, which is free, and its distance
     to that side's box as a solid, which holds that side. The face with the
     least bound is refined to the second bound if it has not been, and
-    measured if it has; the search ends when the least bound is not below
-    the least distance measured, which is then the shells' distance.
+    split into its pairs with the smaller side's faces if it has.
 
-    Only the static fit passes ``boxes`` (the two exact boxes) and
-    ``face_boxes`` (a cache of each shape's face boxes, by ``id``): it
-    measures each pair once, and holds its shapes for the whole fit. The
+    **A face is measured against one face, not the other whole shell**
+    (ADR-678). Each pair's bound is its face's refined bound or the gap
+    between the two faces' boxes, the larger, and the pair with the least
+    bound is measured; among pairs bound alike, the one whose larger face
+    is smaller goes first, as contacts sit between small faces. A thin
+    panel screwed to a frame has a box that holds much of the frame: every
+    frame face reached the panel's box, and each was measured against the
+    whole panel, B-spline skin and all. The panel's boss against the frame
+    face it is cast onto now proves the 0.0 alone. The search ends when the
+    least bound is not below the least distance measured, which is then the
+    shells' distance. Every box here is the geometry's
+    (:func:`_face_boxes`), not the toleranced one, which is unbounded around
+    a seam of vast tolerance.
+
+    Only the static fit passes ``boxes`` and ``face_boxes`` (a cache of each
+    shape's face boxes, by ``id``): it measures each pair once, and holds
+    its shapes for the whole fit. The
     swept fit measures every pair at every sample on freshly placed shapes,
     where the bounds cost more than they save, so it measures whole.
     """
@@ -6604,30 +6650,83 @@ def _shell_distance(first, second, boxes=None, face_boxes=None):
     whole = (Part.Compound(first.Shells), Part.Compound(second.Shells))
     if boxes is None or face_boxes is None:
         return float(whole[0].distToShape(whole[1])[0])
+    # The geometry's boxes, not the toleranced ones (ADR-678).
+    boxes = tuple(_geometry_box(shape, face_boxes) for shape in shapes)
     outer = 0 if boxes[0].XLength * boxes[0].YLength * boxes[0].ZLength >= (
         boxes[1].XLength * boxes[1].YLength * boxes[1].ZLength) else 1
     inner = 1 - outer
     box = boxes[inner]
     if len(shapes[inner].Faces) <= 6 or min(box.XLength, box.YLength, box.ZLength) <= 0:
         return float(whole[0].distToShape(whole[1])[0])
-    faces = shapes[outer].Faces
-    if id(shapes[outer]) not in face_boxes:
-        face_boxes[id(shapes[outer])] = [face.optimalBoundingBox(False, True) for face in faces]
+    faces, others = shapes[outer].Faces, shapes[inner].Faces
+    face_box, other_box = _face_boxes(shapes[outer], face_boxes), _face_boxes(shapes[inner], face_boxes)
     import FreeCAD as App
     bound = Part.makeBox(box.XLength, box.YLength, box.ZLength, App.Vector(box.XMin, box.YMin, box.ZMin))
-    queue = [(_box_gap(face_box, box), index, False)
-             for index, face_box in enumerate(face_boxes[id(shapes[outer])])]
+
+    def size(found):
+        return found.XLength + found.YLength + found.ZLength
+
+    # (bound, stage, size, face, other face): stage 0 is a face bounded by its
+    # box's gap, 1 by its distance to the part's box, 2 a pair of faces.
+    queue = [(_box_gap(found, box), 0, size(found), index, -1) for index, found in enumerate(face_box)]
     heapq.heapify(queue)
     best = math.inf
     while queue and queue[0][0] < best:
-        lower, index, refined = heapq.heappop(queue)
-        if not refined:
-            heapq.heappush(queue, (max(lower, float(faces[index].distToShape(bound)[0])), index, True))
-            continue
-        # The arguments keep the pair's order: extrema are not symmetric to the last digit.
-        pair = (faces[index], whole[inner]) if outer == 0 else (whole[inner], faces[index])
-        best = min(best, float(pair[0].distToShape(pair[1])[0]))
+        lower, stage, extent, index, other = heapq.heappop(queue)
+        if stage == 0:
+            heapq.heappush(queue, (max(lower, float(faces[index].distToShape(bound)[0])), 1, extent, index, -1))
+        elif stage == 1:
+            for other, found in enumerate(other_box):
+                heapq.heappush(queue, (max(lower, _box_gap(face_box[index], found)), 2,
+                                       max(extent, size(found)), index, other))
+        else:
+            # The arguments keep the pair's order: extrema are not symmetric to the last digit.
+            pair = (faces[index], others[other]) if outer == 0 else (others[other], faces[index])
+            best = min(best, float(pair[0].distToShape(pair[1])[0]))
     return best
+
+
+def _face_boxes(shape, cache=None):
+    """Each face's box around its geometry, kept in the static fit's ``cache`` by ``id`` (ADR-678).
+
+    The kernel's box around a face's surface and around each of its edges'
+    curves, without the tolerances, grown by :data:`_CONTAINMENT_SLACK_MM`:
+    every point ``distToShape`` meets on the face lies inside it. A
+    toleranced box is no bound on a panel whose boss seams carry tolerances
+    of 1e15 mm or more: it holds everything.
+    """
+    if cache is not None and id(shape) in cache:
+        return cache[id(shape)]
+    found = []
+    for face in shape.Faces:
+        around = face.optimalBoundingBox(False, False)
+        for edge in face.Edges:
+            around.add(edge.optimalBoundingBox(False, False))
+        around.enlarge(_CONTAINMENT_SLACK_MM)
+        found.append(around)
+    if cache is not None:
+        cache[id(shape)] = found
+    return found
+
+
+def _geometry_box(shape, cache=None):
+    """The box around all of ``shape``'s face boxes (:func:`_face_boxes`), kept in ``cache``."""
+    key = ("geometry", id(shape))
+    if cache is not None and key in cache:
+        return cache[key]
+    import FreeCAD as App
+    found = App.BoundBox()
+    for around in _face_boxes(shape, cache):
+        found.add(around)
+    if cache is not None:
+        cache[key] = found
+    return found
+
+
+def _outside_box(point, box):
+    """Whether ``point`` lies outside ``box``."""
+    return (point.x < box.XMin or point.x > box.XMax or point.y < box.YMin
+            or point.y > box.YMax or point.z < box.ZMin or point.z > box.ZMax)
 
 
 def _box_gap(first, second):

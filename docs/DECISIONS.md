@@ -40113,3 +40113,238 @@ gitignored.
   distance into a float target (half float where full float cannot be rendered to), and positions
   are rebuilt along each pixel's ray. The creases still darken, and the stripes are gone at a 7×
   boost of the dark levels.
+
+## ADR-678 — The static fit measures a panel face pair by face pair, on its geometry's boxes (2026-10-13)
+
+**Context.** A robot cat's torso carries eleven `part.panel` pieces screwed to
+one 451-face frame. Its build ran out of a 3,600 CPU-s budget inside the
+static fit. The costliest stages were `c_frame / c_waist_r_p0` (181 CPU-s),
+`c_frame / c_cowl_r_p0` (138), `c_frame / c_cowl_l_p0` (112) and
+`c_frame / c_dorsal_p0` (99). The pieces' BREPs, timed in a harness, showed
+two causes.
+- **The pieces carry vast tolerances.** Each slow piece has B-spline boss
+  seams with edge tolerances of 1e12 to 1e18 mm. The piece's volume and
+  validity are sound, but the kernel's toleranced box around it is
+  unbounded, and its point classifier calls a point 10 m away inside it.
+  - `_boundary_distance` took the frame to lie inside the panel and sent
+    the pair to the solids' `distToShape`. Every frame face then met every
+    panel face (ADR-425's fallback): 170-386 CPU-s for a 0.0.
+  - No pair with such a piece was ever culled (ADR-423), so every pair
+    with it was measured exactly.
+  - The cut `common` (ADR-438) cut nothing, since the region came from
+    the unbounded box: 22 CPU-s per touching pair.
+- **The housing search met each face against the whole other shell.**
+  With the guard fixed alone, the frame's faces all reach the panel's box,
+  and each was measured against the whole panel, B-spline skin and all:
+  still 178 CPU-s for the cowl.
+
+**Decision** (`cadex_assembly_worker.py`, static fit only unless stated).
+1. **Geometry boxes.** `_face_boxes` boxes each face's surface and its
+   edges' curves without tolerances, grown by 1e-3 mm
+   (`_CONTAINMENT_SLACK_MM`). `_geometry_box` is their union. Every point
+   `distToShape` meets on a face lies in its box.
+2. **Containment.** In `_boundary_distance` (static and swept fit), a solid
+   whose first vertex the classifier calls inside is tried again. If any
+   of its vertices lies outside the other side's geometry box, it is
+   outside that solid, and the shells are measured.
+3. **Face pairs.** `_shell_distance` keeps ADR-437's face search and its two
+   bounds, now on the geometry boxes. A refined face is split into pairs
+   with the other side's faces, each bounded by the face's bound and the
+   gap between the two face boxes. The pair with the least bound is
+   measured face to face, in the pair's argument order. Among equal bounds,
+   the pair whose larger face is smaller goes first. The search stops when
+   no bound is below the best distance, so a 0.0 ends it.
+4. **The cut `common`.** Its region and its face counts use the geometry
+   boxes. It still decides only a zero.
+5. **The cull.** A component whose largest tolerance is over 1 mm
+   (`_VAST_TOLERANCE_MM`) is culled on its geometry box. Every other
+   component keeps its toleranced box and the numbers it was culled with.
+
+**Measured.**
+- **Harness.** `_measure_clearance` was run over the frame, the eleven torso
+  pieces and two head parts (91 pairs), from the build's own BREPs.
+  - Before: 1,604.8 CPU-s. After: 92.2.
+    - `frame/waist_r_p0`: 386.0 → 0.5.
+    - `frame/dorsal_p0`: 242.9 → 4.8.
+    - `frame/cowl_r`: 197.5 → 1.3.
+    - `frame/cowl_l`: 191.3 → 1.7.
+  - **All 28 exactly measured rows are identical to the old worker's, to
+    the last digit.** So are all 30 rows it culled.
+  - 33 rows the old worker measured exactly, because a piece's box was
+    unbounded, are now culled. Each is over 10 mm apart. Each reads a
+    lower bound at or below its old distance (ADR-423), with volume 0.0.
+  - With items 1-4 and the old cull, the run took 248.2 CPU-s and all 91
+    rows were identical.
+  - With the guard alone, `frame/cowl_l` still took 178.3 CPU-s.
+  - The touching pairs' `common` fell from 22 to 0.4-1.7 CPU-s, still 0.0.
+- **Full rebuild.** The cat's script was rebuilt (`cadex script --set`,
+  `--engine-timeout 3600`, cold fit cache) on a `/tmp` project copy. Before,
+  it died in the static fit at 3,600 CPU-s. Now it builds `ok`, and display
+  tessellation starts at 812 CPU-s. The costliest fit stages left are near
+  pairs with a piece:
+  - `c_bracket_fl / c_cowl_l_p0`: 34 CPU-s.
+  - `c_thigh_fr / c_cowl_r_p0`: 27.
+  - `c_abad_fl / c_cowl_l_p0`: 24.
+
+**Not changed.** Unchanged:
+- the 10 mm cull for shapes of ordinary tolerance;
+- the 0.001 mm recheck and disjoint rules;
+- the fit thresholds, the verdicts and the CPU ledger stages;
+- the fit cache, whose key holds this module's source;
+- the sweep's bounds (it passes no boxes) and every protocol op.
+
+**Not fixed here.** The vast tolerances come from `part.panel`'s boss fuse
+(`CadexEnvelope.build_panel_plan`). `Shape.fix` does not lower them. They
+also make every boolean and distance on a piece slower, outside the fit.
+That is the next unit.
+
+**Regression.**
+- `cadex_tests/test_panel_fit_distance.py`:
+  - A fake panel whose classifier calls everything inside is proved
+    touching by its boss's end against the frame's pad, after two box
+    bounds. There is no solids call and no whole-shell call.
+  - A paw 92 mm from the panel's geometry is culled.
+  - On real OCCT, a drilled beam is measured against a 2 mm B-spline panel
+    with a boss, a capped post under the skin, and the panel with one seam's
+    tolerance set to 1e15 mm. In both orders, the result equals the
+    whole-shell and solid `distToShape` and the whole `common`, to the last
+    digit.
+- `test_housed_fit_distance.py` now pins the pair order. Its real-OCCT
+  driver now runs the face search.
+
+Verified against source: 2026-10-13. Provenance: [Cadex-new] (ADR-061).
+## ADR-679 — A panel takes a designed form: `part.envelope(form=...)`, `lib.form`, `part.former`; the creature style puts the form first (2026-10-13, owner)
+
+**Context.** The owner ran `panel-cat`, a design-only Opus run on the
+creature style, against a reference image: a robot big cat made of many
+glossy panels over dense dark machinery. After 67 minutes and 13 revisions
+it had no panels, and it read as a generic quadruped. A box-beam keel, flat
+link plates and a one-piece egg of a head. The transcript shows four causes:
+
+- A panel was only an offset of what it covers, so its shape was the
+  mechanism's shape plus a clearance. Covers over a box beam make a box, and
+  covers over a camera and a jaw servo make an egg. Nothing in the system let
+  the animal's form drive the shape.
+- The guidance worked from the inside out and put covers last. The agent
+  spent 50 minutes on the mechanism before its first panel.
+- Three `part.panel` calls were refused because a piece "falls apart" into
+  slivers of 4% of its volume, and the refusal did not say where they were.
+- The fit check of the panels against the frame took 100-200 CPU-s a pair,
+  and the build ran out of its budget. That is ADR-678's subject.
+
+The owner's direction: "the face is made up of multiple panels covering
+machinery or support structures, in the actual shape of the animal, same
+for the shoulders, torso, legs and hips … it needs to read like a complex
+piece of machinery covered in organic panels making the shape". The run
+that tests this is to be fully autonomous, so the fix goes into the system,
+not into that design.
+
+**Decision.**
+
+- `part.envelope(..., form=solid | [solids])` takes a designed outer form.
+  - Its space is wrapped along with `over`, so the panels take its shape
+    wherever it stands proud of the machinery, and `over` still decides what
+    they must clear.
+  - A form is no part. It never blocks a boss column and is not what a panel
+    covers. The supports under it go in `covers=` and in the panels'
+    `frame=`.
+  - A form panel's slope and outline are read off a face smoothed by 4 mm
+    (`FORM_SMOOTH_MM`), so a `max_angle` edge runs clean instead of ragged
+    along the voxel stairs.
+  - Its pieces publish `formed: true`.
+  - An envelope without `form=` declares and builds exactly what it did
+    before.
+- `lib.form(stations)` lofts a form through superellipse cross-sections.
+  - Each station gives a centre, a width, a top and a bottom, so a back can
+    be flat and a belly deep, plus an optional squareness and its own up.
+  - Each section is square to the path through the centres.
+- `part.former(form, origin, normal, *, width=16, depth=8, web=0,
+  keep_out=())` is a worker op: the hoop of a form that carries its panels.
+  - Its outer face is the form, kept inside it where the form tapers across
+    the band. With `web` it is a bulkhead plate, less `keep_out`.
+  - It is built in the plane: slices at the band's faces and middle, their
+    outlines intersected, the inset fitted through the sampled outline,
+    because OCCT's planar offset refuses a slice's single periodic B-spline
+    edge.
+  - On the probe torso, five formers fused into a keel take 7 s. The same
+    hoops made by 3D booleans of the form, and its offset surface, took
+    138 s (493 CPU-s), and a fuse alone took 37 s.
+- `fit.panels` judges a form panel by its span to the support under it.
+  - It floats past clearance + max(radius, `PANEL_FORM_SPAN_MM` = 80)/2 +
+    2 mm, about what a 2 mm printed cover is stiff over.
+  - The egg ratio still reports how much air it encloses.
+- A seam's sliver under a tenth of its piece (`SPECK_FRACTION`) is dropped,
+  as the region's own specks already were. A piece that still falls apart
+  is refused with each island's volume and box.
+- The creature style, rewritten:
+  - **The form is the animal's, and it comes first.** After the parts are
+    chosen, sculpt it with `lib.form` from the animal's proportions and the
+    reference image, look at it alone, then put the mechanism inside.
+  - **Panels make the form; machinery and structure fill it.** Form panels
+    sit on formers, split along the anatomy, with gaps at the joints where
+    the dark machinery shows.
+  - **Every region carries its panels, limbs included.** A plate belongs to
+    the link it moves with.
+  - **The likeness is checked against the animal.** It is checked against
+    the reference image region by region when the brief gives one.
+  - **The covers are not the last step.**
+  - It replaces "shells sit on the masses; links do the work" and "panels
+    wrap the mechanism".
+- The base guidance names `form=` in one clause.
+
+**Evidence.**
+
+- `test_panels.py` covers:
+  - a form's sections and refusals;
+  - an envelope's form spec, and that one without a form is unchanged;
+  - `part.former`'s declaration;
+  - on the kernel, three formers whose every edge sample lies inside the
+    form, and a form panel whose crown stands at the form's top, far above
+    the keel it covers.
+- `test_panel_check.py` covers the form panel's span bar.
+- The probe `/tmp/formprobe/probe.py` has a cat's torso form over a box
+  keel, five formers and a three-piece dorsal and a two-piece flank panel.
+  - It builds, and every piece is seated on a former or the keel.
+  - The 90th-percentile gap is 35-42 mm against a 43.5 mm bar, and the egg
+    ratio is 1.12-1.16.
+  - Built with this ADR's fit-check code, it took 230 s wall and 468-545
+    CPU-s, most of it the fit check (ADR-678).
+- `pixi run test-engine`: 2,334 passed and 61 skipped. One CPU-kill timing
+  test failed while the machine was loaded and passes alone.
+
+**Consequences.** A creature's covers can now be what makes its form. A form
+the machinery and formers do not fill reads as the egg ratio it is. The
+panel-cat brief is re-run unchanged and fully autonomous to test it. A
+form's sections are superellipses, so a sharper feature (a brow ridge, a
+cheekbone) is a separate form, and its panels meet at a seam.
+
+## ADR-680 — A panel piece is refined on a copy, so a failed refinement cannot corrupt it (2026-10-13)
+
+**Decision.** `CadexEnvelope._refined` merges splitter faces on a copy of
+the piece, `shape.copy().removeSplitter()`. Before this it ran on the piece
+itself.
+
+**Why.** ADR-678 found panel pieces whose rim edges had tolerances of 1e12
+to 1e18 mm. Each such piece's box was the size of the world, so every fit
+pair with it was measured exactly. The cause was a failed refinement:
+
+- On a seamed form panel with bosses, OCCT's unifier returned an invalid
+  solid, and on its way it wrote a tolerance of 1.7e21 mm into the rim edges
+  it shared with its input.
+- `_refined` then kept its input "as it is", but that input was already
+  corrupted.
+- `_sound`'s healing pass restored validity, but not the tolerance.
+
+The fuse and the cut before it were measured clean at 0.0007 mm.
+`build_former`'s own refinement keeps nothing of its input, so it is
+unaffected. The part worker's `_refine` refuses an invalid refinement
+(ADR-129), so it never hands a corrupted input back.
+
+**Evidence.** `test_panels.py`'s kernel test now builds a seamed form panel
+with three screws a piece and asserts that every piece's edge tolerance is
+under 0.01 mm. With the old line, the test fails at 1.7e21; with the copy,
+it passes at 0.0007.
+
+**Consequences.** ADR-678 makes the fit check robust to a piece like this.
+This ADR stops pieces like this from being made. Every boolean and distance
+on a panel piece is cheaper, outside the fit as well.

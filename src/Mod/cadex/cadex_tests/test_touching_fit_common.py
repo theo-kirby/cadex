@@ -22,20 +22,18 @@ import cadex_assembly_worker as worker
 import test_clearance_scope as kernel
 
 
-class _Box:
-    def __init__(self, low, high):
-        self.XMin, self.YMin, self.ZMin = low
-        self.XMax, self.YMax, self.ZMax = high
-        self.XLength, self.YLength, self.ZLength = (h - l for l, h in zip(low, high))
+from test_housed_fit_distance import _Box
 
 
 class _Face:
+    Edges = ()
+
     def __init__(self, box):
         self.box = box
 
     def optimalBoundingBox(self, use_triangulation, use_tolerance):
-        assert use_triangulation is False and use_tolerance is True
-        return self.box
+        assert use_triangulation is False and use_tolerance is False
+        return self.box.copy()
 
 
 class _Whole:
@@ -66,6 +64,9 @@ class _Shape:
     def isInside(self, point, tolerance, on_face):
         return False
 
+    def getTolerance(self, mode):
+        return 1e-7
+
     def isNull(self):
         return False
 
@@ -88,6 +89,7 @@ def _kernel(monkeypatch):
     part.makeBox = lambda *args: "region"
     app = types.ModuleType("FreeCAD")
     app.Vector = lambda *xyz: xyz
+    app.BoundBox = _Box
     monkeypatch.setitem(sys.modules, "Part", part)
     monkeypatch.setitem(sys.modules, "FreeCAD", app)
     monkeypatch.setattr(worker, "_cpu_stage", lambda stage: None)

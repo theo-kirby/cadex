@@ -293,8 +293,9 @@ def test_the_roll_limit_is_bracketed_outward_from_the_standing_pose():
 #: The creature style's rules (ADR-626), one per trait the owner's north-star
 #: references share (docs/DESIGN-LANGUAGE.md section 11).
 CREATURE_RULES = ('THE ANATOMY IS THE JOINT LIST', 'SIZE THE ACTUATOR TO THE JOINT',
-                  'THE ACTUATOR IS THE JOINT, AND IT SHOWS', 'SHELLS SIT ON THE MASSES; LINKS DO THE WORK',
-                  'PANELS WRAP THE MECHANISM', 'SEGMENTS, NOT A SKIN, WHERE IT BENDS',
+                  'THE ACTUATOR IS THE JOINT, AND IT SHOWS', "THE FORM IS THE ANIMAL'S, AND IT COMES FIRST",
+                  'PANELS MAKE THE FORM; MACHINERY AND STRUCTURE FILL IT',
+                  'EVERY REGION CARRIES ITS PANELS, LIMBS INCLUDED', 'SEGMENTS, NOT A SKIN, WHERE IT BENDS',
                   'THE CHARACTER IS A REAL SENSOR', 'TWO TONES AND ONE FUNCTIONAL ACCENT',
                   'LIKENESS BY SILHOUETTE AND PROPORTION', 'THE BAR IS A REAL PRODUCT')
 
@@ -305,10 +306,11 @@ def test_the_creature_style_carries_the_north_star_rules_and_not_the_legged_ones
     for rule in CREATURE_RULES:
         assert rule in body, rule
         assert rule not in _body() and rule not in legged, rule
-    # Curved panels are allowed when they wrap the mechanism; the defect is a
-    # shell sized by eye around nothing (owner, 2026-10-09).
-    assert 'may curve' in body and 'grown from what it covers' in body
+    # The form is the animal's, made by panels over machinery and formers; the
+    # defect is a form over air with nothing under it (owner, 2026-10-13, ADR-679).
+    assert 'never from the box the parts happen to fill' in body and 'costume' in body
     assert 'never one soft skin' not in body
     # It points at the helpers and the measured blocks that back it.
-    for name in ('lib.housing', 'part.envelope(over=', 'panel check', 'role="panel"', 'anatomy block', '`reason=`'):
+    for name in ('lib.housing', 'lib.form(', 'part.former(', 'form=[', 'part.envelope(over=',
+                 'fit.panels', 'covers=', 'anatomy block', '`reason=`'):
         assert name in body, name

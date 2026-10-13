@@ -674,21 +674,36 @@ def test_a_sweep_measures_boundaries_unless_a_solid_may_sit_inside_the_other(mon
             return (self.value[self.kind], None, None)
 
     class Solid:
-        def __init__(self, point):
-            self.Vertexes = [types.SimpleNamespace(Point=point)] if point else []
+        def __init__(self, name):
+            self.Vertexes = [types.SimpleNamespace(Point=point[name])] if name else []
+
+    class Face:
+        # Every vertex below lies inside every shape's geometry box, so a
+        # vertex the classifier calls inside is not proved outside (ADR-678).
+        Edges = ()
+
+        def optimalBoundingBox(self, use_triangulation, use_tolerance):
+            assert use_triangulation is False and use_tolerance is False
+            return _Box((0, 0, 0), (10, 10, 10))
 
     class Shape(Measured):
         def __init__(self, points, inside, value):
             super().__init__('solid', value)
             self.Solids, self.Shells, self.inside = [Solid(p) for p in points], ['shell'], inside
+            self.Faces = [Face()]
 
-        def isInside(self, point, tolerance, on_face):
+        def isInside(self, at, tolerance, on_face):
             assert tolerance > 0 and on_face is True
-            return point in self.inside
+            return any(at is point[name] for name in self.inside)
 
+    from test_housed_fit_distance import _Box
     part = types.ModuleType('Part')
     part.Compound = lambda shells: Measured('shell', value)
     monkeypatch.setitem(sys.modules, 'Part', part)
+    app = types.ModuleType('FreeCAD')
+    app.BoundBox = _Box
+    monkeypatch.setitem(sys.modules, 'FreeCAD', app)
+    point = {name: types.SimpleNamespace(x=index, y=1.0, z=1.0) for index, name in enumerate('abc', 1)}
 
     value = {'solid': 5.0, 'shell': 5.0}
     apart = Shape(['a'], set(), value), Shape(['b'], set(), value)

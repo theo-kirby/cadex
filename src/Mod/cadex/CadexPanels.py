@@ -166,7 +166,11 @@ class Envelope:
         return f"Envelope({len(self.spec['over'])} parts, r={self.spec['radius']:g})"
 
 
-def envelope(over, *, clearance=1.5, radius=20.0, motion=(), resolution=None):
+#: How many form solids one envelope takes.
+MAX_FORMS = 16
+
+
+def envelope(over, *, clearance=1.5, radius=20.0, motion=(), resolution=None, form=None):
     """Validate a ``part.envelope`` declaration (see its docstring)."""
 
     items = list(over) if isinstance(over, (list, tuple)) else [over]
@@ -182,6 +186,16 @@ def envelope(over, *, clearance=1.5, radius=20.0, motion=(), resolution=None):
                    for k, entry in enumerate(list(motion or ()))],
         "resolution": None if resolution is None else _number("resolution", resolution, 0.4, 6.0),
     }
+    if form is not None:
+        # The designed outer form (ADR-679): its space is wrapped as the
+        # covered parts are, but it is no part -- it neither blocks a boss
+        # column nor counts as what the panel covers.
+        forms = list(form) if isinstance(form, (list, tuple)) else [form]
+        if not forms:
+            raise PanelError("form= must name at least one solid, or be left out")
+        if len(forms) > MAX_FORMS:
+            raise PanelError(f"form= takes at most {MAX_FORMS} solids")
+        spec["form"] = [_solid_value(f"form[{k}]", item) for k, item in enumerate(forms)]
     return Envelope(spec)
 
 

@@ -77,6 +77,12 @@ MIN_RESOLUTION_MM = 0.6
 MAX_RESOLUTION_MM = 4.0
 #: The angle step a hinge's sweep is sampled at, at most.
 SWEEP_STEP_DEGREES = 5.0
+#: How far a form panel's slope and outline are smoothed, mm (ADR-679).
+FORM_SMOOTH_MM = 4.0
+
+#: A piece's solid under this fraction of its largest is a sliver, and dropped.
+SPECK_FRACTION = 0.1
+
 #: How far down a boss may reach for the frame, mm.
 BOSS_REACH_MM = 60.0
 #: Material kept under a screw head, and around a hole, mm.
@@ -649,13 +655,18 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
         sets = poses(entry, shape_sets(entry["shape"], rough))
         covered_world += sets
         covered_is_frame += [False] * len(sets)
-    triangles = sum(len(t) for t in covered_world)
+    # The designed form (ADR-679): wrapped, never a blocker or a frame.
+    form_world = []
+    for value in envelope.get("form") or []:
+        form_world += shape_sets(value, rough)
+    triangles = sum(len(t) for t in covered_world) + sum(len(t) for t in form_world)
     if triangles > MAX_TRIANGLES:
         raise EnvelopeError(
             f"the covered parts and their motion are {triangles} triangles, more than one "
             f"envelope reads ({MAX_TRIANGLES}); cover fewer parts, or sweep a shorter range")
     covered = [local(t.reshape(-1, 3)).reshape(-1, 3, 3) for t in covered_world]
-    allpts = np.concatenate([t.reshape(-1, 3) for t in covered])
+    formed = [local(t.reshape(-1, 3)).reshape(-1, 3, 3) for t in form_world]
+    allpts = np.concatenate([t.reshape(-1, 3) for t in covered + formed])
     low, high = allpts.min(axis=0), allpts.max(axis=0)
     within = spec.get("within")
     pad = radius + clearance + thickness + 8.0
@@ -666,7 +677,7 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
     if hull:
         field = hull_field(allpts, grid.origin, h, grid.dims)
     else:
-        for tris in covered:
+        for tris in covered + formed:
             occ |= occupancy(tris, grid.origin, h, grid.dims)
         field = closed_distance(occ, h, radius)
     inner = height_field(field, grid.origin[2], h, clearance)
@@ -680,7 +691,14 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
     # Slope of the inner face from side.
     filled = _fill(inner, valid)
     gx, gy = np.gradient(filled, h)
-    slope = np.degrees(np.arctan(np.hypot(gx, gy)))
+    if formed:
+        # A designed form is smooth; its voxel stairs are not. Its slope is
+        # read off the smoothed face, so a max_angle= edge runs clean rather
+        # than ragged along every stair (ADR-679).
+        sx, sy = np.gradient(ndimage.gaussian_filter(filled, FORM_SMOOTH_MM / h), h)
+        slope = np.degrees(np.arctan(np.hypot(sx, sy)))
+    else:
+        slope = np.degrees(np.arctan(np.hypot(gx, gy)))
     region = valid & (slope <= float(spec["max_angle"]))
     # A sudden drop (the face jumps to a lower part) is an edge, not a slope.
     region &= _no_cliff(filled, valid, h, thickness * 2.0)
@@ -712,7 +730,8 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
     region = np.isin(labels, keep)
     inset = float(spec.get("edge_inset") or 0.0)
     phi = (ndimage.distance_transform_edt(region) - ndimage.distance_transform_edt(~region)) * h
-    phi = ndimage.gaussian_filter(phi, 1.0) - 0.5 * h - inset
+    phi = ndimage.gaussian_filter(phi, max(1.0, FORM_SMOOTH_MM / h) if formed else 1.0) \
+        - 0.5 * h - inset
     # -- the inner face as a B-spline, over the region's box -----------------
     rows = np.nonzero(region.any(axis=1))[0]
     cols = np.nonzero(region.any(axis=0))[0]
@@ -894,6 +913,8 @@ def build_panel_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]
         "openings_cells": openings_facts,
         "gap_designed_mm": clearance,
     }
+    if formed:
+        facts["form"] = len(formed)
     if flange_facts:
         facts["flange"] = flange_facts
     return {"pieces": pieces, "fasteners": fasteners,
@@ -1222,13 +1243,22 @@ def _split(body, seams, gap, App, Part):
         if len(piece.Solids) > 1 and os.environ.get("CADEX_ENVELOPE_KEEP_ISLANDS"):
             pieces[name] = piece
             continue
-        if len(piece.Solids) > 1:
-            sizes = sorted((round(abs(s.Volume)) for s in piece.Solids), reverse=True)
+        solids = sorted(piece.Solids, key=lambda s: -abs(s.Volume))
+        if len(solids) > 1:
+            # A sliver a seam or the region's rim left beside the piece is
+            # dropped, as the region's own specks are (ADR-679).
+            largest = abs(solids[0].Volume)
+            solids = [s for s in solids if abs(s.Volume) >= SPECK_FRACTION * largest]
+        if len(solids) > 1:
+            where = "; ".join(
+                f"{round(abs(s.Volume))} mm3 at x {s.BoundBox.XMin:.0f}..{s.BoundBox.XMax:.0f}, "
+                f"y {s.BoundBox.YMin:.0f}..{s.BoundBox.YMax:.0f}, "
+                f"z {s.BoundBox.ZMin:.0f}..{s.BoundBox.ZMax:.0f}" for s in solids)
             raise EnvelopeError(
-                f"piece {name} falls apart into {len(sizes)} solids ({sizes} mm3): its region "
+                f"piece {name} falls apart into {len(solids)} solids ({where}): its region "
                 "is not one patch -- an opening, max_angle= or within= parts it; narrow "
                 "within= to one patch, or add a seam between them")
-        pieces[name] = _sound(piece.Solids[0], f"piece {name}")
+        pieces[name] = _sound(solids[0], f"piece {name}")
     return pieces
 
 
@@ -1354,8 +1384,8 @@ def _mount(pieces, frame, screw, per_piece, phi, inner, outer, frame_z, column_r
             raise EnvelopeError(
                 f"piece {name}: only {len(accepted)} of {per_piece} boss sites reach the frame "
                 f"within {BOSS_REACH_MM:g} mm, flat under the boss and clear of what the panel "
-                "covers; put frame under the panel there, lower screws=, add flange=\"frame\" "
-                "for lugs on its skirt, or seam the piece")
+                "covers; put frame under the panel there (a part.former under a form panel), "
+                "lower screws=, add flange=\"frame\" for lugs on its skirt, or seam the piece")
         bosses, holes, rows_out = [], [], []
         for index, (site, exact) in enumerate(accepted):
             q, top_point, well_top, frame_thick = exact
@@ -1515,10 +1545,17 @@ def _sound(shape, what):
 
 
 def _refined(shape):
-    """``shape`` with its splitter faces merged, or as it is when that fails."""
+    """``shape`` with its splitter faces merged, or as it is when that fails.
+
+    Refined on a copy: OCCT's unifier can write a tolerance of up to 1e21 mm
+    into the edges it shares with its input when it fails, and the piece
+    "kept as it is" was then that corrupted shape -- valid after healing, its
+    box the size of the world, so every fit pair with it was measured
+    exactly at minutes each (ADR-678, ADR-680).
+    """
 
     try:
-        refined = shape.removeSplitter()
+        refined = shape.copy().removeSplitter()
         volume, before = abs(refined.Volume), abs(shape.Volume)
     except Exception:
         return shape
@@ -1544,3 +1581,102 @@ def _first_frame_hit(frame, point, direction, Part):
 
     hits = _frame_hits(frame, point, direction, Part)
     return hits[0] if hits else None
+
+
+def _inset_face(wire, normal, depth, count, App, Part):
+    """The face of ``wire`` pulled ``depth`` mm in, through its sampled outline.
+
+    OCCT's planar offset refuses the single periodic B-spline edge a slice
+    of a loft gives, so the outline is sampled, each point moved inward
+    along the section's normal, and a periodic B-spline fitted through them
+    (ADR-679). Good for the gently curved sections of a designed form.
+    """
+
+    pts = wire.discretize(Number=count + 1)[:-1]
+    n = len(pts)
+    centre = App.Vector(0, 0, 0)
+    for point in pts:
+        centre = centre + point
+    centre = centre * (1.0 / n)
+    area = sum(((pts[i] - centre).cross(pts[(i + 1) % n] - centre)).dot(normal)
+               for i in range(n))
+    sign = 1.0 if area > 0 else -1.0
+    moved = []
+    for i in range(n):
+        tangent = pts[(i + 1) % n] - pts[i - 1]
+        if tangent.Length < 1e-9:
+            continue
+        tangent.normalize()
+        moved.append(pts[i] + normal.cross(tangent) * (sign * depth))
+    curve = Part.BSplineCurve()
+    curve.interpolate(moved, PeriodicFlag=True)
+    face = Part.Face(Part.Wire([curve.toShape()]))
+    if not face.isValid() or face.Area <= 0:
+        raise EnvelopeError(f"the form's section is too small or too tight to inset by {depth:g} mm")
+    return face
+
+
+def build_former(form, keep_out, origin, normal, width, depth, web, *, samples=96):
+    """A former: the band of a designed form that carries its panels (ADR-679).
+
+    Built in the plane, never by a 3D boolean of the form's B-spline skin:
+    the form is sliced at the band's two faces and its middle, the three
+    outlines intersected (so the band stays inside a form that tapers
+    across it), the hoop is that outline less its inset by ``depth``,
+    extruded ``width`` along ``normal``, and the web, when asked, the inset
+    face ``web`` thick less ``keep_out``. A few seconds where the 3D
+    booleans took minutes.
+    """
+
+    import FreeCAD as App
+    import Part
+
+    n = App.Vector(*normal)
+    n.normalize()
+    o = App.Vector(*origin)
+    d = o.dot(n)
+    faces = []
+    for shift in (-width / 2.0, 0.0, width / 2.0):
+        wires = [w for w in form.slice(n, d + shift) if w.isClosed()]
+        if not wires:
+            raise EnvelopeError(
+                f"the plane {shift:+g} mm from origin misses the form: put origin inside it, "
+                "with the band's width inside it too")
+        sections = [Part.Face(w) for w in wires]
+        here = o + n * shift
+        # The section round origin, else the largest (a form sliced through two limbs).
+        chosen = next((f for f in sections if f.isInside(here, 0.01, True)),
+                      max(sections, key=lambda f: f.Area))
+        chosen.translate(n * (-shift))
+        faces.append(chosen)
+    outline = faces[0].common(faces[1]).common(faces[2])
+    if not outline.Faces:
+        raise EnvelopeError("the form's sections across the band do not overlap; narrow width=")
+    outer = max(outline.Faces, key=lambda f: f.Area)
+    inner = _inset_face(outer.OuterWire, n, depth, samples, App, Part)
+    ring = outer.cut(inner)
+    if not ring.Faces:
+        raise EnvelopeError(f"depth={depth:g} leaves no hoop: the form is thinner than that")
+    start = n * (-width / 2.0)
+    hoop = ring.extrude(n * width)
+    hoop.translate(start)
+    body = hoop
+    if web > 0:
+        plate = inner.extrude(n * web)
+        plate.translate(n * (-web / 2.0))
+        if keep_out:
+            plate = plate.cut(Part.makeCompound(list(keep_out)))
+        if plate.Solids:
+            body = hoop.fuse(plate)
+    body = body.removeSplitter()
+    solids = list(body.Solids)
+    if not solids:
+        raise EnvelopeError("the former came out empty")
+    if len(solids) > 1:
+        # A web cut through by keep_out leaves islands; the one the hoop is
+        # part of is the former.
+        solids.sort(key=lambda s: -abs(s.Volume))
+        body = solids[0]
+    else:
+        body = solids[0]
+    return _sound(body, "the former")

@@ -1163,6 +1163,10 @@ PANEL_SOURCE = (
 #: narrower than the ball is bridged, not followed), plus this slack.
 PANEL_FLOATING_GAP_MM = 8.0
 PANEL_FLOATING_SLACK_MM = 2.0
+#: The widest a panel cut from a designed form (``part.envelope(form=...)``,
+#: ADR-679) may span between what holds it up -- formers, frame, drives --
+#: before it floats: a 2 mm printed cover is stiff over about this much.
+PANEL_FORM_SPAN_MM = 80.0
 #: Wall median past which a panel is a solid lump; covers print 1.6-2.4 mm.
 PANEL_SOLID_WALL_MM = 4.0
 #: Wall p10 under which a printed panel is too thin to print and handle.
@@ -1239,6 +1243,7 @@ def panel_summary(value: Any) -> dict[str, Any]:
     thresholds = {
         "floating_gap_mm": PANEL_FLOATING_GAP_MM,
         "floating_slack_mm": PANEL_FLOATING_SLACK_MM,
+        "form_span_mm": PANEL_FORM_SPAN_MM,
         "solid_wall_mm": PANEL_SOLID_WALL_MM,
         "thin_wall_mm": PANEL_THIN_WALL_MM,
         "egg_ratio": PANEL_EGG_RATIO,
@@ -1362,7 +1367,7 @@ def panel_summary(value: Any) -> dict[str, Any]:
         item: dict[str, Any] = {"component": name, "findings": []}
         if grown:
             item["grown"] = {key: grown[key] for key in ("group", "piece", "clearance_mm", "hull",
-                                                         "radius_mm", "thickness_mm")
+                                                         "radius_mm", "thickness_mm", "formed")
                              if key in grown}
         clearance = float(grown.get("clearance_mm") or 0.0) if _finite(
             grown.get("clearance_mm")) else 0.0
@@ -1371,6 +1376,11 @@ def panel_summary(value: Any) -> dict[str, Any]:
             # An enclosure round an open frame bridges it on purpose: its
             # gap is not judged, its egg ratio still is (advisory).
             floating_at = math.inf
+        elif _finite(grown.get("clearance_mm")) and grown.get("formed"):
+            # A form panel stands off what it covers by design; it floats
+            # when the span to the nearest support is too long (ADR-679).
+            floating_at = clearance + max(radius, PANEL_FORM_SPAN_MM) / 2.0 + \
+                PANEL_FLOATING_SLACK_MM
         elif _finite(grown.get("clearance_mm")):
             floating_at = clearance + radius / 2.0 + PANEL_FLOATING_SLACK_MM
         else:

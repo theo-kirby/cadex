@@ -2673,6 +2673,100 @@ class LibraryAPI:
         except PanelError as exc:
             raise LibraryError(f"lib.housing: {exc}") from exc
 
+    # -- designed forms and the formers that carry them (ADR-679) -----------
+
+    def form(self, stations, *, up=(0.0, 0.0, 1.0), points=32, on_bulge="refuse", label=""):
+        """A smooth outer form lofted through cross-sections: a skull, a ribcage, a haunch.
+
+        ``stations`` -- at least two, in order along the form, each a dict:
+        ``at`` (the section's centre, mm), ``width`` (full width across),
+        ``top`` and ``bottom`` (how far it reaches above and below the
+        centre along ``up``, so a back can be flat and a belly deep), and
+        optional ``square`` (2 an ellipse, up to 8 boxier; default 2.5)
+        and ``up`` (this station's own up, to twist or bank it). Each
+        section is square to the path through the centres. Returns a
+        solid: hand it to ``part.envelope(..., form=...)`` so the panels
+        take its shape, and cut ``part.former``s from it to carry them.
+        Take the stations from the animal -- its measured proportions and
+        the bones that make its silhouette (brow, cheekbone, muzzle,
+        shoulder blade, ribcage, pelvis) -- never from the mechanism.
+        """
+        operation = "form"
+        if not isinstance(stations, (list, tuple)) or len(stations) < 2:
+            raise LibraryError("lib.form: stations must be a list of at least two dicts.")
+        count = int(points)
+        if not 8 <= count <= 96:
+            raise LibraryError("lib.form: points must be between 8 and 96.")
+
+        def number(k, key, value, low):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) \
+                    or not math.isfinite(value) or value < low:
+                raise LibraryError(f"lib.form: stations[{k}].{key} must be a number of at "
+                                   f"least {low:g}; received {value!r}.")
+            return float(value)
+
+        def vec(where, value):
+            try:
+                out = [float(v) for v in value]
+            except (TypeError, ValueError):
+                out = []
+            if len(out) != 3 or not all(math.isfinite(v) for v in out):
+                raise LibraryError(f"lib.form: {where} must be three numbers; received {value!r}.")
+            return out
+
+        def unit(v):
+            n = math.sqrt(sum(c * c for c in v))
+            return [c / n for c in v] if n > 1e-12 else None
+
+        clean = []
+        for k, st in enumerate(stations):
+            if not isinstance(st, dict):
+                raise LibraryError(f"lib.form: stations[{k}] must be a dict with at, width, "
+                                   "top and bottom.")
+            unknown = set(st) - {"at", "width", "top", "bottom", "square", "up"}
+            if unknown:
+                raise LibraryError(f"lib.form: stations[{k}] has unknown keys {sorted(unknown)}.")
+            clean.append({
+                "at": vec(f"stations[{k}].at", st.get("at")),
+                "width": number(k, "width", st.get("width"), 1.0),
+                "top": number(k, "top", st.get("top"), 0.5),
+                "bottom": number(k, "bottom", st.get("bottom"), 0.5),
+                "square": number(k, "square", st.get("square", 2.5), 1.5),
+                "up": vec(f"stations[{k}].up", st.get("up", up)),
+            })
+            if clean[-1]["square"] > 8.0:
+                raise LibraryError(f"lib.form: stations[{k}].square must be at most 8.")
+        sections = []
+        for k, st in enumerate(clean):
+            a = clean[max(k - 1, 0)]["at"]
+            b = clean[min(k + 1, len(clean) - 1)]["at"]
+            t = unit([b[i] - a[i] for i in range(3)])
+            if t is None:
+                raise LibraryError(f"lib.form: stations[{k}] sits on its neighbour; space the "
+                                   "stations apart along the form.")
+            u = st["up"]
+            d = sum(u[i] * t[i] for i in range(3))
+            u = unit([u[i] - d * t[i] for i in range(3)])
+            if u is None:
+                raise LibraryError(f"lib.form: stations[{k}].up runs along the form; give an up "
+                                   "across it.")
+            side = [t[1] * u[2] - t[2] * u[1], t[2] * u[0] - t[0] * u[2],
+                    t[0] * u[1] - t[1] * u[0]]
+            e = 2.0 / st["square"]
+            ring = []
+            for j in range(count):
+                th = 2.0 * math.pi * j / count
+                c, s_ = math.cos(th), math.sin(th)
+                y = 0.5 * st["width"] * math.copysign(abs(c) ** e, c)
+                z = (st["top"] if s_ >= 0 else st["bottom"]) * math.copysign(abs(s_) ** e, s_)
+                ring.append([st["at"][i] + y * side[i] + z * u[i] for i in range(3)])
+            edge = self._part.bspline(ring, periodic=True)
+            sections.append(self._part.wire([edge], closed=True))
+        try:
+            return self._part.loft(sections, solid=True, on_bulge=on_bulge, label=label)
+        except Exception as exc:
+            raise LibraryError(f"lib.{operation}: {exc}") from exc
+
     def catalog(self) -> dict[str, Any]:
         """The browsable catalog: families, part numbers, deciding specs."""
 

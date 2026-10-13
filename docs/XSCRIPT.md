@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-11
+Verified against source: 2026-10-13
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -1341,6 +1341,33 @@ declares the surface panels are cut from -- not a shape on its own:
   covered too, sampled every 5 degrees or 2 mm.
 - `resolution`: the field's voxel, mm; default chosen for the size
   (0.6-4 mm, at most 9 M voxels).
+- `form`: a designed outer form, one solid or a list of up to 16 (ADR-679)
+  -- an animal's skull, ribcage or haunch, a hood -- whose space is wrapped
+  as well, so the panels take its shape where it stands proud of `over`,
+  while `over` still decides what they must clear. A form is no part: it
+  never blocks a boss column and is not what a panel covers, so the
+  supports under it (formers, the frame, the drives) go in `covers=` and
+  the panels' `frame=`. Its panels' slope and outline are read off a face
+  smoothed by 4 mm, so a `max_angle` edge runs clean along the form.
+
+`lib.form(stations, *, up=(0,0,1), points=32, on_bulge="refuse", label="")`
+lofts a form through cross-sections: each station a dict of `at` (the
+centre), `width` (full width), `top` and `bottom` (reach above and below
+the centre along `up`, so a back can be flat and a belly deep), and optional
+`square` (2 an ellipse, up to 8 boxier; default 2.5) and its own `up`. Each
+section is square to the path through the centres.
+
+`part.former(form, origin, normal, *, width=16, depth=8, web=0, keep_out=(),
+label="")` is the hoop that carries a form's panels: the band of `form`
+`width` thick along `normal` through `origin`, `depth` deep inward from its
+surface, its outer face the form (kept inside where the form tapers across
+the band), so a form panel lands on it at the envelope's clearance and its
+bosses screw into it -- 16 or more wide for M3, because a boss needs the
+band under its whole disc. `web > 0` fills the hoop with a plate that thick,
+less `keep_out` (the frame and what passes through): a bulkhead. It is built
+in the plane -- the form sliced at the band's faces and middle, the
+outlines intersected, the inset fitted through the sampled outline -- in a
+second or two, where 3D booleans of the form's B-spline skin took minutes.
 
 `part.panel(env, *, side=(0,0,1), max_angle=60, within=None, thickness=2.0,
 seams=(), seam_gap=0.6, inset=0.0, openings=(), flange=0.0, frame=None,
@@ -1351,8 +1378,10 @@ screw=None, screws=2, max_piece=None, avoid=(), label="")` returns a
   than `max_angle` degrees from that direction (60 for a cover that wraps
   down its sides; 40-50 where it meets side panels, with `inset` = half the
   gap), inside `within=((x0,y0,z0),(x1,y1,z1))`. Sudden drops are edges, not
-  slopes; specks are dropped. A region that falls apart into islands is
-  refused by name: narrow `within` or seam between them.
+  slopes; specks are dropped, and so is a sliver a seam leaves under a
+  tenth of its piece (ADR-679). A region that still falls apart into islands
+  is refused with each island's volume and box: narrow `within` or seam
+  between them.
 - **The surface.** The inner face is the envelope there, smoothed to a third
   of `radius` without coming closer than `clearance`, fitted with a B-spline
   surface, trimmed by the outline (a smooth periodic curve on the surface),
@@ -2430,6 +2459,19 @@ non-zero volume is still the uncut one. On hexapod-10's refused build the
 tub and its visor cost 103 CPU-s before and 33 after, and every static row of
 both builds is unchanged. The swept fit is unchanged.
 
+**A face is measured against one face, on its geometry's box** (ADR-678). The
+housing search splits each face it reaches into pairs with the other side's
+faces, and measures the pair with the least bound first, smaller faces first
+among equals; a panel cast onto its frame is proved touching by its boss's
+end against the frame face under it. Every box in the search, in the cut
+`common` and in the containment check is the geometry's, without tolerances:
+a `part.panel` piece can carry a boss seam of tolerance 1e15 mm, which makes
+its toleranced box unbounded and its classifier call a far point inside. A
+component whose largest tolerance is over 1 mm is culled on its geometry's
+box too; every other keeps its toleranced box and the numbers it was culled
+with. On a robot cat's frame, torso panels and head, 91 static pairs fell
+from 1,605 to 92 CPU-s, with every exactly measured row unchanged.
+
 A pair joined by an **unsuppressed `fixed` joint is not an undeclared pair**
 (ADR-372) and is exempt from that 0.1 mm: welding two components is the design
 declaring them one rigid body, so meeting face to face is what the declaration
@@ -2532,7 +2574,7 @@ own facts (its clearance, radius, group and piece):
 
 | finding | when | fails the fit |
 |---|---|---|
-| `floating` | the inner face's p90 gap passes its clearance + radius/2 + 2 mm (a hand-made panel: 8 mm), or nothing of it faces what it covers; a `radius="hull"` enclosure is not judged | yes |
+| `floating` | the inner face's p90 gap passes its clearance + radius/2 + 2 mm (a form panel: clearance + the larger of radius and its 80 mm span, halved, + 2 mm; a hand-made panel: 8 mm), or nothing of it faces what it covers; a `radius="hull"` enclosure is not judged | yes |
 | `colliding` | it overlaps a component that is not a bolt at rest (a bolt's thread allowance excepted) | yes |
 | `colliding in motion` | a swept joint drives a component it is not welded to into it | yes |
 | `unmounted` | no `lib.bolt` touching it threads into a non-panel part, and no touching fixed joint welds it to one | yes |

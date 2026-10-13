@@ -1610,6 +1610,7 @@ def _panel_output(operation: str, payload: dict[str, Any], properties: dict[str,
             "clearance_mm": float(envelope["clearance"]),
             "radius_mm": None if envelope["radius"] == "hull" else float(envelope["radius"]),
             "hull": envelope["radius"] == "hull",
+            **({"formed": True} if envelope.get("form") else {}),
             "thickness_mm": float(spec["thickness"]),
             "side": list(spec["side"]),
             "screw": (spec.get("screw") or {}).get("size"),
@@ -1618,6 +1619,24 @@ def _panel_output(operation: str, payload: dict[str, Any], properties: dict[str,
         }
     shape = plan["pieces"][piece]
     return shape.copy() if hasattr(shape, "copy") else Part.Shape(shape)
+
+
+def _former_output(operation: str, payload: Mapping[str, Any],
+                   properties: Mapping[str, Any]) -> Any:
+    """A part.former: the band of a designed form that carries its panels (ADR-679)."""
+
+    from CadexEnvelope import EnvelopeError, build_former
+
+    form = _shape(operation, "form", _argument(payload, 0, "form"))
+    keep_out = _shape_list(operation, "keep_out", _argument(payload, 1, "keep_out"), minimum=0)
+    try:
+        return build_former(
+            form, keep_out,
+            _vector(operation, "origin", properties.get("origin")),
+            _vector(operation, "normal", properties.get("normal")),
+            float(properties["width"]), float(properties["depth"]), float(properties["web"]))
+    except EnvelopeError as exc:
+        raise _error(operation, "form", str(exc)) from None
 
 
 def _panel_fastener_mount(operation: str, target: dict[str, Any]) -> dict[str, Any]:
@@ -4432,6 +4451,8 @@ def _build(
         return _mated(operation, payload, properties)
     if operation == "panel":
         return _panel_output(operation, payload, properties, diagnostics)
+    if operation == "former":
+        return _former_output(operation, payload, properties)
     if operation == "loft_cage":
         return _lofted_cage(operation, payload, properties)
     if operation == "transform":
@@ -4629,7 +4650,7 @@ _CRASH_PRONE_OPERATIONS = frozenset(
     {
         "fillet", "chamfer", "fuse", "cut", "common", "section",
         "general_fuse", "slice", "defeature", "offset", "offset2d",
-        "thicken", "loft", "loft_cage", "sweep", "mate",
+        "thicken", "loft", "loft_cage", "sweep", "mate", "former",
     }
 )
 

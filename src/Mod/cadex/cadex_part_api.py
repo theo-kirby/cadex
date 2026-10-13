@@ -3328,7 +3328,8 @@ class PartDomainAPI:
             label=label,
         )
 
-    def envelope(self, over, *, clearance=1.5, radius=20.0, motion=(), resolution=None):
+    def envelope(self, over, *, clearance=1.5, radius=20.0, motion=(), resolution=None,
+                 form=None):
         # Unannotated on purpose, like lib's: describe_api's part page is held
         # under one tool result; the types are the docstring's.
         """The surface panels are cut from: what they cover, at a clearance (ADR-635).
@@ -3345,7 +3346,15 @@ class PartDomainAPI:
         hinge, degrees) or ``{"shape": s, "direction": d, "range": (lo,
         hi)}`` (a slider, mm): their swept space is covered too.
         ``resolution`` -- the field's voxel, mm (default: chosen for the
-        size, 0.6-4). Not a shape: pass it to ``part.panel``. The frame the
+        size, 0.6-4). ``form`` -- a designed outer form, one solid or a
+        list (an animal's skull, ribcage, haunch, forearm; ``lib.form``
+        lofts one from stations): its space is wrapped as well, so the
+        panels take its shape where it stands proud of ``over``, while
+        ``over`` still decides what they must clear. A form is no part: it
+        never blocks a boss and is not what a panel covers, so declare the
+        supports under it (``part.former``, the frame, the drives) in
+        ``covers=``; ``fit.panels`` judges a form panel by the span to
+        them. Not a shape: pass it to ``part.panel``. The frame the
         panels screw to is not wrapped unless ``over`` names it.
         """
 
@@ -3353,7 +3362,7 @@ class PartDomainAPI:
 
         try:
             return envelope(over, clearance=clearance, radius=radius, motion=motion,
-                            resolution=resolution)
+                            resolution=resolution, form=form)
         except PanelError as exc:
             raise _error("envelope", "envelope", str(exc)) from exc
 
@@ -3399,6 +3408,38 @@ class PartDomainAPI:
                          screws=screws, max_piece=max_piece, avoid=avoid, label=label)
         except PanelError as exc:
             raise _error("panel", "panel", str(exc)) from exc
+
+    def former(self, form, origin, normal, *, width=16.0, depth=8.0, web=0.0, keep_out=(),
+               label=""):
+        """A former: the hoop of a designed form that carries its panels (ADR-679).
+
+        The band of ``form`` (a ``lib.form`` or any solid) ``width`` mm
+        thick along ``normal`` through ``origin``, ``depth`` mm deep inward
+        from the form's surface, built in the plane and kept inside the form
+        where it tapers: a panel cut from ``part.envelope(..., form=form)``
+        lands on it at the envelope's clearance, and its bosses screw into
+        it -- a boss needs the band under its whole disc, so keep ``width``
+        at 16 or more for M3. ``web`` > 0 fills the hoop with a plate that
+        thick, less ``keep_out`` (the frame, drives and links that pass
+        through it, swept where they move): a bulkhead that ties the hoop to
+        the frame. Weld each former to what carries it, name it in the
+        panels' ``covers=``, and fuse the formers into the panels'
+        ``frame=``. Returns a solid.
+        """
+
+        operation = "former"
+        return self._value(
+            operation,
+            "solid",
+            _shape(operation, "form", form),
+            _shapes(operation, "keep_out", keep_out, minimum=0),
+            origin=_vector(operation, "origin", origin),
+            normal=_vector(operation, "normal", normal, nonzero=True),
+            width=_number(operation, "width", width, minimum=4.0),
+            depth=_number(operation, "depth", depth, minimum=1.0),
+            web=_number(operation, "web", web, minimum=0.0),
+            label=label,
+        )
 
     def refine(self, shape: DomainValue, *, label: str = "") -> DomainValue:
         """Copy a shape and remove redundant splitter edges and faces."""
@@ -3476,4 +3517,5 @@ class PartDomainAPI:
             "refine",
             "envelope",
             "panel",
+            "former",
         )
