@@ -793,7 +793,7 @@ class PartDomainAPI:
         output_type: str,
         label: str = "",
     ) -> DomainValue:
-        """Snapshot a referenced live object's exact Shape for isolated Part operations."""
+        """Snapshot a live object's exact Shape for Part operations."""
 
         operation = "from_object"
         return self._value(
@@ -1023,7 +1023,7 @@ class PartDomainAPI:
         sweep: float = 360.0,
         label: str = "",
     ) -> DomainValue:
-        """Create a torus or toroidal segment; major radius must exceed minor radius."""
+        """A torus or toroidal segment; the major radius exceeds the minor."""
 
         operation = "torus"
         major = _number(operation, "major_radius", major_radius, minimum=0.0, strict=True)
@@ -1356,7 +1356,7 @@ class PartDomainAPI:
         holes: Sequence[DomainValue] = (),
         label: str = "",
     ) -> DomainValue:
-        """Create a planar face from one closed outer wire and optional closed hole wires."""
+        """A planar face from one closed outer wire and optional hole wires."""
 
         operation = "face"
         clean_holes = _shapes(operation, "holes", holes, minimum=0, allowed={"wire"})
@@ -2303,7 +2303,7 @@ class PartDomainAPI:
         output_type: str | None = None,
         label: str = "",
     ) -> DomainValue:
-        """Boolean-intersect shapes in one OCC operation with optional fuzzy tolerance."""
+        """Boolean intersection of shapes, with optional fuzzy tolerance."""
 
         operation = "common"
         clean_shapes = _shapes(operation, "shapes", shapes, minimum=2)
@@ -2482,7 +2482,7 @@ class PartDomainAPI:
         output_type: str = "shell",
         label: str = "",
     ) -> DomainValue:
-        """Sew touching faces/shells; a closed sewn shell may be promoted to a solid."""
+        """Sew touching faces or shells; a closed one may become a solid."""
 
         operation = "sew"
         clean_type = _result_type(operation, output_type)
@@ -3332,7 +3332,7 @@ class PartDomainAPI:
                  form=None):
         # Unannotated on purpose, like lib's: describe_api's part page is held
         # under one tool result; the types are the docstring's.
-        """The surface panels are cut from: what they cover, at a clearance (ADR-635).
+        """What panels are cut from, at a clearance (ADR-635).
 
         ``over`` -- the solids or lib parts the panels cover (exact solids,
         catalog parts, meshes made solid). ``clearance`` -- the gap from the
@@ -3369,7 +3369,7 @@ class PartDomainAPI:
     def panel(self, envelope, *, side=(0.0, 0.0, 1.0), max_angle=60.0, within=None,
               thickness=2.0, seams=(), seam_gap=0.6, inset=0.0, openings=(), flange=0.0,
               frame=None, screw=None, screws=2, max_piece=None, avoid=(), label=""):
-        """A thin, open panel: one region of an envelope, split and screwed down (ADR-635).
+        """One envelope region as thin panels, split and screwed (ADR-635).
 
         The region is the envelope seen from ``side`` where its face turns
         less than ``max_angle`` degrees from that direction (60 for a cover
@@ -3412,7 +3412,7 @@ class PartDomainAPI:
     def skin(self, form, regions, *, thickness=2.5, gap=1.2, openings=(), frame=None,
              screw=None, screws=2, keep_clear=(), clearance=2.0, max_piece=None, avoid=(),
              label=""):
-        """Panels cut from a designed form itself: its own surface, all the way round.
+        """Panels cut whole from a designed form's own surface (ADR-684).
 
         ``form`` -- the outer form (a ``lib.form``, or a list of them, fused:
         a torso with its shoulder and haunch masses). The skin is the form's
@@ -3444,7 +3444,7 @@ class PartDomainAPI:
 
     def former(self, form, origin, normal, *, width=16.0, depth=8.0, web=0.0, keep_out=(),
                inset=0.0, label=""):
-        """A former: the hoop of a designed form that carries its panels (ADR-679).
+        """The hoop of a designed form that carries its panels (ADR-679).
 
         The band of ``form`` (a ``lib.form`` or any solid) ``width`` mm
         thick along ``normal`` through ``origin``, ``depth`` mm deep inward
