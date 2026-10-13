@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-11
+Verified against source: 2026-10-13
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -2429,6 +2429,19 @@ other answer, or a failed cut, runs the whole boolean as before, so every
 non-zero volume is still the uncut one. On hexapod-10's refused build the
 tub and its visor cost 103 CPU-s before and 33 after, and every static row of
 both builds is unchanged. The swept fit is unchanged.
+
+**A face is measured against one face, on its geometry's box** (ADR-678). The
+housing search splits each face it reaches into pairs with the other side's
+faces, and measures the pair with the least bound first, smaller faces first
+among equals; a panel cast onto its frame is proved touching by its boss's
+end against the frame face under it. Every box in the search, in the cut
+`common` and in the containment check is the geometry's, without tolerances:
+a `part.panel` piece can carry a boss seam of tolerance 1e15 mm, which makes
+its toleranced box unbounded and its classifier call a far point inside. A
+component whose largest tolerance is over 1 mm is culled on its geometry's
+box too; every other keeps its toleranced box and the numbers it was culled
+with. On a robot cat's frame, torso panels and head, 91 static pairs fell
+from 1,605 to 92 CPU-s, with every exactly measured row unchanged.
 
 A pair joined by an **unsuppressed `fixed` joint is not an undeclared pair**
 (ADR-372) and is exempt from that 0.1 mm: welding two components is the design

@@ -58,6 +58,9 @@ class _Shell:
     def isNull(self):
         return False
 
+    def getTolerance(self, _mode):
+        return 1e-7
+
     def optimalBoundingBox(self, *_args):
         return _Box()
 

@@ -15,6 +15,7 @@ be measured. Two shells that touch need no re-measurement on the solids.
 from __future__ import annotations
 
 import json
+import math
 import sys
 import types
 
@@ -25,28 +26,67 @@ import test_clearance_scope as kernel
 
 
 class _Box:
-    def __init__(self, low, high):
+    """A kernel bounding box: ``add`` and ``enlarge`` change it in place."""
+
+    def __init__(self, low=(math.inf,) * 3, high=(-math.inf,) * 3):
         self.XMin, self.YMin, self.ZMin = low
         self.XMax, self.YMax, self.ZMax = high
-        self.XLength, self.YLength, self.ZLength = (h - l for l, h in zip(low, high))
+
+    @property
+    def XLength(self):
+        return self.XMax - self.XMin
+
+    @property
+    def YLength(self):
+        return self.YMax - self.YMin
+
+    @property
+    def ZLength(self):
+        return self.ZMax - self.ZMin
+
+    def add(self, other):
+        self.XMin, self.YMin, self.ZMin = (min(a, b) for a, b in zip(
+            (self.XMin, self.YMin, self.ZMin), (other.XMin, other.YMin, other.ZMin)))
+        self.XMax, self.YMax, self.ZMax = (max(a, b) for a, b in zip(
+            (self.XMax, self.YMax, self.ZMax), (other.XMax, other.YMax, other.ZMax)))
+
+    def enlarge(self, by):
+        self.XMin, self.YMin, self.ZMin = self.XMin - by, self.YMin - by, self.ZMin - by
+        self.XMax, self.YMax, self.ZMax = self.XMax + by, self.YMax + by, self.ZMax + by
+
+    def copy(self):
+        return _Box((self.XMin, self.YMin, self.ZMin), (self.XMax, self.YMax, self.ZMax))
 
 
 class _Face:
-    """A housing face: its exact box, its distance to the part's box, and to the part."""
+    """A housing face: its geometry box, its distance to the part's box, and to the part."""
+
+    Edges = ()
 
     def __init__(self, name, box, bound, exact, calls):
         self.name, self.box, self.bound, self.exact, self.calls = name, box, bound, exact, calls
 
     def optimalBoundingBox(self, use_triangulation, use_tolerance):
-        assert use_triangulation is False and use_tolerance is True
-        return self.box
+        assert use_triangulation is False and use_tolerance is False
+        return self.box.copy()
 
     def distToShape(self, other):
         if other == "bound":
             self.calls.append("bound " + self.name)
             return (self.bound, None, None)
-        self.calls.append(self.name)
-        return (self.exact, None, None)
+        return other.distToShape(self)
+
+
+class _BoardFace(_Face):
+    """A board face: measured against a tub face, it reads that face's distance plus its own offset."""
+
+    def __init__(self, name, box, offset, calls):
+        super().__init__(name, box, None, None, calls)
+        self.offset = offset
+
+    def distToShape(self, other):
+        self.calls.append(other.name + "/" + self.name)
+        return (other.exact + self.offset, None, None)
 
 
 class _Whole:
@@ -56,8 +96,6 @@ class _Whole:
         self.calls, self.value = calls, value
 
     def distToShape(self, other):
-        if isinstance(other, _Face):
-            return other.distToShape(self)
         self.calls.append("whole")
         return (self.value, None, None)
 
@@ -79,6 +117,9 @@ class _Shape:
     def isInside(self, point, tolerance, on_face):
         return False
 
+    def getTolerance(self, mode):
+        return 1e-7
+
     def isNull(self):
         return False
 
@@ -97,6 +138,7 @@ def _kernel(monkeypatch, calls, whole_value):
     part.makeBox = lambda *args: "bound"
     app = types.ModuleType("FreeCAD")
     app.Vector = lambda *xyz: xyz
+    app.BoundBox = _Box
     monkeypatch.setitem(sys.modules, "Part", part)
     monkeypatch.setitem(sys.modules, "FreeCAD", app)
 
@@ -109,12 +151,21 @@ def _housing(calls):
              _Face("far_bspline", around, 30.603, 30.603, calls),
              _Face("wall", _Box((31, -60, 0), (32, 60, 90)), 11.0, 13.0, calls)]
     tub = _Shape(around, faces, calls)
-    board = _Shape(_Box((-20, -15, 40), (20, 15, 55)), [object()] * 77, calls)
+    # The board's seven faces: the underside nearest every tub face, the
+    # top 15 mm further, the four sides and a pin 2-5 mm further still.
+    board_faces = [_BoardFace("under", _Box((-20, -15, 40), (20, 15, 40)), 0.0, calls),
+                   _BoardFace("top", _Box((-20, -15, 55), (20, 15, 55)), 15.0, calls),
+                   _BoardFace("left", _Box((-20, -15, 40), (-20, 15, 55)), 5.0, calls),
+                   _BoardFace("right", _Box((20, -15, 40), (20, 15, 55)), 2.0, calls),
+                   _BoardFace("front", _Box((-20, -15, 40), (20, -15, 55)), 3.0, calls),
+                   _BoardFace("rear", _Box((-20, 15, 40), (20, 15, 55)), 3.0, calls),
+                   _BoardFace("pin", _Box((-1, -1, 55), (1, 1, 60)), 4.0, calls)]
+    board = _Shape(_Box((-20, -15, 40), (20, 15, 60)), board_faces, calls)
     return tub, board
 
 
 def test_the_static_fit_measures_only_housing_faces_that_could_be_nearer(monkeypatch):
-    """The tub against a board it houses, in either order: two faces measured, not all."""
+    """The tub against a board it houses, in either order: two faces' pairs measured, not all."""
 
     calls = []
     _kernel(monkeypatch, calls, 12.4)
@@ -127,10 +178,15 @@ def test_the_static_fit_measures_only_housing_faces_that_could_be_nearer(monkeyp
         assert row["distance_mm"] == 12.4 and row["common_volume_mm3"] == 0.0
         assert "culled" not in row and "error" not in row
         # Best first: the faces whose boxes overlap the board's, then the wall,
-        # are bounded by the board's box; the wall and "near" beat every other
-        # bound and are measured. The back face's box is 44 mm off: untouched.
+        # are bounded by the board's box. The wall's pairs within 11 mm of
+        # their boxes come first (the left side's is 51 mm off, the pin's 29),
+        # then all of "near"'s, bound by its 12.0. The back face's box is
+        # 44 mm off, and the two far faces' 28 and 30 mm bounds are above the
+        # 12.4 found: none of their pairs is measured, nor the whole.
         assert calls == ["bound far_offset", "bound near", "bound far_bspline", "bound wall",
-                         "wall", "near"]
+                         "wall/under", "wall/top", "wall/right", "wall/front", "wall/rear",
+                         "near/under", "near/top", "near/left", "near/right", "near/front",
+                         "near/rear", "near/pin"]
 
 
 def test_the_sweep_and_a_part_no_more_complex_than_a_box_are_measured_whole(monkeypatch):
@@ -180,7 +236,7 @@ for name, a, b in (("tub/board", tub, board), ("board/tub", board, tub),
                    ("dome/board", dome, board), ("board/dome", board, dome)):
     whole = Part.Compound(a.Shells).distToShape(Part.Compound(b.Shells))[0]
     boxes = tuple(shape.optimalBoundingBox(False, True) for shape in (a, b))
-    rows.append([name, len(b.Faces), _boundary_distance(a, b, boxes), whole])
+    rows.append([name, len(b.Faces), _boundary_distance(a, b, boxes, {}), whole])
 print('CLEARANCE-FRAME ' + json.dumps(rows))
 '''
 
