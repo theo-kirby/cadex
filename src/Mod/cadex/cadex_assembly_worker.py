@@ -6455,6 +6455,21 @@ _SWEEP_MAX_PAIRS = 2000
 #: A moving pair whose exact-geometry boxes stay this far apart at every
 #: sample is bounded, not measured (ADR-419): no fit floor reaches it.
 _SWEEP_CULL_MM = 10.0
+#: The directions a moving pair's extents are compared along (ADR-686):
+#: the axes, the face diagonals and the body diagonals of a cube.
+_SWEEP_DIRECTIONS = ((1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0), (1, -1, 0), (1, 0, 1),
+                     (1, 0, -1), (0, 1, 1), (0, 1, -1), (1, 1, 1), (1, 1, -1), (1, -1, 1), (-1, 1, 1))
+#: A common volume past which a sample is at distance 0.0 unmeasured (ADR-686), mm^3.
+_SWEEP_OVERLAP_MM3 = 1.0
+#: A face larger than this across is bounded patch by patch (ADR-686), mm.
+_SWEEP_PIECE_MM = 25.0
+#: A face whose edges carry more than this keeps its whole box (ADR-686), mm.
+_SWEEP_PIECE_TOLERANCE_MM = 0.01
+#: Face pairs past which a moving pair is bound by its whole solids only (ADR-686).
+_SWEEP_PIECE_PAIRS = 250000
+#: What a sample's travel bound gives back to the kernel's own rounding of
+#: the distance it starts from (ADR-686), in mm.
+_SWEEP_BOUND_SLACK_MM = 1e-6
 
 
 def _sweep_payload_components(components):
@@ -6767,7 +6782,10 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step, *
     distance is that box gap, a lower bound on the true minimum; its
     common volume is 0.0 and it has no first contact, both proved by the
     boxes. A lower bound can only make a verdict stricter. Solved-pose
-    agreement is checked on every pair the sweep measures exactly.
+    agreement is checked on every pair the sweep measures exactly. Since
+    ADR-686 a sample's bound also comes from the distances measured at
+    other samples, and a pair is culled once every sample is measured or
+    bound past its margin (:func:`_measure_samples`).
     """
     import FreeCAD as App
     from CadexDynamics import extract_tree, joint_transform, joint_coordinates, length_mm
@@ -6852,6 +6870,18 @@ def _measure_samples(components, baseline, values, motions, moves, contact_key, 
     the same samples takes that build's three numbers from ``cache``
     (ADR-622), and is not measured again; its solved-pose agreement was
     checked when it was measured.
+
+    **A sample is measured only where a lower bound cannot settle it**
+    (ADR-686). Each sample of a moving pair is bound by its parts' hulls
+    carried there (their boxes, and their extents along
+    :data:`_SWEEP_DIRECTIONS`), and by every distance this sweep measured
+    -- at the solved pose and at the samples so far -- less how far the
+    parts travel between the two poses, face piece by face piece
+    (:class:`_SweepPieces`) where neither part can hold the other. The
+    samples are taken least bound first, and those left once the bound
+    passes both the least distance measured and the contact tolerance can
+    change none of the three numbers. Every exact row is the one measuring
+    every sample gives.
     """
     import FreeCAD as App
     moving = {n for sample in motions for n in sample}
@@ -6863,7 +6893,8 @@ def _measure_samples(components, baseline, values, motions, moves, contact_key, 
                          f"more than {_SWEEP_MAX_PAIRS}")
     shapes = {n: _component_world_shape(obj).copy() for n, obj in components.items()}
     solved_shapes = {n: shape.Placement for n, shape in shapes.items()}
-    boxes = {}
+    import numpy as np
+    boxes, hulls, face_corners = {}, {}, {}
 
     def corners(n):
         # Exact geometry, not triangulation: a tessellated BoundBox can sit
@@ -6872,14 +6903,43 @@ def _measure_samples(components, baseline, values, motions, moves, contact_key, 
             if shapes[n].isNull():
                 raise ValueError("sweep requires solid components")
             box = shapes[n].optimalBoundingBox(False, True)
+            # A seam of vast tolerance makes that box unbounded (ADR-678).
+            if shapes[n].getTolerance(1) > _VAST_TOLERANCE_MM:
+                box = _geometry_box(shapes[n])
             boxes[n] = [App.Vector(x, y, z) for x in (box.XMin, box.XMax)
                         for y in (box.YMin, box.YMax) for z in (box.ZMin, box.ZMax)]
         return boxes[n]
 
+    def hull(n):
+        # Points whose convex hull holds the solid at its solved pose: its
+        # faces' geometry boxes' corners (ADR-678). A rigid motion carries
+        # the hull with the solid, so the box of the moved points still
+        # holds it, and no point of the solid moves further than the
+        # furthest of them (ADR-686).
+        if n not in hulls:
+            points = solved_faces(n).reshape(-1, 3)
+            if not len(points):
+                points = np.array([[c.x, c.y, c.z] for c in corners(n)], dtype=float)
+            hulls[n] = np.unique(points, axis=0)
+        return hulls[n]
+
+    def solved_faces(n):
+        # Boxes that between them hold every face at the solved pose
+        # (:func:`_face_pieces`), as their eight corners: pieces x 8 x 3.
+        if n not in face_corners:
+            placed, shapes[n].Placement = shapes[n].Placement, solved_shapes[n]
+            try:
+                face_corners[n] = np.array([[[x, y, z] for x in (box.XMin, box.XMax)
+                                             for y in (box.YMin, box.YMax) for z in (box.ZMin, box.ZMax)]
+                                            for box in _face_pieces(shapes[n])], dtype=float).reshape(-1, 8, 3)
+            finally:
+                shapes[n].Placement = placed
+        return face_corners[n]
+
     def box_at(n, boxes_at):
         return (boxes_at or {}).get(n) or [f(c[i] for c in corners(n)) for f in (min, max) for i in range(3)]
 
-    def measure(a, b, boxes_at=None):
+    def measure(a, b, boxes_at=None, overlapping=False, settled=False):
         # Disjoint exact-geometry boxes prove zero common volume (ADR-423);
         # ``BoundBox`` is looser and sent far pairs into ``common``.
         first, second = box_at(a, boxes_at), box_at(b, boxes_at)
@@ -6887,25 +6947,58 @@ def _measure_samples(components, baseline, values, motions, moves, contact_key, 
         a, b = shapes[a], shapes[b]
         if a.isNull() or b.isNull() or not a.Solids or not b.Solids:
             raise ValueError("sweep requires solid components")
-        d = _boundary_distance(a, b)
-        v = _common_volume(a, b, d) if overlap else 0.0
+        if settled:
+            # The minimum is already 0.0 and first contact came at an
+            # earlier sample (ADR-686): this sample's distance can change
+            # neither, so only its volume is asked for. No volume, or more
+            # than _SWEEP_OVERLAP_MM3 (which no solids apart share), is the
+            # number measuring both gives. The distance is not measured:
+            # 0.0 stands in for it, which changes neither number and can
+            # only loosen the bounds it feeds.
+            v = float(a.common(b).Volume) if overlap else 0.0
+            if math.isfinite(v) and (v == 0.0 or v > _SWEEP_OVERLAP_MM3):
+                return 0.0, v
+            d = _boundary_distance(a, b)
+            v = v if d <= _DISJOINT_DISTANCE_MM else 0.0
+        elif overlap and overlapping:
+            # A pair that shared volume at the sample before is asked for
+            # its volume first (ADR-686): solids sharing more than
+            # _SWEEP_OVERLAP_MM3 are at distance 0.0, which the distance
+            # query -- the costlier of the two on a deep overlap -- need
+            # not say again. Less than that, both are measured as ever.
+            v = float(a.common(b).Volume)
+            if math.isfinite(v) and v > _SWEEP_OVERLAP_MM3:
+                return 0.0, v
+            d = _boundary_distance(a, b)
+            v = v if d <= _DISJOINT_DISTANCE_MM else 0.0
+        else:
+            d = _boundary_distance(a, b)
+            v = _common_volume(a, b, d) if overlap else 0.0
         if not math.isfinite(d) or not math.isfinite(v) or min(d, v) < 0:
             raise ValueError("invalid native measurement")
         return d, v
 
     cached = {}
     bounded = set()
+    margins = {}
     for row in baseline:
         key = row["first"], row["second"]
         if row.get("error") or row["distance_mm"] is None or row["common_volume_mm3"] is None:
             raise ValueError("solved-pose clearance disagreement")
         cached[key] = row["distance_mm"], row["common_volume_mm3"]
+        # A pair held to a declared floor above the cull margin is bounded
+        # only past that floor, as the static fit bounds it (ADR-423).
+        try:
+            floor = float(((row.get("intent") or {}).get("minimum_mm")) or 0.0)
+        except (TypeError, ValueError):
+            floor = 0.0
+        margins[key] = max(_SWEEP_CULL_MM, floor if math.isfinite(floor) else 0.0)
         if row.get("culled"):
             # A static bound (ADR-423): no measurement to agree with.
             bounded.add(key)
     # A moving pair's cache key (ADR-622): both solids' own geometry, the
     # samples, and where one stands relative to the other at every one.
-    keys, remembered, sample_gaps = {}, set(), {}
+    keys, remembered, seeds = {}, set(), {}
 
     def sweep_key(a, b):
         if cache is None or not digests or not digests.get(a) or not digests.get(b):
@@ -6931,39 +7024,141 @@ def _measure_samples(components, baseline, values, motions, moves, contact_key, 
             row.update(culled=True, minimum_distance_mm=cached[a, b][0],
                        maximum_common_volume_mm3=cached[a, b][1])
         rows.append(row)
-    # The moving side's box at a sample is the box of its solved box's
-    # corners carried by the rigid motion, which still contains the solid.
-    sample_boxes = [{n: [f(delta.multVec(c)[i] for c in corners(n)) for f in (min, max) for i in range(3)]
-                     for n, delta in sample.items()} for sample in motions]
+    # Each moving body's rigid motion at each sample, as a matrix, and its
+    # hull carried there: the box of those points is the body's box at that
+    # sample (ADR-686) -- tighter than its solved box's corners carried
+    # there, which a turn inflates by up to the body's length.
+    matrices = [{n: np.array(delta.toMatrix().A, dtype=float).reshape(4, 4) for n, delta in sample.items()}
+                for sample in motions]
+    # And its hull's extent along each of the directions of
+    # :data:`_SWEEP_DIRECTIONS`: two solids whose extents along any one
+    # direction lie a gap apart are at least that far apart (ADR-686), as a
+    # long link turned across a box is, which no box around it can show.
+    directions = np.array(_SWEEP_DIRECTIONS, dtype=float)
+    directions /= np.sqrt((directions ** 2).sum(axis=1))[:, None]
+
+    def extent(points):
+        along = (points[:, :1] * directions[:, 0] + points[:, 1:2] * directions[:, 1]
+                 + points[:, 2:3] * directions[:, 2])
+        return along.min(axis=0), along.max(axis=0)
+
+    sample_boxes, sample_extents, solved_extents = [], [], {}
+    for sample in matrices:
+        found, spans = {}, {}
+        for n, m in sample.items():
+            moved = _carried(hull(n), m)
+            found[n] = [float(x) for x in (*moved.min(axis=0), *moved.max(axis=0))]
+            spans[n] = extent(moved)
+        sample_boxes.append(found)
+        sample_extents.append(spans)
+    identity = np.eye(4)
+
+    def separation(a, b, index):
+        spans = []
+        for n in (a, b):
+            span = sample_extents[index].get(n)
+            if span is None:
+                if n not in solved_extents:
+                    solved_extents[n] = extent(hull(n))
+                span = solved_extents[n]
+            spans.append(span)
+        (low_a, high_a), (low_b, high_b) = spans
+        return max(0.0, float(np.max(np.maximum(low_a - high_b, low_b - high_a))))
+
+    def travel(n, first, second):
+        # The furthest any point of body ``n`` lies between its poses at two
+        # samples, ``None`` the solved pose (ADR-686): ``|M p - N p|`` is
+        # convex in ``p``, so over the solid it is greatest at a hull point.
+        m = identity if first is None else matrices[first].get(n, identity)
+        k = identity if second is None else matrices[second].get(n, identity)
+        step = m - k
+        if not step.any():
+            return 0.0
+        return float(np.sqrt((_carried(hull(n), step) ** 2).sum(axis=1)).max())
+
+    def gap(first, second):
+        return math.sqrt(sum(max(0.0, first[i] - second[i + 3], second[i] - first[i + 3]) ** 2
+                             for i in range(3)))
+
+    solid_vertices = {}
+
+    def vertices(n):
+        # Each solid's vertices at the solved pose: points of the solid.
+        if n not in solid_vertices:
+            placed, shapes[n].Placement = shapes[n].Placement, solved_shapes[n]
+            try:
+                solid_vertices[n] = [np.array([[v.Point.x, v.Point.y, v.Point.z] for v in solid.Vertexes],
+                                              dtype=float).reshape(-1, 3) for solid in shapes[n].Solids]
+            finally:
+                shapes[n].Placement = placed
+        return solid_vertices[n]
+
+    def pieces(a, b):
+        # The face-by-face bound (ADR-686), or ``None`` where there are too
+        # many face pairs for it to pay.
+        mover = a if any(a in sample for sample in matrices) else b
+        anchor = b if mover == a else a
+        if len(solved_faces(mover)) * len(solved_faces(anchor)) > _SWEEP_PIECE_PAIRS:
+            return None
+        return _SweepPieces(solved_faces(mover), solved_faces(anchor), vertices(mover), vertices(anchor),
+                            box_at(anchor, None),
+                            [_relative_motion(sample.get(anchor), sample.get(mover)) for sample in matrices])
+
     for row in rows:
         a, b = row["first"], row["second"]
         if not row["relative_motion"]:
             continue
-        gaps = []
-        for boxes_at in sample_boxes:
-            first, second = box_at(a, boxes_at), box_at(b, boxes_at)
-            gaps.append(math.sqrt(sum(max(0.0, first[i] - second[i + 3], second[i] - first[i + 3]) ** 2
-                                      for i in range(3))))
-        if gaps and min(gaps) > _SWEEP_CULL_MM:
+        gaps = [gap(box_at(a, boxes_at), box_at(b, boxes_at)) for boxes_at in sample_boxes]
+        if gaps and min(gaps) <= margins[a, b]:
+            gaps = [max(g, separation(a, b, index)) for index, g in enumerate(gaps)]
+        if gaps and min(gaps) > margins[a, b]:
             row.update(culled=True, minimum_distance_mm=min(gaps), maximum_common_volume_mm3=0.0)
             continue
-        sample_gaps[a, b] = gaps
         key = sweep_key(a, b)
         known = cache.get(key) if key is not None else None
         if known is not None:
             row.update({"minimum_distance_mm": known[0], "maximum_common_volume_mm3": known[1],
                         contact_key: known[2]})
+            if len(known) > 3 and known[3]:
+                row["culled"] = True
             remembered.add((a, b))
             continue
         keys[a, b] = key
-        d, v = measure(a, b)
+        # The face pieces' gaps bound every sample before anything is
+        # measured (ADR-686): a curved panel's box holds what lies under
+        # its curve, its pieces do not, and a pair they prove far is culled
+        # as a pair whose boxes are far always was.
+        piece = pieces(a, b)
+        if piece is not None:
+            gaps = [max(g, piece.at(i)) for i, g in enumerate(gaps)]
+            if gaps and min(gaps) > margins[a, b]:
+                row.update(culled=True, minimum_distance_mm=min(gaps), maximum_common_volume_mm3=0.0)
+                if key is not None:
+                    cache.put(key, [row["minimum_distance_mm"], 0.0, None, True])
+                continue
         distance, volume = cached[a, b]
+        d, v = measure(a, b)
         if (a, b) in bounded:
             if d < distance - 1e-4 or v > 1e-3:
                 raise ValueError("solved-pose clearance disagreement")
             cached[a, b] = d, v
         elif abs(d - distance) > 1e-4 or abs(v - volume) > 1e-3:
             raise ValueError("solved-pose clearance disagreement")
+        # Each sample's lower bound (ADR-686): its box gap, and the solved
+        # distance -- measured here, never taken on trust from the static
+        # fit -- less the furthest either solid travels from the solved
+        # pose to that sample: no point of one comes nearer the other.
+        bounds = [max(g, d - travel(a, None, i) - travel(b, None, i) - _SWEEP_BOUND_SLACK_MM)
+                  for i, g in enumerate(gaps)]
+        if piece is not None:
+            piece.learn(None, d)
+            bounds = [max(bound, piece.at(i)) for i, bound in enumerate(bounds)]
+        if bounds and min(bounds) > margins[a, b]:
+            row.update(culled=True, minimum_distance_mm=min(bounds), maximum_common_volume_mm3=0.0)
+            if key is not None:
+                cache.put(key, [row["minimum_distance_mm"], 0.0, None, True])
+            continue
+        seeds[a, b] = bounds, piece
     # Pair by pair, every sample of one pair before the next (ADR-622), so a
     # pair is finished -- and cached -- as soon as it is measured, and a
     # sweep the deadline stops keeps every pair it finished for the next
@@ -6981,36 +7176,203 @@ def _measure_samples(components, baseline, values, motions, moves, contact_key, 
             continue
         if deadline is not None and time.monotonic() > deadline:
             raise _SweepDeadline({key: value for key, value in cache.added.items()} if cache else {})
-        # Nearest boxes first (ADR-622). A sample whose box gap -- a lower
-        # bound on its distance -- is past both the least distance measured
-        # so far and the 0.001 mm contact tolerance can change none of the
-        # three numbers: its distance is no smaller, it is no contact, and
-        # boxes apart share no volume. Every later sample is further still.
-        gaps = sample_gaps[a, b]
+        # Least lower bound first (ADR-622, ADR-686). A sample's bound is its
+        # box gap and, for each sample measured, that distance less the
+        # furthest either solid travels between the two poses. A sample
+        # bound past both the least distance measured so far and the 0.001
+        # mm contact tolerance can change none of the three numbers: its
+        # distance is no smaller, it is no contact, and solids apart share
+        # no volume. Every sample left is bound further still. And once
+        # every sample is measured or bound past the pair's cull margin, the
+        # pair is culled as a far one is (ADR-419): its minimum is the least
+        # of those, a lower bound, with no contact and no common volume.
+        bounds, piece = seeds[a, b]
+        left = set(range(len(values)))
         contacts = []
-        for index in sorted(range(len(values)), key=lambda i: gaps[i]):
+        overlapping = cached[a, b][1] > _SWEEP_OVERLAP_MM3
+        while left:
+            index = min(left, key=lambda i: (bounds[i], i))
             best = row["minimum_distance_mm"]
-            if best is not None and gaps[index] > 1e-3 and gaps[index] >= best:
+            if best is not None and bounds[index] > 1e-3 and bounds[index] >= best:
                 break
+            if best is not None and min(best, bounds[index]) > margins[a, b]:
+                if bounds[index] < best:
+                    row.update(culled=True, minimum_distance_mm=bounds[index])
+                break
+            left.discard(index)
             sample = motions[index]
             for n in (a, b):
                 if n in moving:
                     shapes[n].Placement = (sample[n].multiply(solved_shapes[n]) if n in sample
                                            else solved_shapes[n])
-            d, v = measure(a, b, sample_boxes[index])
+            settled = best == 0.0 and contacts and index > min(contacts)
+            d, v = measure(a, b, sample_boxes[index], overlapping, settled)
+            overlapping = v > _SWEEP_OVERLAP_MM3
             if best is None or d < best:
                 row["minimum_distance_mm"] = d
             if row["maximum_common_volume_mm3"] is None or v > row["maximum_common_volume_mm3"]:
                 row["maximum_common_volume_mm3"] = v
             if d <= 1e-3:
                 contacts.append(index)
+            if piece is not None and left:
+                piece.learn(index, d)
+            for other in left:
+                if bounds[other] < d:
+                    bounds[other] = max(bounds[other], d - travel(a, index, other)
+                                        - travel(b, index, other) - _SWEEP_BOUND_SLACK_MM,
+                                        piece.at(other) if piece is not None else 0.0)
         row[contact_key] = values[min(contacts)] if contacts else None
         for n in (a, b):
             shapes[n].Placement = solved_shapes[n]
         key = keys.get((a, b))
         if key is not None:
-            cache.put(key, [row["minimum_distance_mm"], row["maximum_common_volume_mm3"], row[contact_key]])
+            cache.put(key, [row["minimum_distance_mm"], row["maximum_common_volume_mm3"], row[contact_key],
+                            bool(row.get("culled"))])
     return rows
+
+
+def _face_pieces(shape):
+    """Boxes that between them hold every face of ``shape`` (ADR-686).
+
+    Each face's geometry box (:func:`_face_boxes`, ADR-678); a face larger
+    than :data:`_SWEEP_PIECE_MM` across is cut instead into up to 6 x 6
+    patches of its surface's parameter range, each patch's box clipped to
+    the face's box. The face is the part of its surface inside its
+    parameter range, so the patches hold it; its edges lie on it to their
+    tolerance, which each patch's box is grown by. A curved panel's skin is
+    one face whose box holds everything under the curve, and its patches
+    follow the curve. A face whose edges carry more than
+    :data:`_SWEEP_PIECE_TOLERANCE_MM`, or whose surface will not cut, keeps
+    its whole box.
+    """
+    pieces = []
+    for face, box in zip(shape.Faces, _face_boxes(shape)):
+        size = box.DiagonalLength
+        try:
+            tolerance = max([face.Tolerance] + [edge.Tolerance for edge in face.Edges]
+                            + [vertex.Tolerance for vertex in face.Vertexes])
+            if size <= _SWEEP_PIECE_MM or tolerance > _SWEEP_PIECE_TOLERANCE_MM:
+                raise ValueError("kept whole")
+            surface = face.Surface
+            u0, u1, v0, v1 = face.ParameterRange
+            if not all(math.isfinite(x) for x in (u0, u1, v0, v1)):
+                raise ValueError("kept whole")
+            count = min(6, math.ceil(size / _SWEEP_PIECE_MM))
+            patches = []
+            for i in range(count):
+                for j in range(count):
+                    patch = surface.toShape(u0 + (u1 - u0) * i / count, u0 + (u1 - u0) * (i + 1) / count,
+                                            v0 + (v1 - v0) * j / count, v0 + (v1 - v0) * (j + 1) / count)
+                    found = patch.optimalBoundingBox(False, False)
+                    found.enlarge(tolerance + _CONTAINMENT_SLACK_MM)
+                    if found.intersect(box):
+                        patches.append(found.intersected(box))
+            if not patches:
+                raise ValueError("kept whole")
+            pieces += patches
+        except Exception:
+            pieces.append(box)
+    return pieces
+
+
+def _relative_motion(anchor, mover):
+    """The motion of ``mover`` seen from ``anchor`` (4 x 4, ``None`` the identity), without BLAS."""
+    import numpy as np
+    if anchor is None:
+        return np.eye(4) if mover is None else mover
+    inverse = np.eye(4)
+    rotation = anchor[:3, :3].T
+    inverse[:3, :3] = rotation
+    inverse[:3, 3] = -(rotation * anchor[:3, 3]).sum(axis=1)
+    if mover is None:
+        return inverse
+    return (inverse[:, :, None] * mover[None, :, :]).sum(axis=1)
+
+
+class _SweepPieces:
+    """A moving pair's lower bound at each sample, face by face (ADR-686).
+
+    Two solids neither of which can hold the other -- each solid of each
+    shows a vertex outside the other's box -- are as far apart as their
+    shells (ADR-425), and
+    their shells lie in their face pieces (:func:`_face_pieces`). So at a
+    sample the distance is at least the least, over the mover's pieces, of
+    each piece's own bound: the gap between it and the anchor's nearest
+    piece there, and, for each pose measured, what held that piece off the
+    anchor at that pose -- the distance measured, or its own gap there if
+    larger -- less the furthest the piece travels between the two poses. A
+    piece far from the axis travels far, but is far from the other solid
+    too; the piece near it barely moves. Both are taken in the anchor's
+    frame, where only the mover moves. A sample where a solid could hold
+    the other has no bound here, and keeps the whole solids' bound; what
+    held a piece off at a measured pose needs no such condition.
+    """
+
+    def __init__(self, mover, anchor, mover_vertices, anchor_vertices, anchor_box, relative):
+        import numpy as np
+        self.corners = mover.reshape(-1, 3)
+        self.count = len(mover)
+        self.relative = relative
+        self.low_b, self.high_b = anchor.min(axis=1), anchor.max(axis=1)
+        box_low, box_high = np.array(anchor_box[:3]), np.array(anchor_box[3:])
+        self.gaps, self.best = [], []
+        for motion in relative:
+            moved = _carried(self.corners, motion).reshape(-1, 8, 3)
+            low_a, high_a = moved.min(axis=1), moved.max(axis=1)
+            gaps = self._gaps(low_a, high_a)
+            self.gaps.append(gaps)
+            outside = [_any_outside(_carried(points, motion), box_low, box_high) for points in mover_vertices]
+            inside = [_any_outside(points, low_a.min(axis=0), high_a.max(axis=0)) for points in anchor_vertices]
+            self.best.append(gaps.copy() if all(outside) and all(inside) and len(self.low_b) else None)
+        self.solved = self._gaps(*(lambda m: (m.min(axis=1), m.max(axis=1)))(self.corners.reshape(-1, 8, 3)))
+
+    def _gaps(self, low_a, high_a):
+        """Each mover piece's gap to the anchor's nearest piece."""
+        import numpy as np
+        gaps = np.full(self.count, np.inf)
+        if not len(self.low_b):
+            return gaps
+        for start in range(0, self.count, 64):
+            part = slice(start, start + 64)
+            apart = np.maximum(0.0, np.maximum(low_a[part, None, :] - self.high_b[None, :, :],
+                                               self.low_b[None, :, :] - high_a[part, None, :]))
+            gaps[part] = np.sqrt((apart ** 2).sum(axis=2)).min(axis=1)
+        return gaps
+
+    def at(self, index):
+        """The bound at sample ``index``, 0.0 where it has none."""
+        found = self.best[index]
+        return 0.0 if found is None else float(found.min())
+
+    def learn(self, index, distance):
+        """Fold the distance measured at sample ``index`` (``None``: the solved pose) into every bound."""
+        import numpy as np
+        origin = np.eye(4) if index is None else self.relative[index]
+        held = np.maximum(distance, self.solved if index is None else self.gaps[index])
+        for motion, found in zip(self.relative, self.best):
+            if found is None:
+                continue
+            step = motion - origin
+            reach = np.sqrt((_carried(self.corners, step) ** 2).sum(axis=1)).reshape(-1, 8).max(axis=1)
+            np.maximum(found, held - reach - _SWEEP_BOUND_SLACK_MM, out=found)
+
+
+def _any_outside(points, low, high):
+    """Whether one of ``points`` lies past the box by more than the containment slack (ADR-678)."""
+    import numpy as np
+    if not len(points):
+        return False
+    return bool(((points < low - _CONTAINMENT_SLACK_MM) | (points > high + _CONTAINMENT_SLACK_MM)).any())
+
+
+def _carried(points, matrix):
+    """``points`` (n x 3) under the 4 x 4 affine ``matrix``, without BLAS.
+
+    A matrix product of this size would go to the BLAS, whose threads spin
+    on every CPU the sweep's children share (ADR-686).
+    """
+    return (points[:, :1] * matrix[:3, 0] + points[:, 1:2] * matrix[:3, 1]
+            + points[:, 2:3] * matrix[:3, 2] + matrix[:3, 3])
 
 
 class _SweepDeadline(Exception):

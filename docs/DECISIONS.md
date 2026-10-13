@@ -40391,3 +40391,153 @@ was not real. Its three findings were three bugs:
   `write_script`, all five pieces are fitted: floating bar 43.5 mm, p90 gaps
   36-39 mm, held by screws into the keel and formers, no findings but
   "larger than the bed".
+
+## ADR-686 — A joint sweep measures a sample only where a lower bound cannot settle it (2026-10-13)
+
+**Context.** `panel-cat-2` (115 components, 27 joints: 15 driven, 12
+passive in 4 pushrod loops, 35 panels) declares `sweep_step_degrees=5`.
+Its sweep reported `incomplete` with 3 of 15 driven joints done: every hip,
+knee drive and `j_abad_hr` hit the 90 s child timeout, and the neck, head
+and jaw were never started. An agent designing with Cadex had no range of
+motion evidence on the design, though the panels are what most need it.
+
+Each joint's child input was dumped and replayed through `_sweep_joint`
+with no time limit, four at a time on four pinned CPUs. That is how a
+build runs them: `_pin_worker_cpus` confines the worker and every child to
+4 CPUs (ADR-418), and `distToShape` is multithreaded.
+
+- The 15 joints took 969 s of wall time and 3,675 CPU-seconds.
+- The hip measured 33 pairs at every one of its 15 samples plus the solved
+  pose. 26 of those 33 pairs never came within 10 mm, some not within
+  130 mm. `distToShape` was 97 % of the time.
+- The cause was the box. A moving part's box at a sample was the box of its
+  solved box's corners carried by the motion. A 200 mm leg turned 35°
+  covers everything near the hip, so the gap was 0 at every sample. The
+  nearest-box-first order (ADR-622) had nothing to stop on.
+- Common volume, BREP import and the agreement check were not the cost.
+
+**Decision.** `_measure_samples` keeps every exact number it reported and
+gives each sample of a moving pair a lower bound on its distance. The bound
+is the largest of:
+
+1. **A tighter box.** The moving part's box is the box of its *hull*
+   carried to the sample. The hull is the corners of its face pieces
+   (below), so a turn no longer inflates the box by the part's length. A
+   seam of vast tolerance takes the geometry box, as in the static fit
+   (ADR-678).
+2. **Extents along 13 directions** (the axes and a cube's diagonals). Two
+   parts whose extents lie a gap apart along any one direction are at least
+   that far apart. This is how a long link turned across a box is told
+   apart from it.
+3. **Travel.** For the solved pose (where the sweep measures anyway, for
+   agreement) and every sample already measured, the bound is that distance
+   less the furthest either part travels between the two poses. `|M p - N p|`
+   is convex in `p`, so its maximum over the part is at a hull point.
+4. **Face by face**, when neither part can hold the other: each solid of
+   each part shows a vertex outside the other's box. As ADR-425 already
+   holds, their distance is then their shells' distance. In the anchor's
+   frame, where only the mover moves, the bound is the least over the
+   mover's face pieces of that piece's own bound. That is the gap to the
+   anchor's nearest piece, or, from each measured pose, what held the piece
+   off there (the distance, or its own gap if larger) less its own travel.
+   A piece near the axis barely moves, and a far piece is far anyway.
+   - A face's pieces are its geometry box (ADR-678).
+   - A face more than 25 mm across, with edge tolerance under 0.01 mm, is
+     cut instead into up to 6 × 6 patches of its parameter range, each
+     patch's box clipped to the face's box. A curved panel skin is one face
+     whose box holds everything under the curve; its patches follow the
+     curve.
+   - These gaps cull a pair before it is measured at all, as box gaps
+     always did.
+
+The samples are measured least bound first. A sample whose bound exceeds
+both the least distance measured so far and the 0.001 mm contact tolerance
+is not measured, the same rule as ADR-622: it can change neither the
+minimum, the first contact nor the common volume.
+
+Two rules spare the distance query where the answer is already known:
+- Once a pair's minimum is 0.0 and its first contact is at an earlier
+  sample, a later sample is asked only for its common volume.
+- A sample after one that shared volume is asked for its volume first.
+- Either way, a volume over 1 mm³ means the distance is 0.0. A volume of
+  0.0 at a settled sample is what measuring both gives. Anything in
+  between is measured both ways, as before.
+
+A pair whose every sample is measured or bound past its margin is `culled`,
+as a far pair always was (ADR-419). Its minimum is the least of those,
+which is a lower bound, and it has no contact and no common volume. The
+margin is 10 mm, or the pair's declared `clearances=` floor when that is
+larger. Before this the swept cull used 10 mm whatever the floor, so a pair
+held to 50 mm could be bounded at 12 and read as below its floor. The
+static fit already did this (ADR-423).
+
+What did not pay, measured and dropped:
+- The static fit's face-by-face distance (ADR-437) at every sample was
+  5 × slower on the hip. Used only on pairs that touched at the last
+  sample, it was faster on the neck and slower on the hips.
+- Pruning far faces before `distToShape` saved nothing, because OCCT
+  already prunes on boxes. The cost is in the near face pairs.
+- A classifier, as well as a box, to rule out containment changed no
+  query count.
+- Patches cut finer along each face's boundary, dropping those outside a
+  trimmed face, cut 5 % of the queries. It cost as much in boxes, and
+  more on the neck.
+- Seeding the bounds from the static fit's solved distance, so a pair
+  could be culled without the agreement measurement, saved 6 %. It also
+  trusted the static number, and the test that feeds a wrong baseline
+  caught it. Every travel bound here starts from a distance this sweep
+  measured.
+
+**Evidence.** The same 15 dumped inputs, 4 at a time on 4 pinned CPUs, on
+a machine shared with another session's builds:
+
+| | before | after |
+|---|---|---|
+| all 15 joints, wall | 969 s | **201 s** |
+| summed per joint / CPU-seconds | 3,741 s / 3,675 | 698 s / 781 |
+| slowest joint | `j_hip_fr` 495 s | `j_neck` 81 s |
+| `j_hip_fl` | 415 s, 422 distance queries | 53 s, 104 |
+| `j_knee_drive_hl` | 303 s, 449 | 63 s, 216 |
+| distance / volume queries | 4,402 / 2,756 | 1,551 / 1,094 |
+
+- Every exact row (minimum, largest common volume, first contact) equals
+  the old code's on all 15 joints, with 0 differences. That includes
+  every collision this design has: the thigh into the chassis at 870 mm³,
+  the abad links and hip drives into the neck link.
+- Every culled row is above its margin and at or below the old row's
+  distance.
+- On `j_jaw` and `j_abad_fl`, the old code was run with no cull at all, so
+  every moving pair was measured exactly (575 s and 2,488 s). Every culled
+  bound is at or below that truth. The nearest truly culled pair is
+  14.0 mm.
+
+`test_sweep_bounds.py` covers this:
+- The relative motion and point transforms against `numpy.linalg`.
+- The face bound below a sampled truth, and absent when one box holds the
+  other.
+- On real OCCT, a turning arm with a pass 3 mm above it, a block past its
+  tip that only a diagonal shows to be 12.1 mm away, a stop it hits, and a
+  wall it runs through from 45° to 85°. Every exact row equals the minimum
+  over every sample on the solids. The collisions keep their first
+  contact and their largest volume, and the corner block is culled. 28
+  distance queries instead of the old 78. A 50 mm floor keeps that block
+  exact.
+
+`test_clearance.py`'s hinge, 16 mm off its plate over a 10° range, now
+reads a bound in (10, 16] where it read 16. It is never within 10 mm.
+
+**Consequences.**
+- No response shape changed. `culled` means what it did: a lower bound,
+  no contact, no volume. A culled pair may now have been measured at some
+  samples, and its bound sits nearer 10 mm than a box gap did. A far
+  pair's row says less about how far it is, and nothing less about
+  whether it clears.
+- A cold first build of this design is still near the 180 s budget on 4
+  CPUs. A joint it cannot finish keeps its finished pairs in the fit cache
+  (ADR-622), and the next build completes it.
+- The cache entry of a swept pair gains a fourth element, whether it was
+  culled. Old entries miss anyway, because the key carries the module's
+  source.
+- The point arithmetic uses NumPy without BLAS (`_carried`), so it adds no
+  threads beside the children's own.
+- Sampling still cannot exclude contact between samples (`docs/XSCRIPT.md`).
