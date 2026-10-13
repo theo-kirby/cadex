@@ -245,6 +245,8 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             # `envelope` declares the surface, `panel` one region of it.
             "envelope",
             "panel",
+            # The hoop of a designed form that carries its panels (ADR-679).
+            "former",
         ),
         production_ready=True,
     ),

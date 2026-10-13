@@ -40113,3 +40113,108 @@ gitignored.
   distance into a float target (half float where full float cannot be rendered to), and positions
   are rebuilt along each pixel's ray. The creases still darken, and the stripes are gone at a 7×
   boost of the dark levels.
+
+## ADR-679 — A panel takes a designed form: `part.envelope(form=...)`, `lib.form`, `part.former`; the creature style puts the form first (2026-10-13, owner)
+
+**Context.** The owner ran `panel-cat`, a design-only Opus run on the
+creature style, against a reference image: a robot big cat made of many
+glossy panels over dense dark machinery. After 67 minutes and 13 revisions
+it had no panels, and it read as a generic quadruped. A box-beam keel, flat
+link plates and a one-piece egg of a head. The transcript shows four causes:
+
+- A panel was only an offset of what it covers, so its shape was the
+  mechanism's shape plus a clearance. Covers over a box beam make a box, and
+  covers over a camera and a jaw servo make an egg. Nothing in the system let
+  the animal's form drive the shape.
+- The guidance worked from the inside out and put covers last. The agent
+  spent 50 minutes on the mechanism before its first panel.
+- Three `part.panel` calls were refused because a piece "falls apart" into
+  slivers of 4% of its volume, and the refusal did not say where they were.
+- The fit check of the panels against the frame took 100-200 CPU-s a pair,
+  and the build ran out of its budget. That is ADR-678's subject.
+
+The owner's direction: "the face is made up of multiple panels covering
+machinery or support structures, in the actual shape of the animal, same
+for the shoulders, torso, legs and hips … it needs to read like a complex
+piece of machinery covered in organic panels making the shape". The run
+that tests this is to be fully autonomous, so the fix goes into the system,
+not into that design.
+
+**Decision.**
+
+- `part.envelope(..., form=solid | [solids])` takes a designed outer form.
+  - Its space is wrapped along with `over`, so the panels take its shape
+    wherever it stands proud of the machinery, and `over` still decides what
+    they must clear.
+  - A form is no part. It never blocks a boss column and is not what a panel
+    covers. The supports under it go in `covers=` and in the panels'
+    `frame=`.
+  - A form panel's slope and outline are read off a face smoothed by 4 mm
+    (`FORM_SMOOTH_MM`), so a `max_angle` edge runs clean instead of ragged
+    along the voxel stairs.
+  - Its pieces publish `formed: true`.
+  - An envelope without `form=` declares and builds exactly what it did
+    before.
+- `lib.form(stations)` lofts a form through superellipse cross-sections.
+  - Each station gives a centre, a width, a top and a bottom, so a back can
+    be flat and a belly deep, plus an optional squareness and its own up.
+  - Each section is square to the path through the centres.
+- `part.former(form, origin, normal, *, width=16, depth=8, web=0,
+  keep_out=())` is a worker op: the hoop of a form that carries its panels.
+  - Its outer face is the form, kept inside it where the form tapers across
+    the band. With `web` it is a bulkhead plate, less `keep_out`.
+  - It is built in the plane: slices at the band's faces and middle, their
+    outlines intersected, the inset fitted through the sampled outline,
+    because OCCT's planar offset refuses a slice's single periodic B-spline
+    edge.
+  - On the probe torso, five formers fused into a keel take 7 s. The same
+    hoops made by 3D booleans of the form, and its offset surface, took
+    138 s (493 CPU-s), and a fuse alone took 37 s.
+- `fit.panels` judges a form panel by its span to the support under it.
+  - It floats past clearance + max(radius, `PANEL_FORM_SPAN_MM` = 80)/2 +
+    2 mm, about what a 2 mm printed cover is stiff over.
+  - The egg ratio still reports how much air it encloses.
+- A seam's sliver under a tenth of its piece (`SPECK_FRACTION`) is dropped,
+  as the region's own specks already were. A piece that still falls apart
+  is refused with each island's volume and box.
+- The creature style, rewritten:
+  - **The form is the animal's, and it comes first.** After the parts are
+    chosen, sculpt it with `lib.form` from the animal's proportions and the
+    reference image, look at it alone, then put the mechanism inside.
+  - **Panels make the form; machinery and structure fill it.** Form panels
+    sit on formers, split along the anatomy, with gaps at the joints where
+    the dark machinery shows.
+  - **Every region carries its panels, limbs included.** A plate belongs to
+    the link it moves with.
+  - **The likeness is checked against the animal.** It is checked against
+    the reference image region by region when the brief gives one.
+  - **The covers are not the last step.**
+  - It replaces "shells sit on the masses; links do the work" and "panels
+    wrap the mechanism".
+- The base guidance names `form=` in one clause.
+
+**Evidence.**
+
+- `test_panels.py` covers:
+  - a form's sections and refusals;
+  - an envelope's form spec, and that one without a form is unchanged;
+  - `part.former`'s declaration;
+  - on the kernel, three formers whose every edge sample lies inside the
+    form, and a form panel whose crown stands at the form's top, far above
+    the keel it covers.
+- `test_panel_check.py` covers the form panel's span bar.
+- The probe `/tmp/formprobe/probe.py` has a cat's torso form over a box
+  keel, five formers and a three-piece dorsal and a two-piece flank panel.
+  - It builds, and every piece is seated on a former or the keel.
+  - The 90th-percentile gap is 35-42 mm against a 43.5 mm bar, and the egg
+    ratio is 1.12-1.16.
+  - Built with this ADR's fit-check code, it took 230 s wall and 468-545
+    CPU-s, most of it the fit check (ADR-678).
+- `pixi run test-engine`: 2,334 passed and 61 skipped. One CPU-kill timing
+  test failed while the machine was loaded and passes alone.
+
+**Consequences.** A creature's covers can now be what makes its form. A form
+the machinery and formers do not fill reads as the egg ratio it is. The
+panel-cat brief is re-run unchanged and fully autonomous to test it. A
+form's sections are superellipses, so a sharper feature (a brow ridge, a
+cheekbone) is a separate form, and its panels meet at a seam.

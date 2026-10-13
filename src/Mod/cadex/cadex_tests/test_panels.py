@@ -151,6 +151,72 @@ def test_describe_api_lists_the_panel_ops_and_lib_panel_is_gone():
 
 
 # --------------------------------------------------------------------------
+# designed forms and their formers (ADR-679)
+# --------------------------------------------------------------------------
+
+
+def _torso(lib):
+    return lib.form([
+        {"at": (150, 0, 0), "width": 190, "top": 85, "bottom": 120, "square": 2.6},
+        {"at": (0, 0, 10), "width": 170, "top": 75, "bottom": 85},
+        {"at": (-150, 0, 20), "width": 180, "top": 80, "bottom": 75, "square": 2.6},
+    ], label="torso")
+
+
+def test_a_form_is_a_loft_of_sections_square_to_its_path():
+    lib = _lib()
+    torso = lib.form([{"at": (150, 0, 10), "width": 190, "top": 85, "bottom": 120},
+                      {"at": (0, 0, 10), "width": 170, "top": 75, "bottom": 85},
+                      {"at": (-150, 0, 10), "width": 180, "top": 80, "bottom": 75}])
+    assert torso.operation == "loft" and torso.output_type == "solid"
+    sections = torso.arguments[0]
+    assert len(sections) == 3 and all(w.operation == "wire" for w in sections)
+    ring = sections[1].arguments[0][0]
+    assert ring.operation == "bspline" and ring.properties["periodic"] is True
+    points = ring.arguments[0]
+    # Square to the path along x: every point of the middle section sits at x = 0,
+    # 85 mm each side, 75 up and 85 down from its centre at z = 10.
+    assert all(abs(p[0]) < 1e-9 for p in points)
+    assert max(p[1] for p in points) == pytest.approx(85.0)
+    assert max(p[2] for p in points) == pytest.approx(85.0)
+    assert min(p[2] for p in points) == pytest.approx(-75.0)
+    assert min(p[1] for p in points) == pytest.approx(-85.0)
+    with pytest.raises(LibraryError, match="at least two"):
+        lib.form([{"at": (0, 0, 0), "width": 10, "top": 5, "bottom": 5}])
+    with pytest.raises(LibraryError, match="unknown keys"):
+        lib.form([{"at": (0, 0, 0), "width": 10, "top": 5, "bottom": 5, "height": 3},
+                  {"at": (9, 0, 0), "width": 10, "top": 5, "bottom": 5}])
+    with pytest.raises(LibraryError, match="sits on its neighbour"):
+        lib.form([{"at": (0, 0, 0), "width": 10, "top": 5, "bottom": 5},
+                  {"at": (0, 0, 0), "width": 10, "top": 5, "bottom": 5}])
+    with pytest.raises(LibraryError, match="runs along the form"):
+        lib.form([{"at": (0, 0, 0), "width": 10, "top": 5, "bottom": 5},
+                  {"at": (0, 0, 9), "width": 10, "top": 5, "bottom": 5}])
+
+
+def test_an_envelope_wraps_a_form_that_is_no_part_and_a_former_is_cut_from_it():
+    lib = _lib()
+    part = lib._part
+    torso = _torso(lib)
+    keel = part.box(300, 60, 50, origin=(-150, -30, -25))
+    env = part.envelope([keel], form=torso, radius=30.0)
+    assert env.spec["over"] == [keel] and env.spec["form"] == [torso]
+    # An envelope with no form declares exactly what it did before.
+    assert "form" not in part.envelope([keel]).spec
+    with pytest.raises(ValueError, match="at least one solid"):
+        part.envelope([keel], form=[])
+    hoop = part.former(torso, (0, 0, 0), (1, 0, 0), web=4.0, keep_out=[keel])
+    assert hoop.operation == "former" and hoop.output_type == "solid"
+    assert hoop.arguments[0] == torso and list(hoop.arguments[1]) == [keel]
+    assert hoop.properties["width"] == 16.0 and hoop.properties["web"] == 4.0
+    with pytest.raises(ValueError, match="normal"):
+        part.former(torso, (0, 0, 0), (0, 0, 0))
+    with pytest.raises(ValueError, match="width"):
+        part.former(torso, (0, 0, 0), (1, 0, 0), width=2.0)
+    assert "former" in part.exported_names and "``form``" in part.envelope.__doc__
+
+
+# --------------------------------------------------------------------------
 # the worker's arrays
 # --------------------------------------------------------------------------
 
@@ -372,6 +438,30 @@ drum = build_part_shape(lib.housing(qdd).body.to_payload())
 motor = build_part_shape(qdd.body.to_payload())
 assert drum.isValid() and len(drum.Solids) == 1
 assert drum.common(motor).Volume < 1e-6 and drum.distToShape(motor)[0] < 1e-6
+# A designed form, a former cut from it, and a panel cut from the form (ADR-679).
+torso = lib.form([
+    {{"at": (150, 0, 0), "width": 190, "top": 85, "bottom": 120, "square": 2.6}},
+    {{"at": (0, 0, 10), "width": 170, "top": 75, "bottom": 85}},
+    {{"at": (-150, 0, 20), "width": 180, "top": 80, "bottom": 75, "square": 2.6}},
+])
+keel = part.box(300, 60, 50, origin=(-150, -30, -25))
+hoops = [part.former(torso, (x, 0, 0), (1, 0, 0), width=18, depth=10, web=4, keep_out=[keel])
+         for x in (-80, 0, 80)]
+form_shape = build_part_shape(torso.to_payload())
+for hoop in hoops:
+    h = build_part_shape(hoop.to_payload())
+    assert h.isValid() and len(h.Solids) == 1
+    points = [p for e in h.Edges for p in e.discretize(Number=24)]
+    assert all(form_shape.isInside(p, 0.05, True) for p in points)
+frame = part.fuse([keel] + hoops)
+skin = part.panel(part.envelope([keel], form=torso, radius=30.0), side=(0, 0, 1), max_angle=50,
+                  frame=frame, screw=lib.bolt("m3", 10), screws=2)
+facts = {{}}
+top = build_part_shape(skin.parts[0].to_payload(), diagnostics=facts)
+assert top.isValid() and len(top.Solids) == 1 and facts["panel"]["formed"] is True
+# The panel takes the form's shape: its crown stands at the form's top, far
+# above the keel it covers.
+assert top.BoundBox.ZMax > 85.0 > 25.0 + 30.0
 out.write("PANELS-OK\\n")
 out.close()
 ''')
