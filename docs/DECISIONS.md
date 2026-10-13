@@ -40675,3 +40675,175 @@ reads a bound in (10, 16] where it read 16. It is never within 10 mm.
 - The point arithmetic uses NumPy without BLAS (`_carried`), so it adds no
   threads beside the children's own.
 - Sampling still cannot exclude contact between samples (`docs/XSCRIPT.md`).
+
+## ADR-687 — A skin opens round what moves through it, reports every bad piece at once, and keeps the bosses it can place (2026-10-13)
+
+**Context.** `panel-cat-3` (a robot big cat built with `part.skin`, ADR-684)
+spent about 80 % of its 4 h 32 min waiting on the engine, most of it on
+panels (`/tmp/pc3transcript-report.md`). What cost it most was in the skin
+itself:
+
+- `piece p2: an M3x10 reaches 6.0 mm of boss here; choose a longer screw`
+  came six times, and M3x16 gave the same 6.0 mm. It fires when the
+  support stands less than `SEAT_FLOOR_MM` (1.6 mm) under the boss's top,
+  so the frame is touching or inside the panel's wall. No screw length can
+  fix that.
+- Every skin refusal read `Failing call: part.panel (script line N) …
+  while building output 'chest_frame'`. The call was `part.skin`, and
+  `chest_frame` is only where its pilots are cut.
+- A skin stopped at its first bad piece, so rev 8 took 10 serial builds of
+  2.5 to 5 minutes each.
+- A piece where one site of `screws=2` qualified was refused, although its
+  weld held it. The agent dropped the hock plates rather than try
+  `screws=1`.
+- `part.skin(openings=)` took only solids. The forelegs, scapula drums and
+  hip drums swung through the sternum, front dorsal, rump and loin plates,
+  so those plates were dropped. `part.panel` already opens round a moving
+  part.
+- `part.former(keep_out=)` cut only the web, so a link through the band
+  still stood in the hoop.
+- The final coverage was chest 0.13 and pelvis 0.21. That number was on
+  every panel row and the agent never read it. The AK80/AK70 drums stood
+  out of the form at the shoulders and haunch, and no measure said so
+  (`hardware_silhouette_share` counts housings as made parts).
+- `lib.housing(qdd, seat="rear")` screwed through the front face's
+  pattern. The AK45's rear face has 4 holes, not 6, so 4 of the 6 screws
+  went into solid case.
+
+**Decision.**
+
+- **Boss refusal and through-screws.** When a support is nearer than
+  1.6 mm under a boss's top there is no boss to build.
+  - If the support meets the panel's inner face (0.05 mm inside it to
+    0.1 mm under it), the screw goes straight through the plate. It gets a
+    clearance hole, a head seated on at least 1.6 mm of wall and recessed
+    as far as that allows, and a pilot in the support. The row says
+    `kind: "through"` and `head_proud_mm`.
+  - A support inside the wall pierces the panel. The skin's screen turns
+    that site down (`support pierces the wall`). Where `_boss` still meets
+    it (a `part.panel`), the refusal names the support, its point and the
+    depth, and gives the remedies: inset the former, move the part, open
+    the panel, or weld it with fewer screws. It no longer says "choose a
+    longer screw".
+- **Attribution.** A skin's refusal is `api.skin '<label>': …`. The failing
+  call is `part.skin '<label>' (piece)`, named in the script as
+  `<skin>.pilots` or `<skin>.parts[k]`. A refusal while building the frame
+  the pilots are cut into says so.
+- **All pieces in one refusal.** Every region is cut, sized against the
+  bed and screened before anything is refused. A region that fails still
+  keeps its gap for the pieces after it. The refusal is one line per bad
+  piece.
+- **The boss fallback.** A piece that seats fewer than `screws=` sites, but
+  at least one, keeps those it seats. Its panel row carries
+  `boss_shortfall` (wanted, placed, and how many candidates each screen
+  turned down) and the advisory `short of screws`.
+  - A piece with no site at all is still refused, with the same counts.
+  - `screws=[n0, n1, …]` gives one count per region, and 0 means held by
+    its weld.
+  - A screw mated onto a boss the piece did not get is refused by name,
+    with the count to give that region.
+  - Two bosses of one piece may no longer overlap. Their holes cut each
+    other apart, and the fusion refused the piece.
+- **Motion-aware openings and keep_clear.**
+  - `openings` take `{"around": link, "clearance": mm, "motion": {…}}`, a
+    hinge or slider as in `part.panel`. The opening is what the link
+    sweeps, grown by the clearance. This is built as convex cells, not a
+    voxel field, because a skin is cut on the exact BREP:
+    - the link's surface is cut into slabs 40 mm long along its longest
+      axis;
+    - each slab is hulled over every pair of neighbouring poses;
+    - facets within 1 mm are merged and every plane is pushed out by the
+      clearance, the merge and the arc's bulge past its chord (the hinge
+      step holds that bulge to 2 mm);
+    - each cell is cut from a piece only where their boxes meet, one cell
+      at a time. That took 0.5 s for 36 cells, against 2.1 s for one
+      multi-tool cut.
+  - `keep_clear` takes `{"around": link, "motion": {…}}`, posed every 5° or
+    2 mm in the boss screen.
+- **Former keep_out.** `keep_out` is cut from the hoop as well as the web.
+  Web islands are dropped as before. A hoop cut into arcs that no web ties
+  together is refused, naming both arcs, so neither is lost silently.
+- **Coverage and containment, advisory.**
+  - The skin's facts gain `form_key`, `form_label` and `form_area_mm2`.
+  - `fit.panels.forms` lists each skin form with the placed pieces' area
+    over its own, and names forms under 0.5 in `under_covered`.
+  - `forms.outside` is a new assembly measure, `form_containment`. Only in
+    a model with a skin, the forms the skins were cut from and every
+    non-panel component are filled on one voxel grid (at most 6 M voxels,
+    no finer than 2 mm). For each component it reports the share of its
+    volume outside every form and how far it stands out. The worst are
+    listed from 5 %, with a phrase each.
+  - `look` carries the block under `measures.forms`.
+  - Neither fails the fit or refuses a build.
+- **`lib.housing` rear seat.** A rear seat uses the drive's
+  `rear_mount_holes` and `rear_mount_pcd_mm`.
+
+**Evidence.**
+
+- **Headless tests** (`pixi run test-engine`):
+  - `test_panels.py`:
+    - motion-aware openings and keep_clear as declarations, and the
+      refusals of a malformed one;
+    - one screw count per region;
+    - a hinged bar whose surface, at every degree of a 90° swing, lies in
+      some convex cell;
+    - the AK45 rear seat with 4 holes, and its front seat with 6.
+  - `test_panel_check.py`: the forms block (coverage, `under_covered`, the
+    worst components outside, the phrases) is advisory and rides in the
+    fit view. A short piece is reported as `short of screws` with why.
+  - `test_script_refusal_diagnostics.py`: a skin's refusal names
+    `chest_skin.pilots = part.skin 'chest_skin' (pilots)` and never
+    `part.panel`.
+- **The kernel driver** (`test_panels.py`, real OCCT) adds these cases:
+  - A 200 mm leg hinged inside the torso swings ±40° through the side
+    plate. With the opening round its sweep, the leg at every 4° stays more
+    than 2.5 mm clear (3 mm declared).
+  - A former whose keep_out is a drum through its hoop shares no volume
+    with it.
+  - A narrow piece asked for 8 screws seats the 3 that fit and reports the
+    rest.
+  - A skin with three bad pieces is refused once, with three lines.
+- **Probes** (`/tmp/pc4edit`, direct `FreeCADCmd`):
+  - The four-region torso with a swept leg opening builds in 13 s, as
+    before the opening.
+  - A former inset to the skin's inner face gets a through-screw: no
+    boss, the head 2.0 mm proud. One inside the wall has those sites turned
+    down, and its bosses go elsewhere.
+  - Sequential cell cuts took 0.5 s for 36 cells on a curved shell. One
+    multi-tool cut took 2.1 s.
+- **`panel-cat-3` end to end** (`/tmp/pc4probe`, accepted in 937 s through
+  the CLI):
+  - A probe skin on the chest form cuts the brisket and front dorsal
+    plates. Its openings are round both humeri swept through the shoulder
+    (-40..25°), and round both yokes and scapulae swept through the
+    abduction (-8..20°). Its keep_clear is the humeri's sweep. It built
+    with 2 bosses per piece.
+  - The design's own former `neck1` was refused until its slot keep_out
+    was removed. That keep_out now cuts the crest arc that the script's
+    `part.common` keeps, which is the consequence below.
+  - `form_containment` measured 57 components on a 3.2 mm grid. 17.8 % of
+    the mechanism's volume lies outside the 16 skin forms. The worst are
+    the paws and claws (no form) and the hock and wrist drives (70 % and
+    68 % out, 51 and 35 mm proud).
+  - The plan of that probe skin alone, given its inputs, took 27.5 s, and
+    16.9 s without its swept openings and keep_clear. Of the 27.5 s,
+    17.9 s went to rebuilding inputs that the 64-entry shape memo of a
+    project this size no longer held. The cells' cuts took 2.2 s.
+
+**Consequences.**
+- A skin declared with plain solids and one screw count has the same spec
+  and payload as before. Its pieces' facts gain the form keys, and its
+  sites now keep apart and turn down a piercing support, so a skin that
+  built before can place its bosses elsewhere.
+- A former whose keep_out crossed its hoop now loses that part of the hoop,
+  and is refused when the hoop falls into arcs no web ties together.
+- A swept opening is convex within each 40 mm slab, so it fills a link's
+  concavities there. Name the part that sweeps (the drum, the foot), not a
+  whole leg with its plates.
+- The containment measure reads only this run's skins: the forms come from
+  the part worker's in-process registry of skin plans, which the assembly
+  build shares.
+- A swept opening's link is built inside the plan. On a large project the
+  64-entry shape memo may not hold it, so name a light part where you can.
+- `fit.panels.forms` is new in the build reply's fit block. `cadex script
+  --json` still carries no fit block.

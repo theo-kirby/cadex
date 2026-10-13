@@ -1363,8 +1363,11 @@ inset=0, label="")` is the hoop that carries a form's panels: the band of `form`
 surface, its outer face the form (kept inside where the form tapers across
 the band), so a form panel lands on it at the envelope's clearance and its
 bosses screw into it -- 16 or more wide for M3, because a boss needs the
-band under its whole disc. `web > 0` fills the hoop with a plate that thick,
-less `keep_out` (the frame and what passes through): a bulkhead. It is built
+band under its whole disc. `web > 0` fills the hoop with a plate that thick:
+a bulkhead. `keep_out` (the drives and links that pass through, swept where
+they move) is cut from the hoop as well as the web (ADR-687): web islands
+are dropped, and a hoop it cuts into arcs that no web ties together is
+refused, naming both arcs' volumes, rather than losing one. It is built
 in the plane -- the form sliced at the band's faces and middle, the
 outlines intersected, the inset fitted through the sampled outline -- in a
 second or two, where 3D booleans of the form's B-spline skin took minutes.
@@ -1383,21 +1386,71 @@ label="")` cuts panels from a designed form itself (ADR-684), and returns a
   limb or a shoulder, where a `part.panel` is one side's height field.
 - **The pieces.** One per region, `p0`, `p1`, ...: the skin inside
   `regions[k]`, outside the regions before it grown by `gap`, less every
-  `openings` solid. The outline is where the region's surface crosses the
+  opening. The outline is where the region's surface crosses the
   form, so a sphere or a small `lib.form` makes an oval plate, a slab a
   straight band, and a closed `part.bspline` profile extruded across the
   body the outline drawn in that view. A region that meets the form in two
   separate patches (one that passes through the body) is refused with each
   patch's box; specks under a tenth of the piece are dropped.
+- **The openings** (ADR-687). A solid is cut out as it stands. `{"around":
+  link, "clearance": mm, "motion": {"origin": o, "axis": a, "range": (lo,
+  hi)}}` (a hinge, degrees; or `{"direction": d, "range": (lo, hi)}`, a
+  slider, mm) cuts out what the link sweeps through its joint, grown by
+  `clearance` (default 2): a leg or a drum that swings through the form
+  takes its path out of the plate, as `part.panel`'s openings do. Without
+  `motion` it is the link at rest, grown. The sweep is convex cells: the
+  link's surface in slabs 40 mm long along its longest axis, each hulled
+  over every pair of neighbouring poses, the hinge stepped so an arc bulges
+  at most 2 mm past its chord and every cell grown by that bulge and 1 mm of
+  facet merging too. So the cut follows the link's length but fills its
+  concavities within a slab; name the part that sweeps (the drum, the
+  foot), not a whole leg with its thigh panels. A cell is cut only from a
+  piece whose box it meets.
 - **The screws.** With `frame` and `screw=lib.bolt(size, length)`, each
-  piece gets `screws` bosses cast from its inner face along the face's own
-  inward normal onto the frame, within 60 mm, the frame flat to 3 mm under
-  the boss and the column clear of `keep_clear` (the mechanism): screened
-  on triangles, then cast on the exact BREP. Each boss row carries its own
-  `axis`. `pilots` and `mounts` are as for `part.panel`.
-- **The facts.** Each piece's build facts carry `skin`, its `area_mm2` and
-  the skin's `covered_fraction` (its pieces' outer area over the form's);
-  `fit.panels` reads a skin as a formed panel with `clearance` as its gap.
+  piece gets `screws` bosses (or `screws=[n0, n1, ...]`, one count per
+  region, 0 for a piece held by its weld alone) cast from its inner face
+  along the face's own inward normal onto the frame, within 60 mm, the
+  frame flat to 3 mm under the boss and the column clear of `keep_clear`
+  (solids, or `{"around": link, "motion": {...}}` for what the link sweeps,
+  posed every 5 degrees or 2 mm): screened on triangles, then cast on the
+  exact BREP. Two bosses of one piece never overlap. Each boss row carries
+  its own `axis`. `pilots` and `mounts` are as for `part.panel`.
+  - A support nearer the boss's top than 1.6 mm leaves no boss to stand.
+    Where it meets the panel's inner face (within 0.05 mm inside it to 0.1
+    mm under it) the screw goes straight through the plate: a clearance
+    hole, the head seated with 1.6 mm of wall under it and recessed as far
+    as that allows (`kind: "through"`, `head_proud_mm`), and a pilot in the
+    support. A support inside the wall pierces the panel: that site is
+    turned down (`support pierces the wall`), and the panel check names
+    the collision.
+  - A piece that seats fewer sites than asked keeps the ones it has: its
+    row says `short of screws` (advisory) with `boss_shortfall` -- wanted,
+    placed, and how many candidates each screen turned down (`no support
+    within reach`, `support pierces the wall`, `not flat under the boss`,
+    `keep_clear in the way`, `crowded by its other bosses`, `another
+    panel's screw in the way`). It is held by those and its weld; a screw of
+    `skin.screws` mated onto a boss it does not have is refused by name,
+    with the count to give that region. A piece with no site at all is
+    refused with the same counts.
+- **One refusal, every piece.** Every piece is cut and screened before
+  anything is refused: a skin with several bad pieces is refused once, one
+  line per piece, as `api.skin '<label>'`, and the failing call is
+  `part.skin '<label>'`, not the `part.panel` values it is made of. A
+  refusal while building the frame its pilots are cut into says so.
+- **The facts.** Each piece's build facts carry `skin`, its `area_mm2`, the
+  skin's `covered_fraction` (its pieces' outer area over the form's), and
+  `form_key`/`form_label`/`form_area_mm2`; `fit.panels` reads a skin as a
+  formed panel with `clearance` as its gap.
+- **The forms in the fit** (ADR-687). `fit.panels.forms` (also in `look`'s
+  measures) lists each skin form by its label with `covered_fraction`, the
+  placed pieces' area over the form's, and names a form under 0.5 in
+  `under_covered`. Its `outside` block is the mechanism standing out of
+  every skin form: each non-panel component's share of its volume outside
+  them and how far it stands out (`protrusion_mm`), filled on one voxel
+  grid of at most 6 M cells (no finer than 2 mm), worst first, listed from
+  5 %, with a phrase per component ("c_qdd_hip_l: 46% of its volume
+  outside the forms, 22 mm out"). Both are advisory: they never fail the
+  fit or refuse a build.
 
 `part.panel(env, *, side=(0,0,1), max_angle=60, within=None, thickness=2.0,
 seams=(), seam_gap=0.6, inset=0.0, openings=(), flange=0.0, frame=None,
@@ -1470,7 +1523,9 @@ at an infinite radius about its axis, exact already (ADR-611):
   and `wall` thick, seated on a `plate` (default the larger of 3 mm and
   1.5 × `wall`) against its stator
   face -- `seat="rear"` (default) or `"front"` -- with a clearance hole and a
-  `lib.bolt` on every stator hole, sized to the drive's own thread and
+  `lib.bolt` on every hole of that face (a rear seat takes the rear face's
+  own circle where the catalog gives one: 4 on the AK45, not the front's 6;
+  ADR-687), sized to the drive's own thread and
   stocked to its hole depth; the output side is open, and the plate's
   central opening passes the rear cover (or, front-seated, the output) and
   the leads.
