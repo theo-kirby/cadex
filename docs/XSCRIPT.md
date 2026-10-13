@@ -2758,12 +2758,12 @@ finished, so the next build carries on from there. Within a pair, samples
 are measured least bound first (ADR-686), and a sample whose bound already
 exceeds both the least distance measured and the 0.001 mm contact tolerance
 is not measured: it can change none of the three numbers. A pair already
-at 0.0 whose first contact is known is asked only for its common volume at
-later samples, and a sample after one that shared volume is asked for its
+at 0.0 (to 1e-9 mm) whose first contact is known is asked only for its
+common volume at later samples, and a sample after one that shared volume is asked for its
 volume first: solids sharing more than 1 mm³ are 0.0 apart. Every exact row
 is therefore the minimum, the largest common volume and the first contact
 over every sample, as measuring each would give; on `panel-cat-2` that is
-1,551 distance queries where nearest-box-first made 4,402, the far and
+1,482 distance queries where nearest-box-first made 4,402, the far and
 costly ones above all. No samples means no claim about fit. Joints
 without limits are outside coverage. A sweep failure never rejects acceptance.
 The checker uses copied solids, never changes live placements, and never

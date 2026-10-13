@@ -40457,7 +40457,10 @@ minimum, the first contact nor the common volume.
 
 Two rules spare the distance query where the answer is already known:
 - Once a pair's minimum is 0.0 and its first contact is at an earlier
-  sample, a later sample is asked only for its common volume.
+  sample, a later sample is asked only for its common volume. "0.0" is
+  within `_FIT_MINIMUM_SLACK_MM` (1e-9 mm), the slack every floor is
+  compared with: a touching pair's shell distance reads 2e-14 as often as
+  0.0, and the neck's motor and link read that way for 6 of 13 samples.
 - A sample after one that shared volume is asked for its volume first.
 - Either way, a volume over 1 mm³ means the distance is 0.0. A volume of
   0.0 at a settled sample is what measuring both gives. Anything in
@@ -40493,15 +40496,15 @@ a machine shared with another session's builds:
 
 | | before | after |
 |---|---|---|
-| all 15 joints, wall | 969 s | **201 s** |
-| summed per joint / CPU-seconds | 3,741 s / 3,675 | 698 s / 781 |
-| slowest joint | `j_hip_fr` 495 s | `j_neck` 81 s |
-| `j_hip_fl` | 415 s, 422 distance queries | 53 s, 104 |
-| `j_knee_drive_hl` | 303 s, 449 | 63 s, 216 |
-| distance / volume queries | 4,402 / 2,756 | 1,551 / 1,094 |
+| all 15 joints, wall | 969 s | **189 s** |
+| summed per joint | 3,741 s | 680 s |
+| slowest joint | `j_hip_fr` 495 s | `j_hip_hr` 74 s |
+| `j_hip_fl` | 415 s, 422 distance queries | 55 s, 103 |
+| `j_neck` | 302 s, 275 | 67 s, 63 |
+| distance queries | 4,402 | 1,482 |
 
 - Every exact row (minimum, largest common volume, first contact) equals
-  the old code's on all 15 joints, with 0 differences. That includes
+  the old code's on all 15 joints, to 1e-9 mm and mm³. That includes
   every collision this design has: the thigh into the chassis at 870 mm³,
   the abad links and hip drives into the neck link.
 - Every culled row is above its margin and at or below the old row's

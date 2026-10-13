@@ -6948,11 +6948,11 @@ def _measure_samples(components, baseline, values, motions, moves, contact_key, 
         if a.isNull() or b.isNull() or not a.Solids or not b.Solids:
             raise ValueError("sweep requires solid components")
         if settled:
-            # The minimum is already 0.0 and first contact came at an
-            # earlier sample (ADR-686): this sample's distance can change
-            # neither, so only its volume is asked for. No volume, or more
-            # than _SWEEP_OVERLAP_MM3 (which no solids apart share), is the
-            # number measuring both gives. The distance is not measured:
+            # The minimum is already 0.0, to the comparison slack, and
+            # first contact came at an earlier sample (ADR-686): this
+            # sample's distance can change neither, so only its volume is
+            # asked for. No volume, or more than _SWEEP_OVERLAP_MM3 (which
+            # no solids apart share), is the number measuring both gives. The distance is not measured:
             # 0.0 stands in for it, which changes neither number and can
             # only loosen the bounds it feeds.
             v = float(a.common(b).Volume) if overlap else 0.0
@@ -7205,7 +7205,11 @@ def _measure_samples(components, baseline, values, motions, moves, contact_key, 
                 if n in moving:
                     shapes[n].Placement = (sample[n].multiply(solved_shapes[n]) if n in sample
                                            else solved_shapes[n])
-            settled = best == 0.0 and contacts and index > min(contacts)
+            # Settled: touching to the kernel's rounding (a shell distance
+            # reads 1e-14 as often as 0.0), below the slack every floor is
+            # compared with, and first contact already found (ADR-686).
+            settled = (best is not None and best <= _FIT_MINIMUM_SLACK_MM and contacts
+                       and index > min(contacts))
             d, v = measure(a, b, sample_boxes[index], overlapping, settled)
             overlapping = v > _SWEEP_OVERLAP_MM3
             if best is None or d < best:
