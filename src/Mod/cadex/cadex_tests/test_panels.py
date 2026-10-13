@@ -248,6 +248,81 @@ def test_a_skin_cuts_one_piece_per_region_from_the_form_itself():
     assert "skin" in part.exported_names and "``regions``" in part.skin.__doc__
 
 
+def test_a_skin_opens_round_a_part_swept_through_its_motion():
+    lib = _lib()
+    part = lib._part
+    torso = _torso(lib)
+    leg = part.box(30, 30, 200, origin=(85, 60, -150))
+    swing = {"origin": (100, 75, 30), "axis": (1, 0, 0), "range": (-40, 40)}
+    skin = part.skin([torso], [part.box(400, 300, 200, origin=(-200, 0, -100))],
+                     openings=[{"around": leg, "clearance": 3.0, "motion": swing}],
+                     keep_clear=[{"around": leg, "motion": swing}], label="side")
+    spec = skin.parts[0].arguments[0]
+    opening = spec["skin"]["openings"][0]
+    assert opening["around"] is leg and opening["clearance"] == 3.0
+    assert opening["motion"]["kind"] == "hinge" and list(opening["motion"]["range"]) == [-40.0, 40.0]
+    # A keep_clear keeps the bosses out of the sweep; it takes no clearance.
+    assert list(spec["skin"]["keep_clear"][0]["motion"]["axis"]) == [1.0, 0.0, 0.0]
+    with pytest.raises(ValueError, match="unknown keys"):
+        part.skin([torso], [leg], keep_clear=[{"around": leg, "clearance": 2.0}])
+    with pytest.raises(ValueError, match="'around'"):
+        part.skin([torso], [leg], openings=[{"motion": swing}])
+    # A plain solid declares exactly what it did before (ADR-684).
+    plain = part.skin([torso], [leg], openings=[leg]).parts[0].arguments[0]
+    assert list(plain["skin"]["openings"]) == [leg] and "screws" not in plain["skin"]
+
+
+def test_a_skin_takes_one_screw_count_per_region():
+    lib = _lib()
+    part = lib._part
+    torso = _torso(lib)
+    keel = part.box(300, 60, 50, origin=(-150, -30, -25))
+    regions = [part.sphere(80, center=(120, 90, 20)), part.box(400, 300, 200, origin=(-200, -150, 50))]
+    skin = part.skin([torso], regions, frame=keel, screw=lib.bolt("m3", 10), screws=[1, 3])
+    spec = skin.parts[0].arguments[0]
+    assert list(spec["skin"]["screws"]) == [1, 3] and spec["screws"] == 3
+    assert len(skin.screws) == 4 and sorted(skin.mounts["p1"]) == ["b0", "b1", "b2"]
+    assert list(skin.mounts["p0"]) == ["b0"]
+    with pytest.raises(ValueError, match="one count per region"):
+        part.skin([torso], regions, frame=keel, screw=lib.bolt("m3", 10), screws=[1])
+
+
+def test_a_swept_opening_is_convex_cells_that_hold_every_pose():
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("scipy")
+    from scipy.spatial import Delaunay
+
+    rng = np.random.default_rng(3)
+    # A bar's surface points, 200 mm long, hinged at one end.
+    bar = rng.uniform([0, -10, -10], [200, 10, 10], size=(600, 3))
+    motion = {"kind": "hinge", "origin": [0, 0, 0], "axis": [0, 0, 1], "range": [-30, 60]}
+    poses, bulge = envelope_worker._motion_poses(motion, bar, np)
+    # Steps fine enough that the arc between two poses bulges at most the sag.
+    assert len(poses) >= 2 and bulge <= envelope_worker.SKIN_SWEEP_SAG_MM + 1e-9
+
+    class Bar:
+        def tessellate(self, _deflection):
+            import types
+            P = [types.SimpleNamespace(x=float(p[0]), y=float(p[1]), z=float(p[2])) for p in bar]
+            return P, [(0, 1, 2)]
+
+    hulls = envelope_worker._hulls(Bar(), motion, 2.0, np)
+    cells = [Delaunay(points) for _low, _high, points in hulls]
+    # Every point of the bar at every degree of its range lies in some cell.
+    for angle in range(-30, 61, 1):
+        t = math.radians(angle)
+        R = np.array([[math.cos(t), -math.sin(t), 0], [math.sin(t), math.cos(t), 0], [0, 0, 1]])
+        moved = bar @ R.T
+        inside = np.zeros(len(moved), dtype=bool)
+        for cell in cells:
+            inside |= cell.find_simplex(moved) >= 0
+        assert inside.all(), angle
+    # A slider is hulled over its two ends: the exact sweep of a convex cell.
+    slide = {"kind": "slider", "direction": [1, 0, 0], "range": [0, 50]}
+    poses, bulge = envelope_worker._motion_poses(slide, bar, np)
+    assert len(poses) == 2 and bulge == 0.0
+
+
 # --------------------------------------------------------------------------
 # the worker's arrays
 # --------------------------------------------------------------------------
@@ -360,12 +435,14 @@ def test_pieces_are_numbered_by_seam_cell():
 @pytest.mark.parametrize("sku,seat,length", [
     ("cubemars-ak80-9-v3", "rear", 5.0), ("cubemars-ak70-10", "rear", 6.0),
     ("cubemars-ak70-10", "front", 12.0), ("cubemars-ak80-9-v3", "front", 5.0),
+    ("cubemars-ak45-10-v3", "rear", 6.0),
 ])
 def test_a_qdd_housing_screws_through_its_own_stator_holes(sku, seat, length):
     lib = _lib()
     qdd = lib.qdd(sku, origin=(0, 0, 100), direction=(1, 0, 0))
     housing = lib.housing(qdd, seat=seat)
-    holes = qdd.spec["mount_holes"]
+    # A rear seat screws through the rear face's own circle (ADR-687).
+    holes = qdd.spec["rear_mount_holes" if seat == "rear" else "mount_holes"]
     assert len(housing.screws) == len(holes) == housing.spec["screw_count"]
     assert housing.spec["screw_length_mm"] == length
     assert housing.spec["outer_dia_mm"] == pytest.approx(qdd.spec["case_dia_mm"] + 5.0)
@@ -385,6 +462,15 @@ def test_a_qdd_housing_screws_through_its_own_stator_holes(sku, seat, length):
         o = bolt_axes[0]["origin"]
         assert any(math.hypot(o[1] - a["origin"][1], o[2] - a["origin"][2]) < 1e-6
                    for a in drive_axes)
+
+
+def test_an_ak45_rear_seat_takes_the_rear_faces_four_holes_not_the_fronts_six():
+    lib = _lib()
+    qdd = lib.qdd("cubemars-ak45-10-v3")
+    assert len(qdd.spec["mount_holes"]) == 6 and len(qdd.spec["rear_mount_holes"]) == 4
+    rear = lib.housing(qdd, seat="rear")
+    assert rear.spec["screw_count"] == len(rear.holes) == 4
+    assert lib.housing(qdd, seat="front").spec["screw_count"] == 6
 
 
 def test_a_servo_housing_is_cut_with_its_own_bay():
@@ -538,6 +624,47 @@ for piece in hide.parts:
     assert max(e.Tolerance for e in held.Edges) < 0.01
 # The shoulder plate's bosses run along its own normals, not one side's.
 assert len(set(axes)) > 1
+# ADR-687. A leg hinged inside the body swings out through the side: the
+# opening round it takes its whole path out of the plate, 3 mm clear.
+import FreeCAD as App
+from cadex_part_worker import PartOperationError
+leg = part.box(30, 30, 200, origin=(85, 60, -150))
+swing = {{"origin": (100, 75, 30), "axis": (1, 0, 0), "range": (-40, 40)}}
+side = part.skin([torso], [part.box(400, 300, 200, origin=(-200, 0, -100))], thickness=2.5,
+                 openings=[{{"around": leg, "clearance": 3.0, "motion": swing}}], label="side")
+plate = build_part_shape(side.parts[0].to_payload())
+assert plate.isValid() and len(plate.Solids) == 1
+leg_shape = build_part_shape(leg.to_payload())
+for angle in range(-40, 41, 4):
+    posed = leg_shape.copy()
+    posed.rotate(App.Vector(100, 75, 30), App.Vector(1, 0, 0), angle)
+    assert posed.distToShape(plate)[0] > 2.5, angle
+# The former's hoop clears its keep_out too, not only its web.
+drum = part.cylinder(30, 60, origin=(0, 60, 40), direction=(0, 1, 0))
+cleared = build_part_shape(part.former(torso, (0, 0, 0), (1, 0, 0), width=18, depth=10, web=4,
+                                       keep_out=[keel, drum], inset=4.5).to_payload())
+assert cleared.common(build_part_shape(drum.to_payload())).Volume < 1e-6
+# A piece short of sites keeps those it found (an advisory); a piece with
+# none, and every other bad piece, is named in one refusal.
+narrow = part.skin([torso], [part.box(60, 40, 200, origin=(-30, -20, 45))], thickness=2.5,
+                   frame=inset_hoops[1], screw=lib.bolt("m3", 10), screws=[8], label="narrow")
+facts = {{}}
+build_part_shape(narrow.parts[0].to_payload(), diagnostics=facts)
+short = facts["panel"]["boss_shortfall"]
+assert short["wanted"] == 8 and 0 < short["placed"] == len(facts["panel"]["fasteners"]) < 8
+assert short["rejected"], short
+bad = part.skin([torso], [part.box(10, 10, 10, origin=(0, 0, 500)),
+                          part.box(400, 300, 200, origin=(-200, -150, 45)),
+                          part.box(10, 10, 10, origin=(0, 0, -500))],
+                frame=part.box(10, 10, 10, origin=(500, 500, 500)), screw=lib.bolt("m3", 10),
+                label="bad")
+try:
+    build_part_shape(bad.parts[0].to_payload())
+    raise AssertionError("a skin with three bad pieces built")
+except PartOperationError as exc:
+    text = str(exc)
+assert text.startswith("api.skin 'bad': 3 of 3 pieces cannot be built"), text
+assert all(f"piece p{{k}}:" in text for k in range(3)), text
 out.write("PANELS-OK\\n")
 out.close()
 ''')

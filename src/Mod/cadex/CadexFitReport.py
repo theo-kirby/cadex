@@ -1208,7 +1208,8 @@ PANEL_NOTE = (
     "into a non-panel part, and no fixed joint welds it to one it touches). Those "
     "four fail the fit. Also named, advisory: egg (it encloses far more than it "
     "covers), solid or thin (its wall), larger than the bed, under-held (a point of it "
-    "far from any fastener) and seam closed. part.panel(part.envelope(over=[...]), "
+    "far from any fastener), seam closed and short of screws (a skin piece that seats "
+    "fewer bosses than asked, with why the rest were turned down). part.panel(part.envelope(over=[...]), "
     "...) grows such a panel from what it covers. A lid, door or enclosure wall "
     "declares closes=[frame]: it is judged seated on that frame (unseated: it comes "
     "no closer than 1 mm) with no open seam (the frame facing it stands off it), "
@@ -1372,8 +1373,15 @@ def panel_summary(value: Any) -> dict[str, Any]:
         if grown:
             item["grown"] = {key: grown[key] for key in ("group", "piece", "clearance_mm", "hull",
                                                          "radius_mm", "thickness_mm", "formed",
-                                                         "skin", "area_mm2", "covered_fraction")
+                                                         "skin", "area_mm2", "covered_fraction",
+                                                         "form_label")
                              if key in grown}
+        short = grown.get("boss_shortfall") if isinstance(grown.get("boss_shortfall"),
+                                                          Mapping) else None
+        if short:
+            # Held by the sites that qualified and its weld (ADR-687).
+            item["boss_shortfall"] = dict(short)
+            item["findings"].append("short of screws")
         clearance = float(grown.get("clearance_mm") or 0.0) if _finite(
             grown.get("clearance_mm")) else 0.0
         radius = float(grown.get("radius_mm") or 0.0) if _finite(grown.get("radius_mm")) else 0.0
@@ -1506,6 +1514,11 @@ def panel_summary(value: Any) -> dict[str, Any]:
         if "unmounted" in item["findings"]:
             details.append("no bolt through it threads into a non-panel part and no "
                            "fixed joint welds it to one it touches")
+        if "short of screws" in item["findings"]:
+            rejected = item["boss_shortfall"].get("rejected") or {}
+            details.append("it seats {} of its {} screws (turned down: {})".format(
+                item["boss_shortfall"].get("placed"), item["boss_shortfall"].get("wanted"),
+                "; ".join(f"{k}: {v}" for k, v in sorted(rejected.items())) or "none"))
         if details:
             item["detail"] = "; ".join(details) + "."
         item["failing"] = bool(failing)
@@ -1536,9 +1549,87 @@ def panel_summary(value: Any) -> dict[str, Any]:
     if gaps_published is None:
         summary["gap_note"] = ("This revision published no panel measurements (accepted "
                                "before ADR-634): floating was not measured. Rebuild.")
+    forms = form_summary(panels, value.get("form_containment"))
+    if forms is not None:
+        summary["forms"] = forms
     if failing or reported:
         summary["note"] = PANEL_NOTE
     return summary
+
+
+#: A skin's form is reported under-covered below this share of its area under
+#: panels (ADR-687): advisory, a number for the agent to read, never a failure.
+FORM_COVERED_MIN = 0.5
+#: A component is listed as outside the forms from this share of its volume.
+FORM_OUTSIDE_LISTED = 0.05
+
+FORM_NOTE = (
+    "Advisory, never failing: coverage is each skin form's area under the panels "
+    "placed (the pieces' area over the form's); a form under {:.0%} is named. "
+    "outside lists the mechanism standing out of every skin form: each "
+    "component's share of its volume outside them and how far it stands out "
+    "(protrusion_mm). Place the mechanism inside the form, or shape the form "
+    "round it where it is the animal's."
+).format(FORM_COVERED_MIN)
+
+
+def form_summary(panels: Sequence[Mapping[str, Any]], containment: Any) -> dict[str, Any] | None:
+    """Each skin form's coverage and the mechanism outside the forms (ADR-687).
+
+    ``panels`` are the clearance value's ``role="panel"`` component rows;
+    ``containment`` the assembly's published ``form_containment``. ``None``
+    when no panel is a skin.
+    """
+
+    forms: dict[str, dict[str, Any]] = {}
+    for row in panels:
+        grown = row.get("panel") if isinstance(row.get("panel"), Mapping) else {}
+        key = str(grown.get("form_key") or "")
+        if not grown.get("skin") or not key:
+            continue
+        entry = forms.setdefault(key, {"form": str(grown.get("form_label") or key[:6]),
+                                       "form_area_mm2": 0.0, "covered_mm2": 0.0,
+                                       "pieces": 0})
+        if _finite(grown.get("form_area_mm2")):
+            entry["form_area_mm2"] = max(entry["form_area_mm2"], float(grown["form_area_mm2"]))
+        if _finite(grown.get("area_mm2")):
+            entry["covered_mm2"] += float(grown["area_mm2"])
+        entry["pieces"] += 1
+    if not forms:
+        return None
+    coverage = []
+    for entry in forms.values():
+        area = entry["form_area_mm2"]
+        fraction = round(min(entry["covered_mm2"] / area, 1.0), 3) if area > 0 else 0.0
+        coverage.append({"form": entry["form"], "pieces": entry["pieces"],
+                         "form_area_mm2": round(area, 1),
+                         "covered_mm2": round(entry["covered_mm2"], 1),
+                         "covered_fraction": fraction})
+    coverage.sort(key=lambda r: r["covered_fraction"])
+    block: dict[str, Any] = {
+        "covered_min": FORM_COVERED_MIN,
+        "coverage": coverage,
+        "under_covered": [r["form"] for r in coverage if r["covered_fraction"] < FORM_COVERED_MIN],
+    }
+    if isinstance(containment, Mapping):
+        if containment.get("error"):
+            block["outside"] = {"error": str(containment["error"])}
+        else:
+            listed = [dict(r) for r in containment.get("components") or []
+                      if isinstance(r, Mapping) and _finite(r.get("outside_fraction"))
+                      and r["outside_fraction"] >= FORM_OUTSIDE_LISTED]
+            block["outside"] = {
+                key: containment[key] for key in ("outside_fraction", "outside_volume_mm3",
+                                                  "mechanism_volume_mm3", "measured_count",
+                                                  "voxel_mm") if key in containment}
+            block["outside"]["worst"] = listed
+            block["outside"]["phrases"] = [
+                "{}: {:.0%} of its volume outside the forms{}".format(
+                    r["component"], r["outside_fraction"],
+                    f", {r['protrusion_mm']:g} mm out" if _finite(r.get("protrusion_mm")) else "")
+                for r in listed[:6]]
+    block["note"] = FORM_NOTE
+    return block
 
 
 def _finite(number: Any) -> bool:

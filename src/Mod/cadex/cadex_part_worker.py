@@ -1560,7 +1560,32 @@ _MATE_INTERFERENCE_MM3 = 1.0e-6
 _PANEL_PLANS: dict[str, dict[str, Any]] = {}
 
 
-def _panel_plan(operation: str, spec: Any) -> dict[str, Any]:
+#: Every skin form this process has planned, ``{form_key: {"label", "payloads"}}``,
+#: and the keys this run's skin pieces named (ADR-687): what the assembly
+#: measures the mechanism against. A piece's facts carry its form key; a
+#: memo hit replays them, and the plan that made them is this process's.
+_SKIN_FORM_PAYLOADS: dict[str, dict[str, Any]] = {}
+_RUN_SKIN_FORMS: set[str] = set()
+
+
+def reset_skin_forms() -> None:
+    _RUN_SKIN_FORMS.clear()
+
+
+def skin_forms() -> dict[str, dict[str, Any]]:
+    """The forms this run's skins cut their panels from, by form key."""
+
+    return {key: _SKIN_FORM_PAYLOADS[key] for key in sorted(_RUN_SKIN_FORMS)
+            if key in _SKIN_FORM_PAYLOADS}
+
+
+def _note_skin_forms(fragment: Mapping[str, Any]) -> None:
+    panel = fragment.get("panel") if isinstance(fragment, Mapping) else None
+    if isinstance(panel, Mapping) and panel.get("form_key"):
+        _RUN_SKIN_FORMS.add(str(panel["form_key"]))
+
+
+def _panel_plan(operation: str, spec: Any, label: str = "") -> dict[str, Any]:
     from CadexEnvelope import EnvelopeError, build_panel_plan, build_skin_plan
 
     if not isinstance(spec, dict) or "envelope" not in spec:
@@ -1568,22 +1593,35 @@ def _panel_plan(operation: str, spec: Any) -> dict[str, Any]:
     key = _memo_key(spec)
     plan = _PANEL_PLANS.get(key)
     if plan is None:
+        is_skin = bool(spec.get("skin"))
         try:
-            builder = build_skin_plan if spec.get("skin") else build_panel_plan
+            builder = build_skin_plan if is_skin else build_panel_plan
             plan = builder(spec, build_part_shape,
                            plan_of=lambda other: _panel_plan(operation, other))
         except EnvelopeError as exc:
+            # Named as the script wrote it: part.skin and its label, not the
+            # part.panel value the pieces are made of (ADR-687).
+            kind = "skin" if is_skin else "panel"
+            named = f"api.{kind} {label!r}" if label else f"api.{kind}"
             raise PartOperationError(
-                f"api.{'skin' if spec.get('skin') else 'panel'}: {exc}",
+                f"{named}: {exc}",
                 stage="part_argument",
-                operation="panel",
+                operation=kind,
                 correction=(
+                    "Change the declaration the message names: its regions, openings, the "
+                    "frame under the bosses, keep_clear= or the screws."
+                    if is_skin else
                     "Change the declaration the message names: the covered parts, side=, "
                     "max_angle=, within=, the seams, the frame under the bosses or the screw."
                 ),
             ) from exc
         plan["key"] = key[4:16]
         _PANEL_PLANS[key] = plan
+        form_key = (plan.get("facts") or {}).get("form_key")
+        if form_key and len(_SKIN_FORM_PAYLOADS) < 256:
+            _SKIN_FORM_PAYLOADS.setdefault(str(form_key), {
+                "label": str(plan["facts"].get("form_label") or ""),
+                "payloads": list(spec["envelope"]["form"])})
     return plan
 
 
@@ -1594,7 +1632,7 @@ def _panel_output(operation: str, payload: dict[str, Any], properties: dict[str,
     import Part
 
     spec = _argument(payload, 0, "spec")
-    plan = _panel_plan(operation, spec)
+    plan = _panel_plan(operation, spec, str(properties.get("label") or ""))
     piece = str(properties.get("piece") or "")
     if piece == "pilots":
         if plan["pilots"] is None:
@@ -1604,6 +1642,8 @@ def _panel_output(operation: str, payload: dict[str, Any], properties: dict[str,
         raise _error(operation, "piece", f"is not one of {sorted(plan['pieces'])}")
     if diagnostics is not None:
         envelope = spec["envelope"]
+        skin = bool(spec.get("skin"))
+        facts = {k: v for k, v in plan["facts"].items() if k != "piece_area_mm2"}
         diagnostics["panel"] = {
             "group": plan["key"],
             "piece": piece,
@@ -1612,12 +1652,14 @@ def _panel_output(operation: str, payload: dict[str, Any], properties: dict[str,
             "radius_mm": None if envelope["radius"] == "hull" else float(envelope["radius"]),
             "hull": envelope["radius"] == "hull",
             **({"formed": True} if envelope.get("form") else {}),
-            **({"area_mm2": plan["facts"]["piece_area_mm2"].get(piece)} if spec.get("skin") else {}),
+            **({"area_mm2": plan["facts"]["piece_area_mm2"].get(piece)} if skin else {}),
             "thickness_mm": float(spec["thickness"]),
             "side": list(spec["side"]),
             "screw": (spec.get("screw") or {}).get("size"),
             "fasteners": plan["fasteners"].get(piece, []),
-            **{k: v for k, v in plan["facts"].items() if k != "piece_area_mm2"},
+            **({"boss_shortfall": plan["shortfall"][piece]}
+               if piece in (plan.get("shortfall") or {}) else {}),
+            **facts,
         }
     shape = plan["pieces"][piece]
     return shape.copy() if hasattr(shape, "copy") else Part.Shape(shape)
@@ -1654,6 +1696,17 @@ def _panel_fastener_mount(operation: str, target: dict[str, Any]) -> dict[str, A
     rows = {row["name"]: row for row in plan["fasteners"].get(piece, [])}
     row = rows.get(str(target["panel_fastener"]))
     if row is None:
+        short = (plan.get("shortfall") or {}).get(piece)
+        if short:
+            # A skin piece short of sites keeps the ones it has (ADR-687);
+            # a screw mated onto a boss it does not have has nowhere to go.
+            raise _error(operation, "target", (
+                f"piece {piece} seats {short['placed']} of its {short['wanted']} screws "
+                f"(turned down: " + "; ".join(f"{k}: {v}" for k, v in
+                                              sorted(short["rejected"].items())) +
+                f"), so it has no fastener {target['panel_fastener']!r}: give that region "
+                f"screws={short['placed']} in a per-region screws=[...], or leave its "
+                "missing screws out"))
         raise _error(operation, "target",
                      f"piece {piece} has no fastener {target['panel_fastener']!r}")
     resolved = dict(target)
@@ -4631,6 +4684,7 @@ def build_part_shape(
             # Replay the fragment: `general_fuse` publishes a declared
             # live_outputs.* key, so a hit must report what a build did.
             diagnostics.update(fragment)
+            _note_skin_forms(fragment)
         return shape.copy()
 
     fragment: dict[str, Any] = {}
@@ -4639,6 +4693,7 @@ def build_part_shape(
     )
     if diagnostics is not None and fragment:
         diagnostics.update(fragment)
+        _note_skin_forms(fragment)
     if len(_SHAPE_MEMO) < _SHAPE_MEMO_LIMIT:
         _SHAPE_MEMO[key] = (shape.copy(), dict(fragment))
     return shape

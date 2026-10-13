@@ -3422,15 +3422,16 @@ class PartDomainAPI:
         outline is where the region's surface crosses the form -- a sphere
         or ``lib.form`` makes an oval plate, a slab a straight band, a closed
         ``part.bspline`` profile extruded across the body the outline you
-        drew in that view. ``openings`` -- solids cut out of every piece
-        (where the mechanism shows). ``frame`` and ``screw=lib.bolt(size,
-        length)`` -- ``screws`` bosses per piece, each cast from the piece's
-        inner face along its inward normal onto the frame (``part.former``\ s
-        of the same form with ``inset=thickness + clearance``), clear of
-        ``keep_clear`` (the mechanism). ``clearance``
-        -- the gap the panel check holds the form to over what it covers.
-        Returns a Panel, as ``part.panel`` does; the build facts carry each
-        piece's area and the fraction of the form the skin covers.
+        drew in that view. ``openings`` -- cut out of every piece: solids, or
+        ``{"around": link, "clearance": mm, "motion": {"origin", "axis",
+        "range"}}``, what the link sweeps through its joint. ``frame`` and
+        ``screw=lib.bolt(size, length)`` -- ``screws`` (or one count per
+        region) bosses per piece, cast along its inward normal onto the frame
+        (formers with ``inset=thickness + clearance``), clear of
+        ``keep_clear`` (solids or ``{"around", "motion"}``); a piece short of
+        sites keeps those found (advisory). ``clearance`` -- the gap the panel
+        check holds the form to. Returns a Panel; the facts carry each
+        piece's area and the form's covered fraction.
         """
 
         from CadexPanels import PanelError, skin
@@ -3453,9 +3454,9 @@ class PartDomainAPI:
         lands on it at the envelope's clearance, and its bosses screw into
         it -- a boss needs the band under its whole disc, so keep ``width``
         at 16 or more for M3. ``web`` > 0 fills the hoop with a plate that
-        thick, less ``keep_out`` (the frame, drives and links that pass
-        through it, swept where they move): a bulkhead that ties the hoop to
-        the frame. Weld each former to what carries it, name it in the
+        thick: a bulkhead that ties the hoop to the frame. ``keep_out`` (the
+        drives and links that pass through, swept where they move) is cut
+        from hoop and web. Weld each former to what carries it, name it in the
         panels' ``covers=``, and fuse the formers into the panels'
         ``frame=``. ``inset`` -- the hoop's outer face that far inside the
         form: under a ``part.skin``, its thickness plus clearance. Returns a

@@ -365,9 +365,10 @@ def _panel_values(part, spec, names, frame, screw, screws, label):
 
         seat = Mount("seat", bolt.body, {"name": "seat", "component": "", "origin": (0, 0, 0),
                                          "axis": (0, 0, -1), "roll": (1, 0, 0)})
-        for name, piece in zip(names, parts):
+        counts = (spec.get("skin") or {}).get("screws") or [spec["screws"]] * len(names)
+        for name, piece, count in zip(names, parts, counts):
             mounts[name] = {}
-            for index in range(spec["screws"]):
+            for index in range(count):
                 handle = f"b{index}"
                 target = PanelMount(handle, piece, {
                     "name": handle, "component": name, "origin": (0, 0, 0),
@@ -382,6 +383,34 @@ def _panel_values(part, spec, names, frame, screw, screws, label):
 
 #: How many regions one part.skin cuts, one piece each.
 MAX_SKIN_REGIONS = 24
+
+
+def _skin_cutter(name, entry, *, keep):
+    """One skin opening or keep_clear: a solid, or a part and the joint motion it sweeps.
+
+    An opening's part is cut out of every piece grown by its ``clearance``;
+    a keep_clear's part keeps the bosses out of its way. With ``motion``
+    each is the space the part sweeps through it (ADR-687).
+    """
+
+    if not isinstance(entry, Mapping):
+        return _solid_value(name, entry)
+    allowed = {"around", "motion"} if keep else {"around", "clearance", "motion"}
+    unknown = set(entry) - allowed
+    if "around" not in entry or unknown:
+        shape = ("{'around': part, 'motion': {...}}" if keep else
+                 "{'around': part, 'clearance': mm, 'motion': {...}}")
+        raise PanelError(
+            f"{name} is a solid, or {shape} with motion {{'origin': o, 'axis': a, 'range': "
+            "(lo, hi)}} (a hinge, degrees) or {'direction': d, 'range': (lo, hi)} (a slider, mm)"
+            + (f"; unknown keys {sorted(unknown)}" if unknown else ""))
+    clean: dict[str, Any] = {"around": _solid_value(f"{name}['around']", entry["around"])}
+    if not keep:
+        clean["clearance"] = _number(f"{name}['clearance']", entry.get("clearance", 2.0),
+                                     0.0, 50.0)
+    if entry.get("motion") is not None:
+        clean["motion"] = _motion(f"{name}['motion']", entry["motion"], with_shape=False)
+    return clean
 
 
 def skin(part, form, regions, *, thickness=2.5, gap=1.2, openings=(), frame=None, screw=None,
@@ -400,6 +429,16 @@ def skin(part, form, regions, *, thickness=2.5, gap=1.2, openings=(), frame=None
         raise PanelError(f"one skin cuts at most {MAX_SKIN_REGIONS} regions; declare another skin")
     holes = list(openings) if isinstance(openings, (list, tuple)) else [openings]
     clear = list(keep_clear) if isinstance(keep_clear, (list, tuple)) else [keep_clear]
+    per_piece = None
+    if isinstance(screws, (list, tuple)):
+        # One count per region (ADR-687): a piece whose bosses fall short is
+        # given fewer, by name, without starving its neighbours.
+        if len(screws) != len(areas):
+            raise PanelError(f"screws= is one count per region ({len(areas)}); received "
+                             f"{len(screws)}")
+        per_piece = [int(_number(f"screws[{k}]", n, 0, MAX_SCREWS_PER_PIECE))
+                     for k, n in enumerate(screws)]
+        screws = max(per_piece + [1])
     spec: dict[str, Any] = {
         # The panel check reads the form and the clearance off the envelope, as
         # it does for a formed part.panel (ADR-679); a skin covers nothing itself.
@@ -408,8 +447,10 @@ def skin(part, form, regions, *, thickness=2.5, gap=1.2, openings=(), frame=None
                      "form": [_solid_value(f"form[{k}]", item) for k, item in enumerate(forms)]},
         "skin": {
             "regions": [_solid_value(f"regions[{k}]", item) for k, item in enumerate(areas)],
-            "openings": [_solid_value(f"openings[{k}]", item) for k, item in enumerate(holes)],
-            "keep_clear": [_solid_value(f"keep_clear[{k}]", item) for k, item in enumerate(clear)],
+            "openings": [_skin_cutter(f"openings[{k}]", item, keep=False)
+                         for k, item in enumerate(holes)],
+            "keep_clear": [_skin_cutter(f"keep_clear[{k}]", item, keep=True)
+                           for k, item in enumerate(clear)],
             "gap": _number("gap", gap, 0.0, 10.0),
         },
         "side": [0.0, 0.0, 1.0],
@@ -421,6 +462,8 @@ def skin(part, form, regions, *, thickness=2.5, gap=1.2, openings=(), frame=None
         "max_piece": None if max_piece is None else _triple("max_piece", max_piece),
         "avoid": [_avoided(k, other) for k, other in enumerate(list(avoid or ()))],
     }
+    if per_piece is not None:
+        spec["skin"]["screws"] = per_piece
     names = [f"p{k}" for k in range(len(areas))]
     return _panel_values(part, spec, names, frame, screw, screws, label)
 
@@ -533,7 +576,14 @@ def _qdd_housing(lib, qdd, wall, c, seat, plate, label):
     screw = catalog.normalise_thread_size(thread)
     thread_row = catalog.thread_spec(screw)
     clear_r = thread_row["clearance_normal_mm"] / 2.0
-    pcd_r = float(spec["mount_pcd_mm"]) / 2.0
+    # A rear seat screws through the rear face's own circle, which may not be
+    # the front's: the AK45's rear face has 4 holes on 47 mm, not 6 (ADR-687).
+    if seat == "rear":
+        pattern = [list(xy) for xy in spec.get("rear_mount_holes") or spec["mount_holes"]]
+        pcd_r = float(spec.get("rear_mount_pcd_mm", spec["mount_pcd_mm"])) / 2.0
+    else:
+        pattern = [list(xy) for xy in spec["mount_holes"]]
+        pcd_r = float(spec["mount_pcd_mm"]) / 2.0
     hole_edge = pcd_r - clear_r
     if seat == "rear":
         seat_z = float(spec["rear_mount_z_mm"])
@@ -592,13 +642,13 @@ def _qdd_housing(lib, qdd, wall, c, seat, plate, label):
     cavity_pieces.append(part.cylinder(opening, plate + 2.0, origin=(0.0, 0.0, plate_low - 1.0)))
     cavity_local = part.fuse(cavity_pieces) if len(cavity_pieces) > 1 else cavity_pieces[0]
     holes_local = [part.cylinder(clear_r, plate + 2.0, origin=(x, y, plate_low - 1.0))
-                   for x, y in spec["mount_holes"]]
+                   for x, y in pattern]
     cavity = _place_local(lib, cavity_local, frame)
     holes = [_place_local(lib, hole, frame) for hole in holes_local]
     body = part.cut(_place_local(lib, drum, frame), [cavity] + holes, label=label)
     screws = [lib.bolt(screw, length, origin=_world_point(frame, (x, y, head_z)),
                        direction=_world_vector(frame, screw_dir))
-              for x, y in spec["mount_holes"]]
+              for x, y in pattern]
     return Housing(lib, body=body, screws=screws, cavity=cavity, holes=holes, drive=qdd,
                    spec={"drive": f"qdd/{qdd.part_number}", "seat": seat, "wall_mm": wall,
                          "clearance_mm": c, "plate_mm": plate, "outer_dia_mm": 2 * r_out,

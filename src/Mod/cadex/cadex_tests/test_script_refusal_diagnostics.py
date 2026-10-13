@@ -200,6 +200,48 @@ def test_a_kernel_refusal_names_the_call_its_output_and_operands() -> None:
     )
 
 
+def test_a_skin_refusal_names_part_skin_and_its_label_not_part_panel() -> None:
+    """panel-cat-3: every skin refusal read "Failing call: part.panel ... while
+    building output 'chest_frame'" (ADR-687)."""
+
+    from cadex_part_worker import PartOperationError, _note_failure_site
+
+    cadex_project_worker._reset_script_run()
+    try:
+        part = _part_api()
+        result, _stdout, _budget = _run(
+            "form = part.sphere(100)\n"
+            "frame = part.box(40, 40, 40, origin=(-20, -20, -20))\n"
+            "chest_skin = part.skin([form], [part.box(300, 300, 300, origin=(-150, -150, 0))],\n"
+            "                       frame=frame, screw=lib_bolt, label='chest_skin')\n"
+            "frame = part.cut(frame, chest_skin.pilots)\n"
+            "result = {'chest_frame': frame}\n",
+            part=part, lib_bolt=_bolt(part),
+        )
+        cadex_project_worker._SCRIPT_RUN["output"] = "chest_frame"
+        error = PartOperationError("api.skin 'chest_skin': 1 of 1 pieces cannot be built",
+                                   operation="skin")
+        pilots = result["chest_frame"].arguments[1]
+        pilots = pilots[0] if isinstance(pilots, (list, tuple)) else pilots
+        _note_failure_site(error, pilots.to_payload())
+        _note_failure_site(error, result["chest_frame"].to_payload())
+        site, sentence = cadex_project_worker.failure_site(error)
+    finally:
+        cadex_domain_api.track_creation_sites(False)
+    assert site["call"] == "part.skin" and site["skin"] == "chest_skin"
+    assert site["piece"] == "pilots" and site["lines"] == [3]
+    assert "chest_skin.pilots" in site["names"]
+    assert sentence.startswith(
+        "Failing call: chest_skin.pilots = part.skin 'chest_skin' (pilots) (script line 3)")
+    assert "the skin's pilots are cut into it" in sentence and "part.panel" not in sentence
+
+
+def _bolt(part):
+    from cadex_library_api import create_library_api
+
+    return create_library_api(part).bolt("m3", 10)
+
+
 def test_an_enclosing_call_is_named_as_the_nesting() -> None:
     from cadex_part_worker import PartOperationError, _note_failure_site
 
