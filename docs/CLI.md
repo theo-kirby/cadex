@@ -47,11 +47,11 @@ The agent's two requests cost tokens. The loop between them does not.
 
 | Command | What it does | Spends tokens |
 |---|---|---|
-| `cadex mcp [--idle S]` | Serve the project's tools to an agent over MCP stdio (ADR-538; §2a below). The engine opens on the first tool call and closes after `--idle` quiet seconds (default 30, held three times as long as the engine took to open, at most 900 s, because reopening restores the accepted model (ADR-685); 0 holds it), releasing the project for the agent's own `cadex … --wait` commands; a session that accepted a build lands one `PROGRESS.md` row and one project commit as it closes. Every tool call appends one line to the project's activity log, `review/activity.jsonl` (ADR-549): `t`, `tool`, `args` (a summary — a long or multi-line string only by its length, a list only by its size, an object only by its keys, 160 characters at most), `outcome` (`ok` or `error`), `detail` (the call's one-line summary or its error), `ms` and `call`. A call also writes an in-flight line as it starts (ADR-553): `outcome: running`, `t` its start, and the server's `pid`; its finished line, with the same `call`, hides it on read, and an in-flight line whose process has gone reads `lost`. An in-flight `evaluate` makes `/api/project`'s `stage` `evaluating`. The log is capped at 64 KiB: past that it is rewritten keeping the newest lines within 32 KiB. The project's git ignores it (`/review/`), and `GET /api/project`'s `activity` carries its newest ten entries, newest first, or `available: false` and the `reason`. | no (the agent's own) |
+| `cadex mcp [--idle S]` | Serve the project's tools to an agent over MCP stdio (ADR-538; §2a below). The engine opens on the first tool call and closes after `--idle` quiet seconds (default 30, held three times as long as the engine took to open, at most 900 s (ADR-685); 0 holds it; the engine opens without the restore pass unless the call is an `inspect` of the live document, ADR-689), releasing the project for the agent's own `cadex … --wait` commands; a session that accepted a build lands one `PROGRESS.md` row and one project commit as it closes. Every tool call appends one line to the project's activity log, `review/activity.jsonl` (ADR-549): `t`, `tool`, `args` (a summary — a long or multi-line string only by its length, a list only by its size, an object only by its keys, 160 characters at most), `outcome` (`ok` or `error`), `detail` (the call's one-line summary or its error), `ms` and `call`. A call also writes an in-flight line as it starts (ADR-553): `outcome: running`, `t` its start, and the server's `pid`; its finished line, with the same `call`, hides it on read, and an in-flight line whose process has gone reads `lost`. An in-flight `evaluate` makes `/api/project`'s `stage` `evaluating`. The log is capped at 64 KiB: past that it is rewritten keeping the newest lines within 32 KiB. The project's git ignores it (`/review/`), and `GET /api/project`'s `activity` carries its newest ten entries, newest first, or `available: false` and the `reason`. | no (the agent's own) |
 | `cadex guidance [--project DIR]` | Print the whole guidance an agent driving Cadex follows: the domain-neutral base, and the project's chosen style after it when it chose one (`cadex style`, ADR-560). `cadex mcp`'s `instructions` are a short brief that tells the agent to run this (§2a). A stored style the engine does not carry is a usage error. No engine. | no |
 | `cadex params --set k=v` | Set declared parameters and rebuild. | no |
 | `cadex script` | Print the project script. | no |
-| `cadex script --set FILE` | Replace the script from a file and rebuild. | no |
+| `cadex script --set FILE` | Replace the script from a file and rebuild. An accepted build carries `verdicts`, the brief of the fit an MCP build reply carries (ADR-689). | no |
 | `cadex export` | Rebuild the accepted script and write its outputs. | no |
 | `cadex section --plane XY [--offset-mm 8]` | Cut accepted tessellation through a world plane; revision-bearing SVG and JSON under `review/section/` (ADR-240). **`--offset-mm` is optional**: omitted, the offset is derived from the accepted bounds the way the walk derives it — every candidate is cut and the one covering the most objects wins (ADR-273, ADR-275). The note reports the offset, whether it was `explicit` or `derived`, and how many of the model's objects the cut reached. | no |
 | `cadex render` | Rebuild accepted display and write front/top/right/iso SVG previews, a 1024 px studio `hero.png` (ADR-412), the concept sheet `sheet.png` (ADR-430) and `review/render/summary.json`, bearing the full accepted revision (ADR-239). CPU only; no graphics runtime. | no |
@@ -135,9 +135,15 @@ surface — `describe_api`, `write_script`, `edit_script`, `set_params`,
 opens an engine. The first tool call takes the project lock (waiting for a
 `cadex` command that holds it) and opens the engine; the server lets both
 go after `--idle` seconds with no call (default 30, `0` to hold them until
-the client goes) and opens them again on the next call. Opening restores the
-accepted model, which on a large design takes minutes, so the hold stretches
-to three times as long as the last opening took, at most 900 s (ADR-685). So the agent's own
+the client goes) and opens them again on the next call. The hold stretches
+to three times as long as the last opening took, at most 900 s (ADR-685).
+**The engine opens without the restore pass** (ADR-689): every tool reads
+the stored accepted attempt or runs the script afresh, and the restore -- a
+full replay of the accepted script, minutes on a large design -- was most of
+every reopen (on `panel-cat-2` an `inspect` 31 s after the last call took
+268 s). Only an `inspect` of `scope=document` or `scope=object`, which read
+cadexd's live document, opens with the restore, and reopens with it when the
+session opened without one and has built nothing. So the agent's own
 `cadex render`, `export`, `section`, `train` or `walk` on the same project
 runs between bursts of tool calls, with `--wait`; the guidance tells it so.
 
@@ -161,7 +167,7 @@ behind the bridge's lock timed out too. Give the client at least the
 engine budget plus a minute, e.g. `tool_timeout_sec = 420` under
 `[mcp_servers.cadex]`, and raise both together with `cadex budgets --set
 timeout_seconds=…`.
-A reopen costs one restore pass, the same as any `cadex params`.
+A reopen costs an engine start and the project open, with no replay (ADR-689).
 
 Each tool call prints one line on stderr (` · write_script  plate
 (8eeaaa38…)  fit …`), which an MCP client keeps in its server log. When the
@@ -1091,7 +1097,16 @@ one pass that fails exactly when these two commands are needed: after
 `train --put` overwrites the asset the accepted script declares by sha256,
 the stored script no longer re-runs, and the walk's digest edit — a `cadex
 script` read followed by a `cadex script --set` — is what repairs it. Every
-other command keeps the restore.
+other command keeps the restore, except `cadex mcp` (ADR-689, above).
+
+**`cadex script --set` carries the verdicts** (ADR-689). After an accepted
+build it reads the published fit, as an MCP build reply does, and the
+envelope's `verdicts` is the brief below; the prose report prints it as
+`fit`, `sweep`, `panels`, `mount` and `welds` lines with one indented line
+per named row. The whole block is not in the envelope -- it is `cadex
+clearance` or `inspect scope=clearance` away. On `panel-cat-3` the shell
+build's envelope had no verdict at all, and the agent ran seven MCP
+`rebuild`s, about 57 minutes, only to read which panels failed.
 
 ### The review dashboard (ADR-286, ADR-301)
 
@@ -1627,7 +1642,8 @@ revision and commits views under a revision directory. The same snapshot supplie
 
 `error` is present, beside any `notes`, when `ok` is false. Commands add
 their own block, described with the command: `training_plan`, `walk`,
-`smoke`, `evaluation`, `revisions`, `budgets`, `style`. `stdout` is what
+`smoke`, `evaluation`, `revisions`, `budgets`, `style`, and `verdicts`, the
+verdict brief a `cadex script --set` build carries (ADR-689, §4). `stdout` is what
 the script printed on that run, accepted or refused, when it printed
 anything (ADR-620): a refused build's prints used to be lost with it. The
 prose report prints them under the error, one `  | ` line each. `outputs` entries
@@ -1911,9 +1927,13 @@ in `uncatalogued_sources`, and as purchased, in the `mechanism` graphite,
 otherwise (ADR-412; before it, filament orange and dark grey). The reply's
 `colours` fact names each role's colour and how many components declared one,
 and its `measures` fact gives the two image proxies above (P1 and P3, each
-`value`, `bar`, `meets`), measured on the hero whatever views were asked for. A session that opens with `look` rebuilds once and reads the fit and
-inventory a modelling reply would have carried, so the first look is drawn
-the same way. hex2's four views take about 7 s.
+`value`, `bar`, `meets`), measured on the hero whatever views were asked for. A session that opens with `look` draws the accepted
+attempt the store retained -- its `result.json` and tessellation, as the
+dashboard and `cadex evaluate` draw it -- and reads the fit and inventory a
+modelling reply would have carried, so the first look is drawn the same way
+and nothing is rebuilt (ADR-689). It rebuilds once only when no attempt was
+retained. Before, it always rebuilt: after a shell build on `panel-cat-3` a
+look took 11 minutes, a restore and then a rebuild. hex2's four views take about 7 s.
 
 Before ADR-406 the agent had no picture at all: its whole design
 verification was `inspect` and the fit block, and hex2 (2026-09-25) passed
@@ -2142,6 +2162,49 @@ re-judged. The same two revisions measured: `ot10-biped-3` falls from
 85,954 to 12,163 characters and `ot10-hexapod-11` from 82,981 to 13,758.
 `cli/tests/test_build_view.py` holds a 215-output reply under
 `API_VIEW_CHAR_BUDGET` and fails on the old view.
+
+### Every build reply carries a verdict brief (ADR-689)
+
+Beside the bounded `fit`, a successful build reply carries `verdicts`, and
+`cadex script --set`'s envelope carries the same one
+(`clearance.verdict_brief`, one function for both): every verdict and count
+of the fit block, and the worst rows of each check as one line each, at most
+`VERDICT_BRIEF_LIMIT` (8) failing rows a list and 4 advisory ones, with
+`<list>_more` counting the rest. Nothing is re-judged. On `panel-cat-3`'s
+accepted revision it is 1,583 characters; the bounded `fit` is 23,402.
+
+```json
+"verdicts": {
+  "revision": "aaaaaaaaaaaa", "fit": "fail", "pairs_checked": 2, "failing_pairs": 1,
+  "pairs": ["board ∩ rub: intersection 12 mm³"],
+  "sweep": {"verdict": "fail", "joints_swept": 1, "joints_limited": 2, "failing_pairs": 1,
+            "unswept": ["knee: incomplete, runtime budget exceeded"],
+            "pairs": ["leg ∩ rub through hip: intersection 40 mm³"]},
+  "panels": {"verdict": "fail", "panel_count": 3, "failing": 3, "advisory": 0,
+             "failing_panels": [
+               "rub: colliding, colliding in motion -- it overlaps board; it is struck through the motion by leg (hip).",
+               "egg: floating -- its inner face's p90 gap is 31.3 mm, past 8.0 mm.",
+               "loose: unmounted -- no bolt through it threads into a non-panel part and no fixed joint welds it to one it touches."]},
+  "mounting": {"verdict": "unknown", "purchased": 1, "held": 0,
+               "not_held": ["motor: unknown -- No solved placement was published for this component."]},
+  "attachments": {"verdict": "touching", "welded_pairs": 2, "not_touching": 0},
+  "rest": "Every row: inspect scope=clearance path=/pairs, /panels (each row carries its verdict and findings), …"
+}
+```
+
+`fit: unavailable` carries `reason` and nothing else. `rest` appears only
+when the brief names a row.
+
+**A panel row says its verdict** (ADR-689). `inspect scope=clearance
+path=/panels` or `/panels/N` through `cadex mcp` returns each published
+panel row with the fit block's judgement joined on: `verdict` (`fail`,
+`reported` or `pass`), `findings`, `detail`, `mounted`, `held_by`,
+`floating_at_mm` and, when present, `colliding_with`,
+`colliding_in_motion` and `closest_in_motion`. The engine publishes the
+measurements; the judgement is `CadexFitReport.panel_summary`, which the
+service never imports (ADR-445), so the bridge joins it, from the last
+build's block or, in a session that has built nothing, from one read of the
+stored accepted revision's measurements, kept for the session.
 
 ### The same reply carries the swept fit (ADR-366)
 

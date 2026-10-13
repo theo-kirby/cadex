@@ -29,10 +29,11 @@ from typing import Any
 
 from . import evaluate as evaluation
 from . import loop
-from .clearance import read_fit
+from .clearance import judge_panel_rows, read_fit, read_fit_or_unavailable, verdict_brief
 from .client import CadexdClient
 from .inventory import InventoryError, _read_path, inventory_summary, read_inventory, read_inventory_summary
 from .revision_meshes import retain as retain_revision_meshes
+from .render import retained_reply
 from .studio import ANATOMY, FIT_REPORT, STUDIO
 from .tools import (
     BRIDGE_TOOLS, STANDARD_DISPLAY, VIEW_ARGS, injects_display, injects_revision,
@@ -111,6 +112,9 @@ class Bridge:
         self.on_call = on_call
         self.state = BridgeState(revision=str(initial_revision or ""))
         self._lock = threading.Lock()
+        #: The accepted revision read from its retained attempt, for a `look`
+        #: before this bridge has built anything (ADR-689).
+        self._retained: dict[str, Any] | None = None
 
     # A scope for the calls, so a caller can say where they end; the bridge
     # holds nothing that needs releasing.
@@ -176,6 +180,12 @@ class Bridge:
                 )
             self._track(tool, reply)
             ok = reply.get("ok") is True
+            # A panel row is published as measurements; its verdict is the
+            # fit block's (ADR-689), joined on here so `inspect` of one
+            # panel says whether it fails and why without a rebuild.
+            if ok and tool == "inspect" and _is_panel_read(args):
+                reply = {**reply, "value": judge_panel_rows(reply.get("value"),
+                                                            self._fit_for_reads())}
             section = view_args.get("section")
             if tool == "describe_api" and ok and section is not None:
                 if section not in api_sections(reply):
@@ -229,6 +239,10 @@ class Bridge:
         # `state` keep them whole.
         if fit is not None:
             view["fit"] = fit_view(fit)
+            # ...and every verdict in a few lines (ADR-689): the same brief
+            # `cadex script --json` carries, so neither path needs a rebuild
+            # to learn what failed.
+            view["verdicts"] = verdict_brief(fit)
         if inventory is not None:
             view["inventory"] = inventory_view(inventory)
         if anatomy is not None:
@@ -243,8 +257,9 @@ class Bridge:
 
         Drawn from the last accepted modelling reply's display block when the
         bridge holds one -- the tessellation the build already published, so
-        looking costs no rebuild -- and from a ``rebuild`` only when a session
-        opens on a revision this bridge has not built yet. World geometry the
+        looking costs no rebuild -- else from the accepted attempt the store
+        retained (ADR-689), and from a ``rebuild`` only when there is none.
+        World geometry the
         fit block names is left out. Each part is drawn in the appearance
         role the script declared, in the assembly's palette (ADR-413); an
         undeclared part is drawn by supplier, from the inventory block.
@@ -291,11 +306,29 @@ class Bridge:
         return {"content": content, "is_error": False}
 
     def _accepted_reply(self) -> dict[str, Any]:
-        """The last accepted modelling reply, rebuilding once when this
-        bridge holds none; called under the lock. Raises when the engine
-        cannot be reached."""
+        """The last accepted modelling reply; else the retained accepted
+        attempt read as one (ADR-689); else one rebuild. Called under the
+        lock. Raises when the engine cannot be reached."""
 
         reply = self.state.last_accepted
+        if reply is None and self._retained is not None:
+            return self._retained
+        if reply is None and self.project_root is not None:
+            # The accepted attempt's own tessellation, as the dashboard and
+            # `cadex evaluate` draw it (ADR-689): a session opened after a
+            # CLI build used to rebuild here, the whole script again --
+            # minutes on a large design, on top of the open.
+            try:
+                reply = retained_reply(self.project_root)
+            except Exception:  # noqa: BLE001 - no retained attempt: rebuild, as before
+                reply = None
+            if reply is not None:
+                self._retained = reply
+                self.state.last_fit = self._fit_for_reads()
+                self.state.last_inventory = self._read_inventory()
+                if ANATOMY is not None:
+                    self.state.last_anatomy = self._read_anatomy()
+                return reply
         if reply is None:
             args: dict[str, Any] = {"display": dict(STANDARD_DISPLAY)}
             if injects_revision(self.client.engine.protocol, "rebuild"):
@@ -540,6 +573,35 @@ class Bridge:
                 ("; failing " + ", ".join(failing[:4])) if failing else "")))
         return {"content": content, "is_error": False}
 
+    def _fit_for_reads(self) -> dict[str, Any]:
+        """The fit block of the revision the store holds as accepted; called under the lock.
+
+        The last build's block when it describes that revision, else read
+        once from the published measurements and kept: a session opened
+        after a CLI build has no build reply of its own (ADR-689).
+        """
+
+        fit = self.state.last_fit
+        accepted = self._stored_accepted_revision()
+        if fit is not None and fit.get("verdict") != "unavailable" and (
+                accepted is None or str(fit.get("revision") or "") == accepted):
+            return fit
+        fit = self._read_fit()
+        if fit.get("verdict") != "unavailable":
+            self.state.last_fit = fit
+        return fit
+
+    def _stored_accepted_revision(self) -> str | None:
+        """The accepted revision ``script.json`` names, or None when it cannot say."""
+
+        if self.project_root is None:
+            return None
+        try:
+            state = json.loads((self.project_root / "script.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return str(state.get("accepted_revision") or "") if isinstance(state, dict) else None
+
     def _read_fit(self) -> dict[str, Any]:
         """The fit block for a build that just succeeded; never a raised error.
 
@@ -550,17 +612,7 @@ class Bridge:
         block is present on every build reply without exception.
         """
 
-        try:
-            return read_fit(self.client)
-        except Exception as exc:  # any failure is a fit the model cannot see
-            return {
-                "verdict": "unavailable",
-                "source": "",
-                "pairs_checked": 0,
-                "failing_count": 0,
-                "failing": [],
-                "error": f"fit measurements could not be read: {exc}",
-            }
+        return read_fit_or_unavailable(self.client)
 
     def _read_inventory(self) -> dict[str, Any]:
         """The inventory block for a build that just succeeded; never raised.
@@ -629,6 +681,15 @@ class Bridge:
                 self.state.revision = revision
         if reply.get("ok") is True and tool in MODELLING_OPS:
             self.state.last_accepted = reply
+
+
+#: An ``inspect scope=clearance`` path whose value is panel rows (ADR-689).
+_PANEL_PATH = re.compile(r"^/panels(?:/\d+)?$")
+
+
+def _is_panel_read(args: dict[str, Any]) -> bool:
+    return str(args.get("scope") or "") == "clearance" and bool(
+        _PANEL_PATH.match(str(args.get("path") or "")))
 
 
 def _content(text: str, *, is_error: bool = False) -> dict[str, Any]:

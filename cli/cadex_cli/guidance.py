@@ -188,7 +188,14 @@ DIR` writes STEP and STL, `clearance` and `inventory` write their reports, \
 rest. Pass `--wait`: this server holds the project while you are calling \
 its tools and lets go after a short quiet spell, and a command without it \
 is refused rather than queued. Do not invent flags; read a command's \
-`--help` first.
+`--help` first. `cadex script --set FILE --wait --json` builds from the \
+shell, and its `verdicts` block is the brief every build reply here \
+carries: the fit, unswept joints with their reasons, each failing panel \
+with its findings and reason, mounting and welds. Read the verdicts there; \
+never rebuild only to read them. `inspect scope=clearance path=/panels/N` \
+is one panel's row with its `verdict`, `findings` and `detail`. After a \
+shell build, look and inspect read the stored accepted revision and \
+rebuild nothing.
 
 A FILE THE PERSON HANDS YOU — a trained .cxpolicy and the .json/.xml it \
 travels with, a mesh to import, a .cxpart — enters the project through \

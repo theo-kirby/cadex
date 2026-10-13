@@ -76,11 +76,24 @@ def write_render(client, root, *, expected_revision=None, accepted_snapshot=None
 def retained_snapshot(root, fit=None):
     """``(triangles, summary)`` of the accepted revision, read from what its attempt retained.
 
-    No rebuild: a rebuild reply's ``display`` is the attempt's outputs with
-    their paths made absolute (``cadexd._display_block``), and this builds
-    the same block from the retained ``result.json``, so a command that must
-    not run the script (``cadex evaluate``) draws what ``cadex render``
-    would. ``fit`` names the world geometry, as for :func:`acquire_snapshot`.
+    No rebuild: :func:`retained_reply` is the display block a rebuild reply
+    would carry, so a command that must not run the script (``cadex
+    evaluate``) draws what ``cadex render`` would. ``fit`` names the world
+    geometry, as for :func:`acquire_snapshot`.
+    """
+    try:
+        return STUDIO.snapshot(retained_reply(root), STUDIO.world(fit))
+    except STUDIO.StudioError as exc:
+        raise InventoryError(str(exc)) from exc
+
+
+def retained_reply(root):
+    """The accepted revision as a ``rebuild`` reply would carry it, from what its attempt retained.
+
+    A rebuild reply's ``display`` is the attempt's outputs with their paths
+    made absolute (``cadexd._display_block``); this builds the same block
+    from the retained ``result.json``, digest-checked against the store, so
+    ``look`` after a CLI build draws without running the script (ADR-689).
     """
     from .smoke import retained_attempt
     try:
@@ -105,9 +118,5 @@ def retained_snapshot(root, fit=None):
             entry['tessellation'] = {**tessellation, **paths}
         display[name] = entry
     revision = str(state['accepted_revision'])
-    try:
-        return STUDIO.snapshot({'ok': True, 'revision': revision, 'accepted_revision': revision,
-                                'digest': state.get('accepted_digest'), 'display': display},
-                               STUDIO.world(fit))
-    except STUDIO.StudioError as exc:
-        raise InventoryError(str(exc)) from exc
+    return {'ok': True, 'revision': revision, 'accepted_revision': revision,
+            'digest': state.get('accepted_digest'), 'display': display}

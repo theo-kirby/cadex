@@ -82,6 +82,9 @@ def test_the_json_envelope_carries_what_a_pipeline_needs(project) -> None:
     assert output["name"] == "plate" and output["kind"] == "brep"
     assert Path(output["files"]["step"]).is_file()
     assert envelope["engine"]["source"] in {"dev-tree", "payload", "explicit"}
+    # The build's verdict brief (ADR-689): a lone part places no assembly,
+    # so nothing was checked, and the brief says so rather than pass.
+    assert envelope["verdicts"]["fit"] == "unavailable" and envelope["verdicts"]["reason"]
 
 
 def test_json_goes_to_stdout_and_progress_does_not(project, capsys, tmp_path) -> None:

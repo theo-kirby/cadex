@@ -70,6 +70,8 @@ from .clearance import (
     MINIMUM_CLEARANCE_MM,
     bounds_agreement,
     read_fit,
+    read_fit_or_unavailable,
+    verdict_brief,
     write_clearance,
 )
 from .project_docs import (
@@ -1594,6 +1596,11 @@ def command_script(args: argparse.Namespace, report: RunReport) -> int:
             _keep_rejected_source(args, report, source)
             return EXIT_REJECTED
         _refresh_script_state(client, report)
+        # What the build measured, in the brief the MCP build reply carries
+        # (ADR-689): an agent that builds from the shell learns which pairs,
+        # panels and joints fail from this reply, not from a second rebuild.
+        _progress(" · fit")
+        report.verdicts = verdict_brief(read_fit_or_unavailable(client))
         _finish(args, report, engine, reply.get("display"))
         report.ok = True
         return EXIT_OK
@@ -2246,8 +2253,12 @@ def _walk_common(args: argparse.Namespace) -> list[str]:
     return common
 
 
+#: The ``inspect`` scopes that read cadexd's live document rather than the
+#: stored accepted attempt: the only calls an MCP session restores for (ADR-689).
+LIVE_DOCUMENT_SCOPES = frozenset({"document", "object"})
+
 #: The MCP session holds its engine this many times as long as opening it took, and at most
-#: this long (ADR-685): reopening a large design is a full restore of its accepted model.
+#: this long (ADR-685). Since ADR-689 an open runs no restore, so the hold is short for most designs.
 IDLE_HOLD_FACTOR = 3.0
 IDLE_HOLD_MAX_S = 900.0
 
@@ -2276,6 +2287,8 @@ class McpSession:
         self._client: CadexdClient | None = None
         self._report: RunReport | None = None
         self._open_seconds = 0.0
+        #: Whether the open engine ran the restore pass (ADR-689).
+        self._restored = False
 
     def instructions(self) -> str:
         root = Path(self.args.project).expanduser().resolve()
@@ -2297,8 +2310,14 @@ class McpSession:
                             ms=(time.monotonic() - started) * 1000, call=call)
             return reply
         before = len(self._bridge.state.calls) if self._bridge is not None else 0
+        live = tool == "inspect" and str(arguments.get("scope") or "") in LIVE_DOCUMENT_SCOPES
+        if live and self._bridge is not None and not self._restored \
+                and self._bridge.state.last_accepted is None:
+            # The document is empty until a build or a restore fills it:
+            # reopen with the restore rather than answer from nothing.
+            self.close()
         try:
-            reply = self._open().call(tool, arguments)
+            reply = self._open(restore=live).call(tool, arguments)
         except Exception as exc:
             append_activity(self.args.project, tool, arguments, ok=False, detail=str(exc),
                             ms=(time.monotonic() - started) * 1000, call=call)
@@ -2326,14 +2345,24 @@ class McpSession:
 
         return max(base, min(IDLE_HOLD_MAX_S, IDLE_HOLD_FACTOR * self._open_seconds))
 
-    def _open(self) -> Bridge:
+    def _open(self, *, restore: bool = False) -> Bridge:
+        """The open bridge, opening the engine first if it is closed.
+
+        Unrestored unless ``restore`` (ADR-689): every tool reads the stored
+        accepted attempt or runs the script afresh, and the restore pass --
+        a full replay of the accepted script -- was most of an open, and
+        most of an 11-minute ``look`` after a CLI build. Only an ``inspect``
+        of cadexd's live document asks for it (:data:`LIVE_DOCUMENT_SCOPES`).
+        """
+
         if self._bridge is not None:
             return self._bridge
         opened = time.monotonic()
         report = RunReport(project_root=str(Path(self.args.project).expanduser()))
         stack = ExitStack()
         try:
-            _engine, client = stack.enter_context(_engine_session(self.args, report))
+            _engine, client = stack.enter_context(
+                _engine_session(self.args, report, restore=restore))
             revision = read_working_revision(client)
         except BaseException:
             stack.close()
@@ -2345,6 +2374,7 @@ class McpSession:
             _progress(f" {'·' if call.ok else '✗'} {call.op}  {call.summary}")
 
         self._stack, self._client, self._report = stack, client, report
+        self._restored = restore
         self._bridge = Bridge(client, on_call=on_call, initial_revision=revision,
                               project_root=report.project_root)
         self._open_seconds = time.monotonic() - opened

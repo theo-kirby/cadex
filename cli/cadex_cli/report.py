@@ -23,6 +23,7 @@ import sys
 from typing import Any, Mapping, TextIO
 
 from . import CLI_SCHEMA
+from .clearance import verdict_lines
 from .evaluate import human_lines as evaluation_lines
 from .export import ExportedOutput
 
@@ -79,6 +80,11 @@ class RunReport:
     #: placed output by name. Read from the published inventory, never
     #: from stdout. Advisory: it names no failure.
     inventory: dict[str, Any] = field(default_factory=dict)
+    #: The fit block as a brief (ADR-689): every verdict and count, and the
+    #: worst few failing rows of each check as one line each. What ``cadex
+    #: script --set`` carries instead of the whole block, which is
+    #: ``cadex clearance`` or ``inspect scope=clearance`` away.
+    verdicts: dict[str, Any] = field(default_factory=dict)
     #: ``cadex smoke`` (ADR-352): the bounded stock-MuJoCo rollout's receipt
     #: as measured — verdict, the checks and every failing
     #: line — plus ``receipt``, where it landed. Not re-derived here.
@@ -134,6 +140,8 @@ class RunReport:
             payload["fit"] = dict(self.fit)
         if self.inventory:
             payload["inventory"] = dict(self.inventory)
+        if self.verdicts:
+            payload["verdicts"] = dict(self.verdicts)
         if self.smoke:
             payload["smoke"] = dict(self.smoke)
         if self.evaluation:
@@ -315,6 +323,8 @@ def human_lines(report: RunReport) -> list[str]:
                         str(pair.get("joint") or ""), str(pair.get("status") or ""),
                         _measure(pair.get("minimum_distance_mm")),
                         _measure(pair.get("maximum_common_volume_mm3"))))
+    if report.verdicts and not report.fit:
+        lines.extend(verdict_lines(report.verdicts))
     if report.inventory:
         if not report.inventory.get("available"):
             lines.append("inventory  unavailable: " + str(
