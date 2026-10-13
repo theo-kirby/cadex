@@ -655,7 +655,7 @@ def test_cadexd_lifecycle_end_to_end() -> None:
         expected = rebuilt["model_state"]["next_write_expected_revision"]
         slow_id = respawned.send(
             "write_script",
-            {"source": SLOW_SCRIPT, "expected_revision": expected},
+            {"source": SLOW_SCRIPT, "expected_revision": expected, "replace": True},
         )
         respawned.wait_event("cadex_domain_worker_started", slow_id)
         time.sleep(1.0)

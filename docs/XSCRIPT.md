@@ -2683,11 +2683,19 @@ Only the pairs a joint moves are measured, and only the near ones exactly
 (ADR-419). A pair rigid for this sweep carries its static solved-pose
 measurement unchanged — and its `culled: true` with it, when that static
 value is a bound (ADR-423). A statically bounded pair the joint moves near
-is measured exactly, and must be no closer at the solved pose than its bound. A moving pair whose exact-geometry bounding boxes
-stay more than 10 mm apart at every sample carries `culled: true`: its
-minimum distance is that smallest box gap, a lower bound on the true
-minimum; its maximum common volume is 0.0 and it has no first contact, both
-proved by the boxes. A lower bound can only make a fit verdict stricter.
+is measured exactly, and must be no closer at the solved pose than its bound. A moving pair proved more than 10 mm apart at every
+sample -- or more than its declared `clearances=` floor, when that is larger
+-- carries `culled: true`: its minimum distance is the least of those
+per-sample lower bounds, not a measurement; its maximum common volume is 0.0
+and it has no first contact, both proved by the bounds. A lower bound can
+only make a fit verdict stricter. Each sample's bound (ADR-686) is the
+largest of: the gap between the two parts' boxes there, each moving part's
+box taken around its faces' geometry boxes carried by its motion; the gap
+between their extents along 13 directions (the axes and the diagonals of a
+cube); and, for every sample of the pair already measured, that distance
+less the furthest either part travels between the two poses -- face by face
+when neither part can lie inside the other, so a face near the axis that
+barely moves bounds its neighbourhood tightly while a far one is far anyway.
 Each component's BREP is serialised once per assembly, not once per joint.
 An exact swept distance is measured between the two parts' boundary shells
 when no solid of either can lie inside the other, which is the same number
@@ -2777,9 +2785,16 @@ version; a later build of the same two solids in the same motion reads the
 earlier numbers back, every digit, and a part that moved or changed is
 measured afresh. A joint sweep that runs out of time keeps the pairs it
 finished, so the next build carries on from there. Within a pair, samples
-are measured nearest box first, and a sample whose box gap already exceeds
-both the least distance measured and the 0.001 mm contact tolerance is not
-measured: it can change none of the three numbers. No samples means no claim about fit. Joints
+are measured least bound first (ADR-686), and a sample whose bound already
+exceeds both the least distance measured and the 0.001 mm contact tolerance
+is not measured: it can change none of the three numbers. A pair already
+at 0.0 (to 1e-9 mm) whose first contact is known is asked only for its
+common volume at later samples, and a sample after one that shared volume is asked for its
+volume first: solids sharing more than 1 mm³ are 0.0 apart. Every exact row
+is therefore the minimum, the largest common volume and the first contact
+over every sample, as measuring each would give; on `panel-cat-2` that is
+1,482 distance queries where nearest-box-first made 4,402, the far and
+costly ones above all. No samples means no claim about fit. Joints
 without limits are outside coverage. A sweep failure never rejects acceptance.
 The checker uses copied solids, never changes live placements, and never
 rebuilds historical scripts. It needs no dynamics declaration or MuJoCo run.

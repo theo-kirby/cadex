@@ -576,7 +576,10 @@ def test_build_reply_carries_the_published_joint_sweep(
             assert (joint['joint'], joint['kind'], joint['unit']) == (
                 'j', 'revolute', 'degrees')
             assert joint['range_degrees'] == [0, 10] and joint['sample_count'] == 3
-            assert joint['minimum_distance_mm'] == pytest.approx(16, abs=1e-6)
+            # 16 mm at the solved pose and never within 10 mm over the
+            # 10 degrees: since ADR-686 the pair is bounded rather than
+            # measured at the other samples, so the minimum is that bound.
+            assert 10.0 < joint['minimum_distance_mm'] <= 16 + 1e-6
             assert joint['maximum_common_volume_mm3'] == 0
             assert 'first_contact' not in joint and 'note' not in sweep
         else:

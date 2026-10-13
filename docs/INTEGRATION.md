@@ -1,6 +1,6 @@
 # INTEGRATION.md — The Process Contract
 
-Verified against source: 2026-10-10
+Verified against source: 2026-10-13
 
 **This document is the contract between the engine and its client.** Cadex
 is three things (ADR-500): the **engine** (`cadexd`, at the repo root), the
@@ -699,7 +699,11 @@ always did. Since ADR-419 a moving pair whose exact-geometry boxes stay more
 than 10 mm apart at every sample carries `culled: true`. Its
 `minimum_distance_mm` is that box gap, a lower bound rather than a
 measurement; its common volume is 0.0 and its first contact is null, both
-proved by the boxes. A rigid pair's row repeats the static solved-pose
+proved by the boxes. Since ADR-686 the bound at a sample may also come from
+the distance measured at another sample less how far the parts travel
+between the two, so a pair can be measured at some samples and still be
+`culled` once every sample is proved past 10 mm (or past its declared
+floor, when that is larger); the row's meaning is unchanged. A rigid pair's row repeats the static solved-pose
 measurement, and since ADR-423 carries `culled: true` when that static
 measurement is itself a bound. The `culled` key is absent on every exactly
 measured row and on a revision accepted before ADR-419. No op argument changed.
