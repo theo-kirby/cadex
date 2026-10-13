@@ -56,7 +56,15 @@ assert _measure_clearance(components) == baseline
 bad = [dict(baseline[0], distance_mm=999)]
 disagreement = _measure_joint_sweeps(components,data,joints,bad,DEG,True)
 capped = _measure_joint_sweeps(components,data,joints,baseline,{'sweep_step_degrees': 0.1},True)
-pair_cap = _measure_joint_sweeps(components,data,joints,baseline * 2001,DEG,True)
+import cadex_assembly_worker as capped_worker
+# The pairs the boxes leave near are what the budget counts (ADR-690):
+# the hinge's one near pair is over a budget of none.
+capped_worker._SWEEP_MAX_PAIRS = 0
+pair_cap = _measure_joint_sweeps(components,data,joints,baseline,DEG,True)
+capped_worker._SWEEP_MAX_PAIRS = 2000
+capped_worker._SWEEP_MAX_MOVING_PAIRS = 0
+moving_cap = _measure_joint_sweeps(components,data,joints,baseline,DEG,True)
+capped_worker._SWEEP_MAX_MOVING_PAIRS = 40000
 closed = dict(joints, closure=dict(joints['hinge'], angle_limits_degrees=None))
 closed_report = _measure_joint_sweeps(components,data,closed,baseline,DEG,True)
 import cadex_assembly_worker as worker
@@ -87,7 +95,7 @@ crowded['baseline_pairs'] = len(crowd_baseline)
 joints['hinge']['kind'] = 'cylindrical'
 unsupported = _measure_joint_sweeps(components,data,joints,baseline,{'sweep_step_degrees': 1, 'sweep_step_mm': 1},True)
 print('CLEARANCE-FRAME ' + json.dumps(dict(report=report, disagreement=disagreement,
-    capped=capped, unsupported=unsupported, timeout=timeout, exhausted=exhausted, pair_cap=pair_cap,
+    capped=capped, unsupported=unsupported, timeout=timeout, exhausted=exhausted, pair_cap=pair_cap, moving_cap=moving_cap,
     crowded=crowded, closed=closed_report, open_ended=open_report, undeclared=undeclared,
     suppressed=suppressed, mixed=mixed)))
 '''
@@ -111,7 +119,7 @@ def test_known_angle_solved_agreement_and_incomplete_coverage(tmp_path, monkeypa
     for name, reason in [('disagreement', 'disagreement'), ('capped', 'pose budget'),
                          ('unsupported', 'hinges and sliders are supported, not cylindrical'),
                          ('timeout', 'runtime budget'), ('exhausted', 'total runtime budget'),
-                         ('pair_cap', 'pair budget'),
+                         ('pair_cap', 'pair budget'), ('moving_cap', 'pair budget'),
                          ('open_ended', 'open-ended'),
                          ('undeclared', 'sweep_step_degrees is not declared')]:
         assert result[name]['status'] == 'incomplete', result[name]
@@ -136,7 +144,8 @@ def test_known_angle_solved_agreement_and_incomplete_coverage(tmp_path, monkeypa
     assert sum(p['relative_motion'] for p in hinge['pairs']) == 65
     assert len(hinge['pairs']) == 2145
     assert hinge['pairs'][0] == joint['pairs'][0]
-    assert '2001 moving pairs' in result['pair_cap']['joints'][0]['reason']
+    assert '1 moving pairs come within reach' in result['pair_cap']['joints'][0]['reason']
+    assert 'more than 0' in result['moving_cap']['joints'][0]['reason']
     assert result['unsupported']['joints'][0]['unit'] is None
     # A suppressed joint is not a coverage hole (ADR-371): the solver ignores
     # it, so it has no range to sweep, its row is `skipped` rather than

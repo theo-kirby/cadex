@@ -6449,9 +6449,15 @@ def _declared_floors(properties, component_outputs):
 # A child owns native queries so a stuck OCCT operation cannot exceed the budget.
 _SWEEP_JOINT_SECONDS = 90.0
 _SWEEP_TOTAL_SECONDS = 180.0
+#: The share of the run's own budget a sweep may take past that, up to
+#: _SWEEP_TOTAL_MAX_SECONDS (ADR-690): a 2400 s project sweeps for 600 s.
+_SWEEP_TOTAL_FRACTION = 0.25
+_SWEEP_TOTAL_MAX_SECONDS = 900.0
 _SWEEP_MAX_POSES = 73
-#: Pairs one joint moves, which are the pairs its sweep measures (ADR-426).
+#: Moving pairs one joint's sweep measures: those its boxes leave near (ADR-426, ADR-690).
 _SWEEP_MAX_PAIRS = 2000
+#: Moving pairs one joint's sweep bounds by their boxes at all (ADR-690).
+_SWEEP_MAX_MOVING_PAIRS = 40000
 #: A moving pair whose exact-geometry boxes stay this far apart at every
 #: sample is bounded, not measured (ADR-419): no fit floor reaches it.
 _SWEEP_CULL_MM = 10.0
@@ -6494,7 +6500,8 @@ def _bounded_sweep_call(serialised, component_data, joint_data, baseline, name, 
         payload = {"components": serialised,
             "component_data": component_data, "joint_data": joint_data,
             "baseline": baseline, "name": name, "step": step, "seconds": seconds,
-            "couplings": list(couplings)}
+            "couplings": list(couplings),
+            "max_pairs": _SWEEP_MAX_PAIRS, "max_moving_pairs": _SWEEP_MAX_MOVING_PAIRS}
         with tempfile.TemporaryDirectory(prefix="cadex-fit-sweep-") as directory:
             source = Path(directory) / "input.json"
             target = Path(directory) / "output.json"
@@ -6527,6 +6534,10 @@ def _sweep_child(source, target):
     import Part
     from types import SimpleNamespace
     data = json.loads(Path(source).read_text(encoding="utf-8"))
+    # The parent's pair budgets, which this process holds alone (ADR-690).
+    global _SWEEP_MAX_PAIRS, _SWEEP_MAX_MOVING_PAIRS
+    _SWEEP_MAX_PAIRS = int(data.get("max_pairs", _SWEEP_MAX_PAIRS))
+    _SWEEP_MAX_MOVING_PAIRS = int(data.get("max_moving_pairs", _SWEEP_MAX_MOVING_PAIRS))
     try:
         components = {}
         digests = {}
@@ -6886,11 +6897,12 @@ def _measure_samples(components, baseline, values, motions, moves, contact_key, 
     import FreeCAD as App
     moving = {n for sample in motions for n in sample}
     moving_pairs = sum(moves(row["first"], row["second"]) for row in baseline)
-    # The budget counts the pairs this joint moves, the only ones measured
-    # (ADR-426); a rigid row is a copy of its solved-pose value.
-    if moving_pairs > _SWEEP_MAX_PAIRS:
+    # The pairs this joint moves are all bound by their boxes, which costs
+    # little; only those the boxes leave near are held to _SWEEP_MAX_PAIRS,
+    # below (ADR-690). This ceiling only keeps the boxes themselves bounded.
+    if moving_pairs > _SWEEP_MAX_MOVING_PAIRS:
         raise ValueError(f"pair budget exceeded: {moving_pairs} moving pairs, "
-                         f"more than {_SWEEP_MAX_PAIRS}")
+                         f"more than {_SWEEP_MAX_MOVING_PAIRS}")
     shapes = {n: _component_world_shape(obj).copy() for n, obj in components.items()}
     solved_shapes = {n: shape.Placement for n, shape in shapes.items()}
     import numpy as np
@@ -7104,6 +7116,7 @@ def _measure_samples(components, baseline, values, motions, moves, contact_key, 
                             box_at(anchor, None),
                             [_relative_motion(sample.get(anchor), sample.get(mover)) for sample in matrices])
 
+    near = []
     for row in rows:
         a, b = row["first"], row["second"]
         if not row["relative_motion"]:
@@ -7114,6 +7127,15 @@ def _measure_samples(components, baseline, values, motions, moves, contact_key, 
         if gaps and min(gaps) > margins[a, b]:
             row.update(culled=True, minimum_distance_mm=min(gaps), maximum_common_volume_mm3=0.0)
             continue
+        near.append((row, gaps))
+    # The budget counts the moving pairs the boxes leave near, the only ones
+    # measured (ADR-426, ADR-690): a screw on a thigh far from the chassis
+    # is bound by its box at every sample and costs nothing more.
+    if len(near) > _SWEEP_MAX_PAIRS:
+        raise ValueError(f"pair budget exceeded: {len(near)} moving pairs come within reach of "
+                         f"each other, more than {_SWEEP_MAX_PAIRS}")
+    for row, gaps in near:
+        a, b = row["first"], row["second"]
         key = sweep_key(a, b)
         known = cache.get(key) if key is not None else None
         if known is not None:
@@ -7707,6 +7729,10 @@ def _measure_joint_sweeps(components, component_data, joint_data, baseline, step
     total = _SWEEP_TOTAL_SECONDS
     left = _run_seconds_left()
     if left is not None:
+        # A run given more time sweeps for longer (ADR-690): each joint's
+        # child pays its start and the model's load, so a fixed total left
+        # the joints scheduled last with nothing on every build.
+        total = max(total, min(_SWEEP_TOTAL_MAX_SECONDS, _SWEEP_TOTAL_FRACTION * (left + _run_age())))
         # The run's own wall budget bounds the sweep too (ADR-622): what is
         # left once the outputs after the fit have their reserve. A loop
         # swept for the first time must not turn a build that fits into one
