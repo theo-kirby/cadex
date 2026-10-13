@@ -83,6 +83,9 @@ FORM_SMOOTH_MM = 4.0
 #: A piece's solid under this fraction of its largest is a sliver, and dropped.
 SPECK_FRACTION = 0.1
 
+#: How far into the frame a boss starts before the frame is cut from it, mm.
+BOSS_SEAT_MM = 1.5
+
 #: How far down a boss may reach for the frame, mm.
 BOSS_REACH_MM = 60.0
 #: Material kept under a screw head, and around a hole, mm.
@@ -1400,7 +1403,12 @@ def _mount(pieces, frame, screw, per_piece, phi, inner, outer, frame_z, column_r
                     f"{total + engage:.1f} mm of boss here; choose a longer screw")
             engagement = seat + length - total
             head_seat = top_point - sv * seat
-            bosses.append(Part.makeCylinder(boss_r, total, q, sv))
+            # Started inside the frame and cut by it, so the boss's foot is the
+            # frame's own surface: a flat foot on a curved former bit into it
+            # or stood off it by microns, either way a failing check (ADR-681).
+            bosses.append(_seated(Part.makeCylinder(boss_r, total + BOSS_SEAT_MM,
+                                                    q - sv * BOSS_SEAT_MM, sv),
+                                  Part.makeCylinder(boss_r, total, q, sv), frame))
             holes.append(Part.makeCylinder(clear_r, total + 4.0, q - sv * 1.0, sv))
             well = (well_top - head_seat).dot(sv)
             if well > 0.05:
@@ -1542,6 +1550,27 @@ def _sound(shape, what):
     raise EnvelopeError(
         f"{what} is not a valid solid; move a seam, an opening or the screws a few mm, "
         "or change resolution=")
+
+
+def _seated(boss, plain, frame):
+    """``boss`` less the frame it starts inside: the piece of it that reaches the top.
+
+    ``plain`` -- the boss as it was cast, kept when the cut does not give
+    one sound solid (the frame's faces there are more than the kernel can
+    cut cleanly; the boss then stands on its cast point as before).
+    """
+
+    try:
+        cut = boss.cut(frame)
+        solids = sorted(cut.Solids, key=lambda s: -abs(s.Volume))
+        if not solids or not solids[0].isValid():
+            return plain
+        top = solids[0]
+        if abs(top.Volume) < 0.5 * abs(plain.Volume):
+            return plain
+        return top
+    except Exception:
+        return plain
 
 
 def _refined(shape):

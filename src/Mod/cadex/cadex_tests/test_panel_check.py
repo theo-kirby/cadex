@@ -248,6 +248,25 @@ def test_a_form_panel_is_held_to_its_span_to_the_support_under_it():
     assert panel_summary(value)["failing"][0]["findings"] == ["floating"]
 
 
+def test_the_form_flag_reaches_the_check_and_a_weld_microns_off_holds():
+    # The inspection row carries `formed`, so a form panel is judged by its
+    # span (ADR-681: it was dropped, and every form panel "floated").
+    import CadexInspection
+    assert "formed" in CadexInspection._PANEL_ROW_KEYS
+    # A panel welded to the former its bosses land on, a few microns off it,
+    # is held: the weld is judged at the mounting contact, as a screw is.
+    value = _screwed()
+    value["pairs"] = [_pair("deck", "lid", 0.003), _pair("board", "lid", 2.0)]
+    value["components"] = value["components"][:3]
+    value["attachments"] = [{"first": "deck", "second": "lid", "status": "not touching",
+                             "distance_mm": 0.003, "common_volume_mm3": 0.0}]
+    lid = panel_summary(value)["fitted"][0]
+    assert lid["mounted"] == "welded" and lid["held_by"] == ["deck"]
+    value["attachments"][0]["distance_mm"] = 3.0
+    value["pairs"][0] = _pair("deck", "lid", 3.0)
+    assert panel_summary(value)["failing"][0]["findings"] == ["unmounted"]
+
+
 def test_advisory_findings_are_named_and_do_not_fail():
     value = _screwed()
     value["panels"] = [_measured("lid", 3.0, egg_ratio=3.1, wall_median_mm=6.0,

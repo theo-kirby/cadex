@@ -1312,7 +1312,11 @@ def panel_summary(value: Any) -> dict[str, Any]:
                     {"with": other, "common_volume_mm3": float(volume)})
     welded: dict[str, set[str]] = {}
     for row in value.get("attachments") or []:
-        if isinstance(row, Mapping) and str(row.get("status") or "") == "touching":
+        # A panel welded to what its bosses land on is held when they meet
+        # within the mounting contact, as a screw's touch is judged: a boss
+        # cast onto a curved former ends a few microns off it (ADR-681).
+        if isinstance(row, Mapping) and (str(row.get("status") or "") == "touching" or (
+                _finite(row.get("distance_mm")) and row["distance_mm"] <= MOUNT_CONTACT_MM)):
             first, second = str(row.get("first") or ""), str(row.get("second") or "")
             welded.setdefault(first, set()).add(second)
             welded.setdefault(second, set()).add(first)

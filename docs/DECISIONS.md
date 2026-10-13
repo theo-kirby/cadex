@@ -40348,3 +40348,46 @@ it passes at 0.0007.
 **Consequences.** ADR-678 makes the fit check robust to a piece like this.
 This ADR stops pieces like this from being made. Every boolean and distance
 on a panel piece is cheaper, outside the fit as well.
+
+## ADR-681 — A form panel reaches its check as one; a boss's foot is the frame's surface; a weld holds at the mounting contact (2026-10-13)
+
+**Context.** `panel-cat-2` is ADR-679's re-run: the same brief, fully
+autonomous. It landed 35 form panels on formers, and the panel check failed
+every one of them. The agent handed the design back with a trade-off that
+was not real. Its three findings were three bugs:
+
+- **"Floating" against a 19 mm limit.** A form panel's `formed` fact was
+  dropped by `CadexInspection._PANEL_ROW_KEYS` on its way to `fit.panels`.
+  Every form panel was therefore held to the hugging bar, clearance +
+  radius/2, instead of its span. ADR-679's test fed the check directly and
+  never crossed that seam.
+- **"Unmounted".** A boss is cast onto the fused frame and ended
+  0.002-0.003 mm off the former component it was welded to. A weld counted
+  only within `_ATTACHMENT_CONTACT_MM` (1e-3), while a screw's touch counts
+  within `MOUNT_CONTACT_MM` (0.5).
+- **"Colliding".** A boss's flat foot on a curved former bit 0.1-0.6 mm³
+  into it, past the 1e-6 mm³ collision allowance.
+
+**Decision.**
+
+- `formed` is one of the panel row's keys.
+- In `fit.panels`, a weld holds a panel when its two parts meet within
+  `MOUNT_CONTACT_MM`, as a screw's touch is judged. The attachments block
+  itself is unchanged.
+- A boss starts `BOSS_SEAT_MM` (1.5) inside the frame and has the frame cut
+  from it (`CadexEnvelope._seated`), so its foot is the frame's own surface.
+  Where the cut does not give one sound solid, the boss stands as it was
+  cast.
+
+**Evidence.**
+
+- `test_panel_check.py`: `formed` reaches the row, a weld 0.003 mm off holds,
+  and one 3 mm off does not.
+- `test_panels.py`'s kernel test: every piece of a seamed form panel on
+  curved formers now meets its frame with under 1e-3 mm³ in common and under
+  1e-3 mm apart. With the old boss, the test fails.
+- `/tmp/formprobe/probe_sep.py` is the probe torso with its formers as
+  their own components and each piece welded to one. Driven through MCP
+  `write_script`, all five pieces are fitted: floating bar 43.5 mm, p90 gaps
+  36-39 mm, held by screws into the keel and formers, no findings but
+  "larger than the bed".

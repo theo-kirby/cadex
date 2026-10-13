@@ -461,9 +461,14 @@ top = build_part_shape(skin.parts[0].to_payload(), diagnostics=facts)
 assert top.isValid() and len(top.Solids) == 1 and facts["panel"]["formed"] is True
 # Every piece stays at the modelling tolerance: this one came back with rim
 # edges of 1.7e21 mm from a failed refinement of its bosses (ADR-680).
+frame_shape = build_part_shape(frame.to_payload())
 for piece in skin.parts:
     held = build_part_shape(piece.to_payload())
     assert max(e.Tolerance for e in held.Edges) < 0.01, max(e.Tolerance for e in held.Edges)
+    # Each boss's foot is the frame's own surface: it neither bites into the
+    # curved former nor stands off it (ADR-681).
+    assert held.common(frame_shape).Volume < 1e-3, held.common(frame_shape).Volume
+    assert held.distToShape(frame_shape)[0] < 1e-3
 # The panel takes the form's shape: its crown stands at the form's top, far
 # above the keel it covers.
 assert top.BoundBox.ZMax > 85.0 > 25.0 + 30.0

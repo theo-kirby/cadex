@@ -1202,7 +1202,7 @@ def _complete_contacts(captured: Mapping[str, Any]) -> Any:
 #: measurement of any one part is one ``inspect scope="output"`` away.
 #: What a component row carries of a part.panel piece's own facts (ADR-635).
 _PANEL_ROW_KEYS = ("group", "piece", "clearance_mm", "radius_mm", "hull", "thickness_mm",
-                   "fasteners", "screw")
+                   "fasteners", "screw", "formed")
 
 _INVENTORY_FACT_KEYS = (
     "shape_type",
