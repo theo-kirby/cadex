@@ -793,7 +793,7 @@ class PartDomainAPI:
         output_type: str,
         label: str = "",
     ) -> DomainValue:
-        """Snapshot a referenced live object's exact Shape for isolated Part operations."""
+        """Snapshot a live object's exact Shape for Part operations."""
 
         operation = "from_object"
         return self._value(
@@ -1023,7 +1023,7 @@ class PartDomainAPI:
         sweep: float = 360.0,
         label: str = "",
     ) -> DomainValue:
-        """Create a torus or toroidal segment; major radius must exceed minor radius."""
+        """A torus or toroidal segment; the major radius exceeds the minor."""
 
         operation = "torus"
         major = _number(operation, "major_radius", major_radius, minimum=0.0, strict=True)
@@ -1356,7 +1356,7 @@ class PartDomainAPI:
         holes: Sequence[DomainValue] = (),
         label: str = "",
     ) -> DomainValue:
-        """Create a planar face from one closed outer wire and optional closed hole wires."""
+        """A planar face from one closed outer wire and optional hole wires."""
 
         operation = "face"
         clean_holes = _shapes(operation, "holes", holes, minimum=0, allowed={"wire"})
@@ -2303,7 +2303,7 @@ class PartDomainAPI:
         output_type: str | None = None,
         label: str = "",
     ) -> DomainValue:
-        """Boolean-intersect shapes in one OCC operation with optional fuzzy tolerance."""
+        """Boolean intersection of shapes, with optional fuzzy tolerance."""
 
         operation = "common"
         clean_shapes = _shapes(operation, "shapes", shapes, minimum=2)
@@ -2482,7 +2482,7 @@ class PartDomainAPI:
         output_type: str = "shell",
         label: str = "",
     ) -> DomainValue:
-        """Sew touching faces/shells; a closed sewn shell may be promoted to a solid."""
+        """Sew touching faces or shells; a closed one may become a solid."""
 
         operation = "sew"
         clean_type = _result_type(operation, output_type)
@@ -3332,7 +3332,7 @@ class PartDomainAPI:
                  form=None):
         # Unannotated on purpose, like lib's: describe_api's part page is held
         # under one tool result; the types are the docstring's.
-        """The surface panels are cut from: what they cover, at a clearance (ADR-635).
+        """What panels are cut from, at a clearance (ADR-635).
 
         ``over`` -- the solids or lib parts the panels cover (exact solids,
         catalog parts, meshes made solid). ``clearance`` -- the gap from the
@@ -3369,7 +3369,7 @@ class PartDomainAPI:
     def panel(self, envelope, *, side=(0.0, 0.0, 1.0), max_angle=60.0, within=None,
               thickness=2.0, seams=(), seam_gap=0.6, inset=0.0, openings=(), flange=0.0,
               frame=None, screw=None, screws=2, max_piece=None, avoid=(), label=""):
-        """A thin, open panel: one region of an envelope, split and screwed down (ADR-635).
+        """One envelope region as thin panels, split and screwed (ADR-635).
 
         The region is the envelope seen from ``side`` where its face turns
         less than ``max_angle`` degrees from that direction (60 for a cover
@@ -3409,9 +3409,42 @@ class PartDomainAPI:
         except PanelError as exc:
             raise _error("panel", "panel", str(exc)) from exc
 
+    def skin(self, form, regions, *, thickness=2.5, gap=1.2, openings=(), frame=None,
+             screw=None, screws=2, keep_clear=(), clearance=2.0, max_piece=None, avoid=(),
+             label=""):
+        """Panels cut whole from a designed form's own surface (ADR-684).
+
+        ``form`` -- the outer form (a ``lib.form``, or a list of them, fused:
+        a torso with its shoulder and haunch masses). The skin is the form's
+        surface, ``thickness`` mm thick inward. ``regions`` -- one solid per
+        piece (``p0``, ``p1``, ...): a piece is the skin inside its region,
+        outside the regions before it and ``gap`` mm clear of them, so its
+        outline is where the region's surface crosses the form -- a sphere
+        or ``lib.form`` makes an oval plate, a slab a straight band, a closed
+        ``part.bspline`` profile extruded across the body the outline you
+        drew in that view. ``openings`` -- solids cut out of every piece
+        (where the mechanism shows). ``frame`` and ``screw=lib.bolt(size,
+        length)`` -- ``screws`` bosses per piece, each cast from the piece's
+        inner face along its inward normal onto the frame (``part.former``\ s
+        of the same form with ``inset=thickness + clearance``), clear of
+        ``keep_clear`` (the mechanism). ``clearance``
+        -- the gap the panel check holds the form to over what it covers.
+        Returns a Panel, as ``part.panel`` does; the build facts carry each
+        piece's area and the fraction of the form the skin covers.
+        """
+
+        from CadexPanels import PanelError, skin
+
+        try:
+            return skin(self, form, regions, thickness=thickness, gap=gap, openings=openings,
+                        frame=frame, screw=screw, screws=screws, keep_clear=keep_clear,
+                        clearance=clearance, max_piece=max_piece, avoid=avoid, label=label)
+        except PanelError as exc:
+            raise _error("skin", "skin", str(exc)) from exc
+
     def former(self, form, origin, normal, *, width=16.0, depth=8.0, web=0.0, keep_out=(),
-               label=""):
-        """A former: the hoop of a designed form that carries its panels (ADR-679).
+               inset=0.0, label=""):
+        """The hoop of a designed form that carries its panels (ADR-679).
 
         The band of ``form`` (a ``lib.form`` or any solid) ``width`` mm
         thick along ``normal`` through ``origin``, ``depth`` mm deep inward
@@ -3424,10 +3457,13 @@ class PartDomainAPI:
         through it, swept where they move): a bulkhead that ties the hoop to
         the frame. Weld each former to what carries it, name it in the
         panels' ``covers=``, and fuse the formers into the panels'
-        ``frame=``. Returns a solid.
+        ``frame=``. ``inset`` -- the hoop's outer face that far inside the
+        form: under a ``part.skin``, its thickness plus clearance. Returns a
+        solid.
         """
 
         operation = "former"
+        extra = {"inset": _number(operation, "inset", inset, minimum=0.0)} if inset else {}
         return self._value(
             operation,
             "solid",
@@ -3439,6 +3475,7 @@ class PartDomainAPI:
             depth=_number(operation, "depth", depth, minimum=1.0),
             web=_number(operation, "web", web, minimum=0.0),
             label=label,
+            **extra,
         )
 
     def refine(self, shape: DomainValue, *, label: str = "") -> DomainValue:
@@ -3518,4 +3555,5 @@ class PartDomainAPI:
             "envelope",
             "panel",
             "former",
+            "skin",
         )

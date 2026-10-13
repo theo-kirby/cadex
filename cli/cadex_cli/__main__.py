@@ -230,8 +230,9 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_parser.add_argument(
         "--idle", type=float, default=30.0, metavar="SECONDS",
         help="Close the engine, and release the project, after this many "
-        "seconds without a call (default 30; 0 holds it until the client "
-        "goes). The next call reopens it.",
+        "seconds without a call (default 30, held longer when opening the "
+        "engine took long: three times the opening, at most 900; 0 holds it "
+        "until the client goes). The next call reopens it.",
     )
 
     guidance_parser = subparsers.add_parser(
@@ -2245,6 +2246,12 @@ def _walk_common(args: argparse.Namespace) -> list[str]:
     return common
 
 
+#: The MCP session holds its engine this many times as long as opening it took, and at most
+#: this long (ADR-685): reopening a large design is a full restore of its accepted model.
+IDLE_HOLD_FACTOR = 3.0
+IDLE_HOLD_MAX_S = 900.0
+
+
 class McpSession:
     """``cadex mcp``'s tool host: one project's engine behind the bridge (ADR-538).
 
@@ -2268,6 +2275,7 @@ class McpSession:
         self._bridge: Bridge | None = None
         self._client: CadexdClient | None = None
         self._report: RunReport | None = None
+        self._open_seconds = 0.0
 
     def instructions(self) -> str:
         root = Path(self.args.project).expanduser().resolve()
@@ -2306,9 +2314,22 @@ class McpSession:
     def idle(self) -> None:
         self.close()
 
+    def idle_after(self, base: float) -> float:
+        """How long a quiet spell must last before the engine closes (ADR-685).
+
+        Reopening restores the accepted model, which on a large design is
+        minutes: a 30 s hold made an agent that thought for 31 s pay a full
+        rebuild before its next call. So the engine is held ``IDLE_HOLD_FACTOR``
+        times as long as its last opening took, between ``base`` and
+        ``IDLE_HOLD_MAX_S``.
+        """
+
+        return max(base, min(IDLE_HOLD_MAX_S, IDLE_HOLD_FACTOR * self._open_seconds))
+
     def _open(self) -> Bridge:
         if self._bridge is not None:
             return self._bridge
+        opened = time.monotonic()
         report = RunReport(project_root=str(Path(self.args.project).expanduser()))
         stack = ExitStack()
         try:
@@ -2326,7 +2347,9 @@ class McpSession:
         self._stack, self._client, self._report = stack, client, report
         self._bridge = Bridge(client, on_call=on_call, initial_revision=revision,
                               project_root=report.project_root)
-        _progress(f"mcp: opened {report.project_root} at revision {revision[:12] or 'none'}")
+        self._open_seconds = time.monotonic() - opened
+        _progress(f"mcp: opened {report.project_root} at revision {revision[:12] or 'none'}"
+                  f" in {self._open_seconds:.0f} s")
         return self._bridge
 
     def close(self) -> None:

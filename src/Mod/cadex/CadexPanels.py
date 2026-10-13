@@ -328,6 +328,14 @@ def panel(part, env, *, side=(0.0, 0.0, 1.0), max_angle=60.0, within=None, thick
     }
     if spec["flange"] == "frame" and frame is None:
         raise PanelError('flange="frame" needs frame=: the part the skirt comes down to')
+    names = [f"p{k}" for k in range(count)]
+    return _panel_values(part, spec, names, frame, screw, screws, label)
+
+
+def _panel_values(part, spec, names, frame, screw, screws, label):
+    """The pieces, screws, pilots and mounts of a declared panel or skin (``spec`` is filled in
+    with the screw it seats)."""
+
     bolt = None
     if screw is not None:
         if frame is None:
@@ -349,7 +357,6 @@ def panel(part, env, *, side=(0.0, 0.0, 1.0), max_angle=60.0, within=None, thick
             "head_height_mm", "length_mm")}
         spec["screw"]["size"] = size
         spec["screws"] = per_piece
-    names = [f"p{k}" for k in range(count)]
     parts = [part._value("panel", "solid", spec, piece=name, label=label) for name in names]
     screws_out, mounts = [], {}
     pilots = None
@@ -371,6 +378,51 @@ def panel(part, env, *, side=(0.0, 0.0, 1.0), max_angle=60.0, within=None, thick
         pilots = part._value("panel", "compound", spec, piece="pilots", label=label)
     return Panel(parts=parts, names=names, screws=screws_out, pilots=pilots, mounts=mounts,
                  spec=spec)
+
+
+#: How many regions one part.skin cuts, one piece each.
+MAX_SKIN_REGIONS = 24
+
+
+def skin(part, form, regions, *, thickness=2.5, gap=1.2, openings=(), frame=None, screw=None,
+         screws=2, keep_clear=(), clearance=2.0, max_piece=None, avoid=(), label=""):
+    """Validate a ``part.skin`` declaration and make its values (see its docstring)."""
+
+    forms = list(form) if isinstance(form, (list, tuple)) else [form]
+    if not forms:
+        raise PanelError("form= must name at least one solid: the designed outer form")
+    if len(forms) > MAX_FORMS:
+        raise PanelError(f"form takes at most {MAX_FORMS} solids")
+    areas = list(regions) if isinstance(regions, (list, tuple)) else [regions]
+    if not areas:
+        raise PanelError("regions must name at least one solid: where each piece is")
+    if len(areas) > MAX_SKIN_REGIONS:
+        raise PanelError(f"one skin cuts at most {MAX_SKIN_REGIONS} regions; declare another skin")
+    holes = list(openings) if isinstance(openings, (list, tuple)) else [openings]
+    clear = list(keep_clear) if isinstance(keep_clear, (list, tuple)) else [keep_clear]
+    spec: dict[str, Any] = {
+        # The panel check reads the form and the clearance off the envelope, as
+        # it does for a formed part.panel (ADR-679); a skin covers nothing itself.
+        "envelope": {"over": [], "clearance": _number("clearance", clearance, 0.2, 30.0),
+                     "radius": 0.0, "motion": [], "resolution": None,
+                     "form": [_solid_value(f"form[{k}]", item) for k, item in enumerate(forms)]},
+        "skin": {
+            "regions": [_solid_value(f"regions[{k}]", item) for k, item in enumerate(areas)],
+            "openings": [_solid_value(f"openings[{k}]", item) for k, item in enumerate(holes)],
+            "keep_clear": [_solid_value(f"keep_clear[{k}]", item) for k, item in enumerate(clear)],
+            "gap": _number("gap", gap, 0.0, 10.0),
+        },
+        "side": [0.0, 0.0, 1.0],
+        "thickness": _number("thickness", thickness, 0.6, 8.0),
+        "seams": [],
+        "frame": None if frame is None else _solid_value("frame", frame),
+        "screw": None,
+        "screws": 0,
+        "max_piece": None if max_piece is None else _triple("max_piece", max_piece),
+        "avoid": [_avoided(k, other) for k, other in enumerate(list(avoid or ()))],
+    }
+    names = [f"p{k}" for k in range(len(areas))]
+    return _panel_values(part, spec, names, frame, screw, screws, label)
 
 
 class Housing:

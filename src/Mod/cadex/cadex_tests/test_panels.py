@@ -216,6 +216,38 @@ def test_an_envelope_wraps_a_form_that_is_no_part_and_a_former_is_cut_from_it():
     assert "former" in part.exported_names and "``form``" in part.envelope.__doc__
 
 
+def test_a_skin_cuts_one_piece_per_region_from_the_form_itself():
+    lib = _lib()
+    part = lib._part
+    torso = _torso(lib)
+    keel = part.box(300, 60, 50, origin=(-150, -30, -25))
+    hoop = part.former(torso, (0, 0, 0), (1, 0, 0), web=4.0, keep_out=[keel], inset=4.5)
+    assert hoop.properties["inset"] == 4.5
+    # A former with no inset declares exactly what it did before (ADR-679).
+    assert "inset" not in part.former(torso, (0, 0, 0), (1, 0, 0)).properties
+    shoulder = part.sphere(80, center=(120, 90, 20))
+    back = part.box(400, 300, 200, origin=(-200, -150, 50))
+    frame = part.fuse([keel, hoop])
+    skin = part.skin([torso], [shoulder, back], thickness=2.5, gap=1.5, openings=[keel],
+                     frame=frame, screw=lib.bolt("m3", 10), screws=2, keep_clear=[keel])
+    assert isinstance(skin, Panel) and skin.names == ["p0", "p1"]
+    assert all(p.operation == "panel" for p in skin.parts)
+    spec = skin.parts[0].arguments[0]
+    assert list(spec["skin"]["regions"]) == [shoulder, back] and spec["skin"]["gap"] == 1.5
+    assert list(spec["skin"]["openings"]) == [keel] and list(spec["skin"]["keep_clear"]) == [keel]
+    # The panel check reads it as a formed panel: its form, its clearance.
+    assert list(spec["envelope"]["form"]) == [torso] and spec["envelope"]["clearance"] == 2.0
+    assert spec["thickness"] == 2.5 and spec["screws"] == 2 and len(skin.screws) == 4
+    assert skin.pilots.properties["piece"] == "pilots"
+    with pytest.raises(ValueError, match="regions must name at least one"):
+        part.skin([torso], [])
+    with pytest.raises(ValueError, match="form"):
+        part.skin([], [back])
+    with pytest.raises(ValueError, match="thickness"):
+        part.skin([torso], [back], thickness=20.0)
+    assert "skin" in part.exported_names and "``regions``" in part.skin.__doc__
+
+
 # --------------------------------------------------------------------------
 # the worker's arrays
 # --------------------------------------------------------------------------
@@ -461,12 +493,51 @@ top = build_part_shape(skin.parts[0].to_payload(), diagnostics=facts)
 assert top.isValid() and len(top.Solids) == 1 and facts["panel"]["formed"] is True
 # Every piece stays at the modelling tolerance: this one came back with rim
 # edges of 1.7e21 mm from a failed refinement of its bosses (ADR-680).
+frame_shape = build_part_shape(frame.to_payload())
 for piece in skin.parts:
     held = build_part_shape(piece.to_payload())
     assert max(e.Tolerance for e in held.Edges) < 0.01, max(e.Tolerance for e in held.Edges)
+    # Each boss's foot is the frame's own surface: it neither bites into the
+    # curved former nor stands off it (ADR-681).
+    assert held.common(frame_shape).Volume < 1e-3, held.common(frame_shape).Volume
+    assert held.distToShape(frame_shape)[0] < 1e-3
 # The panel takes the form's shape: its crown stands at the form's top, far
 # above the keel it covers.
 assert top.BoundBox.ZMax > 85.0 > 25.0 + 30.0
+# A skin: panels cut from the form itself, round a shoulder mass fused on,
+# screwed along each piece's own inward normal (ADR-684).
+shoulder = lib.form([
+    {{"at": (60, 70, 10), "width": 40, "top": 55, "bottom": 65, "square": 2.2}},
+    {{"at": (110, 78, 15), "width": 70, "top": 85, "bottom": 100, "square": 2.2}},
+    {{"at": (160, 70, 10), "width": 40, "top": 55, "bottom": 65, "square": 2.2}},
+])
+inset_hoops = [part.former(torso, (x, 0, 0), (1, 0, 0), width=18, depth=10, web=4,
+                           keep_out=[keel], inset=4.5) for x in (-80, 0, 80)]
+skin_frame = part.fuse([keel] + inset_hoops)
+hide = part.skin([torso, shoulder], [part.sphere(75, center=(110, 100, 25)),
+                                     part.box(400, 300, 200, origin=(-200, -150, 45))],
+                 thickness=2.5, gap=1.5, frame=skin_frame, screw=lib.bolt("m3", 10), screws=2,
+                 keep_clear=[keel])
+whole = build_part_shape(part.fuse([torso, shoulder]).to_payload())
+skin_frame_shape = build_part_shape(skin_frame.to_payload())
+axes = []
+for piece in hide.parts:
+    facts = {{}}
+    held = build_part_shape(piece.to_payload(), diagnostics=facts)
+    assert held.isValid() and len(held.Solids) == 1
+    grown = facts["panel"]
+    assert grown["skin"] is True and grown["formed"] is True and grown["area_mm2"] > 5000
+    assert 0.0 < grown["covered_fraction"] < 1.0
+    assert len(grown["fasteners"]) == 2
+    axes += [tuple(row["axis"]) for row in grown["fasteners"]]
+    # The piece is the form's own wall: nothing of it stands outside the form
+    # but its bosses' counterbores, which are cut, not grown.
+    assert held.cut(whole).Volume < 1.0, held.cut(whole).Volume
+    assert held.common(skin_frame_shape).Volume < 1e-3
+    assert held.distToShape(skin_frame_shape)[0] < 1e-3
+    assert max(e.Tolerance for e in held.Edges) < 0.01
+# The shoulder plate's bosses run along its own normals, not one side's.
+assert len(set(axes)) > 1
 out.write("PANELS-OK\\n")
 out.close()
 ''')

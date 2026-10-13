@@ -763,6 +763,42 @@ def test_a_quiet_client_lets_the_host_go_once_per_quiet_spell(bridge) -> None:
     assert [json.loads(line)["id"] for line in stdout.getvalue().splitlines()] == [1, 2]
 
 
+def test_a_host_that_was_slow_to_open_is_held_longer_before_it_is_let_go(bridge) -> None:
+    """A host's ``idle_after`` stretches the quiet spell (ADR-685): reopening a
+    large design is a full restore, so it is not closed after the base hold."""
+
+    class Slow(_Host):
+        def idle_after(self, base):
+            return base * 8
+
+    read, write = os.pipe()
+    host, stdout = Slow(bridge), io.StringIO()
+    thread = threading.Thread(target=mcp.serve, args=(host, os.fdopen(read, "rb", buffering=0), stdout),
+                              kwargs={"idle_seconds": 0.05})
+    thread.start()
+    try:
+        os.write(write, (json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}) + "\n").encode())
+        threading.Event().wait(0.2)
+        assert host.idled == 0
+        threading.Event().wait(0.6)
+        assert host.idled == 1
+    finally:
+        os.close(write)
+        thread.join(timeout=5)
+    assert not thread.is_alive()
+
+
+def test_the_session_holds_its_engine_three_times_as_long_as_it_took_to_open() -> None:
+    from cadex_cli.__main__ import IDLE_HOLD_MAX_S, McpSession
+
+    session = McpSession.__new__(McpSession)
+    session._open_seconds = 2.0
+    assert session.idle_after(30.0) == 30.0
+    session._open_seconds = 120.0
+    assert session.idle_after(30.0) == 360.0
+    session._open_seconds = 4000.0
+    assert session.idle_after(30.0) == IDLE_HOLD_MAX_S
+
 def test_a_host_that_cannot_open_the_engine_is_a_tool_error() -> None:
     """The engine failing to open -- the project busy, no engine -- reaches
     the model as a result it can read, not a transport error."""
