@@ -40392,6 +40392,49 @@ was not real. Its three findings were three bugs:
   36-39 mm, held by screws into the keel and formers, no findings but
   "larger than the bed".
 
+## ADR-682 — A script that drops accepted outputs is refused before it builds (2026-10-13)
+
+**Context.** `PROJECT_OUTPUTS_DROPPED` (ADR-045) refuses a `write_script`
+without `replace=true` whose `result` leaves out a name the accepted revision
+declares. That needs only the names, but `run_project_lifecycle` decided it
+after the worker had built every output and `validate_project_result` had
+read them back. On `panel-cat-2` (2026-10-13 10:44) the refusal came after
+1111 s of geometry, fit and panels.
+
+The same run's other late-looking refusal, the 4 MiB output-definition cap
+at 11:27 (318 s), was already decided early. The worker refused in
+`_group_result_by_domain` 4.8 s after it started. The rest of the call was
+the MCP session reopening the engine: `cadex mcp --idle` closes it after 30 s
+with no call, and that call came 67 s after the last one. `open_project` then
+re-runs the accepted script to prove its digest.
+
+**Decision.**
+
+- `prepare_project_candidate` puts `protected_outputs` in the worker
+  request, but only when the check applies: `write_script`, no `replace`,
+  and an accepted contract. It holds the accepted names. It is not a recipe
+  key (`RECIPE_REQUEST_KEYS`), so the recipe digest does not change.
+- The project worker's `_run` checks `result`'s keys against those names
+  right after the script has run, before `_group_result_by_domain` and
+  before any output is built. A miss raises `OutputsDropped`, with details
+  `{stage: "outputs_dropped", dropped_outputs}`.
+- `run_project_lifecycle` turns that worker failure into the same
+  `PROJECT_OUTPUTS_DROPPED` refusal as before, with the same message,
+  `requested.replace`, `observed.dropped_outputs`, rollback and model state.
+  It comes from one builder, `outputs_dropped_failure`. The check after
+  validation stays as a backstop.
+- No other refusal decided from the script alone was found running late.
+  The definition cap and the "result must be a dict / non-empty / short
+  names / known domain" checks already run at the script stage.
+
+**Evidence.** `cadex_tests/test_outputs_dropped_early.py` runs the real
+lifecycle, including the project worker's `main`, in process, with the
+output builder replaced by one that raises. A battery-only script over
+`frame, servo` gets the exact `PROJECT_OUTPUTS_DROPPED` text without the
+builder being reached. With the worker check removed, it gets the builder's
+`DOMAIN_CANDIDATE_FAILED` instead. `replace=true`, and a script that keeps
+every output, both reach the builder.
+
 ## ADR-684 — Panels are cut from a designed form itself: `part.skin`; a former takes an `inset` (2026-10-13, owner)
 
 **Context.** The owner reviewed `panel-cat-2` (ADR-681) from every side and

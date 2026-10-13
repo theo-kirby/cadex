@@ -96,7 +96,9 @@ Flags, valid on either side of the subcommand:
 `script --set` also takes `--replace`, which is you saying you mean to drop
 an output the accepted revision declares — without it such a script is
 refused, because `write_script` replaces *the whole* script and losing an
-output by accident is easy (ADR-045). Only an accepted script persists, so
+output by accident is easy (ADR-045). The refusal needs only the names
+the script returns, so it comes as soon as the script has run, before any
+output is built (ADR-682). Only an accepted script persists, so
 a refused one edited in place as `script.py` can be put back to the
 accepted revision; the refused source is kept at
 `review/script.rejected.py`, and a `script:` note says so, and says when
