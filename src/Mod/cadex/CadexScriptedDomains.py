@@ -247,6 +247,8 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             "panel",
             # The hoop of a designed form that carries its panels (ADR-679).
             "former",
+            # Panels cut from the designed form's own surface (ADR-684).
+            "skin",
         ),
         production_ready=True,
     ),

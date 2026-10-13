@@ -40391,3 +40391,91 @@ was not real. Its three findings were three bugs:
   `write_script`, all five pieces are fitted: floating bar 43.5 mm, p90 gaps
   36-39 mm, held by screws into the keel and formers, no findings but
   "larger than the bed".
+
+## ADR-684 — Panels are cut from a designed form itself: `part.skin`; a former takes an `inset` (2026-10-13, owner)
+
+**Context.** The owner reviewed `panel-cat-2` (ADR-681) from every side and
+asked for a better panel system before `panel-cat-3`. The agent's first look
+was a form that read roughly as the animal. Its panels kept little of that
+form. Seen from the side 57% of the silhouette was panel, from behind 37%,
+from below 36%. The back was one flat carapace with straight seams. The
+flanks were one square plate each. The leg plates covered the outboard side
+only. Two things in the system made that happen. A `part.panel` is a height
+field cast from one `side`, so it cannot wrap more than about 90°. To land
+its bosses, the agent then clipped every panel with tight `within=` boxes,
+which gave straight cut edges. Its outlines can only be planes (`seams=`) and
+the `max_angle` contour.
+
+**Decision.**
+
+- `part.skin(form, regions, *, thickness, gap, openings, frame, screw,
+  screws, keep_clear, clearance, max_piece, avoid)` cuts panels from the
+  form's own surface, all the way round.
+  - The forms are fused, so masses sunk into one another make one surface.
+  - The skin is the form offset inward by the wall.
+  - Each region solid cuts one piece: the skin inside the region, outside
+    the earlier regions grown by `gap`, less the `openings`.
+  - The outline is where the region's surface crosses the form. A sphere
+    makes an oval plate, a slab a band, and an extruded `part.bspline`
+    profile the outline drawn in that view.
+  - Bosses are cast from each piece's inner face along its own inward
+    normal onto the frame. Candidates are screened on triangles (a 4 mm
+    lattice, the frame flat under the disc, clear of `keep_clear`) and the
+    chosen sites are cast on the exact BREP.
+  - It returns a `Panel` whose spec carries `skin`, so screws, pilots,
+    mounts and `fit.panels` work unchanged. The check reads a skin as a
+    formed panel.
+  - The facts add `skin`, each piece's `area_mm2` and the skin's
+    `covered_fraction`, so the agent has a number for how much of the form
+    is panelled.
+- `part.former(..., inset=)` pulls the hoop's outer face inside the form.
+  Under a skin it is thickness plus clearance. Without it the hoop's face
+  is the form's surface, inside the skin's wall.
+- `CadexEnvelope.choose_sites` spreads sites in any dimension, and
+  `_boss` (one boss, its holes, pilot and row, with its own axis) is shared
+  by `part.panel` and `part.skin`.
+- The creature style cuts the form's panels with `part.skin`, sculpts the
+  form as the animal's masses with many stations, and counts the limb
+  segments against the animal's skeleton. A leg with fewer segments, or
+  bent the other way, reads as another animal. The style gives each joint
+  the range the gait uses and has the agent re-read the reference after
+  every look. The base names `part.skin` in one sentence.
+
+**Evidence.**
+
+- `test_panels.py`:
+  - The declaration test covers one value per region, the spec, and the
+    refusals.
+  - The kernel driver builds a torso with a fused shoulder mass, an oval
+    shoulder plate and a back band on inset formers. Each piece is one
+    valid solid with 2 bosses. It holds less than 1 mm³ outside the form,
+    has nothing in common with the frame and meets it within 1e-3 mm.
+    Edge tolerance is under 0.01. The bosses' axes differ.
+- `/tmp/skinprobe`:
+  - The four-piece skin (two shoulder ovals, a back band, a drawn flank)
+    builds in 19 s directly, down from 268 s before the screens were
+    vectorised and culled per chunk of rays. Through MCP `write_script`
+    it builds in 2 minutes.
+  - Its pieces cover 54% of the form.
+  - In the build's panel check, one shoulder plate is held to 44.0 mm with
+    a p90 gap of 44.5 mm over the probe's deliberately sparse frame. That
+    is the check working.
+
+## ADR-685 — `cadex mcp` holds its engine three times as long as opening it took (2026-10-13)
+
+**Context.** `cadex mcp` closed the engine after `--idle` 30 s without a
+call, so the agent's own `cadex … --wait` commands could take the project.
+Reopening restores the accepted model, and on `panel-cat-2` that was minutes.
+An `inspect` that came 31 s after the last call took 268 s, and a refusal
+took 318 s, both of it restore. The agent in that run never ran a `cadex`
+command that takes the lock. The finding came from the ADR-682 work.
+
+**Decision.** `McpSession.idle_after(base)` is `max(base, min(900, 3 ×
+the last opening's seconds))`, and `serve` asks the host for it. A small
+design that opens in seconds still lets go after 30 s. A large one is held
+while the agent thinks, and a `--wait` command waits for it, at most 15
+minutes after the last call.
+
+**Evidence.** `test_mcp_protocol.py`: a host whose `idle_after` is 8× the
+base is not let go after the base, and is let go after its own hold. The
+session's hold is 30, 360 and 900 s for openings of 2, 120 and 4000 s.

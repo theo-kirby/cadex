@@ -55,6 +55,9 @@ class ToolHost(Protocol):
     def idle(self) -> None:
         """The client sent nothing for a while; let go of what can be reopened."""
 
+    # Optional: ``idle_after(base) -> seconds``, how long a quiet spell must
+    # last before ``idle()``, when the host knows better than ``base`` (ADR-685).
+
 
 def _write(message: dict[str, Any], stream: Any) -> None:
     stream.write(json.dumps(message) + "\n")
@@ -137,7 +140,10 @@ def serve(host: ToolHost, stdin: BinaryIO, stdout: Any, *, idle_seconds: float =
     quiet_since_idle = True
     while True:
         while b"\n" not in pending:
-            wait = idle_seconds if idle_seconds > 0 and not quiet_since_idle else None
+            hold = idle_seconds
+            if idle_seconds > 0 and hasattr(host, "idle_after"):
+                hold = float(host.idle_after(idle_seconds))
+            wait = hold if idle_seconds > 0 and not quiet_since_idle else None
             ready, _, _ = select.select([fd], [], [], wait)
             if not ready:
                 host.idle()

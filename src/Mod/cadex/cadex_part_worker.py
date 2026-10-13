@@ -1561,7 +1561,7 @@ _PANEL_PLANS: dict[str, dict[str, Any]] = {}
 
 
 def _panel_plan(operation: str, spec: Any) -> dict[str, Any]:
-    from CadexEnvelope import EnvelopeError, build_panel_plan
+    from CadexEnvelope import EnvelopeError, build_panel_plan, build_skin_plan
 
     if not isinstance(spec, dict) or "envelope" not in spec:
         raise _error(operation, "spec", "expected the declaration part.panel made")
@@ -1569,11 +1569,12 @@ def _panel_plan(operation: str, spec: Any) -> dict[str, Any]:
     plan = _PANEL_PLANS.get(key)
     if plan is None:
         try:
-            plan = build_panel_plan(spec, build_part_shape,
-                                    plan_of=lambda other: _panel_plan(operation, other))
+            builder = build_skin_plan if spec.get("skin") else build_panel_plan
+            plan = builder(spec, build_part_shape,
+                           plan_of=lambda other: _panel_plan(operation, other))
         except EnvelopeError as exc:
             raise PartOperationError(
-                f"api.panel: {exc}",
+                f"api.{'skin' if spec.get('skin') else 'panel'}: {exc}",
                 stage="part_argument",
                 operation="panel",
                 correction=(
@@ -1611,11 +1612,12 @@ def _panel_output(operation: str, payload: dict[str, Any], properties: dict[str,
             "radius_mm": None if envelope["radius"] == "hull" else float(envelope["radius"]),
             "hull": envelope["radius"] == "hull",
             **({"formed": True} if envelope.get("form") else {}),
+            **({"area_mm2": plan["facts"]["piece_area_mm2"].get(piece)} if spec.get("skin") else {}),
             "thickness_mm": float(spec["thickness"]),
             "side": list(spec["side"]),
             "screw": (spec.get("screw") or {}).get("size"),
             "fasteners": plan["fasteners"].get(piece, []),
-            **plan["facts"],
+            **{k: v for k, v in plan["facts"].items() if k != "piece_area_mm2"},
         }
     shape = plan["pieces"][piece]
     return shape.copy() if hasattr(shape, "copy") else Part.Shape(shape)
@@ -1634,7 +1636,8 @@ def _former_output(operation: str, payload: Mapping[str, Any],
             form, keep_out,
             _vector(operation, "origin", properties.get("origin")),
             _vector(operation, "normal", properties.get("normal")),
-            float(properties["width"]), float(properties["depth"]), float(properties["web"]))
+            float(properties["width"]), float(properties["depth"]), float(properties["web"]),
+            inset=float(properties.get("inset") or 0.0))
     except EnvelopeError as exc:
         raise _error(operation, "form", str(exc)) from None
 

@@ -312,5 +312,10 @@ def test_the_creature_style_carries_the_north_star_rules_and_not_the_legged_ones
     assert 'never one soft skin' not in body
     # It points at the helpers and the measured blocks that back it.
     for name in ('lib.housing', 'lib.form(', 'part.former(', 'form=[', 'part.envelope(over=',
-                 'fit.panels', 'covers=', 'anatomy block', '`reason=`'):
+                 'fit.panels', 'covers=', 'anatomy block', '`reason=`', 'part.skin(', 'inset=',
+                 'covered_fraction'):
         assert name in body, name
+    # The panels are the form's own surface, cut along the anatomy, and the
+    # likeness is checked against the reference after every look (ADR-684).
+    assert 'read it again after every look' in body and 'long hock' in body
+    assert 'part.skin(' in _body()

@@ -3409,8 +3409,41 @@ class PartDomainAPI:
         except PanelError as exc:
             raise _error("panel", "panel", str(exc)) from exc
 
+    def skin(self, form, regions, *, thickness=2.5, gap=1.2, openings=(), frame=None,
+             screw=None, screws=2, keep_clear=(), clearance=2.0, max_piece=None, avoid=(),
+             label=""):
+        """Panels cut from a designed form itself: its own surface, all the way round.
+
+        ``form`` -- the outer form (a ``lib.form``, or a list of them, fused:
+        a torso with its shoulder and haunch masses). The skin is the form's
+        surface, ``thickness`` mm thick inward. ``regions`` -- one solid per
+        piece (``p0``, ``p1``, ...): a piece is the skin inside its region,
+        outside the regions before it and ``gap`` mm clear of them, so its
+        outline is where the region's surface crosses the form -- a sphere
+        or ``lib.form`` makes an oval plate, a slab a straight band, a closed
+        ``part.bspline`` profile extruded across the body the outline you
+        drew in that view. ``openings`` -- solids cut out of every piece
+        (where the mechanism shows). ``frame`` and ``screw=lib.bolt(size,
+        length)`` -- ``screws`` bosses per piece, each cast from the piece's
+        inner face along its inward normal onto the frame (``part.former``\ s
+        of the same form with ``inset=thickness + clearance``), clear of
+        ``keep_clear`` (the mechanism). ``clearance``
+        -- the gap the panel check holds the form to over what it covers.
+        Returns a Panel, as ``part.panel`` does; the build facts carry each
+        piece's area and the fraction of the form the skin covers.
+        """
+
+        from CadexPanels import PanelError, skin
+
+        try:
+            return skin(self, form, regions, thickness=thickness, gap=gap, openings=openings,
+                        frame=frame, screw=screw, screws=screws, keep_clear=keep_clear,
+                        clearance=clearance, max_piece=max_piece, avoid=avoid, label=label)
+        except PanelError as exc:
+            raise _error("skin", "skin", str(exc)) from exc
+
     def former(self, form, origin, normal, *, width=16.0, depth=8.0, web=0.0, keep_out=(),
-               label=""):
+               inset=0.0, label=""):
         """A former: the hoop of a designed form that carries its panels (ADR-679).
 
         The band of ``form`` (a ``lib.form`` or any solid) ``width`` mm
@@ -3424,10 +3457,13 @@ class PartDomainAPI:
         through it, swept where they move): a bulkhead that ties the hoop to
         the frame. Weld each former to what carries it, name it in the
         panels' ``covers=``, and fuse the formers into the panels'
-        ``frame=``. Returns a solid.
+        ``frame=``. ``inset`` -- the hoop's outer face that far inside the
+        form: under a ``part.skin``, its thickness plus clearance. Returns a
+        solid.
         """
 
         operation = "former"
+        extra = {"inset": _number(operation, "inset", inset, minimum=0.0)} if inset else {}
         return self._value(
             operation,
             "solid",
@@ -3439,6 +3475,7 @@ class PartDomainAPI:
             depth=_number(operation, "depth", depth, minimum=1.0),
             web=_number(operation, "web", web, minimum=0.0),
             label=label,
+            **extra,
         )
 
     def refine(self, shape: DomainValue, *, label: str = "") -> DomainValue:
@@ -3518,4 +3555,5 @@ class PartDomainAPI:
             "envelope",
             "panel",
             "former",
+            "skin",
         )
