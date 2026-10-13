@@ -1545,10 +1545,17 @@ def _sound(shape, what):
 
 
 def _refined(shape):
-    """``shape`` with its splitter faces merged, or as it is when that fails."""
+    """``shape`` with its splitter faces merged, or as it is when that fails.
+
+    Refined on a copy: OCCT's unifier can write a tolerance of up to 1e21 mm
+    into the edges it shares with its input when it fails, and the piece
+    "kept as it is" was then that corrupted shape -- valid after healing, its
+    box the size of the world, so every fit pair with it was measured
+    exactly at minutes each (ADR-678, ADR-680).
+    """
 
     try:
-        refined = shape.removeSplitter()
+        refined = shape.copy().removeSplitter()
         volume, before = abs(refined.Volume), abs(shape.Volume)
     except Exception:
         return shape

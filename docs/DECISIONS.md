@@ -40317,3 +40317,34 @@ the machinery and formers do not fill reads as the egg ratio it is. The
 panel-cat brief is re-run unchanged and fully autonomous to test it. A
 form's sections are superellipses, so a sharper feature (a brow ridge, a
 cheekbone) is a separate form, and its panels meet at a seam.
+
+## ADR-680 — A panel piece is refined on a copy, so a failed refinement cannot corrupt it (2026-10-13)
+
+**Decision.** `CadexEnvelope._refined` merges splitter faces on a copy of
+the piece, `shape.copy().removeSplitter()`. Before this it ran on the piece
+itself.
+
+**Why.** ADR-678 found panel pieces whose rim edges had tolerances of 1e12
+to 1e18 mm. Each such piece's box was the size of the world, so every fit
+pair with it was measured exactly. The cause was a failed refinement:
+
+- On a seamed form panel with bosses, OCCT's unifier returned an invalid
+  solid, and on its way it wrote a tolerance of 1.7e21 mm into the rim edges
+  it shared with its input.
+- `_refined` then kept its input "as it is", but that input was already
+  corrupted.
+- `_sound`'s healing pass restored validity, but not the tolerance.
+
+The fuse and the cut before it were measured clean at 0.0007 mm.
+`build_former`'s own refinement keeps nothing of its input, so it is
+unaffected. The part worker's `_refine` refuses an invalid refinement
+(ADR-129), so it never hands a corrupted input back.
+
+**Evidence.** `test_panels.py`'s kernel test now builds a seamed form panel
+with three screws a piece and asserts that every piece's edge tolerance is
+under 0.01 mm. With the old line, the test fails at 1.7e21; with the copy,
+it passes at 0.0007.
+
+**Consequences.** ADR-678 makes the fit check robust to a piece like this.
+This ADR stops pieces like this from being made. Every boolean and distance
+on a panel piece is cheaper, outside the fit as well.

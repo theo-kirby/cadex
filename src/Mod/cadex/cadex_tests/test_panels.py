@@ -455,10 +455,15 @@ for hoop in hoops:
     assert all(form_shape.isInside(p, 0.05, True) for p in points)
 frame = part.fuse([keel] + hoops)
 skin = part.panel(part.envelope([keel], form=torso, radius=30.0), side=(0, 0, 1), max_angle=50,
-                  frame=frame, screw=lib.bolt("m3", 10), screws=2)
+                  frame=frame, screw=lib.bolt("m3", 10), screws=3, seams=[((1, 0, 0), [0.0])])
 facts = {{}}
 top = build_part_shape(skin.parts[0].to_payload(), diagnostics=facts)
 assert top.isValid() and len(top.Solids) == 1 and facts["panel"]["formed"] is True
+# Every piece stays at the modelling tolerance: this one came back with rim
+# edges of 1.7e21 mm from a failed refinement of its bosses (ADR-680).
+for piece in skin.parts:
+    held = build_part_shape(piece.to_payload())
+    assert max(e.Tolerance for e in held.Edges) < 0.01, max(e.Tolerance for e in held.Edges)
 # The panel takes the form's shape: its crown stands at the form's top, far
 # above the keel it covers.
 assert top.BoundBox.ZMax > 85.0 > 25.0 + 30.0
