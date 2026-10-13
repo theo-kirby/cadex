@@ -1725,6 +1725,14 @@ def prepare_project_candidate(captured: Mapping[str, Any]) -> dict[str, Any]:
         }
         if display_request is not None:
             request["display"] = display_request
+        protected = protected_outputs(
+            operation, arguments, state.get("accepted_contract")
+        )
+        if protected:
+            # The worker refuses a script that leaves one of these out right
+            # after it runs, before building anything (ADR-682). Not a recipe
+            # key: it says what to refuse, not what to build.
+            request["protected_outputs"] = protected
         if captured.get("measure_fit") is False:
             # A restore proving the accepted digest (ADR-630). Not a recipe
             # key, so the drift comparison reads this attempt as it did.
@@ -2236,10 +2244,10 @@ def accept_project_candidate(
     }
 
 
-def dropped_outputs(
-    prepared: Mapping[str, Any], validated: Mapping[str, Any]
+def protected_outputs(
+    operation: str, arguments: Mapping[str, Any], accepted_contract: Any
 ) -> list[str]:
-    """Accepted output names this candidate would silently remove (ADR-045).
+    """Accepted output names a candidate must keep (ADR-045, ADR-682).
 
     ``write_script`` replaces THE project script, and a model asked to "add a
     battery" can answer with a script containing only a battery — which
@@ -2251,18 +2259,39 @@ def dropped_outputs(
     contract. ``edit_script`` is a targeted replacement and ``set_params``
     does not touch the source, so neither can drop an output by accident.
     Deleting a part on purpose stays one ``replace=true`` away.
+
+    The names go to the worker in the request, which refuses right after the
+    script has run and before it builds an output (ADR-682); the same list
+    checks the worker's report in :func:`dropped_outputs`.
     """
 
-    if str(prepared.get("operation") or "") != "write_script":
+    if str(operation or "") != "write_script":
         return []
-    arguments = dict(prepared.get("arguments") or {})
-    if bool(arguments.get("replace")):
+    if bool(dict(arguments or {}).get("replace")):
         return []
-    before = {
-        str(item.get("name"))
-        for item in (prepared.get("accepted_contract_before") or [])
-        if isinstance(item, Mapping) and item.get("name")
-    }
+    return sorted(
+        {
+            str(item.get("name"))
+            for item in (accepted_contract or [])
+            if isinstance(item, Mapping) and item.get("name")
+        }
+    )
+
+
+def dropped_outputs(
+    prepared: Mapping[str, Any], validated: Mapping[str, Any]
+) -> list[str]:
+    """Protected names a built candidate's contract does not carry.
+
+    The worker refuses these before building (ADR-682); this is the same
+    check on the finished report, for a caller that skips the worker's.
+    """
+
+    before = protected_outputs(
+        str(prepared.get("operation") or ""),
+        dict(prepared.get("arguments") or {}),
+        prepared.get("accepted_contract_before"),
+    )
     if not before:
         return []
     after = {
@@ -2270,7 +2299,39 @@ def dropped_outputs(
         for item in (validated.get("contract") or [])
         if isinstance(item, Mapping) and item.get("name")
     }
-    return sorted(before - after)
+    return sorted(set(before) - after)
+
+
+def refused_dropped_outputs(execution: Mapping[str, Any]) -> list[str]:
+    """The names a worker refused for before building, else ``[]`` (ADR-682)."""
+
+    observed = execution.get("observed")
+    details = observed.get("details") if isinstance(observed, Mapping) else None
+    if not isinstance(details, Mapping) or details.get("stage") != "outputs_dropped":
+        return []
+    return sorted(str(name) for name in list(details.get("dropped_outputs") or []))
+
+
+def outputs_dropped_failure(
+    tool_name: str, arguments: Mapping[str, Any], dropped: list[str]
+) -> dict[str, Any]:
+    """The ``PROJECT_OUTPUTS_DROPPED`` refusal, wherever it is decided."""
+
+    return tool_failure(
+        tool_name,
+        "PROJECT_OUTPUTS_DROPPED",
+        "postcondition",
+        "This script drops {:s} that the accepted revision "
+        "declares: {:s}. write_script replaces THE whole project "
+        "script -- to add a part, edit the script you have. Pass "
+        "replace=true if removing {:s} is what you meant.".format(
+            "an output" if len(dropped) == 1 else "outputs",
+            ", ".join(dropped),
+            "it" if len(dropped) == 1 else "them",
+        ),
+        requested={"replace": bool(arguments.get("replace"))},
+        observed={"dropped_outputs": list(dropped)},
+    )
 
 
 def candidate_model_state(prepared: Mapping[str, Any]) -> dict[str, Any]:
@@ -2383,6 +2444,15 @@ def run_project_lifecycle(
             }
         )
         execution = execute_candidate(prepared, cancellation_check=cancellation_check)
+        refused = (
+            refused_dropped_outputs(execution)
+            if execution.get("ok") is not True
+            else []
+        )
+        if refused:
+            # Decided from the names the script returned, before any output
+            # was built (ADR-682): the same refusal as below, minutes sooner.
+            execution = outputs_dropped_failure(tool_name, args, refused)
         if execution.get("ok") is not True:
             record_project_candidate_failure(prepared, execution)
             execution["model_state"] = candidate_model_state(prepared)
@@ -2407,21 +2477,7 @@ def run_project_lifecycle(
             return failure
         dropped = dropped_outputs(prepared, validated)
         if dropped:
-            failure = tool_failure(
-                tool_name,
-                "PROJECT_OUTPUTS_DROPPED",
-                "postcondition",
-                "This script drops {:s} that the accepted revision "
-                "declares: {:s}. write_script replaces THE whole project "
-                "script -- to add a part, edit the script you have. Pass "
-                "replace=true if removing {:s} is what you meant.".format(
-                    "an output" if len(dropped) == 1 else "outputs",
-                    ", ".join(dropped),
-                    "it" if len(dropped) == 1 else "them",
-                ),
-                requested={"replace": bool(args.get("replace"))},
-                observed={"dropped_outputs": dropped},
-            )
+            failure = outputs_dropped_failure(tool_name, args, dropped)
             record_project_candidate_failure(prepared, failure)
             failure["model_state"] = candidate_model_state(prepared)
             return failure
