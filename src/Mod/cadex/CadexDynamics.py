@@ -12195,6 +12195,10 @@ def rollout_policy(
     the one thing about a rollout that the poses do not already show -- what
     the policy *decided*, as opposed to what the mechanism then did -- and
     it costs one float per actuator per frame against a 64 MB trace cap.
+    Beside it, ``actuator_efforts`` is the force each drive delivered, and
+    every solver_output frame carries ``joint_positions`` and
+    ``joint_velocities``: what the drive did, which for a position drive the
+    command cannot show (ADR-694).
     """
 
     mujoco = _mujoco_module()
@@ -12275,6 +12279,26 @@ def rollout_policy(
     slew = played_filter["command_slew_deg"]
     bounds = [(float(action["low"]), float(action["high"])) for action in task["actions"]]
     issued: list[float] = []
+    # ADR-694: what each drive did, beside what it was told. Read through
+    # the actuator's own transmission (``actuator_length``/``_velocity``,
+    # divided by its gear), so the coordinate is the joint's for a joint
+    # transmission and no joint lookup can miss.
+    slots = [int(action["index"]) for action in task["actions"]]
+    gears = [float(model.actuator_gear[slot][0]) or 1.0 for slot in slots]
+    angular = [str(action["motion_type"]) == "angular" for action in task["actions"]]
+
+    def _coordinate(value: float, rotary: bool) -> float:
+        return angle_degrees(value) if rotary else length_mm(value)
+
+    def _effort(value: float, rotary: bool) -> float:
+        return torque_nmm(value) if rotary else float(value)
+
+    def _effort_range(slot: int, gear: float, rotary: bool) -> tuple[float | None, float | None]:
+        if not bool(model.actuator_forcelimited[slot]):
+            return None, None
+        low, high = (float(value) * gear for value in model.actuator_forcerange[slot])
+        low, high = min(low, high), max(low, high)
+        return _effort(low, rotary), _effort(high, rotary)
 
     def _actions(step: int, observation: Mapping[str, float]) -> list[float]:
         raw = policy_forward(header, weights, observation, context=context)
@@ -12352,8 +12376,28 @@ def rollout_policy(
         # taken there, and a row of zeros is a real command a policy can
         # issue. Consumers read frames with ``.get()``, so every one that
         # predates this key ignores it.
+        # The joint each drive moves, where it is and how fast, in the
+        # channel's own unit (degrees or millimetres, per second). Present on
+        # the reset frame too: the mechanism has a pose there, and a joint
+        # acceleration is a difference that needs the velocity it started at.
+        record["joint_positions"] = [
+            _coordinate(float(data.actuator_length[slot]) / gear, rotary)
+            for slot, gear, rotary in zip(slots, gears, angular, strict=True)
+        ]
+        record["joint_velocities"] = [
+            _coordinate(float(data.actuator_velocity[slot]) / gear, rotary)
+            for slot, gear, rotary in zip(slots, gears, angular, strict=True)
+        ]
         if action is not None:
             record["actuator_commands"] = [float(value) for value in action]
+            # The force each drive delivered at the frame's instant -- the
+            # last solver step of the control step, after MuJoCo's clamp --
+            # in N·mm (N for a linear drive). A sample of the effort, not its
+            # mean over the step; absent on the reset frame like the command.
+            record["actuator_efforts"] = [
+                _effort(float(data.actuator_force[slot]) * gear, rotary)
+                for slot, gear, rotary in zip(slots, gears, angular, strict=True)
+            ]
         return record
 
     episode = evaluate_episode(
@@ -12421,8 +12465,17 @@ def rollout_policy(
                 "unit": str(action["unit"]),
                 "low": float(action["low"]),
                 "high": float(action["high"]),
+                # ADR-694: the units of a frame's joint_positions (and, per
+                # second, joint_velocities) and actuator_efforts, and the
+                # clamp the effort is read against -- the model's force
+                # range, null for a drive the model does not limit.
+                "joint_unit": "deg" if rotary else "mm",
+                "effort_unit": "N·mm" if rotary else "N",
+                "effort_low": _effort_range(slot, gear, rotary)[0],
+                "effort_high": _effort_range(slot, gear, rotary)[1],
             }
-            for action in task["actions"]
+            for action, slot, gear, rotary in zip(
+                task["actions"], slots, gears, angular, strict=True)
         ],
         # What each frame's ``goal`` row means, declared once: the channel,
         # the goal it belongs to, that goal's kind and its unit.

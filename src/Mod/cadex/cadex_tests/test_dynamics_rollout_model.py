@@ -440,3 +440,70 @@ def test_a_channel_states_the_range_its_command_is_read_against() -> None:
         assert channel["high"] == action["high"]
         assert channel["unit"] == action["unit"]
         assert channel["low"] < channel["high"]
+
+
+# ---------------------------------------------------------------------------
+# What each drive did (ADR-694).
+# ---------------------------------------------------------------------------
+
+
+def test_a_channel_states_the_units_and_the_clamp_its_effort_is_read_against() -> None:
+    """The effort range is the model's force range, in the surface's N·mm."""
+
+    prepared = _full()
+    channels = _rollout(prepared)["actuator_channels"]
+    model = prepared["reloaded"]
+    for channel, action in zip(channels, prepared["bundle"]["actions"]):
+        assert channel["joint_unit"] == "deg"
+        assert channel["effort_unit"] == "N·mm"
+        low, high = model.actuator_forcerange[int(action["index"])]
+        assert channel["effort_low"] == pytest.approx(dyn.torque_nmm(low))
+        assert channel["effort_high"] == pytest.approx(dyn.torque_nmm(high))
+        assert channel["effort_low"] < 0.0 < channel["effort_high"]
+
+
+def test_every_frame_carries_the_joint_state_and_every_solved_one_its_effort() -> None:
+    """Position and velocity on every frame; effort only after an action."""
+
+    run = _rollout(_full())
+    channels = run["actuator_channels"]
+    frames = run["frames"]
+    assert "actuator_efforts" not in frames[1]
+    for frame in frames[1:]:
+        assert len(frame["joint_positions"]) == len(channels)
+        assert len(frame["joint_velocities"]) == len(channels)
+    efforts = [frame["actuator_efforts"] for frame in frames[2:]]
+    assert len(efforts) == len(frames) - 2
+    for row in efforts:
+        for value, channel in zip(row, channels):
+            assert channel["effort_low"] - 1e-6 <= value <= channel["effort_high"] + 1e-6
+    assert any(abs(value) > 1.0 for row in efforts for value in row), (
+        "no drive ever pushed, so this trace says nothing about effort"
+    )
+
+
+def test_the_joint_state_is_the_one_the_policy_observed() -> None:
+    """Read from the other side: the jointpos and jointvel sensors.
+
+    Both are evaluated at the same stage as the frame's poses -- MuJoCo's
+    forward pass at the start of the last solver step -- so the trace's
+    joint state agrees with what the policy saw, not with ``qpos`` after
+    integration, which is one solver step later.
+    """
+
+    prepared = _full()
+    control_hz = int(prepared["bundle"]["episode"]["control_hz"])
+    run = _rollout(prepared, frames_per_second=control_hz)
+    container = prepared["container"]
+    episode = dyn.evaluate_episode(
+        prepared["reloaded"], prepared["bundle"],
+        actions=lambda _step, observation: dyn.policy_forward(
+            container["header"], container["weights"], observation),
+    )
+    solved = run["frames"][2:]
+    assert len(solved) == len(episode["steps"])
+    for frame, step in zip(solved, episode["steps"]):
+        assert frame["joint_positions"][0] == pytest.approx(
+            step["observation"]["angle"], abs=1e-6)
+        assert frame["joint_velocities"][0] == pytest.approx(
+            step["observation"]["rate"], abs=1e-6)

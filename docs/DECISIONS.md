@@ -41103,3 +41103,53 @@ two bodies travel 2 m in 2 s:
 - On, the target sits on the bodies' centre at the start, 1 m along and at
   the end (±5 mm), and yaw, pitch and distance are unchanged.
 - The bodies stay drawn, a pan is kept, and the choice is stored.
+
+## ADR-694 — A rollout trace records what each drive did: joint state and delivered effort (2026-10-14, orun6)
+
+**Context.** orun6 compares every new policy's smoothness and drive load
+with a baseline (panel-cat-3's r5 checkpoint 300). A rollout trace carried
+the commands only (ADR-096). For a position drive the command is a setpoint,
+so a trace could not show a joint's acceleration, a drive's RMS torque
+against its rated torque, or how often it sat at its peak clamp. MUJOCO.md
+hazard 15 says to read effort before believing a gait. For a position-driven
+robot, the trace gave nothing to read it from.
+
+**Decision.** `rollout_policy` (`CadexDynamics.py`) writes, per actuator
+channel and in `actuator_channels` order:
+- on every `solver_output` frame, including the reset frame:
+  - `joint_positions`, in degrees (millimetres for a linear drive);
+  - `joint_velocities`, in degrees (or millimetres) per second.
+  Both are read through the actuator's transmission (`actuator_length` and
+  `actuator_velocity` over the gear), so they sit at the same MuJoCo stage
+  as the frame's poses and the policy's sensors.
+- on every frame after the reset one, beside `actuator_commands`:
+  `actuator_efforts`, the force MuJoCo delivered after its clamp, in N·mm
+  (N for a linear drive).
+
+Each channel gains `joint_unit`, `effort_unit`, and `effort_low` and
+`effort_high`: the model's force range times the gear, or null when the
+model does not limit it. The effort is a **sample** at the last solver step
+of each control step, not that step's mean. Over hundreds of steps its RMS
+and its share of time at the clamp are unbiased estimates, and it adds no
+second episode loop. The keys are additive and readers already use `.get()`,
+so every trace written before this one still reads.
+
+**Evidence.**
+- Three tests in `test_dynamics_rollout_model.py`:
+  - units and clamp: each channel's range equals `actuator_forcerange` in
+    N·mm;
+  - presence: joint state is on every frame, and effort on every solved
+    frame, within the clamp and non-zero;
+  - joint state: it equals the swing-up's own `jointpos` and `jointvel`
+    observations at every step.
+- The r5 ckpt 300 replay through this code, on seeds 1001–1010, against
+  the model, task and policy SHA-256s its evaluation recorded. **The issued
+  commands equal the evaluation's recorded `actuator_commands` bit for bit
+  on all 5,000 steps.** It measured:
+  - pooled joint-acceleration RMS: 7,983 °/s²;
+  - 9 of the 19 drives above their CubeMars rated RMS torque. The scapulae
+    run at 1.45× (13.0 N·m against 9.0) and the left hock at 1.40×;
+  - the left hock at its 9 N·m peak clamp for 19.2 % of the samples.
+
+**Consequence.** G2's smoothness and torque predicates and P1's "every
+drive within rated" bound can be measured from a trace, with no replay.

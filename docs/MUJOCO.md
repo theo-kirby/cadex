@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-10
+Verified against source: 2026-10-14
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -788,8 +788,11 @@ Ranked by how quietly they fail.
     feasibility gate had passed because it asked about the *reset* pose and
     the policy settled somewhere else.
     **What to do:** read the commands, not only the trajectory — each
-    rollout frame's `actuator_commands`, or `compare.py`'s torque columns
-    (the shell's panel that took one glance went with the shell, ADR-498).
+    rollout frame's `actuator_commands`, its `actuator_efforts` against the
+    channel's `effort_low`/`effort_high` (ADR-694; for a position drive the
+    command is a setpoint, so only the effort shows a torque clamp), or
+    `compare.py`'s torque columns (the shell's panel that took one glance
+    went with the shell, ADR-498).
     Treat
     "the reward went up" and "the mechanism is doing something a machine
     could do" as two separate claims, and check the second one before
@@ -1307,8 +1310,9 @@ a checkpoint by what it did", as a command.
     Blender shell's Policy Outputs panel drew each actuator's command
     against its own limit; it went with the shell (ADR-498) and the
     dashboard has no counterpart, so read each rollout frame's
-    `actuator_commands` against the actuator's limit, or `compare.py`'s
-    peak/mean torque columns. The
+    `actuator_commands` against the actuator's limit and its
+    `actuator_efforts` against `effort_low`/`effort_high` (ADR-694), or
+    `compare.py`'s peak/mean torque columns. The
     trajectory says what the mechanism did; this says what the policy
     decided, and the two can disagree in a way only this one shows —
     hazard 15 is a policy that plays as a clean stand while holding three
