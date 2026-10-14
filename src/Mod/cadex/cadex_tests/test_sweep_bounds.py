@@ -144,6 +144,10 @@ def counting(first, second, *args, **kwargs):
     calls.append(1)
     return measured(first, second, *args, **kwargs)
 worker._boundary_distance = counting
+# Every row _measure_samples builds, culled ones included, which publication
+# reduces to the measured ones and counts (ADR-692); the bounds are the test.
+published = worker._sweep_pairs
+worker._sweep_pairs = lambda rows: {'pairs': rows, 'published': published(rows)}
 result = _sweep_joint(components, data, joints, baseline, 'hinge', 5)
 # A declared 50 mm floor between the arm and the corner block keeps the
 # pair exact: no bound past 10 mm decides it.
@@ -211,3 +215,13 @@ def test_a_sweep_measures_only_the_samples_a_bound_cannot_settle(tmp_path, monke
     assert 'culled' not in exact
     assert exact['minimum_distance_mm'] == pytest.approx(min(d for _, d, _ in truth['corner']), abs=1e-6)
     assert 12.0 < exact['minimum_distance_mm'] < 12.5
+    # Published, the culled rows are counted with their least bound and the
+    # rest kept as measured (ADR-692); the ten pairs of grounded blocks are
+    # rigid for this hinge, and counted too.
+    published = result['published']
+    moving = [r for r in result['pairs'] if r['relative_motion']]
+    culled = [r for r in moving if r.get('culled')]
+    assert culled and published['pairs'] == [r for r in moving if not r.get('culled')]
+    assert (published['pairs_culled'], published['pairs_rigid']) == (len(culled), 10)
+    assert published['pairs_moving'] == len(moving) == 5
+    assert published['culled_minimum_distance_mm'] == min(r['minimum_distance_mm'] for r in culled)

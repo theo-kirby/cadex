@@ -2282,8 +2282,14 @@ repeats its solved-pose measurement at every sample. Rolling it in would pin
 the joint's minimum at the weld's 0.0 mm and name first contact at the bottom
 of the range, where the sweep merely started, which is the weld and not the
 motion; the gap under a weld is the `attachments` block's fact, measured at
-the pose where it means something. `failing` spans every pair that
-overlaps, because an overlap is an overlap. A pair row from a revision
+the pose where it means something. `failing` spans every moving pair that
+overlaps, because an overlap is an overlap; a rigid pair's overlap is the
+solved-pose one, named once by the static block rather than again under
+every joint (ADR-692). Since ADR-692 the engine lists only the moving pairs
+it measured exactly and counts the rest, and the joint row passes the counts
+on as `pairs_rigid` and `pairs_culled`; `pairs_measured` is still every pair
+the sweep accounts for, and a culled pair's lower bound still enters the
+joint's minimum. A pair row from a revision
 accepted before ADR-374 carries no `relative_motion` flag and counts as
 moving, so an older receipt reads as it always did — including under
 ADR-378, whose three narrowing rules are what keep a flagless rigid row from

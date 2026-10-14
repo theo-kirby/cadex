@@ -6782,8 +6782,9 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step, *
     joint is rigid for this sweep, so its row repeats the solved-pose
     measurement at every sample -- a welded horn against its link reads
     0.0 mm here and first contact at the bottom of the range, which is the
-    weld and not the motion. The flag is what lets a reader keep the two
-    apart; the rows themselves are unchanged.
+    weld and not the motion. Since ADR-692 such a row is not published: the
+    joint counts it in ``pairs_rigid``, and the static block judges the pair
+    once (:func:`_sweep_pairs`).
 
     **Only the pairs this joint moves are measured, and only the near ones
     exactly** (ADR-419). A rigid pair's row carries its solved-pose
@@ -6792,7 +6793,9 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step, *
     :data:`_SWEEP_CULL_MM` apart at every sample is ``culled``: its minimum
     distance is that box gap, a lower bound on the true minimum; its
     common volume is 0.0 and it has no first contact, both proved by the
-    boxes. A lower bound can only make a verdict stricter. Solved-pose
+    boxes. A lower bound can only make a verdict stricter; a culled pair is
+    counted (``pairs_culled``, its least bound ``culled_minimum_distance_mm``)
+    rather than published row by row (ADR-692). Solved-pose
     agreement is checked on every pair the sweep measures exactly. Since
     ADR-686 a sample's bound also comes from the distances measured at
     other samples, and a pair is culled once every sample is measured or
@@ -6848,7 +6851,42 @@ def _sweep_joint(components, component_data, joint_data, baseline, name, step, *
     low, high = joint[limits_key]
     return {"status": "complete", "kind": joint["kind"], "unit": unit, "step": step,
             "sample_count": len(values), "range_" + unit: [low, high],
-            "initial_" + unit: initial, "solved_pose_agreement": True, "pairs": rows}
+            "initial_" + unit: initial, "solved_pose_agreement": True, **_sweep_pairs(rows)}
+
+
+def _sweep_pairs(rows):
+    """A joint's published pair facts from :func:`_measure_samples`'s rows (ADR-692).
+
+    Only the rows a verdict can rest on are kept, one per pair this joint
+    moves that was measured exactly (``pairs``). The rest are counted:
+
+    - ``pairs_rigid``: pairs with both sides on one side of the motion
+      (``relative_motion`` false, ADR-374). Each row was its solved-pose
+      row repeated at every sample, which the static block already judges,
+      once; an assembly of hundreds of screws carried them by the ten
+      thousand on every joint.
+    - ``pairs_culled``: moving pairs bound past their cull margin (ADR-419,
+      ADR-686) -- at least :data:`_SWEEP_CULL_MM`, and past the pair's own
+      declared floor -- with no contact and no common volume, so none can
+      fail or approach a floor. ``culled_minimum_distance_mm`` is the least
+      of their lower bounds, ``None`` when none was culled.
+
+    ``pairs_moving`` is every pair this joint moves: the kept rows and the
+    culled ones. Each kept row still carries ``relative_motion`` (true).
+    """
+    kept, rigid, culled, least = [], 0, 0, None
+    for row in rows:
+        if not row.get("relative_motion"):
+            rigid += 1
+        elif row.get("culled"):
+            culled += 1
+            distance = row.get("minimum_distance_mm")
+            if distance is not None and (least is None or distance < least):
+                least = distance
+        else:
+            kept.append(row)
+    return {"pairs_moving": len(kept) + culled, "pairs_rigid": rigid, "pairs_culled": culled,
+            "culled_minimum_distance_mm": least, "pairs": kept}
 
 
 def _sweep_values(joint, limits_key, step):
@@ -7490,7 +7528,7 @@ def _sweep_loop_joint(components, joint_data, baseline, name, step, tree, joints
               "closure_tolerance_mm": LOOP_POSE_CLOSURE_MM,
               "reached_" + unit: ([min(v for v, _ in closed), max(v for v, _ in closed)]
                                   if closed else None),
-              "unclosed": unclosed, "pairs": rows}
+              "unclosed": unclosed, **_sweep_pairs(rows)}
     if unclosed:
         failed = [row for row in unclosed if row["residual_mm"] is not None]
         result["status"] = "incomplete"
@@ -7555,7 +7593,7 @@ def _sweep_coupled_joint(components, baseline, name, step, tree, joints, couplin
             "initial_" + unit: initial, "solved_pose_agreement": True,
             "coupled": {"followers": sorted({row["joint"] for row in solved["followers"].values()}),
                         "held": solved["held"]},
-            "pairs": rows}
+            **_sweep_pairs(rows)}
 
 
 #: The joints that relate coordinates other joints own (ADR-644): each is

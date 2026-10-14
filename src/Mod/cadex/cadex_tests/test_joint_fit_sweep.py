@@ -141,8 +141,13 @@ def test_known_angle_solved_agreement_and_incomplete_coverage(tmp_path, monkeypa
     assert crowded['baseline_pairs'] == 2145 > crowded['max_pairs'] == 2000
     assert crowded['status'] == 'complete', crowded
     hinge = crowded['joints'][0]
-    assert sum(p['relative_motion'] for p in hinge['pairs']) == 65
-    assert len(hinge['pairs']) == 2145
+    # Only the one pair measured exactly is published (ADR-692): the 64
+    # blocks the hinge moves past are culled by their boxes and counted, with
+    # the least bound kept, and the 2,080 pairs it cannot move are counted
+    # too -- each row was its solved-pose row repeated.
+    assert (hinge['pairs_moving'], hinge['pairs_culled'], hinge['pairs_rigid']) == (65, 64, 2080)
+    assert hinge['culled_minimum_distance_mm'] > 10.0
+    assert len(hinge['pairs']) == 1 and hinge['pairs'][0]['relative_motion'] is True
     assert hinge['pairs'][0] == joint['pairs'][0]
     assert '1 moving pairs come within reach' in result['pair_cap']['joints'][0]['reason']
     assert 'more than 0' in result['moving_cap']['joints'][0]['reason']
@@ -304,8 +309,10 @@ def test_welded_pair_is_marked_as_holding_still_through_the_sweep(tmp_path, monk
     `moving` and touching it. Nothing ever contacts through the motion --
     `fixed` meets `moving` only at 78.5 deg and `carried` only at 90 deg,
     both outside the range -- yet `moving` and `carried` read 0.0 mm apart at
-    every sample, because the weld holds them there. `relative_motion` is the
-    row saying which of the two facts it carries.
+    every sample, because the weld holds them there. Since ADR-692 that
+    rigid row is not published at all: the joint counts it in `pairs_rigid`,
+    and the static block judges the weld once. Each published row still
+    says `relative_motion`, which is now always true.
     """
 
     monkeypatch.setattr(kernel, '_FRAME_DRIVER', _WELD_DRIVER)
@@ -317,17 +324,14 @@ def test_welded_pair_is_marked_as_holding_still_through_the_sweep(tmp_path, monk
     joint = report['joints'][0]
     assert joint['status'] == 'complete' and joint['solved_pose_agreement']
     rows = {(row['first'], row['second']): row for row in joint['pairs']}
-    assert set(rows) == {('fixed', 'moving'), ('fixed', 'carried'), ('moving', 'carried')}
+    # Both sides of the weld ride the swept subtree, so the hinge cannot
+    # change that pair: its row would only repeat the solved pose's 0.0 mm
+    # and name first contact at the range's floor, so it is counted instead.
+    assert set(rows) == {('fixed', 'moving'), ('fixed', 'carried')}
     assert rows['fixed', 'moving']['relative_motion'] is True
     assert rows['fixed', 'carried']['relative_motion'] is True
-    # Both sides ride the swept subtree, so the hinge cannot change this pair.
-    assert rows['moving', 'carried']['relative_motion'] is False
-    # ...and this is why the flag has to exist: the weld reports the range's
-    # own floor as "first contact" and 0.0 mm as its minimum, every time.
-    weld = rows['moving', 'carried']
-    assert weld['first_contact_degrees'] == 20
-    assert weld['minimum_distance_mm'] <= 1e-3
-    assert weld['maximum_common_volume_mm3'] <= 1e-6
+    assert (joint['pairs_moving'], joint['pairs_rigid'], joint['pairs_culled']) == (2, 1, 0)
+    assert joint['culled_minimum_distance_mm'] is None
     # Neither moving pair ever touches: the chord between two radius-10
     # centres 20 deg apart is 20 sin(10 deg), and the radii take 2 mm off it.
     for key in (('fixed', 'moving'), ('fixed', 'carried')):
@@ -572,26 +576,22 @@ def test_a_pair_the_motion_cannot_bring_near_is_bounded_not_measured(tmp_path, m
     result = kernel._drive_frame(tmp_path)
     (joint,) = result['report']['joints']
     assert joint['status'] == 'complete' and joint['solved_pose_agreement']
-    rows = {(row['first'], row['second']): row for row in joint['pairs']}
     baseline = {(row['first'], row['second']): row for row in result['baseline']}
-    near, far = rows['fixed', 'moving'], rows['far', 'moving']
-    # The near pair is measured exactly, as before this change.
-    assert 'culled' not in near
+    # Only the near pair is published, measured exactly as before (ADR-692).
+    (near,) = joint['pairs']
+    assert (near['first'], near['second']) == ('fixed', 'moving')
+    assert 'culled' not in near and near['relative_motion'] is True
     assert near['minimum_distance_mm'] == pytest.approx(0.04, abs=1e-9)
-    # The far pair is bounded: above the cull margin, and no more than the
-    # true minimum over the same samples.
+    # The far pair is bounded and counted: its bound above the cull margin,
+    # and no more than the true minimum over the same samples.
     exact = min(math.hypot(10 * math.cos(math.radians(a)), 10 * math.sin(math.radians(a)) + 60) - 2
                 for a in range(20, 91))
-    assert far['culled'] is True and far['relative_motion'] is True
-    assert 10.0 < far['minimum_distance_mm'] <= exact + 1e-9
-    assert far['maximum_common_volume_mm3'] == 0.0 and far['first_contact_degrees'] is None
-    # A rigid pair is the solved-pose value, carried rather than redone --
-    # here a static bound (ADR-423), so it says so and keeps its number.
-    rigid = rows['fixed', 'far']
-    assert rigid['relative_motion'] is False and rigid['culled'] is True
+    assert (joint['pairs_moving'], joint['pairs_culled']) == (2, 1)
+    assert 10.0 < joint['culled_minimum_distance_mm'] <= exact + 1e-9
+    # A rigid pair is the solved-pose value -- here a static bound
+    # (ADR-423) -- so it is counted, and the static row keeps its number.
+    assert joint['pairs_rigid'] == 1
     assert baseline['fixed', 'far']['culled'] is True
-    assert rigid['minimum_distance_mm'] == baseline['fixed', 'far']['distance_mm']
-    assert rigid['maximum_common_volume_mm3'] == 0.0 and rigid['first_contact_degrees'] is None
 
 
 _STATIC_CULL_DRIVER = r'''
@@ -910,8 +910,10 @@ def test_a_four_bar_is_swept_from_its_crank_with_the_loop_closed_at_every_sample
     assert stop['relative_motion'] and 'culled' not in stop
     assert stop['minimum_distance_mm'] == pytest.approx(expected, abs=1e-6)
     assert 5.0 <= stop['minimum_distance_mm'] < 5.1
-    # Two grounded bodies hold still against each other.
-    assert not pairs[frozenset(('ground', 'stop'))]['relative_motion']
+    # Two grounded bodies hold still against each other: a rigid pair,
+    # counted rather than published (ADR-692).
+    assert frozenset(('ground', 'stop')) not in pairs and crank['pairs_rigid'] >= 1
+    assert all(r['relative_motion'] for r in crank['pairs'])
     nothing = {row['joint']: row for row in result['nothing']['joints']}
     assert result['nothing']['status'] == 'incomplete'
     assert all(row['status'] == 'incomplete' and 'no joint of that loop declares limits' in row['reason']

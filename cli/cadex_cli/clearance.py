@@ -360,7 +360,11 @@ def write_clearance(
                 "seconds. Each joint names its own `unit`: hinge ranges, initial "
                 "values and `first_contact_degrees` are in degrees at `step_degrees`; "
                 "slider ranges, initial values and `first_contact_mm` are in mm at "
-                "`step_mm`. The published report follows "
+                "`step_mm`. Each joint's `pairs` are the pairs it moves that were measured "
+                "exactly; `pairs_rigid` counts the pairs it does not move (their numbers are "
+                "the solved-pose report's), and `pairs_culled` the moving pairs bound past "
+                "their floor, the least bound `culled_minimum_distance_mm` (ADR-692). "
+                "The published report follows "
                 "unchanged, including incomplete reasons and runtime bounds. "
                 "This command never builds or accepts geometry.\n\n"
                 "```json\n" + json.dumps(published, indent=2, ensure_ascii=False) + "\n```\n")

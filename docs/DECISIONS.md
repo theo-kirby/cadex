@@ -41000,3 +41000,75 @@ its own (a piece short of screws). The remaining cost is the skin's wall
 (up to 18 s for the rump with 4 openings). `test_panels.py` covers the
 fallback chain headless and the panel-cat-4 rump geometry on the kernel,
 which refused before this change.
+
+## ADR-692 — A joint sweep publishes the pairs it measured and counts the rest (2026-10-13)
+
+**Context.** Since ADR-690 a model may keep hundreds of screw components,
+because a sweep's pair budget counts only the pairs its boxes leave near.
+But every joint still published a row for **every** pair of the assembly:
+rigid pairs (`relative_motion: false`) copying their static row, culled
+moving pairs carrying a box bound, and the few measured ones. On
+`panel-cat-4` (307 components, 46,971 pairs, 17 swept joints) the accepted
+`result.json` was 194 MB, 168 MB of it `clearance_sweep.joints`: per joint
+about 1,090 rigid rows, 300 to 12,400 culled moving ones, 33,500 to 45,600 rigid
+culled ones, and 2 to 13 measured. The dashboard refused it (its 64 MB limit,
+raised in a hotfix), and every reader -- MCP `look`/`inspect`,
+`CadexFitReport`, `cadex clearance --sweep` -- parsed ~200 MB per build.
+
+**Decision.** `_sweep_pairs` (`cadex_assembly_worker.py`) shapes what every
+sweep publishes -- a tree joint, a loop joint, a coupled joint alike:
+
+- `pairs` holds only the pairs the joint moves that were measured exactly
+  (`relative_motion: true`, no `culled`): every contact, overlap and gap
+  below a floor the motion makes is among them.
+- `pairs_rigid` counts the rigid pairs. Each row only repeated its static
+  row at `/pairs`, which judges the pair once.
+- `pairs_culled` counts the moving pairs the bounds culled (ADR-419,
+  ADR-686), and `culled_minimum_distance_mm` keeps the least of their lower
+  bounds. Each is past its cull margin -- at least 10 mm, and past its own
+  declared floor -- with no contact and no common volume, so none can fail
+  or approach a floor.
+- `pairs_moving` is the kept rows plus the culled ones.
+
+The cache (ADR-622) is written inside `_measure_samples`, row by row, before
+publication, so it is untouched; the rows are reduced only on their way out.
+
+The readers: `CadexFitReport.sweep_summary` adds the counts back, so a joint
+row's `pairs_measured` is still every pair the sweep accounts for and
+`pairs_measured - pairs_moving` still the rigid count; it passes
+`pairs_rigid`/`pairs_culled` on, and a culled bound still enters the joint's
+minimum distance (and a culled pair's 0.0 its maximum volume). The panel
+check's "colliding in motion" findings already skipped rigid rows and could
+not be reached by a culled one (past 10 mm, its tightness threshold is
+0.5 mm). `cadex clearance --sweep` explains the counts. The dashboard reads
+the sweep only through the fit report.
+
+**This changes one thing ADR-374 kept.** A rigid pair that overlaps at the
+solved pose was listed in `sweep.failing` once per joint ("an overlap is an
+overlap"). It is now the static block's failure alone, named once: the
+swept block judges the moving pairs, and the reader skips a flagged rigid
+row on an older receipt too, so both read the same. On `panel-cat-4` the
+swept block had 2,877 failing entries, 2,870 of them 169 static
+intersections repeated under 17 joints; it now has the 7 the motion makes.
+The overall verdict cannot change: each such pair already fails at the solved
+pose. A row with no `relative_motion` flag (before ADR-374) still counts as
+moving.
+
+**Tests changed deliberately.** `test_joint_fit_sweep.py`: the crowded
+hinge of ADR-426 published 2,145 rows, 65 moving; it now publishes 1, with
+`pairs_moving` 65, `pairs_culled` 64 and `pairs_rigid` 2,080. The weld of
+ADR-374 is counted (`pairs_rigid` 1) instead of read as a 0.0 mm row; the
+culled far pair of ADR-419 is `pairs_culled` 1 with its bound; the four-bar's
+grounded pair is counted. `test_sweep_bounds.py` reads the rows before
+publication (its subject is the bounds) and checks `_sweep_pairs` against
+them. `cli/tests/test_clearance.py::test_a_compact_sweep_reads_as_the_full_rows_did`
+reads one knee published both ways to the same joint row and verdict.
+
+**Consequences.** Re-serialising `panel-cat-4`'s accepted result with this
+rule takes `clearance_sweep` from 167.8 MB to 0.035 MB and `result.json`
+from 194.4 MB to 40.9 MB; the main checkout's reader on the full rows and
+this one on the compact rows give the same joint rows, the same panel and
+mounting blocks, and the same overall verdict. What is left is the static
+`clearance` list, one row per pair (46,971), which this does not touch. A
+result accepted before this keeps its full rows and reads as it did, so the
+dashboard's 512 MB result limit stays.

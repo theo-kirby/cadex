@@ -2742,13 +2742,14 @@ exactly must first agree at the solved pose with static clearance within
 0.0001 mm and 0.001 mm³.
 
 Only the pairs a joint moves are measured, and only the near ones exactly
-(ADR-419). A pair rigid for this sweep carries its static solved-pose
-measurement unchanged — and its `culled: true` with it, when that static
-value is a bound (ADR-423). A statically bounded pair the joint moves near
+(ADR-419). A pair rigid for this sweep is its static solved-pose
+measurement unchanged — a bound, when that static value is one (ADR-423) —
+and is counted, not listed (ADR-692, below). A statically bounded pair the joint moves near
 is measured exactly, and must be no closer at the solved pose than its bound. A moving pair proved more than 10 mm apart at every
 sample -- or more than its declared `clearances=` floor, when that is larger
--- carries `culled: true`: its minimum distance is the least of those
-per-sample lower bounds, not a measurement; its maximum common volume is 0.0
+-- is culled: its minimum distance is the least of those
+per-sample lower bounds, not a measurement (published as the joint's
+`culled_minimum_distance_mm` across its culled pairs, ADR-692); its maximum common volume is 0.0
 and it has no first contact, both proved by the bounds. A lower bound can
 only make a fit verdict stricter. Each sample's bound (ADR-686) is the
 largest of: the gap between the two parts' boxes there, each moving part's
@@ -2822,9 +2823,22 @@ sample, so a horn welded to the link it turns with reads 0.0 mm apart at
 every angle. That is the weld, not the motion, and it is why the CLI's
 `fit.sweep` joint rows read their minimum distance, maximum common volume and
 first contact over the moving pairs alone, counting them as `pairs_moving`.
-The per-pair rows are unchanged and still cover every pair; what the gap under
-a weld means belongs to the `attachments` report (ADR-370), which measures it
-at the solved pose.
+What the gap under a weld means belongs to the `attachments` report (ADR-370),
+which measures it at the solved pose.
+
+**A joint publishes the rows a verdict can rest on, and counts the rest**
+(ADR-692). Its `pairs` are the pairs it moves that were measured exactly
+(each `relative_motion: true`): every contact, overlap and gap below a floor
+the motion makes is among them. A rigid pair is counted in `pairs_rigid`,
+not listed: its row only repeated the static row at `/pairs`, which judges
+it once, so an overlap at the solved pose fails there and not again under
+every joint. A moving pair the bounds cull (below) is counted in
+`pairs_culled`, with `culled_minimum_distance_mm` the least of their lower
+bounds: each is past 10 mm and past its own floor, so none can touch or fail.
+`pairs_moving` is the kept rows plus the culled ones. On `panel-cat-4` (307
+components, 17 swept joints) every joint had listed all 46,971 pairs, 168 MB
+of a 194 MB `result.json`; it now lists 2 to 13 per joint, 35 kB in all. A
+revision accepted before this lists every pair, and the CLI reads both.
 
 Each joint's native queries run in a fresh FreeCAD subprocess with a 90-second
 timeout, up to four at once (ADR-622); the assembly shares 180 seconds of
