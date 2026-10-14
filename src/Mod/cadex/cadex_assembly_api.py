@@ -1097,6 +1097,9 @@ _OBSERVATION_KINDS: dict[str, str] = {
     # how fast that is changing. The engine keeps it in
     # ``CadexDynamics.COMMAND_OBSERVATION_KINDS``.
     "command": "actuator",
+    # Not a sensor (ADR-699): a joint's acceleration, read from the
+    # simulator's qacc. ``CadexDynamics.STATE_OBSERVATION_KINDS``.
+    "acceleration": "joint",
 }
 
 #: What each observation kind's declared name expands to. A vector channel
@@ -1125,6 +1128,8 @@ _OBSERVATION_SUFFIXES: dict[str, tuple[str, ...]] = {
     "command": ("", "_rate"),
     # The normal force on the component, then whether it is down (ADR-698).
     "contact": ("", "_down"),
+    # One joint coordinate's acceleration (ADR-699).
+    "acceleration": ("",),
 }
 
 
@@ -3412,6 +3417,15 @@ class AssemblyDomainAPI:
           sensor sized to those shapes. No onboard sensor this API declares
           measures it, so it is ``role="privileged"``: the reward, the
           terminations and the critic read it, the policy does not.
+        * ``acceleration`` -- one joint coordinate's acceleration (ADR-699),
+          in deg/s^2 or mm/s^2: the simulator's own ``qacc`` after the
+          control step, which MuJoCo has no sensor for and MuJoCo
+          Playground's locomotion recipes penalise. ``target`` is an
+          ``api.joint``. It must be ``role="privileged"``, because nothing
+          on the robot measures it: ``-(knee_acc / 10000)^2`` is the
+          joint-acceleration regulariser. A drive's torque is already an
+          ``actuator_force`` channel, so ``-(knee_tau / peak)^2`` is the
+          torque term, and ``abs(knee_tau * knee_vel)`` its mechanical power.
 
         **A vector channel expands to suffixed names.** ``name="hand"`` on a
         ``component_position`` gives ``hand_x``, ``hand_y`` and ``hand_z``;

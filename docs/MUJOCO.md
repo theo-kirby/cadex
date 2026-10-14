@@ -1368,6 +1368,30 @@ swing, and foot slip is a foot's speed while it is down.
   swing), and a slip term `-(paw_vx**2 + paw_vy**2) * paw_down` beside a
   `component_linear_velocity` of the same paw.
 
+### Saying "smooth": joint acceleration and the regularisers (ADR-699)
+
+- **`assembly.observation(knee, "acceleration", name="knee_acc",
+  role="privileged")`** gives `knee_acc`, the joint's `qacc` after the
+  control step's last solver step, in deg/s^2 (mm/s^2 on a slider). MuJoCo
+  has no sensor for it, so the bundle states the degree of freedom in an
+  `accelerations` section after the command channels, and the engine, MJX
+  and the reference runner each read their own `qacc`. It is the quantity
+  MuJoCo Playground's locomotion recipes penalise. It must be privileged:
+  nothing on the robot measures it.
+- **Every standard regulariser is then a reward term**, each on a channel a
+  task already has:
+
+  | term | expression | channels |
+  |---|---|---|
+  | action rate | `-(hip_cmd_rate / 100)**2` | `command` (ADR-696) |
+  | joint acceleration | `-(knee_acc / 10000)**2` | `acceleration` |
+  | torque | `-(knee_tau / peak_nmm)**2` | `actuator_force` |
+  | mechanical power, W | `-abs(knee_tau * knee_vel) * 1.745e-05` | `actuator_force`, `velocity` |
+  | foot slip | `-sqrt(paw_vx**2 + paw_vy**2) * paw_down` | `component_linear_velocity`, `contact` |
+
+  `test_dynamics_acceleration_channel`'s `REGULARISED_TASK` writes all five
+  on one mechanism, holds each to its formula, and trains it.
+
 ### What a good result looks like
 
 The mg-legs run (ADR-095), for calibration — 263 g of PLA and eight 13.4 g

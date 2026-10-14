@@ -4290,6 +4290,16 @@ def _execute_task_bundle(
                 if "commands" in bundle
                 else {}
             ),
+            # ADR-699: and the acceleration channels, after the commands.
+            **(
+                {"acceleration_channels": [
+                    str(channel)
+                    for record in bundle["accelerations"]
+                    for channel in record["channels"]
+                ]}
+                if "accelerations" in bundle
+                else {}
+            ),
             # What the task is judged by, when it declares it (ADR-456): the
             # predicates by id, the seeds, and the scale a threshold in hip
             # heights or centre-of-mass heights has on this mechanism.

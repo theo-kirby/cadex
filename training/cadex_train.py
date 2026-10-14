@@ -685,8 +685,33 @@ def command_vector(xp: Any, task: dict[str, Any], issued: Any, before: Any) -> A
     return xp.reshape(xp.stack([now, rate], axis=-1), now.shape[:-1] + (2 * len(index),))
 
 
+def acceleration_channels(task: dict[str, Any]) -> list[str]:
+    """Every acceleration channel the task declares (ADR-699).
+
+    ``CadexDynamics.acceleration_channels``. Every one is privileged, so
+    none reaches the actor.
+    """
+
+    return [str(channel) for record in task.get("accelerations") or ()
+            for channel in record["channels"]]
+
+
+def acceleration_vector(xp: Any, task: dict[str, Any], qacc: Any) -> Any:
+    """The acceleration channels from the simulator's ``qacc`` (ADR-699).
+
+    ``CadexDynamics.acceleration_values`` in ``xp``: each row's degree of
+    freedom, times its scale, along ``qacc``'s last axis.
+    """
+
+    rows = list(task.get("accelerations") or ())
+    dofs = [int(record["dof"]) for record in rows]
+    scale = xp.asarray([float(record["scale"]) for record in rows], dtype=qacc.dtype)
+    return qacc[..., dofs] * scale
+
+
 def channels(task: dict[str, Any]) -> list[str]:
-    """Every name an expression may use: sensor, goal, then command channels.
+    """Every name an expression may use: sensor, goal, command, then
+    acceleration channels (ADR-699).
 
     The engine's ``CadexDynamics._task_channels`` is the same rule. The
     sensor channels come out of ``sensordata``; the goal channels are what
@@ -699,7 +724,7 @@ def channels(task: dict[str, Any]) -> list[str]:
         str(channel)
         for record in task["observations"]
         for channel in record["channels"]
-    ] + goal_channels(task) + command_channels(task)
+    ] + goal_channels(task) + command_channels(task) + acceleration_channels(task)
 
 
 def actor_channels(task: dict[str, Any]) -> list[str]:
@@ -837,7 +862,8 @@ def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
                 floor.append(known * known)
             else:
                 floor.append(0.25)
-    return floor + [0.0] * (len(goal_channels(task)) + len(command_channels(task)))
+    return floor + [0.0] * (len(goal_channels(task)) + len(command_channels(task))
+                            + len(acceleration_channels(task)))
 
 
 def sensor_noise_std(task: dict[str, Any]) -> list[float]:
@@ -1510,6 +1536,8 @@ def train(
     # environment, episode-local -- and, when commanding, the one before it.
     # Everything below that used to test `filtering` tests this instead.
     carrying = filtering or slewing or commanding
+    # ADR-699: a PYTHON bool on the same terms; qacc is read, never carried.
+    accelerating = bool(task.get("accelerations"))
 
     reward_terms = [
         (float(term["weight"]),
@@ -1919,6 +1947,11 @@ def train(
             replaced = jnp.where(first, clamped, previous)
             vector = jnp.concatenate(
                 [vector, command_vector(jnp, task, clamped, replaced)])
+        if accelerating:
+            # ADR-699: the acceleration of the step's last solver step.
+            vector = jnp.concatenate(
+                [vector, acceleration_vector(jnp, task, data.qacc)])
+        if commanding:
             return (data, vector, reward_of(vector), done_of(vector), clamped,
                     replaced)
         if carrying:
@@ -2206,6 +2239,10 @@ def train(
                 # ADR-696: the command in force and the one it replaced.
                 vector = jnp.concatenate(
                     [vector, command_vector(jnp, task, *filter_carry)], axis=-1)
+            if accelerating:
+                # ADR-699: the critic's; the actor never reads it.
+                vector = jnp.concatenate(
+                    [vector, acceleration_vector(jnp, task, data.qacc)], axis=-1)
             goal_args = (told,) if goaled else ()
             normalised = normalise(vector, mean, variance)
             raw = net(params["actor"], jnp.take(normalised, actor_take, axis=-1))

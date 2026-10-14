@@ -7486,13 +7486,40 @@ COMMAND_OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
 }
 
 
+#: Observation kinds read from the simulator's state, not a sensor
+#: (ADR-699). An ``acceleration`` is one joint coordinate's acceleration,
+#: ``qacc`` at that joint's degree of freedom after the control step's last
+#: solver step, in deg/s^2 or mm/s^2. MuJoCo has no joint-acceleration
+#: sensor, and ``qacc`` is the number MuJoCo Playground's locomotion recipes
+#: penalise (``sum(qacc[6:]^2)``), so it is read where they read it: MJX
+#: carries the same field, and no evaluator keeps a velocity history to
+#: difference. Its rows travel in the bundle's ``accelerations`` section
+#: after the command channels, and they do not count against
+#: ``MAXIMUM_OBSERVATION_CHANNELS``, which bounds the sensors in the file.
+#:
+#: It is ``role: privileged`` and nothing else: no onboard sensor measures
+#: it, and differentiating an encoder twice on the robot is noise. It is for
+#: the reward and the critic: ``-(hip_acc / 10000)^2`` is the
+#: joint-acceleration regulariser.
+STATE_OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
+    "acceleration": {
+        "target": "joint",
+        "suffixes": ("",),
+        "units": {"angular": ("deg/s^2", angle_degrees),
+                  "linear": ("mm/s^2", length_mm)},
+    },
+}
+
+
 def sensor_observations(
     records: Sequence[Mapping[str, Any]],
 ) -> list[Mapping[str, Any]]:
-    """The observation records an MJCF sensor carries: all but commands."""
+    """The observation records an MJCF sensor carries: all but commands and
+    state readings (ADR-696, ADR-699)."""
 
     return [record for record in records
-            if str(record["kind"]) not in COMMAND_OBSERVATION_KINDS]
+            if str(record["kind"]) not in COMMAND_OBSERVATION_KINDS
+            and str(record["kind"]) not in STATE_OBSERVATION_KINDS]
 
 #: What a randomisation entry may vary, and every compiled-model field one
 #: draw has to move.
@@ -7816,12 +7843,17 @@ def observation_records(
     records: list[dict[str, Any]] = []
     taken: dict[str, str] = {}
     commanded: dict[str, str] = {}
+    stated = 0
     for index, entry in enumerate(entries):
         kind = str(entry.get("kind") or "")
         name = str(entry.get("name") or "")
         if kind in COMMAND_OBSERVATION_KINDS:
             records.append(_command_observation(
                 entry, by_actuator, actuators, taken, commanded))
+            continue
+        if kind in STATE_OBSERVATION_KINDS:
+            records.append(_state_observation(entry, table, refusals, taken))
+            stated += 1
             continue
         row = OBSERVATION_KINDS.get(kind)
         if row is None:
@@ -8035,7 +8067,8 @@ def observation_records(
         )
     # ADR-696: command channels are named in ``taken`` so nothing can clash
     # with them, and are not sensors, so the cap does not count them.
-    sensed = len(taken) - 2 * len(commanded)
+    # ADR-699: nor are the state readings, one channel each.
+    sensed = len(taken) - 2 * len(commanded) - stated
     if sensed > MAXIMUM_OBSERVATION_CHANNELS:
         raise DynamicsError(
             f"This task observes {sensed} scalar channels; the accepted "
@@ -8050,6 +8083,71 @@ def observation_records(
                       "maximum": MAXIMUM_OBSERVATION_CHANNELS},
         )
     return records
+
+
+def _state_observation(
+    entry: Mapping[str, Any],
+    table: Mapping[tuple[str, str], Mapping[str, Any]],
+    refusals: Mapping[str, str],
+    taken: dict[str, str],
+) -> dict[str, Any]:
+    """One ``acceleration`` observation, resolved to its joint (ADR-699).
+
+    Its channel is claimed in ``taken`` so nothing can clash with it, and
+    the caller's cap subtracts it again. Which degree of freedom it reads is
+    the compiled model's to say, so :func:`_state_records` answers it.
+    """
+
+    name = str(entry.get("name") or "")
+    what = f"observation {name!r}"
+    kind = str(entry["kind"])
+    if str(entry.get("role") or "policy") != "privileged":
+        raise DynamicsError(
+            f"{what} reads a joint's acceleration as a policy input, and no "
+            "sensor on the robot measures it.",
+            reason="acceleration_not_privileged",
+            correction=(
+                "Declare it role=\"privileged\": the reward and the critic "
+                "read it, the policy does not. A policy that needs how fast a "
+                "joint is changing reads its velocity, which an encoder gives."
+            ),
+            observed={"observation": name, "role": str(entry.get("role") or "policy")},
+        )
+    resolved = _resolve_coordinate(entry, table, refusals, what=what)
+    motion_type = str(entry.get("motion_type") or "")
+    units = STATE_OBSERVATION_KINDS[kind]["units"]
+    if motion_type not in units:
+        raise DynamicsError(
+            f"A {kind!r} observation has no unit for a {motion_type} coordinate.",
+            reason="malformed_observation",
+            observed={"kind": kind, "motion_type": motion_type},
+        )
+    unit, convert = units[motion_type]
+    channels = [f"{name}{suffix}" for suffix in STATE_OBSERVATION_KINDS[kind]["suffixes"]]
+    for channel in channels:
+        if channel in taken:
+            raise DynamicsError(
+                f"Two observation channels are both called {channel!r}.",
+                reason="duplicate_observation_channel",
+                correction=(
+                    "A reward formula names channels, so two with one name "
+                    "means whichever was declared second. Rename one."
+                ),
+                observed={"channel": channel, "observation": name,
+                          "conflicts_with": taken[channel]},
+            )
+        taken[channel] = name
+    return {
+        "name": name,
+        "kind": kind,
+        "target": str(entry.get("joint") or ""),
+        "object_name": str(resolved["mujoco_joint"]),
+        "channels": channels,
+        "motion_type": motion_type,
+        "unit": str(unit),
+        "scale": float(convert(1.0)),
+        "role": "privileged",
+    }
 
 
 def _command_observation(
@@ -10023,6 +10121,59 @@ def _command_records(
     return rows
 
 
+def _state_records(
+    observations: Sequence[Mapping[str, Any]],
+    reloaded: Any,
+) -> list[dict[str, Any]]:
+    """The bundle's ``accelerations`` rows (ADR-699), one per observation.
+
+    Each names the degree of freedom it reads by its address in the loaded
+    file's ``qacc``, because that is the vector every evaluator holds --
+    the engine's ``MjData``, MJX's and the reference reader's alike.
+    """
+
+    mujoco = _mujoco_module()
+    rows: list[dict[str, Any]] = []
+    for record in observations:
+        if str(record["kind"]) not in STATE_OBSERVATION_KINDS:
+            continue
+        joint = mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_JOINT,
+                                  str(record["object_name"]))
+        rows.append({
+            "name": str(record["name"]),
+            "kind": str(record["kind"]),
+            "target": str(record["target"]),
+            "joint": str(record["object_name"]),
+            "dof": int(reloaded.jnt_dofadr[joint]),
+            "channels": [str(channel) for channel in record["channels"]],
+            "unit": str(record["unit"]),
+            "scale": float(record["scale"]),
+            "role": "privileged",
+        })
+    return rows
+
+
+def acceleration_channels(task: Mapping[str, Any]) -> list[str]:
+    """Every acceleration channel a task declares, in bundle order (ADR-699).
+
+    After the command channels in every vector. None is a policy channel.
+    """
+
+    return [str(channel) for record in task.get("accelerations") or ()
+            for channel in record["channels"]]
+
+
+def acceleration_values(task: Mapping[str, Any], qacc: Sequence[float]) -> dict[str, float]:
+    """The acceleration channels, from the simulator's ``qacc`` (ADR-699).
+
+    ``training/cadex_train.py`` writes the same line in ``jnp``, and a test
+    holds them equal.
+    """
+
+    return {str(record["channels"][0]): float(qacc[int(record["dof"])]) * float(record["scale"])
+            for record in task.get("accelerations") or ()}
+
+
 def task_records(
     built: Mapping[str, Any],
     reloaded: Any,
@@ -10228,6 +10379,9 @@ def task_records(
     commands = _command_records(observations, action_rows, context=context)
     command_names = [str(channel) for record in commands
                      for channel in record["channels"]]
+    accelerations = _state_records(observations, reloaded)
+    command_names = command_names + [str(channel) for record in accelerations
+                                     for channel in record["channels"]]
     goal = _goal_records(
         mujoco,
         reloaded,
@@ -10383,6 +10537,8 @@ def task_records(
         # ADR-696: absent when the task observes no command, so its bundle
         # and digest are the ones it always had.
         **({"commands": commands} if commands else {}),
+        # ADR-699: absent when the task reads no acceleration, on the same terms.
+        **({"accelerations": accelerations} if accelerations else {}),
         **judged,
         # The two per-episode draw streams, both stated, because they are
         # deliberately different algorithms and a reader has to be able to
@@ -11431,6 +11587,7 @@ def evaluate_episode(
     commanding = bool(task.get("commands"))
     issued_now = reset_command(model, task, key) if commanding else []
     issued_before = list(issued_now)
+    accelerating = bool(task.get("accelerations"))
     # Before the reset-pose sample below, because the first frame a rollout
     # draws and the first observation a policy acts on both have to be of
     # where the mechanism actually starts.
@@ -11469,6 +11626,8 @@ def evaluate_episode(
         observation.update(told)
         if commanding:
             observation.update(command_values(task, issued_now, issued_before))
+        if accelerating:
+            observation.update(acceleration_values(task, data.qacc))
         if actions is None:
             commanded = [
                 evaluate_control(code, time_s, context=f"action {index}")
@@ -11501,6 +11660,9 @@ def evaluate_episode(
             issued_before = list(applied) if step == 0 else issued_now
             issued_now = list(applied)
             landed.update(command_values(task, issued_now, issued_before))
+        if accelerating:
+            # ADR-699: the acceleration of the step's last solver step.
+            landed.update(acceleration_values(task, data.qacc))
         contributions = []
         reward = 0.0
         for label, weight, code in reward_terms:
@@ -11573,13 +11735,13 @@ def evaluate_episode(
 def _task_channels(task: Mapping[str, Any]) -> list[str]:
     """Every scalar name an expression may use: the sensor channels in
     slice order, then the goal channels in bundle order (ADR-462), then the
-    command channels (ADR-696)."""
+    command channels (ADR-696), then the acceleration channels (ADR-699)."""
 
     return [
         str(channel)
         for record in task["observations"]
         for channel in record["channels"]
-    ] + goal_channels(task) + command_channels(task)
+    ] + goal_channels(task) + command_channels(task) + acceleration_channels(task)
 
 
 # ---------------------------------------------------------------------------

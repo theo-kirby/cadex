@@ -115,6 +115,10 @@ def channels(task: dict) -> list[str]:
         str(channel)
         for record in task.get("commands") or []
         for channel in record["channels"]
+    ] + [
+        str(channel)
+        for record in task.get("accelerations") or []
+        for channel in record["channels"]
     ]
 
 
@@ -541,6 +545,10 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
             index = int(record["action"])
             landed[str(record["channels"][0])] = issued[index]
             landed[str(record["channels"][1])] = (issued[index] - before[index]) / interval
+        # ADR-699: qacc at the row's degree of freedom, times its scale.
+        for record in task.get("accelerations") or []:
+            landed[str(record["channels"][0])] = (
+                float(data.qacc[int(record["dof"])]) * float(record["scale"]))
         reward = 0.0
         contributions = []
         for label, weight, code in reward_terms:

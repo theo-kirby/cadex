@@ -41327,3 +41327,65 @@ the engine verifies the policy.
 slip (`foot_speed * paw_down`), and the critic sees the contacts. Joint
 acceleration and torque or energy terms are the rest of T1 and are not in
 this ADR.
+
+## ADR-699 — A task can observe a joint's acceleration, read from `qacc`; every standard regulariser is a reward term (2026-10-14, orun6)
+
+**Context.** T1 asks for the standard locomotion regularisers as reward
+terms: action rate, joint acceleration, torque or energy, and foot slip.
+ADR-696 gave the action rate and ADR-698 the foot contact. A torque term was
+already writable, because `actuator_force` is a channel, and mechanical power
+is that times the joint's `velocity`. Joint acceleration was not: MuJoCo has
+no joint-acceleration sensor, and the B1 Go1 recipe (MuJoCo Playground's
+joystick) penalises `sum(qacc[6:]^2)`, which nothing in a task could say.
+
+**Decision.** A new observation kind, `acceleration`, targets a joint:
+`assembly.observation(knee, "acceleration", name="knee_acc",
+role="privileged")`. Its one channel is the simulator's `qacc` at that
+joint's degree of freedom after the control step's last solver step, in
+deg/s^2 (hinge) or mm/s^2 (slider).
+- It is not a sensor. Its rows travel in the bundle's own `accelerations`
+  section (name, joint, `dof` in the loaded file, unit, scale, channels),
+  after the command channels in every vector, and are absent when the task
+  reads none, so every existing bundle keeps its bytes. They do not count
+  against the 64-channel cap, which bounds the sensors in the file.
+- Every evaluator reads the same field: `CadexDynamics.acceleration_values`
+  from `MjData.qacc`, the trainer's `acceleration_vector` from MJX's
+  `qacc`, and the stock-MuJoCo reference runner from its own `MjData`. No
+  velocity history is carried, so the trainer's scan state is unchanged.
+- It must be `role="privileged"` (`acceleration_not_privileged`). No sensor
+  on the robot measures it, and an encoder differentiated twice is noise; a
+  policy that needs how fast a joint moves reads its velocity.
+
+**Why `qacc` and not a finite difference of velocity.** It is what the
+benchmark recipe penalises, so B1 can write Playground's reward term for
+term, and it needs no state: a difference over the control interval would
+add a carried velocity to the engine, the trainer's scan and the reference
+runner, and a first-step rule in each. The trace predicate G2 needs
+(joint-acceleration RMS over a rollout) is computed offline from ADR-694's
+traces and is not this channel.
+
+**The example task.** `REGULARISED_TASK` in
+`test_dynamics_acceleration_channel.py` writes each regulariser as a reward
+term on one mechanism: `-(wrist_cmd_rate/1000)^2` (action rate),
+`-(wrist_acc/10000)^2` (joint acceleration), `-(wrist_tau/500)^2` (torque),
+`-abs(wrist_tau*wrist_vel)*pi/180/1000` (mechanical power in W), and
+`-sqrt(drift_x^2+drift_y^2)*foot_down/1000` (foot slip: ground speed while
+down).
+
+**Evidence.** `test_dynamics_acceleration_channel` (12 tests): the bundle
+row, its `dof` against the compiled `jnt_dofadr`, no sensor added, the
+channel order, and none in the policy's inputs; a policy-role acceleration
+and a name clash are refused; an episode reads `qacc` times the scale and
+pays the joint-acceleration term on it; the stock-MuJoCo runner reproduces
+the engine's observations and total reward as text (two seeds); every term
+of the example task equals its formula on every step, and each is non-zero
+somewhere in the episode; the trainer's channel list, variance floor and
+`acceleration_vector` match the engine's. From the training venv: MJX's
+`qacc` after one step agrees with MuJoCo's within the test's 0.2 % (measured
+over 50 swept steps on the test arm: worst 6.5e-6 relative), and a 3-iteration
+CPU run trains the example task, leaves `wrist_acc` out of the policy's
+inputs, and the engine verifies the policy.
+
+**Consequence.** Every term T1 names is expressible. The Go1 bundle can now
+be regenerated with Playground's full reward: pose, action rate, joint
+acceleration, torque, feet air time and slip.

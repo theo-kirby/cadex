@@ -413,6 +413,16 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   component with no collision shape is refused. No sensor this API declares
   measures it, so it is `privileged`: the reward, the terminations and the
   critic read it.
+  `assembly.observation(knee, "acceleration", name="knee_acc",
+  role="privileged")` reads a joint's acceleration (ADR-699), in deg/s^2 or
+  mm/s^2: the simulator's `qacc` after the control step, which MuJoCo has no
+  sensor for. The bundle states it in an `accelerations` section after the
+  command channels, outside the 64-channel cap, and it must be
+  `privileged`. With it every standard regulariser is a reward term: action
+  rate `-(hip_rate/100)^2`, joint acceleration `-(knee_acc/10000)^2`, torque
+  `-(knee_tau/peak)^2` on an `actuator_force`, mechanical power
+  `abs(knee_tau*knee_vel)` beside a `velocity`, and foot slip
+  `sqrt(paw_vx^2+paw_vy^2)*paw_down`.
   `assembly.reward(expression, weight=...)` terms are summed and a policy
   maximises the total, reported term by term so "which part of the reward is
   doing the work" is answerable; a cost is a positive quantity with a
