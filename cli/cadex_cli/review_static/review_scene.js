@@ -165,7 +165,7 @@ export function boardColours(mm, board, base) {
 export function create(canvas, {labels=true}={}) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setFov(){return 55;}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, screenBox(){return null;}, draw(){}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, centreAt(){return null;}, followTo(){return null;}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setFov(){return 55;}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, screenBox(){return null;}, draw(){}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   // Soft shadows (ADR-676): a variance shadow map, blurred, so a shadow's edge widens with its
@@ -457,6 +457,13 @@ export function create(canvas, {labels=true}={}) {
     floorSource=top===null?'design':top<=low+slack?'world':'design';
     return (floorSource==='world'?top:low)/1000;
   }
+  // The key light looks at a point of the design, mm, from its own direction and distance; the
+  // shadow camera, which it carries, then hugs the design wherever the design has moved to.
+  let sunReach=1;
+  function aimSun(center) {
+    const focus=new THREE.Vector3(center[0]/1000,center[2]/1000,-center[1]/1000);
+    sun.target.position.copy(focus); sun.position.copy(focus).add(new THREE.Vector3(...keyDir).normalize().multiplyScalar(sunReach));
+  }
   function frameBounds(b) {
     bounds=JSON.parse(JSON.stringify(b)); floorZ=matZ(b);
     const focus=new THREE.Vector3(b.center[0]/1000,b.center[2]/1000,-b.center[1]/1000);
@@ -464,7 +471,7 @@ export function create(canvas, {labels=true}={}) {
     // soft (variance) map keeps its precision at any scale and never streaks. It is wide enough
     // for a shadow cast at the lowest key any lighting setup uses.
     const h=Math.max(.01,b.radius/1000*1.7), reach=4*h;
-    sun.target.position.copy(focus); sun.position.copy(focus).add(new THREE.Vector3(...keyDir).normalize().multiplyScalar(reach));
+    sunReach=reach; aimSun(b.center);
     Object.assign(sun.shadow.camera,{left:-h,right:h,top:h,bottom:-h,near:reach-2*h,far:reach+2*h});
     sun.shadow.camera.updateProjectionMatrix();
     sun.shadow.normalBias=0;
@@ -611,6 +618,33 @@ export function create(canvas, {labels=true}={}) {
     });
   }
   function setCamera(value) {c=JSON.parse(JSON.stringify(value));draw();}
+  // The design's centre at a set of poses, mm: the mean of its shown solids' own box centres, each
+  // carried by its pose (a solid the poses leave out keeps its own). One point a solid, so a
+  // rollout's every frame costs little; the follow camera's track.
+  function centreAt(poses) {
+    const v=new THREE.Vector3(), q=new THREE.Quaternion(), sum=[0,0,0]; let n=0;
+    meshes.forEach((m,name)=> {
+      if (m.userData.world||!m.visible) return;
+      const p=poses&&poses[name];
+      m.userData.mmBounds.getCenter(v);
+      if (p) v.applyQuaternion(q.fromArray(p.rotation_xyzw)).add(new THREE.Vector3(...p.position_mm));
+      else v.applyQuaternion(m.quaternion).add(m.position.clone().multiplyScalar(1000));
+      sum[0]+=v.x; sum[1]+=v.y; sum[2]+=v.z; n++;
+    });
+    return n?sum.map(x=>x/n):null;
+  }
+  // The follow camera (DASHBOARD.md §5): the camera's target and the key light move with a point
+  // of the moving design, mm, by its motion since the last call, so the person's own orbit, zoom
+  // and pan stay as they set them while the design runs. `snap` puts the target on the point;
+  // null lets go. It does not draw: the poses that move the design do.
+  let followed=null;
+  function followTo(point,snap=false) {
+    if (!point) {followed=null; return null;}
+    if (snap) c.target=point.slice();
+    else if (followed) c.target=c.target.map((x,i)=>x+point[i]-followed[i]);
+    followed=point.slice(); aimSun(point);
+    return c.target.slice();
+  }
   // Simulation seconds on the timer overlay; null hides it (the viewport's resting state).
   function setClock(seconds) {clock=(seconds===null||seconds===undefined)?null:Number(seconds);}
   // The follow rig (DASHBOARD.md §10; the reference's `--shot follow`). `track` is the
@@ -796,6 +830,7 @@ export function create(canvas, {labels=true}={}) {
       m.material=matcap&&texture?t:p;
     });
     if (bounds) frameBounds(bounds);
+    if (followed) aimSun(followed);
   }
   // The lens, as a vertical field of view in degrees (the viewport's is FOV): the hero page
   // shoots its product shots longer (ADR-677), so a design keeps its proportions.
@@ -828,7 +863,7 @@ export function create(canvas, {labels=true}={}) {
     meshes.forEach(m=>{m.userData.materials.parts.envMapIntensity=m.userData.env*reflections*lighting.env;}); draw(); return reflections;
   }
   applyLook();
-  return {available:true,load,install,clear,fit,draw,setPoses,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
+  return {available:true,load,install,clear,fit,draw,setPoses,centreAt,followTo,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
     setSection,setLines,showLines,setStyle,style:()=>style,setMeshLines,meshLines:()=>({...meshLines}),setReflections,reflections:()=>reflections,
     setLook,look:()=>look,setFov,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
     setHidden,hidden:()=>[...hiddenNames],select,selected:()=>selectedNames.slice(),parts,fitTo,

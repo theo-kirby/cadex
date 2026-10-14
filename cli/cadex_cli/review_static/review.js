@@ -348,6 +348,54 @@
   // either side of the time shown. Nothing is simulated here.
   var playback = null, playT = 0, playing = null, looping = false;
 
+  // The follow camera (DASHBOARD.md §5): while a rollout plays, the view travels with the design,
+  // so it can be watched close up as it runs. Its track is the design's centre at each frame,
+  // smoothed over about half a second either way (Hann, zero-phase, as the capture rig's) so the
+  // stride's bob and sway do not shake the view; the camera moves by the track's motion, and the
+  // person's orbit, zoom and pan stay theirs.
+  var followCam = readPref('cadex.follow', ['on', 'off'], 'off') === 'on', track = null;
+  function trackOf(served) {
+    var raw = served.frames.map(function (frame) { return state.viewer.centreAt(frame); });
+    if (!raw.length || raw.some(function (p) { return !p; })) return null;
+    var times = served.times_s, dt = (times[times.length - 1] - times[0]) / Math.max(1, times.length - 1);
+    var W = Math.max(0, Math.min(120, Math.round(0.5 / Math.max(dt, 1e-3))));
+    // The window narrows symmetrically at either end of the rollout, so the track never lags
+    // the design there: a one-sided window would trail a running design out of a close view.
+    return raw.map(function (_, i) {
+      var acc = [0, 0, 0], sum = 0, w = Math.min(W, i, raw.length - 1 - i);
+      for (var k = i - w; k <= i + w; k++) {
+        var wt = 0.5 * (1 + Math.cos(Math.PI * (k - i) / (w + 1)));
+        acc[0] += wt * raw[k][0]; acc[1] += wt * raw[k][1]; acc[2] += wt * raw[k][2]; sum += wt;
+      }
+      return acc.map(function (v) { return v / sum; });
+    });
+  }
+  function trackAt(lo, hi, f) {
+    if (!track) return null;
+    var a = track[lo], b = track[hi];
+    return a.map(function (v, i) { return v + (b[i] - v) * f; });
+  }
+  function applyFollow(on) {
+    followCam = !!on;
+    writePref('cadex.follow', followCam ? 'on' : 'off');
+    $('play-follow').setAttribute('aria-pressed', String(followCam));
+    if (!followCam) { state.viewer.followTo(null); return followCam; }
+    if (playback) {
+      if (!track) track = trackOf(playback);
+      var point = pointAt(playT);
+      if (point) { state.viewer.followTo(point, true); state.viewer.draw(); }
+    }
+    return followCam;
+  }
+  function pointAt(t) {
+    if (!playback || !track) return null;
+    var times = playback.times_s, last = times.length - 1, lo = 0, hi = last;
+    t = Math.max(times[0], Math.min(times[last], t));
+    while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (times[mid] <= t) lo = mid; else hi = mid; }
+    var span = times[hi] - times[lo];
+    return trackAt(lo, hi, span > 0 ? Math.max(0, Math.min(1, (t - times[lo]) / span)) : 0);
+  }
+
   function loadPlayback(manifest, ticket) {
     var info = manifest.playback;
     if (!info || !info.url) return null;
@@ -361,6 +409,10 @@
     var slider = $('play-time'), times = served.times_s;
     slider.min = String(times[0]); slider.max = String(times[times.length - 1]);
     $('playback').hidden = false;
+    // A new rollout puts the followed view back on the design.
+    track = followCam ? trackOf(served) : null;
+    state.viewer.followTo(null);
+    if (followCam && track) state.viewer.followTo(track[0], true);
     seek(times[0]);
   }
   function blend(a, b, f) {
@@ -381,7 +433,9 @@
     var lo = 0, hi = last;
     while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (times[mid] <= playT) lo = mid; else hi = mid; }
     var span = times[hi] - times[lo], f = span > 0 ? (playT - times[lo]) / span : 0;
-    state.viewer.setPoses(blend(playback.frames[lo], playback.frames[hi], Math.max(0, Math.min(1, f))));
+    f = Math.max(0, Math.min(1, f));
+    if (followCam && track) state.viewer.followTo(trackAt(lo, hi, f));
+    state.viewer.setPoses(blend(playback.frames[lo], playback.frames[hi], f));
     $('play-time').value = String(playT);
     $('play-clock').textContent = playT.toFixed(2) + ' s';
   }
@@ -935,6 +989,8 @@
     $('occlusion').addEventListener('change', function () { applyLook({ occlusion: $('occlusion').checked }); });
     $('detail').addEventListener('change', function () { applyLook({ detail: $('detail').checked }); });
     $('play-toggle').addEventListener('click', function () { ckpt.paused = !!playing; togglePlayback(); });
+    $('play-follow').setAttribute('aria-pressed', String(followCam));
+    $('play-follow').addEventListener('click', function () { applyFollow(!followCam); });
     $('checkpoint-pick').addEventListener('input', function () { pickCheckpoint(Number($('checkpoint-pick').value)); });
     $('revision-pick').addEventListener('input', function () { pickRevision(Number($('revision-pick').value)); });
     $('revision-list').addEventListener('click', function (event) {
@@ -1017,6 +1073,8 @@
     pickRevision: pickRevision,
     showRevision: showRevision,
     seek: seek,
+    setFollow: applyFollow,
+    follow: function () { return { on: followCam, tracked: !!track, camera: state.viewer.camera && state.viewer.camera() }; },
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, ms: lastPoll.ms }; },
     state: function () {
       return { stale: state.stale, error: state.error,

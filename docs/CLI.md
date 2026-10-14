@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-13. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-14. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -1429,7 +1429,8 @@ solids' reflection strength), `cadex.look`, `cadex.occlusion` and
 `cadex.detail` (the shaded look's lighting setup or matcap, its ambient
 occlusion and its surface detail, ADR-676), and `cadex.outliner.group` and
 `cadex.outliner.folded` (how the Outliner groups the parts, and which groups
-are folded) — and the test fails if the page stores any other key. A picked
+are folded), and `cadex.follow` (whether the viewport follows a playing
+design, ADR-693) — and the test fails if the page stores any other key. A picked
 checkpoint, a scrubbed revision, a selected run, and the parts hidden or
 selected in the Outliner last only as long as the page.
 
