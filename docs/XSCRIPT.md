@@ -402,7 +402,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `-(hip_rate / 100)^2`. No `<sensor>` carries it, so the bundle states it
   in a `commands` section, after the goal channels, and the engine, the
   trainer and a stock-MuJoCo runner each compute it from the commands they
-  issued; it does not count against the 64-channel sensor cap, one per
+  issued; it does not count against the 128-channel sensor cap, one per
   actuator, and an actuator the task does not act on is refused.
   `assembly.observation(paw, "contact", name="paw", role="privileged")`
   reads foot contact (ADR-698): `paw` is the summed normal force of every
@@ -417,7 +417,7 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   role="privileged")` reads a joint's acceleration (ADR-699), in deg/s^2 or
   mm/s^2: the simulator's `qacc` after the control step, which MuJoCo has no
   sensor for. The bundle states it in an `accelerations` section after the
-  command channels, outside the 64-channel cap, and it must be
+  command channels, outside the 128-channel cap, and it must be
   `privileged`. With it every standard regulariser is a reward term: action
   rate `-(hip_rate/100)^2`, joint acceleration `-(knee_acc/10000)^2`, torque
   `-(knee_tau/peak)^2` on an `actuator_force`, mechanical power

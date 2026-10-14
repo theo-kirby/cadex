@@ -1343,7 +1343,7 @@ task without them keeps its digest and a task that gains them keeps every
 other channel's address. `CadexDynamics.evaluate_episode`, the trainer and
 the stock-MuJoCo reference runner each compute them from the commands they
 issued, and `test_dynamics_command_channel` holds the three to one rule.
-They do not count against the 64-channel sensor cap: one per actuator, so
+They do not count against the 128-channel sensor cap: one per actuator, so
 the action list bounds them.
 
 ### Saying "foot down": the contact channel (ADR-698)

@@ -131,8 +131,8 @@ def test_one_actuator_is_commanded_once_and_its_names_clash_like_any_channel() -
 
 def test_commands_do_not_count_against_the_sensor_cap() -> None:
     """The cap bounds the sensors in the file; one command per action
-    bounds the rest. 64 sensor channels and two commands is accepted, 65
-    sensor channels is not."""
+    bounds the rest. The cap's sensor channels and two commands is
+    accepted, one more sensor channel is not."""
 
     built = dyn.build_model(*arm()[:2],
                             actuators=[dict(servo) for servo in SWEPT])

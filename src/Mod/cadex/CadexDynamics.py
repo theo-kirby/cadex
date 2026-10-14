@@ -6726,9 +6726,10 @@ def _axis_normalised(axis: Sequence[float], *, context: str) -> list[float]:
 #: to its components, so this counts what a reward formula could name rather
 #: than what the script wrote. Sized for comprehensibility rather than for
 #: bytes: phase 0 measured a sensor at 54 XML bytes, so even the ceiling is
-#: under 4 KB of file, and a task naming more than this many quantities is
-#: one nobody can read.
-MAXIMUM_OBSERVATION_CHANNELS = 64
+#: under 7 KB of file. 128 since ADR-701: a quadruped's standard locomotion
+#: reward reads each foot's position, velocity and contact beside the
+#: joints, 66 channels on a 12-drive Go1 and 68 on the 19-drive cat.
+MAXIMUM_OBSERVATION_CHANNELS = 128
 
 #: Reward terms, termination rules and randomisation entries. Each is a
 #: whitelisted expression or a field write evaluated once per control step,

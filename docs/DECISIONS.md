@@ -41389,3 +41389,67 @@ inputs, and the engine verifies the policy.
 **Consequence.** Every term T1 names is expressible. The Go1 bundle can now
 be regenerated with Playground's full reward: pose, action rate, joint
 acceleration, torque, feet air time and slip.
+
+## ADR-700 — The trainer can floor each step's reward (`--reward-floor`) (2026-10-14, orun6)
+
+**Context.** MuJoCo Playground's locomotion recipes clip each step's summed
+reward at 0 (`jp.clip(sum(rewards) * dt, 0.0, 10000.0)` in the Go1
+joystick task). Cadex's trainer did not. In the B1 Go1 run, reward per step
+was negative early (−0.0106 at iteration 0), and the mean episode fell to
+111 steps by iteration 49. That is ADR-410's signature: a policy that is paid
+less than nothing for every step it survives learns to stop surviving. B1
+cannot attribute its gap to the PPO core while the two sides train different
+objectives.
+
+**Decision.** A training option, `--reward-floor F`:
+`r = max(Σ wᵢ·termᵢ, F)`, applied in `reward_of` after the terms are summed.
+- Absent (the default) means no floor. It is a Python value branched on at
+  trace time, like ADR-160's and ADR-162's flags, so a run without it emits
+  the graph the trainer emitted before.
+- The floor is a training choice, not a task property, and it is not part
+  of the task bundle. An evaluation judges a policy by its success spec, not
+  by its reward, and two runs of one task may floor differently. The value
+  is written into the `.cxpolicy` header at `training.reward_floor` (`null`
+  when absent), so a reward curve is read against it.
+- A non-finite floor is refused.
+
+**Why not by default.** The floor removes the gradient of every cost while
+the sum is below it, so a task that only pays costs learns nothing under a
+floor of 0. Playground's tasks are built for it, with positive tracking terms
+that outweigh the costs once a gait exists. A Cadex task may not be.
+
+**Evidence.** `test_dynamics_reward_floor` (6 tests):
+- the flag defaults to absent, and the clamp sits behind the trace-time
+  branch;
+- on a swing-up task where every step costs about 9, a floor of 0 trains,
+  every curve point reads exactly 0.0, the header records 0.0, and the
+  policy differs from the unfloored one, which records `null`;
+- a floor of −1e9, which never binds, gives the unfloored policy exactly;
+- NaN and infinity are refused.
+
+## ADR-701 — A task may observe 128 sensor channels (2026-10-14, orun6)
+
+**Context.** `MAXIMUM_OBSERVATION_CHANNELS` was 64. A quadruped's standard
+locomotion reward reads each foot's position, velocity and contact as well
+as the joints and the trunk. That is 66 channels on Playground's 12-drive
+Go1 (24 joint, 10 trunk, 24 foot frame, 8 contact) and 68 on the 19-drive
+cat (38 joint, 10 trunk, 12 paw position, 8 contact). The torques and energy
+terms of the Go1 recipe need every drive's `actuator_force`, which brings
+the Go1 to 78. The charter's T1 raises a cap that blocks a standard
+locomotion reward, with an ADR.
+
+**Decision.** `MAXIMUM_OBSERVATION_CHANNELS = 128`. Command and acceleration
+channels still do not count against it (ADR-696, ADR-699).
+
+**Why 128 is safe.** The cap bounds what a reader can follow, not cost.
+- In the file, a sensor is about 54 XML bytes, so 128 is under 7 KB.
+- In the simulator, each sensor is one read per step.
+- In the trainer, the channels are one device vector per environment. At
+  78 channels and 8,192 environments, the Go1 smoke run peaked at 4.86 GB of
+  host memory, against 4.66 GB at 58 (ADR-695).
+- The policy's input layer grows by one row per policy channel. Privileged
+  channels reach only the reward and the critic.
+
+**Evidence.** `test_a_quadrupeds_standard_reward_fits_the_cap` states both
+channel counts. The cap's existing tests derive their sizes from the
+constant, so they now test 128 against 129.

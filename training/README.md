@@ -157,15 +157,16 @@ written twice because this file imports nothing from the engine.
 
 ## Shaping the command, and warm-starting across a task change
 
-Three flags arrived from cdx-rl and are documented here because a merged pull
-request body is not documentation. All three default to **off**, and off means
-the emitted jax graph is the one this file emitted before the flag existed —
+Three flags arrived from cdx-rl and a fourth with orun6, and they are
+documented here because a merged pull request body is not documentation. All
+four default to **off**, and off means the emitted jax graph is the one this file emitted before the flag existed —
 each is a Python value branched on at trace time, never a `jnp.where`.
 
 | Flag | Default | What it is |
 |---|---|---|
 | `--action-filter-alpha` | `1.0` (no filter) | ADR-160. Low-passes the command between the clamp and `data.ctrl`: `a[t] = α·clamped[t] + (1−α)·a[t−1]`, per environment, reset with the episode. Bounds **smoothness**. |
 | `--command-slew-deg` | `0.0` (no limit) | ADR-162. Clips the issued command to `previous ± S` degrees, *after* the filter. Bounds **rate**, which the filter does not. `0` is off here, unlike alpha, where `0` freezes the command and is refused. |
+| `--reward-floor F` | absent (no floor) | ADR-700. Clamps each step's summed reward from below: `r = max(Σ wᵢ·termᵢ, F)`, as MuJoCo Playground's locomotion recipes clip theirs at 0. At or above the cost of dying it removes the pay for ending an episode early while costs outweigh rewards. Training-only: recorded at `training.reward_floor`, never applied by an evaluator. |
 | `--init-from-task-change REASON` | off | ADR-161. Lets `--init-from` cross a task change, as a **curriculum**. Skips the whole-file task digest and nothing else; the keys that differ must be a subset of `CURRICULUM_TASK_KEYS`, which includes `success` (ADR-597): a revised bar is not something the network reads or emits. Requires `--init-from-parent-task`. |
 
 **Filter, smooth and rate-limit are three different operators.** An EMA's

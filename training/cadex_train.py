@@ -1382,6 +1382,27 @@ def resolved_command_slew_deg(options) -> float:
     return value if value > 0.0 else 0.0
 
 
+def resolved_reward_floor(options) -> float | None:
+    """ADR-700's per-step reward floor, resolved once, or ``None`` for none.
+
+    Module level for ADR-162's reason: ``train`` and ``policy_header`` need
+    the same number. ``None`` (the default) is NO FLOOR and emits the same
+    graph a trainer without this flag emits; a number clamps each step's
+    summed reward from below, the way MuJoCo Playground's locomotion tasks
+    clip theirs at 0.
+    """
+
+    value = getattr(options, "reward_floor", None)
+    if value is None:
+        return None
+    value = float(value)
+    if not math.isfinite(value):
+        raise SystemExit(
+            "--reward-floor must be a finite reward per step. Leave it out "
+            "for no floor.")
+    return value
+
+
 #: When a run has learned to end its own episodes (ADR-410). hex3
 #: (2026-09-26) paid a net-negative reward for every step it survived, and
 #: its mean episode fell from 28 steps to 2 of a 200-step horizon by
@@ -1539,6 +1560,9 @@ def train(
     # ADR-699: a PYTHON bool on the same terms; qacc is read, never carried.
     accelerating = bool(task.get("accelerations"))
 
+    # ADR-700: a PYTHON value branched on at trace time, so no floor is the
+    # graph this trainer always emitted.
+    reward_floor = resolved_reward_floor(options)
     reward_terms = [
         (float(term["weight"]),
          compile_expression(str(term["expression"]), names, table))
@@ -1701,6 +1725,8 @@ def train(
         total = jnp.float32(0.0)
         for weight, code in reward_terms:
             total = total + weight * eval(code, table, dict(values))
+        if reward_floor is not None:
+            total = jnp.maximum(total, jnp.float32(reward_floor))
         return total
 
     def done_of(vector):
@@ -2880,6 +2906,9 @@ def policy_header(
             # driver that had to be told separately is a driver somebody will
             # forget to tell. 0.0 is no limit.
             "command_slew_deg": resolved_command_slew_deg(options),
+            # ADR-700. Not needed to PLAY the policy, but a reward curve is
+            # read against it: a floored run's reward/step cannot go below it.
+            "reward_floor": resolved_reward_floor(options),
             # ``init_from`` is excluded for the same reason ``bundle`` and
             # ``out`` are: it is a path on one machine, not a hyperparameter.
             # What it started from is recorded as a digest under
@@ -3085,6 +3114,15 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "without this flag. The resolved value is written into the "
              ".cxpolicy header so an evaluator plays the policy under the "
              "limit it was trained under")
+    parser.add_argument(
+        "--reward-floor", type=float, default=None,
+        help="clamp each step's summed reward from below at this value, as "
+             "MuJoCo Playground's locomotion recipes clip theirs at 0. A "
+             "floor at or above the cost of dying removes the incentive to "
+             "end an episode early while costs outweigh pay (ADR-700). "
+             "Absent (the default) is NO FLOOR and emits the same "
+             "computation graph as a trainer without this flag. Recorded in "
+             "the .cxpolicy header")
     parser.add_argument(
         "--init-from",
         default="",

@@ -296,6 +296,20 @@ def test_the_channel_count_is_capped_on_scalars_not_declarations() -> None:
     assert excess.value.observed["channels"] > dyn.MAXIMUM_OBSERVATION_CHANNELS
 
 
+def test_a_quadrupeds_standard_reward_fits_the_cap() -> None:
+    """ADR-701: 66 channels on Go1, 68 on the cat, so 64 was too few.
+
+    Go1: 12 joints' position and velocity (24), the trunk's orientation,
+    angular and linear velocity (10), each foot's position and velocity (24)
+    and contact force and flag (8). The cat: 19 drives (38) + 10 + 4 paws'
+    position (12) and contact (8).
+    """
+
+    assert 12 * 2 + 4 + 3 + 3 + 4 * (3 + 3 + 2) == 66
+    assert 19 * 2 + 4 + 3 + 3 + 4 * (3 + 2) == 68
+    assert dyn.MAXIMUM_OBSERVATION_CHANNELS == 128
+
+
 # ---------------------------------------------------------------------------
 # The export, with channels and without.
 # ---------------------------------------------------------------------------
