@@ -789,6 +789,17 @@ def load_reading(xp: Any, true_effort: Any, load: dict[str, Any],
     return xp.round(xp.clip(seen, -scale, scale) / step) * step
 
 
+def contact_reading(xp: Any, force_n: Any, contact: dict[str, Any]) -> Any:
+    """A contact channel and its ``_down`` flag (ADR-698).
+
+    ``CadexDynamics.contact_reading`` in ``xp``: the touch sensor's normal
+    force, then 1.0 while it is above the bundle's ``down_above_n``.
+    """
+
+    down = (force_n > float(contact["down_above_n"])).astype(force_n.dtype)
+    return xp.concatenate([force_n, down])
+
+
 def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
     """The least variance the normaliser may hold for each channel (ADR-589).
 
@@ -809,7 +820,11 @@ def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
         tracker = record.get("tracker")
         load = record.get("load")
         for index, _channel in enumerate(record["channels"]):
-            if load:
+            if record.get("contact"):
+                # ADR-698: the force is exact; the down flag is a 0/1 flag,
+                # floored like the tracker's.
+                floor.append(0.0 if index < int(record["dim"]) else 0.25)
+            elif load:
                 known = max(float(load["resolution"]), float(load["noise"]))
                 floor.append(known * known)
             elif not tracker:
@@ -1613,7 +1628,9 @@ def train(
     # so a task with neither emits the graph -- and draws the key stream --
     # it always did.
     noise_std = jnp.asarray(sensor_noise_std(task), dtype=jnp.float32)
-    sensing = int(noise_std.shape[0]) > 0
+    # ADR-698: a contact channel derives its down flag here too, noise or not.
+    sensing = int(noise_std.shape[0]) > 0 or any(
+        record.get("contact") for record in task["observations"])
     variance_floor = jnp.asarray(sensor_variance_floor(task), dtype=jnp.float32)
 
     def observe(data, noise=None):
@@ -1642,6 +1659,8 @@ def train(
                     jnp, segment, record["load"],
                     None if noise is None else noise[drawn:drawn + dim]))
                 drawn += dim
+            elif record.get("contact"):
+                parts.append(contact_reading(jnp, segment, record["contact"]))
             else:
                 parts.append(segment)
         return jnp.concatenate(parts)

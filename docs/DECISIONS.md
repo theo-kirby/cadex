@@ -41261,3 +41261,69 @@ recursion limit. The 16-term limit on reward terms is unchanged.
 **Evidence.** `test_a_reward_may_sum_a_regulariser_over_every_drive_a_motion_may_not`:
 the 191-node term is accepted by a reward and a termination, a 60-drive sum
 is refused, and a motion formula past 128 nodes is still refused.
+
+## ADR-698 — A task can observe foot contact: a touch sensor drawn round a component's collision shapes (2026-10-14, orun6)
+
+**Context.** T1 asks the task language to say "foot down", for the reward
+and the critic. Every standard gait term that is not a pose needs it: a
+contact schedule, feet air time, and foot slip, which is foot speed while
+the foot is down. MuJoCo's `touch` sensor reads contact normal force, but it
+needs a site with a size, which the assembly graph does not carry, so
+`touch` was a deferred kind. MuJoCo's newer `contact` sensor needs no site,
+but MJX (3.10.0) computes it only with geom matching, one geom per sensor,
+and panel-cat-3's paws have two collision spheres each.
+
+**Decision.** A new observation kind, `contact`, targets a component:
+`assembly.observation(paw, "contact", name="paw", role="privileged")`. It
+gives two channels. `paw` is the summed normal force of every contact on the
+component's body, in N. `paw_down` is 1.0 while that force is above the
+bundle's `contact.down_above_n` and 0.0 otherwise.
+- The export draws the volume. `contact_site` takes the compiled model's
+  colliding shapes on the body (non-zero `contype` or `conaffinity`), bounds
+  each by its `geom_pos` and `geom_rbound`, and adds the enclosing box as an
+  invisible site (`obs/<i>/contact`, alpha 0) on the exported copy. A touch
+  sensor reads that site. A body with no colliding shape is refused
+  (`observation_contact_no_collision`): it could never read anything but 0.
+- The export check moves with it. `_verify_exported_counts` expects one
+  extra site per contact channel, and `_verify_exported_fields` compares the
+  site fields over the sites the simulated model carried. The simulated
+  model is unchanged.
+- `down_above_n` is 0.0 (`CONTACT_DOWN_ABOVE_N`). A soft MuJoCo contact
+  carries force only while shapes interpenetrate, so any force is a touch.
+  The bundle states the number, so a trainer applies it rather than knowing
+  it.
+- The flag is one comparison, written in three places:
+  `CadexDynamics.contact_reading`, the trainer's `contact_reading` in `jnp`,
+  and the stock-MuJoCo reference reader `dynamics_task_episode.py`. The
+  trainer's normaliser floors the flag's variance at 0.25, as it does a
+  tracker's in-range flag, and the force at 0.
+- It is privileged. No sensor this API declares measures foot contact, so a
+  policy-role contact is ungrounded and `cadex train` refuses it, as it does
+  any ungrounded policy channel. Grounding it with a real foot switch or a
+  load cell is a sensor kind of its own, with a datasheet, and is not in
+  this ADR.
+- It counts against the 64-channel cap as two channels.
+
+**Why a touch sensor and not reading `data.contact`.** The touch sensor is
+in the file, so stock MuJoCo, MJX and any other reader compute it from the
+same declaration. A channel computed from the contact list would need a
+second implementation in each evaluator, against MJX's private contact
+arrays. Measured on a two-sphere paw dropped on a floor (MuJoCo 3.10.0, 400
+steps): MuJoCo and MJX agree to 1e-3 N, and the settled reading is the paw's
+weight to 1e-6.
+
+**Evidence.** `test_dynamics_contact_channel` (11 tests): the bundle row,
+the site's body, size and alpha, and the counts (one more site, nothing
+else); a task without it keeps its bytes; the no-collision refusal and the
+name clash; a block resting on the floor reads its weight within 2 % and
+`foot_down` 1, and lifted 20 mm reads 0 and 0; an episode pays a reward term
+on `foot_down`; the engine, the reference reader and the trainer derive the
+same flag, including at the threshold; the trainer's variance floor. From
+the training venv: MJX reads the force MuJoCo reads, and a 3-iteration CPU
+run trains on the task, leaves `foot_down` out of the policy's inputs, and
+the engine verifies the policy.
+
+**Consequence.** A reward can pay on a contact schedule and penalise foot
+slip (`foot_speed * paw_down`), and the critic sees the contacts. Joint
+acceleration and torque or energy terms are the rest of T1 and are not in
+this ADR.

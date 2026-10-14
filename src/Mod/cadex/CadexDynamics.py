@@ -5954,7 +5954,7 @@ def export_mjcf(
     _verify_explicit_inertia(spec, context=context)
 
     exported = spec.copy()
-    _add_observation_sensors(mujoco, exported, observations)
+    _add_observation_sensors(mujoco, exported, observations, model)
     exported.add_key(name=MJCF_KEYFRAME_NAME, qpos=list(qpos))
     # The copy's own compiled model, kept: it is the only thing that has
     # both the sensors and the engine's own numbers, so it is what the
@@ -5979,9 +5979,15 @@ def export_mjcf(
         )
 
     reloaded = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
-    _verify_exported_counts(reloaded, model, context=context)
+    _verify_exported_counts(
+        reloaded, model, context=context,
+        # ADR-698: each contact observation adds its touch volume.
+        added_sites=sum(1 for record in observations if record.get("contact")),
+    )
     worst_field, worst_field_name = _verify_exported_fields(
-        reloaded, model, context=context
+        reloaded, model, context=context,
+        added_sites=frozenset(str(record["object_name"])
+                              for record in observations if record.get("contact")),
     )
     # The exactness claim, re-taken on the file rather than on the model it
     # came from: this compares the reloaded body inertias against the
@@ -6089,11 +6095,17 @@ def _verify_explicit_inertia(spec: Any, *, context: str) -> None:
             )
 
 
-def _verify_exported_counts(reloaded: Any, model: Any, *, context: str) -> None:
-    """The file describes a model of the same shape, before any number is."""
+def _verify_exported_counts(
+    reloaded: Any, model: Any, *, context: str, added_sites: int = 0
+) -> None:
+    """The file describes a model of the same shape, before any number is.
+
+    ``added_sites`` are the contact observations' touch volumes (ADR-698),
+    which the export adds and the simulated model does not carry.
+    """
 
     for field in _MJCF_COUNT_FIELDS:
-        here = int(getattr(model, field))
+        here = int(getattr(model, field)) + (added_sites if field == "nsite" else 0)
         there = int(getattr(reloaded, field))
         if here != there:
             raise DynamicsError(
@@ -6105,7 +6117,8 @@ def _verify_exported_counts(reloaded: Any, model: Any, *, context: str) -> None:
 
 
 def _verify_exported_fields(
-    reloaded: Any, model: Any, *, context: str
+    reloaded: Any, model: Any, *, context: str,
+    added_sites: frozenset[str] = frozenset(),
 ) -> tuple[float, str]:
     """Field by field, at the tolerance phase 0 measured.
 
@@ -6116,6 +6129,13 @@ def _verify_exported_fields(
 
     worst = 0.0
     worst_field = ""
+    # ADR-698: the contact observations' touch volumes are the export's own,
+    # so the site fields are compared over the sites the model carried.
+    kept_sites = [
+        index for index in range(int(reloaded.nsite))
+        if _mujoco_module().mj_id2name(
+            reloaded, _mujoco_module().mjtObj.mjOBJ_SITE, index) not in added_sites
+    ]
     for field in _MJCF_MODEL_FIELDS + tuple(
         f"opt.{name}" for name in _MJCF_OPTION_FIELDS
     ):
@@ -6137,7 +6157,10 @@ def _verify_exported_fields(
                     },
                 )
             continue
-        drift = _field_drift(getattr(model, field), getattr(reloaded, field))
+        there = getattr(reloaded, field)
+        if added_sites and field.startswith("site_"):
+            there = there[kept_sites]
+        drift = _field_drift(getattr(model, field), there)
         if drift > worst:
             worst, worst_field = drift, field
         if drift > MJCF_FIELD_TOLERANCE:
@@ -7392,7 +7415,31 @@ OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
         "suffixes": ("_x", "_y", "_z"),
         "units": {None: ("mm/s", speed_mm_per_s)},
     },
+    # ADR-698: whether a component is touching something, and how hard. A
+    # MuJoCo ``touch`` sensor on a box site the export draws around the
+    # component's own collision shapes (:func:`contact_site`), so the volume
+    # nobody had to draw is the one the shapes already state. It sums the
+    # normal force of every contact on that body -- the floor, chiefly --
+    # in N; the derived ``_down`` is 1.0 while that force is above the
+    # bundle's ``contact.down_above_n`` and 0.0 otherwise, which is the foot
+    # contact a gait reward and a critic read. MJX computes the same sensor,
+    # so the trainer reads it from ``sensordata`` like any other.
+    "contact": {
+        "sensor": "mjSENS_TOUCH",
+        "target": "component",
+        "objtype": "mjOBJ_SITE",
+        "dim": 1,
+        "suffixes": ("",),
+        "derived": ("_down",),
+        "units": {None: ("n", float)},
+    },
 }
+
+#: The force above which a ``contact`` channel reads its component as down
+#: (ADR-698), in N. Zero, because a soft MuJoCo contact carries force only
+#: while the shapes interpenetrate: any force is a touch. Stated in the
+#: bundle, so a trainer applies the number rather than knowing it.
+CONTACT_DOWN_ABOVE_N = 0.0
 
 #: Observation kinds named here on purpose, with the reason they are not
 #: rows above. A refusal that says "unknown kind" about something MuJoCo
@@ -7400,8 +7447,9 @@ OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
 DEFERRED_OBSERVATION_KINDS = {
     "touch": (
         "needs a site with a size, which is a placement the assembly graph "
-        "does not carry: a touch sensor measures contact normal force inside "
-        "a volume somebody has to draw"
+        "does not carry. Observe 'contact' instead (ADR-698): it is a touch "
+        "sensor whose volume is drawn around the component's own collision "
+        "shapes"
     ),
     "accelerometer": (
         "needs a site to be mounted on, for the same reason. A component's "
@@ -7845,6 +7893,10 @@ def observation_records(
                               "available": list(bodies)},
                 )
             object_name = target
+            if kind == "contact":
+                # ADR-698: the sensor reads a site the export draws on the
+                # component's body; the record names the site.
+                object_name = contact_site_name(index)
 
         tracked: dict[str, Any] = {}
         if kind in ("tracked_position", "tracked_velocity"):
@@ -7933,6 +7985,9 @@ def observation_records(
                 )
             tracked["load"] = {key: float(entry["load"][key])
                                for key in ("full_scale", "resolution", "rate_hz", "noise")}
+        if kind == "contact":
+            tracked["contact"] = {"body": target,
+                                  "down_above_n": CONTACT_DOWN_ABOVE_N}
 
         unit, scale = _observation_unit(kind, motion_type)
         channels = [f"{name}{suffix}"
@@ -8076,8 +8131,64 @@ def _command_observation(
     }
 
 
+def contact_site_name(index: int) -> str:
+    """The site a ``contact`` observation's touch sensor reads (ADR-698)."""
+
+    return f"obs/{index}/contact"
+
+
+def contact_site(model: Any, body: str) -> dict[str, list[float]]:
+    """The box, in ``body``'s frame, that holds every collision shape on it.
+
+    ADR-698's touch volume. Each shape's bounding sphere -- its compiled
+    ``geom_pos`` and ``geom_rbound``, which MuJoCo states for every shape
+    type, mesh included -- bounds the box on each axis, so any contact a
+    shape on the body makes lies inside it. A shape that collides with
+    nothing (``contype`` and ``conaffinity`` both 0) is not a shape a foot
+    lands on and is left out. A body with no colliding shape is refused: it
+    can touch nothing, so its contact channel would read 0 forever.
+    """
+
+    mujoco = _mujoco_module()
+    index = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body)
+    shapes = [
+        geom for geom in range(int(model.ngeom))
+        if int(model.geom_bodyid[geom]) == index
+        and (int(model.geom_contype[geom]) or int(model.geom_conaffinity[geom]))
+    ]
+    if index < 0 or not shapes:
+        raise DynamicsError(
+            f"A contact observation reads {body!r}, which has no collision "
+            "shape, so nothing it does can ever touch anything.",
+            reason="observation_contact_no_collision",
+            correction=(
+                "Give the component a collision shape -- api.body(component, "
+                "collision=[assembly.collision(\"sphere\", ...)]) -- where it "
+                "meets the ground, or observe a component that has one."
+            ),
+            observed={"component": body},
+        )
+    low = [min(float(model.geom_pos[geom][axis]) - float(model.geom_rbound[geom])
+               for geom in shapes) for axis in range(3)]
+    high = [max(float(model.geom_pos[geom][axis]) + float(model.geom_rbound[geom])
+                for geom in shapes) for axis in range(3)]
+    return {"pos": [(a + b) / 2.0 for a, b in zip(low, high)],
+            "size": [(b - a) / 2.0 for a, b in zip(low, high)]}
+
+
+def contact_reading(force_n: float, contact: Mapping[str, Any]) -> list[float]:
+    """A ``contact`` channel and its ``_down`` flag (ADR-698).
+
+    ``training/cadex_train.py`` writes the same comparison in ``jnp``, and
+    a test holds the two equal.
+    """
+
+    return [force_n, 1.0 if force_n > float(contact["down_above_n"]) else 0.0]
+
+
 def _add_observation_sensors(
-    mujoco: Any, spec: Any, observations: Sequence[Mapping[str, Any]]
+    mujoco: Any, spec: Any, observations: Sequence[Mapping[str, Any]],
+    model: Any = None,
 ) -> None:
     """Each channel as one MJCF ``<sensor>`` element, on the exported copy.
 
@@ -8089,6 +8200,15 @@ def _add_observation_sensors(
     """
 
     for record in observations:
+        if record.get("contact"):
+            # ADR-698: the touch volume, sized from the compiled shapes and
+            # invisible, so a render of the exported file is unchanged.
+            box = contact_site(model, str(record["contact"]["body"]))
+            spec.body(str(record["contact"]["body"])).add_site(
+                name=str(record["object_name"]),
+                type=mujoco.mjtGeom.mjGEOM_BOX,
+                pos=box["pos"], size=box["size"], rgba=[0.0, 0.0, 0.0, 0.0],
+            )
         sensor = spec.add_sensor()
         sensor.name = str(record["mujoco_sensor"])
         sensor.type = getattr(mujoco.mjtSensor, str(record["sensor"]))
@@ -10003,7 +10123,10 @@ def task_records(
                 # ADR-590: and, on a tracked velocity, the position whose
                 # range flag it shares.
                 # ADR-591: and, on a load sensor's channel, its declaration.
-                **{key: record[key] for key in ("frame", "tracker", "in_range_of", "load")
+                # ADR-698: and, on a contact channel, its body and the force
+                # above which it reads as down.
+                **{key: record[key]
+                   for key in ("frame", "tracker", "in_range_of", "load", "contact")
                    if record.get(key)},
             }
         )
@@ -10552,6 +10675,8 @@ def observation_values(
             read = tracker_reading(read, record["tracker"])
         elif record.get("load"):
             read = [load_reading(read[0], record["load"])]
+        elif record.get("contact"):
+            read = contact_reading(read[0], record["contact"])
         for channel, value in zip(record["channels"], read):
             values[str(channel)] = value
     return values

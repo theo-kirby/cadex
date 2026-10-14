@@ -134,6 +134,11 @@ def observation_values(task: dict, sensordata: Any) -> dict[str, float]:
         scale = float(record["scale"])
         for offset, channel in enumerate(record["channels"][:dim]):
             values[str(channel)] = float(sensordata[adr + offset]) * scale
+        if record.get("contact"):
+            # ADR-698: the down flag, by the threshold the file states.
+            force = values[str(record["channels"][0])]
+            values[str(record["channels"][1])] = (
+                1.0 if force > float(record["contact"]["down_above_n"]) else 0.0)
     return values
 
 

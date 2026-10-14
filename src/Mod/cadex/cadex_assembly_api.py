@@ -1091,6 +1091,8 @@ _OBSERVATION_KINDS: dict[str, str] = {
     "centroidal_angular_momentum": "component_link",
     "tracked_position": "component_link",
     "tracked_velocity": "component_link",
+    # ADR-698: whether a component touches something, and how hard.
+    "contact": "component_link",
     # Not a sensor (ADR-696): what the controller last told an actuator, and
     # how fast that is changing. The engine keeps it in
     # ``CadexDynamics.COMMAND_OBSERVATION_KINDS``.
@@ -1121,6 +1123,8 @@ _OBSERVATION_SUFFIXES: dict[str, tuple[str, ...]] = {
     "tracked_velocity": ("_x", "_y", "_z"),
     # The command in force, then its change per second (ADR-696).
     "command": ("", "_rate"),
+    # The normal force on the component, then whether it is down (ADR-698).
+    "contact": ("", "_down"),
 }
 
 
@@ -3398,6 +3402,16 @@ class AssemblyDomainAPI:
           it is the action rate -- ``-(hip_rate / 100)^2`` pays a policy for
           not jerking the hip. Before the first action both read the
           command the reset holds, and the first action reports no rate.
+        * ``contact`` -- whether a component is touching something, and how
+          hard (ADR-698): ``name`` is the normal force of every contact on
+          its collision shapes, in N, and ``name_down`` is 1 while that
+          force is above zero and 0 otherwise. ``target`` is an
+          ``api.component`` with a collision shape -- a foot, chiefly, so
+          ``paw_down`` is the foot contact a gait reward pays on and
+          ``speed * paw_down`` is foot slip. MuJoCo reads it with a touch
+          sensor sized to those shapes. No onboard sensor this API declares
+          measures it, so it is ``role="privileged"``: the reward, the
+          terminations and the critic read it, the policy does not.
 
         **A vector channel expands to suffixed names.** ``name="hand"`` on a
         ``component_position`` gives ``hand_x``, ``hand_y`` and ``hand_z``;

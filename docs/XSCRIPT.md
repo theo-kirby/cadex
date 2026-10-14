@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-13
+Verified against source: 2026-10-14
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -404,6 +404,15 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   trainer and a stock-MuJoCo runner each compute it from the commands they
   issued; it does not count against the 64-channel sensor cap, one per
   actuator, and an actuator the task does not act on is refused.
+  `assembly.observation(paw, "contact", name="paw", role="privileged")`
+  reads foot contact (ADR-698): `paw` is the summed normal force of every
+  contact on the component's collision shapes, in N, and `paw_down` is 1
+  while that force is above zero and 0 otherwise. The export draws an
+  invisible box round the component's colliding shapes and puts a MuJoCo
+  `touch` sensor on it, so the file carries it and MJX computes it; a
+  component with no collision shape is refused. No sensor this API declares
+  measures it, so it is `privileged`: the reward, the terminations and the
+  critic read it.
   `assembly.reward(expression, weight=...)` terms are summed and a policy
   maximises the total, reported term by term so "which part of the reward is
   doing the work" is answerable; a cost is a positive quantity with a

@@ -1346,6 +1346,28 @@ issued, and `test_dynamics_command_channel` holds the three to one rule.
 They do not count against the 64-channel sensor cap: one per actuator, so
 the action list bounds them.
 
+### Saying "foot down": the contact channel (ADR-698)
+
+A gait reward that is not a pose needs to know which feet are on the
+ground: a contact schedule pays for the right ones, feet air time pays for
+swing, and foot slip is a foot's speed while it is down.
+
+- **`assembly.observation(paw, "contact", name="paw", role="privileged")`**
+  gives `paw`, the summed normal force of every contact on the paw's
+  collision shapes in N, and `paw_down`, 1 while that force is above the
+  bundle's `contact.down_above_n` (0) and 0 otherwise. A resting body reads
+  its own weight.
+- **The file carries it.** The export draws an invisible box site round the
+  component's colliding shapes, from each shape's bounding sphere, and puts
+  a `touch` sensor on it. Stock MuJoCo and MJX compute the force; the flag
+  is one comparison the engine, the trainer and the reference reader each
+  make. A component with no collision shape is refused.
+- **It is privileged.** No sensor in the library measures foot contact, so
+  the reward, the terminations and the critic read it and the policy does
+  not. A contact schedule term is then `paw_down` (or `1 - paw_down` in
+  swing), and a slip term `-(paw_vx**2 + paw_vy**2) * paw_down` beside a
+  `component_linear_velocity` of the same paw.
+
 ### What a good result looks like
 
 The mg-legs run (ADR-095), for calibration — 263 g of PLA and eight 13.4 g
