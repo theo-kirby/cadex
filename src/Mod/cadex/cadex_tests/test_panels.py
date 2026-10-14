@@ -323,6 +323,57 @@ def test_a_swept_opening_is_convex_cells_that_hold_every_pose():
     assert len(poses) == 2 and bulge == 0.0
 
 
+class _Solid:
+    """A stand-in solid whose cut by a refused tool raises as the kernel does."""
+
+    def __init__(self, volume, refused=()):
+        self.Volume, self.refused = float(volume), set(refused)
+        self.Solids = [self] if volume > 0 else []
+
+    def cut(self, tools):
+        if any(tool in self.refused for tool in tools):
+            raise ValueError("Null shape")
+        return _Solid(self.Volume - sum(float(t) for t in tools), self.refused)
+
+    def isNull(self):
+        return False
+
+    def isValid(self):
+        return True
+
+
+class _Opening:
+    def __init__(self, index, fused, regrown, cells=()):
+        self.index, self.hulls = index, [(None, None, c) for c in cells]
+        self._tools = {0.0: [fused], envelope_worker.SKIN_SWEEP_RETRY_GROW_MM: [regrown]}
+
+    def meets(self, _samples, _np):
+        return True
+
+    def tool(self, _App, _Part, _np, extra=0.0):
+        return self._tools[extra]
+
+
+def test_a_refused_swept_cut_falls_back_and_names_the_opening_it_cannot_cut(monkeypatch):
+    np = pytest.importorskip("numpy")
+    monkeypatch.setattr(envelope_worker, "_piece_samples", lambda _piece, np: np.zeros((1, 3)))
+    monkeypatch.setattr(envelope_worker, "_hull_solid", lambda points, _App, _Part: points)
+    # Together the kernel refuses both openings; alone, the first is cut as
+    # fused and the second once regrown (ADR-691).
+    piece = _Solid(100.0, refused={7.0})
+    first, second = _Opening(0, 5.0, 6.0), _Opening(1, 7.0, 8.0)
+    cut = envelope_worker._cut_openings(piece, [first, second], None, None, np)
+    assert cut.Volume == pytest.approx(100.0 - 5.0 - 8.0)
+    # Fused, regrown and cell by cell all refused: the opening is named.
+    stuck = _Opening(2, 7.0, 7.0, cells=[1.0, 7.0])
+    with pytest.raises(envelope_worker.EnvelopeError, match=r"openings\[2\]"):
+        envelope_worker._cut_openings(piece, [first, stuck], None, None, np)
+    # An opening none of whose cells reaches the piece costs no boolean.
+    far = _Opening(3, 7.0, 7.0)
+    far.meets = lambda _samples, _np: False
+    assert envelope_worker._cut_openings(piece, [far], None, None, np) is piece
+
+
 # --------------------------------------------------------------------------
 # the worker's arrays
 # --------------------------------------------------------------------------
@@ -639,6 +690,48 @@ for angle in range(-40, 41, 4):
     posed = leg_shape.copy()
     posed.rotate(App.Vector(100, 75, 30), App.Vector(1, 0, 0), angle)
     assert posed.distToShape(plate)[0] > 2.5, angle
+# ADR-691. Two legs' abduction sweeps cross a rump plate whose cells meet
+# the plate's edges (panel-cat-4): cut cell by cell the kernel refused the
+# piece ("Null shape"); fused per opening it builds, in seconds.
+import math, time
+def _bar(p0, p1, r0, r1, y0, y1):
+    L = math.hypot(p1[0] - p0[0], p1[1] - p0[1])
+    nx, nz = -(p1[1] - p0[1]) / L * 0.97, (p1[0] - p0[0]) / L * 0.97
+    pts = [(p0[0] + nx * r0, y0, p0[1] + nz * r0), (p1[0] + nx * r1, y0, p1[1] + nz * r1),
+           (p1[0] - nx * r1, y0, p1[1] - nz * r1), (p0[0] - nx * r0, y0, p0[1] - nz * r0)]
+    quad = part.extrude(part.face(part.wire(pts, closed=True)), (0.0, y1 - y0, 0.0))
+    return part.fuse([quad] + [part.cylinder(r, y1 - y0, origin=(c[0], y0, c[1]), direction=(0, 1, 0))
+                               for r, c in ((r0, p0), (r1, p1))])
+def _st(x, z_top, z_bot, w, sq):
+    return {{"at": (x, 0.0, (z_top + z_bot) / 2.0), "width": w, "top": (z_top - z_bot) / 2.0,
+            "bottom": (z_top - z_bot) / 2.0, "square": sq}}
+Z = 430.0
+cat = lib.form([_st(320, Z + 18, Z - 120, 170, 2.4), _st(265, Z + 54, Z - 190, 226, 2.4),
+                _st(185, Z + 60, Z - 210, 240, 2.3), _st(95, Z + 50, Z - 188, 228, 2.5),
+                _st(0, Z + 38, Z - 138, 196, 2.8), _st(-75, Z + 36, Z - 122, 196, 2.9),
+                _st(-165, Z + 46, Z - 118, 222, 2.9), _st(-250, Z + 36, Z - 104, 214, 2.8),
+                _st(-310, Z + 12, Z - 80, 168, 2.6), _st(-343, Z - 10, Z - 58, 110, 2.4)])
+hips, swings = [], []
+for s in (1.0, -1.0):
+    drum = part.cylinder(56.0, 50.0, origin=(-225.0, s * 78.0, 425.0), direction=(0, s, 0))
+    thigh = _bar((-251.2, 481.19), (-157.38, 279.99), 74.0, 64.0, min(s * 84, s * 154),
+                 max(s * 84, s * 154))
+    hips.append(part.compound([drum, thigh]))
+    swings.append({{"origin": (-168.0, s * 45.0, 425.0), "axis": (1, 0, 0),
+                   "range": (-8.0, 20.0) if s > 0 else (-20.0, 8.0)}})
+rump = part.skin(cat, [part.box(259.5, 600, 333.5, origin=(-413.0, -300.0, 366.5))],
+                 thickness=2.5, openings=[{{"around": h, "clearance": 3.0, "motion": m}}
+                                          for h, m in zip(hips, swings)], label="rump")
+started = time.monotonic()
+plate = build_part_shape(rump.parts[0].to_payload())
+assert time.monotonic() - started < 150.0, time.monotonic() - started
+assert plate.isValid() and len(plate.Solids) == 1
+for hip, m in zip(hips, swings):
+    hip_shape = build_part_shape(hip.to_payload())
+    for angle in m["range"]:
+        posed = hip_shape.copy()
+        posed.rotate(App.Vector(*m["origin"]), App.Vector(1, 0, 0), angle)
+        assert posed.distToShape(plate)[0] > 2.5, angle
 # The former's hoop clears its keep_out too, not only its web.
 drum = part.cylinder(30, 60, origin=(0, 60, 40), direction=(0, 1, 0))
 cleared = build_part_shape(part.former(torso, (0, 0, 0), (1, 0, 0), width=18, depth=10, web=4,

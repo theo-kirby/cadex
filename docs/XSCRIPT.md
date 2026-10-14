@@ -1400,19 +1400,26 @@ label="")` cuts panels from a designed form itself (ADR-684), and returns a
   takes its path out of the plate, as `part.panel`'s openings do. Without
   `motion` it is the link at rest, grown. The sweep is convex cells: the
   link's surface in slabs 40 mm long along its longest axis, each hulled
-  over every pair of neighbouring poses, the hinge stepped so an arc bulges
-  at most 2 mm past its chord and every cell grown by that bulge and 1 mm of
-  facet merging too. So the cut follows the link's length but fills its
-  concavities within a slab; name the part that sweeps (the drum, the
-  foot), not a whole leg with its thigh panels. A cell is cut only from a
-  piece whose box it meets.
+  over every pair of neighbouring poses, the hinge stepped (at most 20
+  degrees) so an arc bulges at most 4 mm past its chord and every cell
+  grown by that bulge and 1 mm of facet merging too. So the cut follows the
+  link's length but fills its concavities within a slab; name the part
+  that sweeps (the drum, the foot), not a whole leg with its thigh panels.
+  The cells that reach the skin's wall are fused once into one solid per
+  opening, and each piece is cut by the openings that reach it in one
+  boolean (ADR-691). If the kernel refuses that, each opening is cut
+  alone, then grown 0.7 mm more, then cell by cell; an opening that still
+  will not cut is named (`openings[k]`) in the piece's line of the
+  refusal.
 - **The screws.** With `frame` and `screw=lib.bolt(size, length)`, each
   piece gets `screws` bosses (or `screws=[n0, n1, ...]`, one count per
   region, 0 for a piece held by its weld alone) cast from its inner face
   along the face's own inward normal onto the frame, within 60 mm, the
   frame flat to 3 mm under the boss and the column clear of `keep_clear`
   (solids, or `{"around": link, "motion": {...}}` for what the link sweeps,
-  posed every 5 degrees or 2 mm): screened on triangles, then cast on the
+  as the triangles of the same convex cells an opening is cut by -- an
+  opening round the same link and motion lends its own, grown by its
+  clearance): screened on triangles, then cast on the
   exact BREP. Two bosses of one piece never overlap. Each boss row carries
   its own `axis`. `pilots` and `mounts` are as for `part.panel`.
   - A support nearer the boss's top than 1.6 mm leaves no boss to stand.
