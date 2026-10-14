@@ -101,6 +101,11 @@ tick them.
     - visuals: training curves, gait diagrams (footfall plots), joint
       trajectories against the reference, still frames or short videos of
       rollouts, and the reference beside the policy.
+    - **As soon as G1 produces a clip, the reference animation itself.**
+      Embed a looping video of the cat performing each generated gait, with
+      side and top views on the dark floor, and link to the dashboard view
+      where it plays. Show it before anything trains on it, so the owner can
+      judge the intended gait first.
   - The page uses the dashboard's dark palette, carries a `refresh` meta of
     60 s, and shows the time it was written.
   - Failures and dead ends go on the page as plainly as successes.
@@ -182,8 +187,14 @@ tick them.
       tilt ≤ 30°, heading ≤ 25°, speed ≥ 1000 mm/s, duty factor ≤ 0.5,
       steps ≥ 10, slip ≤ 0.3);
     - a trot footfall pattern: diagonal pairs within ±0.1 of a cycle;
-    - command-rate RMS and joint-acceleration RMS **at most half** the r5
-      baseline's;
+    - **smooth as the reference it tracks.** This bound replaces "half the r5
+      baseline's RMS", which the owner set before B1 measured that the
+      known-good Go1 recipe is no smoother than r5 by raw RMS: raw RMS
+      grows with stride and speed, and jitter does not need to. Two bounds:
+      - command-rate and joint-acceleration RMS within 1.5× of the G1
+        reference clip's own at the same speed;
+      - the share of command power above 3× the stride frequency at most
+        half of r5's share, measured by the same G2 predicate on both;
     - every drive's RMS torque within its rated torque.
   - The phase-aligned joint RMS bound is stated in the record before the
     first P1 training run, and it is never loosened to pass a policy.
