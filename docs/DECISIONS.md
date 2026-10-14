@@ -41453,3 +41453,71 @@ channels still do not count against it (ADR-696, ADR-699).
 **Evidence.** `test_a_quadrupeds_standard_reward_fits_the_cap` states both
 channel counts. The cap's existing tests derive their sizes from the
 constant, so they now test 128 against 129.
+
+## ADR-702 — A procedural gait reference generator (`CadexGait`) (2026-10-14, orun6)
+
+**Context.** panel-cat-3's policies learned five loopholes in a reward that
+described a gait, because nothing showed one (the orun6 charter's diagnosis
+2). The owner's O2 rules out motion capture and video. A reference must be
+generated from biomechanics and mapped onto the robot's own legs within
+their joint limits.
+
+**Decision.** A new engine module, `src/Mod/cadex/CadexGait.py`.
+`generate(model, legs, gait, speed_m_s)` returns one periodic stride as a
+`cadex-gait-clip-v1` dictionary: joint angles, foot positions, the contact
+schedule, body height and pitch, the parameters used, and the sources
+cited.
+- **Footfall.** Each foot touches down at its phase offset after the left
+  hind's and stays down for the duty factor. Offsets follow Hildebrand
+  (1965, symmetrical gaits; 1977, asymmetrical gaits) for walk, trot, pace,
+  canter, transverse and rotary gallop, half-bound and bound, with right
+  leads. The default duty factors are typical of each gait. Explicit
+  `offsets` and `duty` are accepted.
+- **Scale.** Stride length is `2.3 h (v²/gh)^0.3` (Alexander 1976), with `h`
+  the hip height measured on the model. The frequency is `v / stride`. Each
+  gait's natural Froude range (Alexander & Jayes 1983) is reported beside
+  the stride, not enforced.
+- **Foot paths.** In the world frame, a foot that is down does not move. In
+  swing it travels one stride on a minimum-jerk profile and lifts on a
+  raised cosine, so velocity is continuous at both ends.
+- **IK.** Each leg is solved by damped least squares. The pull toward the
+  home pose acts only in the null space. A joint at a stop leaves the
+  active set, and each step is capped at 0.05 rad. Every angle stays within
+  its limits.
+- **Refusal.** A foot more than 1 mm from its target is a `GaitUnreachable`
+  naming the leg, the moment in the stride, the miss and the joints at a
+  stop. Unknown gaits, bad offsets or duty, a zero speed, and spine flexion
+  without a shared spine joint are each refused with a reason.
+- **Legs.** A leg chain is every hinge or slide joint from the foot body to
+  the floating base. A joint that more than one chain passes through is a
+  body joint, held at home unless it is named as `spine_joint`.
+
+**Why the engine, and why it is general (O4).** The clip is to go into a
+task bundle and play on the dashboard, both engine concerns. Nothing in it
+is specific to cats: any floating base with four named feet gets a clip, and
+a robot without a spine has no body joints. The module imports only
+`math` and `typing` at module scope. `mujoco` comes from `CadexDynamics`'s
+single import site (or the caller), and numpy is imported inside the
+functions that need it. It is outside `cadexd`'s closure and is staged by
+CMake.
+
+**Evidence.** `test_gait_reference` (17 tests):
+- for every named gait, the contact schedule's touch-down phases and duty
+  factors read back to the table, within one sample;
+- the defining pairs hold: diagonal for trot, lateral for pace, both hinds
+  together for bound and half-bound, quarter beats for walk;
+- the stride scales by dynamic similarity: twice the hip height at the same
+  Froude number gives twice the stride and 1/√2 the frequency;
+- on a synthetic quadruped with a spine, the chains exclude the spine and a
+  trot's joint angles, pushed through MuJoCo's forward kinematics, land
+  every foot within 1 mm of its target;
+- every angle is within its limits, stance feet are stationary, swing peaks
+  at the swing height, and the stride is periodic across the wrap;
+- a 2 m stride is refused, naming the leg and the miss;
+- explicit parameters drive the same path.
+
+On panel-cat-3's own model, every refusal was checked against a bounded
+global least-squares search (300 random starts). The global optimum's miss
+agreed within 0.1 mm, so the refusals are real limits, not local minima of
+the solver. The cat's joint ranges cap a trot stride near 0.6 m, against
+Alexander's 0.88 m at 1.7 m/s (table in `docs/MUJOCO.md` §7).

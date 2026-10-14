@@ -1392,6 +1392,42 @@ swing, and foot slip is a foot's speed while it is down.
   `test_dynamics_acceleration_channel`'s `REGULARISED_TASK` writes all five
   on one mechanism, holds each to its formula, and trains it.
 
+### Showing a gait: the procedural reference (ADR-702)
+
+A reward that describes a gait pays for the cheapest motion that fits the
+description. `CadexGait.generate(model, legs, gait, speed_m_s)` builds the
+gait to track instead. It returns one periodic stride on the robot's own
+legs (`cadex-gait-clip-v1`): joint angles, foot positions, the contact
+schedule, and body height and pitch. No motion capture is involved.
+
+- **Footfall.** Named gaits are `walk`, `trot`, `pace`, `canter`,
+  `transverse_gallop`, `rotary_gallop`, `half_bound` and `bound`, with
+  Hildebrand's phase offsets (left hind = 0). Explicit `offsets` and `duty`
+  work as well.
+- **Scale.** Stride length is `2.3 h Fr^0.3` (Alexander 1976), where `h` is
+  the hip height measured on the model. The frequency is `v / stride`.
+  `stride_length_m=` overrides it.
+- **IK.** Each leg is solved by damped least squares within its joint
+  limits. A joint that more than one leg passes through is a body joint
+  (`spine_joint=`).
+- **Refusal.** A foot that cannot be reached raises `GaitUnreachable`,
+  naming the leg, the moment in the stride, the miss and the joints at a
+  stop. It never clamps silently.
+
+Measured on panel-cat-3's legs (hip height 427 mm), against Alexander's
+stride:
+
+| gait | speed | Alexander stride | longest reachable stride |
+|---|---|---|---|
+| trot | 1.0 m/s | 639 mm | 595 mm |
+| trot | 1.7 m/s | 879 mm | 597 mm |
+| trot | 2.5 m/s | 1108 mm | 601 mm |
+| rotary gallop | 2.5 m/s | 1108 mm | 674 mm |
+
+The joint ranges cap a trot stride near 0.6 m. At 1.7 m/s that forces a
+0.35 s stride (2.9 Hz) where dynamic similarity gives 1.9 Hz: the short,
+quick trot r5 learned.
+
 ### What a good result looks like
 
 The mg-legs run (ADR-095), for calibration — 263 g of PLA and eight 13.4 g
