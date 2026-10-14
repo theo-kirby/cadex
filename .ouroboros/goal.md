@@ -299,6 +299,17 @@ Not seeded. Work them only once every criterion above has evidence.
 - **Keep the suites light.** New tests are fast unit tests where a unit test
   makes the claim, with at most one real-engine end-to-end test per
   criterion.
+- **A trainer OOM killed the whole loop once (iteration 6).**
+  - The B1 Go1 run at `--envs 8192` reached 41 GB of host memory before
+    iteration 0, and the run's 40 GB cap killed every process in the loop.
+    The cause is in `training/cadex_train.py`: `randomised_models` builds
+    one host `MjModel` per environment, so host memory scales with the env
+    count times the model's size (meshes included). Fixing or bounding that
+    is B1 work, with an ADR.
+  - Until it is fixed, size `--envs` from a measured smoke run.
+  - Start every training run longer than a smoke in a scope of its own,
+    for example `systemd-run --user --scope -p MemoryMax=30G ...`, so an OOM
+    kills the trainer and not the loop.
 - **A reward exploit is a finding, not a puzzle.** When a policy games a
   term, prefer more reference (tracking) over another hand-written penalty.
   Record the exploit either way.
