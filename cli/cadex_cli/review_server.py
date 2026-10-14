@@ -199,8 +199,10 @@ TRACE_SCHEMA = "cadex-assembly-simulation-trace-v1"
 #: video or trace past this is streamed, a JSON past this is refused.
 JSON_READ_LIMIT = 64 * 1024 * 1024
 #: The accepted attempt's ``result.json`` alone may be larger: a model of
-#: hundreds of components whose sweep lists every pair for every joint was
-#: 194 MB on panel-cat-4, and the model is what the page is for.
+#: hundreds of components whose sweep listed every pair for every joint was
+#: 194 MB on panel-cat-4, and the model is what the page is for. Since
+#: ADR-692 a sweep publishes only its measured moving pairs, but a result
+#: accepted before it is still read.
 RESULT_READ_LIMIT = 512 * 1024 * 1024
 
 

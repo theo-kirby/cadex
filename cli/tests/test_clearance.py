@@ -1013,6 +1013,61 @@ def test_a_welded_pair_does_not_define_the_joint_it_cannot_move():
                                       'pair': ['horn', 'shin']}
 
 
+def test_a_compact_sweep_reads_as_the_full_rows_did():
+    """ADR-692: a joint lists its measured moving pairs and counts the rest.
+
+    The same knee, published two ways: every pair as a row (rigid copies of
+    the static rows and a culled far pair among them), and the compact way,
+    with the rigid and culled pairs counted and the culled pairs' least
+    bound kept. The joint row, the verdict and the failing list agree. A
+    rigid pair that overlaps at the solved pose is the static block's
+    failure, named there once and not again under the joint.
+    """
+
+    def value(joint):
+        return {'available': True, 'pairs': [
+            {'first': 'horn', 'second': 'shin', 'distance_mm': 0.0, 'common_volume_mm3': 0.0,
+             'intent': {'kind': 'attached'}},
+            {'first': 'thigh', 'second': 'shin', 'distance_mm': 3.0, 'common_volume_mm3': 0.0},
+            {'first': 'thigh', 'second': 'tail', 'distance_mm': 60.0, 'common_volume_mm3': 0.0},
+            {'first': 'bolt', 'second': 'shin', 'distance_mm': 0.0, 'common_volume_mm3': 4.0}],
+            'clearance_sweep': {'status': 'complete', 'joints': [dict({
+                'joint': 'knee', 'kind': 'revolute', 'unit': 'degrees', 'status': 'complete',
+                'step': 5, 'sample_count': 11, 'range_degrees': [20, 70], 'initial_degrees': 20},
+                **joint)]}}
+
+    swept = {'first': 'thigh', 'second': 'shin', 'relative_motion': True,
+             'minimum_distance_mm': 1.5, 'maximum_common_volume_mm3': 0.0,
+             'first_contact_degrees': None}
+    full = value({'pairs': [
+        {'first': 'horn', 'second': 'shin', 'relative_motion': False, 'minimum_distance_mm': 0.0,
+         'maximum_common_volume_mm3': 0.0, 'first_contact_degrees': 20},
+        {'first': 'bolt', 'second': 'shin', 'relative_motion': False, 'minimum_distance_mm': 0.0,
+         'maximum_common_volume_mm3': 4.0, 'first_contact_degrees': 20},
+        swept,
+        {'first': 'thigh', 'second': 'tail', 'relative_motion': True, 'culled': True,
+         'minimum_distance_mm': 41.0, 'maximum_common_volume_mm3': 0.0,
+         'first_contact_degrees': None}]})
+    compact = value({'pairs': [swept], 'pairs_moving': 2, 'pairs_rigid': 2, 'pairs_culled': 1,
+                     'culled_minimum_distance_mm': 41.0})
+    old, new = (fit_summary(v) for v in (full, compact))
+    row = new['sweep']['joints'][0]
+    assert (row['pairs_measured'], row['pairs_moving']) == (4, 2)
+    assert (row['pairs_rigid'], row['pairs_culled']) == (2, 1)
+    for key in ('pairs_measured', 'pairs_moving', 'minimum_distance_mm',
+                'maximum_common_volume_mm3', 'first_contact'):
+        assert old['sweep']['joints'][0].get(key) == row.get(key), key
+    # The bolt's overlap fails the static block, once, and no joint's.
+    assert [(f['first'], f['second']) for f in new['failing']] == [('bolt', 'shin')]
+    for summary in (old, new):
+        assert summary['sweep']['failing'] == [] and summary['sweep']['verdict'] == 'pass'
+    # Only culled pairs moved: the minimum is their bound, with no volume.
+    alone = fit_summary(value({'pairs': [], 'pairs_moving': 1, 'pairs_rigid': 0, 'pairs_culled': 1,
+                               'culled_minimum_distance_mm': 41.0}))['sweep']['joints'][0]
+    assert (alone['minimum_distance_mm'], alone['maximum_common_volume_mm3']) == (41.0, 0.0)
+    assert 'first_contact' not in alone
+
+
 def test_an_unbounded_wheel_is_missing_coverage_beside_a_hinge_that_swept_clean():
     """Known answer: a balancer's two wheels, and one bounded hinge (ADR-375).
 

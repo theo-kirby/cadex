@@ -209,8 +209,13 @@ def sweep_summary(
     the sweep repeats its solved-pose measurement at every sample: a welded
     horn touching its link would otherwise hold the joint's minimum at
     0.0 mm and claim first contact at the bottom of the range, which is the
-    weld rather than anything the motion did. ``failing`` spans every pair
-    that overlaps, because an overlap is an overlap.
+    weld rather than anything the motion did. ``failing`` spans every
+    moving pair that overlaps, because an overlap is an overlap; a rigid
+    pair's overlap is its solved-pose one, which the static block names
+    once rather than this block once per joint (ADR-692). Since ADR-692
+    the engine publishes the moving pairs it measured exactly and counts
+    the rest (``pairs_rigid``, ``pairs_culled``, with the culled pairs'
+    least lower bound), which this reads as their rows read before.
 
     **A gap the motion closes fails here too** (ADR-378). Before this the
     block measured every pair's minimum distance through the range and held
@@ -351,6 +356,17 @@ def sweep_summary(
             "status": str(joint.get("status") or ""),
             "pairs_measured": len(rows),
         }
+        # Since ADR-692 the engine publishes only the moving pairs it
+        # measured exactly and counts the rest: the rigid pairs, whose rows
+        # repeated the static block's, and the moving pairs its bounds
+        # culled, every one past its floor. `pairs_measured` stays every
+        # pair the sweep accounts for, so `pairs_measured - pairs_moving` is
+        # still the rigid count.
+        rigid = _count(joint.get("pairs_rigid"))
+        culled = _count(joint.get("pairs_culled"))
+        item["pairs_measured"] += rigid + culled
+        if "pairs_rigid" in joint:
+            item["pairs_rigid"], item["pairs_culled"] = rigid, culled
         for key in ("step", "sample_count", "range_" + unit, "initial_" + unit,
                     # A joint of a closed loop (ADR-621): the loop it drove,
                     # what it held and solved, how far it closed, and where not.
@@ -373,7 +389,14 @@ def sweep_summary(
             passive += 1
         minimum_distance = maximum_common = first_contact = None
         contact_pair: list[str] = []
-        moving = 0
+        moving = culled
+        if culled:
+            # A culled pair's bound is a lower bound on its distance, with
+            # no common volume (ADR-419), exactly as its row read.
+            bound = joint.get("culled_minimum_distance_mm")
+            if _finite(bound):
+                minimum_distance = float(bound)
+            maximum_common = 0.0
         for row in rows:
             first, second = str(row.get("first") or ""), str(row.get("second") or "")
             distance = row.get("minimum_distance_mm")
@@ -391,16 +414,22 @@ def sweep_summary(
             # counts as moving, so an older receipt reads as it always did.
             moves = row.get("relative_motion")
             moves = True if moves is None else bool(moves)
-            moving += 1 if moves else 0
+            if not moves:
+                # Its every number is its solved-pose row's, which the static
+                # block judges once (ADR-692): an overlap it repeats is named
+                # there, not again under each joint. The engine no longer
+                # publishes such a row; one from an older receipt is skipped.
+                continue
+            moving += 1
             # A distance or a volume is a magnitude; a first-contact value is
             # a joint coordinate and is negative all the time, so the sign
             # rule belongs here rather than in `_finite`.
             measured = all(_finite(v) and v >= 0 for v in (distance, volume))
-            if moves and _finite(distance) and (minimum_distance is None or distance < minimum_distance):
+            if _finite(distance) and (minimum_distance is None or distance < minimum_distance):
                 minimum_distance = float(distance)
-            if moves and _finite(volume) and (maximum_common is None or volume > maximum_common):
+            if _finite(volume) and (maximum_common is None or volume > maximum_common):
                 maximum_common = float(volume)
-            if moves and _finite(contact) and (first_contact is None or contact < first_contact):
+            if _finite(contact) and (first_contact is None or contact < first_contact):
                 first_contact, contact_pair = float(contact), [first, second]
             if not measured:
                 report({
@@ -422,7 +451,7 @@ def sweep_summary(
                 if contact_key:
                     overlap[contact_key] = contact
                 report(overlap)
-            elif moves:
+            else:
                 # A gap the motion closes (ADR-378). The pair's own minimum
                 # is whatever the solved pose held it to, so the two blocks
                 # cannot disagree about what "clear" means; the only new fact
@@ -1636,6 +1665,12 @@ def _finite(number: Any) -> bool:
     """A measurement the block can compare, rather than a hole in the report."""
 
     return isinstance(number, (int, float)) and not isinstance(number, bool) and math.isfinite(number)
+
+
+def _count(number: Any) -> int:
+    """A published pair count (ADR-692), 0 where absent or not a count."""
+
+    return int(number) if _finite(number) and number >= 0 else 0
 
 
 def fit_summary(

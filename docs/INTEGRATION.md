@@ -692,8 +692,8 @@ repeats its solved-pose measurement at every sample, so a reader rolling a
 joint row up reads its minimum distance, maximum common volume and first
 contact over the moving pairs alone — otherwise a horn welded flush against
 the link it turns with reports 0.0 mm at every value and takes first contact
-at the bottom of the range. Per-pair rows are unchanged and every pair is
-still published. The `relative_motion` key is **absent** on a revision accepted
+at the bottom of the range. Until ADR-692 every pair was published under
+every joint. The `relative_motion` key is **absent** on a revision accepted
 before ADR-374, which a reader counts as moving so an older receipt reads as it
 always did. Since ADR-419 a moving pair whose exact-geometry boxes stay more
 than 10 mm apart at every sample carries `culled: true`. Its
@@ -707,6 +707,18 @@ floor, when that is larger); the row's meaning is unchanged. A rigid pair's row 
 measurement, and since ADR-423 carries `culled: true` when that static
 measurement is itself a bound. The `culled` key is absent on every exactly
 measured row and on a revision accepted before ADR-419. No op argument changed.
+Since ADR-692 a joint's `pairs` holds only the pairs it moves that were
+measured exactly, each with `relative_motion: true` and no `culled` key: the
+rows a verdict can rest on. The rest are counted on the joint row:
+`pairs_rigid` (pairs with `relative_motion: false`, whose numbers are the
+static rows' at `/pairs`), `pairs_culled` (moving pairs bound past their cull
+margin, none able to touch or reach a floor) with
+`culled_minimum_distance_mm`, the least of their lower bounds (null when
+none), and `pairs_moving`, the kept rows and the culled ones together. On
+`panel-cat-4`, 307 components (46,971 pairs) and 17 swept joints, this took the published
+sweep from 168 MB to 35 kB. These four keys are absent on a revision
+accepted before ADR-692, whose `pairs` still lists every pair. No op
+argument changed.
 Since ADR-621 a joint on a **closed loop** is swept rather than refused: a
 limited revolute or slider of the loop is driven through its range and every
 other joint of the loops sharing a joint with it is re-solved at each sample,
