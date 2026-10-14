@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-10. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-14. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -149,7 +149,7 @@ written twice because this file imports nothing from the engine.
 |---|---|---|
 | `--seed` | `0` | PPO's seed *and* the base seed for domain randomisation |
 | `--iterations` | `200` | outer PPO iterations |
-| `--envs` | `256` | parallel MJX environments; also how many distinct randomisation draws exist |
+| `--envs` | `256` | parallel MJX environments; also how many distinct randomisation draws exist. Host memory holds one compiled model plus the drawn fields, whatever the count (ADR-695) |
 | `--unroll` | `20` | control steps collected per environment per iteration |
 | `--hidden` | `64 64` | the MLP the container records |
 | `--checkpoint-every` | `0` (off) | write a complete `.cxpolicy` every N iterations, plus `<out>.best.cxpolicy` |

@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import copy
 import hashlib
 import json
 import math
@@ -1111,9 +1112,21 @@ def goal_pool(mujoco: Any, xml: bytes, task: dict[str, Any], *,
     return tables
 
 
-def randomised_models(mujoco: Any, xml: bytes, task: dict[str, Any], *,
-                      base_seed: int, count: int) -> list[Any]:
-    """One host ``MjModel`` per environment, each with its own draw.
+def randomised_models(mujoco: Any, np: Any, xml: bytes, task: dict[str, Any], *,
+                      base_seed: int, count: int) -> tuple[Any, dict[str, Any]]:
+    """Environment 0's host ``MjModel``, and each drawn field for every environment.
+
+    The second value maps each field a randomisation entry moves to an array
+    of shape ``(count, *field.shape)``: row ``i`` is that field after
+    environment ``i``'s draw, ``random.Random(base_seed + i)``. A task with no
+    randomisation returns an empty map.
+
+    The XML is compiled once and each draw is made on a copy that is dropped
+    as soon as its fields are read, so host memory is one model plus the
+    drawn fields, whatever ``count`` is (ADR-695). It used to keep one host
+    model per environment: a 12 MB Go1 model at 8,192 environments is about
+    98 GB, and the B1 run reached 41 GB before its first iteration and was
+    killed.
 
     ``mj_setConst`` after a draw is not optional: M6 phase 0 measured that
     ``body_subtreemass`` is derived from ``body_mass`` there, so a mass draw
@@ -1121,22 +1134,32 @@ def randomised_models(mujoco: Any, xml: bytes, task: dict[str, Any], *,
     it.
     """
 
+    base = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
     entries = list(task.get("randomisation") or ())
-    models = []
+    if not entries:
+        return base, {}
+    fields = sorted({str(field["field"]) for entry in entries for field in entry["fields"]})
+    drawn = {
+        name: np.empty((count, *getattr(base, name).shape), dtype=getattr(base, name).dtype)
+        for name in fields
+    }
+    host = base
     for index in range(count):
-        model = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
-        if entries:
-            rng = random.Random(int(base_seed) + index)
-            data = mujoco.MjData(model)
-            for entry in entries:
-                factor = rng.uniform(float(entry["low"]), float(entry["high"]))
-                for field in entry["fields"]:
-                    getattr(model, str(field["field"])).flat[
-                        int(field["index"])
-                    ] *= factor
-            mujoco.mj_setConst(model, data)
-        models.append(model)
-    return models
+        model = copy.copy(base)
+        rng = random.Random(int(base_seed) + index)
+        data = mujoco.MjData(model)
+        for entry in entries:
+            factor = rng.uniform(float(entry["low"]), float(entry["high"]))
+            for field in entry["fields"]:
+                getattr(model, str(field["field"])).flat[
+                    int(field["index"])
+                ] *= factor
+        mujoco.mj_setConst(model, data)
+        for name in fields:
+            drawn[name][index] = getattr(model, name)
+        if index == 0:
+            host = model
+    return host, drawn
 
 
 # ---------------------------------------------------------------------------
@@ -1461,34 +1484,35 @@ def train(
     )
 
     envs = int(options.envs)
-    hosts = randomised_models(mujoco, bundle["model_xml"], task,
-                              base_seed=int(options.seed), count=envs)
-    key_id = mujoco.mj_name2id(hosts[0], mujoco.mjtObj.mjOBJ_KEY,
+    host, drawn = randomised_models(mujoco, np, bundle["model_xml"], task,
+                                    base_seed=int(options.seed), count=envs)
+    key_id = mujoco.mj_name2id(host, mujoco.mjtObj.mjOBJ_KEY,
                                str(episode["reset_keyframe"]))
     if key_id < 0:
         raise SystemExit(
             f"the model carries no {episode['reset_keyframe']!r} keyframe"
         )
-    reset_qpos = jnp.asarray(hosts[0].key_qpos[key_id], dtype=jnp.float32)
-    reset_qvel = jnp.zeros((hosts[0].nv,), dtype=jnp.float32)
-    nbody = int(hosts[0].nbody)
+    reset_qpos = jnp.asarray(host.key_qpos[key_id], dtype=jnp.float32)
+    reset_qvel = jnp.zeros((host.nv,), dtype=jnp.float32)
+    nbody = int(host.nbody)
 
-    randomised_fields = sorted({
-        str(field["field"])
-        for entry in task.get("randomisation") or ()
-        for field in entry["fields"]
-    })
-    put = [mjx.put_model(host) for host in hosts]
-    model = put[0]
-    if randomised_fields and envs > 1:
+    single = mjx.put_model(host)
+    model = single
+    if drawn and envs > 1:
         # Only the fields a draw actually moved are batched; everything else
         # is shared, which is what keeps the batched model the size of one.
+        for field, values in drawn.items():
+            if tuple(values.shape[1:]) != tuple(getattr(single, field).shape):
+                raise SystemExit(
+                    f"randomised field {field!r} is {tuple(values.shape[1:])} on "
+                    f"the host model but {tuple(getattr(single, field).shape)} "
+                    "in MJX, so its draws cannot be batched")
         model = model.tree_replace({
-            field: jnp.stack([getattr(m, field) for m in put])
-            for field in randomised_fields
+            field: jnp.asarray(values, dtype=getattr(single, field).dtype)
+            for field, values in drawn.items()
         })
-        model_axes = jax.tree.map(lambda _: None, put[0]).tree_replace(
-            {field: 0 for field in randomised_fields}
+        model_axes = jax.tree.map(lambda _: None, single).tree_replace(
+            {field: 0 for field in drawn}
         )
     else:
         model_axes = None
@@ -1856,7 +1880,7 @@ def train(
     key = jax.random.PRNGKey(int(options.seed))
     key, start_key, actor_key, critic_key = jax.random.split(key, 4)
 
-    make = jax.vmap(lambda _: mjx.make_data(put[0]))(jnp.arange(envs))
+    make = jax.vmap(lambda _: mjx.make_data(single))(jnp.arange(envs))
     # The first episode is drawn like every other one. It would be easy to
     # start the batch at the nominal pose and only vary on reset; that would
     # make the first `unroll` steps of training the one episode M9 exists to

@@ -41153,3 +41153,41 @@ so every trace written before this one still reads.
 
 **Consequence.** G2's smoothness and torque predicates and P1's "every
 drive within rated" bound can be measured from a trace, with no replay.
+
+## ADR-695 — The trainer compiles the model once; host memory no longer scales with `--envs` (2026-10-14, orun6)
+
+**Context.** `randomised_models` in `training/cadex_train.py` compiled and
+kept one host `MjModel` per environment, then `mjx.put_model` copied each of
+them, even when the task had no randomisation at all. A Go1 model compiles to
+about 12 MB on the host, measured, so 8,192 environments asked for about
+98 GB. The B1 Go1 run at `--envs 8192` reached 41 GB before its first
+iteration, and the run's 40 GB memory cap killed every process in the loop.
+
+**Decision.** The XML is compiled once. Each environment's draw is made on a
+`copy.copy` of that model, its `mj_setConst` is run, the fields the draw
+moved are copied into one `(envs, *shape)` array per field, and the copy is
+dropped. `randomised_models` returns environment 0's model and those arrays.
+`train` puts the one model on the device and batches only the drawn fields,
+as before, refusing with a reason if a drawn field's host shape differs from
+its MJX shape. A task with no randomisation compiles one model and batches
+nothing. The draw algorithm (`RANDOMISATION_ALGORITHM`) is unchanged.
+`copy` joins the standard-library modules the trainer imports at module
+scope.
+
+**Evidence.**
+- `test_randomised_models_compiles_once_and_keeps_only_the_drawn_fields`:
+  the XML compiles once for 32 environments. Each drawn row equals what
+  compiling that environment on its own gives, and environment 0's host
+  model carries its own `mj_setConst`. The test fails on the previous code.
+- On a randomised swing-up bundle (link mass and hinge damping), the old and
+  new trainers at seed 0 on CPU write policies whose parameters and witness
+  are identical. Only `trainer_sha256` and `wall_time_s` differ.
+- The Go1 joystick bundle at `--envs 8192`, one iteration, in a 30 GB scope:
+  peak host RSS is 4.66 GB, and the iteration runs in 84 s wall time,
+  including the JIT.
+
+**Consequence.** `--envs` is bounded by device memory, not host memory.
+Training runs still start in a memory scope of their own (the owner's note).
+A known, unchanged limitation: fields that `mj_setConst` derives (for
+example `body_subtreemass`) are not batched, so every environment uses
+environment 0's derived values. That was already true before this change.
