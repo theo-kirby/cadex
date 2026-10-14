@@ -198,6 +198,10 @@ TRACE_SCHEMA = "cadex-assembly-simulation-trace-v1"
 #: Bound on any single file the server will read into memory to serve; a
 #: video or trace past this is streamed, a JSON past this is refused.
 JSON_READ_LIMIT = 64 * 1024 * 1024
+#: The accepted attempt's ``result.json`` alone may be larger: a model of
+#: hundreds of components whose sweep lists every pair for every joint was
+#: 194 MB on panel-cat-4, and the model is what the page is for.
+RESULT_READ_LIMIT = 512 * 1024 * 1024
 
 
 def _now() -> str:
@@ -1135,7 +1139,7 @@ def _attempt_is_the_accepted_one(staging: Path, manifest: Mapping[str, Any]) -> 
     digest = manifest.get("accepted_digest")
     if not digest or attempt.get("revision") != manifest.get("accepted_revision"):
         return False
-    result = _load_json(staging / "result.json")
+    result = _load_json(staging / "result.json", RESULT_READ_LIMIT)
     return bool(result) and result.get("digest") == digest
 
 
@@ -1394,7 +1398,7 @@ def accepted_model_uncached(project_root: Path | str) -> dict[str, Any]:
     if staging is None:
         model["reason"] = reason
         return model
-    result = _load_json(staging / "result.json")
+    result = _load_json(staging / "result.json", RESULT_READ_LIMIT)
     if not result or not isinstance(result.get("outputs"), list):
         model["reason"] = "accepted attempt has no readable result.json"
         return model
