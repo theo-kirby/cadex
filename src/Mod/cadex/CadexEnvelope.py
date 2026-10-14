@@ -2161,9 +2161,9 @@ SKIN_SWEEP_MERGE_MM = 1.0
 #: The most an arc between two sampled poses bulges past their chord, mm: the
 #: hinge's step is chosen from the part's farthest reach from the axis, and
 #: every hull grows by that bulge too.
-SKIN_SWEEP_SAG_MM = 2.0
+SKIN_SWEEP_SAG_MM = 4.0
 #: The coarsest and the most steps one hinge sweep takes.
-SKIN_SWEEP_MAX_STEP_DEGREES = 15.0
+SKIN_SWEEP_MAX_STEP_DEGREES = 20.0
 SKIN_SWEEP_MAX_STEPS = 48
 #: At most this many hulls one opening makes.
 SKIN_SWEEP_MAX_HULLS = 400
@@ -2342,70 +2342,159 @@ def _piece_samples(piece, np):
     return np.vstack([tris.reshape(-1, 3), points])
 
 
-class _SweptOpening:
-    """An opening round a part, at rest or swept: convex cells, built as solids on demand."""
+#: When a cut by an opening's cells is refused, the cells are rebuilt grown
+#: this much more and cut again (ADR-691).
+SKIN_SWEEP_RETRY_GROW_MM = 0.7
 
-    def __init__(self, shape, entry, np):
+
+def _cut_or_none(piece, tools):
+    """``piece.cut(tools)`` when the kernel returns a sound result, else None.
+
+    A sound result is a valid shape no larger than ``piece``: a refused
+    boolean raises ("Null shape"), and a degenerate one comes back invalid.
+    """
+
+    try:
+        result = piece.cut(tools)
+    except Exception:
+        return None
+    try:
+        if result.isNull() or not result.isValid():
+            return None
+        if result.Solids and result.Volume > piece.Volume * (1.0 + 1e-6) + 1e-6:
+            return None
+    except Exception:
+        return None
+    return result
+
+
+def _cells_meeting(hulls, planes, samples, np):
+    """The indices of the cells holding a point of ``samples`` (within twice the sampling)."""
+
+    margin = 2.0 * SKIN_SWEEP_PROBE_MM
+    found = []
+    for index, (low, high, _points) in enumerate(hulls):
+        near = np.all((samples >= low - margin) & (samples <= high + margin), axis=1)
+        if not near.any():
+            continue
+        P = planes[index]
+        if np.all(samples[near] @ P[:, :3].T + P[:, 3] <= margin, axis=1).any():
+            found.append(index)
+    return found
+
+
+class _SweptOpening:
+    """An opening round a part, at rest or swept: convex cells, fused into one tool.
+
+    Neighbouring cells share a pose, so their faces nearly coincide; cut one
+    at a time they left slivers the next cut refused ("Null shape"). Only the
+    cells that reach the skin's wall are kept -- most of a moving link's are
+    inside the body -- and they are fused once into one solid per opening
+    (planar faces, a fraction of a second), which every piece is cut by
+    (ADR-691).
+    """
+
+    def __init__(self, shape, entry, np, index=0, wall_samples=None):
+        self.shape, self.entry, self.index = shape, entry, index
+        self.clearance = float(entry.get("clearance") or 0.0)
+        self.wall_samples = wall_samples
+        self.all_hulls = _hulls(shape, entry.get("motion"), self.clearance, np)
+        self.hulls, self.planes = self._cells(np, 0.0, self.all_hulls)
+        self._tools: dict[float, Any] = {}
+
+    def _cells(self, np, extra, hulls=None):
         from scipy.spatial import ConvexHull
 
-        self.hulls = _hulls(shape, entry.get("motion"), float(entry.get("clearance") or 0.0), np)
-        self.planes = [ConvexHull(points).equations for _low, _high, points in self.hulls]
-        self.solids: dict[int, Any] = {}
+        if hulls is None:
+            hulls = _hulls(self.shape, self.entry.get("motion"), self.clearance + extra, np)
+        planes = [ConvexHull(points).equations for _low, _high, points in hulls]
+        if self.wall_samples is not None:
+            keep = _cells_meeting(hulls, planes, self.wall_samples, np)
+            hulls, planes = [hulls[k] for k in keep], [planes[k] for k in keep]
+        return hulls, planes
 
-    def cut(self, piece, App, Part, np, samples=None):
-        """``piece`` less every cell that meets it.
+    def meets(self, samples, np):
+        """Whether a cell holds a point of the piece's surface: an opening none of whose
+        cells reaches the piece costs no boolean."""
 
-        Only a cell holding a point of the piece's surface (within twice the
-        sampling) is cut: most of a moving link's cells are inside the body,
-        and a boolean against each cost seconds on a curved skin.
-        """
+        return any(_cells_meeting([cell], [planes], samples, np)
+                   for cell, planes in zip(self.hulls, self.planes))
 
-        if samples is None:
-            samples = _piece_samples(piece, np)
-        margin = 2.0 * SKIN_SWEEP_PROBE_MM
-        for index, (low, high, points) in enumerate(self.hulls):
-            near = np.all((samples >= low - margin) & (samples <= high + margin), axis=1)
-            if not near.any():
-                continue
-            planes = self.planes[index]
-            inside = np.all(samples[near] @ planes[:, :3].T + planes[:, 3] <= margin, axis=1)
-            if not inside.any():
-                continue
-            solid = self.solids.get(index)
-            if solid is None:
-                solid = self.solids[index] = _hull_solid(points, App, Part)
-            if not piece.Solids:
-                break
-            piece = piece.cut(solid)
+    def tool(self, App, Part, np, extra=0.0):
+        """The opening's cells fused into one solid (``extra`` mm more grown), built once."""
+
+        if extra not in self._tools:
+            hulls = self.hulls if not extra else self._cells(np, extra)[0]
+            cells = [_hull_solid(points, App, Part) for _low, _high, points in hulls]
+            fused = None
+            if len(cells) > 1:
+                try:
+                    fused = cells[0].multiFuse(cells[1:])
+                    if fused.isNull() or not fused.isValid() or not fused.Solids:
+                        fused = None
+                    else:
+                        fused = fused.removeSplitter()
+                except Exception:
+                    fused = None
+            # A fuse the kernel refuses leaves the cells as one multi-tool cut.
+            self._tools[extra] = [fused] if fused is not None else cells
+        return self._tools[extra]
+
+
+def _sweep_key(entry):
+    """One key per part and motion, whatever else the entry says."""
+
+    import json
+
+    return json.dumps([entry.get("around"), entry.get("motion")], sort_keys=True, default=str)
+
+
+def _hull_triangles(hulls, np):
+    """The convex cells' surfaces as an ``(n, 3, 3)`` triangle array."""
+
+    from scipy.spatial import ConvexHull
+
+    tris = [points[ConvexHull(points).simplices] for _low, _high, points in hulls]
+    return np.concatenate(tris) if tris else None
+
+
+def _cut_openings(piece, swept, App, Part, np):
+    """``piece`` less every swept opening that reaches it, or an EnvelopeError naming the one
+    the kernel would not cut.
+
+    All the openings go in one boolean; if the kernel refuses it, each is cut
+    alone, then regrown by SKIN_SWEEP_RETRY_GROW_MM, then as its separate
+    cells, before the opening is named (ADR-691).
+    """
+
+    # The samples of the piece before any cell is cut: a cut only removes
+    # surface, so they still find every cell.
+    samples = _piece_samples(piece, np)
+    live = [opening for opening in swept if opening.meets(samples, np)]
+    if not live:
         return piece
-
-
-def _posed_triangles(shape, motion, np):
-    """``shape``'s triangles at every SWEEP_STEP_DEGREES pose of ``motion`` (a keep_clear)."""
-
-    tris = _triangles([shape], 1.0)
-    if tris is None or not motion:
-        return tris
-    lo, hi = (float(v) for v in motion["range"])
-    if str(motion.get("kind") or "hinge") == "hinge":
-        steps = max(2, int(math.ceil(abs(hi - lo) / SWEEP_STEP_DEGREES)) + 1)
-    else:
-        steps = max(2, int(math.ceil(abs(hi - lo) / 2.0)) + 1)
-    _pose_budget(steps, [tris])
-    flat = tris.reshape(-1, 3)
-    if str(motion.get("kind") or "hinge") == "hinge":
-        origin = np.array(_vec(motion["origin"]))
-        axis = np.array(_unit(motion["axis"], "motion axis"))
-        K = np.array([[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]])
-        out = []
-        for angle in np.linspace(lo, hi, steps):
-            t = math.radians(angle)
-            rot = np.eye(3) + math.sin(t) * K + (1 - math.cos(t)) * K @ K
-            out.append(((flat - origin) @ rot.T + origin).reshape(-1, 3, 3))
-        return np.concatenate(out)
-    direction = np.array(_unit(motion["direction"], "motion direction"))
-    return np.concatenate([(flat + direction * offset).reshape(-1, 3, 3)
-                           for offset in np.linspace(lo, hi, steps)])
+    together = _cut_or_none(piece, [t for o in live for t in o.tool(App, Part, np)])
+    if together is not None:
+        return together
+    for opening in live:
+        if not piece.Solids:
+            break
+        result = _cut_or_none(piece, opening.tool(App, Part, np))
+        if result is None:
+            result = _cut_or_none(piece, opening.tool(App, Part, np, SKIN_SWEEP_RETRY_GROW_MM))
+        if result is None:
+            cells = [_hull_solid(points, App, Part) for _l, _h, points in opening.hulls]
+            for cell in cells:
+                result = _cut_or_none(piece if result is None else result, [cell])
+                if result is None:
+                    break
+        if result is None:
+            raise EnvelopeError(
+                f"the kernel would not cut openings[{opening.index}] from it, fused, regrown "
+                f"{SKIN_SWEEP_RETRY_GROW_MM:g} mm or cell by cell; change that opening's "
+                "clearance by a millimetre or its motion's range by a few degrees")
+        piece = result
+    return piece
 
 
 def _form_identity(values):
@@ -2462,10 +2551,14 @@ def build_skin_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]]
             from None
     shell = _sound(shell, "the skin's wall")
     solid_openings, swept = [], []
+    wall_samples = None
     for index, entry in enumerate(skin.get("openings") or []):
         if isinstance(entry, Mapping) and "around" in entry:
+            if wall_samples is None:
+                wall_samples = _piece_samples(shell, np)
             try:
-                swept.append(_SweptOpening(build(entry["around"]), entry, np))
+                swept.append(_SweptOpening(build(entry["around"]), entry, np, index,
+                                           wall_samples))
             except EnvelopeError as exc:
                 raise EnvelopeError(f"openings[{index}]: {exc}") from None
         else:
@@ -2487,12 +2580,8 @@ def build_skin_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]]
             cutters = grown + solid_openings
             if cutters and piece.Solids:
                 piece = piece.cut(cutters)
-            samples = _piece_samples(piece, np) if swept and piece.Solids else None
-            for opening in swept:
-                if piece.Solids:
-                    # The samples of the piece before any cell is cut: a cut
-                    # only removes surface, so they still find every cell.
-                    piece = opening.cut(piece, App, Part, np, samples)
+            if swept and piece.Solids:
+                piece = _cut_openings(piece, swept, App, Part, np)
             pieces[name] = _one_patch(piece, index)
         except EnvelopeError as exc:
             failed(name, str(exc))
@@ -2532,8 +2621,17 @@ def build_skin_plan(spec: Mapping[str, Any], build: Callable[[Mapping[str, Any]]
         frame_tris = _triangles([frame], 1.0)
         blocking = []
         for entry in skin.get("keep_clear") or []:
-            if isinstance(entry, Mapping) and "around" in entry:
-                tris = _posed_triangles(build(entry["around"]), entry.get("motion"), np)
+            if isinstance(entry, Mapping) and "around" in entry and entry.get("motion"):
+                # What it sweeps, as the triangles of its convex cells: an
+                # opening round the same part and motion lends its own
+                # (grown by its clearance), so nothing is hulled twice (ADR-691).
+                key = _sweep_key(entry)
+                hulls = next((o.all_hulls for o in swept if _sweep_key(o.entry) == key), None)
+                if hulls is None:
+                    hulls = _hulls(build(entry["around"]), entry["motion"], 0.0, np)
+                tris = _hull_triangles(hulls, np)
+            elif isinstance(entry, Mapping) and "around" in entry:
+                tris = _triangles([build(entry["around"])], 1.0)
             else:
                 tris = _triangles([build(entry)], 1.0)
             if tris is not None:

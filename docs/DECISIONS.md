@@ -40953,3 +40953,50 @@ each other`). A long project's build can take up to 600 s more on a sweep
 that has work left; once its pairs are cached, the sweep finishes in
 seconds as before. `test_joint_fit_sweep.py` checks both caps through the
 child: one near pair over a budget of none, and the moving-pair ceiling.
+
+## ADR-691 — A swept opening is fused once and cut in one boolean; a keep_clear screens on the same cells (2026-10-13)
+
+**Context.** `panel-cat-4` used ADR-687's swept openings on its trunk skin:
+per leg, the drum and thigh proxy swept through abduction, the proxy
+through the hip's pitch, and the neck. Two things went wrong.
+
+- `piece p3: regions[3]: the kernel refused the cut (Null shape); move the
+  region a few mm`, with only the four abduction openings. Moving the region
+  did not help. Replayed cell by cell, the rump plate took 8 cuts and
+  refused every cut after them, by that opening or any other. Neighbouring
+  cells share a pose, so their faces nearly coincide; each cut left slivers
+  of a plane a hair off the last, and the next boolean returned a null
+  shape.
+- A full build passed 2400 CPU-seconds; the chassis, whose pilots come from
+  that skin, took 1325 of them. Each piece paid a boolean per cell (about
+  1 s each on a curved skin), and each `keep_clear` posed the link's
+  triangles every 5 degrees (81,000 triangles) for the boss screen.
+
+**Decision.**
+- An opening's cells that reach the skin's wall are fused once into one
+  solid (planar faces; 0.3 to 4 s per opening) and kept for every piece.
+  A piece is cut by every opening that reaches it in one boolean.
+- If the kernel refuses that (an exception, an invalid shape, or a result
+  larger than the piece), each opening is cut alone, then with its cells
+  grown 0.7 mm more, then cell by cell. An opening that still will not cut
+  is named in the piece's refusal line (`openings[k]`, with the remedy:
+  change its clearance by a millimetre or its range by a few degrees). The
+  old "move the region a few mm" no longer comes from a swept cut.
+- A `keep_clear` with a motion screens bosses on the triangles of the same
+  convex cells; one round the same link and motion as an opening reuses
+  that opening's cells (grown by its clearance) rather than hulling again.
+  `_posed_triangles` is deleted.
+- The hinge is stepped so an arc bulges at most 4 mm past its chord (was
+  2 mm), at most 20 degrees a step (was 15): about a fifth fewer cells,
+  and openings up to 2 mm wider where the step was set by the sag.
+
+**Consequences.** The rump plate that refused now builds in about 19 s
+(the plate alone, wall included). On `panel-cat-4`'s full script the
+trunk skin, with 9 swept openings used as openings and as keep_clear,
+builds in about 100 s wall and about 210 CPU-seconds, against over 1325
+before. The whole script builds in 114 s and stops on a design refusal of
+its own (a piece short of screws). The remaining cost is the skin's wall
+(about 10 s), the boss screens (about 20 s) and one boolean per piece
+(up to 18 s for the rump with 4 openings). `test_panels.py` covers the
+fallback chain headless and the panel-cat-4 rump geometry on the kernel,
+which refused before this change.
