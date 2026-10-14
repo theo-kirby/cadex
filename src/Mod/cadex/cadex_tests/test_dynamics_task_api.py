@@ -164,7 +164,8 @@ def test_the_apis_kind_tables_agree_with_the_engines() -> None:
     test is what makes that a cost of one assertion instead of a promise.
     """
 
-    assert set(_OBSERVATION_KINDS) == set(dyn.OBSERVATION_KINDS)
+    assert set(_OBSERVATION_KINDS) == (
+        set(dyn.OBSERVATION_KINDS) | set(dyn.COMMAND_OBSERVATION_KINDS))
     assert set(_RANDOMISATION_TARGETS) == set(dyn.RANDOMISATION_TARGETS)
     assert set(_REWARD_FUNCTIONS) == set(dyn.REWARD_FUNCTIONS)
 
@@ -172,7 +173,7 @@ def test_the_apis_kind_tables_agree_with_the_engines() -> None:
     engine_target = {
         "joint": "joint", "component": "component_link", "actuator": "actuator"
     }
-    for kind, row in dyn.OBSERVATION_KINDS.items():
+    for kind, row in {**dyn.OBSERVATION_KINDS, **dyn.COMMAND_OBSERVATION_KINDS}.items():
         assert _OBSERVATION_KINDS[kind] == engine_target[row["target"]], kind
     for target, row in dyn.RANDOMISATION_TARGETS.items():
         assert _RANDOMISATION_TARGETS[target] == engine_target[row["on"]], target
@@ -181,7 +182,7 @@ def test_the_apis_kind_tables_agree_with_the_engines() -> None:
 def test_the_channel_expansion_agrees_with_the_engines() -> None:
     from cadex_assembly_api import _observation_channels
 
-    for kind, row in dyn.OBSERVATION_KINDS.items():
+    for kind, row in {**dyn.OBSERVATION_KINDS, **dyn.COMMAND_OBSERVATION_KINDS}.items():
         assert _observation_channels(kind, "x") == [
             f"x{suffix}" for suffix in (*row["suffixes"], *row.get("derived", ()))
         ], kind

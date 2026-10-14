@@ -205,7 +205,8 @@ def shoved_bundle(
 
 
 def swing_up_bundle(
-    *, task: Mapping[str, Any] | None = None, model_path: str = "outputs/job-model.xml"
+    *, task: Mapping[str, Any] | None = None, model_path: str = "outputs/job-model.xml",
+    observations: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """One task bundle, its model's bytes, and the digests of both.
 
@@ -218,8 +219,8 @@ def swing_up_bundle(
 
     built = swing_up_built()
     observations = dyn.observation_records(
-        list(SWING_UP_OBSERVATIONS), built["tree"], built["joint_records"],
-        built["actuators"],
+        list(SWING_UP_OBSERVATIONS if observations is None else observations),
+        built["tree"], built["joint_records"], built["actuators"],
     )
     exported = dyn.export_mjcf(built, observations=observations)
     reloaded = mujoco.MjModel.from_xml_string(exported["xml"].decode("utf-8"))

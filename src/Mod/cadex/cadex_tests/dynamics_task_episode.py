@@ -101,7 +101,7 @@ def compile_expression(formula: str, names: Sequence[str]) -> Any:
 
 
 def channels(task: dict) -> list[str]:
-    """Every name an expression may use: sensor channels, then goal channels."""
+    """Every name an expression may use: sensor, goal, then command channels."""
 
     return [
         str(channel)
@@ -110,6 +110,10 @@ def channels(task: dict) -> list[str]:
     ] + [
         str(channel)
         for record in task.get("goal") or []
+        for channel in record["channels"]
+    ] + [
+        str(channel)
+        for record in task.get("commands") or []
         for channel in record["channels"]
     ]
 
@@ -497,6 +501,16 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
 
     per_action = int(episode["solver_steps_per_action"])
     interval = float(episode["control_interval_s"])
+    # ADR-696, from the bundle's words: a command row reads the clamped
+    # action it names and that action's change over the control interval;
+    # before the first action the command is the reset keyframe's ctrl over
+    # the action's scale, in its box, and the first action reports no rate.
+    commands = list(task.get("commands") or [])
+    issued = [
+        min(max(float(model.key_ctrl[key][int(action["index"])]) / float(action["scale"]),
+                float(action["low"])), float(action["high"]))
+        for action in task["actions"]
+    ]
     steps: list[dict[str, Any]] = []
     total = 0.0
     terminated_step: int | None = None
@@ -516,6 +530,12 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
         landed = observation_values(task, data.sensordata)
         # The goal the action was taken under, beside what the sensors read.
         landed.update(goals_at(task, goals, step))
+        before = applied if step == 0 else issued
+        issued = applied
+        for record in commands:
+            index = int(record["action"])
+            landed[str(record["channels"][0])] = issued[index]
+            landed[str(record["channels"][1])] = (issued[index] - before[index]) / interval
         reward = 0.0
         contributions = []
         for label, weight, code in reward_terms:

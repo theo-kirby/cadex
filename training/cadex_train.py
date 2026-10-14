@@ -655,20 +655,51 @@ def goal_channels(task: dict[str, Any]) -> list[str]:
     ]
 
 
+def command_channels(task: dict[str, Any], *, policy_only: bool = False) -> list[str]:
+    """Every command channel the task declares, in bundle order (ADR-696).
+
+    ``CadexDynamics.command_channels``; with ``policy_only`` the ones not
+    marked ``role: privileged``.
+    """
+
+    return [
+        str(channel)
+        for record in task.get("commands") or ()
+        if not policy_only or str(record.get("role") or "policy") == "policy"
+        for channel in record["channels"]
+    ]
+
+
+def command_vector(xp: Any, task: dict[str, Any], issued: Any, before: Any) -> Any:
+    """The command channels from the last two issued commands (ADR-696).
+
+    ``CadexDynamics.command_values`` in ``xp``: per command row, the command
+    in force and its change over the control interval, interleaved as the
+    rows' ``channels`` are. ``issued`` and ``before`` are indexed like the
+    bundle's actions along their last axis.
+    """
+
+    index = [int(record["action"]) for record in task.get("commands") or ()]
+    now = issued[..., index]
+    rate = (now - before[..., index]) / float(task["episode"]["control_interval_s"])
+    return xp.reshape(xp.stack([now, rate], axis=-1), now.shape[:-1] + (2 * len(index),))
+
+
 def channels(task: dict[str, Any]) -> list[str]:
-    """Every name an expression may use: sensor channels, then goal channels.
+    """Every name an expression may use: sensor, goal, then command channels.
 
     The engine's ``CadexDynamics._task_channels`` is the same rule. The
     sensor channels come out of ``sensordata``; the goal channels are what
     the episode is asking for, appended after them, so a task that gains a
-    goal keeps the position of every channel it already had.
+    goal keeps the position of every channel it already had. The command
+    channels (ADR-696) follow on the same terms.
     """
 
     return [
         str(channel)
         for record in task["observations"]
         for channel in record["channels"]
-    ] + goal_channels(task)
+    ] + goal_channels(task) + command_channels(task)
 
 
 def actor_channels(task: dict[str, Any]) -> list[str]:
@@ -682,7 +713,8 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
     copy is here because the trainer imports nothing from the engine.
 
     Every goal channel follows (ADR-462): a goal is what the robot is told
-    to do, so the policy always reads it.
+    to do, so the policy always reads it. Then the policy's command channels
+    (ADR-696).
     """
 
     return [
@@ -690,7 +722,7 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
         for record in task["observations"]
         if str(record.get("role") or "policy") == "policy"
         for channel in record["channels"]
-    ] + goal_channels(task)
+    ] + goal_channels(task) + command_channels(task, policy_only=True)
 
 
 def tracker_reading(xp: Any, true_mm: Any, tracker: dict[str, Any],
@@ -790,7 +822,7 @@ def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
                 floor.append(known * known)
             else:
                 floor.append(0.25)
-    return floor + [0.0] * len(goal_channels(task))
+    return floor + [0.0] * (len(goal_channels(task)) + len(command_channels(task)))
 
 
 def sensor_noise_std(task: dict[str, Any]) -> list[float]:
@@ -1455,10 +1487,14 @@ def train(
                 f"widest command range in this bundle ({widest:g} deg), so it "
                 f"can never bind and the run would be unlimited under a flag "
                 f"that claims a limit. Pick a value below {widest:g}.")
-    # One carry serves both operators: the previous ISSUED command, per
-    # environment, episode-local. Everything below that used to test
-    # `filtering` tests this instead.
-    carrying = filtering or slewing
+    # ADR-696: a task that observes a command reads the last two ISSUED
+    # commands, so it carries them whether or not it filters. A PYTHON bool,
+    # like the two above: a task with no command emits the graph it did.
+    commanding = bool(task.get("commands"))
+    # One carry serves every operator: the previous ISSUED command, per
+    # environment, episode-local -- and, when commanding, the one before it.
+    # Everything below that used to test `filtering` tests this instead.
+    carrying = filtering or slewing or commanding
 
     reward_terms = [
         (float(term["weight"]),
@@ -1493,6 +1529,12 @@ def train(
             f"the model carries no {episode['reset_keyframe']!r} keyframe"
         )
     reset_qpos = jnp.asarray(host.key_qpos[key_id], dtype=jnp.float32)
+    # ADR-696: the command the reset holds, in each action's surface unit and
+    # box -- ``CadexDynamics.reset_command``. Both carried commands start
+    # here, so an episode's first reported rate is zero.
+    reset_command = jnp.clip(
+        jnp.asarray(host.key_ctrl[key_id][ctrl_index], dtype=jnp.float32)
+        / ctrl_scale, low, high)
     reset_qvel = jnp.zeros((host.nv,), dtype=jnp.float32)
     nbody = int(host.nbody)
 
@@ -1806,6 +1848,9 @@ def train(
         told = extra[0] if goaled else None
         filter_state = extra[1:] if goaled else extra
         clamped = jnp.clip(surface, low, high)
+        if commanding:
+            # ADR-696's second carried command rides after `(previous, first)`.
+            *filter_state, before = filter_state
         if carrying:
             # AFTER the clamp, so the filter's memory only ever holds a
             # command the actuator could actually have been given, and the
@@ -1848,6 +1893,15 @@ def train(
         vector = observe(data)
         if goaled:
             vector = jnp.concatenate([vector, told])
+        if commanding:
+            # The command just issued replaces `previous`; on an episode's
+            # first step it replaces the reset's and reports no rate, as
+            # `CadexDynamics.evaluate_episode` does.
+            replaced = jnp.where(first, clamped, previous)
+            vector = jnp.concatenate(
+                [vector, command_vector(jnp, task, clamped, replaced)])
+            return (data, vector, reward_of(vector), done_of(vector), clamped,
+                    replaced)
         if carrying:
             # The ISSUED command joins the outputs, because it is the next
             # step's filter state and there is nowhere else to get it: it is
@@ -1860,6 +1914,9 @@ def train(
     # `surface`. Empty at alpha 1.0, which is what keeps the traced signature
     # identical to the pre-ADR-160 one.
     _filter_axes = (0, 0) if carrying else ()
+    # ADR-696's second carried command, after `(previous, first)`.
+    if commanding:
+        _filter_axes = _filter_axes + (0,)
     # ADR-462's goal is per environment too, and sits in front of the filter
     # state; empty for a task with no goal, on the same terms.
     _goal_axes = (0,) if goaled else ()
@@ -1919,6 +1976,10 @@ def train(
         # environment here, so the first step of the first episode takes the
         # unfiltered branch.
         state = state + (jnp.zeros((envs, len(actions)), dtype=jnp.float32),)
+    if commanding:
+        # ADR-696: both carried commands start at the reset's. The sixth
+        # member is read here, unlike the filter's, so it starts there too.
+        state = state[:-1] + (jnp.tile(reset_command, (envs, 1)),) * 2
     actor = initial_parameters(jax, jnp, actor_key, shapes)
     critic = initial_parameters(jax, jnp, critic_key, critic_shapes)
     # Resolved below, once --init-from has (or has not) supplied a header.
@@ -2122,6 +2183,10 @@ def train(
                 # the goal in force for the step about to be taken.
                 told = goals_at(picks, steps)
                 vector = jnp.concatenate([vector, told], axis=-1)
+            if commanding:
+                # ADR-696: the command in force and the one it replaced.
+                vector = jnp.concatenate(
+                    [vector, command_vector(jnp, task, *filter_carry)], axis=-1)
             goal_args = (told,) if goaled else ()
             normalised = normalise(vector, mean, variance)
             raw = net(params["actor"], jnp.take(normalised, actor_take, axis=-1))
@@ -2135,7 +2200,11 @@ def train(
                 data = data.replace(
                     xfrc_applied=applied_forces(forces, starts, elapsed)
                 )
-            if carrying:
+            if commanding:
+                data, landed, reward, terminated, issued, replaced = batched_step(
+                    model, data, surface, *goal_args, filter_carry[0],
+                    steps == 0, filter_carry[1])
+            elif carrying:
                 # `steps` here is the count of steps ALREADY taken this
                 # episode, because it is incremented below -- so `steps == 0`
                 # is exactly the first step of an episode and needs no
@@ -2203,6 +2272,13 @@ def train(
                 # a debugger and a reader both wrong about what the state
                 # means.
                 filter_carry = [jnp.where(done[:, None], 0.0, issued)]
+            if commanding:
+                # ADR-696: a fresh episode starts both at the reset's command,
+                # because unlike the filter's memory these are observed.
+                filter_carry = [
+                    jnp.where(done[:, None], reset_command[None, :], issued),
+                    jnp.where(done[:, None], reset_command[None, :], replaced),
+                ]
             return (data, key, forces, starts, elapsed, steps,
                     *((picks,) if goaled else ()), *filter_carry), (
                 vector, sampled, logp, value, reward, done, landed, terminated

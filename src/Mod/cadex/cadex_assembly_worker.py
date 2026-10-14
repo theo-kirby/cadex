@@ -4280,6 +4280,16 @@ def _execute_task_bundle(
                 if "goal" in bundle
                 else {}
             ),
+            # ADR-696: the command channels, after the goals, when it has any.
+            **(
+                {"command_channels": [
+                    str(channel)
+                    for record in bundle["commands"]
+                    for channel in record["channels"]
+                ]}
+                if "commands" in bundle
+                else {}
+            ),
             # What the task is judged by, when it declares it (ADR-456): the
             # predicates by id, the seeds, and the scale a threshold in hip
             # heights or centre-of-mass heights has on this mechanism.

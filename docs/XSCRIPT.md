@@ -391,14 +391,30 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   worth knowing before choosing a channel: a `component_position` reads the
   component's **frame origin**, so a link hinged at its own origin never
   moves in it — `centre_of_mass` is the channel for where a part actually
-  is.
+  is. One kind is **not a sensor** (ADR-696): `assembly.observation(actuator,
+  "command", name="hip")` reads `hip`, the command in force on one of the
+  task's actuators — clamped, after any filter or slew limit, in the
+  action's own unit — and `hip_rate`, its change over the last control step
+  per second. Before the first action both read the command the reset
+  keyframe holds, and the first action reports a rate of 0. As a policy
+  input it is the **previous action** and needs no `sensor=`: the
+  controller knows its own commands. In a reward it is the **action rate**,
+  `-(hip_rate / 100)^2`. No `<sensor>` carries it, so the bundle states it
+  in a `commands` section, after the goal channels, and the engine, the
+  trainer and a stock-MuJoCo runner each compute it from the commands they
+  issued; it does not count against the 64-channel sensor cap, one per
+  actuator, and an actuator the task does not act on is refused.
   `assembly.reward(expression, weight=...)` terms are summed and a policy
   maximises the total, reported term by term so "which part of the reward is
   doing the work" is answerable; a cost is a positive quantity with a
   negative weight. An expression may call `abs`, `asin`/`arcsin`, `arctan`,
   `cos`, `sin`, `exp`, `sqrt` and `tanh` — three more than `assembly.motion`,
   which does not get them because its formula is rendered back into an
-  Ondsel expression. `assembly.termination(expression, above=...)` (or
+  Ondsel expression. A reward or termination expression may be up to 512
+  syntax nodes and 2,048 characters (ADR-697), where a motion or control
+  formula keeps 128 and 512: a regulariser summed over every drive of a
+  quadruped — an action rate over 19 drives is 191 nodes — has to fit in
+  one term. `assembly.termination(expression, above=...)` (or
   `below=`) ends an episode early, which is what distinguishes a failure
   from a horizon. `assembly.randomise(target, property, scale=[low, high])`
   varies `mass` on a component or `damping`/`armature`/`friction_loss` on a

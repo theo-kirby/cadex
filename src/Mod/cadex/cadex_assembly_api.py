@@ -892,6 +892,20 @@ def _command_limits(
     return wanted_name, [low, high]
 
 
+#: How large a reward or termination expression may be (ADR-697). Raised
+#: from the 128 syntax nodes and 512 characters a motion or control formula
+#: keeps, because the standard locomotion regularisers are sums over every
+#: drive: an action-rate penalty on a 19-drive quadruped,
+#: ``-((a_rate/300)^2 + ... )``, is 191 nodes, and a joint-pose term on a
+#: 12-drive one, ``(q - 12.5)^2`` summed, is 119 before it is wrapped in an
+#: ``exp`` and scaled. The bound is on what a person can read, not
+#: on cost: a term is compiled once and evaluated once per control step, in
+#: microseconds at this size, and traced once by the trainer. Python's own
+#: parser nests a 512-node sum without approaching its recursion limit.
+_REWARD_FORMULA_NODES = 512
+_REWARD_FORMULA_CHARACTERS = 2048
+
+
 def _checked_formula(
     operation: str,
     parameter: str,
@@ -900,6 +914,8 @@ def _checked_formula(
     names: frozenset[str] | None,
     refusals: Mapping[str, str] = {},
     functions: frozenset[str] = _MOTION_FUNCTIONS,
+    max_nodes: int = 128,
+    max_characters: int = 512,
 ) -> str:
     """One expression, whitelisted node by node, in Python syntax.
 
@@ -943,8 +959,11 @@ def _checked_formula(
     formula = value.strip()
     if not formula:
         raise _error(operation, parameter, "must not be empty", value)
-    if len(formula) > 512:
-        raise _error(operation, parameter, "must contain at most 512 characters")
+    if len(formula) > max_characters:
+        raise _error(
+            operation, parameter,
+            f"must contain at most {max_characters} characters",
+        )
     if not formula.isascii():
         raise _error(operation, parameter, "must contain only ASCII expression syntax")
     try:
@@ -957,8 +976,12 @@ def _checked_formula(
             value,
         ) from exc
     nodes = list(ast.walk(tree))
-    if len(nodes) > 128:
-        raise _error(operation, parameter, "expression is too complex")
+    if len(nodes) > max_nodes:
+        raise _error(
+            operation, parameter,
+            f"expression is too complex: {len(nodes)} syntax nodes, at most "
+            f"{max_nodes}",
+        )
     allowed_nodes = (
         ast.Expression,
         ast.BinOp,
@@ -1068,6 +1091,10 @@ _OBSERVATION_KINDS: dict[str, str] = {
     "centroidal_angular_momentum": "component_link",
     "tracked_position": "component_link",
     "tracked_velocity": "component_link",
+    # Not a sensor (ADR-696): what the controller last told an actuator, and
+    # how fast that is changing. The engine keeps it in
+    # ``CadexDynamics.COMMAND_OBSERVATION_KINDS``.
+    "command": "actuator",
 }
 
 #: What each observation kind's declared name expands to. A vector channel
@@ -1092,6 +1119,8 @@ _OBSERVATION_SUFFIXES: dict[str, tuple[str, ...]] = {
     # The same tracker's differenced velocity (ADR-590); it shares the
     # position's _in_range rather than carrying a second one.
     "tracked_velocity": ("_x", "_y", "_z"),
+    # The command in force, then its change per second (ADR-696).
+    "command": ("", "_rate"),
 }
 
 
@@ -3357,6 +3386,18 @@ class AssemblyDomainAPI:
           fast one link's frame is turning.
         * ``actuator_force`` -- the effort a motor is actually producing, in
           N·mm or N. ``target`` is an ``api.actuator``.
+        * ``command`` -- what the policy last told a motor, and how fast
+          that is changing: ``name`` is the command in force, clamped and
+          after any filter or slew limit, in the action's own unit (degrees
+          or millimetres for a position servo, N·mm or N for a motor), and
+          ``name_rate`` its change over the last control step, per second
+          (ADR-696). ``target`` is an
+          ``api.actuator`` the task acts on. It is no sensor: the
+          controller knows its own commands exactly, so as a policy input it
+          is the previous action and needs no ``sensor=``, and in a reward
+          it is the action rate -- ``-(hip_rate / 100)^2`` pays a policy for
+          not jerking the hip. Before the first action both read the
+          command the reset holds, and the first action reports no rate.
 
         **A vector channel expands to suffixed names.** ``name="hand"`` on a
         ``component_position`` gives ``hand_x``, ``hand_y`` and ``hand_z``;
@@ -3556,6 +3597,8 @@ class AssemblyDomainAPI:
             expression,
             names=None,
             functions=_REWARD_FUNCTIONS,
+            max_nodes=_REWARD_FORMULA_NODES,
+            max_characters=_REWARD_FORMULA_CHARACTERS,
         )
         return self._value(
             operation,
@@ -3596,6 +3639,8 @@ class AssemblyDomainAPI:
             expression,
             names=None,
             functions=_REWARD_FUNCTIONS,
+            max_nodes=_REWARD_FORMULA_NODES,
+            max_characters=_REWARD_FORMULA_CHARACTERS,
         )
         if (above is None) == (below is None):
             raise _error(

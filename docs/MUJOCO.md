@@ -1319,6 +1319,33 @@ a checkpoint by what it did", as a command.
     motors at 98 % of stall for the whole episode. A command pinned at an
     end is the finding.
 
+### Saying "smooth": the previous action and the action rate (ADR-696)
+
+A policy that jitters can still pass a spec written in speed, tilt and
+heading; panel-cat-3's r5 trot did, at 320 °/s of command-rate RMS. Two
+standard terms answer it, and both need the commands the policy issued,
+which no MuJoCo sensor reads:
+
+- **`assembly.observation(actuator, "command", name="hip")`** gives `hip`,
+  the command in force (clamped, after any `--action-filter-alpha` or
+  `--command-slew-deg`, in the action's unit), and `hip_rate`, its change
+  over the last control step per second. Before the first action both read
+  the reset keyframe's command; the first action reports a rate of 0. Left
+  `role="policy"` it is the **previous action** as an input, which the
+  robot knows exactly and so needs no sensor; `role="privileged"` keeps it
+  out of the actor and leaves it to the reward and the critic.
+- **An action-rate term** is then a reward: `assembly.reward("-((hip_rate /
+  300)^2 + (knee_rate / 300)^2 + ...)", weight=...)`. A reward expression
+  may be 512 nodes (ADR-697), so one term covers a 19-drive quadruped.
+
+The bundle carries these rows in `commands`, after the goal channels, so a
+task without them keeps its digest and a task that gains them keeps every
+other channel's address. `CadexDynamics.evaluate_episode`, the trainer and
+the stock-MuJoCo reference runner each compute them from the commands they
+issued, and `test_dynamics_command_channel` holds the three to one rule.
+They do not count against the 64-channel sensor cap: one per actuator, so
+the action list bounds them.
+
 ### What a good result looks like
 
 The mg-legs run (ADR-095), for calibration — 263 g of PLA and eight 13.4 g

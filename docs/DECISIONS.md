@@ -41191,3 +41191,73 @@ Training runs still start in a memory scope of their own (the owner's note).
 A known, unchanged limitation: fields that `mj_setConst` derives (for
 example `body_subtreemass`) are not batched, so every environment uses
 environment 0's derived values. That was already true before this change.
+
+## ADR-696 — A task can observe its own commands: the previous action and the action rate (2026-10-14, orun6)
+
+**Context.** T1 asks the task language to say "smooth". The standard terms
+are a previous-action input and an action-rate penalty, and both need the
+command the policy issued. Every observation was an MJCF `<sensor>`, and no
+MuJoCo sensor reads a command after Cadex's clamp, filter (ADR-160) and slew
+limit (ADR-162). The B1 Go1 run and panel-cat-3's r5 trot (320 °/s
+command-rate RMS) both lacked the term.
+
+**Decision.** A new observation kind, `command`, targets an actuator:
+`assembly.observation(actuator, "command", name="hip")`. It gives two
+channels. `hip` is the command in force, clamped and after any filter or
+slew limit, in the action's own unit. `hip_rate` is its change over the last
+control step, per second. Before the first action both read the reset
+keyframe's ctrl over the action's scale, held in its box, and the first
+action reports a rate of 0, as the filter lets the first command through.
+- It is no sensor, so `export_mjcf` writes nothing for it
+  (`sensor_observations`). The bundle states it in a `commands` section: one
+  row per channel pair, naming its action by index, with `unit` and
+  `rate_unit`. The channels follow the goal channels in every vector. A task
+  without it has no key, so its bytes and digest are unchanged.
+- A policy-role command is a policy input and needs no `sensor=`: the
+  controller knows its own commands. `role="privileged"` keeps it in the
+  reward and the critic only.
+- It does not count against `MAXIMUM_OBSERVATION_CHANNELS`, which bounds the
+  sensors in the file. One per actuator (`duplicate_command_observation`),
+  only on an actuator the task acts on (`command_not_an_action`), so the
+  action list bounds it. Its names clash with other channels as any do.
+- Three evaluators compute it from the commands they issued:
+  `CadexDynamics.evaluate_episode` (`command_values`, `reset_command`), the
+  trainer (`command_vector`, two carried commands, reset on `done` to the
+  reset command), and the stock-MuJoCo reference runner
+  `dynamics_task_episode.py`.
+
+**Evidence.** `test_dynamics_command_channel` (14 tests): the bundle rows and
+order; no MJCF sensor added; the three refusals; the cap; an episode's
+values step by step, including the clamp and the zero first rate; the
+action-rate term paid on those values; the reference runner agreeing with
+the engine as text, seeded and unseeded; the trainer's `command_vector`
+equal to the engine's `command_values`; `describe_api` teaching it; and,
+from the training venv, a 3-iteration CPU run whose policy reads
+`hinge_cmd, hinge_cmd_rate` last and which the engine verifies and plays.
+
+**Consequence.** A reward can penalise the action rate, and a policy can
+read its previous action. Foot contact, joint acceleration, torque and foot
+slip (the rest of T1) are not in this ADR.
+
+## ADR-697 — A reward or termination expression may be 512 nodes and 2,048 characters (2026-10-14, orun6)
+
+**Context.** `_checked_formula` capped every formula at 128 syntax nodes and
+512 characters. A regulariser summed over every drive does not fit: an
+action-rate term over panel-cat's 19 drives, `-((d_rate/300)^2 + ...)`, is
+191 nodes. B1's Go1 joint-pose term was blocked by the same cap.
+
+**Decision.** The cap becomes a parameter. `assembly.reward` and
+`assembly.termination` pass 512 nodes and 2,048 characters
+(`_REWARD_FORMULA_NODES`, `_REWARD_FORMULA_CHARACTERS`). `assembly.motion`
+and control formulas keep 128 and 512, because a motion formula is rendered
+back into Ondsel's expression syntax.
+
+**Why 512 is safe.** The cap bounds what a person can read, not cost. A term
+is compiled once, evaluated once per control step by the engine in
+microseconds at this size, and traced once by the trainer into a fixed
+graph. A left-nested sum of 512 nodes stays far inside Python's parser
+recursion limit. The 16-term limit on reward terms is unchanged.
+
+**Evidence.** `test_a_reward_may_sum_a_regulariser_over_every_drive_a_motion_may_not`:
+the 191-node term is accepted by a reward and a termination, a 60-drive sum
+is refused, and a motion formula past 128 nodes is still refused.

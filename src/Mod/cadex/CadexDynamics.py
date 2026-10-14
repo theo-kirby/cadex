@@ -5948,6 +5948,8 @@ def export_mjcf(
     spec = built["spec"]
     model = built["model"]
     qpos = [float(value) for value in built["qpos_solved"]]
+    # ADR-696: a command observation is no sensor; the task carries it.
+    observations = sensor_observations(observations)
 
     _verify_explicit_inertia(spec, context=context)
 
@@ -7412,6 +7414,38 @@ DEFERRED_OBSERVATION_KINDS = {
     ),
 }
 
+#: Observation kinds that are not sensors (ADR-696). A ``command`` reads
+#: what the controller last told one of the task's actuators -- the clamped
+#: command, after any filter or slew limit, in the action's own surface unit
+#: -- and ``_rate``, how far that command moved over the last control step,
+#: per second. Its unit is the action's: degrees or millimetres for a
+#: position servo, N·mm or N for a motor. It is the controller's own memory, so it is known exactly on
+#: the robot and needs no sensor, and it is what a smoothness reward is
+#: written in: ``-(hip_cmd_rate / 100)^2`` is an action-rate penalty.
+#:
+#: No MJCF sensor carries it, so its rows travel in the bundle's own
+#: ``commands`` section after the goal channels, and every evaluator --
+#: :func:`evaluate_episode` here and ``training/cadex_train.py`` -- computes
+#: it from the commands it issued. It does not count against
+#: ``MAXIMUM_OBSERVATION_CHANNELS``, which bounds the sensors written into
+#: the file; one actuator may be observed this way once, so the action list
+#: bounds it instead.
+COMMAND_OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
+    "command": {
+        "target": "actuator",
+        "suffixes": ("", "_rate"),
+    },
+}
+
+
+def sensor_observations(
+    records: Sequence[Mapping[str, Any]],
+) -> list[Mapping[str, Any]]:
+    """The observation records an MJCF sensor carries: all but commands."""
+
+    return [record for record in records
+            if str(record["kind"]) not in COMMAND_OBSERVATION_KINDS]
+
 #: What a randomisation entry may vary, and every compiled-model field one
 #: draw has to move.
 #:
@@ -7612,7 +7646,8 @@ def policy_channels(task: Mapping[str, Any]) -> list[str]:
     **Then every goal channel, in bundle order** (ADR-462). A goal is what
     the robot is told to do, so the policy always reads it, and it sits
     after the sensor channels so a task that gains a goal keeps the address
-    of every channel it already had.
+    of every channel it already had. Then the policy's command channels
+    (ADR-696), on the same terms.
     """
 
     return [
@@ -7620,7 +7655,7 @@ def policy_channels(task: Mapping[str, Any]) -> list[str]:
         for record in task["observations"]
         if str(record.get("role") or "policy") == "policy"
         for channel in record["channels"]
-    ] + goal_channels(task)
+    ] + goal_channels(task) + command_channels(task, policy_only=True)
 
 
 def goal_channels(task: Mapping[str, Any]) -> list[str]:
@@ -7630,6 +7665,61 @@ def goal_channels(task: Mapping[str, Any]) -> list[str]:
         str(channel)
         for record in task.get("goal") or ()
         for channel in record["channels"]
+    ]
+
+
+def command_channels(task: Mapping[str, Any], *, policy_only: bool = False) -> list[str]:
+    """Every command channel a task declares, in bundle order (ADR-696).
+
+    After the goal channels in every vector, and with ``policy_only`` the
+    ones not marked ``role: privileged``, which is the rule the sensor
+    channels follow.
+    """
+
+    return [
+        str(channel)
+        for record in task.get("commands") or ()
+        if not policy_only or str(record.get("role") or "policy") == "policy"
+        for channel in record["channels"]
+    ]
+
+
+def command_values(
+    task: Mapping[str, Any],
+    issued: Sequence[float],
+    before: Sequence[float],
+) -> dict[str, float]:
+    """The command channels, from the last two issued commands (ADR-696).
+
+    ``issued`` is the command in force -- the clamped action of the last
+    control step, after any filter or slew limit -- and ``before`` the one
+    it replaced, both indexed like ``task["actions"]``. The rate is their
+    difference over the control interval. ``training/cadex_train.py``
+    writes the same two lines in ``jnp``, and a test holds them equal.
+    """
+
+    interval = float(task["episode"]["control_interval_s"])
+    values: dict[str, float] = {}
+    for record in task.get("commands") or ():
+        index = int(record["action"])
+        now = float(issued[index])
+        values[str(record["channels"][0])] = now
+        values[str(record["channels"][1])] = (now - float(before[index])) / interval
+    return values
+
+
+def reset_command(model: Any, task: Mapping[str, Any], key: int) -> list[float]:
+    """The command in force before an episode's first action (ADR-696).
+
+    The reset keyframe's ``ctrl`` in each action's surface unit, held in its
+    box: what the drive is holding when the episode starts.
+    """
+
+    return [
+        min(max(float(model.key_ctrl[key][int(action["index"])])
+                / float(action["scale"]), float(action["low"])),
+            float(action["high"]))
+        for action in task["actions"]
     ]
 
 
@@ -7677,9 +7767,14 @@ def observation_records(
     }
     records: list[dict[str, Any]] = []
     taken: dict[str, str] = {}
+    commanded: dict[str, str] = {}
     for index, entry in enumerate(entries):
         kind = str(entry.get("kind") or "")
         name = str(entry.get("name") or "")
+        if kind in COMMAND_OBSERVATION_KINDS:
+            records.append(_command_observation(
+                entry, by_actuator, actuators, taken, commanded))
+            continue
         row = OBSERVATION_KINDS.get(kind)
         if row is None:
             deferred = DEFERRED_OBSERVATION_KINDS.get(kind)
@@ -7883,9 +7978,12 @@ def observation_records(
                 **tracked,
             }
         )
-    if len(taken) > MAXIMUM_OBSERVATION_CHANNELS:
+    # ADR-696: command channels are named in ``taken`` so nothing can clash
+    # with them, and are not sensors, so the cap does not count them.
+    sensed = len(taken) - 2 * len(commanded)
+    if sensed > MAXIMUM_OBSERVATION_CHANNELS:
         raise DynamicsError(
-            f"This task observes {len(taken)} scalar channels; the accepted "
+            f"This task observes {sensed} scalar channels; the accepted "
             f"maximum is {MAXIMUM_OBSERVATION_CHANNELS}.",
             reason="too_many_observation_channels",
             correction=(
@@ -7893,10 +7991,89 @@ def observation_records(
                 "component_position is three. Observe the quantities the "
                 "reward and the policy actually use."
             ),
-            observed={"channels": len(taken),
+            observed={"channels": sensed,
                       "maximum": MAXIMUM_OBSERVATION_CHANNELS},
         )
     return records
+
+
+def _command_observation(
+    entry: Mapping[str, Any],
+    by_actuator: Mapping[tuple[str, str, str], Mapping[str, Any]],
+    actuators: Sequence[Mapping[str, Any]],
+    taken: dict[str, str],
+    commanded: dict[str, str],
+) -> dict[str, Any]:
+    """One ``command`` observation, resolved to its actuator (ADR-696).
+
+    Its channels are claimed in ``taken`` so no other channel can clash
+    with them; the caller's cap subtracts them again, because what the cap
+    bounds is the sensors in the file. Whether the actuator is one of the
+    task's actions is the task's question, answered by
+    :func:`_command_records`.
+    """
+
+    name = str(entry.get("name") or "")
+    what = f"observation {name!r}"
+    motion_type = str(entry.get("motion_type") or "")
+    key = (str(entry.get("joint") or ""), motion_type,
+           str(entry.get("actuator_kind") or ""))
+    actuator = by_actuator.get(key)
+    if actuator is None:
+        raise DynamicsError(
+            f"{what} reads the command of an actuator this model does not "
+            "carry.",
+            reason="observation_actuator_missing",
+            correction=(
+                "Pass the same assembly.actuator value that was given to the "
+                "api.mjcf this task observes."
+            ),
+            observed={"observation": name, "joint": key[0],
+                      "motion_type": key[1], "actuator_kind": key[2],
+                      "available": sorted(str(record["mujoco_actuator"])
+                                          for record in actuators)},
+        )
+    mujoco_actuator = str(actuator["mujoco_actuator"])
+    if mujoco_actuator in commanded:
+        raise DynamicsError(
+            f"{what} reads the command of {mujoco_actuator!r}, which "
+            f"{commanded[mujoco_actuator]!r} already reads.",
+            reason="duplicate_command_observation",
+            correction=(
+                "One command observation per actuator: a second would carry "
+                "the same two numbers under another name."
+            ),
+            observed={"observation": name, "actuator": mujoco_actuator,
+                      "conflicts_with": commanded[mujoco_actuator]},
+        )
+    row = COMMAND_OBSERVATION_KINDS[str(entry["kind"])]
+    channels = [f"{name}{suffix}" for suffix in row["suffixes"]]
+    for channel in channels:
+        if channel in taken:
+            raise DynamicsError(
+                f"Two observation channels are both called {channel!r}.",
+                reason="duplicate_observation_channel",
+                correction=(
+                    "A reward formula names channels, so two with one name "
+                    "means whichever was declared second. Rename one. Note "
+                    "that a command observation named 'hip' occupies hip and "
+                    "hip_rate."
+                ),
+                observed={"channel": channel, "observation": name,
+                          "conflicts_with": taken[channel]},
+            )
+    for channel in channels:
+        taken[channel] = name
+    commanded[mujoco_actuator] = name
+    return {
+        "name": name,
+        "kind": str(entry["kind"]),
+        "target": key[0],
+        "object_name": mujoco_actuator,
+        "channels": channels,
+        "motion_type": motion_type,
+        **({"role": str(entry["role"])} if entry.get("role") else {}),
+    }
 
 
 def _add_observation_sensors(
@@ -9675,6 +9852,57 @@ def evaluation_task(task: Mapping[str, Any]) -> dict[str, Any]:
     return played
 
 
+def _command_records(
+    observations: Sequence[Mapping[str, Any]],
+    action_rows: Sequence[Mapping[str, Any]],
+    *,
+    context: str,
+) -> list[dict[str, Any]]:
+    """The bundle's ``commands`` rows (ADR-696), one per command observation.
+
+    Each names the action it reads by its position in ``actions``, because
+    that is the vector every evaluator holds: the command an episode issued
+    is the clamped action, after any filter or slew limit. An actuator the
+    task does not act on is refused -- nothing would ever command it.
+    """
+
+    by_actuator = {str(row["actuator"]): index
+                   for index, row in enumerate(action_rows)}
+    rows: list[dict[str, Any]] = []
+    for record in observations:
+        if str(record["kind"]) not in COMMAND_OBSERVATION_KINDS:
+            continue
+        actuator = str(record["object_name"])
+        if actuator not in by_actuator:
+            raise DynamicsError(
+                f"Observation {record['name']!r} in {context} reads the "
+                f"command of {actuator!r}, which is not one of the task's "
+                "actions.",
+                reason="command_not_an_action",
+                correction=(
+                    "A command observation reads what the policy told an "
+                    "actuator. List that actuator in the task's actions, or "
+                    "observe its actuator_force instead."
+                ),
+                observed={"observation": str(record["name"]),
+                          "actuator": actuator,
+                          "actions": sorted(by_actuator)},
+            )
+        rows.append({
+            "name": str(record["name"]),
+            "kind": str(record["kind"]),
+            "target": str(record["target"]),
+            "actuator": actuator,
+            "action": by_actuator[actuator],
+            "channels": [str(channel) for channel in record["channels"]],
+            # The action's own unit, and that per second.
+            "unit": str(action_rows[by_actuator[actuator]]["unit"]),
+            "rate_unit": f"{action_rows[by_actuator[actuator]]['unit']}/s",
+            **({"role": str(record["role"])} if record.get("role") else {}),
+        })
+    return rows
+
+
 def task_records(
     built: Mapping[str, Any],
     reloaded: Any,
@@ -9752,7 +9980,7 @@ def task_records(
     # -- observations -------------------------------------------------------
     observation_rows: list[dict[str, Any]] = []
     channels: list[str] = []
-    for index, record in enumerate(observations):
+    for index, record in enumerate(sensor_observations(observations)):
         adr = int(reloaded.sensor_adr[index])
         dim = int(reloaded.sensor_dim[index])
         observation_rows.append(
@@ -9874,6 +10102,9 @@ def task_records(
         context=context,
     )
     _check_tracker_rates(observation_rows, schedule, context=context)
+    commands = _command_records(observations, action_rows, context=context)
+    command_names = [str(channel) for record in commands
+                     for channel in record["channels"]]
     goal = _goal_records(
         mujoco,
         reloaded,
@@ -9881,12 +10112,14 @@ def task_records(
         tree,
         schedule,
         actions=action_rows,
-        taken=channels,
+        taken=channels + command_names,
         context=context,
     )
+    # ADR-696: the command channels follow the goals, so a task that gains
+    # one keeps the address of every channel it already had.
     channels = channels + [
         str(channel) for record in goal for channel in record["channels"]
-    ]
+    ] + command_names
 
     # -- reward and termination --------------------------------------------
     reward_rows: list[dict[str, Any]] = []
@@ -10024,6 +10257,9 @@ def task_records(
             GOAL_PHASE_ALGORITHM
             if any(entry["kind"] == "phase" for entry in goal) else ""
         )} if goal else {}),
+        # ADR-696: absent when the task observes no command, so its bundle
+        # and digest are the ones it always had.
+        **({"commands": commands} if commands else {}),
         **judged,
         # The two per-episode draw streams, both stated, because they are
         # deliberately different algorithms and a reader has to be able to
@@ -11064,6 +11300,12 @@ def evaluate_episode(
     )
     mujoco.mj_resetDataKeyframe(model, data, key)
     mujoco.mj_forward(model, data)
+    # ADR-696: the last two commands issued, held only by a task that
+    # observes one. Both start at the command the reset holds, so the first
+    # rate an episode reports is zero rather than a jump from nothing.
+    commanding = bool(task.get("commands"))
+    issued_now = reset_command(model, task, key) if commanding else []
+    issued_before = list(issued_now)
     # Before the reset-pose sample below, because the first frame a rollout
     # draws and the first observation a policy acts on both have to be of
     # where the mechanism actually starts.
@@ -11100,6 +11342,8 @@ def evaluate_episode(
         # changes is scored against the goal its policy saw.
         told = goal_values(goals, step) if goals else {}
         observation.update(told)
+        if commanding:
+            observation.update(command_values(task, issued_now, issued_before))
         if actions is None:
             commanded = [
                 evaluate_control(code, time_s, context=f"action {index}")
@@ -11126,6 +11370,12 @@ def evaluate_episode(
 
         landed = observation_values(task, data.sensordata)
         landed.update(told)
+        if commanding:
+            # The first command of an episode replaces the reset's, and
+            # reports no rate: the filter lets it through on the same terms.
+            issued_before = list(applied) if step == 0 else issued_now
+            issued_now = list(applied)
+            landed.update(command_values(task, issued_now, issued_before))
         contributions = []
         reward = 0.0
         for label, weight, code in reward_terms:
@@ -11197,13 +11447,14 @@ def evaluate_episode(
 
 def _task_channels(task: Mapping[str, Any]) -> list[str]:
     """Every scalar name an expression may use: the sensor channels in
-    slice order, then the goal channels in bundle order (ADR-462)."""
+    slice order, then the goal channels in bundle order (ADR-462), then the
+    command channels (ADR-696)."""
 
     return [
         str(channel)
         for record in task["observations"]
         for channel in record["channels"]
-    ] + goal_channels(task)
+    ] + goal_channels(task) + command_channels(task)
 
 
 # ---------------------------------------------------------------------------
