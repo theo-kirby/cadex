@@ -36,7 +36,7 @@ STATIC = REPO / "cli" / "cadex_cli" / "review_static"
 #: The per-viewer conveniences the page may keep in ``localStorage``.
 BROWSER_KEYS = {"cadex.theme", "cadex.layout.v5", "cadex.render", "cadex.meshlines", "cadex.meshlines.strength",
                 "cadex.reflections", "cadex.look", "cadex.occlusion", "cadex.detail", "cadex.outliner.group",
-                "cadex.outliner.folded"}
+                "cadex.outliner.folded", "cadex.follow"}
 
 
 def _documented() -> dict[str, tuple[set[str], set[str]]]:

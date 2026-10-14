@@ -41072,3 +41072,34 @@ mounting blocks, and the same overall verdict. What is left is the static
 `clearance` list, one row per pair (46,971), which this does not touch. A
 result accepted before this keeps its full rows and reads as it did, so the
 dashboard's 512 MB result limit stays.
+
+## ADR-693 — The 3D viewport follows a playing design (2026-10-14, owner)
+
+**Context.** The owner watched panel-cat-3-run's checkpoint rollouts as the
+cat learned to run at about 1.3 m/s. To keep it in view they had to zoom far
+out, and then no detail showed. The capture rig's follow shot (DASHBOARD.md
+§10) frames only renders, not the live viewport.
+
+**Decision.**
+- The playback row gains **Follow** (`#play-follow`, `aria-pressed`,
+  remembered in `localStorage` as `cadex.follow`).
+- While it is on, each frame moves the camera's target, and the key light
+  with its shadow camera, by the motion of the design's centre. The centre is
+  `centreAt(poses)` in the scene: the mean of the shown solids' own box
+  centres, each carried by its pose.
+- The track is Hann-smoothed over about half a second either way, as the
+  capture rig smooths its track. The window narrows symmetrically at either
+  end of the rollout, so the view never trails the design there.
+- Because the camera moves by the centre's motion rather than being set to
+  it, the person's yaw, pitch, distance and pan stay theirs. Turning Follow
+  on, or a new rollout arriving while it is on, puts the target on the
+  design.
+- It works for a run's own rollout and for each checkpoint alike: both go
+  through one playback.
+
+**Evidence.** `cli/tests/test_review_follow.py` plays a walked run whose
+two bodies travel 2 m in 2 s:
+- Off, the target stays put.
+- On, the target sits on the bodies' centre at the start, 1 m along and at
+  the end (±5 mm), and yaw, pitch and distance are unchanged.
+- The bodies stay drawn, a pan is kept, and the choice is stored.
