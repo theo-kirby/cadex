@@ -137,7 +137,8 @@ def test_measure_reads_the_family_only_with_a_reference_and_feet() -> None:
     drives = hip(PERIOD_FRAMES * DT)
     family = {name for name, (kind, _n) in evaluation.METRICS.items() if kind == "reference"}
     assert family == {"footfall_phase_error_max", "duty_factor_error_max",
-                      "stride_frequency_ratio", "reference_joint_rms_deg"}
+                      "stride_frequency_ratio", "reference_joint_rms_deg",
+                      "command_rate_reference_ratio", "joint_acceleration_reference_ratio"}
     measured = evaluation.measure(samples, DONE, walk_rig(), drives=drives, reference=clip())
     for name in family:
         assert isinstance(measured["metrics"][name], float), name
@@ -173,3 +174,62 @@ def test_a_foot_that_skips_a_stride_misses_it() -> None:
     strides = read["reference"]["strides"]
     assert strides // 2 - 1 <= row["missed_strides"] <= strides // 2 + 1
     assert read["reference"]["feet"]["LF"]["missed_strides"] == 0
+
+
+# -- smooth as the reference it tracks (ADR-708) -----------------------------
+
+def tracked(period_s: float, *, jitter_deg: float = 0.0, extra: bool = False):
+    """A drive commanded and moved exactly along the clip's sine, plus jitter.
+
+    The jitter is a 12.5 Hz square wave on the command alone (a policy's
+    chatter the joint filters out). ``extra`` adds a drive the clip does not
+    pose, chattering hard, which the ratios must not read.
+    """
+
+    w = 2.0 * math.pi / period_s
+
+    def signals(t):
+        angle = AMPLITUDE_DEG * math.sin(w * t)
+        rate = AMPLITUDE_DEG * w * math.cos(w * t)
+        chatter = jitter_deg * (1.0 if int(round(t / DT)) % 4 < 2 else -1.0)
+        row = [angle], [rate], [angle + chatter], [0.0]
+        if extra:
+            wild = 30.0 * (1.0 if int(round(t / DT)) % 2 else -1.0)
+            row = [angle, 0.0], [rate, 0.0], [angle + chatter, wild], [0.0, 0.0]
+        return row
+
+    names = [channel("hip")] + ([channel("tail")] if extra else [])
+    return evaluation.drive_series(frames(signals), names)
+
+
+def test_the_clips_own_smoothness_is_read_like_a_rollouts() -> None:
+    period = PERIOD_FRAMES * DT
+    read = evaluation.reference_smoothness(clip(), [channel("hip"), channel("tail")])
+    w = 2.0 * math.pi / period
+    # 20 sin(wt) degrees over a 180-degree range; the second difference of a
+    # 24-sample sine is within 1.2 % of the continuous one.
+    assert read["command_rate_rms"] == pytest.approx(AMPLITUDE_DEG * w / math.sqrt(2.0) / 180.0,
+                                                     rel=0.01)
+    assert read["joint_acceleration_rms_deg_s2"] == pytest.approx(
+        AMPLITUDE_DEG * w * w / math.sqrt(2.0), rel=0.015)
+    assert [row["joint"] for row in read["drives"]] == ["hip_joint"]
+    empty = evaluation.reference_smoothness(clip(), [channel("tail")])
+    assert empty["command_rate_rms"] is None and empty["drives"] == []
+
+
+def test_a_drive_following_the_clip_is_as_smooth_as_it_and_chatter_is_not() -> None:
+    samples, _ = walked()
+    period = PERIOD_FRAMES * DT
+    smooth = evaluation.measure(samples, DONE, walk_rig(), drives=tracked(period, extra=True),
+                                reference=clip())["metrics"]
+    assert smooth["command_rate_reference_ratio"] == pytest.approx(1.0, rel=0.02)
+    assert smooth["joint_acceleration_reference_ratio"] == pytest.approx(1.0, rel=0.03)
+
+    chatty = evaluation.measure(samples, DONE, walk_rig(), drives=tracked(period, jitter_deg=4.0),
+                                reference=clip())
+    metrics = chatty["metrics"]
+    assert metrics["command_rate_reference_ratio"] > 1.5
+    assert metrics["joint_acceleration_reference_ratio"] == pytest.approx(1.0, rel=0.03)
+    detail = chatty["detail"]["reference"]["smoothness"]
+    assert detail["rollout_command_rate_rms"] > 1.5 * detail["command_rate_rms"]
+    assert [row["joint"] for row in detail["drives"]] == ["hip_joint"]

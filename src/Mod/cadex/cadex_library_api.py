@@ -1986,7 +1986,8 @@ class LibraryAPI:
                 f"continuous and {qdd.spec['peak_torque_nm']:g} N*m peak.")
         return self._assembly.actuator(
             joint, kind="motor", control_nmm=control_nmm,
-            torque_limit_nmm=qdd.spec[f"{key}_torque_nmm"], label=label)
+            torque_limit_nmm=qdd.spec[f"{key}_torque_nmm"],
+            rated_torque_nmm=qdd.spec["rated_torque_nmm"], label=label)
 
     def _qdd_joint_dynamics(self, qdd: QddPart, joint: Any, *,
                             damping_nmms_per_deg: float | None, label: str) -> Any:

@@ -41835,3 +41835,95 @@ against r5's 18.6°, stride frequency 1.00×, footfall error 0.10 and
 2 s (tilt 32°). The reference asks for 1 m/s at step 0 from a standstill,
 and nothing in the reward prices a fall. That is the next change, not this
 one's.
+
+## ADR-707 — A drive carries its continuous rating, and a spec can bound RMS effort against it (2026-10-15, orun6)
+
+**Context.** The orun6 charter's G2 and P1 ask for each drive's RMS torque
+against its *rated* (continuous) torque. The compiled model carries only
+the clamp: `lib.qdd(...).actuator` defaults to `rating="peak"`, and a
+script writing `assembly.actuator` passes only `torque_limit_nmm`. So the
+rating never reached a bundle or a trace, and ADR-704 could only offer RMS
+against the clamp, which a drive can hold for seconds and still overheat
+below.
+
+**Decision.**
+- `assembly.actuator` takes `rated_torque_nmm` (`rated_force_n` on a
+  slider), the drive's continuous rating. It needs an effort limit and may
+  not exceed it; the wrong unit for the coordinate is refused like every
+  other pair. It changes no physics. The property is present only when
+  given, so every other actuator's value and digest are unchanged.
+- `lib.qdd(...).actuator` passes its datasheet's `rated_torque_nmm` always,
+  whichever rating clamps it.
+- The task bundle's action row carries `rated_effort` (the effort's trace
+  unit, N·mm or N) when declared, and every rollout trace's
+  `actuator_channels` entry carries `effort_rated` (null when undeclared).
+- The drive family gains `effort_rms_rated_ratio_max`: the worst drive's
+  RMS effort over the whole episode over its rating. Per-drive rows carry
+  `effort_rated` and `effort_rms_rated_ratio`. Unmeasured when no drive
+  declares a rating, so a spec bounding it fails rather than passes on a
+  model that never said.
+
+**Why a declared number and not a lookup.** A drive's rating is a datasheet
+fact like its peak, and the peak is already declared on the actuator. A
+lookup by part number would only work for library drives and would put a
+catalogue inside the evaluator.
+
+**Evidence.**
+- `test_dynamics_actuators_api.py`: present only when declared; refused
+  without a clamp, above the clamp, in the wrong unit, and at zero.
+- `test_dynamics_rollout_model.py`: a declared 700 N·mm rating on the
+  swing-up motor reaches the bundle's action and the trace's channel; an
+  undeclared one is absent from the action and null on the channel.
+- `test_drive_metrics.py`: a 6 N·m sine on drives rated 3 and 6 N·m reads
+  1.41 and 0.71, and an unrated drive is not among them; the vocabulary
+  and measure tests read it as a number.
+- r5 ckpt 300 (panel-cat-3), ratings injected from the CubeMars datasheets
+  by clamp: the worst drive, a scapula, reads **1.46×** its 8.3 N·m rating,
+  and **9 of 19** drives are over theirs (medians, seeds 1001–1010). That
+  matches the hand count in the orun6 record `golden-heron-0024`.
+- **The contract page budget.** The two parameters put `describe_api`'s
+  assembly page at 21,575 characters, over ADR-360's 21,500 budget
+  (`test_every_page_of_the_live_contract_fits_one_tool_result`). The budget
+  is a harness measurement, so it stays. Instead the assembly notes lose
+  about 100 characters of restatement: the MJCF export's "same X, same Y"
+  list, the reference-pose clause, and "both go to api.task as lists",
+  which each export's own documentation already says.
+
+## ADR-708 — A spec can hold a gait's smoothness against its reference clip's own (2026-10-15, orun6)
+
+**Context.** The owner replaced P1's "half the r5 baseline's RMS" with
+"command-rate and joint-acceleration RMS within 1.5× of the G1 reference
+clip's own at the same speed", because B1 measured that raw RMS grows with
+stride and speed while jitter need not. Nothing measured a clip's own
+smoothness, and no metric compared a rollout with it.
+
+**Decision.**
+- `CadexEvaluation.reference_smoothness(clip, channels)` reads a clip's
+  command rate (ranges/s) and joint acceleration (°/s²) the way
+  `drive_metrics` reads a rollout's. It uses every angular drive in
+  `channels` (a trace's `actuator_channels` or a bundle's `actions`) whose
+  joint the clip poses, takes the joint angle as the command a perfectly
+  tracking drive would get, and differences over the clip's sample
+  interval with wrap-around, because the clip is periodic.
+- The reference family gains `command_rate_reference_ratio` and
+  `joint_acceleration_reference_ratio`: the rollout's settled RMS over the
+  clip's, both pooled over the same drives. The detail keeps both sides
+  and each drive's clip figures under `reference.smoothness`.
+
+**Why a ratio on the same drives.** A raw bound would be one number for
+every speed. Pooling the rollout over all its drives but the clip over
+only the posed ones would compare different sets.
+
+**Evidence.**
+- `test_reference_metrics.py`: the hand sine clip reads its analytic rate
+  and acceleration within 1–1.5 %. A drive commanded and moved along the
+  clip reads 1.0 on both, with an unposed drive chattering beside it that
+  is not read. A 12.5 Hz, 4° command chatter reads above 1.5 on command
+  rate and 1.0 on joint acceleration.
+- **Measured.** The clips are not gentle. r5's own-speed trot (1.694 m/s,
+  597 mm, CadexGait) asks **4.56 ranges/s and 12,485 °/s²**. So r5 reads
+  **1.31×** and **0.64×**: within P1's 1.5× bound. r5's excess over its
+  reference is jitter, not magnitude. Of P1's two smoothness bounds, the
+  high-frequency share (≤ half r5's 6.4 %) is the one r5 fails. The cat's
+  1.0 m/s, 580 mm reference asks 2.49 ranges/s and 4,305 °/s².
+

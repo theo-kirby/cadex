@@ -1327,6 +1327,12 @@ a checkpoint by what it did", as a command.
     ranges/s, 8,032 °/s², 6.4 % of command power above 3× its 2.44 Hz
     stride, its left hock at the clamp 19 % of the time, and a cost of
     transport of 0.67 (medians over seeds 1001–1010).
+    A drive declared with its continuous rating (`rated_torque_nmm`,
+    ADR-707; `lib.qdd` passes the datasheet's) carries it to the bundle's
+    action and the trace's channel as `rated_effort` / `effort_rated`, and
+    `effort_rms_rated_ratio_max` bounds the worst drive's RMS effort against
+    it. r5's right scapula reads 1.46× its 8.3 N·m rating, and 9 of its 19
+    drives are over theirs.
 
 ### Saying "smooth": the previous action and the action rate (ADR-696)
 
@@ -1460,6 +1466,14 @@ seeds 1001–1010): footfall within 0.05 of a cycle (one frame), the right
 hind skipping 3 of 21 strides, duty 0.22 short of 0.45 (hinds down a quarter
 of the stride), stride frequency 0.88 of the reference's 2.84 Hz, and
 18.6° RMS joint error (knees 33°).
+`command_rate_reference_ratio` and `joint_acceleration_reference_ratio`
+(ADR-708) hold a rollout's smoothness against the clip's own on the same
+drives, read by `reference_smoothness(clip, channels)`. Measured, the clip
+is not gentle: r5's own-speed trot asks 4.56 ranges/s and 12,485 °/s², so
+r5 reads 1.31× and 0.64×. Its excess is jitter, not magnitude, and that is
+what `command_high_frequency_share` sees (6.4 %, against the clip's
+near-zero). The cat's 1.0 m/s, 580 mm trot asks 2.49 ranges/s and
+4,305 °/s².
 
 **Tracking it (ADR-706).** The same reference is a set of channels on a
 gait clock. The clock starts at the reference's phase 0, the left hind's

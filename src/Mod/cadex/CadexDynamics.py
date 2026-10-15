@@ -3217,6 +3217,7 @@ def actuator_records(
         stiffness = _declared("stiffness_nmm_per_deg", "stiffness_n_per_mm")
         damping = _declared("damping_nmms_per_deg", "damping_ns_per_mm")
         effort = _declared("torque_limit_nmm", "force_limit_n")
+        rated = _declared("rated_torque_nmm", "rated_force_n")
         cylinder_range = cylinder_forces_n(entry["cylinder"]) if entry.get("cylinder") else None
         if cylinder_range is not None:
             effort = cylinder_range[1]
@@ -3296,6 +3297,9 @@ def actuator_records(
                     "stiffness": stiffness,
                     "damping": damping,
                     "effort_limit": effort,
+                    # ADR-707: the continuous rating, in the surface unit;
+                    # present only when declared.
+                    **({"rated_effort": rated} if rated is not None else {}),
                     # In the surface unit the script wrote, like every other
                     # entry here. ``_action_bound`` narrows against it and the
                     # bundle quotes a number the author would recognise.
@@ -10592,6 +10596,13 @@ def task_records(
                 # compared -- before any policy exists (M8 swaps it out).
                 "fallback": str(record["control"]),
                 **bound,
+                # ADR-707: the drive's continuous rating in the effort's
+                # trace unit (N·mm or N), when the script declared one.
+                **(
+                    {"rated_effort": float(record["declared"]["rated_effort"])}
+                    if record.get("declared", {}).get("rated_effort") is not None
+                    else {}
+                ),
             }
         )
     if not action_rows:
@@ -13291,6 +13302,10 @@ def rollout_policy(
                 "effort_unit": "N·mm" if rotary else "N",
                 "effort_low": _effort_range(slot, gear, rotary)[0],
                 "effort_high": _effort_range(slot, gear, rotary)[1],
+                # ADR-707: the continuous rating RMS effort is read against,
+                # null for a drive declared without one.
+                "effort_rated": (None if action.get("rated_effort") is None
+                                 else float(action["rated_effort"])),
             }
             for action, slot, gear, rotary in zip(
                 task["actions"], slots, gears, angular, strict=True)

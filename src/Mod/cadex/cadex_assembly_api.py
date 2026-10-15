@@ -2615,6 +2615,8 @@ class AssemblyDomainAPI:
         damping_ns_per_mm: float | None = None,
         torque_limit_nmm: float | None = None,
         force_limit_n: float | None = None,
+        rated_torque_nmm: float | None = None,
+        rated_force_n: float | None = None,
         command_limits_degrees: Any = None,
         command_limits_mm: Any = None,
         bore_mm=None,
@@ -2669,6 +2671,14 @@ class AssemblyDomainAPI:
         mechanism that saturates against it holds short of its setpoint --
         the run's evidence reports the peak effort each actuator reached, so
         "the arm sagged" comes with the number that explains it.
+
+        ``rated_torque_nmm`` (``rated_force_n`` on a slider) is the drive's
+        **continuous** rating, beside the peak it is clamped at (ADR-707).
+        It changes no physics: it is carried to the task bundle and every
+        rollout trace, so a success spec can bound each drive's RMS effort
+        against it (``effort_rms_rated_ratio_max``). It needs an effort
+        limit and may not exceed it. ``lib.qdd(...).actuator`` passes its
+        datasheet rating.
 
         **``command_limits_degrees`` narrows what a policy may ask for,
         without narrowing the joint.** A position actuator's action range is
@@ -2817,6 +2827,34 @@ class AssemblyDomainAPI:
                 "joint with api.joint_dynamics instead",
                 damping[1],
             )
+        rated = _unit_pair(
+            operation,
+            coordinate,
+            ("rated_torque_nmm", rated_torque_nmm),
+            ("rated_force_n", rated_force_n),
+            strict_minimum=True,
+        )
+        if rated is not None:
+            clamp = effort[1] if effort is not None else None
+            if cylinder is not None:
+                clamp = None
+            if clamp is None:
+                raise _error(
+                    operation,
+                    rated[0],
+                    "needs the drive's effort limit beside it: a continuous "
+                    "rating is read against the peak the drive is clamped at, "
+                    "and a drive with no clamp has no datasheet to rate it",
+                    rated[1],
+                )
+            if rated[1] > clamp:
+                raise _error(
+                    operation,
+                    rated[0],
+                    f"exceeds the effort limit {clamp:g}: a drive's continuous "
+                    "rating is at most its peak",
+                    rated[1],
+                )
         command_limits = _command_limits(
             operation,
             coordinate,
@@ -2854,6 +2892,9 @@ class AssemblyDomainAPI:
             # Present only on a cylinder, so every other actuator's value --
             # and the digest it carries -- is what it was before ADR-643.
             properties["cylinder"] = cylinder
+        if rated is not None:
+            # Present only when given, for the same reason (ADR-707).
+            properties[rated[0]] = rated[1]
         return self._value(operation, "actuator", value, label=label, **properties)
 
     def body(
@@ -4469,15 +4510,20 @@ class AssemblyDomainAPI:
           ``command_rate_rms`` (pooled, in channel ranges per second),
           ``joint_acceleration_rms_deg_s2`` (angular joints),
           ``effort_rms_clamp_ratio_max`` and ``effort_clamp_share_max``
-          (the worst drive against its clamp); with ``feet``,
+          (the worst drive against its clamp),
+          ``effort_rms_rated_ratio_max`` (against its continuous rating,
+          ADR-707); with ``feet``,
           ``command_high_frequency_share``, the share of command power
           above three times the stride frequency; with a floating base,
           ``cost_of_transport``. Smoothness and cost are read after 1 s.
         * with ``feet`` and a task ``reference`` (ADR-705), against that
           reference with the left hind's landings as the stride clock:
           ``footfall_phase_error_max`` (cycles), ``duty_factor_error_max``,
-          ``stride_frequency_ratio`` and ``reference_joint_rms_deg``. Every
-          foot the reference names must be among ``feet``.
+          ``stride_frequency_ratio`` and ``reference_joint_rms_deg``; and
+          ``command_rate_reference_ratio`` and
+          ``joint_acceleration_reference_ratio``, smoothness over the
+          clip's own (ADR-708). Every foot the reference names must be
+          among ``feet``.
 
         ``feet`` names the ``api.component`` values that are feet; each
         needs a primitive collision shape, because a foot's height is its

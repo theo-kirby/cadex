@@ -149,9 +149,10 @@ def test_measure_reads_the_drive_family_from_the_trace_with_the_gaits_stride() -
                 [sine(20.0, stride, t) + sine(2.0, 10.0 * stride, t)], [1500.0])
 
     rig = {**walk_rig(), "weight_n": 30.0}
-    drives = evaluation.drive_series(frames(signals), [channel("hip")])
+    drives = evaluation.drive_series(frames(signals), [dict(channel("hip"), effort_rated=3000.0)])
     measured = evaluation.measure(samples, DONE, rig, drives=drives)
     metrics = measured["metrics"]
+    assert metrics["effort_rms_rated_ratio_max"] == pytest.approx(0.5)
     for name, (family, _needs) in evaluation.METRICS.items():
         if family == "drive":
             assert isinstance(metrics[name], float), name
@@ -181,3 +182,25 @@ def test_a_spec_can_bound_the_drive_family() -> None:
     ], read)
     assert [row["pass"] for row in rows] == [True, False, False]
     assert rows[2]["why"] == "cost_of_transport was not measured"
+
+
+def test_rms_effort_is_read_against_each_drives_continuous_rating() -> None:
+    """ADR-707: RMS over rating, worst drive; an unrated drive is not among them."""
+
+    amplitude = 6000.0
+
+    def signals(t):
+        e = sine(amplitude, 2.0, t)
+        return [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [0.0, 0.0, 0.0], [e, e, 3.0 * e]
+
+    rated = [dict(channel("a"), effort_rated=3000.0), dict(channel("b"), effort_rated=6000.0),
+             dict(channel("c", effort=None), effort_rated=None)]
+    read = evaluation.drive_metrics(evaluation.drive_series(frames(signals), rated))
+    expected = amplitude / math.sqrt(2.0) / 3000.0
+    assert read["effort_rms_rated_ratio_max"] == pytest.approx(expected, rel=0.01)
+    rows = read["drives"]["channels"]
+    assert rows[1]["effort_rms_rated_ratio"] == pytest.approx(expected / 2.0, rel=0.01)
+    assert rows[2]["effort_rms_rated_ratio"] is None
+
+    unrated = evaluation.drive_metrics(evaluation.drive_series(frames(signals), [channel("a")]))
+    assert unrated["effort_rms_rated_ratio_max"] is None

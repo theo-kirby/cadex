@@ -36,7 +36,8 @@ import dynamics_fixtures as fx
 SWING_UP_TORQUE_LIMIT_NMM = 2000.0
 
 
-def swing_up_built(*, torque_limit_nmm: float = SWING_UP_TORQUE_LIMIT_NMM):
+def swing_up_built(*, torque_limit_nmm: float = SWING_UP_TORQUE_LIMIT_NMM,
+                   rated_torque_nmm: float | None = None):
     components, joints, _ = fx.build(
         [
             {"name": "post", "grounded": True, "size": (60.0, 60.0, 300.0)},
@@ -55,6 +56,7 @@ def swing_up_built(*, torque_limit_nmm: float = SWING_UP_TORQUE_LIMIT_NMM):
         actuators=[{
             "joint": "hinge", "motion_type": "angular", "kind": "motor",
             "control_nmm": "0", "torque_limit_nmm": float(torque_limit_nmm),
+            **({} if rated_torque_nmm is None else {"rated_torque_nmm": float(rated_torque_nmm)}),
         }],
     )
 
@@ -207,6 +209,7 @@ def shoved_bundle(
 def swing_up_bundle(
     *, task: Mapping[str, Any] | None = None, model_path: str = "outputs/job-model.xml",
     observations: Sequence[Mapping[str, Any]] | None = None,
+    rated_torque_nmm: float | None = None,
 ) -> dict[str, Any]:
     """One task bundle, its model's bytes, and the digests of both.
 
@@ -217,7 +220,7 @@ def swing_up_bundle(
 
     import mujoco
 
-    built = swing_up_built()
+    built = swing_up_built(rated_torque_nmm=rated_torque_nmm)
     observations = dyn.observation_records(
         list(SWING_UP_OBSERVATIONS if observations is None else observations),
         built["tree"], built["joint_records"], built["actuators"],

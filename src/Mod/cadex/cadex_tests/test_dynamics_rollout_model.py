@@ -462,6 +462,28 @@ def test_a_channel_states_the_units_and_the_clamp_its_effort_is_read_against() -
         assert channel["effort_low"] < 0.0 < channel["effort_high"]
 
 
+def test_a_drives_continuous_rating_reaches_the_bundle_and_the_trace() -> None:
+    """ADR-707: declared on the actuator, quoted in the effort's own unit.
+
+    Undeclared, the bundle's action has no rating and the trace's channel
+    reads null, so the RMS-against-rated metric is unmeasured rather than
+    read against something nobody stated.
+    """
+
+    plain = _full()
+    assert "rated_effort" not in plain["bundle"]["actions"][0]
+    assert _rollout(plain)["actuator_channels"][0]["effort_rated"] is None
+
+    rated = pf.swing_up_bundle(task={**pf.SWING_UP_TASK, "termination": []},
+                               rated_torque_nmm=700.0)
+    rated["container"] = pf.policy_container(rated, normalise=True)
+    rated["reloaded"] = dyn.load_model(rated["model_xml"])
+    assert rated["bundle"]["actions"][0]["rated_effort"] == 700.0
+    channel = _rollout(rated)["actuator_channels"][0]
+    assert channel["effort_rated"] == 700.0
+    assert channel["effort_high"] == pytest.approx(pf.SWING_UP_TORQUE_LIMIT_NMM)
+
+
 def test_every_frame_carries_the_joint_state_and_every_solved_one_its_effort() -> None:
     """Position and velocity on every frame; effort only after an action."""
 

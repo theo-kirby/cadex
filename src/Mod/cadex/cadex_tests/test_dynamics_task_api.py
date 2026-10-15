@@ -516,6 +516,10 @@ def test_the_actuator_surface_is_exactly_this() -> None:
     ``bore_mm``, ``rod_mm`` and ``pressure_bar`` are the cylinder's (ADR-643):
     a ``kind='cylinder'`` actuator is a position servo whose force range
     they derive, so they add no control either.
+
+    ``rated_torque_nmm`` / ``rated_force_n`` are the drive's continuous
+    rating (ADR-707): read by evaluation against RMS effort, no physics and
+    no control.
     """
 
     parameters = inspect.signature(AssemblyDomainAPI.actuator).parameters
@@ -526,6 +530,7 @@ def test_the_actuator_surface_is_exactly_this() -> None:
         "stiffness_nmm_per_deg", "stiffness_n_per_mm",
         "damping_nmms_per_deg", "damping_ns_per_mm",
         "torque_limit_nmm", "force_limit_n",
+        "rated_torque_nmm", "rated_force_n",
         "command_limits_degrees", "command_limits_mm",
         "bore_mm", "rod_mm", "pressure_bar", "label",
     }
