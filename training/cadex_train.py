@@ -13,7 +13,8 @@ one entry long, which is what ADR-076 named that constant for.
 
 The sibling of ``src/Mod/cadex/cadex_tests/dynamics_task_episode.py``, and
 held to the same discipline: it imports only ``jax``, ``mujoco``,
-``mujoco.mjx``, ``numpy`` and the standard library, and it reports whether
+``mujoco.mjx``, ``numpy``, Brax's PPO (``brax``, ``flax``, ``optax``;
+ADR-712) and the standard library, and it reports whether
 ``CadexDynamics`` was importable so a test can assert the negative. Run
 under ``python -P`` with a scrubbed ``PYTHONPATH`` that is ``false``; if it
 ever comes back ``true`` the process was not stock and the run proves
@@ -1311,14 +1312,22 @@ def initial_parameters(jax: Any, jnp: Any, key: Any, shapes, *, gain: float = 1.
 
 
 def forward(jnp: Any, parameters, inputs, *, activation: str = "tanh"):
-    """The actor's forward pass, in the layout the container's blob records."""
+    """The actor's forward pass, in the layout the container's blob records.
+
+    ``swish`` is ``x * sigmoid(x)``, flax's ``linen.swish`` (ADR-712).
+    """
 
     value = inputs
     last = len(parameters) - 1
     for index, (weight, bias) in enumerate(parameters):
         value = value @ weight + bias
         if index < last:
-            value = jnp.tanh(value) if activation == "tanh" else jnp.maximum(value, 0.0)
+            if activation == "tanh":
+                value = jnp.tanh(value)
+            elif activation == "swish":
+                value = value / (1.0 + jnp.exp(-value))
+            else:
+                value = jnp.maximum(value, 0.0)
     return value
 
 
@@ -1484,40 +1493,32 @@ def episode_collapse(curve: Sequence[dict[str, Any]], horizon: int) -> str:
     )
 
 
-def train(
+def build_environment(
     bundle: dict[str, Any],
     options: argparse.Namespace,
     *,
-    emit: Any = None,
-    progress: Any = None,
-) -> dict[str, Any]:
-    """Proximal policy optimisation over an MJX batch built from the bundle.
+    count: int,
+    seed: int,
+    jax: Any,
+    jnp: Any,
+    np: Any,
+    mujoco: Any,
+    mjx: Any,
+) -> Any:
+    """The bundle's task as ``count`` batched MJX environments (ADR-712).
 
-    Deliberately small and readable rather than a harness: everything it
-    needs -- the observation slices, the action indices, the units, the
-    reward, the termination rules, the episode schedule -- is in the bundle,
-    and the point of M7 is that nothing else has to be.
+    Everything that makes a run *this task* is here and nowhere else: the
+    observation slices, the action box, the command filter and slew, the
+    sensor noise, the goals, the gait reference and its random start, the
+    reset variation, the pushes, the randomised models, the reward, the
+    terminations and the episode. What it returns is driven by Brax's PPO in
+    :func:`train`, which owns none of those.
 
-    ``emit(tag, iteration, reward, trained)`` is called for each checkpoint
-    and for the best-so-far policy; ``progress(**fields)`` after every
-    iteration.
-    Both are injected rather than done here because this function has never
-    seen a filesystem and there is no reason for it to start: it produces
-    ``trained`` dicts, and :func:`main` is what turns one into a file. A run
-    with neither passes no-ops and takes exactly the path it always took.
+    ``seed`` seeds the host draws (randomised models, the goal pool), so two
+    batches built from one bundle with different seeds do not share them.
     """
 
-    check_training_seed(bundle["task"], int(options.seed))
-
-    import jax
-    import jax.numpy as jnp
-    import numpy as np
-    import mujoco
-    import mujoco.mjx as mjx
-
-    match_engine_actuator_derivative(mujoco, jax, jnp)
-    emit = emit or (lambda tag, iteration, reward, trained: None)
-    progress = progress or (lambda **fields: None)
+    from brax.envs.base import State
 
     table = globals_for(jnp)
     task = bundle["task"]
@@ -1635,9 +1636,9 @@ def train(
         dtype=jnp.float32,
     )
 
-    envs = int(options.envs)
+    envs = int(count)
     host, drawn = randomised_models(mujoco, np, bundle["model_xml"], task,
-                                    base_seed=int(options.seed), count=envs)
+                                    base_seed=int(seed), count=envs)
     key_id = mujoco.mj_name2id(host, mujoco.mjtObj.mjOBJ_KEY,
                                str(episode["reset_keyframe"]))
     if key_id < 0:
@@ -1701,7 +1702,7 @@ def train(
         jnp.asarray(table, dtype=jnp.float32)
         for table in goal_pool(
             mujoco, bundle["model_xml"], task,
-            base_seed=int(options.seed),
+            base_seed=int(seed),
             count=int(getattr(options, "goal_pool", 4096)),
         )
     ]
@@ -1738,7 +1739,6 @@ def train(
     # ADR-698: a contact channel derives its down flag here too, noise or not.
     sensing = int(noise_std.shape[0]) > 0 or any(
         record.get("contact") for record in task["observations"])
-    variance_floor = jnp.asarray(sensor_variance_floor(task), dtype=jnp.float32)
 
     def observe(data, noise=None):
         raw = jnp.take(data.sensordata, gather) * obs_scale
@@ -2081,80 +2081,399 @@ def train(
         else jax.vmap(mjx.forward, in_axes=(model_axes, 0))
     )
 
-    shapes = layer_shapes(len(actor_names), len(actions), options.hidden)
-    critic_shapes = layer_shapes(len(names), 1, options.hidden)
     actor_take = jnp.asarray(actor_idx)
-    key = jax.random.PRNGKey(int(options.seed))
-    key, start_key, actor_key, critic_key = jax.random.split(key, 4)
-
-    make = jax.vmap(lambda _: mjx.make_data(single))(jnp.arange(envs))
-    # The first episode is drawn like every other one. It would be easy to
-    # start the batch at the nominal pose and only vary on reset; that would
-    # make the first `unroll` steps of training the one episode M9 exists to
-    # stop happening.
-    # ADR-709: folded from the start key, so a task that starts at phase 0
-    # draws the stream it always did.
-    first_origin = (jax.random.randint(jax.random.fold_in(start_key, 709), (envs,),
-                                       0, start_samples) if starting else None)
-    start_key, first_qpos, first_qvel = varied_reset(start_key, first_origin)
-    _start_key, first_forces, first_starts = drawn_pushes(start_key)
-    data = batched_forward(model, make.replace(
-        qpos=first_qpos, qvel=first_qvel,
-    ))
     control_interval = float(episode["control_interval_s"])
-    # The environment state carried between iterations. It grew from one
-    # `mjx.Data` to a four-tuple in M9: a disturbance is a property of the
-    # episode, so its draw and the episode-local clock it is tested against
-    # have to live exactly as long as the physics state does. ADR-101 added
-    # the fifth member: the step counter the horizon is tested against, which
-    # is episode-local for exactly the same reason `elapsed` is.
-    state = (data, first_forces, first_starts,
-             jnp.zeros((envs,), dtype=jnp.float32),
-             jnp.zeros((envs,), dtype=jnp.int32))
-    if goaled:
-        # ADR-462's member: which pooled episode of goals each environment
-        # holds. Episode-local like the draws beside it, and redrawn on the
-        # same `done`.
-        state = state + (
-            jax.random.randint(_start_key, (envs,), 0, goal_pool_size),
-        )
-    if starting:
-        # ADR-709's member: the clip sample each environment's episode
-        # started at, after the goal's, redrawn on the same `done`.
-        state = state + (first_origin,)
-    if carrying:
-        # ADR-160's sixth member (ADR-162 shares it): the previous ISSUED
-        # command, per
-        # environment. Episode-local for exactly the reason `elapsed` and
-        # `steps` are -- a filter that carried across a reset would low-pass
-        # the first command of an episode towards the last command of the
-        # one before it, which is a different machine.
-        #
-        # The initial value is never read: `steps` is zero for every
-        # environment here, so the first step of the first episode takes the
-        # unfiltered branch.
-        state = state + (jnp.zeros((envs, len(actions)), dtype=jnp.float32),)
-    if commanding:
-        # ADR-696: both carried commands start at the reset's. The sixth
-        # member is read here, unlike the filter's, so it starts there too.
-        state = state[:-1] + (jnp.tile(reset_command, (envs, 1)),) * 2
-    actor = initial_parameters(jax, jnp, actor_key, shapes)
-    critic = initial_parameters(jax, jnp, critic_key, critic_shapes)
-    # Resolved below, once --init-from has (or has not) supplied a header.
-    log_std = jnp.zeros((len(actions),), dtype=jnp.float32)
+    scale_out = jnp.asarray(output_scale, dtype=jnp.float32)
+    bias_out = jnp.asarray(output_bias, dtype=jnp.float32)
 
-    # Adam, hand-rolled, so that requirements.txt stays four lines. The
-    # trainer is a thing you copy to a box; every dependency is one more
-    # thing that has to install there.
-    def zeros_like(tree):
-        return jax.tree.map(jnp.zeros_like, tree)
+    def sensed(key, data, picks, steps, origin, carry):
+        """The observation the policy acts on, in the state ``data`` holds.
 
-    params = {"actor": actor, "critic": critic, "log_std": log_std}
-    moment1, moment2 = zeros_like(params), zeros_like(params)
+        What the policy acts on carries its sensors' noise; the reward and
+        the terminations, scored in ``step_env`` on the landed reading, do
+        not. ``steps`` is the count of steps ALREADY taken, so a goal and a
+        reference here are the ones in force for the step about to be taken.
+        """
 
-    mean = jnp.zeros((len(names),), dtype=jnp.float32)
-    variance = jnp.ones((len(names),), dtype=jnp.float32)
-    seen = jnp.float32(1.0e-4)
+        if sensing:
+            key, sense_key = jax.random.split(key)
+            noise = jax.random.normal(
+                sense_key, (envs, int(noise_std.shape[0])),
+                dtype=jnp.float32) * noise_std
+            vector = jax.vmap(observe)(data, noise)
+        else:
+            vector = jax.vmap(observe)(data)
+        if goaled:
+            vector = jnp.concatenate([vector, goals_at(picks, steps)], axis=-1)
+        if commanding:
+            # ADR-696: the command in force and the one it replaced.
+            vector = jnp.concatenate(
+                [vector, command_vector(jnp, task, *carry)], axis=-1)
+        if accelerating:
+            # ADR-699: the critic's; the actor never reads it.
+            vector = jnp.concatenate(
+                [vector, acceleration_vector(jnp, task, data.qacc)], axis=-1)
+        if tracking:
+            # ADR-706: the clock the policy acts on.
+            vector = jnp.concatenate(
+                [vector, tracking_vector(jnp, task, steps, origin)], axis=-1)
+        return key, vector
+
+    def observation(vector):
+        """Brax's two observation keys (ADR-712): the actor reads the policy
+        channels and the critic every channel, privileged ones included
+        (ADR-408)."""
+
+        return {"state": jnp.take(vector, actor_take, axis=-1),
+                "privileged_state": vector}
+
+    def reset(key):
+        """A fresh batch: every environment drawn like every later episode.
+
+        It would be easy to start the batch at the nominal pose and only vary
+        on reset; that would make the first unroll of training the one
+        episode M9 exists to stop happening.
+        """
+
+        key, start_key = jax.random.split(key)
+        make = jax.vmap(lambda _: mjx.make_data(single))(jnp.arange(envs))
+        # ADR-709: folded from the start key, so a task that starts at phase
+        # 0 draws the stream it always did.
+        origin = (jax.random.randint(jax.random.fold_in(start_key, 709), (envs,),
+                                     0, start_samples) if starting else None)
+        start_key, qpos, qvel = varied_reset(start_key, origin)
+        pick_key, forces, starts = drawn_pushes(start_key)
+        data = batched_forward(model, make.replace(qpos=qpos, qvel=qvel))
+        steps = jnp.zeros((envs,), dtype=jnp.int32)
+        info = {"forces": forces, "starts": starts,
+                "elapsed": jnp.zeros((envs,), dtype=jnp.float32),
+                "steps": steps,
+                "truncation": jnp.zeros((envs,), dtype=jnp.float32),
+                "terminated": jnp.zeros((envs,), dtype=jnp.float32)}
+        picks = None
+        if goaled:
+            picks = jax.random.randint(pick_key, (envs,), 0, goal_pool_size)
+            info["picks"] = picks
+        if starting:
+            info["origin"] = origin
+        carry = ()
+        if carrying:
+            # The previous ISSUED command, per environment and episode-local
+            # (ADR-160, ADR-162). Never read on an episode's first step.
+            carry = (jnp.zeros((envs, len(actions)), dtype=jnp.float32),)
+        if commanding:
+            # ADR-696: both carried commands start at the reset's.
+            carry = (jnp.tile(reset_command, (envs, 1)),) * 2
+        info["carry"] = carry
+        key, vector = sensed(key, data, picks, steps, origin, carry)
+        info["key"] = key
+        return State(pipeline_state=data, obs=observation(vector),
+                     reward=jnp.zeros((envs,), dtype=jnp.float32),
+                     done=jnp.zeros((envs,), dtype=jnp.float32),
+                     metrics={}, info=info)
+
+    def step(state, action):
+        """One control step of every environment, reset where it ended.
+
+        ``action`` is the policy's squashed output in [-1, 1]; the bundle's
+        box is ``action * output_scale + output_bias``, the same map the
+        engine applies to ``tanh`` of the network's output.
+
+        ``done`` ends the episode either way. ``truncation`` marks the ones
+        that ended only because the horizon came (ADR-101): Brax's GAE masks
+        those steps and bootstraps the step before from the critic, rather
+        than teaching it that surviving to the horizon is worth as much as
+        falling over.
+        """
+
+        info = state.info
+        data = state.pipeline_state
+        key = info["key"]
+        forces, starts = info["forces"], info["starts"]
+        elapsed, steps = info["elapsed"], info["steps"]
+        picks = info.get("picks")
+        origin = info.get("origin")
+        carry = info["carry"]
+        surface = action * scale_out + bias_out
+        goal_args = (goals_at(picks, steps),) if goaled else ()
+        if tracking:
+            # ADR-706: the reference one step on, where the step will land.
+            goal_args = goal_args + (tracking_vector(jnp, task, steps + 1, origin),)
+        if push_entries:
+            data = data.replace(xfrc_applied=applied_forces(forces, starts, elapsed))
+        if commanding:
+            data, landed, reward, terminated, issued, replaced = batched_step(
+                model, data, surface, *goal_args, carry[0], steps == 0, carry[1])
+        elif carrying:
+            # `steps == 0` is exactly the first step of an episode, so the
+            # first command of every episode passes through unfiltered.
+            data, landed, reward, terminated, issued = batched_step(
+                model, data, surface, *goal_args, carry[0], steps == 0)
+        else:
+            data, landed, reward, terminated = batched_step(
+                model, data, surface, *goal_args)
+        elapsed = elapsed + control_interval
+        steps = steps + 1
+        # An integer compare, not a float one on `elapsed`: 600 additions of
+        # a 0.02 s interval do not land on 12.0.
+        timeout = steps >= horizon
+        done = jnp.logical_or(terminated, timeout)
+        truncation = jnp.logical_and(timeout, jnp.logical_not(terminated))
+
+        # Every environment redraws every step and the draw is *selected*
+        # where done: under `vmap` a branch per environment is not a shape a
+        # jitted batch can take.
+        key, reset_key, push_key = jax.random.split(key, 3)
+        fresh_origin = (jax.random.randint(jax.random.fold_in(reset_key, 709), (envs,),
+                                           0, start_samples) if starting else None)
+        _unused, fresh_qpos, fresh_qvel = varied_reset(reset_key, fresh_origin)
+        _unused, fresh_forces, fresh_starts = drawn_pushes(push_key)
+
+        def where_done(new, old):
+            return jnp.where(done.reshape((-1,) + (1,) * (new.ndim - 1)), new, old)
+
+        reset_data = data.replace(qpos=where_done(fresh_qpos, data.qpos),
+                                  qvel=where_done(fresh_qvel, data.qvel))
+        # A reset environment's readings must be of its NEW pose (ADR-712):
+        # forward runs only when something ended, and its result is taken
+        # only where it did, so an environment that carries on keeps exactly
+        # the post-step readings `mjx.step` left -- the ones the engine's
+        # evaluator reads.
+        data = jax.lax.cond(
+            jnp.any(done),
+            lambda d: jax.tree.map(where_done, batched_forward(model, d), d),
+            lambda d: d,
+            reset_data)
+        forces = jnp.where(done[:, None, None], fresh_forces, forces)
+        starts = jnp.where(done[:, None], fresh_starts, starts)
+        elapsed = jnp.where(done, 0.0, elapsed)
+        steps = jnp.where(done, 0, steps)
+        info = dict(info)
+        if goaled:
+            key, pick_key = jax.random.split(key)
+            picks = jnp.where(
+                done, jax.random.randint(pick_key, (envs,), 0, goal_pool_size), picks)
+            info["picks"] = picks
+        if starting:
+            origin = jnp.where(done, fresh_origin, origin)
+            info["origin"] = origin
+        if carrying:
+            carry = (jnp.where(done[:, None], 0.0, issued),)
+        if commanding:
+            # ADR-696: a fresh episode starts both at the reset's command,
+            # because unlike the filter's memory these are observed.
+            carry = (jnp.where(done[:, None], reset_command[None, :], issued),
+                     jnp.where(done[:, None], reset_command[None, :], replaced))
+        key, vector = sensed(key, data, picks, steps, origin, carry)
+        info.update(key=key, forces=forces, starts=starts, elapsed=elapsed,
+                    steps=steps, carry=carry,
+                    truncation=truncation.astype(jnp.float32),
+                    terminated=terminated.astype(jnp.float32))
+        return State(pipeline_state=data, obs=observation(vector),
+                     reward=reward, done=done.astype(jnp.float32),
+                     metrics={}, info=info)
+
+    class Environment:
+        """The bundle's task as a batched Brax environment (ADR-712).
+
+        Batched already: ``reset`` takes one key and returns ``count``
+        environments, and ``step`` steps them all, so Brax's own wrappers --
+        which would re-implement the episode, the reset and the
+        randomisation the bundle already declares -- are not used.
+        """
+
+        def __init__(self):
+            self.reset = reset
+            self.step = step
+            self.count = envs
+            self.names = names
+            self.actor_names = actor_names
+            self.actor_idx = actor_idx
+            self.actions = actions
+            self.output_scale = output_scale
+            self.output_bias = output_bias
+            self.horizon = horizon
+            self.action_size = len(actions)
+            self.observation_size = {"state": (len(actor_names),),
+                                     "privileged_state": (len(names),)}
+
+    return Environment()
+
+
+#: Activations a run may train with, by the names the container records
+#: (ADR-712). ``swish`` is Brax's and MuJoCo Playground's default; ``tanh``
+#: is what every policy before ADR-712 was trained with, so a warm start from
+#: one of them asks for it.
+TRAINING_ACTIVATIONS = ("swish", "tanh")
+
+#: Brax's ``NormalTanhDistribution`` floor on the exploration scale: the
+#: scale is ``softplus(raw) + 0.001``.
+BRAX_MIN_STD = 1.0e-3
+
+#: How many environments the witness rollout steps: a separate small batch,
+#: so taking a witness never touches the training batch's state.
+WITNESS_ENVS = 32
+
+
+#: Brax's locomotion recipe splits each batch into this many minibatches.
+DEFAULT_MINIBATCHES = 32
+
+
+def resolved_minibatches(options) -> int:
+    """``--minibatches``, or the recipe's 32 where ``--envs`` divides by it
+    and otherwise the largest count under 32 that it does: an 8-environment
+    smoke run trains in 8 minibatches of one unroll each."""
+
+    value = getattr(options, "minibatches", None)
+    if value is not None:
+        return int(value)
+    return math.gcd(int(options.envs), DEFAULT_MINIBATCHES)
+
+
+def softplus_inverse(value: float) -> float:
+    """The raw output whose ``softplus`` is ``value`` (``value > 0``)."""
+
+    if value > 30.0:
+        return value
+    return math.log(math.expm1(value))
+
+
+def train(
+    bundle: dict[str, Any],
+    options: argparse.Namespace,
+    *,
+    emit: Any = None,
+    progress: Any = None,
+) -> dict[str, Any]:
+    """Brax's PPO over an MJX batch built from the bundle (ADR-712).
+
+    The environment is the bundle's (:func:`build_environment`); the
+    learner is Brax's: its policy and value networks, its tanh-squashed
+    Gaussian, its running observation normaliser, its PPO loss and GAE, and
+    its minibatched SGD under optax's Adam with gradient clipping. Only the
+    iteration loop is this file's: one rollout of ``--unroll`` steps from
+    every environment, then ``--epochs`` passes of ``--minibatches``
+    minibatches -- Brax's ``training_step`` with one unroll per step, written
+    out so that every iteration can be reported, checkpointed and judged the
+    way every earlier run was. The hand-written PPO it replaces took four
+    full-batch gradient steps an iteration and could not learn a quadruped
+    trot Brax learns in minutes on the same physics (orun6 B1).
+
+    ``emit(tag, iteration, reward, trained)`` is called for each checkpoint
+    and for the best-so-far policy; ``progress(**fields)`` after every
+    iteration.
+    """
+
+    check_training_seed(bundle["task"], int(options.seed))
+
+    import functools
+
+    import jax
+    import jax.numpy as jnp
+    import numpy as np
+    import mujoco
+    import mujoco.mjx as mjx
+    import optax
+    from flax import linen
+    from brax.training import acting, gradients
+    from brax.training.acme import specs
+    from brax.training import types as brax_types
+    from brax.training.acme import running_statistics
+    from brax.training.agents.ppo import losses as ppo_losses
+    from brax.training.agents.ppo import networks as ppo_networks
+
+    match_engine_actuator_derivative(mujoco, jax, jnp)
+    emit = emit or (lambda tag, iteration, reward, trained: None)
+    progress = progress or (lambda **fields: None)
+
+    activation_name = str(getattr(options, "activation", "swish"))
+    if activation_name not in TRAINING_ACTIVATIONS:
+        raise SystemExit(
+            f"--activation {activation_name!r}: the trainer trains "
+            f"{' or '.join(TRAINING_ACTIVATIONS)}")
+    activation = linen.swish if activation_name == "swish" else linen.tanh
+
+    envs = int(options.envs)
+    minibatches = resolved_minibatches(options)
+    if minibatches < 1 or envs % minibatches:
+        raise SystemExit(
+            f"--envs {envs} does not split into --minibatches {minibatches}: "
+            "each minibatch is a whole number of environments' unrolls")
+    unroll = int(options.unroll)
+    epochs = int(options.epochs)
+    hidden = [int(width) for width in options.hidden]
+    value_hidden = [int(width) for width in (options.value_hidden or hidden)]
+
+    modules = dict(jax=jax, jnp=jnp, np=np, mujoco=mujoco, mjx=mjx)
+    env = build_environment(bundle, options, count=envs,
+                            seed=int(options.seed), **modules)
+    # The witness batch is drawn from the run's own seed, so the goals it
+    # shows the policy are rows of the pool the run trained on.
+    witness_env = build_environment(bundle, options, count=WITNESS_ENVS,
+                                    seed=int(options.seed), **modules)
+    actions = env.actions
+    action_count = len(actions)
+    shapes = layer_shapes(len(env.actor_names), action_count, hidden)
+
+    network = ppo_networks.make_ppo_networks(
+        env.observation_size, action_count,
+        preprocess_observations_fn=running_statistics.normalize,
+        policy_hidden_layer_sizes=hidden,
+        value_hidden_layer_sizes=value_hidden,
+        activation=activation,
+        policy_obs_key="state",
+        value_obs_key="privileged_state",
+    )
+    make_policy = ppo_networks.make_inference_fn(network)
+    learning_rate = float(options.learning_rate)
+    max_grad_norm = getattr(options, "max_grad_norm", None)
+    optimizer = (
+        optax.chain(optax.clip_by_global_norm(float(max_grad_norm)),
+                    optax.adam(learning_rate))
+        if max_grad_norm else optax.adam(learning_rate)
+    )
+    loss_fn = functools.partial(
+        ppo_losses.compute_ppo_loss,
+        ppo_network=network,
+        entropy_cost=float(options.entropy),
+        discounting=float(options.discount),
+        reward_scaling=float(options.reward_scaling),
+        gae_lambda=float(options.gae_lambda),
+        clipping_epsilon=float(options.clip),
+        normalize_advantage=True,
+        vf_coefficient=float(options.value_weight),
+    )
+    loss_and_grad = gradients.loss_and_pgrad(loss_fn, pmap_axis_name=None,
+                                              has_aux=True)
+
+    key = jax.random.PRNGKey(int(options.seed))
+    key, policy_key, value_key, env_key, witness_key = jax.random.split(key, 5)
+    params = ppo_losses.PPONetworkParams(
+        policy=network.policy_network.init(policy_key),
+        value=network.value_network.init(value_key),
+    )
+    normaliser = running_statistics.init_state({
+        name: specs.Array(shape, jnp.dtype("float32"))
+        for name, shape in env.observation_size.items()
+    })
+    last_layer = f"hidden_{len(hidden)}"
+
+    def set_scale(policy, std):
+        """The exploration width a run starts at: the scale half of the last
+        layer reads ``std`` whatever the observation (ADR-712)."""
+
+        layer = policy["params"][last_layer]
+        kernel = np.array(layer["kernel"], dtype=np.float32)
+        bias = np.array(layer["bias"], dtype=np.float32)
+        kernel[:, action_count:] = 0.0
+        bias[action_count:] = [
+            softplus_inverse(max(float(value) - BRAX_MIN_STD, 1.0e-6))
+            for value in np.broadcast_to(np.asarray(std, dtype=np.float64),
+                                         (action_count,))
+        ]
+        layers = dict(policy["params"])
+        layers[last_layer] = {"kernel": jnp.asarray(kernel), "bias": jnp.asarray(bias)}
+        return {**policy, "params": layers}
 
     init_from_provenance: dict[str, Any] | None = None
     source_header: dict[str, Any] | None = None
@@ -2162,23 +2481,12 @@ def train(
             str(getattr(options, "init_from_task_change", "") or "").strip()
             or str(getattr(options, "init_from_parent_task", "") or "").strip()
     ):
-        # Both flags qualify --init-from. Silently ignoring them would let a
-        # dispatcher believe it launched a curriculum step and launch a cold
-        # run instead, which is a whole GPU budget spent on the wrong arm.
         raise SystemExit(
             "--init-from-task-change / --init-from-parent-task only mean "
             "anything beside --init-from. Without it this is a cold run and "
             "there is no parent task to change from."
         )
     if getattr(options, "init_from", ""):
-        # Applied here, after the fresh network and the zeroed Adam moments
-        # exist, and that ordering is the whole trick. Every moment is
-        # `zeros_like(params)`, so swapping the actor in *before* they are
-        # taken would be identical -- and swapping it in after would leave
-        # them the right shape anyway. "Leave the optimiser fresh" is
-        # therefore free rather than a compromise, which is what makes this
-        # a warm start and not a resume: a resume would need the moments,
-        # and the container does not carry them.
         source = Path(options.init_from).expanduser()
         try:
             blob = source.read_bytes()
@@ -2187,57 +2495,62 @@ def train(
         decoded = decode_policy(blob, context=str(source))
         curriculum_keys = check_policy_fits(decoded["header"], bundle, options)
         source_header = decoded["header"]
+        trained_with = str((source_header.get("network") or {}).get("activation") or "")
+        if trained_with != activation_name:
+            raise SystemExit(
+                f"--init-from: {source.name} was trained with a "
+                f"{trained_with!r} activation and this run trains "
+                f"{activation_name!r}. Weights do not carry across an "
+                f"activation; pass --activation {trained_with} to continue it.")
         restored = unflatten_parameters(np, decoded["weights"], shapes)
-        params["actor"] = [
-            (jnp.asarray(weight), jnp.asarray(bias))
-            for weight, bias in restored
-        ]
-        moment1, moment2 = zeros_like(params), zeros_like(params)
+        layers = dict(params.policy["params"])
+        for index, (weight, bias) in enumerate(restored):
+            name = f"hidden_{index}"
+            if index < len(restored) - 1:
+                layers[name] = {"kernel": jnp.asarray(weight),
+                                "bias": jnp.asarray(bias)}
+            else:
+                # The container holds the deterministic half -- the location
+                # the engine plays. The scale half is set below.
+                kernel = np.asarray(layers[name]["kernel"], dtype=np.float32).copy()
+                full_bias = np.asarray(layers[name]["bias"], dtype=np.float32).copy()
+                kernel[:, :action_count] = weight
+                full_bias[:action_count] = bias
+                layers[name] = {"kernel": jnp.asarray(kernel),
+                                "bias": jnp.asarray(full_bias)}
+        params = params.replace(policy={**params.policy, "params": layers})
 
-        # Without this the transfer is mostly wasted. The actor was trained
-        # to read *normalised* observations, and a fresh normaliser feeds it
-        # raw ones -- so a policy that stood up perfectly well starts by
-        # seeing every channel shifted and scaled wrongly, and spends its
-        # early iterations unlearning that before it can improve on
-        # anything.
-        #
-        # `seen` is not in the container and restarts at its usual 1.0e-4, so
-        # the restored statistics are re-estimated quickly rather than held.
-        # That is the conservative direction: a stale mean that cannot move
-        # would be worse than one that can.
-        stats = decoded["header"].get("normaliser") or {}
+        # Without this the transfer is mostly wasted: the actor was trained
+        # to read normalised observations. The count restarts at one, so the
+        # first batch re-estimates the statistics rather than being held to
+        # them.
+        stats = source_header.get("normaliser") or {}
         if stats.get("mean") is not None and stats.get("std") is not None:
-            # The header carries the actor's channels only (ADR-408); the
-            # critic's privileged channels start from the fresh statistics.
-            mean = mean.at[actor_take].set(
-                jnp.asarray(stats["mean"], dtype=jnp.float32))
-            variance = variance.at[actor_take].set(jnp.asarray(
-                np.square(np.asarray(stats["std"], dtype=np.float32)),
-                dtype=jnp.float32,
-            ))
+            mean = jnp.asarray(stats["mean"], dtype=jnp.float32)
+            std = jnp.asarray(stats["std"], dtype=jnp.float32)
+            normaliser = normaliser.replace(
+                count=brax_types.UInt64(hi=0, lo=1),
+                mean={**normaliser.mean, "state": mean},
+                summed_variance={**normaliser.summed_variance,
+                                 "state": jnp.square(std)},
+                std={**normaliser.std, "state": std},
+            )
 
-        source_training = decoded["header"].get("training") or {}
+        source_training = source_header.get("training") or {}
         init_from_provenance = {
             "sha256": hashlib.sha256(blob).hexdigest(),
-            "label": str(decoded["header"].get("label") or ""),
+            "label": str(source_header.get("label") or ""),
             "iterations": source_training.get("iterations"),
-            # Which trainer produced the weights being warmed. A warm start
-            # across an update-rule change is a thing somebody will want to
-            # know about later, and this is the only place it can be said.
             "trainer_sha256": source_training.get("trainer_sha256"),
         }
         if curriculum_keys is not None:
-            # ADR-161. The run record carries BOTH task digests and the keys
-            # that moved, because "warm-started" and "warm-started across a
-            # harder band" are different provenance and a reader six months
-            # out has only this to tell them apart.
             init_from_provenance["task_change"] = {
                 "reason": str(options.init_from_task_change).strip(),
                 "keys": list(curriculum_keys),
                 "parent_task_sha256": str(
-                    (decoded["header"].get("task") or {}).get("sha256") or ""),
+                    (source_header.get("task") or {}).get("sha256") or ""),
                 "parent_task_label": str(
-                    (decoded["header"].get("task") or {}).get("label") or ""),
+                    (source_header.get("task") or {}).get("label") or ""),
                 "task_sha256": bundle["task_sha256"],
             }
         if not options.quiet:
@@ -2255,480 +2568,162 @@ def train(
                 )
 
     # ADR-471: a warm start continues at the width it trained to unless
-    # --initial-std says otherwise. Before the moments are taken again, so
-    # the optimiser stays fresh either way.
-    start_log_std, std_source = starting_log_std(
-        options, source_header, len(actions))
-    params["log_std"] = jnp.asarray(start_log_std, dtype=jnp.float32)
-    moment1, moment2 = zeros_like(params), zeros_like(params)
-    if std_source == "default":
-        # A cold run's header keeps the number it always recorded.
-        options.initial_std = DEFAULT_INITIAL_STD
-    if init_from_provenance is not None:
-        init_from_provenance["log_std_source"] = std_source
-    if not options.quiet and std_source != "default":
-        print(f"action_std  {float(np.mean(np.exp(start_log_std))):.4f}  "
-              f"(from {std_source})", flush=True)
+    # --initial-std says otherwise. A cold run without the flag starts where
+    # Brax's network does, softplus(~0) + 0.001, about 0.69 (ADR-712).
+    if source_header is not None or getattr(options, "initial_std", None) is not None:
+        start_log_std, std_source = starting_log_std(options, source_header, action_count)
+        params = params.replace(policy=set_scale(params.policy, np.exp(start_log_std)))
+        if init_from_provenance is not None:
+            init_from_provenance["log_std_source"] = std_source
+        if not options.quiet and std_source != "default":
+            print(f"action_std  {float(np.mean(np.exp(start_log_std))):.4f}  "
+                  f"(from {std_source})", flush=True)
+    optimizer_state = optimizer.init(params)
 
-    scale_out = jnp.asarray(output_scale, dtype=jnp.float32)
-    bias_out = jnp.asarray(output_bias, dtype=jnp.float32)
+    def minibatch_step(carry, data, normaliser):
+        optimizer_state, params, key = carry
+        key, loss_key = jax.random.split(key)
+        (_, metrics), grads = loss_and_grad(params, normaliser, data, loss_key)
+        updates, optimizer_state = optimizer.update(grads, optimizer_state)
+        params = optax.apply_updates(params, updates)
+        return (optimizer_state, params, key), metrics
 
-    def net(parameters, inputs):
-        """The MLP, batch-capable: ``x @ W + b`` broadcasts over leading axes.
+    def sgd_step(carry, _unused, data, normaliser):
+        optimizer_state, params, key = carry
+        key, permute_key, grad_key = jax.random.split(key, 3)
 
-        Deliberately not wrapped in ``vmap``. ``forward`` takes ``jnp`` as an
-        argument so it stays importable by a test without a live jax import,
-        and a module is not a pytree -- so mapping over it is not merely slow,
-        it is a type error waiting for the first person who tries.
-        """
+        def split(x):
+            x = jax.random.permutation(permute_key, x)
+            return jnp.reshape(x, (minibatches, -1) + x.shape[1:])
 
-        return forward(jnp, parameters, inputs)
-
-    def normalise(vector, mean, variance):
-        return (vector - mean) / jnp.sqrt(jnp.maximum(variance, 1.0e-8))
-
-    def surface_of(raw):
-        return jnp.tanh(raw) * scale_out + bias_out
-
-    def gaussian_logp(sampled, raw, log_std):
-        return jnp.sum(
-            -0.5 * ((sampled - raw) / jnp.exp(log_std)) ** 2
-            - log_std - 0.5 * math.log(2.0 * math.pi),
-            axis=-1,
+        (optimizer_state, params, _), metrics = jax.lax.scan(
+            functools.partial(minibatch_step, normaliser=normaliser),
+            (optimizer_state, params, grad_key),
+            jax.tree.map(split, data),
+            length=minibatches,
         )
+        return (optimizer_state, params, key), metrics
 
-    unroll = int(options.unroll)
+    def action_std_of(logits):
+        return jnp.mean(jax.nn.softplus(logits[..., action_count:]) + BRAX_MIN_STD)
 
-    def rollout(params, state, mean, variance, key):
-        """``unroll`` control steps of every environment, with resets.
+    # ADR-589: a sensed channel's spread never falls below what its sensor
+    # can resolve, so one rounding step or one lost touch cannot reach the
+    # policy as thousands of standard deviations. Zero (no floor) for every
+    # channel no declared sensor reports.
+    floor = np.sqrt(np.asarray(sensor_variance_floor(bundle["task"]), dtype=np.float32))
+    std_floor = {"state": jnp.asarray(floor[env.actor_idx]),
+                 "privileged_state": jnp.asarray(floor)}
 
-        The carry grew from ``(data, key)`` to ``(data, forces, starts,
-        elapsed)`` because a disturbance is a property of the *episode* and
-        not of the step: the draw has to survive every step between the reset
-        that made it and the reset that replaces it, and the window has to be
-        tested against a clock that rewinds when the episode does.
-
-        It gained ``steps`` in ADR-101, and that member is what makes this an
-        episode at all. Before it, ``done`` was the task's termination terms
-        and nothing else, so an environment the policy kept upright ran for
-        ever: past the last shove window, never pushed again, never re-drawn,
-        standing still and collecting the ``alive`` bonus. The bundle
-        declares 600 steps and ``CadexDynamics.evaluate_episode`` honours it;
-        this now honours the same number.
-        """
-
-        def stepped(carry, _):
-            # `filter_carry` is ADR-160's `[previous_action]` when filtering
-            # and EMPTY otherwise, so at alpha 1.0 the carry pytree is the
-            # six-tuple it has always been.
-            data, key, forces, starts, elapsed, steps, *filter_carry = carry
-            # ADR-462's `picks` sits in front of the filter state when the
-            # task has a goal, and is absent otherwise.
-            picks = filter_carry.pop(0) if goaled else None
-            origin = filter_carry.pop(0) if starting else None
-            key, act_key = jax.random.split(key)
-            if sensing:
-                # What the policy acts on carries its sensors' noise; the
-                # reward and terminations, scored in `step_env`, do not.
-                key, sense_key = jax.random.split(key)
-                sensed = jax.random.normal(
-                    sense_key, (envs, int(noise_std.shape[0])),
-                    dtype=jnp.float32) * noise_std
-                vector = jax.vmap(observe)(data, sensed)
-            else:
-                vector = jax.vmap(observe)(data)
-            if goaled:
-                # `steps` is the count of steps ALREADY taken, so this is
-                # the goal in force for the step about to be taken.
-                told = goals_at(picks, steps)
-                vector = jnp.concatenate([vector, told], axis=-1)
-            if commanding:
-                # ADR-696: the command in force and the one it replaced.
-                vector = jnp.concatenate(
-                    [vector, command_vector(jnp, task, *filter_carry)], axis=-1)
-            if accelerating:
-                # ADR-699: the critic's; the actor never reads it.
-                vector = jnp.concatenate(
-                    [vector, acceleration_vector(jnp, task, data.qacc)], axis=-1)
-            goal_args = (told,) if goaled else ()
-            if tracking:
-                # ADR-706: the clock the policy acts on, and the reference
-                # one step on, where the step will land.
-                vector = jnp.concatenate(
-                    [vector, tracking_vector(jnp, task, steps, origin)], axis=-1)
-                goal_args = goal_args + (tracking_vector(jnp, task, steps + 1, origin),)
-            normalised = normalise(vector, mean, variance)
-            raw = net(params["actor"], jnp.take(normalised, actor_take, axis=-1))
-            noise = jax.random.normal(act_key, raw.shape, dtype=jnp.float32)
-            sampled = raw + noise * jnp.exp(params["log_std"])
-            logp = gaussian_logp(sampled, raw, params["log_std"])
-            surface = surface_of(sampled)
-            value = net(params["critic"], normalised)[:, 0]
-
-            if push_entries:
-                data = data.replace(
-                    xfrc_applied=applied_forces(forces, starts, elapsed)
-                )
-            if commanding:
-                data, landed, reward, terminated, issued, replaced = batched_step(
-                    model, data, surface, *goal_args, filter_carry[0],
-                    steps == 0, filter_carry[1])
-            elif carrying:
-                # `steps` here is the count of steps ALREADY taken this
-                # episode, because it is incremented below -- so `steps == 0`
-                # is exactly the first step of an episode and needs no
-                # separate flag in the carry.
-                data, landed, reward, terminated, issued = batched_step(
-                    model, data, surface, *goal_args, filter_carry[0],
-                    steps == 0)
-            else:
-                data, landed, reward, terminated = batched_step(
-                    model, data, surface, *goal_args)
-            elapsed = elapsed + control_interval
-            steps = steps + 1
-            # An integer compare, not a float one on `elapsed`: 600 additions
-            # of a 0.02 s interval do not land on 12.0, and an episode whose
-            # length depends on which side of the rounding the last step fell
-            # is not the episode the bundle declares.
-            timeout = steps >= horizon
-            # Two flags from here down, and they are not interchangeable.
-            # `done` ends the episode either way; `terminated` says the
-            # *future* ended rather than merely our looking at it, and that
-            # is the one the bootstrap in `advantages` is cut on.
-            done = jnp.logical_or(terminated, timeout)
-
-            # Every environment redraws every step and the draw is *selected*
-            # where done, rather than drawn only where done. Under `vmap`
-            # there is no other shape available: a branch per environment is
-            # not something a jitted batch can take, and a uniform draw is
-            # cheaper than the `lax.cond` that would avoid it.
-            key, reset_key, push_key = jax.random.split(key, 3)
-            fresh_origin = (jax.random.randint(jax.random.fold_in(reset_key, 709), (envs,),
-                                               0, start_samples) if starting else None)
-            _unused, fresh_qpos, fresh_qvel = varied_reset(reset_key, fresh_origin)
-            _unused, fresh_forces, fresh_starts = drawn_pushes(push_key)
-            data = jax.tree.map(
-                lambda new, start: jnp.where(
-                    done.reshape((-1,) + (1,) * (new.ndim - 1)), start, new),
-                data,
-                data.replace(qpos=fresh_qpos, qvel=fresh_qvel),
-            )
-            if variation_entries or starting:
-                # The reset pose is no longer a constant, so the observation
-                # a policy acts on after a reset has to be of *that* pose.
-                # Without this the first step of every episode is taken on
-                # the previous episode's last observation -- harmless while
-                # every episode started identically, and the whole feature
-                # otherwise. It costs one `mjx.forward` per control step and
-                # is skipped entirely by a task that declares no variation.
-                data = batched_forward(model, data)
-            forces = jnp.where(done[:, None, None], fresh_forces, forces)
-            starts = jnp.where(done[:, None], fresh_starts, starts)
-            elapsed = jnp.where(done, 0.0, elapsed)
-            steps = jnp.where(done, 0, steps)
-            if goaled:
-                # One more split, taken only by a task with a goal, so every
-                # other task's stream is the one it always was.
-                key, pick_key = jax.random.split(key)
-                picks = jnp.where(
-                    done,
-                    jax.random.randint(pick_key, (envs,), 0, goal_pool_size),
-                    picks,
-                )
-            if starting:
-                origin = jnp.where(done, fresh_origin, origin)
-            if carrying:
-                # Zeroed on `done` for the same reason `elapsed` and `steps`
-                # are. The value is not read after a reset -- `steps` is 0,
-                # so the next step takes the unfiltered branch -- but leaving
-                # the finished episode's last command in the carry would make
-                # a debugger and a reader both wrong about what the state
-                # means.
-                filter_carry = [jnp.where(done[:, None], 0.0, issued)]
-            if commanding:
-                # ADR-696: a fresh episode starts both at the reset's command,
-                # because unlike the filter's memory these are observed.
-                filter_carry = [
-                    jnp.where(done[:, None], reset_command[None, :], issued),
-                    jnp.where(done[:, None], reset_command[None, :], replaced),
-                ]
-            return (data, key, forces, starts, elapsed, steps,
-                    *((picks,) if goaled else ()),
-                    *((origin,) if starting else ()), *filter_carry), (
-                vector, sampled, logp, value, reward, done, landed, terminated
-            )
-
-        data, forces, starts, elapsed, steps, *filter_state = state
-        carry, traces = jax.lax.scan(
-            stepped, (data, key, forces, starts, elapsed, steps,
-                      *filter_state), None,
-            length=unroll,
-        )
-        data, key, forces, starts, elapsed, steps, *filter_state = carry
-        # No trailing bootstrap: `landed` is the post-step, pre-reset
-        # observation at *every* step, so the critic's value of it is the
-        # next-state value the whole way through -- including at a boundary,
-        # where `values[t + 1]` is the value of an environment that has
-        # already been reset. `advantages` reads it directly.
-        return (data, forces, starts, elapsed, steps, *filter_state), key, traces
-
-    discount = float(options.discount)
-    lam = float(options.gae_lambda)
-
-    def advantages(rewards, values, dones, terminals, following):
-        """GAE, with a timeout bootstrapped and a failure cut.
-
-        **The one line in this file where a plausible-looking edit is
-        silently wrong** (ADR-101), so it is written out rather than folded
-        together: ``terminal`` cuts the bootstrap, ``done`` cuts the carry.
-
-        A *failure* ends the future, so the state that follows it is worth
-        nothing. A *timeout* ends only our looking at it, and the state we
-        landed in is worth whatever the critic thinks -- feeding a timeout
-        into the ``(1 - done)`` bootstrap term teaches the critic that
-        surviving to step 600 is worth exactly as much as falling over, which
-        at ``--discount 0.99`` over a 600-step episode is not a small lie.
-        The *carry* is cut on ``done``, because the trajectory genuinely
-        discontinues either way: the next row belongs to a fresh episode.
-
-        ``following`` is ``V(landed)`` -- the value of the post-step,
-        pre-reset observation -- so there is no shift and no separate
-        trailing bootstrap to get wrong.
-        """
-
-        def one(carry, row):
-            reward, value, done, terminal, following = row
-            delta = reward + discount * following * (1.0 - terminal) - value
-            carry = delta + discount * lam * (1.0 - done) * carry
-            return carry, carry
-
-        _, out = jax.lax.scan(
-            one, jnp.zeros((envs,), dtype=jnp.float32),
-            (rewards, values, dones.astype(jnp.float32),
-             terminals.astype(jnp.float32), following),
-            reverse=True,
-        )
-        return out
-
-    clip = float(options.clip)
-    entropy_weight = float(options.entropy)
-    value_weight = float(options.value_weight)
-
-    def loss(params, vectors, sampled, old_logp, target, advantage, mean, variance):
-        normalised_obs = normalise(vectors, mean, variance)
-        raw = net(params["actor"], jnp.take(normalised_obs, actor_take, axis=-1))
-        log_std = params["log_std"]
-        logp = gaussian_logp(sampled, raw, log_std)
-        ratio = jnp.exp(logp - old_logp)
-        normalised = (advantage - advantage.mean()) / (advantage.std() + 1.0e-8)
-        surrogate = jnp.minimum(
-            ratio * normalised,
-            jnp.clip(ratio, 1.0 - clip, 1.0 + clip) * normalised,
-        ).mean()
-        values = net(params["critic"], normalised_obs)[:, 0]
-        value_loss = ((values - target) ** 2).mean()
-        entropy = jnp.sum(log_std + 0.5 * math.log(2.0 * math.pi * math.e))
-        return -surrogate + value_weight * value_loss - entropy_weight * entropy
-
-    gradient = jax.value_and_grad(loss)
-    learning_rate = float(options.learning_rate)
-    epochs = int(options.epochs)
+    def floored(normaliser):
+        return normaliser.replace(std={
+            name: jnp.maximum(value, std_floor[name])
+            for name, value in normaliser.std.items()})
 
     @jax.jit
-    def iterate(params, moment1, moment2, state, mean, variance, seen, key, step):
-        state, key, traces = rollout(params, state, mean, variance, key)
-        vectors, sampled, logp, values, rewards, dones, landed, terminals = traces
-
-        # The normaliser's statistics follow what the policy actually saw.
-        # With a noisy sensor that is `vectors`, which carry its noise; `landed`
-        # does not, and a near-constant axis measured without the noise it
-        # is read with scales that noise up by orders of magnitude (ADR-589).
-        # Without one the two are the same readings, and `landed` is kept.
-        flat = (vectors if sensing else landed).reshape((-1, len(names)))
-        count = jnp.float32(flat.shape[0])
-        batch_mean = flat.mean(axis=0)
-        batch_var = flat.var(axis=0)
-        total = seen + count
-        delta = batch_mean - mean
-        new_mean = mean + delta * count / total
-        new_variance = (
-            variance * seen + batch_var * count + delta**2 * seen * count / total
-        ) / total
-        if sensing:
-            new_variance = jnp.maximum(new_variance, variance_floor)
-
-        # One extra critic pass, over the states the steps actually landed
-        # in. It replaces the shifted `values` and the trailing bootstrap
-        # both, and it is the only value of the next state that is correct at
-        # an episode boundary.
-        landed_values = net(params["critic"],
-                            normalise(landed, mean, variance))[..., 0]
-        advantage = advantages(rewards, values, dones, terminals, landed_values)
-        target = advantage + values
-
-        # Mean episode length: steps taken in this batch over episodes that
-        # ended in it. There was no external observable for this at all until
-        # ADR-101, which is why two runs reported a rising reward while the
-        # policy they were reporting on got worse. With nothing ending, this
-        # reads the size of the whole batch -- a number that cannot be an
-        # episode length, and is meant to be read as "nothing is resetting".
-        endings = jnp.sum(dones.astype(jnp.float32))
+    def iterate(optimizer_state, params, normaliser, env_state, key):
+        sgd_key, unroll_key, key = jax.random.split(key, 3)
+        policy = make_policy((normaliser, params.policy, params.value))
+        env_state, data = acting.generate_unroll(
+            env, env_state, policy, unroll_key, unroll,
+            extra_fields=("truncation", "terminated"))
+        # [unroll, envs] -> [envs, unroll]: a minibatch is whole unrolls.
+        data = jax.tree.map(lambda x: jnp.swapaxes(x, 0, 1), data)
+        normaliser = floored(running_statistics.update(normaliser, data.observation))
+        (optimizer_state, params, _), metrics = jax.lax.scan(
+            functools.partial(sgd_step, data=data, normaliser=normaliser),
+            (optimizer_state, params, sgd_key), (), length=epochs)
+        endings = jnp.sum(1.0 - data.discount)
+        # Steps taken in this batch over episodes that ended in it; with
+        # nothing ending it reads the whole batch, which cannot be an episode
+        # length and is meant to be read as "nothing is resetting" (ADR-101).
         episode_steps = jnp.float32(unroll * envs) / jnp.maximum(endings, 1.0)
+        report = {
+            "reward_per_step": jnp.mean(data.reward),
+            "loss": jnp.mean(metrics["total_loss"][-1]),
+            "episode_steps": episode_steps,
+            "action_std": action_std_of(
+                data.extras["policy_extras"]["distribution_params"]),
+        }
+        return optimizer_state, params, normaliser, env_state, key, report
 
-        shape = (-1,)
-        flat_vectors = vectors.reshape((-1, len(names)))
-        flat_sampled = sampled.reshape((-1, len(actions)))
-        flat_logp = logp.reshape(shape)
-        flat_target = target.reshape(shape)
-        flat_advantage = advantage.reshape(shape)
+    @jax.jit
+    def witness_rollout(normaliser, policy_params, key):
+        """The deterministic policy on the witness batch: what it reads."""
 
-        def epoch(carry, _):
-            params, moment1, moment2, step = carry
-            value, grads = gradient(params, flat_vectors, flat_sampled,
-                                     flat_logp, flat_target, flat_advantage,
-                                     mean, variance)
-            step = step + 1
-            moment1 = jax.tree.map(lambda m, g: 0.9 * m + 0.1 * g, moment1, grads)
-            moment2 = jax.tree.map(lambda v, g: 0.999 * v + 0.001 * g * g,
-                                    moment2, grads)
-            bias1 = 1.0 - 0.9**step
-            bias2 = 1.0 - 0.999**step
-            params = jax.tree.map(
-                lambda p, m, v: p - learning_rate * (m / bias1)
-                / (jnp.sqrt(v / bias2) + 1.0e-8),
-                params, moment1, moment2,
-            )
-            return (params, moment1, moment2, step), value
+        policy = make_policy((normaliser, policy_params, None), deterministic=True)
 
-        (params, moment1, moment2, step), losses = jax.lax.scan(
-            epoch, (params, moment1, moment2, step), None, length=epochs)
-        return (params, moment1, moment2, state, new_mean, new_variance, total,
-                key, step, rewards.mean(), losses[-1], episode_steps)
+        def one(state, step_key):
+            action, _ = policy(state.obs, step_key)
+            return witness_env.step(state, action), state.obs["state"]
 
-    # -----------------------------------------------------------------
-    # A snapshot: everything `main` needs to write a complete, witnessed
-    # policy, as of whatever parameters it is handed.
-    # -----------------------------------------------------------------
-    #
-    # Lifted out of the tail of this function in M9 so that it can run
-    # *during* training as well as after it. Two properties make that safe
-    # and they are both worth stating:
-    #
-    #   * it is **pure with respect to the training state**. The witness
-    #     rollout it runs returns a new `state` and a new `key` and this
-    #     discards both, so a run with checkpoints on takes exactly the same
-    #     trajectory as one without. A checkpoint that perturbed the run it
-    #     was reporting on would be a measurement instrument that moved the
-    #     thing it measured.
-    #   * it takes `params`, `mean` and `variance` as arguments rather than
-    #     closing over them, so the same function writes the current policy
-    #     and the best-so-far one.
-    #
-    # Cost is roughly one iteration: a `rollout()` for the observations plus
-    # 32 forward passes at `highest` precision. Every hundredth iteration of
-    # two thousand is one per cent.
-    #
-    # That estimate holds only because the rollout is jitted **once, here**
-    # (ADR-576). Called bare, outside `iterate`, its `jax.lax.scan` was
-    # traced and compiled afresh on every call: measured on a 4096-env
-    # biped, 43-45 s per snapshot against a 1.9 s iteration, and twice
-    # that at a checkpoint that also wrote a new best. The first snapshot
-    # still pays one compile; every later one reuses it.
-    witness_rollout = jax.jit(rollout)
+        state = witness_env.reset(key)
+        _state, seen = jax.lax.scan(one, state, jax.random.split(key, unroll))
+        return seen
 
-    def snapshot(params, mean, variance, curve, wall):
-        _state, _key, traces = witness_rollout(params, state, mean, variance, key)
-        seen_vectors = np.asarray(traces[6]).reshape((-1, len(names)))
-        if seen_vectors.shape[0] >= WITNESS_SAMPLES:
-            picks = np.linspace(
-                0, seen_vectors.shape[0] - 1, WITNESS_SAMPLES
-            ).astype(int)
+    def snapshot(params, normaliser, curve, wall):
+        seen = np.asarray(witness_rollout(normaliser, params.policy, witness_key)
+                          ).reshape((-1, len(env.actor_names)))
+        if seen.shape[0] >= WITNESS_SAMPLES:
+            picks = np.linspace(0, seen.shape[0] - 1, WITNESS_SAMPLES).astype(int)
         else:
-            picks = np.arange(seen_vectors.shape[0])
-        witness_obs = seen_vectors[picks][:, actor_idx].astype(np.float32)
+            picks = np.arange(seen.shape[0])
+        witness_obs = seen[picks].astype(np.float32)
 
-        # The weights are rounded to float32 *before* the witness is
-        # computed, because float32 is what the container stores and what
-        # the engine reads back. A witness taken against unrounded weights
-        # would be a witness about numbers that never land.
-        stored = [
-            (np.asarray(w, dtype=np.float32), np.asarray(b, dtype=np.float32))
-            for w, b in params["actor"]
-        ]
+        # The deterministic half of Brax's last layer is the network the
+        # engine plays: tanh(location) * scale + bias. The scale half is the
+        # exploration width, recorded below and never played.
+        layers = params.policy["params"]
+        stored = []
+        for index in range(len(hidden) + 1):
+            layer = layers[f"hidden_{index}"]
+            weight = np.asarray(layer["kernel"], dtype=np.float32)
+            bias = np.asarray(layer["bias"], dtype=np.float32)
+            if index == len(hidden):
+                weight, bias = weight[:, :action_count], bias[:action_count]
+            stored.append((weight, bias))
         stored_jax = [(jnp.asarray(w), jnp.asarray(b)) for w, b in stored]
-        stored_mean = np.asarray(mean, dtype=np.float32)[actor_idx]
-        stored_std = np.sqrt(
-            np.maximum(np.asarray(variance, dtype=np.float32)[actor_idx], 1.0e-8)
-        ).astype(np.float32)
+        stored_mean = np.asarray(normaliser.mean["state"], dtype=np.float32)
+        stored_std = np.asarray(normaliser.std["state"], dtype=np.float32)
         stored_std = np.where(stored_std == 0.0, np.float32(1.0), stored_std)
 
         def witness_action(vector):
-            normalised = (
-                jnp.asarray(vector) - jnp.asarray(stored_mean)
-            ) / jnp.asarray(stored_std)
-            raw = forward(jnp, stored_jax, normalised)
-            return (jnp.tanh(raw) * jnp.asarray(output_scale)
-                    + jnp.asarray(output_bias))
+            normalised = (jnp.asarray(vector) - jnp.asarray(stored_mean)
+                          ) / jnp.asarray(stored_std)
+            raw = forward(jnp, stored_jax, normalised, activation=activation_name)
+            return (jnp.tanh(raw) * jnp.asarray(env.output_scale)
+                    + jnp.asarray(env.output_bias))
 
-        # ``highest`` is load-bearing, and the default is not merely slower
-        # to be right about -- it is wrong for this purpose.
-        #
-        # ``jax.vmap`` turns each layer's matrix-vector product into a
-        # *batched* matmul, and XLA puts a batched float32 matmul on Ampere+
-        # tensor cores at TF32: a 10-bit mantissa, eps ~4.9e-4. The engine
-        # evaluates the same weights in float64. Measured on the legs
-        # policy: the vmapped witness sits 1.43e-4 from float64 and the
-        # identical arithmetic run one row at a time sits 5.14e-8 -- 2800x
-        # closer, and the same weights either way. So the witness was not
-        # recording what the network computes, it was recording what a
-        # tensor core rounds it to, and the engine refused a sound policy
-        # for it.
-        #
-        # The error is a fixed *relative* one, so it grows with the
-        # activations a policy learns: the same run measured 7.3e-6 at
-        # iteration 2 and 1.43e-4 at iteration 2000. That is why it survived
-        # every short run and only appeared after four hours -- see ADR-094.
-        #
-        # This costs microseconds on 32 samples and nothing at all during
-        # training, which is left at the default precision deliberately.
+        # ``highest`` is load-bearing (ADR-094): a batched float32 matmul on
+        # a tensor core is TF32, and the engine evaluates in float64.
         with jax.default_matmul_precision("highest"):
             witness_actions = np.asarray(
-                jax.vmap(witness_action)(jnp.asarray(witness_obs))
-            )
+                jax.vmap(witness_action)(jnp.asarray(witness_obs)))
+            logits = network.policy_network.apply(
+                normaliser, params.policy, {"state": jnp.asarray(witness_obs),
+                                            "privileged_state": None})
+        scale = np.asarray(jax.nn.softplus(logits[:, action_count:]) + BRAX_MIN_STD)
+        log_std = np.mean(np.log(scale), axis=0)
 
         return {
             "parameters": flat_parameters(np, stored),
             "layers": [[int(a), int(b)] for a, b in shapes],
-            # The exploration width these weights were rolled out at, which
-            # is a *trained* parameter and until ADR-103 reached no file at
-            # all. The engine plays the mean action and the trainer plays a
-            # sample drawn about it, so without this number nobody could ask
-            # whether those are the same policy -- see docs/MUJOCO.md 6
-            # candidate (b). Recorded per action and in the pre-activation
-            # space the noise is actually added in.
-            "log_std": [float(v) for v in
-                        np.asarray(params["log_std"], dtype=np.float32)],
+            "activation": activation_name,
+            # Brax's scale depends on the observation; this is its mean log
+            # over the witness observations, per action, in the
+            # pre-activation space the noise is added in (ADR-103, ADR-712).
+            "log_std": [float(v) for v in log_std],
             "normaliser": {
                 "mean": [float(v) for v in stored_mean],
                 "std": [float(v) for v in stored_std],
             },
-            "output_scale": output_scale,
-            "output_bias": output_bias,
-            "witness_observations": [
-                [float(v) for v in row] for row in witness_obs
-            ],
-            "witness_actions": [
-                [float(v) for v in row] for row in witness_actions
-            ],
+            "output_scale": env.output_scale,
+            "output_bias": env.output_bias,
+            "witness_observations": [[float(v) for v in row] for row in witness_obs],
+            "witness_actions": [[float(v) for v in row] for row in witness_actions],
             "reward_curve": list(curve),
             "iterations": len(curve),
             "wall_time_s": float(wall),
-            # What this run started from, as a digest rather than a path.
-            # `policy_header` folds every option into `hyperparameters`, so
-            # left alone `--init-from` would stamp one machine's filesystem
-            # layout into every policy the run writes -- which is not
-            # provenance, because it does not identify the bytes and does not
-            # survive being copied to another box. The digest does both.
             "init_from": init_from_provenance,
             "backend": jax.default_backend(),
             "devices": [str(device) for device in jax.devices()],
@@ -2739,45 +2734,28 @@ def train(
                 "mjx": str(getattr(mjx, "__version__",
                                     getattr(mujoco, "__version__", "unknown"))),
                 "jax": jax.__version__,
+                "brax": _package_version("brax"),
+                "flax": _package_version("flax"),
+                "optax": _package_version("optax"),
             },
         }
 
+    env_state = jax.jit(env.reset)(env_key)
     curve = []
-    step = jnp.int32(0)
     started = time.perf_counter()
     total_iterations = int(options.iterations)
     every = max(0, int(getattr(options, "checkpoint_every", 0) or 0))
-    # The best parameters are retained every iteration and *written* only at
-    # a checkpoint. Retaining is a pytree copy of a 64x64 MLP and costs
-    # nothing; writing runs a witness pass. mg-legs peaked at iteration 1200
-    # of 2000 and came home with the iteration-2000 policy, so this alone
-    # would have saved thirty of that run's seventy-six minutes.
     best = {"reward_per_step": -math.inf, "iteration": -1,
-            "params": None, "mean": None, "variance": None, "written": -1}
+            "params": None, "normaliser": None, "written": -1}
     collapsed = ""
     for iteration in range(total_iterations):
-        (params, moment1, moment2, state, mean, variance, seen, key, step,
-         average, last_loss, mean_steps) = iterate(
-            params, moment1, moment2, state, mean, variance, seen, key, step)
+        (optimizer_state, params, normaliser, env_state, key,
+         report) = iterate(optimizer_state, params, normaliser, env_state, key)
         entry = {"iteration": iteration,
-                 "reward_per_step": float(average),
-                 "loss": float(last_loss),
-                 # The row ADR-101 added, and the one to watch: a policy
-                 # getting worse while the reward climbs shows up here first,
-                 # as an episode length that falls. M9b's fell 170 -> 30 over
-                 # 400 iterations with nothing recording it.
-                 "episode_steps": float(mean_steps),
-                 # The row ADR-103 added, for the same reason. The loss is
-                 # `... - entropy_weight * entropy` with `entropy` linear in
-                 # `log_std`, so minimising it pushes this number UP with
-                 # nothing bounding it. A run whose sigma has walked away
-                 # from --initial-std is a run sampling in a space its mean
-                 # action never visits, and reading that live is cheaper
-                 # than reading it off a finished checkpoint.
-                 "action_std": float(jnp.mean(jnp.exp(params["log_std"])))}
+                 **{name: float(value) for name, value in report.items()}}
         curve.append(entry)
         if not collapsed:
-            collapsed = episode_collapse(curve, horizon)
+            collapsed = episode_collapse(curve, env.horizon)
             if collapsed:
                 print(f"iteration {iteration}: {collapsed}", file=sys.stderr)
                 if getattr(options, "stop_on_collapse", False):
@@ -2794,15 +2772,9 @@ def train(
                 f"  sigma {entry['action_std']:.4f}",
                 file=sys.stderr,
             )
-        # Stop at the first non-finite number, naming the iteration and which
-        # one went. Observed: a run whose reward/step was +nan from iteration
-        # 0 trained on for 150 more iterations and then died in json.dumps --
-        # an encoder traceback about a float, an hour after the information
-        # that would have explained it. Diverged parameters do not recover,
-        # so every iteration after the first nan is spent producing a policy
-        # that cannot be written. ``encode_policy``'s ``allow_nan=False``
-        # stays where it is: this is the diagnosis, that is the last line of
-        # defence, and neither replaces the other.
+        # Stop at the first non-finite number: diverged parameters do not
+        # recover, so every iteration after it is spent producing a policy
+        # that cannot be written.
         diverged = [
             name for name in ("reward_per_step", "loss")
             if not math.isfinite(entry[name])
@@ -2815,34 +2787,24 @@ def train(
                 f"loss {entry['loss']}). Nothing after this iteration can "
                 "produce a writable policy. The usual causes are a learning "
                 "rate too high for the reward's scale and a reward built on "
-                "raw millimetre or degree channels, which arrive in the "
-                "hundreds against a normaliser that starts at mean 0 and "
-                "variance 1 -- see docs/MUJOCO.md on reward conditioning."
+                "raw millimetre or degree channels -- see docs/MUJOCO.md on "
+                "reward conditioning."
             )
 
         elapsed_wall = time.perf_counter() - started
         if entry["reward_per_step"] > best["reward_per_step"]:
-            best.update(
-                reward_per_step=entry["reward_per_step"],
-                iteration=iteration,
-                params=params,
-                mean=mean,
-                variance=variance,
-            )
+            best.update(reward_per_step=entry["reward_per_step"],
+                        iteration=iteration, params=params,
+                        normaliser=normaliser)
         due = every and (iteration + 1) % every == 0
         if due and iteration + 1 < total_iterations:
             emit(f"{iteration + 1:06d}", iteration, entry["reward_per_step"],
-                 snapshot(params, mean, variance, curve, elapsed_wall))
+                 snapshot(params, normaliser, curve, elapsed_wall))
             if best["written"] != best["iteration"]:
                 emit("best", best["iteration"], best["reward_per_step"],
-                     snapshot(best["params"], best["mean"], best["variance"],
+                     snapshot(best["params"], best["normaliser"],
                               curve, elapsed_wall))
                 best["written"] = best["iteration"]
-        # Rewritten every iteration whether or not anything was checkpointed.
-        # This file is the one artifact everything downstream reads -- the
-        # `watch` subcommand, the dashboard -- and a run you can
-        # only see the state of once every hundred iterations is a run you
-        # still cannot decide about.
         progress(
             state="training",
             iteration=iteration,
@@ -2855,20 +2817,32 @@ def train(
         )
 
     wall = time.perf_counter() - started
-    # One last write of the best-so-far, if the run improved after the final
-    # checkpoint boundary. Without it a 2000-iteration run with
-    # --checkpoint-every 100 whose best landed at 1950 would come home with
-    # a `.best` file from iteration 1900.
     if best["params"] is not None and best["written"] != best["iteration"]:
         emit("best", best["iteration"], best["reward_per_step"],
-             snapshot(best["params"], best["mean"], best["variance"],
-                      curve, wall))
-    return snapshot(params, mean, variance, curve, wall)
+             snapshot(best["params"], best["normaliser"], curve, wall))
+    return snapshot(params, normaliser, curve, wall)
+
+
+def _package_version(name: str) -> str:
+    try:
+        from importlib import metadata
+        return metadata.version(name)
+    except Exception:
+        return "unknown"
 
 
 # ---------------------------------------------------------------------------
 # The program.
 # ---------------------------------------------------------------------------
+
+
+def witness_swish(value: float) -> float:
+    """``CadexDynamics.policy_swish``, copied for ADR-084's reason."""
+
+    if value >= 0.0:
+        return value / (1.0 + math.exp(-value))
+    rising = math.exp(value)
+    return value * rising / (1.0 + rising)
 
 
 def witness_disagreement(header: dict[str, Any],
@@ -2892,6 +2866,7 @@ def witness_disagreement(header: dict[str, Any],
     """
 
     network = header["network"]
+    activation = str(network.get("activation") or "tanh")
     shapes = [(int(a), int(b)) for a, b in network["layers"]]
     scale = [float(v) for v in network["output_scale"]]
     bias_out = [float(v) for v in network["output_bias"]]
@@ -2922,7 +2897,12 @@ def witness_disagreement(header: dict[str, Any],
                     offset += outputs
                 result[column] = total
             if index < last:
-                result = [math.tanh(value) for value in result]
+                if activation == "tanh":
+                    result = [math.tanh(value) for value in result]
+                elif activation == "swish":
+                    result = [witness_swish(value) for value in result]
+                else:
+                    result = [value if value > 0.0 else 0.0 for value in result]
             activations = result
         for index, value in enumerate(activations):
             produced = math.tanh(value) * scale[index] + bias_out[index]
@@ -2960,7 +2940,7 @@ def policy_header(
         "network": {
             "kind": "mlp",
             "layers": trained["layers"],
-            "activation": "tanh",
+            "activation": str(trained.get("activation") or "tanh"),
             "output": "tanh",
             "output_scale": trained["output_scale"],
             "output_bias": trained["output_bias"],
@@ -2979,10 +2959,15 @@ def policy_header(
         # `rollout` above. Adding noise to a policy's surface action instead
         # would be noise in the wrong space, unbounded by the tanh, and
         # would answer a question nobody asked.
+        #
+        # Brax's scale depends on the observation (ADR-712), so `log_std` is
+        # its mean log over the witness observations, and `state_dependent`
+        # says so.
         "exploration": {
             "distribution": "gaussian",
             "log_std": [float(v) for v in trained["log_std"]],
             "space": "pre_activation",
+            "state_dependent": True,
         },
         "training": {
             "trainer_sha256": TRAINER_SHA256,
@@ -3163,21 +3148,47 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--iterations", type=int, default=200)
     parser.add_argument("--envs", type=int, default=256)
+    # The defaults are MuJoCo Playground's locomotion PPO recipe (ADR-712),
+    # which trains a quadruped trot in minutes on the same physics.
     parser.add_argument("--unroll", type=int, default=20)
-    parser.add_argument("--epochs", type=int, default=4)
-    parser.add_argument("--hidden", type=int, nargs="+", default=[64, 64])
+    parser.add_argument(
+        "--epochs", type=int, default=4,
+        help="passes over each iteration's batch (Brax's num_updates_per_batch)")
+    parser.add_argument(
+        "--minibatches", type=int, default=None,
+        help="minibatches per pass; --envs must divide by it. Each is "
+             "--envs/--minibatches environments' whole unrolls. Default 32, "
+             "or the largest count --envs divides by under it (ADR-712)")
+    parser.add_argument(
+        "--hidden", type=int, nargs="+", default=[512, 256, 128],
+        help="the policy network's hidden widths")
+    parser.add_argument(
+        "--value-hidden", type=int, nargs="+", default=None,
+        help="the critic's hidden widths; default the policy's")
+    parser.add_argument(
+        "--activation", choices=TRAINING_ACTIVATIONS, default="swish",
+        help="hidden activation, recorded in the policy. A warm start must "
+             "name the activation its source was trained with; every policy "
+             "before ADR-712 is tanh")
     parser.add_argument("--learning-rate", type=float, default=3.0e-4)
     parser.add_argument("--discount", type=float, default=0.97)
     parser.add_argument("--gae-lambda", type=float, default=0.95)
-    parser.add_argument("--clip", type=float, default=0.2)
-    parser.add_argument("--entropy", type=float, default=1.0e-3)
+    parser.add_argument("--clip", type=float, default=0.3)
+    parser.add_argument("--entropy", type=float, default=1.0e-2)
     parser.add_argument("--value-weight", type=float, default=0.5)
+    parser.add_argument(
+        "--max-grad-norm", type=float, default=1.0,
+        help="clip each gradient to this global norm; 0 does not clip")
+    parser.add_argument(
+        "--reward-scaling", type=float, default=1.0,
+        help="multiply every reward by this before the PPO loss")
     parser.add_argument(
         "--initial-std", type=float, default=None,
         help="the exploration width (σ, pre-activation) the run starts at. "
-             f"Default {DEFAULT_INITIAL_STD} on a cold run; on --init-from "
-             "the source policy's own per-action width is carried instead, "
-             "unless this is given explicitly (ADR-471)")
+             "A cold run without it starts where Brax's network does "
+             "(about 0.69); on --init-from the source policy's own "
+             "per-action width is carried instead, unless this is given "
+             "explicitly (ADR-471)")
     parser.add_argument(
         "--goal-pool", type=int, default=4096,
         help="how many episodes of goals to draw on the host before training "

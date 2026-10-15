@@ -308,7 +308,15 @@ def test_a_limited_run_differs_from_an_unlimited_one(tmp_path) -> None:
 
 
 def test_the_two_operators_compose_rather_than_replace(tmp_path) -> None:
-    """Filter-and-limit is a third machine, not either one of them."""
+    """Filter-and-limit is a third machine, not either one of them.
+
+    The limit is 200 N·mm a step on a +/-2000 box, so it binds on some steps
+    and not others. At 0.5 it binds on every step, and a rate limit that
+    always binds hides the filter entirely: the EMA moves the command the
+    same way the raw one does, so the clamp lands it in the same place --
+    a property of the operators, which ADR-712's livelier first policies
+    made visible.
+    """
 
     python = _venv_python()
     if python is None:
@@ -321,10 +329,10 @@ def test_the_two_operators_compose_rather_than_replace(tmp_path) -> None:
     assert _train(python, tmp_path, prepared, ema,
                   "--action-filter-alpha", "0.65").returncode == 0
     assert _train(python, tmp_path, prepared, slew,
-                  "--command-slew-deg", "0.5").returncode == 0
+                  "--command-slew-deg", "200").returncode == 0
     assert _train(python, tmp_path, prepared, both,
                   "--action-filter-alpha", "0.65",
-                  "--command-slew-deg", "0.5").returncode == 0
+                  "--command-slew-deg", "200").returncode == 0
     digests = {behavioural_digest(p) for p in (ema, slew, both)}
     assert len(digests) == 3
 

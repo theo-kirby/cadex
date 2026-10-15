@@ -115,7 +115,9 @@ def test_the_requirements_are_exactly_pinned_and_stay_out_of_pixi() -> None:
     for line in lines:
         assert "==" in line, f"{line!r} is not exactly pinned"
     names = {line.split("==")[0] for line in lines}
-    assert names == {"mujoco", "mujoco-mjx", "jax", "numpy"}
+    # ADR-712: Brax's PPO and the two libraries its networks and optimiser
+    # are -- each numerically load-bearing, so each pinned exactly.
+    assert names == {"mujoco", "mujoco-mjx", "jax", "numpy", "brax", "flax", "optax"}
 
     pixi = (TRAINER.parents[1] / "pixi.toml").read_text(encoding="utf-8")
     for forbidden in ("jax", "mujoco-mjx", "mjx"):
@@ -136,6 +138,10 @@ _ALLOWED_TOP_LEVEL = {
 }
 _ALLOWED_DEFERRED = _ALLOWED_TOP_LEVEL | {
     "jax", "jax.numpy", "numpy", "mujoco", "mujoco.mjx", "struct",
+    "functools", "importlib",
+    # ADR-712: Brax's PPO, and the network and optimiser libraries it is.
+    "brax.envs.base", "brax.training", "brax.training.acme",
+    "brax.training.agents.ppo", "flax", "optax",
     "CadexDynamics",
     # Inside the pinned mujoco-mjx wheel, not a dependency of its own: the
     # one private module ADR-465's derivative rule replaces a function in.
@@ -1118,59 +1124,25 @@ def test_a_timeout_is_bootstrapped_and_a_failure_is_not() -> None:
 
     A failure ends the future, so the state after it is worth zero. A timeout
     ends only our looking at it, so the state we landed in is worth whatever
-    the critic thinks. Collapsing the two -- ``done`` on both terms, which is
-    what the obvious edit produces -- teaches the critic that surviving to
-    step 600 is worth exactly as much as falling over, and at
-    ``--discount 0.99`` over a 600-step episode that is a large bias traded
-    for the one this slice removed.
+    the critic thinks. Collapsing the two teaches the critic that surviving
+    to the horizon is worth exactly as much as falling over -- invisible in
+    any curve: the wrong version still trains, still climbs and still
+    produces a policy.
 
-    Written down as a test because it is invisible in any curve: the wrong
-    version still trains, still climbs and still produces a policy.
+    Since ADR-712 the GAE is Brax's, which takes the two apart through the
+    step's ``truncation`` flag: a truncated step is masked out of the loss
+    and the step before it bootstraps from the critic, while a terminated
+    one is cut. So what this pins is that the environment marks a timeout,
+    and only a timeout, as truncation, and that the loss reads it.
     """
 
     source = TRAINER.read_text(encoding="utf-8")
-    outer = next(node for node in ast.walk(ast.parse(source))
-                 if isinstance(node, ast.FunctionDef)
-                 and node.name == "advantages")
-    inner = next(node for node in ast.walk(outer)
-                 if isinstance(node, ast.FunctionDef) and node.name == "one")
-
-    unpack = inner.body[0]
-    assert isinstance(unpack, ast.Assign)
-    assert [element.id for element in unpack.targets[0].elts] == [
-        "reward", "value", "done", "terminal", "following"
-    ]
-
-    assigned = {
-        node.targets[0].id: node.value for node in inner.body
-        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
-    }
-
-    def mentions(node):
-        return {name.id for name in ast.walk(node) if isinstance(name, ast.Name)}
-
-    delta = mentions(assigned["delta"])
-    carry = mentions(assigned["carry"])
-    assert "terminal" in delta and "done" not in delta, (
-        "the bootstrap is cut on `terminal`: a timeout keeps its next-state "
-        "value, a failure does not"
-    )
-    assert "done" in carry and "terminal" not in carry, (
-        "the GAE carry is cut on `done`: the trajectory genuinely "
-        "discontinues either way"
-    )
-
-    # And the state it bootstraps from is the post-step, *pre-reset* one.
-    # `values[t + 1]` at a boundary is the value of an environment that has
-    # already been reset, which is a different state entirely.
-    assert 'landed_values = net(params["critic"],' in source
-    assert (
-        "advantages(rewards, values, dones, terminals, landed_values)"
-        in source
-    )
-    # The separately-computed trailing bootstrap is gone rather than left
-    # beside the new one.
-    assert "bootstrap = net(" not in source
+    assert "truncation = jnp.logical_and(timeout, jnp.logical_not(terminated))" in source
+    assert "truncation=truncation.astype(jnp.float32)" in source
+    assert 'extra_fields=("truncation", "terminated")' in source
+    assert "ppo_losses.compute_ppo_loss" in source
+    # The hand-written GAE is gone rather than left beside Brax's.
+    assert "def advantages(" not in source
 
 
 def _no_termination_bundle():

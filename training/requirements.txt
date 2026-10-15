@@ -18,6 +18,11 @@ mujoco==3.10.0
 mujoco-mjx==3.10.0
 jax==0.7.2
 numpy==2.5.1
+# ADR-712: the PPO is Brax's (Apache-2.0), on flax networks and optax's Adam.
+# Each changes the numbers a run produces, so each is pinned exactly too.
+brax==0.14.2
+flax==0.12.0
+optax==0.2.8
 
 # On a CUDA box, install jax with its GPU wheel instead of the line above:
 #

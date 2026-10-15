@@ -243,8 +243,8 @@ def test_the_trainer_computes_the_engines_command_channels() -> None:
     batch = module.command_vector(numpy, bundle, numpy.asarray([issued, before]),
                                   numpy.asarray([before, before]))
     assert batch.shape == (2, 4) and batch[1, 1] == 0.0
-    source = inspect.getsource(module.train)
-    assert "command_vector(jnp, task, *filter_carry)" in source
+    source = inspect.getsource(module.build_environment) + inspect.getsource(module.train)
+    assert "command_vector(jnp, task, *carry)" in source
     assert "command_vector(jnp, task, clamped, replaced)" in source
 
 

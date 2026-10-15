@@ -1334,6 +1334,48 @@ a checkpoint by what it did", as a command.
     it. r5's right scapula reads 1.46× its 8.3 N·m rating, and 9 of its 19
     drives are over theirs.
 
+### The learner: Brax's PPO (ADR-712)
+
+`training/cadex_train.py` trains with **Brax's PPO** (`brax==0.14.2`,
+Apache-2.0), on the same MJX physics as before. The environment is still
+Cadex's: `build_environment` turns the bundle into a batched environment
+with the observation slices, the command filter and slew, sensor noise,
+goals, the gait reference and its random start, reset variation, pushes,
+randomised models, reward, terminations and episode. Brax supplies the
+learner:
+
+- the policy and value networks: swish MLPs, 512-256-128 by default;
+- the tanh-squashed Gaussian;
+- the running observation normaliser, with ADR-589's sensor floor kept;
+- the PPO loss and GAE, where a timeout is masked as truncation rather than
+  scored as a failure (ADR-101);
+- minibatched SGD under optax's Adam, with gradients clipped at norm 1.
+
+The trainer's own loop is Brax's `training_step` with one unroll per
+iteration, so every iteration still reports, checkpoints and is judged.
+
+**Why.** orun6's benchmark (B1) trained Unitree Go1 on MuJoCo Playground's
+joystick task through both learners. The hand-written PPO took four
+full-batch gradient steps an iteration and learned to stand still. Brax,
+configured as Playground configures it, learned a trot. Measured through the
+engine's own rollout at a 1.0 m/s command, 10 seeds:
+
+| | speed | falls | gait | train time |
+|---|---|---|---|---|
+| the hand-written PPO | 3 mm/s | 0 | none | ~5 min |
+| Brax PPO in Cadex | 977 mm/s | 0 | diagonal trot | 340 s |
+| Playground's own recipe | 933 mm/s | 0 | diagonal trot | 378 s |
+
+**What a policy file carries.** The `.cxpolicy` format is unchanged. The
+network's activation is `swish`, which the engine now evaluates. The
+container stores the deterministic half of Brax's last layer, so the engine
+still plays `tanh(output) * scale + bias`. The exploration width depends on
+the observation, so `exploration.log_std` records its mean over the witness
+observations and `exploration.state_dependent` is `true`.
+
+A warm start must name the activation its source was trained with. Every
+policy before ADR-712 is `tanh`, so continue one with `--activation tanh`.
+
 ### Saying "smooth": the previous action and the action rate (ADR-696)
 
 A policy that jitters can still pass a spec written in speed, tilt and

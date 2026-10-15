@@ -177,7 +177,7 @@ def test_every_reader_derives_the_same_flag() -> None:
     names = module.channels(bundle)
     assert floor[names.index("foot")] == 0.0
     assert floor[names.index("foot_down")] == 0.25
-    source = inspect.getsource(module.train)
+    source = inspect.getsource(module.build_environment) + inspect.getsource(module.train)
     assert 'contact_reading(jnp, segment, record["contact"])' in source
 
 

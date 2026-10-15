@@ -174,7 +174,7 @@ def test_the_trainers_phase_is_the_engines() -> None:
     for step, row in zip(steps.tolist(), told.tolist(), strict=True):
         held = dyn.goal_values([scheduled], step)
         assert row == pytest.approx([held["lead_sin"], held["lead_cos"]], abs=1.0e-12)
-    trained = inspect.getsource(module.train)
+    trained = (inspect.getsource(module.build_environment) + inspect.getsource(module.train))
     assert "phase_channels(jnp, held, steps - segment * period, turn)" in trained
 
 
@@ -210,7 +210,7 @@ def test_the_trainers_goal_code_is_host_side_and_states_its_algorithm() -> None:
     assert module.GOAL_MODE == "host_pool"
     assert "bundle's goal_algorithm" in module.GOAL_POOL_ALGORITHM
     assert "random.Random(base_seed)" in module.GOAL_POOL_ALGORITHM
-    trained = inspect.getsource(module.train)
+    trained = (inspect.getsource(module.build_environment) + inspect.getsource(module.train))
     # The trace-time branch: a task with no goal takes no extra key split
     # and carries no extra member.
     assert "if goaled:" in trained
