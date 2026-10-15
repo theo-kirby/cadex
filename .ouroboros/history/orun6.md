@@ -6,11 +6,11 @@ ended: 2026-10-15T07:32:25+00:00
 hours: 11.6
 state: killed
 iterations: 25
-commits: 23
+commits: 25
 criteria_ticked: 0
 criteria_closed: 0
 criteria_total: 9
-merged: no
+merged: 5951235e79cea5b54f1deaf19c73f6f6d5b08110
 branch: ouroboros/orun6
 memory: governor
 actor: claude:claude-opus-5-5
@@ -18,14 +18,14 @@ actor: claude:claude-opus-5-5
 
 # Run orun6
 
-25 iterations in 11.6h on `sb1x`, killed (-). Branch `ouroboros/orun6`, not merged.
+25 iterations in 11.6h on `sb1x`, killed (-). Branch `ouroboros/orun6`, merged as `5951235e`.
 
 ## The numbers
 
 | | |
 |---|---|
 | iterations | 25 (changed 22, recorded 18) |
-| commits | 23 — 54 files changed, 13267 insertions(+), 177 deletions(-) |
+| commits | 25 — 70 files changed, 32928 insertions(+), 178 deletions(-) |
 | criteria | **this run ticked 0**; 0 of 9 checked at the tip |
 | reverts | 0 |
 | verdicts | continue 25 |
@@ -35,6 +35,7 @@ actor: claude:claude-opus-5-5
 
 ## What landed
 
+- D1: the proxy screens a clip by inverse dynamics, and held replays leave the path free (ADR-711)
 - D1: a drive proxy loop screens drives and masses on the exported model (ADR-710)
 - G2: an episode can start at a random phase of its gait reference (ADR-709)
 - G2: a drive's continuous rating and smoothness against the reference clip (ADR-707, ADR-708)
@@ -90,4 +91,3 @@ actor: claude:claude-opus-5-5
 - The critic accepted parking B1 for 10 iterations while G1, G2 and D1 built on an unproven learner. A blocker on the learning path should outrank the features that depend on it.
 
 **Next:** swap the PPO core for Brax PPO, operator-planned 2026-10-15. Then re-run B1 (Go1 must trot), then P1 with the AK10-9 fore girdle, a stiffer servo, and tracking.
-
