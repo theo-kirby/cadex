@@ -42018,3 +42018,83 @@ of `describe_api` 27 characters over ADR-360's budget. The assembly notes
 lose three restatements: "the same vocabulary api.motion takes but" (now
 "the vocabulary of api.motion"), "as wind does" after a sustained push,
 and "deliberately" after a hull. The section is back under 21,500.
+
+## ADR-710 — A drive proxy loop screens drives and masses on the exported model (2026-10-15, orun6)
+
+**Context.** D1 asks what the cat needs to gallop. Changing a drive or a
+mass on the design costs a CAD rebuild and an export, and a training run
+costs half an hour on the GPU, so the loop tested about one hypothesis an
+hour. Record `silent-leaf-7077` showed that a gait reference replayed with
+the base held measures what the drives must deliver, separately from
+balance: panel-cat-3's fore girdle runs at 1.6–1.7× its continuous rating
+on the 1.0 m/s trot clip.
+
+**Decision.** `training/cadex_proxy.py` edits the exported model in memory
+and screens it by that replay.
+
+- A configuration swaps datasheet drives per joint, moves mass between
+  bodies (`kg` or a `fraction` of the source body's), and scales all mass.
+  A swap changes the clamp (peak torque), the joint's damping (peak over
+  no-load speed, the torque-speed line `lib.qdd` exports), its armature
+  (rotor inertia × gear ratio²) and, when the datasheet gives one, its
+  friction loss (back-drive torque). The drive's mass difference lands on
+  the joint's parent body, which carries the housing. A moved or swapped
+  mass scales the receiving body's inertia with its mass, about its own
+  COM: an approximation, stated.
+- The as-built drive is identified from a drive library by its clamp and
+  the bundle's `rated_effort` (ADR-707), so the tool needs no project
+  naming convention. An unmatched drive cannot be swapped.
+- Three support modes: `full` (base held on the reference path, weight
+  carried), `attitude` (attitude and horizontal position only, legs carry
+  the weight), `swing` (`full` with gravity and contact off: the cost of
+  moving the legs).
+- Per configuration and mode it reports seeds completed, and per drive RMS
+  torque over rated, share of steps at ≥ 99 % of peak, peak needed over
+  peak, and speed over no-load. `holds` is every seed completed, every
+  drive at or under rated RMS, at most 10 % of steps at peak (P2's bound),
+  and under its no-load speed.
+- It lives in `training/` (O4: a screen of a design against a gait is a
+  training-side tool) and imports only the standard library at module
+  scope. No new dependency: `mujoco` and `numpy` are already pinned there.
+
+**Why a screen, not a short training run first.** A full sweep of 8
+configurations × 3 modes × 10 seeds runs in 15 s of CPU; a tracking
+screening run is minutes of GPU. A configuration that cannot follow the
+clip while held is out without spending the GPU on it.
+
+**First sweep** (`docs/probes/orun6/d1/`, the 1.0 m/s trot clip of the
+track-s3 bundle, 10 seeds). The library is the four catalogued CubeMars
+drives plus two datasheet candidates, AK10-9 V3.0 KV60 (18 N·m rated,
+53 peak, 320 rpm, 940 g, $698.90) and AK80-64 KV80 (48 / 120 N·m, 75 rpm,
+850 g, $889.90), from the manufacturer's product pages.
+
+- As built, held (`full`): scapula 1.71× rated and 28 % at peak, shoulder
+  1.60× — reproduces `silent-leaf-7077`'s harness.
+- **Swinging the fore leg alone** (`swing`) costs the as-built scapula
+  0.98× and the shoulder 0.90× their rating. Moving the wrist drive from
+  the forearm to the scapula cuts that to 0.69× and 0.52×. The distal mass
+  in the owner's diagnosis is measured: the fore leg's own swing uses the
+  whole continuous rating of the drives that move it.
+- **AK10-9 at scapula, shoulder and elbow holds the trot held** (worst
+  0.97× rated, 0 % at peak), +2.2 kg. With the wrist inboard too: 0.97×.
+  Swapping only the scapula and shoulder leaves the elbow at 1.13×.
+  AK80-64 on the scapula and shoulder leaves the elbow at 1.29×.
+- **Nothing holds with the legs carrying all the weight** (`attitude`):
+  the AK10-9 fore configurations complete 9–10/10
+  seeds but 15 drives run over rated, the hind drives included (1.2–1.5×).
+  Scaling the whole cat's mass by 0.85 barely moves any number in any
+  mode, so these torques are dominated by something other than weight:
+  the leg's swing inertia and the position servos fighting the support's
+  horizontal path. Separating those is the next D1 step, before the
+  attitude numbers are read as a hind-drive verdict.
+
+**Evidence.** `training/test_cadex_proxy.py` (18 tests, training venv):
+the AK80-9's constants equal the cat's exported joint (damping 0.368569,
+armature 0.00905842); drive identification and its ambiguity; a swap's
+clamp, line, rotor, friction and housing mass, with and without a
+back-drive rating; mass moves and scaling keep the books; seven refusals
+with reasons; a held replay rates a drive against its datasheet, a weak
+drive saturates where a strong one does not; swing costs nothing at zero
+amplitude and less with the far mass inboard; an unsupported base falls
+and says when; a task without a reference is refused; the command line
+writes the table and exits 2 on a refusal.

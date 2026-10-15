@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-14. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-15. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -407,6 +407,46 @@ policies trained forwards here and walked backwards in the engine.
 private MJX module, which is tolerable only because `mujoco-mjx` is pinned;
 `test_dynamics_mjx_forcelimit` fails the day raw MJX agrees, and then it
 goes.
+
+## Screening drives and masses without a rebuild (ADR-710)
+
+`cadex_proxy.py` answers "would these drives hold this gait?" in seconds,
+on the exported model, before any CAD rebuild or training run. It edits a
+bundle's model in memory, then replays the bundle's gait reference
+(ADR-706) as position targets with the base held by a virtual PD support,
+and rates every drive against its datasheet:
+
+```bash
+~/cadex-train-venv/bin/python training/cadex_proxy.py <bundle>-task.json \
+    --drives docs/probes/orun6/d1/drives.json \
+    --configs docs/probes/orun6/d1/configs.json \
+    --support full attitude swing --joints j_scap_l j_shoulder_l --out sweep
+```
+
+- **A configuration** names drive swaps (`drives`: joint -> library key),
+  mass moves (`move_mass`: from, to, `kg` or `fraction`) and a
+  `mass_scale`. A swap sets the clamp to the peak torque, the joint's
+  damping to peak over no-load speed (the line `lib.qdd` exports), the
+  armature to rotor inertia times the gear ratio squared, the friction loss
+  to the back-drive torque when the datasheet gives one, and puts the mass
+  difference on the joint's parent body. The as-built drive is identified
+  by its clamp and the bundle's `rated_effort`; one that matches no library
+  drive cannot be swapped.
+- **Support modes.** `full` holds the base on the reference's path and
+  carries weight; `attitude` holds only attitude and horizontal position,
+  so the legs carry the weight; `swing` is `full` with gravity and contact
+  off: what moving the legs along the clip costs.
+- **Output.** `OUT.json` and `OUT.md`: per configuration and mode, seeds
+  completed, each drive's RMS over rated, share of steps at its peak clamp,
+  peak needed and speed over no-load, and `holds` (every drive at or under
+  rated RMS, at most 10 % of steps at peak, under its no-load speed, every
+  seed completed).
+
+A screen is a necessary condition. A held replay does not balance and a
+position servo fighting the support inflates some torques, so a
+configuration that holds goes on to a tracking run, and one that does not
+is out. Like `cadex_train.py` it imports only the standard library at
+module scope.
 
 ## What the CI gate does, and does not, prove
 

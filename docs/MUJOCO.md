@@ -1518,6 +1518,13 @@ own rollout, starts at the keyframe and phase 0. A success spec's seeds are
 seeded episodes, so they start mid-stride too: the spec judges the gait,
 not the launch from a standstill.
 
+**Screening drives against it (ADR-710).** Before a design change is
+rebuilt or trained, `training/cadex_proxy.py` swaps datasheet drives, moves
+and scales mass in the exported model, and replays the task's reference
+with the base held, rating each drive's RMS torque and time at its peak
+clamp against its datasheet (`training/README.md`). A drive that cannot
+follow the clip while held will not track it free.
+
 ### What a good result looks like
 
 The mg-legs run (ADR-095), for calibration — 263 g of PLA and eight 13.4 g
