@@ -337,6 +337,8 @@ XSCRIPT_WORKBENCH_PACKS: dict[str, XScriptWorkbenchPack] = {
             # ...and a tenth: a goal is an argument to a task and to its
             # success spec (ADR-462).
             "goal",
+            # ...and a gait reference, an argument to a task (ADR-703).
+            "gait",
             "exploded_view",
             # ...and a region of a creature's moving anatomy, an argument to
             # api.assembly (ADR-613).

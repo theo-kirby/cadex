@@ -1254,6 +1254,11 @@ _SENSOR_DATASHEET_KINDS: dict[str, tuple[str, ...]] = {
 _OBSERVATION_ROLES = ("policy", "privileged")
 
 _CHANNEL_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,47}$")
+#: The named gaits ``api.gait`` accepts: ``CadexGait.GAITS``'s keys, copied
+#: because this surface imports no engine module, and held equal by a test
+#: (ADR-703).
+_GAIT_NAMES = ("walk", "trot", "pace", "canter", "transverse_gallop",
+               "rotary_gallop", "half_bound", "bound")
 
 #: What a control formula may name. ``initialValue`` is deliberately absent
 #: and refused by name below.
@@ -1312,6 +1317,8 @@ class AssemblyDomainAPI:
         # What an episode asks the policy to do: an argument to a task and
         # to its success spec (ADR-462).
         "goal",
+        # A procedural gait reference: an argument to a task (ADR-703).
+        "gait",
         "exploded_view",
         # A creature's moving anatomy: an argument to api.assembly, which
         # the build reply's anatomy block checks (ADR-613).
@@ -4270,6 +4277,125 @@ class AssemblyDomainAPI:
             operation, "goal", label=_label(operation, label), **properties
         )
 
+    def gait(
+        self,
+        feet: Sequence[DomainValue],
+        *,
+        speed_mm_s: float,
+        gait: str | None = None,
+        offsets: Mapping[str, float] | None = None,
+        duty: float | None = None,
+        stride_length_mm: float | None = None,
+        swing_height_mm: float | None = None,
+        pitch_amplitude_deg: float | None = None,
+        spine: DomainValue | None = None,
+        spine_amplitude_deg: float | None = None,
+        label: str = "",
+    ) -> DomainValue:
+        """Declare a procedural gait reference for a legged task (ADR-702, ADR-703).
+
+        ``feet`` is four foot components in the order left fore, right fore,
+        left hind, right hind. ``gait`` names a footfall -- walk, trot, pace,
+        canter, transverse_gallop, rotary_gallop, half_bound, bound -- or
+        ``offsets`` (each foot's touch-down as a fraction of the stride after
+        the left hind's, keyed ``LF``, ``RF``, ``LH``, ``RH``) and ``duty``
+        (the share of the stride each foot is down) state one explicitly.
+        ``speed_mm_s`` is the forward speed. The stride length follows
+        dynamic similarity from the robot's own hip height unless
+        ``stride_length_mm`` is given; ``spine`` names a joint the legs
+        share, flexed by ``spine_amplitude_deg``.
+
+        A gait is an intermediate value: pass it to
+        ``api.task(reference=...)``. The engine generates one periodic
+        stride on the exported model -- joint angles inside every joint
+        limit, foot paths, the contact schedule, body height and pitch --
+        into the task bundle, where the dashboard plays it as a kinematic
+        rollout before anything trains. A stride the legs cannot reach is
+        refused, naming the leg, the moment and the joints at a stop.
+        """
+
+        operation = "gait"
+        foot_values = _values(
+            operation, "feet", feet, output_type="component_link", minimum=1
+        )
+        if len(foot_values) != 4:
+            raise _error(
+                operation, "feet",
+                "takes exactly four foot components: left fore, right fore, "
+                "left hind, right hind", len(foot_values),
+            )
+        properties: dict[str, Any] = {
+            "feet": foot_values,
+            "speed_mm_s": _number(
+                operation, "speed_mm_s", speed_mm_s,
+                minimum=0.0, maximum=20000.0, strict_minimum=True,
+            ),
+        }
+        if gait is not None:
+            clean = str(gait).strip().lower()
+            if offsets is None and clean not in _GAIT_NAMES:
+                raise _error(operation, "gait", f"must be one of {list(_GAIT_NAMES)}", gait)
+            if not _CHANNEL_NAME.fullmatch(clean):
+                raise _error(operation, "gait", "must be a short name for the footfall", gait)
+            properties["gait"] = clean
+        if (offsets is None) != (duty is None):
+            raise _error(
+                operation, "offsets" if offsets is None else "duty",
+                "an explicit footfall needs both offsets and duty",
+            )
+        if offsets is not None:
+            if not isinstance(offsets, Mapping) or sorted(offsets) != ["LF", "LH", "RF", "RH"]:
+                raise _error(
+                    operation, "offsets",
+                    "expected {'LF': f, 'RF': f, 'LH': f, 'RH': f}, each a "
+                    "fraction of the stride", offsets,
+                )
+            properties["offsets"] = {
+                foot: _number(operation, f"offsets[{foot!r}]", offsets[foot],
+                              minimum=0.0, maximum=1.0)
+                for foot in ("LF", "RF", "LH", "RH")
+            }
+            properties["duty"] = _number(
+                operation, "duty", duty, minimum=0.0, maximum=1.0, strict_minimum=True
+            )
+        elif gait is None:
+            raise _error(
+                operation, "gait",
+                "name a gait, or state offsets and duty",
+            )
+        for parameter, value, upper in (
+            ("stride_length_mm", stride_length_mm, 20000.0),
+            ("swing_height_mm", swing_height_mm, 5000.0),
+        ):
+            if value is not None:
+                properties[parameter] = _number(
+                    operation, parameter, value,
+                    minimum=0.0, maximum=upper, strict_minimum=True,
+                )
+        if pitch_amplitude_deg is not None:
+            properties["pitch_amplitude_deg"] = _number(
+                operation, "pitch_amplitude_deg", pitch_amplitude_deg,
+                minimum=0.0, maximum=45.0,
+            )
+        if spine is not None:
+            properties["spine"] = _domain_value(
+                operation, "spine", spine, output_type="joint"
+            )
+        if spine_amplitude_deg is not None:
+            if spine is None:
+                raise _error(
+                    operation, "spine_amplitude_deg",
+                    "flexes a spine: name the joint with spine=",
+                    spine_amplitude_deg,
+                )
+            properties["spine_amplitude_deg"] = _number(
+                operation, "spine_amplitude_deg", spine_amplitude_deg,
+                minimum=0.0, maximum=60.0,
+            )
+        return self._value(
+            operation, "gait", label=_label(operation, label), **properties
+        )
+
     def success(
         self,
         predicates: Sequence[Mapping[str, Any]],
@@ -4767,6 +4893,7 @@ class AssemblyDomainAPI:
         disturbance: Sequence[DomainValue] = (),
         goals: Sequence[DomainValue] = (),
         success: DomainValue | None = None,
+        reference: DomainValue | None = None,
         label: str = "",
     ) -> DomainValue:
         """Turn one exported model into a trainable task.
@@ -4833,6 +4960,12 @@ class AssemblyDomainAPI:
         the task is** -- a policy trained on this task stays a policy for it
         when the spec is revised, which is what lets a stricter spec be held
         against every earlier policy.
+
+        ``reference`` takes one ``api.gait`` value: the stride the task's
+        motion is meant to look like. The engine generates it on the
+        exported model into the bundle's ``reference`` section (ADR-703),
+        which the dashboard plays before anything trains. Like ``success``
+        it does not change what the policy observes or is paid.
 
         Like ``api.mjcf`` and for the same reason, ``api.task`` is not under
         the "exactly one simulation" rule: a script may declare several,
@@ -4966,6 +5099,27 @@ class AssemblyDomainAPI:
                 component_ids, joint_ids,
             )
             judged["success"] = spec
+        if reference is not None:
+            gait_value = _domain_value(
+                operation, "reference", reference, output_type="gait"
+            )
+            named_parts = [
+                (f"reference.feet[{index}]", entry)
+                for index, entry in enumerate(gait_value.properties.get("feet", ()))
+            ]
+            for where, component in named_parts:
+                if id(component) not in component_ids:
+                    raise _error(
+                        operation, where,
+                        "names a component that is not listed in this assembly",
+                    )
+            spine_joint = gait_value.properties.get("spine")
+            if spine_joint is not None and id(spine_joint) not in joint_ids:
+                raise _error(
+                    operation, "reference.spine",
+                    "names a joint that is not listed in this assembly",
+                )
+            judged["reference"] = gait_value
         seconds = _number(
             operation, "episode_seconds", episode_seconds,
             minimum=0.0, maximum=3600.0, strict_minimum=True,

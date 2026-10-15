@@ -30,6 +30,7 @@ from test_review_record import REVISION_A, REVISION_B, _manifest, _project
 from test_review_revisions import _biped_store
 from test_review_server import _escaped_run, _get, _json, _mesh_run, _rewrite_record, _stage_accepted
 from test_review_server import _training_run as _untraced_run
+from test_review_reference import reference_bundle
 
 REPO = Path(__file__).resolve().parents[2]
 STATIC = REPO / "cli" / "cadex_cli" / "review_static"
@@ -111,7 +112,10 @@ def biped(tmp_path):
     (train / "walk.000060.rollout-failed.json").write_text(json.dumps({
         "schema": "cadex-checkpoint-rollout-failure-v1", "checkpoint": "walk.000060.cxpolicy",
         "tag": "000060", "iteration": 59, "reason": "child_failed", "error": "the rollout exited 1"}))
-    _stage_accepted(root, REVISION_B)
+    staging = _stage_accepted(root, REVISION_B)
+    # A task with a gait reference and one without (ADR-703).
+    reference_bundle(staging, "walk")
+    reference_bundle(staging, "stand", reference=False)
     # Training at the accepted revision with no rollout yet: its model is the
     # accepted one, borrowed and labelled so.
     _untraced_run(root, "borrowing", revision=REVISION_B)
@@ -138,6 +142,8 @@ PROBES = {
     "playback/checkpoint/<run>/<stem>": (
         [f"api/playback/checkpoint/{RUN}/walk.000040", f"api/playback/checkpoint/{RUN}/walk.000060"],
         [f"api/playback/checkpoint/{RUN}/walk.000080", "api/playback/checkpoint/nope/walk.000040"]),
+    "playback/reference/<task>": (["api/playback/reference/walk", "api/playback/reference/stand"],
+                                  ["api/playback/reference/nope"]),
 }
 
 

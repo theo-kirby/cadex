@@ -488,3 +488,35 @@ def generate(model: Any, legs: Mapping[str, str], gait: str | Mapping[str, Any],
                  "pitch_deg": [math.degrees(p) for p in body_pitch]},
         "ik": {"tolerance_m": TOLERANCE_M, "max_miss_m": {foot: residual[foot] for foot in FEET}},
     }
+
+
+def placements(model: Any, clip: Mapping[str, Any], *, mujoco: Any | None = None) -> list[dict[str, Any]]:
+    """Every named body's world pose at each sample of ``clip`` (ADR-703).
+
+    The clip's ``qpos`` rows put through forward kinematics: per sample, a
+    map from body name to ``position_mm`` and ``rotation_xyzw``, the shape a
+    simulation trace's ``component_placements`` has, so the dashboard plays a
+    reference the way it plays a rollout. Nothing is simulated: this is the
+    pose the reference asks for, not a pose the dynamics reached.
+    """
+
+    import numpy as np  # noqa: PLC0415
+
+    mj = _mujoco(mujoco)
+    rows = clip.get("qpos") or ()
+    if any(len(row) != model.nq for row in rows):
+        raise GaitError(f"the clip's qpos rows do not match this model's {model.nq} coordinates",
+                        reason="clip_model_mismatch", nq=int(model.nq))
+    names = [(b, model.body(b).name) for b in range(1, model.nbody) if model.body(b).name]
+    data = mj.MjData(model)
+    out = []
+    for row in rows:
+        data.qpos[:] = np.asarray(row, dtype=float)
+        mj.mj_kinematics(model, data)
+        frame = {}
+        for b, name in names:
+            w, x, y, z = (float(v) for v in data.xquat[b])
+            frame[name] = {"position_mm": [round(1000.0 * float(v), 4) for v in data.xpos[b]],
+                           "rotation_xyzw": [round(v, 7) for v in (x, y, z, w)]}
+        out.append(frame)
+    return out

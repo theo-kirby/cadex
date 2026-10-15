@@ -6912,6 +6912,10 @@ TASK_SEMANTIC_FIELDS = (
     # digest is the one it always had (ADR-462).
     "goal",
     "goal_algorithm",
+    # ADR-703: absent unless the task declares a gait reference. Semantic
+    # rather than judgement: a tracking reward reads it (G2), so a bundle
+    # with another stride is another task.
+    "reference",
 )
 
 #: The bundle-level fields deliberately left out, and why each one is out.
@@ -10175,6 +10179,67 @@ def acceleration_values(task: Mapping[str, Any], qacc: Sequence[float]) -> dict[
             for record in task.get("accelerations") or ()}
 
 
+def _reference_records(
+    mujoco: Any,
+    reloaded: Any,
+    declared: Mapping[str, Any],
+    schedule: Mapping[str, Any],
+    *,
+    context: str,
+) -> dict[str, Any]:
+    """A task's gait reference: one generated stride, played back as poses (ADR-703).
+
+    ``declared`` is the worker's resolution of an ``api.gait`` value: a gait
+    name or explicit footfall, a speed, and each foot's component. The stride
+    is :func:`CadexGait.generate` on the **exported** model, about the reset
+    keyframe the episode starts from, so the clip's joint angles are angles of
+    the file a trainer loads. Each sample also carries every body's world
+    pose (:func:`CadexGait.placements`), which is what the dashboard plays
+    before anything trains. A stride the legs cannot reach inside their joint
+    limits is refused here, with the generator's reason, never clamped.
+    """
+
+    import CadexGait  # noqa: PLC0415 - worker-only, like this module
+
+    def mm(name: str) -> float | None:
+        value = declared.get(name)
+        return None if value is None else float(value) / 1000.0
+
+    gait: Any = declared.get("gait")
+    if declared.get("offsets") is not None:
+        gait = {"offsets": dict(declared["offsets"]), "duty": float(declared["duty"]),
+                **({"name": str(gait)} if gait else {})}
+    home = None
+    key = mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_KEY, str(schedule["reset_keyframe"]))
+    if key >= 0:
+        home = [float(v) for v in reloaded.key_qpos[key]]
+    try:
+        clip = CadexGait.generate(
+            reloaded, dict(declared["feet"]), gait, float(declared["speed_mm_s"]) / 1000.0,
+            stride_length_m=mm("stride_length_mm"), swing_height_m=mm("swing_height_mm"),
+            pitch_amplitude_deg=declared.get("pitch_amplitude_deg"),
+            spine_joint=declared.get("spine_joint"),
+            spine_amplitude_deg=declared.get("spine_amplitude_deg"),
+            home_qpos=home, mujoco=mujoco,
+        )
+    except CadexGait.GaitError as error:
+        raise DynamicsError(
+            f"{context}: its gait reference cannot be generated: {error}",
+            reason=f"gait_{error.reason}",
+            correction=(
+                "A reference is built inside every joint limit and is never "
+                "clamped. Shorten stride_length_mm, lower the speed, or widen "
+                "the joint range the refusal names; a leg's reach caps the "
+                "stride, whatever dynamic similarity asks for."
+            ),
+            observed=error.as_dict(),
+        ) from error
+    clip["label"] = str(declared.get("label") or clip["gait"])
+    clip["reset_keyframe"] = str(schedule["reset_keyframe"]) if key >= 0 else None
+    clip["placements"] = CadexGait.placements(reloaded, clip, mujoco=mujoco)
+    return clip
+
+
 def task_records(
     built: Mapping[str, Any],
     reloaded: Any,
@@ -10540,6 +10605,10 @@ def task_records(
         **({"commands": commands} if commands else {}),
         # ADR-699: absent when the task reads no acceleration, on the same terms.
         **({"accelerations": accelerations} if accelerations else {}),
+        # ADR-703: absent when the task declares no gait reference.
+        **({"reference": _reference_records(
+            mujoco, reloaded, task["reference"], schedule, context=context,
+        )} if task.get("reference") else {}),
         **judged,
         # The two per-episode draw streams, both stated, because they are
         # deliberately different algorithms and a reader has to be able to

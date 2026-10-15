@@ -198,10 +198,19 @@
   var look = { name: readPref('cadex.look', LOOKS, 'studio'), occlusion: readPref('cadex.occlusion', ['on', 'off'], 'on') === 'on',
                detail: readPref('cadex.detail', ['on', 'off'], 'on') === 'on' };
 
+  // A gait reference (ADR-703) is the accepted model posed by the task's
+  // generated stride: the motion asked for, shown before anything trains.
+  function referenceOf(value) {
+    if (!state.review || value.indexOf('reference:') !== 0) return null;
+    var task = value.slice(10);
+    return (state.review.references || []).filter(function (r) { return r.task === task; })[0] || null;
+  }
+
   function renderSources() {
     var runs = (state.review.runs || []).map(function (run) { return run.run; });
     var history = (state.review.revisions || []).length > 0;
-    var key = JSON.stringify([runs, history]);
+    var refs = (state.review.references || []).map(function (r) { return [r.task, r.label, r.gait]; });
+    var key = JSON.stringify([runs, history, refs]);
     if (key === sourcesKey) return;
     sourcesKey = key;
     var select = $('view3d-source');
@@ -213,7 +222,15 @@
       runs.forEach(function (run) { group.appendChild(el('option', { value: 'run:' + run, text: run })); });
       select.appendChild(group);
     }
-    if (source === 'revisions' ? !history : source !== 'accepted' && runs.indexOf(source.slice(4)) < 0) { source = 'accepted'; modelKey = null; }
+    if (refs.length) {
+      var refGroup = el('optgroup', { label: 'Gait references' });
+      refs.forEach(function (r) { refGroup.appendChild(el('option', { value: 'reference:' + r[0], text: r[1] + ' (' + r[0] + ')' })); });
+      select.appendChild(refGroup);
+    }
+    var gone = source === 'revisions' ? !history
+             : source.indexOf('reference:') === 0 ? !referenceOf(source)
+             : source !== 'accepted' && runs.indexOf(source.slice(4)) < 0;
+    if (gone) { source = 'accepted'; modelKey = null; }
     select.value = source;
   }
 
@@ -238,7 +255,8 @@
 
   function loadModel() {
     var status = $('model-status'), ticket = ++modelLoad;
-    var path = source === 'accepted' ? 'api/model/accepted'
+    var reference = referenceOf(source);
+    var path = source === 'accepted' || reference ? 'api/model/accepted'
              : source === 'revisions' ? 'api/model/revision/' + revisionShown()
              : 'api/model/run/' + encodeURIComponent(source.slice(4));
     if (modelAbort) modelAbort.abort();
@@ -279,6 +297,8 @@
         status.textContent = '';
         // A run with checkpoint rollouts plays them, its own rollout last.
         if (checkpointItems().items.length) { renderCheckpoints(); return null; }
+        // A reference loops from the start, as soon as it is in.
+        if (reference) return loadPlayback({ playback: { url: reference.url } }, ticket, true);
         return loadPlayback(manifest, ticket);
       });
     }).catch(function (error) {
@@ -396,12 +416,13 @@
     return trackAt(lo, hi, span > 0 ? Math.max(0, Math.min(1, (t - times[lo]) / span)) : 0);
   }
 
-  function loadPlayback(manifest, ticket) {
+  function loadPlayback(manifest, ticket, loop) {
     var info = manifest.playback;
     if (!info || !info.url) return null;
     return json(info.url).then(function (served) {
       if (ticket !== modelLoad || !served.available || !served.times_s || served.times_s.length < 2) return;
       showPlayback(served);
+      if (loop) { looping = true; togglePlayback(); }
     }).catch(function () { /* the model stands without its rollout */ });
   }
   function showPlayback(served) {
@@ -935,6 +956,7 @@
       // walk lands its export or its own rollout, which adds the final
       // policy's stop (ADR-554).
       var key = source === 'accepted' ? JSON.stringify([review.accepted.revision, review.accepted.digest])
+              : source.indexOf('reference:') === 0 ? JSON.stringify([source, review.accepted.revision, review.accepted.digest])
               : source === 'revisions' ? revisionKey() : runModelKey(review, source.slice(4));
       if (key !== modelKey && Date.now() >= modelRetryAt) { modelKey = key; model = loadModel(); }
     }).catch(function (error) {
@@ -1056,7 +1078,8 @@
     setSource: function (value) { ckpt.chosenSource = true; return setSource(value); },
     setSheet: setSheet,
     sheets: function () { return sheet.list.map(function (item) { return { key: item.key, group: item.group, kind: item.kind, label: item.label }; }); },
-    playback: function () { return playback && { times_s: playback.times_s, t: playT, playing: !!playing, looping: looping, checkpoint: ckpt.playing }; },
+    playback: function () { return playback && { times_s: playback.times_s, t: playT, playing: !!playing, looping: looping, checkpoint: ckpt.playing,
+                                                  reference: playback.reference ? playback.task : null }; },
     checkpoints: function () {
       return { items: ckpt.items.map(function (item) { return { stem: item.stem, state: item.state, iteration: item.iteration, reward_per_step: item.reward_per_step }; }),
                pending: ckpt.pending, pinned: ckpt.pinned, playing: ckpt.playing, source: source };

@@ -41521,3 +41521,88 @@ global least-squares search (300 random starts). The global optimum's miss
 agreed within 0.1 mm, so the refusals are real limits, not local minima of
 the solver. The cat's joint ranges cap a trot stride near 0.6 m, against
 Alexander's 0.88 m at 1.7 m/s (table in `docs/MUJOCO.md` §7).
+
+## ADR-703 — A task carries a gait reference, and the dashboard plays it (2026-10-14, orun6)
+
+**Context.** ADR-702 made a stride a function call. The orun6 charter's G1
+also asks that the clip go into a task bundle and play on the dashboard as
+a kinematic rollout, so the owner can judge the intended gait before
+anything trains on it. G2's tracking reward will read the same clip from
+the same bundle.
+
+**Decision.**
+- **Script surface.** A new intermediate, `assembly.gait(feet, *,
+  speed_mm_s, gait=None, offsets=None, duty=None, stride_length_mm=None,
+  swing_height_mm=None, pitch_amplitude_deg=None, spine=None,
+  spine_amplitude_deg=None, label="")`. `feet` is four foot components in
+  the order left fore, right fore, left hind, right hind; `gait` is one of
+  ADR-702's names, or `offsets` (keyed `LF`/`RF`/`LH`/`RH`) and `duty`
+  state the footfall. `api.task(reference=...)` takes one. The surface
+  refuses three feet, an unknown name, offsets without duty, spine flexion
+  without a spine, and a foot or spine the assembly does not list. The
+  gait names are copied from `CadexGait.GAITS`, because the surface imports
+  no engine module, and a test holds the two equal.
+- **Bundle.** `task_records` writes a `reference` section, absent when none
+  is declared, so every other bundle and its digest are unchanged. It is
+  `CadexGait.generate` on the **exported** model about the episode's reset
+  keyframe, so the clip's angles are angles of the file a trainer loads.
+  Each sample also carries every named body's world pose
+  (`CadexGait.placements`, the shape of a trace's `component_placements`).
+  A stride the legs cannot reach refuses the task as
+  `gait_<reason>` (for example `gait_unreachable`), with the generator's
+  leg, phase, miss and stops in `observed`. Nothing is clamped.
+- **Identity.** `reference` is in `TASK_SEMANTIC_FIELDS`, not the judgement
+  list. A tracking reward (G2) reads it, so a bundle with another stride is
+  another task.
+- **Dashboard.** `/api/project` gains `references`: one row per accepted
+  task bundle with a reference, giving the gait, its stride numbers and a
+  URL. A new route, `/api/playback/reference/<task>`, serves the clip as
+  playback. Its one stride is repeated, each repeat a stride further on,
+  for about 4 s (at most 40 strides), closing on the next stride's first
+  pose so a loop lands where it began. Quaternion signs are kept
+  continuous. The 3D viewport's source menu lists each under **Gait
+  references**. Picking one shows the accepted model posed by the stride,
+  looping from the start. Every pose is the bundle's own: the page
+  simulates nothing, and a reference is the motion asked for, not one
+  reached.
+
+**Room on the contract page.** `api.gait`'s signature put the assembly
+section of `describe_api` 807 characters over the 21,500-character
+budget a tool result may use (ADR-360). Rather than leave a parameter out,
+the assembly notes lose three passages that restated what a refusal already
+says: the list of what policy verification compares (kept: a policy its
+task reads differently "is refused rather than run"), the rollout's
+reload-from-file assurance with the frame-rate refusal's wording, and the
+reason a velocity actuator has no range. The section is 21,496 characters.
+The next addition to it must cut as much, or split the section.
+
+**Why this shape.** The clip lives where the trainer and the evaluator
+already look (the bundle), not in a side file, and the dashboard reads it
+from the accepted attempt's outputs, as it reads the model. Posing bodies in
+the engine, where MuJoCo is, keeps the dashboard a player of placements
+with no kinematics of its own (ADR-537). It is general (O4). Any floating
+base with four named feet gets a reference. A wheeled base or an arm
+declares none, and its bundle is byte for byte what it was.
+
+**Evidence.**
+- `test_gait_task_reference` (6 tests):
+  - registration, and the name table equal to the engine's;
+  - the worker's resolution of feet, spine and explicit footfall;
+  - the surface's refusals;
+  - on ADR-702's quadruped with a `solved` keyframe, the bundle's
+    reference starts from the keyframe, poses every body, and puts each
+    posed foot within 1 mm of the clip's target by MuJoCo's own forward
+    kinematics;
+  - a 2 m stride and an unknown foot body refuse with `gait_unreachable`
+    and `gait_unknown_body`.
+- `test_review_reference` (3 tests):
+  - the listing;
+  - the playback, with its stride count, its continuous forward walk and
+    the unflipped quaternion;
+  - the 404 and unavailable shapes;
+  - a browser test: the option sits under Gait references, and picking it
+    loops the stride past its end.
+- `test_http_api` reaches the new route in both shapes, and `docs/CLI.md`'s
+  table lists it.
+- On `orun6-cat`, a 1.0 m/s trot at a 580 mm stride generated into the
+  `run` task's bundle at build time (record of 2026-10-14).

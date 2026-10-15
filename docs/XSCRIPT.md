@@ -526,6 +526,22 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   digest it had. **The trainer draws its goals by the same algorithm**, on
   the host, as a pool of episodes from its own seed (`training/README.md`);
   a test holds the two to the same numbers.
+  **`assembly.gait(feet, gait="trot", speed_mm_s=...)` says what the motion
+  should look like** (ADR-702, ADR-703), and goes to
+  `api.task(reference=...)`. `feet` is four foot components: left fore,
+  right fore, left hind, right hind. `gait` is one of `walk`, `trot`,
+  `pace`, `canter`, `transverse_gallop`, `rotary_gallop`, `half_bound` and
+  `bound`, or `offsets={"LF": .., "RF": .., "LH": .., "RH": ..}` (touch-down
+  as a fraction of the stride after the left hind's) with `duty` states
+  the footfall. `stride_length_mm=` overrides dynamic similarity, and
+  `spine=joint, spine_amplitude_deg=` flexes a joint the legs share. The
+  engine generates one periodic stride on the exported model, about the
+  reset keyframe and inside every joint limit, into the bundle's
+  `reference` section, with every body's pose at each sample, and the
+  dashboard plays it before anything trains. A stride the legs cannot
+  reach refuses the task as `gait_unreachable`, naming the leg, the moment
+  and the joints at a stop. A task without one writes no `reference` and
+  keeps its digest.
   **`assembly.success(predicates, seeds=...)` says what the behaviour must
   measurably be, apart from the reward** (ADR-456), and goes to
   `assembly.task(..., success=spec)`. A reward is what a policy is paid for;

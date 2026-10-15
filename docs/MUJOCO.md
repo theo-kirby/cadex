@@ -1428,6 +1428,15 @@ The joint ranges cap a trot stride near 0.6 m. At 1.7 m/s that forces a
 0.35 s stride (2.9 Hz) where dynamic similarity gives 1.9 Hz: the short,
 quick trot r5 learned.
 
+**In a task (ADR-703).** `assembly.gait([lf, rf, lh, rh], gait="trot",
+speed_mm_s=1000, stride_length_mm=580, spine=j_spine)` passed to
+`api.task(reference=...)` puts the stride in the bundle's `reference`
+section, generated on the exported model about the reset keyframe, with
+every body's pose at each sample. The dashboard's 3D viewport lists it under
+**Gait references** and loops it, so the intended gait can be judged before
+anything trains on it. An unreachable stride refuses the task
+(`gait_unreachable`) rather than building a reference nobody can track.
+
 ### What a good result looks like
 
 The mg-legs run (ADR-095), for calibration — 263 g of PLA and eight 13.4 g
