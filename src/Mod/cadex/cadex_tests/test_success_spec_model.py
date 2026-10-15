@@ -350,6 +350,22 @@ def test_a_metric_measured_against_a_goal_is_refused_on_a_task_that_states_none(
     assert "assembly.goal(" in error.correction
 
 
+def test_a_reference_metric_needs_the_tasks_reference_and_its_feet() -> None:
+    """ADR-705: footfall and joint error are read against the task's gait
+    reference, so a task without one cannot state them, and every foot the
+    reference times must be a foot the spec measures."""
+
+    tracks = [{"id": "tracks", "metric": "footfall_phase_error_max", "max": 0.1}]
+    error = refusal(spec(tracks, feet=["front", "rear"]))
+    assert error.reason == "success_metric_needs_reference"
+    assert "assembly.gait(" in error.correction
+    declared = {"label": "trot", "gait": "trot", "speed_mm_s": 500.0,
+                "feet": {"LF": "front", "RF": "rear", "LH": "body", "RH": "rear"}}
+    error = refusal(spec(tracks, feet=["front", "rear"]), reference=declared)
+    assert error.reason == "success_reference_feet_unmeasured"
+    assert error.observed["unmeasured"] == ["body"]
+
+
 def test_a_reach_metric_needs_a_tip() -> None:
     error = refusal(spec([{"id": "close", "metric": "final_error_mm_max", "max": 5.0}]))
     assert error.reason == "success_metric_needs_tip"

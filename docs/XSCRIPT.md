@@ -587,6 +587,8 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `effort_rms_clamp_ratio_max`, `effort_clamp_share_max` | the worst drive's RMS effort over its force clamp; its share of samples at the clamp, over the whole episode. A drive the model does not limit is not among them | — |
   | `command_high_frequency_share` | of the command power (Hann-windowed, each channel in its own ranges), the share above 3× the stride frequency — the median foot's step rate after 1 s. A stride's shape is its first harmonics; above them is jitter | `feet` |
   | `cost_of_transport` | mean mechanical power, Σ\|effort × joint velocity\| over the drives, over weight × the base's net plan speed after 1 s | a floating base |
+  | `footfall_phase_error_max`, `duty_factor_error_max` | against the task's gait reference, stride by stride with the left hind's landings as the clock: the worst foot's median distance, in cycles, of its landing from where the reference's phase offsets put it (a stride it does not land in exactly once is 0.5); the worst foot's duty factor less the reference's (ADR-705) | `feet` and a task `reference` |
+  | `stride_frequency_ratio`, `reference_joint_rms_deg` | the median measured stride's frequency over the reference's; the RMS of every angular drive's joint angle less the reference's at the same phase of its own stride, so a slower stride is still compared pose for pose | `feet` and a task `reference` |
 
   "Every foot" is the worst foot, which is what the `_min` and `_max`
   suffixes say. **That table is the whole vocabulary.** A predicate that

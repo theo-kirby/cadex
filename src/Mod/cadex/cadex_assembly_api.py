@@ -4473,6 +4473,11 @@ class AssemblyDomainAPI:
           ``command_high_frequency_share``, the share of command power
           above three times the stride frequency; with a floating base,
           ``cost_of_transport``. Smoothness and cost are read after 1 s.
+        * with ``feet`` and a task ``reference`` (ADR-705), against that
+          reference with the left hind's landings as the stride clock:
+          ``footfall_phase_error_max`` (cycles), ``duty_factor_error_max``,
+          ``stride_frequency_ratio`` and ``reference_joint_rms_deg``. Every
+          foot the reference names must be among ``feet``.
 
         ``feet`` names the ``api.component`` values that are feet; each
         needs a primitive collision shape, because a foot's height is its

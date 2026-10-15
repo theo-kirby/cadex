@@ -6877,6 +6877,12 @@ _SUCCESS_NEED_CORRECTIONS = {
         "Give the task one: assembly.goal('target', kind='point', "
         "tip=component) in api.task(goals=[...])."
     ),
+    "reference": (
+        "It is measured against the task's gait reference, and this task "
+        "declares none. Give the task one -- api.task(reference="
+        "assembly.gait(feet, gait='trot', speed_mm_s=...)) -- or bound the "
+        "gait family, which needs none."
+    ),
 }
 
 
@@ -9797,6 +9803,8 @@ def _success_records(
         # given a rollout nothing to be measured against.
         "command": "speed" in goal_kinds,
         "target": "point" in goal_kinds,
+        # ADR-705: the reference family reads the task's gait reference.
+        "reference": bool(task.get("reference")),
     }
     rows: list[dict[str, Any]] = []
     needed: dict[str, str] = {}
@@ -9844,6 +9852,25 @@ def _success_records(
                     correction=_SUCCESS_NEED_CORRECTIONS[need],
                     observed={"predicate": identifier, "metric": metric,
                               "needs": need},
+                )
+        if "reference" in CadexEvaluation.METRICS[metric][1]:
+            # Every foot the reference times must be a foot the spec measures.
+            unmeasured = sorted(
+                str(name) for name in (task["reference"].get("feet") or {}).values()
+                if str(name) not in feet
+            )
+            if unmeasured:
+                raise DynamicsError(
+                    f"Predicate {identifier!r} in {what} bounds {metric!r}, "
+                    "which compares every foot of the task's gait reference, "
+                    f"and the spec does not name {', '.join(unmeasured)} as feet.",
+                    reason="success_reference_feet_unmeasured",
+                    correction=(
+                        "Name the reference's four feet in assembly.success(..., "
+                        "feet=[...])."
+                    ),
+                    observed={"predicate": identifier, "metric": metric,
+                              "unmeasured": unmeasured, "feet": feet},
                 )
         low, high = entry.get("min"), entry.get("max")
         rows.append(
@@ -13339,6 +13366,8 @@ def evaluate_success(
             samples, ended, rig, shoves=shoves,
             command_mm_s=command, segments=segments,
             drives=CadexEvaluation.drive_series(run["frames"], run["actuator_channels"]),
+            # ADR-705: the gait against the task's own reference, if it has one.
+            reference=task.get("reference"),
         )
         held = CadexEvaluation.check(spec["predicates"], measured["metrics"])
         steps = max(1, ended["steps"])

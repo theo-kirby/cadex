@@ -41664,3 +41664,82 @@ next change.
 
 **Consequence.** P1's smoothness bounds are predicates a spec states, read
 by the same code on the baseline and on every new policy.
+
+## ADR-705 — A success spec can judge a gait against the task's own reference (2026-10-15, orun6)
+
+**Context.** The orun6 charter's G2 asks for evaluation predicates that
+compare a rollout with G1's reference: the footfall pattern (phase offsets
+and duty factors) and the phase-aligned joint RMS error. P1 bounds both.
+ADR-703 put the reference in the task bundle, and ADR-694 put each drive's
+joint angle in every trace, but nothing read one against the other.
+
+**Decision.** A sixth metric family, **reference**, in `CadexEvaluation`,
+needing `feet` and a task `reference`:
+- **The clock is the anchor foot's landings.** Each pair of the left
+  hind's landings after the 1 s settle is one measured stride, and a moment
+  inside it is at phase `(t − landing) / stride` past the reference's own
+  left-hind touch-down. Nothing in the task has to carry a gait clock, so
+  the same predicate reads a policy trained to track the reference and one
+  trained without it (r5), and a policy that strides slower than its
+  reference is still compared pose for pose. Its timing is a separate
+  number.
+- `footfall_phase_error_max`: per foot, the median over strides of the
+  distance, in cycles, between its landing and where the reference's
+  offsets put it. A foot that does not land exactly once within half a
+  stride of that moment has missed the stride, scored
+  `FOOTFALL_MISSED` (0.5). The worst foot is the metric.
+- `duty_factor_error_max`: the worst foot's settled duty factor less the
+  reference's, in absolute value.
+- `stride_frequency_ratio`: the median measured stride's frequency over the
+  reference's.
+- `reference_joint_rms_deg`: pooled RMS, over every settled frame inside a
+  measured stride and every angular drive whose joint the clip poses, of
+  the joint angle less the clip's at that phase (linear between samples).
+  `None` on a trace without the drive record.
+- A landing is the first stance frame after a step (the gait family's own
+  step: it lasts, and it lands somewhere else), now kept per foot as
+  `touchdowns_s`.
+- `evaluate_success` passes the bundle's `reference` to `measure`.
+  `_success_records` refuses a reference metric on a task without a
+  reference (`success_metric_needs_reference`) and on a spec whose `feet`
+  leave out a foot the reference names
+  (`success_reference_feet_unmeasured`).
+
+**Why landings, not a clock in the task.** A tracking reward (G2's next
+change) will need a gait clock, and a policy that tracks it lands where the
+clock says, so the two readings agree on such a policy. The baseline was
+trained without a clock, and the charter's comparison against r5 needs the
+same predicate on both. Time-warping each stride to the reference also
+keeps two failures apart that a clock would merge: the wrong pose and the
+wrong tempo.
+
+**Resolution.** At 50 Hz and a 2.5 Hz stride, one frame is 0.05 of a cycle,
+so a footfall error reads in steps of about 0.05. P1's ±0.1 is two frames.
+
+**Evidence.**
+- `test_reference_metrics.py`, nine unit tests on the fixture trot against
+  hand-written clips:
+  - a trot reference reads zero footfall error and a frequency ratio of 1;
+  - a pace reference reads the lateral pair 0.5 out;
+  - an offset moved by 0.1 reads 0.1, and a duty of 0.3 reads 0.2;
+  - a joint following the clip reads 0°, and the same joint 5° off reads
+    5°;
+  - a 30-frame stride against a 24-frame reference reads ratio 0.8 and
+    under 0.1° (interpolation only);
+  - a foot skipping every other landing misses half its strides;
+  - no stride, or a reference foot that is not measured, reads `None`.
+- `test_evaluation_metrics`' vocabulary test covers the family, and
+  `test_success_spec_model` holds both refusals.
+- panel-cat-3's r5 ckpt 300 on its ADR-694 replay traces, seeds 1001–1010,
+  against a CadexGait trot on r5's own model at its 1.694 m/s and the
+  longest reachable stride, 597 mm (2.84 Hz). Medians:
+  - `footfall_phase_error_max` 0.05 (one frame), with the right hind
+    missing 1–5 of 21–22 strides;
+  - `duty_factor_error_max` 0.22: hinds down 0.22–0.27 of the stride, fores
+    0.36–0.47, against 0.45;
+  - `stride_frequency_ratio` 0.88 (2.5 Hz);
+  - `reference_joint_rms_deg` 18.6, worst at the knees (33°) and wrists
+    (27°).
+  These are G2's reference-relative "before" numbers. r5 already trots by
+  footfall. What separates it from the reference is how long its hind feet
+  stay down and how its legs are posed through the stride.

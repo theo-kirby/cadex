@@ -1446,6 +1446,21 @@ every body's pose at each sample. The dashboard's 3D viewport lists it under
 anything trains on it. An unreachable stride refuses the task
 (`gait_unreachable`) rather than building a reference nobody can track.
 
+**Judged against it (ADR-705).** A success spec on a task with a reference
+can bound four metrics read against it. The clock is the left hind's own
+landings, so a policy is compared stride by stride, whatever its stride
+frequency. `footfall_phase_error_max` is the worst foot's median landing
+error, in cycles, from the reference's phase offsets (a skipped or doubled
+landing is 0.5). `duty_factor_error_max` is the worst foot's duty factor
+less the reference's. `stride_frequency_ratio` is the measured stride
+frequency over the reference's. `reference_joint_rms_deg` is the RMS joint
+error at the same phase of each stride. r5's trot, against a trot generated
+on its own model at its 1.69 m/s and the 597 mm reachable stride (medians,
+seeds 1001–1010): footfall within 0.05 of a cycle (one frame), the right
+hind skipping 3 of 21 strides, duty 0.22 short of 0.45 (hinds down a quarter
+of the stride), stride frequency 0.88 of the reference's 2.84 Hz, and
+18.6° RMS joint error (knees 33°).
+
 ### What a good result looks like
 
 The mg-legs run (ADR-095), for calibration — 263 g of PLA and eight 13.4 g

@@ -24,7 +24,11 @@ kind:
   -- what a body did over the episode, not only where it ended (ADR-587);
 * **drive**, for any trace that records its drives (ADR-694): how smooth the
   commands and the joints were, how hard each drive was pushed against its
-  clamp, and what the motion cost per unit of weight and distance (ADR-704).
+  clamp, and what the motion cost per unit of weight and distance (ADR-704);
+* **reference**, for feet and a task's gait reference (ADR-703): the
+  footfall against the reference's phase offsets and duty factor, the stride
+  frequency against its, and the joints' RMS error from it, phase-aligned
+  stride by stride (ADR-705).
 
 :func:`check` then holds a flat table of those metrics against a list of
 predicates (``metric``, ``min``, ``max``). A predicate names a metric and a
@@ -91,6 +95,14 @@ CLAMP_TOLERANCE = 1.0e-3
 #: above them is jitter (ADR-704).
 HIGH_FREQUENCY_STRIDE_MULTIPLE = 3.0
 
+#: The foot whose touch-downs are a reference's clock: the left hind, the
+#: foot every phase offset is stated after (Hildebrand's convention).
+REFERENCE_ANCHOR = "LH"
+#: A foot that does not touch down exactly once within half a stride of
+#: where the reference puts it has missed that stride by this much: as far
+#: out of phase as a periodic event can be.
+FOOTFALL_MISSED = 0.5
+
 #: Every metric a success predicate may bound, and what measuring it needs
 #: (ADR-456). This is the whole vocabulary of a success spec: a name that is
 #: not here is not a behaviour metric, and the task's reward, its reward
@@ -140,6 +152,10 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "effort_rms_clamp_ratio_max": ("drive", ()),
     "effort_clamp_share_max": ("drive", ()),
     "cost_of_transport": ("drive", ("base",)),
+    "footfall_phase_error_max": ("reference", ("feet", "reference")),
+    "duty_factor_error_max": ("reference", ("feet", "reference")),
+    "stride_frequency_ratio": ("reference", ("feet", "reference")),
+    "reference_joint_rms_deg": ("reference", ("feet", "reference")),
 }
 
 _EPS = 1.0e-9
@@ -436,7 +452,8 @@ def gait(time, foot: Mapping[str, Any], hip_height_mm: float, *,
             continue  # touches an end of the episode: not a whole swing
         end = i - 1
         swing = {
-            "lift_s": float(time[start]), "airborne_s": (end - start + 1) * dt,
+            "lift_s": float(time[start]), "land_s": float(time[end + 1]),
+            "airborne_s": (end - start + 1) * dt,
             "peak_mm": float(max(height[start:end + 1])),
             "advance_mm": math.hypot(point[end + 1][0] - point[start - 1][0],
                                      point[end + 1][1] - point[start - 1][1]),
@@ -469,6 +486,8 @@ def gait(time, foot: Mapping[str, Any], hip_height_mm: float, *,
             None if settled_low is None else float(settled_low) / hip_height_mm
         ),
         "duty_factor": (sum(settled) / len(settled)) if settled else None,
+        # Each step's landing: the first stance frame after it (ADR-705).
+        "touchdowns_s": [s["land_s"] for s in steps],
         # Steps begun after the settle, per settled second: one step per
         # stride, so this is the foot's stride frequency (ADR-704).
         "step_rate_hz": (
@@ -1070,6 +1089,129 @@ def drive_metrics(drives: Mapping[str, Any], *, weight_n: float | None = None,
                    "channels": rows},
     }
 
+# -- against a gait reference (ADR-705) ---------------------------------------
+
+def _reference_angle(angles: Sequence[Sequence[float]], column: int, phase: float) -> float:
+    """A clip column at ``phase`` of its stride, linear between samples, wrapping."""
+
+    n = len(angles)
+    x = (phase % 1.0) * n
+    k = int(math.floor(x)) % n
+    w = x - math.floor(x)
+    return (1.0 - w) * float(angles[k][column]) + w * float(angles[(k + 1) % n][column])
+
+
+def reference_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[str, Any], *,
+                      drives: Mapping[str, Any] | None = None,
+                      settle_s: float = SETTLE_S) -> dict[str, Any]:
+    """How the gait compares with a task's gait reference, stride by stride.
+
+    ``feet`` is :func:`gait_metrics`' per-foot detail, keyed by the names the
+    reference's ``legs`` give as ``foot_body``; ``reference`` is the task's
+    ``cadex-gait-clip-v1`` clip (ADR-702, ADR-703). Nothing here needs a gait
+    clock in the task: **the anchor foot's touch-downs are the clock.** Each
+    settled pair of the left hind's landings is one measured stride, and a
+    moment inside it is at phase ``(t - landing) / stride`` past the
+    reference's own left-hind touch-down. So a policy that strides slower or
+    longer than its reference is still compared pose for pose through its
+    stride, and its timing is a separate number:
+
+    * ``stride_frequency_ratio``: the median measured stride's frequency over
+      the reference's;
+    * ``footfall_phase_error_max``: per foot, the median over strides of how
+      far, in cycles, its landing fell from where the reference's phase
+      offsets put it. A foot that did not land exactly once within half a
+      stride of that moment missed the stride, and the miss is
+      :data:`FOOTFALL_MISSED`. The worst foot is the metric;
+    * ``duty_factor_error_max``: the worst foot's settled duty factor less
+      the reference's, in absolute value;
+    * ``reference_joint_rms_deg``: the RMS over every settled frame inside a
+      measured stride, and every angular drive whose joint the clip poses, of
+      the joint's angle less the clip's at that phase. ``None`` without the
+      drives' record (a trace from before ADR-694).
+
+    Every metric is ``None`` when fewer than two anchor landings fall after
+    the settle (no stride was measured), or when a foot the reference names
+    is not among ``feet`` (``detail["missing_feet"]``).
+    """
+
+    parameters = reference["parameters"]
+    offsets = {str(k): float(v) for k, v in parameters["phase_offsets"].items()}
+    duty = float(parameters["duty_factor"])
+    names = {label: str(leg["foot_body"]) for label, leg in reference["legs"].items()}
+    missing = sorted(name for name in names.values() if name not in feet)
+    if missing:
+        return {"footfall_phase_error_max": None, "duty_factor_error_max": None,
+                "stride_frequency_ratio": None, "reference_joint_rms_deg": None,
+                "reference": {"gait": reference.get("gait"), "missing_feet": missing}}
+    anchor = [t for t in feet[names[REFERENCE_ANCHOR]]["touchdowns_s"] if t >= settle_s - _EPS]
+    strides = [(a, b - a) for a, b in zip(anchor, anchor[1:]) if b - a > _EPS]
+    detail: dict[str, Any] = {
+        "gait": reference.get("gait"), "anchor": names[REFERENCE_ANCHOR],
+        "strides": len(strides),
+        "reference_stride_hz": float(parameters["stride_frequency_hz"]),
+        "stride_hz": None, "feet": {}, "joints": [],
+    }
+    empty = {"footfall_phase_error_max": None, "duty_factor_error_max": None,
+             "stride_frequency_ratio": None, "reference_joint_rms_deg": None,
+             "reference": detail}
+    if not strides:
+        return empty
+    period = float(statistics.median(length for _, length in strides))
+    detail["stride_hz"] = 1.0 / period
+
+    phase_errors, duty_errors = [], []
+    for label, name in names.items():
+        expected = (offsets[label] - offsets[REFERENCE_ANCHOR]) % 1.0
+        landings = feet[name]["touchdowns_s"]
+        errors = []
+        for start, length in strides:
+            due = start + expected * length
+            near = [t for t in landings if abs(t - due) < 0.5 * length]
+            errors.append(abs(near[0] - due) / length if len(near) == 1 else FOOTFALL_MISSED)
+        error = float(statistics.median(errors))
+        measured_duty = feet[name].get("duty_factor")
+        duty_error = None if measured_duty is None else abs(float(measured_duty) - duty)
+        phase_errors.append(error)
+        duty_errors.append(duty_error)
+        detail["feet"][label] = {
+            "foot": name, "expected_phase": expected, "phase_error": error,
+            "missed_strides": sum(1 for e in errors if e >= FOOTFALL_MISSED),
+            "duty_factor": measured_duty, "reference_duty_factor": duty,
+            "duty_factor_error": duty_error,
+        }
+
+    joint_rms = None
+    if drives is not None:
+        columns = {str(name): i for i, name in enumerate(reference["joints"])}
+        angles = reference["joint_angles_rad"]
+        start_phase = offsets[REFERENCE_ANCHOR]
+        pooled: list[float] = []
+        for c, channel in enumerate(drives["channels"]):
+            column = columns.get(str(channel.get("joint", "")))
+            if column is None or str(channel.get("motion_type")) != "angular":
+                continue
+            errors = []
+            for moment, row in zip(drives["time"], drives["positions"]):
+                stride = next(((a, n) for a, n in strides if a <= moment < a + n), None)
+                if stride is None or row is None:
+                    continue
+                phase = start_phase + (moment - stride[0]) / stride[1]
+                errors.append(float(row[c]) - math.degrees(_reference_angle(angles, column, phase)))
+            if errors:
+                pooled.extend(errors)
+                detail["joints"].append({"joint": str(channel["joint"]), "rms_deg": _rms(errors)})
+        joint_rms = _rms(pooled)
+
+    return {
+        "footfall_phase_error_max": max(phase_errors),
+        "duty_factor_error_max": (None if any(e is None for e in duty_errors)
+                                  else max(duty_errors)),
+        "stride_frequency_ratio": detail["stride_hz"] / detail["reference_stride_hz"],
+        "reference_joint_rms_deg": joint_rms,
+        "reference": detail,
+    }
+
 
 def episode_metrics(episode: Mapping[str, Any]) -> dict[str, Any]:
     """How the episode ended. ``completed`` is 1.0 only for a run to the horizon."""
@@ -1082,7 +1224,8 @@ def episode_metrics(episode: Mapping[str, Any]) -> dict[str, Any]:
 def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
             shoves=(), command_mm_s: float | None = None,
             segments: Sequence[Mapping[str, Any]] = (),
-            drives: Mapping[str, Any] | None = None) -> dict[str, Any]:
+            drives: Mapping[str, Any] | None = None,
+            reference: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Every behaviour metric one rollout can be read for, as one flat table.
 
     Which families are read is decided by what the rig and the episode
@@ -1102,6 +1245,8 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
     trace's :func:`drive_series`; a trace that records none is not read for
     the drive family. Its stride frequency is the median foot's settled step
     rate, and its travel the base's net plan distance after the settle.
+    ``reference`` is the task's gait reference clip; with feet it is read
+    for the reference family (ADR-705).
     """
 
     read: dict[str, Any] = dict(episode_metrics(episode))
@@ -1131,7 +1276,9 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
                   if rates and all(r is not None for r in rates) else None)
         read.update(drive_metrics(drives, weight_n=rig.get("weight_n"), travel=travel,
                                   stride_hz=stride))
-    for key in ("recovery_s", "feet", "segments", "travel_mm", "motion", "drives"):
+    if reference is not None and read.get("feet"):
+        read.update(reference_metrics(read["feet"], reference, drives=drives))
+    for key in ("recovery_s", "feet", "segments", "travel_mm", "motion", "drives", "reference"):
         if key in read:
             detail[key] = read[key]
     return {"metrics": {name: read[name] for name in METRICS if name in read},
