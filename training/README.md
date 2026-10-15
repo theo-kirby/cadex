@@ -143,15 +143,34 @@ task before ADR-408 -- trains exactly as it always did. `actor_channels`
 here and `CadexDynamics.policy_channels` in the engine are the same rule,
 written twice because this file imports nothing from the engine.
 
+## The learner (ADR-712)
+
+The PPO is **Brax's** (`brax.training.agents.ppo`): its swish policy and value
+networks, its tanh-squashed Gaussian, its running observation normaliser, its
+loss and GAE, and its minibatched SGD under optax's Adam. The defaults below
+are MuJoCo Playground's locomotion recipe. The environment is this file's
+(`build_environment`): everything the bundle declares stays here. The
+iteration loop is Brax's `training_step` with one unroll per iteration, so
+`progress.json`, checkpoints, the best-so-far and collapse detection work as
+they always did. The hand-written PPO it replaced learned to stand still on a
+Go1 benchmark that Brax learns to trot in under six minutes (docs/MUJOCO.md
+§7, "The learner").
+
 ## Options that matter
 
 | Flag | Default | What it is |
 |---|---|---|
 | `--seed` | `0` | PPO's seed *and* the base seed for domain randomisation |
-| `--iterations` | `200` | outer PPO iterations |
-| `--envs` | `256` | parallel MJX environments; also how many distinct randomisation draws exist. Host memory holds one compiled model plus the drawn fields, whatever the count (ADR-695) |
+| `--iterations` | `200` | outer PPO iterations: one unroll of every environment, then `--epochs` passes of `--minibatches` minibatches |
+| `--envs` | `256` | parallel MJX environments; also how many distinct randomisation draws exist. Host memory holds one compiled model plus the drawn fields, whatever the count (ADR-695). Playground's locomotion recipe uses 8192 |
 | `--unroll` | `20` | control steps collected per environment per iteration |
-| `--hidden` | `64 64` | the MLP the container records |
+| `--epochs` | `4` | passes over each iteration's batch (Brax's `num_updates_per_batch`) |
+| `--minibatches` | `32`, or the largest count `--envs` divides by under it | minibatches per pass; each is `--envs/--minibatches` environments' whole unrolls |
+| `--hidden` | `512 256 128` | the policy MLP; the container records it |
+| `--value-hidden` | the policy's | the critic MLP |
+| `--activation` | `swish` | the hidden activation, recorded in the policy; `tanh` continues a policy trained before ADR-712 |
+| `--entropy`, `--clip`, `--max-grad-norm` | `0.01`, `0.3`, `1.0` | Brax PPO's entropy cost, clip epsilon and gradient-norm clip |
+| `--learning-rate`, `--discount`, `--gae-lambda` | `3e-4`, `0.97`, `0.95` | optax Adam's rate; GAE's discount and lambda |
 | `--checkpoint-every` | `0` (off) | write a complete `.cxpolicy` every N iterations, plus `<out>.best.cxpolicy` |
 | `--progress` | beside `--out` | where to rewrite `progress.json` |
 

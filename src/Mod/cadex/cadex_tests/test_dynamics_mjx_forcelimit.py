@@ -182,9 +182,13 @@ def test_an_unlimited_servo_agrees_with_or_without_the_rule() -> None:
 def test_train_installs_the_rule_before_it_builds_a_model() -> None:
     """Runs everywhere: the trainer's own source, read without importing jax."""
 
-    source = inspect.getsource(_trainer().train)
+    trainer = _trainer()
+    source = inspect.getsource(trainer.train)
     call = source.find("match_engine_actuator_derivative(")
     assert call >= 0, "train() never installs the engine's actuator derivative rule"
-    assert call < source.find("mjx.put_model("), (
+    # ADR-712: the model is put on the device by the environment train()
+    # builds, so the rule must be installed before that call.
+    assert "mjx.put_model(" in inspect.getsource(trainer.build_environment)
+    assert 0 <= call < source.find("build_environment("), (
         "train() must install the rule before it puts a model on the device"
     )

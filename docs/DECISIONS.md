@@ -42196,3 +42196,88 @@ AK10-9 configuration; left side; median of 10 seeds):
 - flight is reported, and a clip that never lands is refused;
 - the command line screens a given clip by inverse dynamics and refuses
   `--reference` with a held replay.
+
+## ADR-712 — The trainer learns with Brax's PPO (2026-10-15)
+
+**Context.** orun6's benchmark (B1) trained Unitree Go1 (MuJoCo Menagerie)
+on MuJoCo Playground's joystick task in two ways, with the same MJX physics,
+reward and sample budget.
+- Playground's own recipe trained a 933 mm/s diagonal trot in 378 s.
+- `training/cadex_train.py` learned to stand still: 3 mm/s on 10 seeds.
+
+Ablations ruled out the observation frame, the reward terms and reward
+clipping, and left the PPO core. That core took four full-batch gradient
+steps per iteration, where Brax's recipe takes 128 minibatch steps on the same
+data. Every panel-cat training failure ran on that same core, so none of
+them could be told apart from a learner failure.
+
+**Decision.** The learner is Brax's PPO (`brax==0.14.2`, Apache-2.0), and the
+hand-written PPO is deleted: its rollout, GAE, loss, Adam and tanh MLP
+initialiser.
+- **Brax's parts:**
+  - swish policy and value networks;
+  - the tanh-squashed Gaussian;
+  - the running observation normaliser;
+  - `compute_ppo_loss` and its GAE;
+  - minibatched SGD under optax's Adam, with global-norm clipping.
+- **Defaults are Playground's locomotion recipe:** a 512-256-128 network,
+  32 minibatches, 4 epochs, entropy 0.01, clip 0.3, gradient-norm clip 1.0,
+  discount 0.97 and learning rate 3e-4.
+- **Cadex keeps the environment.** `build_environment` turns the bundle into
+  a batched environment Brax drives with its own `generate_unroll`. It owns
+  everything the bundle declares: the channels, the filter and slew, noise,
+  goals, the reference and its random start, reset variation, pushes,
+  randomised models, reward, terminations and the episode.
+- **The iteration loop stays in `train`.** It is Brax's `training_step` with
+  one unroll per iteration, so `progress.json`, checkpoints, the best-so-far,
+  collapse detection and divergence stops are unchanged. Brax's `ppo.train`
+  driver reports episode statistics only as a rolling mean of finished
+  episodes, which is nothing for the first fifty iterations of a task its
+  policy does not fail.
+- **Timeouts.** The step's `truncation` flag marks a timeout and only a
+  timeout. Brax's GAE masks those steps and bootstraps the step before from
+  the critic, which keeps ADR-101's distinction between a timeout and a
+  failure.
+- **Reset readings.** A reset environment's readings are of its new pose:
+  `mjx.forward` runs when any environment ended and is taken only where one
+  did. Before, a task with no reset variation acted on the previous episode's
+  last reading for one step. A task with variation forwarded every
+  environment, which moved the readings of environments that carried on.
+- **ADR-589's sensor floor is kept**, applied to the normaliser's standard
+  deviation after each update.
+- **The `.cxpolicy` format is unchanged.**
+  - The container stores the deterministic half of Brax's last layer, so the
+    engine still plays `tanh(output) * scale + bias`.
+  - `swish` joins the engine's `POLICY_ACTIVATIONS`, with an overflow-safe
+    `policy_swish` and a matching trainer witness.
+  - `exploration.log_std` is the mean log scale over the witness
+    observations, and `exploration.state_dependent` is `true`.
+- **Warm starts** carry the location half and the normaliser, and set the
+  scale half to the source's width. A source trained with another activation
+  is refused: every policy before this ADR is `tanh`, so continue one with
+  `--activation tanh`.
+- **Pins.** `training/requirements.txt` gains `brax==0.14.2`, `flax==0.12.0`
+  and `optax==0.2.8`. Nothing enters `pixi.toml` or the payload.
+- **New flags:** `--minibatches`, `--value-hidden`, `--activation`,
+  `--max-grad-norm` and `--reward-scaling`.
+
+**Evidence.** The Go1 B1 bundle, trained by this trainer with Playground's
+budget (1260 iterations × 8192 environments × 20 steps), took 340 s. Measured
+through the engine's own rollout at a 1.0 m/s command on seeds 1001–1010:
+- 977 mm/s, no falls;
+- a diagonal trot, FR–RL in phase and FR–FL 0.53 of a cycle;
+- stride 0.38 s.
+
+Playground's own policy measured 933 mm/s on the same evaluation. The engine
+verifies the policy with a witness error of 1.9e-7.
+
+**Tests.**
+- `test_dynamics_policy_trainer` pins:
+  - the new requirements and deferred imports;
+  - that only a timeout is truncation, and that the loss is Brax's;
+  - that the old GAE is gone.
+- The source-reading tests read `build_environment` as well as `train`.
+- The slew-composition test uses a limit that binds only sometimes. At
+  0.5 N·mm on a ±2000 box a rate limit binds every step and hides the filter
+  entirely.
+- In the training venv, every MJX-gated test passes.

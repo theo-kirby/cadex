@@ -1,6 +1,6 @@
 # Training a policy: the four ways
 
-Verified against source: 2026-10-12. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-15. Provenance: `[Cadex-new]`. See
 ADR-084 (training is offboard) and ADR-089
 (remote dispatch).
 
@@ -100,7 +100,7 @@ an existing CUDA plugin. Confirm the trainer receipt reports `device: cpu`.
 **Python ≥ 3.12**, and that is a floor, not a preference: the pinned
 `numpy==2.5.1` has no wheels below cp312. The pixi environment's 3.11
 cannot host this venv — use the OS's own newer interpreter. On macOS the
-Homebrew 3.13 is the recommended one, and all four pins have arm64 wheels
+Homebrew 3.13 is the recommended one, and every pin has arm64 wheels
 for cp312/cp313/cp314:
 
 ```bash
@@ -223,7 +223,7 @@ training/remote_train.sh check
 
 It reports everything wrong in one round trip rather than one problem per
 trip: ssh reachable, the repo present, the venv present **and a venv**, the
-four pinned packages at exactly the pinned versions, `jax.default_backend()`
+pinned packages at exactly the pinned versions, `jax.default_backend()`
 actually `gpu`, and what `nvidia-smi` says. It **never creates the venv** —
 it exits naming the path and giving you the three commands. A venv this
 script silently built is a venv nobody knows the contents of, and exact pins

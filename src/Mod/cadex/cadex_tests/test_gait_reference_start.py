@@ -225,7 +225,7 @@ def test_the_trainer_offsets_the_clock_by_each_environments_sample(tmp_path) -> 
             engine = dyn.tracking_values(bundle, int(step), origin)
             assert trained[step].tolist() == pytest.approx(
                 [engine[name] for name in names], abs=1e-9)
-    source = inspect.getsource(module.train)
+    source = (inspect.getsource(module.build_environment) + inspect.getsource(module.train))
     assert "tracking_vector(jnp, task, steps, origin)" in source
     assert "tracking_vector(jnp, task, steps + 1, origin)" in source
     assert 'task["tracking"]["reset_qpos"]' in source

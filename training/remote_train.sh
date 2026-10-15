@@ -295,7 +295,7 @@ else
     echo "venv ok"
     "${VENV}/bin/python" - <<'PROBE' 2>&1 || echo "probe failed"
 import importlib.metadata as meta
-for name in ("jax", "jaxlib", "mujoco", "mujoco-mjx", "numpy"):
+for name in ("jax", "jaxlib", "mujoco", "mujoco-mjx", "numpy", "brax", "flax", "optax"):
     try:
         print("pkg", name, meta.version(name))
     except Exception:
@@ -407,7 +407,7 @@ REMOTE
         echo "FAIL: ${remote_venv} exists but has no bin/python, so it is not a venv."
         failures=$((failures + 1))
     else
-        # The pinned four must match exactly. MuJoCo's own VERSIONING.md
+        # Every pin must match exactly. MuJoCo's own VERSIONING.md
         # disclaims cross-version numerical reproducibility, so a box one
         # patch release off produces numbers that cannot be compared against
         # the engine's -- a wrong answer, not a slow one. jaxlib is reported

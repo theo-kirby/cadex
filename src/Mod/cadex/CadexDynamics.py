@@ -12202,10 +12202,21 @@ MAXIMUM_POLICY_WITNESS_SAMPLES = 256
 #: different gait.
 POLICY_WITNESS_TOLERANCE = 1.0e-4
 
-#: What a hidden layer may do. Deliberately two rows, and named rather than
-#: open: an activation the engine guesses wrong is a network that reads as
-#: plausible and is not the one that trained.
-POLICY_ACTIVATIONS = ("tanh", "relu")
+#: What a hidden layer may do. Named rather than open: an activation the
+#: engine guesses wrong is a network that reads as plausible and is not the
+#: one that trained. ``swish`` (``x * sigmoid(x)``, flax's ``linen.swish``)
+#: is the hidden activation of the Brax PPO networks the trainer uses
+#: (ADR-712).
+POLICY_ACTIVATIONS = ("tanh", "relu", "swish")
+
+
+def policy_swish(value: float) -> float:
+    """``x * sigmoid(x)`` in float64, without overflowing ``exp`` either side."""
+
+    if value >= 0.0:
+        return value / (1.0 + math.exp(-value))
+    rising = math.exp(value)
+    return value * rising / (1.0 + rising)
 
 #: What the output layer may do. One row, and it is load-bearing rather than
 #: restrictive: ``network.output_scale`` and ``network.output_bias`` map a
@@ -12660,6 +12671,8 @@ def policy_forward(
         if index < last:
             if activation == "tanh":
                 result = [math.tanh(value) for value in result]
+            elif activation == "swish":
+                result = [policy_swish(value) for value in result]
             else:
                 result = [value if value > 0.0 else 0.0 for value in result]
         activations = result

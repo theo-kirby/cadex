@@ -219,7 +219,7 @@ def test_the_trainer_computes_the_engines_acceleration_channels() -> None:
     batch = module.acceleration_vector(numpy, bundle, numpy.stack([qacc, 2.0 * qacc]))
     assert batch.shape == (2, 2)
     assert batch[1].tolist() == pytest.approx((2.0 * trained).tolist())
-    source = inspect.getsource(module.train)
+    source = inspect.getsource(module.build_environment) + inspect.getsource(module.train)
     assert "acceleration_vector(jnp, task, data.qacc)" in source
 
 

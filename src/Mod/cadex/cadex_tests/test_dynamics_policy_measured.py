@@ -200,6 +200,11 @@ def test_mjx_carries_position_actuators_and_joint_limits() -> None:
 # so. ADR-116 adds a tenth and makes the omission impossible instead.
 # ---------------------------------------------------------------------------
 
+#: A position tracker on the upper link reading the forearm (ADR-588): the
+#: range is wide enough that the forearm is always in it.
+_TRACKER = {"range_mm": [[-1.0e4, 1.0e4]] * 3, "resolution_mm": 0.5,
+            "rate_hz": 100.0, "noise_mm": 0.4}
+
 _EVERY_KIND = [
     {"kind": "position", "joint": "elbow", "motion_type": "angular", "name": "a"},
     {"kind": "velocity", "joint": "elbow", "motion_type": "angular", "name": "b"},
@@ -212,7 +217,17 @@ _EVERY_KIND = [
     {"kind": "centre_of_mass", "component": "upper", "name": "h"},
     {"kind": "centre_of_mass_velocity", "component": "upper", "name": "i"},
     {"kind": "centroidal_angular_momentum", "component": "upper", "name": "j"},
+    {"kind": "tracked_position", "component": "fore", "name": "k", "frame": "upper",
+     "tracker": _TRACKER, "grounded_sensor": "cam", "grounded_kind": "position_tracker"},
+    {"kind": "tracked_velocity", "component": "fore", "name": "l", "frame": "upper",
+     "tracker": _TRACKER, "grounded_sensor": "cam", "grounded_kind": "position_tracker"},
 ]
+
+#: Kinds this arm cannot carry, each measured against CPU MuJoCo where it
+#: can be: a contact needs a collision shape, which the arm has none of.
+_MEASURED_ELSEWHERE = {
+    "contact": "test_dynamics_contact_channel.test_mjx_reads_the_contact_the_engine_reads",
+}
 
 
 def _arm_with_every_kind():
@@ -248,7 +263,8 @@ def test_mjx_evaluates_every_observation_kind_the_task_surface_offers() -> None:
     import jax.numpy as jnp
 
     model, records = _arm_with_every_kind()
-    assert {str(record["kind"]) for record in records} == set(dyn.OBSERVATION_KINDS)
+    assert {str(record["kind"]) for record in records} | set(_MEASURED_ELSEWHERE) \
+        == set(dyn.OBSERVATION_KINDS)
 
     key = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_KEY, "solved")
     data = mujoco.MjData(model)

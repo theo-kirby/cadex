@@ -1,6 +1,6 @@
 # ARCHITECTURE.md — What Exists Today
 
-Verified against source: 2026-10-14
+Verified against source: 2026-10-15
 
 This document describes the code as it **is**, not as it will be. Targets live
 in `docs/VISION.md`, `docs/XSCRIPT.md` (direction section),
@@ -415,12 +415,14 @@ every render and video is lettered in (ADR-568). No icons, no
 
 ### `training/` — outside the engine on purpose `[Cadex-new]`
 
-`training/cadex_train.py` (3,224 lines) is the offboard PPO trainer, and it is
+`training/cadex_train.py` (3,521 lines) is the offboard PPO trainer, and it is
 the one top-level directory in this repository that is **not part of the
 product** (ADR-084). CMake never installs it, no payload carries it, nothing
 in it enters `pixi.toml`, and it cannot import Cadex — it reports whether
-`CadexDynamics` was importable so a test can assert the negative. Its four
-dependencies (`jax`, `mujoco`, `mujoco-mjx`, `flax`) are exactly pinned in
+`CadexDynamics` was importable so a test can assert the negative. Its
+learner is Brax's PPO (ADR-712) over Cadex's own environment, and its
+dependencies (`mujoco`, `mujoco-mjx`, `jax`, `numpy`, `brax`, `flax`, `optax`)
+are exactly pinned in
 `training/requirements.txt` and installed into a venv **on whatever machine
 trains**, which is a machine with a CUDA GPU and no Cadex on it.
 
