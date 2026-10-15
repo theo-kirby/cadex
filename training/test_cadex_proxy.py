@@ -186,6 +186,27 @@ def test_swing_leaves_only_what_moving_the_leg_costs():
     assert inboard["rms_nm"] < swinging["rms_nm"]
 
 
+def test_each_support_holds_only_its_axes_and_reports_the_forward_push():
+    # A reference that asks for 0.5 m/s the one leg cannot walk: a support that
+    # holds the forward path pushes; one that leaves it free never does.
+    def run(support):
+        t = task()
+        t["reference"]["parameters"]["speed_m_s"] = 0.5
+        model = fresh()
+        return P.screen(mujoco, np, model, t, P.apply(mujoco, model, t, {}, LIBRARY), 7,
+                        support=support, fall_height=0.0)
+
+    full, attitude, height, posture = (run(s) for s in ("full", "attitude", "height", "posture"))
+    assert full["support_push_rms_pct_weight"] > 1.0 and attitude["support_push_rms_pct_weight"] > 1.0
+    assert full["speed_mean_m_s"] == pytest.approx(0.5, abs=0.05)
+    assert height["support_push_rms_pct_weight"] == posture["support_push_rms_pct_weight"] == 0.0
+    assert abs(height["speed_mean_m_s"]) < 0.2
+    assert full["support_lift_mean_pct_weight"] > 10.0 and height["support_lift_mean_pct_weight"] > 10.0
+    assert attitude["support_lift_mean_pct_weight"] == posture["support_lift_mean_pct_weight"] == 0.0
+    with pytest.raises(P.ProxyError, match="support must be one of"):
+        run("hover")
+
+
 def test_an_unsupported_base_falls_and_says_when():
     model = fresh()
     rows = P.apply(mujoco, model, task(), {}, LIBRARY)
@@ -222,3 +243,116 @@ def test_the_command_line_writes_the_table(tmp_path, capsys):
     assert P.main([str(outputs / "toy-task.json"), "--drives", str(tmp_path / "drives.json"),
                    "--configs", str(tmp_path / "configs.json"), "--out", str(tmp_path / "x")]) == 2
     assert "not in the drive library" in capsys.readouterr().err
+
+
+# Each foot's frame sits on its hinge, away from its mass, as an exported
+# body's frame sits at the assembly origin: forces act at the COM.
+BIPED = """
+<mujoco>
+  <option timestep="0.002"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <body name="base" pos="0 0 0.32">
+      <freejoint name="base/free"/>
+      <geom type="box" size="0.15 0.08 0.04" mass="3"/>
+      <body name="leg_f" pos="0.1 0 0">
+        <joint name="j_f" axis="0 1 0" range="-1 1"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -0.3" size="0.02" mass="0.5"/>
+        <body name="foot_f"><geom type="sphere" pos="0 0 -0.3" size="0.02" mass="0.1"/></body>
+      </body>
+      <body name="leg_h" pos="-0.1 0 0">
+        <joint name="j_h" axis="0 1 0" range="-1 1"/>
+        <geom type="capsule" fromto="0 0 0 0 0 -0.3" size="0.02" mass="0.5"/>
+        <body name="foot_h"><geom type="sphere" pos="0 0 -0.3" size="0.02" mass="0.1"/></body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="j_f/torque" joint="j_f" gear="1"/>
+    <motor name="j_h/torque" joint="j_h" gear="1"/>
+  </actuator>
+</mujoco>
+"""
+
+
+def stance(angle, contact=1, samples=10):
+    # Both legs at ``angle`` (rad), base lowered so the feet stay on the floor.
+    z = 0.32 - 0.3 * (1.0 - math.cos(angle))
+    row = [0.0, 0.0, z, 1.0, 0.0, 0.0, 0.0, angle, angle]
+    return {
+        "actions": [{"joint": j, "index": i, "rated_effort": 9000.0} for i, j in enumerate(("j_f", "j_h"))],
+        "reference": {"samples": samples, "sample_dt_s": 0.02, "parameters": {"speed_m_s": 0.0},
+                      "qpos": [row] * samples,
+                      "legs": {"F": {"foot_body": "foot_f"}, "H": {"foot_body": "foot_h"}},
+                      "contact": {"F": [contact] * samples, "H": [contact] * samples}},
+    }
+
+
+def biped_rows(model):
+    return [{"joint": j, "slot": i, "drive": None, "peak_nm": 22.0, "rated_nm": 9.0, "no_load_rad_s": 60.0}
+            for i, j in enumerate(("j_f", "j_h"))]
+
+
+def test_inverse_on_upright_legs_asks_nothing_of_the_drives():
+    model = mujoco.MjModel.from_xml_string(BIPED)
+    run = P.inverse(mujoco, np, model, stance(0.0), biped_rows(model))
+    assert run["flight_share"] == 0.0 and run["pulling_share"] == 0.0
+    assert run["residual_mean_pct_weight"] == pytest.approx(0.0, abs=1e-6)
+    assert all(d["rms_nm"] < 1e-6 for d in run["drives"])
+
+
+def test_inverse_torques_match_a_leaning_stance_worked_by_hand():
+    # Static, so the feet carry the weight with vertical forces alone, split
+    # by the lever rule about the whole body's COM; each leg is then in
+    # equilibrium: drive torque, its foot's reaction and its own weight.
+    model = mujoco.MjModel.from_xml_string(BIPED)
+    run = P.inverse(mujoco, np, model, stance(0.25), biped_rows(model))
+    assert run["residual_mean_pct_weight"] < 1e-6 and run["pulling_share"] == 0.0
+    data = mujoco.MjData(model)
+    data.qpos[:] = stance(0.25)["reference"]["qpos"][0]
+    mujoco.mj_forward(model, data)
+    g = 9.81
+    weight = float(model.body_subtreemass[1]) * g
+    xf, xh = (float(data.xipos[body(model, n)][0]) for n in ("foot_f", "foot_h"))
+    com = float(data.subtree_com[1][0])
+    ff = weight * (com - xh) / (xf - xh)
+    for (joint, leg, foot, f), drive in zip((("j_f", "leg_f", "foot_f", ff),
+                                             ("j_h", "leg_h", "foot_h", weight - ff)), run["drives"]):
+        hinge = float(data.xanchor[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, joint)][0])
+        expected = (float(data.xipos[body(model, foot)][0]) - hinge) * f - sum(
+            (float(data.xipos[body(model, b)][0]) - hinge) * float(model.body_mass[body(model, b)]) * g
+            for b in (leg, foot))
+        assert abs(expected) > 0.1
+        assert drive["mean_nm"] == pytest.approx(expected, rel=1e-4)
+        assert drive["rms_nm"] == pytest.approx(abs(expected), rel=1e-4)
+
+
+def test_inverse_reports_flight_and_refuses_a_clip_that_never_lands():
+    model = mujoco.MjModel.from_xml_string(BIPED)
+    t = stance(0.0)
+    t["reference"]["contact"]["F"][:3] = [0, 0, 0]
+    t["reference"]["contact"]["H"][:3] = [0, 0, 0]
+    assert P.inverse(mujoco, np, model, t, biped_rows(model))["flight_share"] == pytest.approx(0.3)
+    with pytest.raises(P.ProxyError, match="never puts a foot down"):
+        P.inverse(mujoco, np, mujoco.MjModel.from_xml_string(BIPED), stance(0.0, contact=0),
+                  biped_rows(model))
+
+
+def test_the_command_line_screens_a_given_clip_by_inverse_dynamics(tmp_path):
+    outputs = tmp_path / "outputs"
+    outputs.mkdir()
+    (outputs / "toy-model.xml").write_text(XML)
+    (outputs / "toy-task.json").write_text(json.dumps(dict(task(), model={"path": "outputs/toy-model.xml"})))
+    (tmp_path / "drives.json").write_text(json.dumps(LIBRARY))
+    (tmp_path / "configs.json").write_text(json.dumps([{"name": "as-built"}]))
+    clip = {"samples": 4, "sample_dt_s": 0.02, "parameters": {"speed_m_s": 0.0},
+            "qpos": [[0, 0, 0.35, 1, 0, 0, 0, 0.0]] * 4, "legs": {"F": {"foot_body": "foot"}},
+            "contact": {"F": [1, 1, 1, 1]}}
+    (tmp_path / "clip.json").write_text(json.dumps(clip))
+    common = [str(outputs / "toy-task.json"), "--drives", str(tmp_path / "drives.json"),
+              "--configs", str(tmp_path / "configs.json"), "--reference", str(tmp_path / "clip.json")]
+    assert P.main(common + ["--support", "inverse", "--out", str(tmp_path / "inv")]) == 0
+    (row,) = json.loads((tmp_path / "inv.json").read_text())
+    assert row["support"] == "inverse" and row["drives"][0]["rms_nm"] < 1e-6
+    with pytest.raises(SystemExit):
+        P.main(common + ["--support", "full", "--out", str(tmp_path / "x")])

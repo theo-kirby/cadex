@@ -1,0 +1,2748 @@
+[
+ {
+  "name": "as-built",
+  "seeds": [
+   null
+  ],
+  "mass_kg": 26.002623649999997,
+  "completed": true,
+  "completed_seeds": 1,
+  "survived_s": 0.22000000000000006,
+  "max_tilt_deg": null,
+  "support_lift_mean_pct_weight": null,
+  "support_push_rms_pct_weight": null,
+  "speed_mean_m_s": null,
+  "flight_share": 0.2909090909090909,
+  "pulling_share": 0.05128205128205128,
+  "residual_mean_pct_weight": 77.4199830001535,
+  "worst_joint": "j_spine",
+  "worst_rms_over_rated": 17.711074423310187,
+  "drives_over_rated": 15,
+  "peak_share_max": 0.9272727272727272,
+  "speed_over_no_load_max": 0.40982805466186706,
+  "holds": false,
+  "drives": [
+   {
+    "joint": "j_fhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 6.203483085389115,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7474076006492909,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.9258874649997082,
+    "speed_over_no_load": 2.021447705544358e-06
+   },
+   {
+    "joint": "j_scap_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 103.61901613977288,
+    "track_rms_deg": null,
+    "rms_over_rated": 11.51322401553032,
+    "peak_share": 0.8181818181818182,
+    "peak_needed_over_peak": 10.19989550196314,
+    "speed_over_no_load": 0.10215250557157568
+   },
+   {
+    "joint": "j_shoulder_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 71.90761971022243,
+    "track_rms_deg": null,
+    "rms_over_rated": 8.663568639785835,
+    "peak_share": 0.6363636363636364,
+    "peak_needed_over_peak": 6.286841732495119,
+    "speed_over_no_load": 0.40982805466186706
+   },
+   {
+    "joint": "j_elbow_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 34.49387204558578,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.155888198263347,
+    "peak_share": 0.2545454545454545,
+    "peak_needed_over_peak": 3.8005541605603876,
+    "speed_over_no_load": 0.2999976020906638
+   },
+   {
+    "joint": "j_wrist_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 9.034884263292584,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.0038760292547315,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.1592806273915304,
+    "speed_over_no_load": 0.3242232223660656
+   },
+   {
+    "joint": "j_hhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.306794366490596,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.39840895981814406,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.34778233025673405,
+    "speed_over_no_load": 1.887328104427018e-07
+   },
+   {
+    "joint": "j_hip_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 75.30615832563771,
+    "track_rms_deg": null,
+    "rms_over_rated": 8.367350925070857,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 10.721612687173682,
+    "speed_over_no_load": 0.13265272974338946
+   },
+   {
+    "joint": "j_knee_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 43.18643977315909,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.203185514838443,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 6.060100691029719,
+    "speed_over_no_load": 0.35459623368274834
+   },
+   {
+    "joint": "j_hock_l",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 17.335502206019846,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.778500735339949,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 6.673354291451754,
+    "speed_over_no_load": 0.19608222297712655
+   },
+   {
+    "joint": "j_fhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 14.556642961617394,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.7538124050141437,
+    "peak_share": 0.2,
+    "peak_needed_over_peak": 1.2561101545497295,
+    "speed_over_no_load": 2.0131743876832916e-07
+   },
+   {
+    "joint": "j_scap_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 151.41097421526788,
+    "track_rms_deg": null,
+    "rms_over_rated": 16.82344157947421,
+    "peak_share": 0.8727272727272727,
+    "peak_needed_over_peak": 18.697411137806245,
+    "speed_over_no_load": 0.09202646782621017
+   },
+   {
+    "joint": "j_shoulder_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 112.22074625160718,
+    "track_rms_deg": null,
+    "rms_over_rated": 13.520571837543033,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 12.37584795837294,
+    "speed_over_no_load": 0.1972971611578005
+   },
+   {
+    "joint": "j_elbow_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 47.347322587567234,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.704496697297257,
+    "peak_share": 0.2545454545454545,
+    "peak_needed_over_peak": 5.6068817590335325,
+    "speed_over_no_load": 0.20237953518576646
+   },
+   {
+    "joint": "j_wrist_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 6.2173428735907965,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.6908158748434219,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.5933470077373063,
+    "speed_over_no_load": 0.19122497420650397
+   },
+   {
+    "joint": "j_hhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 2.8999842504747324,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.349395692828281,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.268961448471126,
+    "speed_over_no_load": 1.8873281064103946e-07
+   },
+   {
+    "joint": "j_hip_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 88.05999323497716,
+    "track_rms_deg": null,
+    "rms_over_rated": 9.78444369277524,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 8.834970921773852,
+    "speed_over_no_load": 0.13265272974339026
+   },
+   {
+    "joint": "j_knee_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 50.55253348207717,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.09066668458761,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 4.6614745691217125,
+    "speed_over_no_load": 0.3545962336827469
+   },
+   {
+    "joint": "j_hock_r",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 20.067434943412387,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.689144981137463,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.033999183100937,
+    "speed_over_no_load": 0.196082222977124
+   },
+   {
+    "joint": "j_spine",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 159.39966980979167,
+    "track_rms_deg": null,
+    "rms_over_rated": 17.711074423310187,
+    "peak_share": 0.9272727272727272,
+    "peak_needed_over_peak": 14.818147250720074,
+    "speed_over_no_load": 0.08332705401355309
+   }
+  ],
+  "support": "inverse",
+  "config": {
+   "name": "as-built",
+   "note": "panel-cat-3's drives: scapula AK80-9, shoulder and elbow AK70-10, wrist AK80-9"
+  }
+ },
+ {
+  "name": "scap+shoulder AK10-9",
+  "seeds": [
+   null
+  ],
+  "mass_kg": 27.540623649999997,
+  "completed": true,
+  "completed_seeds": 1,
+  "survived_s": 0.22000000000000006,
+  "max_tilt_deg": null,
+  "support_lift_mean_pct_weight": null,
+  "support_push_rms_pct_weight": null,
+  "speed_mean_m_s": null,
+  "flight_share": 0.2909090909090909,
+  "pulling_share": 0.05128205128205128,
+  "residual_mean_pct_weight": 79.74801459833103,
+  "worst_joint": "j_spine",
+  "worst_rms_over_rated": 18.75769738938179,
+  "drives_over_rated": 15,
+  "peak_share_max": 0.9272727272727272,
+  "speed_over_no_load_max": 0.6147420819928007,
+  "holds": false,
+  "drives": [
+   {
+    "joint": "j_fhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 6.444630708813879,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7764615311823949,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.9747602443150957,
+    "speed_over_no_load": 2.021447705544358e-06
+   },
+   {
+    "joint": "j_scap_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 107.19784180873319,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.955435656040732,
+    "peak_share": 0.6181818181818182,
+    "peak_needed_over_peak": 4.418395894381497,
+    "speed_over_no_load": 0.18195915054936918
+   },
+   {
+    "joint": "j_shoulder_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 75.05690664412124,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.169828146895624,
+    "peak_share": 0.38181818181818183,
+    "peak_needed_over_peak": 3.082821376248918,
+    "speed_over_no_load": 0.6147420819928007
+   },
+   {
+    "joint": "j_elbow_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 36.49609238332719,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.397119564256287,
+    "peak_share": 0.2545454545454545,
+    "peak_needed_over_peak": 4.0264600392667,
+    "speed_over_no_load": 0.2999976020906638
+   },
+   {
+    "joint": "j_wrist_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 9.245528401372212,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.0272809334858013,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.15928062739153,
+    "speed_over_no_load": 0.3242232223660656
+   },
+   {
+    "joint": "j_hhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.425570463443228,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.41271933294496715,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.37345695832146586,
+    "speed_over_no_load": 1.887328104427018e-07
+   },
+   {
+    "joint": "j_hip_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 79.84804339062448,
+    "track_rms_deg": null,
+    "rms_over_rated": 8.872004821180498,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 11.202507538972023,
+    "speed_over_no_load": 0.13265272974338946
+   },
+   {
+    "joint": "j_knee_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 45.82579699549538,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.521180360903058,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 6.290668211950067,
+    "speed_over_no_load": 0.35459623368274834
+   },
+   {
+    "joint": "j_hock_l",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 18.39821053216692,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.13273684405564,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 6.943454986369682,
+    "speed_over_no_load": 0.19608222297712655
+   },
+   {
+    "joint": "j_fhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 15.706269787867841,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.8923216611888964,
+    "peak_share": 0.23636363636363636,
+    "peak_needed_over_peak": 1.339510652743717,
+    "speed_over_no_load": 2.0131743876832916e-07
+   },
+   {
+    "joint": "j_scap_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 157.9244691912877,
+    "track_rms_deg": null,
+    "rms_over_rated": 8.773581621738206,
+    "peak_share": 0.7454545454545455,
+    "peak_needed_over_peak": 8.163194749326815,
+    "speed_over_no_load": 0.16392214581543685
+   },
+   {
+    "joint": "j_shoulder_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 117.73065728394377,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.5405920713302095,
+    "peak_share": 0.43636363636363634,
+    "peak_needed_over_peak": 6.107525352766268,
+    "speed_over_no_load": 0.2959457417367008
+   },
+   {
+    "joint": "j_elbow_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 49.83021671240931,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.003640567760157,
+    "peak_share": 0.2545454545454545,
+    "peak_needed_over_peak": 5.930014038999347,
+    "speed_over_no_load": 0.20237953518576646
+   },
+   {
+    "joint": "j_wrist_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 6.561100665188736,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7290111850209706,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.6212159315317624,
+    "speed_over_no_load": 0.19122497420650397
+   },
+   {
+    "joint": "j_hhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.0227966401509043,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.3641923662832415,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.28160637316479364,
+    "speed_over_no_load": 1.8873281064103946e-07
+   },
+   {
+    "joint": "j_hip_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 93.42578706620405,
+    "track_rms_deg": null,
+    "rms_over_rated": 10.380643007356007,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 9.399690464210583,
+    "speed_over_no_load": 0.13265272974339026
+   },
+   {
+    "joint": "j_knee_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 53.614682529762035,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.459600304790606,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 4.941549274296528,
+    "speed_over_no_load": 0.3545962336827469
+   },
+   {
+    "joint": "j_hock_r",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 21.318243390330466,
+    "track_rms_deg": null,
+    "rms_over_rated": 7.106081130110155,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.354288871076496,
+    "speed_over_no_load": 0.196082222977124
+   },
+   {
+    "joint": "j_spine",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 168.8192765044361,
+    "track_rms_deg": null,
+    "rms_over_rated": 18.75769738938179,
+    "peak_share": 0.9272727272727272,
+    "peak_needed_over_peak": 15.797314720183396,
+    "speed_over_no_load": 0.08332705401355309
+   }
+  ],
+  "support": "inverse",
+  "config": {
+   "name": "scap+shoulder AK10-9",
+   "drives": {
+    "j_scap_l": "cubemars-ak10-9-v3-kv60",
+    "j_scap_r": "cubemars-ak10-9-v3-kv60",
+    "j_shoulder_l": "cubemars-ak10-9-v3-kv60",
+    "j_shoulder_r": "cubemars-ak10-9-v3-kv60"
+   }
+  }
+ },
+ {
+  "name": "scap+shoulder+elbow AK10-9",
+  "seeds": [
+   null
+  ],
+  "mass_kg": 28.17862365,
+  "completed": true,
+  "completed_seeds": 1,
+  "survived_s": 0.22000000000000006,
+  "max_tilt_deg": null,
+  "support_lift_mean_pct_weight": null,
+  "support_push_rms_pct_weight": null,
+  "speed_mean_m_s": null,
+  "flight_share": 0.2909090909090909,
+  "pulling_share": 0.05128205128205128,
+  "residual_mean_pct_weight": 79.37741627666722,
+  "worst_joint": "j_spine",
+  "worst_rms_over_rated": 19.184824717685547,
+  "drives_over_rated": 15,
+  "peak_share_max": 0.9272727272727272,
+  "speed_over_no_load_max": 0.6147420819928007,
+  "holds": false,
+  "drives": [
+   {
+    "joint": "j_fhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 6.562218843800904,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7906287763615547,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.9897959837813403,
+    "speed_over_no_load": 2.021447705544358e-06
+   },
+   {
+    "joint": "j_scap_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 110.44009595088512,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.135560886160285,
+    "peak_share": 0.6363636363636364,
+    "peak_needed_over_peak": 4.4802781233182625,
+    "speed_over_no_load": 0.18195915054936918
+   },
+   {
+    "joint": "j_shoulder_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 76.82241977061881,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.267912209478823,
+    "peak_share": 0.4,
+    "peak_needed_over_peak": 3.1298397845486927,
+    "speed_over_no_load": 0.6147420819928007
+   },
+   {
+    "joint": "j_elbow_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 39.282555478983376,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.1823641932768543,
+    "peak_share": 0.16363636363636364,
+    "peak_needed_over_peak": 1.84235826297137,
+    "speed_over_no_load": 0.4499964031359957
+   },
+   {
+    "joint": "j_wrist_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 9.248485779515539,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.0276095310572821,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.1592806273915284,
+    "speed_over_no_load": 0.3242232223660656
+   },
+   {
+    "joint": "j_hhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.5390432092638306,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.42639074810407596,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.3884207117101597,
+    "speed_over_no_load": 1.887328104427018e-07
+   },
+   {
+    "joint": "j_hip_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 82.26540120430508,
+    "track_rms_deg": null,
+    "rms_over_rated": 9.140600133811676,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 12.180935014928213,
+    "speed_over_no_load": 0.13265272974338946
+   },
+   {
+    "joint": "j_knee_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 47.27037795566512,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.695226259718688,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 6.799111157225184,
+    "speed_over_no_load": 0.35459623368274834
+   },
+   {
+    "joint": "j_hock_l",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 18.94852433323369,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.316174777744563,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 7.4594213117626635,
+    "speed_over_no_load": 0.19608222297712655
+   },
+   {
+    "joint": "j_fhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 15.803980884768999,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.9040940825022887,
+    "peak_share": 0.23636363636363636,
+    "peak_needed_over_peak": 1.3484412118991764,
+    "speed_over_no_load": 2.0131743876832916e-07
+   },
+   {
+    "joint": "j_scap_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 161.20350248920803,
+    "track_rms_deg": null,
+    "rms_over_rated": 8.955750138289336,
+    "peak_share": 0.7454545454545455,
+    "peak_needed_over_peak": 8.3056510239039,
+    "speed_over_no_load": 0.16392214581543685
+   },
+   {
+    "joint": "j_shoulder_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 119.86181091947019,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.6589894955261215,
+    "peak_share": 0.43636363636363634,
+    "peak_needed_over_peak": 6.215507337874689,
+    "speed_over_no_load": 0.2959457417367008
+   },
+   {
+    "joint": "j_elbow_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 49.99436377282258,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.777464654045699,
+    "peak_share": 0.12727272727272726,
+    "peak_needed_over_peak": 2.751100567433935,
+    "speed_over_no_load": 0.3035693027786497
+   },
+   {
+    "joint": "j_wrist_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 6.710069913279137,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7455633236976819,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.6347176009305348,
+    "speed_over_no_load": 0.19122497420650397
+   },
+   {
+    "joint": "j_hhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.069904173777341,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.3698679727442579,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.2918648187112774,
+    "speed_over_no_load": 1.8873281064103946e-07
+   },
+   {
+    "joint": "j_hip_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 95.87601517478775,
+    "track_rms_deg": null,
+    "rms_over_rated": 10.652890574976418,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 9.694843085537967,
+    "speed_over_no_load": 0.13265272974339026
+   },
+   {
+    "joint": "j_knee_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 55.06352898560402,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.634160118747472,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.0962224747033185,
+    "speed_over_no_load": 0.3545962336827469
+   },
+   {
+    "joint": "j_hock_r",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 21.86634436528203,
+    "track_rms_deg": null,
+    "rms_over_rated": 7.28878145509401,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.5139057422797775,
+    "speed_over_no_load": 0.196082222977124
+   },
+   {
+    "joint": "j_spine",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 172.66342245916994,
+    "track_rms_deg": null,
+    "rms_over_rated": 19.184824717685547,
+    "peak_share": 0.9272727272727272,
+    "peak_needed_over_peak": 16.277334868210747,
+    "speed_over_no_load": 0.08332705401355309
+   }
+  ],
+  "support": "inverse",
+  "config": {
+   "name": "scap+shoulder+elbow AK10-9",
+   "drives": {
+    "j_scap_l": "cubemars-ak10-9-v3-kv60",
+    "j_scap_r": "cubemars-ak10-9-v3-kv60",
+    "j_shoulder_l": "cubemars-ak10-9-v3-kv60",
+    "j_shoulder_r": "cubemars-ak10-9-v3-kv60",
+    "j_elbow_l": "cubemars-ak10-9-v3-kv60",
+    "j_elbow_r": "cubemars-ak10-9-v3-kv60"
+   }
+  }
+ },
+ {
+  "name": "scap+shoulder AK80-64",
+  "seeds": [
+   null
+  ],
+  "mass_kg": 27.180623649999994,
+  "completed": true,
+  "completed_seeds": 1,
+  "survived_s": 0.22000000000000006,
+  "max_tilt_deg": null,
+  "support_lift_mean_pct_weight": null,
+  "support_push_rms_pct_weight": null,
+  "speed_mean_m_s": null,
+  "flight_share": 0.2909090909090909,
+  "pulling_share": 0.05128205128205128,
+  "residual_mean_pct_weight": 79.24209339085961,
+  "worst_joint": "j_spine",
+  "worst_rms_over_rated": 18.5111859068724,
+  "drives_over_rated": 15,
+  "peak_share_max": 0.9272727272727272,
+  "speed_over_no_load_max": 2.622899549835949,
+  "holds": false,
+  "drives": [
+   {
+    "joint": "j_fhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 6.389492551818031,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7698183797371121,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.9636079223633315,
+    "speed_over_no_load": 2.021447705544358e-06
+   },
+   {
+    "joint": "j_scap_l",
+    "drive": "cubemars-ak80-64-kv80",
+    "rms_nm": 135.4187298612208,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.8212235387754334,
+    "peak_share": 0.41818181818181815,
+    "peak_needed_over_peak": 3.422817851547236,
+    "speed_over_no_load": 0.7763590423439751
+   },
+   {
+    "joint": "j_shoulder_l",
+    "drive": "cubemars-ak80-64-kv80",
+    "rms_nm": 254.5468251173424,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.3030588566113,
+    "peak_share": 0.5636363636363636,
+    "peak_needed_over_peak": 8.197914450518091,
+    "speed_over_no_load": 2.622899549835949
+   },
+   {
+    "joint": "j_elbow_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 36.035717320438636,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.341652689209474,
+    "peak_share": 0.2545454545454545,
+    "peak_needed_over_peak": 3.9747340647318636,
+    "speed_over_no_load": 0.2999976020906638
+   },
+   {
+    "joint": "j_wrist_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 9.199026911706552,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.022114101300728,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.1592806273915321,
+    "speed_over_no_load": 0.3242232223660656
+   },
+   {
+    "joint": "j_hhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.3973727401192555,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.409322016881838,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.3667347539208971,
+    "speed_over_no_load": 1.887328104427018e-07
+   },
+   {
+    "joint": "j_hip_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 78.76997271271662,
+    "track_rms_deg": null,
+    "rms_over_rated": 8.752219190301847,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 11.069649155369142,
+    "speed_over_no_load": 0.13265272974338946
+   },
+   {
+    "joint": "j_knee_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 45.19737466490324,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.445466827096776,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 6.226577088255012,
+    "speed_over_no_load": 0.35459623368274834
+   },
+   {
+    "joint": "j_hock_l",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 18.146913156585793,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.048971052195264,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 6.869167631906753,
+    "speed_over_no_load": 0.19608222297712655
+   },
+   {
+    "joint": "j_fhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 15.442453344267113,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.8605365475020617,
+    "peak_share": 0.23636363636363636,
+    "peak_needed_over_peak": 1.3202858236806205,
+    "speed_over_no_load": 2.0131743876832916e-07
+   },
+   {
+    "joint": "j_scap_r",
+    "drive": "cubemars-ak80-64-kv80",
+    "rms_nm": 163.034344901815,
+    "track_rms_deg": null,
+    "rms_over_rated": 3.3965488521211458,
+    "peak_share": 0.5818181818181818,
+    "peak_needed_over_peak": 3.3709452866744334,
+    "speed_over_no_load": 0.6994011554791972
+   },
+   {
+    "joint": "j_shoulder_r",
+    "drive": "cubemars-ak80-64-kv80",
+    "rms_nm": 162.22458293477456,
+    "track_rms_deg": null,
+    "rms_over_rated": 3.3796788111411367,
+    "peak_share": 0.5454545454545454,
+    "peak_needed_over_peak": 2.654267832312327,
+    "speed_over_no_load": 1.2627018314099232
+   },
+   {
+    "joint": "j_elbow_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 49.262963347393594,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.935296788842601,
+    "peak_share": 0.2545454545454545,
+    "peak_needed_over_peak": 5.855985585782758,
+    "speed_over_no_load": 0.20237953518576646
+   },
+   {
+    "joint": "j_wrist_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 6.480769974026003,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.720085552669556,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.615193239640505,
+    "speed_over_no_load": 0.19122497420650397
+   },
+   {
+    "joint": "j_hhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 2.994896470499858,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.36083090006022384,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.27884348458954133,
+    "speed_over_no_load": 1.8873281064103946e-07
+   },
+   {
+    "joint": "j_hip_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 92.17152138846367,
+    "track_rms_deg": null,
+    "rms_over_rated": 10.241280154273742,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 9.265192092294859,
+    "speed_over_no_load": 0.13265272974339026
+   },
+   {
+    "joint": "j_knee_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 52.897931154473156,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.373244717406404,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 4.876192875000777,
+    "speed_over_no_load": 0.3545962336827469
+   },
+   {
+    "joint": "j_hock_r",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 21.02661749372975,
+    "track_rms_deg": null,
+    "rms_over_rated": 7.008872497909916,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.279785902259434,
+    "speed_over_no_load": 0.196082222977124
+   },
+   {
+    "joint": "j_spine",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 166.60067316185157,
+    "track_rms_deg": null,
+    "rms_over_rated": 18.5111859068724,
+    "peak_share": 0.9272727272727272,
+    "peak_needed_over_peak": 15.569040198896353,
+    "speed_over_no_load": 0.08332705401355309
+   }
+  ],
+  "support": "inverse",
+  "config": {
+   "name": "scap+shoulder AK80-64",
+   "drives": {
+    "j_scap_l": "cubemars-ak80-64-kv80",
+    "j_scap_r": "cubemars-ak80-64-kv80",
+    "j_shoulder_l": "cubemars-ak80-64-kv80",
+    "j_shoulder_r": "cubemars-ak80-64-kv80"
+   }
+  }
+ },
+ {
+  "name": "as-built, wrist drive inboard",
+  "seeds": [
+   null
+  ],
+  "mass_kg": 26.002623649999997,
+  "completed": true,
+  "completed_seeds": 1,
+  "survived_s": 0.22000000000000006,
+  "max_tilt_deg": null,
+  "support_lift_mean_pct_weight": null,
+  "support_push_rms_pct_weight": null,
+  "speed_mean_m_s": null,
+  "flight_share": 0.2909090909090909,
+  "pulling_share": 0.05128205128205128,
+  "residual_mean_pct_weight": 81.21625431546943,
+  "worst_joint": "j_spine",
+  "worst_rms_over_rated": 17.83642001870078,
+  "drives_over_rated": 15,
+  "peak_share_max": 0.9272727272727272,
+  "speed_over_no_load_max": 0.40982805466186706,
+  "holds": false,
+  "drives": [
+   {
+    "joint": "j_fhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 6.164994815846575,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7427704597405512,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.9184196697669924,
+    "speed_over_no_load": 2.021447705544358e-06
+   },
+   {
+    "joint": "j_scap_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 93.41969286655251,
+    "track_rms_deg": null,
+    "rms_over_rated": 10.37996587406139,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 10.258537900659524,
+    "speed_over_no_load": 0.10215250557157568
+   },
+   {
+    "joint": "j_shoulder_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 65.26606980626732,
+    "track_rms_deg": null,
+    "rms_over_rated": 7.8633819043695565,
+    "peak_share": 0.5454545454545454,
+    "peak_needed_over_peak": 6.365395660312385,
+    "speed_over_no_load": 0.40982805466186706
+   },
+   {
+    "joint": "j_elbow_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 33.2465278988274,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.005605770943061,
+    "peak_share": 0.23636363636363636,
+    "peak_needed_over_peak": 3.8290387895235667,
+    "speed_over_no_load": 0.2999976020906638
+   },
+   {
+    "joint": "j_wrist_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 9.185587816001979,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.0206208684446643,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.1592806273915304,
+    "speed_over_no_load": 0.3242232223660656
+   },
+   {
+    "joint": "j_hhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.1676273887559554,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.38164185406698253,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.3631134796865072,
+    "speed_over_no_load": 1.887328104427018e-07
+   },
+   {
+    "joint": "j_hip_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 76.39500981005122,
+    "track_rms_deg": null,
+    "rms_over_rated": 8.488334423339024,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 10.31373143126702,
+    "speed_over_no_load": 0.13265272974338946
+   },
+   {
+    "joint": "j_knee_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 43.92149062067512,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.291745857912665,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.825383902872755,
+    "speed_over_no_load": 0.35459623368274834
+   },
+   {
+    "joint": "j_hock_l",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 17.59868963616964,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.866229878723214,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 6.4776932277083965,
+    "speed_over_no_load": 0.19608222297712655
+   },
+   {
+    "joint": "j_fhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 15.12404233164223,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.822173774896654,
+    "peak_share": 0.21818181818181817,
+    "peak_needed_over_peak": 1.298055093322024,
+    "speed_over_no_load": 2.0131743876832916e-07
+   },
+   {
+    "joint": "j_scap_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 148.35794520748013,
+    "track_rms_deg": null,
+    "rms_over_rated": 16.48421613416446,
+    "peak_share": 0.8363636363636363,
+    "peak_needed_over_peak": 18.858833154883598,
+    "speed_over_no_load": 0.09202646782621017
+   },
+   {
+    "joint": "j_shoulder_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 111.59957288202438,
+    "track_rms_deg": null,
+    "rms_over_rated": 13.445731672533055,
+    "peak_share": 0.6181818181818182,
+    "peak_needed_over_peak": 12.543770422299646,
+    "speed_over_no_load": 0.1972971611578005
+   },
+   {
+    "joint": "j_elbow_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 47.01974640320948,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.665029687133672,
+    "peak_share": 0.2545454545454545,
+    "peak_needed_over_peak": 5.661732226720738,
+    "speed_over_no_load": 0.20237953518576646
+   },
+   {
+    "joint": "j_wrist_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 6.344205583212946,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7049117314681052,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.6197393326435244,
+    "speed_over_no_load": 0.19122497420650397
+   },
+   {
+    "joint": "j_hhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 2.911950173487461,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.35083737029969403,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.2644871393903073,
+    "speed_over_no_load": 1.8873281064103946e-07
+   },
+   {
+    "joint": "j_hip_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 87.20754556622822,
+    "track_rms_deg": null,
+    "rms_over_rated": 9.689727285136469,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 8.779328099681146,
+    "speed_over_no_load": 0.13265272974339026
+   },
+   {
+    "joint": "j_knee_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 49.858471904761444,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.0070448078025835,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 4.573994402651,
+    "speed_over_no_load": 0.3545962336827469
+   },
+   {
+    "joint": "j_hock_r",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 19.941372226533993,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.647124075511331,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.0397474258455475,
+    "speed_over_no_load": 0.196082222977124
+   },
+   {
+    "joint": "j_spine",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 160.52778016830703,
+    "track_rms_deg": null,
+    "rms_over_rated": 17.83642001870078,
+    "peak_share": 0.9272727272727272,
+    "peak_needed_over_peak": 14.89286725722269,
+    "speed_over_no_load": 0.08332705401355309
+   }
+  ],
+  "support": "inverse",
+  "config": {
+   "name": "as-built, wrist drive inboard",
+   "note": "each wrist AK80-9 moved from the forearm to the scapula (a belt or pushrod to the wrist), as mass only",
+   "move_mass": [
+    {
+     "from": "c_qdd_wrist_l",
+     "to": "c_scapula_l",
+     "fraction": 1.0
+    },
+    {
+     "from": "c_qdd_wrist_r",
+     "to": "c_scapula_r",
+     "fraction": 1.0
+    }
+   ]
+  }
+ },
+ {
+  "name": "scap+shoulder+elbow AK10-9, wrist inboard",
+  "seeds": [
+   null
+  ],
+  "mass_kg": 28.178623649999995,
+  "completed": true,
+  "completed_seeds": 1,
+  "survived_s": 0.22000000000000006,
+  "max_tilt_deg": null,
+  "support_lift_mean_pct_weight": null,
+  "support_push_rms_pct_weight": null,
+  "speed_mean_m_s": null,
+  "flight_share": 0.2909090909090909,
+  "pulling_share": 0.05128205128205128,
+  "residual_mean_pct_weight": 82.87912331747286,
+  "worst_joint": "j_spine",
+  "worst_rms_over_rated": 19.316632473237487,
+  "drives_over_rated": 15,
+  "peak_share_max": 0.9272727272727272,
+  "speed_over_no_load_max": 0.6147420819928007,
+  "holds": false,
+  "drives": [
+   {
+    "joint": "j_fhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 6.535248328359205,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7873793166697837,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.9823281885486181,
+    "speed_over_no_load": 2.021447705544358e-06
+   },
+   {
+    "joint": "j_scap_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 100.12698793437478,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.562610440798599,
+    "peak_share": 0.5636363636363636,
+    "peak_needed_over_peak": 4.504620251079017,
+    "speed_over_no_load": 0.18195915054936918
+   },
+   {
+    "joint": "j_shoulder_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 70.43826382012924,
+    "track_rms_deg": null,
+    "rms_over_rated": 3.9132368788960687,
+    "peak_share": 0.32727272727272727,
+    "peak_needed_over_peak": 3.1665970941688415,
+    "speed_over_no_load": 0.6147420819928007
+   },
+   {
+    "joint": "j_elbow_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 37.805336441578355,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.100296468976575,
+    "peak_share": 0.16363636363636364,
+    "peak_needed_over_peak": 1.8556869195428176,
+    "speed_over_no_load": 0.4499964031359957
+   },
+   {
+    "joint": "j_wrist_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 9.398426398509352,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.0442695998343725,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.1592806273915295,
+    "speed_over_no_load": 0.3242232223660656
+   },
+   {
+    "joint": "j_hhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.3986978965084695,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.4094816742781288,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.40375186113993317,
+    "speed_over_no_load": 1.887328104427018e-07
+   },
+   {
+    "joint": "j_hip_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 83.28117532318323,
+    "track_rms_deg": null,
+    "rms_over_rated": 9.253463924798137,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 11.773053759021558,
+    "speed_over_no_load": 0.13265272974338946
+   },
+   {
+    "joint": "j_knee_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 47.97047327194581,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.779575093005518,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 6.564394369068221,
+    "speed_over_no_load": 0.35459623368274834
+   },
+   {
+    "joint": "j_hock_l",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 19.190246180309607,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.396748726769869,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 7.263760248019305,
+    "speed_over_no_load": 0.19608222297712655
+   },
+   {
+    "joint": "j_fhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 16.370618780801447,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.9723637085302947,
+    "peak_share": 0.23636363636363636,
+    "peak_needed_over_peak": 1.3903861506714728,
+    "speed_over_no_load": 2.0131743876832916e-07
+   },
+   {
+    "joint": "j_scap_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 158.11255768592304,
+    "track_rms_deg": null,
+    "rms_over_rated": 8.784030982551279,
+    "peak_share": 0.6363636363636364,
+    "peak_needed_over_peak": 8.37265638948317,
+    "speed_over_no_load": 0.16392214581543685
+   },
+   {
+    "joint": "j_shoulder_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 119.2804474318603,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.626691523992239,
+    "peak_share": 0.32727272727272727,
+    "peak_needed_over_peak": 6.294082377598875,
+    "speed_over_no_load": 0.2959457417367008
+   },
+   {
+    "joint": "j_elbow_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 49.69343248021029,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.760746248900572,
+    "peak_share": 0.12727272727272726,
+    "peak_needed_over_peak": 2.7767664466536055,
+    "speed_over_no_load": 0.3035693027786497
+   },
+   {
+    "joint": "j_wrist_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 6.842607771467147,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7602897523852385,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.661109925836755,
+    "speed_over_no_load": 0.19122497420650397
+   },
+   {
+    "joint": "j_hhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.0810565866996105,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.37121163695176024,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.2820144527293242,
+    "speed_over_no_load": 1.8873281064103946e-07
+   },
+   {
+    "joint": "j_hip_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 95.04491786983269,
+    "track_rms_deg": null,
+    "rms_over_rated": 10.56054642998141,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 9.652153746538865,
+    "speed_over_no_load": 0.13265272974339026
+   },
+   {
+    "joint": "j_knee_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 54.38710962362592,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.552663810075411,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.010904143110125,
+    "speed_over_no_load": 0.3545962336827469
+   },
+   {
+    "joint": "j_hock_r",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 21.744935496228308,
+    "track_rms_deg": null,
+    "rms_over_rated": 7.248311832076102,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.5281534447572165,
+    "speed_over_no_load": 0.196082222977124
+   },
+   {
+    "joint": "j_spine",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 173.84969225913738,
+    "track_rms_deg": null,
+    "rms_over_rated": 19.316632473237487,
+    "peak_share": 0.9272727272727272,
+    "peak_needed_over_peak": 16.37322314460346,
+    "speed_over_no_load": 0.08332705401355309
+   }
+  ],
+  "support": "inverse",
+  "config": {
+   "name": "scap+shoulder+elbow AK10-9, wrist inboard",
+   "drives": {
+    "j_scap_l": "cubemars-ak10-9-v3-kv60",
+    "j_scap_r": "cubemars-ak10-9-v3-kv60",
+    "j_shoulder_l": "cubemars-ak10-9-v3-kv60",
+    "j_shoulder_r": "cubemars-ak10-9-v3-kv60",
+    "j_elbow_l": "cubemars-ak10-9-v3-kv60",
+    "j_elbow_r": "cubemars-ak10-9-v3-kv60"
+   },
+   "move_mass": [
+    {
+     "from": "c_qdd_wrist_l",
+     "to": "c_scapula_l",
+     "fraction": 1.0
+    },
+    {
+     "from": "c_qdd_wrist_r",
+     "to": "c_scapula_r",
+     "fraction": 1.0
+    }
+   ]
+  }
+ },
+ {
+  "name": "as-built, mass x0.85",
+  "seeds": [
+   null
+  ],
+  "mass_kg": 22.102230102500002,
+  "completed": true,
+  "completed_seeds": 1,
+  "survived_s": 0.22000000000000006,
+  "max_tilt_deg": null,
+  "support_lift_mean_pct_weight": null,
+  "support_push_rms_pct_weight": null,
+  "speed_mean_m_s": null,
+  "flight_share": 0.2909090909090909,
+  "pulling_share": 0.05128205128205128,
+  "residual_mean_pct_weight": 77.4199830001535,
+  "worst_joint": "j_spine",
+  "worst_rms_over_rated": 15.063975248653975,
+  "drives_over_rated": 14,
+  "peak_share_max": 0.9090909090909091,
+  "speed_over_no_load_max": 0.40982805466186706,
+  "holds": false,
+  "drives": [
+   {
+    "joint": "j_fhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 5.272960348881949,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.6352964275761385,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.7870043418891565,
+    "speed_over_no_load": 2.021447705544358e-06
+   },
+   {
+    "joint": "j_scap_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 88.10160658876093,
+    "track_rms_deg": null,
+    "rms_over_rated": 9.789067398751214,
+    "peak_share": 0.7818181818181819,
+    "peak_needed_over_peak": 8.666598002125914,
+    "speed_over_no_load": 0.10215250557157568
+   },
+   {
+    "joint": "j_shoulder_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 61.48012943856036,
+    "track_rms_deg": null,
+    "rms_over_rated": 7.407244510669923,
+    "peak_share": 0.6181818181818182,
+    "peak_needed_over_peak": 5.379334113926932,
+    "speed_over_no_load": 0.40982805466186706
+   },
+   {
+    "joint": "j_elbow_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 29.23056970180836,
+    "track_rms_deg": null,
+    "rms_over_rated": 3.521755385760043,
+    "peak_share": 0.18181818181818182,
+    "peak_needed_over_peak": 3.2115998090652256,
+    "speed_over_no_load": 0.2999976020906638
+   },
+   {
+    "joint": "j_wrist_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 8.418788467593952,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.9354209408437725,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.1695702083885935,
+    "speed_over_no_load": 0.3242232223660656
+   },
+   {
+    "joint": "j_hhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 2.810775092701002,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.3386476015302412,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.2956149644821556,
+    "speed_over_no_load": 1.887328104427018e-07
+   },
+   {
+    "joint": "j_hip_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 64.12077751206284,
+    "track_rms_deg": null,
+    "rms_over_rated": 7.124530834673649,
+    "peak_share": 0.6727272727272727,
+    "peak_needed_over_peak": 9.085592145195552,
+    "speed_over_no_load": 0.13265272974338946
+   },
+   {
+    "joint": "j_knee_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 36.90436035883779,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.446308476968408,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 5.182228308735234,
+    "speed_over_no_load": 0.35459623368274834
+   },
+   {
+    "joint": "j_hock_l",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 14.737734758950728,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.912578252983576,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 5.675318002595533,
+    "speed_over_no_load": 0.19608222297712655
+   },
+   {
+    "joint": "j_fhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 12.373146565011584,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.4907405500013955,
+    "peak_share": 0.09090909090909091,
+    "peak_needed_over_peak": 1.0676936378269146,
+    "speed_over_no_load": 2.0131743876832916e-07
+   },
+   {
+    "joint": "j_scap_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 128.71583108313965,
+    "track_rms_deg": null,
+    "rms_over_rated": 14.301759009237738,
+    "peak_share": 0.8727272727272727,
+    "peak_needed_over_peak": 15.889771397512408,
+    "speed_over_no_load": 0.09202646782621017
+   },
+   {
+    "joint": "j_shoulder_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 95.45818743076912,
+    "track_rms_deg": null,
+    "rms_over_rated": 11.50098643744206,
+    "peak_share": 0.7090909090909091,
+    "peak_needed_over_peak": 10.518200692431147,
+    "speed_over_no_load": 0.1972971611578005
+   },
+   {
+    "joint": "j_elbow_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 40.07297303081932,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.828069039857749,
+    "peak_share": 0.23636363636363636,
+    "peak_needed_over_peak": 4.747018392789366,
+    "speed_over_no_load": 0.20237953518576646
+   },
+   {
+    "joint": "j_wrist_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 5.576339837188653,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.6195933152431836,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.48662808456343143,
+    "speed_over_no_load": 0.19122497420650397
+   },
+   {
+    "joint": "j_hhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 2.4649865172840912,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.2969863273836254,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.22861723087620853,
+    "speed_over_no_load": 1.8873281064103946e-07
+   },
+   {
+    "joint": "j_hip_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 75.02010223426382,
+    "track_rms_deg": null,
+    "rms_over_rated": 8.335566914918202,
+    "peak_share": 0.6909090909090909,
+    "peak_needed_over_peak": 7.521452905122689,
+    "speed_over_no_load": 0.13265272974339026
+   },
+   {
+    "joint": "j_knee_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 43.15567368624342,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.199478757378724,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 3.9785158599215977,
+    "speed_over_no_load": 0.3545962336827469
+   },
+   {
+    "joint": "j_hock_r",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 17.056522588321297,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.685507529440432,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 4.273858568192641,
+    "speed_over_no_load": 0.196082222977124
+   },
+   {
+    "joint": "j_spine",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 135.57577723788577,
+    "track_rms_deg": null,
+    "rms_over_rated": 15.063975248653975,
+    "peak_share": 0.9090909090909091,
+    "peak_needed_over_peak": 12.596102441670524,
+    "speed_over_no_load": 0.08332705401355309
+   }
+  ],
+  "support": "inverse",
+  "config": {
+   "name": "as-built, mass x0.85",
+   "mass_scale": 0.85
+  }
+ },
+ {
+  "name": "scap+shoulder+elbow AK10-9, mass x0.85",
+  "seeds": [
+   null
+  ],
+  "mass_kg": 23.9518301025,
+  "completed": true,
+  "completed_seeds": 1,
+  "survived_s": 0.22000000000000006,
+  "max_tilt_deg": null,
+  "support_lift_mean_pct_weight": null,
+  "support_push_rms_pct_weight": null,
+  "speed_mean_m_s": null,
+  "flight_share": 0.2909090909090909,
+  "pulling_share": 0.05128205128205128,
+  "residual_mean_pct_weight": 79.37741627666722,
+  "worst_joint": "j_spine",
+  "worst_rms_over_rated": 16.315946520136663,
+  "drives_over_rated": 14,
+  "peak_share_max": 0.9090909090909091,
+  "speed_over_no_load_max": 0.6147420819928007,
+  "holds": false,
+  "drives": [
+   {
+    "joint": "j_fhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 5.577885926565706,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.6720344489838199,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.8413265828535388,
+    "speed_over_no_load": 2.021447705544358e-06
+   },
+   {
+    "joint": "j_scap_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 93.78268593232632,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.210149218462573,
+    "peak_share": 0.5818181818181818,
+    "peak_needed_over_peak": 3.798396055349152,
+    "speed_over_no_load": 0.18195915054936918
+   },
+   {
+    "joint": "j_shoulder_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 65.85763326481175,
+    "track_rms_deg": null,
+    "rms_over_rated": 3.658757403600653,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 2.6695258433060878,
+    "speed_over_no_load": 0.6147420819928007
+   },
+   {
+    "joint": "j_elbow_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 34.00825850341689,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.8893476946342718,
+    "peak_share": 0.14545454545454545,
+    "peak_needed_over_peak": 1.5465785714447617,
+    "speed_over_no_load": 0.4499964031359957
+   },
+   {
+    "joint": "j_wrist_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 8.5799890591273,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.953332117680811,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.1695702083885935,
+    "speed_over_no_load": 0.3242232223660656
+   },
+   {
+    "joint": "j_hhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.008186610564,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.36243212175469874,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.33015758871756745,
+    "speed_over_no_load": 1.887328104427018e-07
+   },
+   {
+    "joint": "j_hip_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 70.02913887955619,
+    "track_rms_deg": null,
+    "rms_over_rated": 7.781015431061799,
+    "peak_share": 0.6727272727272727,
+    "peak_needed_over_peak": 10.32601612378691,
+    "speed_over_no_load": 0.13265272974338946
+   },
+   {
+    "joint": "j_knee_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 40.37528878143781,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.864492624269615,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 5.810387205001379,
+    "speed_over_no_load": 0.35459623368274834
+   },
+   {
+    "joint": "j_hock_l",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 16.107377967067663,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.369125989022554,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 6.343474969859809,
+    "speed_over_no_load": 0.19608222297712655
+   },
+   {
+    "joint": "j_fhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 13.43338380065296,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.618479975982284,
+    "peak_share": 0.14545454545454545,
+    "peak_needed_over_peak": 1.1461750365739445,
+    "speed_over_no_load": 2.0131743876832916e-07
+   },
+   {
+    "joint": "j_scap_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 136.86627185192236,
+    "track_rms_deg": null,
+    "rms_over_rated": 7.603681769551242,
+    "peak_share": 0.6909090909090909,
+    "peak_needed_over_peak": 7.049793609202111,
+    "speed_over_no_load": 0.16392214581543685
+   },
+   {
+    "joint": "j_shoulder_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 101.89303753497146,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.660724307498414,
+    "peak_share": 0.4,
+    "peak_needed_over_peak": 5.276961667855236,
+    "speed_over_no_load": 0.2959457417367008
+   },
+   {
+    "joint": "j_elbow_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 42.34049123477469,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.3522495130430383,
+    "peak_share": 0.10909090909090909,
+    "peak_needed_over_peak": 2.3203309048959393,
+    "speed_over_no_load": 0.3035693027786497
+   },
+   {
+    "joint": "j_wrist_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 5.975431678246344,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.6639368531384826,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.5217930887776746,
+    "speed_over_no_load": 0.19122497420650397
+   },
+   {
+    "joint": "j_hhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 2.6094184547236803,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.31438776562935905,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.2480850955803395,
+    "speed_over_no_load": 1.8873281064103946e-07
+   },
+   {
+    "joint": "j_hip_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 81.66140312295812,
+    "track_rms_deg": null,
+    "rms_over_rated": 9.073489235884235,
+    "peak_share": 0.6909090909090909,
+    "peak_needed_over_peak": 8.253961241266454,
+    "speed_over_no_load": 0.13265272974339026
+   },
+   {
+    "joint": "j_knee_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 46.98874237293715,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.6612942617996564,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 4.34805157966596,
+    "speed_over_no_load": 0.3545962336827469
+   },
+   {
+    "joint": "j_hock_r",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 18.58434923743112,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.194783079143707,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 4.681779143494651,
+    "speed_over_no_load": 0.196082222977124
+   },
+   {
+    "joint": "j_spine",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 146.84351868122997,
+    "track_rms_deg": null,
+    "rms_over_rated": 16.315946520136663,
+    "peak_share": 0.9090909090909091,
+    "peak_needed_over_peak": 13.836411916537626,
+    "speed_over_no_load": 0.08332705401355309
+   }
+  ],
+  "support": "inverse",
+  "config": {
+   "name": "scap+shoulder+elbow AK10-9, mass x0.85",
+   "mass_scale": 0.85,
+   "drives": {
+    "j_scap_l": "cubemars-ak10-9-v3-kv60",
+    "j_scap_r": "cubemars-ak10-9-v3-kv60",
+    "j_shoulder_l": "cubemars-ak10-9-v3-kv60",
+    "j_shoulder_r": "cubemars-ak10-9-v3-kv60",
+    "j_elbow_l": "cubemars-ak10-9-v3-kv60",
+    "j_elbow_r": "cubemars-ak10-9-v3-kv60"
+   }
+  }
+ },
+ {
+  "name": "fore AK10-9 + hip AK10-9",
+  "seeds": [
+   null
+  ],
+  "mass_kg": 29.078623649999997,
+  "completed": true,
+  "completed_seeds": 1,
+  "survived_s": 0.22000000000000006,
+  "max_tilt_deg": null,
+  "support_lift_mean_pct_weight": null,
+  "support_push_rms_pct_weight": null,
+  "speed_mean_m_s": null,
+  "flight_share": 0.2909090909090909,
+  "pulling_share": 0.05128205128205128,
+  "residual_mean_pct_weight": 78.84480921856435,
+  "worst_joint": "j_spine",
+  "worst_rms_over_rated": 19.817352271932407,
+  "drives_over_rated": 15,
+  "peak_share_max": 0.9272727272727272,
+  "speed_over_no_load_max": 0.6147420819928007,
+  "holds": false,
+  "drives": [
+   {
+    "joint": "j_fhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 6.7093246547292145,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.8083523680396644,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.0160281165384308,
+    "speed_over_no_load": 2.021447705544358e-06
+   },
+   {
+    "joint": "j_scap_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 112.96194765866174,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.275663758814542,
+    "peak_share": 0.6363636363636364,
+    "peak_needed_over_peak": 4.631257552527845,
+    "speed_over_no_load": 0.18195915054936918
+   },
+   {
+    "joint": "j_shoulder_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 78.70225712608267,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.372347618115704,
+    "peak_share": 0.4,
+    "peak_needed_over_peak": 3.2391469931739523,
+    "speed_over_no_load": 0.6147420819928007
+   },
+   {
+    "joint": "j_elbow_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 40.28688834976282,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.238160463875712,
+    "peak_share": 0.16363636363636364,
+    "peak_needed_over_peak": 1.9015034509299973,
+    "speed_over_no_load": 0.4499964031359957
+   },
+   {
+    "joint": "j_wrist_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 9.351120795112541,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.0390134216791713,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.1592806273915295,
+    "speed_over_no_load": 0.3242232223660656
+   },
+   {
+    "joint": "j_hhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.6549006539911826,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.4403494763844798,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.39438822879763297,
+    "speed_over_no_load": 1.887328104427018e-07
+   },
+   {
+    "joint": "j_hip_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 85.76023323869192,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.764457402149551,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 5.119731029594188,
+    "speed_over_no_load": 0.23628767485541247
+   },
+   {
+    "joint": "j_knee_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 48.57137815343463,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.851973271498148,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 6.821344541382156,
+    "speed_over_no_load": 0.35459623368274834
+   },
+   {
+    "joint": "j_hock_l",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 19.51711267810956,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.50570422603652,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 7.496175344045579,
+    "speed_over_no_load": 0.19608222297712655
+   },
+   {
+    "joint": "j_fhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 16.228828550977568,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.9552805483105502,
+    "peak_share": 0.23636363636363636,
+    "peak_needed_over_peak": 1.3874858998718027,
+    "speed_over_no_load": 2.0131743876832916e-07
+   },
+   {
+    "joint": "j_scap_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 165.7687927124559,
+    "track_rms_deg": null,
+    "rms_over_rated": 9.209377372914217,
+    "peak_share": 0.7454545454545455,
+    "peak_needed_over_peak": 8.57768194929425,
+    "speed_over_no_load": 0.16392214581543685
+   },
+   {
+    "joint": "j_shoulder_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 123.34874519850408,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.85270806658356,
+    "peak_share": 0.43636363636363634,
+    "peak_needed_over_peak": 6.416078870965573,
+    "speed_over_no_load": 0.2959457417367008
+   },
+   {
+    "joint": "j_elbow_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 51.63398993941345,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.8685549966340806,
+    "peak_share": 0.14545454545454545,
+    "peak_needed_over_peak": 2.8466987257044036,
+    "speed_over_no_load": 0.3035693027786497
+   },
+   {
+    "joint": "j_wrist_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 6.787416527340681,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7541573919267424,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.6552394091006255,
+    "speed_over_no_load": 0.19122497420650397
+   },
+   {
+    "joint": "j_hhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.2088241808225906,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.3866053229906735,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.3025841105855907,
+    "speed_over_no_load": 1.8873281064103946e-07
+   },
+   {
+    "joint": "j_hip_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 100.27034736679333,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.570574853710741,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 4.21135683050413,
+    "speed_over_no_load": 0.2362876748554139
+   },
+   {
+    "joint": "j_knee_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 56.64694286876661,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.824932875755012,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.238901420055612,
+    "speed_over_no_load": 0.3545962336827469
+   },
+   {
+    "joint": "j_hock_r",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 22.56133823847256,
+    "track_rms_deg": null,
+    "rms_over_rated": 7.520446079490853,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.687324184350819,
+    "speed_over_no_load": 0.196082222977124
+   },
+   {
+    "joint": "j_spine",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 178.35617044739166,
+    "track_rms_deg": null,
+    "rms_over_rated": 19.817352271932407,
+    "peak_share": 0.9272727272727272,
+    "peak_needed_over_peak": 16.786631348497572,
+    "speed_over_no_load": 0.08332705401355309
+   }
+  ],
+  "support": "inverse",
+  "config": {
+   "name": "fore AK10-9 + hip AK10-9",
+   "drives": {
+    "j_scap_l": "cubemars-ak10-9-v3-kv60",
+    "j_scap_r": "cubemars-ak10-9-v3-kv60",
+    "j_shoulder_l": "cubemars-ak10-9-v3-kv60",
+    "j_shoulder_r": "cubemars-ak10-9-v3-kv60",
+    "j_elbow_l": "cubemars-ak10-9-v3-kv60",
+    "j_elbow_r": "cubemars-ak10-9-v3-kv60",
+    "j_hip_l": "cubemars-ak10-9-v3-kv60",
+    "j_hip_r": "cubemars-ak10-9-v3-kv60"
+   }
+  }
+ },
+ {
+  "name": "fore + hip + knee AK10-9",
+  "seeds": [
+   null
+  ],
+  "mass_kg": 29.716623649999995,
+  "completed": true,
+  "completed_seeds": 1,
+  "survived_s": 0.22000000000000006,
+  "max_tilt_deg": null,
+  "support_lift_mean_pct_weight": null,
+  "support_push_rms_pct_weight": null,
+  "speed_mean_m_s": null,
+  "flight_share": 0.2909090909090909,
+  "pulling_share": 0.05128205128205128,
+  "residual_mean_pct_weight": 78.53635606111386,
+  "worst_joint": "j_spine",
+  "worst_rms_over_rated": 20.307064125665036,
+  "drives_over_rated": 15,
+  "peak_share_max": 0.9272727272727272,
+  "speed_over_no_load_max": 0.6147420819928007,
+  "holds": false,
+  "drives": [
+   {
+    "joint": "j_fhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 7.000795558644443,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.843469344414993,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.0530801468698565,
+    "speed_over_no_load": 2.021447705544358e-06
+   },
+   {
+    "joint": "j_scap_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 115.20742295513001,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.400412386396112,
+    "peak_share": 0.6363636363636364,
+    "peak_needed_over_peak": 4.787743716606673,
+    "speed_over_no_load": 0.18195915054936918
+   },
+   {
+    "joint": "j_shoulder_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 80.27189877573701,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.459549931985389,
+    "peak_share": 0.4,
+    "peak_needed_over_peak": 3.3410527984548297,
+    "speed_over_no_load": 0.6147420819928007
+   },
+   {
+    "joint": "j_elbow_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 41.3601389224483,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.2977854956915724,
+    "peak_share": 0.16363636363636364,
+    "peak_needed_over_peak": 1.9751181385988024,
+    "speed_over_no_load": 0.4499964031359957
+   },
+   {
+    "joint": "j_wrist_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 9.625009814080558,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.0694455348978398,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.1592806273915301,
+    "speed_over_no_load": 0.3242232223660656
+   },
+   {
+    "joint": "j_hhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.7835769499531167,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.4558526445726646,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.3968847625385031,
+    "speed_over_no_load": 1.887328104427018e-07
+   },
+   {
+    "joint": "j_hip_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 87.7643620706248,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.875797892812489,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 5.197039620819482,
+    "speed_over_no_load": 0.23628767485541247
+   },
+   {
+    "joint": "j_knee_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 51.59136248207689,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.866186804559827,
+    "peak_share": 0.2727272727272727,
+    "peak_needed_over_peak": 3.248569550294602,
+    "speed_over_no_load": 0.5318943505241226
+   },
+   {
+    "joint": "j_hock_l",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 20.028250170893596,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.676083390297865,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 7.6604676883166904,
+    "speed_over_no_load": 0.19608222297712655
+   },
+   {
+    "joint": "j_fhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 16.49609407681327,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.987481214073888,
+    "peak_share": 0.23636363636363636,
+    "peak_needed_over_peak": 1.4080732846045223,
+    "speed_over_no_load": 2.0131743876832916e-07
+   },
+   {
+    "joint": "j_scap_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 169.60811509378232,
+    "track_rms_deg": null,
+    "rms_over_rated": 9.422673060765684,
+    "peak_share": 0.7454545454545455,
+    "peak_needed_over_peak": 8.799765388792146,
+    "speed_over_no_load": 0.16392214581543685
+   },
+   {
+    "joint": "j_shoulder_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 126.22082430911519,
+    "track_rms_deg": null,
+    "rms_over_rated": 7.012268017173066,
+    "peak_share": 0.45454545454545453,
+    "peak_needed_over_peak": 6.575748726395928,
+    "speed_over_no_load": 0.2959457417367008
+   },
+   {
+    "joint": "j_elbow_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 53.04673682753584,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.947040934863102,
+    "peak_share": 0.16363636363636364,
+    "peak_needed_over_peak": 2.930847749230618,
+    "speed_over_no_load": 0.3035693027786497
+   },
+   {
+    "joint": "j_wrist_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 6.8137916201542446,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7570879577949161,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.6734900698681139,
+    "speed_over_no_load": 0.19122497420650397
+   },
+   {
+    "joint": "j_hhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.3550903494363093,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.4042277529441336,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.30713460741292414,
+    "speed_over_no_load": 1.8873281064103946e-07
+   },
+   {
+    "joint": "j_hip_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 102.36427242283115,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.686904023490619,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 4.290382766371715,
+    "speed_over_no_load": 0.2362876748554139
+   },
+   {
+    "joint": "j_knee_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 60.10738175870694,
+    "track_rms_deg": null,
+    "rms_over_rated": 3.33929898659483,
+    "peak_share": 0.2727272727272727,
+    "peak_needed_over_peak": 2.5886126770850497,
+    "speed_over_no_load": 0.5318943505241204
+   },
+   {
+    "joint": "j_hock_r",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 23.09522446347855,
+    "track_rms_deg": null,
+    "rms_over_rated": 7.69840815449285,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.812992422621437,
+    "speed_over_no_load": 0.196082222977124
+   },
+   {
+    "joint": "j_spine",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 182.7635771309853,
+    "track_rms_deg": null,
+    "rms_over_rated": 20.307064125665036,
+    "peak_share": 0.9272727272727272,
+    "peak_needed_over_peak": 17.10579348736364,
+    "speed_over_no_load": 0.08332705401355309
+   }
+  ],
+  "support": "inverse",
+  "config": {
+   "name": "fore + hip + knee AK10-9",
+   "drives": {
+    "j_scap_l": "cubemars-ak10-9-v3-kv60",
+    "j_scap_r": "cubemars-ak10-9-v3-kv60",
+    "j_shoulder_l": "cubemars-ak10-9-v3-kv60",
+    "j_shoulder_r": "cubemars-ak10-9-v3-kv60",
+    "j_elbow_l": "cubemars-ak10-9-v3-kv60",
+    "j_elbow_r": "cubemars-ak10-9-v3-kv60",
+    "j_hip_l": "cubemars-ak10-9-v3-kv60",
+    "j_hip_r": "cubemars-ak10-9-v3-kv60",
+    "j_knee_l": "cubemars-ak10-9-v3-kv60",
+    "j_knee_r": "cubemars-ak10-9-v3-kv60"
+   }
+  }
+ },
+ {
+  "name": "fore + hip + knee AK10-9, wrist inboard",
+  "seeds": [
+   null
+  ],
+  "mass_kg": 29.716623649999995,
+  "completed": true,
+  "completed_seeds": 1,
+  "survived_s": 0.22000000000000006,
+  "max_tilt_deg": null,
+  "support_lift_mean_pct_weight": null,
+  "support_push_rms_pct_weight": null,
+  "speed_mean_m_s": null,
+  "flight_share": 0.2909090909090909,
+  "pulling_share": 0.05128205128205128,
+  "residual_mean_pct_weight": 81.85467226477562,
+  "worst_joint": "j_spine",
+  "worst_rms_over_rated": 20.455669891549277,
+  "drives_over_rated": 15,
+  "peak_share_max": 0.9272727272727272,
+  "speed_over_no_load_max": 0.6147420819928007,
+  "holds": false,
+  "drives": [
+   {
+    "joint": "j_fhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 6.987144933332412,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.8418246907629411,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.045612351637134,
+    "speed_over_no_load": 2.021447705544358e-06
+   },
+   {
+    "joint": "j_scap_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 105.4922927154916,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.860682928638422,
+    "peak_share": 0.5636363636363636,
+    "peak_needed_over_peak": 4.81208584436744,
+    "speed_over_no_load": 0.18195915054936918
+   },
+   {
+    "joint": "j_shoulder_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 74.29018393283084,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.127232440712825,
+    "peak_share": 0.32727272727272727,
+    "peak_needed_over_peak": 3.377810108074982,
+    "speed_over_no_load": 0.6147420819928007
+   },
+   {
+    "joint": "j_elbow_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 40.031913008553296,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.2239951671418496,
+    "peak_share": 0.16363636363636364,
+    "peak_needed_over_peak": 1.988446795170257,
+    "speed_over_no_load": 0.4499964031359957
+   },
+   {
+    "joint": "j_wrist_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 9.784416876196435,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.0871574306884928,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.1592806273915288,
+    "speed_over_no_load": 0.3242232223660656
+   },
+   {
+    "joint": "j_hhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.647207531873426,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.43942259420161756,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.41221591196827795,
+    "speed_over_no_load": 1.887328104427018e-07
+   },
+   {
+    "joint": "j_hip_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 89.05104937730636,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.947280520961464,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.027730420254455,
+    "speed_over_no_load": 0.23628767485541247
+   },
+   {
+    "joint": "j_knee_l",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 52.48666265223319,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.915925702901844,
+    "peak_share": 0.2727272727272727,
+    "peak_needed_over_peak": 3.1387398079117212,
+    "speed_over_no_load": 0.5318943505241226
+   },
+   {
+    "joint": "j_hock_l",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 20.309953473230063,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.769984491076688,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 7.464806624573338,
+    "speed_over_no_load": 0.19608222297712655
+   },
+   {
+    "joint": "j_fhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 17.065269374488555,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.056056551143199,
+    "peak_share": 0.2545454545454545,
+    "peak_needed_over_peak": 1.4500182233768175,
+    "speed_over_no_load": 2.0131743876832916e-07
+   },
+   {
+    "joint": "j_scap_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 166.7747517830143,
+    "track_rms_deg": null,
+    "rms_over_rated": 9.26526398794524,
+    "peak_share": 0.6363636363636364,
+    "peak_needed_over_peak": 8.866770754371423,
+    "speed_over_no_load": 0.16392214581543685
+   },
+   {
+    "joint": "j_shoulder_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 125.78427942904581,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.9880155238358785,
+    "peak_share": 0.34545454545454546,
+    "peak_needed_over_peak": 6.654323766120122,
+    "speed_over_no_load": 0.2959457417367008
+   },
+   {
+    "joint": "j_elbow_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 52.78696962678129,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.9326094237100717,
+    "peak_share": 0.14545454545454545,
+    "peak_needed_over_peak": 2.947699851595612,
+    "speed_over_no_load": 0.3035693027786497
+   },
+   {
+    "joint": "j_wrist_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 6.9436361328949845,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7715151258772205,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.6998823947743337,
+    "speed_over_no_load": 0.19122497420650397
+   },
+   {
+    "joint": "j_hhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.367380107195044,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.40570844665000527,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.2923821069289514,
+    "speed_over_no_load": 1.8873281064103946e-07
+   },
+   {
+    "joint": "j_hip_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 101.57857007002106,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.643253892778947,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 4.272662663390958,
+    "speed_over_no_load": 0.2362876748554139
+   },
+   {
+    "joint": "j_knee_r",
+    "drive": "cubemars-ak10-9-v3-kv60",
+    "rms_nm": 59.46645589540872,
+    "track_rms_deg": null,
+    "rms_over_rated": 3.303691994189373,
+    "peak_share": 0.2727272727272727,
+    "peak_needed_over_peak": 2.556170707389673,
+    "speed_over_no_load": 0.5318943505241204
+   },
+   {
+    "joint": "j_hock_r",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 22.976180206316357,
+    "track_rms_deg": null,
+    "rms_over_rated": 7.658726735438786,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.8328699244172935,
+    "speed_over_no_load": 0.196082222977124
+   },
+   {
+    "joint": "j_spine",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 184.10102902394348,
+    "track_rms_deg": null,
+    "rms_over_rated": 20.455669891549277,
+    "peak_share": 0.9272727272727272,
+    "peak_needed_over_peak": 17.24353034181576,
+    "speed_over_no_load": 0.08332705401355309
+   }
+  ],
+  "support": "inverse",
+  "config": {
+   "name": "fore + hip + knee AK10-9, wrist inboard",
+   "drives": {
+    "j_scap_l": "cubemars-ak10-9-v3-kv60",
+    "j_scap_r": "cubemars-ak10-9-v3-kv60",
+    "j_shoulder_l": "cubemars-ak10-9-v3-kv60",
+    "j_shoulder_r": "cubemars-ak10-9-v3-kv60",
+    "j_elbow_l": "cubemars-ak10-9-v3-kv60",
+    "j_elbow_r": "cubemars-ak10-9-v3-kv60",
+    "j_hip_l": "cubemars-ak10-9-v3-kv60",
+    "j_hip_r": "cubemars-ak10-9-v3-kv60",
+    "j_knee_l": "cubemars-ak10-9-v3-kv60",
+    "j_knee_r": "cubemars-ak10-9-v3-kv60"
+   },
+   "move_mass": [
+    {
+     "from": "c_qdd_wrist_l",
+     "to": "c_scapula_l",
+     "fraction": 1.0
+    },
+    {
+     "from": "c_qdd_wrist_r",
+     "to": "c_scapula_r",
+     "fraction": 1.0
+    }
+   ]
+  }
+ },
+ {
+  "name": "scap+shoulder+hip AK80-64",
+  "seeds": [
+   null
+  ],
+  "mass_kg": 27.900623649999993,
+  "completed": true,
+  "completed_seeds": 1,
+  "survived_s": 0.22000000000000006,
+  "max_tilt_deg": null,
+  "support_lift_mean_pct_weight": null,
+  "support_push_rms_pct_weight": null,
+  "speed_mean_m_s": null,
+  "flight_share": 0.2909090909090909,
+  "pulling_share": 0.05128205128205128,
+  "residual_mean_pct_weight": 78.81044966046407,
+  "worst_joint": "j_spine",
+  "worst_rms_over_rated": 19.018731428152265,
+  "drives_over_rated": 15,
+  "peak_share_max": 0.9272727272727272,
+  "speed_over_no_load_max": 2.622899549835949,
+  "holds": false,
+  "drives": [
+   {
+    "joint": "j_fhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 6.512733483625362,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7846666847741399,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.9845936285689996,
+    "speed_over_no_load": 2.021447705544358e-06
+   },
+   {
+    "joint": "j_scap_l",
+    "drive": "cubemars-ak80-64-kv80",
+    "rms_nm": 136.7255908277364,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.848449808911175,
+    "peak_share": 0.41818181818181815,
+    "peak_needed_over_peak": 3.422817851547236,
+    "speed_over_no_load": 0.7763590423439751
+   },
+   {
+    "joint": "j_shoulder_l",
+    "drive": "cubemars-ak80-64-kv80",
+    "rms_nm": 254.919907488504,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.3108314060105,
+    "peak_share": 0.5636363636363636,
+    "peak_needed_over_peak": 8.197914450518093,
+    "speed_over_no_load": 2.622899549835949
+   },
+   {
+    "joint": "j_elbow_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 36.892691576649064,
+    "track_rms_deg": null,
+    "rms_over_rated": 4.444902599596272,
+    "peak_share": 0.2545454545454545,
+    "peak_needed_over_peak": 4.075853257048229,
+    "speed_over_no_load": 0.2999976020906638
+   },
+   {
+    "joint": "j_wrist_l",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 9.280475388961017,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.0311639321067796,
+    "peak_share": 0.01818181818181818,
+    "peak_needed_over_peak": 1.15928062739153,
+    "speed_over_no_load": 0.3242232223660656
+   },
+   {
+    "joint": "j_hhaa_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.492890411529174,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.42083017006375584,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.3715087675908765,
+    "speed_over_no_load": 1.887328104427018e-07
+   },
+   {
+    "joint": "j_hip_l",
+    "drive": "cubemars-ak80-64-kv80",
+    "rms_nm": 124.11418352256855,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.585712156720178,
+    "peak_share": 0.4727272727272727,
+    "peak_needed_over_peak": 1.7700808188581667,
+    "speed_over_no_load": 1.00816074604976
+   },
+   {
+    "joint": "j_knee_l",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 46.25853652293233,
+    "track_rms_deg": null,
+    "rms_over_rated": 5.573317653365341,
+    "peak_share": 0.2909090909090909,
+    "peak_needed_over_peak": 6.24436379558059,
+    "speed_over_no_load": 0.35459623368274834
+   },
+   {
+    "joint": "j_hock_l",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 18.611575945461954,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.203858648487318,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 6.898570857733086,
+    "speed_over_no_load": 0.19608222297712655
+   },
+   {
+    "joint": "j_fhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 15.783005701220857,
+    "track_rms_deg": null,
+    "rms_over_rated": 1.90156695195432,
+    "peak_share": 0.23636363636363636,
+    "peak_needed_over_peak": 1.3515215740587194,
+    "speed_over_no_load": 2.0131743876832916e-07
+   },
+   {
+    "joint": "j_scap_r",
+    "drive": "cubemars-ak80-64-kv80",
+    "rms_nm": 166.168379507773,
+    "track_rms_deg": null,
+    "rms_over_rated": 3.461841239745271,
+    "peak_share": 0.5818181818181818,
+    "peak_needed_over_peak": 3.467062880312356,
+    "speed_over_no_load": 0.6994011554791972
+   },
+   {
+    "joint": "j_shoulder_r",
+    "drive": "cubemars-ak80-64-kv80",
+    "rms_nm": 164.1470577549649,
+    "track_rms_deg": null,
+    "rms_over_rated": 3.419730369895102,
+    "peak_share": 0.5818181818181818,
+    "peak_needed_over_peak": 2.722502608390276,
+    "speed_over_no_load": 1.2627018314099232
+   },
+   {
+    "joint": "j_elbow_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 50.58108825103842,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.0941070181974,
+    "peak_share": 0.2545454545454545,
+    "peak_needed_over_peak": 6.016422401273514,
+    "speed_over_no_load": 0.20237953518576646
+   },
+   {
+    "joint": "j_wrist_r",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 6.542761457167156,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.7269734952407951,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.631610686176579,
+    "speed_over_no_load": 0.19122497420650397
+   },
+   {
+    "joint": "j_hhaa_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 3.1064141613564753,
+    "track_rms_deg": null,
+    "rms_over_rated": 0.374266766428491,
+    "peak_share": 0.0,
+    "peak_needed_over_peak": 0.28741891808899345,
+    "speed_over_no_load": 1.8873281064103946e-07
+   },
+   {
+    "joint": "j_hip_r",
+    "drive": "cubemars-ak80-64-kv80",
+    "rms_nm": 143.21852517658579,
+    "track_rms_deg": null,
+    "rms_over_rated": 2.983719274512204,
+    "peak_share": 0.43636363636363634,
+    "peak_needed_over_peak": 2.3187804172989064,
+    "speed_over_no_load": 1.008160746049766
+   },
+   {
+    "joint": "j_knee_r",
+    "drive": "cubemars-ak70-10",
+    "rms_nm": 54.16319015720263,
+    "track_rms_deg": null,
+    "rms_over_rated": 6.52568556110875,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 4.990336031282603,
+    "speed_over_no_load": 0.3545962336827469
+   },
+   {
+    "joint": "j_hock_r",
+    "drive": "cubemars-ak60-6-v3",
+    "rms_nm": 21.5819990244981,
+    "track_rms_deg": null,
+    "rms_over_rated": 7.1939996748327,
+    "peak_share": 0.3090909090909091,
+    "peak_needed_over_peak": 5.418520655916279,
+    "speed_over_no_load": 0.196082222977124
+   },
+   {
+    "joint": "j_spine",
+    "drive": "cubemars-ak80-9-v3",
+    "rms_nm": 171.1685828533704,
+    "track_rms_deg": null,
+    "rms_over_rated": 19.018731428152265,
+    "peak_share": 0.9272727272727272,
+    "peak_needed_over_peak": 15.976477383125804,
+    "speed_over_no_load": 0.08332705401355309
+   }
+  ],
+  "support": "inverse",
+  "config": {
+   "name": "scap+shoulder+hip AK80-64",
+   "drives": {
+    "j_scap_l": "cubemars-ak80-64-kv80",
+    "j_scap_r": "cubemars-ak80-64-kv80",
+    "j_shoulder_l": "cubemars-ak80-64-kv80",
+    "j_shoulder_r": "cubemars-ak80-64-kv80",
+    "j_hip_l": "cubemars-ak80-64-kv80",
+    "j_hip_r": "cubemars-ak80-64-kv80"
+   }
+  }
+ }
+]

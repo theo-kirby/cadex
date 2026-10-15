@@ -22,7 +22,12 @@ wrench toward the reference's base trajectory, so the replay measures what
 the drives must deliver to follow the clip, not whether an open-loop clip
 balances (it does not, record ``silent-leaf-7077``). ``support="full"``
 also carries weight; ``support="attitude"`` holds only attitude and
-horizontal position, so the legs carry all the weight; ``support="swing"``
+horizontal position, so the legs carry all the weight; ``support="height"``
+holds attitude and height and leaves the horizontal path free, so the stance
+feet never fight a prescribed forward position; ``support="posture"`` holds
+attitude only, so the legs carry all the weight *and* set the pace (ADR-711:
+``attitude`` minus ``posture`` is what the prescribed path costs the
+drives); ``support="swing"``
 is ``full`` with gravity and contact switched off, so what is left is what
 swinging the legs along the clip costs (their inertia, the drives' rotors and
 the servo), the part a lighter distal leg buys back. It reports, per
@@ -48,10 +53,16 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 RPM = 2.0 * math.pi / 60.0
-SUPPORTS = ("full", "attitude", "swing")
+SUPPORTS = ("full", "attitude", "height", "posture", "swing")
+#: Which translational axes each support holds (x forward, y lateral, z up);
+#: every support holds attitude.
+HELD_AXES = {"full": (1.0, 1.0, 1.0), "attitude": (1.0, 1.0, 0.0), "height": (0.0, 0.0, 1.0),
+             "posture": (0.0, 0.0, 0.0), "swing": (1.0, 1.0, 1.0)}
 #: The PD support per unit of gain: N/m, N*s/m, N*m/rad, N*m*s/rad.
 SUPPORT_GAINS = (4000.0, 200.0, 400.0, 20.0)
 #: A configuration holds the gait when every drive is at or under these.
+#: Not a support: the screen that follows the clip exactly (``inverse``).
+INVERSE = "inverse"
 HOLD_RMS_OVER_RATED = 1.0
 HOLD_PEAK_SHARE = 0.10
 HOLD_SPEED_OVER_NO_LOAD = 1.0
@@ -240,21 +251,25 @@ def screen(mujoco: Any, np: Any, model: Any, task: Mapping[str, Any],
     gear = np.array([float(model.actuator_gear[s][0]) for s in slots])
     dofs = [int(model.jnt_dofadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, r["joint"])])
             for r in rows]
+    qadrs = [int(model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, r["joint"])])
+             for r in rows]
     cos_tip = math.cos(math.radians(fall_tilt_deg))
-    efforts, speeds, lift = [], [], []
+    held = np.array(HELD_AXES[support])
+    efforts, speeds, lift, push, misses = [], [], [], [], []
     tilt, ended = 0.0, None
     for k in range(total):
         sample = table[(start + k) % samples]
+        targets = []
         for action, col, slot in zip(actions, cols, slots):
             target = min(max(float(sample[col]), float(action["low"])), float(action["high"]))
             data.ctrl[slot] = target * float(action["scale"])
+            targets.append(target * float(action["scale"]))
         for _ in range(sub):
             if gain > 0.0:
                 want = p0 + np.array([speed * data.time, 0.0, 0.0])
                 force = kp * (want - data.qpos[adr:adr + 3]) - kd * (
                     data.qvel[vadr:vadr + 3] - np.array([speed, 0.0, 0.0]))
-                if support == "attitude":  # the legs carry the weight
-                    force[2] = 0.0
+                force *= held  # a free axis is the legs' to carry
                 err = np.zeros(3)
                 mujoco.mju_quat2Vel(err, data.qpos[adr + 3:adr + 7], 1.0)
                 data.xfrc_applied[root, :3] = force
@@ -265,31 +280,163 @@ def screen(mujoco: Any, np: Any, model: Any, task: Mapping[str, Any],
         tilt = max(tilt, math.degrees(math.acos(max(-1.0, min(1.0, up)))))
         efforts.append(np.array([float(data.actuator_force[s]) for s in slots]) * gear)
         speeds.append(np.array([abs(float(data.qvel[d])) for d in dofs]))
+        # How far each joint is from the pose it was sent, after the step.
+        misses.append(np.array([float(data.qpos[a]) for a in qadrs]) - np.array(targets))
         lift.append(float(data.xfrc_applied[root, 2]))
+        push.append(float(data.xfrc_applied[root, 0]))
         if up < cos_tip or float(data.subtree_com[root][2]) < fall_height * z0:
             ended = k + 1
             break
     effort, speed_abs = np.array(efforts), np.array(speeds)
     rms = np.sqrt((effort ** 2).mean(axis=0))
+    miss = np.degrees(np.sqrt((np.array(misses) ** 2).mean(axis=0)))
     drives = []
     for i, row in enumerate(rows):
         rated, peak, omega = row["rated_nm"], row["peak_nm"], row["no_load_rad_s"]
         drives.append({
             "joint": row["joint"], "drive": row["drive"],
             "rms_nm": float(rms[i]),
+            "track_rms_deg": float(miss[i]),
             "rms_over_rated": None if not rated else float(rms[i]) / rated,
             "peak_share": float((np.abs(effort[:, i]) >= 0.99 * peak).mean()),
             "peak_needed_over_peak": float(np.abs(effort[:, i]).max()) / peak,
             "speed_over_no_load": None if not omega else float(speed_abs[:, i].max()) / omega,
         })
     interval = float(task["episode"]["control_interval_s"])
+    travelled = float(data.qpos[adr] - p0[0])
     return {
         "seed": seed, "start_sample": start,
         "survived_s": (ended if ended is not None else total) * interval,
         "completed": ended is None,
         "max_tilt_deg": tilt,
         "support_lift_mean_pct_weight": 100.0 * statistics.fmean(lift) / weight,
+        # The forward force the support spends holding the prescribed path:
+        # its RMS, and its mean (negative: the support brakes the gait).
+        "support_push_rms_pct_weight": 100.0 * math.sqrt(statistics.fmean(f * f for f in push)) / weight,
+        "support_push_mean_pct_weight": 100.0 * statistics.fmean(push) / weight,
+        "speed_mean_m_s": travelled / float(data.time) if data.time > 0.0 else 0.0,
         "mass_kg": float(model.body_subtreemass[root]),
+        "drives": drives,
+    }
+
+
+def inverse(mujoco: Any, np: Any, model: Any, task: Mapping[str, Any],
+            rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """What following the clip *exactly* asks of each drive (ADR-711).
+
+    The held replays above measure a position servo, and the exported servo
+    (kp about 60 N*m/rad on the cat) lags a 1.7 Hz stride by a large share of
+    its swing, so their torques are what a lagging servo spends, not what the
+    gait costs. This is floating-base inverse dynamics on the reference itself:
+
+    - ``qvel`` and ``qacc`` are central differences of the clip's ``qpos``
+      round the stride (``mj_differentiatePos``), and ``mj_inverse`` with
+      contacts and constraints off gives every DOF's generalised force,
+      gravity, the drives' armature and their torque-speed damping included
+      (so comparing to the peak *is* comparing to the torque-speed line);
+      joint friction loss is not counted;
+    - the base's six rows must come from the feet the clip has down. A
+      kinematic clip does not fall in its flight phases, so the base wrench
+      of the samples with no foot down is spread evenly over the samples
+      with one, which keeps the stride's impulse (gravity's above all) and
+      is the standard duty-factor scaling of stance force;
+    - each sample's wrench goes to its stance feet as point forces at the
+      foot bodies' centres of mass (an exported body's frame is the
+      assembly's origin, not the part), the least-norm solution, and each joint's torque
+      is its generalised force less what those forces carry.
+
+    Reported per drive as ``screen`` does, over the stride's samples, with
+    ``peak_share`` the share of samples asking more than the peak; plus the
+    base wrench the stance feet cannot supply (a residual, % weight), the
+    share of stance samples with a foot pulling on the ground, and the share
+    of the stride with no foot down.
+    """
+
+    reference = task["reference"]
+    samples = int(reference["samples"])
+    dt = float(reference["sample_dt_s"])
+    lap = float(reference["parameters"]["speed_m_s"]) * dt * samples
+    qpos = np.array(reference["qpos"], dtype=float)
+    feet = sorted(reference["legs"])
+    foot_body = {f: _body(mujoco, model, str(reference["legs"][f]["foot_body"])) for f in feet}
+    down = {f: [bool(v) for v in reference["contact"][f]] for f in feet}
+    root = _root_body(mujoco, model)
+    vadr = int(model.jnt_dofadr[int(model.body_jntadr[root])])
+    base = slice(vadr, vadr + 6)
+    model.opt.disableflags |= int(mujoco.mjtDisableBit.mjDSBL_CONTACT) | int(
+        mujoco.mjtDisableBit.mjDSBL_CONSTRAINT)
+    data = mujoco.MjData(model)
+    mujoco.mj_setConst(model, data)
+    weight = float(model.body_subtreemass[root]) * float(np.linalg.norm(model.opt.gravity))
+
+    def at(k: int) -> Any:
+        laps, i = divmod(k, samples)
+        row = qpos[i].copy()
+        row[int(model.jnt_qposadr[int(model.body_jntadr[root])])] += laps * lap
+        return row
+
+    def velocity(a: Any, b: Any, h: float) -> Any:
+        out = np.zeros(model.nv)
+        mujoco.mj_differentiatePos(model, out, h, a, b)
+        return out
+
+    forces, stance, vels = [], [], []
+    for k in range(samples):
+        v_minus, v_plus = velocity(at(k - 1), at(k), dt), velocity(at(k), at(k + 1), dt)
+        data.qpos[:] = at(k)
+        data.qvel[:] = (v_minus + v_plus) / 2.0
+        data.qacc[:] = (v_plus - v_minus) / dt
+        mujoco.mj_inverse(model, data)
+        forces.append(data.qfrc_inverse.copy())
+        stance.append([f for f in feet if down[f][k]])
+        vels.append(data.qvel.copy())
+    forces = np.array(forces)
+    flight = [k for k in range(samples) if not stance[k]]
+    held = [k for k in range(samples) if stance[k]]
+    if not held:
+        raise ProxyError("the reference never puts a foot down, so nothing can carry the base")
+    spread = forces[flight][:, base].sum(axis=0) / len(held) if flight else np.zeros(6)
+    efforts, residual, pulling = [], [], 0
+    dofs = [int(model.jnt_dofadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, r["joint"])])
+            for r in rows]
+    jac = np.zeros((3, model.nv))
+    for k in held:
+        data.qpos[:] = at(k)
+        mujoco.mj_kinematics(model, data)
+        mujoco.mj_comPos(model, data)
+        jacs = []
+        for f in stance[k]:
+            mujoco.mj_jac(model, data, jac, None, data.xipos[foot_body[f]], foot_body[f])
+            jacs.append(jac.copy())
+        contact = np.vstack(jacs)  # (3 * feet) x nv
+        wrench = forces[k][base] + spread
+        f, *_ = np.linalg.lstsq(contact[:, base].T, wrench, rcond=None)
+        residual.append(float(np.linalg.norm(contact[:, base].T @ f - wrench)))
+        pulling += int(any(f[3 * i + 2] < 0.0 for i in range(len(stance[k]))))
+        tau = forces[k] - contact.T @ f
+        efforts.append(np.array([float(tau[d]) for d in dofs]))
+    for k in flight:  # no foot down: the legs swing free, the base is spread above
+        efforts.insert(k, np.array([float(forces[k][d]) for d in dofs]))
+    effort = np.array(efforts)
+    speed_abs = np.abs(np.array(vels))[:, dofs]
+    rms = np.sqrt((effort ** 2).mean(axis=0))
+    drives = []
+    for i, row in enumerate(rows):
+        rated, peak, omega = row["rated_nm"], row["peak_nm"], row["no_load_rad_s"]
+        drives.append({
+            "joint": row["joint"], "drive": row["drive"], "rms_nm": float(rms[i]),
+            "mean_nm": float(effort[:, i].mean()),
+            "rms_over_rated": None if not rated else float(rms[i]) / rated,
+            "peak_share": float((np.abs(effort[:, i]) >= peak).mean()),
+            "peak_needed_over_peak": float(np.abs(effort[:, i]).max()) / peak,
+            "speed_over_no_load": None if not omega else float(speed_abs[:, i].max()) / omega,
+        })
+    return {
+        "seed": None, "completed": True, "survived_s": samples * dt,
+        "mass_kg": float(model.body_subtreemass[root]),
+        "flight_share": len(flight) / samples,
+        "pulling_share": pulling / len(held),
+        "residual_mean_pct_weight": 100.0 * statistics.fmean(residual) / weight,
         "drives": drives,
     }
 
@@ -304,8 +451,8 @@ def summarise(name: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     drives = []
     for i, first in enumerate(runs[0]["drives"]):
         drives.append({"joint": first["joint"], "drive": first["drive"],
-                       **{k: med([r["drives"][i][k] for r in runs])
-                          for k in ("rms_nm", "rms_over_rated", "peak_share",
+                       **{k: med([r["drives"][i].get(k) for r in runs])
+                          for k in ("rms_nm", "track_rms_deg", "rms_over_rated", "peak_share",
                                     "peak_needed_over_peak", "speed_over_no_load")}})
     rated = [d for d in drives if d["rms_over_rated"] is not None]
     worst = max(rated, key=lambda d: d["rms_over_rated"]) if rated else None
@@ -320,8 +467,9 @@ def summarise(name: str, runs: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "mass_kg": runs[0]["mass_kg"], "completed": completed,
         "completed_seeds": sum(1 for r in runs if r["completed"]),
         "survived_s": med([r["survived_s"] for r in runs]),
-        "max_tilt_deg": med([r["max_tilt_deg"] for r in runs]),
-        "support_lift_mean_pct_weight": med([r["support_lift_mean_pct_weight"] for r in runs]),
+        **{key: med([r.get(key) for r in runs])
+           for key in ("max_tilt_deg", "support_lift_mean_pct_weight", "support_push_rms_pct_weight",
+                       "speed_mean_m_s", "flight_share", "pulling_share", "residual_mean_pct_weight")},
         "worst_joint": None if worst is None else worst["joint"],
         "worst_rms_over_rated": None if worst is None else worst["rms_over_rated"],
         "drives_over_rated": sum(1 for d in rated if d["rms_over_rated"] > HOLD_RMS_OVER_RATED),
@@ -337,7 +485,8 @@ def markdown(rows: Sequence[Mapping[str, Any]], joints: Sequence[str]) -> str:
     """The sweep as a table: per configuration, the named joints' numbers."""
 
     head = ["config", "support", "kg", "completes", "survives s", "worst RMS/rated", "over rated",
-            "max at-peak", "max speed/no-load", "lift % wt"]
+            "max at-peak", "max speed/no-load", "lift % wt", "push RMS % wt", "m/s",
+            "unsupplied % wt"]
     head += [f"{j} RMS/rated · at-peak" for j in joints]
     head.append("holds")
     lines = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
@@ -351,7 +500,9 @@ def markdown(rows: Sequence[Mapping[str, Any]], joints: Sequence[str]) -> str:
                  f"{row['completed_seeds']}/{len(row['seeds'])}", f(row["survived_s"], 1),
                  f(row["worst_rms_over_rated"]) + f" ({row['worst_joint']})",
                  str(row["drives_over_rated"]), f(row["peak_share_max"]),
-                 f(row["speed_over_no_load_max"]), f(row["support_lift_mean_pct_weight"], 1)]
+                 f(row["speed_over_no_load_max"]), f(row["support_lift_mean_pct_weight"], 1),
+                 f(row.get("support_push_rms_pct_weight"), 1), f(row.get("speed_mean_m_s")),
+                 f(row.get("residual_mean_pct_weight"), 1)]
         cells += [f"{f(by[j]['rms_over_rated'])} · {f(by[j]['peak_share'])}" for j in joints]
         cells.append("**yes**" if row["holds"] else "no")
         lines.append("| " + " | ".join(cells) + " |")
@@ -380,10 +531,11 @@ def sweep(task: Mapping[str, Any], xml: bytes, configs: Sequence[Mapping[str, An
     for config in configs:
         for support in supports:
             runs = []
-            for seed in seeds:
+            for seed in ([None] if support == INVERSE else seeds):
                 model = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
                 rows = apply(mujoco, model, task, config, library)
-                runs.append(screen(mujoco, np, model, task, rows, seed, support=support, **options))
+                runs.append(inverse(mujoco, np, model, task, rows) if support == INVERSE else
+                            screen(mujoco, np, model, task, rows, seed, support=support, **options))
             row = summarise(str(config.get("name", "config")), runs)
             row["support"] = support
             row["config"] = dict(config)
@@ -400,15 +552,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--drives", required=True, help="drive library JSON: key -> datasheet spec")
     parser.add_argument("--configs", required=True, help="JSON list of configurations")
     parser.add_argument("--seeds", type=int, nargs="+", default=list(range(1001, 1011)))
-    parser.add_argument("--support", nargs="+", default=["full"], choices=SUPPORTS)
+    parser.add_argument("--support", nargs="+", default=["full"], choices=SUPPORTS + (INVERSE,),
+                        help=f"held replays, or {INVERSE!r}: inverse dynamics on the clip itself")
     parser.add_argument("--gain", type=float, default=1.0)
     parser.add_argument("--joints", nargs="*", default=[], help="joints to tabulate")
+    parser.add_argument("--reference", help="a cadex-gait-clip-v1 JSON (CadexGait.generate on the "
+                        "bundle's model) the inverse screen follows instead of the bundle's clip")
     parser.add_argument("--out", required=True, help="writes OUT.json and OUT.md")
     args = parser.parse_args(argv)
     task, xml = load(args.bundle)
     library = json.loads(Path(args.drives).read_text(encoding="utf-8"))
     library = {k: v for k, v in library.items() if not k.startswith("_")}
     configs = json.loads(Path(args.configs).read_text(encoding="utf-8"))
+    if args.reference:
+        if set(args.support) != {INVERSE}:
+            parser.error("--reference replaces the clip only the inverse screen reads")
+        task = dict(task, reference=json.loads(Path(args.reference).read_text(encoding="utf-8")))
     try:
         rows = sweep(task, xml, configs, library, args.seeds, args.support, gain=args.gain)
     except ProxyError as exc:

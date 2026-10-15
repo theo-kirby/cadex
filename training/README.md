@@ -420,7 +420,7 @@ and rates every drive against its datasheet:
 ~/cadex-train-venv/bin/python training/cadex_proxy.py <bundle>-task.json \
     --drives docs/probes/orun6/d1/drives.json \
     --configs docs/probes/orun6/d1/configs.json \
-    --support full attitude swing --joints j_scap_l j_shoulder_l --out sweep
+    --support full attitude height posture swing inverse --joints j_scap_l j_hip_l --out sweep
 ```
 
 - **A configuration** names drive swaps (`drives`: joint -> library key),
@@ -436,6 +436,18 @@ and rates every drive against its datasheet:
   carries weight; `attitude` holds only attitude and horizontal position,
   so the legs carry the weight; `swing` is `full` with gravity and contact
   off: what moving the legs along the clip costs.
+- **Free-path supports (ADR-711).** `height` holds attitude and height,
+  `posture` attitude only; both leave the forward path to the legs. Every
+  replay reports the support's forward push (% of weight), the speed the
+  body reached, and each joint's RMS miss from the pose it was sent. On
+  the cat the exported servo misses the trot clip by 10–16° RMS, so a held
+  replay measures a lagging servo, not the gait.
+- **`--support inverse` (ADR-711)** follows the clip exactly: inverse
+  dynamics on its `qpos` with central differences, and the base wrench
+  carried by the stance feet as least-norm forces at their COMs (flight
+  samples' wrench spread over stance). It reports what the feet cannot
+  supply, because a kinematic clip need not be dynamically possible.
+  `--reference CLIP.json` swaps in any `CadexGait.generate` clip.
 - **Output.** `OUT.json` and `OUT.md`: per configuration and mode, seeds
   completed, each drive's RMS over rated, share of steps at its peak clamp,
   peak needed and speed over no-load, and `holds` (every drive at or under

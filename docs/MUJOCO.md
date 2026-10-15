@@ -1523,7 +1523,12 @@ rebuilt or trained, `training/cadex_proxy.py` swaps datasheet drives, moves
 and scales mass in the exported model, and replays the task's reference
 with the base held, rating each drive's RMS torque and time at its peak
 clamp against its datasheet (`training/README.md`). A drive that cannot
-follow the clip while held will not track it free.
+follow the clip while held will not track it free. Since a position servo
+lags a fast stride, the screen that counts is `--support inverse`
+(ADR-711): the clip's exact joint torques, by inverse dynamics with the
+stance feet carrying the base. It also says how much of the base wrench no
+foot can supply, which is how a reference that is not dynamically possible
+(a gallop whose body does not fall in flight) shows itself.
 
 ### What a good result looks like
 

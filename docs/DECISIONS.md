@@ -42098,3 +42098,101 @@ drive saturates where a strong one does not; swing costs nothing at zero
 amplitude and less with the far mass inboard; an unsupported base falls
 and says when; a task without a reference is refused; the command line
 writes the table and exits 2 on a refusal.
+
+## ADR-711 — The proxy screens a clip by inverse dynamics, and its held replays leave the path free (2026-10-15, orun6)
+
+**Context.** ADR-710's `attitude` replay put every drive of every
+configuration over rating, the hind included (1.2–1.5×). It also imposes
+the reference's forward path at 1.0 m/s, which the stance feet can fight.
+The critic asked how much of that was the support and how much was load,
+and for the gallop clip to be screened before any drive is chosen.
+
+**Decision.** Three additions to `training/cadex_proxy.py`:
+
+- **Two held-replay supports that leave the horizontal path free.**
+  `height` holds attitude and height; `posture` holds attitude only, so the
+  legs carry all the weight and set the pace. Every replay now reports the
+  forward force the support spends (RMS and mean, % of weight), the
+  forward speed the body reached, and each drive's RMS miss from the pose
+  it was sent (`track_rms_deg`).
+- **An `inverse` screen**: floating-base inverse dynamics on the clip
+  itself, with no servo and no seeds. `qvel` and `qacc` are central
+  differences of the clip's `qpos` round the stride. `mj_inverse`, with
+  contacts and constraints off, gives the generalised forces, including
+  gravity, armature, and the drive's torque-speed damping, so peak is
+  compared on the torque-speed line. Joint friction loss is not counted.
+  - The base's six rows come from the stance feet as least-norm point
+    forces at each foot body's COM. An exported body's frame is the
+    assembly origin, not the part; a test fails if the forces go back to
+    the frame.
+  - Samples with no foot down spread their base wrench evenly over the
+    stance samples. This keeps the stride's impulse and is the duty-factor
+    scaling of stance force.
+  - It reports the base wrench the stance feet cannot supply (% of weight),
+    the share of stance samples with a foot pulling, and the flight share.
+- `--reference CLIP.json` lets the inverse screen follow any
+  `cadex-gait-clip-v1` clip instead of the bundle's. The probe generates
+  clips with `CadexGait.generate` on the bundle's model, at 250 Hz and at
+  the gaits the bundle does not carry.
+
+**What the free path shows** (`sweep-trot-free.*`; trot at 1.0 m/s; fore
+AK10-9 configuration; left side; median of 10 seeds):
+
+| support | push RMS | body speed | hip | knee | hock |
+|---|---|---|---|---|---|
+| `attitude` | 91 % of weight | 0.99 m/s | 1.49× | 1.24× | 1.53× |
+| `height` | 0 | −1.00 m/s | 1.06× | 1.21× | 1.18× |
+| `posture` | 0 | −0.61 m/s | 0.93× | 1.10× | 1.25× |
+
+- As built, `attitude` pushes 52 % of the weight.
+- Freed, the replay **brakes and reverses**. The exported position servo
+  (kp ≈ 60 N·m/rad, peak 22 N·m) misses the clip: the scapula is off by
+  16° RMS against a ±12° stride, and by 10° even with gravity and contact
+  off. So the feet are down in the wrong part of the swing.
+- No held replay therefore measures the gait's load. `attitude` adds its
+  push, and every mode measures a lagging servo following a shorter,
+  later stride than the clip.
+
+**What the clip asks, exactly** (`inverse-*`):
+
+- **Trot at 1.0 m/s.** The exact cost exceeds every held replay.
+  - As built at 250 Hz: scapula 2.30×, shoulder 1.88×, hip 1.91×.
+  - The fore AK10-9 configuration fixes the fore leg (scapula 1.26×,
+    elbow 0.53×), but the hip runs at 2.01×. The hind 1.2–1.5× was **not**
+    an artefact of the support: the real load is larger.
+  - The best screened (fore, hip and knee on AK10-9, wrist inboard) leaves
+    the AK60-6 hock at 1.51× and the spine at 1.20×.
+  - The 50 Hz bundle clip reads about 10 % lower than the 250 Hz one, so
+    finite differences at the bundle's rate understate it.
+- **Trot at 1.7 m/s** (stride 0.59 m, the reach cap). The worst drive
+  runs at 4.3× or more in every configuration. With the stride capped by
+  leg reach, speed comes from stride frequency (2.9 Hz), and swing cost
+  grows with its square. r5's policy trots at this speed with its worst
+  drive at 1.46×, so a policy does not follow such a clip exactly.
+- **Rotary gallop and half-bound at 2.5 m/s** (strides 0.62 and 0.55 m,
+  reach-capped; Alexander's stride would be 1.1 m).
+  - 45 % and 77 % of the base wrench has no foot to come from. In flight
+    (29 % of the stride) the clip's body is not ballistic. Its prescribed
+    pitch cannot be produced through one or two feet in line.
+  - The drive numbers (≥ 9.6× and ≥ 15×) measure a clip that cannot
+    happen, **not a verdict on any drive**.
+
+**Consequences.**
+- A gallop drive verdict needs a dynamically consistent gallop reference
+  first: a body path whose flight is ballistic and whose stance supplies
+  the stride's impulse. That is G1 work, and the next D1 step.
+- **AK10-9 stays out of the library** until one configuration holds both
+  trot and gallop in a screen that is trusted.
+- For the trot, the screen says the hind girdle (hip and hock) and the
+  spine need what the fore girdle needed.
+
+**Evidence.** `training/test_cadex_proxy.py`, 23 tests (5 new):
+- each support holds only its own axes and reports the forward push, and
+  an unknown support is refused;
+- on a two-legged toy, upright legs ask nothing of the drives;
+- a leaning stance's torques equal a hand-worked static equilibrium
+  (lever rule, then each leg's moments) to 1e-4. This test fails with
+  forces at the body frame;
+- flight is reported, and a clip that never lands is refused;
+- the command line screens a given clip by inverse dynamics and refuses
+  `--reference` with a held replay.
