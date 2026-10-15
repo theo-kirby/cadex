@@ -1134,7 +1134,8 @@ def test_qdd_pins_manufacturer_ratings_and_isolation():
     spec["segments"][0][0] = 999
     assert catalog.qdd_spec("cubemars-ak70-10")["segments"][0][0] == 77
     assert _lib().catalog()["qdd_actuators"]["skus"] == [
-        "cubemars-ak45-10-v3", "cubemars-ak60-6-v3", "cubemars-ak70-10", "cubemars-ak80-9-v3"]
+        "cubemars-ak10-9-v3", "cubemars-ak45-10-v3", "cubemars-ak60-6-v3", "cubemars-ak70-10",
+        "cubemars-ak80-9-v3"]
     assert "qdd" in {row["name"] for row in library_listing()["exports"]}
     with pytest.raises(LibraryError):
         _lib().qdd("cubemars-ak70-10", direction=(0, 0, 0))
@@ -1345,6 +1346,7 @@ from cadex_part_worker import build_part_shape
 pack = XSCRIPT_WORKBENCH_PACKS["PartWorkbench"]
 lib = create_library_api(create_domain_api(pack.domain, pack.api_exports, pack.output_types))
 for sku, r, length in (("cubemars-ak70-10", 44.5, 50.25), ("cubemars-ak80-9-v3", 49.0, 38.5),
+                       ("cubemars-ak10-9-v3", 49.0, 61.7),
                        ("cubemars-ak60-6-v3", 39.5, 43.0), ("cubemars-ak45-10-v3", 26.5, 45.2)):
     part = lib.qdd(sku)
     spec = part.spec

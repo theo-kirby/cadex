@@ -1300,17 +1300,20 @@ limits on published current/power, and approximations: PROVENANCE §8c.
 
 `lib.qdd(sku, origin=..., direction=..., roll_degrees=...)` returns a
 `QddPart`: a CubeMars integrated joint actuator (motor, planetary stage, FOC
-driver). Two tiers (ADR-608):
+driver). Three tiers (ADR-608, ADR-713):
 
 | SKU | Mass | Peak / rated | No-load | Ø × length | Stator / output |
 |---|---|---|---|---|---|
+| `cubemars-ak10-9-v3` | 940 g | 53 / 18 N·m | 320 rpm, 48 V | 98 × 61.7 | 6-M4 Ø90 front and rear / 6-M4 Ø24 |
 | `cubemars-ak70-10` | 621 g | 24.8 / 8.3 N·m | 480 rpm, 48 V | 89 × 50.25 | 8-M3 Ø83 / 6-M3 Ø25 |
 | `cubemars-ak80-9-v3` | 490 g | 22 / 9 N·m | 570 rpm, 48 V | 98 × 38.5 | 8-M3 Ø85 / 6-M4 Ø28 |
 | `cubemars-ak60-6-v3` | 380 g | 9 / 3 N·m | 640 rpm, 48 V | 79 × 43 | 6-M3 Ø68 / 6-M3 Ø20 |
 | `cubemars-ak45-10-v3` | 262 g | 7 / 2.5 N·m | 180 rpm, 24 V | 53 × 45.2 | 6-M2.5 Ø47.5 front, 4-M2.5 Ø47 rear / 3-M2.5 Ø27 |
 
-The first two are hip and knee drives; the light pair is for necks, heads,
-jaws, tails and arms. The datum is the output face's centre, +Z out through
+The AK10-9 is the heavy tier, for the girdle joints of a machine whose
+half-kilogram drives run past their continuous rating; the AK70-10 and
+AK80-9 are hip and knee drives; the light pair is for necks, heads, jaws,
+tails and arms. The datum is the output face's centre, +Z out through
 the output, the case in -Z. `direction` is the joint axis. `.spec` carries
 the ratings at `rated_voltage_v` (rated/peak torque in N·m and N·mm, rated
 and no-load speed, currents, Kt), `mount_holes` (the front stator bolt
