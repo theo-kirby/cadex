@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-10
+Verified against source: 2026-10-15
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -788,8 +788,11 @@ Ranked by how quietly they fail.
     feasibility gate had passed because it asked about the *reset* pose and
     the policy settled somewhere else.
     **What to do:** read the commands, not only the trajectory — each
-    rollout frame's `actuator_commands`, or `compare.py`'s torque columns
-    (the shell's panel that took one glance went with the shell, ADR-498).
+    rollout frame's `actuator_commands`, its `actuator_efforts` against the
+    channel's `effort_low`/`effort_high` (ADR-694; for a position drive the
+    command is a setpoint, so only the effort shows a torque clamp), or
+    `compare.py`'s torque columns (the shell's panel that took one glance
+    went with the shell, ADR-498).
     Treat
     "the reward went up" and "the mechanism is doing something a machine
     could do" as two separate claims, and check the second one before
@@ -1307,13 +1310,225 @@ a checkpoint by what it did", as a command.
     Blender shell's Policy Outputs panel drew each actuator's command
     against its own limit; it went with the shell (ADR-498) and the
     dashboard has no counterpart, so read each rollout frame's
-    `actuator_commands` against the actuator's limit, or `compare.py`'s
-    peak/mean torque columns. The
+    `actuator_commands` against the actuator's limit and its
+    `actuator_efforts` against `effort_low`/`effort_high` (ADR-694), or
+    `compare.py`'s peak/mean torque columns. The
     trajectory says what the mechanism did; this says what the policy
     decided, and the two can disagree in a way only this one shows —
     hazard 15 is a policy that plays as a clean stand while holding three
     motors at 98 % of stall for the whole episode. A command pinned at an
     end is the finding.
+    A success spec can now bound it instead of a reader eyeballing it
+    (ADR-704): `effort_clamp_share_max` and `effort_rms_clamp_ratio_max` name
+    the worst drive against its clamp, `command_rate_rms`,
+    `joint_acceleration_rms_deg_s2` and `command_high_frequency_share` say
+    how smooth the commands and joints were, and `cost_of_transport` what the
+    motion cost. panel-cat-3's r5 trot, the orun6 baseline, reads 5.96
+    ranges/s, 8,032 °/s², 6.4 % of command power above 3× its 2.44 Hz
+    stride, its left hock at the clamp 19 % of the time, and a cost of
+    transport of 0.67 (medians over seeds 1001–1010).
+    A drive declared with its continuous rating (`rated_torque_nmm`,
+    ADR-707; `lib.qdd` passes the datasheet's) carries it to the bundle's
+    action and the trace's channel as `rated_effort` / `effort_rated`, and
+    `effort_rms_rated_ratio_max` bounds the worst drive's RMS effort against
+    it. r5's right scapula reads 1.46× its 8.3 N·m rating, and 9 of its 19
+    drives are over theirs.
+
+### Saying "smooth": the previous action and the action rate (ADR-696)
+
+A policy that jitters can still pass a spec written in speed, tilt and
+heading; panel-cat-3's r5 trot did, at 320 °/s of command-rate RMS. Two
+standard terms answer it, and both need the commands the policy issued,
+which no MuJoCo sensor reads:
+
+- **`assembly.observation(actuator, "command", name="hip")`** gives `hip`,
+  the command in force (clamped, after any `--action-filter-alpha` or
+  `--command-slew-deg`, in the action's unit), and `hip_rate`, its change
+  over the last control step per second. Before the first action both read
+  the reset keyframe's command; the first action reports a rate of 0. Left
+  `role="policy"` it is the **previous action** as an input, which the
+  robot knows exactly and so needs no sensor; `role="privileged"` keeps it
+  out of the actor and leaves it to the reward and the critic.
+- **An action-rate term** is then a reward: `assembly.reward("-((hip_rate /
+  300)^2 + (knee_rate / 300)^2 + ...)", weight=...)`. A reward expression
+  may be 512 nodes (ADR-697), so one term covers a 19-drive quadruped.
+
+The bundle carries these rows in `commands`, after the goal channels, so a
+task without them keeps its digest and a task that gains them keeps every
+other channel's address. `CadexDynamics.evaluate_episode`, the trainer and
+the stock-MuJoCo reference runner each compute them from the commands they
+issued, and `test_dynamics_command_channel` holds the three to one rule.
+They do not count against the 128-channel sensor cap: one per actuator, so
+the action list bounds them.
+
+### Saying "foot down": the contact channel (ADR-698)
+
+A gait reward that is not a pose needs to know which feet are on the
+ground: a contact schedule pays for the right ones, feet air time pays for
+swing, and foot slip is a foot's speed while it is down.
+
+- **`assembly.observation(paw, "contact", name="paw", role="privileged")`**
+  gives `paw`, the summed normal force of every contact on the paw's
+  collision shapes in N, and `paw_down`, 1 while that force is above the
+  bundle's `contact.down_above_n` (0) and 0 otherwise. A resting body reads
+  its own weight.
+- **The file carries it.** The export draws an invisible box site round the
+  component's colliding shapes, from each shape's bounding sphere, and puts
+  a `touch` sensor on it. Stock MuJoCo and MJX compute the force; the flag
+  is one comparison the engine, the trainer and the reference reader each
+  make. A component with no collision shape is refused.
+- **It is privileged.** No sensor in the library measures foot contact, so
+  the reward, the terminations and the critic read it and the policy does
+  not. A contact schedule term is then `paw_down` (or `1 - paw_down` in
+  swing), and a slip term `-(paw_vx**2 + paw_vy**2) * paw_down` beside a
+  `component_linear_velocity` of the same paw.
+
+### Saying "smooth": joint acceleration and the regularisers (ADR-699)
+
+- **`assembly.observation(knee, "acceleration", name="knee_acc",
+  role="privileged")`** gives `knee_acc`, the joint's `qacc` after the
+  control step's last solver step, in deg/s^2 (mm/s^2 on a slider). MuJoCo
+  has no sensor for it, so the bundle states the degree of freedom in an
+  `accelerations` section after the command channels, and the engine, MJX
+  and the reference runner each read their own `qacc`. It is the quantity
+  MuJoCo Playground's locomotion recipes penalise. It must be privileged:
+  nothing on the robot measures it.
+- **Every standard regulariser is then a reward term**, each on a channel a
+  task already has:
+
+  | term | expression | channels |
+  |---|---|---|
+  | action rate | `-(hip_cmd_rate / 100)**2` | `command` (ADR-696) |
+  | joint acceleration | `-(knee_acc / 10000)**2` | `acceleration` |
+  | torque | `-(knee_tau / peak_nmm)**2` | `actuator_force` |
+  | mechanical power, W | `-abs(knee_tau * knee_vel) * 1.745e-05` | `actuator_force`, `velocity` |
+  | foot slip | `-sqrt(paw_vx**2 + paw_vy**2) * paw_down` | `component_linear_velocity`, `contact` |
+
+  `test_dynamics_acceleration_channel`'s `REGULARISED_TASK` writes all five
+  on one mechanism, holds each to its formula, and trains it.
+
+### Showing a gait: the procedural reference (ADR-702)
+
+A reward that describes a gait pays for the cheapest motion that fits the
+description. `CadexGait.generate(model, legs, gait, speed_m_s)` builds the
+gait to track instead. It returns one periodic stride on the robot's own
+legs (`cadex-gait-clip-v1`): joint angles, foot positions, the contact
+schedule, and body height and pitch. No motion capture is involved.
+
+- **Footfall.** Named gaits are `walk`, `trot`, `pace`, `canter`,
+  `transverse_gallop`, `rotary_gallop`, `half_bound` and `bound`, with
+  Hildebrand's phase offsets (left hind = 0). Explicit `offsets` and `duty`
+  work as well.
+- **Scale.** Stride length is `2.3 h Fr^0.3` (Alexander 1976), where `h` is
+  the hip height measured on the model. The frequency is `v / stride`.
+  `stride_length_m=` overrides it.
+- **IK.** Each leg is solved by damped least squares within its joint
+  limits. A joint that more than one leg passes through is a body joint
+  (`spine_joint=`).
+- **Refusal.** A foot that cannot be reached raises `GaitUnreachable`,
+  naming the leg, the moment in the stride, the miss and the joints at a
+  stop. It never clamps silently.
+
+Measured on panel-cat-3's legs (hip height 427 mm), against Alexander's
+stride:
+
+| gait | speed | Alexander stride | longest reachable stride |
+|---|---|---|---|
+| trot | 1.0 m/s | 639 mm | 595 mm |
+| trot | 1.7 m/s | 879 mm | 597 mm |
+| trot | 2.5 m/s | 1108 mm | 601 mm |
+| rotary gallop | 2.5 m/s | 1108 mm | 674 mm |
+
+The joint ranges cap a trot stride near 0.6 m. At 1.7 m/s that forces a
+0.35 s stride (2.9 Hz) where dynamic similarity gives 1.9 Hz: the short,
+quick trot r5 learned.
+
+**In a task (ADR-703).** `assembly.gait([lf, rf, lh, rh], gait="trot",
+speed_mm_s=1000, stride_length_mm=580, spine=j_spine)` passed to
+`api.task(reference=...)` puts the stride in the bundle's `reference`
+section, generated on the exported model about the reset keyframe, with
+every body's pose at each sample. The dashboard's 3D viewport lists it under
+**Gait references** and loops it, so the intended gait can be judged before
+anything trains on it. An unreachable stride refuses the task
+(`gait_unreachable`) rather than building a reference nobody can track.
+
+**Judged against it (ADR-705).** A success spec on a task with a reference
+can bound four metrics read against it. The clock is the left hind's own
+landings, so a policy is compared stride by stride, whatever its stride
+frequency. `footfall_phase_error_max` is the worst foot's median landing
+error, in cycles, from the reference's phase offsets (a skipped or doubled
+landing is 0.5). `duty_factor_error_max` is the worst foot's duty factor
+less the reference's. `stride_frequency_ratio` is the measured stride
+frequency over the reference's. `reference_joint_rms_deg` is the RMS joint
+error at the same phase of each stride. r5's trot, against a trot generated
+on its own model at its 1.69 m/s and the 597 mm reachable stride (medians,
+seeds 1001–1010): footfall within 0.05 of a cycle (one frame), the right
+hind skipping 3 of 21 strides, duty 0.22 short of 0.45 (hinds down a quarter
+of the stride), stride frequency 0.88 of the reference's 2.84 Hz, and
+18.6° RMS joint error (knees 33°).
+`command_rate_reference_ratio` and `joint_acceleration_reference_ratio`
+(ADR-708) hold a rollout's smoothness against the clip's own on the same
+drives, read by `reference_smoothness(clip, channels)`. Measured, the clip
+is not gentle: r5's own-speed trot asks 4.56 ranges/s and 12,485 °/s², so
+r5 reads 1.31× and 0.64×. Its excess is jitter, not magnitude, and that is
+what `command_high_frequency_share` sees (6.4 %, against the clip's
+near-zero). The cat's 1.0 m/s, 580 mm trot asks 2.49 ranges/s and
+4,305 °/s².
+
+**Tracking it (ADR-706).** The same reference is a set of channels on a
+gait clock. The clock starts at the reference's phase 0, the left hind's
+touch-down, on an episode's first step, because the reset keyframe is the
+pose the stride was generated about. It turns `control_interval /
+period_s` of a cycle per step. `ref_sin` and `ref_cos` are the clock, and
+the policy reads them; a controller keeps its own timer, so they are
+grounded. For the reward and the critic, each `position` observation of a
+joint the stride poses gains `<name>_ref`, the angle the reference asks
+for, in degrees. Each foot gains `ref_<foot>_lift`, in mm above the
+reference foot's lowest point (0 in stance), and `ref_<foot>_down`, 1 while
+the reference has it down. Between two of the clip's samples a channel is
+read linearly, and a down flag switches at the midpoint. A step is scored
+against the reference where it lands, one step on the clock, so the reward
+for a pose is the reference's pose at the same moment. A tracking reward is
+then expressions, for example:
+
+```python
+reward=[api.reward("exp(-((q_knee_l - q_knee_l_ref)^2 + (q_hip_l - q_hip_l_ref)^2) / 450)", weight=1.0),
+        api.reward("exp(-((pfl_z - 22 - ref_lf_lift) / 20)^2)", weight=0.3),
+        api.reward("1 - abs(fl_down - ref_lf_down)", weight=0.2)]
+```
+
+The bundle carries the clip as a `tracking` table, one row per sample in
+each observation's own unit, so the engine, the trainer and the stock
+runner interpolate it and never convert. A test holds the three equal.
+
+**Starting inside it (ADR-709).** An episode that starts at a standstill
+and is asked for 1 m/s at step 0 falls before it learns to stride (track-s1
+and track-s2). `api.task(reference_start="random")` is reference state
+initialisation (Peng et al. 2018): a seeded episode draws one of the clip's
+samples, `randrange(samples)` after the goal draws, and starts in the
+clip's own state there. The pose is the clip's (height, pitch, every
+joint) with the base over the keyframe's ground point; the velocity is the
+clip's central difference round the stride, so the base moves at the
+reference's speed. The gait clock starts at `sample / samples`. A reset
+variation is composed on top, its velocities added rather than set. The
+bundle's `tracking` section carries `reset_qpos` and `reset_qvel`, one row
+per sample; the trainer draws a sample per environment on every reset and
+carries it beside the step counter. An unseeded episode, and so the build's
+own rollout, starts at the keyframe and phase 0. A success spec's seeds are
+seeded episodes, so they start mid-stride too: the spec judges the gait,
+not the launch from a standstill.
+
+**Screening drives against it (ADR-710).** Before a design change is
+rebuilt or trained, `training/cadex_proxy.py` swaps datasheet drives, moves
+and scales mass in the exported model, and replays the task's reference
+with the base held, rating each drive's RMS torque and time at its peak
+clamp against its datasheet (`training/README.md`). A drive that cannot
+follow the clip while held will not track it free. Since a position servo
+lags a fast stride, the screen that counts is `--support inverse`
+(ADR-711): the clip's exact joint torques, by inverse dynamics with the
+stance feet carrying the base. It also says how much of the base wrench no
+foot can supply, which is how a reference that is not dynamically possible
+(a gallop whose body does not fall in flight) shows itself.
 
 ### What a good result looks like
 

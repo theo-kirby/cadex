@@ -4200,6 +4200,12 @@ def _execute_task_bundle(
         declaration["success"] = _success_input(
             properties["success"], component_outputs, joint_outputs
         )
+    if properties.get("reference") is not None:
+        declaration["reference"] = _gait_input(
+            properties["reference"], component_outputs, joint_outputs
+        )
+        if properties.get("reference_start") == "random":
+            declaration["reference"]["start"] = "random"
 
     try:
         reloaded = CadexDynamics.load_model(xml)
@@ -4278,6 +4284,32 @@ def _execute_task_bundle(
                     ]
                 }
                 if "goal" in bundle
+                else {}
+            ),
+            # ADR-696: the command channels, after the goals, when it has any.
+            **(
+                {"command_channels": [
+                    str(channel)
+                    for record in bundle["commands"]
+                    for channel in record["channels"]
+                ]}
+                if "commands" in bundle
+                else {}
+            ),
+            # ADR-699: and the acceleration channels, after the commands.
+            **(
+                {"acceleration_channels": [
+                    str(channel)
+                    for record in bundle["accelerations"]
+                    for channel in record["channels"]
+                ]}
+                if "accelerations" in bundle
+                else {}
+            ),
+            # ADR-706: and a gait reference's tracking channels, last.
+            **(
+                {"tracking_channels": [str(channel) for channel in bundle["tracking"]["channels"]]}
+                if "tracking" in bundle
                 else {}
             ),
             # What the task is judged by, when it declares it (ADR-456): the
@@ -5004,6 +5036,39 @@ def _disturbance_input(
         "at_seconds_high": float(properties.get("at_seconds_high")),
         "duration_s": float(properties.get("duration_s")),
     }
+
+
+def _gait_input(
+    entry: DomainValue,
+    component_outputs: Mapping[int, str],
+    joint_outputs: Mapping[int, str],
+) -> dict[str, Any]:
+    """One ``api.gait`` value, by output name and in the API's units (ADR-703).
+
+    The feet become a map from ``LF``/``RF``/``LH``/``RH`` to each foot's
+    component; CadexDynamics generates the stride, at bundle-build time, on
+    the exported model.
+    """
+
+    properties = dict(_properties(entry, "gait"))
+    feet = list(properties.get("feet") or ())
+    resolved: dict[str, Any] = {
+        "label": str(properties.get("label") or properties.get("gait") or "custom"),
+        "gait": properties.get("gait"),
+        "speed_mm_s": float(properties.get("speed_mm_s")),
+        "feet": {foot: component_outputs[id(value)]
+                 for foot, value in zip(("LF", "RF", "LH", "RH"), feet)},
+    }
+    if properties.get("offsets") is not None:
+        resolved["offsets"] = {k: float(v) for k, v in dict(properties["offsets"]).items()}
+        resolved["duty"] = float(properties.get("duty"))
+    for name in ("stride_length_mm", "swing_height_mm", "pitch_amplitude_deg",
+                 "spine_amplitude_deg"):
+        if properties.get(name) is not None:
+            resolved[name] = float(properties[name])
+    if properties.get("spine") is not None:
+        resolved["spine_joint"] = joint_outputs[id(properties["spine"])]
+    return resolved
 
 
 def _goal_input(

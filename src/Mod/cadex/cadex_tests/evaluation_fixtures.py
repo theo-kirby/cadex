@@ -25,6 +25,35 @@ IDENTITY = [0.0, 0.0, 0.0, 1.0]
 DT = 0.02
 DONE = {"duration_s": 10.0, "termination": "", "truncated": True, "seed": 1101}
 
+# -- drives (ADR-694's frames, ADR-704's family) ---------------------------
+
+def drive_channel(name: str, *, angular: bool = True, low: float = -90.0, high: float = 90.0,
+                  effort: float | None = 9000.0) -> dict:
+    """One ``actuator_channels`` entry, clamped at +-``effort`` (``None``: unlimited)."""
+
+    return {"actuator": name, "joint": f"{name}_joint",
+            "motion_type": "angular" if angular else "linear",
+            "low": low, "high": high,
+            "effort_low": None if effort is None else -effort,
+            "effort_high": effort}
+
+
+def drive_frames(signals, *, seconds: float = 10.0):
+    """Trace frames from ``signals(t) -> (positions, velocities, commands, efforts)``."""
+
+    rows = [{"frame_kind": "input", "nominal_time_s": None, "component_placements": {}}]
+    for k in range(int(round(seconds / DT)) + 1):
+        t = k * DT
+        positions, velocities, commands, efforts = signals(t)
+        frame = {"frame_kind": "solver_output", "nominal_time_s": t, "component_placements": {},
+                 "joint_positions": positions, "joint_velocities": velocities}
+        if k:  # the reset frame has no command and no effort (ADR-694)
+            frame["actuator_commands"] = commands
+            frame["actuator_efforts"] = efforts
+        rows.append(frame)
+    return rows
+
+
 # -- a quadruped ------------------------------------------------------------
 
 HIP = 100.0

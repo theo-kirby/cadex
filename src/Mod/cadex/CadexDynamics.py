@@ -3217,6 +3217,7 @@ def actuator_records(
         stiffness = _declared("stiffness_nmm_per_deg", "stiffness_n_per_mm")
         damping = _declared("damping_nmms_per_deg", "damping_ns_per_mm")
         effort = _declared("torque_limit_nmm", "force_limit_n")
+        rated = _declared("rated_torque_nmm", "rated_force_n")
         cylinder_range = cylinder_forces_n(entry["cylinder"]) if entry.get("cylinder") else None
         if cylinder_range is not None:
             effort = cylinder_range[1]
@@ -3296,6 +3297,9 @@ def actuator_records(
                     "stiffness": stiffness,
                     "damping": damping,
                     "effort_limit": effort,
+                    # ADR-707: the continuous rating, in the surface unit;
+                    # present only when declared.
+                    **({"rated_effort": rated} if rated is not None else {}),
                     # In the surface unit the script wrote, like every other
                     # entry here. ``_action_bound`` narrows against it and the
                     # bundle quotes a number the author would recognise.
@@ -5948,11 +5952,13 @@ def export_mjcf(
     spec = built["spec"]
     model = built["model"]
     qpos = [float(value) for value in built["qpos_solved"]]
+    # ADR-696: a command observation is no sensor; the task carries it.
+    observations = sensor_observations(observations)
 
     _verify_explicit_inertia(spec, context=context)
 
     exported = spec.copy()
-    _add_observation_sensors(mujoco, exported, observations)
+    _add_observation_sensors(mujoco, exported, observations, model)
     exported.add_key(name=MJCF_KEYFRAME_NAME, qpos=list(qpos))
     # The copy's own compiled model, kept: it is the only thing that has
     # both the sensors and the engine's own numbers, so it is what the
@@ -5977,9 +5983,15 @@ def export_mjcf(
         )
 
     reloaded = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
-    _verify_exported_counts(reloaded, model, context=context)
+    _verify_exported_counts(
+        reloaded, model, context=context,
+        # ADR-698: each contact observation adds its touch volume.
+        added_sites=sum(1 for record in observations if record.get("contact")),
+    )
     worst_field, worst_field_name = _verify_exported_fields(
-        reloaded, model, context=context
+        reloaded, model, context=context,
+        added_sites=frozenset(str(record["object_name"])
+                              for record in observations if record.get("contact")),
     )
     # The exactness claim, re-taken on the file rather than on the model it
     # came from: this compares the reloaded body inertias against the
@@ -6087,11 +6099,17 @@ def _verify_explicit_inertia(spec: Any, *, context: str) -> None:
             )
 
 
-def _verify_exported_counts(reloaded: Any, model: Any, *, context: str) -> None:
-    """The file describes a model of the same shape, before any number is."""
+def _verify_exported_counts(
+    reloaded: Any, model: Any, *, context: str, added_sites: int = 0
+) -> None:
+    """The file describes a model of the same shape, before any number is.
+
+    ``added_sites`` are the contact observations' touch volumes (ADR-698),
+    which the export adds and the simulated model does not carry.
+    """
 
     for field in _MJCF_COUNT_FIELDS:
-        here = int(getattr(model, field))
+        here = int(getattr(model, field)) + (added_sites if field == "nsite" else 0)
         there = int(getattr(reloaded, field))
         if here != there:
             raise DynamicsError(
@@ -6103,7 +6121,8 @@ def _verify_exported_counts(reloaded: Any, model: Any, *, context: str) -> None:
 
 
 def _verify_exported_fields(
-    reloaded: Any, model: Any, *, context: str
+    reloaded: Any, model: Any, *, context: str,
+    added_sites: frozenset[str] = frozenset(),
 ) -> tuple[float, str]:
     """Field by field, at the tolerance phase 0 measured.
 
@@ -6114,6 +6133,13 @@ def _verify_exported_fields(
 
     worst = 0.0
     worst_field = ""
+    # ADR-698: the contact observations' touch volumes are the export's own,
+    # so the site fields are compared over the sites the model carried.
+    kept_sites = [
+        index for index in range(int(reloaded.nsite))
+        if _mujoco_module().mj_id2name(
+            reloaded, _mujoco_module().mjtObj.mjOBJ_SITE, index) not in added_sites
+    ]
     for field in _MJCF_MODEL_FIELDS + tuple(
         f"opt.{name}" for name in _MJCF_OPTION_FIELDS
     ):
@@ -6135,7 +6161,10 @@ def _verify_exported_fields(
                     },
                 )
             continue
-        drift = _field_drift(getattr(model, field), getattr(reloaded, field))
+        there = getattr(reloaded, field)
+        if added_sites and field.startswith("site_"):
+            there = there[kept_sites]
+        drift = _field_drift(getattr(model, field), there)
         if drift > worst:
             worst, worst_field = drift, field
         if drift > MJCF_FIELD_TOLERANCE:
@@ -6701,9 +6730,10 @@ def _axis_normalised(axis: Sequence[float], *, context: str) -> list[float]:
 #: to its components, so this counts what a reward formula could name rather
 #: than what the script wrote. Sized for comprehensibility rather than for
 #: bytes: phase 0 measured a sensor at 54 XML bytes, so even the ceiling is
-#: under 4 KB of file, and a task naming more than this many quantities is
-#: one nobody can read.
-MAXIMUM_OBSERVATION_CHANNELS = 64
+#: under 7 KB of file. 128 since ADR-701: a quadruped's standard locomotion
+#: reward reads each foot's position, velocity and contact beside the
+#: joints, 66 channels on a 12-drive Go1 and 68 on the 19-drive cat.
+MAXIMUM_OBSERVATION_CHANNELS = 128
 
 #: Reward terms, termination rules and randomisation entries. Each is a
 #: whitelisted expression or a field write evaluated once per control step,
@@ -6851,6 +6881,12 @@ _SUCCESS_NEED_CORRECTIONS = {
         "Give the task one: assembly.goal('target', kind='point', "
         "tip=component) in api.task(goals=[...])."
     ),
+    "reference": (
+        "It is measured against the task's gait reference, and this task "
+        "declares none. Give the task one -- api.task(reference="
+        "assembly.gait(feet, gait='trot', speed_mm_s=...)) -- or bound the "
+        "gait family, which needs none."
+    ),
 }
 
 
@@ -6886,6 +6922,10 @@ TASK_SEMANTIC_FIELDS = (
     # digest is the one it always had (ADR-462).
     "goal",
     "goal_algorithm",
+    # ADR-703: absent unless the task declares a gait reference. Semantic
+    # rather than judgement: a tracking reward reads it (G2), so a bundle
+    # with another stride is another task.
+    "reference",
 )
 
 #: The bundle-level fields deliberately left out, and why each one is out.
@@ -7390,7 +7430,31 @@ OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
         "suffixes": ("_x", "_y", "_z"),
         "units": {None: ("mm/s", speed_mm_per_s)},
     },
+    # ADR-698: whether a component is touching something, and how hard. A
+    # MuJoCo ``touch`` sensor on a box site the export draws around the
+    # component's own collision shapes (:func:`contact_site`), so the volume
+    # nobody had to draw is the one the shapes already state. It sums the
+    # normal force of every contact on that body -- the floor, chiefly --
+    # in N; the derived ``_down`` is 1.0 while that force is above the
+    # bundle's ``contact.down_above_n`` and 0.0 otherwise, which is the foot
+    # contact a gait reward and a critic read. MJX computes the same sensor,
+    # so the trainer reads it from ``sensordata`` like any other.
+    "contact": {
+        "sensor": "mjSENS_TOUCH",
+        "target": "component",
+        "objtype": "mjOBJ_SITE",
+        "dim": 1,
+        "suffixes": ("",),
+        "derived": ("_down",),
+        "units": {None: ("n", float)},
+    },
 }
+
+#: The force above which a ``contact`` channel reads its component as down
+#: (ADR-698), in N. Zero, because a soft MuJoCo contact carries force only
+#: while the shapes interpenetrate: any force is a touch. Stated in the
+#: bundle, so a trainer applies the number rather than knowing it.
+CONTACT_DOWN_ABOVE_N = 0.0
 
 #: Observation kinds named here on purpose, with the reason they are not
 #: rows above. A refusal that says "unknown kind" about something MuJoCo
@@ -7398,8 +7462,9 @@ OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
 DEFERRED_OBSERVATION_KINDS = {
     "touch": (
         "needs a site with a size, which is a placement the assembly graph "
-        "does not carry: a touch sensor measures contact normal force inside "
-        "a volume somebody has to draw"
+        "does not carry. Observe 'contact' instead (ADR-698): it is a touch "
+        "sensor whose volume is drawn around the component's own collision "
+        "shapes"
     ),
     "accelerometer": (
         "needs a site to be mounted on, for the same reason. A component's "
@@ -7411,6 +7476,65 @@ DEFERRED_OBSERVATION_KINDS = {
         "a fixed-width observation channel"
     ),
 }
+
+#: Observation kinds that are not sensors (ADR-696). A ``command`` reads
+#: what the controller last told one of the task's actuators -- the clamped
+#: command, after any filter or slew limit, in the action's own surface unit
+#: -- and ``_rate``, how far that command moved over the last control step,
+#: per second. Its unit is the action's: degrees or millimetres for a
+#: position servo, N·mm or N for a motor. It is the controller's own memory, so it is known exactly on
+#: the robot and needs no sensor, and it is what a smoothness reward is
+#: written in: ``-(hip_cmd_rate / 100)^2`` is an action-rate penalty.
+#:
+#: No MJCF sensor carries it, so its rows travel in the bundle's own
+#: ``commands`` section after the goal channels, and every evaluator --
+#: :func:`evaluate_episode` here and ``training/cadex_train.py`` -- computes
+#: it from the commands it issued. It does not count against
+#: ``MAXIMUM_OBSERVATION_CHANNELS``, which bounds the sensors written into
+#: the file; one actuator may be observed this way once, so the action list
+#: bounds it instead.
+COMMAND_OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
+    "command": {
+        "target": "actuator",
+        "suffixes": ("", "_rate"),
+    },
+}
+
+
+#: Observation kinds read from the simulator's state, not a sensor
+#: (ADR-699). An ``acceleration`` is one joint coordinate's acceleration,
+#: ``qacc`` at that joint's degree of freedom after the control step's last
+#: solver step, in deg/s^2 or mm/s^2. MuJoCo has no joint-acceleration
+#: sensor, and ``qacc`` is the number MuJoCo Playground's locomotion recipes
+#: penalise (``sum(qacc[6:]^2)``), so it is read where they read it: MJX
+#: carries the same field, and no evaluator keeps a velocity history to
+#: difference. Its rows travel in the bundle's ``accelerations`` section
+#: after the command channels, and they do not count against
+#: ``MAXIMUM_OBSERVATION_CHANNELS``, which bounds the sensors in the file.
+#:
+#: It is ``role: privileged`` and nothing else: no onboard sensor measures
+#: it, and differentiating an encoder twice on the robot is noise. It is for
+#: the reward and the critic: ``-(hip_acc / 10000)^2`` is the
+#: joint-acceleration regulariser.
+STATE_OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
+    "acceleration": {
+        "target": "joint",
+        "suffixes": ("",),
+        "units": {"angular": ("deg/s^2", angle_degrees),
+                  "linear": ("mm/s^2", length_mm)},
+    },
+}
+
+
+def sensor_observations(
+    records: Sequence[Mapping[str, Any]],
+) -> list[Mapping[str, Any]]:
+    """The observation records an MJCF sensor carries: all but commands and
+    state readings (ADR-696, ADR-699)."""
+
+    return [record for record in records
+            if str(record["kind"]) not in COMMAND_OBSERVATION_KINDS
+            and str(record["kind"]) not in STATE_OBSERVATION_KINDS]
 
 #: What a randomisation entry may vary, and every compiled-model field one
 #: draw has to move.
@@ -7612,7 +7736,8 @@ def policy_channels(task: Mapping[str, Any]) -> list[str]:
     **Then every goal channel, in bundle order** (ADR-462). A goal is what
     the robot is told to do, so the policy always reads it, and it sits
     after the sensor channels so a task that gains a goal keeps the address
-    of every channel it already had.
+    of every channel it already had. Then the policy's command channels
+    (ADR-696), on the same terms, then a gait reference's clock (ADR-706).
     """
 
     return [
@@ -7620,7 +7745,8 @@ def policy_channels(task: Mapping[str, Any]) -> list[str]:
         for record in task["observations"]
         if str(record.get("role") or "policy") == "policy"
         for channel in record["channels"]
-    ] + goal_channels(task)
+    ] + (goal_channels(task) + command_channels(task, policy_only=True)
+         + tracking_channels(task, policy_only=True))
 
 
 def goal_channels(task: Mapping[str, Any]) -> list[str]:
@@ -7630,6 +7756,61 @@ def goal_channels(task: Mapping[str, Any]) -> list[str]:
         str(channel)
         for record in task.get("goal") or ()
         for channel in record["channels"]
+    ]
+
+
+def command_channels(task: Mapping[str, Any], *, policy_only: bool = False) -> list[str]:
+    """Every command channel a task declares, in bundle order (ADR-696).
+
+    After the goal channels in every vector, and with ``policy_only`` the
+    ones not marked ``role: privileged``, which is the rule the sensor
+    channels follow.
+    """
+
+    return [
+        str(channel)
+        for record in task.get("commands") or ()
+        if not policy_only or str(record.get("role") or "policy") == "policy"
+        for channel in record["channels"]
+    ]
+
+
+def command_values(
+    task: Mapping[str, Any],
+    issued: Sequence[float],
+    before: Sequence[float],
+) -> dict[str, float]:
+    """The command channels, from the last two issued commands (ADR-696).
+
+    ``issued`` is the command in force -- the clamped action of the last
+    control step, after any filter or slew limit -- and ``before`` the one
+    it replaced, both indexed like ``task["actions"]``. The rate is their
+    difference over the control interval. ``training/cadex_train.py``
+    writes the same two lines in ``jnp``, and a test holds them equal.
+    """
+
+    interval = float(task["episode"]["control_interval_s"])
+    values: dict[str, float] = {}
+    for record in task.get("commands") or ():
+        index = int(record["action"])
+        now = float(issued[index])
+        values[str(record["channels"][0])] = now
+        values[str(record["channels"][1])] = (now - float(before[index])) / interval
+    return values
+
+
+def reset_command(model: Any, task: Mapping[str, Any], key: int) -> list[float]:
+    """The command in force before an episode's first action (ADR-696).
+
+    The reset keyframe's ``ctrl`` in each action's surface unit, held in its
+    box: what the drive is holding when the episode starts.
+    """
+
+    return [
+        min(max(float(model.key_ctrl[key][int(action["index"])])
+                / float(action["scale"]), float(action["low"])),
+            float(action["high"]))
+        for action in task["actions"]
     ]
 
 
@@ -7677,9 +7858,19 @@ def observation_records(
     }
     records: list[dict[str, Any]] = []
     taken: dict[str, str] = {}
+    commanded: dict[str, str] = {}
+    stated = 0
     for index, entry in enumerate(entries):
         kind = str(entry.get("kind") or "")
         name = str(entry.get("name") or "")
+        if kind in COMMAND_OBSERVATION_KINDS:
+            records.append(_command_observation(
+                entry, by_actuator, actuators, taken, commanded))
+            continue
+        if kind in STATE_OBSERVATION_KINDS:
+            records.append(_state_observation(entry, table, refusals, taken))
+            stated += 1
+            continue
         row = OBSERVATION_KINDS.get(kind)
         if row is None:
             deferred = DEFERRED_OBSERVATION_KINDS.get(kind)
@@ -7750,6 +7941,10 @@ def observation_records(
                               "available": list(bodies)},
                 )
             object_name = target
+            if kind == "contact":
+                # ADR-698: the sensor reads a site the export draws on the
+                # component's body; the record names the site.
+                object_name = contact_site_name(index)
 
         tracked: dict[str, Any] = {}
         if kind in ("tracked_position", "tracked_velocity"):
@@ -7838,6 +8033,9 @@ def observation_records(
                 )
             tracked["load"] = {key: float(entry["load"][key])
                                for key in ("full_scale", "resolution", "rate_hz", "noise")}
+        if kind == "contact":
+            tracked["contact"] = {"body": target,
+                                  "down_above_n": CONTACT_DOWN_ABOVE_N}
 
         unit, scale = _observation_unit(kind, motion_type)
         channels = [f"{name}{suffix}"
@@ -7883,9 +8081,13 @@ def observation_records(
                 **tracked,
             }
         )
-    if len(taken) > MAXIMUM_OBSERVATION_CHANNELS:
+    # ADR-696: command channels are named in ``taken`` so nothing can clash
+    # with them, and are not sensors, so the cap does not count them.
+    # ADR-699: nor are the state readings, one channel each.
+    sensed = len(taken) - 2 * len(commanded) - stated
+    if sensed > MAXIMUM_OBSERVATION_CHANNELS:
         raise DynamicsError(
-            f"This task observes {len(taken)} scalar channels; the accepted "
+            f"This task observes {sensed} scalar channels; the accepted "
             f"maximum is {MAXIMUM_OBSERVATION_CHANNELS}.",
             reason="too_many_observation_channels",
             correction=(
@@ -7893,14 +8095,214 @@ def observation_records(
                 "component_position is three. Observe the quantities the "
                 "reward and the policy actually use."
             ),
-            observed={"channels": len(taken),
+            observed={"channels": sensed,
                       "maximum": MAXIMUM_OBSERVATION_CHANNELS},
         )
     return records
 
 
+def _state_observation(
+    entry: Mapping[str, Any],
+    table: Mapping[tuple[str, str], Mapping[str, Any]],
+    refusals: Mapping[str, str],
+    taken: dict[str, str],
+) -> dict[str, Any]:
+    """One ``acceleration`` observation, resolved to its joint (ADR-699).
+
+    Its channel is claimed in ``taken`` so nothing can clash with it, and
+    the caller's cap subtracts it again. Which degree of freedom it reads is
+    the compiled model's to say, so :func:`_state_records` answers it.
+    """
+
+    name = str(entry.get("name") or "")
+    what = f"observation {name!r}"
+    kind = str(entry["kind"])
+    if str(entry.get("role") or "policy") != "privileged":
+        raise DynamicsError(
+            f"{what} reads a joint's acceleration as a policy input, and no "
+            "sensor on the robot measures it.",
+            reason="acceleration_not_privileged",
+            correction=(
+                "Declare it role=\"privileged\": the reward and the critic "
+                "read it, the policy does not. A policy that needs how fast a "
+                "joint is changing reads its velocity, which an encoder gives."
+            ),
+            observed={"observation": name, "role": str(entry.get("role") or "policy")},
+        )
+    resolved = _resolve_coordinate(entry, table, refusals, what=what)
+    motion_type = str(entry.get("motion_type") or "")
+    units = STATE_OBSERVATION_KINDS[kind]["units"]
+    if motion_type not in units:
+        raise DynamicsError(
+            f"A {kind!r} observation has no unit for a {motion_type} coordinate.",
+            reason="malformed_observation",
+            observed={"kind": kind, "motion_type": motion_type},
+        )
+    unit, convert = units[motion_type]
+    channels = [f"{name}{suffix}" for suffix in STATE_OBSERVATION_KINDS[kind]["suffixes"]]
+    for channel in channels:
+        if channel in taken:
+            raise DynamicsError(
+                f"Two observation channels are both called {channel!r}.",
+                reason="duplicate_observation_channel",
+                correction=(
+                    "A reward formula names channels, so two with one name "
+                    "means whichever was declared second. Rename one."
+                ),
+                observed={"channel": channel, "observation": name,
+                          "conflicts_with": taken[channel]},
+            )
+        taken[channel] = name
+    return {
+        "name": name,
+        "kind": kind,
+        "target": str(entry.get("joint") or ""),
+        "object_name": str(resolved["mujoco_joint"]),
+        "channels": channels,
+        "motion_type": motion_type,
+        "unit": str(unit),
+        "scale": float(convert(1.0)),
+        "role": "privileged",
+    }
+
+
+def _command_observation(
+    entry: Mapping[str, Any],
+    by_actuator: Mapping[tuple[str, str, str], Mapping[str, Any]],
+    actuators: Sequence[Mapping[str, Any]],
+    taken: dict[str, str],
+    commanded: dict[str, str],
+) -> dict[str, Any]:
+    """One ``command`` observation, resolved to its actuator (ADR-696).
+
+    Its channels are claimed in ``taken`` so no other channel can clash
+    with them; the caller's cap subtracts them again, because what the cap
+    bounds is the sensors in the file. Whether the actuator is one of the
+    task's actions is the task's question, answered by
+    :func:`_command_records`.
+    """
+
+    name = str(entry.get("name") or "")
+    what = f"observation {name!r}"
+    motion_type = str(entry.get("motion_type") or "")
+    key = (str(entry.get("joint") or ""), motion_type,
+           str(entry.get("actuator_kind") or ""))
+    actuator = by_actuator.get(key)
+    if actuator is None:
+        raise DynamicsError(
+            f"{what} reads the command of an actuator this model does not "
+            "carry.",
+            reason="observation_actuator_missing",
+            correction=(
+                "Pass the same assembly.actuator value that was given to the "
+                "api.mjcf this task observes."
+            ),
+            observed={"observation": name, "joint": key[0],
+                      "motion_type": key[1], "actuator_kind": key[2],
+                      "available": sorted(str(record["mujoco_actuator"])
+                                          for record in actuators)},
+        )
+    mujoco_actuator = str(actuator["mujoco_actuator"])
+    if mujoco_actuator in commanded:
+        raise DynamicsError(
+            f"{what} reads the command of {mujoco_actuator!r}, which "
+            f"{commanded[mujoco_actuator]!r} already reads.",
+            reason="duplicate_command_observation",
+            correction=(
+                "One command observation per actuator: a second would carry "
+                "the same two numbers under another name."
+            ),
+            observed={"observation": name, "actuator": mujoco_actuator,
+                      "conflicts_with": commanded[mujoco_actuator]},
+        )
+    row = COMMAND_OBSERVATION_KINDS[str(entry["kind"])]
+    channels = [f"{name}{suffix}" for suffix in row["suffixes"]]
+    for channel in channels:
+        if channel in taken:
+            raise DynamicsError(
+                f"Two observation channels are both called {channel!r}.",
+                reason="duplicate_observation_channel",
+                correction=(
+                    "A reward formula names channels, so two with one name "
+                    "means whichever was declared second. Rename one. Note "
+                    "that a command observation named 'hip' occupies hip and "
+                    "hip_rate."
+                ),
+                observed={"channel": channel, "observation": name,
+                          "conflicts_with": taken[channel]},
+            )
+    for channel in channels:
+        taken[channel] = name
+    commanded[mujoco_actuator] = name
+    return {
+        "name": name,
+        "kind": str(entry["kind"]),
+        "target": key[0],
+        "object_name": mujoco_actuator,
+        "channels": channels,
+        "motion_type": motion_type,
+        **({"role": str(entry["role"])} if entry.get("role") else {}),
+    }
+
+
+def contact_site_name(index: int) -> str:
+    """The site a ``contact`` observation's touch sensor reads (ADR-698)."""
+
+    return f"obs/{index}/contact"
+
+
+def contact_site(model: Any, body: str) -> dict[str, list[float]]:
+    """The box, in ``body``'s frame, that holds every collision shape on it.
+
+    ADR-698's touch volume. Each shape's bounding sphere -- its compiled
+    ``geom_pos`` and ``geom_rbound``, which MuJoCo states for every shape
+    type, mesh included -- bounds the box on each axis, so any contact a
+    shape on the body makes lies inside it. A shape that collides with
+    nothing (``contype`` and ``conaffinity`` both 0) is not a shape a foot
+    lands on and is left out. A body with no colliding shape is refused: it
+    can touch nothing, so its contact channel would read 0 forever.
+    """
+
+    mujoco = _mujoco_module()
+    index = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body)
+    shapes = [
+        geom for geom in range(int(model.ngeom))
+        if int(model.geom_bodyid[geom]) == index
+        and (int(model.geom_contype[geom]) or int(model.geom_conaffinity[geom]))
+    ]
+    if index < 0 or not shapes:
+        raise DynamicsError(
+            f"A contact observation reads {body!r}, which has no collision "
+            "shape, so nothing it does can ever touch anything.",
+            reason="observation_contact_no_collision",
+            correction=(
+                "Give the component a collision shape -- api.body(component, "
+                "collision=[assembly.collision(\"sphere\", ...)]) -- where it "
+                "meets the ground, or observe a component that has one."
+            ),
+            observed={"component": body},
+        )
+    low = [min(float(model.geom_pos[geom][axis]) - float(model.geom_rbound[geom])
+               for geom in shapes) for axis in range(3)]
+    high = [max(float(model.geom_pos[geom][axis]) + float(model.geom_rbound[geom])
+                for geom in shapes) for axis in range(3)]
+    return {"pos": [(a + b) / 2.0 for a, b in zip(low, high)],
+            "size": [(b - a) / 2.0 for a, b in zip(low, high)]}
+
+
+def contact_reading(force_n: float, contact: Mapping[str, Any]) -> list[float]:
+    """A ``contact`` channel and its ``_down`` flag (ADR-698).
+
+    ``training/cadex_train.py`` writes the same comparison in ``jnp``, and
+    a test holds the two equal.
+    """
+
+    return [force_n, 1.0 if force_n > float(contact["down_above_n"]) else 0.0]
+
+
 def _add_observation_sensors(
-    mujoco: Any, spec: Any, observations: Sequence[Mapping[str, Any]]
+    mujoco: Any, spec: Any, observations: Sequence[Mapping[str, Any]],
+    model: Any = None,
 ) -> None:
     """Each channel as one MJCF ``<sensor>`` element, on the exported copy.
 
@@ -7912,6 +8314,15 @@ def _add_observation_sensors(
     """
 
     for record in observations:
+        if record.get("contact"):
+            # ADR-698: the touch volume, sized from the compiled shapes and
+            # invisible, so a render of the exported file is unchanged.
+            box = contact_site(model, str(record["contact"]["body"]))
+            spec.body(str(record["contact"]["body"])).add_site(
+                name=str(record["object_name"]),
+                type=mujoco.mjtGeom.mjGEOM_BOX,
+                pos=box["pos"], size=box["size"], rgba=[0.0, 0.0, 0.0, 0.0],
+            )
         sensor = spec.add_sensor()
         sensor.name = str(record["mujoco_sensor"])
         sensor.type = getattr(mujoco.mjtSensor, str(record["sensor"]))
@@ -9397,6 +9808,8 @@ def _success_records(
         # given a rollout nothing to be measured against.
         "command": "speed" in goal_kinds,
         "target": "point" in goal_kinds,
+        # ADR-705: the reference family reads the task's gait reference.
+        "reference": bool(task.get("reference")),
     }
     rows: list[dict[str, Any]] = []
     needed: dict[str, str] = {}
@@ -9444,6 +9857,25 @@ def _success_records(
                     correction=_SUCCESS_NEED_CORRECTIONS[need],
                     observed={"predicate": identifier, "metric": metric,
                               "needs": need},
+                )
+        if "reference" in CadexEvaluation.METRICS[metric][1]:
+            # Every foot the reference times must be a foot the spec measures.
+            unmeasured = sorted(
+                str(name) for name in (task["reference"].get("feet") or {}).values()
+                if str(name) not in feet
+            )
+            if unmeasured:
+                raise DynamicsError(
+                    f"Predicate {identifier!r} in {what} bounds {metric!r}, "
+                    "which compares every foot of the task's gait reference, "
+                    f"and the spec does not name {', '.join(unmeasured)} as feet.",
+                    reason="success_reference_feet_unmeasured",
+                    correction=(
+                        "Name the reference's four feet in assembly.success(..., "
+                        "feet=[...])."
+                    ),
+                    observed={"predicate": identifier, "metric": metric,
+                              "unmeasured": unmeasured, "feet": feet},
                 )
         low, high = entry.get("min"), entry.get("max")
         rows.append(
@@ -9675,6 +10107,409 @@ def evaluation_task(task: Mapping[str, Any]) -> dict[str, Any]:
     return played
 
 
+def _command_records(
+    observations: Sequence[Mapping[str, Any]],
+    action_rows: Sequence[Mapping[str, Any]],
+    *,
+    context: str,
+) -> list[dict[str, Any]]:
+    """The bundle's ``commands`` rows (ADR-696), one per command observation.
+
+    Each names the action it reads by its position in ``actions``, because
+    that is the vector every evaluator holds: the command an episode issued
+    is the clamped action, after any filter or slew limit. An actuator the
+    task does not act on is refused -- nothing would ever command it.
+    """
+
+    by_actuator = {str(row["actuator"]): index
+                   for index, row in enumerate(action_rows)}
+    rows: list[dict[str, Any]] = []
+    for record in observations:
+        if str(record["kind"]) not in COMMAND_OBSERVATION_KINDS:
+            continue
+        actuator = str(record["object_name"])
+        if actuator not in by_actuator:
+            raise DynamicsError(
+                f"Observation {record['name']!r} in {context} reads the "
+                f"command of {actuator!r}, which is not one of the task's "
+                "actions.",
+                reason="command_not_an_action",
+                correction=(
+                    "A command observation reads what the policy told an "
+                    "actuator. List that actuator in the task's actions, or "
+                    "observe its actuator_force instead."
+                ),
+                observed={"observation": str(record["name"]),
+                          "actuator": actuator,
+                          "actions": sorted(by_actuator)},
+            )
+        rows.append({
+            "name": str(record["name"]),
+            "kind": str(record["kind"]),
+            "target": str(record["target"]),
+            "actuator": actuator,
+            "action": by_actuator[actuator],
+            "channels": [str(channel) for channel in record["channels"]],
+            # The action's own unit, and that per second.
+            "unit": str(action_rows[by_actuator[actuator]]["unit"]),
+            "rate_unit": f"{action_rows[by_actuator[actuator]]['unit']}/s",
+            **({"role": str(record["role"])} if record.get("role") else {}),
+        })
+    return rows
+
+
+def _state_records(
+    observations: Sequence[Mapping[str, Any]],
+    reloaded: Any,
+) -> list[dict[str, Any]]:
+    """The bundle's ``accelerations`` rows (ADR-699), one per observation.
+
+    Each names the degree of freedom it reads by its address in the loaded
+    file's ``qacc``, because that is the vector every evaluator holds --
+    the engine's ``MjData``, MJX's and the reference reader's alike.
+    """
+
+    mujoco = _mujoco_module()
+    rows: list[dict[str, Any]] = []
+    for record in observations:
+        if str(record["kind"]) not in STATE_OBSERVATION_KINDS:
+            continue
+        joint = mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_JOINT,
+                                  str(record["object_name"]))
+        rows.append({
+            "name": str(record["name"]),
+            "kind": str(record["kind"]),
+            "target": str(record["target"]),
+            "joint": str(record["object_name"]),
+            "dof": int(reloaded.jnt_dofadr[joint]),
+            "channels": [str(channel) for channel in record["channels"]],
+            "unit": str(record["unit"]),
+            "scale": float(record["scale"]),
+            "role": "privileged",
+        })
+    return rows
+
+
+def acceleration_channels(task: Mapping[str, Any]) -> list[str]:
+    """Every acceleration channel a task declares, in bundle order (ADR-699).
+
+    After the command channels in every vector. None is a policy channel.
+    """
+
+    return [str(channel) for record in task.get("accelerations") or ()
+            for channel in record["channels"]]
+
+
+def acceleration_values(task: Mapping[str, Any], qacc: Sequence[float]) -> dict[str, float]:
+    """The acceleration channels, from the simulator's ``qacc`` (ADR-699).
+
+    ``training/cadex_train.py`` writes the same line in ``jnp``, and a test
+    holds them equal.
+    """
+
+    return {str(record["channels"][0]): float(qacc[int(record["dof"])]) * float(record["scale"])
+            for record in task.get("accelerations") or ()}
+
+
+#: The prefix of the channels a gait reference adds to its task (ADR-706).
+TRACKING_PREFIX = "ref"
+
+
+def _tracking_records(
+    reference: Mapping[str, Any],
+    observations: Sequence[Mapping[str, Any]],
+    schedule: Mapping[str, Any],
+    *,
+    taken: Sequence[str],
+    context: str,
+) -> dict[str, Any]:
+    """A task's reference as channels on its gait clock (ADR-706).
+
+    The clock starts at the reference's phase 0 -- the left hind's
+    touch-down -- on the episode's first step, because that is the stride the
+    reset keyframe was generated about, and it turns once every
+    ``period_s``. ``ref_sin`` and ``ref_cos`` are the clock, for the policy:
+    the controller keeps its own timer, so it is grounded, as a phase goal
+    is (ADR-598). Then, for the reward and the critic only:
+
+    * ``<name>_ref`` for every ``position`` observation of a joint the clip
+      poses, in that observation's unit: the angle the reference asks for;
+    * ``ref_<foot>_lift``, mm: how far the reference's foot is above its own
+      lowest point over the stride, so 0 while it is down;
+    * ``ref_<foot>_down``: 1 while the reference has the foot down.
+
+    The ``table`` holds one row per clip sample of every channel after the
+    clock, in the observation's own unit, so the evaluators interpolate and
+    never convert. Every name is checked against ``taken``.
+    """
+
+    samples = int(reference["samples"])
+    joints = [str(name) for name in reference["joints"]]
+    angles = reference["joint_angles_rad"]
+    channels = [f"{TRACKING_PREFIX}_sin", f"{TRACKING_PREFIX}_cos"]
+    columns: list[list[float]] = []
+    held: list[bool] = []
+    for record in observations:
+        if str(record.get("kind")) != "position":
+            continue
+        joint = str(record.get("object_name") or "")
+        if joint not in joints:
+            continue
+        index = joints.index(joint)
+        scale = float(record["scale"])
+        channels.append(f"{record['channels'][0]}_ref")
+        columns.append([float(angles[k][index]) * scale for k in range(samples)])
+        held.append(False)
+    feet = [str(foot) for foot in reference["foot_positions_m"]]
+    for foot in feet:
+        heights = [float(point[2]) for point in reference["foot_positions_m"][foot]]
+        floor = min(heights)
+        channels.append(f"{TRACKING_PREFIX}_{foot.lower()}_lift")
+        columns.append([1000.0 * (height - floor) for height in heights])
+        held.append(False)
+    for foot in feet:
+        channels.append(f"{TRACKING_PREFIX}_{foot.lower()}_down")
+        columns.append([float(bool(value)) for value in reference["contact"][foot]])
+        held.append(True)
+    clash = sorted(set(channels) & {str(name) for name in taken})
+    if clash:
+        raise DynamicsError(
+            f"{context}: its gait reference reads as channels named "
+            f"{', '.join(repr(name) for name in clash)}, and the task already "
+            "has a channel by that name.",
+            reason="tracking_channel_clash",
+            correction=(
+                f"A reference adds {TRACKING_PREFIX}_sin, {TRACKING_PREFIX}_cos, "
+                f"<position observation>_ref, {TRACKING_PREFIX}_<foot>_lift and "
+                f"{TRACKING_PREFIX}_<foot>_down. Rename the observation or goal "
+                "that takes one of those names."
+            ),
+            observed={"channels": clash},
+        )
+    return {
+        "channels": channels,
+        "policy_channels": channels[:2],
+        "period_s": float(reference["parameters"]["period_s"]),
+        "turn_per_step": float(schedule["control_interval_s"])
+        / float(reference["parameters"]["period_s"]),
+        "samples": samples,
+        "held": held,
+        "table": [[column[k] for column in columns] for k in range(samples)],
+    }
+
+
+def _tracking_candidates(observations: Sequence[Mapping[str, Any]]) -> list[str]:
+    """Every name :func:`_tracking_records` could add, before the stride
+    says which joints it poses (ADR-706)."""
+
+    return [f"{TRACKING_PREFIX}_sin", f"{TRACKING_PREFIX}_cos"] + [
+        f"{record['channels'][0]}_ref" for record in observations
+        if str(record.get("kind")) == "position"
+    ] + [f"{TRACKING_PREFIX}_{foot}_{kind}" for kind in ("lift", "down")
+         for foot in ("lf", "rf", "lh", "rh")]
+
+
+def tracking_channels(task: Mapping[str, Any], *, policy_only: bool = False) -> list[str]:
+    """Every tracking channel a task's reference adds (ADR-706), after the
+    acceleration channels; with ``policy_only`` the clock alone."""
+
+    tracking = task.get("tracking")
+    if not tracking:
+        return []
+    key = "policy_channels" if policy_only else "channels"
+    return [str(channel) for channel in tracking[key]]
+
+
+def tracking_phase(tracking: Mapping[str, Any], step: int, origin: int = 0) -> float:
+    """The gait clock's phase, in cycles in ``[0, 1)``, after ``step`` control
+    steps of an episode (ADR-706) that started at clip sample ``origin``
+    (ADR-709; 0 unless the task starts at a random phase)."""
+
+    turned = float(step) * float(tracking["turn_per_step"])
+    if origin:
+        turned += float(origin) / float(tracking["samples"])
+    return turned - math.floor(turned)
+
+
+def tracking_values(task: Mapping[str, Any], step: int, origin: int = 0) -> dict[str, float]:
+    """The tracking channels after ``step`` control steps (ADR-706) of an
+    episode whose clock started at clip sample ``origin`` (ADR-709).
+
+    The clip is periodic over its ``samples`` rows, and a phase between two
+    rows is read linearly between them. A ``held`` column -- a foot down or
+    not -- reads 1 where that interpolation is at least one half, so it
+    switches at the midpoint between two samples. ``training/cadex_train.py``
+    writes the same arithmetic in ``jnp``, and a test holds them equal.
+    """
+
+    tracking = task.get("tracking")
+    if not tracking:
+        return {}
+    phase = tracking_phase(tracking, step, origin)
+    samples = int(tracking["samples"])
+    at = phase * samples
+    first = int(math.floor(at))
+    weight = at - first
+    first %= samples
+    after = (first + 1) % samples
+    names = [str(channel) for channel in tracking["channels"]]
+    values = {names[0]: math.sin(2.0 * math.pi * phase),
+              names[1]: math.cos(2.0 * math.pi * phase)}
+    low, high = tracking["table"][first], tracking["table"][after]
+    for index, name in enumerate(names[2:]):
+        value = float(low[index]) + weight * (float(high[index]) - float(low[index]))
+        if tracking["held"][index]:
+            value = 1.0 if value >= 0.5 else 0.0
+        values[name] = value
+    return values
+
+
+#: How an episode of a task whose reference starts at a random phase draws
+#: that phase (ADR-709). Stated in the bundle's ``tracking`` section, beside
+#: the tables it indexes.
+REFERENCE_START_ALGORITHM = (
+    "random.Random(seed) continuing after the goal draws: randrange(samples) "
+    "is the clip sample the episode starts at. The reset keyframe's qpos and "
+    "qvel are replaced by reset_qpos[sample] and reset_qvel[sample]; the gait "
+    "clock starts at sample / samples of a cycle; a reset variation is then "
+    "composed on top, its velocities added. An unseeded episode starts at "
+    "sample 0."
+)
+
+#: The values ``api.task(reference_start=...)`` takes (ADR-709).
+REFERENCE_STARTS = ("phase0", "random")
+
+
+def _reference_start_records(mujoco: Any, model: Any, reference: Mapping[str, Any]) -> dict[str, Any]:
+    """Each clip sample as a state an episode can start in (ADR-709).
+
+    Reference state initialisation (Peng et al. 2018, DeepMimic): ``reset_qpos``
+    is the clip's own pose at each sample with the floating base put back
+    over the keyframe's ground point (the clip walks forward a stride; an
+    episode starts where the keyframe stands), so its height, pitch and
+    every joint angle are the reference's. ``reset_qvel`` is the clip's own
+    velocity there: the central difference of its neighbours, round the
+    stride, by ``mj_differentiatePos`` so the free joint's angular part is
+    in the base frame MuJoCo keeps it in. The base's forward velocity is
+    therefore the reference's speed.
+    """
+
+    rows = [[float(v) for v in row] for row in reference["qpos"]]
+    samples = int(reference["samples"])
+    dt = float(reference["sample_dt_s"])
+    speed = float(reference["parameters"]["speed_m_s"])
+    lap = speed * dt * samples
+    # MuJoCo's own buffers carry the arrays, so this module imports no numpy.
+    before, after, out = mujoco.MjData(model), mujoco.MjData(model), mujoco.MjData(model)
+
+    def at(index: int) -> list[float]:
+        # The clip's pose at any sample index, a stride further on per lap.
+        laps, k = divmod(index, samples)
+        row = list(rows[k])
+        row[0] += laps * lap
+        return row
+
+    qpos, qvel = [], []
+    for k in range(samples):
+        row = list(rows[k])
+        row[0], row[1] = rows[0][0], rows[0][1]
+        before.qpos[:] = at(k - 1)
+        after.qpos[:] = at(k + 1)
+        mujoco.mj_differentiatePos(model, out.qvel, 2.0 * dt, before.qpos, after.qpos)
+        qpos.append(row)
+        qvel.append([float(v) for v in out.qvel])
+    return {"start": "random", "start_algorithm": REFERENCE_START_ALGORITHM,
+            "reset_qpos": qpos, "reset_qvel": qvel}
+
+
+def reference_start(task: Mapping[str, Any], rng: Any) -> int | None:
+    """The clip sample a seeded episode starts at, or ``None`` (ADR-709).
+
+    ``None`` for a task whose reference starts at phase 0, or an unseeded
+    episode: no draw is taken, so every other task's stream is the one it
+    always was.
+    """
+
+    tracking = task.get("tracking") or {}
+    if rng is None or tracking.get("start") != "random":
+        return None
+    return int(rng.randrange(int(tracking["samples"])))
+
+
+def apply_reference_start(data: Any, task: Mapping[str, Any], origin: int | None) -> None:
+    """Write the clip's state at sample ``origin`` over the reset keyframe's (ADR-709)."""
+
+    if origin is None:
+        return
+    tracking = task["tracking"]
+    data.qpos[:] = tracking["reset_qpos"][origin]
+    data.qvel[:] = tracking["reset_qvel"][origin]
+
+
+def _reference_records(
+    mujoco: Any,
+    reloaded: Any,
+    declared: Mapping[str, Any],
+    schedule: Mapping[str, Any],
+    *,
+    context: str,
+) -> dict[str, Any]:
+    """A task's gait reference: one generated stride, played back as poses (ADR-703).
+
+    ``declared`` is the worker's resolution of an ``api.gait`` value: a gait
+    name or explicit footfall, a speed, and each foot's component. The stride
+    is :func:`CadexGait.generate` on the **exported** model, about the reset
+    keyframe the episode starts from, so the clip's joint angles are angles of
+    the file a trainer loads. Each sample also carries every body's world
+    pose (:func:`CadexGait.placements`), which is what the dashboard plays
+    before anything trains. A stride the legs cannot reach inside their joint
+    limits is refused here, with the generator's reason, never clamped.
+    """
+
+    import CadexGait  # noqa: PLC0415 - worker-only, like this module
+
+    def mm(name: str) -> float | None:
+        value = declared.get(name)
+        return None if value is None else float(value) / 1000.0
+
+    gait: Any = declared.get("gait")
+    if declared.get("offsets") is not None:
+        gait = {"offsets": dict(declared["offsets"]), "duty": float(declared["duty"]),
+                **({"name": str(gait)} if gait else {})}
+    home = None
+    key = mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_KEY, str(schedule["reset_keyframe"]))
+    if key >= 0:
+        home = [float(v) for v in reloaded.key_qpos[key]]
+    try:
+        clip = CadexGait.generate(
+            reloaded, dict(declared["feet"]), gait, float(declared["speed_mm_s"]) / 1000.0,
+            stride_length_m=mm("stride_length_mm"), swing_height_m=mm("swing_height_mm"),
+            pitch_amplitude_deg=declared.get("pitch_amplitude_deg"),
+            spine_joint=declared.get("spine_joint"),
+            spine_amplitude_deg=declared.get("spine_amplitude_deg"),
+            home_qpos=home, mujoco=mujoco,
+        )
+    except CadexGait.GaitError as error:
+        raise DynamicsError(
+            f"{context}: its gait reference cannot be generated: {error}",
+            reason=f"gait_{error.reason}",
+            correction=(
+                "A reference is built inside every joint limit and is never "
+                "clamped. Shorten stride_length_mm, lower the speed, or widen "
+                "the joint range the refusal names; a leg's reach caps the "
+                "stride, whatever dynamic similarity asks for."
+            ),
+            observed=error.as_dict(),
+        ) from error
+    clip["label"] = str(declared.get("label") or clip["gait"])
+    if declared.get("start") == "random":
+        # ADR-709: in the reference, so a task that starts elsewhere is another task.
+        clip["start"] = "random"
+    clip["reset_keyframe"] = str(schedule["reset_keyframe"]) if key >= 0 else None
+    clip["placements"] = CadexGait.placements(reloaded, clip, mujoco=mujoco)
+    return clip
+
+
 def task_records(
     built: Mapping[str, Any],
     reloaded: Any,
@@ -9752,7 +10587,7 @@ def task_records(
     # -- observations -------------------------------------------------------
     observation_rows: list[dict[str, Any]] = []
     channels: list[str] = []
-    for index, record in enumerate(observations):
+    for index, record in enumerate(sensor_observations(observations)):
         adr = int(reloaded.sensor_adr[index])
         dim = int(reloaded.sensor_dim[index])
         observation_rows.append(
@@ -9775,7 +10610,10 @@ def task_records(
                 # ADR-590: and, on a tracked velocity, the position whose
                 # range flag it shares.
                 # ADR-591: and, on a load sensor's channel, its declaration.
-                **{key: record[key] for key in ("frame", "tracker", "in_range_of", "load")
+                # ADR-698: and, on a contact channel, its body and the force
+                # above which it reads as down.
+                **{key: record[key]
+                   for key in ("frame", "tracker", "in_range_of", "load", "contact")
                    if record.get(key)},
             }
         )
@@ -9847,6 +10685,13 @@ def task_records(
                 # compared -- before any policy exists (M8 swaps it out).
                 "fallback": str(record["control"]),
                 **bound,
+                # ADR-707: the drive's continuous rating in the effort's
+                # trace unit (N·mm or N), when the script declared one.
+                **(
+                    {"rated_effort": float(record["declared"]["rated_effort"])}
+                    if record.get("declared", {}).get("rated_effort") is not None
+                    else {}
+                ),
             }
         )
     if not action_rows:
@@ -9874,6 +10719,12 @@ def task_records(
         context=context,
     )
     _check_tracker_rates(observation_rows, schedule, context=context)
+    commands = _command_records(observations, action_rows, context=context)
+    command_names = [str(channel) for record in commands
+                     for channel in record["channels"]]
+    accelerations = _state_records(observations, reloaded)
+    command_names = command_names + [str(channel) for record in accelerations
+                                     for channel in record["channels"]]
     goal = _goal_records(
         mujoco,
         reloaded,
@@ -9881,12 +10732,21 @@ def task_records(
         tree,
         schedule,
         actions=action_rows,
-        taken=channels,
+        taken=channels + command_names,
         context=context,
     )
+    # ADR-696: the command channels follow the goals, so a task that gains
+    # one keeps the address of every channel it already had.
     channels = channels + [
         str(channel) for record in goal for channel in record["channels"]
-    ]
+    ] + command_names
+    # ADR-706: a reference's tracking channels come last. Which joints the
+    # stride poses is known only once it is generated, which is after every
+    # other refusal below, so the expressions are compiled here against
+    # every name a reference could add, and again against the exact ones.
+    taken = list(channels)
+    if task.get("reference"):
+        channels = channels + _tracking_candidates(observations)
 
     # -- reward and termination --------------------------------------------
     reward_rows: list[dict[str, Any]] = []
@@ -10000,6 +10860,24 @@ def task_records(
             goal=goal,
             context=context,
         )
+    # ADR-703: absent when the task declares no gait reference, and with it
+    # ADR-706's tracking channels, against which the expressions compile.
+    reference = tracking = None
+    if task.get("reference"):
+        reference = _reference_records(
+            mujoco, reloaded, task["reference"], schedule, context=context,
+        )
+        tracking = _tracking_records(
+            reference, observations, schedule, taken=taken, context=context,
+        )
+        if reference.get("start") == "random":
+            tracking.update(_reference_start_records(mujoco, reloaded, reference))
+        exact = taken + list(tracking["channels"])
+        for row in reward_rows:
+            compile_reward(row["expression"], names=exact, context=f"reward {row['label']!r}")
+        for row in termination_rows:
+            compile_reward(row["expression"], names=exact,
+                           context=f"termination {row['label']!r}")
     return {
         "schema": TASK_SCHEMA,
         "label": str(task.get("label") or ""),
@@ -10024,6 +10902,15 @@ def task_records(
             GOAL_PHASE_ALGORITHM
             if any(entry["kind"] == "phase" for entry in goal) else ""
         )} if goal else {}),
+        # ADR-696: absent when the task observes no command, so its bundle
+        # and digest are the ones it always had.
+        **({"commands": commands} if commands else {}),
+        # ADR-699: absent when the task reads no acceleration, on the same terms.
+        **({"accelerations": accelerations} if accelerations else {}),
+        # ADR-703: absent when the task declares no gait reference, and with
+        # it ADR-706's tracking channels.
+        **({"reference": reference, "tracking": tracking}
+           if reference is not None else {}),
         **judged,
         # The two per-episode draw streams, both stated, because they are
         # deliberately different algorithms and a reader has to be able to
@@ -10316,6 +11203,8 @@ def observation_values(
             read = tracker_reading(read, record["tracker"])
         elif record.get("load"):
             read = [load_reading(read[0], record["load"])]
+        elif record.get("contact"):
+            read = contact_reading(read[0], record["contact"])
         for channel, value in zip(record["channels"], read):
             values[str(channel)] = value
     return values
@@ -10507,10 +11396,12 @@ def _write_reset_variation(
     data.qpos[address + 6] = tw * qz - tx * qy + ty * qx
     data.qpos[address + 2] = float(data.qpos[address + 2]) + float(height_m)
 
+    # Added, not set (ADR-709): the reset keyframe holds the base still, so
+    # this is the draw itself, and a reference start's velocity keeps its own.
     velocity = int(record["qvel_adr"])
     for axis in range(3):
-        data.qvel[velocity + axis] = float(linear_velocity_m_s[axis])
-        data.qvel[velocity + 3 + axis] = float(angular_velocity_rad_s[axis])
+        data.qvel[velocity + axis] += float(linear_velocity_m_s[axis])
+        data.qvel[velocity + 3 + axis] += float(angular_velocity_rad_s[axis])
 
 
 def draw_episode_variation(
@@ -11062,8 +11953,20 @@ def evaluate_episode(
         draw_episode_goals(mujoco, model, task, rng)
         if rng is not None and task.get("goal") else None,
     )
+    # ADR-709: a task whose reference starts at a random phase draws it last.
+    origin = reference_start(task, rng)
     mujoco.mj_resetDataKeyframe(model, data, key)
+    apply_reference_start(data, task, origin)
     mujoco.mj_forward(model, data)
+    # ADR-696: the last two commands issued, held only by a task that
+    # observes one. Both start at the command the reset holds, so the first
+    # rate an episode reports is zero rather than a jump from nothing.
+    commanding = bool(task.get("commands"))
+    issued_now = reset_command(model, task, key) if commanding else []
+    issued_before = list(issued_now)
+    accelerating = bool(task.get("accelerations"))
+    # ADR-706: the reference on the gait clock, a function of the step alone.
+    tracking = bool(task.get("tracking"))
     # Before the reset-pose sample below, because the first frame a rollout
     # draws and the first observation a policy acts on both have to be of
     # where the mechanism actually starts.
@@ -11100,6 +12003,12 @@ def evaluate_episode(
         # changes is scored against the goal its policy saw.
         told = goal_values(goals, step) if goals else {}
         observation.update(told)
+        if commanding:
+            observation.update(command_values(task, issued_now, issued_before))
+        if accelerating:
+            observation.update(acceleration_values(task, data.qacc))
+        if tracking:
+            observation.update(tracking_values(task, step, origin or 0))
         if actions is None:
             commanded = [
                 evaluate_control(code, time_s, context=f"action {index}")
@@ -11126,6 +12035,19 @@ def evaluate_episode(
 
         landed = observation_values(task, data.sensordata)
         landed.update(told)
+        if commanding:
+            # The first command of an episode replaces the reset's, and
+            # reports no rate: the filter lets it through on the same terms.
+            issued_before = list(applied) if step == 0 else issued_now
+            issued_now = list(applied)
+            landed.update(command_values(task, issued_now, issued_before))
+        if accelerating:
+            # ADR-699: the acceleration of the step's last solver step.
+            landed.update(acceleration_values(task, data.qacc))
+        if tracking:
+            # ADR-706: where the step landed is judged against where the
+            # reference is when it lands, one step on the clock.
+            landed.update(tracking_values(task, step + 1, origin or 0))
         contributions = []
         reward = 0.0
         for label, weight, code in reward_terms:
@@ -11191,19 +12113,25 @@ def evaluate_episode(
         # What the episode asked for and when: empty for a task with no
         # goal, the nominal values for an unseeded one.
         "goal": goals,
+        # ADR-709: the clip sample the gait clock started at; absent unless
+        # the task starts at a random phase.
+        **({"reference_start": origin} if origin is not None else {}),
         "seed": None if seed is None else int(seed),
     }
 
 
 def _task_channels(task: Mapping[str, Any]) -> list[str]:
     """Every scalar name an expression may use: the sensor channels in
-    slice order, then the goal channels in bundle order (ADR-462)."""
+    slice order, then the goal channels in bundle order (ADR-462), then the
+    command channels (ADR-696), then the acceleration channels (ADR-699),
+    then a reference's tracking channels (ADR-706)."""
 
     return [
         str(channel)
         for record in task["observations"]
         for channel in record["channels"]
-    ] + goal_channels(task)
+    ] + (goal_channels(task) + command_channels(task) + acceleration_channels(task)
+         + tracking_channels(task))
 
 
 # ---------------------------------------------------------------------------
@@ -12195,6 +13123,10 @@ def rollout_policy(
     the one thing about a rollout that the poses do not already show -- what
     the policy *decided*, as opposed to what the mechanism then did -- and
     it costs one float per actuator per frame against a 64 MB trace cap.
+    Beside it, ``actuator_efforts`` is the force each drive delivered, and
+    every solver_output frame carries ``joint_positions`` and
+    ``joint_velocities``: what the drive did, which for a position drive the
+    command cannot show (ADR-694).
     """
 
     mujoco = _mujoco_module()
@@ -12275,6 +13207,26 @@ def rollout_policy(
     slew = played_filter["command_slew_deg"]
     bounds = [(float(action["low"]), float(action["high"])) for action in task["actions"]]
     issued: list[float] = []
+    # ADR-694: what each drive did, beside what it was told. Read through
+    # the actuator's own transmission (``actuator_length``/``_velocity``,
+    # divided by its gear), so the coordinate is the joint's for a joint
+    # transmission and no joint lookup can miss.
+    slots = [int(action["index"]) for action in task["actions"]]
+    gears = [float(model.actuator_gear[slot][0]) or 1.0 for slot in slots]
+    angular = [str(action["motion_type"]) == "angular" for action in task["actions"]]
+
+    def _coordinate(value: float, rotary: bool) -> float:
+        return angle_degrees(value) if rotary else length_mm(value)
+
+    def _effort(value: float, rotary: bool) -> float:
+        return torque_nmm(value) if rotary else float(value)
+
+    def _effort_range(slot: int, gear: float, rotary: bool) -> tuple[float | None, float | None]:
+        if not bool(model.actuator_forcelimited[slot]):
+            return None, None
+        low, high = (float(value) * gear for value in model.actuator_forcerange[slot])
+        low, high = min(low, high), max(low, high)
+        return _effort(low, rotary), _effort(high, rotary)
 
     def _actions(step: int, observation: Mapping[str, float]) -> list[float]:
         raw = policy_forward(header, weights, observation, context=context)
@@ -12352,8 +13304,28 @@ def rollout_policy(
         # taken there, and a row of zeros is a real command a policy can
         # issue. Consumers read frames with ``.get()``, so every one that
         # predates this key ignores it.
+        # The joint each drive moves, where it is and how fast, in the
+        # channel's own unit (degrees or millimetres, per second). Present on
+        # the reset frame too: the mechanism has a pose there, and a joint
+        # acceleration is a difference that needs the velocity it started at.
+        record["joint_positions"] = [
+            _coordinate(float(data.actuator_length[slot]) / gear, rotary)
+            for slot, gear, rotary in zip(slots, gears, angular, strict=True)
+        ]
+        record["joint_velocities"] = [
+            _coordinate(float(data.actuator_velocity[slot]) / gear, rotary)
+            for slot, gear, rotary in zip(slots, gears, angular, strict=True)
+        ]
         if action is not None:
             record["actuator_commands"] = [float(value) for value in action]
+            # The force each drive delivered at the frame's instant -- the
+            # last solver step of the control step, after MuJoCo's clamp --
+            # in N·mm (N for a linear drive). A sample of the effort, not its
+            # mean over the step; absent on the reset frame like the command.
+            record["actuator_efforts"] = [
+                _effort(float(data.actuator_force[slot]) * gear, rotary)
+                for slot, gear, rotary in zip(slots, gears, angular, strict=True)
+            ]
         return record
 
     episode = evaluate_episode(
@@ -12421,8 +13393,21 @@ def rollout_policy(
                 "unit": str(action["unit"]),
                 "low": float(action["low"]),
                 "high": float(action["high"]),
+                # ADR-694: the units of a frame's joint_positions (and, per
+                # second, joint_velocities) and actuator_efforts, and the
+                # clamp the effort is read against -- the model's force
+                # range, null for a drive the model does not limit.
+                "joint_unit": "deg" if rotary else "mm",
+                "effort_unit": "N·mm" if rotary else "N",
+                "effort_low": _effort_range(slot, gear, rotary)[0],
+                "effort_high": _effort_range(slot, gear, rotary)[1],
+                # ADR-707: the continuous rating RMS effort is read against,
+                # null for a drive declared without one.
+                "effort_rated": (None if action.get("rated_effort") is None
+                                 else float(action["rated_effort"])),
             }
-            for action in task["actions"]
+            for action, slot, gear, rotary in zip(
+                task["actions"], slots, gears, angular, strict=True)
         ],
         # What each frame's ``goal`` row means, declared once: the channel,
         # the goal it belongs to, that goal's kind and its unit.
@@ -12672,9 +13657,14 @@ def evaluate_success(
                      **({"frame": str(entry["frame"])} if entry.get("frame") else {})}
                     for segment in entry["segments"]
                 ]
+        # ADR-704: the drives' own record -- commands, joint state, effort --
+        # is read for smoothness, clamp load and cost of transport.
         measured = CadexEvaluation.measure(
             samples, ended, rig, shoves=shoves,
             command_mm_s=command, segments=segments,
+            drives=CadexEvaluation.drive_series(run["frames"], run["actuator_channels"]),
+            # ADR-705: the gait against the task's own reference, if it has one.
+            reference=task.get("reference"),
         )
         held = CadexEvaluation.check(spec["predicates"], measured["metrics"])
         steps = max(1, ended["steps"])

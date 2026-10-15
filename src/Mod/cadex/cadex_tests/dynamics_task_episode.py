@@ -101,7 +101,7 @@ def compile_expression(formula: str, names: Sequence[str]) -> Any:
 
 
 def channels(task: dict) -> list[str]:
-    """Every name an expression may use: sensor channels, then goal channels."""
+    """Every name an expression may use: sensor, goal, then command channels."""
 
     return [
         str(channel)
@@ -111,7 +111,44 @@ def channels(task: dict) -> list[str]:
         str(channel)
         for record in task.get("goal") or []
         for channel in record["channels"]
-    ]
+    ] + [
+        str(channel)
+        for record in task.get("commands") or []
+        for channel in record["channels"]
+    ] + [
+        str(channel)
+        for record in task.get("accelerations") or []
+        for channel in record["channels"]
+    ] + [str(channel) for channel in (task.get("tracking") or {}).get("channels") or []]
+
+
+def tracking_at(task: dict, step: int, origin: int = 0) -> dict[str, float]:
+    """A gait reference's channels after ``step`` control steps (ADR-706),
+    from the bundle's words: the clock turns ``turn_per_step`` cycles a step
+    from ``origin / samples`` (ADR-709; 0 unless the episode started at a
+    random sample); a row between two of the table's is read linearly
+    between them, round the end; a held column reads 1 from one half up."""
+
+    tracking = task.get("tracking")
+    if not tracking:
+        return {}
+    turned = step * float(tracking["turn_per_step"])
+    if origin:
+        turned += origin / float(tracking["samples"])
+    phase = turned - math.floor(turned)
+    rows = int(tracking["samples"])
+    at = phase * rows
+    low = int(math.floor(at))
+    weight = at - low
+    low %= rows
+    high = (low + 1) % rows
+    names = list(tracking["channels"])
+    values = {names[0]: math.sin(2.0 * math.pi * phase), names[1]: math.cos(2.0 * math.pi * phase)}
+    for column, name in enumerate(names[2:]):
+        a, b = float(tracking["table"][low][column]), float(tracking["table"][high][column])
+        value = a + weight * (b - a)
+        values[name] = (1.0 if value >= 0.5 else 0.0) if tracking["held"][column] else value
+    return values
 
 
 def observation_values(task: dict, sensordata: Any) -> dict[str, float]:
@@ -130,6 +167,11 @@ def observation_values(task: dict, sensordata: Any) -> dict[str, float]:
         scale = float(record["scale"])
         for offset, channel in enumerate(record["channels"][:dim]):
             values[str(channel)] = float(sensordata[adr + offset]) * scale
+        if record.get("contact"):
+            # ADR-698: the down flag, by the threshold the file states.
+            force = values[str(record["channels"][0])]
+            values[str(record["channels"][1])] = (
+                1.0 if force > float(record["contact"]["down_above_n"]) else 0.0)
     return values
 
 
@@ -366,8 +408,9 @@ def write_variation(data: Any, entry: dict, draw: dict) -> None:
     for axis in range(3):
         # Linear first, then angular: world frame and body frame, side by
         # side in one array, which is MuJoCo's asymmetry.
-        data.qvel[velocity + axis] = float(linear[axis])
-        data.qvel[velocity + 3 + axis] = float(draw["angular_velocity_rad_s"][axis])
+        # Added to what the reset holds (ADR-709).
+        data.qvel[velocity + axis] += float(linear[axis])
+        data.qvel[velocity + 3 + axis] += float(draw["angular_velocity_rad_s"][axis])
 
 
 def push(data: Any, task: dict, variation: dict, time_s: float) -> None:
@@ -488,7 +531,17 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
         else [{"label": str(entry["label"]), "segments": [list(entry["nominal"])]}
               for entry in task.get("goal") or []]
     )
+    # ADR-709: a reference that starts at a random phase draws its sample
+    # last, and its state replaces the keyframe's.
+    tracking = task.get("tracking") or {}
+    origin = 0
+    random_start = seed is not None and tracking.get("start") == "random"
+    if random_start:
+        origin = rng.randrange(int(tracking["samples"]))
     mujoco.mj_resetDataKeyframe(model, data, key)
+    if random_start:
+        data.qpos[:] = tracking["reset_qpos"][origin]
+        data.qvel[:] = tracking["reset_qvel"][origin]
     mujoco.mj_forward(model, data)
     if variation["reset_variation"]:
         for entry, draw in zip(task["reset_variation"], variation["reset_variation"]):
@@ -497,6 +550,16 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
 
     per_action = int(episode["solver_steps_per_action"])
     interval = float(episode["control_interval_s"])
+    # ADR-696, from the bundle's words: a command row reads the clamped
+    # action it names and that action's change over the control interval;
+    # before the first action the command is the reset keyframe's ctrl over
+    # the action's scale, in its box, and the first action reports no rate.
+    commands = list(task.get("commands") or [])
+    issued = [
+        min(max(float(model.key_ctrl[key][int(action["index"])]) / float(action["scale"]),
+                float(action["low"])), float(action["high"]))
+        for action in task["actions"]
+    ]
     steps: list[dict[str, Any]] = []
     total = 0.0
     terminated_step: int | None = None
@@ -516,6 +579,18 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
         landed = observation_values(task, data.sensordata)
         # The goal the action was taken under, beside what the sensors read.
         landed.update(goals_at(task, goals, step))
+        before = applied if step == 0 else issued
+        issued = applied
+        for record in commands:
+            index = int(record["action"])
+            landed[str(record["channels"][0])] = issued[index]
+            landed[str(record["channels"][1])] = (issued[index] - before[index]) / interval
+        # ADR-699: qacc at the row's degree of freedom, times its scale.
+        for record in task.get("accelerations") or []:
+            landed[str(record["channels"][0])] = (
+                float(data.qacc[int(record["dof"])]) * float(record["scale"]))
+        # ADR-706: the reference one step on the clock, where the step landed.
+        landed.update(tracking_at(task, step + 1, origin))
         reward = 0.0
         contributions = []
         for label, weight, code in reward_terms:

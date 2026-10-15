@@ -647,3 +647,37 @@ def test_two_records_on_one_coordinate_are_refused_by_the_pure_module() -> None:
             actuators=[_pendulum_actuator(), _pendulum_actuator()],
         )
     assert excinfo.value.reason == "duplicate_actuator"
+
+
+# ---------------------------------------------------------------------------
+# The continuous rating (ADR-707).
+# ---------------------------------------------------------------------------
+
+
+def test_a_continuous_rating_is_carried_only_when_declared() -> None:
+    """Present when given and absent otherwise, so no other actuator's digest moves."""
+
+    api = _api()
+    _base, _part, hinge, _asm = _hinged(api)
+    plain = api.actuator(hinge, kind="motor", control_nmm="0", torque_limit_nmm=8000.0)
+    assert "rated_torque_nmm" not in plain.properties
+    rated = api.actuator(hinge, kind="position", control_deg="0", stiffness_nmm_per_deg=500.0,
+                         torque_limit_nmm=8000.0, rated_torque_nmm=3000.0)
+    assert rated.properties["rated_torque_nmm"] == 3000.0
+
+
+def test_a_rating_needs_a_clamp_at_or_above_it_and_the_coordinates_unit() -> None:
+    api = _api()
+    _base, _part, hinge, _asm = _hinged(api)
+    with pytest.raises(ValueError, match="effort limit"):
+        api.actuator(hinge, kind="position", control_deg="0", stiffness_nmm_per_deg=500.0,
+                     rated_torque_nmm=3000.0)
+    with pytest.raises(ValueError, match="at most its peak"):
+        api.actuator(hinge, kind="motor", control_nmm="0", torque_limit_nmm=2000.0,
+                     rated_torque_nmm=3000.0)
+    with pytest.raises(ValueError, match="rated_torque_nmm"):
+        api.actuator(hinge, kind="motor", control_nmm="0", torque_limit_nmm=2000.0,
+                     rated_force_n=10.0)
+    with pytest.raises(ValueError):
+        api.actuator(hinge, kind="motor", control_nmm="0", torque_limit_nmm=2000.0,
+                     rated_torque_nmm=0.0)

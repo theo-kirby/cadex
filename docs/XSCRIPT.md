@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-13
+Verified against source: 2026-10-15
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -391,14 +391,49 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   worth knowing before choosing a channel: a `component_position` reads the
   component's **frame origin**, so a link hinged at its own origin never
   moves in it — `centre_of_mass` is the channel for where a part actually
-  is.
+  is. One kind is **not a sensor** (ADR-696): `assembly.observation(actuator,
+  "command", name="hip")` reads `hip`, the command in force on one of the
+  task's actuators — clamped, after any filter or slew limit, in the
+  action's own unit — and `hip_rate`, its change over the last control step
+  per second. Before the first action both read the command the reset
+  keyframe holds, and the first action reports a rate of 0. As a policy
+  input it is the **previous action** and needs no `sensor=`: the
+  controller knows its own commands. In a reward it is the **action rate**,
+  `-(hip_rate / 100)^2`. No `<sensor>` carries it, so the bundle states it
+  in a `commands` section, after the goal channels, and the engine, the
+  trainer and a stock-MuJoCo runner each compute it from the commands they
+  issued; it does not count against the 128-channel sensor cap, one per
+  actuator, and an actuator the task does not act on is refused.
+  `assembly.observation(paw, "contact", name="paw", role="privileged")`
+  reads foot contact (ADR-698): `paw` is the summed normal force of every
+  contact on the component's collision shapes, in N, and `paw_down` is 1
+  while that force is above zero and 0 otherwise. The export draws an
+  invisible box round the component's colliding shapes and puts a MuJoCo
+  `touch` sensor on it, so the file carries it and MJX computes it; a
+  component with no collision shape is refused. No sensor this API declares
+  measures it, so it is `privileged`: the reward, the terminations and the
+  critic read it.
+  `assembly.observation(knee, "acceleration", name="knee_acc",
+  role="privileged")` reads a joint's acceleration (ADR-699), in deg/s^2 or
+  mm/s^2: the simulator's `qacc` after the control step, which MuJoCo has no
+  sensor for. The bundle states it in an `accelerations` section after the
+  command channels, outside the 128-channel cap, and it must be
+  `privileged`. With it every standard regulariser is a reward term: action
+  rate `-(hip_rate/100)^2`, joint acceleration `-(knee_acc/10000)^2`, torque
+  `-(knee_tau/peak)^2` on an `actuator_force`, mechanical power
+  `abs(knee_tau*knee_vel)` beside a `velocity`, and foot slip
+  `sqrt(paw_vx^2+paw_vy^2)*paw_down`.
   `assembly.reward(expression, weight=...)` terms are summed and a policy
   maximises the total, reported term by term so "which part of the reward is
   doing the work" is answerable; a cost is a positive quantity with a
   negative weight. An expression may call `abs`, `asin`/`arcsin`, `arctan`,
   `cos`, `sin`, `exp`, `sqrt` and `tanh` — three more than `assembly.motion`,
   which does not get them because its formula is rendered back into an
-  Ondsel expression. `assembly.termination(expression, above=...)` (or
+  Ondsel expression. A reward or termination expression may be up to 512
+  syntax nodes and 2,048 characters (ADR-697), where a motion or control
+  formula keeps 128 and 512: a regulariser summed over every drive of a
+  quadruped — an action rate over 19 drives is 191 nodes — has to fit in
+  one term. `assembly.termination(expression, above=...)` (or
   `below=`) ends an episode early, which is what distinguishes a failure
   from a horizon. `assembly.randomise(target, property, scale=[low, high])`
   varies `mass` on a component or `damping`/`armature`/`friction_loss` on a
@@ -491,6 +526,34 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   digest it had. **The trainer draws its goals by the same algorithm**, on
   the host, as a pool of episodes from its own seed (`training/README.md`);
   a test holds the two to the same numbers.
+  **`assembly.gait(feet, gait="trot", speed_mm_s=...)` says what the motion
+  should look like** (ADR-702, ADR-703), and goes to
+  `api.task(reference=...)`. `feet` is four foot components: left fore,
+  right fore, left hind, right hind. `gait` is one of `walk`, `trot`,
+  `pace`, `canter`, `transverse_gallop`, `rotary_gallop`, `half_bound` and
+  `bound`, or `offsets={"LF": .., "RF": .., "LH": .., "RH": ..}` (touch-down
+  as a fraction of the stride after the left hind's) with `duty` states
+  the footfall. `stride_length_mm=` overrides dynamic similarity, and
+  `spine=joint, spine_amplitude_deg=` flexes a joint the legs share. The
+  engine generates one periodic stride on the exported model, about the
+  reset keyframe and inside every joint limit, into the bundle's
+  `reference` section, with every body's pose at each sample, and the
+  dashboard plays it before anything trains. A stride the legs cannot
+  reach refuses the task as `gait_unreachable`, naming the leg, the moment
+  and the joints at a stop. A task without one writes no `reference` and
+  keeps its digest. **A reference is tracked through channels** (ADR-706),
+  after every other, on a gait clock that starts at the stride's phase 0 on
+  the episode's first step: `ref_sin` and `ref_cos`, which the policy
+  reads; and, privileged, `<name>_ref` for each `position` observation of a
+  joint the stride poses (its unit), `ref_<foot>_lift` in mm above the
+  reference foot's lowest point and `ref_<foot>_down` for `lf`, `rf`, `lh`,
+  `rh`. A step is scored against the reference where it lands, so
+  `exp(-((q_knee - q_knee_ref) / 15)^2)` is a joint-tracking reward term. A
+  name one of them would take is refused as `tracking_channel_clash`.
+  `assembly.task(..., reference_start="random")` starts each seeded episode
+  at a random sample of the stride instead (ADR-709): the clip's pose and
+  velocity there, over the keyframe's ground point, with the clock at that
+  phase. A reset variation composes on top, its velocities added.
   **`assembly.success(predicates, seeds=...)` says what the behaviour must
   measurably be, apart from the reward** (ADR-456), and goes to
   `assembly.task(..., success=spec)`. A reward is what a policy is paid for;
@@ -532,6 +595,14 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `final_error_mm_max`, `final_error_arm_lengths_max`, `time_to_target_s_max`, `overshoot_ratio_max` | a tip's worst error, arrival time and overshoot over the targets the episode held | `tip` and a `point` goal |
   | `turns`, `laps` | a body's net signed turns about an axis through a centre (anticlockwise seen from the axis tip is positive), so a body that rocks on an arc reads about zero; whole turns completed in the net direction (ADR-587) | `body` |
   | `final_distance_mm`, `mean_distance_mm`, `max_distance_mm` | the body's distance from the centre point at the last frame, on average, and at its furthest — no goal needed (ADR-587) | `body` |
+  | `command_rate_rms`, `joint_acceleration_rms_deg_s2` | the RMS change per second of every command, each over its own channel's range (so ranges/s), pooled over drives; the RMS acceleration of the angular joints, pooled, after 1 s (ADR-704) | — |
+  | `effort_rms_clamp_ratio_max`, `effort_clamp_share_max` | the worst drive's RMS effort over its force clamp; its share of samples at the clamp, over the whole episode. A drive the model does not limit is not among them | — |
+  | `effort_rms_rated_ratio_max` | the worst drive's RMS effort over its continuous rating (`rated_torque_nmm` / `rated_force_n` on `assembly.actuator`; `lib.qdd(...).actuator` passes the datasheet's), over the whole episode; unmeasured when no drive declares a rating (ADR-707) | — |
+  | `command_high_frequency_share` | of the command power (Hann-windowed, each channel in its own ranges), the share above 3× the stride frequency — the median foot's step rate after 1 s. A stride's shape is its first harmonics; above them is jitter | `feet` |
+  | `cost_of_transport` | mean mechanical power, Σ\|effort × joint velocity\| over the drives, over weight × the base's net plan speed after 1 s | a floating base |
+  | `footfall_phase_error_max`, `duty_factor_error_max` | against the task's gait reference, stride by stride with the left hind's landings as the clock: the worst foot's median distance, in cycles, of its landing from where the reference's phase offsets put it (a stride it does not land in exactly once is 0.5); the worst foot's duty factor less the reference's (ADR-705) | `feet` and a task `reference` |
+  | `stride_frequency_ratio`, `reference_joint_rms_deg` | the median measured stride's frequency over the reference's; the RMS of every angular drive's joint angle less the reference's at the same phase of its own stride, so a slower stride is still compared pose for pose | `feet` and a task `reference` |
+  | `command_rate_reference_ratio`, `joint_acceleration_reference_ratio` | the settled command-rate and joint-acceleration RMS over the reference clip's own, on the angular drives the clip poses: "as smooth as the motion asked for", which a raw RMS cannot say because it grows with stride and speed (ADR-708) | `feet` and a task `reference` |
 
   "Every foot" is the worst foot, which is what the `_min` and `_max`
   suffixes say. **That table is the whole vocabulary.** A predicate that

@@ -1,0 +1,118 @@
+{
+ "_note": "D1 screening drive library (ADR-710). The first four are CadexCatalog.QDD_ACTUATORS entries, copied field for field; the last two are datasheet candidates not yet in the library, read from the manufacturer's product pages on 2026-10-15.",
+ "cubemars-ak70-10": {
+  "manufacturer": "CubeMars",
+  "model": "AK70-10 KV100",
+  "gear_ratio": 10.0,
+  "rated_voltage_v": 48.0,
+  "rated_torque_nm": 8.3,
+  "peak_torque_nm": 24.8,
+  "rated_speed_rpm": 310.0,
+  "no_load_speed_rpm": 480.0,
+  "rotor_inertia_gcm2": 753.4788,
+  "back_drive_torque_nm": 0.48,
+  "mass_g": 621.0,
+  "case_dia_mm": 89.0,
+  "overall_length_mm": 50.25,
+  "sources": [
+   "https://www.cubemars.com/product/ak70-10-kv100-robotic-actuator.html",
+   "https://store.tmotor.com/images/202408/141723615242833695.jpg"
+  ]
+ },
+ "cubemars-ak80-9-v3": {
+  "manufacturer": "CubeMars",
+  "model": "AK80-9 V3.0 KV100",
+  "gear_ratio": 9.0,
+  "rated_voltage_v": 48.0,
+  "rated_torque_nm": 9.0,
+  "peak_torque_nm": 22.0,
+  "rated_speed_rpm": 390.0,
+  "no_load_speed_rpm": 570.0,
+  "rotor_inertia_gcm2": 1118.3238,
+  "back_drive_torque_nm": 0.51,
+  "mass_g": 490.0,
+  "case_dia_mm": 98.0,
+  "overall_length_mm": 38.5,
+  "sources": [
+   "https://www.cubemars.com/product/ak80-9-v3-0-robotic-actuator.html",
+   "https://www.cubemars.com/images/20250407/1744015272105618.png"
+  ]
+ },
+ "cubemars-ak60-6-v3": {
+  "manufacturer": "CubeMars",
+  "model": "AK60-6 V3.0 KV80",
+  "gear_ratio": 6.0,
+  "rated_voltage_v": 48.0,
+  "rated_torque_nm": 3.0,
+  "peak_torque_nm": 9.0,
+  "rated_speed_rpm": 490.0,
+  "no_load_speed_rpm": 640.0,
+  "rotor_inertia_gcm2": 243.5,
+  "back_drive_torque_nm": 0.2,
+  "mass_g": 380.0,
+  "case_dia_mm": 79.0,
+  "overall_length_mm": 43.0,
+  "sources": [
+   "https://www.cubemars.com/product/ak60-6-v3-0-kv80-robotic-actuator.html",
+   "https://www.cubemars.com/data/cms/202602/ak60-6-v3-0-robotic-actuator-2d-drawing.pdf"
+  ]
+ },
+ "cubemars-ak45-10-v3": {
+  "manufacturer": "CubeMars",
+  "model": "AK45-10 V3.0 KV75",
+  "gear_ratio": 10.0,
+  "rated_voltage_v": 24.0,
+  "rated_torque_nm": 2.5,
+  "peak_torque_nm": 7.0,
+  "rated_speed_rpm": 120.0,
+  "no_load_speed_rpm": 180.0,
+  "rotor_inertia_gcm2": 157.33,
+  "back_drive_torque_nm": 0.1,
+  "mass_g": 262.0,
+  "case_dia_mm": 53.0,
+  "overall_length_mm": 45.2,
+  "sources": [
+   "https://www.cubemars.com/product/ak45-10-v3-0-kv75-robotic-actuator.html",
+   "https://www.cubemars.com/images/202607/AK45-10-V3.0-KV75-en-draw.png",
+   "https://www.cubemars.com/data/cms/202607/ak45-10-v3-0-kv75-2d-drawing.pdf"
+  ]
+ },
+ "cubemars-ak10-9-v3-kv60": {
+  "manufacturer": "CubeMars",
+  "model": "AK10-9 V3.0 KV60",
+  "gear_ratio": 9.0,
+  "rated_voltage_v": 48.0,
+  "rated_torque_nm": 18.0,
+  "peak_torque_nm": 53.0,
+  "rated_speed_rpm": 235.0,
+  "no_load_speed_rpm": 320.0,
+  "rotor_inertia_gcm2": 1002.0,
+  "mass_g": 940.0,
+  "case_dia_mm": 98.0,
+  "overall_length_mm": 61.7,
+  "price_usd": 698.9,
+  "notes": "The product page lists no back-drive torque, so a swap keeps the joint's existing friction loss.",
+  "sources": [
+   "https://www.cubemars.com/product/ak10-9-v3-0-kv60-robotic-actuator.html"
+  ]
+ },
+ "cubemars-ak80-64-kv80": {
+  "manufacturer": "CubeMars",
+  "model": "AK80-64 KV80",
+  "gear_ratio": 64.0,
+  "rated_voltage_v": 48.0,
+  "rated_torque_nm": 48.0,
+  "peak_torque_nm": 120.0,
+  "rated_speed_rpm": 48.0,
+  "no_load_speed_rpm": 75.0,
+  "rotor_inertia_gcm2": 564.5,
+  "back_drive_torque_nm": 4.7,
+  "mass_g": 850.0,
+  "case_dia_mm": 98.0,
+  "overall_length_mm": 61.9,
+  "price_usd": 889.9,
+  "sources": [
+   "https://www.cubemars.com/product/ak80-64-kv80-robotic-actuator.html"
+  ]
+ }
+}

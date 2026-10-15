@@ -892,6 +892,20 @@ def _command_limits(
     return wanted_name, [low, high]
 
 
+#: How large a reward or termination expression may be (ADR-697). Raised
+#: from the 128 syntax nodes and 512 characters a motion or control formula
+#: keeps, because the standard locomotion regularisers are sums over every
+#: drive: an action-rate penalty on a 19-drive quadruped,
+#: ``-((a_rate/300)^2 + ... )``, is 191 nodes, and a joint-pose term on a
+#: 12-drive one, ``(q - 12.5)^2`` summed, is 119 before it is wrapped in an
+#: ``exp`` and scaled. The bound is on what a person can read, not
+#: on cost: a term is compiled once and evaluated once per control step, in
+#: microseconds at this size, and traced once by the trainer. Python's own
+#: parser nests a 512-node sum without approaching its recursion limit.
+_REWARD_FORMULA_NODES = 512
+_REWARD_FORMULA_CHARACTERS = 2048
+
+
 def _checked_formula(
     operation: str,
     parameter: str,
@@ -900,6 +914,8 @@ def _checked_formula(
     names: frozenset[str] | None,
     refusals: Mapping[str, str] = {},
     functions: frozenset[str] = _MOTION_FUNCTIONS,
+    max_nodes: int = 128,
+    max_characters: int = 512,
 ) -> str:
     """One expression, whitelisted node by node, in Python syntax.
 
@@ -943,8 +959,11 @@ def _checked_formula(
     formula = value.strip()
     if not formula:
         raise _error(operation, parameter, "must not be empty", value)
-    if len(formula) > 512:
-        raise _error(operation, parameter, "must contain at most 512 characters")
+    if len(formula) > max_characters:
+        raise _error(
+            operation, parameter,
+            f"must contain at most {max_characters} characters",
+        )
     if not formula.isascii():
         raise _error(operation, parameter, "must contain only ASCII expression syntax")
     try:
@@ -957,8 +976,12 @@ def _checked_formula(
             value,
         ) from exc
     nodes = list(ast.walk(tree))
-    if len(nodes) > 128:
-        raise _error(operation, parameter, "expression is too complex")
+    if len(nodes) > max_nodes:
+        raise _error(
+            operation, parameter,
+            f"expression is too complex: {len(nodes)} syntax nodes, at most "
+            f"{max_nodes}",
+        )
     allowed_nodes = (
         ast.Expression,
         ast.BinOp,
@@ -1068,6 +1091,15 @@ _OBSERVATION_KINDS: dict[str, str] = {
     "centroidal_angular_momentum": "component_link",
     "tracked_position": "component_link",
     "tracked_velocity": "component_link",
+    # ADR-698: whether a component touches something, and how hard.
+    "contact": "component_link",
+    # Not a sensor (ADR-696): what the controller last told an actuator, and
+    # how fast that is changing. The engine keeps it in
+    # ``CadexDynamics.COMMAND_OBSERVATION_KINDS``.
+    "command": "actuator",
+    # Not a sensor (ADR-699): a joint's acceleration, read from the
+    # simulator's qacc. ``CadexDynamics.STATE_OBSERVATION_KINDS``.
+    "acceleration": "joint",
 }
 
 #: What each observation kind's declared name expands to. A vector channel
@@ -1092,6 +1124,12 @@ _OBSERVATION_SUFFIXES: dict[str, tuple[str, ...]] = {
     # The same tracker's differenced velocity (ADR-590); it shares the
     # position's _in_range rather than carrying a second one.
     "tracked_velocity": ("_x", "_y", "_z"),
+    # The command in force, then its change per second (ADR-696).
+    "command": ("", "_rate"),
+    # The normal force on the component, then whether it is down (ADR-698).
+    "contact": ("", "_down"),
+    # One joint coordinate's acceleration (ADR-699).
+    "acceleration": ("",),
 }
 
 
@@ -1216,6 +1254,11 @@ _SENSOR_DATASHEET_KINDS: dict[str, tuple[str, ...]] = {
 _OBSERVATION_ROLES = ("policy", "privileged")
 
 _CHANNEL_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,47}$")
+#: The named gaits ``api.gait`` accepts: ``CadexGait.GAITS``'s keys, copied
+#: because this surface imports no engine module, and held equal by a test
+#: (ADR-703).
+_GAIT_NAMES = ("walk", "trot", "pace", "canter", "transverse_gallop",
+               "rotary_gallop", "half_bound", "bound")
 
 #: What a control formula may name. ``initialValue`` is deliberately absent
 #: and refused by name below.
@@ -1274,6 +1317,8 @@ class AssemblyDomainAPI:
         # What an episode asks the policy to do: an argument to a task and
         # to its success spec (ADR-462).
         "goal",
+        # A procedural gait reference: an argument to a task (ADR-703).
+        "gait",
         "exploded_view",
         # A creature's moving anatomy: an argument to api.assembly, which
         # the build reply's anatomy block checks (ADR-613).
@@ -2570,6 +2615,8 @@ class AssemblyDomainAPI:
         damping_ns_per_mm: float | None = None,
         torque_limit_nmm: float | None = None,
         force_limit_n: float | None = None,
+        rated_torque_nmm: float | None = None,
+        rated_force_n: float | None = None,
         command_limits_degrees: Any = None,
         command_limits_mm: Any = None,
         bore_mm=None,
@@ -2624,6 +2671,14 @@ class AssemblyDomainAPI:
         mechanism that saturates against it holds short of its setpoint --
         the run's evidence reports the peak effort each actuator reached, so
         "the arm sagged" comes with the number that explains it.
+
+        ``rated_torque_nmm`` (``rated_force_n`` on a slider) is the drive's
+        **continuous** rating, beside the peak it is clamped at (ADR-707).
+        It changes no physics: it is carried to the task bundle and every
+        rollout trace, so a success spec can bound each drive's RMS effort
+        against it (``effort_rms_rated_ratio_max``). It needs an effort
+        limit and may not exceed it. ``lib.qdd(...).actuator`` passes its
+        datasheet rating.
 
         **``command_limits_degrees`` narrows what a policy may ask for,
         without narrowing the joint.** A position actuator's action range is
@@ -2772,6 +2827,34 @@ class AssemblyDomainAPI:
                 "joint with api.joint_dynamics instead",
                 damping[1],
             )
+        rated = _unit_pair(
+            operation,
+            coordinate,
+            ("rated_torque_nmm", rated_torque_nmm),
+            ("rated_force_n", rated_force_n),
+            strict_minimum=True,
+        )
+        if rated is not None:
+            clamp = effort[1] if effort is not None else None
+            if cylinder is not None:
+                clamp = None
+            if clamp is None:
+                raise _error(
+                    operation,
+                    rated[0],
+                    "needs the drive's effort limit beside it: a continuous "
+                    "rating is read against the peak the drive is clamped at, "
+                    "and a drive with no clamp has no datasheet to rate it",
+                    rated[1],
+                )
+            if rated[1] > clamp:
+                raise _error(
+                    operation,
+                    rated[0],
+                    f"exceeds the effort limit {clamp:g}: a drive's continuous "
+                    "rating is at most its peak",
+                    rated[1],
+                )
         command_limits = _command_limits(
             operation,
             coordinate,
@@ -2809,6 +2892,9 @@ class AssemblyDomainAPI:
             # Present only on a cylinder, so every other actuator's value --
             # and the digest it carries -- is what it was before ADR-643.
             properties["cylinder"] = cylinder
+        if rated is not None:
+            # Present only when given, for the same reason (ADR-707).
+            properties[rated[0]] = rated[1]
         return self._value(operation, "actuator", value, label=label, **properties)
 
     def body(
@@ -3357,6 +3443,37 @@ class AssemblyDomainAPI:
           fast one link's frame is turning.
         * ``actuator_force`` -- the effort a motor is actually producing, in
           N·mm or N. ``target`` is an ``api.actuator``.
+        * ``command`` -- what the policy last told a motor, and how fast
+          that is changing: ``name`` is the command in force, clamped and
+          after any filter or slew limit, in the action's own unit (degrees
+          or millimetres for a position servo, N·mm or N for a motor), and
+          ``name_rate`` its change over the last control step, per second
+          (ADR-696). ``target`` is an
+          ``api.actuator`` the task acts on. It is no sensor: the
+          controller knows its own commands exactly, so as a policy input it
+          is the previous action and needs no ``sensor=``, and in a reward
+          it is the action rate -- ``-(hip_rate / 100)^2`` pays a policy for
+          not jerking the hip. Before the first action both read the
+          command the reset holds, and the first action reports no rate.
+        * ``contact`` -- whether a component is touching something, and how
+          hard (ADR-698): ``name`` is the normal force of every contact on
+          its collision shapes, in N, and ``name_down`` is 1 while that
+          force is above zero and 0 otherwise. ``target`` is an
+          ``api.component`` with a collision shape -- a foot, chiefly, so
+          ``paw_down`` is the foot contact a gait reward pays on and
+          ``speed * paw_down`` is foot slip. MuJoCo reads it with a touch
+          sensor sized to those shapes. No onboard sensor this API declares
+          measures it, so it is ``role="privileged"``: the reward, the
+          terminations and the critic read it, the policy does not.
+        * ``acceleration`` -- one joint coordinate's acceleration (ADR-699),
+          in deg/s^2 or mm/s^2: the simulator's own ``qacc`` after the
+          control step, which MuJoCo has no sensor for and MuJoCo
+          Playground's locomotion recipes penalise. ``target`` is an
+          ``api.joint``. It must be ``role="privileged"``, because nothing
+          on the robot measures it: ``-(knee_acc / 10000)^2`` is the
+          joint-acceleration regulariser. A drive's torque is already an
+          ``actuator_force`` channel, so ``-(knee_tau / peak)^2`` is the
+          torque term, and ``abs(knee_tau * knee_vel)`` its mechanical power.
 
         **A vector channel expands to suffixed names.** ``name="hand"`` on a
         ``component_position`` gives ``hand_x``, ``hand_y`` and ``hand_z``;
@@ -3556,6 +3673,8 @@ class AssemblyDomainAPI:
             expression,
             names=None,
             functions=_REWARD_FUNCTIONS,
+            max_nodes=_REWARD_FORMULA_NODES,
+            max_characters=_REWARD_FORMULA_CHARACTERS,
         )
         return self._value(
             operation,
@@ -3596,6 +3715,8 @@ class AssemblyDomainAPI:
             expression,
             names=None,
             functions=_REWARD_FUNCTIONS,
+            max_nodes=_REWARD_FORMULA_NODES,
+            max_characters=_REWARD_FORMULA_CHARACTERS,
         )
         if (above is None) == (below is None):
             raise _error(
@@ -4197,6 +4318,125 @@ class AssemblyDomainAPI:
             operation, "goal", label=_label(operation, label), **properties
         )
 
+    def gait(
+        self,
+        feet: Sequence[DomainValue],
+        *,
+        speed_mm_s: float,
+        gait: str | None = None,
+        offsets: Mapping[str, float] | None = None,
+        duty: float | None = None,
+        stride_length_mm: float | None = None,
+        swing_height_mm: float | None = None,
+        pitch_amplitude_deg: float | None = None,
+        spine: DomainValue | None = None,
+        spine_amplitude_deg: float | None = None,
+        label: str = "",
+    ) -> DomainValue:
+        """Declare a procedural gait reference for a legged task (ADR-702, ADR-703).
+
+        ``feet`` is four foot components in the order left fore, right fore,
+        left hind, right hind. ``gait`` names a footfall -- walk, trot, pace,
+        canter, transverse_gallop, rotary_gallop, half_bound, bound -- or
+        ``offsets`` (each foot's touch-down as a fraction of the stride after
+        the left hind's, keyed ``LF``, ``RF``, ``LH``, ``RH``) and ``duty``
+        (the share of the stride each foot is down) state one explicitly.
+        ``speed_mm_s`` is the forward speed. The stride length follows
+        dynamic similarity from the robot's own hip height unless
+        ``stride_length_mm`` is given; ``spine`` names a joint the legs
+        share, flexed by ``spine_amplitude_deg``.
+
+        A gait is an intermediate value: pass it to
+        ``api.task(reference=...)``. The engine generates one periodic
+        stride on the exported model -- joint angles inside every joint
+        limit, foot paths, the contact schedule, body height and pitch --
+        into the task bundle, where the dashboard plays it as a kinematic
+        rollout before anything trains. A stride the legs cannot reach is
+        refused, naming the leg, the moment and the joints at a stop.
+        """
+
+        operation = "gait"
+        foot_values = _values(
+            operation, "feet", feet, output_type="component_link", minimum=1
+        )
+        if len(foot_values) != 4:
+            raise _error(
+                operation, "feet",
+                "takes exactly four foot components: left fore, right fore, "
+                "left hind, right hind", len(foot_values),
+            )
+        properties: dict[str, Any] = {
+            "feet": foot_values,
+            "speed_mm_s": _number(
+                operation, "speed_mm_s", speed_mm_s,
+                minimum=0.0, maximum=20000.0, strict_minimum=True,
+            ),
+        }
+        if gait is not None:
+            clean = str(gait).strip().lower()
+            if offsets is None and clean not in _GAIT_NAMES:
+                raise _error(operation, "gait", f"must be one of {list(_GAIT_NAMES)}", gait)
+            if not _CHANNEL_NAME.fullmatch(clean):
+                raise _error(operation, "gait", "must be a short name for the footfall", gait)
+            properties["gait"] = clean
+        if (offsets is None) != (duty is None):
+            raise _error(
+                operation, "offsets" if offsets is None else "duty",
+                "an explicit footfall needs both offsets and duty",
+            )
+        if offsets is not None:
+            if not isinstance(offsets, Mapping) or sorted(offsets) != ["LF", "LH", "RF", "RH"]:
+                raise _error(
+                    operation, "offsets",
+                    "expected {'LF': f, 'RF': f, 'LH': f, 'RH': f}, each a "
+                    "fraction of the stride", offsets,
+                )
+            properties["offsets"] = {
+                foot: _number(operation, f"offsets[{foot!r}]", offsets[foot],
+                              minimum=0.0, maximum=1.0)
+                for foot in ("LF", "RF", "LH", "RH")
+            }
+            properties["duty"] = _number(
+                operation, "duty", duty, minimum=0.0, maximum=1.0, strict_minimum=True
+            )
+        elif gait is None:
+            raise _error(
+                operation, "gait",
+                "name a gait, or state offsets and duty",
+            )
+        for parameter, value, upper in (
+            ("stride_length_mm", stride_length_mm, 20000.0),
+            ("swing_height_mm", swing_height_mm, 5000.0),
+        ):
+            if value is not None:
+                properties[parameter] = _number(
+                    operation, parameter, value,
+                    minimum=0.0, maximum=upper, strict_minimum=True,
+                )
+        if pitch_amplitude_deg is not None:
+            properties["pitch_amplitude_deg"] = _number(
+                operation, "pitch_amplitude_deg", pitch_amplitude_deg,
+                minimum=0.0, maximum=45.0,
+            )
+        if spine is not None:
+            properties["spine"] = _domain_value(
+                operation, "spine", spine, output_type="joint"
+            )
+        if spine_amplitude_deg is not None:
+            if spine is None:
+                raise _error(
+                    operation, "spine_amplitude_deg",
+                    "flexes a spine: name the joint with spine=",
+                    spine_amplitude_deg,
+                )
+            properties["spine_amplitude_deg"] = _number(
+                operation, "spine_amplitude_deg", spine_amplitude_deg,
+                minimum=0.0, maximum=60.0,
+            )
+        return self._value(
+            operation, "gait", label=_label(operation, label), **properties
+        )
+
     def success(
         self,
         predicates: Sequence[Mapping[str, Any]],
@@ -4266,6 +4506,24 @@ class AssemblyDomainAPI:
           ``mean_distance_mm`` and ``max_distance_mm`` from the centre
           point. None needs a goal. An episode that did not run to its
           horizon measures none of them, so a spec bounding one fails it.
+        * any task, from the drives' own record (ADR-704):
+          ``command_rate_rms`` (pooled, in channel ranges per second),
+          ``joint_acceleration_rms_deg_s2`` (angular joints),
+          ``effort_rms_clamp_ratio_max`` and ``effort_clamp_share_max``
+          (the worst drive against its clamp),
+          ``effort_rms_rated_ratio_max`` (against its continuous rating,
+          ADR-707); with ``feet``,
+          ``command_high_frequency_share``, the share of command power
+          above three times the stride frequency; with a floating base,
+          ``cost_of_transport``. Smoothness and cost are read after 1 s.
+        * with ``feet`` and a task ``reference`` (ADR-705), against that
+          reference with the left hind's landings as the stride clock:
+          ``footfall_phase_error_max`` (cycles), ``duty_factor_error_max``,
+          ``stride_frequency_ratio`` and ``reference_joint_rms_deg``; and
+          ``command_rate_reference_ratio`` and
+          ``joint_acceleration_reference_ratio``, smoothness over the
+          clip's own (ADR-708). Every foot the reference names must be
+          among ``feet``.
 
         ``feet`` names the ``api.component`` values that are feet; each
         needs a primitive collision shape, because a foot's height is its
@@ -4694,6 +4952,8 @@ class AssemblyDomainAPI:
         disturbance: Sequence[DomainValue] = (),
         goals: Sequence[DomainValue] = (),
         success: DomainValue | None = None,
+        reference: DomainValue | None = None,
+        reference_start: str = "phase0",
         label: str = "",
     ) -> DomainValue:
         """Turn one exported model into a trainable task.
@@ -4760,6 +5020,24 @@ class AssemblyDomainAPI:
         the task is** -- a policy trained on this task stays a policy for it
         when the spec is revised, which is what lets a stricter spec be held
         against every earlier policy.
+
+        ``reference`` takes one ``api.gait`` value: the stride the task's
+        motion is meant to look like. The engine generates it on the
+        exported model into the bundle's ``reference`` section (ADR-703),
+        which the dashboard plays before anything trains. It also reads as
+        channels on a gait clock that starts at the reference's phase 0 on
+        the episode's first step (ADR-706): ``ref_sin`` and ``ref_cos``, the
+        clock, which the policy reads; and, for the reward and the critic,
+        ``<name>_ref`` for each ``position`` observation of a joint the
+        stride poses (the angle the reference asks for, in that
+        observation's unit), and per foot ``ref_lf_lift`` (mm above the
+        reference foot's lowest point) and ``ref_lf_down`` (1 while it is
+        down), likewise ``rf``, ``lh``, ``rh``. A tracking reward is an
+        expression: ``exp(-((q_knee - q_knee_ref) / 15)^2)``. A step is
+        scored against the reference where it lands, one step on the clock.
+        ``reference_start="random"`` starts each seeded episode at a random
+        sample of the stride instead (ADR-709): the clip's pose and velocity
+        there, the clock at that phase.
 
         Like ``api.mjcf`` and for the same reason, ``api.task`` is not under
         the "exactly one simulation" rule: a script may declare several,
@@ -4893,6 +5171,37 @@ class AssemblyDomainAPI:
                 component_ids, joint_ids,
             )
             judged["success"] = spec
+        if reference is not None:
+            gait_value = _domain_value(
+                operation, "reference", reference, output_type="gait"
+            )
+            named_parts = [
+                (f"reference.feet[{index}]", entry)
+                for index, entry in enumerate(gait_value.properties.get("feet", ()))
+            ]
+            for where, component in named_parts:
+                if id(component) not in component_ids:
+                    raise _error(
+                        operation, where,
+                        "names a component that is not listed in this assembly",
+                    )
+            spine_joint = gait_value.properties.get("spine")
+            if spine_joint is not None and id(spine_joint) not in joint_ids:
+                raise _error(
+                    operation, "reference.spine",
+                    "names a joint that is not listed in this assembly",
+                )
+            judged["reference"] = gait_value
+        if reference_start not in ("phase0", "random"):
+            raise _error(operation, "reference_start",
+                         "must be 'phase0' or 'random'", reference_start)
+        if reference_start == "random":
+            if reference is None:
+                raise _error(operation, "reference_start",
+                             "starts an episode inside a gait reference, and "
+                             "this task declares none", reference_start)
+            # ADR-709: absent at phase 0, so the task is the value it was.
+            judged["reference_start"] = "random"
         seconds = _number(
             operation, "episode_seconds", episode_seconds,
             minimum=0.0, maximum=3600.0, strict_minimum=True,

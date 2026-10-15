@@ -131,6 +131,7 @@ API_ROUTES = (
     "model/run/<run>",
     "playback/run/<run>",
     "playback/checkpoint/<run>/<stem>",
+    "playback/reference/<task>",
 )
 #: What ``cadex app`` answers at its own root, beside each project's routes.
 APP_API_ROUTES = ("projects",)
@@ -149,7 +150,8 @@ API_RESPONSE_KEYS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "projects": (frozenset({"schema", "root", "projects", "served_at"}), frozenset()),
     "project": (frozenset({
         "schema", "project", "accepted", "docs", "decisions", "runs", "presentation", "evaluations",
-        "revisions", "stage", "exports", "sections", "drawings", "budgets", "activity", "served_at"}),
+        "revisions", "stage", "exports", "sections", "drawings", "budgets", "activity", "references",
+        "served_at"}),
         frozenset()),
     "run/<run>": (frozenset({
         "run", "status", "error", "artifacts", "project_artifacts", "videos", "legs", "outcome",
@@ -170,6 +172,8 @@ API_RESPONSE_KEYS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "playback/run/<run>": (frozenset({"available", "run", "source"}), _PLAYBACK_KEYS),
     "playback/checkpoint/<run>/<stem>": (frozenset({"available", "run", "stem", "checkpoint", "source"}),
                                          _PLAYBACK_KEYS),
+    "playback/reference/<task>": (frozenset({"available", "task", "source"}),
+                                  _PLAYBACK_KEYS | {"reference", "strides"}),
 }
 _API_HANDLERS = {
     "project": "project", "run/<run>": "run", "policy-origin/<run>": "policy_origin",
@@ -177,6 +181,7 @@ _API_HANDLERS = {
     "model/revision/<ordinal>": "model_revision", "model/run/<run>": "model_run",
     "playback/run/<run>": "playback_run",
     "playback/checkpoint/<run>/<stem>": "playback_checkpoint",
+    "playback/reference/<task>": "playback_reference",
 }
 
 
@@ -483,6 +488,120 @@ def run_playback(project_root: Path | str, record: Mapping[str, Any]) -> dict[st
     playback.update(run=str(record.get("run")),
                     source=path.relative_to(root).as_posix() if path is not None else None)
     return playback
+
+
+# -- gait references: the intended motion, before anything trains (ADR-703) --
+
+#: A task bundle's file name in the accepted attempt's ``outputs/``.
+_TASK_BUNDLE = re.compile(r"(?P<task>[A-Za-z0-9_.-]+)-task\.json")
+#: The clip schema a bundle's ``reference`` section carries.
+GAIT_CLIP_SCHEMA = "cadex-gait-clip-v1"
+#: How long a served reference plays before it loops, and the most strides it
+#: repeats to get there: the clip is one stride, and one stride looped would
+#: jump the body back to the start every period.
+REFERENCE_PLAY_S = 4.0
+REFERENCE_MAX_STRIDES = 40
+_REFERENCE_SUMMARY = ("speed_m_s", "stride_length_m", "stride_frequency_hz", "period_s",
+                      "duty_factor", "phase_offsets", "froude", "hip_height_m", "swing_height_m")
+
+
+def _task_bundles(root: Path) -> tuple[list[Path], str | None]:
+    """The accepted attempt's task bundles, or why there are none."""
+
+    staging, _manifest, reason = _accepted_staging(root)
+    if staging is None:
+        return [], reason
+    outputs = staging / "outputs"
+    if not outputs.is_dir():
+        return [], "the accepted attempt has no outputs"
+    return sorted(path for path in outputs.iterdir()
+                  if _TASK_BUNDLE.fullmatch(path.name) and path.is_file() and not path.is_symlink()), None
+
+
+def _bundle_reference(path: Path) -> Mapping[str, Any] | None:
+    bundle = _load_json(path)
+    reference = bundle.get("reference") if isinstance(bundle, Mapping) else None
+    if isinstance(reference, Mapping) and reference.get("schema") == GAIT_CLIP_SCHEMA:
+        return reference
+    return None
+
+
+def gait_references(project_root: Path | str) -> list[dict[str, Any]]:
+    """``references`` in ``/api/project``: each accepted task's gait reference.
+
+    One row per task bundle whose ``reference`` section the engine wrote
+    from an ``api.gait`` (ADR-703): the gait, its stride numbers and the
+    playback URL. A project with no accepted model, or no task that declares
+    a reference, lists none.
+    """
+
+    root = Path(project_root).expanduser()
+    rows = []
+    for path in _task_bundles(root)[0]:
+        reference = _bundle_reference(path)
+        if reference is None:
+            continue
+        task = _TASK_BUNDLE.fullmatch(path.name).group("task")
+        parameters = reference.get("parameters") or {}
+        rows.append({"task": task, "label": str(reference.get("label") or reference.get("gait")),
+                     "gait": reference.get("gait"), "samples": reference.get("samples"),
+                     **{key: parameters.get(key) for key in _REFERENCE_SUMMARY},
+                     "url": f"api/playback/reference/{quote(task, safe='')}"})
+    return rows
+
+
+def reference_playback(project_root: Path | str, task: str) -> dict[str, Any] | None:
+    """``/api/playback/reference/<task>``: the task's gait reference as playback frames.
+
+    The clip is one stride; it is repeated, each repeat moved forward by one
+    stride length, until it has played ``REFERENCE_PLAY_S`` (at most
+    ``REFERENCE_MAX_STRIDES``), and closes on the next stride's first pose so
+    a loop lands where it began. Every pose is the bundle's own: nothing is
+    simulated, and a reference is the motion asked for, not one reached.
+    ``None`` (a 404) when the accepted attempt has no such task bundle.
+    """
+
+    root = Path(project_root).expanduser()
+    path = next((p for p in _task_bundles(root)[0]
+                 if _TASK_BUNDLE.fullmatch(p.name).group("task") == task), None)
+    if path is None:
+        return None
+    source = path.relative_to(root).as_posix()
+    reference = _bundle_reference(path)
+    base = {"task": task, "source": source}
+    if reference is None:
+        return {**base, "available": False, "reason": "this task declares no gait reference"}
+    try:
+        dt = float(reference["sample_dt_s"])
+        stride_mm = 1000.0 * float((reference.get("parameters") or {})["stride_length_m"])
+        poses = [{str(name): _placement(entry) for name, entry in frame.items()}
+                 for frame in reference["placements"]]
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return {**base, "available": False, "reason": "the reference carries no readable poses"}
+    if not poses or not dt > 0 or not math.isfinite(stride_mm) \
+            or any(block is None for frame in poses for block in frame.values()):
+        return {**base, "available": False, "reason": "the reference carries no readable poses"}
+    strides = max(1, min(REFERENCE_MAX_STRIDES, math.ceil(REFERENCE_PLAY_S / (dt * len(poses)))))
+    times, frames, previous = [], [], {}
+    for k in range(strides * len(poses) + 1):
+        shift = stride_mm * (k // len(poses))
+        frame = {}
+        for name, block in poses[k % len(poses)].items():
+            q, before = block["rotation_xyzw"], previous.get(name)
+            if before is not None and sum(a * b for a, b in zip(q, before)) < 0:
+                q = [-x for x in q]
+            previous[name] = q
+            x, y, z = block["position_mm"]
+            frame[name] = {"position_mm": [x + shift, y, z], "rotation_xyzw": q}
+        times.append(round(k * dt, 9))
+        frames.append(frame)
+    parameters = reference.get("parameters") or {}
+    return {**base, "available": True, "times_s": times, "frames": frames, "commands": None,
+            "channels": [], "duration_s": times[-1], "frames_per_second": 1.0 / dt,
+            "strides": strides,
+            "reference": {"gait": reference.get("gait"), "label": reference.get("label"),
+                          "contact": reference.get("contact"),
+                          **{key: parameters.get(key) for key in _REFERENCE_SUMMARY}}}
 
 
 # -- checkpoint rollouts: training as motion (ADR-544 writes them, ADR-545 shows them) --
@@ -2227,6 +2346,8 @@ class ReviewProject:
         review["drawings"] = blueprint_listing(self.root)
         # Read-only; `cadex budgets --set` is how they change (ADR-517).
         review["budgets"] = {"stored": dict(read_agent_state(self.root).budgets)}
+        # Each accepted task's gait reference, played before anything trains (ADR-703).
+        review["references"] = gait_references(self.root)
         review["served_at"] = _now()
         return review
 
@@ -2908,6 +3029,9 @@ class ReviewHandler(BaseHTTPRequestHandler):
     def _api_playback_run(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
         record = project.run(run)
         return run_playback(project.root, record) if record is not None else None
+
+    def _api_playback_reference(self, project: ReviewProject, task: str) -> dict[str, Any] | None:
+        return reference_playback(project.root, task)
 
     def _api_playback_checkpoint(self, project: ReviewProject, run: str,
                                  stem: str) -> dict[str, Any] | None:

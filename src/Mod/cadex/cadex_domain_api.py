@@ -143,6 +143,8 @@ _DOMAIN_OPERATION_OUTPUT_TYPES: dict[str, dict[str, str]] = {
         # What an episode asks the policy to do -- an argument to a task
         # and to a success spec (ADR-462).
         "goal": "goal",
+        # A procedural gait reference -- an argument to a task (ADR-703).
+        "gait": "gait",
         # What a policy is judged by -- an argument to a task, kept apart
         # from the reward it must never read (ADR-456).
         "success": "success",

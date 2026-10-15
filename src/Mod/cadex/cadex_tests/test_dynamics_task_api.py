@@ -164,7 +164,9 @@ def test_the_apis_kind_tables_agree_with_the_engines() -> None:
     test is what makes that a cost of one assertion instead of a promise.
     """
 
-    assert set(_OBSERVATION_KINDS) == set(dyn.OBSERVATION_KINDS)
+    assert set(_OBSERVATION_KINDS) == (
+        set(dyn.OBSERVATION_KINDS) | set(dyn.COMMAND_OBSERVATION_KINDS)
+        | set(dyn.STATE_OBSERVATION_KINDS))
     assert set(_RANDOMISATION_TARGETS) == set(dyn.RANDOMISATION_TARGETS)
     assert set(_REWARD_FUNCTIONS) == set(dyn.REWARD_FUNCTIONS)
 
@@ -172,7 +174,8 @@ def test_the_apis_kind_tables_agree_with_the_engines() -> None:
     engine_target = {
         "joint": "joint", "component": "component_link", "actuator": "actuator"
     }
-    for kind, row in dyn.OBSERVATION_KINDS.items():
+    for kind, row in {**dyn.OBSERVATION_KINDS, **dyn.COMMAND_OBSERVATION_KINDS,
+                      **dyn.STATE_OBSERVATION_KINDS}.items():
         assert _OBSERVATION_KINDS[kind] == engine_target[row["target"]], kind
     for target, row in dyn.RANDOMISATION_TARGETS.items():
         assert _RANDOMISATION_TARGETS[target] == engine_target[row["on"]], target
@@ -181,7 +184,8 @@ def test_the_apis_kind_tables_agree_with_the_engines() -> None:
 def test_the_channel_expansion_agrees_with_the_engines() -> None:
     from cadex_assembly_api import _observation_channels
 
-    for kind, row in dyn.OBSERVATION_KINDS.items():
+    for kind, row in {**dyn.OBSERVATION_KINDS, **dyn.COMMAND_OBSERVATION_KINDS,
+                      **dyn.STATE_OBSERVATION_KINDS}.items():
         assert _observation_channels(kind, "x") == [
             f"x{suffix}" for suffix in (*row["suffixes"], *row.get("derived", ()))
         ], kind
@@ -512,6 +516,10 @@ def test_the_actuator_surface_is_exactly_this() -> None:
     ``bore_mm``, ``rod_mm`` and ``pressure_bar`` are the cylinder's (ADR-643):
     a ``kind='cylinder'`` actuator is a position servo whose force range
     they derive, so they add no control either.
+
+    ``rated_torque_nmm`` / ``rated_force_n`` are the drive's continuous
+    rating (ADR-707): read by evaluation against RMS effort, no physics and
+    no control.
     """
 
     parameters = inspect.signature(AssemblyDomainAPI.actuator).parameters
@@ -522,6 +530,7 @@ def test_the_actuator_surface_is_exactly_this() -> None:
         "stiffness_nmm_per_deg", "stiffness_n_per_mm",
         "damping_nmms_per_deg", "damping_ns_per_mm",
         "torque_limit_nmm", "force_limit_n",
+        "rated_torque_nmm", "rated_force_n",
         "command_limits_degrees", "command_limits_mm",
         "bore_mm", "rod_mm", "pressure_bar", "label",
     }

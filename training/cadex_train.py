@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import copy
 import hashlib
 import json
 import math
@@ -654,20 +655,118 @@ def goal_channels(task: dict[str, Any]) -> list[str]:
     ]
 
 
+def command_channels(task: dict[str, Any], *, policy_only: bool = False) -> list[str]:
+    """Every command channel the task declares, in bundle order (ADR-696).
+
+    ``CadexDynamics.command_channels``; with ``policy_only`` the ones not
+    marked ``role: privileged``.
+    """
+
+    return [
+        str(channel)
+        for record in task.get("commands") or ()
+        if not policy_only or str(record.get("role") or "policy") == "policy"
+        for channel in record["channels"]
+    ]
+
+
+def command_vector(xp: Any, task: dict[str, Any], issued: Any, before: Any) -> Any:
+    """The command channels from the last two issued commands (ADR-696).
+
+    ``CadexDynamics.command_values`` in ``xp``: per command row, the command
+    in force and its change over the control interval, interleaved as the
+    rows' ``channels`` are. ``issued`` and ``before`` are indexed like the
+    bundle's actions along their last axis.
+    """
+
+    index = [int(record["action"]) for record in task.get("commands") or ()]
+    now = issued[..., index]
+    rate = (now - before[..., index]) / float(task["episode"]["control_interval_s"])
+    return xp.reshape(xp.stack([now, rate], axis=-1), now.shape[:-1] + (2 * len(index),))
+
+
+def acceleration_channels(task: dict[str, Any]) -> list[str]:
+    """Every acceleration channel the task declares (ADR-699).
+
+    ``CadexDynamics.acceleration_channels``. Every one is privileged, so
+    none reaches the actor.
+    """
+
+    return [str(channel) for record in task.get("accelerations") or ()
+            for channel in record["channels"]]
+
+
+def acceleration_vector(xp: Any, task: dict[str, Any], qacc: Any) -> Any:
+    """The acceleration channels from the simulator's ``qacc`` (ADR-699).
+
+    ``CadexDynamics.acceleration_values`` in ``xp``: each row's degree of
+    freedom, times its scale, along ``qacc``'s last axis.
+    """
+
+    rows = list(task.get("accelerations") or ())
+    dofs = [int(record["dof"]) for record in rows]
+    scale = xp.asarray([float(record["scale"]) for record in rows], dtype=qacc.dtype)
+    return qacc[..., dofs] * scale
+
+
+def tracking_channels(task: dict[str, Any], *, policy_only: bool = False) -> list[str]:
+    """Every channel a gait reference adds (ADR-706); with ``policy_only``
+    its clock alone. ``CadexDynamics.tracking_channels``."""
+
+    tracking = task.get("tracking")
+    if not tracking:
+        return []
+    return [str(channel) for channel in
+            tracking["policy_channels" if policy_only else "channels"]]
+
+
+def tracking_vector(xp: Any, task: dict[str, Any], steps: Any, origin: Any = None) -> Any:
+    """The tracking channels after ``steps`` control steps (ADR-706) of an
+    episode that started at clip sample ``origin`` (ADR-709).
+
+    ``CadexDynamics.tracking_values`` in ``xp``, along a new last axis:
+    the clock's phase is ``steps * turn_per_step + origin / samples`` less
+    its whole turns; a
+    phase between two rows of the clip's table is read linearly between
+    them, round the end, and a ``held`` column reads 1 from one half up.
+    """
+
+    tracking = task["tracking"]
+    rows = int(tracking["samples"])
+    turned = xp.asarray(steps) * float(tracking["turn_per_step"])
+    if origin is not None:
+        turned = turned + xp.asarray(origin) / float(rows)
+    phase = turned - xp.floor(turned)
+    at = phase * rows
+    floor = xp.floor(at)
+    weight = (at - floor)[..., None]
+    low = floor.astype(xp.int32) % rows
+    high = (low + 1) % rows
+    table = xp.asarray(tracking["table"], dtype=weight.dtype)
+    value = table[low] + weight * (table[high] - table[low])
+    held = xp.asarray([bool(flag) for flag in tracking["held"]])
+    value = xp.where(held, (value >= 0.5).astype(value.dtype), value)
+    angle = (2.0 * math.pi) * phase
+    return xp.concatenate([xp.sin(angle)[..., None], xp.cos(angle)[..., None], value], axis=-1)
+
+
 def channels(task: dict[str, Any]) -> list[str]:
-    """Every name an expression may use: sensor channels, then goal channels.
+    """Every name an expression may use: sensor, goal, command, acceleration,
+    then tracking channels (ADR-699, ADR-706).
 
     The engine's ``CadexDynamics._task_channels`` is the same rule. The
     sensor channels come out of ``sensordata``; the goal channels are what
     the episode is asking for, appended after them, so a task that gains a
-    goal keeps the position of every channel it already had.
+    goal keeps the position of every channel it already had. The command
+    channels (ADR-696) follow on the same terms.
     """
 
     return [
         str(channel)
         for record in task["observations"]
         for channel in record["channels"]
-    ] + goal_channels(task)
+    ] + (goal_channels(task) + command_channels(task) + acceleration_channels(task)
+         + tracking_channels(task))
 
 
 def actor_channels(task: dict[str, Any]) -> list[str]:
@@ -681,7 +780,8 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
     copy is here because the trainer imports nothing from the engine.
 
     Every goal channel follows (ADR-462): a goal is what the robot is told
-    to do, so the policy always reads it.
+    to do, so the policy always reads it. Then the policy's command channels
+    (ADR-696), then a gait reference's clock (ADR-706).
     """
 
     return [
@@ -689,7 +789,8 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
         for record in task["observations"]
         if str(record.get("role") or "policy") == "policy"
         for channel in record["channels"]
-    ] + goal_channels(task)
+    ] + (goal_channels(task) + command_channels(task, policy_only=True)
+         + tracking_channels(task, policy_only=True))
 
 
 def tracker_reading(xp: Any, true_mm: Any, tracker: dict[str, Any],
@@ -756,6 +857,17 @@ def load_reading(xp: Any, true_effort: Any, load: dict[str, Any],
     return xp.round(xp.clip(seen, -scale, scale) / step) * step
 
 
+def contact_reading(xp: Any, force_n: Any, contact: dict[str, Any]) -> Any:
+    """A contact channel and its ``_down`` flag (ADR-698).
+
+    ``CadexDynamics.contact_reading`` in ``xp``: the touch sensor's normal
+    force, then 1.0 while it is above the bundle's ``down_above_n``.
+    """
+
+    down = (force_n > float(contact["down_above_n"])).astype(force_n.dtype)
+    return xp.concatenate([force_n, down])
+
+
 def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
     """The least variance the normaliser may hold for each channel (ADR-589).
 
@@ -776,7 +888,11 @@ def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
         tracker = record.get("tracker")
         load = record.get("load")
         for index, _channel in enumerate(record["channels"]):
-            if load:
+            if record.get("contact"):
+                # ADR-698: the force is exact; the down flag is a 0/1 flag,
+                # floored like the tracker's.
+                floor.append(0.0 if index < int(record["dim"]) else 0.25)
+            elif load:
                 known = max(float(load["resolution"]), float(load["noise"]))
                 floor.append(known * known)
             elif not tracker:
@@ -789,7 +905,8 @@ def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
                 floor.append(known * known)
             else:
                 floor.append(0.25)
-    return floor + [0.0] * len(goal_channels(task))
+    return floor + [0.0] * (len(goal_channels(task)) + len(command_channels(task))
+                            + len(acceleration_channels(task)) + len(tracking_channels(task)))
 
 
 def sensor_noise_std(task: dict[str, Any]) -> list[float]:
@@ -1111,9 +1228,21 @@ def goal_pool(mujoco: Any, xml: bytes, task: dict[str, Any], *,
     return tables
 
 
-def randomised_models(mujoco: Any, xml: bytes, task: dict[str, Any], *,
-                      base_seed: int, count: int) -> list[Any]:
-    """One host ``MjModel`` per environment, each with its own draw.
+def randomised_models(mujoco: Any, np: Any, xml: bytes, task: dict[str, Any], *,
+                      base_seed: int, count: int) -> tuple[Any, dict[str, Any]]:
+    """Environment 0's host ``MjModel``, and each drawn field for every environment.
+
+    The second value maps each field a randomisation entry moves to an array
+    of shape ``(count, *field.shape)``: row ``i`` is that field after
+    environment ``i``'s draw, ``random.Random(base_seed + i)``. A task with no
+    randomisation returns an empty map.
+
+    The XML is compiled once and each draw is made on a copy that is dropped
+    as soon as its fields are read, so host memory is one model plus the
+    drawn fields, whatever ``count`` is (ADR-695). It used to keep one host
+    model per environment: a 12 MB Go1 model at 8,192 environments is about
+    98 GB, and the B1 run reached 41 GB before its first iteration and was
+    killed.
 
     ``mj_setConst`` after a draw is not optional: M6 phase 0 measured that
     ``body_subtreemass`` is derived from ``body_mass`` there, so a mass draw
@@ -1121,22 +1250,32 @@ def randomised_models(mujoco: Any, xml: bytes, task: dict[str, Any], *,
     it.
     """
 
+    base = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
     entries = list(task.get("randomisation") or ())
-    models = []
+    if not entries:
+        return base, {}
+    fields = sorted({str(field["field"]) for entry in entries for field in entry["fields"]})
+    drawn = {
+        name: np.empty((count, *getattr(base, name).shape), dtype=getattr(base, name).dtype)
+        for name in fields
+    }
+    host = base
     for index in range(count):
-        model = mujoco.MjModel.from_xml_string(xml.decode("utf-8"))
-        if entries:
-            rng = random.Random(int(base_seed) + index)
-            data = mujoco.MjData(model)
-            for entry in entries:
-                factor = rng.uniform(float(entry["low"]), float(entry["high"]))
-                for field in entry["fields"]:
-                    getattr(model, str(field["field"])).flat[
-                        int(field["index"])
-                    ] *= factor
-            mujoco.mj_setConst(model, data)
-        models.append(model)
-    return models
+        model = copy.copy(base)
+        rng = random.Random(int(base_seed) + index)
+        data = mujoco.MjData(model)
+        for entry in entries:
+            factor = rng.uniform(float(entry["low"]), float(entry["high"]))
+            for field in entry["fields"]:
+                getattr(model, str(field["field"])).flat[
+                    int(field["index"])
+                ] *= factor
+        mujoco.mj_setConst(model, data)
+        for name in fields:
+            drawn[name][index] = getattr(model, name)
+        if index == 0:
+            host = model
+    return host, drawn
 
 
 # ---------------------------------------------------------------------------
@@ -1286,6 +1425,27 @@ def resolved_command_slew_deg(options) -> float:
     return value if value > 0.0 else 0.0
 
 
+def resolved_reward_floor(options) -> float | None:
+    """ADR-700's per-step reward floor, resolved once, or ``None`` for none.
+
+    Module level for ADR-162's reason: ``train`` and ``policy_header`` need
+    the same number. ``None`` (the default) is NO FLOOR and emits the same
+    graph a trainer without this flag emits; a number clamps each step's
+    summed reward from below, the way MuJoCo Playground's locomotion tasks
+    clip theirs at 0.
+    """
+
+    value = getattr(options, "reward_floor", None)
+    if value is None:
+        return None
+    value = float(value)
+    if not math.isfinite(value):
+        raise SystemExit(
+            "--reward-floor must be a finite reward per step. Leave it out "
+            "for no floor.")
+    return value
+
+
 #: When a run has learned to end its own episodes (ADR-410). hex3
 #: (2026-09-26) paid a net-negative reward for every step it survived, and
 #: its mean episode fell from 28 steps to 2 of a 200-step horizon by
@@ -1432,11 +1592,26 @@ def train(
                 f"widest command range in this bundle ({widest:g} deg), so it "
                 f"can never bind and the run would be unlimited under a flag "
                 f"that claims a limit. Pick a value below {widest:g}.")
-    # One carry serves both operators: the previous ISSUED command, per
-    # environment, episode-local. Everything below that used to test
-    # `filtering` tests this instead.
-    carrying = filtering or slewing
+    # ADR-696: a task that observes a command reads the last two ISSUED
+    # commands, so it carries them whether or not it filters. A PYTHON bool,
+    # like the two above: a task with no command emits the graph it did.
+    commanding = bool(task.get("commands"))
+    # One carry serves every operator: the previous ISSUED command, per
+    # environment, episode-local -- and, when commanding, the one before it.
+    # Everything below that used to test `filtering` tests this instead.
+    carrying = filtering or slewing or commanding
+    # ADR-699: a PYTHON bool on the same terms; qacc is read, never carried.
+    accelerating = bool(task.get("accelerations"))
+    # ADR-706: a PYTHON bool on the same terms; the reference is a function
+    # of the episode's step counter, so nothing new is carried.
+    tracking = bool(task.get("tracking"))
+    # ADR-709: a PYTHON bool on the same terms; each episode starts at its
+    # own clip sample, carried beside the step counter it offsets.
+    starting = tracking and task["tracking"].get("start") == "random"
 
+    # ADR-700: a PYTHON value branched on at trace time, so no floor is the
+    # graph this trainer always emitted.
+    reward_floor = resolved_reward_floor(options)
     reward_terms = [
         (float(term["weight"]),
          compile_expression(str(term["expression"]), names, table))
@@ -1461,34 +1636,47 @@ def train(
     )
 
     envs = int(options.envs)
-    hosts = randomised_models(mujoco, bundle["model_xml"], task,
-                              base_seed=int(options.seed), count=envs)
-    key_id = mujoco.mj_name2id(hosts[0], mujoco.mjtObj.mjOBJ_KEY,
+    host, drawn = randomised_models(mujoco, np, bundle["model_xml"], task,
+                                    base_seed=int(options.seed), count=envs)
+    key_id = mujoco.mj_name2id(host, mujoco.mjtObj.mjOBJ_KEY,
                                str(episode["reset_keyframe"]))
     if key_id < 0:
         raise SystemExit(
             f"the model carries no {episode['reset_keyframe']!r} keyframe"
         )
-    reset_qpos = jnp.asarray(hosts[0].key_qpos[key_id], dtype=jnp.float32)
-    reset_qvel = jnp.zeros((hosts[0].nv,), dtype=jnp.float32)
-    nbody = int(hosts[0].nbody)
+    reset_qpos = jnp.asarray(host.key_qpos[key_id], dtype=jnp.float32)
+    # ADR-696: the command the reset holds, in each action's surface unit and
+    # box -- ``CadexDynamics.reset_command``. Both carried commands start
+    # here, so an episode's first reported rate is zero.
+    reset_command = jnp.clip(
+        jnp.asarray(host.key_ctrl[key_id][ctrl_index], dtype=jnp.float32)
+        / ctrl_scale, low, high)
+    reset_qvel = jnp.zeros((host.nv,), dtype=jnp.float32)
+    if starting:
+        # ADR-709: the clip's state at each sample, which replaces the
+        # keyframe's -- ``CadexDynamics.apply_reference_start``.
+        start_qpos = jnp.asarray(task["tracking"]["reset_qpos"], dtype=jnp.float32)
+        start_qvel = jnp.asarray(task["tracking"]["reset_qvel"], dtype=jnp.float32)
+        start_samples = int(task["tracking"]["samples"])
+    nbody = int(host.nbody)
 
-    randomised_fields = sorted({
-        str(field["field"])
-        for entry in task.get("randomisation") or ()
-        for field in entry["fields"]
-    })
-    put = [mjx.put_model(host) for host in hosts]
-    model = put[0]
-    if randomised_fields and envs > 1:
+    single = mjx.put_model(host)
+    model = single
+    if drawn and envs > 1:
         # Only the fields a draw actually moved are batched; everything else
         # is shared, which is what keeps the batched model the size of one.
+        for field, values in drawn.items():
+            if tuple(values.shape[1:]) != tuple(getattr(single, field).shape):
+                raise SystemExit(
+                    f"randomised field {field!r} is {tuple(values.shape[1:])} on "
+                    f"the host model but {tuple(getattr(single, field).shape)} "
+                    "in MJX, so its draws cannot be batched")
         model = model.tree_replace({
-            field: jnp.stack([getattr(m, field) for m in put])
-            for field in randomised_fields
+            field: jnp.asarray(values, dtype=getattr(single, field).dtype)
+            for field, values in drawn.items()
         })
-        model_axes = jax.tree.map(lambda _: None, put[0]).tree_replace(
-            {field: 0 for field in randomised_fields}
+        model_axes = jax.tree.map(lambda _: None, single).tree_replace(
+            {field: 0 for field in drawn}
         )
     else:
         model_axes = None
@@ -1547,7 +1735,9 @@ def train(
     # so a task with neither emits the graph -- and draws the key stream --
     # it always did.
     noise_std = jnp.asarray(sensor_noise_std(task), dtype=jnp.float32)
-    sensing = int(noise_std.shape[0]) > 0
+    # ADR-698: a contact channel derives its down flag here too, noise or not.
+    sensing = int(noise_std.shape[0]) > 0 or any(
+        record.get("contact") for record in task["observations"])
     variance_floor = jnp.asarray(sensor_variance_floor(task), dtype=jnp.float32)
 
     def observe(data, noise=None):
@@ -1576,6 +1766,8 @@ def train(
                     jnp, segment, record["load"],
                     None if noise is None else noise[drawn:drawn + dim]))
                 drawn += dim
+            elif record.get("contact"):
+                parts.append(contact_reading(jnp, segment, record["contact"]))
             else:
                 parts.append(segment)
         return jnp.concatenate(parts)
@@ -1588,6 +1780,8 @@ def train(
         total = jnp.float32(0.0)
         for weight, code in reward_terms:
             total = total + weight * eval(code, table, dict(values))
+        if reward_floor is not None:
+            total = jnp.maximum(total, jnp.float32(reward_floor))
         return total
 
     def done_of(vector):
@@ -1612,8 +1806,12 @@ def train(
     variation_entries = list(task.get("reset_variation") or ())
     push_entries = list(task.get("disturbance") or ())
 
-    def varied_reset(key):
+    def varied_reset(key, origin=None):
         """One reset pose per environment, each with its own draw.
+
+        ``origin`` is each environment's clip sample when the task starts at
+        a random phase of its reference (ADR-709): that sample's state is the
+        pose the draws compose onto, their velocities added to its own.
 
         The tilt quaternion is left-multiplied onto the base's own, which is
         a world-frame rotation about the base's frame origin -- so the whole
@@ -1623,8 +1821,12 @@ def train(
         the floor, and a few degrees at a knee is a foot through it.
         """
 
-        qpos = jnp.tile(reset_qpos, (envs, 1))
-        qvel = jnp.tile(reset_qvel, (envs, 1))
+        if origin is None:
+            qpos = jnp.tile(reset_qpos, (envs, 1))
+            qvel = jnp.tile(reset_qvel, (envs, 1))
+        else:
+            qpos = start_qpos[origin]
+            qvel = start_qvel[origin]
         for entry in variation_entries:
             key, k_tilt, k_azimuth, k_height, k_spin, k_speed, k_way = (
                 jax.random.split(key, 7)
@@ -1678,12 +1880,13 @@ def train(
             dof = int(entry["qvel_adr"])
             # The base's own frame, which is where MuJoCo keeps a free
             # joint's angular velocity (M9 phase 0)...
-            qvel = qvel.at[:, dof + 3 : dof + 6].set(spin)
+            # Added to what the reset holds (ADR-709), which is zero unless
+            # the episode starts inside a reference.
+            qvel = qvel.at[:, dof + 3 : dof + 6].add(spin)
             # ...and the WORLD frame, three numbers earlier in the same
             # array, which is where it keeps the linear one.
-            qvel = qvel.at[:, dof + 0].set(speed * jnp.cos(speed_azimuth))
-            qvel = qvel.at[:, dof + 1].set(speed * jnp.sin(speed_azimuth))
-            qvel = qvel.at[:, dof + 2].set(jnp.zeros_like(speed))
+            qvel = qvel.at[:, dof + 0].add(speed * jnp.cos(speed_azimuth))
+            qvel = qvel.at[:, dof + 1].add(speed * jnp.sin(speed_azimuth))
         return key, qpos, qvel
 
     def drawn_pushes(key):
@@ -1781,7 +1984,13 @@ def train(
 
         told = extra[0] if goaled else None
         filter_state = extra[1:] if goaled else extra
+        # ADR-706: the reference where this step lands, after the goal.
+        if tracking:
+            tracked, *filter_state = filter_state
         clamped = jnp.clip(surface, low, high)
+        if commanding:
+            # ADR-696's second carried command rides after `(previous, first)`.
+            *filter_state, before = filter_state
         if carrying:
             # AFTER the clamp, so the filter's memory only ever holds a
             # command the actuator could actually have been given, and the
@@ -1824,6 +2033,22 @@ def train(
         vector = observe(data)
         if goaled:
             vector = jnp.concatenate([vector, told])
+        if commanding:
+            # The command just issued replaces `previous`; on an episode's
+            # first step it replaces the reset's and reports no rate, as
+            # `CadexDynamics.evaluate_episode` does.
+            replaced = jnp.where(first, clamped, previous)
+            vector = jnp.concatenate(
+                [vector, command_vector(jnp, task, clamped, replaced)])
+        if accelerating:
+            # ADR-699: the acceleration of the step's last solver step.
+            vector = jnp.concatenate(
+                [vector, acceleration_vector(jnp, task, data.qacc)])
+        if tracking:
+            vector = jnp.concatenate([vector, tracked])
+        if commanding:
+            return (data, vector, reward_of(vector), done_of(vector), clamped,
+                    replaced)
         if carrying:
             # The ISSUED command joins the outputs, because it is the next
             # step's filter state and there is nowhere else to get it: it is
@@ -1836,9 +2061,15 @@ def train(
     # `surface`. Empty at alpha 1.0, which is what keeps the traced signature
     # identical to the pre-ADR-160 one.
     _filter_axes = (0, 0) if carrying else ()
+    # ADR-696's second carried command, after `(previous, first)`.
+    if commanding:
+        _filter_axes = _filter_axes + (0,)
     # ADR-462's goal is per environment too, and sits in front of the filter
     # state; empty for a task with no goal, on the same terms.
     _goal_axes = (0,) if goaled else ()
+    # ADR-706's landed reference is per environment, after the goal.
+    if tracking:
+        _goal_axes = _goal_axes + (0,)
     batched_step = (
         jax.vmap(step_env, in_axes=(None, 0, 0) + _goal_axes + _filter_axes)
         if model_axes is None
@@ -1856,12 +2087,16 @@ def train(
     key = jax.random.PRNGKey(int(options.seed))
     key, start_key, actor_key, critic_key = jax.random.split(key, 4)
 
-    make = jax.vmap(lambda _: mjx.make_data(put[0]))(jnp.arange(envs))
+    make = jax.vmap(lambda _: mjx.make_data(single))(jnp.arange(envs))
     # The first episode is drawn like every other one. It would be easy to
     # start the batch at the nominal pose and only vary on reset; that would
     # make the first `unroll` steps of training the one episode M9 exists to
     # stop happening.
-    start_key, first_qpos, first_qvel = varied_reset(start_key)
+    # ADR-709: folded from the start key, so a task that starts at phase 0
+    # draws the stream it always did.
+    first_origin = (jax.random.randint(jax.random.fold_in(start_key, 709), (envs,),
+                                       0, start_samples) if starting else None)
+    start_key, first_qpos, first_qvel = varied_reset(start_key, first_origin)
     _start_key, first_forces, first_starts = drawn_pushes(start_key)
     data = batched_forward(model, make.replace(
         qpos=first_qpos, qvel=first_qvel,
@@ -1883,6 +2118,10 @@ def train(
         state = state + (
             jax.random.randint(_start_key, (envs,), 0, goal_pool_size),
         )
+    if starting:
+        # ADR-709's member: the clip sample each environment's episode
+        # started at, after the goal's, redrawn on the same `done`.
+        state = state + (first_origin,)
     if carrying:
         # ADR-160's sixth member (ADR-162 shares it): the previous ISSUED
         # command, per
@@ -1895,6 +2134,10 @@ def train(
         # environment here, so the first step of the first episode takes the
         # unfiltered branch.
         state = state + (jnp.zeros((envs, len(actions)), dtype=jnp.float32),)
+    if commanding:
+        # ADR-696: both carried commands start at the reset's. The sixth
+        # member is read here, unlike the filter's, so it starts there too.
+        state = state[:-1] + (jnp.tile(reset_command, (envs, 1)),) * 2
     actor = initial_parameters(jax, jnp, actor_key, shapes)
     critic = initial_parameters(jax, jnp, critic_key, critic_shapes)
     # Resolved below, once --init-from has (or has not) supplied a header.
@@ -2082,6 +2325,7 @@ def train(
             # ADR-462's `picks` sits in front of the filter state when the
             # task has a goal, and is absent otherwise.
             picks = filter_carry.pop(0) if goaled else None
+            origin = filter_carry.pop(0) if starting else None
             key, act_key = jax.random.split(key)
             if sensing:
                 # What the policy acts on carries its sensors' noise; the
@@ -2098,7 +2342,21 @@ def train(
                 # the goal in force for the step about to be taken.
                 told = goals_at(picks, steps)
                 vector = jnp.concatenate([vector, told], axis=-1)
+            if commanding:
+                # ADR-696: the command in force and the one it replaced.
+                vector = jnp.concatenate(
+                    [vector, command_vector(jnp, task, *filter_carry)], axis=-1)
+            if accelerating:
+                # ADR-699: the critic's; the actor never reads it.
+                vector = jnp.concatenate(
+                    [vector, acceleration_vector(jnp, task, data.qacc)], axis=-1)
             goal_args = (told,) if goaled else ()
+            if tracking:
+                # ADR-706: the clock the policy acts on, and the reference
+                # one step on, where the step will land.
+                vector = jnp.concatenate(
+                    [vector, tracking_vector(jnp, task, steps, origin)], axis=-1)
+                goal_args = goal_args + (tracking_vector(jnp, task, steps + 1, origin),)
             normalised = normalise(vector, mean, variance)
             raw = net(params["actor"], jnp.take(normalised, actor_take, axis=-1))
             noise = jax.random.normal(act_key, raw.shape, dtype=jnp.float32)
@@ -2111,7 +2369,11 @@ def train(
                 data = data.replace(
                     xfrc_applied=applied_forces(forces, starts, elapsed)
                 )
-            if carrying:
+            if commanding:
+                data, landed, reward, terminated, issued, replaced = batched_step(
+                    model, data, surface, *goal_args, filter_carry[0],
+                    steps == 0, filter_carry[1])
+            elif carrying:
                 # `steps` here is the count of steps ALREADY taken this
                 # episode, because it is incremented below -- so `steps == 0`
                 # is exactly the first step of an episode and needs no
@@ -2141,7 +2403,9 @@ def train(
             # not something a jitted batch can take, and a uniform draw is
             # cheaper than the `lax.cond` that would avoid it.
             key, reset_key, push_key = jax.random.split(key, 3)
-            _unused, fresh_qpos, fresh_qvel = varied_reset(reset_key)
+            fresh_origin = (jax.random.randint(jax.random.fold_in(reset_key, 709), (envs,),
+                                               0, start_samples) if starting else None)
+            _unused, fresh_qpos, fresh_qvel = varied_reset(reset_key, fresh_origin)
             _unused, fresh_forces, fresh_starts = drawn_pushes(push_key)
             data = jax.tree.map(
                 lambda new, start: jnp.where(
@@ -2149,7 +2413,7 @@ def train(
                 data,
                 data.replace(qpos=fresh_qpos, qvel=fresh_qvel),
             )
-            if variation_entries:
+            if variation_entries or starting:
                 # The reset pose is no longer a constant, so the observation
                 # a policy acts on after a reset has to be of *that* pose.
                 # Without this the first step of every episode is taken on
@@ -2171,6 +2435,8 @@ def train(
                     jax.random.randint(pick_key, (envs,), 0, goal_pool_size),
                     picks,
                 )
+            if starting:
+                origin = jnp.where(done, fresh_origin, origin)
             if carrying:
                 # Zeroed on `done` for the same reason `elapsed` and `steps`
                 # are. The value is not read after a reset -- `steps` is 0,
@@ -2179,8 +2445,16 @@ def train(
                 # a debugger and a reader both wrong about what the state
                 # means.
                 filter_carry = [jnp.where(done[:, None], 0.0, issued)]
+            if commanding:
+                # ADR-696: a fresh episode starts both at the reset's command,
+                # because unlike the filter's memory these are observed.
+                filter_carry = [
+                    jnp.where(done[:, None], reset_command[None, :], issued),
+                    jnp.where(done[:, None], reset_command[None, :], replaced),
+                ]
             return (data, key, forces, starts, elapsed, steps,
-                    *((picks,) if goaled else ()), *filter_carry), (
+                    *((picks,) if goaled else ()),
+                    *((origin,) if starting else ()), *filter_carry), (
                 vector, sampled, logp, value, reward, done, landed, terminated
             )
 
@@ -2724,6 +2998,9 @@ def policy_header(
             # driver that had to be told separately is a driver somebody will
             # forget to tell. 0.0 is no limit.
             "command_slew_deg": resolved_command_slew_deg(options),
+            # ADR-700. Not needed to PLAY the policy, but a reward curve is
+            # read against it: a floored run's reward/step cannot go below it.
+            "reward_floor": resolved_reward_floor(options),
             # ``init_from`` is excluded for the same reason ``bundle`` and
             # ``out`` are: it is a path on one machine, not a hyperparameter.
             # What it started from is recorded as a digest under
@@ -2929,6 +3206,15 @@ def arguments(argv: Sequence[str]) -> argparse.Namespace:
              "without this flag. The resolved value is written into the "
              ".cxpolicy header so an evaluator plays the policy under the "
              "limit it was trained under")
+    parser.add_argument(
+        "--reward-floor", type=float, default=None,
+        help="clamp each step's summed reward from below at this value, as "
+             "MuJoCo Playground's locomotion recipes clip theirs at 0. A "
+             "floor at or above the cost of dying removes the incentive to "
+             "end an episode early while costs outweigh pay (ADR-700). "
+             "Absent (the default) is NO FLOOR and emits the same "
+             "computation graph as a trainer without this flag. Recorded in "
+             "the .cxpolicy header")
     parser.add_argument(
         "--init-from",
         default="",

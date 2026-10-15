@@ -1,6 +1,6 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-10. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-15. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
@@ -149,7 +149,7 @@ written twice because this file imports nothing from the engine.
 |---|---|---|
 | `--seed` | `0` | PPO's seed *and* the base seed for domain randomisation |
 | `--iterations` | `200` | outer PPO iterations |
-| `--envs` | `256` | parallel MJX environments; also how many distinct randomisation draws exist |
+| `--envs` | `256` | parallel MJX environments; also how many distinct randomisation draws exist. Host memory holds one compiled model plus the drawn fields, whatever the count (ADR-695) |
 | `--unroll` | `20` | control steps collected per environment per iteration |
 | `--hidden` | `64 64` | the MLP the container records |
 | `--checkpoint-every` | `0` (off) | write a complete `.cxpolicy` every N iterations, plus `<out>.best.cxpolicy` |
@@ -157,15 +157,16 @@ written twice because this file imports nothing from the engine.
 
 ## Shaping the command, and warm-starting across a task change
 
-Three flags arrived from cdx-rl and are documented here because a merged pull
-request body is not documentation. All three default to **off**, and off means
-the emitted jax graph is the one this file emitted before the flag existed —
+Three flags arrived from cdx-rl and a fourth with orun6, and they are
+documented here because a merged pull request body is not documentation. All
+four default to **off**, and off means the emitted jax graph is the one this file emitted before the flag existed —
 each is a Python value branched on at trace time, never a `jnp.where`.
 
 | Flag | Default | What it is |
 |---|---|---|
 | `--action-filter-alpha` | `1.0` (no filter) | ADR-160. Low-passes the command between the clamp and `data.ctrl`: `a[t] = α·clamped[t] + (1−α)·a[t−1]`, per environment, reset with the episode. Bounds **smoothness**. |
 | `--command-slew-deg` | `0.0` (no limit) | ADR-162. Clips the issued command to `previous ± S` degrees, *after* the filter. Bounds **rate**, which the filter does not. `0` is off here, unlike alpha, where `0` freezes the command and is refused. |
+| `--reward-floor F` | absent (no floor) | ADR-700. Clamps each step's summed reward from below: `r = max(Σ wᵢ·termᵢ, F)`, as MuJoCo Playground's locomotion recipes clip theirs at 0. At or above the cost of dying it removes the pay for ending an episode early while costs outweigh rewards. Training-only: recorded at `training.reward_floor`, never applied by an evaluator. |
 | `--init-from-task-change REASON` | off | ADR-161. Lets `--init-from` cross a task change, as a **curriculum**. Skips the whole-file task digest and nothing else; the keys that differ must be a subset of `CURRICULUM_TASK_KEYS`, which includes `success` (ADR-597): a revised bar is not something the network reads or emits. Requires `--init-from-parent-task`. |
 
 **Filter, smooth and rate-limit are three different operators.** An EMA's
@@ -406,6 +407,58 @@ policies trained forwards here and walked backwards in the engine.
 private MJX module, which is tolerable only because `mujoco-mjx` is pinned;
 `test_dynamics_mjx_forcelimit` fails the day raw MJX agrees, and then it
 goes.
+
+## Screening drives and masses without a rebuild (ADR-710)
+
+`cadex_proxy.py` answers "would these drives hold this gait?" in seconds,
+on the exported model, before any CAD rebuild or training run. It edits a
+bundle's model in memory, then replays the bundle's gait reference
+(ADR-706) as position targets with the base held by a virtual PD support,
+and rates every drive against its datasheet:
+
+```bash
+~/cadex-train-venv/bin/python training/cadex_proxy.py <bundle>-task.json \
+    --drives docs/probes/orun6/d1/drives.json \
+    --configs docs/probes/orun6/d1/configs.json \
+    --support full attitude height posture swing inverse --joints j_scap_l j_hip_l --out sweep
+```
+
+- **A configuration** names drive swaps (`drives`: joint -> library key),
+  mass moves (`move_mass`: from, to, `kg` or `fraction`) and a
+  `mass_scale`. A swap sets the clamp to the peak torque, the joint's
+  damping to peak over no-load speed (the line `lib.qdd` exports), the
+  armature to rotor inertia times the gear ratio squared, the friction loss
+  to the back-drive torque when the datasheet gives one, and puts the mass
+  difference on the joint's parent body. The as-built drive is identified
+  by its clamp and the bundle's `rated_effort`; one that matches no library
+  drive cannot be swapped.
+- **Support modes.** `full` holds the base on the reference's path and
+  carries weight; `attitude` holds only attitude and horizontal position,
+  so the legs carry the weight; `swing` is `full` with gravity and contact
+  off: what moving the legs along the clip costs.
+- **Free-path supports (ADR-711).** `height` holds attitude and height,
+  `posture` attitude only; both leave the forward path to the legs. Every
+  replay reports the support's forward push (% of weight), the speed the
+  body reached, and each joint's RMS miss from the pose it was sent. On
+  the cat the exported servo misses the trot clip by 10–16° RMS, so a held
+  replay measures a lagging servo, not the gait.
+- **`--support inverse` (ADR-711)** follows the clip exactly: inverse
+  dynamics on its `qpos` with central differences, and the base wrench
+  carried by the stance feet as least-norm forces at their COMs (flight
+  samples' wrench spread over stance). It reports what the feet cannot
+  supply, because a kinematic clip need not be dynamically possible.
+  `--reference CLIP.json` swaps in any `CadexGait.generate` clip.
+- **Output.** `OUT.json` and `OUT.md`: per configuration and mode, seeds
+  completed, each drive's RMS over rated, share of steps at its peak clamp,
+  peak needed and speed over no-load, and `holds` (every drive at or under
+  rated RMS, at most 10 % of steps at peak, under its no-load speed, every
+  seed completed).
+
+A screen is a necessary condition. A held replay does not balance and a
+position servo fighting the support inflates some torques, so a
+configuration that holds goes on to a tracking run, and one that does not
+is out. Like `cadex_train.py` it imports only the standard library at
+module scope.
 
 ## What the CI gate does, and does not, prove
 

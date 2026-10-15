@@ -34,6 +34,8 @@ from evaluation_fixtures import (
     TARGET_B,
     W2_2,
     balance_rig,
+    drive_channel,
+    drive_frames,
     pitch,
     reach_rig,
     reaching,
@@ -478,12 +480,30 @@ def test_the_vocabulary_is_exactly_what_the_families_measure() -> None:
             reaching(), {"body": {"body": "hand", "local_mm": [0.0, 0.0, 0.0]},
                          "centre": {"frame": None, "point_mm": [0.0, 0.0, 0.0],
                                     "axis": [0.0, 0.0, 1.0]}}, completed=True),
+        # A drive swinging at 1 Hz, half a clamp out, moving 20 N (ADR-704),
+        # rated at 3,000 N·mm continuous (ADR-707).
+        "drive": evaluation.drive_metrics(evaluation.drive_series(
+            drive_frames(lambda t: ([0.0], [30.0 * math.cos(2.0 * math.pi * t)],
+                                    [10.0 * math.sin(2.0 * math.pi * t)], [4500.0])),
+            [dict(drive_channel("hip"), effort_rated=3000.0)]),
+            weight_n=20.0, travel=(900.0, 9.0), stride_hz=1.0),
+        # The trot against a trot reference of its own stride (ADR-705).
+        "reference": evaluation.reference_metrics(
+            walked(trot())["feet"],
+            {"gait": "trot",
+             "parameters": {"phase_offsets": {"LH": 0.0, "RF": 0.0, "RH": 0.5, "LF": 0.5},
+                            "duty_factor": 0.5, "stride_frequency_hz": 1.0 / (24 * DT)},
+             "legs": {label: {"foot_body": name} for label, name in
+                      (("LF", "fl"), ("RF", "fr"), ("LH", "rl"), ("RH", "rr"))},
+             "joints": ["hip_joint"], "joint_angles_rad": [[0.0], [0.1]]},
+            drives=evaluation.drive_series(drive_frames(lambda t: ([1.0], [0.0], [0.0], [0.0])),
+                                           [drive_channel("hip")])),
     }
     for name, (family, needs) in evaluation.METRICS.items():
         value = measured[family][name]
         assert isinstance(value, (int, float)) and not isinstance(value, bool), name
         assert set(needs) <= {"base", "floor", "feet", "tip", "shove", "command", "target",
-                              "body"}, name
+                              "body", "reference"}, name
     for spec in (WALK_SPEC, REACH_SPEC, BALANCE_SPEC):
         assert {row["metric"] for row in spec} <= set(evaluation.METRICS)
     # What needs a goal is what is a ratio of, or a distance from, one: a

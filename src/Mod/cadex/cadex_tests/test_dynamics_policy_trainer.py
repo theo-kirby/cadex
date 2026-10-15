@@ -131,7 +131,7 @@ def test_the_requirements_are_exactly_pinned_and_stay_out_of_pixi() -> None:
 
 
 _ALLOWED_TOP_LEVEL = {
-    "__future__", "argparse", "ast", "hashlib", "json", "math", "pathlib",
+    "__future__", "argparse", "ast", "copy", "hashlib", "json", "math", "pathlib",
     "platform", "random", "sys", "time", "typing",
 }
 _ALLOWED_DEFERRED = _ALLOWED_TOP_LEVEL | {
@@ -425,6 +425,83 @@ def test_the_trainer_states_its_randomisation_extension_rather_than_improvising(
     assert "bundle order" in module.RANDOMISATION_ALGORITHM
 
 
+_DRAWN_XML = b"""<mujoco><worldbody>
+  <body name="a"><freejoint/><geom size="0.1" mass="2"/>
+    <body name="b" pos="0 0 0.3"><joint type="hinge"/><geom size="0.05" mass="1"/></body>
+  </body></worldbody></mujoco>"""
+
+_DRAWN_TASK = {"randomisation": [
+    {"low": 0.5, "high": 1.5, "fields": [{"field": "body_mass", "index": 1},
+                                         {"field": "body_mass", "index": 2}]},
+    {"low": 0.8, "high": 1.2, "fields": [{"field": "geom_friction", "index": 0}]},
+]}
+
+
+def test_randomised_models_compiles_once_and_keeps_only_the_drawn_fields() -> None:
+    """Host memory is one model, not one per environment (ADR-695).
+
+    The B1 Go1 run at 8,192 environments reached 41 GB of host memory before
+    its first iteration, because the trainer compiled and kept a 12 MB host
+    model per environment. The draws must still be exactly what compiling
+    each environment on its own gives.
+    """
+
+    numpy = pytest.importorskip("numpy")
+    mujoco = pytest.importorskip("mujoco")
+    module = _trainer_module()
+
+    class Counting:
+        def __init__(self) -> None:
+            self.compiles = 0
+
+        def __getattr__(self, name):
+            return getattr(mujoco, name)
+
+        @property
+        def MjModel(self):
+            outer = self
+
+            class _Model:
+                @staticmethod
+                def from_xml_string(text):
+                    outer.compiles += 1
+                    return mujoco.MjModel.from_xml_string(text)
+            return _Model
+
+    counting = Counting()
+    count = 32
+    host, drawn = module.randomised_models(
+        counting, numpy, _DRAWN_XML, _DRAWN_TASK, base_seed=7, count=count)
+    assert counting.compiles == 1
+    assert sorted(drawn) == ["body_mass", "geom_friction"]
+    assert drawn["body_mass"].shape == (count, host.nbody)
+    assert drawn["geom_friction"].shape == (count, host.ngeom, 3)
+
+    # The reference: each environment compiled and drawn on its own, which is
+    # what the trainer did before.
+    import random as _random
+    for index in (0, 1, count - 1):
+        model = mujoco.MjModel.from_xml_string(_DRAWN_XML.decode("utf-8"))
+        rng = _random.Random(7 + index)
+        for entry in _DRAWN_TASK["randomisation"]:
+            factor = rng.uniform(entry["low"], entry["high"])
+            for field in entry["fields"]:
+                getattr(model, field["field"]).flat[field["index"]] *= factor
+        mujoco.mj_setConst(model, mujoco.MjData(model))
+        assert numpy.array_equal(drawn["body_mass"][index], model.body_mass)
+        assert numpy.array_equal(drawn["geom_friction"][index], model.geom_friction)
+        if index == 0:
+            assert numpy.array_equal(host.body_mass, model.body_mass)
+            assert numpy.array_equal(host.body_subtreemass, model.body_subtreemass)
+    assert len({float(row[1]) for row in drawn["body_mass"]}) == count
+
+    plain_host, plain = module.randomised_models(
+        mujoco, numpy, _DRAWN_XML, {"randomisation": []}, base_seed=7, count=count)
+    assert plain == {}
+    assert numpy.array_equal(plain_host.body_mass,
+                             mujoco.MjModel.from_xml_string(_DRAWN_XML.decode()).body_mass)
+
+
 def test_the_trainer_adds_no_unit_conversion_site() -> None:
     """Hazard 1's fifth payment, pinned on the file that could break it.
 
@@ -627,15 +704,16 @@ def test_the_trainers_reset_variation_is_the_engines_arithmetic() -> None:
     ):
         assert line in source, line
     # The three things phase 0 measured, each visible where it is relied on.
-    assert "qvel.at[:, dof + 3 : dof + 6].set(spin)" in source
+    # Added to the reset's own velocity since ADR-709, as the engine does.
+    assert "qvel.at[:, dof + 3 : dof + 6].add(spin)" in source
     assert "xfrc_applied=applied_forces" in source
     assert "int(entry[\"body_id\"]), :3" in source
 
     # B1b's stumble lands in the dofs beside the spin, and in the OTHER
     # frame. Two implementations of one asymmetry, so the second one is
     # written down and pinned like the four lines above it.
-    assert "qvel.at[:, dof + 0].set(speed * jnp.cos(speed_azimuth))" in source
-    assert "qvel.at[:, dof + 1].set(speed * jnp.sin(speed_azimuth))" in source
+    assert "qvel.at[:, dof + 0].add(speed * jnp.cos(speed_azimuth))" in source
+    assert "qvel.at[:, dof + 1].add(speed * jnp.sin(speed_azimuth))" in source
     assert "linear_velocity_low_m_s" in source
 
     # B1a's arc, with the bracketing that makes the full circle exactly the

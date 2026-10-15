@@ -31,6 +31,7 @@ set(Cadex_Scripts
     NotoSans-OFL.txt
     CadexFitReport.py
     CadexEvaluation.py
+    CadexGait.py
     CadexAgentGuidance.md
     CadexAgentStyle.creature.md
     CadexAgentStyle.gantry-machine.md

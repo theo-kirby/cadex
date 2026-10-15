@@ -21,7 +21,16 @@ kind:
   target and overshoot, per target;
 * **motion**, for any body and a point it is judged about: net signed turns
   and laps about an axis through the point, and the body's distance from it
-  -- what a body did over the episode, not only where it ended (ADR-587).
+  -- what a body did over the episode, not only where it ended (ADR-587);
+* **drive**, for any trace that records its drives (ADR-694): how smooth the
+  commands and the joints were, how hard each drive was pushed against its
+  clamp and its continuous rating (ADR-707), and what the motion cost per
+  unit of weight and distance (ADR-704);
+* **reference**, for feet and a task's gait reference (ADR-703): the
+  footfall against the reference's phase offsets and duty factor, the stride
+  frequency against its, and the joints' RMS error from it, phase-aligned
+  stride by stride (ADR-705); and how smooth the drives were against the
+  clip's own smoothness on the same drives (ADR-708).
 
 :func:`check` then holds a flat table of those metrics against a list of
 predicates (``metric``, ``min``, ``max``). A predicate names a metric and a
@@ -79,6 +88,22 @@ REST_HOLD_S = 1.0
 #: and the final error is the worst distance over the last window.
 REACH_TOLERANCE_ARM_LENGTHS = 0.05
 REACH_FINAL_WINDOW_S = 1.0
+#: A drive is at its clamp when its effort is within this share of the
+#: limit. MuJoCo clamps exactly, so a clamped sample equals the limit, and
+#: the share only absorbs the float rounding of the gear and the unit.
+CLAMP_TOLERANCE = 1.0e-3
+#: Command power above this multiple of the stride frequency is not the
+#: gait: a stride's own shape lives in its first few harmonics, and what is
+#: above them is jitter (ADR-704).
+HIGH_FREQUENCY_STRIDE_MULTIPLE = 3.0
+
+#: The foot whose touch-downs are a reference's clock: the left hind, the
+#: foot every phase offset is stated after (Hildebrand's convention).
+REFERENCE_ANCHOR = "LH"
+#: A foot that does not touch down exactly once within half a stride of
+#: where the reference puts it has missed that stride by this much: as far
+#: out of phase as a periodic event can be.
+FOOTFALL_MISSED = 0.5
 
 #: Every metric a success predicate may bound, and what measuring it needs
 #: (ADR-456). This is the whole vocabulary of a success spec: a name that is
@@ -123,6 +148,19 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "final_distance_mm": ("motion", ("body",)),
     "mean_distance_mm": ("motion", ("body",)),
     "max_distance_mm": ("motion", ("body",)),
+    "command_rate_rms": ("drive", ()),
+    "joint_acceleration_rms_deg_s2": ("drive", ()),
+    "command_high_frequency_share": ("drive", ("feet",)),
+    "effort_rms_clamp_ratio_max": ("drive", ()),
+    "effort_clamp_share_max": ("drive", ()),
+    "effort_rms_rated_ratio_max": ("drive", ()),
+    "cost_of_transport": ("drive", ("base",)),
+    "footfall_phase_error_max": ("reference", ("feet", "reference")),
+    "duty_factor_error_max": ("reference", ("feet", "reference")),
+    "stride_frequency_ratio": ("reference", ("feet", "reference")),
+    "reference_joint_rms_deg": ("reference", ("feet", "reference")),
+    "command_rate_reference_ratio": ("reference", ("feet", "reference")),
+    "joint_acceleration_reference_ratio": ("reference", ("feet", "reference")),
 }
 
 _EPS = 1.0e-9
@@ -205,6 +243,7 @@ def read_trace(raw: Mapping[str, Any]) -> dict[str, Any]:
     hz, steps = dynamics.get("control_hz"), policy.get("step_count")
     return {
         "samples": samples,
+        "drives": drive_series(raw["frames"], raw.get("actuator_channels") or ()),
         "episode": {
             "seed": policy.get("seed"), "steps": steps, "control_hz": hz,
             "steps_per_frame": dynamics.get("steps_per_frame"),
@@ -418,7 +457,8 @@ def gait(time, foot: Mapping[str, Any], hip_height_mm: float, *,
             continue  # touches an end of the episode: not a whole swing
         end = i - 1
         swing = {
-            "lift_s": float(time[start]), "airborne_s": (end - start + 1) * dt,
+            "lift_s": float(time[start]), "land_s": float(time[end + 1]),
+            "airborne_s": (end - start + 1) * dt,
             "peak_mm": float(max(height[start:end + 1])),
             "advance_mm": math.hypot(point[end + 1][0] - point[start - 1][0],
                                      point[end + 1][1] - point[start - 1][1]),
@@ -451,6 +491,14 @@ def gait(time, foot: Mapping[str, Any], hip_height_mm: float, *,
             None if settled_low is None else float(settled_low) / hip_height_mm
         ),
         "duty_factor": (sum(settled) / len(settled)) if settled else None,
+        # Each step's landing: the first stance frame after it (ADR-705).
+        "touchdowns_s": [s["land_s"] for s in steps],
+        # Steps begun after the settle, per settled second: one step per
+        # stride, so this is the foot's stride frequency (ADR-704).
+        "step_rate_hz": (
+            sum(1 for s in steps if s["lift_s"] >= settle_s - _EPS) / (time[-1] - settle_s)
+            if time[-1] - settle_s > _EPS else None
+        ),
     }
 
 
@@ -858,6 +906,431 @@ def motion_metrics(samples, rig: Mapping[str, Any], *, completed: bool) -> dict[
 
 # -- the episode, and a spec held against all of it -------------------------
 
+# -- drives -----------------------------------------------------------------
+
+def drive_series(frames: Sequence[Mapping[str, Any]],
+                 channels: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """Each drive's command, joint state and effort, per solved frame (ADR-694).
+
+    ``frames`` are a trace's frames and ``channels`` its
+    ``actuator_channels``. A command and an effort are ``None`` on the reset
+    frame, where no action has been taken. ``None`` back means the trace does
+    not record its drives -- one written before ADR-694 -- so the drive
+    family is not read from it, rather than read as a mechanism that held
+    still.
+    """
+
+    solved = [frame for frame in frames if frame.get("frame_kind") == "solver_output"]
+    if (not channels or not solved
+            or any("joint_positions" not in f or "joint_velocities" not in f for f in solved)):
+        return None
+
+    def row(frame: Mapping[str, Any], key: str) -> list[float] | None:
+        return None if key not in frame else [float(value) for value in frame[key]]
+
+    return {
+        "channels": [dict(channel) for channel in channels],
+        "time": [float(frame["nominal_time_s"]) for frame in solved],
+        "positions": [row(frame, "joint_positions") for frame in solved],
+        "velocities": [row(frame, "joint_velocities") for frame in solved],
+        "commands": [row(frame, "actuator_commands") for frame in solved],
+        "efforts": [row(frame, "actuator_efforts") for frame in solved],
+    }
+
+
+def _rms(values: Sequence[float]) -> float | None:
+    return math.sqrt(sum(v * v for v in values) / len(values)) if values else None
+
+
+def power_spectrum(values: Sequence[float]) -> list[float]:
+    """Power per frequency bin ``k = 1 .. n//2`` of a Hann-windowed series.
+
+    The mean is removed first, so bin 0 (the held part of a command) is not
+    power. Bin ``k`` is ``k / (n * dt)`` hertz. The window keeps a stride
+    that does not fit the record a whole number of times from leaking its
+    fundamental into every bin above it, which would read as jitter.
+    """
+
+    n = len(values)
+    mean = sum(values) / n
+    x = [(v - mean) * (0.5 - 0.5 * math.cos(2.0 * math.pi * i / n))
+         for i, v in enumerate(values)]
+    cos_t = [math.cos(2.0 * math.pi * i / n) for i in range(n)]
+    sin_t = [math.sin(2.0 * math.pi * i / n) for i in range(n)]
+    power = []
+    for k in range(1, n // 2 + 1):
+        real = imag = 0.0
+        for i, v in enumerate(x):
+            j = (k * i) % n
+            real += v * cos_t[j]
+            imag -= v * sin_t[j]
+        power.append(real * real + imag * imag)
+    return power
+
+
+def drive_metrics(drives: Mapping[str, Any], *, weight_n: float | None = None,
+                  travel: tuple[float, float] | None = None,
+                  stride_hz: float | None = None, settle_s: float = SETTLE_S,
+                  clamp_tolerance: float = CLAMP_TOLERANCE,
+                  high_frequency_multiple: float = HIGH_FREQUENCY_STRIDE_MULTIPLE) -> dict[str, Any]:
+    """How smoothly the drives moved, how hard they worked, and what it cost.
+
+    Read from :func:`drive_series`. Smoothness and cost are read after the
+    settle, like the gait, so the landing from the reset lift is not jitter;
+    effort is read over every frame that has one, because a drive at its
+    clamp while the robot lands is at its clamp.
+
+    * ``command_rate_rms``: the RMS over every channel and settled frame of
+      the command's change per second, in **channel ranges per second** --
+      a command over the width of its own range, so a torque drive and a
+      position drive pool on one scale.
+    * ``joint_acceleration_rms_deg_s2``: the RMS of each angular joint's
+      velocity change per second, pooled; ``None`` with no angular drive.
+    * ``command_high_frequency_share``: of the command power (each channel
+      in its own ranges, Hann-windowed, mean removed), the share above
+      ``high_frequency_multiple`` times ``stride_hz``. ``None`` without a
+      stride, or when that frequency is above the frames' Nyquist limit and
+      nothing above it was recorded.
+    * ``effort_rms_clamp_ratio_max`` and ``effort_clamp_share_max``: the
+      worst drive's RMS effort over its clamp, and its share of samples
+      within ``clamp_tolerance`` of the clamp. A drive the model does not
+      limit has no clamp and is not among them.
+    * ``effort_rms_rated_ratio_max``: the worst drive's RMS effort over its
+      continuous rating (ADR-707), over the whole episode like the clamp
+      ratio. ``None`` when no drive declares a rating, so a spec bounding it
+      fails rather than passes on a model that never said.
+    * ``cost_of_transport``: mean mechanical power, the sum over drives of
+      ``|effort x joint velocity|``, over weight times speed, where the
+      speed is ``travel`` -- the base's net plan distance over the settled
+      seconds. ``None`` with no base, no weight, or no net travel.
+
+    ``drives`` in the result keeps each drive's own figures, the stride
+    frequency used and the mean power, in N·mm/s (this module converts no
+    unit; a watt is a thousand of them).
+    """
+
+    channels = drives["channels"]
+    times = drives["time"]
+    settled = [i for i, moment in enumerate(times) if moment >= settle_s - _EPS]
+    commanded = [i for i in settled if drives["commands"][i] is not None]
+    pairs = [(a, b) for a, b in zip(commanded, commanded[1:]) if b == a + 1]
+    rows: list[dict[str, Any]] = []
+    rate_sq: list[float] = []
+    accel_sq: list[float] = []
+    clamp_ratios: list[float] = []
+    clamp_shares: list[float] = []
+    rated_ratios: list[float] = []
+    hf_power = total_power = 0.0
+    dt = _frame_interval(times) if len(times) > 1 else 0.0
+    cutoff = None if stride_hz is None or stride_hz <= 0.0 else high_frequency_multiple * stride_hz
+    resolvable = cutoff is not None and dt > 0.0 and cutoff < 0.5 / dt and len(commanded) >= 8
+    for c, channel in enumerate(channels):
+        width = float(channel["high"]) - float(channel["low"])
+        width = width if width > _EPS else 1.0
+        rates = [(drives["commands"][b][c] - drives["commands"][a][c])
+                 / (times[b] - times[a]) / width for a, b in pairs]
+        rate_sq.extend(r * r for r in rates)
+        rotary = str(channel.get("motion_type")) == "angular"
+        accels = [(drives["velocities"][i + 1][c] - drives["velocities"][i][c])
+                  / (times[i + 1] - times[i])
+                  for i in settled if i + 1 < len(times)]
+        if rotary:
+            accel_sq.extend(a * a for a in accels)
+        efforts = [row[c] for row in drives["efforts"] if row is not None]
+        effort_rms = _rms(efforts)
+        low, high = channel.get("effort_low"), channel.get("effort_high")
+        limit = max(abs(float(v)) for v in (low, high) if v is not None) if (
+            low is not None or high is not None) else None
+        share = ratio = None
+        if limit and efforts:
+            at = sum(1 for e in efforts
+                     if (high is not None and e >= float(high) - clamp_tolerance * abs(float(high)))
+                     or (low is not None and e <= float(low) + clamp_tolerance * abs(float(low))))
+            share, ratio = at / len(efforts), effort_rms / limit
+            clamp_shares.append(share)
+            clamp_ratios.append(ratio)
+        rated = channel.get("effort_rated")
+        rated_ratio = (effort_rms / float(rated)
+                       if rated is not None and float(rated) > _EPS and efforts else None)
+        if rated_ratio is not None:
+            rated_ratios.append(rated_ratio)
+        channel_hf = None
+        if resolvable:
+            power = power_spectrum([drives["commands"][i][c] / width for i in commanded])
+            n = len(commanded)
+            above = sum(p for k, p in enumerate(power, start=1) if k / (n * dt) > cutoff)
+            hf_power += above
+            total_power += sum(power)
+            channel_hf = above / sum(power) if sum(power) > _EPS else None
+        rows.append({
+            "actuator": str(channel.get("actuator", "")),
+            "joint": str(channel.get("joint", "")),
+            "command_rate_rms": _rms(rates),
+            "joint_acceleration_rms": _rms(accels),
+            "effort_rms": effort_rms,
+            "effort_limit": limit,
+            "effort_rms_clamp_ratio": ratio,
+            "effort_clamp_share": share,
+            "effort_rated": None if rated is None else float(rated),
+            "effort_rms_rated_ratio": rated_ratio,
+            "command_high_frequency_share": channel_hf,
+        })
+    # In the trace's own units -- N·mm times rad/s (or N times mm/s) is
+    # N·mm/s, over newtons times mm/s -- so the ratio needs no factor.
+    power = []
+    for i in settled:
+        effort, velocity = drives["efforts"][i], drives["velocities"][i]
+        if effort is None:
+            continue
+        power.append(sum(
+            abs(e * (math.radians(v) if str(ch.get("motion_type")) == "angular" else v))
+            for e, v, ch in zip(effort, velocity, channels)))
+    mean_power = (sum(power) / len(power)) if power else None
+    cost = None
+    if mean_power is not None and weight_n and travel is not None and travel[1] > _EPS:
+        speed_mm_s = travel[0] / travel[1]
+        if speed_mm_s > _EPS:
+            cost = mean_power / (float(weight_n) * speed_mm_s)
+    return {
+        "command_rate_rms": math.sqrt(sum(rate_sq) / len(rate_sq)) if rate_sq else None,
+        "joint_acceleration_rms_deg_s2": (
+            math.sqrt(sum(accel_sq) / len(accel_sq)) if accel_sq else None),
+        "command_high_frequency_share": (
+            hf_power / total_power if resolvable and total_power > _EPS else None),
+        "effort_rms_clamp_ratio_max": max(clamp_ratios) if clamp_ratios else None,
+        "effort_clamp_share_max": max(clamp_shares) if clamp_shares else None,
+        "effort_rms_rated_ratio_max": max(rated_ratios) if rated_ratios else None,
+        "cost_of_transport": cost,
+        "drives": {"stride_hz": stride_hz, "high_frequency_hz": cutoff,
+                   "mean_power_nmm_s": mean_power,
+                   "travel_mm": None if travel is None else travel[0],
+                   "channels": rows},
+    }
+
+# -- against a gait reference (ADR-705) ---------------------------------------
+
+def _reference_angle(angles: Sequence[Sequence[float]], column: int, phase: float) -> float:
+    """A clip column at ``phase`` of its stride, linear between samples, wrapping."""
+
+    n = len(angles)
+    x = (phase % 1.0) * n
+    k = int(math.floor(x)) % n
+    w = x - math.floor(x)
+    return (1.0 - w) * float(angles[k][column]) + w * float(angles[(k + 1) % n][column])
+
+
+def reference_metrics(feet: Mapping[str, Mapping[str, Any]], reference: Mapping[str, Any], *,
+                      drives: Mapping[str, Any] | None = None,
+                      settle_s: float = SETTLE_S) -> dict[str, Any]:
+    """How the gait compares with a task's gait reference, stride by stride.
+
+    ``feet`` is :func:`gait_metrics`' per-foot detail, keyed by the names the
+    reference's ``legs`` give as ``foot_body``; ``reference`` is the task's
+    ``cadex-gait-clip-v1`` clip (ADR-702, ADR-703). Nothing here needs a gait
+    clock in the task: **the anchor foot's touch-downs are the clock.** Each
+    settled pair of the left hind's landings is one measured stride, and a
+    moment inside it is at phase ``(t - landing) / stride`` past the
+    reference's own left-hind touch-down. So a policy that strides slower or
+    longer than its reference is still compared pose for pose through its
+    stride, and its timing is a separate number:
+
+    * ``stride_frequency_ratio``: the median measured stride's frequency over
+      the reference's;
+    * ``footfall_phase_error_max``: per foot, the median over strides of how
+      far, in cycles, its landing fell from where the reference's phase
+      offsets put it. A foot that did not land exactly once within half a
+      stride of that moment missed the stride, and the miss is
+      :data:`FOOTFALL_MISSED`. The worst foot is the metric;
+    * ``duty_factor_error_max``: the worst foot's settled duty factor less
+      the reference's, in absolute value;
+    * ``reference_joint_rms_deg``: the RMS over every settled frame inside a
+      measured stride, and every angular drive whose joint the clip poses, of
+      the joint's angle less the clip's at that phase. ``None`` without the
+      drives' record (a trace from before ADR-694).
+    * ``command_rate_reference_ratio`` and
+      ``joint_acceleration_reference_ratio`` (ADR-708): the rollout's settled
+      command-rate and joint-acceleration RMS over the clip's own
+      (:func:`reference_smoothness`), both over the angular drives the clip
+      poses. 1.0 is as smooth as the motion asked for; a raw RMS grows with
+      stride and speed, a ratio does not. ``None`` without the drives' record.
+
+    Every metric is ``None`` when fewer than two anchor landings fall after
+    the settle (no stride was measured), or when a foot the reference names
+    is not among ``feet`` (``detail["missing_feet"]``).
+    """
+
+    parameters = reference["parameters"]
+    offsets = {str(k): float(v) for k, v in parameters["phase_offsets"].items()}
+    duty = float(parameters["duty_factor"])
+    names = {label: str(leg["foot_body"]) for label, leg in reference["legs"].items()}
+    missing = sorted(name for name in names.values() if name not in feet)
+    if missing:
+        return {"footfall_phase_error_max": None, "duty_factor_error_max": None,
+                "stride_frequency_ratio": None, "reference_joint_rms_deg": None,
+                "command_rate_reference_ratio": None,
+                "joint_acceleration_reference_ratio": None,
+                "reference": {"gait": reference.get("gait"), "missing_feet": missing}}
+    anchor = [t for t in feet[names[REFERENCE_ANCHOR]]["touchdowns_s"] if t >= settle_s - _EPS]
+    strides = [(a, b - a) for a, b in zip(anchor, anchor[1:]) if b - a > _EPS]
+    detail: dict[str, Any] = {
+        "gait": reference.get("gait"), "anchor": names[REFERENCE_ANCHOR],
+        "strides": len(strides),
+        "reference_stride_hz": float(parameters["stride_frequency_hz"]),
+        "stride_hz": None, "feet": {}, "joints": [],
+    }
+    empty = {"footfall_phase_error_max": None, "duty_factor_error_max": None,
+             "stride_frequency_ratio": None, "reference_joint_rms_deg": None,
+             "command_rate_reference_ratio": None, "joint_acceleration_reference_ratio": None,
+             "reference": detail}
+    if not strides:
+        return empty
+    period = float(statistics.median(length for _, length in strides))
+    detail["stride_hz"] = 1.0 / period
+
+    phase_errors, duty_errors = [], []
+    for label, name in names.items():
+        expected = (offsets[label] - offsets[REFERENCE_ANCHOR]) % 1.0
+        landings = feet[name]["touchdowns_s"]
+        errors = []
+        for start, length in strides:
+            due = start + expected * length
+            near = [t for t in landings if abs(t - due) < 0.5 * length]
+            errors.append(abs(near[0] - due) / length if len(near) == 1 else FOOTFALL_MISSED)
+        error = float(statistics.median(errors))
+        measured_duty = feet[name].get("duty_factor")
+        duty_error = None if measured_duty is None else abs(float(measured_duty) - duty)
+        phase_errors.append(error)
+        duty_errors.append(duty_error)
+        detail["feet"][label] = {
+            "foot": name, "expected_phase": expected, "phase_error": error,
+            "missed_strides": sum(1 for e in errors if e >= FOOTFALL_MISSED),
+            "duty_factor": measured_duty, "reference_duty_factor": duty,
+            "duty_factor_error": duty_error,
+        }
+
+    joint_rms = None
+    if drives is not None:
+        columns = {str(name): i for i, name in enumerate(reference["joints"])}
+        angles = reference["joint_angles_rad"]
+        start_phase = offsets[REFERENCE_ANCHOR]
+        pooled: list[float] = []
+        for c, channel in enumerate(drives["channels"]):
+            column = columns.get(str(channel.get("joint", "")))
+            if column is None or str(channel.get("motion_type")) != "angular":
+                continue
+            errors = []
+            for moment, row in zip(drives["time"], drives["positions"]):
+                stride = next(((a, n) for a, n in strides if a <= moment < a + n), None)
+                if stride is None or row is None:
+                    continue
+                phase = start_phase + (moment - stride[0]) / stride[1]
+                errors.append(float(row[c]) - math.degrees(_reference_angle(angles, column, phase)))
+            if errors:
+                pooled.extend(errors)
+                detail["joints"].append({"joint": str(channel["joint"]), "rms_deg": _rms(errors)})
+        joint_rms = _rms(pooled)
+        # ADR-708: smooth as the reference it tracks, on the same drives.
+        ratios = _reference_smoothness_ratios(
+            drive_metrics(drives, settle_s=settle_s)["drives"]["channels"],
+            reference_smoothness(reference, drives["channels"]))
+        detail["smoothness"] = ratios.pop("smoothness")
+    else:
+        ratios = {"command_rate_reference_ratio": None,
+                  "joint_acceleration_reference_ratio": None}
+
+    return {
+        "footfall_phase_error_max": max(phase_errors),
+        "duty_factor_error_max": (None if any(e is None for e in duty_errors)
+                                  else max(duty_errors)),
+        "stride_frequency_ratio": detail["stride_hz"] / detail["reference_stride_hz"],
+        "reference_joint_rms_deg": joint_rms,
+        **ratios,
+        "reference": detail,
+    }
+
+
+def reference_smoothness(reference: Mapping[str, Any],
+                         channels: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """How smooth the reference clip itself is, on the drives it poses (ADR-708).
+
+    The clip's own command rate and joint acceleration, read the way
+    :func:`drive_metrics` reads a rollout's, over every angular drive in
+    ``channels`` (a trace's ``actuator_channels``, or a bundle's ``actions``)
+    whose joint the clip poses: the joint angle as the command a drive that
+    followed the clip exactly would be given, each in its channel's range
+    widths, differenced over the clip's own sample interval and wrapped,
+    because the clip is periodic. A raw RMS grows with stride and speed, so
+    this is the yardstick a policy's smoothness is held against at the
+    clip's speed, not a number to bound on its own.
+
+    ``drives`` keeps each channel's index in ``channels`` and its two RMS
+    figures, so a rollout can be compared on exactly the same drives.
+    ``None`` figures when the clip poses no angular drive.
+    """
+
+    columns = {str(name): i for i, name in enumerate(reference["joints"])}
+    angles = reference["joint_angles_rad"]
+    n = len(angles)
+    parameters = reference["parameters"]
+    period = parameters.get("period_s") or 1.0 / float(parameters["stride_frequency_hz"])
+    dt = float(reference.get("sample_dt_s") or float(period) / max(n, 1))
+    rows: list[dict[str, Any]] = []
+    rate_sq: list[float] = []
+    accel_sq: list[float] = []
+    for c, channel in enumerate(channels):
+        column = columns.get(str(channel.get("joint", "")))
+        if column is None or str(channel.get("motion_type")) != "angular" or n < 2:
+            continue
+        width = float(channel["high"]) - float(channel["low"])
+        width = width if width > _EPS else 1.0
+        q = [math.degrees(float(row[column])) for row in angles]
+        rates = [(q[(k + 1) % n] - q[k]) / dt / width for k in range(n)]
+        accels = [(q[(k + 1) % n] - 2.0 * q[k] + q[k - 1]) / (dt * dt) for k in range(n)]
+        rate_sq.extend(r * r for r in rates)
+        accel_sq.extend(a * a for a in accels)
+        rows.append({"index": c, "joint": str(channel["joint"]),
+                     "command_rate_rms": _rms(rates), "joint_acceleration_rms": _rms(accels)})
+    return {
+        "command_rate_rms": math.sqrt(sum(rate_sq) / len(rate_sq)) if rate_sq else None,
+        "joint_acceleration_rms_deg_s2": (
+            math.sqrt(sum(accel_sq) / len(accel_sq)) if accel_sq else None),
+        # The clip's own unit; this module converts none (ADR-704).
+        "speed_m_s": (None if parameters.get("speed_m_s") is None
+                      else float(parameters["speed_m_s"])),
+        "sample_dt_s": dt,
+        "drives": rows,
+    }
+
+
+def _reference_smoothness_ratios(rows: Sequence[Mapping[str, Any]],
+                                 clip: Mapping[str, Any]) -> dict[str, Any]:
+    """A rollout's smoothness over its clip's, on the drives the clip poses.
+
+    ``rows`` are :func:`drive_metrics`' per-channel rows. Every channel has
+    the same number of settled samples, so the pooled RMS over a subset is
+    the root mean square of its channels' own RMS figures.
+    """
+
+    def pooled(values: list[float | None]) -> float | None:
+        if not values or any(v is None for v in values):
+            return None
+        return math.sqrt(sum(float(v) ** 2 for v in values) / len(values))
+
+    picked = [rows[row["index"]] for row in clip["drives"]]
+    rate = pooled([row["command_rate_rms"] for row in picked])
+    accel = pooled([row["joint_acceleration_rms"] for row in picked])
+    clip_rate, clip_accel = clip["command_rate_rms"], clip["joint_acceleration_rms_deg_s2"]
+    return {
+        "command_rate_reference_ratio": (
+            rate / clip_rate if rate is not None and clip_rate and clip_rate > _EPS else None),
+        "joint_acceleration_reference_ratio": (
+            accel / clip_accel if accel is not None and clip_accel and clip_accel > _EPS
+            else None),
+        "smoothness": {**clip, "rollout_command_rate_rms": rate,
+                       "rollout_joint_acceleration_rms_deg_s2": accel},
+    }
+
+
 def episode_metrics(episode: Mapping[str, Any]) -> dict[str, Any]:
     """How the episode ended. ``completed`` is 1.0 only for a run to the horizon."""
 
@@ -868,7 +1341,9 @@ def episode_metrics(episode: Mapping[str, Any]) -> dict[str, Any]:
 
 def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
             shoves=(), command_mm_s: float | None = None,
-            segments: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
+            segments: Sequence[Mapping[str, Any]] = (),
+            drives: Mapping[str, Any] | None = None,
+            reference: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Every behaviour metric one rollout can be read for, as one flat table.
 
     Which families are read is decided by what the rig and the episode
@@ -884,7 +1359,12 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
 
     ``shoves`` is ``[(onset_s, duration_s)]``, ``command_mm_s`` the forward
     speed the episode asked for and ``segments`` the targets it held -- what
-    the episode applied, handed in by whoever ran it.
+    the episode applied, handed in by whoever ran it. ``drives`` is the
+    trace's :func:`drive_series`; a trace that records none is not read for
+    the drive family. Its stride frequency is the median foot's settled step
+    rate, and its travel the base's net plan distance after the settle.
+    ``reference`` is the task's gait reference clip; with feet it is read
+    for the reference family (ADR-705).
     """
 
     read: dict[str, Any] = dict(episode_metrics(episode))
@@ -900,7 +1380,23 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
         read.update(reach_metrics(samples, rig, segments))
     if rig.get("body") is not None:
         read.update(motion_metrics(samples, rig, completed=bool(read["completed"])))
-    for key in ("recovery_s", "feet", "segments", "travel_mm", "motion"):
+    if drives is not None:
+        travel = None
+        if rig.get("base") is not None:
+            base = base_series(samples, rig)
+            late = [i for i, moment in enumerate(base["time"]) if moment >= SETTLE_S - _EPS]
+            if len(late) > 1:
+                a, b = base["point"][late[0]], base["point"][late[-1]]
+                travel = (math.hypot(b[0] - a[0], b[1] - a[1]),
+                          base["time"][late[-1]] - base["time"][late[0]])
+        rates = [foot.get("step_rate_hz") for foot in (read.get("feet") or {}).values()]
+        stride = (float(statistics.median(rates))
+                  if rates and all(r is not None for r in rates) else None)
+        read.update(drive_metrics(drives, weight_n=rig.get("weight_n"), travel=travel,
+                                  stride_hz=stride))
+    if reference is not None and read.get("feet"):
+        read.update(reference_metrics(read["feet"], reference, drives=drives))
+    for key in ("recovery_s", "feet", "segments", "travel_mm", "motion", "drives", "reference"):
         if key in read:
             detail[key] = read[key]
     return {"metrics": {name: read[name] for name in METRICS if name in read},
