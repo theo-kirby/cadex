@@ -1206,6 +1206,39 @@ QDD_ACTUATORS = {
             "Mounting-hole clocking (22.5 degrees off +X) is read from the drawing, not dimensioned on it.",
         ],
     },
+    # The heavy tier (ADR-713): the girdle joints of a machine whose
+    # half-kilogram drives run past their continuous rating (orun6 D1).
+    "cubemars-ak10-9-v3": {
+        "manufacturer": "CubeMars", "manufacturer_part_number": "AK10-9 V3.0 KV60",
+        "model": "AK10-9 V3.0 KV60",
+        "gear_ratio": 9.0, "rated_voltage_v": 48.0,
+        "rated_torque_nm": 18.0, "peak_torque_nm": 53.0,
+        "rated_speed_rpm": 235.0, "no_load_speed_rpm": 320.0,
+        "rated_current_a": 10.7, "peak_current_a": 31.9,
+        "kt_nm_per_a": 0.16, "rotor_inertia_gcm2": 1002.0,
+        "back_drive_torque_nm": 0.6, "backlash_arcmin": None,
+        "mass_g": 940.0,
+        "case_dia_mm": 98.0, "overall_length_mm": 61.7,
+        "segments": [[30.0, -2.0, 0.0], [55.0, -4.2, -2.0], [82.0, -10.2, -4.2],
+                     [98.0, -50.5, -10.2], [71.0, -61.7, -50.5]],
+        "mount_thread": "M4", "mount_count": 6, "mount_pcd_mm": 90.0,
+        "mount_angle_offset_degrees": 0.0,
+        "front_mount_z_mm": -10.2, "front_mount_depth_mm": 8.0,
+        "rear_mount_angle_offset_degrees": 15.0,
+        "rear_mount_z_mm": -50.5, "rear_mount_depth_mm": 4.0,
+        "output_thread": "M4", "output_count": 6, "output_pcd_mm": 24.0,
+        "output_angle_offset_degrees": 0.0, "output_depth_mm": 7.0,
+        "rating_notes": "Rated at 48 V. Peak torque is a current-limited short-duty rating, rated torque the continuous one. lib.qdd's joint_dynamics models the straight peak-to-no-load line (53 N*m at rest, none at 320 rpm), which passes 14.1 N*m at the 235 rpm rated speed against the rated 18 N*m. The page publishes neither a back-drive torque nor a backlash figure. No thermal model.",
+        "sources": ["https://www.cubemars.com/ko/product/ak10-9-v3-kv60-r-link-cable-package.html",
+                    "https://www.cubemars.com/images/file/20241126/1732601780310205.pdf"],
+        "approximate": [
+            "Coaxial cylinder envelope from the 2D drawing: the stepped output end (30, 55 and 82 mm), the 98 mm case and the 71 mm rear cover. The case grooves, the cooling grille, the connector, the cover screws and the two 3 mm output dowel holes are omitted.",
+            "Hole depths are the drawing's (front M4 x 8, rear M4 x 4, output M4 x 7), cut at the thread's major diameter; not a screw engagement limit.",
+            "back_drive_torque_nm is not published: 0.6 N*m is an estimate, a little above the AK80-9's 0.51 and the AK70-10's 0.48 for the larger stage. It is the joint's friction loss.",
+            "Mass is the manufacturer's; the envelope is filled at the effective density that reproduces it, so the inertia is a uniform-solid estimate, not the real rotor/stator split.",
+            "Bolt-circle clocking (front and output on +X, rear 15 degrees off it) is read from the drawing, not all of it dimensioned; the output flange turns, so its clocking is only the joint's zero.",
+        ],
+    },
     # The light tier (ADR-608): neck, head, jaw, tail and arm joints, where
     # half a kilogram per joint is the wrong price.
     "cubemars-ak60-6-v3": {

@@ -42281,3 +42281,41 @@ verifies the policy with a witness error of 1.9e-7.
   0.5 N·mm on a ±2000 box a rate limit binds every step and hides the filter
   entirely.
 - In the training venv, every MJX-gated test passes.
+
+## ADR-713 — The AK10-9 joins the drive catalog as a heavy tier (2026-10-15)
+
+**Context.** orun6's drive study (ADR-710, ADR-711) screened the CubeMars
+AK10-9 V3.0 KV60 at a cat's scapula, shoulder and elbow and found it the
+only screened family that holds a supported trot. It kept the drive out of
+the library until one configuration held both trot and gallop. Since then
+the panel cat has trained to a 3.2 m/s bound on the Brax learner (ADR-712),
+with its girdle drives running about 2x their continuous rating (RMS 1.98x,
+at the clamp 34 % of the time). The owner asked for the drive change and for
+a faster, more explosive bound.
+
+**Decision.** `lib.qdd("cubemars-ak10-9-v3")` is catalogued.
+
+- **Ratings**, from the manufacturer's page: 9:1, 48 V, rated 18 N·m at
+  235 rpm and 10.7 A, peak 53 N·m at 31.9 A, no-load 320 rpm, Kt 0.16 N·m/A,
+  rotor inertia 1002 g·cm², 940 g.
+- **Envelope and holes**, from its 2D drawing: Ø98 case, a stepped output
+  end (Ø82 / Ø55 / Ø30 over 10.2 mm), a Ø71 rear cover, 61.7 mm overall;
+  6-M4 on Ø90 front (8 mm deep) and rear (4 mm, clocked 15°); 6-M4 on Ø24
+  output (7 mm).
+- **Not published, so flagged** in the entry's `approximate` list: back
+  drive, taken as 0.6 N·m (the AK80-9 is 0.51 and the AK70-10 0.48), and
+  backlash (None).
+- `docs/XSCRIPT.md`'s table, `docs/PROVENANCE.md` §8i and the creature
+  style's drive tiers name it as the heavy tier: for girdle joints of a
+  running machine whose half-kilogram drives run past their rating.
+
+**Why now, against ADR-711's condition.** That condition was about trusting
+a screen; there is now a trained policy and a measured load. The drive is a
+catalogue entry with datasheet values. Whether a given design should use it
+remains that design's own decision, measured by its own rating predicates.
+
+**Evidence.** `test_library.py`: the SKU list, and the envelope and mass
+check (the built solid's bounding box is Ø98 × 61.7 mm and its mass is
+940 g at the effective density); the mounting test, parametrised over every
+catalogued SKU, puts a screw in each hole. `pixi run test-engine`: 2986
+passed, 72 skipped.

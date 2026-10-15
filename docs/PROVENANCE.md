@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-10-11
+Verified against source: 2026-10-15
 
 Cadex is not written from scratch. It is a **derivative work of a large
 free-software project, FreeCAD**, carrying the design lessons of two more
@@ -433,8 +433,9 @@ drawing is redistributed. A STEP model was only measured, never copied in.
 
 ## 8i. Catalog QDD actuator data `[Cadex-new, ADR-540]`
 
-`lib.qdd("cubemars-ak70-10")`, `lib.qdd("cubemars-ak80-9-v3")`,
-`lib.qdd("cubemars-ak60-6-v3")` and `lib.qdd("cubemars-ak45-10-v3")` are
+`lib.qdd("cubemars-ak10-9-v3")`, `lib.qdd("cubemars-ak70-10")`,
+`lib.qdd("cubemars-ak80-9-v3")`, `lib.qdd("cubemars-ak60-6-v3")` and
+`lib.qdd("cubemars-ak45-10-v3")` are
 independently authored from CubeMars's product pages, accessed 2026-10-04:
 
 - [AK70-10 KV100](https://www.cubemars.com/product/ak70-10-kv100-robotic-actuator.html):
@@ -452,6 +453,18 @@ independently authored from CubeMars's product pages, accessed 2026-10-04:
   [2D drawing](https://www.cubemars.com/images/20250407/1744015272105618.png):
   Ø98 body, Ø48 × 3 mm output hub, 38.5 mm overall; 8-M3 on Ø85 front and
   rear; 6-M4 on Ø28 output. Hole depths are undimensioned (assumed 3 mm).
+
+The heavy tier (ADR-713), from the same manufacturer's page and 2D
+drawing, accessed 2026-10-15:
+
+- [AK10-9 V3.0 KV60](https://www.cubemars.com/ko/product/ak10-9-v3-kv60-r-link-cable-package.html):
+  9:1, 48 V, rated 18 N·m at 235 rpm and 10.7 A, peak 53 N·m at 31.9 A,
+  no-load 320 rpm, Kt 0.16 N·m/A, rotor inertia 1002 g·cm², 940 g. Its
+  [2D drawing](https://www.cubemars.com/images/file/20241126/1732601780310205.pdf):
+  Ø98 case, stepped output end Ø82 / Ø55 / Ø30 over 10.2 mm, Ø71 rear cover,
+  61.7 mm overall; 6-M4×8 front and 6-M4×4 rear on Ø90; 6-M4×7 output on
+  Ø24. The page publishes neither back drive nor backlash; the catalog's
+  0.6 N·m back drive is an estimate, flagged in its `approximate` list.
 
 The light tier (ADR-608), from the same manufacturer's pages and 2D
 drawings, accessed 2026-10-09:
