@@ -704,15 +704,16 @@ def test_the_trainers_reset_variation_is_the_engines_arithmetic() -> None:
     ):
         assert line in source, line
     # The three things phase 0 measured, each visible where it is relied on.
-    assert "qvel.at[:, dof + 3 : dof + 6].set(spin)" in source
+    # Added to the reset's own velocity since ADR-709, as the engine does.
+    assert "qvel.at[:, dof + 3 : dof + 6].add(spin)" in source
     assert "xfrc_applied=applied_forces" in source
     assert "int(entry[\"body_id\"]), :3" in source
 
     # B1b's stumble lands in the dofs beside the spin, and in the OTHER
     # frame. Two implementations of one asymmetry, so the second one is
     # written down and pinned like the four lines above it.
-    assert "qvel.at[:, dof + 0].set(speed * jnp.cos(speed_azimuth))" in source
-    assert "qvel.at[:, dof + 1].set(speed * jnp.sin(speed_azimuth))" in source
+    assert "qvel.at[:, dof + 0].add(speed * jnp.cos(speed_azimuth))" in source
+    assert "qvel.at[:, dof + 1].add(speed * jnp.sin(speed_azimuth))" in source
     assert "linear_velocity_low_m_s" in source
 
     # B1a's arc, with the bracketing that makes the full circle exactly the

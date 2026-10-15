@@ -4204,6 +4204,8 @@ def _execute_task_bundle(
         declaration["reference"] = _gait_input(
             properties["reference"], component_outputs, joint_outputs
         )
+        if properties.get("reference_start") == "random":
+            declaration["reference"]["start"] = "random"
 
     try:
         reloaded = CadexDynamics.load_model(xml)

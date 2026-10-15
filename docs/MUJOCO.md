@@ -1501,6 +1501,23 @@ The bundle carries the clip as a `tracking` table, one row per sample in
 each observation's own unit, so the engine, the trainer and the stock
 runner interpolate it and never convert. A test holds the three equal.
 
+**Starting inside it (ADR-709).** An episode that starts at a standstill
+and is asked for 1 m/s at step 0 falls before it learns to stride (track-s1
+and track-s2). `api.task(reference_start="random")` is reference state
+initialisation (Peng et al. 2018): a seeded episode draws one of the clip's
+samples, `randrange(samples)` after the goal draws, and starts in the
+clip's own state there. The pose is the clip's (height, pitch, every
+joint) with the base over the keyframe's ground point; the velocity is the
+clip's central difference round the stride, so the base moves at the
+reference's speed. The gait clock starts at `sample / samples`. A reset
+variation is composed on top, its velocities added rather than set. The
+bundle's `tracking` section carries `reset_qpos` and `reset_qvel`, one row
+per sample; the trainer draws a sample per environment on every reset and
+carries it beside the step counter. An unseeded episode, and so the build's
+own rollout, starts at the keyframe and phase 0. A success spec's seeds are
+seeded episodes, so they start mid-stride too: the spec judges the gait,
+not the launch from a standstill.
+
 ### What a good result looks like
 
 The mg-legs run (ADR-095), for calibration — 263 g of PLA and eight 13.4 g

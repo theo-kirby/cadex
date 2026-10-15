@@ -122,16 +122,19 @@ def channels(task: dict) -> list[str]:
     ] + [str(channel) for channel in (task.get("tracking") or {}).get("channels") or []]
 
 
-def tracking_at(task: dict, step: int) -> dict[str, float]:
+def tracking_at(task: dict, step: int, origin: int = 0) -> dict[str, float]:
     """A gait reference's channels after ``step`` control steps (ADR-706),
     from the bundle's words: the clock turns ``turn_per_step`` cycles a step
-    from 0; a row between two of the table's is read linearly between them,
-    round the end; a held column reads 1 from one half up."""
+    from ``origin / samples`` (ADR-709; 0 unless the episode started at a
+    random sample); a row between two of the table's is read linearly
+    between them, round the end; a held column reads 1 from one half up."""
 
     tracking = task.get("tracking")
     if not tracking:
         return {}
     turned = step * float(tracking["turn_per_step"])
+    if origin:
+        turned += origin / float(tracking["samples"])
     phase = turned - math.floor(turned)
     rows = int(tracking["samples"])
     at = phase * rows
@@ -405,8 +408,9 @@ def write_variation(data: Any, entry: dict, draw: dict) -> None:
     for axis in range(3):
         # Linear first, then angular: world frame and body frame, side by
         # side in one array, which is MuJoCo's asymmetry.
-        data.qvel[velocity + axis] = float(linear[axis])
-        data.qvel[velocity + 3 + axis] = float(draw["angular_velocity_rad_s"][axis])
+        # Added to what the reset holds (ADR-709).
+        data.qvel[velocity + axis] += float(linear[axis])
+        data.qvel[velocity + 3 + axis] += float(draw["angular_velocity_rad_s"][axis])
 
 
 def push(data: Any, task: dict, variation: dict, time_s: float) -> None:
@@ -527,7 +531,17 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
         else [{"label": str(entry["label"]), "segments": [list(entry["nominal"])]}
               for entry in task.get("goal") or []]
     )
+    # ADR-709: a reference that starts at a random phase draws its sample
+    # last, and its state replaces the keyframe's.
+    tracking = task.get("tracking") or {}
+    origin = 0
+    random_start = seed is not None and tracking.get("start") == "random"
+    if random_start:
+        origin = rng.randrange(int(tracking["samples"]))
     mujoco.mj_resetDataKeyframe(model, data, key)
+    if random_start:
+        data.qpos[:] = tracking["reset_qpos"][origin]
+        data.qvel[:] = tracking["reset_qvel"][origin]
     mujoco.mj_forward(model, data)
     if variation["reset_variation"]:
         for entry, draw in zip(task["reset_variation"], variation["reset_variation"]):
@@ -576,7 +590,7 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
             landed[str(record["channels"][0])] = (
                 float(data.qacc[int(record["dof"])]) * float(record["scale"]))
         # ADR-706: the reference one step on the clock, where the step landed.
-        landed.update(tracking_at(task, step + 1))
+        landed.update(tracking_at(task, step + 1, origin))
         reward = 0.0
         contributions = []
         for label, weight, code in reward_terms:

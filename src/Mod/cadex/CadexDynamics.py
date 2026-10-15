@@ -10320,16 +10320,20 @@ def tracking_channels(task: Mapping[str, Any], *, policy_only: bool = False) -> 
     return [str(channel) for channel in tracking[key]]
 
 
-def tracking_phase(tracking: Mapping[str, Any], step: int) -> float:
+def tracking_phase(tracking: Mapping[str, Any], step: int, origin: int = 0) -> float:
     """The gait clock's phase, in cycles in ``[0, 1)``, after ``step`` control
-    steps of an episode (ADR-706)."""
+    steps of an episode (ADR-706) that started at clip sample ``origin``
+    (ADR-709; 0 unless the task starts at a random phase)."""
 
     turned = float(step) * float(tracking["turn_per_step"])
+    if origin:
+        turned += float(origin) / float(tracking["samples"])
     return turned - math.floor(turned)
 
 
-def tracking_values(task: Mapping[str, Any], step: int) -> dict[str, float]:
-    """The tracking channels after ``step`` control steps (ADR-706).
+def tracking_values(task: Mapping[str, Any], step: int, origin: int = 0) -> dict[str, float]:
+    """The tracking channels after ``step`` control steps (ADR-706) of an
+    episode whose clock started at clip sample ``origin`` (ADR-709).
 
     The clip is periodic over its ``samples`` rows, and a phase between two
     rows is read linearly between them. A ``held`` column -- a foot down or
@@ -10341,7 +10345,7 @@ def tracking_values(task: Mapping[str, Any], step: int) -> dict[str, float]:
     tracking = task.get("tracking")
     if not tracking:
         return {}
-    phase = tracking_phase(tracking, step)
+    phase = tracking_phase(tracking, step, origin)
     samples = int(tracking["samples"])
     at = phase * samples
     first = int(math.floor(at))
@@ -10358,6 +10362,88 @@ def tracking_values(task: Mapping[str, Any], step: int) -> dict[str, float]:
             value = 1.0 if value >= 0.5 else 0.0
         values[name] = value
     return values
+
+
+#: How an episode of a task whose reference starts at a random phase draws
+#: that phase (ADR-709). Stated in the bundle's ``tracking`` section, beside
+#: the tables it indexes.
+REFERENCE_START_ALGORITHM = (
+    "random.Random(seed) continuing after the goal draws: randrange(samples) "
+    "is the clip sample the episode starts at. The reset keyframe's qpos and "
+    "qvel are replaced by reset_qpos[sample] and reset_qvel[sample]; the gait "
+    "clock starts at sample / samples of a cycle; a reset variation is then "
+    "composed on top, its velocities added. An unseeded episode starts at "
+    "sample 0."
+)
+
+#: The values ``api.task(reference_start=...)`` takes (ADR-709).
+REFERENCE_STARTS = ("phase0", "random")
+
+
+def _reference_start_records(mujoco: Any, model: Any, reference: Mapping[str, Any]) -> dict[str, Any]:
+    """Each clip sample as a state an episode can start in (ADR-709).
+
+    Reference state initialisation (Peng et al. 2018, DeepMimic): ``reset_qpos``
+    is the clip's own pose at each sample with the floating base put back
+    over the keyframe's ground point (the clip walks forward a stride; an
+    episode starts where the keyframe stands), so its height, pitch and
+    every joint angle are the reference's. ``reset_qvel`` is the clip's own
+    velocity there: the central difference of its neighbours, round the
+    stride, by ``mj_differentiatePos`` so the free joint's angular part is
+    in the base frame MuJoCo keeps it in. The base's forward velocity is
+    therefore the reference's speed.
+    """
+
+    rows = [[float(v) for v in row] for row in reference["qpos"]]
+    samples = int(reference["samples"])
+    dt = float(reference["sample_dt_s"])
+    speed = float(reference["parameters"]["speed_m_s"])
+    lap = speed * dt * samples
+    # MuJoCo's own buffers carry the arrays, so this module imports no numpy.
+    before, after, out = mujoco.MjData(model), mujoco.MjData(model), mujoco.MjData(model)
+
+    def at(index: int) -> list[float]:
+        # The clip's pose at any sample index, a stride further on per lap.
+        laps, k = divmod(index, samples)
+        row = list(rows[k])
+        row[0] += laps * lap
+        return row
+
+    qpos, qvel = [], []
+    for k in range(samples):
+        row = list(rows[k])
+        row[0], row[1] = rows[0][0], rows[0][1]
+        before.qpos[:] = at(k - 1)
+        after.qpos[:] = at(k + 1)
+        mujoco.mj_differentiatePos(model, out.qvel, 2.0 * dt, before.qpos, after.qpos)
+        qpos.append(row)
+        qvel.append([float(v) for v in out.qvel])
+    return {"start": "random", "start_algorithm": REFERENCE_START_ALGORITHM,
+            "reset_qpos": qpos, "reset_qvel": qvel}
+
+
+def reference_start(task: Mapping[str, Any], rng: Any) -> int | None:
+    """The clip sample a seeded episode starts at, or ``None`` (ADR-709).
+
+    ``None`` for a task whose reference starts at phase 0, or an unseeded
+    episode: no draw is taken, so every other task's stream is the one it
+    always was.
+    """
+
+    tracking = task.get("tracking") or {}
+    if rng is None or tracking.get("start") != "random":
+        return None
+    return int(rng.randrange(int(tracking["samples"])))
+
+
+def apply_reference_start(data: Any, task: Mapping[str, Any], origin: int | None) -> None:
+    """Write the clip's state at sample ``origin`` over the reset keyframe's (ADR-709)."""
+
+    if origin is None:
+        return
+    tracking = task["tracking"]
+    data.qpos[:] = tracking["reset_qpos"][origin]
+    data.qvel[:] = tracking["reset_qvel"][origin]
 
 
 def _reference_records(
@@ -10416,6 +10502,9 @@ def _reference_records(
             observed=error.as_dict(),
         ) from error
     clip["label"] = str(declared.get("label") or clip["gait"])
+    if declared.get("start") == "random":
+        # ADR-709: in the reference, so a task that starts elsewhere is another task.
+        clip["start"] = "random"
     clip["reset_keyframe"] = str(schedule["reset_keyframe"]) if key >= 0 else None
     clip["placements"] = CadexGait.placements(reloaded, clip, mujoco=mujoco)
     return clip
@@ -10781,6 +10870,8 @@ def task_records(
         tracking = _tracking_records(
             reference, observations, schedule, taken=taken, context=context,
         )
+        if reference.get("start") == "random":
+            tracking.update(_reference_start_records(mujoco, reloaded, reference))
         exact = taken + list(tracking["channels"])
         for row in reward_rows:
             compile_reward(row["expression"], names=exact, context=f"reward {row['label']!r}")
@@ -11305,10 +11396,12 @@ def _write_reset_variation(
     data.qpos[address + 6] = tw * qz - tx * qy + ty * qx
     data.qpos[address + 2] = float(data.qpos[address + 2]) + float(height_m)
 
+    # Added, not set (ADR-709): the reset keyframe holds the base still, so
+    # this is the draw itself, and a reference start's velocity keeps its own.
     velocity = int(record["qvel_adr"])
     for axis in range(3):
-        data.qvel[velocity + axis] = float(linear_velocity_m_s[axis])
-        data.qvel[velocity + 3 + axis] = float(angular_velocity_rad_s[axis])
+        data.qvel[velocity + axis] += float(linear_velocity_m_s[axis])
+        data.qvel[velocity + 3 + axis] += float(angular_velocity_rad_s[axis])
 
 
 def draw_episode_variation(
@@ -11860,7 +11953,10 @@ def evaluate_episode(
         draw_episode_goals(mujoco, model, task, rng)
         if rng is not None and task.get("goal") else None,
     )
+    # ADR-709: a task whose reference starts at a random phase draws it last.
+    origin = reference_start(task, rng)
     mujoco.mj_resetDataKeyframe(model, data, key)
+    apply_reference_start(data, task, origin)
     mujoco.mj_forward(model, data)
     # ADR-696: the last two commands issued, held only by a task that
     # observes one. Both start at the command the reset holds, so the first
@@ -11912,7 +12008,7 @@ def evaluate_episode(
         if accelerating:
             observation.update(acceleration_values(task, data.qacc))
         if tracking:
-            observation.update(tracking_values(task, step))
+            observation.update(tracking_values(task, step, origin or 0))
         if actions is None:
             commanded = [
                 evaluate_control(code, time_s, context=f"action {index}")
@@ -11951,7 +12047,7 @@ def evaluate_episode(
         if tracking:
             # ADR-706: where the step landed is judged against where the
             # reference is when it lands, one step on the clock.
-            landed.update(tracking_values(task, step + 1))
+            landed.update(tracking_values(task, step + 1, origin or 0))
         contributions = []
         reward = 0.0
         for label, weight, code in reward_terms:
@@ -12017,6 +12113,9 @@ def evaluate_episode(
         # What the episode asked for and when: empty for a task with no
         # goal, the nominal values for an unseeded one.
         "goal": goals,
+        # ADR-709: the clip sample the gait clock started at; absent unless
+        # the task starts at a random phase.
+        **({"reference_start": origin} if origin is not None else {}),
         "seed": None if seed is None else int(seed),
     }
 

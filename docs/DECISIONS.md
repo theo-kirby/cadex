@@ -41927,3 +41927,94 @@ only the posed ones would compare different sets.
   high-frequency share (≤ half r5's 6.4 %) is the one r5 fails. The cat's
   1.0 m/s, 580 mm reference asks 2.49 ranges/s and 4,305 °/s².
 
+
+## ADR-709 — An episode can start at a random phase of its gait reference (2026-10-15, orun6)
+
+**Context.** ADR-706's gait clock starts at the reference's phase 0 on an
+episode's first step, from the reset keyframe: a standstill. A tracking
+reward then asks for the stride's full speed at step 0. On `orun6-cat`,
+track-s1 learned to track the trot and fell within about 2 s on every seed,
+and track-s2 priced the fall (alive pay 4, discount 0.99) and still fell
+10/10. A policy that only ever sees the first half-second of a stride from
+rest never learns the stride's later states. This is the failure reference
+state initialisation was introduced for (Peng et al. 2018, *DeepMimic*,
+§6): start each episode at a random point of the reference, in its state
+there, so every phase of the motion is visited from the first iteration.
+
+**Decision.**
+- **Script surface.** `api.task(..., reference_start="phase0" | "random")`,
+  default `"phase0"`. `"random"` needs a `reference` and is refused
+  without one; any other value is refused. At phase 0 the task's value,
+  bundle and digest are the ones they were.
+- **Identity.** The worker writes `start: "random"` into the declared
+  reference, and the engine into the bundle's `reference` section, which
+  is in `TASK_SEMANTIC_FIELDS`: a task that starts elsewhere is another
+  task.
+- **Bundle.** The `tracking` section gains `start`, `start_algorithm`, and
+  one row per clip sample of `reset_qpos` and `reset_qvel`
+  (`_reference_start_records`):
+  - the pose is the clip's own (body height, pitch, every joint), with the
+    floating base moved back over the keyframe's ground point, since the
+    clip walks forward a stride;
+  - the velocity is the clip's central difference round the stride, by
+    `mj_differentiatePos`, so the free joint's angular part is in the base
+    frame. The base therefore moves at the reference's speed, at the
+    clip's own pitch rate, and every joint at its reference rate.
+- **The draw.** A seeded episode draws `randrange(samples)` from its
+  `random.Random(seed)` stream, after the goal draws, so every earlier draw
+  of every task is where it was. That sample's state replaces the
+  keyframe's, before the first `mj_forward`. The clock starts at
+  `sample / samples` of a cycle. An unseeded episode takes no draw and
+  starts at the keyframe and phase 0, so the build's own rollout is
+  unchanged. The episode result names `reference_start`.
+- **Composition with a reset variation.** Its tilt and height compose onto
+  the start pose as before. Its velocities are now **added** to what the
+  reset holds rather than written over it, in all three evaluators. For
+  every existing task the reset holds a still base, so the sum is the draw
+  and nothing changes. With a reference start, a stumble adds to the
+  reference's speed instead of erasing it.
+- **Three evaluators.** `CadexDynamics.evaluate_episode`, the stock runner
+  `dynamics_task_episode.py`, and the trainer. The trainer draws a sample
+  per environment at the start and on every `done` (from a key folded off
+  the reset key, so a phase-0 task's key stream is unchanged), carries it
+  as a state member after the goal's, offsets `tracking_vector` by it, and
+  runs `mjx.forward` after a reset as a varied reset does.
+
+**Why a start, not a ramp.** The other fix ADR-706's record named was a
+gait clock ramped in from a standstill. That adds a launch to learn before
+the stride, and still visits the stride's late phases only after the
+policy survives the early ones. A start inside the reference is the
+standard, it is general (O4) — any task with a reference gets it — and it
+adds no channel and no reward term.
+
+**What a spec then judges.** A success spec's seeds are seeded episodes,
+so they start mid-stride at the reference's speed. P1's spec judges the
+trot, not a launch from rest. Starting from rest is a separate behaviour
+and, if the owner wants it, a separate predicate or task.
+
+**Evidence.** `test_gait_reference_start.py` (9 tests):
+- the script surface's default, value and two refusals;
+- a phase-0 reference and tracking section carry no start;
+- on ADR-702's quadruped: every sample's pose sits over the keyframe's
+  ground point at the clip's height, attitude and angles; base velocity
+  equals the reference speed, pitch rate and joint rates equal the clip's
+  central differences round the stride; every foot the clip has down
+  rests on the floor it stood on;
+- the clock from sample `s` reads the clock `s` steps on, at one sample a
+  step;
+- a reset variation adds to the velocity the start holds;
+- on ADR-706's tracked arm, a seeded episode starts at the
+  `randrange(samples)` that follows its other draws, in that sample's
+  state, with every observation's tracking channels read from it; eight
+  seeds start at more than one sample; unseeded, no start is drawn;
+- the stock-MuJoCo runner reproduces the seeded and unseeded episodes as
+  text;
+- the trainer's `tracking_vector` with an origin equals the engine's;
+- in the training venv, the real trainer trains the task from random
+  starts and the engine verifies the policy it wrote.
+
+**Room on the contract page.** `reference_start` put the assembly section
+of `describe_api` 27 characters over ADR-360's budget. The assembly notes
+lose three restatements: "the same vocabulary api.motion takes but" (now
+"the vocabulary of api.motion"), "as wind does" after a sustained push,
+and "deliberately" after a hull. The section is back under 21,500.

@@ -720,11 +720,13 @@ def tracking_channels(task: dict[str, Any], *, policy_only: bool = False) -> lis
             tracking["policy_channels" if policy_only else "channels"]]
 
 
-def tracking_vector(xp: Any, task: dict[str, Any], steps: Any) -> Any:
-    """The tracking channels after ``steps`` control steps (ADR-706).
+def tracking_vector(xp: Any, task: dict[str, Any], steps: Any, origin: Any = None) -> Any:
+    """The tracking channels after ``steps`` control steps (ADR-706) of an
+    episode that started at clip sample ``origin`` (ADR-709).
 
     ``CadexDynamics.tracking_values`` in ``xp``, along a new last axis:
-    the clock's phase is ``steps * turn_per_step`` less its whole turns; a
+    the clock's phase is ``steps * turn_per_step + origin / samples`` less
+    its whole turns; a
     phase between two rows of the clip's table is read linearly between
     them, round the end, and a ``held`` column reads 1 from one half up.
     """
@@ -732,6 +734,8 @@ def tracking_vector(xp: Any, task: dict[str, Any], steps: Any) -> Any:
     tracking = task["tracking"]
     rows = int(tracking["samples"])
     turned = xp.asarray(steps) * float(tracking["turn_per_step"])
+    if origin is not None:
+        turned = turned + xp.asarray(origin) / float(rows)
     phase = turned - xp.floor(turned)
     at = phase * rows
     floor = xp.floor(at)
@@ -1601,6 +1605,9 @@ def train(
     # ADR-706: a PYTHON bool on the same terms; the reference is a function
     # of the episode's step counter, so nothing new is carried.
     tracking = bool(task.get("tracking"))
+    # ADR-709: a PYTHON bool on the same terms; each episode starts at its
+    # own clip sample, carried beside the step counter it offsets.
+    starting = tracking and task["tracking"].get("start") == "random"
 
     # ADR-700: a PYTHON value branched on at trace time, so no floor is the
     # graph this trainer always emitted.
@@ -1645,6 +1652,12 @@ def train(
         jnp.asarray(host.key_ctrl[key_id][ctrl_index], dtype=jnp.float32)
         / ctrl_scale, low, high)
     reset_qvel = jnp.zeros((host.nv,), dtype=jnp.float32)
+    if starting:
+        # ADR-709: the clip's state at each sample, which replaces the
+        # keyframe's -- ``CadexDynamics.apply_reference_start``.
+        start_qpos = jnp.asarray(task["tracking"]["reset_qpos"], dtype=jnp.float32)
+        start_qvel = jnp.asarray(task["tracking"]["reset_qvel"], dtype=jnp.float32)
+        start_samples = int(task["tracking"]["samples"])
     nbody = int(host.nbody)
 
     single = mjx.put_model(host)
@@ -1793,8 +1806,12 @@ def train(
     variation_entries = list(task.get("reset_variation") or ())
     push_entries = list(task.get("disturbance") or ())
 
-    def varied_reset(key):
+    def varied_reset(key, origin=None):
         """One reset pose per environment, each with its own draw.
+
+        ``origin`` is each environment's clip sample when the task starts at
+        a random phase of its reference (ADR-709): that sample's state is the
+        pose the draws compose onto, their velocities added to its own.
 
         The tilt quaternion is left-multiplied onto the base's own, which is
         a world-frame rotation about the base's frame origin -- so the whole
@@ -1804,8 +1821,12 @@ def train(
         the floor, and a few degrees at a knee is a foot through it.
         """
 
-        qpos = jnp.tile(reset_qpos, (envs, 1))
-        qvel = jnp.tile(reset_qvel, (envs, 1))
+        if origin is None:
+            qpos = jnp.tile(reset_qpos, (envs, 1))
+            qvel = jnp.tile(reset_qvel, (envs, 1))
+        else:
+            qpos = start_qpos[origin]
+            qvel = start_qvel[origin]
         for entry in variation_entries:
             key, k_tilt, k_azimuth, k_height, k_spin, k_speed, k_way = (
                 jax.random.split(key, 7)
@@ -1859,12 +1880,13 @@ def train(
             dof = int(entry["qvel_adr"])
             # The base's own frame, which is where MuJoCo keeps a free
             # joint's angular velocity (M9 phase 0)...
-            qvel = qvel.at[:, dof + 3 : dof + 6].set(spin)
+            # Added to what the reset holds (ADR-709), which is zero unless
+            # the episode starts inside a reference.
+            qvel = qvel.at[:, dof + 3 : dof + 6].add(spin)
             # ...and the WORLD frame, three numbers earlier in the same
             # array, which is where it keeps the linear one.
-            qvel = qvel.at[:, dof + 0].set(speed * jnp.cos(speed_azimuth))
-            qvel = qvel.at[:, dof + 1].set(speed * jnp.sin(speed_azimuth))
-            qvel = qvel.at[:, dof + 2].set(jnp.zeros_like(speed))
+            qvel = qvel.at[:, dof + 0].add(speed * jnp.cos(speed_azimuth))
+            qvel = qvel.at[:, dof + 1].add(speed * jnp.sin(speed_azimuth))
         return key, qpos, qvel
 
     def drawn_pushes(key):
@@ -2070,7 +2092,11 @@ def train(
     # start the batch at the nominal pose and only vary on reset; that would
     # make the first `unroll` steps of training the one episode M9 exists to
     # stop happening.
-    start_key, first_qpos, first_qvel = varied_reset(start_key)
+    # ADR-709: folded from the start key, so a task that starts at phase 0
+    # draws the stream it always did.
+    first_origin = (jax.random.randint(jax.random.fold_in(start_key, 709), (envs,),
+                                       0, start_samples) if starting else None)
+    start_key, first_qpos, first_qvel = varied_reset(start_key, first_origin)
     _start_key, first_forces, first_starts = drawn_pushes(start_key)
     data = batched_forward(model, make.replace(
         qpos=first_qpos, qvel=first_qvel,
@@ -2092,6 +2118,10 @@ def train(
         state = state + (
             jax.random.randint(_start_key, (envs,), 0, goal_pool_size),
         )
+    if starting:
+        # ADR-709's member: the clip sample each environment's episode
+        # started at, after the goal's, redrawn on the same `done`.
+        state = state + (first_origin,)
     if carrying:
         # ADR-160's sixth member (ADR-162 shares it): the previous ISSUED
         # command, per
@@ -2295,6 +2325,7 @@ def train(
             # ADR-462's `picks` sits in front of the filter state when the
             # task has a goal, and is absent otherwise.
             picks = filter_carry.pop(0) if goaled else None
+            origin = filter_carry.pop(0) if starting else None
             key, act_key = jax.random.split(key)
             if sensing:
                 # What the policy acts on carries its sensors' noise; the
@@ -2324,8 +2355,8 @@ def train(
                 # ADR-706: the clock the policy acts on, and the reference
                 # one step on, where the step will land.
                 vector = jnp.concatenate(
-                    [vector, tracking_vector(jnp, task, steps)], axis=-1)
-                goal_args = goal_args + (tracking_vector(jnp, task, steps + 1),)
+                    [vector, tracking_vector(jnp, task, steps, origin)], axis=-1)
+                goal_args = goal_args + (tracking_vector(jnp, task, steps + 1, origin),)
             normalised = normalise(vector, mean, variance)
             raw = net(params["actor"], jnp.take(normalised, actor_take, axis=-1))
             noise = jax.random.normal(act_key, raw.shape, dtype=jnp.float32)
@@ -2372,7 +2403,9 @@ def train(
             # not something a jitted batch can take, and a uniform draw is
             # cheaper than the `lax.cond` that would avoid it.
             key, reset_key, push_key = jax.random.split(key, 3)
-            _unused, fresh_qpos, fresh_qvel = varied_reset(reset_key)
+            fresh_origin = (jax.random.randint(jax.random.fold_in(reset_key, 709), (envs,),
+                                               0, start_samples) if starting else None)
+            _unused, fresh_qpos, fresh_qvel = varied_reset(reset_key, fresh_origin)
             _unused, fresh_forces, fresh_starts = drawn_pushes(push_key)
             data = jax.tree.map(
                 lambda new, start: jnp.where(
@@ -2380,7 +2413,7 @@ def train(
                 data,
                 data.replace(qpos=fresh_qpos, qvel=fresh_qvel),
             )
-            if variation_entries:
+            if variation_entries or starting:
                 # The reset pose is no longer a constant, so the observation
                 # a policy acts on after a reset has to be of *that* pose.
                 # Without this the first step of every episode is taken on
@@ -2402,6 +2435,8 @@ def train(
                     jax.random.randint(pick_key, (envs,), 0, goal_pool_size),
                     picks,
                 )
+            if starting:
+                origin = jnp.where(done, fresh_origin, origin)
             if carrying:
                 # Zeroed on `done` for the same reason `elapsed` and `steps`
                 # are. The value is not read after a reset -- `steps` is 0,
@@ -2418,7 +2453,8 @@ def train(
                     jnp.where(done[:, None], reset_command[None, :], replaced),
                 ]
             return (data, key, forces, starts, elapsed, steps,
-                    *((picks,) if goaled else ()), *filter_carry), (
+                    *((picks,) if goaled else ()),
+                    *((origin,) if starting else ()), *filter_carry), (
                 vector, sampled, logp, value, reward, done, landed, terminated
             )
 

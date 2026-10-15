@@ -4953,6 +4953,7 @@ class AssemblyDomainAPI:
         goals: Sequence[DomainValue] = (),
         success: DomainValue | None = None,
         reference: DomainValue | None = None,
+        reference_start: str = "phase0",
         label: str = "",
     ) -> DomainValue:
         """Turn one exported model into a trainable task.
@@ -5034,6 +5035,9 @@ class AssemblyDomainAPI:
         down), likewise ``rf``, ``lh``, ``rh``. A tracking reward is an
         expression: ``exp(-((q_knee - q_knee_ref) / 15)^2)``. A step is
         scored against the reference where it lands, one step on the clock.
+        ``reference_start="random"`` starts each seeded episode at a random
+        sample of the stride instead (ADR-709): the clip's pose and velocity
+        there, the clock at that phase.
 
         Like ``api.mjcf`` and for the same reason, ``api.task`` is not under
         the "exactly one simulation" rule: a script may declare several,
@@ -5188,6 +5192,16 @@ class AssemblyDomainAPI:
                     "names a joint that is not listed in this assembly",
                 )
             judged["reference"] = gait_value
+        if reference_start not in ("phase0", "random"):
+            raise _error(operation, "reference_start",
+                         "must be 'phase0' or 'random'", reference_start)
+        if reference_start == "random":
+            if reference is None:
+                raise _error(operation, "reference_start",
+                             "starts an episode inside a gait reference, and "
+                             "this task declares none", reference_start)
+            # ADR-709: absent at phase 0, so the task is the value it was.
+            judged["reference_start"] = "random"
         seconds = _number(
             operation, "episode_seconds", episode_seconds,
             minimum=0.0, maximum=3600.0, strict_minimum=True,

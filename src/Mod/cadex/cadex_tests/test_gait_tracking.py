@@ -232,8 +232,8 @@ def test_the_trainer_computes_the_engines_reference(tmp_path) -> None:
         assert trained[step].tolist() == pytest.approx(
             [engine[name] for name in dyn.tracking_channels(bundle)], abs=1e-9)
     source = inspect.getsource(module.train)
-    assert "tracking_vector(jnp, task, steps)" in source
-    assert "tracking_vector(jnp, task, steps + 1)" in source
+    assert "tracking_vector(jnp, task, steps, origin)" in source
+    assert "tracking_vector(jnp, task, steps + 1, origin)" in source
 
 
 def test_the_trainer_trains_a_tracking_task_and_the_engine_verifies_it(tmp_path) -> None:

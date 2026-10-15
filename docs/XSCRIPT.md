@@ -550,6 +550,10 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `rh`. A step is scored against the reference where it lands, so
   `exp(-((q_knee - q_knee_ref) / 15)^2)` is a joint-tracking reward term. A
   name one of them would take is refused as `tracking_channel_clash`.
+  `assembly.task(..., reference_start="random")` starts each seeded episode
+  at a random sample of the stride instead (ADR-709): the clip's pose and
+  velocity there, over the keyframe's ground point, with the clock at that
+  phase. A reset variation composes on top, its velocities added.
   **`assembly.success(predicates, seeds=...)` says what the behaviour must
   measurably be, apart from the reward** (ADR-456), and goes to
   `assembly.task(..., success=spec)`. A reward is what a policy is paid for;
