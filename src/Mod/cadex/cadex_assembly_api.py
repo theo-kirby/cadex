@@ -4465,6 +4465,14 @@ class AssemblyDomainAPI:
           ``mean_distance_mm`` and ``max_distance_mm`` from the centre
           point. None needs a goal. An episode that did not run to its
           horizon measures none of them, so a spec bounding one fails it.
+        * any task, from the drives' own record (ADR-704):
+          ``command_rate_rms`` (pooled, in channel ranges per second),
+          ``joint_acceleration_rms_deg_s2`` (angular joints),
+          ``effort_rms_clamp_ratio_max`` and ``effort_clamp_share_max``
+          (the worst drive against its clamp); with ``feet``,
+          ``command_high_frequency_share``, the share of command power
+          above three times the stride frequency; with a floating base,
+          ``cost_of_transport``. Smoothness and cost are read after 1 s.
 
         ``feet`` names the ``api.component`` values that are feet; each
         needs a primitive collision shape, because a foot's height is its

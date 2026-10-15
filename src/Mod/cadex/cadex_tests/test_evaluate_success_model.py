@@ -459,7 +459,8 @@ def test_each_seed_leaves_a_trace_the_reader_measures_to_the_same_numbers() -> N
         assert trace["episode"]["duration_s"] == 4.0 and trace["episode"]["truncated"] is True
         shoves = [(draw["start_s"], entry["duration_s"]) for entry, draw in
                   zip(played["disturbance"], document["policy"]["disturbance"])]
-        again = evaluation.measure(trace["samples"], trace["episode"], rig, shoves=shoves)
+        again = evaluation.measure(trace["samples"], trace["episode"], rig, shoves=shoves,
+                                   drives=trace["drives"])
         assert again["metrics"] == row["metrics"]
 
 

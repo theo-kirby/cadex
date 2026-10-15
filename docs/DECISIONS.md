@@ -41606,3 +41606,61 @@ declares none, and its bundle is byte for byte what it was.
   table lists it.
 - On `orun6-cat`, a 1.0 m/s trot at a 580 mm stride generated into the
   `run` task's bundle at build time (record of 2026-10-14).
+
+## ADR-704 — A success spec can bound how smooth the drives were, how hard they worked, and what the motion cost (2026-10-14, orun6)
+
+**Context.** The orun6 charter's G2 asks for evaluation predicates read from
+the trace: smoothness (command-rate and joint-acceleration RMS), cost of
+transport, each drive's load against its limits, and, for P1, the share of
+command power above three times the stride frequency. ADR-694 put each
+drive's command, joint state and delivered effort in every rollout trace,
+but `CadexEvaluation` read only poses, so none of this could be a predicate.
+
+**Decision.** A fifth metric family, **drive**, in `CadexEvaluation`:
+- `drive_series(frames, channels)` reads a trace's drive record; a trace
+  written before ADR-694 gives `None` and is not read for the family.
+  `read_trace` returns it as `drives`, and `evaluate_success` hands it to
+  `measure`, so every evaluation reads the family.
+- `drive_metrics` measures, after the 1 s settle for smoothness and cost and
+  over the whole episode for effort:
+  - `command_rate_rms`: pooled RMS of each command's change per second,
+    over the width of its channel's range, so torque and position drives
+    share one scale (ranges/s);
+  - `joint_acceleration_rms_deg_s2`: pooled over angular joints;
+  - `command_high_frequency_share` (needs `feet`): the Hann-windowed command
+    power above `HIGH_FREQUENCY_STRIDE_MULTIPLE` (3) times the stride
+    frequency, over all of it. The stride frequency is the median foot's
+    settled step rate, a new per-foot `step_rate_hz` in the gait detail.
+    `None` when that frequency is above the frames' Nyquist limit;
+  - `effort_rms_clamp_ratio_max`, `effort_clamp_share_max`: the worst
+    drive's RMS effort over its force clamp, and its share of samples within
+    `CLAMP_TOLERANCE` (0.1 %) of the clamp;
+  - `cost_of_transport` (needs a base): mean Σ|effort × joint velocity| over
+    weight times the base's net plan speed after the settle.
+- Each drive's own figures are in the seed's `detail.drives`.
+
+**Not in this decision.** RMS torque against a drive's *rated* torque. The
+model carries the clamp (the peak, for a QDD declared `rating="peak"`), not
+the rating, so that bound needs the rating to reach the spec or the bundle;
+it is its own change. The reference-relative predicates (footfall against
+G1's clip, phase-aligned joint RMS) need the clip's gait clock and are G2's
+next change.
+
+**Evidence.**
+- `test_drive_metrics.py`, eight unit tests on stated signals: a sinusoid's
+  rate and acceleration RMS within 2 %; a stride plus its second harmonic
+  reads under 1 % high-frequency power and a stride plus equal power at 8×
+  reads 50 % ± 2 %; a fifth of samples at the clamp reads 0.2; 2 W on 20 N
+  at 0.5 m/s reads 0.2; a trace without joint state reads nothing.
+  `test_evaluate_success_model`'s round-trip now re-measures a stored
+  trace's drives and gets the evaluation's own metrics.
+- panel-cat-3's r5 ckpt 300 on its ADR-694 replay traces, seeds
+  1001–1010 (medians; spread under 2 %): command rate 5.96 ranges/s, joint
+  acceleration 8,032 °/s², 6.4 % of command power above 7.3 Hz (3× a
+  2.44 Hz stride), worst clamp share 0.192 (the left hock, as ADR-694
+  found) and worst RMS/clamp 0.596 (the right scapula, 13 N·m RMS on a
+  22 N·m clamp), cost of transport 0.67 at 1,694 mm/s and
+  329 W. These are orun6's "before" numbers.
+
+**Consequence.** P1's smoothness bounds are predicates a spec states, read
+by the same code on the baseline and on every new policy.

@@ -34,6 +34,8 @@ from evaluation_fixtures import (
     TARGET_B,
     W2_2,
     balance_rig,
+    drive_channel,
+    drive_frames,
     pitch,
     reach_rig,
     reaching,
@@ -478,6 +480,11 @@ def test_the_vocabulary_is_exactly_what_the_families_measure() -> None:
             reaching(), {"body": {"body": "hand", "local_mm": [0.0, 0.0, 0.0]},
                          "centre": {"frame": None, "point_mm": [0.0, 0.0, 0.0],
                                     "axis": [0.0, 0.0, 1.0]}}, completed=True),
+        # A drive swinging at 1 Hz, half a clamp out, moving 20 N (ADR-704).
+        "drive": evaluation.drive_metrics(evaluation.drive_series(
+            drive_frames(lambda t: ([0.0], [30.0 * math.cos(2.0 * math.pi * t)],
+                                    [10.0 * math.sin(2.0 * math.pi * t)], [4500.0])),
+            [drive_channel("hip")]), weight_n=20.0, travel=(900.0, 9.0), stride_hz=1.0),
     }
     for name, (family, needs) in evaluation.METRICS.items():
         value = measured[family][name]

@@ -1318,6 +1318,15 @@ a checkpoint by what it did", as a command.
     hazard 15 is a policy that plays as a clean stand while holding three
     motors at 98 % of stall for the whole episode. A command pinned at an
     end is the finding.
+    A success spec can now bound it instead of a reader eyeballing it
+    (ADR-704): `effort_clamp_share_max` and `effort_rms_clamp_ratio_max` name
+    the worst drive against its clamp, `command_rate_rms`,
+    `joint_acceleration_rms_deg_s2` and `command_high_frequency_share` say
+    how smooth the commands and joints were, and `cost_of_transport` what the
+    motion cost. panel-cat-3's r5 trot, the orun6 baseline, reads 5.96
+    ranges/s, 8,032 °/s², 6.4 % of command power above 3× its 2.44 Hz
+    stride, its left hock at the clamp 19 % of the time, and a cost of
+    transport of 0.67 (medians over seeds 1001–1010).
 
 ### Saying "smooth": the previous action and the action rate (ADR-696)
 

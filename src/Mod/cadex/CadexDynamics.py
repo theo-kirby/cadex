@@ -13333,9 +13333,12 @@ def evaluate_success(
                      **({"frame": str(entry["frame"])} if entry.get("frame") else {})}
                     for segment in entry["segments"]
                 ]
+        # ADR-704: the drives' own record -- commands, joint state, effort --
+        # is read for smoothness, clamp load and cost of transport.
         measured = CadexEvaluation.measure(
             samples, ended, rig, shoves=shoves,
             command_mm_s=command, segments=segments,
+            drives=CadexEvaluation.drive_series(run["frames"], run["actuator_channels"]),
         )
         held = CadexEvaluation.check(spec["predicates"], measured["metrics"])
         steps = max(1, ended["steps"])

@@ -583,6 +583,10 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `final_error_mm_max`, `final_error_arm_lengths_max`, `time_to_target_s_max`, `overshoot_ratio_max` | a tip's worst error, arrival time and overshoot over the targets the episode held | `tip` and a `point` goal |
   | `turns`, `laps` | a body's net signed turns about an axis through a centre (anticlockwise seen from the axis tip is positive), so a body that rocks on an arc reads about zero; whole turns completed in the net direction (ADR-587) | `body` |
   | `final_distance_mm`, `mean_distance_mm`, `max_distance_mm` | the body's distance from the centre point at the last frame, on average, and at its furthest — no goal needed (ADR-587) | `body` |
+  | `command_rate_rms`, `joint_acceleration_rms_deg_s2` | the RMS change per second of every command, each over its own channel's range (so ranges/s), pooled over drives; the RMS acceleration of the angular joints, pooled, after 1 s (ADR-704) | — |
+  | `effort_rms_clamp_ratio_max`, `effort_clamp_share_max` | the worst drive's RMS effort over its force clamp; its share of samples at the clamp, over the whole episode. A drive the model does not limit is not among them | — |
+  | `command_high_frequency_share` | of the command power (Hann-windowed, each channel in its own ranges), the share above 3× the stride frequency — the median foot's step rate after 1 s. A stride's shape is its first harmonics; above them is jitter | `feet` |
+  | `cost_of_transport` | mean mechanical power, Σ\|effort × joint velocity\| over the drives, over weight × the base's net plan speed after 1 s | a floating base |
 
   "Every foot" is the worst foot, which is what the `_min` and `_max`
   suffixes say. **That table is the whole vocabulary.** A predicate that
