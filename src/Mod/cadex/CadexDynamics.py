@@ -7733,7 +7733,7 @@ def policy_channels(task: Mapping[str, Any]) -> list[str]:
     the robot is told to do, so the policy always reads it, and it sits
     after the sensor channels so a task that gains a goal keeps the address
     of every channel it already had. Then the policy's command channels
-    (ADR-696), on the same terms.
+    (ADR-696), on the same terms, then a gait reference's clock (ADR-706).
     """
 
     return [
@@ -7741,7 +7741,8 @@ def policy_channels(task: Mapping[str, Any]) -> list[str]:
         for record in task["observations"]
         if str(record.get("role") or "policy") == "policy"
         for channel in record["channels"]
-    ] + goal_channels(task) + command_channels(task, policy_only=True)
+    ] + (goal_channels(task) + command_channels(task, policy_only=True)
+         + tracking_channels(task, policy_only=True))
 
 
 def goal_channels(task: Mapping[str, Any]) -> list[str]:
@@ -10206,6 +10207,155 @@ def acceleration_values(task: Mapping[str, Any], qacc: Sequence[float]) -> dict[
             for record in task.get("accelerations") or ()}
 
 
+#: The prefix of the channels a gait reference adds to its task (ADR-706).
+TRACKING_PREFIX = "ref"
+
+
+def _tracking_records(
+    reference: Mapping[str, Any],
+    observations: Sequence[Mapping[str, Any]],
+    schedule: Mapping[str, Any],
+    *,
+    taken: Sequence[str],
+    context: str,
+) -> dict[str, Any]:
+    """A task's reference as channels on its gait clock (ADR-706).
+
+    The clock starts at the reference's phase 0 -- the left hind's
+    touch-down -- on the episode's first step, because that is the stride the
+    reset keyframe was generated about, and it turns once every
+    ``period_s``. ``ref_sin`` and ``ref_cos`` are the clock, for the policy:
+    the controller keeps its own timer, so it is grounded, as a phase goal
+    is (ADR-598). Then, for the reward and the critic only:
+
+    * ``<name>_ref`` for every ``position`` observation of a joint the clip
+      poses, in that observation's unit: the angle the reference asks for;
+    * ``ref_<foot>_lift``, mm: how far the reference's foot is above its own
+      lowest point over the stride, so 0 while it is down;
+    * ``ref_<foot>_down``: 1 while the reference has the foot down.
+
+    The ``table`` holds one row per clip sample of every channel after the
+    clock, in the observation's own unit, so the evaluators interpolate and
+    never convert. Every name is checked against ``taken``.
+    """
+
+    samples = int(reference["samples"])
+    joints = [str(name) for name in reference["joints"]]
+    angles = reference["joint_angles_rad"]
+    channels = [f"{TRACKING_PREFIX}_sin", f"{TRACKING_PREFIX}_cos"]
+    columns: list[list[float]] = []
+    held: list[bool] = []
+    for record in observations:
+        if str(record.get("kind")) != "position":
+            continue
+        joint = str(record.get("object_name") or "")
+        if joint not in joints:
+            continue
+        index = joints.index(joint)
+        scale = float(record["scale"])
+        channels.append(f"{record['channels'][0]}_ref")
+        columns.append([float(angles[k][index]) * scale for k in range(samples)])
+        held.append(False)
+    feet = [str(foot) for foot in reference["foot_positions_m"]]
+    for foot in feet:
+        heights = [float(point[2]) for point in reference["foot_positions_m"][foot]]
+        floor = min(heights)
+        channels.append(f"{TRACKING_PREFIX}_{foot.lower()}_lift")
+        columns.append([1000.0 * (height - floor) for height in heights])
+        held.append(False)
+    for foot in feet:
+        channels.append(f"{TRACKING_PREFIX}_{foot.lower()}_down")
+        columns.append([float(bool(value)) for value in reference["contact"][foot]])
+        held.append(True)
+    clash = sorted(set(channels) & {str(name) for name in taken})
+    if clash:
+        raise DynamicsError(
+            f"{context}: its gait reference reads as channels named "
+            f"{', '.join(repr(name) for name in clash)}, and the task already "
+            "has a channel by that name.",
+            reason="tracking_channel_clash",
+            correction=(
+                f"A reference adds {TRACKING_PREFIX}_sin, {TRACKING_PREFIX}_cos, "
+                f"<position observation>_ref, {TRACKING_PREFIX}_<foot>_lift and "
+                f"{TRACKING_PREFIX}_<foot>_down. Rename the observation or goal "
+                "that takes one of those names."
+            ),
+            observed={"channels": clash},
+        )
+    return {
+        "channels": channels,
+        "policy_channels": channels[:2],
+        "period_s": float(reference["parameters"]["period_s"]),
+        "turn_per_step": float(schedule["control_interval_s"])
+        / float(reference["parameters"]["period_s"]),
+        "samples": samples,
+        "held": held,
+        "table": [[column[k] for column in columns] for k in range(samples)],
+    }
+
+
+def _tracking_candidates(observations: Sequence[Mapping[str, Any]]) -> list[str]:
+    """Every name :func:`_tracking_records` could add, before the stride
+    says which joints it poses (ADR-706)."""
+
+    return [f"{TRACKING_PREFIX}_sin", f"{TRACKING_PREFIX}_cos"] + [
+        f"{record['channels'][0]}_ref" for record in observations
+        if str(record.get("kind")) == "position"
+    ] + [f"{TRACKING_PREFIX}_{foot}_{kind}" for kind in ("lift", "down")
+         for foot in ("lf", "rf", "lh", "rh")]
+
+
+def tracking_channels(task: Mapping[str, Any], *, policy_only: bool = False) -> list[str]:
+    """Every tracking channel a task's reference adds (ADR-706), after the
+    acceleration channels; with ``policy_only`` the clock alone."""
+
+    tracking = task.get("tracking")
+    if not tracking:
+        return []
+    key = "policy_channels" if policy_only else "channels"
+    return [str(channel) for channel in tracking[key]]
+
+
+def tracking_phase(tracking: Mapping[str, Any], step: int) -> float:
+    """The gait clock's phase, in cycles in ``[0, 1)``, after ``step`` control
+    steps of an episode (ADR-706)."""
+
+    turned = float(step) * float(tracking["turn_per_step"])
+    return turned - math.floor(turned)
+
+
+def tracking_values(task: Mapping[str, Any], step: int) -> dict[str, float]:
+    """The tracking channels after ``step`` control steps (ADR-706).
+
+    The clip is periodic over its ``samples`` rows, and a phase between two
+    rows is read linearly between them. A ``held`` column -- a foot down or
+    not -- reads 1 where that interpolation is at least one half, so it
+    switches at the midpoint between two samples. ``training/cadex_train.py``
+    writes the same arithmetic in ``jnp``, and a test holds them equal.
+    """
+
+    tracking = task.get("tracking")
+    if not tracking:
+        return {}
+    phase = tracking_phase(tracking, step)
+    samples = int(tracking["samples"])
+    at = phase * samples
+    first = int(math.floor(at))
+    weight = at - first
+    first %= samples
+    after = (first + 1) % samples
+    names = [str(channel) for channel in tracking["channels"]]
+    values = {names[0]: math.sin(2.0 * math.pi * phase),
+              names[1]: math.cos(2.0 * math.pi * phase)}
+    low, high = tracking["table"][first], tracking["table"][after]
+    for index, name in enumerate(names[2:]):
+        value = float(low[index]) + weight * (float(high[index]) - float(low[index]))
+        if tracking["held"][index]:
+            value = 1.0 if value >= 0.5 else 0.0
+        values[name] = value
+    return values
+
+
 def _reference_records(
     mujoco: Any,
     reloaded: Any,
@@ -10490,6 +10640,13 @@ def task_records(
     channels = channels + [
         str(channel) for record in goal for channel in record["channels"]
     ] + command_names
+    # ADR-706: a reference's tracking channels come last. Which joints the
+    # stride poses is known only once it is generated, which is after every
+    # other refusal below, so the expressions are compiled here against
+    # every name a reference could add, and again against the exact ones.
+    taken = list(channels)
+    if task.get("reference"):
+        channels = channels + _tracking_candidates(observations)
 
     # -- reward and termination --------------------------------------------
     reward_rows: list[dict[str, Any]] = []
@@ -10603,6 +10760,22 @@ def task_records(
             goal=goal,
             context=context,
         )
+    # ADR-703: absent when the task declares no gait reference, and with it
+    # ADR-706's tracking channels, against which the expressions compile.
+    reference = tracking = None
+    if task.get("reference"):
+        reference = _reference_records(
+            mujoco, reloaded, task["reference"], schedule, context=context,
+        )
+        tracking = _tracking_records(
+            reference, observations, schedule, taken=taken, context=context,
+        )
+        exact = taken + list(tracking["channels"])
+        for row in reward_rows:
+            compile_reward(row["expression"], names=exact, context=f"reward {row['label']!r}")
+        for row in termination_rows:
+            compile_reward(row["expression"], names=exact,
+                           context=f"termination {row['label']!r}")
     return {
         "schema": TASK_SCHEMA,
         "label": str(task.get("label") or ""),
@@ -10632,10 +10805,10 @@ def task_records(
         **({"commands": commands} if commands else {}),
         # ADR-699: absent when the task reads no acceleration, on the same terms.
         **({"accelerations": accelerations} if accelerations else {}),
-        # ADR-703: absent when the task declares no gait reference.
-        **({"reference": _reference_records(
-            mujoco, reloaded, task["reference"], schedule, context=context,
-        )} if task.get("reference") else {}),
+        # ADR-703: absent when the task declares no gait reference, and with
+        # it ADR-706's tracking channels.
+        **({"reference": reference, "tracking": tracking}
+           if reference is not None else {}),
         **judged,
         # The two per-episode draw streams, both stated, because they are
         # deliberately different algorithms and a reader has to be able to
@@ -11685,6 +11858,8 @@ def evaluate_episode(
     issued_now = reset_command(model, task, key) if commanding else []
     issued_before = list(issued_now)
     accelerating = bool(task.get("accelerations"))
+    # ADR-706: the reference on the gait clock, a function of the step alone.
+    tracking = bool(task.get("tracking"))
     # Before the reset-pose sample below, because the first frame a rollout
     # draws and the first observation a policy acts on both have to be of
     # where the mechanism actually starts.
@@ -11725,6 +11900,8 @@ def evaluate_episode(
             observation.update(command_values(task, issued_now, issued_before))
         if accelerating:
             observation.update(acceleration_values(task, data.qacc))
+        if tracking:
+            observation.update(tracking_values(task, step))
         if actions is None:
             commanded = [
                 evaluate_control(code, time_s, context=f"action {index}")
@@ -11760,6 +11937,10 @@ def evaluate_episode(
         if accelerating:
             # ADR-699: the acceleration of the step's last solver step.
             landed.update(acceleration_values(task, data.qacc))
+        if tracking:
+            # ADR-706: where the step landed is judged against where the
+            # reference is when it lands, one step on the clock.
+            landed.update(tracking_values(task, step + 1))
         contributions = []
         reward = 0.0
         for label, weight, code in reward_terms:
@@ -11832,13 +12013,15 @@ def evaluate_episode(
 def _task_channels(task: Mapping[str, Any]) -> list[str]:
     """Every scalar name an expression may use: the sensor channels in
     slice order, then the goal channels in bundle order (ADR-462), then the
-    command channels (ADR-696), then the acceleration channels (ADR-699)."""
+    command channels (ADR-696), then the acceleration channels (ADR-699),
+    then a reference's tracking channels (ADR-706)."""
 
     return [
         str(channel)
         for record in task["observations"]
         for channel in record["channels"]
-    ] + goal_channels(task) + command_channels(task) + acceleration_channels(task)
+    ] + (goal_channels(task) + command_channels(task) + acceleration_channels(task)
+         + tracking_channels(task))
 
 
 # ---------------------------------------------------------------------------

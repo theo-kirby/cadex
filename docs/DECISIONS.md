@@ -41743,3 +41743,95 @@ so a footfall error reads in steps of about 0.05. P1's ±0.1 is two frames.
   These are G2's reference-relative "before" numbers. r5 already trots by
   footfall. What separates it from the reference is how long its hind feet
   stay down and how its legs are posed through the stride.
+
+## ADR-706 — A task tracks its gait reference through channels on a gait clock (2026-10-15, orun6)
+
+**Context.** The orun6 charter's G2 asks for a reward that pays for tracking
+the reference, phase-aligned to the task's gait clock: joint pose, foot
+height and contact schedule. ADR-703 put the stride in the bundle, but
+nothing a reward could name carried it, and nothing carried a gait clock
+except a `phase` goal (ADR-598), which starts at a random phase and knows
+nothing of a stride.
+
+**Decision.** A task with a `reference` gains a `tracking` section and its
+channels, after the acceleration channels, so every earlier channel keeps
+its address:
+- **The clock.** It starts at the reference's phase 0 (the left hind's
+  touch-down) on the episode's first step and turns `control_interval /
+  period_s` of a cycle per step. The reset keyframe is the pose the stride
+  was generated about, so a random start phase would ask for a pose the
+  episode does not start in. `ref_sin` and `ref_cos` are the clock. They
+  are the only tracking channels the policy reads: a controller keeps its
+  own timer, so they are grounded, as a phase goal is.
+- **The reference, privileged** (reward and critic):
+  - `<name>_ref` for each `position` observation of a joint the stride
+    poses: the reference's angle in that observation's unit;
+  - `ref_<foot>_lift`: mm above the reference foot's own lowest point over
+    the stride, so 0 in stance;
+  - `ref_<foot>_down`: 1 while the reference has the foot down.
+- **Reading the clip.** The `tracking` table is one row per clip sample of
+  every channel after the clock, already in each observation's unit, so no
+  evaluator converts anything. A phase between two rows is read linearly,
+  round the end of the stride. A down flag reads 1 from one half up, so it
+  switches at the midpoint between samples.
+- **When a step is judged.** The policy acts on the clock at step `k`. Where
+  the step lands is scored against the reference at step `k + 1`. A goal is
+  held at the step the action was taken under, but a tracking reward asks
+  "is the pose where the reference is now", and "now" is where the step
+  landed.
+- **Three evaluators.** `CadexDynamics.tracking_values`, the trainer's
+  `tracking_vector` (in `jnp`, from the episode's step counter, so nothing
+  new is carried), and the stock runner's `tracking_at` are each written
+  from the bundle's words.
+- **Refusals.** A tracking name that a sensor, goal, command or acceleration
+  channel already takes is refused as `tracking_channel_clash`.
+- **What a reward writes.** The tracking reward is then an expression, not
+  a new term kind: `exp(-((q_knee - q_knee_ref)/15)^2)` for pose,
+  `exp(-((paw_z - z0 - ref_lf_lift)/20)^2)` for foot height, and
+  `1 - abs(lf_down - ref_lf_down)` for the contact schedule (ADR-698's
+  contact channel). The 512-node expression cap (ADR-697) fits a
+  19-joint pose sum.
+
+**Why channels and not a fixed term.** The charter's diagnosis is that a
+reward describing a gait gets gamed, and its owner note says to prefer more
+reference over another penalty. Channels let the author choose which
+joints, which kernel and which weights, using the same language as every
+other term. The same channels serve a critic, a termination ("too far from
+the reference"), and a curriculum that weights pose against contact, with
+no new surface. It is general (O4): any floating base with four named feet
+and a reference gets it. A task without a reference writes no `tracking`
+and keeps its bundle byte for byte.
+
+**Consequence for ADR-703's tasks.** A task that declared a reference only
+to play it now has two more policy inputs (the clock). The only such task
+is `orun6-cat`'s `run`, and no policy has been trained on it.
+
+**Evidence.** `test_gait_tracking.py`, seven tests:
+- on ADR-702's quadruped clip, the channel names, the policy subset, a
+  joint's column equal to the clip's angle in degrees, and every foot's
+  lift 0 while the clip has it down;
+- on a clock of one sample a step, step `k` reads sample `k` and one stride
+  later reads it again. At half a sample a step, an odd step reads the
+  midpoint, and a flag follows the half rule;
+- the clash refusal;
+- an engine episode reads the clock at the step acted on and the reference
+  one step on where it lands, and the pose term is its formula;
+- the stock-MuJoCo runner reproduces that episode's observations and
+  reward as text;
+- the trainer's channels, actor channels, variance floor and
+  `tracking_vector` equal the engine's over 120 steps of a 0.37 s stride at
+  50 Hz, which is not a whole number of steps per sample;
+- in the training venv, the real trainer trains the tracked task (clock in
+  the policy header, the reference not), and the engine verifies the
+  policy it wrote.
+
+**First use (orun6-cat, 2026-10-15).** The `run` task's reward became joint
+pose, paw lift and contact tracking against the 1.0 m/s, 580 mm trot
+reference, plus a 1 m/s speed kernel. The task gained privileged paw
+contact channels and dropped its random-phase gait goal. A 300-iteration
+smoke (4096 environments, 29 min) learned to track it: joint RMS 8.1°
+against r5's 18.6°, stride frequency 1.00×, footfall error 0.10 and
+1.14 m/s, medians over seeds 1001–1010. But every seed falls within about
+2 s (tilt 32°). The reference asks for 1 m/s at step 0 from a standstill,
+and nothing in the reward prices a fall. That is the next change, not this
+one's.

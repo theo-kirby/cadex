@@ -1,6 +1,6 @@
 # MUJOCO.md — Dynamics, and the Road to a Trained Policy
 
-Verified against source: 2026-10-14
+Verified against source: 2026-10-15
 Status: **M0 recorded (ADR-075, ADR-076), M1 passed, M2 closed (ADR-077),
 M3 closed (ADR-079), M4 closed (ADR-080), M5 closed (ADR-081), M6 closed
 (ADR-083), M7 closed (ADR-084), M8 closed (ADR-085).** The arc is complete:
@@ -1460,6 +1460,32 @@ seeds 1001–1010): footfall within 0.05 of a cycle (one frame), the right
 hind skipping 3 of 21 strides, duty 0.22 short of 0.45 (hinds down a quarter
 of the stride), stride frequency 0.88 of the reference's 2.84 Hz, and
 18.6° RMS joint error (knees 33°).
+
+**Tracking it (ADR-706).** The same reference is a set of channels on a
+gait clock. The clock starts at the reference's phase 0, the left hind's
+touch-down, on an episode's first step, because the reset keyframe is the
+pose the stride was generated about. It turns `control_interval /
+period_s` of a cycle per step. `ref_sin` and `ref_cos` are the clock, and
+the policy reads them; a controller keeps its own timer, so they are
+grounded. For the reward and the critic, each `position` observation of a
+joint the stride poses gains `<name>_ref`, the angle the reference asks
+for, in degrees. Each foot gains `ref_<foot>_lift`, in mm above the
+reference foot's lowest point (0 in stance), and `ref_<foot>_down`, 1 while
+the reference has it down. Between two of the clip's samples a channel is
+read linearly, and a down flag switches at the midpoint. A step is scored
+against the reference where it lands, one step on the clock, so the reward
+for a pose is the reference's pose at the same moment. A tracking reward is
+then expressions, for example:
+
+```python
+reward=[api.reward("exp(-((q_knee_l - q_knee_l_ref)^2 + (q_hip_l - q_hip_l_ref)^2) / 450)", weight=1.0),
+        api.reward("exp(-((pfl_z - 22 - ref_lf_lift) / 20)^2)", weight=0.3),
+        api.reward("1 - abs(fl_down - ref_lf_down)", weight=0.2)]
+```
+
+The bundle carries the clip as a `tracking` table, one row per sample in
+each observation's own unit, so the engine, the trainer and the stock
+runner interpolate it and never convert. A test holds the three equal.
 
 ### What a good result looks like
 

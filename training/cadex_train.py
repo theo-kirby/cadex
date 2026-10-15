@@ -709,9 +709,46 @@ def acceleration_vector(xp: Any, task: dict[str, Any], qacc: Any) -> Any:
     return qacc[..., dofs] * scale
 
 
+def tracking_channels(task: dict[str, Any], *, policy_only: bool = False) -> list[str]:
+    """Every channel a gait reference adds (ADR-706); with ``policy_only``
+    its clock alone. ``CadexDynamics.tracking_channels``."""
+
+    tracking = task.get("tracking")
+    if not tracking:
+        return []
+    return [str(channel) for channel in
+            tracking["policy_channels" if policy_only else "channels"]]
+
+
+def tracking_vector(xp: Any, task: dict[str, Any], steps: Any) -> Any:
+    """The tracking channels after ``steps`` control steps (ADR-706).
+
+    ``CadexDynamics.tracking_values`` in ``xp``, along a new last axis:
+    the clock's phase is ``steps * turn_per_step`` less its whole turns; a
+    phase between two rows of the clip's table is read linearly between
+    them, round the end, and a ``held`` column reads 1 from one half up.
+    """
+
+    tracking = task["tracking"]
+    rows = int(tracking["samples"])
+    turned = xp.asarray(steps) * float(tracking["turn_per_step"])
+    phase = turned - xp.floor(turned)
+    at = phase * rows
+    floor = xp.floor(at)
+    weight = (at - floor)[..., None]
+    low = floor.astype(xp.int32) % rows
+    high = (low + 1) % rows
+    table = xp.asarray(tracking["table"], dtype=weight.dtype)
+    value = table[low] + weight * (table[high] - table[low])
+    held = xp.asarray([bool(flag) for flag in tracking["held"]])
+    value = xp.where(held, (value >= 0.5).astype(value.dtype), value)
+    angle = (2.0 * math.pi) * phase
+    return xp.concatenate([xp.sin(angle)[..., None], xp.cos(angle)[..., None], value], axis=-1)
+
+
 def channels(task: dict[str, Any]) -> list[str]:
-    """Every name an expression may use: sensor, goal, command, then
-    acceleration channels (ADR-699).
+    """Every name an expression may use: sensor, goal, command, acceleration,
+    then tracking channels (ADR-699, ADR-706).
 
     The engine's ``CadexDynamics._task_channels`` is the same rule. The
     sensor channels come out of ``sensordata``; the goal channels are what
@@ -724,7 +761,8 @@ def channels(task: dict[str, Any]) -> list[str]:
         str(channel)
         for record in task["observations"]
         for channel in record["channels"]
-    ] + goal_channels(task) + command_channels(task) + acceleration_channels(task)
+    ] + (goal_channels(task) + command_channels(task) + acceleration_channels(task)
+         + tracking_channels(task))
 
 
 def actor_channels(task: dict[str, Any]) -> list[str]:
@@ -739,7 +777,7 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
 
     Every goal channel follows (ADR-462): a goal is what the robot is told
     to do, so the policy always reads it. Then the policy's command channels
-    (ADR-696).
+    (ADR-696), then a gait reference's clock (ADR-706).
     """
 
     return [
@@ -747,7 +785,8 @@ def actor_channels(task: dict[str, Any]) -> list[str]:
         for record in task["observations"]
         if str(record.get("role") or "policy") == "policy"
         for channel in record["channels"]
-    ] + goal_channels(task) + command_channels(task, policy_only=True)
+    ] + (goal_channels(task) + command_channels(task, policy_only=True)
+         + tracking_channels(task, policy_only=True))
 
 
 def tracker_reading(xp: Any, true_mm: Any, tracker: dict[str, Any],
@@ -863,7 +902,7 @@ def sensor_variance_floor(task: dict[str, Any]) -> list[float]:
             else:
                 floor.append(0.25)
     return floor + [0.0] * (len(goal_channels(task)) + len(command_channels(task))
-                            + len(acceleration_channels(task)))
+                            + len(acceleration_channels(task)) + len(tracking_channels(task)))
 
 
 def sensor_noise_std(task: dict[str, Any]) -> list[float]:
@@ -1559,6 +1598,9 @@ def train(
     carrying = filtering or slewing or commanding
     # ADR-699: a PYTHON bool on the same terms; qacc is read, never carried.
     accelerating = bool(task.get("accelerations"))
+    # ADR-706: a PYTHON bool on the same terms; the reference is a function
+    # of the episode's step counter, so nothing new is carried.
+    tracking = bool(task.get("tracking"))
 
     # ADR-700: a PYTHON value branched on at trace time, so no floor is the
     # graph this trainer always emitted.
@@ -1920,6 +1962,9 @@ def train(
 
         told = extra[0] if goaled else None
         filter_state = extra[1:] if goaled else extra
+        # ADR-706: the reference where this step lands, after the goal.
+        if tracking:
+            tracked, *filter_state = filter_state
         clamped = jnp.clip(surface, low, high)
         if commanding:
             # ADR-696's second carried command rides after `(previous, first)`.
@@ -1977,6 +2022,8 @@ def train(
             # ADR-699: the acceleration of the step's last solver step.
             vector = jnp.concatenate(
                 [vector, acceleration_vector(jnp, task, data.qacc)])
+        if tracking:
+            vector = jnp.concatenate([vector, tracked])
         if commanding:
             return (data, vector, reward_of(vector), done_of(vector), clamped,
                     replaced)
@@ -1998,6 +2045,9 @@ def train(
     # ADR-462's goal is per environment too, and sits in front of the filter
     # state; empty for a task with no goal, on the same terms.
     _goal_axes = (0,) if goaled else ()
+    # ADR-706's landed reference is per environment, after the goal.
+    if tracking:
+        _goal_axes = _goal_axes + (0,)
     batched_step = (
         jax.vmap(step_env, in_axes=(None, 0, 0) + _goal_axes + _filter_axes)
         if model_axes is None
@@ -2270,6 +2320,12 @@ def train(
                 vector = jnp.concatenate(
                     [vector, acceleration_vector(jnp, task, data.qacc)], axis=-1)
             goal_args = (told,) if goaled else ()
+            if tracking:
+                # ADR-706: the clock the policy acts on, and the reference
+                # one step on, where the step will land.
+                vector = jnp.concatenate(
+                    [vector, tracking_vector(jnp, task, steps)], axis=-1)
+                goal_args = goal_args + (tracking_vector(jnp, task, steps + 1),)
             normalised = normalise(vector, mean, variance)
             raw = net(params["actor"], jnp.take(normalised, actor_take, axis=-1))
             noise = jax.random.normal(act_key, raw.shape, dtype=jnp.float32)

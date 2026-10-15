@@ -119,7 +119,33 @@ def channels(task: dict) -> list[str]:
         str(channel)
         for record in task.get("accelerations") or []
         for channel in record["channels"]
-    ]
+    ] + [str(channel) for channel in (task.get("tracking") or {}).get("channels") or []]
+
+
+def tracking_at(task: dict, step: int) -> dict[str, float]:
+    """A gait reference's channels after ``step`` control steps (ADR-706),
+    from the bundle's words: the clock turns ``turn_per_step`` cycles a step
+    from 0; a row between two of the table's is read linearly between them,
+    round the end; a held column reads 1 from one half up."""
+
+    tracking = task.get("tracking")
+    if not tracking:
+        return {}
+    turned = step * float(tracking["turn_per_step"])
+    phase = turned - math.floor(turned)
+    rows = int(tracking["samples"])
+    at = phase * rows
+    low = int(math.floor(at))
+    weight = at - low
+    low %= rows
+    high = (low + 1) % rows
+    names = list(tracking["channels"])
+    values = {names[0]: math.sin(2.0 * math.pi * phase), names[1]: math.cos(2.0 * math.pi * phase)}
+    for column, name in enumerate(names[2:]):
+        a, b = float(tracking["table"][low][column]), float(tracking["table"][high][column])
+        value = a + weight * (b - a)
+        values[name] = (1.0 if value >= 0.5 else 0.0) if tracking["held"][column] else value
+    return values
 
 
 def observation_values(task: dict, sensordata: Any) -> dict[str, float]:
@@ -549,6 +575,8 @@ def run_episode(bundle_path: str, seed: int | None = None) -> dict[str, Any]:
         for record in task.get("accelerations") or []:
             landed[str(record["channels"][0])] = (
                 float(data.qacc[int(record["dof"])]) * float(record["scale"]))
+        # ADR-706: the reference one step on the clock, where the step landed.
+        landed.update(tracking_at(task, step + 1))
         reward = 0.0
         contributions = []
         for label, weight, code in reward_terms:

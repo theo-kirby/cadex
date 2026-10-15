@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-14
+Verified against source: 2026-10-15
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -541,7 +541,15 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   dashboard plays it before anything trains. A stride the legs cannot
   reach refuses the task as `gait_unreachable`, naming the leg, the moment
   and the joints at a stop. A task without one writes no `reference` and
-  keeps its digest.
+  keeps its digest. **A reference is tracked through channels** (ADR-706),
+  after every other, on a gait clock that starts at the stride's phase 0 on
+  the episode's first step: `ref_sin` and `ref_cos`, which the policy
+  reads; and, privileged, `<name>_ref` for each `position` observation of a
+  joint the stride poses (its unit), `ref_<foot>_lift` in mm above the
+  reference foot's lowest point and `ref_<foot>_down` for `lf`, `rf`, `lh`,
+  `rh`. A step is scored against the reference where it lands, so
+  `exp(-((q_knee - q_knee_ref) / 15)^2)` is a joint-tracking reward term. A
+  name one of them would take is refused as `tracking_channel_clash`.
   **`assembly.success(predicates, seeds=...)` says what the behaviour must
   measurably be, apart from the reward** (ADR-456), and goes to
   `assembly.task(..., success=spec)`. A reward is what a policy is paid for;

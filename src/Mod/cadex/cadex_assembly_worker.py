@@ -4304,6 +4304,12 @@ def _execute_task_bundle(
                 if "accelerations" in bundle
                 else {}
             ),
+            # ADR-706: and a gait reference's tracking channels, last.
+            **(
+                {"tracking_channels": [str(channel) for channel in bundle["tracking"]["channels"]]}
+                if "tracking" in bundle
+                else {}
+            ),
             # What the task is judged by, when it declares it (ADR-456): the
             # predicates by id, the seeds, and the scale a threshold in hip
             # heights or centre-of-mass heights has on this mechanism.

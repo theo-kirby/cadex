@@ -4977,8 +4977,17 @@ class AssemblyDomainAPI:
         ``reference`` takes one ``api.gait`` value: the stride the task's
         motion is meant to look like. The engine generates it on the
         exported model into the bundle's ``reference`` section (ADR-703),
-        which the dashboard plays before anything trains. Like ``success``
-        it does not change what the policy observes or is paid.
+        which the dashboard plays before anything trains. It also reads as
+        channels on a gait clock that starts at the reference's phase 0 on
+        the episode's first step (ADR-706): ``ref_sin`` and ``ref_cos``, the
+        clock, which the policy reads; and, for the reward and the critic,
+        ``<name>_ref`` for each ``position`` observation of a joint the
+        stride poses (the angle the reference asks for, in that
+        observation's unit), and per foot ``ref_lf_lift`` (mm above the
+        reference foot's lowest point) and ``ref_lf_down`` (1 while it is
+        down), likewise ``rf``, ``lh``, ``rh``. A tracking reward is an
+        expression: ``exp(-((q_knee - q_knee_ref) / 15)^2)``. A step is
+        scored against the reference where it lands, one step on the clock.
 
         Like ``api.mjcf`` and for the same reason, ``api.task`` is not under
         the "exactly one simulation" rule: a script may declare several,
