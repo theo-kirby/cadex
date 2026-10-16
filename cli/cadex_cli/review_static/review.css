@@ -242,8 +242,9 @@ table.status-table { width: 100%; border-collapse: collapse; table-layout: auto;
 #status-activity-list li[data-outcome="error"], #status-activity-list li[data-outcome="lost"] { color: var(--bad); }
 #status-activity-list li[data-outcome="running"] { color: var(--info); }
 .timelines { position: absolute; z-index: 1; left: var(--s2); right: var(--s2); bottom: var(--s2); display: flex; flex-direction: column; gap: var(--s1); pointer-events: none; }
-/* The scrubbers ride in the 3D viewport's header after Fit (ADR-728), one row each, wrapping onto a
-   second header row when the area is narrow. */
+/* The revision scrubber and the checkpoint dropdown ride in the 3D viewport's header after Fit
+   (ADR-728, ADR-733), wrapping onto a second header row when the area is narrow; the rollout's
+   timeline runs across the foot of the view, on an opaque --surface over the dark floor. */
 .view3d-play { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); flex: 1 1 320px; min-width: 0; }
 .timeline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); flex: 1 1 320px; min-width: 0; font-size: var(--fs-0); }
 .timeline button { flex: none; min-height: var(--tool); height: var(--tool); font-size: var(--fs-0); padding: 0 var(--s2); }
@@ -251,7 +252,11 @@ table.status-table { width: 100%; border-collapse: collapse; table-layout: auto;
 .timeline input[type="range"] { flex: 1 1 var(--scrub); min-width: var(--scrub); height: var(--tool); margin: 0; accent-color: var(--accent); }
 .timeline output { flex: none; min-width: 56px; text-align: right; }
 .timeline-name { flex: none; color: var(--ink-2); }
-:is(#checkpoint-label, [data-ref="checkpoint-label"]), :is(#revision-label, [data-ref="revision-label"]) { flex: 0 1 auto; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
+:is(#checkpoints, [data-ref="checkpoints"]) { flex: 0 1 auto; min-width: 0; }
+:is(#checkpoint-pick, [data-ref="checkpoint-pick"]) { max-width: 24em; font-family: var(--mono); }
+.timelines > .timeline { flex: none; align-self: stretch; pointer-events: auto; padding: var(--s1) var(--s2);
+                         border-radius: var(--radius-area); background: var(--surface); }
+:is(#revision-label, [data-ref="revision-label"]) { flex: 0 1 auto; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
 #revision-list li[data-retained] { cursor: pointer; }
 
 /* Activations (ADR-727, §27): a gauge per motor and the policy's network, in the heat ramp. */

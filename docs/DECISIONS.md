@@ -43214,3 +43214,27 @@ and, behind a Training/Project switch, the agent's own `status.html` panel.
 `docs/CLI.md`). Driven in headless Chromium: `ball-plate` drew three charts
 and nine runs in Training; `cat-bound` drew four charts and four runs, with
 its agent panel in Status; no page errors.
+
+## ADR-733 — The rollout's timeline returns to the foot of the 3D viewport; checkpoints are a dropdown (2026-10-16)
+
+**Context.** ADR-728 moved every scrubber into the 3D viewport's header.
+The owner asked for the rollout's playback timeline to go back to the bottom
+of the view, and for the checkpoints (the iterations) to stay in the header
+but as a dropdown rather than a slider.
+
+**Decision.** `#playback` (Play, the time scrubber, the clock, Follow) moves
+from the header into the view's `.timelines` overlay, the last row at its
+foot, full width on an opaque `--surface`, under the model, revision and
+checkpoint status lines. `#checkpoint-pick` becomes a `<select>`, one option
+per checkpoint newest first, each named by iteration and reward per step
+(and `failed` or its state when it is not ready), the newest marked
+`newest`; picking the newest follows new checkpoints again, as the scrubber's
+newest end did. `#checkpoint-label` goes, its text now the options'. The
+revision scrubber stays in the header. A copy of the 3D viewport mirrors
+the overlay with its own Follow, as it mirrored the header before.
+
+**Evidence.** `pixi run python -m pytest cli/tests` 49 passed, 1 skipped
+(no engine). Driven in headless Chromium on `cat-bound`, source
+`run:bound-h3`: six options (iteration 300 newest down to 50); the newest's
+rollout played in the foot row; picking iteration 100 loaded and played
+`run.000100`; no page errors.

@@ -156,8 +156,8 @@
         </optgroup>
       </select>
       <button id="model-fit" type="button">Fit</button>
-      <!-- The scrubbers ride in the header, after Fit (ADR-728): the revision history's, a run's
-           checkpoints' and the rollout's own timeline. -->
+      <!-- The pickers ride in the header, after Fit (ADR-728): the revision history's scrubber and
+           a run's checkpoints' dropdown; the rollout's own timeline is at the foot of the view (ADR-733). -->
       <div class="view3d-play">
         <!-- The design's history (ADR-547): each stored revision's retained model (ADR-546), the one
              before it as a ghost and the parts whose digest changed tinted. Shown while the 3D
@@ -168,19 +168,9 @@
           <output id="revision-label"></output>
         </div>
         <!-- A training run's checkpoints, each rolled out by the engine as it lands (ADR-544, ADR-545):
-             the newest loops; the scrubber picks an older one, and back at the newest end it follows again. -->
-        <div id="checkpoints" class="timeline" data-follow="true" data-state="ready" hidden>
-          <span class="timeline-name">Checkpoint</span>
-          <input id="checkpoint-pick" type="range" min="0" max="0" step="1" value="0" aria-label="Checkpoint">
-          <output id="checkpoint-label"></output>
-        </div>
-        <!-- A run's rollout trace plays here (orun2 D2.5); nothing is simulated in the page. -->
-        <div id="playback" class="timeline" hidden>
-          <button id="play-toggle" type="button">Play</button>
-          <input id="play-time" type="range" min="0" max="1" step="any" value="0" aria-label="Time">
-          <output id="play-clock">0.00 s</output>
-          <!-- The follow camera: the view travels with the design while it plays (DASHBOARD.md §5). -->
-          <button id="play-follow" type="button" aria-pressed="false" title="Follow the design as it moves">Follow</button>
+             the newest loops; the dropdown picks an older one (ADR-733), and the newest follows again. -->
+        <div id="checkpoints" data-follow="true" data-state="ready" hidden>
+          <select id="checkpoint-pick" aria-label="Checkpoint"></select>
         </div>
       </div>
     </div>
@@ -193,6 +183,15 @@
         <div id="model-status" data-state="empty">no model loaded</div>
         <p id="revision-status" hidden></p>
         <p id="checkpoint-status" hidden></p>
+        <!-- A run's rollout trace plays here (orun2 D2.5), across the foot of the view (ADR-733);
+             nothing is simulated in the page. -->
+        <div id="playback" class="timeline" hidden>
+          <button id="play-toggle" type="button">Play</button>
+          <input id="play-time" type="range" min="0" max="1" step="any" value="0" aria-label="Time">
+          <output id="play-clock">0.00 s</output>
+          <!-- The follow camera: the view travels with the design while it plays (DASHBOARD.md §5). -->
+          <button id="play-follow" type="button" aria-pressed="false" title="Follow the design as it moves">Follow</button>
+        </div>
       </div>
     </div>
   </section>
