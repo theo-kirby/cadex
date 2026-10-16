@@ -231,6 +231,25 @@ def test_browser_reruns_the_policy_to_the_recorded_commands_and_paints_the_parts
         delta = page.evaluate("window.cadexReview.activations().hoverNeuron(0, 0)")
         assert len(delta) == 4
         page.evaluate("window.cadexReview.activations().clearHover()")
+        # The heat follows the colours Settings picks: a new preset repaints the parts at once.
+        before = dict(heat)
+        page.evaluate("window.CadexHeat.set('green-red')")
+        assert page.evaluate("window.cadexReview.viewer().heat()") != before
+        page.evaluate("window.CadexHeat.set(window.CadexHeat.defaultPreset)")
+        # Each view has its switch: Bars lays the motors out a row each.
+        assert page.evaluate("document.getElementById('activations-bars').offsetParent") is None
+        page.click("#activations-views [data-view=bars]")
+        assert page.attribute("#activations", "data-bars") == "true"
+        assert page.evaluate("document.querySelectorAll('#activations-bars .mbar').length") == 4
+        assert page.evaluate("getComputedStyle(document.getElementById('activations-bars')).display") == "grid"
+        # The Network editor: the paths to the picked motor run from the inputs through each layer.
+        outliner = [a for a in page.evaluate("window.cadexReview.layout().areas()") if a["editor"] == "outliner"][0]
+        page.evaluate(f"window.cadexReview.layout().setEditor({json.dumps(outliner['id'])}, 'network')")
+        page.evaluate("window.cadexReview.activations().select(1)")
+        paths = page.evaluate("window.cadexReview.activations().paths()")
+        assert [c["kind"] for c in paths] == ["input"] + ["hidden"] * (len(LAYERS) - 1) + ["output"]
+        assert paths[-1]["units"] == [1] and all(0 < len(c["units"]) <= 8 for c in paths)
+        assert page.evaluate("document.getElementById('network-paths').width") > 0
         page.click("#activations-viewport")
         assert page.evaluate("window.cadexReview.viewer().heat()") is None
     finally:

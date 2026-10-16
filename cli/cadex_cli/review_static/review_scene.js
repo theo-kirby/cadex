@@ -290,7 +290,12 @@ export function create(canvas, {labels=true}={}) {
   // depth-only prepass of the solids (pushed back a hair, so a line on a surface wins and a line
   // behind one loses), and mixed in at `strength` of the ink.
   const SUPERSAMPLE=2, LINES_LAYER=1;
-  let style='shaded', target=null, edges=null, lineTarget=null;
+  let style='shaded', target=null, edges=null, lineTarget=null, heatTarget=null;
+  const heatMaterials=new Map();
+  function heatMaterial(hex) {
+    if (!heatMaterials.has(hex)) heatMaterials.set(hex,new THREE.MeshBasicMaterial({color:hex, side:THREE.DoubleSide, toneMapped:false}));
+    return heatMaterials.get(hex);
+  }
   let meshLines={shown:true, strength:MESH_LINES.strength};
   const paper=new THREE.Color(), ink=new THREE.Color();
   const normals=new THREE.MeshNormalMaterial({side:THREE.DoubleSide, flatShading:true});
@@ -316,13 +321,18 @@ export function create(canvas, {labels=true}={}) {
         gl_FragColor=vec4(e,e,e,1.);
       }`,
     depthTest:false, depthWrite:false, toneMapped:false});
+  // The heat view (setHeat) carries into the diagram: a heated part's face is washed in its colour
+  // and its lines are drawn in it, over the same paper and ink.
   const resolvePass=new THREE.ShaderMaterial({
-    uniforms:{tEdges:{value:null}, tLines:{value:null}, strength:{value:0}, paper:{value:new THREE.Vector3()}, ink:{value:new THREE.Vector3()}},
+    uniforms:{tEdges:{value:null}, tLines:{value:null}, tHeat:{value:null}, heated:{value:0}, strength:{value:0}, paper:{value:new THREE.Vector3()}, ink:{value:new THREE.Vector3()}},
     vertexShader:fullscreen,
-    fragmentShader:`uniform sampler2D tEdges; uniform sampler2D tLines; uniform float strength; uniform vec3 paper, ink; varying vec2 vUv;
+    fragmentShader:`uniform sampler2D tEdges; uniform sampler2D tLines; uniform sampler2D tHeat; uniform float heated, strength; uniform vec3 paper, ink; varying vec2 vUv;
       void main(){
-        vec3 under=mix(paper,ink,strength*texture2D(tLines,vUv).r);
-        gl_FragColor=vec4(mix(under,ink,texture2D(tEdges,vUv).r),1.);
+        vec4 h=heated>.5?texture2D(tHeat,vUv):vec4(0.);
+        vec3 tint=h.a>0.?pow(h.rgb/h.a,vec3(1./2.2)):ink;
+        vec3 face=mix(paper,tint,.32*h.a), line=mix(ink,tint,h.a);
+        vec3 under=mix(face,line,strength*texture2D(tLines,vUv).r);
+        gl_FragColor=vec4(mix(under,line,texture2D(tEdges,vUv).r),1.);
       }`,
     depthTest:false, depthWrite:false, toneMapped:false});
   const passScene=new THREE.Scene(), passCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
@@ -347,11 +357,12 @@ export function create(canvas, {labels=true}={}) {
     const scale=Math.max(1,Math.min(SUPERSAMPLE,limit/size.x,limit/size.y,Math.sqrt(16e6/(size.x*size.y))));
     const w=Math.floor(size.x*scale), h=Math.floor(size.y*scale);
     if (!target||target.width!==w||target.height!==h) {
-      if (target) {target.depthTexture.dispose(); target.dispose(); edges.dispose(); lineTarget.dispose();}
+      if (target) {target.depthTexture.dispose(); target.dispose(); edges.dispose(); lineTarget.dispose(); heatTarget.dispose();}
       target=new THREE.WebGLRenderTarget(w,h,{depthTexture:new THREE.DepthTexture(w,h),minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter});
       // Linear filtering at each canvas pixel's centre is the mean of its 2x2 block.
       edges=new THREE.WebGLRenderTarget(w,h,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,depthBuffer:false});
       lineTarget=new THREE.WebGLRenderTarget(w,h,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
+      heatTarget=new THREE.WebGLRenderTarget(w,h,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
     }
     const background=scene.background, fog=scene.fog, shown=world.children.map(o=>o.visible);
     scene.background=null; scene.fog=null; scene.overrideMaterial=normals;
@@ -366,6 +377,21 @@ export function create(canvas, {labels=true}={}) {
       renderer.autoClear=false; renderer.render(scene,camera); renderer.autoClear=true;
       camera.layers.set(0);
     }
+    // The heat: every solid's depth first, pushed back a hair, then each heated solid in its
+    // colour, so a part in front of a heated one still hides it.
+    const heated=!!heat&&meshes.size>0;
+    if (heated) {
+      renderer.setRenderTarget(heatTarget); renderer.setClearColor(0x000000,0); renderer.clear();
+      scene.overrideMaterial=prepass; renderer.render(scene,camera); scene.overrideMaterial=null;
+      const swapped=[];
+      meshes.forEach((m,n)=> {
+        const h=m.userData.world?null:heat[n];
+        swapped.push([m,m.material,m.visible]);
+        if (h==null) m.visible=false; else m.material=heatMaterial(h);
+      });
+      renderer.autoClear=false; renderer.render(scene,camera); renderer.autoClear=true;
+      swapped.forEach(([m,material,visible])=>{m.material=material; m.visible=visible;});
+    }
     scene.background=background; scene.fog=fog; scene.overrideMaterial=null;
     world.children.forEach((o,i)=>{o.visible=shown[i];});
     const u=edgePass.uniforms;
@@ -375,6 +401,7 @@ export function create(canvas, {labels=true}={}) {
     renderer.setRenderTarget(null);
     const r=resolvePass.uniforms;
     r.tEdges.value=edges.texture; r.tLines.value=lineTarget.texture; r.strength.value=lines?meshLines.strength:0;
+    r.tHeat.value=heatTarget.texture; r.heated.value=heated?1:0;
     srgb(paper,r.paper.value); srgb(ink,r.ink.value);
     passQuad.material=resolvePass; renderer.render(passScene,passCamera);
   }

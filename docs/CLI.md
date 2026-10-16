@@ -1433,7 +1433,9 @@ solids' reflection strength), `cadex.look`, `cadex.occlusion` and
 occlusion and its surface detail, ADR-676), and `cadex.outliner.group` and
 `cadex.outliner.folded` (how the Outliner groups the parts, and which groups
 are folded), and `cadex.follow` (whether the viewport follows a playing
-design, ADR-693) — and the test fails if the page stores any other key. A picked
+design, ADR-693), `cadex.heat` (the heat colours Settings picks, ADR-722) and
+`cadex.activations.views` (which Activations and Network views are on,
+ADR-722) — and the test fails if the page stores any other key. A picked
 checkpoint, a scrubbed revision, a selected run, and the parts hidden or
 selected in the Outliner last only as long as the page.
 

@@ -246,10 +246,10 @@ def _assert_follows_the_spec(browser, server, size) -> None:
     assert m["smallest_font"] >= 12
     # Headings are sentence case, never uppercase.
     assert all(h["transform"] == "none" for h in m["headings"])
-    # 3. §12: a thin bar over the screen; the page never scrolls; the screen fills the rest.
+    # 3. §12: a thin status bar under the screen (ADR-722); the page never scrolls; the screen fills the rest.
     assert m["top"]["height"] <= 48, m["top"]
     assert m["scrollHeight"] <= m["innerHeight"], m["scrollHeight"]
-    assert m["screen"]["y"] >= m["top"]["bottom"] - 1 and round(m["screen"]["bottom"]) == m["innerHeight"]
+    assert m["screen"]["y"] <= 1 and m["top"]["y"] >= m["screen"]["bottom"] - 1 and round(m["top"]["bottom"]) == m["innerHeight"]
     # The 3D viewport's canvas fills its area's body.
     assert m["canvas"]["width"] >= 0.98 * m["model"]["width"] and m["canvas"]["height"] >= 0.98 * m["model"]["height"]
     if size == "desk":
@@ -267,7 +267,7 @@ def _assert_follows_the_spec(browser, server, size) -> None:
     # §6: on the phone one editor fills the screen, the 3D viewport first, and a tab bar picks it.
     assert m["mode"] == "tabs"
     assert [a["editor"] for a in m["areas"]] == ["view3d"]
-    assert m["tabs"] == ["view3d", "status", "view2d", "outliner", "activations"]
+    assert m["tabs"] == ["view3d", "status", "view2d", "outliner", "activations", "network", "settings"]
     assert m["canvas"]["width"] >= width - 1
 
 

@@ -42393,3 +42393,54 @@ the network's own outputs, the page's rebuilt commands match at r > 0.999 and
 Show in viewport paints exactly the six leg parts. `test_http_api.py` reaches
 both routes in their available and unavailable shapes.
 
+
+## ADR-722 — The dashboard's bar moves to the bottom, the scrubbers into the viewport's header, the network into its own editor, and a Settings editor returns (2026-10-16)
+
+**Context.** The owner asked, after ADR-720 and ADR-721: a **Settings**
+panel opened like any other, holding for now the activation colours, with a
+blue–white–red ramp by default instead of ADR-721's blue–violet–red–orange,
+other presets such as green–red, and colours that can be picked; the
+Activations views each on a switch; the network, which is a lot to take in,
+split into two views and given more room; a greyscale gizmo; the checkpoint
+and play scrubbers in the 3D viewport's header beside Fit; the top bar moved
+to the bottom as a status bar; and Show in viewport working in wireframe as
+well as shaded. An earlier Settings editor was removed when the menu bar
+took the settings (ADR-539); bringing one back is a direction change, made
+here at the owner's request.
+
+**Decision.**
+
+- **A status bar.** In the app, `#top` (the id kept: the CLI suite and
+  every link pins it) follows `#screen` and runs along the bottom, 32 px, as
+  Blender's does; its File, Revisions and View menus open upwards. The home
+  page keeps its top bar.
+- **Scrubbers in the header.** `#revision-timeline`, `#checkpoints` and
+  `#playback` move into the 3D viewport's tools after Fit, a row each that
+  ellipsizes its label and then wraps onto a second header row in a narrow
+  area; their status lines join `#model-status` over the view. An area's
+  header now wraps rather than clipping tools that do not fit.
+- **A greyscale gizmo.** `--axis-x/y/z` are removed; the letters name the
+  axes.
+- **`heat.js`**, one shared ramp of two or three colours, kept per browser
+  (`cadex.heat`), read by every painter at paint time and announced on
+  change: presets Blue–white–red (default), Green–red, Viridis and
+  Blue–red, or Custom.
+- **A Settings editor** (`settings.js`, `docs/DASHBOARD.md` §28) with the
+  preset, the number of colours, three pickers, a preview and Reset.
+- **Activations** gets Gauges, a new sideways **Bars** view and Drivers,
+  each a switch kept per browser. **A Network editor** takes the canvas:
+  **Layers** (ADR-721's heat map) and a new **Paths** view, the picked
+  motor's strongest units per layer by activation × gradient joined by what
+  flows between them, each a switch and sharing the area's height.
+- **Heat in wireframe**: the diagram's pass renders the heated parts into
+  their own target over every solid's depth; the resolve washes their faces
+  and draws their lines in their colour.
+
+**Evidence.** `test_dashboard_activations.py` now also switches the heat
+preset and sees the viewport's colours change, turns Bars on and counts its
+rows, and opens the Network editor and reads the paths, input to motor.
+`test_review_design.py` asserts the status bar is under the screen and
+reaches the bottom edge, and the seven phone tabs; `test_review_status.py`
+finds the scrubbers in the 3D viewport's header. Screenshots on orun7-cat
+(f1-g3, t = 4.6 s) checked the header, both network views maximised, the
+wireframe heat and the Green–red preset.

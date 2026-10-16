@@ -33,7 +33,7 @@
   // (`cadex app`) it is `p/<name>/` under the index, and NAME is that project.
   var NAME = (location.pathname.match(/\/p\/([^/]+)\/(?:index\.html)?$/) || [null, null])[1];
   var POLL_MS = 2000;
-  var ORDER = ['view3d', 'status', 'view2d', 'outliner', 'activations'];
+  var ORDER = ['view3d', 'status', 'view2d', 'outliner', 'activations', 'network', 'settings'];
   // The 3D viewport with the Outliner over Status beside it, as Blender has its Outliner over its
   // Properties; split an area for the 2D one.
   var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.75, 0.25], children: [{ editor: 'view3d' },
@@ -521,7 +521,7 @@
     var got = checkpointItems(), items = got.items, box = $('checkpoints');
     ckpt.items = items; ckpt.pending = got.pending;
     setHidden('checkpoints', !items.length);
-    if (!items.length) { ckpt.shown = null; ckpt.playing = null; return; }
+    if (!items.length) { setHidden('checkpoint-status', true); ckpt.shown = null; ckpt.playing = null; return; }
     var stems = items.map(function (item) { return item.stem; });
     if (ckpt.pinned && stems.indexOf(ckpt.pinned) < 0) ckpt.pinned = null;
     var index = ckpt.pinned ? stems.indexOf(ckpt.pinned) : items.length - 1, item = items[index];
@@ -530,7 +530,9 @@
     if (pick.value !== String(index)) pick.value = String(index);
     if (box.dataset.follow !== String(!ckpt.pinned)) box.dataset.follow = String(!ckpt.pinned);
     if (box.dataset.state !== item.state) box.dataset.state = item.state;
-    setText('checkpoint-label', checkpointName(item) + ' · ' + (index + 1) + '/' + items.length + (ckpt.pinned ? '' : ' · newest'));
+    $('checkpoint-status').dataset.state = item.state;
+    var named = checkpointName(item) + ' · ' + (index + 1) + '/' + items.length + (ckpt.pinned ? '' : ' · newest');
+    setText('checkpoint-label', named).title = named;
     var note = item.state === 'failed' ? 'rollout failed: ' + item.reason + (item.error ? ' — ' + item.error : '')
              : got.pending ? got.pending + ' newer checkpoint' + (got.pending > 1 ? 's' : '') + ' rolling out' : '';
     setText('checkpoint-status', note).title = note;
@@ -613,7 +615,7 @@
   function renderRevisionTimeline() {
     var box = $('revision-timeline'), stops = revisionStops(), on = source === 'revisions' && stops.length > 0;
     setHidden('revision-timeline', !on);
-    if (!on) return;
+    if (!on) { setHidden('revision-status', true); return; }
     var ordinal = revisionShown(), index = 0, current = state.review.accepted && state.review.accepted.revision;
     stops.forEach(function (s, i) { if (s.ordinal === ordinal) index = i; });
     var stop = stops[index], pick = $('revision-pick');
@@ -622,9 +624,11 @@
     if (box.dataset.follow !== String(rev.pinned == null)) box.dataset.follow = String(rev.pinned == null);
     var retained = !!stop.retained, stateName = retained ? 'retained' : 'missing';
     if (box.dataset.state !== stateName) box.dataset.state = stateName;
+    $('revision-status').dataset.state = stateName;
     box.dataset.ordinal = String(stop.ordinal);
-    setText('revision-label', 'revision ' + stop.ordinal + (stop.revision === current ? ' · current' : ' · ' + brief(stop.saved_at)) +
-            ' · ' + (index + 1) + '/' + stops.length + (rev.pinned == null ? ' · newest' : ''));
+    var named = 'revision ' + stop.ordinal + (stop.revision === current ? ' · current' : ' · ' + brief(stop.saved_at)) +
+                ' · ' + (index + 1) + '/' + stops.length + (rev.pinned == null ? ' · newest' : '');
+    setText('revision-label', named).title = named;
     var model = state.model && state.model.view === 'revision' && state.model.ordinal === stop.ordinal ? state.model : null, note;
     if (!retained) note = 'not shown: ' + (stop.retained_reason || 'its model was not retained');
     else if (!model) note = '';
@@ -988,9 +992,15 @@
     state.viewer = window.CadexViewer.create($('viewer'));
     state.gizmo = window.CadexGizmo.create(state.viewer, $('view3d-gizmo'), $('viewer'));
     state.activations = window.CadexActivations.create({ viewer: function () { return state.viewer; }, body: $('activations'),
-                                                         motors: $('activations-motors'), canvas: $('activations-network'),
+                                                         motors: $('activations-motors'), bars: $('activations-bars'),
                                                          detail: $('activations-detail'), status: $('activations-status'),
-                                                         toggle: $('activations-viewport') });
+                                                         toggle: $('activations-viewport'), views: $('activations-views'),
+                                                         network: $('network'), networkStatus: $('network-status'),
+                                                         layers: $('network-layers'), paths: $('network-paths'),
+                                                         networkViews: $('network-views'), ramp: document.querySelector('.activations-ramp .ramp-bar') });
+    state.settings = window.CadexSettings.create({ preset: $('settings-heat-preset'), count: $('settings-heat-count'),
+                                                   low: $('settings-heat-low'), mid: $('settings-heat-mid'), high: $('settings-heat-high'),
+                                                   preview: $('settings-heat-preview'), reset: $('settings-heat-reset') });
     state.outliner = window.CadexOutliner.create({ tree: $('outliner-tree'), filter: $('outliner-filter'), group: $('outliner-group'),
                                                    showAll: $('outliner-show-all'), summary: $('outliner-summary'), scope: $('model'),
                                                    viewer: function () { return state.viewer; } });

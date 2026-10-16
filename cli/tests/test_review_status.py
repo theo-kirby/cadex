@@ -253,7 +253,7 @@ STATUS = """(function () {
           areas: Array.from(document.querySelectorAll('#screen .area')).map(function (a) { return a.dataset.editor; }),
           tabs: Array.from(document.querySelectorAll('#screen .tab')).map(function (t) { return t.textContent; }),
           timelines_in_model: ['checkpoints', 'revision-timeline', 'playback'].every(function (id) {
-            return !!q('#model').querySelector('#' + id); })};
+            return !!q('#model-fit').parentElement.querySelector('#' + id); })};
 })()"""
 
 
@@ -439,7 +439,7 @@ def test_status_is_an_area_at_a_desk_a_tab_on_a_phone_and_docks_like_the_others(
         phone.evaluate("window.cadexReview.ready", await_promise=True)
         first = phone.evaluate(STATUS)
         # A phone has a tab per editor; the 3D one is first and nothing sits over its model.
-        assert first["tabs"] == ["3D", "Status", "2D", "Parts"] and first["areas"] == ["view3d"], first
+        assert first["tabs"] == ["3D", "Status", "2D", "Parts", "Motors", "Network", "Settings"] and first["areas"] == ["view3d"], first
         assert not first["in_model"] and first["timelines_in_model"]
         phone.click("#screen .tab[data-editor=status]")
         shown = phone.evaluate(STATUS)

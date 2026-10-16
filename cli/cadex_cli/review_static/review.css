@@ -13,14 +13,13 @@
   --rule: #3a3a3a; --rule-strong: #4a4a4a; --ink: #ededed; --ink-2: #9a9a9a; --accent: #dcdcdc;
   --ok: #8be0b0; --warn: #ffe08a; --bad: #ff9d9d; --info: #6ff0f0;
   --select: #3d5a80; --paper: #1b1b1b; --paper-ink: #d6d6d6;
-  --axis-x: #ff3352; --axis-y: #8bdc00; --axis-z: #2890ff;
   --fs-0: 12px; --fs-1: 14px; --fs-2: 17px; --fs-3: 22px;
   --font: system-ui, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
   --radius: 10px; --radius-sm: 8px; --radius-area: 6px; --bw: 1.5px;
   --gutter: var(--s5); --pad: var(--s4); --control: 32px; --tool: 24px;
-  --bar: 40px; --area-bar: 32px; --gap: 4px; --scrub: 160px;
+  --bar: 40px; --status-bar: 32px; --area-bar: 32px; --gap: 4px; --scrub: 160px;
 }
 :root[data-theme="light"] {
   color-scheme: light;
@@ -91,7 +90,10 @@ textarea:focus { outline: none; border-color: var(--rule-strong); }
 
 /* The screen: areas tiled edge to edge, a hairline gap between them (§12). */
 body.app { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
-#screen { flex: 1; min-height: 0; display: flex; padding: 0 var(--gap) var(--gap); }
+#screen { flex: 1; min-height: 0; display: flex; padding: var(--gap) var(--gap) 0; }
+/* In the app the bar is a status bar along the bottom (ADR-722), and its menus open upwards. */
+body.app header#top { min-height: var(--status-bar); padding: 0 var(--s3); }
+body.app .menu-panel { top: auto; bottom: calc(100% + 4px); }
 #screen > .split, #screen > .area { flex: 1 1 0 !important; }
 .split { display: flex; min-width: 0; min-height: 0; }
 .split-row { flex-direction: row; } .split-col { flex-direction: column; }
@@ -104,7 +106,7 @@ body.app { height: 100dvh; overflow: hidden; display: flex; flex-direction: colu
 #screen.resizing * { cursor: inherit; }
 .area { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
         background: var(--surface); border-radius: var(--radius-area); }
-.area-header { flex: none; display: flex; align-items: center; gap: var(--s1); height: var(--area-bar);
+.area-header { flex: none; display: flex; align-items: center; gap: var(--s1); min-height: var(--area-bar);
                padding: 0 var(--s1); background: var(--surface-2); font-size: var(--fs-0); cursor: grab; }
 #screen.dragging .area-header { cursor: grabbing; }
 .area-grip { flex: none; width: 10px; align-self: stretch; border-radius: 3px; cursor: grab;
@@ -117,7 +119,7 @@ body.app { height: 100dvh; overflow: hidden; display: flex; flex-direction: colu
 .area-header .segmented button:last-child { border-radius: 0 6px 6px 0; }
 .area-header .icon-button { padding: 0; }
 select.area-type { font-weight: 600; background: var(--surface-3); border-color: transparent; max-width: 9.5em; }
-.editor-tools { display: flex; align-items: center; gap: var(--s1); flex: 1; min-width: 0; overflow: hidden; }
+.editor-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); flex: 1; min-width: 0; overflow: hidden; padding: var(--s1) 0; }
 .editor-tools > select { max-width: 14em; }
 .area-actions { flex: none; display: flex; gap: 1px; }
 .editor-body { flex: 1; min-height: 0; position: relative; overflow: auto; }
@@ -132,8 +134,8 @@ select.area-type { font-weight: 600; background: var(--surface-3); border-color:
 #screen[data-mode="tabs"] { flex-direction: column; padding: 0; }
 #screen[data-mode="tabs"] > .area { border-radius: 0; }
 #screen[data-mode="tabs"] .area-header { cursor: default; }
-nav.tabs { flex: none; display: flex; gap: var(--s1); padding: var(--s1); background: var(--bg); }
-nav.tabs .tab { flex: 1; }
+nav.tabs { flex: none; display: flex; gap: var(--s1); padding: var(--s1); background: var(--bg); overflow-x: auto; }
+nav.tabs .tab { flex: 1 0 auto; padding: 0 var(--s2); }
 
 /* 3D viewport. */
 #model { overflow: hidden; background: var(--bg); }
@@ -149,11 +151,9 @@ canvas#viewer { display: block; width: 100%; height: 100%; touch-action: none; }
 #view3d-gizmo .gizmo-end { cursor: pointer; pointer-events: auto; }
 #view3d-gizmo .gizmo-end circle { stroke-width: 1.5; transition: r .12s; }
 #view3d-gizmo .gizmo-end text { font: 700 12px/1 var(--font); fill: #141414; pointer-events: none; }
-#view3d-gizmo [data-axis="x"] { --axis: var(--axis-x); } #view3d-gizmo [data-axis="y"] { --axis: var(--axis-y); }
-#view3d-gizmo [data-axis="z"] { --axis: var(--axis-z); }
-#view3d-gizmo .gizmo-stem { stroke: var(--axis); }
-#view3d-gizmo .gizmo-end[data-end^="+"] circle { fill: var(--axis); stroke: var(--axis); }
-#view3d-gizmo .gizmo-end[data-end^="-"] circle { fill: color-mix(in srgb, var(--axis) 22%, #141414); stroke: var(--axis); }
+#view3d-gizmo .gizmo-stem { stroke: #8f8f8f; }
+#view3d-gizmo .gizmo-end[data-end^="+"] circle { fill: #c9c9c9; stroke: #c9c9c9; }
+#view3d-gizmo .gizmo-end[data-end^="-"] circle { fill: #2a2a2a; stroke: #8f8f8f; }
 #view3d-gizmo .gizmo-end:hover circle { r: 11px; stroke: #ededed; }
 #view3d-gizmo .gizmo-end[data-end^="-"]:hover circle { r: 9px; }
 @media (prefers-reduced-motion: reduce) { #freshness[data-state="live"]::before { animation: none; } #view3d-gizmo * { transition: none; } }
@@ -161,6 +161,9 @@ canvas#viewer { display: block; width: 100%; height: 100%; touch-action: none; }
 #model-status { align-self: flex-start; max-width: 100%; padding: var(--s1) var(--s2); border-radius: var(--radius-area);
                 background: var(--surface); font-size: var(--fs-0); color: var(--ink-2); overflow-wrap: anywhere; }
 #model-status[data-state="loaded"] { display: none; }
+#checkpoint-status, #revision-status { align-self: flex-start; max-width: 100%; margin: 0; padding: var(--s1) var(--s2); border-radius: var(--radius-area);
+                background: var(--surface); font-size: var(--fs-0); color: var(--ink-2); overflow-wrap: anywhere; }
+#checkpoint-status[data-state="failed"] { color: var(--bad); } #revision-status[data-state="missing"] { color: var(--warn); }
 #model-status[data-state="missing"] { color: var(--warn); } #model-status[data-state="error"] { color: var(--bad); }
 /* Status (ADR-542; an editor since ADR-572): the stage chip in the area's header, the detail in its body. */
 /* Since ADR-606 it uses its area: real charts with axes, the latest evaluation and the runs. */
@@ -226,20 +229,17 @@ table.status-table { width: 100%; border-collapse: collapse; table-layout: auto;
 #status-activity-list li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
 #status-activity-list li[data-outcome="error"], #status-activity-list li[data-outcome="lost"] { color: var(--bad); }
 #status-activity-list li[data-outcome="running"] { color: var(--info); }
-.timelines { position: absolute; z-index: 1; left: var(--s2); right: var(--s2); bottom: var(--s2); display: flex; flex-direction: column; gap: var(--s1); }
-.timeline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2);
-            padding: var(--s1) var(--s2); background: color-mix(in srgb, var(--surface-2) 88%, transparent); border-radius: var(--radius-area); font-size: var(--fs-0); }
-.timeline button { min-height: var(--tool); height: var(--tool); font-size: var(--fs-0); padding: 0 var(--s2); }
-/* A scrubber never yields its width to a long label: below its floor the label wraps under it (ADR-556). */
+.timelines { position: absolute; z-index: 1; left: var(--s2); right: var(--s2); bottom: var(--s2); display: flex; flex-direction: column; gap: var(--s1); pointer-events: none; }
+/* The scrubbers ride in the 3D viewport's header after Fit (ADR-722), one row each, wrapping onto a
+   second header row when the area is narrow. */
+.view3d-play { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); flex: 1 1 320px; min-width: 0; }
+.timeline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); flex: 1 1 320px; min-width: 0; font-size: var(--fs-0); }
+.timeline button { flex: none; min-height: var(--tool); height: var(--tool); font-size: var(--fs-0); padding: 0 var(--s2); }
+/* A scrubber never yields its width to a long label: the label ellipsizes first (ADR-556). */
 .timeline input[type="range"] { flex: 1 1 var(--scrub); min-width: var(--scrub); height: var(--tool); margin: 0; accent-color: var(--accent); }
-.timeline output { min-width: 56px; text-align: right; }
-.timeline-name { color: var(--ink-2); }
-#checkpoint-label { min-width: 0; white-space: nowrap; font-family: var(--mono); }
-#checkpoint-status { flex-basis: 100%; margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
-#checkpoints[data-state="failed"] #checkpoint-status { color: var(--bad); }
-#revision-label { min-width: 0; white-space: nowrap; font-family: var(--mono); }
-#revision-status { flex-basis: 100%; margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
-#revision-timeline[data-state="missing"] #revision-status { color: var(--warn); }
+.timeline output { flex: none; min-width: 56px; text-align: right; }
+.timeline-name { flex: none; color: var(--ink-2); }
+#checkpoint-label, #revision-label { flex: 0 1 auto; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
 #revision-list li[data-retained] { cursor: pointer; }
 
 /* Activations (ADR-721, §27): a gauge per motor and the policy's network, in the heat ramp. */
@@ -250,7 +250,7 @@ table.status-table { width: 100%; border-collapse: collapse; table-layout: auto;
 .activations-ramp span:not(.ramp-bar) { position: absolute; top: 9px; transform: translateX(-50%); white-space: nowrap; }
 .activations-ramp span[style="left:0"] { transform: none; }
 .activations-ramp .ramp-bar { position: absolute; left: 0; right: 0; top: 0; height: 6px; border-radius: 3px;
-  background: linear-gradient(90deg, rgb(43,92,255) 0%, rgb(140,70,255) 45%, rgb(255,54,96) 80%, rgb(255,122,40) 100%); }
+  background: var(--rule); /* heat.js paints the chosen colours */ }
 #activations-motors { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: var(--s1); flex: none; }
 .gauge { margin: 0; padding: var(--s1) 0 2px; border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer;
          border: 1px solid var(--rule); text-align: center; box-shadow: inset 0 -2px 0 var(--heat, transparent); transition: box-shadow .12s; }
@@ -267,8 +267,36 @@ table.status-table { width: 100%; border-collapse: collapse; table-layout: auto;
 .gauge-network { fill: none; stroke: var(--ink); stroke-width: 1.5; }
 .gauge-value { font: 600 13px var(--font); fill: var(--ink); }
 .gauge-effort { font: 400 12px var(--mono); fill: var(--ink-2); }
-#activations-network { display: block; width: 100%; height: 220px; flex: none; border-radius: var(--radius-sm); background: #141414; touch-action: none; }
+#activations[data-gauges="false"] #activations-motors, #activations[data-bars="false"] #activations-bars,
+#activations[data-drivers="false"] #activations-detail { display: none; }
+/* The bars: a motor a row, its range a track filled from zero to the joint in its heat. */
+#activations-bars { display: grid; grid-template-columns: minmax(4.5em, max-content) minmax(80px, 1fr) minmax(9.5em, max-content); gap: 3px var(--s2); flex: none; align-items: center; }
+.mbar { display: contents; cursor: pointer; }
+.mbar-name { font-size: var(--fs-0); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mbar[data-selected="true"] .mbar-name { color: var(--ink); font-weight: 600; }
+.mbar-track { position: relative; height: 12px; border-radius: 6px; background: var(--rule); }
+.mbar[data-over="true"] .mbar-track { box-shadow: 0 0 0 1px var(--bad); }
+.mbar-fill { position: absolute; top: 0; bottom: 0; border-radius: 6px; }
+.mbar-zero { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--ink-2); }
+.mbar-command, .mbar-network { position: absolute; top: 50%; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; }
+.mbar-command { background: var(--info); }
+.mbar-network { width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 1.5px solid var(--ink); }
+.mbar-value { font: 400 var(--fs-0) var(--mono); color: var(--ink-2); white-space: nowrap; }
 #activations-detail .activations-pick { margin: 0 0 var(--s1); font-size: var(--fs-0); color: var(--ink-2); }
+/* The Network editor (ADR-722): its views share the area's height, each on the dark mat. */
+#network { padding: var(--s2) var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
+#network-status { margin: 0; color: var(--ink-2); font-size: var(--fs-0); flex: none; }
+#network-status[data-state="warn"] { color: var(--warn); }
+#network canvas { display: block; width: 100%; flex: 1 1 0; min-height: 160px; border-radius: var(--radius-sm); background: #141414; touch-action: none; }
+#network[data-layers="false"] #network-layers, #network[data-paths="false"] #network-paths { display: none; }
+/* Settings (ADR-722, §28): this browser's preferences, a group each. */
+#settings { padding: var(--s3) var(--s4); }
+.settings-group { max-width: 420px; }
+.settings-group .field select { max-width: 60%; }
+.settings-swatches { display: flex; gap: var(--s3); margin: var(--s2) 0; font-size: var(--fs-0); color: var(--ink-2); }
+.settings-swatches label { display: flex; align-items: center; gap: var(--s1); }
+.settings-swatches input[type="color"] { width: 36px; height: 24px; padding: 0; border: var(--bw) solid var(--rule); border-radius: 6px; background: none; cursor: pointer; }
+.settings-preview { height: 10px; border-radius: 5px; margin: var(--s2) 0; }
 ol.activations-drivers { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font: 400 var(--fs-0) var(--mono); max-width: 420px; }
 ol.activations-drivers li { display: grid; grid-template-columns: minmax(0, 1fr) 3.5em; gap: 2px var(--s2); }
 ol.activations-drivers .bar { grid-column: 1 / -1; height: 3px; border-radius: 2px; }
@@ -443,4 +471,5 @@ a.card:hover .thumb > .tile-frame, #spotlight:hover .thumb > .tile-frame { trans
   /* A dropdown spans the phone between the gutters rather than run off its edge. */
   .menu-panel { position: fixed; top: calc(var(--bar) + 4px); left: var(--gutter); right: var(--gutter);
                 min-width: 0; max-width: none; }
+  body.app .menu-panel { top: auto; bottom: calc(var(--status-bar) + 4px); max-height: 60vh; }
 }

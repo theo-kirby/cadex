@@ -420,12 +420,12 @@ SCRUBBER = """(function (box) {
   function rect(e) { var b = e.getBoundingClientRect(); return {x: b.x, y: b.y, right: b.right, bottom: b.bottom, w: b.width, h: b.height}; }
   function token(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
   var row = q('#' + box), pick = row.querySelector('input[type="range"]'), label = row.querySelector('output'),
-      status = row.querySelector('p'), name = row.querySelector('.timeline-name');
+      status = q(box === 'checkpoints' ? '#checkpoint-status' : '#revision-status'), name = row.querySelector('.timeline-name');
   return {theme: document.documentElement.dataset.theme, state: row.dataset.state, page_width: document.documentElement.scrollWidth,
           row: rect(row), pick: rect(pick), label: rect(label), name: rect(name), text: label.textContent,
-          label_clipped: label.scrollWidth > label.clientWidth, label_color: getComputedStyle(label).color,
+          label_clipped: label.scrollWidth > label.clientWidth, label_title: label.title, label_color: getComputedStyle(label).color,
           status_color: status.hidden ? null : getComputedStyle(status).color,
-          model: rect(q('#model')),
+          model: rect(q('#model')), area: rect(q('#model').closest('.area')),
           ink: token('--ink'), bad: token('--bad'), warn: token('--warn')};
 })(%s)"""
 
@@ -451,19 +451,20 @@ def _hex_rgb(value: str) -> str:
 
 
 def _assert_scrubber(m: dict, status_token: str | None) -> None:
-    """The row is in the viewport, its slider at least
+    """The row is in the 3D viewport's header (ADR-722), its slider at least
     ``SCRUB_PX`` wide and a touch target tall, beside nothing it covers, and
     its words in the theme's own colours."""
 
-    row, pick, label, name, model = m["row"], m["pick"], m["label"], m["name"], m["model"]
+    row, pick, label, name, model, area = m["row"], m["pick"], m["label"], m["name"], m["model"], m["area"]
     assert m["page_width"] <= 390
-    assert model["x"] <= row["x"] and row["right"] <= model["right"] and row["bottom"] <= model["bottom"]
+    assert area["x"] <= row["x"] and row["right"] <= area["right"] and area["y"] <= row["y"] and row["bottom"] <= model["y"] + 0.5
     assert pick["w"] >= SCRUB_PX, (m["text"], pick)
     assert pick["h"] >= 32  # the touch --tool height
     assert pick["x"] >= name["right"] and pick["right"] <= row["right"]
-    # The label sits after the slider on its row, or under it on the next.
+    # The label sits after the slider on its row, or under it on the next; where it is cut
+    # short, its title has it whole.
     assert label["x"] >= pick["right"] or label["y"] >= pick["bottom"], (label, pick)
-    assert label["right"] <= row["right"] and not m["label_clipped"]
+    assert label["right"] <= row["right"] + 0.5 and (not m["label_clipped"] or m["label_title"] == m["text"])
     assert m["label_color"] == _hex_rgb(m["ink"])
     assert m["status_color"] == (None if status_token is None else _hex_rgb(m[status_token]))
 
@@ -504,10 +505,10 @@ def test_both_scrubbers_keep_their_width_at_390px_in_either_theme(tmp_path, brow
         page.wait_for(PLAYING + " === 'walk.000040'", timeout=10)
         ready = page.evaluate(SCRUBBER % json.dumps("checkpoints"))
         _assert_scrubber(ready, None)
-        # The playback row below it is still inside the viewport.
+        # The playback row beside it is in the header too, above the view.
         play = page.evaluate("(function(){var b=document.getElementById('playback').getBoundingClientRect();"
-                             "return [b.bottom, document.getElementById('model').getBoundingClientRect().bottom];})()")
-        assert play[0] <= play[1]
+                             "return [b.bottom, document.getElementById('model').getBoundingClientRect().top];})()")
+        assert play[0] <= play[1] + 0.5
 
         page = _phone(browser, servers[1].url, theme)
         page.evaluate("window.cadexReview.setSource('revisions')", await_promise=True)

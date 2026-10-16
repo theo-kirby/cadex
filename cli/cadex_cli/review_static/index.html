@@ -20,6 +20,9 @@
 <link rel="icon" href="data:,">
 </head>
 <body class="app">
+<main id="screen" data-mode="areas"></main>
+<!-- The status bar (ADR-722): where you are, the menus, and whether the app is live, along the
+     bottom of the window as Blender has it; its menus open upwards. -->
 <header id="top">
   <div class="title">
     <a id="home" href="../../" title="All projects">Cadex</a>
@@ -131,7 +134,6 @@
     </button>
   </div>
 </header>
-<main id="screen" data-mode="areas"></main>
 
 <div id="editor-shelf" hidden>
   <section class="editor" id="editor-view3d" data-editor="view3d" data-title="3D viewport" data-short="3D">
@@ -154,14 +156,9 @@
         </optgroup>
       </select>
       <button id="model-fit" type="button">Fit</button>
-    </div>
-    <div class="editor-body" id="model">
-      <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas></div>
-      <!-- The navigation gizmo (ADR-720): the axes as the camera sees them; gizmo.js draws it. -->
-      <svg id="view3d-gizmo" data-view="" role="group" aria-label="View axes" hidden></svg>
-      <div class="timelines">
-        <!-- The model's own status, on its own surface above the scrubbers (ADR-557). -->
-        <div id="model-status" data-state="empty">no model loaded</div>
+      <!-- The scrubbers ride in the header, after Fit (ADR-722): the revision history's, a run's
+           checkpoints' and the rollout's own timeline. -->
+      <div class="view3d-play">
         <!-- The design's history (ADR-547): each stored revision's retained model (ADR-546), the one
              before it as a ghost and the parts whose digest changed tinted. Shown while the 3D
              viewport's source is the revision history; at the newest end it follows new revisions. -->
@@ -169,7 +166,6 @@
           <span class="timeline-name">Revision</span>
           <input id="revision-pick" type="range" min="0" max="0" step="1" value="0" aria-label="Revision">
           <output id="revision-label"></output>
-          <p id="revision-status" hidden></p>
         </div>
         <!-- A training run's checkpoints, each rolled out by the engine as it lands (ADR-544, ADR-545):
              the newest loops; the scrubber picks an older one, and back at the newest end it follows again. -->
@@ -177,7 +173,6 @@
           <span class="timeline-name">Checkpoint</span>
           <input id="checkpoint-pick" type="range" min="0" max="0" step="1" value="0" aria-label="Checkpoint">
           <output id="checkpoint-label"></output>
-          <p id="checkpoint-status" hidden></p>
         </div>
         <!-- A run's rollout trace plays here (orun2 D2.5); nothing is simulated in the page. -->
         <div id="playback" class="timeline" hidden>
@@ -187,6 +182,17 @@
           <!-- The follow camera: the view travels with the design while it plays (DASHBOARD.md §5). -->
           <button id="play-follow" type="button" aria-pressed="false" title="Follow the design as it moves">Follow</button>
         </div>
+      </div>
+    </div>
+    <div class="editor-body" id="model">
+      <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas></div>
+      <!-- The navigation gizmo (ADR-720): the axes as the camera sees them; gizmo.js draws it. -->
+      <svg id="view3d-gizmo" data-view="" role="group" aria-label="View axes" hidden></svg>
+      <!-- What the model and its scrubbers have to say, over the bottom left of the view (ADR-557). -->
+      <div class="timelines">
+        <div id="model-status" data-state="empty">no model loaded</div>
+        <p id="revision-status" hidden></p>
+        <p id="checkpoint-status" hidden></p>
       </div>
     </div>
   </section>
@@ -276,18 +282,69 @@
     </div>
   </section>
 
-  <!-- Activations (ADR-721, §27): the rollout's motors and its policy's network, frame by frame. -->
+  <!-- Activations (ADR-721, ADR-722, §27): the rollout's motors, frame by frame, as gauges, as bars
+       and by what drives the picked one; each view on its own switch. -->
   <section class="editor" id="editor-activations" data-editor="activations" data-title="Activations" data-short="Motors">
     <div class="editor-tools">
+      <span class="segmented" id="activations-views" role="group" aria-label="Views">
+        <button type="button" data-view="gauges" aria-pressed="true">Gauges</button>
+        <button type="button" data-view="bars" aria-pressed="false">Bars</button>
+        <button type="button" data-view="drivers" aria-pressed="true">Drivers</button>
+      </span>
       <button id="activations-viewport" type="button" aria-pressed="false"
-              title="Paint each motor and the parts it moves by its load, blue to red">Show in viewport</button>
+              title="Paint each motor and the parts it moves by its load">Show in viewport</button>
     </div>
-    <div class="editor-body" id="activations" data-viewport="off" data-match="">
+    <div class="editor-body" id="activations" data-viewport="off" data-match="" data-gauges="true" data-bars="false" data-drivers="true">
       <p id="activations-status" data-state="empty">Play a rollout in the 3D viewport to see its motors and its network.</p>
       <div class="activations-ramp" aria-hidden="true"><span class="ramp-bar"></span><span style="left:0">idle</span><span style="left:80%">rated</span><span style="left:100%">peak</span></div>
       <div id="activations-motors"></div>
-      <canvas id="activations-network" aria-label="The policy network's activations"></canvas>
+      <div id="activations-bars"></div>
       <div id="activations-detail"></div>
+    </div>
+  </section>
+
+  <!-- The policy's network (ADR-722, §27): its layers as a heat map, and the paths through them to
+       the picked motor; drawn by activations.js with the Activations editor's state. -->
+  <section class="editor" id="editor-network" data-editor="network" data-title="Network" data-short="Network">
+    <div class="editor-tools">
+      <span class="segmented" id="network-views" role="group" aria-label="Views">
+        <button type="button" data-view="layers" aria-pressed="true">Layers</button>
+        <button type="button" data-view="paths" aria-pressed="true">Paths</button>
+      </span>
+    </div>
+    <div class="editor-body" id="network" data-layers="true" data-paths="true">
+      <p id="network-status" data-state="empty">Play a rollout with a policy in the 3D viewport to see its network.</p>
+      <canvas id="network-layers" aria-label="The policy network's activations, layer by layer"></canvas>
+      <canvas id="network-paths" aria-label="The strongest paths through the network to the picked motor"></canvas>
+    </div>
+  </section>
+
+  <!-- This browser's preferences (ADR-722, §28); for now, the heat colours. Drawn by settings.js. -->
+  <section class="editor" id="editor-settings" data-editor="settings" data-title="Settings" data-short="Settings">
+    <div class="editor-tools"></div>
+    <div class="editor-body" id="settings">
+      <section class="settings-group">
+        <h2>Activation colours</h2>
+        <p class="muted small">The ramp a motor's load and a neuron's activity are painted in, idle to peak, in the Activations and Network editors and in the 3D viewport.</p>
+        <div class="field">
+          <label for="settings-heat-preset">Preset</label>
+          <select id="settings-heat-preset"></select>
+        </div>
+        <div class="field">
+          <span>Colours</span>
+          <span class="segmented" id="settings-heat-count" role="group" aria-label="Number of colours">
+            <button type="button" data-count="2" aria-pressed="false">Two</button>
+            <button type="button" data-count="3" aria-pressed="true">Three</button>
+          </span>
+        </div>
+        <div class="settings-swatches">
+          <label>Low <input type="color" id="settings-heat-low"></label>
+          <label>Middle <input type="color" id="settings-heat-mid"></label>
+          <label>High <input type="color" id="settings-heat-high"></label>
+        </div>
+        <div id="settings-heat-preview" class="settings-preview" aria-hidden="true"></div>
+        <div class="controls"><button id="settings-heat-reset" type="button">Reset</button></div>
+      </section>
     </div>
   </section>
 
@@ -295,7 +352,9 @@
 <script src="status.js"></script>
 <script src="outliner.js"></script>
 <script src="gizmo.js"></script>
+<script src="heat.js"></script>
 <script src="activations.js"></script>
+<script src="settings.js"></script>
 <script type="module" src="viewer.js"></script>
 </body>
 </html>

@@ -1,57 +1,60 @@
 // SPDX-FileCopyrightText: 2026 Cadex Authors
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// The Activations editor (ADR-721; docs/DASHBOARD.md §27): what the motors and the policy's
-// network are doing at the moment the 3D viewport's rollout is showing.
+// The Activations and Network editors (ADR-721, ADR-722; docs/DASHBOARD.md §27): what the motors
+// and the policy's network are doing at the moment the 3D viewport's rollout is showing.
 //
-//   Motors    one gauge per actuated joint: the needle is where the joint is, within its command
-//             range; a dot is the command the rollout recorded and a ring the command the network
-//             gives for this frame; the arc is the joint's effort against its rating, blue to red.
-//   Network   the policy's layers, inputs to motor commands, each neuron a cell in the same ramp.
-//             Pick a motor (its gauge or its output cell) to see the last layer's strongest
-//             contributions to it and which inputs drive it (input × gradient); hover a neuron to
-//             see what silencing it would do to each motor.
-//   Viewport  "Show in viewport" paints each motor's housing and the parts it moves in the ramp
-//             (review_scene.js setHeat); hovering a neuron paints its influence instead.
+//   Activations  the motors, each view on its own switch:
+//     Gauges     one per actuated joint: the needle is where the joint is, within its command
+//                range; a dot is the command the rollout recorded and a ring the command the
+//                network gives for this frame; the arc is the joint's effort against its rating.
+//     Bars       the same, one row per motor laid sideways, for a long list read at a glance.
+//     Drivers    which inputs drive the picked motor most (input × gradient).
+//   Network      the policy, each view on its own switch:
+//     Layers     every layer, inputs to motor commands, each neuron a cell in the heat colours;
+//                the picked motor's strongest last-layer contributions drawn to its output.
+//     Paths      the picked motor's strongest paths back through the layers to the inputs: a few
+//                neurons a layer, sized by how much they move its command, joined by what flows
+//                between them.
+//   Hovering a neuron in either shows what silencing it would do to each motor.
+//   Viewport     "Show in viewport" paints each motor's housing and the parts it moves in the heat
+//                colours (review_scene.js setHeat); hovering a neuron paints its influence instead.
 //
-// The network is the rollout's own policy (`api/policy/...`), run here on inputs rebuilt from
-// the trace: joint positions, velocities and efforts as recorded, the IMU's orientation from its
-// part's pose, its rate from the poses either side, the gait clock from the time. The trace is
-// kept at 25 fps and the policy runs faster behind a slew limit, so this is a reconstruction:
-// the header says how well the rebuilt commands match the recorded ones. Writes nothing.
+// The colours are heat.js's, which the Settings editor picks. The network is the rollout's own
+// policy (`api/policy/...`), run here on inputs rebuilt from the trace: joint positions,
+// velocities and efforts as recorded, the IMU's orientation from its part's pose, its rate from
+// the poses either side, the gait clock from the time. The trace is kept at 25 fps and the
+// policy runs faster behind a slew limit, so this is a reconstruction: the status line says how
+// well the rebuilt commands match the recorded ones. Writes nothing.
 (function () {
   'use strict';
 
   var SVG = 'http://www.w3.org/2000/svg';
   var DEG = 180 / Math.PI;
-  // The ramp, blue through violet to red, and the curve that takes a load onto it: 1 - e^(-k·u)
-  // with u = |effort| / rated, so the rating lands at 0.8 and the peak saturates rather than
-  // clipping. The same ramp colours the network's cells by |activation| / the layer's scale.
-  var STOPS = [[0, [43, 92, 255]], [0.45, [140, 70, 255]], [0.8, [255, 54, 96]], [1, [255, 122, 40]]];
+  var heat = window.CadexHeat;
+  // The curve that takes a load onto the heat colours: 1 - e^(-k·u) with u = |effort| / rated, so
+  // the rating lands at 0.8 and the peak saturates rather than clipping.
   var CURVE = -Math.log(1 - 0.8);
   // How quickly the viewport's heat follows a change, seconds: it rises and falls along this
   // curve rather than flickering frame to frame.
   var EASE_S = 0.12;
+  var KEY = 'cadex.activations.views';
 
   function curve(u) { return 1 - Math.exp(-CURVE * Math.max(0, u)); }
-  function rampRGB(t) {
-    t = Math.max(0, Math.min(1, t));
-    for (var i = 1; i < STOPS.length; i++) {
-      if (t <= STOPS[i][0]) {
-        var a = STOPS[i - 1], b = STOPS[i], f = (t - a[0]) / (b[0] - a[0]);
-        return a[1].map(function (v, k) { return Math.round(v + (b[1][k] - v) * f); });
-      }
-    }
-    return STOPS[STOPS.length - 1][1];
+  function rampHex(t) { return heat.hex(t); }
+  function rampCss(t) { return heat.css(t); }
+  function withAlpha(hex, a) {
+    var n = parseInt(hex.slice(1), 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a.toFixed(2) + ')';
   }
-  function rampHex(t) { var c = rampRGB(t); return (c[0] << 16) | (c[1] << 8) | c[2]; }
-  function rampCss(t) { var c = rampRGB(t); return 'rgb(' + c[0] + ',' + c[1] + ',' + c[2] + ')'; }
   function el(tag, attrs, ns) {
     var node = ns ? document.createElementNS(SVG, tag) : document.createElement(tag);
     Object.keys(attrs || {}).forEach(function (k) { node.setAttribute(k, attrs[k]); });
     return node;
   }
   function shortName(joint) { return String(joint || '').replace(/^j_/, '').replace(/_/g, ' '); }
+  function shown(node) { return !!(node && node.isConnected && node.offsetParent); }
+
 
   // -- the network ---------------------------------------------------------------------------
   function decode(b64) {
@@ -108,13 +111,15 @@
     var self = this;
     return Array.prototype.map.call(tanhOut, function (v, m) { return v * self.scale[m] + self.bias[m]; });
   };
-  // d command_m / d input (normalised), by backpropagation through the frame's pre-activations.
-  Network.prototype.gradient = function (frame, m) {
-    var last = this.layers.length - 1, t = frame.post[last][m];
+  // d command_m by backpropagation through the frame's pre-activations: against the (normalised)
+  // inputs, against each hidden layer's activations (post) and each layer's pre-activations (z).
+  Network.prototype.gradients = function (frame, m) {
+    var last = this.layers.length - 1, t = frame.post[last][m], post = [], z = [];
     var g = new Float32Array(this.layers[last].m); g[m] = (1 - t * t) * this.scale[m];
     for (var l = last; l >= 0; l--) {
       var L = this.layers[l], below = new Float32Array(L.n);
-      if (l < last) for (var q = 0; q < L.m; q++) g[q] *= this.dact(frame.pre[l][q]);
+      if (l < last) { post[l] = Float32Array.from(g); for (var q = 0; q < L.m; q++) g[q] *= this.dact(frame.pre[l][q]); }
+      z[l] = g;
       for (var i = 0; i < L.n; i++) {
         var s = 0, row = i * L.m;
         for (var k = 0; k < L.m; k++) s += L.W[row + k] * g[k];
@@ -122,8 +127,9 @@
       }
       g = below;
     }
-    return g;
+    return { input: g, post: post, z: z };
   };
+  Network.prototype.gradient = function (frame, m) { return this.gradients(frame, m).input; };
   // Each motor's command with hidden neuron (layer l, index j) silenced, minus as it is.
   Network.prototype.ablate = function (frame, l, j) {
     var a = Float32Array.from(frame.post[l]); a[j] = 0;
@@ -186,33 +192,64 @@
     return sx > 0 && sy > 0 ? sxy / Math.sqrt(sx * sy) : null;
   }
 
-  // -- the editor ------------------------------------------------------------------------------
+  // -- the editors -----------------------------------------------------------------------------
+  var WARM = [255, 80, 100], COOL = [90, 130, 255];
+  function sign(c, a) { var k = c > 0 ? WARM : COOL; return 'rgba(' + k[0] + ',' + k[1] + ',' + k[2] + ',' + a.toFixed(2) + ')'; }
+
   function create(o) {
-    var viewer = o.viewer, body = o.body;
-    var motorsBox = o.motors, canvas = o.canvas, detail = o.detail, status = o.status, toggle = o.toggle;
+    var viewer = o.viewer, body = o.body, netBody = o.network;
+    var motorsBox = o.motors, barsBox = o.bars, detail = o.detail, status = o.status, toggle = o.toggle;
+    var layersCanvas = o.layers, pathsCanvas = o.paths;
     var policyUrl = null, playback = null, policy = null, net = null, inputs = null;
     var frames = [], scales = [], match = [], gauges = [], selected = 0, hover = null, frameAt = 0, blendAt = null;
-    var showInViewport = false, eased = {}, easedAt = 0, ticket = 0, cellBoxes = [];
+    var showInViewport = false, eased = {}, easedAt = 0, ticket = 0, cellBoxes = [], pathNodes = [], grads = null;
+
+    // -- which views show: each its own switch, kept by this browser -----------------------------
+    var views = { gauges: true, bars: false, drivers: true, layers: true, paths: true };
+    try { var kept = JSON.parse(localStorage.getItem(KEY) || 'null'); if (kept) Object.keys(views).forEach(function (k) { if (typeof kept[k] === 'boolean') views[k] = kept[k]; }); } catch (_) { /* defaults */ }
+    function applyViews() {
+      [[o.views, body], [o.networkViews, netBody]].forEach(function (pair) {
+        if (!pair[0] || !pair[1]) return;
+        pair[0].querySelectorAll('button[data-view]').forEach(function (b) {
+          b.setAttribute('aria-pressed', String(views[b.dataset.view]));
+          pair[1].dataset[b.dataset.view] = String(views[b.dataset.view]);
+        });
+      });
+    }
+    [o.views, o.networkViews].forEach(function (group) {
+      if (!group) return;
+      group.addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-view]'); if (!b) return;
+        views[b.dataset.view] = !views[b.dataset.view];
+        try { localStorage.setItem(KEY, JSON.stringify(views)); } catch (_) { /* this visit only */ }
+        applyViews(); render();
+      });
+    });
+    applyViews();
 
     toggle.addEventListener('click', function () {
       showInViewport = !showInViewport;
       toggle.setAttribute('aria-pressed', String(showInViewport));
       eased = {}; paintViewport(true);
     });
+    function paintRamp() { if (o.ramp) o.ramp.style.background = heat.gradient(); }
+    paintRamp();
+    heat.onChange(function () { paintRamp(); render(); paintViewport(true); });
 
     function say(text, state) { status.textContent = text; status.dataset.state = state || ''; status.hidden = !text; }
+    function netSay(text, state) { if (!o.networkStatus) return; o.networkStatus.textContent = text; o.networkStatus.dataset.state = state || ''; }
 
     function setPlayback(served) {
       ticket++;
       playback = served && served.available ? served : null;
       var url = playback && playback.policy;
-      gauges = []; motorsBox.textContent = '';
+      gauges = []; motorsBox.textContent = ''; if (barsBox) barsBox.textContent = '';
       if (!playback) { reset('Play a rollout in the 3D viewport — a checkpoint or a run’s own — to see its motors and its network.'); return; }
       buildGauges();
       if (!url) { dropNetwork('This rollout has no policy file beside it, so only its motors are shown.'); setFrame(0, 0, 0); return; }
       if (url === policyUrl && policy) { attach(policy); return; }
       var mine = ticket; policyUrl = url; policy = null; net = null;
-      say('loading the policy…', 'loading');
+      say('loading the policy…', 'loading'); netSay('loading the policy…', 'loading');
       fetch(url, { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (served) {
         if (mine !== ticket) return;
         if (!served.available) { dropNetwork('The policy could not be read: ' + served.reason); return; }
@@ -220,10 +257,13 @@
       }).catch(function (e) { if (mine === ticket) dropNetwork('The policy could not be loaded: ' + e.message); });
     }
     function reset(text) {
-      policyUrl = null; policy = null; net = null; frames = []; playback = null;
-      say(text, 'empty'); detail.textContent = ''; drawNetwork(); paintViewport(true);
+      policyUrl = null; policy = null; net = null; frames = []; playback = null; grads = null;
+      say(text, 'empty'); netSay(text, 'empty'); detail.textContent = ''; drawLayers(); drawPaths(); paintViewport(true);
     }
-    function dropNetwork(text) { policy = null; net = null; frames = []; say(text, 'warn'); detail.textContent = ''; drawNetwork(); }
+    function dropNetwork(text) {
+      policy = null; net = null; frames = []; grads = null;
+      say(text, 'warn'); netSay(text, 'warn'); detail.textContent = ''; drawLayers(); drawPaths();
+    }
 
     function attach(served) {
       policy = served; net = new Network(served); inputs = new Inputs(served, playback);
@@ -250,13 +290,14 @@
       var mean = known.length ? known.reduce(function (a, b) { return a + b; }, 0) / known.length : null;
       body.dataset.match = mean == null ? '' : mean.toFixed(2);
       var shape = [served.network.layers[0][0]].concat(served.network.layers.map(function (s) { return s[1]; })).join(' → ');
-      say((served.label ? served.label + ' · ' : '') + shape + (mean == null ? '' : ' · rebuilt commands match the recorded ones at r ' + mean.toFixed(2))
-          + (inputs.missing.length ? ' · not rebuilt: ' + inputs.missing.join(', ') : ''), 'ready');
+      var line = (served.label ? served.label + ' · ' : '') + shape + (mean == null ? '' : ' · rebuilt commands match the recorded ones at r ' + mean.toFixed(2))
+          + (inputs.missing.length ? ' · not rebuilt: ' + inputs.missing.join(', ') : '');
+      say(line, 'ready'); netSay(line, 'ready');
       gauges.forEach(function (g, m) { g.box.title = g.joint + (match[m] == null ? '' : ' · rebuilt vs recorded r ' + match[m].toFixed(2)); });
       setFrame(frameAt, frameAt, 0);
     }
 
-    // -- motors ----------------------------------------------------------------------------
+    // -- motors: gauges and bars -------------------------------------------------------------
     var R = 34, CX = 50, CY = 48, SWEEP = 270, START = 135;
     function polar(deg, r) { var a = deg * Math.PI / 180; return [CX + r * Math.cos(a), CY + r * Math.sin(a)]; }
     function arc(a0, a1, r) {
@@ -266,6 +307,7 @@
     }
     function buildGauges() {
       (playback.channels || []).forEach(function (c, m) {
+        var name = shortName(c.joint || String(c.actuator).split('/')[0]);
         var box = el('figure', { class: 'gauge', 'data-motor': String(m), 'data-joint': c.joint || '' });
         var svg = el('svg', { viewBox: '0 0 100 100', 'aria-hidden': 'true' }, true);
         var track = el('path', { class: 'gauge-track', d: arc(START, START + SWEEP, R) }, true);
@@ -278,11 +320,23 @@
         svg.appendChild(track); svg.appendChild(load); svg.appendChild(cmd); svg.appendChild(pred);
         svg.appendChild(needle); svg.appendChild(el('circle', { class: 'gauge-hub', cx: CX, cy: CY, r: 3 }, true));
         svg.appendChild(value); svg.appendChild(effort);
-        var caption = el('figcaption'); caption.textContent = shortName(c.joint || String(c.actuator).split('/')[0]);
+        var caption = el('figcaption'); caption.textContent = name;
         box.appendChild(svg); box.appendChild(caption);
         box.addEventListener('click', function () { selected = m; render(); });
         motorsBox.appendChild(box);
+        // The same motor laid sideways: its name, the range as a track filled from zero to the
+        // joint, the recorded command a dot and the network's a ring, and the angle and load.
+        var row = el('div', { class: 'mbar', 'data-motor': String(m) });
+        var label = el('span', { class: 'mbar-name' }); label.textContent = name;
+        var barTrack = el('span', { class: 'mbar-track' }), fill = el('span', { class: 'mbar-fill' });
+        var zeroTick = el('span', { class: 'mbar-zero' }), bcmd = el('span', { class: 'mbar-command' }), bnet = el('span', { class: 'mbar-network' });
+        barTrack.appendChild(fill); barTrack.appendChild(zeroTick); barTrack.appendChild(bcmd); barTrack.appendChild(bnet);
+        var readout = el('span', { class: 'mbar-value' });
+        row.appendChild(label); row.appendChild(barTrack); row.appendChild(readout);
+        row.addEventListener('click', function () { selected = m; render(); });
+        if (barsBox) barsBox.appendChild(row);
         gauges.push({ box: box, load: load, needle: needle, cmd: cmd, pred: pred, value: value, effort: effort,
+                      row: row, fill: fill, zero: zeroTick, bcmd: bcmd, bnet: bnet, readout: readout,
                       joint: c.joint || String(c.actuator), low: Number(c.low), high: Number(c.high),
                       rated: Number(c.effort_rated) || null, unit: c.joint_unit || c.unit || '' });
       });
@@ -291,6 +345,7 @@
       var span = g.high - g.low || 1, t = Math.max(-0.04, Math.min(1.04, (v - g.low) / span));
       return START + SWEEP * t;
     }
+    function fraction(g, v) { var span = g.high - g.low || 1; return Math.max(0, Math.min(1, (v - g.low) / span)); }
     function lerp(rows, lo, hi, f, m) {
       var a = rows && rows[lo], b = rows && rows[hi];
       if (!a || a[m] == null) return null;
@@ -300,34 +355,60 @@
       var g = gauges[m], e = blendAt && lerp(playback.efforts, blendAt.lo, blendAt.hi, blendAt.f, m);
       return e == null || !g.rated ? null : Math.abs(e) / g.rated;
     }
+    // What a motor reads at this moment, for the gauges and the bars alike.
+    function reading(m) {
+      var g = gauges[m], lo = blendAt.lo, hi = blendAt.hi, influence = hoverInfluence();
+      var u = loadOf(m);
+      return { q: lerp(playback.joints, lo, hi, blendAt.f, m), c: (playback.commands[hi] || playback.commands[lo] || [])[m],
+               n: frames[lo] ? frames[lo].command[m] : null, u: u,
+               heat: influence ? influence[m] : u == null ? null : curve(u),
+               note: influence ? 'Δ ' + Math.round(hover.delta[m]) + '°' : u == null ? '' : Math.round(u * 100) + '% rated',
+               deg: /deg/.test(g.unit) ? '°' : '' };
+    }
     function paintGauges() {
-      var influence = hoverInfluence();
       gauges.forEach(function (g, m) {
-        var lo = blendAt.lo, hi = blendAt.hi, f = blendAt.f;
-        var q = lerp(playback.joints, lo, hi, f, m), c = (playback.commands[hi] || playback.commands[lo] || [])[m];
-        var u = loadOf(m), heat = influence ? influence[m] : u == null ? null : curve(u);
+        var r = reading(m);
         var zero = angleOf(g, Math.max(g.low, Math.min(g.high, 0)));
-        if (q != null) {
-          var a = angleOf(g, q), tip = polar(a, R - 6);
+        if (r.q != null) {
+          var a = angleOf(g, r.q), tip = polar(a, R - 6);
           g.needle.setAttribute('x2', tip[0].toFixed(2)); g.needle.setAttribute('y2', tip[1].toFixed(2));
           g.load.setAttribute('d', Math.abs(a - zero) > 0.5 ? arc(zero, a, R) : '');
-          g.value.textContent = Math.round(q) + (/deg/.test(g.unit) ? '°' : '');
+          g.value.textContent = Math.round(r.q) + r.deg;
         }
-        g.load.style.stroke = heat == null ? 'var(--ink-2)' : rampCss(heat);
-        g.box.style.setProperty('--heat', heat == null ? 'transparent' : rampCss(heat));
-        if (c != null) { var pc = polar(angleOf(g, c), R); g.cmd.setAttribute('cx', pc[0].toFixed(2)); g.cmd.setAttribute('cy', pc[1].toFixed(2)); }
-        g.cmd.style.display = c == null ? 'none' : '';
-        var n = frames[lo] && frames[lo].command[m];
-        if (n != null) { var pn = polar(angleOf(g, n), R); g.pred.setAttribute('cx', pn[0].toFixed(2)); g.pred.setAttribute('cy', pn[1].toFixed(2)); }
-        g.pred.style.display = n == null ? 'none' : '';
-        g.effort.textContent = influence ? 'Δ ' + Math.round(hover.delta[m]) + '°' : u == null ? '' : Math.round(u * 100) + '% rated';
-        g.effort.style.fill = heat == null ? '' : rampCss(heat);
+        g.load.style.stroke = r.heat == null ? 'var(--ink-2)' : rampCss(r.heat);
+        g.box.style.setProperty('--heat', r.heat == null ? 'transparent' : rampCss(r.heat));
+        if (r.c != null) { var pc = polar(angleOf(g, r.c), R); g.cmd.setAttribute('cx', pc[0].toFixed(2)); g.cmd.setAttribute('cy', pc[1].toFixed(2)); }
+        g.cmd.style.display = r.c == null ? 'none' : '';
+        if (r.n != null) { var pn = polar(angleOf(g, r.n), R); g.pred.setAttribute('cx', pn[0].toFixed(2)); g.pred.setAttribute('cy', pn[1].toFixed(2)); }
+        g.pred.style.display = r.n == null ? 'none' : '';
+        g.effort.textContent = r.note;
+        g.effort.style.fill = r.heat == null ? '' : rampCss(r.heat);
         g.box.dataset.selected = String(m === selected);
-        g.box.dataset.over = String(u != null && u > 1);
+        g.box.dataset.over = String(r.u != null && r.u > 1);
+      });
+    }
+    function paintBars() {
+      gauges.forEach(function (g, m) {
+        var r = reading(m), z = fraction(g, Math.max(g.low, Math.min(g.high, 0)));
+        if (r.q != null) {
+          var q = fraction(g, r.q);
+          g.fill.style.left = (100 * Math.min(z, q)).toFixed(2) + '%';
+          g.fill.style.width = (100 * Math.abs(q - z)).toFixed(2) + '%';
+        }
+        g.zero.style.left = (100 * z).toFixed(2) + '%';
+        g.fill.style.background = r.heat == null ? 'var(--ink-2)' : rampCss(r.heat);
+        g.bcmd.style.left = r.c == null ? '' : (100 * fraction(g, r.c)).toFixed(2) + '%';
+        g.bcmd.hidden = r.c == null;
+        g.bnet.style.left = r.n == null ? '' : (100 * fraction(g, r.n)).toFixed(2) + '%';
+        g.bnet.hidden = r.n == null;
+        g.readout.textContent = (r.q == null ? '—' : Math.round(r.q) + r.deg) + (r.note ? ' · ' + r.note : '');
+        g.readout.style.color = r.heat == null ? '' : rampCss(r.heat);
+        g.row.dataset.selected = String(m === selected);
+        g.row.dataset.over = String(r.u != null && r.u > 1);
       });
     }
 
-    // -- the network -----------------------------------------------------------------------
+    // -- the network: layers -----------------------------------------------------------------
     // Columns: inputs, each hidden layer folded into a block of cells, the motor commands.
     function columns() {
       if (!net) return [];
@@ -342,56 +423,61 @@
       var weights = cols.map(function (c) { return c.kind === 'hidden' ? Math.sqrt(c.n) / 4 : 1; });
       var total = weights.reduce(function (a, b) { return a + b; }, 0), usable = width - 2 * pad - gap * (cols.length - 1), x = pad;
       cols.forEach(function (c, i) {
-        var w = usable * weights[i] / total, h = height - 2 * pad - 14;
+        var w = usable * weights[i] / total, h = height - 2 * pad - 16;
         var across = c.kind === 'hidden' ? Math.max(1, Math.round(Math.sqrt(c.n * w / h))) : 1;
         var down = Math.ceil(c.n / across), cw = w / across, ch = h / down;
-        boxes.push({ col: c, x: x, y: pad + 14, w: w, h: h, across: across, down: down, cw: cw, ch: ch });
+        boxes.push({ col: c, x: x, y: pad + 16, w: w, h: h, across: across, down: down, cw: cw, ch: ch });
         x += w + gap;
       });
       return boxes;
     }
     function cellCentre(b, i) { return [b.x + (i % b.across + 0.5) * b.cw, b.y + (Math.floor(i / b.across) + 0.5) * b.ch]; }
-    function valuesOf(b, frame) {
-      if (b.col.kind === 'input') return frame.input;
-      return frame.post[b.col.layer];
+    function valuesOf(b, frame) { return b.col.kind === 'input' ? frame.input : frame.post[b.col.layer]; }
+    function cellHeat(kind, layer, v) {
+      if (kind === 'input') return Math.min(1, Math.abs(v) / 3);
+      if (kind === 'output') return Math.abs(v);
+      return Math.min(1, Math.abs(v) / scales[layer]);
     }
-    function cellHeat(b, v) {
-      if (b.col.kind === 'input') return Math.min(1, Math.abs(v) / 3);
-      if (b.col.kind === 'output') return Math.abs(v);
-      return Math.min(1, Math.abs(v) / scales[b.col.layer]);
-    }
-    function drawNetwork() {
+    function prepare(canvas) {
       var ctx = canvas.getContext('2d'), dpr = Math.min(2, window.devicePixelRatio || 1);
       var w = canvas.clientWidth || 300, h = canvas.clientHeight || 200;
       if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+      ctx.font = '12px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif'); ctx.textBaseline = 'top';
+      return { ctx: ctx, w: w, h: h, ink2: getComputedStyle(document.documentElement).getPropertyValue('--ink-2').trim() || '#999' };
+    }
+    function drawLayers() {
+      if (!layersCanvas) return;
       cellBoxes = [];
-      var frame = frames[frameAt];
+      if (!views.layers || !shown(layersCanvas)) return;
+      var p = prepare(layersCanvas), ctx = p.ctx, frame = frames[frameAt];
       if (!net || !frame) return;
-      var boxes = layout(w, h); cellBoxes = boxes;
-      var ink2 = getComputedStyle(document.documentElement).getPropertyValue('--ink-2').trim() || '#999';
-      ctx.font = '12px ' + (getComputedStyle(document.body).fontFamily || 'sans-serif'); ctx.fillStyle = ink2; ctx.textBaseline = 'top';
+      var boxes = layout(p.w, p.h); cellBoxes = boxes;
+      ctx.fillStyle = p.ink2;
       var names = { input: 'inputs ' + net.layers[0].n, output: 'motors ' + net.layers[net.layers.length - 1].m };
-      boxes.forEach(function (b) { ctx.fillText(b.col.kind === 'hidden' ? String(b.col.n) : names[b.col.kind], b.x, 0); });
+      // Each column's name over it, or just its width where the name would run into the next.
+      boxes.forEach(function (b) {
+        var name = b.col.kind === 'hidden' ? 'layer ' + (b.col.layer + 1) + ' · ' + b.col.n : names[b.col.kind];
+        ctx.fillText(ctx.measureText(name).width > b.w + 14 ? String(b.col.n) : name, b.x, 0);
+      });
       var outBox = boxes[boxes.length - 1], lastHidden = boxes[boxes.length - 2], attribution = selectedAttribution(frame);
       boxes.forEach(function (b) {
         var values = valuesOf(b, frame), gapPx = b.cw > 4 && b.ch > 4 ? 1 : 0;
         for (var i = 0; i < b.col.n; i++) {
-          var p = cellCentre(b, i), heat = cellHeat(b, values[i]);
-          if (b.col.kind === 'input' && attribution) heat = Math.min(1, Math.abs(attribution.inputs[i]) / attribution.inputMax);
-          ctx.fillStyle = rampCss(heat); ctx.globalAlpha = 0.18 + 0.82 * heat;
-          ctx.fillRect(p[0] - b.cw / 2 + gapPx / 2, p[1] - b.ch / 2 + gapPx / 2, Math.max(1, b.cw - gapPx), Math.max(1, b.ch - gapPx));
+          var c = cellCentre(b, i), t = cellHeat(b.col.kind, b.col.layer, values[i]);
+          if (b.col.kind === 'input' && attribution) t = Math.min(1, Math.abs(attribution.inputs[i]) / attribution.inputMax);
+          ctx.fillStyle = rampCss(t); ctx.globalAlpha = 0.18 + 0.82 * t;
+          ctx.fillRect(c[0] - b.cw / 2 + gapPx / 2, c[1] - b.ch / 2 + gapPx / 2, Math.max(1, b.cw - gapPx), Math.max(1, b.ch - gapPx));
         }
         ctx.globalAlpha = 1;
       });
       // The picked motor: the last hidden layer's strongest contributions to it, as lines over the
-      // cells, red where a neuron pushes the command up and blue where it pulls it down.
+      // cells, warm where a neuron pushes the command up and cool where it pulls it down.
       if (attribution && lastHidden) {
         var target = cellCentre(outBox, selected);
         attribution.top.slice().reverse().forEach(function (t) {
           var from = cellCentre(lastHidden, t.j), k = Math.abs(t.c) / attribution.max;
-          ctx.strokeStyle = (t.c > 0 ? 'rgba(255,80,100,' : 'rgba(90,130,255,') + (0.35 + 0.65 * k).toFixed(2) + ')';
-          ctx.lineWidth = 0.75 + 2.25 * k;
+          ctx.strokeStyle = sign(t.c, 0.35 + 0.65 * k); ctx.lineWidth = 0.75 + 2.25 * k;
           ctx.beginPath(); ctx.moveTo(from[0] + lastHidden.cw / 2, from[1]);
           ctx.bezierCurveTo(from[0] + lastHidden.cw / 2 + 30, from[1], target[0] - outBox.cw / 2 - 30, target[1], target[0] - outBox.cw / 2, target[1]);
           ctx.stroke();
@@ -401,22 +487,111 @@
       }
       var s = cellCentre(outBox, selected);
       ctx.strokeStyle = '#ededed'; ctx.lineWidth = 1.5; ctx.strokeRect(outBox.x + 0.75, s[1] - outBox.ch / 2 + 0.75, outBox.cw - 1.5, outBox.ch - 1.5);
-      if (hover) { var hb = boxes[hover.box], hp = cellCentre(hb, hover.i); ctx.strokeStyle = '#ededed'; ctx.strokeRect(hp[0] - hb.cw / 2, hp[1] - hb.ch / 2, hb.cw, hb.ch); }
+      if (hover) { var hb = boxes[hover.layer + 1], hp = cellCentre(hb, hover.i); ctx.strokeStyle = '#ededed'; ctx.strokeRect(hp[0] - hb.cw / 2, hp[1] - hb.ch / 2, hb.cw, hb.ch); }
+    }
+    // The picked motor's gradients at this frame, computed once a render and shared.
+    function gradsOf(frame) {
+      if (!net || !frame || selected == null) return null;
+      if (!grads || grads.frame !== frame || grads.m !== selected) grads = { frame: frame, m: selected, g: net.gradients(frame, selected) };
+      return grads.g;
     }
     function selectedAttribution(frame) {
-      if (!net || !frame || selected == null) return null;
+      var G = gradsOf(frame); if (!G) return null;
       var l = net.layers.length - 1, L = net.layers[l], a = frame.post[l - 1], c = [];
       for (var j = 0; j < L.n; j++) c.push({ j: j, c: a[j] * L.W[j * L.m + selected] });
       c.sort(function (x, y) { return Math.abs(y.c) - Math.abs(x.c); });
-      var top = c.slice(0, 16), max = Math.abs(top[0] && top[0].c) || 1;
-      var g = net.gradient(frame, selected), inputs = [], inputMax = 0;
-      for (var i = 0; i < g.length; i++) { inputs.push(g[i] * frame.input[i]); inputMax = Math.max(inputMax, Math.abs(inputs[i])); }
+      var top = c.slice(0, 16), max = Math.abs(top[0] && top[0].c) || 1, inputs = [], inputMax = 0;
+      for (var i = 0; i < G.input.length; i++) { inputs.push(G.input[i] * frame.input[i]); inputMax = Math.max(inputMax, Math.abs(inputs[i])); }
       return { top: top, max: max, inputs: inputs, inputMax: inputMax || 1 };
     }
+
+    // -- the network: paths ------------------------------------------------------------------
+    // For the picked motor, each column's few units that move its command most (activation ×
+    // gradient: the inputs, then each hidden layer), largest first, joined by what flows between
+    // them (the lower unit's activation × the weight × the upper unit's gradient), to the motor.
+    var PER_COLUMN = 8;
+    function paths(frame) {
+      var G = gradsOf(frame); if (!G) return null;
+      var last = net.layers.length - 1, cols = [];
+      function pick(values, rel) {
+        var all = []; for (var i = 0; i < rel.length; i++) all.push({ i: i, r: rel[i], v: values[i] });
+        all.sort(function (x, y) { return Math.abs(y.r) - Math.abs(x.r); });
+        return all.slice(0, PER_COLUMN);
+      }
+      var relIn = []; for (var i = 0; i < frame.input.length; i++) relIn.push(frame.input[i] * G.input[i]);
+      cols.push({ kind: 'input', units: pick(frame.input, relIn) });
+      for (var l = 0; l < last; l++) {
+        var rel = []; for (var j = 0; j < frame.post[l].length; j++) rel.push(frame.post[l][j] * G.post[l][j]);
+        cols.push({ kind: 'hidden', layer: l, units: pick(frame.post[l], rel) });
+      }
+      cols.push({ kind: 'output', units: [{ i: selected, r: 1, v: frame.post[last][selected] }] });
+      // The flow between consecutive columns' units: column c feeds layer c's pre-activations.
+      var links = [];
+      for (var c = 0; c + 1 < cols.length; c++) {
+        var L = net.layers[c], below = cols[c].units, above = cols[c + 1].units, gz = G.z[c], from = c === 0 ? frame.input : frame.post[c - 1], pair = [], max = 0;
+        below.forEach(function (u) {
+          above.forEach(function (v) { var f = from[u.i] * L.W[u.i * L.m + v.i] * gz[v.i]; pair.push({ a: u, b: v, f: f }); max = Math.max(max, Math.abs(f)); });
+        });
+        links.push({ pairs: pair, max: max || 1 });
+      }
+      return { cols: cols, links: links };
+    }
+    function drawPaths() {
+      if (!pathsCanvas) return;
+      pathNodes = [];
+      if (!views.paths || !shown(pathsCanvas)) return;
+      var p = prepare(pathsCanvas), ctx = p.ctx, frame = frames[frameAt], P = net && frame ? paths(frame) : null;
+      if (!P) return;
+      var labelW = Math.min(150, Math.max.apply(null, P.cols[0].units.map(function (u) { return ctx.measureText(policy.observations[u.i] || '').width; })) + 12);
+      var g = gauges[selected], motor = shortName(g ? g.joint : 'motor ' + selected) + '  ' + Math.round(frame.command[selected]) + '°';
+      var rightW = Math.min(160, ctx.measureText(motor).width + 16), top = 22, bottom = p.h - 8;
+      var x0 = labelW + 10, x1 = p.w - rightW - 10, n = P.cols.length;
+      var xs = P.cols.map(function (_, c) { return x0 + (x1 - x0) * c / (n - 1); });
+      // Each unit's place, largest first from the top; the motor centred.
+      P.cols.forEach(function (col, c) {
+        var max = Math.max.apply(null, col.units.map(function (u) { return Math.abs(u.r); })) || 1, k = col.units.length;
+        col.units.forEach(function (u, i) {
+          u.x = xs[c]; u.y = col.kind === 'output' ? (top + bottom) / 2 : top + (bottom - top) * (i + 0.5) / PER_COLUMN;
+          u.rad = col.kind === 'output' ? 10 : 3 + 7 * Math.sqrt(Math.abs(u.r) / max);
+          u.share = Math.abs(u.r) / max;
+        });
+      });
+      ctx.fillStyle = p.ink2;
+      P.cols.forEach(function (col, c) {
+        var name = col.kind === 'input' ? 'inputs' : col.kind === 'output' ? 'motor' : 'layer ' + (col.layer + 1);
+        ctx.textAlign = 'center'; ctx.fillText(name, xs[c], 2);
+      });
+      // Links under the units, faint to strong; a link under a twentieth of its pair's largest is left out.
+      P.links.forEach(function (L) {
+        L.pairs.sort(function (x, y) { return Math.abs(x.f) - Math.abs(y.f); }).forEach(function (pr) {
+          var k = Math.abs(pr.f) / L.max; if (k < 0.05) return;
+          ctx.strokeStyle = sign(pr.f, 0.15 + 0.75 * k); ctx.lineWidth = 0.5 + 3.5 * k;
+          var mx = (pr.a.x + pr.b.x) / 2;
+          ctx.beginPath(); ctx.moveTo(pr.a.x, pr.a.y); ctx.bezierCurveTo(mx, pr.a.y, mx, pr.b.y, pr.b.x, pr.b.y); ctx.stroke();
+        });
+      });
+      P.cols.forEach(function (col) {
+        col.units.forEach(function (u) {
+          var t = col.kind === 'input' ? u.share : cellHeat(col.kind, col.layer, u.v);
+          ctx.beginPath(); ctx.arc(u.x, u.y, u.rad, 0, 2 * Math.PI);
+          ctx.fillStyle = rampCss(t); ctx.fill();
+          ctx.lineWidth = hover && col.kind === 'hidden' && hover.layer === col.layer && hover.i === u.i ? 2.5 : 1.25;
+          ctx.strokeStyle = ctx.lineWidth > 2 ? '#ededed' : sign(u.r, 0.95); ctx.stroke();
+          pathNodes.push({ x: u.x, y: u.y, r: Math.max(6, u.rad), kind: col.kind, layer: col.layer, i: u.i, v: u.v, rel: u.r });
+        });
+      });
+      ctx.textBaseline = 'middle'; ctx.fillStyle = '#d6d6d6';
+      ctx.textAlign = 'right';
+      P.cols[0].units.forEach(function (u) { ctx.fillText(policy.observations[u.i] || ('input ' + u.i), u.x - u.rad - 6, u.y); });
+      ctx.textAlign = 'left';
+      var out = P.cols[n - 1].units[0]; ctx.fillText(motor, out.x + out.rad + 6, out.y);
+      ctx.textAlign = 'start'; ctx.textBaseline = 'top';
+    }
+
     function renderDetail() {
-      var frame = frames[frameAt];
       detail.textContent = '';
-      if (!net || !frame || !gauges[selected]) return;
+      var frame = frames[frameAt];
+      if (!views.drivers || !net || !frame || !gauges[selected]) return;
       var g = gauges[selected], att = selectedAttribution(frame);
       var head = el('p'); head.className = 'activations-pick';
       head.textContent = shortName(g.joint) + ': network ' + Math.round(frame.command[selected]) + '°' +
@@ -429,39 +604,56 @@
         var li = el('li'), bar = el('span'), name = el('span'), share = el('span');
         name.textContent = policy.observations[x.i]; share.textContent = Math.round(100 * Math.abs(x.v) / total) + '%';
         bar.className = 'bar'; bar.style.width = (100 * Math.abs(x.v) / Math.abs(order[0].v || 1)).toFixed(1) + '%';
-        bar.style.background = x.v > 0 ? 'rgb(255,70,90)' : 'rgb(70,110,255)';
+        bar.style.background = sign(x.v, 1);
         li.appendChild(name); li.appendChild(share); li.appendChild(bar); list.appendChild(li);
       });
       detail.appendChild(list);
     }
 
-    // Hover: what silencing that neuron would do to each motor, as heat on the gauges and parts.
-    canvas.addEventListener('pointermove', function (e) {
-      var r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, found = null;
-      cellBoxes.forEach(function (b, bi) {
-        if (found || x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) return;
-        var i = Math.floor((y - b.y) / b.ch) * b.across + Math.floor((x - b.x) / b.cw);
-        if (i >= 0 && i < b.col.n) found = { box: bi, i: i, b: b };
+    // Hover: what silencing a hidden neuron would do to each motor, as heat on the gauges and parts.
+    function setHover(layer, i) {
+      var frame = frames[frameAt];
+      if (!net || !frame) return null;
+      var delta = net.ablate(frame, layer, i), span = gauges.map(function (g) { return Math.abs(g.high - g.low) || 1; });
+      hover = { layer: layer, i: i, delta: delta, heat: delta.map(function (d, m) { return Math.min(1, Math.abs(d) / span[m] * 4); }) };
+      return delta;
+    }
+    function hoverTitle(layer, i) {
+      return 'layer ' + (layer + 1) + ' neuron ' + i + ' · ' + frames[frameAt].post[layer][i].toFixed(2) + ' · silenced, it would move each motor by Δ';
+    }
+    if (layersCanvas) {
+      layersCanvas.addEventListener('pointermove', function (e) {
+        var r = layersCanvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, found = null;
+        cellBoxes.forEach(function (b) {
+          if (found || x < b.x || x > b.x + b.w || y < b.y || y > b.y + b.h) return;
+          var i = Math.floor((y - b.y) / b.ch) * b.across + Math.floor((x - b.x) / b.cw);
+          if (i >= 0 && i < b.col.n) found = { i: i, b: b };
+        });
+        var before = hover && hover.layer + ':' + hover.i;
+        if (!found || found.b.col.kind !== 'hidden') {
+          hover = null;
+          layersCanvas.title = found ? (found.b.col.kind === 'input' ? policy.observations[found.i] : shortName(gauges[found.i] && gauges[found.i].joint)) : '';
+        } else { setHover(found.b.col.layer, found.i); layersCanvas.title = hoverTitle(found.b.col.layer, found.i); }
+        if ((hover && hover.layer + ':' + hover.i) !== before) render();
       });
-      var before = hover && hover.box + ':' + hover.i;
-      if (!found || found.b.col.kind !== 'hidden') {
-        hover = null;
-        canvas.title = found ? (found.b.col.kind === 'input' ? policy.observations[found.i] : shortName(gauges[found.i] && gauges[found.i].joint)) : '';
-      } else {
-        var frame = frames[frameAt], delta = net.ablate(frame, found.b.col.layer, found.i);
-        var span = gauges.map(function (g) { return Math.abs(g.high - g.low) || 1; });
-        hover = { box: found.box, i: found.i, layer: found.b.col.layer, delta: delta,
-                  heat: delta.map(function (d, m) { return Math.min(1, Math.abs(d) / span[m] * 4); }) };
-        canvas.title = 'layer ' + (found.b.col.layer + 1) + ' neuron ' + found.i + ' · ' + frame.post[found.b.col.layer][found.i].toFixed(2) + ' · silenced, it would move each motor by Δ';
-      }
-      if ((hover && hover.box + ':' + hover.i) !== before) render();
-    });
-    canvas.addEventListener('pointerleave', function () { if (hover) { hover = null; render(); } });
-    // A press on a motor's output cell picks it, as its gauge does.
-    canvas.addEventListener('pointerdown', function (e) {
-      var r = canvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, b = cellBoxes[cellBoxes.length - 1];
-      if (b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { selected = Math.min(b.col.n - 1, Math.floor((y - b.y) / b.ch)); render(); }
-    });
+      layersCanvas.addEventListener('pointerleave', function () { if (hover) { hover = null; render(); } });
+      // A press on a motor's output cell picks it, as its gauge does.
+      layersCanvas.addEventListener('pointerdown', function (e) {
+        var r = layersCanvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, b = cellBoxes[cellBoxes.length - 1];
+        if (b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { selected = Math.min(b.col.n - 1, Math.floor((y - b.y) / b.ch)); render(); }
+      });
+    }
+    if (pathsCanvas) {
+      pathsCanvas.addEventListener('pointermove', function (e) {
+        var r = pathsCanvas.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, found = null;
+        pathNodes.forEach(function (u) { if (!found && Math.hypot(x - u.x, y - u.y) <= u.r) found = u; });
+        var before = hover && hover.layer + ':' + hover.i;
+        if (found && found.kind === 'hidden') { setHover(found.layer, found.i); pathsCanvas.title = hoverTitle(found.layer, found.i); }
+        else { hover = null; pathsCanvas.title = found && found.kind === 'input' ? policy.observations[found.i] + ' · ' + found.v.toFixed(2) : ''; }
+        if ((hover && hover.layer + ':' + hover.i) !== before) render();
+      });
+      pathsCanvas.addEventListener('pointerleave', function () { if (hover) { hover = null; render(); } });
+    }
     function hoverInfluence() { return hover ? hover.heat : null; }
 
     // -- the viewport ----------------------------------------------------------------------
@@ -473,44 +665,50 @@
       var t = performance.now() / 1000, k = now ? 1 : 1 - Math.exp(-(t - easedAt) / EASE_S); easedAt = t;
       gauges.forEach(function (g, m) {
         var u = loadOf(m), target = influence ? influence[m] : u == null ? 0 : curve(u);
-        var heat = eased[m] == null || now ? target : eased[m] + (target - eased[m]) * k; eased[m] = heat;
+        var h = eased[m] == null || now ? target : eased[m] + (target - eased[m]) * k; eased[m] = h;
         var own = parts[g.joint] || {};
-        (own.segment || []).forEach(function (name) { if (map[name] == null) map[name] = rampHex(heat); });
+        (own.segment || []).forEach(function (name) { if (map[name] == null) map[name] = rampHex(h); });
         // A motor's housing shows its own joint, over the segment it rides on.
-        (own.motor || []).forEach(function (name) { map[name] = rampHex(heat); });
+        (own.motor || []).forEach(function (name) { map[name] = rampHex(h); });
       });
       body.dataset.viewport = Object.keys(map).length ? 'on' : 'unmapped';
       v.setHeat(Object.keys(map).length ? map : null);
     }
 
     function render() {
-      if (!playback || !blendAt) return;
-      paintGauges(); drawNetwork(); renderDetail(); paintViewport(false);
+      if (!playback || !blendAt) { drawLayers(); drawPaths(); return; }
+      if (shown(body)) {
+        if (views.gauges) paintGauges();
+        if (views.bars) paintBars();
+        renderDetail();
+      }
+      drawLayers(); drawPaths(); paintViewport(false);
     }
     // The 3D viewport's playback calls this on every seek: between frames lo and hi at f.
     function setFrame(lo, hi, f) {
       if (!playback) return;
       frameAt = lo; blendAt = { lo: lo, hi: hi, f: f };
-      if (!body.isConnected || !body.offsetParent) { paintViewport(false); return; }
+      if (!shown(body) && !shown(netBody)) { paintViewport(false); return; }
       render();
     }
-    if (window.ResizeObserver) new ResizeObserver(function () { drawNetwork(); }).observe(canvas);
+    // A resize redraws, and so does an editor brought into an area, rather than at the next seek.
+    if (window.ResizeObserver) {
+      var ro = new ResizeObserver(function () { render(); });
+      [layersCanvas, pathsCanvas, body, netBody].forEach(function (c) { if (c) ro.observe(c); });
+    }
 
     return {
       setPlayback: setPlayback, setFrame: setFrame,
       setViewport: function (on) { if (!!on !== showInViewport) toggle.click(); return showInViewport; },
       select: function (m) { selected = m; render(); return selected; },
-      hoverNeuron: function (layer, i) {
-        if (!net || !frames[frameAt]) return null;
-        var delta = net.ablate(frames[frameAt], layer, i), span = gauges.map(function (g) { return Math.abs(g.high - g.low) || 1; });
-        hover = { box: layer + 1, i: i, layer: layer, delta: delta, heat: delta.map(function (d, m) { return Math.min(1, Math.abs(d) / span[m] * 4); }) };
-        render(); return delta;
-      },
+      hoverNeuron: function (layer, i) { var d = setHover(layer, i); render(); return d; },
       clearHover: function () { hover = null; render(); },
+      paths: function () { var f = frames[frameAt]; var P = net && f ? paths(f) : null; return P && P.cols.map(function (c) { return { kind: c.kind, layer: c.layer, units: c.units.map(function (u) { return u.i; }) }; }); },
+      views: function () { return Object.assign({}, views); },
       state: function () {
         return { policy: policyUrl, ready: !!net, frame: frameAt, selected: selected, motors: gauges.length,
                  match: match.slice(), missing: inputs ? inputs.missing.slice() : [], viewport: showInViewport,
-                 command: frames[frameAt] ? frames[frameAt].command.slice() : null };
+                 command: frames[frameAt] ? frames[frameAt].command.slice() : null, views: Object.assign({}, views) };
       }
     };
   }
