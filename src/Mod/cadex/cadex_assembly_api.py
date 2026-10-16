@@ -2545,6 +2545,8 @@ class AssemblyDomainAPI:
         armature_kg: float | None = None,
         friction_loss_nmm: float | None = None,
         friction_loss_n: float | None = None,
+        limit_time_constant_s: float | None = None,
+        limit_damping_ratio: float | None = None,
         label: str = "",
     ) -> DomainValue:
         """Give one joint the resistance a real one has, which MuJoCo's has not.
@@ -2574,6 +2576,11 @@ class AssemblyDomainAPI:
         one coordinate of each, so it needs an explicit
         ``motion_type='angular'`` or ``'linear'`` exactly as ``api.motion``
         does.
+
+        ``limit_time_constant_s`` and ``limit_damping_ratio`` stiffen the
+        joint's limit stop (MuJoCo ``solreflimit``, ADR-724); the default,
+        0.02 s, lets a light joint fold far past it. Smaller is stiffer; at
+        least two solver steps, on a limited joint.
 
         Loop-closing, coupled (``screw``, ``gears``, ``belt``,
         ``rack_pinion``), ``fixed``, ``ball`` and suppressed joints are all
@@ -2605,12 +2612,43 @@ class AssemblyDomainAPI:
             ("friction_loss_nmm", friction_loss_nmm),
             ("friction_loss_n", friction_loss_n),
         )
-        if damping is None and armature is None and friction_loss is None:
+        limit_time_constant = (
+            None
+            if limit_time_constant_s is None
+            else _number(
+                operation,
+                "limit_time_constant_s",
+                limit_time_constant_s,
+                minimum=0.0,
+                maximum=1.0,
+                strict_minimum=True,
+            )
+        )
+        limit_ratio = (
+            None
+            if limit_damping_ratio is None
+            else _number(
+                operation,
+                "limit_damping_ratio",
+                limit_damping_ratio,
+                minimum=0.0,
+                maximum=10.0,
+                strict_minimum=True,
+            )
+        )
+        if (
+            damping is None
+            and armature is None
+            and friction_loss is None
+            and limit_time_constant is None
+            and limit_ratio is None
+        ):
             raise _error(
                 operation,
-                "damping/armature/friction_loss",
-                "declares nothing: give at least one of damping, armature or "
-                "friction loss, or leave the joint out entirely. An empty "
+                "damping/armature/friction_loss/limit",
+                "declares nothing: give at least one of damping, armature, "
+                "friction loss or a limit stiffness, or leave the joint out "
+                "entirely. An empty "
                 "joint_dynamics reads like a joint that was configured and is "
                 "a joint that was not",
             )
@@ -2622,6 +2660,8 @@ class AssemblyDomainAPI:
             "armature_kg": None,
             "friction_loss_nmm": None,
             "friction_loss_n": None,
+            "limit_time_constant_s": limit_time_constant,
+            "limit_damping_ratio": limit_ratio,
         }
         for entry in (damping, armature, friction_loss):
             if entry is not None:

@@ -1159,6 +1159,20 @@ Ranked by how quietly they fail.
     composing the exported body tree down to world and comparing it with the
     solved placements, which is what `test_dynamics_connector_sides_live.py`
     does and what no fixture built forwards ever could.
+22. **A light joint's stop is a weak spring, and a bench at standing load
+    does not show it** (ADR-724). MuJoCo's joint limit is a soft constraint
+    whose default `solreflimit` (0.02 s, damping ratio 1) scales with the
+    joint's own effective inertia. On orun7-cat's 144 g passive paw pin
+    (1.7e-4 kg·m²) 0.5/2/4 N·m pushed it 6.3/25.2/50.4° past its stop; in a
+    rollout the paw folded up to 72° past a 45° stop. A standing check
+    passed. `joint_dynamics(limit_time_constant_s=, limit_damping_ratio=)`
+    sets the stop (`solref_limit` on the joint; `0.004` gave 1° at 2 N·m),
+    and the model evidence carries it as `limit_solref`. MuJoCo silently
+    raises a time constant below two solver steps to that floor
+    (`refsafe`), so a smaller one is refused
+    (`limit_time_constant_below_solver_floor`), and so is a limit stiffness
+    on a joint with no limits. Check a passive joint's stop under the load
+    the gait puts on it, not the load standing puts on it.
 
 ## 6. Open questions
 

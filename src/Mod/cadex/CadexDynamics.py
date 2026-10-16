@@ -2985,6 +2985,12 @@ def _resolve_coordinate(
     )
 
 
+#: MuJoCo's own ``solreflimit`` (time constant in seconds, damping ratio),
+#: which a joint keeps unless its joint_dynamics says otherwise (ADR-724).
+DEFAULT_LIMIT_TIME_CONSTANT_S = 0.02
+DEFAULT_LIMIT_DAMPING_RATIO = 1.0
+
+
 def joint_dynamics_records(
     entries: Sequence[Mapping[str, Any]],
     tree: Mapping[str, Any],
@@ -3037,6 +3043,34 @@ def joint_dynamics_records(
             )
             or 0.0
         )
+        limit_time_constant = entry.get("limit_time_constant_s")
+        limit_ratio = entry.get("limit_damping_ratio")
+        limit_solref = None
+        if limit_time_constant is not None or limit_ratio is not None:
+            # ADR-724: a stop's stiffness means nothing on a joint that has
+            # no stop, and a value that changes nothing reads like one that
+            # was configured.
+            if record.get("limits") is None:
+                raise DynamicsError(
+                    f"{_coordinate_context(joint, motion)} has no limits, so a "
+                    "limit stiffness on it would set nothing.",
+                    reason="limit_stiffness_without_limits",
+                    correction=(
+                        "Declare the joint's limits on api.joint, or drop "
+                        "limit_time_constant_s and limit_damping_ratio."
+                    ),
+                    observed={"joint": joint, "motion_type": motion},
+                )
+            limit_solref = [
+                float(
+                    DEFAULT_LIMIT_TIME_CONSTANT_S
+                    if limit_time_constant is None
+                    else limit_time_constant
+                ),
+                float(
+                    DEFAULT_LIMIT_DAMPING_RATIO if limit_ratio is None else limit_ratio
+                ),
+            ]
         records.append(
             {
                 "joint": joint,
@@ -3044,6 +3078,7 @@ def joint_dynamics_records(
                 "mujoco_joint": str(record["mujoco_joint"]),
                 "mujoco_type": str(record["mujoco_type"]),
                 "joint_kind": str(record["kind"]),
+                "limit_solref": limit_solref,
                 "damping_si": (
                     damping_nms_per_rad(damping) if angular else damping_ns_per_m(damping)
                 ),
@@ -3057,6 +3092,8 @@ def joint_dynamics_records(
                     "damping": damping,
                     "armature": armature,
                     "friction_loss": friction,
+                    "limit_time_constant_s": limit_time_constant,
+                    "limit_damping_ratio": limit_ratio,
                 },
             }
         )
@@ -4944,6 +4981,34 @@ def build_model(
         native_joint.damping = [float(record["damping_si"]), 0.0, 0.0]
         native_joint.armature = float(record["armature_si"])
         native_joint.frictionloss = float(record["friction_loss_si"])
+        if record["limit_solref"] is not None:
+            # MuJoCo's ``refsafe`` raises a time constant below two solver
+            # steps to that floor and says nothing, so the stop would be
+            # softer than declared. Refused instead (ADR-724).
+            time_constant = float(record["limit_solref"][0])
+            floor = 2.0 * float(time_step_s)
+            if time_constant < floor * (1.0 - 1.0e-9):
+                raise DynamicsError(
+                    f"Joint {record['mujoco_joint']!r} asks for a limit time "
+                    f"constant of {time_constant:g} s; the solver step of "
+                    f"{float(time_step_s):g} s cannot resolve one below "
+                    f"{floor:g} s, and MuJoCo would silently use {floor:g}.",
+                    reason="limit_time_constant_below_solver_floor",
+                    correction=(
+                        f"Use limit_time_constant_s >= {floor:g}, or a finer "
+                        "solver_step_s if the stop must be stiffer."
+                    ),
+                    observed={
+                        "joint": str(record["mujoco_joint"]),
+                        "limit_time_constant_s": time_constant,
+                        "solver_step_s": float(time_step_s),
+                        "floor_s": floor,
+                    },
+                )
+            native_joint.solref_limit = [
+                time_constant,
+                float(record["limit_solref"][1]),
+            ]
 
     # Actuators, after every joint exists and before the compile. Each is a
     # MuJoCo actuator on exactly one joint coordinate, with the gear pinned
@@ -6862,6 +6927,11 @@ def model_evidence(
                 "damping_si": float(record["damping_si"]),
                 "armature_si": float(record["armature_si"]),
                 "friction_loss_si": float(record["friction_loss_si"]),
+                "limit_solref": (
+                    None
+                    if record.get("limit_solref") is None
+                    else [float(value) for value in record["limit_solref"]]
+                ),
                 "declared": dict(record["declared"]),
             }
             for record in built["joint_dynamics"]
@@ -6941,7 +7011,8 @@ _MJCF_COUNT_FIELDS = (
 _MJCF_MODEL_FIELDS = (
     "body_mass", "body_inertia", "body_ipos", "body_iquat", "body_pos",
     "body_quat", "jnt_type", "jnt_bodyid", "jnt_pos", "jnt_axis", "jnt_range",
-    "jnt_limited", "jnt_qposadr", "jnt_dofadr", "eq_type", "eq_obj1id",
+    "jnt_limited", "jnt_solref", "jnt_solimp", "jnt_qposadr", "jnt_dofadr",
+    "eq_type", "eq_obj1id",
     "eq_obj2id", "eq_data", "eq_active0", "eq_solref", "eq_solimp",
     "geom_type", "geom_size", "geom_pos", "geom_quat", "geom_friction",
     "geom_solref", "geom_solimp", "geom_condim", "geom_margin", "geom_gap",

@@ -330,6 +330,13 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   loop (measured on `proof-loader`: 4.6 mm with none, 0.0005 mm with 5 kg).
   A coupled motor wants its rotor inertia the same way (`armature_kgmm2`,
   a NEMA17's 5.4): without it a velocity gain stretches the belt.
+- **Joint stops** (ADR-724). `assembly.joint_dynamics(joint,
+  limit_time_constant_s=, limit_damping_ratio=)` sets how hard the joint's
+  declared limits stop it (MuJoCo's `solreflimit`). The default, 0.02 s and
+  ratio 1, makes a light passive joint's stop a weak spring (a 144 g paw
+  pin went 25° past its stop at 2 N·m); smaller is stiffer. The time
+  constant must be at least two solver steps (0.004 s at the default
+  step), and the joint must have limits; either is refused otherwise.
   The fit sweep moves every coordinate a coupling ties to the swept joint
   -- an unlimited motor, pulley or screw follows, a limited joint holds --
   and reports those followers `passive`.

@@ -38650,7 +38650,7 @@ ADR-260 by its title.
 `src/Mod/cadex/cadex_tests/test_licensing_compliance.py`, both suites in
 full (`docs/DOCS-AUDIT.md` §Tests).
 
-Verified against source: 2026-10-10. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-16. Provenance: [Cadex-new] (ADR-061).
 
 ## ADR-629 — Owner answers to the docs audit: no knee-in-thigh rule, the wolf benchmark is gone, the unused protocol ops stay (2026-10-10)
 
@@ -42836,3 +42836,45 @@ only for a rig with an appendage; the API carries the list and omits it
 when empty; a task refuses a stranger; on a MuJoCo model the bundle carries
 it, the rig names the parent, and a missing link, a non-chain and a metric
 without an appendage are refused by reason.
+
+## ADR-724 — A joint's stop is as stiff as its joint_dynamics says (2026-10-16, orun7)
+
+**Context.** MuJoCo's joint limit is a soft constraint; its default
+`solreflimit` (time constant 0.02 s, damping ratio 1) scales with the
+joint's own effective inertia, and Cadex exposed no way to change it. On
+orun7-cat's passive hind-paw pin (144 g, 1.7e-4 kg·m²) the default stop
+yielded 6.3/25.2/50.4° past the stop at 0.5/2/4 N·m, and in r1-t3's rollouts
+the paw folded up to 72° past its 45° stop, so A3's paw stood on its toe
+sphere. A real shoulder-bolt stop does not yield 50°.
+
+**Decision.** `assembly.joint_dynamics` takes `limit_time_constant_s` (0 <
+t ≤ 1) and `limit_damping_ratio` (0 < r ≤ 10), MuJoCo's standard
+(time-constant) form, written to the joint's `solref_limit`. Either alone
+is a declaration; the other keeps MuJoCo's default. Both are dimensionless
+in the joint's units, so they need no suffixed pair. The pure module
+refuses:
+- a limit stiffness on a joint with no limits
+  (`limit_stiffness_without_limits`): it would set nothing;
+- a time constant below two solver steps
+  (`limit_time_constant_below_solver_floor`): MuJoCo's `refsafe` silently
+  raises it to that floor, so the stop would be softer than declared.
+The model evidence carries `limit_solref` per entry and the declared pair;
+the export round trip now compares `jnt_solref` and `jnt_solimp`, so a file
+that lost a stop's stiffness is caught.
+
+**Not in this decision.** `solimplimit` (impedance and its width): its width
+is in the joint's own units (rad or m) and the measured defect is answered
+by the time constant alone. MuJoCo's direct (negative stiffness/damping)
+form, which bypasses `refsafe`: it is still inertia-scaled, not a physical
+N·m/rad, and the floor refusal says how to get a stiffer stop (a finer
+solver step).
+
+**Evidence.** `test_dynamics_limit_stiffness` (engine suite, 10 tests): the
+API carries the pair and refuses out-of-range values; the compiled model
+carries `[0.004, 1.5]` on the elbow while the shoulder keeps `[0.02, 1]`;
+a ratio alone keeps the default time constant; 0.002 s at a 0.002 s step is
+refused naming the 0.004 s floor and admitted at a 0.001 s step; a hinge
+with no limits is refused; with gravity off and 20 N·m held on the elbow
+against its stop, the default stop yields 7.6° and 0.004 s yields 0.3°; the
+exported file keeps the time constant. Six of the ten fail without the
+change.
