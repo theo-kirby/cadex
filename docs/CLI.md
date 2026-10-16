@@ -329,8 +329,7 @@ of doing any of them:
    guess where a policy belongs in a script it did not write. Measured on
    nt3 against a script the design turn wrote unprompted; the authoring
    contract in the guidance (`cli/cadex_cli/guidance.py`, ADR-538) now
-   teaches both the switch and the two inline literals, and `test_walk.py` rewrites the example it
-   teaches to keep the two halves agreeing.
+   teaches both the switch and the two inline literals.
 5. `cadex params --set policy_on=1 --out DIR/rollout` — the verify and
    the rollout, the trace exported.
 6. The review: the trace's `policy` block — `total_reward`, the per-term
@@ -740,18 +739,10 @@ cp -R ~/cadex-projects/biped ~/cadex-projects/biped-copy
 ./cadex review --project ~/cadex-projects/biped-copy --port 8766
 ```
 
-The copy test in `cli/tests/test_review_lifecycle.py` exercises this command,
-opens both projects in headless Chromium, changes the copy's accepted fixture,
-and verifies the source stays byte-identical. With the original path unavailable,
-a fresh page still reads the copy's historical model, parameters, three metric
-histories and playable/downloadable video. It checks retained artifact hashes.
-This test uses synthetic fixtures; the real-project copy proofs are in
-[`history/CLI-EVIDENCE.md`](history/CLI-EVIDENCE.md) §1. Copying an active project
+The real-project copy proofs are in
+[`history/CLI-EVIDENCE.md`](history/CLI-EVIDENCE.md) §1 (a fixture copy test
+went with ADR-725). Copying an active project
 and external symlink targets are not covered by this procedure; project artifacts must be retained within the project directory.
-
-`cli/tests/test_walk.py` checks local/remote artifact parity through policy
-verification and rollout using a local CPU stand-in for the dispatcher.
-It runs no remote command.
 
 A leg that fails stops the walk there, with the leg's name and its error
 in `error` and the legs that ran under `walk.legs`; the exit code is the
@@ -788,9 +779,9 @@ run asked for by name is never shot by the walk's default.
 partial trainer output is not stored or declared. Use a fresh `--out` and
 policy `--name`, warm-start from the last successful policy and parent task,
 and declare any task change. Do not pass `--set policy_on=…`: the walk owns it.
-The real-engine regression in `cli/tests/test_walk.py` runs two successful
-CPU walks, injects trainer exit 7, then retries the retained `lift_weight=0.0003`
-sweep with this command (`P` is the test project):
+A real-engine regression (deleted by ADR-725) ran two
+successful CPU walks, injected trainer exit 7, then retried the retained
+`lift_weight=0.0003` sweep with this command (`P` is the test project):
 
 ```bash
 JAX_PLATFORMS=cpu ./cadex --project "$P" walk --out "$P/runs/walk-recovered" \
@@ -800,7 +791,7 @@ JAX_PLATFORMS=cpu ./cadex --project "$P" walk --out "$P/runs/walk-recovered" \
   --iterations 1 --envs 4 --timeout 600 --json
 ```
 
-The test pins preserved artifacts/history, verified policy, all four reviews and
+It pinned preserved artifacts/history, verified policy, all four reviews and
 last-success comparison references. The measured rehearsal (record `dusty-vale-2809`)
 reported reward −83.7819 versus −55.3476 under changed weights: recovery, not improvement.
 
@@ -844,7 +835,7 @@ of the venv's interpreter on this machine, and *nothing else changes*: the
 bundle and the model are exported into `DIR/train` as before, the script
 copies them to the box named by `training/.remote.env`, runs the box's own
 trainer with **the same flags after `--`** (`--iterations`, `--envs`,
-`--seed`, `--label` — pinned byte-for-byte against the local command), and
+`--seed`, `--label`, byte for byte the local command's), and
 copies the policy back to `DIR/train/<name>.cxpolicy`, the very path the
 local trainer would have written. The receipt is the same last JSON line;
 the CLI then **verifies the returned file hashes to the receipt's sha256**
@@ -932,8 +923,6 @@ local walk's line for line. What the flag changes and what it refuses:
   the run are each a named refusal at `EXIT_REJECTED` rather than a declared
   digest. Warm-start provenance is untouched: nothing retrains, and the
   provenance lives in the policy header the box wrote (ADR-268).
-  `cli/tests/test_walk.py` runs both halves against a stand-in dispatcher and
-  a local run destination — no ssh, no box, no `.remote.env`.
 - **`--timeout` is local.** It ends the local dispatcher/SSH process, not
   remote training. `--leg-timeout` has the same limit. Use the detached run
   ID with `remote_train.sh stop` to stop training on the box.
@@ -942,19 +931,7 @@ local walk's line for line. What the flag changes and what it refuses:
   agent to fill in — local venv or `--remote`, and why — that states the
   shared artifact paths and the cold-run limit above, and every `train
   --remote` run's `PROGRESS.md` row ends in `(remote)`, so a reader of the
-  numbers knows where each came from. `cli/tests/test_project_docs.py`
-  holds this paragraph and that section together.
-- **Nothing here dispatches in a test.** `cli/tests/test_train.py` pins
-  the command against `remote_train.sh`'s own usage line and runs the leg
-  end to end — real engine, real export, real store — against a stand-in
-  dispatcher with the same argv contract and the same printed shape
-  (`warp` noise before the receipt, `==>` trailer after), including the
-  three refusals: wrong bytes, nothing returned, CPU fallback. The
-  warm-start transport is tested against the **real** script instead, with
-  stand-in `ssh` and `rsync` that make this filesystem the box: the two
-  files land in `warm/`, byte-identical, the re-pointed flags are what the
-  trainer is handed, and the three refusals above exit before the trainer
-  is reached. No network, no box, no `.remote.env`.
+  numbers knows where each came from.
 
 **There is no GUI-attached mode any more** (ADR-495). ADR-201's third
 mode — the same walk from a terminal beside an open Blender file — retired
@@ -1235,9 +1212,7 @@ viewport plots one of a run's curves, and for Status only while its
 **Project** panel is shown, at most every 10 s and only when the run has
 moved (ADR-607), so an idle poll adds a constant number of DOM nodes
 whatever the run count. `window.cadexReview.lastPoll()` reports the last
-poll's `project_bytes` and wall time (`ms`). The `test_review_history_scale.py`
-suite pins the bounded summary over HTTP across sixty-three runs with
-512-sample histories and three checkpoints each.
+poll's `project_bytes` and wall time (`ms`).
 The snapshots and checkpoints belong to the run: retain and copy its whole
 `train/` directory with the project. No server or browser is needed to retain
 them. Older trainers may lack loss/episode histories; the page labels these
@@ -1339,8 +1314,8 @@ index; each is looked up in what the reader returned and resolved through
 the reader's containment check. A reference that escapes its base is
 listed under the run's problems and answered `404`, as is anything the
 records do not name — the project's own `script.json`, a path with `..`,
-the server's source. `cli/tests/test_review_server.py` pins the refusals; the browser checks and
-the dashboard restart proofs are in [`history/CLI-EVIDENCE.md`](history/CLI-EVIDENCE.md) §3.
+the server's source. The browser checks and the dashboard restart proofs
+are in [`history/CLI-EVIDENCE.md`](history/CLI-EVIDENCE.md) §3.
 
 ### The HTTP API (ADR-552)
 
@@ -1435,7 +1410,8 @@ occlusion and its surface detail, ADR-676), and `cadex.outliner.group` and
 are folded), and `cadex.follow` (whether the viewport follows a playing
 design, ADR-693), `cadex.heat` (the heat colours Settings picks, ADR-728) and
 `cadex.activations.views` (which Activations and Network views are on,
-ADR-728) — and the test fails if the page stores any other key. A picked
+ADR-728) — and `cli/tests/test_http_api.py` fails if the page stores any
+other key, or this list names one it does not. A picked
 checkpoint, a scrubbed revision, a selected run, and the parts hidden or
 selected in the Outliner last only as long as the page.
 
@@ -1532,8 +1508,8 @@ across each object's shared vertices except over a 40° crease, so a fillet
 reads as a curve and a box keeps its edges. The design stands on the review
 viewport's **dark prototype mat** (ADR-444, `docs/DASHBOARD.md` §16):
 the colours are the engine's `CadexStudio.PALETTE` (ADR-445), which the
-viewport's own `environment.js` and `review.css` are test-held equal to, the grid pitch is the viewport's for the
-framed span, anchored at the world origin and antialiased, and the mat fades
+viewport's own `environment.js` and `review.css` carry by hand, the grid pitch is the viewport's 1 m at every
+framing (ADR-604), anchored at the world origin and antialiased, and the mat fades
 into the `#141414` background with distance; a level view draws the
 background alone. A **contact shadow** is measured from the
 geometry: a top-down map of how high the lowest surface over each cell sits
@@ -1716,6 +1692,8 @@ cli/cadex_cli/
   activity.py          the project activity log every `cadex mcp` tool call
                        appends to, bounded; read into /api/project (ADR-549)
   guidance.py          the guidance an agent is given (ADR-538)
+  hero.py              `cadex hero` and `cadex hero-grid`: the presentation
+                       folder, drawn by the page's scene (ADR-677)
   export.py            STEP/STL/BREP out of the display block; the rest copied
   render.py            `cadex render` as a job: rebuild, read fit/inventory, write the files
   clearance.py         inspect scope=clearance -> docs/clearance.md; read-time thresholds;
@@ -1828,11 +1806,10 @@ it to a file the product agent has no tool to read; the cap is not
 published in characters, so the bridge's `API_VIEW_CHAR_BUDGET` (21,500
 characters) is a measurement — on `ot7-heron-c` the harness refused
 163,200 characters, then the ADR-359 view at 82,523, and accepted every
-result up to 21,742. A live-engine test in `cli/tests/test_client.py` holds
-the index and every section under the budget (13,239 and 3,337–20,502 on
-2026-09-16) and checks that the sections between them carry every
-signature, so the contract cannot grow past a size the harness has been
-seen to accept without a test saying so. `section` is the one schema
+result up to 21,742. On 2026-09-16 the index and every section were under
+the budget (13,239 and 3,337–20,502), and the sections between them carried
+every signature; the live-engine test that held that went with ADR-725, so
+measure again after growing the contract. `section` is the one schema
 property `OP_ARG_SPECS` does not carry; `VIEW_ARGS` in `cadex_cli.tools`
 is the allowlist the drift test reads.
 
@@ -1975,7 +1952,7 @@ The agent driving the project runs the whole loop — design a task, train a pol
 it, evaluate the policy against the task's success spec, revise — and it is
 **one loop for every behaviour**. None of the four tools, the registry
 behind them or the paragraph that tells the agent about them names a
-behaviour; `test_loop.py` refuses the words. All four are answered by the
+behaviour. All four are answered by the
 bridge (`BRIDGE_TOOLS`), need no protocol op, and are listed by `tools/list`
 beside the op-named tools.
 
@@ -2124,8 +2101,7 @@ can contain an intersection, a missed declared contact or an unmeasured pair
 even when the first page is clear; world-geometry findings are included too.
 If any later page cannot be read, the whole fit block is `unavailable` with
 the read error, rather than a verdict on the readable prefix. The successful
-build and its accepted revision still reach the agent. The paged build-reply
-fixture in `cli/tests/test_clearance.py` pins both outcomes.
+build and its accepted revision still reach the agent.
 
 The read pages the whole `inspect scope=clearance` value, sweep rows
 included, 50 rows a page: 5,942 pages on `castra-deinonychus` (290
@@ -2166,8 +2142,6 @@ the **model's view** of a successful `write_script`, `edit_script`,
 Every verdict, count and threshold is the whole block's. Nothing is
 re-judged. The same two revisions measured: `ot10-biped-3` falls from
 85,954 to 12,163 characters and `ot10-hexapod-11` from 82,981 to 13,758.
-`cli/tests/test_build_view.py` holds a 215-output reply under
-`API_VIEW_CHAR_BUDGET` and fails on the old view.
 
 ### Every build reply carries a verdict brief (ADR-689)
 
@@ -2546,8 +2520,8 @@ The overlay says:
   `look`**, which reads the `measures` first, then names the crudest
   thing, fixes it and looks again. A style adds its family's look — the
   finishes, joint caps and no-face rule are `printed-legged-robot`'s.
-  Tests hold the headings, the word budget, the filled covers and motion-parts paragraphs, and that no
-  kind of machine, animal or servo tier is in the base.
+  The base names no kind of machine, animal or servo tier (no test checks
+  it since ADR-725).
 - **Fit is measured, not printed** (ADR-346). The `fit` block on every
   build reply is the evidence that parts fit; the script's `stdout` is a
   claim the script makes about itself, and a `fit` naming a failing pair
@@ -2645,29 +2619,18 @@ has stopped being a contract for.
 pixi run python -m pytest cli/tests
 ```
 
-Fast, and honest about what it did not run.
+It holds contracts, not coverage (ADR-725): about 50 tests in about 11
+seconds. Behaviour is verified by running the command.
 
-| File | What it drives |
+| File | What it holds |
 |---|---|
-| `test_engine_resolution.py` | Hand-built payload directories; no engine needed. |
-| `test_mcp_protocol.py` | `cadex mcp`'s wire, the stdio loop and its idle callback, and the bridge against `fake_cadexd.py`; no engine needed. |
-| `test_activity.py` | The activity log (ADR-549): arguments summarised never whole, the 64 KiB cap keeping the newest calls (with two lines a call too), a torn line skipped; a call in flight until it returns and then one entry, and `lost` once its server is gone (ADR-553); and a real `cadex mcp` process's calls read back from `/api/project`, including a slow `evaluate` seen in flight with the stage `evaluating` — that half **skips** without a built engine. |
-| `test_agent_guidance.py` | The guidance: the engine's text carried verbatim, nothing left from the CLI's own turns, and `cadex guidance` printing exactly what `cadex mcp` sends. The base and styles (ADR-560): the base names no kind of machine, no style's text appears unless the project chose it, `cadex style` chooses, lists, refuses and clears, each kind of brief lands on one style (ADR-653), a placeholder comment line never reaches the agent (ADR-654), and no text an agent is given names a project. |
-| `test_dashboard_prefix.py` | Portability (ADR-551): no `url` or `mesh` the server builds is root-absolute, the `p/<name>` redirect is relative, and in Chromium the index and a project page, and a `cadex review` page, load and draw through a non-rewriting proxy at `/some/prefix/` with no request leaving it. |
-| `test_http_api.py` | The HTTP API contract (ADR-552): the "HTTP API" table above, `API_ROUTES` and `API_RESPONSE_KEYS` agree; the router dispatches from the table alone; every route's replies on a fixture biped that reaches each shape carry their always-keys and nothing unlisted, and every unknown `api/` path is a `404`; the page stores only the six per-viewer `localStorage` keys. |
-| `test_dashboard_read_only.py` | The read-only dashboard (ADR-537): every former write route refused for every method with the project unchanged, and in Chromium an open page following a `cadex params` run outside it. |
-| `test_client.py` | A real `cadexd`. **Skips** without a built engine. |
-| `test_export.py` | Plan-building directly; conversion against a real engine. |
-| `test_commands.py` | `main()` end to end against a real engine. |
-| `test_walk.py` | `cadex walk` against a fake `cadex` (leg order, flags, refusals; no engine), and the toy through two real walks with the real engine and trainer — **skips** the latter without the training venv. |
-| `test_review_server.py` | The review dashboard (ADR-286): the API, the allowlist and its refusals, the CLI command, and the page in a headless Chromium over its DevTools pipe (`cdp_browser.py`) — **skips** the browser half without a Chromium (`CADEX_BROWSER` names one); the private-address smoke runs only with `CADEX_REVIEW_HOST` set. |
-| `test_review_lifecycle.py` | The dashboard across restart and copy (D6/D7): the real `cadex review` command stopped and restarted on the same port while an independent telemetry producer keeps writing; the open page recovers without reloading, a fresh page reads the same project, the producer is neither stopped nor duplicated, and no project file changes. Whole-directory copy coverage checks independent accepted fixtures and historical model/curves/video access with the original path unavailable. **Skips** without a Chromium or FFmpeg. Fixture coverage, not the required fresh-biped pass. |
-| `test_review_history_scale.py` | Bounded operation over a long run history (ADR-321): sixty-three runs with 512-sample histories and three verified checkpoints each. Over HTTP, the run list carries a telemetry summary under 1.5 KB per run with no histories and no checkpoint hashing, the per-run detail carries both, and missing/invalid/mismatched states survive the summary; `default_run` picks the newest run, then a training one. It has no browser half now. |
-| `test_evaluate.py` | `cadex evaluate` (ADR-457) in three layers: what it reads from a hand-built retained attempt, and the shove episode's slices, pushes, ending and skips (ADR-571) (no engine); the child run for real on the engine suite's own fixtures, which needs `mujoco` here and **skips** without it; and the command against a script a live engine accepted with a policy it verified — **skips** without a built engine. |
-| `test_loop.py` | The training loop (ADR-464) in three layers: the registry and the supervisor against a hand-built retained attempt and a fake trainer, with the supervisor really detached — registration whole before launch and each refusal, a run outliving the process that started it, stop, budget, collapse against crash, SIGTERM and SIGKILL as interruptions, one run at a time per project and per machine; the four tools through `Bridge.call`; and whole rounds through the `cadex mcp` session host against a live engine — a run started in one session, its policy declared and evaluated in the next — which **skip** without a built engine, the real-trainer round also without the training venv. It also refuses behaviour words in the loop, its tools and its guidance paragraph. |
-| `test_film.py` | The evaluation's film (ADR-459) on a hand-built retained attempt and hand-written traces, with no engine: which seeds `--film` picks; the solids read from the attempt's own tessellation and refused outside it; materials from the inventory; both sheets' frame times, views, floor and dark backdrop read back from the PNGs; the detail window centred on the evaluation's base while a part is left behind, fixed for a mechanism with no floating base, and refused for a base that is not drawn (ADR-460); the early-ending and no-disturbance windows; the target marker (ADR-463): a ring read back from both sheets' pixels at the projected target of each frame's own time, hollow, drawn over the solids, jumping where the target does, held in a fixed window and in the video's, absent from a trace with no point goal, and refused for a point goal the trace cannot place; the trace digest check; the report rewritten with its film; `--film-only`'s refusals. The video tests need FFmpeg and **skip** without it. |
-| `test_review_evaluation.py` | The dashboard's view of an evaluation (ADR-459; its page panel was removed by ADR-533, the API still serves it). The failing fixture is ot10's `w2-2` shuffle, from the receipt under `docs/probes/ot11/retained/`; a passing one is written in the test. Over HTTP: the bounded summary list, the whole report, the file allowlist and its refusals, one parse per file identity. In headless Chromium at 1400×900 and 400×850: every predicate's tally, every seed's verdict, ending and per-predicate values, the metrics and reward tables, the film, the reader's pick; a pass's two heroes listed, served under the allowlist and shown in the 2D viewport before its film (ADR-570); its shove video after them, served, with its caption below it (ADR-571). The page half **skips** without a Chromium. |
-| `test_video.py` | Rollout video rendering (D4) on synthetic fixtures: decoded frames and timing, retained identity, the failed-rerender record, and in the same headless Chromium inline playback across polls and a download the browser wrote, checked byte for byte. **Skips** rendering/playback without both Chromium and FFmpeg. Fixture coverage, not fresh-biped evidence. |
+| `test_mcp_protocol.py` | `cadex mcp`'s wire (§2a): `initialize`'s version handling, JSON-RPC errors, `tools/list` relaying the generated surface and its schemas against `OP_ARG_SPECS`, the injected `expected_revision` and `display`, the build reply's `fit` and `inventory` blocks, and an unknown tool refused before any engine; against `fake_cadexd.py`, no engine needed. |
+| `test_http_api.py` | The HTTP API contract (ADR-552): the "HTTP API" table above, `API_ROUTES` and `API_RESPONSE_KEYS` agree; the router dispatches from the table alone; every route's replies on a fixture biped that reaches each shape carry their always-keys and nothing unlisted; and the page stores only the `localStorage` keys "What the browser keeps" lists. |
+| `test_dashboard_read_only.py` | The read-only dashboard (ADR-537): every method but GET and HEAD refused under `cadex review` and `cadex app` with the project unchanged; in Chromium, an open page following a `cadex params` run outside it (**skips** without an engine or a Chromium); and the loopback defaults `docs/DASHBOARD.md` §22 relies on. |
+
+`review_helpers.py` holds the fixtures the three share, `cdp_browser.py`
+drives headless Chromium over its DevTools pipe (`CADEX_BROWSER` names one),
+and `fixtures/orun3-biped/` is the fixture biped's model and task.
 
 `tests/fake_cadexd.py` is a scripted engine, not a loose mock: its replies
 go through the same `validate_response` path production uses, so a fixture

@@ -1,6 +1,6 @@
 # Structural analysis, topology optimisation and shape search
 
-Verified against source: 2026-10-10. Provenance: `[Cadex-new]`.
+Verified against source: 2026-10-16. Provenance: `[Cadex-new]`.
 Slices **S0–S4, all closed.** ADR-141 authorises the tree, ADR-142 closes S1,
 ADR-143 closes S2, ADR-144/ADR-145 close S3 — the two halves that earned their
 way in-engine — and ADR-146/ADR-147 close S4, which is where the loop stops
@@ -56,7 +56,7 @@ parameters without the agent in the loop. So the outer loop of every optimisatio
 **The search space is already machine-readable.** `params()`/`num()` carry
 `min=` / `max=` / `unit=`, and those reach a client as `params.specs` through
 `inspect scope="script"` (`CadexInspection.py:339`, from the `param_specs`
-produced at `cadex_project_worker.py:1074`). An optimiser can read a project's own
+produced at `cadex_project_worker.py:1143`). An optimiser can read a project's own
 bounded search space over the protocol with **zero engine change**.
 
 **numpy and scipy already ship in the payload** — 23 MB and 50 MB, measured
@@ -86,13 +86,13 @@ so an S2 result arrives through `put_asset` and is read by
 `mesh.import_file` — the path an imported STL always travelled.
 
 **`part.measurement` is the template for a geometry-free result** (ADR-139,
-`cadex_part_api.py:2599`): a declared output that carries no geometry and is
+`cadex_part_api.py:2603`): a declared output that carries no geometry and is
 recomputed from the shape rather than remembered. A stress result is the
 same species of thing, and S3 should copy it rather than invent.
 
 **Voxelisation is free.** `Shape.isInside` exists
 (`src/Mod/Part/App/TopoShapePyImp.cpp:2123`) and `CadexRouting.py` already
-runs A* on a 26-connected voxel lattice (`_astar` at :301-365), so the
+runs A* on a 26-connected voxel lattice (`_astar` at :301), so the
 vocabulary is not new here either.
 
 ## 3. Slice S0 — a stress number we can trust
@@ -121,8 +121,8 @@ element level. Two properties make that nearly free here:
 * condensation commutes with a uniform scaling of the element energy, so the
   same matrix is reusable under a SIMP density in S2.
 
-`--element c3d8` selects the locking element. It exists so a test can
-*measure* the difference rather than assert it.
+`--element c3d8` selects the locking element. It exists so the self-check
+(`--self-check`) can *measure* the difference rather than assert it.
 
 ### 3.2 The grid is fitted to the part, and that is not a nicety
 
@@ -205,7 +205,8 @@ engine reads:
 So the load case for "is this thigh strong enough" is the worst wrench that
 body saw across a rollout, read out of the same MJCF `assembly.mjcf` already
 exports. `contact_force` being a *deferred engine observation*
-(`CadexDynamics.py:6692`) does not matter, because this runs offboard in
+(`CadexDynamics.py:8685`; the engine reads foot contact as a touch
+`contact` channel instead, ADR-698) does not matter, because this runs offboard in
 stock MuJoCo.
 
 `analysis/loads_from_rollout.py` does not run a policy. It replays a
@@ -229,7 +230,7 @@ Two details that would be silently wrong if left alone, and are not:
   `subtree_com[body_rootid[body]]`, not about the body. It is moved onto the
   body's own centre of mass here (`t_p = t_c + (c - p) × F`). Left alone,
   the forces would still check out and the moments would be wrong by
-  `r × F`, which on a leg is the whole number. A statics test pins this: at
+  `r × F`, which on a leg is the whole number. A statics check showed it: at
   rest the reaction at the knee is the shank's weight and carries no moment.
 * Frame indexing. The engine writes an untimed `input` frame, then an
   **unstepped** `solver_output` frame at t=0 with no `actuator_commands`,
@@ -255,8 +256,8 @@ merely unlikely:
   one, because a ray through a shared edge crosses the surface **once** and
   both triangles report the same height.
 
-The regression test compares a float64 fill against a float32 one and
-requires them to agree.
+The fix was checked by comparing a float64 fill against a float32 one:
+they agree.
 
 ## 4. Slice S1 — the search driver
 
@@ -278,7 +279,7 @@ specs are cached in the project's own `script.json` — which is what
 read, and needs nothing running.
 
 **An evaluation is a subprocess.** `./cadex params --set k=v --out DIR
---json` is documented and test-pinned, and one rebuild of a small parametric
+--json` is documented (`docs/CLI.md`), and one rebuild of a small parametric
 bracket measured **0.7 s**. A 16-point grid with an FEA objective on every
 point ran end to end in **12.7 s**.
 
@@ -306,7 +307,7 @@ point, which the measurement says is noise next to the rebuild.
   declared for a feature not written yet — and the digest is the only thing
   that says so. The rebuild still happens, because only the engine can say
   the digest is unchanged; what it skips is the **objective**, which is the
-  expensive half when the objective is an FEA solve. Test-pinned with an
+  expensive half when the objective is an FEA solve. Measured with an
   unused declared parameter: two design points, two rebuilds, **one**
   objective evaluation.
 
@@ -393,8 +394,8 @@ a filter and an optimality-criteria update.
 element matrix, the pruned occupancy, the node numbering, the held degrees
 of freedom, the assembled force vector, the free-DOF index — and
 `solve_system()`. The assembly gained a density vector, CG gained a warm
-start, and `_DIRECT_DOF_LIMIT` came down. **S0's 27 tests pass unmodified**,
-which is the evidence that the split is a split rather than a rewrite.
+start, and `_DIRECT_DOF_LIMIT` came down. **S0's 27 tests passed unmodified**,
+which was the evidence that the split is a split rather than a rewrite.
 
 The density lives in exactly one line. It was
 `data = np.tile(flat, len(block))` — every element gets the same 24×24
@@ -404,8 +405,8 @@ legitimate with C3D8I because **static condensation commutes with a uniform
 scaling of the element energy**. Scaling every block of the element energy by
 `s` scales `Kcc`, `Kci` and `Kii` alike, and
 `s·Kcc − (s·Kci)(s·Kii)⁻¹(s·Kci)ᵀ` is exactly `s` times the unscaled
-condensed matrix. §3.1 claimed that property when it chose the element; a
-test now asserts the two assembled matrices agree to 1e-9 relative rather
+condensed matrix. §3.1 claimed that property when it chose the element;
+the two assembled matrices were checked to agree to 1e-9 relative rather
 than taking the algebra on trust.
 
 ### 5.2 One measurement that was wrong in the file all along
@@ -445,7 +446,7 @@ out topologically closed — zero boundary edges, zero non-manifold edges — an
 with half its triangles inside out, so the closure check passed and the
 enclosed volume came out as exactly `0.0`. That is the good version of a
 winding bug: an assertion that could not miss it. The six listings are
-oriented at import now, and the test asserts each determinant is positive.
+oriented at import now, each by the sign of its determinant (`_orient`).
 
 What the extraction is worth, against a sphere whose volume is known:
 
@@ -532,7 +533,8 @@ In the order it catches things:
   material can be removed safely" is a stress question. The ground is thin:
   the maintained permissive option is `beso` (LGPL-3, drives the same `ccx`,
   failure-index criterion), and the standard Python MMA implementation
-  `mmapy` is **GPL-3** and barred from this tree by ADR-141's own test.
+  `mmapy` is **GPL-3** and barred from this tree
+  by `test_offboard_boundaries.py`.
   Recorded as an open question rather than built. Run the extracted shape
   back through `cadex_stress.py` — that is a real second measurement rather
   than a number the loop produced about itself.
@@ -613,10 +615,10 @@ clamped face does not converge and must not — a genuine singularity, growing
 with every refinement for ever. Both numbers travel and the payload's own
 `note` says which carries the verdict.
 
-**Two implementations, pinned equal by a test.** `analysis/` may not import
+**Two implementations, checked equal.** `analysis/` may not import
 the engine and the engine may not import `analysis/`, so the algorithm is
-written twice and one test solves the identical cantilever on the identical
-grid through both. Measured through a live cadexd at 2.5 mm:
+written twice, and the identical cantilever on the identical grid was
+solved through both. Measured through a live cadexd at 2.5 mm:
 
 ```
 tip deflection   1.13916 mm   (closed form 1.15218, 1.1% low)
@@ -652,7 +654,8 @@ nothing imports `CadexStress` at module scope, and `CadexStress` imports numpy
 and scipy inside its own functions. A `cadexd` that imports
 `cadex_part_worker` does not load the solver, and a worker that loads the
 solver does not thereby load 73 MB of numerics. **Reachable and loaded are
-different questions**, and the guardrail now asks the second one.
+different questions**, and
+`test_engine_purity_guardrails.py` asks the second one.
 
 ### 6.4 What is still not a candidate
 

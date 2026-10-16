@@ -95,16 +95,6 @@ foreach (exe ${TestExecutables})
     endif()
 endforeach()
 
-# Cadex Phase 2 digest CI (docs/ROADMAP.md): create -> accept -> delete
-# document -> headless rebuild from script.py -> content digests match.
-# The pytest module skips itself when no FreeCADCmd binary is available.
-add_test(
-    NAME CadexProjectRebuildDigest
-    COMMAND ${Python3_EXECUTABLE} -m pytest -q
-            ${CMAKE_SOURCE_DIR}/src/Mod/cadex/cadex_tests/test_project_rebuild.py
-)
-set_tests_properties(CadexProjectRebuildDigest PROPERTIES TIMEOUT 900)
-
 # Cadex Phase 5 cadexd CI (docs/ROADMAP.md): drive a real cadexd child over
 # the cadex-cadexd-v1 stdio protocol — open/write/set_params/inspect/
 # resolve_pin, kill -9 + respawn restore-digest equality, mid-run cancel.
@@ -115,21 +105,6 @@ add_test(
             ${CMAKE_SOURCE_DIR}/src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
 )
 set_tests_properties(CadexdLifecycle PROPERTIES TIMEOUT 900)
-
-# Cadex Phase 9 kernel-ordering CI (docs/ROADMAP.md, ADR-025): five xscript
-# ops take 1-based TopExp::MapShapes ordinals as *saved script arguments*,
-# and BOPAlgo's ordering is not a documented OCCT contract. This pins the
-# enumeration of a canonical box -> cut x4 -> fillet against a recorded
-# fingerprint, so a dependency bump that silently re-indexes every saved
-# script fails here instead of at a user. Also asserts occt is pinned
-# exactly rather than to a range.
-# The pytest module skips itself when no FreeCADCmd binary is available.
-add_test(
-    NAME CadexSubshapeEnumeration
-    COMMAND ${Python3_EXECUTABLE} -m pytest -q
-            ${CMAKE_SOURCE_DIR}/src/Mod/cadex/cadex_tests/test_subshape_enumeration.py
-)
-set_tests_properties(CadexSubshapeEnumeration PROPERTIES TIMEOUT 900)
 
 # Cadex Phase 9 protocol-response CI (docs/ROADMAP.md, ADR-025): the golden
 # per-op response shapes the Blender shell is written against. Pure Python,

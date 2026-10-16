@@ -1,16 +1,17 @@
 # MACHINES.md — The Breadth Bench
 
-Verified against source: 2026-10-10 (a test catalogue, not a claim about the engine; the tiers are estimates made before the 2026-10-10 architecture review)
+Verified against source: 2026-10-16 (a test catalogue, not a claim about the engine; the tiers are estimates made before 2026-10-10 and not re-estimated since)
 
 These are machines to give Cadex as design briefs, chosen to test how broad
-the system is. Creatures (raptor, heron, leopard) and the mini excavator
-(orun5) have been tried. Everything below is a candidate. Each entry names:
+the system is. Creatures (raptor, heron, leopard, the panel cats) and the
+mini excavator (orun5) have been tried, and so has the first wave below
+(2026-10-10, design-only). Everything else is a candidate. Each entry names:
 
 - **Stresses**: the capability axes (codes below) the design has to get right.
 - **Autonomy**: what the machine could *do* in simulation once designed — the task, policy or check that proves it works.
 - **Tier**: an estimate of what it takes, given today's library and engine.
   - **1**: buildable with today's parts and checks.
-  - **2**: needs new catalog parts or library helpers, such as rails, belts, wheels, cylinders, spindles or sheet-metal panels.
+  - **2**: needs new catalog parts or library helpers, such as rails, belts, wheels, cylinders, spindles or sheet-metal panels. Many of these now exist: `lib.part` carries rails, carriages, pulleys, belts, leadscrews and nuts, steppers, extrusion and its hardware, cylinders, spindles, casters, tyres and springs (`CadexParts.json`, ADR-646), with their mounting holes (ADR-660), and `part.envelope` and `part.panel` make covers (ADR-633..638). So many tier-2 rows may now be tier 1.
   - **3**: needs new engine capability, such as fluids, soil, deformables, aerodynamics or contact-rich process physics.
 - **Panel**: how hard the machine tests the panel and enclosure system.
   - **●** means the machine is mostly its skin: an injection-moulded shell, sheet-metal enclosures or doors.
@@ -240,7 +241,7 @@ the system is. Creatures (raptor, heron, leopard) and the mini excavator
 
 ## First wave
 
-There are eight briefs. Together they cover every axis except P (fluids, which is tier 3), and four of them are panel-heavy (●). They are chosen to test breadth and the panel system on the same runs:
+There are eight briefs. Together they cover every axis except P (fluids, which is tier 3), and four of them are panel-heavy (●). They were chosen to test breadth and the panel system on the same runs:
 
 | # | Brief | Why it is in the wave |
 |---|---|---|
@@ -253,9 +254,13 @@ There are eight briefs. Together they cover every axis except P (fluids, which i
 | 7 | Strandbeest | L K: a pure closed-linkage machine, a stress test of ADR-593..595 |
 | 8 | Liquid-handling robot | G X E: small, precise and enclosed, with a deck layout and collision checking |
 
-Each brief should stay design-only first, as the creature sweep did, and
-then add one autonomy task from its row. Run them with Opus 5.5 in Claude
-Code.
+All eight ran design-only on 2026-10-10, with Opus 5.5 in Claude Code, as
+the creature sweep did. None has been blind-rated yet, and none has taken
+its autonomy task. What they hit became engine work: mounting holes on
+machine parts (ADR-660), the regions check following belts, leadscrews and
+couplings (ADR-665, from the liquid handler), `closes=[...]` for lids and
+doors (ADR-666), and a 4 MiB output definition (ADR-670, from the
+printer).
 
 ## Sources
 

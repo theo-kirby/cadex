@@ -1,6 +1,6 @@
 # Training a policy: the four ways
 
-Verified against source: 2026-10-15. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-16. Provenance: `[Cadex-new]`. See
 ADR-084 (training is offboard) and ADR-089
 (remote dispatch).
 
@@ -15,9 +15,9 @@ to end, four ways. Pick the row that matches the hardware you have:
 | **(d)** | ...and you want to drive (c) with one command | [§d](#d-driving-the-box-with-remote_trainsh) |
 
 Two facts shape all four. **The engine cannot train** — no `jax` and no
-`mjx` reaches `src/Mod/cadex` or a staged payload, and a test asserts it
-(ADR-084). And **the Mac cannot train**, in the sense that matters: MJX
-needs JAX-on-GPU, `jax-metal` is 0.1.0, and the community MPS backends have
+`mjx` reaches `src/Mod/cadex` or a staged payload (ADR-084;
+`test_engine_purity_guardrails` and the packaged gate assert it). And
+**the Mac cannot train**, in the sense that matters: MJX needs JAX-on-GPU, `jax-metal` is 0.1.0, and the community MPS backends have
 known compatibility problems. So every path below ends with a `.cxpolicy`
 file arriving back in the project, and none of them involves the engine
 growing a dependency.
@@ -106,11 +106,12 @@ for cp312/cp313/cp314:
 ```bash
 python3.13 -m venv .venv    # repo root, gitignored; Homebrew's is /opt/homebrew/bin/python3.13
 .venv/bin/pip install -r training/requirements.txt   # pinned trainer dependencies
-.venv/bin/pip install pytest                         # to run the venv-gated suites
+.venv/bin/pip install pytest                         # to run training/test_*.py
 ```
 
-`pytest` is a convenience for running the trainer's own gates from this
-venv, not a fifth pin — nothing about a training run needs it.
+`pytest` is a convenience for running the training venv's own tests
+(`training/test_*.py`), not another pin — nothing about a training run
+needs it.
 
 The CLI discovers `<repo>/.venv`, then `~/cadex-train-venv`, or uses
 `--trainer-python` / `$CADEX_TRAIN_PYTHON`; it never creates a venv.
@@ -370,11 +371,13 @@ until the process exits (ADR-093 §4).
 
 ### Choosing among the checkpoints
 
-They are all real policies. `compare.py` in the project directory plays each
-one locally — stock MuJoCo, no GPU, seconds — and prints survival, episode
-length, final tilt, drift and peak/mean torque per motor as one table. That
-is the comparison; watching two *animate* at once is not available and should
-not be faked (ADR-077: exactly one simulation per script).
+They are all real policies. A local run with `--checkpoint-every` rolls
+each numbered checkpoint out through the engine while it trains (ADR-544),
+and the dashboard plays those rollouts for a run under the project's
+`runs/<run>/` (ADR-545). A checkpoint pulled from a box is judged the same
+way once it is home: declare it, rebuild, and `cadex evaluate` holds it to
+the script's `assembly.success` spec on frozen seeds. Choose by that, never
+by the trainer's reward (`docs/MUJOCO.md` §7).
 
 ---
 

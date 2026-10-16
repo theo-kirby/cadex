@@ -2,7 +2,11 @@
 
 *Dated record of the ot5 fresh-project runs (2026-09); commands are as they ran. The product agent and `cadex -p` that authored and revised these projects are gone (ADR-538): an agent now drives Cadex through `cadex mcp`.*
 
-Verified against source: 2026-09-28. [Cadex-new]
+Verified against source: 2026-10-16. [Cadex-new]
+
+The CLI tests that held this record's fixes were deleted by ADR-725; where
+it says a test proved something, that was true at the time, not of the suite
+now.
 
 The project is `ot5-biped` under the operator's `cadex-projects` directory,
 outside this checkout, with its own Git history. Nothing was imported from
@@ -88,10 +92,9 @@ learned, and a run with no rollout of its own is drawn from the accepted
 attempt when — and only when — its recorded revision *and* digest are the
 accepted ones now, labelled as borrowed. `probe1`'s record is left exactly
 as it was written: records are what the walk said at the time, and the fix
-is proven by `cli/tests/test_walk.py` (the record as the train leg saw it,
-and after a refusal at train and at declare) and by a headless-browser test
-that follows a training run into failure
-(`cli/tests/test_review_server.py`). The next real walk on this project is
+was proven by a walk test (the record as the train leg saw it, and after a
+refusal at train and at declare) and by a headless-browser test that
+followed a training run into failure, both since deleted (ADR-725). The next real walk on this project is
 what ticks the fixture evidence over to real-artifact evidence.
 
 D2's orbit/zoom check on the fresh biped, D4's active-training checkpoint
@@ -405,8 +408,7 @@ the retained trace, not a separately integrated centre-of-mass measurement and
 not a multi-seed walking claim.
 
 Verification on this source: `pixi run test-engine` passed (2103 passed,
-54 skipped, 428.49 seconds); the focused browser/record suite
-`pixi run python -m pytest cli/tests/test_review_server.py cli/tests/test_review_record.py -q`
+54 skipped, 428.49 seconds); the focused browser/record suite (its files since deleted, ADR-725)
 passed (48 passed, one skipped, 51.46 seconds). The engine suite overlapped
 training after the first checkpoint video check; its MJX-dependent training
 checks skip in the pixi environment. Trainer-capable CLI verification is serial.
@@ -505,7 +507,7 @@ Headless edits are saved when accepted; there is no separate `save_project`
 protocol operation. This checks the saved acceptance from probe3's final
 playback through actual engine restore, rather than issuing a new authoring
 transaction and calling that a save. The automated fixture restart regression
-also passed: `pixi run python -m pytest cli/tests/test_review_lifecycle.py -q`
+also passed (its file since deleted, ADR-725)
 — **1 passed**, 7.37 seconds, with Chromium and FFmpeg available. No engine,
 CLI or shell code changed, so no build or full zone-suite rerun was needed;
 the immediately preceding full-suite results remain reported above.
@@ -926,8 +928,7 @@ view the page serves for each, which training snapshots are incomplete and
 why, and the four-design common-seed comparison — is assembled from the
 project's own records by `docs/probes/reed-lifecycle/report.py` and written
 up in [`docs/probes/reed-lifecycle/README.md`](probes/reed-lifecycle/README.md).
-`cli/tests/test_lifecycle_report.py` holds the committed report to its
-evidence. The persistent operator URL was checked again while generating it:
+A test held the committed report to its evidence until ADR-725 deleted it. The persistent operator URL was checked again while generating it:
 `shin55-final` selected by default, historical `probe3-final` playable, and
 a route back to the current run.
 

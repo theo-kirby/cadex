@@ -299,7 +299,7 @@ BRIDGE_TOOLS: dict[str, dict[str, Any]] = {
                     "type": "object",
                     "description": (
                         "The trainer's settings, all optional: iterations (200), envs "
-                        "(256), seed (0), label, hidden (layer widths, [64, 64]), "
+                        "(256), seed (0), label, hidden (layer widths, [512, 256, 128]), "
                         "unroll, epochs, learning_rate, discount, gae_lambda, clip, "
                         "entropy, value_weight, initial_std, action_filter_alpha, "
                         "command_slew_deg, goal_pool, checkpoint_every (write a "

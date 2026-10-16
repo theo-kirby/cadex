@@ -7,7 +7,7 @@
 
 # Cadex
 
-Verified against source: 2026-10-12
+Verified against source: 2026-10-16
 
 Author:
 "Cadex is an experimental side project, far from production software.
@@ -164,11 +164,16 @@ shape must change.
 ## Tests
 
 ```bash
-pixi run test-engine                                  # engine suite, no build needed
-                                                      # (the MJX-gated skips are by design)
-pixi run python -m pytest cli/tests                   # the CLI suite
-pixi run test-release                                 # the inherited ctest (passes in full)
+pixi run test-engine                                  # engine suite, no build needed (~35 s)
+pixi run python -m pytest cli/tests                   # the CLI suite (~10 s)
+pixi run test-release                                 # the inherited ctest
 ```
+
+The suites hold contracts only (ADR-725): the protocol, the tool surface,
+the HTTP API, the licence rule, the offboard boundaries and the read-only
+dashboard. Behaviour is verified by running the thing. The packaged gate
+against a staged payload is in
+[docs/cadex-release-packaging.md](docs/cadex-release-packaging.md).
 
 ## Documentation
 

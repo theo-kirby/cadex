@@ -1,6 +1,6 @@
 # PERFORMANCE-AUDIT.md — Build cost on large creature assemblies
 
-Verified against source: 2026-10-10
+Verified against source: 2026-10-16
 
 What this is: a measured audit of where the time goes when an agent builds
 and reads a large catalog assembly through `cadex mcp`, done after the
@@ -161,6 +161,17 @@ the report three times larger and the fit read ~17,600 pages. It is not in
 this branch; it should land together with R1.
 
 ## 5. What remains, ranked by impact
+
+**Since this audit (2026-10-13):** R1 landed as ADR-692 (a sweep publishes
+only the pairs it measured and counts the rest); R2 as ADR-690 (the pair
+budget counts the pairs the boxes leave near, and a longer run sweeps for
+longer); R4 in part as ADR-686 (a sample is measured only where a lower
+bound cannot settle it); R9 in part as ADR-689 (`cadex mcp` opens
+unrestored). ADR-685 holds `cadex mcp`'s engine open three times as long as
+opening it took, which bears on R10. The table is the audit as written; it
+is not re-measured. A related open item: `cadex smoke`'s exact-geometry pass
+times out on a ~100-part model (`docs/ROADMAP.md`, the frontier after
+orun7).
 
 | # | item | measured cost now | fix | estimated effort |
 |---|---|---|---|---|

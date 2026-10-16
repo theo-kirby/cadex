@@ -43120,3 +43120,43 @@ differ from the first's.
 ADR-726 to ADR-729 when it merged after orun7 and ADR-725. Under ADR-725 the browser tests these entries
 name (`test_dashboard_views.py`, `test_dashboard_activations.py` and the review tests they edited) were not
 kept: those citations are history. `test_http_api.py` keeps the policy route and the browser keys.
+
+## ADR-730 — The v0.2.0 release audit: the docs tell the truth after ADR-725, and two dead ctest entries go (2026-10-16)
+
+**Context.** v0.2.0 is cut after orun6, orun7, ADR-725 and the dashboard
+work (ADR-726–729). The release notes stopped at ADR-677, and the docs cited
+about 300 test files that ADR-725 had deleted. `tests/CMakeLists.txt` still
+registered two ctest entries, `CadexProjectRebuildDigest` and
+`CadexSubshapeEnumeration`, whose pytest files ADR-725 deleted. So
+`pixi run test-release` would have failed.
+
+**Decision.**
+- The two ctest entries are removed. The inherited ctest is 1,524 tests and
+  passes in full.
+- Every live doc is re-verified against the source (dated 2026-10-16), and
+  none names a test file that does not exist. A claim a surviving test still
+  holds cites that test. One no test holds now says so, or is stated as
+  something to check by running. `docs/DECISIONS.md` and `docs/probes/` are
+  history and keep their citations.
+- `docs/releases/v0.2.0.md` covers ADR-675 to ADR-729.
+- Small truths fixed in code: `train_start`'s `hidden` default is the
+  trainer's `[512, 256, 128]`, not `[64, 64]`; `#mesh-strength`'s markup
+  default is the 0.12 the page sets; comments that named deleted tests in
+  `training/cadex_train.py`, `cli/cadex_cli/loop.py`, `pixi.toml` and
+  `package/bump_version.sh` now say what holds each pair together, which is
+  usually nothing.
+
+**Gaps it leaves open (not fixed here).** Since ADR-725 no test holds these
+cross-process copies equal: the trainer's reward whitelist,
+`encode_policy`, goal draws and terrain box builder against the engine's;
+no test checks a staged payload for jax or mjx; nothing checks OCCT's
+subshape ordering (`occt` stays pinned exactly); and `VERSION` drift is
+caught only by `sync_version.py --check` as a pre-commit hook. `train_start`
+and `cadex train` cannot pass the post-ADR-712 trainer flags
+(`reward_floor`, `activation`, `minibatches` and others); they reach the
+trainer only through `remote_train.sh … --`.
+
+**Evidence.** On `release/v0.2.0`: `pixi run test-engine` 157 passed and 3
+skipped; `pixi run python -m pytest cli/tests` 50 passed; the packaged
+gate (`CADEX_ENGINE_ROOT=build/engine/cadex-engine-0.2.0-linux-x64`) 24
+passed; `pixi run test-release` 1,524 of 1,524.

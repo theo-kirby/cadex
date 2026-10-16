@@ -1,6 +1,6 @@
 # Packaging — The Engine Payload
 
-Verified against source: 2026-10-12
+Verified against source: 2026-10-16
 
 **One repository builds one engine payload** (ADR-030, ADR-498). The
 *engine payload* is a relocatable directory the CLI finds by manifest
@@ -87,7 +87,12 @@ the one source. The payload is named and stamped from it
 `package/bump_version.sh [patch|minor|major]` writes it into `version.json`
 (CMake's `PACKAGE_VERSION`, so `App.Version()`) and, through
 `src/Tools/sync_version.py`, into the pixi manifests.
-`cli/tests/test_version.py` fails if any copy drifts. `version.json` keeps
+**Drift is only partly checked.** `python src/Tools/sync_version.py --check`
+compares `version.json` with the pixi manifests and the rattler recipe, and
+runs as a pre-commit hook when those files change; CI does not run it.
+Nothing checks `VERSION` against `version.json`: the test that did went
+with ADR-725, so a hand edit to
+either file drifts silently. `version.json` keeps
 `name: "FreeCAD"`: renaming it moves the CMake project name and install
 paths, a separate decision. A version bump changes no digest, golden or
 MJCF export; it only invalidates each project's on-disk fit cache once
@@ -95,14 +100,16 @@ MJCF export; it only invalidates each project's on-disk fit cache once
 
 ## Cutting a release
 
-1. `package/bump_version.sh minor` (or `patch`/`major`), and commit the
-   files it changed.
+1. `package/bump_version.sh minor` (or `patch`/`major`), run
+   `python src/Tools/sync_version.py --check`, confirm `VERSION` and
+   `version.json` name the same version (nothing checks that pair), and
+   commit the files it changed.
 2. Write `docs/releases/vX.Y.Z.md`: what changed since the last tag, grouped,
    with ADR citations; breaking changes and removals; known limitations.
 3. `pixi run build-engine && pixi run stage-engine`, and confirm
    `build/engine/cadex-engine-X.Y.Z-<os>-<arch>/cadex-engine.json` says the
-   new version. Run `pixi run test-engine`, `pixi run python -m pytest
-   cli/tests`, and the packaged gate (`CADEX_ENGINE_ROOT=<payload> pytest
+   new version, and that `./cadex --version` does. Run `pixi run
+   test-engine`, `pixi run python -m pytest cli/tests`, and the packaged gate (`CADEX_ENGINE_ROOT=<payload> pytest
    src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py`).
 4. Merge to `main`, wait for `cadex-app.yml` on that commit, and read it.
 5. Tag annotated, on `main`: `git tag -a vX.Y.Z -m "Cadex vX.Y.Z"`, push the
@@ -292,32 +299,25 @@ through `test_cadexd_lifecycle` against the *packaged* tree; the Linux job
 also drives the packaged engine through the CLI.
 
 **Both jobs have been red since at least 2026-07-25, and neither has ever
-reached its gate** (ADR-060). They failed at `Engine unit suite` — `pixi run
-python -m pytest src/Mod/cadex/cadex_tests` — with `No module named pytest`,
-because `pytest` was not declared in `pixi.toml` until ADR-060, and every
-later step was skipped. Declaring it did not turn them green: every run through
-2026-10-11 (`gh run list --workflow cadex-app.yml`) still fails at `Engine
-unit suite` on both platforms, with every later step skipped. The release
-audit (ADR-674) read the logs of the last run, 38159570649. On Linux it found
-2 failures out of 2,858. One was `test_licensing_compliance` (an SPDX header
-missing from `cli/tests/record_graph.py`, since fixed). The other was
-`test_a_cpu_killed_pass_leaves_the_document_as_accepted`, whose worker hit
-its wall-clock budget before its CPU one on the runner. On macOS it found
-`test_panels`' kernel test (fixed: its driver was capped but not pinned like
-a worker) and three crashes in `test_part_sharp_edges`. So the sentence above
-describes an intent, not an observation: the packaged gate has never run in CI on either platform, which
-is how a payload that broke every assembly joint shipped on both. Verified
-locally on Linux; what the macOS gates say when they first run is not yet
-known.
+reached its gate** (ADR-060). Every run through the last one, 38804138041 on
+2026-10-15 (`gh run list --workflow cadex-app.yml`), fails at `Engine unit
+suite` on both platforms, with every later step skipped. The failures the
+release audit read (ADR-674: a wall-clock budget hit on the Linux runner,
+kernel crashes on macOS) were in tests ADR-725 has since deleted, and the
+suite CI runs is now the contract suite (157 tests locally, about 34 s),
+which has not yet run in CI. So the paragraph above describes an intent, not
+an observation: the packaged gate has never run in CI on either platform,
+which is how a payload that broke every assembly joint shipped on both.
+Verified locally on Linux; what the macOS gates say when they first run is
+not yet known.
 
 ## Open
 
 - **macOS notarization of the embedded engine.** Hardened runtime plus
   per-binary entitlements: `freecadcmd` spawns subprocesses and dlopens
   OCCT. Not yet exercised end to end.
-- **The first green CI run.** ADR-060 removed the `pytest` failure that
-  stopped every run before its gate, and the engine suite still fails in CI
-  (above). Nothing downstream of that step has ever executed on either
+- **The first green CI run.** Every run so far stops at the engine suite
+  (above); the first run on the ADR-725 suite is the next data point. Nothing downstream of that step has ever executed on either
   platform, so the first run past it is the first real report either job
   has made — treat its output as new information, not as a regression.
 - **Windows.** The payload builds for it; no CI job gates it.

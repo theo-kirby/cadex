@@ -11,8 +11,7 @@ dependencies are pinned in ``training/requirements.txt`` and installed into
 a venv on whatever box does the training. ``CARRIED_PYPI_PACKAGES`` stays
 one entry long, which is what ADR-076 named that constant for.
 
-The sibling of ``src/Mod/cadex/cadex_tests/dynamics_task_episode.py``, and
-held to the same discipline: it imports only ``jax``, ``mujoco``,
+Held to a strict import discipline: it imports only ``jax``, ``mujoco``,
 ``mujoco.mjx``, ``numpy``, Brax's PPO (``brax``, ``flax``, ``optax``;
 ADR-712) and the standard library, and it reports whether
 ``CadexDynamics`` was importable so a test can assert the negative. Run
@@ -28,18 +27,17 @@ it: no network I/O, no new op, no daemon. You scp two files to a box, run
 this, and scp one file back. What comes home enters the project the way
 every other byte does -- through ``put_asset`` (ADR-043).
 
-**Two evaluators became three.** ``CadexDynamics`` compiles reward
-expressions, ``dynamics_task_episode.py`` compiles them again, and this
-compiles them a third time under ``jax.numpy`` so they vectorise. Three is
-where a whitelist drifts, so the bundle ships its ``functions`` array, this
+**Two evaluators.** ``CadexDynamics`` compiles reward expressions, and this
+compiles them again under ``jax.numpy`` so they vectorise. Two is where a
+whitelist drifts, so the bundle ships its ``functions`` array, this
 file builds its own from scratch, and it **refuses outright** when the two
-differ rather than failing partway through a training run. A test asserts
-all three are equal.
+differ rather than failing partway through a training run.
 
 **The container this writes is byte-identical to what the engine writes.**
 ``encode_policy`` in ``CadexDynamics`` and :func:`encode_policy` here are
-two implementations of one format, and a test compares their bytes. That is
-the same move the reward whitelist gets, for the same reason: this file
+two implementations of one format; no test compares their bytes since
+ADR-725, so change them together. That is the same move the reward whitelist
+gets, for the same reason: this file
 cannot import the engine, so the second copy is written down and pinned.
 
 Usage::
@@ -144,8 +142,8 @@ def globals_for(jnp: Any) -> dict[str, Any]:
     """Everything a reward or termination expression may call, in ``jax.numpy``.
 
     Written out rather than derived, so that this file's whitelist is a
-    thing a reader can compare against ``CadexDynamics._REWARD_GLOBALS`` and
-    against ``dynamics_task_episode.GLOBALS`` by eye as well as by test.
+    thing a reader can compare against ``CadexDynamics._REWARD_GLOBALS`` by
+    eye.
 
     ``asin`` and ``arcsin`` are both here and both are ``jnp.arcsin``: the
     engine offers both spellings, so a task written against one must not
@@ -598,8 +596,7 @@ def check_policy_fits(
 def load_bundle(bundle_path: str, table: dict[str, Any]) -> dict[str, Any]:
     """The task, its model's bytes, and the refusals that come before training.
 
-    The same resolution ``dynamics_task_episode`` performs, and deliberately
-    so: the model is referenced by a path relative to the *project root* and
+    The model is referenced by a path relative to the *project root* and
     the bundle lives at ``outputs/<name>-task.json`` under it, so the root is
     two levels up. That pair is what makes the bundle movable -- which is
     exactly why it can be copied to a rented box.
@@ -802,8 +799,8 @@ def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
 # pool of courses as features; each environment is given one at every reset
 # and the model's terrain geoms are placed there. The box builder below is
 # ``CadexDynamics.terrain_boxes`` and ``terrain_box_geoms`` written out again,
-# because this file cannot import the engine, and a test holds the two equal
-# on every pooled course.
+# because this file cannot import the engine. No test holds the two equal
+# since ADR-725: change them together.
 # ---------------------------------------------------------------------------
 
 #: How this trainer gives an environment its course: drawn on device, on the
@@ -1445,7 +1442,7 @@ def goal_segment(xp: Any, steps: Any, period: int, count: int) -> Any:
     episode's own step counter, never a comparison on elapsed seconds.
 
     ``xp`` is the array module, taken as an argument for the reason
-    :func:`forward` takes ``jnp``: a test holds this to the engine with
+    :func:`forward` takes ``jnp``, so it can be checked against the engine with
     ``numpy``, with no jax in the process.
     """
 
@@ -2098,7 +2095,7 @@ def build_environment(
     # ``draw_episode_variation`` and ``apply_disturbance``. Written out in
     # ``jnp`` rather than shared, for the reason this file's reward whitelist
     # and ``encode_policy`` are written out: it cannot import the engine
-    # (ADR-084), so the second copy is written down and a test pins it.
+    # (ADR-084), so the second copy is written down; change both together.
     variation_entries = list(task.get("reset_variation") or ())
     push_entries = list(task.get("disturbance") or ())
 

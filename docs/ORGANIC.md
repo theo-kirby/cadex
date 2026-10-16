@@ -1,9 +1,10 @@
 # ORGANIC.md — Organic Modelling, and the CAD/Mesh Interface
 
-Verified against source: 2026-10-10
+Verified against source: 2026-10-16
 Status: **O0 closed (ADR-124), O1 closed (ADR-125), O2 closed (ADR-126),
 O3 closed (ADR-127).** The phase's four slices are done, and so are O1b
-(ADR-128), O2b (ADR-130) and the October O3b (ADR-610..612, rebuilt by ADR-633..637); O4 is parked by
+(ADR-128), O2b (ADR-130) and the October O3b (ADR-610..612, rebuilt by
+ADR-633..637, given designed forms and skins by ADR-679..692); O4 is parked by
 decision.
 
 **Native Blender recipe bridge (ADR-185, 2026-09-05) — retired (ADR-496).**
@@ -130,7 +131,7 @@ feature.
   collection's world bounding box — front (−Y), right (+X), top (+Z) in
   orthographic, and a three-quarter perspective at azimuth 45° / elevation
   25° — and returns plain tuples, importing no `bpy`. That is the half the
-  headless suite tests and the half Phase 12 re-binds rather than redesigns,
+  headless suite tested and the half Phase 12 re-binds rather than redesigns,
   and it is the same split `cadex_collision.py` keeps between `extents_mm`
   and its overlay.
 - `capture.render_views()` renders the four at equal size and composites
@@ -293,7 +294,7 @@ become its exponent. Both stay editable as numbers. Inventing a value from a
 gesture the user may have made by accident is the quiet reinterpretation a
 declared table exists to prevent.
 
-### O3b — Panels cut from the envelope of the mechanism, and the panel check — **closed (ADR-610..612, rebuilt by ADR-633..637)**
+### O3b — Panels cut from the envelope of the mechanism or from a designed form, and the panel check — **closed (ADR-610..612, rebuilt by ADR-633..637, ADR-679..692)**
 
 The cage made a shape cheap to draw and said nothing about what it was
 drawn over. Agents sized rings by eye, and blind-rated robot animals scored
@@ -320,13 +321,26 @@ nine creature runs kept one; the one that tried removed it twice
   bosses cast exactly onto the frame's BREP for one stocked screw, the screws
   placed by `part.mate` onto the published fastener frames.
   `docs/XSCRIPT.md` has the whole contract.
+- **A designed form** (ADR-679, ADR-684). `lib.form(stations)` lofts the
+  animal's outer form through superellipse sections, each station a centre,
+  a width, a top and a bottom. `part.envelope(..., form=)` wraps it with
+  `over`, so a panel takes the form's shape where it stands proud of the
+  machinery. `part.skin(form, regions, ...)` cuts panels from the form's own
+  surface all the way round, one piece per region solid, with the same
+  screws, pilots and check as `part.panel`. `part.former(form, origin,
+  normal, ..., inset=)` is the hoop or bulkhead inside the form that carries
+  them.
+- A skin opens round what moves through it (`openings=` and `keep_clear=`
+  take a moving link), reports every bad piece in one refusal, and keeps the
+  bosses it can place (ADR-687, ADR-691).
 - `lib.housing(qdd_or_servo)` wraps a drive's own envelope at a wall,
   seated on its own mounting face and screwed through its own holes; a link
-  is grown on with `.fuse(link)`. Unchanged.
+  is grown on with `.fuse(link)`.
 - `fit.panels` measures every `role="panel"` component against the parts it
   declares it `covers=` (not its colour, not its box): p10..max gap, egg
   ratio, coverage, wall by rays, motion through the sweep, screws and their
-  spread, bed fit, seam gaps. A floating, colliding or unmounted panel fails
+  spread, bed fit, seam gaps. A form panel is judged by its span to the
+  support under it (ADR-679). A floating, colliding or unmounted panel fails
   the fit.
 
 ```python
@@ -343,11 +357,12 @@ leopard's two rear covers, keel cover and head cover passing after the check
 named the first draft's front cover through the neck drive and its head
 cover struck by the nodding neck link.
 
-**Limits, today:** a panel is a height field seen from one side, so a cover
-wraps at most to `max_angle` and its skirt is vertical; a form that must
-wrap further takes several panels meeting at a seam (`inset`), and side
-panels over a creature's hips need openings round each housing. Lap and
-tongue seam joints, draft and countersunk screws are not drawn.
+**Limits, today:** a `part.panel` is a height field seen from one side, so
+it wraps at most to `max_angle` and its skirt is vertical; a cover that must
+wrap further is a `part.skin`. A form's sections are superellipses, so a
+sharp feature (a brow ridge) is a separate form, meeting its neighbour at a
+seam. Lap and tongue seam joints, draft and countersunk screws are not
+drawn.
 
 ### O2b — Swept-volume clearance — **closed (ADR-130)**
 
@@ -406,7 +421,8 @@ stops being needed.
 ## 3. Hazards
 
 - **Blend probing is slow on a real body.** Mitigated by bisection, the
-  existing shape memo (`test_part_shape_memo.py`) and a stated cap. Measure
+  part worker's shape memo (`_SHAPE_MEMO`, `cadex_part_worker.py`) and a
+  stated cap (15 s, `_BLEND_PROBE_SECONDS`). Measure
   on the wolf; report the number; if it costs more than a few seconds, cap
   the probe depth and **say so in the result** rather than silently doing
   less work.
@@ -433,9 +449,8 @@ how many turns did it take. Its project is no longer kept (ADR-629), so the
 log below is history. A new organic benchmark copies its project to a
 scratch directory before building or probing. Drive
 rebuilds through the agent's `write_script` (`cadex mcp`) or `./cadex params`
-rather than hand-editing `script.py`, which breaks `cadex params` (the
-`test_project_rebuild` driver this log was first measured with went with
-the shell); back the script up before every rebuild, because a refused
+rather than hand-editing `script.py`, which breaks `cadex params`; back
+the script up before every rebuild, because a refused
 `write_script` silently restores the last accepted one.
 
 | Slice | Date | What changed |

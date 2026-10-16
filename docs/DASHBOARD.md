@@ -7,9 +7,11 @@ and `cadex review` serve (`cli/cadex_cli/review_server.py` and
 `review_static/`, ADR-286), the second of Cadex's three parts (ADR-500) and
 its only UI since the Blender shell was deleted (ADR-498). It replaced
 `docs/REVIEW-DESIGN.md` (ADR-501). It is the
-contract the pages are held to by `cli/tests/test_review_design.py`: the
-page follows the spec, and when the page has to change, the spec changes in
-the same commit. What the server *reads* — the routes, the permitted-paths
+contract the pages are held to: the page follows the spec, and when the page
+has to change, the spec changes in the same commit. Since ADR-725 no test
+holds the page to it but the read-only rule (§18), the remote-viewing
+defaults (§22) and the browser keys (`docs/CLI.md`); the rest is checked by
+running the page. What the server *reads* — the routes, the permitted-paths
 rule — is `docs/CLI.md`; this document is about what the pages show, how
 they are laid out, typed and coloured, and why.
 
@@ -29,19 +31,20 @@ went with the owner channel, ADR-538), and
 the CLI and the agent still use them; adding a panel back is page work only. The sections the cut emptied are gone from this file and
 kept in its history; the ones that remain keep their numbers, so a `§`
 reference elsewhere still lands. §7 and §8 are the measured ot6 record of
-the page before and after the first spec, kept because the tests check them.
+the page before and after the first spec, kept as the record.
 
 **The project page is the app (ADR-534).** The same day the owner asked for
 the page to stop being a dashboard and be the app, in Blender's design
 language: the screen is tiled by **areas**, each showing one **editor** —
-the 3D viewport, Status (ADR-572), the 2D viewport, the Outliner and Activations (ADR-727, §27)
-(ADR-676, §25) — and each area can be resized, moved, split, maximized or
+the 3D viewport, Status (ADR-572), the 2D viewport, the Outliner (ADR-676,
+§25), Activations and Network (ADR-727, ADR-728, §27) and Settings
+(ADR-728, §28) — and each area can be resized, moved, split, maximized or
 closed (§12). There is a light theme
 beside the dark one (§4), and the 3D viewport draws shaded by default or as
 a wireframe diagram (§10; called hairline until ADR-602). Still no build step: `layout.js` tiles the
 screen, `theme.js` picks the theme, and both are plain scripts.
 
-**The settings are a menu bar (ADR-539).** File, Revisions and View sit in the status bar along the bottom (ADR-728) as dropdowns that open upwards. The screen was one 3D viewport by default until ADR-572 put Status beside it (§12).
+**The settings are a menu bar (ADR-539).** File, Revisions and View sit in the status bar along the bottom (ADR-728) as dropdowns that open upwards. What has no place there, for now the heat colours, is the Settings editor (§28, ADR-728). The default screen is the 3D viewport with the Outliner over Status beside it (§12, ADR-676).
 
 **The page is read-only (ADR-537).** The owner's interface is now an agent
 of their choice -- Claude Code, Codex, Pi -- driving the engine through the
@@ -59,8 +62,9 @@ nothing (§18), on a server bound to 127.0.0.1 (§22).
 
 - **The model is the subject.** The 3D viewport is the largest area in the
   default layout and the first tab on a phone; nothing is drawn over its
-  model but its own scrubbers (ADR-572) and, in its top right corner, the
-  navigation gizmo (§5, ADR-726).
+  model but its status lines at the bottom left (ADR-557) and, in its top
+  right corner, the navigation gizmo (§5, ADR-726). Its scrubbers ride in
+  its header (ADR-728).
 - **The layout is the reader's.** Every editor lives in an area the reader
   can move and size; the layout is kept in their browser, not the project.
 - **Nothing that is not needed.** No identity block, no hashes in the
@@ -100,17 +104,18 @@ the status bar (`#screen[data-mode]`), which `layout.js` tiles with areas
 | Editor | `data-editor` | Element hooks (stable) | What it is for |
 |---|---|---|---|
 | **Status bar** | — | `#top`, `#home`, `#project-name`, `#accepted-line`, `#freshness[data-state]`, `#theme-toggle` | Along the bottom of the window, as Blender has it (ADR-728; the top bar before it, and still `#top`): a link home (hidden under `cadex review`), the project's name, the accepted revision's ordinal and date, the menu bar, **live** or **offline**, and a light/dark toggle. |
-| **3D viewport** | `view3d` | `#view3d-source`, `#view3d-style button[data-style]`, `#model-fit`, `#model`, `#model-status[data-state]`, `#viewer`, `#view3d-gizmo[data-view]`, `.gizmo-end[data-end]`, `#playback`, `#play-toggle`, `#play-time`, `#play-clock`, `#play-follow[aria-pressed]`, `#checkpoints[data-follow][data-state]`, `#checkpoint-pick`, `#checkpoint-label`, `#checkpoint-status`, `#revision-timeline[data-follow][data-state][data-ordinal]`, `#revision-pick`, `#revision-label`, `#revision-status` | The accepted model or a run's, shaded or wireframe (§10); orbit, pan (shift- or middle-drag, two fingers) and zoom by pointer or touch (§5); **Fit**. `#model-status` says why no model is drawn (loading, missing with its reason in `--warn`, an error in `--bad`). It sits at the bottom left of the view on an opaque `--surface`, because the floor is dark in both themes (ADR-557), with `#checkpoint-status` and `#revision-status` under it. **The scrubbers ride in the area's header after Fit** (ADR-728): the revision history's, a run's checkpoints' and the rollout's timeline with **Play** and **Follow**, each a row that wraps onto a second header row when the area is too narrow for it beside the other tools. A run that kept a rollout trace plays it on the timeline. **Follow** (`#play-follow`, ADR-693, remembered as `cadex.follow`) makes the view travel with the design while a rollout or a checkpoint plays: the camera's target and the key light with its shadow move with the design's centre (the mean of its shown solids' box centres, each carried by its pose, Hann-smoothed over about half a second either way and narrowed symmetrically at the ends so it never trails), by that centre's motion, so the person's orbit, zoom and pan stay theirs and a running machine can be watched close up. Turning it on, or a new rollout while it is on, puts the target on the design. **Checkpoints** (ADR-545): while the run Status reads is the model shown, each of its checkpoints the engine rolled out (ADR-544) is a stop on a scrubber before the timeline, oldest to newest, with the run's own rollout last once it has one; a page left open adds that `final policy` stop on the poll after the walk lands its rollout, with no reload (ADR-554). The newest loops, labelled with its iteration (one-based, as Status counts) and reward per step; `data-follow="true"` while it follows new ones. Picking an older one keeps it while newer ones land; moving back to the newest end follows again. A failed rollout plays nothing, leaves the model at rest and says why in `#checkpoint-status` in `--bad`; the same line counts checkpoints still rolling out. While that run is training the viewport turns to it on its own, unless a source was picked by hand this visit. **Gait references** (ADR-703), a source group offered for each accepted task whose bundle carries a reference (`/api/project`'s `references`, `reference:<task>`): the accepted model posed by the task's generated stride, from `/api/playback/reference/<task>`, which repeats the one stride a stride further on each time for about 4 s. It loops from the start as soon as it is in, on the same timeline and with the same Follow. It is the motion the task asks for, not one simulated, so the owner judges the intended gait before anything trains. **Revision history** (ADR-547), a source offered once anything is accepted: each stored revision is a stop on `#revision-timeline`, oldest to newest, drawn from the model kept when it was accepted (ADR-546). The newest is shown and followed (`data-follow="true"`); picking an older one keeps it, and the newest end follows again. Unchanged parts are drawn in `--paper-ink`, parts whose digest changed against the revision before in `--info`, and that previous revision is a ghost in `--ink-2` at 22% opacity wherever it differs (a part kept as it was, where it was, is not drawn twice; a wireframe diagram leaves the ghost out). `#revision-status` names the changed parts and the revision compared against. A revision whose model was not kept (`data-state="missing"`) draws nothing and says why in `--warn`; the revision after it draws with no ghost and says there is nothing to compare with. |
+| **3D viewport** | `view3d` | `#view3d-source`, `#view3d-style button[data-style]`, `#view3d-look`, `#model-fit`, `#model`, `#model-status[data-state]`, `#viewer`, `#view3d-gizmo[data-view]`, `.gizmo-end[data-end]`, `#playback`, `#play-toggle`, `#play-time`, `#play-clock`, `#play-follow[aria-pressed]`, `#checkpoints[data-follow][data-state]`, `#checkpoint-pick`, `#checkpoint-label`, `#checkpoint-status`, `#revision-timeline[data-follow][data-state][data-ordinal]`, `#revision-pick`, `#revision-label`, `#revision-status` | The accepted model or a run's, shaded or wireframe, under the header's lighting menu (§10); orbit, pan (shift- or middle-drag, two fingers) and zoom by pointer or touch (§5); **Fit**. `#model-status` says why no model is drawn (loading, missing with its reason in `--warn`, an error in `--bad`). It sits at the bottom left of the view on an opaque `--surface`, because the floor is dark in both themes (ADR-557), with `#checkpoint-status` and `#revision-status` under it. **The scrubbers ride in the area's header after Fit** (ADR-728): the revision history's, a run's checkpoints' and the rollout's timeline with **Play** and **Follow**, each a row that wraps onto a second header row when the area is too narrow for it beside the other tools. A run that kept a rollout trace plays it on the timeline. **Follow** (`#play-follow`, ADR-693, remembered as `cadex.follow`) makes the view travel with the design while a rollout or a checkpoint plays: the camera's target and the key light with its shadow move with the design's centre (the mean of its shown solids' box centres, each carried by its pose, Hann-smoothed over about half a second either way and narrowed symmetrically at the ends so it never trails), by that centre's motion, so the person's orbit, zoom and pan stay theirs and a running machine can be watched close up. Turning it on, or a new rollout while it is on, puts the target on the design. **Checkpoints** (ADR-545): while the run Status reads is the model shown, each of its checkpoints the engine rolled out (ADR-544) is a stop on a scrubber before the timeline, oldest to newest, with the run's own rollout last once it has one; a page left open adds that `final policy` stop on the poll after the walk lands its rollout, with no reload (ADR-554). The newest loops, labelled with its iteration (one-based, as Status counts) and reward per step; `data-follow="true"` while it follows new ones. Picking an older one keeps it while newer ones land; moving back to the newest end follows again. A failed rollout plays nothing, leaves the model at rest and says why in `#checkpoint-status` in `--bad`; the same line counts checkpoints still rolling out. While that run is training the viewport turns to it on its own, unless a source was picked by hand this visit. **Gait references** (ADR-703), a source group offered for each accepted task whose bundle carries a reference (`/api/project`'s `references`, `reference:<task>`): the accepted model posed by the task's generated stride, from `/api/playback/reference/<task>`, which repeats the one stride a stride further on each time for about 4 s. It loops from the start as soon as it is in, on the same timeline and with the same Follow. It is the motion the task asks for, not one simulated, so the owner judges the intended gait before anything trains. **Revision history** (ADR-547), a source offered once anything is accepted: each stored revision is a stop on `#revision-timeline`, oldest to newest, drawn from the model kept when it was accepted (ADR-546). The newest is shown and followed (`data-follow="true"`); picking an older one keeps it, and the newest end follows again. Unchanged parts are drawn in `--paper-ink`, parts whose digest changed against the revision before in `--info`, and that previous revision is a ghost in `--ink-2` at 22% opacity wherever it differs (a part kept as it was, where it was, is not drawn twice; a wireframe diagram leaves the ghost out). `#revision-status` names the changed parts and the revision compared against. A revision whose model was not kept (`data-state="missing"`) draws nothing and says why in `--warn`; the revision after it draws with no ghost and says there is nothing to compare with. |
 | **Status** | `status` | `#editor-status`, `#status-stage[data-stage]`, `#status-tabs`, `#status[data-stage][data-tab]`, `#status-line`, `#status-progress`, `#status-run`, `#status-training`, `#status-stats`, `#status-reward-now`, `#status-best`, `#status-loss-now`, `#status-episode-now`, `#status-std-now`, `#status-eta`, `#status-charts`, `#status-reward`, `#status-loss`, `#status-episode`, `#status-std`, `#status-eval`, `#status-eval-verdict`, `#status-eval-list`, `#status-runs`, `#status-runs-body`, `#status-panel`, `#status-warning`, `#status-activity[data-state]`, `#status-activity-line`, `#status-activity-log`, `#status-activity-list` | Drawn by `status.js` (ADR-606). What the project is doing and how training is going (ADR-542, the first panel back after ADR-533), an editor of its own since ADR-572, beside the 3D viewport rather than over its model: a stage chip in the area's header — **idle**, **designing** (a revision accepted in the last 10 min), **training** (iteration of total and ETA), **evaluating**, **stopped** in `--warn` (the newest run was stopped on request, through `train_stop` or a walk's Ctrl-C or `SIGTERM`; its line is the stop's reason, ADR-559; a run stopped before ADR-559, whose record says `failed` but whose supervisor's `training-status.json` says `stopped`, reads stopped too, ADR-574) or **failed** (a run that failed, or a walk or supervisor killed mid-run whose record still says `running` under a lock nobody holds, ADR-559) — and, in its body, one line (`--fs-1`) with a progress bar while training, the run it reads (named when there are several), tiles for reward per step, the best reward and its iteration, loss, episode length, action std and (while training) ETA; **four charts**, one measure each on its own axes and never two on one (ADR-606): reward per step, loss, episode length and action std by iteration (one-based), from `stage.training.spark`, the x axis running to the run's total while it trains, so the unrun part shows, and to the last iteration it reached once it has ended; y ticks with a `--rule` grid, x ticks, the samples as a faint 1 px `--accent` line under a 2 px `--accent` line of their rolling mean (a window of 1/12 of the samples, so a batch whose episodes end together reads as its trend), on reward the best iteration as a `--ok` dot on a dashed rule labelled `best <value> @ <iteration>` and each reported checkpoint as a tick on the axis; hover puts a crosshair and the iteration and value on the nearest sample; a measure the run did not report says so; the charts tile as many to a row as fit at 300 px and redraw when the area resizes; **Latest evaluation**, its verdict chip, task, policy, age and how the episodes ended, then a row per predicate (its bound, a seeds-passed meter in `--ok`/`--warn`/`--bad`, its median) from `api/evaluation/<name>`, read once per evaluation; **Runs**, newest first (at most 40): name, label and the agent's stated reason (ellipsized), iterations, best reward, its change from the previous run with a best (`--ok` up, `--bad` down), the outcome chip (done, stopped, failed, running) and the verdict of its evaluation (one of its own policy's by digest, else the first evaluation made between it and the next run); the run Status reads is shaded; below 420 px the iterations column goes. And the trainer's collapse `warning` in `--warn` (or, while the run is still recorded as live, that its telemetry has been quiet for over 30 s; never under a run whose record has ended, ADR-574). Read from `/api/project`'s `stage` on the page's own poll. **The agent's activity** (ADR-550), from `/api/project`'s `activity` (ADR-549): one mono line under the run with the newest `cadex mcp` call, its argument summary and how long ago (`data-state="active"`), or `failed: <detail>` in `--bad` (`"error"`); a call still in flight reads `<tool> <args> · running <how long>` in `--info` (`"running"`, ADR-553), never idle, and an in-flight `evaluate` makes the stage **evaluating**, its line `the agent's evaluate call is running` for the whole call, never an evaluation directory's id (ADR-555); a call whose server died before it returned reads `did not return` in `--bad`; once no call has returned for 5 min and none is in flight it reads `agent idle · last call <tool> <ago>` in `--ink-2` (`"idle"`); with no log it shows the reason (`"none"`). `recent calls` opens the newest five, each with its UTC clock time, failures in `--bad`. It never collapses: an area is sized by its edges, and on a phone it is a tab. With no runs it is one line, `idle`. **Project** (ADR-607): when the project has a `status.html`, `#status-tabs` offers **Training** and **Project**, Project first; Project shows the agent's own panel in `#status-panel` (§23) under the stage line and the activity. |
 | **2D viewport** | `view2d` | `#view2d-source`, `#view2d-fit`, `#sheet-stage[data-kind]`, `#sheet-empty` | The project's drawings and presentation images (pan, zoom, double-click to fit), its documents (markdown, drawn as text only), each evaluation's film, newest first (a passed evaluation's hero and print-bed hero first, as images, ADR-570; then its shove video, `· shoves`, with the pushes and the ending captioned below it in `--ink-2` mono, ADR-571; then each filmed seed's rollout video, which plays in place with controls, muted and looping, and its filmstrip and detail sheets as images; ADR-541), and each run's training curves (reward, loss, episode length, action std) as plots. |
+| **Outliner** | `outliner` | `#editor-outliner`, `#outliner`, `#outliner-filter`, `#outliner-group`, `#outliner-show-all`, `#outliner-tree`, `#outliner-summary` | Every part of the model the 3D viewport shows, grouped by type or role, to show, hide, isolate, select and frame (§25, ADR-676). |
 | **Activations** | `activations` | `#editor-activations`, `#activations-views button[data-view]`, `#activations-viewport[aria-pressed]`, `#activations[data-viewport][data-match][data-gauges][data-bars][data-drivers]`, `#activations-status[data-state]`, `#activations-motors`, `#activations-bars`, `#activations-detail` | What the motors are doing at the moment the 3D viewport's rollout shows (§27, ADR-727): a gauge per motor, the same as a bar a row, the inputs that drive the picked motor, each view on its own switch, and **Show in viewport**, which paints each motor's parts by its load. |
 | **Network** | `network` | `#editor-network`, `#network-views button[data-view]`, `#network[data-layers][data-paths]`, `#network-status[data-state]`, `#network-layers`, `#network-paths` | The rollout's policy network (§27, ADR-728): its layers as a heat map, and the strongest paths through them to the picked motor, each on its own switch. |
 | **Settings** | `settings` | `#editor-settings`, `#settings`, `#settings-heat-preset`, `#settings-heat-count button[data-count]`, `#settings-heat-low`, `#settings-heat-mid`, `#settings-heat-high`, `#settings-heat-preview`, `#settings-heat-reset` | This browser's preferences (§28, ADR-728): for now the heat colours the Activations and Network editors and Show in viewport paint in. |
-| **Menu bar** | — | `#menubar`; `#file-panel` (`#project-select`, `#project-open`, `#project-all`); `#revision-panel` (`#revision-list li[data-revision][data-ordinal][data-current]`, `#revision-empty`); `#view-panel` (`#theme-choice`, `#style-choice`, `#mesh-lines`, `#mesh-strength`, `#reflections`, `#layout-reset`, `#layout-presets button[data-preset]`) | File, Revisions and View in the status bar, each a `<details class="menu">` dropdown opening upwards (ADR-539, ADR-728): open another project; the revision trail, read-only (§18), where a row (`data-retained` says whether its model was kept) opens that revision on the 3D viewport's revision timeline — a view, never a restore; the theme, the render style, the wireframe's mesh lines (on or off, and a strength slider) and the shaded solids' reflections (a strength slider), each this browser's own (§10), and the layout: Reset, and eight one-click presets (§12). One opens at a time; a click outside or Escape closes it, and with one open, hovering another opens that one. On a phone the dropdown spans the screen between the gutters. |
+| **Menu bar** | — | `#menubar`; `#file-panel` (`#project-select`, `#project-open`, `#project-all`); `#revision-panel` (`#revision-list li[data-revision][data-ordinal][data-current]`, `#revision-empty`); `#view-panel` (`#theme-choice`, `#style-choice`, `#look-choice`, `#occlusion`, `#detail`, `#mesh-lines`, `#mesh-strength`, `#reflections`, `#layout-reset`, `#layout-presets button[data-preset]`) | File, Revisions and View in the status bar, each a `<details class="menu">` dropdown opening upwards (ADR-539, ADR-728): open another project; the revision trail, read-only (§18), where a row (`data-retained` says whether its model was kept) opens that revision on the 3D viewport's revision timeline — a view, never a restore; the theme, the render style, the lighting, ambient occlusion and surface detail, the wireframe's mesh lines (on or off, and a strength slider) and the shaded solids' reflections (a strength slider), each this browser's own (§10), and the layout: Reset, and eight one-click presets (§12). One opens at a time; a click outside or Escape closes it, and with one open, hovering another opens that one. On a phone the dropdown spans the screen between the gutters. |
 
-The element ids and `data-*` attributes above are the hooks the CLI suite
-pins: `test_review_design.py` fails if an id in this table is missing from
-the page.
+The element ids and `data-*` attributes above are the page's stable hooks:
+keep them when the page changes, and change this table with them. No test
+checks them since ADR-725.
 
 ## 3. Type scale
 
@@ -192,13 +197,12 @@ and every status colour on `--surface-2` is at least 7.8:1, so each text
 token clears WCAG AA at `--fs-0`.
 
 The stylesheet declares these colour tokens on `:root` (beside `--select`,
-`--paper`, `--paper-ink` and the type, spacing and shape tokens), and the design test
-pins the table above to the environment module's dark scene background *and*
-reads every token back from the rendered page (`getComputedStyle`) at both
-charter sizes, so a palette drift is a failing test rather than a slow
-surprise. The chrome is at these values now (§8), and so is the viewport
-(§10): the environment module has one palette, the videos are captured in
-the same scene, and the viewport's sky *is* `--bg`.
+`--paper`, `--paper-ink` and the type, spacing and shape tokens). A design
+test pinned the table to the environment module's dark scene background and
+read every token back from the rendered page until ADR-725; now a change to
+one changes the other two by hand. The chrome is at these values (§8), and
+so is the viewport (§10): the environment module has one palette, the videos
+are captured in the same scene, and the viewport's sky *is* `--bg`.
 
 ## 5. Spacing and shape
 
@@ -274,8 +278,8 @@ The home page is a grid of cards at most 1440 px wide, one column below
 600 px with 16 px gutters; its spotlight stacks its picture over its text
 below 800 px.
 
-Invariants at every width, and the ones the design test asserts on the
-rendered page at 1400 × 900 and at 400 × 850 with touch emulation:
+Invariants at every width, checked on the rendered page at 1400 × 900 and
+at 400 × 850 with touch emulation (by a design test until ADR-725):
 
 1. **No horizontal page overflow**: `document.documentElement.scrollWidth <=
    innerWidth`, achieved by `min-width: 0` and fixed table layout, never by
@@ -283,8 +287,9 @@ rendered page at 1400 × 900 and at 400 × 850 with touch emulation:
 2. **The layout viewport is the device width**: `innerWidth === 400` at phone
    size. §7 shows what happens when it is not.
 3. **The screen fills the window**: from the top edge down to the status bar, and the
-   page does not scroll. At desk the default layout's two areas, the 3D
-   viewport and Status, tile it without overlapping, as any split layout's do; on a phone the one area is the 3D viewport and the
+   page does not scroll. At desk the default layout's three areas, the 3D
+   viewport and the Outliner over Status, tile it without overlapping, as
+   any split layout's do; on a phone the one area is the 3D viewport and the
    canvas is the full `innerWidth`.
 4. **The palette tokens of §4 are the computed values** on the rendered page,
    in the default dark theme; the light theme survives a reload.
@@ -364,9 +369,9 @@ What changed, against §7:
   artifact tables scroll inside their card. Page height fell from 28 772 px
   to 6 463 px because nothing wraps one word per line any more.
 
-The rendered-page half of `cli/tests/test_review_design.py` asserts §6's five
-invariants at both sizes on a fixture project, and pins the receipt above to
-this table.
+A design test's rendered-page half asserted §6's
+five invariants at both sizes on a fixture project and pinned the receipt
+above to this table, until ADR-725 deleted it.
 
 ### 8a. The phone, region by region, and by touch
 
@@ -396,34 +401,20 @@ tall (the quantised copies are beside this document):
 | 6 | Record | 3 708 px, first 850 shown | [phone-record.png](review-design/phone-record.png) |
 
 The masthead is the full 400 px; every other region is 376 px inside the
-12 px gutters. `test_phone_receipt_records_touch_orbit_and_every_region_on_the_operator_url`
-pins the receipt and the PNG sizes to this table.
+12 px gutters.
 
 ## 9. Evidence for D1 and D2
 
 **D1** has this document; the before and after screenshots at the two sizes
-beside it (§7, §8); `test_rendered_page_follows_the_spec`, which reads §4's
-tokens, §3's type scale and §6's invariants back from the rendered page at
-both sizes; and the operator URL receipts showing the design on the active
-project and run (§8). The viewport's half of "one palette" is §10: the light
-scene is removed (ADR-331) and the viewport's background is the page's.
+beside it (§7, §8); and the operator URL receipts showing the design on the
+active project and run (§8). The viewport's half of "one palette" is §10:
+the light scene is removed (ADR-331) and the viewport's background is the
+page's.
 
-**D2** was held by two halves in `cli/tests/test_review_design.py`, at
-400 × 850 with `Emulation.setDeviceMetricsOverride(mobile: true)` and touch
-emulation, skipping without a Chromium. What holds it now:
-
-- *Layout* — `test_rendered_page_follows_the_spec[phone]`: the layout
-  viewport is 400 px, nothing overflows it, nothing is below 12 px, one
-  editor (the 3D viewport) fills the screen with the **3D**, **Status**,
-  **2D** tab bar, and the canvas fills the width (§6). §8's receipt shows
-  the page of the time on the operator URL.
-- *Interaction* — `test_phone_touch_orbits_pinches_plays_and_downloads`,
-  which drove a one-finger orbit, a pinch, Fit, Play and a download by
-  dispatched touch events, went with the panels it touched (ADR-533).
-  Pointer orbit and zoom over a drawn model are
-  `test_review_server.py::test_browser_orbit_and_zoom_move_the_camera_over_a_drawn_model`;
-  §8a's receipt is the recorded touch orbit and Fit tap, and the region
-  screenshots are §8a's table.
+**D2** is the phone: §8's and §8a's receipts are the page of the time on the
+operator URL at 400 × 850, with the recorded one-finger orbit and Fit tap and
+the region screenshots. The browser tests that held both at the time were
+deleted by ADR-725.
 
 What the evidence is not: a physical phone. Headless Chromium's touch
 emulation and its gesture recogniser are what is measured, and one of that
@@ -432,7 +423,7 @@ within a few hundred milliseconds of a drag's end is dropped, on a device as
 under emulation, so the script lets a second pass before tapping Fit.
 
 Every receipt ships under `docs/probes/ot6/` within the charter's caps
-(16 KB per receipt, 200 KB per image), which the same test file enforces.
+(16 KB per receipt, 200 KB per image).
 
 ## 10. The viewport: dark only, shared with the capture
 
@@ -721,10 +712,6 @@ falls on its top face. So a robot whose solids sink through the floor
 above a shadow at the lowest reach. The clip draws the rollout's own solids
 within a triangle budget, and says how many it read and drew.
 
-**Held by** `test_dashboard_serves_the_studio_video_it_lists` (listed with
-its style, served byte for byte as `video/webm`) and the studio tests
-beside it in `cli/tests/test_video.py`.
-
 ## 16. One scene for every image (ADR-444)
 
 Under ot10's A8, every image Cadex presents is drawn in the viewport's dark
@@ -737,10 +724,9 @@ major line — and the sheet's chrome is this page's `--ink`, `--ink-2` and
 **One source.** The engine's `CadexStudio.PALETTE` (ADR-445) is the table
 every image is drawn with, in the CLI and the dashboard's server. A browser cannot
 import Python, so `review_static/environment.js` (`PALETTE`) and
-`review_static/review.css` (`:root`) carry the same colours, and
-`cli/tests/test_scene_palette.py` fails when either drifts from the engine.
-Change a colour in the engine and in both files together; no CLI module
-carries a scene colour of its own.
+`review_static/review.css` (`:root`) carry the same colours. Change a
+colour in the engine and in both files together (no test checks the copies
+since ADR-725); no CLI module carries a scene colour of its own.
 
 **The floor.** The CPU renderer (`CadexStudio._floor`) intersects each
 orthographic ray with the floor plane: a checker one pitch square, the
@@ -790,17 +776,6 @@ dark floor — it may take a tile to 20 % of its brightness (was 45 %). On
 probe is re-scored (ADR-444). The viewport and its capture (§10) are the
 source, not a consumer, and are unchanged.
 
-**Held by** `cli/tests/test_scene_palette.py` (the renderer's palette is the
-viewport's, parsed independently, and the charter's values; the 1 m pitch
-and line width are `floor.js`'s; the mat is a metre a square at a 400 mm
-and a 4 m framing alike; no image module carries a scene colour; the hero
-stands on the mat and fades; a changed viewport palette changes the drawn
-image; the studio video's identity covers the palette source), with the
-shadow held by `test_contact_shadow_darkens_the_floor_under_the_design_only`,
-the mat at the world's top by
-`test_the_mat_lies_at_the_top_of_the_world_geometry_not_under_the_design`,
-and the finishes by `src/Mod/cadex/cadex_tests/test_studio_finishes.py` and
-`test_each_part_carries_its_finish_catalog_row_and_board_layout`.
 Before/after: `docs/probes/ot10/a8-*.png`.
 
 ## 18. Read-only: the agent changes the project, the page follows (ADR-537)
@@ -809,7 +784,10 @@ The server answers GET and HEAD and nothing else: any other method, on any
 route, is 501, and the served page carries no token. The page's 2 s poll of
 `api/project` notices when the accepted revision moves -- a `cadex params`,
 a `write_script` through `cadex mcp`, a `cadex revision restore` -- and
-reloads the model then. The Revisions menu keeps `#revision-list`, the stored trail
+reloads the model then. `cli/tests/test_dashboard_read_only.py` holds this:
+every method but GET and HEAD is refused under both servers with the project
+unchanged, and an open page follows a `cadex params` run to the rebuilt model.
+The Revisions menu keeps `#revision-list`, the stored trail
 newest first, numbered by ordinal, **current** for the accepted one and when
 it was accepted for the rest; each row carries `data-revision`,
 `data-ordinal` and `data-current`.
@@ -841,13 +819,12 @@ It may be mounted at a sub-path too (ADR-551): every URL the pages fetch or
 link, every URL the server builds into a response (`mesh`, `url`, a project's
 `p/<name>/`) and the redirect from `p/<name>` to `p/<name>/` is relative to
 the page, so a proxy that forwards `/some/prefix/<rest>` to `/<rest>` and
-rewrites nothing serves the whole dashboard; `test_dashboard_prefix.py` loads
-a project through one and fails on any request that leaves the prefix.
+rewrites nothing serves the whole dashboard.
 `tailscale serve --set-path /name` hands `/name` and `/name/` to the server
 alike, and at `/name` every relative URL would resolve outside the mount, so
 both pages first add a missing trailing slash to a path whose last segment
 is not a file (an inline script ahead of `theme.js`). Only the abandoned
-first load's preload fetches stray; the test pins that too. Both
+first load's preload fetches stray. Both
 pages declare an empty icon, so not even the browser's own `/favicon.ico`
 probe escapes it. There is nothing to write behind the proxy
 (§18), but the page still shows the whole project to whoever opens it. Do not use `tailscale funnel`, which publishes to the internet, and do not
@@ -855,6 +832,10 @@ pass `--host 0.0.0.0`.
 `--host <tailscale address>` (`docs/CLI.md`) binds the tailnet address
 directly without TLS, and is the older path. Cadex's own runs never start
 `tailscale serve`. It is a step the owner takes.
+`cli/tests/test_dashboard_read_only.py` checks that this section names the
+loopback default, `tailscale serve --bg 8765`, `tailscale funnel` and
+`0.0.0.0`, and that `serve`, `serve_projects`, `cadex app` and `cadex review`
+all default to `127.0.0.1`.
 
 **Over a remote link the model is the weight (ADR-535).** An accepted model
 is one binary STL per component, 28 MB for a 45-part arm, and each one was
@@ -1003,9 +984,7 @@ parent.postMessage({ type: 'cadex-status-ready' }, '*');
 </body></html>
 ```
 
-`cadex guidance` tells the agent it may write one and points here;
-`test_review_status_panel.py` holds the route's headers, its containment,
-the frame's sandbox and a panel that draws from the message.
+`cadex guidance` tells the agent it may write one and points here.
 
 ## 25. The Outliner (ADR-676)
 
@@ -1049,8 +1028,7 @@ the agent's next write: a part of the same name is still hidden in the next
 revision, a run's model or the revision timeline. It is the page's own and
 lasts as long as the page; nothing is written (§18). The grouping and the
 folded groups are this browser's (`cadex.outliner.group`,
-`cadex.outliner.folded`). `cli/tests/test_dashboard_outliner.py` proves it
-in headless Chromium.
+`cadex.outliner.folded`).
 
 ## 26. The hero folder (ADR-677)
 

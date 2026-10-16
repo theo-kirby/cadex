@@ -1,6 +1,6 @@
 # ROADMAP.md — Phases and Status
 
-Verified against source: 2026-10-12
+Verified against source: 2026-10-16
 
 Living status lives **here** (check the boxes as work lands); decisions land
 in `docs/DECISIONS.md`; the destination is `docs/VISION.md` and
@@ -100,8 +100,8 @@ from facts instead of re-exploration.
 - [x] Headless rebuild command with content digest over produced geometry
       (`cadex_rebuild.py`, `pixi run rebuild <root>`).
 - [x] CI test: delete document → rebuild from script → digest matches
-      (`test_project_rebuild.py`, ctest `CadexProjectRebuildDigest`;
-      rebuild-vs-accepted and rebuild-vs-rebuild equality verified).
+      (rebuild-vs-accepted and rebuild-vs-rebuild equality verified; the
+      test and its ctest went with ADR-725).
 - [x] **How projects compose** — the question `docs/VISION.md` and
       `docs/XSCRIPT.md` Part II each parked (sub-scripts? imports? one flat
       script?), answered by **none of the three** (ADR-138). A project stays
@@ -152,8 +152,7 @@ view, viewport.
       existing `file.export_model` mesh path. No interactive mesh editing
       (that waits for BMesh in the Blender shell).
 - [x] Register the domain pack + worker bundle; guardrail tests updated
-      (`test_mesh_domain.py`; tool surface unchanged — capability packs
-      carry no tools).
+      (tool surface unchanged — capability packs carry no tools).
 - [x] **External geometry as a first-class input** `(landed 2026-07-26,
       ADR-043)`. Phase 4 shipped an ingest path nothing could reach: no
       product surface wrote `assets/`, an import could not be moved, could
@@ -206,10 +205,9 @@ triangulations (ADR-016; the digest CI now seeds mesh outputs too).
 in-process fallback. **Met 2026-07-25** — ctest `CadexdLifecycle`
 (kill -9 → respawn → restore digest equality, mid-run cancel) and the
 switchover integration (median set_params drag 0.479 s ≤ 0.65 s bar) are
-the evidence; the boundary was pinned by
-`test_engine_shell_split_guardrails.py`, which was folded into
-`test_engine_purity_guardrails.py` when Phase 7 deleted the protocol seam
-it guarded — that is the file to read today.
+the evidence; the boundary is pinned today by
+`test_engine_purity_guardrails.py`, into which Phase 7 folded the old
+split guardrails when it deleted the protocol seam they guarded.
 
 ## Phase 6 — Blender shell `(landed 2026-07-25, ADR-019; historical since ADR-498)`
 
@@ -388,8 +386,7 @@ depends on. Independent of Phase 8.
       screen can record area types, and until then the area types were lying.
       What survives enables the add-on and sets up the top bar, neither of
       which a `.blend` can carry — and the bar carries the Cadex File and Edit
-      menus since ADR-041, having been blank between ADR-037 and it. Guarded by
-      `test_startup_layout_is_the_shipped_file` in the gate.*
+      menus since ADR-041, having been blank between ADR-037 and it.*
 - [x] **Delete the dead publication paths** in
       `CadexScriptedDomainPublication.py` — the robot / FEM / inspection /
       points branches no live domain can reach. *Landed 2026-07-25
@@ -411,7 +408,8 @@ depends on. Independent of Phase 8.
       ordering is not a documented contract and has changed across OCCT
       releases; today one `pixi update` silently re-indexes every saved
       script. *Landed 2026-07-25 (ADR-027): `occt = "==7.8.1"` + ctest
-      `CadexSubshapeEnumeration`.*
+      `CadexSubshapeEnumeration`. The pin stays; the enumeration gate went
+      with ADR-725, so an OCCT bump is re-checked by hand.*
 - [x] **The target case works at all.** Ahead of any speed work: joints
       failed headless (ADR-047), simulations could not publish (ADR-048),
       and a solved assembly never reached the viewport because nothing in
@@ -617,8 +615,8 @@ and the pin/index contract stands. Three things the probe turned up:
 - The canonical shape above **cannot discriminate between the variants** —
   `removeSplitter` is a no-op on it (cylinders through a box leave no coplanar
   split). A second shape — two boxes fused across a shared face — was needed
-  to run the probe at all. `test_subshape_enumeration.py` is still a valid
-  OCCT-drift tripwire, but it does not cover refine.
+  to run the probe at all. The enumeration tripwire never covered refine,
+  and ADR-725 deleted it; nothing now catches OCCT re-indexing.
 - `ShapeUpgrade_UnifySameDomain` is **not** a drop-in for `modelRefine`: same
   face and edge counts, different ordering (89 differing ordinals). Valid
   shape, reconciling counts, every saved index silently changed meaning.
@@ -645,8 +643,8 @@ Three things the work turned up:
   regenerated only after proving the change field-additive.
 - **The payload gate did not notice a missing module.** `CMakeLists.txt` is
   hand-maintained and the new module was absent from the shipped payload
-  while every source-tree gate stayed green. Now pinned by
-  `test_every_engine_module_is_installed_by_cmake`.
+  while every source-tree gate stayed green. A test pinned it until
+  ADR-725; nothing does now, so the packaged gate is the only check.
 
 ~~Still open on the shell side~~ — **closed by deletion (ADR-498)**: there
 is no click to write from. Was: nothing *wrote* a selector into a script
@@ -1251,7 +1249,7 @@ the order they had to happen:
       running away (0.3000 → 0.2973 over 50 iterations) but sampled play is
       five times the torque of mean play. `log_std` now reaches the policy
       header (`exploration`) and mean σ the progress row, so both are
-      readable live. `test_dynamics_mjx_agreement.py` pins the result.
+      readable live.
     - [x] **ADR-101's inversion is withdrawn — it was the instrument
       (ADR-103 §9).** `evaluate_episode` applies domain randomisation by
       multiplying in place into the model it is handed and never restores
@@ -1594,51 +1592,32 @@ supplying only the gesture (O3).
 
 ## Verification
 
-Every phase keeps the existing gates green and adds one.
+Since ADR-725 the suites hold contracts only; behaviour is verified by
+running the thing (a build, a rollout, an evaluation). Each phase keeps
+these green.
 
 ```bash
-# unchanged throughout
-pixi run python -m pytest src/Mod/cadex/cadex_tests
+pixi run test-engine                       # the engine's contracts: protocol, goldens,
+                                           # tool surface, purity, licences, offboard
+                                           # boundaries (157 passed, 3 skipped, ~34 s)
+pixi run python -m pytest cli/tests        # MCP server, HTTP API, read-only dashboard
+                                           # (50 passed, ~10 s; engine-needing tests
+                                           # skip without an engine)
+pixi run build-release && pixi run test-release   # the inherited ctest
 pixi run stage-engine && \
   CADEX_ENGINE_ROOT=build/engine/cadex-engine-<v>-<os>-<arch> \
   pixi run python -m pytest -q \
-  src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py
-
-# new in Phase 13a — the whole thing, from one place. Until ADR-498 this was
-#   `pixi run setup && pixi run app` plus `pixi run gate` (CADEX-BLENDER-GATE);
-#   neither task exists with the shell gone. Today:
-pixi run setup-engine && pixi run build-engine   # the engine, headless
-pixi run python -m pytest cli/tests              # the CLI, agent bindings, dashboard
-
-# new in Phase 9  (also ctest CadexResponseSchemas / CadexSubshapeEnumeration)
-pytest src/Mod/cadex/cadex_tests/test_response_schemas.py      # golden per-op response shapes
-pytest src/Mod/cadex/cadex_tests/test_subshape_enumeration.py  # OCCT ordering fingerprint
-
-# new in Phase 10b
-pytest src/Mod/cadex/cadex_tests/test_subshape_selectors.py    # selectors resolve, indices rejected
-#   the real-kernel case also runs against a payload:
-#   CADEX_ENGINE_ROOT=<payload> pytest .../test_subshape_selectors.py
-
-# new in Phase 14 — the dynamics vertical (39 test_dynamics_*.py suites then, 62 now)
-pytest src/Mod/cadex/cadex_tests -k dynamics       # headless, no build, no GPU
-#   naming convention across the arc, four files a slice:
-#     *_api       the authoring surface and its refusals
-#     *_model     what reaches the compiled mjSpec
-#     *_measured  numbers checked against a reference, not against ourselves
-#     *_live      the whole path through a real worker
-pytest src/Mod/cadex/cadex_tests/test_dynamics_units.py          # the one conversion boundary
-pytest src/Mod/cadex/cadex_tests/test_engine_purity_guardrails.py  # the three invariants
-#   the packaged gate is 12 tests at M8, up from 6 at M0 (21 today):
-#   CADEX_ENGINE_ROOT=<payload> pytest .../test_cadexd_lifecycle.py
-#   MJX-gated tests (phase 0 measurements, real training runs) SKIP in the pixi
-#   env by design — 12 skips is the expected count. To run them, use a venv
-#   built from training/requirements.txt; the suites run from either interpreter.
+  src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py   # the packaged gate, 21 tests
+pixi run python src/Mod/cadex/cadex_tests/cadexd_latency_integration.py  # slider latency bar
 
 # Phase 11 (unscheduled, not yet written) — the differential harness, both engines in one FreeCADCmd
-pytest src/Mod/cadex/cadex_tests/differential/ --domain=<mesh|part|sketcher|partdesign|assembly>
 #   volume (rel 1e-9) / area (rel 1e-6) / COM / bbox, counts, ordering,
 #   two-sided Hausdorff; tolerances reported, not asserted
 ```
+
+The engine suite's three skips are packaged-gate tests that run only with
+`CADEX_ENGINE_ROOT` set. The training venv's own tests (`training/test_*.py`)
+run from a venv built from `training/requirements.txt`.
 
 ## Risks
 
@@ -1701,15 +1680,17 @@ offscreen rendering, so the agent verifies through `inspect` facts and
 script stdout and is told so in its prompt; the CLI does not ship inside the
 engine payload; Windows is not supported.
 
-## Off-phase — the three-part product (ADR-500, 2026-10-03 → 2026-10-04)
+## Off-phase — the three-part product (ADR-500, 2026-10-03 → 2026-10-16)
 
 Landed on no phase: a direction change, not a work item any phase declared.
 Cadex is the engine, the dashboard and the agent bindings (ADR-500), and
 the items below are what made that true. `AGENTS.md` describes the result.
 
 - [x] The Blender shell is disabled, then deleted, and the repository
-      carries no GPL code (ADR-495, ADR-498); no live doc names its paths,
-      and a test holds that (ADR-499). Tag `v1-blender-shell` keeps it.
+      carries no GPL code (ADR-495, ADR-498); no live doc names its paths
+      (ADR-499), and `test_licensing_compliance.py` holds that nothing is
+      tracked under `shell/` and NOTICE and THIRD_PARTY_LICENSES.md do not
+      point there. Tag `v1-blender-shell` keeps it.
 - [x] `docs/DASHBOARD.md` is the UI spec (ADR-501); `cadex app`, or a bare
       `cadex`, serves the dashboard over a projects directory (ADR-502).
 - [x] The dashboard is cut to its minimum and becomes the app: areas, a 3D
@@ -1791,6 +1772,69 @@ the items below are what made that true. `AGENTS.md` describes the result.
       MCP server answering every message (ADR-673), the pre-release
       audit's fixes (ADR-674), and its removals: `demo/`, `contrib/`, the
       `tools/` GUI harness and the `.github` leftovers (ADR-675).
+- [x] The viewport and the presentation: the Outliner, lighting setups,
+      matcaps, occlusion and soft shadows (ADR-676); `cadex hero` writes a
+      project's presentation folder (ADR-677); the 3D viewport follows a
+      playing design (ADR-693).
+- [x] Panels take a designed form and are cut from it: `part.envelope(form=...)`,
+      `lib.form`, `part.former`, `part.skin` (ADR-679, ADR-684); a skin opens
+      round what moves through it (ADR-687); the static fit and joint sweeps
+      measure face pairs and only where a bound cannot settle it (ADR-678,
+      ADR-686, ADR-690 to ADR-692); a failed refinement cannot corrupt a
+      piece (ADR-680, ADR-681); a script that drops accepted outputs is
+      refused (ADR-682); every build path carries a verdict brief (ADR-689).
+- [x] The gait pipeline (orun6): rollout traces carry joint state and
+      delivered effort (ADR-694); the trainer compiles once (ADR-695);
+      task observations of previous action, foot contact, joint
+      acceleration and 128 sensor channels (ADR-696, ADR-698, ADR-699,
+      ADR-701); a procedural gait reference (`CadexGait`) carried by a task,
+      tracked on a gait clock, started at a random phase and played in the
+      dashboard (ADR-702, ADR-703, ADR-706, ADR-709); success specs that
+      bound smoothness, effort, cost and fidelity to the reference, and RMS
+      effort against a drive's continuous rating (ADR-704, ADR-705, ADR-707,
+      ADR-708); a drive proxy loop that screens drives, masses and clips by
+      inverse dynamics (ADR-710, ADR-711); larger reward expressions and a
+      reward floor (ADR-697, ADR-700).
+- [x] The trainer learns with Brax's PPO (ADR-712), and the AK10-9 joins
+      the QDD catalog as a heavy tier (ADR-713).
+- [x] Terrain and commands (orun7): a free base stands on a declared
+      heightfield course (ADR-714) or placed boxes, the form MJX trains on
+      (ADR-716), drawn from a seed and re-drawn per episode (ADR-717); a
+      privileged height scan (ADR-715); terrain predicates and a held-out
+      course per evaluation seed (ADR-718); footfall phase error on the
+      frame grid (ADR-719); a commanded yaw rate, scripted goal sequences
+      and command-tracking predicates (ADR-721); appendage predicates
+      (ADR-722); joint stops as stiff as `joint_dynamics` says (ADR-724).
+- [x] The suites hold contracts only (ADR-725).
+- [x] The dashboard: a navigation gizmo (ADR-726); an Activations editor
+      with motor gauges, the policy run in the page and heat in the
+      viewport (ADR-727); a bottom status bar, scrubbers in the viewport
+      header, a Network editor and a Settings editor (ADR-728); several 3D
+      viewports, Activations or Network at once (ADR-729).
+
+## Open — the frontier after orun7 (2026-10-16)
+
+`STATE.md` is the live list; these are the items a release reader needs.
+
+- [ ] **Turning within rated torque, and reversal** (R1). The command
+      language and bars exist (ADR-721, ADR-722); no policy yet follows a
+      re-sampled speed and yaw rate, including a 180° reversal, with drives
+      within rated RMS torque. The last cold run diverged at iteration 2.
+- [ ] **Terrain, finished** (W1). Rollouts and the dashboard still stand on
+      course 0, not each seed's evaluated course; the terrain is not yet
+      proved on a second, simpler robot.
+- [ ] **Rough ground** (W2). A policy that crosses a randomised course
+      (bumps to 40 mm, steps to 80 mm, slopes to 15°). Not started.
+- [ ] **MJX on the heightfield.** MJX 3.10.0 goes non-finite on ADR-714's
+      heightfield under driven motion, where stock MuJoCo and MJX on a plane
+      are stable; training uses the box course (ADR-716) meanwhile.
+- [ ] **Task vocabulary for non-legged machines.** Path and coverage
+      readings exist but are not wired into `assembly.success` (see
+      *Machine tasks*, Phase 17).
+- [ ] **`look` fails 'missing tessellation'** after `cadex export` or
+      `cadex clearance` add attempts under the same digest.
+- [ ] **`cadex smoke` times out** in its exact-geometry pass on a ~100-part
+      model (it still writes the model and task bundle).
 
 ## Off-phase — the harness ops, experimental (ADR-056, ADR-057, ADR-062, ADR-063, ADR-065, 2026-07-27 → 2026-08-01)
 
@@ -2285,8 +2329,8 @@ field, and every client gets it through the surface it already reads.
 - [ ] **Machine tasks.** Path-following and area-coverage readings exist
       in `CadexEvaluation` (`path_metrics`, `coverage_metrics`); wiring
       them into `assembly.success` (a tool and a path or region on the
-      spec), terrain and workpieces in the world, odometry and cycle time
-      are open (ADR-645).
+      spec), workpieces in the world, odometry and cycle time are open
+      (ADR-645); terrain landed for legged tasks (ADR-714 to ADR-718).
 
 
 ## Live headless project review (ADR-284) `(run ot5, closed 2026-09-13)`

@@ -13,7 +13,7 @@
 # `serverInfo` read it, the engine payload is named from it, and this script
 # writes it into `version.json` (CMake's PACKAGE_VERSION and `App.Version()`)
 # and, through src/Tools/sync_version.py, into the pixi manifests.
-# `test_version.py` fails if any copy drifts. The release procedure is in
+# `python src/Tools/sync_version.py --check` reports a copy that drifts. The release procedure is in
 # docs/cadex-release-packaging.md.
 
 set -euo pipefail
