@@ -165,7 +165,7 @@ export function boardColours(mm, board, base) {
 export function create(canvas, {labels=true}={}) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, centreAt(){return null;}, followTo(){return null;}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setFov(){return 55;}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, screenBox(){return null;}, draw(){}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, centreAt(){return null;}, followTo(){return null;}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setFov(){return 55;}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, setHeat(){return false;}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, screenBox(){return null;}, draw(){}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   // Soft shadows (ADR-676): a variance shadow map, blurred, so a shadow's edge widens with its
@@ -290,7 +290,12 @@ export function create(canvas, {labels=true}={}) {
   // depth-only prepass of the solids (pushed back a hair, so a line on a surface wins and a line
   // behind one loses), and mixed in at `strength` of the ink.
   const SUPERSAMPLE=2, LINES_LAYER=1;
-  let style='shaded', target=null, edges=null, lineTarget=null;
+  let style='shaded', target=null, edges=null, lineTarget=null, heatTarget=null;
+  const heatMaterials=new Map();
+  function heatMaterial(hex) {
+    if (!heatMaterials.has(hex)) heatMaterials.set(hex,new THREE.MeshBasicMaterial({color:hex, side:THREE.DoubleSide, toneMapped:false}));
+    return heatMaterials.get(hex);
+  }
   let meshLines={shown:true, strength:MESH_LINES.strength};
   const paper=new THREE.Color(), ink=new THREE.Color();
   const normals=new THREE.MeshNormalMaterial({side:THREE.DoubleSide, flatShading:true});
@@ -316,13 +321,18 @@ export function create(canvas, {labels=true}={}) {
         gl_FragColor=vec4(e,e,e,1.);
       }`,
     depthTest:false, depthWrite:false, toneMapped:false});
+  // The heat view (setHeat) carries into the diagram: a heated part's face is washed in its colour
+  // and its lines are drawn in it, over the same paper and ink.
   const resolvePass=new THREE.ShaderMaterial({
-    uniforms:{tEdges:{value:null}, tLines:{value:null}, strength:{value:0}, paper:{value:new THREE.Vector3()}, ink:{value:new THREE.Vector3()}},
+    uniforms:{tEdges:{value:null}, tLines:{value:null}, tHeat:{value:null}, heated:{value:0}, strength:{value:0}, paper:{value:new THREE.Vector3()}, ink:{value:new THREE.Vector3()}},
     vertexShader:fullscreen,
-    fragmentShader:`uniform sampler2D tEdges; uniform sampler2D tLines; uniform float strength; uniform vec3 paper, ink; varying vec2 vUv;
+    fragmentShader:`uniform sampler2D tEdges; uniform sampler2D tLines; uniform sampler2D tHeat; uniform float heated, strength; uniform vec3 paper, ink; varying vec2 vUv;
       void main(){
-        vec3 under=mix(paper,ink,strength*texture2D(tLines,vUv).r);
-        gl_FragColor=vec4(mix(under,ink,texture2D(tEdges,vUv).r),1.);
+        vec4 h=heated>.5?texture2D(tHeat,vUv):vec4(0.);
+        vec3 tint=h.a>0.?pow(h.rgb/h.a,vec3(1./2.2)):ink;
+        vec3 face=mix(paper,tint,.32*h.a), line=mix(ink,tint,h.a);
+        vec3 under=mix(face,line,strength*texture2D(tLines,vUv).r);
+        gl_FragColor=vec4(mix(under,line,texture2D(tEdges,vUv).r),1.);
       }`,
     depthTest:false, depthWrite:false, toneMapped:false});
   const passScene=new THREE.Scene(), passCamera=new THREE.OrthographicCamera(-1,1,1,-1,0,1);
@@ -347,11 +357,12 @@ export function create(canvas, {labels=true}={}) {
     const scale=Math.max(1,Math.min(SUPERSAMPLE,limit/size.x,limit/size.y,Math.sqrt(16e6/(size.x*size.y))));
     const w=Math.floor(size.x*scale), h=Math.floor(size.y*scale);
     if (!target||target.width!==w||target.height!==h) {
-      if (target) {target.depthTexture.dispose(); target.dispose(); edges.dispose(); lineTarget.dispose();}
+      if (target) {target.depthTexture.dispose(); target.dispose(); edges.dispose(); lineTarget.dispose(); heatTarget.dispose();}
       target=new THREE.WebGLRenderTarget(w,h,{depthTexture:new THREE.DepthTexture(w,h),minFilter:THREE.NearestFilter,magFilter:THREE.NearestFilter});
       // Linear filtering at each canvas pixel's centre is the mean of its 2x2 block.
       edges=new THREE.WebGLRenderTarget(w,h,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,depthBuffer:false});
       lineTarget=new THREE.WebGLRenderTarget(w,h,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
+      heatTarget=new THREE.WebGLRenderTarget(w,h,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
     }
     const background=scene.background, fog=scene.fog, shown=world.children.map(o=>o.visible);
     scene.background=null; scene.fog=null; scene.overrideMaterial=normals;
@@ -366,6 +377,21 @@ export function create(canvas, {labels=true}={}) {
       renderer.autoClear=false; renderer.render(scene,camera); renderer.autoClear=true;
       camera.layers.set(0);
     }
+    // The heat: every solid's depth first, pushed back a hair, then each heated solid in its
+    // colour, so a part in front of a heated one still hides it.
+    const heated=!!heat&&meshes.size>0;
+    if (heated) {
+      renderer.setRenderTarget(heatTarget); renderer.setClearColor(0x000000,0); renderer.clear();
+      scene.overrideMaterial=prepass; renderer.render(scene,camera); scene.overrideMaterial=null;
+      const swapped=[];
+      meshes.forEach((m,n)=> {
+        const h=m.userData.world?null:heat[n];
+        swapped.push([m,m.material,m.visible]);
+        if (h==null) m.visible=false; else m.material=heatMaterial(h);
+      });
+      renderer.autoClear=false; renderer.render(scene,camera); renderer.autoClear=true;
+      swapped.forEach(([m,material,visible])=>{m.material=material; m.visible=visible;});
+    }
     scene.background=background; scene.fog=fog; scene.overrideMaterial=null;
     world.children.forEach((o,i)=>{o.visible=shown[i];});
     const u=edgePass.uniforms;
@@ -375,6 +401,7 @@ export function create(canvas, {labels=true}={}) {
     renderer.setRenderTarget(null);
     const r=resolvePass.uniforms;
     r.tEdges.value=edges.texture; r.tLines.value=lineTarget.texture; r.strength.value=lines?meshLines.strength:0;
+    r.tHeat.value=heatTarget.texture; r.heated.value=heated?1:0;
     srgb(paper,r.paper.value); srgb(ink,r.ink.value);
     passQuad.material=resolvePass; renderer.render(passScene,passCamera);
   }
@@ -781,6 +808,28 @@ export function create(canvas, {labels=true}={}) {
       p.emissive.setHex(on.has(n)?SELECT.glow:0); t.color.setHex(on.has(n)?SELECT.tint:0xffffff);
     });
     picked=selectedNames.length?selectedNames[selectedNames.length-1]:null;
+    applyHeat();
+  }
+  // The heat view (ADR-727; the Activations editor's "Show in viewport"): a map of part name to
+  // colour paints those parts in it, lit from within a little so a dark part still reads, and
+  // every other part a quiet grey so the heat stands out; null gives every part its own colour
+  // back. Over the selection, which still glows where it is.
+  const HEAT={rest:0x4a4e56, glow:.32};
+  let heat=null;
+  function applyHeat() {
+    const on=new Set(selectedNames), c=new THREE.Color();
+    meshes.forEach((m,n)=> {
+      if (m.userData.world) return;
+      const {parts:p, matcap:t}=m.userData.materials, h=heat&&heat[n];
+      if (!heat) { p.color.copy(m.userData.board?c.setHex(0xffffff):m.userData.colour); p.vertexColors=!!m.userData.board; return; }
+      p.color.setHex(h==null?HEAT.rest:h); p.vertexColors=false; t.color.setHex(h==null?HEAT.rest:h);
+      if (h!=null&&!on.has(n)) p.emissive.setHex(h).multiplyScalar(HEAT.glow);
+    });
+  }
+  function setHeat(map) {
+    const had=!!heat; heat=map&&typeof map==='object'?map:null;
+    if (had!==!!heat) meshes.forEach(m=>{if(!m.userData.world) m.userData.materials.parts.needsUpdate=true;});
+    applySelection(); draw(); return !!heat;
   }
   function select(names) {
     const seen=new Set();
@@ -843,7 +892,7 @@ export function create(canvas, {labels=true}={}) {
     const p=pointers.get(e.pointerId);if(!p)return;
     if(press&&Math.hypot(e.clientX-press[0],e.clientY-press[1])>=5)press=null;
     if(pointers.size===1&&panning)pan(e.clientX-p[0],e.clientY-p[1]);
-    else if(pointers.size===1){c.yaw-=(e.clientX-p[0])*.01;c.pitch=Math.max(-1.5,Math.min(1.5,c.pitch+(e.clientY-p[1])*.01));}
+    else if(pointers.size===1){const lim=Math.max(1.5,Math.abs(c.pitch));c.yaw-=(e.clientX-p[0])*.01;c.pitch=Math.max(-lim,Math.min(lim,c.pitch+(e.clientY-p[1])*.01));}
     pointers.set(e.pointerId,[e.clientX,e.clientY]);
     if(pointers.size===2){const s=span(),m=centre();if(mid)pan(m[0]-mid[0],m[1]-mid[1]);if(s>0&&pinch>0)zoom(pinch/s);pinch=s;mid=m;}
     draw();
@@ -866,7 +915,7 @@ export function create(canvas, {labels=true}={}) {
   return {available:true,load,install,clear,fit,draw,setPoses,centreAt,followTo,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
     setSection,setLines,showLines,setStyle,style:()=>style,setMeshLines,meshLines:()=>({...meshLines}),setReflections,reflections:()=>reflections,
     setLook,look:()=>look,setFov,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
-    setHidden,hidden:()=>[...hiddenNames],select,selected:()=>selectedNames.slice(),parts,fitTo,
+    setHidden,hidden:()=>[...hiddenNames],select,setHeat,heat:()=>heat&&{...heat},selected:()=>selectedNames.slice(),parts,fitTo,
     pick,screenPoint,screenBox,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,
       world:[...meshes].filter(([,m])=>m.userData.world).map(([n])=>n),style:STYLE,render_style:style,stage,showing:showing(),

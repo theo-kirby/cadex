@@ -42940,3 +42940,183 @@ rollout, an evaluation). Tests now pin only what must not drift silently.
   a test back, with this ADR cited.
 - Charters that demand "a test for every new predicate" should be revised
   to match.
+
+## ADR-726 — The dashboard gets a navigation gizmo and a little motion (2026-10-16)
+
+**Context.** The owner asked for a couple of cosmetic touches to the
+dashboard. The 3D viewport follows Blender's design language (ADR-534) but
+had no orientation cue, so after an orbit nothing says which way is up or
+where +X is, and the only way back to a square view was Fit's one framing.
+The page was also entirely still: nothing distinguished a page that is
+polling from one that has stopped, apart from the word *live*.
+
+**Decision.**
+
+- **A navigation gizmo** (`review_static/gizmo.js`, `window.CadexGizmo`),
+  in the 3D viewport's top right: the X, Y and Z axes as the camera sees
+  them, in Blender's colours (`--axis-x`, `--axis-y`, `--axis-z`). A click
+  on an axis end glides the camera to look along it; a click on the view
+  shown turns to the opposite. It reads and sets the viewer's camera and
+  repaints on the viewer's draw hook; it writes nothing (ADR-537) and keeps
+  nothing in the browser. Fit is unchanged and instant.
+- **The orbit's pitch limit** (±1.5 rad) widens to the current pitch when a
+  snapped top or bottom view is already past it, so the first drag after a
+  snap does not jump.
+- **Motion**: a breathing dot beside *live*, a sheen on progress bars, and
+  a slow push-in on home page pictures under the pointer, all off under
+  `prefers-reduced-motion`.
+- `docs/DASHBOARD.md` §1, §2 and §5 say so; the server serves `gizmo.js`.
+
+**Why this is not more UI.** The gizmo is the one overlay Blender keeps on
+its viewport, and it is a view control, not a panel; the motion is CSS on
+elements that already exist. Nothing reads the project that did not before.
+
+**Evidence.** The CLI and dashboard suite (`pixi run python -m pytest
+cli/tests`), and a browser check that each gizmo end lands its view.
+
+## ADR-727 — The dashboard gets an Activations editor: motors, the policy's network, and heat in the viewport (2026-10-16)
+
+**Context.** The owner asked for a panel that shows a gauge per motor, the
+activations of the RL policy's network and how they relate to the motors,
+and a "show in viewport" toggle that paints each motor's parts from blue to
+red as it works. Every checkpoint rollout already records its motors' joint
+positions, velocities, efforts and ratings, and sits beside the
+`.cxpolicy` that made it; the dashboard served only the poses and commands.
+
+**Decision.**
+
+- **Playback carries the motors.** `api/playback/run|checkpoint` replies gain
+  `joints`, `velocities` and `efforts` per frame and pass through each
+  channel's `joint` and effort limits when the trace has them, and `policy`,
+  the URL of the policy beside the rollout.
+- **Two read routes**, `api/policy/run/<run>` and
+  `api/policy/checkpoint/<run>/<stem>`: the policy's header, its float32 blob
+  as base64, each input's kind from the run's task bundle, the gait clock
+  period, and the parts each motor moves from the run's MJCF body tree. The
+  server runs nothing; it reads files under the run's own directory.
+- **An Activations editor** (`activations.js`, `docs/DASHBOARD.md` §27):
+  gauges, the network's layers, the picked motor's contributions and
+  drivers, neuron silencing on hover, and Show in viewport through a new
+  `setHeat` on the viewer.
+- **A reconstruction, not a replay** (the owner chose it over an engine
+  change): the page rebuilds the inputs from the trace and runs the network
+  itself, so every existing rollout works and the engine, which orun7 is
+  changing, is untouched. Traces are kept at 25 fps and the policy runs
+  behind a slew limit, so the page reports how well rebuilt commands match
+  recorded ones: r ≈ 0.79 over orun7's f1-g3 checkpoint 250, with frame *k*'s
+  inputs against frame *k + 1*'s command. Recording the policy's real inputs
+  per control step in the engine's trace would make it exact; that is left
+  for after orun7.
+
+**Evidence.** `test_dashboard_activations.py`: the playback and policy
+replies, the parts map, refusals; in Chromium, on a trace whose commands are
+the network's own outputs, the page's rebuilt commands match at r > 0.999 and
+Show in viewport paints exactly the six leg parts. `test_http_api.py` reaches
+both routes in their available and unavailable shapes.
+
+
+## ADR-728 — The dashboard's bar moves to the bottom, the scrubbers into the viewport's header, the network into its own editor, and a Settings editor returns (2026-10-16)
+
+**Context.** The owner asked, after ADR-726 and ADR-727: a **Settings**
+panel opened like any other, holding for now the activation colours, with a
+blue–white–red ramp by default instead of ADR-727's blue–violet–red–orange,
+other presets such as green–red, and colours that can be picked; the
+Activations views each on a switch; the network, which is a lot to take in,
+split into two views and given more room; a greyscale gizmo; the checkpoint
+and play scrubbers in the 3D viewport's header beside Fit; the top bar moved
+to the bottom as a status bar; and Show in viewport working in wireframe as
+well as shaded. An earlier Settings editor was removed when the menu bar
+took the settings (ADR-539); bringing one back is a direction change, made
+here at the owner's request.
+
+**Decision.**
+
+- **A status bar.** In the app, `#top` (the id kept: the CLI suite and
+  every link pins it) follows `#screen` and runs along the bottom, 32 px, as
+  Blender's does; its File, Revisions and View menus open upwards. The home
+  page keeps its top bar.
+- **Scrubbers in the header.** `#revision-timeline`, `#checkpoints` and
+  `#playback` move into the 3D viewport's tools after Fit, a row each that
+  ellipsizes its label and then wraps onto a second header row in a narrow
+  area; their status lines join `#model-status` over the view. An area's
+  header now wraps rather than clipping tools that do not fit.
+- **A greyscale gizmo.** `--axis-x/y/z` are removed; the letters name the
+  axes.
+- **`heat.js`**, one shared ramp of two or three colours, kept per browser
+  (`cadex.heat`), read by every painter at paint time and announced on
+  change: presets Blue–white–red (default), Green–red, Viridis and
+  Blue–red, or Custom.
+- **A Settings editor** (`settings.js`, `docs/DASHBOARD.md` §28) with the
+  preset, the number of colours, three pickers, a preview and Reset.
+- **Activations** gets Gauges, a new sideways **Bars** view and Drivers,
+  each a switch kept per browser. **A Network editor** takes the canvas:
+  **Layers** (ADR-727's heat map) and a new **Paths** view, the picked
+  motor's strongest units per layer by activation × gradient joined by what
+  flows between them, each a switch and sharing the area's height.
+- **Heat in wireframe**: the diagram's pass renders the heated parts into
+  their own target over every solid's depth; the resolve washes their faces
+  and draws their lines in their colour.
+
+**Evidence.** `test_dashboard_activations.py` now also switches the heat
+preset and sees the viewport's colours change, turns Bars on and counts its
+rows, and opens the Network editor and reads the paths, input to motor.
+`test_review_design.py` asserts the status bar is under the screen and
+reaches the bottom edge, and the seven phone tabs; `test_review_status.py`
+finds the scrubbers in the 3D viewport's header. Screenshots on orun7-cat
+(f1-g3, t = 4.6 s) checked the header, both network views maximised, the
+wireframe heat and the Green–red preset.
+
+## ADR-729 — More than one 3D viewport, Activations or Network at once; the gizmo snaps while a rollout plays (2026-10-16)
+
+**Context.** The owner asked to open two or more of the same panel: two 3D
+viewports, one wireframe and one shaded, at different camera angles, both
+moving when Play is pressed; the animation shared across everything, while
+lighting, style and the activation panels' views may differ. They also found
+that the navigation gizmo would not snap the view while a rollout played or
+the view followed it. Until now each editor showed at most once (ADR-534):
+picking one already shown swapped the two areas.
+
+**Decision.**
+
+- **Copies.** The 3D viewport, Activations and Network are `multi` editors
+  in `layout.js`: an area is `{editor, copy}`, picking one already shown or
+  splitting one opens another copy, and every other editor still shows once
+  and swaps. A copy is built from the editor's pristine markup the first
+  time it is asked for and kept; its ids become `data-ref`s, so the page's
+  hooks still name the first, and the stylesheet's rules on those elements
+  are written `:is(#x, [data-ref="x"])` to match both at the id's weight.
+- **One model, one timeline, a camera each.** `viewports.js` groups the 3D
+  viewports behind the viewer API review.js already used: what the model is
+  (load, ghost, poses, hidden and selected parts, heat, the global look
+  switches) goes to every viewport, and a viewport added later is brought up
+  to date; the meshes are fetched once for all. Style, lighting, camera,
+  gizmo and Follow are each viewport's own. A copy's source, scrubbers, Play
+  and status lines mirror the first's and work through it, so there is one
+  timeline whichever is touched.
+- **Activations and Network** become one core (the rollout, the policy run
+  once, the picked motor, the hovered neuron) with any number of panels,
+  each with its own views and, for Activations, its own Show in viewport.
+- **The gizmo** snaps on a press and release on the same end, and restacks
+  its ends only when their depth order changes. It used to restack on every
+  draw, and while a rollout played that moved the pressed element between
+  press and release, so Chrome never delivered the click.
+- **One load per source.** `setSource` now records the key of the model it
+  loads, so the next poll does not load it again and drop the rollout it
+  has just started. This double load was behind the occasional
+  `test_review_follow` and `test_review_reference` failures under the full
+  suite.
+
+**Evidence.** `test_dashboard_views.py`: copies open from split and from the
+picker while single editors still swap, no id is duplicated and a reload
+lays the copies out again; two viewports, one wireframe, are posed together
+by a seek, the copy's clock follows, the copy's gizmo turns only its camera
+and Follow moves only the copy's target, and the copy's Play runs the one
+timeline; with a 20 s rollout playing and Follow on, a real mouse press and
+release on the gizmo's +Z end snaps to Top and the view keeps following.
+`test_dashboard_activations.py` opens a second Activations panel whose views
+differ from the first's.
+
+**Numbering and tests.** Written as ADR-720 to ADR-723 on branch `dashboard/cosmetics` and renumbered
+ADR-726 to ADR-729 when it merged after orun7 and ADR-725. Under ADR-725 the browser tests these entries
+name (`test_dashboard_views.py`, `test_dashboard_activations.py` and the review tests they edited) were not
+kept: those citations are history. `test_http_api.py` keeps the policy route and the browser keys.

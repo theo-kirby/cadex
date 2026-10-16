@@ -17,6 +17,8 @@ from pathlib import Path
 import hashlib
 import json
 import os
+import math
+import random
 import pytest
 import shutil
 import struct
@@ -550,3 +552,72 @@ def reference_bundle(staging: Path, task: str = "walk", *, reference: bool = Tru
     path = staging / "outputs" / f"{task}-task.json"
     path.write_text(json.dumps(bundle))
     return path
+
+
+# from test_dashboard_activations.py
+#: The biped's four motors and the twelve inputs its task bundle declares for them.
+JOINTS = ["hip_l", "knee_l", "hip_r", "knee_r"]
+OBSERVATIONS = [f"{kind}_{joint}" for joint in JOINTS for kind in ("q", "dq", "tau")]
+LAYERS = [[12, 8], [8, 6], [6, 4]]
+
+
+def _network(seed: int = 3) -> tuple[list[float], dict]:
+    rng = random.Random(seed)
+    weights = [rng.uniform(-0.6, 0.6) for a, b in LAYERS for _ in range(a * b + b)]
+    network = {"kind": "mlp", "activation": "swish", "layers": LAYERS, "output": "tanh",
+               "output_scale": [40.0, 50.0, 40.0, 50.0], "output_bias": [0.0, -5.0, 0.0, -5.0]}
+    return weights, network
+
+
+def write_policy(path: Path, *, label: str = "reed_walk", seed: int = 3) -> dict:
+    """A biped policy in the CXPOLICY1 layout; returns its header."""
+
+    weights, network = _network(seed)
+    header = {
+        "schema": "cadex-policy-v1", "label": f"test policy {seed}", "network": network,
+        "normaliser": {"mean": [0.5 * i for i in range(12)], "std": [10.0 + i for i in range(12)]},
+        "observations": OBSERVATIONS, "task": {"label": label, "sha256": "0" * 64},
+        "model": {"path": f"outputs/{MODEL}", "sha256": "0" * 64},
+        "actions": [{"actuator": f"{j}/motor", "joint": j, "low": -60.0, "high": 60.0, "index": i}
+                    for i, j in enumerate(JOINTS)]}
+    text = json.dumps(header).encode()
+    path.write_bytes(b"CXPOLICY1\n" + struct.pack("<Q", len(text)) + text
+                     + struct.pack(f"<{len(weights)}f", *weights))
+    return header
+
+
+def _forward(header: dict, values: list[float]) -> list[float]:
+    """The policy's command in pure Python, float32 weights as the page reads them."""
+
+    weights, network = _network(int(header["label"].rsplit(" ", 1)[1]))
+    weights = list(struct.unpack(f"<{len(weights)}f", struct.pack(f"<{len(weights)}f", *weights)))
+    mean, std = header["normaliser"]["mean"], header["normaliser"]["std"]
+    a = [(v - m) / s for v, m, s in zip(values, mean, std)]
+    cursor = 0
+    for index, (n, m) in enumerate(LAYERS):
+        matrix, cursor = weights[cursor:cursor + n * m], cursor + n * m
+        bias, cursor = weights[cursor:cursor + m], cursor + m
+        z = [bias[k] + sum(a[i] * matrix[i * m + k] for i in range(n)) for k in range(m)]
+        a = [x / (1 + math.exp(-x)) for x in z] if index < len(LAYERS) - 1 else [math.tanh(x) for x in z]
+    return [v * s + b for v, s, b in zip(a, network["output_scale"], network["output_bias"])]
+
+
+def motor_trace(tag: str, header: dict | None = None, frames: int = 30) -> dict:
+    """A checkpoint trace with joint positions, velocities and efforts, and, given a
+    policy header, the commands that policy gives one frame on (as a rollout does)."""
+
+    trace = _checkpoint_trace(tag, int(tag) - 1, 1.0, frames=frames)
+    trace["actuator_channels"] = [
+        {"actuator": f"{j}/motor", "joint": j, "unit": "deg", "low": -60.0, "high": 60.0, "kind": "motor",
+         "joint_unit": "deg", "effort_unit": "N·mm", "effort_rated": 1000.0, "effort_low": -3000.0,
+         "effort_high": 3000.0} for j in JOINTS]
+    rows = []
+    for i, frame in enumerate(trace["frames"][1:]):
+        q = [30 * math.sin(0.3 * i + k) for k in range(4)]
+        dq = [9 * math.cos(0.3 * i + k) for k in range(4)]
+        tau = [900 * math.sin(0.2 * i + 2 * k) for k in range(4)]
+        frame.update(joint_positions=q, joint_velocities=dq, actuator_efforts=tau)
+        rows.append([v for k in range(4) for v in (q[k], dq[k], tau[k])])
+    for i, frame in enumerate(trace["frames"][1:]):
+        frame["actuator_commands"] = (_forward(header, rows[i - 1]) if header and i else [0.0] * 4)
+    return trace

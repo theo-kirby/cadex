@@ -1373,9 +1373,11 @@ of a fixture biped that reaches every route disagree, in the way
 | `GET api/model/accepted` | the accepted attempt's model | `schema`, `view`, `run`, `relation`, `revision`, `digest`, `available`, `reason`, `source`, `placement_source`, `components`, `collision`, `contacts`, `exploded`, `appearance`, `measurements` | `meshes` |
 | `GET api/model/revision/<ordinal>` | one retained revision's model, its ghost and changed parts | `view`, `ordinal`, `revision`, `digest`, `available`, `reason`, `components`, `previous`, `changed`, `source` | `compare` |
 | `GET api/model/run/<run>` | the model a run retained | `schema`, `view`, `run`, `relation`, `revision`, `digest`, `available`, `reason`, `source`, `placement_source`, `components`, `collision`, `contacts`, `exploded`, `appearance`, `measurements` | `playback`, `meshes` |
-| `GET api/playback/run/<run>` | the run's rollout trace as playback frames | `available`, `run`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second` |
-| `GET api/playback/checkpoint/<run>/<stem>` | one checkpoint's rollout as playback frames | `available`, `run`, `stem`, `checkpoint`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second` |
+| `GET api/playback/run/<run>` | the run's rollout trace as playback frames | `available`, `run`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `joints`, `velocities`, `efforts`, `policy` |
+| `GET api/playback/checkpoint/<run>/<stem>` | one checkpoint's rollout as playback frames | `available`, `run`, `stem`, `checkpoint`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `joints`, `velocities`, `efforts`, `policy` |
 | `GET api/playback/reference/<task>` | an accepted task's gait reference (ADR-703) as playback frames: its one stride repeated a stride further on each time, for about 4 s | `available`, `task`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `reference`, `strides` |
+| `GET api/policy/run/<run>` | the run's own policy as the Activations editor runs it (ADR-727): its network, normaliser, input and action names, the weights as base64, each input's kind from the task bundle, the gait clock and the parts each motor moves | `available`, `run`, `source` | `reason`, `label`, `network`, `normaliser`, `observations`, `actions`, `weights`, `inputs`, `clock`, `parts` |
+| `GET api/policy/checkpoint/<run>/<stem>` | one checkpoint's policy, the same way | `available`, `run`, `stem`, `source` | `reason`, `label`, `network`, `normaliser`, `observations`, `actions`, `weights`, `inputs`, `clock`, `parts` |
 
 The files the replies point to — `mesh/...`, `artifact/...`, `video/...`,
 `doc/...`, `evaluation/...`, `presentation/...`, `export/...`,
@@ -1431,7 +1433,9 @@ solids' reflection strength), `cadex.look`, `cadex.occlusion` and
 occlusion and its surface detail, ADR-676), and `cadex.outliner.group` and
 `cadex.outliner.folded` (how the Outliner groups the parts, and which groups
 are folded), and `cadex.follow` (whether the viewport follows a playing
-design, ADR-693) — and the test fails if the page stores any other key. A picked
+design, ADR-693), `cadex.heat` (the heat colours Settings picks, ADR-728) and
+`cadex.activations.views` (which Activations and Network views are on,
+ADR-728) — and the test fails if the page stores any other key. A picked
 checkpoint, a scrubbed revision, a selected run, and the parts hidden or
 selected in the Outliner last only as long as the page.
 

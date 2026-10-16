@@ -35,6 +35,7 @@ module and an attributed prototype environment (ADR-301), with no CDN.
 from __future__ import annotations
 
 from array import array
+import base64
 from collections import OrderedDict
 import copy
 import datetime as _datetime
@@ -87,7 +88,7 @@ STATIC_FILES = {
     "review.js": ("text/javascript; charset=utf-8", STATIC_DIR / "review.js"),
     **{name: ("text/javascript; charset=utf-8", STATIC_DIR / name) for name in
        ("three.module.js", "floor.js", "environment.js", "review_scene.js", "shading.js", "stl.js", "capture.js",
-        "layout.js", "theme.js", "status.js", "outliner.js", "hero.js")},
+        "layout.js", "theme.js", "status.js", "outliner.js", "gizmo.js", "viewports.js", "heat.js", "activations.js", "settings.js", "hero.js")},
     "capture.html": ("text/html; charset=utf-8", STATIC_DIR / "capture.html"),
     "hero.html": ("text/html; charset=utf-8", STATIC_DIR / "hero.html"),
     "viewer.js": ("text/javascript; charset=utf-8", STATIC_DIR / "viewer.js"),
@@ -132,6 +133,8 @@ API_ROUTES = (
     "playback/run/<run>",
     "playback/checkpoint/<run>/<stem>",
     "playback/reference/<task>",
+    "policy/run/<run>",
+    "policy/checkpoint/<run>/<stem>",
 )
 #: What ``cadex app`` answers at its own root, beside each project's routes.
 APP_API_ROUTES = ("projects",)
@@ -140,7 +143,9 @@ _MODEL_KEYS = frozenset({
     "placement_source", "components", "collision", "contacts", "exploded", "appearance",
     "measurements"})
 _PLAYBACK_KEYS = frozenset({"reason", "times_s", "frames", "commands", "channels", "duration_s",
-                            "frames_per_second"})
+                            "frames_per_second", "joints", "velocities", "efforts", "policy"})
+_POLICY_KEYS = frozenset({"reason", "label", "network", "normaliser", "observations", "actions",
+                          "weights", "inputs", "clock", "parts"})
 #: Each route's top-level reply keys: those every 200 reply carries, and
 #: those only some do (an unavailable model has no ``meshes``, a playback
 #: no ``frames``). A ``run/<run>`` reply is the run record as written, so
@@ -173,7 +178,9 @@ API_RESPONSE_KEYS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "playback/checkpoint/<run>/<stem>": (frozenset({"available", "run", "stem", "checkpoint", "source"}),
                                          _PLAYBACK_KEYS),
     "playback/reference/<task>": (frozenset({"available", "task", "source"}),
-                                  _PLAYBACK_KEYS | {"reference", "strides"}),
+                                  (_PLAYBACK_KEYS - {"policy", "joints", "velocities", "efforts"}) | {"reference", "strides"}),
+    "policy/run/<run>": (frozenset({"available", "run", "source"}), _POLICY_KEYS),
+    "policy/checkpoint/<run>/<stem>": (frozenset({"available", "run", "stem", "source"}), _POLICY_KEYS),
 }
 _API_HANDLERS = {
     "project": "project", "run/<run>": "run", "policy-origin/<run>": "policy_origin",
@@ -182,6 +189,8 @@ _API_HANDLERS = {
     "playback/run/<run>": "playback_run",
     "playback/checkpoint/<run>/<stem>": "playback_checkpoint",
     "playback/reference/<task>": "playback_reference",
+    "policy/run/<run>": "policy_run",
+    "policy/checkpoint/<run>/<stem>": "policy_checkpoint",
 }
 
 
@@ -435,6 +444,9 @@ def trace_playback(trace: Mapping[str, Any] | None) -> dict[str, Any]:
     times: list[float] = []
     frames: list[dict[str, dict[str, list[float]]]] = []
     commands: list[list[float] | None] = []
+    # What the motors did (ADR-727): each frame's joint positions, velocities and efforts, in
+    # the trace's channel order, for the Activations editor.
+    measured: dict[str, list[list[float] | None]] = {"joints": [], "velocities": [], "efforts": []}
     previous: dict[str, list[float]] = {}
     for time_s, frame in timed:
         poses: dict[str, dict[str, list[float]]] = {}
@@ -453,14 +465,27 @@ def trace_playback(trace: Mapping[str, Any] | None) -> dict[str, Any]:
         frames.append(poses)
         raw = frame.get("actuator_commands")
         commands.append([float(x) for x in raw] if isinstance(raw, list) else None)
+        for key, field in (("joints", "joint_positions"), ("velocities", "joint_velocities"),
+                           ("efforts", "actuator_efforts")):
+            raw = frame.get(field)
+            measured[key].append([float(x) for x in raw] if isinstance(raw, list) else None)
     if not frames:
         return {"available": False, "reason": "the trace has no timed frames with placements"}
     channels = [{"actuator": str(c.get("actuator")), "unit": str(c.get("unit")),
-                 "low": c.get("low"), "high": c.get("high")}
+                 "low": c.get("low"), "high": c.get("high"),
+                 **{key: c[key] for key in _CHANNEL_EXTRAS if key in c}}
                 for c in trace.get("actuator_channels") or [] if isinstance(c, Mapping)]
-    return {"available": True, "times_s": times, "frames": frames, "commands": commands,
-            "channels": channels, "duration_s": times[-1] - times[0],
-            "frames_per_second": (trace.get("parameters") or {}).get("frames_per_second")}
+    playback = {"available": True, "times_s": times, "frames": frames, "commands": commands,
+                "channels": channels, "duration_s": times[-1] - times[0],
+                "frames_per_second": (trace.get("parameters") or {}).get("frames_per_second")}
+    playback.update({key: rows for key, rows in measured.items() if any(row is not None for row in rows)})
+    return playback
+
+
+#: A trace channel's keys beyond the command range, passed through when the trace has them: which
+#: joint the actuator drives and its effort limits (ADR-727).
+_CHANNEL_EXTRAS = ("joint", "kind", "motion_type", "joint_unit", "effort_unit", "effort_rated",
+                   "effort_low", "effort_high")
 
 
 def _run_trace(root: Path, record: Mapping[str, Any]) -> tuple[Path | None, str | None]:
@@ -487,6 +512,8 @@ def run_playback(project_root: Path | str, record: Mapping[str, Any]) -> dict[st
     playback = trace_playback(_load_json(path)) if path is not None else {"available": False, "reason": reason}
     playback.update(run=str(record.get("run")),
                     source=path.relative_to(root).as_posix() if path is not None else None)
+    if playback["available"] and _run_policy(root, record)[0] is not None:
+        playback["policy"] = f"api/policy/run/{quote(str(record.get('run')), safe='')}"
     return playback
 
 
@@ -732,7 +759,200 @@ def checkpoint_playback(project_root: Path | str, run: str, stem: str) -> dict[s
     playback = trace_playback(trace)
     playback.update(run=run, stem=stem, checkpoint=_checkpoint_head(path),
                     source=path.relative_to(root).as_posix())
+    policy = train / (stem + ".cxpolicy")
+    if playback["available"] and policy.is_file() and not policy.is_symlink():
+        playback["policy"] = f"api/policy/checkpoint/{quote(run, safe='')}/{quote(stem, safe='')}"
     return playback
+
+
+# -- policies: the network behind a rollout, for the Activations editor (ADR-727) --
+
+#: The largest ``.cxpolicy`` the page reads; a policy is its header and one float32 blob.
+POLICY_READ_LIMIT = 64 * 1024 * 1024
+POLICY_MAGIC = b"CXPOLICY1\n"
+#: Observation kinds the page can rebuild from a trace, and the reason for the rest.
+_REBUILT_KINDS = ("position", "velocity", "actuator_force", "component_orientation",
+                  "component_angular_velocity")
+
+
+def read_policy(path: Path) -> tuple[dict[str, Any] | None, bytes, str]:
+    """A ``.cxpolicy``'s header and float32 blob, or why it cannot be read.
+
+    ``CXPOLICY1\\n | <u64 LE header length> | <JSON header> | <f32 LE blob>``
+    (CadexDynamics ``decode_policy``); only an MLP whose blob holds exactly its
+    layers' weights and biases is offered.
+    """
+
+    try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > POLICY_READ_LIMIT:
+            return None, b"", "the policy is missing, a link, or past the read bound"
+        data = path.read_bytes()
+    except OSError as exc:
+        return None, b"", f"the policy is unreadable: {exc}"
+    if not data.startswith(POLICY_MAGIC) or len(data) < len(POLICY_MAGIC) + 8:
+        return None, b"", "not a CXPOLICY1 file"
+    start = len(POLICY_MAGIC) + 8
+    (length,) = struct.unpack("<Q", data[len(POLICY_MAGIC):start])
+    try:
+        header = json.loads(data[start:start + length].decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None, b"", "the policy header is not JSON"
+    blob = data[start + length:]
+    network = header.get("network") if isinstance(header, Mapping) else None
+    if not isinstance(network, Mapping) or network.get("kind") != "mlp":
+        return None, b"", "the policy is not an MLP the page can run"
+    try:
+        layers = [(int(a), int(b)) for a, b in network.get("layers") or []]
+    except (TypeError, ValueError):
+        return None, b"", "the policy's layers are malformed"
+    if not layers or len(blob) != 4 * sum(a * b + b for a, b in layers):
+        return None, b"", "the policy's weights do not match its layers"
+    return dict(header), blob, ""
+
+
+def _mjcf_parts(path: Path | None, joints: Sequence[str]) -> dict[str, dict[str, list[str]]]:
+    """For each joint, the parts it moves and its motor's housing (ADR-727).
+
+    A Cadex MJCF names each body after its component. The ``segment`` is the
+    body the joint sits in and every body welded to it (no joint of its own);
+    the ``motor`` is the welded sibling in the parent whose name carries the
+    joint's (``j_knee_l`` drives from ``c_qdd_knee_l``). Empty when the file
+    is missing or unreadable.
+    """
+
+    if path is None:
+        return {}
+    try:
+        if path.stat().st_size > MJCF_READ_LIMIT:
+            return {}
+        root = ElementTree.fromstring(path.read_bytes())
+    except (OSError, ElementTree.ParseError):
+        return {}
+    world = root.find("worldbody")
+    if world is None:
+        return {}
+    wanted, parts = set(joints), {}
+
+    def welded(body: Any) -> list[str]:
+        names = [str(body.get("name"))]
+        for child in body.findall("body"):
+            if child.find("joint") is None:
+                names += welded(child)
+        return names
+
+    def walk(parent: Any) -> None:
+        for body in parent.findall("body"):
+            for joint in body.findall("joint"):
+                name = str(joint.get("name"))
+                if name in wanted:
+                    key = name[2:] if name.startswith("j_") else name
+                    motor = [str(s.get("name")) for s in parent.findall("body")
+                             if s is not body and s.find("joint") is None and key in str(s.get("name"))]
+                    parts[name] = {"segment": welded(body), "motor": motor}
+            walk(body)
+
+    walk(world)
+    return parts
+
+
+def _policy_inputs(bundle: Mapping[str, Any] | None, names: Sequence[str]) -> list[dict[str, Any]]:
+    """Each policy input: its kind, target and unit from the task bundle, and the
+    index within that observation (an orientation is four channels)."""
+
+    by_channel: dict[str, dict[str, Any]] = {}
+    for record in (bundle or {}).get("observations") or []:
+        if not isinstance(record, Mapping):
+            continue
+        for index, channel in enumerate(record.get("channels") or []):
+            by_channel[str(channel)] = {"kind": record.get("kind"), "target": record.get("target"),
+                                        "unit": record.get("unit"), "index": index}
+    rows = []
+    for name in names:
+        row = by_channel.get(name) or ({"kind": "clock", "target": None, "unit": None,
+                                        "index": 0 if name.endswith("_sin") else 1}
+                                       if name in ("ref_sin", "ref_cos") else {"kind": None})
+        rows.append({"channel": name, **row, "rebuilt": row.get("kind") in _REBUILT_KINDS + ("clock",)})
+    return rows
+
+
+def policy_view(train: Path, path: Path, run: str, root: Path) -> dict[str, Any]:
+    """The network behind a rollout, as the Activations editor runs it (ADR-727).
+
+    The header's network, normaliser, observation and action names; the blob
+    as base64 (the page decodes it to a ``Float32Array``); each input's kind
+    from the run's task bundle, so the page knows how to rebuild it from a
+    trace; the gait clock's period; and which parts each motor moves, from
+    the run's MJCF. Nothing is run here: the page runs the network.
+    """
+
+    header, blob, reason = read_policy(path)
+    reply: dict[str, Any] = {"available": header is not None, "run": run,
+                             "source": path.relative_to(root).as_posix()}
+    if header is None:
+        reply["reason"] = reason
+        return reply
+    task = header.get("task") if isinstance(header.get("task"), Mapping) else {}
+    bundle_path = train / f"{task.get('label')}-task.json"
+    bundle = _load_json(bundle_path) if task.get("label") and bundle_path.is_file() else None
+    reference = (bundle or {}).get("reference") if isinstance((bundle or {}).get("reference"), Mapping) else {}
+    period = reference.get("period_s") or (reference.get("parameters") or {}).get("period_s")
+    model = header.get("model") if isinstance(header.get("model"), Mapping) else {}
+    mjcf = train / Path(str(model.get("path") or "")).name if model.get("path") else None
+    actions = [a for a in header.get("actions") or [] if isinstance(a, Mapping)]
+    reply.update({
+        "label": header.get("label"), "network": header.get("network"),
+        "normaliser": header.get("normaliser"), "observations": header.get("observations"),
+        "actions": actions, "weights": base64.b64encode(blob).decode("ascii"),
+        "inputs": _policy_inputs(bundle, [str(n) for n in header.get("observations") or []]),
+        "clock": {"period_s": float(period)} if isinstance(period, (int, float)) and period > 0 else None,
+        "parts": _mjcf_parts(mjcf if mjcf is not None and mjcf.is_file() and not mjcf.is_symlink() else None,
+                             [str(a.get("joint")) for a in actions])})
+    return reply
+
+
+def _run_policy(root: Path, record: Mapping[str, Any]) -> tuple[Path | None, str]:
+    """The run's own policy file inside its directory, or why there is none."""
+
+    name = str(record.get("run"))
+    item = ((record.get("resolved") or {}).get("artifacts") or {}).get("policy") or {}
+    relative = item.get("path") if isinstance(item, Mapping) else None
+    if relative is None:
+        relative = (record.get("artifacts") or {}).get("policy")
+    if not relative:
+        return None, "this run retained no policy"
+    ref = resolve_reference(root, f"{RUNS_DIRNAME}/{name}/{relative}")
+    if ref["error"] or not ref["exists"]:
+        return None, "the run's policy escapes the project or is missing"
+    path = root / ref["path"]
+    return (path, "") if path.is_file() and not path.is_symlink() else (None, "the run's policy is not a file")
+
+
+def run_policy(project_root: Path | str, record: Mapping[str, Any]) -> dict[str, Any]:
+    """``/api/policy/run/<run>``: the run's final policy as the Activations editor runs it."""
+
+    root = Path(project_root).expanduser()
+    run = str(record.get("run"))
+    path, reason = _run_policy(root, record)
+    if path is None:
+        return {"available": False, "run": run, "source": None, "reason": reason}
+    return policy_view(path.parent, path, run, root)
+
+
+def checkpoint_policy(project_root: Path | str, run: str, stem: str) -> dict[str, Any] | None:
+    """``/api/policy/checkpoint/<run>/<stem>``: one checkpoint's policy; ``None``
+    when the name is not a checkpoint policy this run's ``train/`` holds."""
+
+    root = Path(project_root).expanduser()
+    match = _CHECKPOINT_FILE.fullmatch(stem + ".cxpolicy")
+    train = _checkpoint_dir(root, run)
+    if match is None or match["stem"] != stem or train is None:
+        return None
+    path = train / (stem + ".cxpolicy")
+    if path.is_symlink() or not path.is_file():
+        return None
+    reply = policy_view(train, path, run, root)
+    reply["stem"] = stem
+    return reply
 
 
 def _render_sources(root: Path, record: Mapping[str, Any]) -> dict[str, str]:
@@ -3036,6 +3256,15 @@ class ReviewHandler(BaseHTTPRequestHandler):
     def _api_playback_checkpoint(self, project: ReviewProject, run: str,
                                  stem: str) -> dict[str, Any] | None:
         return (checkpoint_playback(project.root, run, stem)
+                if project.run(run) is not None else None)
+
+    def _api_policy_run(self, project: ReviewProject, run: str) -> dict[str, Any] | None:
+        record = project.run(run)
+        return run_policy(project.root, record) if record is not None else None
+
+    def _api_policy_checkpoint(self, project: ReviewProject, run: str,
+                               stem: str) -> dict[str, Any] | None:
+        return (checkpoint_policy(project.root, run, stem)
                 if project.run(run) is not None else None)
 
 

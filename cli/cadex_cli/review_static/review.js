@@ -33,7 +33,7 @@
   // (`cadex app`) it is `p/<name>/` under the index, and NAME is that project.
   var NAME = (location.pathname.match(/\/p\/([^/]+)\/(?:index\.html)?$/) || [null, null])[1];
   var POLL_MS = 2000;
-  var ORDER = ['view3d', 'status', 'view2d', 'outliner'];
+  var ORDER = ['view3d', 'status', 'view2d', 'outliner', 'activations', 'network', 'settings'];
   // The 3D viewport with the Outliner over Status beside it, as Blender has its Outliner over its
   // Properties; split an area for the 2D one.
   var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.75, 0.25], children: [{ editor: 'view3d' },
@@ -234,10 +234,20 @@
     select.value = source;
   }
 
+  // What the model shown is, as the poll reads it: a load is started only when it changes. The
+  // accepted model moves with every write; a run's moves when the walk lands its export or its
+  // own rollout, which adds the final policy's stop (ADR-554).
+  function sourceKey(review) {
+    return source === 'accepted' ? JSON.stringify([review.accepted.revision, review.accepted.digest])
+         : source.indexOf('reference:') === 0 ? JSON.stringify([source, review.accepted.revision, review.accepted.digest])
+         : source === 'revisions' ? revisionKey() : runModelKey(review, source.slice(4));
+  }
   function setSource(value) {
     source = value;
     $('view3d-source').value = value;
-    modelKey = null; modelFailures = 0; modelRetryAt = 0;
+    // The key of the model this load shows, so the next poll does not load it a second time
+    // (and drop the rollout it has just started playing).
+    modelKey = state.review ? sourceKey(state.review) : null; modelFailures = 0; modelRetryAt = 0;
     return loadModel();
   }
 
@@ -262,7 +272,7 @@
     if (modelAbort) modelAbort.abort();
     var controller = modelAbort = new AbortController(), signal = controller.signal;
     status.dataset.state = 'loading'; status.textContent = 'loading model…';
-    stopPlayback(); playback = null; looping = false; ckpt.shown = null; $('playback').hidden = true;
+    stopPlayback(); playback = null; looping = false; ckpt.shown = null; $('playback').hidden = true; state.activations.setPlayback(null);
     return fetchRetry(path, signal, 2).then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.json();
@@ -311,24 +321,43 @@
     }).finally(function () { if (modelAbort === controller) modelAbort = null; });
   }
 
-  function applyStyle(name) {
+  // Each 3D viewport has its own style and lighting (ADR-729): the View menu sets every one, a
+  // viewport's header its own. The first viewport's are the ones this browser keeps.
+  function views() { return state.views ? state.views.views() : []; }
+  function firstView() { return state.views && state.views.first(); }
+  function setViewStyle(view, name) {
+    view.style = name;
+    view.viewer.setStyle(name, { paper: token('--paper'), ink: token('--paper-ink') });
+    view.styleGroup.querySelectorAll('button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.style === name)); });
+    view.lookSelect.disabled = name !== 'shaded';
+  }
+  function refreshLookControls() {
+    var all = views(), wire = all.some(function (v) { return v.style === 'wireframe'; }), shade = all.some(function (v) { return v.style === 'shaded'; });
+    if (!all.length) { wire = renderStyle === 'wireframe'; shade = !wire; }
+    $('mesh-lines').disabled = !wire;
+    $('mesh-strength').disabled = !wire || !meshLines.shown;
+    $('reflections').disabled = !shade || look.name === 'aluminium' || look.name === 'clay';
+    ['look-choice', 'occlusion', 'detail'].forEach(function (id) { $(id).disabled = !shade; });
+  }
+  function applyStyle(name, only) {
     if (name === 'hairline') name = 'wireframe';
     if (STYLES.indexOf(name) < 0) return renderStyle;
-    renderStyle = name;
-    writePref('cadex.render', name);
-    pressed('view3d-style', 'data-style', name);
-    pressed('style-choice', 'data-style', name);
-    if (state.viewer) state.viewer.setStyle(name, { paper: token('--paper'), ink: token('--paper-ink') });
-    $('mesh-lines').disabled = name !== 'wireframe';
-    $('mesh-strength').disabled = name !== 'wireframe' || !meshLines.shown;
-    $('reflections').disabled = name !== 'shaded' || look.name === 'aluminium' || look.name === 'clay';
-    ['view3d-look', 'look-choice', 'occlusion', 'detail'].forEach(function (id) { $(id).disabled = name !== 'shaded'; });
+    var first = firstView();
+    if (!only || only === first) { renderStyle = name; writePref('cadex.render', name); pressed('style-choice', 'data-style', name); }
+    (only ? [only] : views()).forEach(function (v) { setViewStyle(v, name); });
+    if (!views().length) pressed('view3d-style', 'data-style', name);
+    refreshLookControls();
     return name;
   }
   // The shaded look: a lighting setup or a matcap, occlusion and surface detail; any may be left out.
-  function applyLook(next) {
+  function applyLook(next, only) {
     next = next || {};
-    if (LOOKS.indexOf(next.name) >= 0) look.name = next.name;
+    if (only && only !== firstView()) {
+      if (LOOKS.indexOf(next.name) >= 0) { only.look = next.name; only.lookSelect.value = next.name; only.viewer.setLook(next.name); }
+      return { name: only.look, occlusion: look.occlusion, detail: look.detail };
+    }
+    var named = LOOKS.indexOf(next.name) >= 0;
+    if (named) look.name = next.name;
     if (typeof next.occlusion === 'boolean') look.occlusion = next.occlusion;
     if (typeof next.detail === 'boolean') look.detail = next.detail;
     writePref('cadex.look', look.name);
@@ -336,10 +365,12 @@
     writePref('cadex.detail', look.detail ? 'on' : 'off');
     $('view3d-look').value = look.name; $('look-choice').value = look.name;
     $('occlusion').checked = look.occlusion; $('detail').checked = look.detail;
-    $('reflections').disabled = renderStyle !== 'shaded' || look.name === 'aluminium' || look.name === 'clay';
-    if (state.viewer && state.viewer.setLook) {
-      state.viewer.setLook(look.name); state.viewer.setOcclusion(look.occlusion); state.viewer.setDetail(look.detail);
-    }
+    // A name from the menu is every view's; from the first view's header, its own.
+    views().forEach(function (v) {
+      if (named && (!only || v === only)) { v.look = look.name; v.lookSelect.value = look.name; v.viewer.setLook(look.name); }
+    });
+    if (state.viewer && state.viewer.setOcclusion) { state.viewer.setOcclusion(look.occlusion); state.viewer.setDetail(look.detail); }
+    refreshLookControls();
     return { name: look.name, occlusion: look.occlusion, detail: look.detail };
   }
   // Mesh lines: on or off, and how strong, of the ink (0-1). Either may be left out.
@@ -351,7 +382,7 @@
     writePref('cadex.meshlines.strength', String(meshLines.strength));
     $('mesh-lines').checked = meshLines.shown;
     $('mesh-strength').value = String(meshLines.strength);
-    $('mesh-strength').disabled = renderStyle !== 'wireframe' || !meshLines.shown;
+    refreshLookControls();
     if (state.viewer && state.viewer.setMeshLines) state.viewer.setMeshLines(meshLines);
     return { shown: meshLines.shown, strength: meshLines.strength };
   }
@@ -395,17 +426,21 @@
     var a = track[lo], b = track[hi];
     return a.map(function (v, i) { return v + (b[i] - v) * f; });
   }
-  function applyFollow(on) {
-    followCam = !!on;
-    writePref('cadex.follow', followCam ? 'on' : 'off');
-    $('play-follow').setAttribute('aria-pressed', String(followCam));
-    if (!followCam) { state.viewer.followTo(null); return followCam; }
+  // Follow is each 3D viewport's own (ADR-729): the first's is the one this browser keeps.
+  function anyFollow() { return views().length ? views().some(function (v) { return v.follow; }) : followCam; }
+  function applyFollow(on, view) {
+    view = view || firstView();
+    if (!view) return followCam;
+    view.follow = !!on;
+    view.followButton.setAttribute('aria-pressed', String(view.follow));
+    if (view === firstView()) { followCam = view.follow; writePref('cadex.follow', followCam ? 'on' : 'off'); }
+    if (!view.follow) { view.viewer.followTo(null); return view.follow; }
     if (playback) {
       if (!track) track = trackOf(playback);
       var point = pointAt(playT);
-      if (point) { state.viewer.followTo(point, true); state.viewer.draw(); }
+      if (point) { view.viewer.followTo(point, true); view.viewer.draw(); }
     }
-    return followCam;
+    return view.follow;
   }
   function pointAt(t) {
     if (!playback || !track) return null;
@@ -431,9 +466,10 @@
     slider.min = String(times[0]); slider.max = String(times[times.length - 1]);
     $('playback').hidden = false;
     // A new rollout puts the followed view back on the design.
-    track = followCam ? trackOf(served) : null;
+    track = anyFollow() ? trackOf(served) : null;
     state.viewer.followTo(null);
-    if (followCam && track) state.viewer.followTo(track[0], true);
+    state.activations.setPlayback(served);
+    if (anyFollow() && track) state.viewer.followTo(track[0], true);
     seek(times[0]);
   }
   function blend(a, b, f) {
@@ -455,8 +491,9 @@
     while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (times[mid] <= playT) lo = mid; else hi = mid; }
     var span = times[hi] - times[lo], f = span > 0 ? (playT - times[lo]) / span : 0;
     f = Math.max(0, Math.min(1, f));
-    if (followCam && track) state.viewer.followTo(trackAt(lo, hi, f));
+    if (anyFollow() && track) state.viewer.followTo(trackAt(lo, hi, f));
     state.viewer.setPoses(blend(playback.frames[lo], playback.frames[hi], f));
+    state.activations.setFrame(lo, hi, f);
     $('play-time').value = String(playT);
     $('play-clock').textContent = playT.toFixed(2) + ' s';
   }
@@ -519,7 +556,7 @@
     var got = checkpointItems(), items = got.items, box = $('checkpoints');
     ckpt.items = items; ckpt.pending = got.pending;
     setHidden('checkpoints', !items.length);
-    if (!items.length) { ckpt.shown = null; ckpt.playing = null; return; }
+    if (!items.length) { setHidden('checkpoint-status', true); ckpt.shown = null; ckpt.playing = null; return; }
     var stems = items.map(function (item) { return item.stem; });
     if (ckpt.pinned && stems.indexOf(ckpt.pinned) < 0) ckpt.pinned = null;
     var index = ckpt.pinned ? stems.indexOf(ckpt.pinned) : items.length - 1, item = items[index];
@@ -528,7 +565,9 @@
     if (pick.value !== String(index)) pick.value = String(index);
     if (box.dataset.follow !== String(!ckpt.pinned)) box.dataset.follow = String(!ckpt.pinned);
     if (box.dataset.state !== item.state) box.dataset.state = item.state;
-    setText('checkpoint-label', checkpointName(item) + ' · ' + (index + 1) + '/' + items.length + (ckpt.pinned ? '' : ' · newest'));
+    $('checkpoint-status').dataset.state = item.state;
+    var named = checkpointName(item) + ' · ' + (index + 1) + '/' + items.length + (ckpt.pinned ? '' : ' · newest');
+    setText('checkpoint-label', named).title = named;
     var note = item.state === 'failed' ? 'rollout failed: ' + item.reason + (item.error ? ' — ' + item.error : '')
              : got.pending ? got.pending + ' newer checkpoint' + (got.pending > 1 ? 's' : '') + ' rolling out' : '';
     setText('checkpoint-status', note).title = note;
@@ -542,7 +581,7 @@
   }
   function showCheckpoint(item, key) {
     var ticket = modelLoad;
-    stopPlayback(); playback = null; ckpt.playing = null;
+    stopPlayback(); playback = null; ckpt.playing = null; state.activations.setPlayback(null);
     if (item.state !== 'ready') {
       $('playback').hidden = true;
       state.viewer.setPoses(restPoses());
@@ -611,7 +650,7 @@
   function renderRevisionTimeline() {
     var box = $('revision-timeline'), stops = revisionStops(), on = source === 'revisions' && stops.length > 0;
     setHidden('revision-timeline', !on);
-    if (!on) return;
+    if (!on) { setHidden('revision-status', true); return; }
     var ordinal = revisionShown(), index = 0, current = state.review.accepted && state.review.accepted.revision;
     stops.forEach(function (s, i) { if (s.ordinal === ordinal) index = i; });
     var stop = stops[index], pick = $('revision-pick');
@@ -620,9 +659,11 @@
     if (box.dataset.follow !== String(rev.pinned == null)) box.dataset.follow = String(rev.pinned == null);
     var retained = !!stop.retained, stateName = retained ? 'retained' : 'missing';
     if (box.dataset.state !== stateName) box.dataset.state = stateName;
+    $('revision-status').dataset.state = stateName;
     box.dataset.ordinal = String(stop.ordinal);
-    setText('revision-label', 'revision ' + stop.ordinal + (stop.revision === current ? ' · current' : ' · ' + brief(stop.saved_at)) +
-            ' · ' + (index + 1) + '/' + stops.length + (rev.pinned == null ? ' · newest' : ''));
+    var named = 'revision ' + stop.ordinal + (stop.revision === current ? ' · current' : ' · ' + brief(stop.saved_at)) +
+                ' · ' + (index + 1) + '/' + stops.length + (rev.pinned == null ? ' · newest' : '');
+    setText('revision-label', named).title = named;
     var model = state.model && state.model.view === 'revision' && state.model.ordinal === stop.ordinal ? state.model : null, note;
     if (!retained) note = 'not shown: ' + (stop.retained_reason || 'its model was not retained');
     else if (!model) note = '';
@@ -952,12 +993,7 @@
       state.review = review; state.lastOk = new Date(); state.stale = false; state.error = null;
       render();
       lastPoll.ms = performance.now() - started;
-      // The accepted model moves with every write; a run's moves when the
-      // walk lands its export or its own rollout, which adds the final
-      // policy's stop (ADR-554).
-      var key = source === 'accepted' ? JSON.stringify([review.accepted.revision, review.accepted.digest])
-              : source.indexOf('reference:') === 0 ? JSON.stringify([source, review.accepted.revision, review.accepted.digest])
-              : source === 'revisions' ? revisionKey() : runModelKey(review, source.slice(4));
+      var key = sourceKey(review);
       if (key !== modelKey && Date.now() >= modelRetryAt) { modelKey = key; model = loadModel(); }
     }).catch(function (error) {
       state.stale = true; state.error = error.message;
@@ -973,6 +1009,53 @@
     if (sheet.kind === 'plot') drawPlot();
   }
 
+  // A 3D viewport: its own viewer, camera, gizmo, style, lighting and follow, over the one model.
+  function addView(ref, tools) {
+    var canvas = ref('viewer'), viewer = window.CadexViewer.create(canvas);
+    var view = { viewer: viewer, canvas: canvas, tools: tools, body: ref('model'), follow: false, style: renderStyle, look: look.name,
+                 styleGroup: ref('view3d-style'), lookSelect: ref('view3d-look'), followButton: ref('play-follow') };
+    view.gizmo = window.CadexGizmo.create(viewer, ref('view3d-gizmo'), canvas);
+    var first = !state.views.first();
+    view.styleGroup.addEventListener('click', function (event) {
+      var button = event.target.closest('button');
+      if (button) applyStyle(button.dataset.style, view);
+    });
+    view.lookSelect.addEventListener('change', function () { applyLook({ name: view.lookSelect.value }, view); });
+    ref('model-fit').addEventListener('click', function () { viewer.fit(); });
+    view.followButton.addEventListener('click', function (event) { event.stopPropagation(); applyFollow(!view.follow, view); });
+    if (window.ResizeObserver) new ResizeObserver(function () { viewer.draw(); }).observe(canvas);
+    if (first) view.follow = followCam;
+    view.followButton.setAttribute('aria-pressed', String(view.follow));
+    state.views.add(view);
+    viewer.setLook(view.look); setViewStyle(view, view.style);
+    if (!first && view.follow && playback && track) viewer.followTo(pointAt(playT), true);
+    return view;
+  }
+  // A copy of an editor that may be shown more than once (ADR-729), from its pristine markup.
+  var templates = {}, shared = {}, MULTI = { view3d: true, activations: true, network: true };
+  function makeCopy(type) {
+    var copy = window.CadexViewports.copy(templates[type]), ref = function (name) { return window.CadexViewports.ref(copy.home, name); };
+    $('editor-shelf').appendChild(copy.home);
+    if (type === 'view3d') {
+      addView(ref, copy.tools);
+      // The model's source, its scrubbers and its status lines are the first viewport's, worked from either.
+      var mirror = window.CadexViewports.mirror;
+      // The first's elements as kept at the start: a copy is made while the layout builds its
+      // areas, when the first's header may not be in the page to be found by id.
+      mirror(shared.source, ref('view3d-source'));
+      mirror(shared.play, copy.tools.querySelector('.view3d-play'), '[data-ref="play-follow"]');
+      mirror(shared.timelines, copy.body.querySelector('.timelines'));
+    } else if (type === 'activations') {
+      state.activations.addMotors({ body: ref('activations'), motors: ref('activations-motors'), bars: ref('activations-bars'),
+                                    detail: ref('activations-detail'), status: ref('activations-status'), toggle: ref('activations-viewport'),
+                                    views: ref('activations-views'), ramp: copy.body.querySelector('.ramp-bar') });
+    } else if (type === 'network') {
+      state.activations.addNetwork({ network: ref('network'), networkStatus: ref('network-status'), layers: ref('network-layers'),
+                                     paths: ref('network-paths'), networkViews: ref('network-views') });
+    }
+    return { title: $('editor-' + type).dataset.title, short: $('editor-' + type).dataset.short, home: copy.home, tools: copy.tools, body: copy.body };
+  }
+
   function initialize() {
     if (NAME == null) $('home').hidden = true;
     var editors = {};
@@ -980,10 +1063,32 @@
       var home = $('editor-' + type);
       editors[type] = { title: home.dataset.title, short: home.dataset.short, home: home,
                         tools: home.querySelector('.editor-tools'), body: home.querySelector('.editor-body') };
+      if (MULTI[type]) {
+        templates[type] = home.cloneNode(true);
+        var made = {};
+        editors[type].multi = true;
+        editors[type].instance = function (k) { return made[k] || (made[k] = makeCopy(type)); };
+        editors[type].copies = function () { return Object.keys(made).map(function (k) { return made[k]; }); };
+      }
     });
+    shared = { source: $('view3d-source'), play: editors.view3d.tools.querySelector('.view3d-play'), timelines: $('model').querySelector('.timelines') };
+    state.views = window.CadexViewports.group();
+    state.viewer = state.views.viewer;
+    var firstRef = function (name) { return $(name); };
+    addView(firstRef, editors.view3d.tools);
+    state.gizmo = firstView().gizmo;
+    state.activations = window.CadexActivations.create({ viewer: function () { return state.viewer; }, body: $('activations'),
+                                                         motors: $('activations-motors'), bars: $('activations-bars'),
+                                                         detail: $('activations-detail'), status: $('activations-status'),
+                                                         toggle: $('activations-viewport'), views: $('activations-views'),
+                                                         network: $('network'), networkStatus: $('network-status'),
+                                                         layers: $('network-layers'), paths: $('network-paths'),
+                                                         networkViews: $('network-views'), ramp: document.querySelector('.activations-ramp .ramp-bar') });
+    state.settings = window.CadexSettings.create({ preset: $('settings-heat-preset'), count: $('settings-heat-count'),
+                                                   low: $('settings-heat-low'), mid: $('settings-heat-mid'), high: $('settings-heat-high'),
+                                                   preview: $('settings-heat-preview'), reset: $('settings-heat-reset') });
     state.layout = window.CadexLayout.create({ root: $('screen'), shelf: $('editor-shelf'), editors: editors, order: ORDER,
                                                storageKey: 'cadex.layout.v5', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
-    state.viewer = window.CadexViewer.create($('viewer'));
     state.outliner = window.CadexOutliner.create({ tree: $('outliner-tree'), filter: $('outliner-filter'), group: $('outliner-group'),
                                                    showAll: $('outliner-show-all'), summary: $('outliner-summary'), scope: $('model'),
                                                    viewer: function () { return state.viewer; } });
@@ -994,25 +1099,18 @@
     applyLook();
     applyStyle(renderStyle);
 
-    $('model-fit').addEventListener('click', function () { state.viewer.fit(); });
     $('view3d-source').addEventListener('change', function () { ckpt.chosenSource = true; setSource($('view3d-source').value); });
-    [$('view3d-style'), $('style-choice')].forEach(function (group) {
-      group.addEventListener('click', function (event) {
-        var button = event.target.closest('button');
-        if (button) applyStyle(button.dataset.style);
-      });
+    $('style-choice').addEventListener('click', function (event) {
+      var button = event.target.closest('button');
+      if (button) applyStyle(button.dataset.style);
     });
     $('mesh-lines').addEventListener('change', function () { applyMeshLines({ shown: $('mesh-lines').checked }); });
     $('mesh-strength').addEventListener('input', function () { applyMeshLines({ strength: $('mesh-strength').value }); });
     $('reflections').addEventListener('input', function () { applyReflections($('reflections').value); });
-    ['view3d-look', 'look-choice'].forEach(function (id) {
-      $(id).addEventListener('change', function () { applyLook({ name: $(id).value }); });
-    });
+    $('look-choice').addEventListener('change', function () { applyLook({ name: $('look-choice').value }); });
     $('occlusion').addEventListener('change', function () { applyLook({ occlusion: $('occlusion').checked }); });
     $('detail').addEventListener('change', function () { applyLook({ detail: $('detail').checked }); });
     $('play-toggle').addEventListener('click', function () { ckpt.paused = !!playing; togglePlayback(); });
-    $('play-follow').setAttribute('aria-pressed', String(followCam));
-    $('play-follow').addEventListener('click', function () { applyFollow(!followCam); });
     $('checkpoint-pick').addEventListener('input', function () { pickCheckpoint(Number($('checkpoint-pick').value)); });
     $('revision-pick').addEventListener('input', function () { pickRevision(Number($('revision-pick').value)); });
     $('revision-list').addEventListener('click', function (event) {
@@ -1038,7 +1136,9 @@
     });
     document.addEventListener('cadex-theme-choice', renderThemeChoice);
     // The diagram's paper and ink are the theme's.
-    document.addEventListener('cadex-theme', function () { if (renderStyle === 'wireframe') applyStyle('wireframe'); });
+    document.addEventListener('cadex-theme', function () {
+      views().forEach(function (v) { if (v.style === 'wireframe') setViewStyle(v, 'wireframe'); });
+    });
     renderThemeChoice();
     $('layout-reset').addEventListener('click', function () { state.layout.reset(); });
     $('layout-presets').addEventListener('click', function (event) {
@@ -1051,7 +1151,6 @@
 
     // Each canvas follows its box; redraw whenever the box changes.
     if (window.ResizeObserver) {
-      new ResizeObserver(function () { if (state.viewer.draw) state.viewer.draw(); }).observe($('viewer'));
       new ResizeObserver(onLayout).observe($('sheet-stage'));
     }
     loadProjects();
@@ -1066,6 +1165,8 @@
     refresh: function () { return (pendingPoll || Promise.resolve()).then(function () { return poll(); }); },
     viewer: function () { return state.viewer; },
     layout: function () { return state.layout; },
+    gizmo: function () { return state.gizmo; },
+    activations: function () { return state.activations; },
     setStyle: applyStyle,
     renderStyle: function () { return renderStyle; },
     setMeshLines: applyMeshLines,
@@ -1098,6 +1199,10 @@
     seek: seek,
     setFollow: applyFollow,
     follow: function () { return { on: followCam, tracked: !!track, camera: state.viewer.camera && state.viewer.camera() }; },
+    view: function (i) { var v = views()[i]; return v ? v.viewer : null; },
+    views: function () {
+      return views().map(function (v) { return { style: v.style, look: v.look, follow: v.follow, camera: v.viewer.camera(), gizmo: v.gizmo }; });
+    },
     lastPoll: function () { return { project_bytes: lastPoll.project_bytes, ms: lastPoll.ms }; },
     state: function () {
       return { stale: state.stale, error: state.error,

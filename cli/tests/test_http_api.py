@@ -31,13 +31,14 @@ from review_helpers import _biped_store
 from review_helpers import _escaped_run, _get, _json, _mesh_run, _rewrite_record, _stage_accepted
 from review_helpers import _training_run as _untraced_run
 from review_helpers import reference_bundle
+from review_helpers import motor_trace, write_policy
 
 REPO = Path(__file__).resolve().parents[2]
 STATIC = REPO / "cli" / "cadex_cli" / "review_static"
 #: The per-viewer conveniences the page may keep in ``localStorage``.
 BROWSER_KEYS = {"cadex.theme", "cadex.layout.v5", "cadex.render", "cadex.meshlines", "cadex.meshlines.strength",
                 "cadex.reflections", "cadex.look", "cadex.occlusion", "cadex.detail", "cadex.outliner.group",
-                "cadex.outliner.folded", "cadex.follow"}
+                "cadex.outliner.folded", "cadex.follow", "cadex.heat", "cadex.activations.views"}
 
 
 def _documented() -> dict[str, tuple[set[str], set[str]]]:
@@ -101,14 +102,24 @@ def biped(tmp_path):
     second = _mesh_run(root, "second", revision=REVISION_B)
     # A rollout with timed frames, so its playback has frames to play.
     (second / "rollout" / "assembly-simulation-trace.json").write_text(
-        json.dumps(_checkpoint_trace("000001", 0, 0.0)))
+        json.dumps(motor_trace("000001", write_policy(second / "policy.cxpolicy"))))
+    _rewrite_record(second, artifacts={**json.loads((second / "run.json").read_text())["artifacts"],
+                                       "policy": "policy.cxpolicy"})
     broken = _mesh_run(root, "broken", revision=REVISION_A)
     for path in (broken / "rollout").iterdir():
         path.unlink()
     (broken / "rollout").rmdir()
     _escaped_run(root, tmp_path)
-    train = _training_run(root) / "train"
-    (train / "walk.000040.rollout-trace.json").write_text(json.dumps(_checkpoint_trace("000040", 39, 1.25)))
+    run = _training_run(root)
+    train = run / "train"
+    # A checkpoint with its policy beside it and a trace that records its motors (ADR-727); a
+    # policy file the page cannot run; and the walk's own policy.
+    header = write_policy(train / "walk.000040.cxpolicy")
+    (train / "walk.000040.rollout-trace.json").write_text(json.dumps(motor_trace("000040", header)))
+    (train / "walk.000080.cxpolicy").write_bytes(b"not yet rolled out")
+    write_policy(train / "walk.cxpolicy", seed=5)
+    _rewrite_record(run, artifacts={**json.loads((run / "run.json").read_text())["artifacts"],
+                                    "policy": "train/walk.cxpolicy"})
     (train / "walk.000060.rollout-failed.json").write_text(json.dumps({
         "schema": "cadex-checkpoint-rollout-failure-v1", "checkpoint": "walk.000060.cxpolicy",
         "tag": "000060", "iteration": 59, "reason": "child_failed", "error": "the rollout exited 1"}))
@@ -144,6 +155,10 @@ PROBES = {
         [f"api/playback/checkpoint/{RUN}/walk.000080", "api/playback/checkpoint/nope/walk.000040"]),
     "playback/reference/<task>": (["api/playback/reference/walk", "api/playback/reference/stand"],
                                   ["api/playback/reference/nope"]),
+    "policy/run/<run>": ([f"api/policy/run/{RUN}", "api/policy/run/first"], ["api/policy/run/nope"]),
+    "policy/checkpoint/<run>/<stem>": (
+        [f"api/policy/checkpoint/{RUN}/walk.000040", f"api/policy/checkpoint/{RUN}/walk.000080"],
+        [f"api/policy/checkpoint/{RUN}/walk.000060", "api/policy/checkpoint/nope/walk.000040"]),
 }
 
 
@@ -217,7 +232,7 @@ def test_the_page_keeps_only_per_viewer_conveniences_in_the_browser() -> None:
         stored |= set(re.findall(r"storageKey: '([^']+)'", text))
         stored |= set(re.findall(r"var KEY = '([^']+)'", text))
         calls = len(re.findall(r"localStorage\.(?:getItem|setItem|removeItem)\(", text))
-        named = {"review.js": 2, "layout.js": 3, "theme.js": 2, "outliner.js": 2}.get(path.name, 0)
+        named = {"review.js": 2, "layout.js": 3, "theme.js": 2, "outliner.js": 2, "heat.js": 2, "activations.js": 2}.get(path.name, 0)
         assert calls == named, (path.name, calls)
     assert stored == BROWSER_KEYS
     doc = (REPO / "docs" / "CLI.md").read_text(encoding="utf-8")

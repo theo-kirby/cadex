@@ -6,7 +6,10 @@
 
    Two themes share one set of token names: dark is the default (the
    palette the renders use, ADR-331) and `[data-theme="light"]` overrides
-   it; theme.js sets the attribute before the first paint. */
+   it; theme.js sets the attribute before the first paint.
+
+   An editor that may be shown more than once (ADR-729) is copied with each id turned into a
+   data-ref, so its rules name both: :is(#x, [data-ref="x"]), which keeps the id's weight. */
 :root {
   color-scheme: dark;
   --bg: #141414; --surface: #1b1b1b; --surface-2: #242424; --surface-3: #2c2c2c;
@@ -19,7 +22,7 @@
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px;
   --radius: 10px; --radius-sm: 8px; --radius-area: 6px; --bw: 1.5px;
   --gutter: var(--s5); --pad: var(--s4); --control: 32px; --tool: 24px;
-  --bar: 40px; --area-bar: 32px; --gap: 4px; --scrub: 160px;
+  --bar: 40px; --status-bar: 32px; --area-bar: 32px; --gap: 4px; --scrub: 160px;
 }
 :root[data-theme="light"] {
   color-scheme: light;
@@ -53,7 +56,13 @@ header#top .title { display: flex; align-items: baseline; gap: var(--s3); flex-w
 #home:hover { color: var(--ink); }
 #accepted-line, #run-line { color: var(--ink-2); font-size: var(--fs-0); }
 #freshness { font-size: var(--fs-0); white-space: nowrap; }
-#freshness[data-state="live"] { color: var(--ok); } #freshness[data-state="stale"] { color: var(--warn); } #freshness[data-state="loading"] { color: var(--ink-2); }
+#freshness[data-state="live"] { color: var(--ok); }
+/* The live dot breathes, so a page that is still polling reads as alive at a glance. */
+#freshness[data-state="live"]::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px;
+  border-radius: 50%; background: currentColor; vertical-align: 1px; animation: breathe 2.4s ease-in-out infinite; }
+@keyframes breathe { 0%, 100% { opacity: 1; box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 45%, transparent); }
+                     50% { opacity: .55; box-shadow: 0 0 0 4px transparent; } }
+ #freshness[data-state="stale"] { color: var(--warn); } #freshness[data-state="loading"] { color: var(--ink-2); }
 
 /* Controls: flat, rounded, one fill, no native chrome. */
 button, select { font: 400 var(--fs-1)/1.45 var(--font); background: var(--surface-2); color: var(--ink); border: var(--bw) solid var(--rule);
@@ -84,7 +93,10 @@ textarea:focus { outline: none; border-color: var(--rule-strong); }
 
 /* The screen: areas tiled edge to edge, a hairline gap between them (§12). */
 body.app { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
-#screen { flex: 1; min-height: 0; display: flex; padding: 0 var(--gap) var(--gap); }
+#screen { flex: 1; min-height: 0; display: flex; padding: var(--gap) var(--gap) 0; }
+/* In the app the bar is a status bar along the bottom (ADR-728), and its menus open upwards. */
+body.app header#top { min-height: var(--status-bar); padding: 0 var(--s3); }
+body.app .menu-panel { top: auto; bottom: calc(100% + 4px); }
 #screen > .split, #screen > .area { flex: 1 1 0 !important; }
 .split { display: flex; min-width: 0; min-height: 0; }
 .split-row { flex-direction: row; } .split-col { flex-direction: column; }
@@ -97,7 +109,7 @@ body.app { height: 100dvh; overflow: hidden; display: flex; flex-direction: colu
 #screen.resizing * { cursor: inherit; }
 .area { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
         background: var(--surface); border-radius: var(--radius-area); }
-.area-header { flex: none; display: flex; align-items: center; gap: var(--s1); height: var(--area-bar);
+.area-header { flex: none; display: flex; align-items: center; gap: var(--s1); min-height: var(--area-bar);
                padding: 0 var(--s1); background: var(--surface-2); font-size: var(--fs-0); cursor: grab; }
 #screen.dragging .area-header { cursor: grabbing; }
 .area-grip { flex: none; width: 10px; align-self: stretch; border-radius: 3px; cursor: grab;
@@ -110,7 +122,7 @@ body.app { height: 100dvh; overflow: hidden; display: flex; flex-direction: colu
 .area-header .segmented button:last-child { border-radius: 0 6px 6px 0; }
 .area-header .icon-button { padding: 0; }
 select.area-type { font-weight: 600; background: var(--surface-3); border-color: transparent; max-width: 9.5em; }
-.editor-tools { display: flex; align-items: center; gap: var(--s1); flex: 1; min-width: 0; overflow: hidden; }
+.editor-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); flex: 1; min-width: 0; overflow: hidden; padding: var(--s1) 0; }
 .editor-tools > select { max-width: 14em; }
 .area-actions { flex: none; display: flex; gap: 1px; }
 .editor-body { flex: 1; min-height: 0; position: relative; overflow: auto; }
@@ -125,18 +137,37 @@ select.area-type { font-weight: 600; background: var(--surface-3); border-color:
 #screen[data-mode="tabs"] { flex-direction: column; padding: 0; }
 #screen[data-mode="tabs"] > .area { border-radius: 0; }
 #screen[data-mode="tabs"] .area-header { cursor: default; }
-nav.tabs { flex: none; display: flex; gap: var(--s1); padding: var(--s1); background: var(--bg); }
-nav.tabs .tab { flex: 1; }
+nav.tabs { flex: none; display: flex; gap: var(--s1); padding: var(--s1); background: var(--bg); overflow-x: auto; }
+nav.tabs .tab { flex: 1 0 auto; padding: 0 var(--s2); }
 
 /* 3D viewport. */
-#model { overflow: hidden; background: var(--bg); }
-#model .viewport, canvas#viewer { position: absolute; inset: 0; }
-canvas#viewer { display: block; width: 100%; height: 100%; touch-action: none; }
+:is(#model, [data-ref="model"]) { overflow: hidden; background: var(--bg); }
+:is(#model, [data-ref="model"]) .viewport, canvas:is(#viewer, [data-ref="viewer"]) { position: absolute; inset: 0; }
+canvas:is(#viewer, [data-ref="viewer"]) { display: block; width: 100%; height: 100%; touch-action: none; }
+/* The navigation gizmo (§5, ADR-726): the axes in the viewport's top right, in the viewport's own
+   dark whatever the theme, as the floor is. A disc shows behind it on hover, as in Blender. */
+:is(#view3d-gizmo, [data-ref="view3d-gizmo"]) { position: absolute; z-index: 1; top: var(--s2); right: var(--s2); width: 88px; height: 88px;
+                overflow: visible; pointer-events: none; user-select: none; }
+:is(#view3d-gizmo, [data-ref="view3d-gizmo"]) .gizmo-disc { fill: rgba(255,255,255,.07); opacity: 0; transition: opacity .15s; pointer-events: auto; }
+:is(#view3d-gizmo, [data-ref="view3d-gizmo"]):hover .gizmo-disc { opacity: 1; }
+:is(#view3d-gizmo, [data-ref="view3d-gizmo"]) .gizmo-stem { stroke-width: 2; stroke-linecap: round; }
+:is(#view3d-gizmo, [data-ref="view3d-gizmo"]) .gizmo-end { cursor: pointer; pointer-events: auto; }
+:is(#view3d-gizmo, [data-ref="view3d-gizmo"]) .gizmo-end circle { stroke-width: 1.5; transition: r .12s; }
+:is(#view3d-gizmo, [data-ref="view3d-gizmo"]) .gizmo-end text { font: 700 12px/1 var(--font); fill: #141414; pointer-events: none; }
+:is(#view3d-gizmo, [data-ref="view3d-gizmo"]) .gizmo-stem { stroke: #8f8f8f; }
+:is(#view3d-gizmo, [data-ref="view3d-gizmo"]) .gizmo-end[data-end^="+"] circle { fill: #c9c9c9; stroke: #c9c9c9; }
+:is(#view3d-gizmo, [data-ref="view3d-gizmo"]) .gizmo-end[data-end^="-"] circle { fill: #2a2a2a; stroke: #8f8f8f; }
+:is(#view3d-gizmo, [data-ref="view3d-gizmo"]) .gizmo-end:hover circle { r: 11px; stroke: #ededed; }
+:is(#view3d-gizmo, [data-ref="view3d-gizmo"]) .gizmo-end[data-end^="-"]:hover circle { r: 9px; }
+@media (prefers-reduced-motion: reduce) { #freshness[data-state="live"]::before { animation: none; } :is(#view3d-gizmo, [data-ref="view3d-gizmo"]) * { transition: none; } }
 /* The model's status line heads the bottom column, on an opaque --surface: the floor is dark in both themes (ADR-557). */
-#model-status { align-self: flex-start; max-width: 100%; padding: var(--s1) var(--s2); border-radius: var(--radius-area);
+:is(#model-status, [data-ref="model-status"]) { align-self: flex-start; max-width: 100%; padding: var(--s1) var(--s2); border-radius: var(--radius-area);
                 background: var(--surface); font-size: var(--fs-0); color: var(--ink-2); overflow-wrap: anywhere; }
-#model-status[data-state="loaded"] { display: none; }
-#model-status[data-state="missing"] { color: var(--warn); } #model-status[data-state="error"] { color: var(--bad); }
+:is(#model-status, [data-ref="model-status"])[data-state="loaded"] { display: none; }
+:is(#checkpoint-status, [data-ref="checkpoint-status"]), :is(#revision-status, [data-ref="revision-status"]) { align-self: flex-start; max-width: 100%; margin: 0; padding: var(--s1) var(--s2); border-radius: var(--radius-area);
+                background: var(--surface); font-size: var(--fs-0); color: var(--ink-2); overflow-wrap: anywhere; }
+:is(#checkpoint-status, [data-ref="checkpoint-status"])[data-state="failed"] { color: var(--bad); } :is(#revision-status, [data-ref="revision-status"])[data-state="missing"] { color: var(--warn); }
+:is(#model-status, [data-ref="model-status"])[data-state="missing"] { color: var(--warn); } :is(#model-status, [data-ref="model-status"])[data-state="error"] { color: var(--bad); }
 /* Status (ADR-542; an editor since ADR-572): the stage chip in the area's header, the detail in its body. */
 /* Since ADR-606 it uses its area: real charts with axes, the latest evaluation and the runs. */
 #status { padding: var(--s3); overflow: auto; font-size: var(--fs-0); color: var(--ink); font-variant-numeric: tabular-nums;
@@ -201,21 +232,77 @@ table.status-table { width: 100%; border-collapse: collapse; table-layout: auto;
 #status-activity-list li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); }
 #status-activity-list li[data-outcome="error"], #status-activity-list li[data-outcome="lost"] { color: var(--bad); }
 #status-activity-list li[data-outcome="running"] { color: var(--info); }
-.timelines { position: absolute; z-index: 1; left: var(--s2); right: var(--s2); bottom: var(--s2); display: flex; flex-direction: column; gap: var(--s1); }
-.timeline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2);
-            padding: var(--s1) var(--s2); background: color-mix(in srgb, var(--surface-2) 88%, transparent); border-radius: var(--radius-area); font-size: var(--fs-0); }
-.timeline button { min-height: var(--tool); height: var(--tool); font-size: var(--fs-0); padding: 0 var(--s2); }
-/* A scrubber never yields its width to a long label: below its floor the label wraps under it (ADR-556). */
+.timelines { position: absolute; z-index: 1; left: var(--s2); right: var(--s2); bottom: var(--s2); display: flex; flex-direction: column; gap: var(--s1); pointer-events: none; }
+/* The scrubbers ride in the 3D viewport's header after Fit (ADR-728), one row each, wrapping onto a
+   second header row when the area is narrow. */
+.view3d-play { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); flex: 1 1 320px; min-width: 0; }
+.timeline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); flex: 1 1 320px; min-width: 0; font-size: var(--fs-0); }
+.timeline button { flex: none; min-height: var(--tool); height: var(--tool); font-size: var(--fs-0); padding: 0 var(--s2); }
+/* A scrubber never yields its width to a long label: the label ellipsizes first (ADR-556). */
 .timeline input[type="range"] { flex: 1 1 var(--scrub); min-width: var(--scrub); height: var(--tool); margin: 0; accent-color: var(--accent); }
-.timeline output { min-width: 56px; text-align: right; }
-.timeline-name { color: var(--ink-2); }
-#checkpoint-label { min-width: 0; white-space: nowrap; font-family: var(--mono); }
-#checkpoint-status { flex-basis: 100%; margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
-#checkpoints[data-state="failed"] #checkpoint-status { color: var(--bad); }
-#revision-label { min-width: 0; white-space: nowrap; font-family: var(--mono); }
-#revision-status { flex-basis: 100%; margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
-#revision-timeline[data-state="missing"] #revision-status { color: var(--warn); }
+.timeline output { flex: none; min-width: 56px; text-align: right; }
+.timeline-name { flex: none; color: var(--ink-2); }
+:is(#checkpoint-label, [data-ref="checkpoint-label"]), :is(#revision-label, [data-ref="revision-label"]) { flex: 0 1 auto; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
 #revision-list li[data-retained] { cursor: pointer; }
+
+/* Activations (ADR-727, §27): a gauge per motor and the policy's network, in the heat ramp. */
+:is(#activations, [data-ref="activations"]) { padding: var(--s2) var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
+:is(#activations-status, [data-ref="activations-status"]) { margin: 0; color: var(--ink-2); font-size: var(--fs-0); }
+:is(#activations-status, [data-ref="activations-status"])[data-state="warn"] { color: var(--warn); }
+.activations-ramp { position: relative; width: min(100%, 240px); height: 26px; margin: 0 var(--s4) 0 var(--s1); font-size: var(--fs-0); color: var(--ink-2); flex: none; }
+.activations-ramp span:not(.ramp-bar) { position: absolute; top: 9px; transform: translateX(-50%); white-space: nowrap; }
+.activations-ramp span[style="left:0"] { transform: none; }
+.activations-ramp .ramp-bar { position: absolute; left: 0; right: 0; top: 0; height: 6px; border-radius: 3px;
+  background: var(--rule); /* heat.js paints the chosen colours */ }
+:is(#activations-motors, [data-ref="activations-motors"]) { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: var(--s1); flex: none; }
+.gauge { margin: 0; padding: var(--s1) 0 2px; border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer;
+         border: 1px solid var(--rule); text-align: center; box-shadow: inset 0 -2px 0 var(--heat, transparent); transition: box-shadow .12s; }
+.gauge:hover { background: var(--surface-3); }
+.gauge[data-selected="true"] { border-color: var(--ink-2); }
+.gauge[data-over="true"] { box-shadow: inset 0 -2px 0 var(--heat), 0 0 0 1px var(--heat); }
+.gauge svg { display: block; width: 100%; max-width: 96px; margin: 0 auto; overflow: visible; }
+.gauge figcaption { font-size: var(--fs-0); color: var(--ink-2); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
+.gauge-track { fill: none; stroke: var(--rule); stroke-width: 7; stroke-linecap: round; }
+.gauge-load { fill: none; stroke-width: 7; stroke-linecap: round; transition: stroke .12s; }
+.gauge-needle { stroke: var(--ink); stroke-width: 2.2; stroke-linecap: round; }
+.gauge-hub { fill: var(--ink); }
+.gauge-command { fill: var(--info); }
+.gauge-network { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+.gauge-value { font: 600 13px var(--font); fill: var(--ink); }
+.gauge-effort { font: 400 12px var(--mono); fill: var(--ink-2); }
+:is(#activations, [data-ref="activations"])[data-gauges="false"] :is(#activations-motors, [data-ref="activations-motors"]), :is(#activations, [data-ref="activations"])[data-bars="false"] :is(#activations-bars, [data-ref="activations-bars"]),
+:is(#activations, [data-ref="activations"])[data-drivers="false"] :is(#activations-detail, [data-ref="activations-detail"]) { display: none; }
+/* The bars: a motor a row, its range a track filled from zero to the joint in its heat. */
+:is(#activations-bars, [data-ref="activations-bars"]) { display: grid; grid-template-columns: minmax(4.5em, max-content) minmax(80px, 1fr) minmax(9.5em, max-content); gap: 3px var(--s2); flex: none; align-items: center; }
+.mbar { display: contents; cursor: pointer; }
+.mbar-name { font-size: var(--fs-0); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mbar[data-selected="true"] .mbar-name { color: var(--ink); font-weight: 600; }
+.mbar-track { position: relative; height: 12px; border-radius: 6px; background: var(--rule); }
+.mbar[data-over="true"] .mbar-track { box-shadow: 0 0 0 1px var(--bad); }
+.mbar-fill { position: absolute; top: 0; bottom: 0; border-radius: 6px; }
+.mbar-zero { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--ink-2); }
+.mbar-command, .mbar-network { position: absolute; top: 50%; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; }
+.mbar-command { background: var(--info); }
+.mbar-network { width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 1.5px solid var(--ink); }
+.mbar-value { font: 400 var(--fs-0) var(--mono); color: var(--ink-2); white-space: nowrap; }
+:is(#activations-detail, [data-ref="activations-detail"]) .activations-pick { margin: 0 0 var(--s1); font-size: var(--fs-0); color: var(--ink-2); }
+/* The Network editor (ADR-728): its views share the area's height, each on the dark mat. */
+:is(#network, [data-ref="network"]) { padding: var(--s2) var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
+:is(#network-status, [data-ref="network-status"]) { margin: 0; color: var(--ink-2); font-size: var(--fs-0); flex: none; }
+:is(#network-status, [data-ref="network-status"])[data-state="warn"] { color: var(--warn); }
+:is(#network, [data-ref="network"]) canvas { display: block; width: 100%; flex: 1 1 0; min-height: 160px; border-radius: var(--radius-sm); background: #141414; touch-action: none; }
+:is(#network, [data-ref="network"])[data-layers="false"] :is(#network-layers, [data-ref="network-layers"]), :is(#network, [data-ref="network"])[data-paths="false"] :is(#network-paths, [data-ref="network-paths"]) { display: none; }
+/* Settings (ADR-728, §28): this browser's preferences, a group each. */
+#settings { padding: var(--s3) var(--s4); }
+.settings-group { max-width: 420px; }
+.settings-group .field select { max-width: 60%; }
+.settings-swatches { display: flex; gap: var(--s3); margin: var(--s2) 0; font-size: var(--fs-0); color: var(--ink-2); }
+.settings-swatches label { display: flex; align-items: center; gap: var(--s1); }
+.settings-swatches input[type="color"] { width: 36px; height: 24px; padding: 0; border: var(--bw) solid var(--rule); border-radius: 6px; background: none; cursor: pointer; }
+.settings-preview { height: 10px; border-radius: 5px; margin: var(--s2) 0; }
+ol.activations-drivers { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font: 400 var(--fs-0) var(--mono); max-width: 420px; }
+ol.activations-drivers li { display: grid; grid-template-columns: minmax(0, 1fr) 3.5em; gap: 2px var(--s2); }
+ol.activations-drivers .bar { grid-column: 1 / -1; height: 3px; border-radius: 2px; }
 
 /* Outliner (ADR-676): every part, in folding groups, an eye and a row each; after Blender's. */
 #outliner { display: flex; flex-direction: column; overflow: hidden; font-size: var(--fs-0); }
@@ -312,7 +399,12 @@ ol#revision-list li[data-current="true"] { color: var(--ink); font-weight: 600; 
 .chip[data-stage="failed"], .chip[data-tone="bad"] { color: var(--bad); background: color-mix(in srgb, var(--bad) 18%, var(--surface-2)); }
 .chips { display: flex; flex-wrap: wrap; gap: var(--s1); }
 .progress { height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
-.progress > span { display: block; height: 100%; width: 0; background: var(--info); border-radius: 2px; transition: width .4s; }
+.progress > span { display: block; height: 100%; width: 0; background: var(--info); border-radius: 2px; transition: width .4s;
+                   background-image: linear-gradient(100deg, transparent 30%, rgba(255,255,255,.45) 50%, transparent 70%);
+                   background-size: 200% 100%; background-repeat: no-repeat; animation: sheen 2.2s linear infinite; }
+/* A sheen runs along a bar that is still moving, so a live run reads as live. */
+@keyframes sheen { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+@media (prefers-reduced-motion: reduce) { .progress > span { animation: none; background-image: none; } }
 
 /* The home page (ADR-605): a spotlight on the project that moved last, then a grid of cards. */
 body.home header#top { position: sticky; top: 0; border-bottom: 1px solid var(--rule); }
@@ -352,6 +444,12 @@ a.card { display: flex; flex-direction: column; height: 100%; color: inherit; te
          border: 1px solid var(--rule); border-radius: var(--radius); overflow: hidden; transition: border-color .15s, transform .15s; }
 a.card:hover { border-color: var(--rule-strong); transform: translateY(-2px); }
 a.card:hover .card-name { text-decoration: underline; }
+/* A picture pushes in a little under the pointer, slowly, as a contact sheet's loupe would. */
+.thumb > img, .thumb > .tile-frame { transition: transform .6s cubic-bezier(.2, .7, .2, 1); }
+.thumb > .tile-frame { transform: translateX(-50%); }
+a.card:hover .thumb > img, #spotlight:hover .thumb > img { transform: scale(1.04); }
+a.card:hover .thumb > .tile-frame, #spotlight:hover .thumb > .tile-frame { transform: translateX(-50%) scale(1.04); }
+@media (prefers-reduced-motion: reduce) { .thumb > img, .thumb > .tile-frame, a.card { transition: none; } }
 .card-body { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3); flex: 1; }
 .card-body p { margin: 0; }
 .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s2); }
@@ -376,4 +474,5 @@ a.card:hover .card-name { text-decoration: underline; }
   /* A dropdown spans the phone between the gutters rather than run off its edge. */
   .menu-panel { position: fixed; top: calc(var(--bar) + 4px); left: var(--gutter); right: var(--gutter);
                 min-width: 0; max-width: none; }
+  body.app .menu-panel { top: auto; bottom: calc(var(--status-bar) + 4px); max-height: 60vh; }
 }
