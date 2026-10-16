@@ -7983,6 +7983,10 @@ _SUCCESS_NEED_CORRECTIONS = {
         "judged about: assembly.success(..., body=component, "
         "centre=component, centre_mm=[x, y, z], centre_axis=[0, 0, 1])."
     ),
+    "appendage": (
+        "Name the chain it reads, from the body nearest the base outward: "
+        "assembly.success(..., appendage=[root, ..., last])."
+    ),
     "shove": (
         "Recovery is timed from the end of a shove, and the spec's "
         "conditions apply none. Give assembly.success (or the task it "
@@ -11070,12 +11074,14 @@ def _success_records(
     feet = [str(name) for name in spec.get("feet") or ()]
     tip = spec.get("tip")
     body = spec.get("body")
+    appendage = [str(name) for name in spec.get("appendage") or ()]
 
     goal_kinds = {str(entry.get("kind") or "") for entry in goal_entries}
     have = {
         "feet": bool(feet),
         "tip": tip is not None,
         "body": body is not None,
+        "appendage": bool(appendage),
         "shove": any(not entry.get("sustained") for entry in disturbance_entries),
         # Read by kind: the commanded speed is the task's one speed goal and
         # the target its one point goal, and a task that states neither has
@@ -11253,6 +11259,7 @@ def _success_records(
         ),
         body=body,
         centre=spec.get("centre"),
+        appendage=appendage,
     )
     for need, present in (
         ("base", rig["base"] is not None),
@@ -11328,6 +11335,8 @@ def _success_records(
             {"body": dict(rig["body"]), "centre": dict(rig["centre"])}
             if body is not None else {}
         ),
+        # Absent unless the script named one (ADR-722), likewise.
+        **({"appendage": appendage} if appendage else {}),
         "episode": schedule,
         "randomisation": randomisation,
         "reset_variation": reset_variation,
@@ -12376,6 +12385,7 @@ def evaluation_rig(
     tip: Mapping[str, Any] | None = None,
     body: Mapping[str, Any] | None = None,
     centre: Mapping[str, Any] | None = None,
+    appendage: Sequence[str] = (),
     keyframe: str = MJCF_KEYFRAME_NAME,
 ) -> dict[str, Any]:
     """The facts about one model that a rollout's metrics are scaled by.
@@ -12399,6 +12409,11 @@ def evaluation_rig(
     ``body`` is ``{"body": name, "local_mm": [x, y, z]}``, a point whose
     motion is judged about ``centre``, ``{"frame": name or None, "point_mm",
     "axis"}`` (ADR-587). Neither needs a joint: a free ball is a body.
+
+    ``appendage`` names a chain hanging from the base, root first (ADR-722):
+    each body must hang from the one before it (the root from the base), at
+    least one must have a primitive collision shape, and the rig records
+    each body's primitives and the body the root hangs from.
 
     A grounded mechanism has no floating base, and ``base`` is then ``None``:
     an arm is still measured for reach. Two floating bases is a refusal,
@@ -12600,6 +12615,67 @@ def evaluation_rig(
                 context="the centre's point_mm",
             ),
             "axis": axis,
+        }
+    if appendage:
+        if base is None or floor is None:
+            raise DynamicsError(
+                "The evaluation names an appendage, and this model has no "
+                "floating base over exactly one floor plane for it to hang "
+                "from and clear.",
+                reason="evaluation_appendage_needs_a_floor",
+                observed={"floating_bases": len(free), "floor_planes": len(planes)},
+            )
+        ids = [_body(name, "an appendage link") for name in appendage]
+        for name, found, above in zip(appendage, ids, [base] + ids[:-1]):
+            link, hangs = found, False
+            while link not in (0, base):
+                link = int(model.body_parentid[link])
+                if link == above:
+                    hangs = True
+                    break
+            if not hangs:
+                raise DynamicsError(
+                    f"Appendage link {name!r} does not hang from "
+                    f"{str(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, above))!r}; "
+                    "an appendage is named root first, each link below the one before.",
+                    reason="evaluation_appendage_not_a_chain",
+                    observed={"appendage": [str(n) for n in appendage], "link": str(name)},
+                )
+        shapes: dict[str, list[dict[str, Any]]] = {}
+        for name, found in zip(appendage, ids):
+            shapes[str(name)] = []
+            for geom in range(model.ngeom):
+                if int(model.geom_bodyid[geom]) != found or not (
+                    model.geom_contype[geom] or model.geom_conaffinity[geom]
+                ):
+                    continue
+                kind = _geom_kind_name(mujoco, int(model.geom_type[geom]))
+                if kind not in _EVALUATION_FOOT_GEOMS:
+                    raise DynamicsError(
+                        f"Appendage link {name!r} collides as a {kind}, and "
+                        "its clearance is read from a sphere, a capsule or a box.",
+                        reason="evaluation_appendage_geom_unsupported",
+                        correction="Give the link a primitive collision shape (api.collision).",
+                        observed={"link": str(name), "geom": kind},
+                    )
+                shapes[str(name)].append({
+                    "kind": kind,
+                    "size_mm": vector_mm(model.geom_size[geom]),
+                    "pos_mm": vector_mm(model.geom_pos[geom]),
+                    "quat_xyzw": quaternion_xyzw_from_wxyz(model.geom_quat[geom]),
+                })
+        if not any(shapes.values()):
+            raise DynamicsError(
+                "No link of the appendage has a collision geom, so nothing "
+                "about it can touch the ground.",
+                reason="evaluation_appendage_has_no_geom",
+                observed={"appendage": [str(n) for n in appendage]},
+            )
+        rig["appendage"] = {
+            "bodies": [str(name) for name in appendage],
+            "geoms": shapes,
+            "parent": str(mujoco.mj_id2name(
+                model, mujoco.mjtObj.mjOBJ_BODY, int(model.body_parentid[ids[0]]))),
         }
     return rig
 
@@ -15042,6 +15118,7 @@ def evaluate_success(
     rig = evaluation_rig(
         compiled, feet=list(spec.get("feet") or ()), tip=spec.get("tip"),
         body=spec.get("body"), centre=spec.get("centre"),
+        appendage=list(spec.get("appendage") or ()),
     )
     # A surface held off its geometry voids every seed alike: the episode
     # is played and measured, and none of it is a measurement of contact.
@@ -15050,6 +15127,9 @@ def evaluate_success(
     names = [str(name) for name in components]
     wanted = [rig["base"], *rig["feet"], (rig.get("tip") or {}).get("body"),
               (rig.get("body") or {}).get("body"), (rig.get("centre") or {}).get("frame")]
+    # ADR-722: an appendage is read from its links and the body it hangs from.
+    if rig.get("appendage"):
+        wanted += [*rig["appendage"]["bodies"], rig["appendage"]["parent"]]
     # ADR-592: a target held in a body's frame is measured where that body was.
     wanted += [entry.get("frame") for entry in played.get("goal") or ()]
     names += [name for name in wanted if name is not None and name not in names]
@@ -15233,6 +15313,7 @@ def evaluate_success(
             **{key: spec[key] for key in (
                 "predicates", "seeds", "feet", "tip", "episode",
                 "reset_variation", "disturbance", "scale")},
+            **({"appendage": list(spec["appendage"])} if spec.get("appendage") else {}),
             "randomisation": [dict(entry) for entry in played["randomisation"]],
             **({"goal": [dict(entry) for entry in played["goal"]]}
                if played.get("goal") else {}),

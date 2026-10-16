@@ -370,6 +370,18 @@ window, frames past 1 s and not within 0.5 s after any command change) and
 commanded heading 180°, judged when it has). The trainer's host draw and
 the reference runner follow the same `GOAL_SEQUENCE_ALGORITHM`.
 
+**Appendage predicates (ADR-722, 2026-10-16).** `assembly.success(...,
+appendage=[root, ..., last])` names a chain that hangs from the base and is
+not a leg -- a tail, a trunk -- each component below the one before, at
+least one with a primitive collision shape. The spec may then bound
+`appendage_ground_contact_share` (frames with any of its shapes within 1 mm
+of the ground under it), `appendage_pitch_parent_correlation` (r between
+its root's pitch and its parent's: is it carried rigidly by the hips?) and,
+against a `yaw_rate` goal, `appendage_yaw_turn_correlation` (|r| between
+the command and the chain's yaw relative to the base: is it used in turns?).
+A contact share is only as true as the collision shapes: a link with none
+passes through the floor unseen.
+
 **Terrain predicates, a held-out course per seed (ADR-718, 2026-10-16).**
 A success spec may bound `distance_made_good_mm` (net plan travel along the
 starting heading) and `falls` (the base tilted 60°, or its centre of mass

@@ -1237,6 +1237,7 @@ _SUCCESS_PREDICATE_KEYS = frozenset({"id", "metric", "min", "max"})
 _MAX_SUCCESS_PREDICATES = 32
 _MAX_SUCCESS_SEEDS = 64
 _MAX_SUCCESS_FEET = 16
+_MAX_SUCCESS_APPENDAGE = 32
 #: What a spec may say it was written for (``success(scale=...)``). The
 #: engine's ``CadexDynamics.SUCCESS_SCALE_KEYS`` is the same tuple, and
 #: ``test_success_spec_model`` holds the two equal.
@@ -4537,6 +4538,7 @@ class AssemblyDomainAPI:
         centre: DomainValue | None = None,
         centre_mm: Sequence[float] | None = None,
         centre_axis: Sequence[float] | None = None,
+        appendage: Sequence[DomainValue] = (),
         episode_seconds: float | None = None,
         randomisation: Sequence[DomainValue] | None = None,
         reset_variation: Sequence[DomainValue] | None = None,
@@ -4630,6 +4632,12 @@ class AssemblyDomainAPI:
           changed; a reversal is a held yaw-rate command that turns the
           commanded heading 180°, judged when it has (3 s at 60°/s), and is
           unmeasured when none was commanded.
+        * ``appendage`` (ADR-722): ``appendage_ground_contact_share``, the
+          share of frames any of its collision shapes is within 1 mm of the
+          ground; ``appendage_pitch_parent_correlation``, r between its
+          root's pitch and the pitch of the body it hangs from, after 1 s;
+          and against a ``yaw_rate`` goal, ``appendage_yaw_turn_correlation``,
+          |r| between the command and the chain's yaw relative to the base.
 
         ``feet`` names the ``api.component`` values that are feet; each
         needs a primitive collision shape, because a foot's height is its
@@ -4644,6 +4652,10 @@ class AssemblyDomainAPI:
         omitted; ``centre_mm`` is the point in that frame (default the
         origin) and ``centre_axis`` the axis turns are counted about
         (default +Z of that frame).
+
+        ``appendage`` names a chain hanging from the base that is not a leg
+        -- a tail, a trunk -- root first, each component below the one
+        before; at least one needs a primitive collision shape.
 
         ``seeds`` are the evaluation seeds, fixed in the script so that two
         evaluations of one policy are the same episodes. **They are never
@@ -4786,6 +4798,17 @@ class AssemblyDomainAPI:
             "seeds": clean_seeds,
             "feet": foot_values,
         }
+        # Absent when none is named, so such a spec is the value it always was.
+        chain = _values(
+            operation, "appendage", appendage, output_type="component_link", minimum=0
+        )
+        if len(chain) > _MAX_SUCCESS_APPENDAGE:
+            raise _error(
+                operation, "appendage",
+                f"may name at most {_MAX_SUCCESS_APPENDAGE} components",
+            )
+        if chain:
+            properties["appendage"] = chain
         if tip is None:
             if tip_offset_mm is not None:
                 raise _error(
@@ -5270,6 +5293,10 @@ class AssemblyDomainAPI:
             ]
             if spec.properties.get("tip") is not None:
                 named.append(("success.tip", spec.properties["tip"]))
+            named.extend(
+                (f"success.appendage[{index}]", entry)
+                for index, entry in enumerate(spec.properties.get("appendage") or ())
+            )
             for parameter in ("body", "centre"):
                 if spec.properties.get(parameter) is not None:
                     named.append((f"success.{parameter}", spec.properties[parameter]))

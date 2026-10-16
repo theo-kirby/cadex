@@ -139,7 +139,9 @@ FOOTFALL_MISSED = 0.5
 #: disturbance in the spec's conditions, ``command`` a speed goal the task
 #: states, ``turn`` a yaw-rate goal it states (ADR-721) and ``target`` a
 #: point goal it states (ADR-462). ``body`` is a body the spec names to be
-#: judged about a centre (ADR-587).
+#: judged about a centre (ADR-587). ``appendage`` is a chain of bodies the
+#: spec names that hangs from the base and is not a leg -- a tail, a trunk,
+#: a mast (ADR-722).
 METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "completed": ("episode", ()),
     "duration_s": ("episode", ()),
@@ -189,6 +191,9 @@ METRICS: dict[str, tuple[str, tuple[str, ...]]] = {
     "reference_joint_rms_deg": ("reference", ("feet", "reference")),
     "command_rate_reference_ratio": ("reference", ("feet", "reference")),
     "joint_acceleration_reference_ratio": ("reference", ("feet", "reference")),
+    "appendage_ground_contact_share": ("appendage", ("base", "appendage")),
+    "appendage_pitch_parent_correlation": ("appendage", ("base", "appendage")),
+    "appendage_yaw_turn_correlation": ("appendage", ("base", "appendage", "turn")),
     "falls": ("terrain", ("base",)),
     "steps_crossed": ("terrain", ("base", "terrain")),
     "slopes_crossed": ("terrain", ("base", "terrain")),
@@ -723,6 +728,134 @@ def tracking_metrics(samples, rig: Mapping[str, Any],
         "tracking": {"frames_counted": len(frames), "frames": n,
                      "command_changes_s": changes, "reversals": reversals},
     }
+
+
+# -- an appendage -----------------------------------------------------------
+
+def _pearson(a: Sequence[float], b: Sequence[float]) -> float | None:
+    """Pearson's r, or ``None`` when either series does not vary."""
+
+    if len(a) < 2:
+        return None
+    mean_a, mean_b = sum(a) / len(a), sum(b) / len(b)
+    da = [x - mean_a for x in a]
+    db = [y - mean_b for y in b]
+    spread = math.sqrt(sum(x * x for x in da) * sum(y * y for y in db))
+    if spread <= _EPS:
+        return None
+    return sum(x * y for x, y in zip(da, db)) / spread
+
+
+def appendage_metrics(samples, rig: Mapping[str, Any], *,
+                      yaw_rates: Sequence[float] | None = None,
+                      ground: Any = None, settle_s: float = SETTLE_S,
+                      contact_mm: float = STANCE_MM) -> dict[str, Any]:
+    """What a chain hanging from the base did that is not a leg's (ADR-722).
+
+    ``rig["appendage"]`` is ``{"bodies": [root, ..., last], "geoms": {body:
+    [geom, ...]}, "parent": body}``: the chain from the body nearest the base
+    outward, each body's collision primitives (as a foot's), and the body the
+    root hangs from. ``ground(x_mm, y_mm)`` is the ground's height, as
+    :func:`terrain_metrics` takes; ``None`` is the rig's floor.
+
+    * ``appendage_ground_contact_share``: the share of frames in which any
+      collision primitive of the chain is within ``contact_mm`` of the
+      ground under its lowest point -- a tail that strikes the floor once a
+      stride reads its stance share, and one carried clear reads 0.
+    * ``appendage_pitch_parent_correlation``: Pearson's r, over the frames
+      past ``settle_s``, between the root's pitch and its parent's. A body's
+      pitch is the elevation of the base's starting forward direction as
+      that body carries it, so the two are compared on one axis whatever
+      each body's own frame is. Near 1 is a chain carried rigidly by the
+      body it hangs from (it rises and falls with the hips); near 0, its
+      root joint works against that body's pitch.
+    * ``appendage_yaw_turn_correlation``: with ``yaw_rates`` (the commanded
+      yaw rate at each sample, deg/s), the magnitude of Pearson's r between
+      that command and the chain's yaw relative to the base -- the plan
+      bearing from the root's origin to the centre of the last body's last
+      primitive, against the base's heading -- over the frames past
+      ``settle_s``. Its magnitude, because whether a tail swings into a turn
+      or out of it is the mechanism's choice; the sign and the slope are in
+      the detail. ``None`` when the command never changed.
+
+    Each is ``None`` when it cannot be read, which a predicate reads as a
+    failure.
+    """
+
+    chain = rig["appendage"]
+    bodies = [str(name) for name in chain["bodies"]]
+    floor = float(rig.get("floor_mm") or 0.0)
+    level = (lambda x, y: floor) if ground is None else ground
+    reference = matrix(rig["reference_xyzw"])
+    times, clearance, root_pitch, parent_pitch, yaw = [], [], [], [], []
+    carried: dict[str, Vector] = {}
+    last = bodies[-1]
+    tail_geom = (chain["geoms"].get(last) or [None])[-1]
+    for time_s, placements in samples:
+        times.append(float(time_s))
+        low = math.inf
+        for name in bodies:
+            rotation, origin = _pose(placements, name)
+            for geom in chain["geoms"].get(name) or ():
+                point = _lowest(geom, rotation, origin)[1]
+                low = min(low, point[2] - float(level(point[0], point[1])))
+        clearance.append(low)
+        base_rotation, _ = _pose(placements, rig["base"])
+        if not carried:
+            ahead = forward(base_rotation, reference)
+            start = (ahead[0], ahead[1], 0.0)
+            for name in (bodies[0], str(chain["parent"])):
+                carried[name] = _apply_inverse(_pose(placements, name)[0], start)
+        pitches = []
+        for name in (bodies[0], str(chain["parent"])):
+            rotation, _ = _pose(placements, name)
+            axis = _apply(rotation, carried[name])
+            pitches.append(math.degrees(math.atan2(axis[2], math.hypot(axis[0], axis[1]))))
+        root_pitch.append(pitches[0])
+        parent_pitch.append(pitches[1])
+        root_rotation, root_origin = _pose(placements, bodies[0])
+        last_rotation, last_origin = _pose(placements, last)
+        end = (last_origin if tail_geom is None
+               else _add(_apply(last_rotation, tail_geom["pos_mm"]), last_origin))
+        ahead = forward(base_rotation, reference)
+        bearing = math.degrees(math.atan2(end[1] - root_origin[1], end[0] - root_origin[0])
+                               - math.atan2(ahead[1], ahead[0]))
+        if yaw:
+            bearing += 360.0 * round((yaw[-1] - bearing) / 360.0)
+        yaw.append(bearing)
+    late = [i for i, moment in enumerate(times) if moment >= settle_s - _EPS]
+    measured = [value for value in clearance if math.isfinite(value)]
+    read: dict[str, Any] = {
+        "appendage_ground_contact_share": (
+            sum(1 for value in measured if value <= contact_mm) / len(measured)
+            if measured else None
+        ),
+        "appendage_pitch_parent_correlation": _pearson(
+            [root_pitch[i] for i in late], [parent_pitch[i] for i in late]),
+    }
+    detail: dict[str, Any] = {
+        "bodies": bodies, "parent": str(chain["parent"]),
+        "min_clearance_mm": min(measured) if measured else None,
+        "root_pitch_sd_deg": statistics.pstdev([root_pitch[i] for i in late]) if late else None,
+        "parent_pitch_sd_deg": statistics.pstdev([parent_pitch[i] for i in late]) if late else None,
+        "yaw_sd_deg": statistics.pstdev([yaw[i] for i in late]) if late else None,
+    }
+    if yaw_rates is not None:
+        if len(yaw_rates) != len(times):
+            raise ValueError(f"yaw rates hold {len(yaw_rates)} values for {len(times)} samples")
+        command = [float(yaw_rates[i]) for i in late]
+        swing = [yaw[i] for i in late]
+        r = _pearson(command, swing)
+        read["appendage_yaw_turn_correlation"] = None if r is None else abs(r)
+        detail["yaw_turn_r"] = r
+        if r is not None:
+            mean_c = sum(command) / len(command)
+            mean_s = sum(swing) / len(swing)
+            detail["yaw_deg_per_deg_s"] = (
+                sum((c - mean_c) * (y - mean_s) for c, y in zip(command, swing))
+                / sum((c - mean_c) ** 2 for c in command))
+    read["appendage"] = detail
+    return read
 
 
 # -- a tip and its targets --------------------------------------------------
@@ -1590,7 +1723,9 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
     stood on and ``terrain`` the course, as :func:`terrain_metrics` takes.
     ``commands`` is the speed and yaw rate in force at each sample, as
     :func:`tracking_metrics` takes; with a floating base it is read for the
-    tracking family (ADR-721).
+    tracking family (ADR-721). A rig with an ``appendage`` on a floating
+    base is read for the appendage family (ADR-722), against the yaw-rate
+    command when ``commands`` carries one.
     """
 
     read: dict[str, Any] = dict(episode_metrics(episode))
@@ -1605,6 +1740,10 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
         read.update(terrain_metrics(samples, rig, terrain=terrain, ground=ground))
         if commands:
             read.update(tracking_metrics(samples, rig, commands))
+        if rig.get("appendage"):
+            read.update(appendage_metrics(
+                samples, rig, ground=ground,
+                yaw_rates=(commands or {}).get("yaw_rate")))
     if rig.get("tip") is not None and segments:
         read.update(reach_metrics(samples, rig, segments))
     if rig.get("body") is not None:
@@ -1626,7 +1765,7 @@ def measure(samples, episode: Mapping[str, Any], rig: Mapping[str, Any], *,
     if reference is not None and read.get("feet"):
         read.update(reference_metrics(read["feet"], reference, drives=drives))
     for key in ("recovery_s", "feet", "segments", "travel_mm", "motion", "drives", "reference",
-                "terrain", "tracking"):
+                "terrain", "tracking", "appendage"):
         if key in read:
             detail[key] = read[key]
     return {"metrics": {name: read[name] for name in METRICS if name in read},

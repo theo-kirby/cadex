@@ -42780,3 +42780,59 @@ the frames after a change; a turn at 60°/s for 3 s reads a reversal error
 equal to its heading shortfall, and one cut short or never commanded reads
 `None`; the `turn` need refuses a spec on a task with no yaw-rate goal.
 
+## ADR-722 — Appendage predicates: ground contact, pitch against the parent, yaw against the turn command (2026-10-16, orun7)
+
+**Context.** orun7's reworked A2 asks that the cat's tail be carried clear
+of the ground in every R1 and W2 rollout ("tail–ground contact share = 0",
+as a predicate, not by eye), that its root pitch be decoupled from the
+pelvis's (the correlation shown to fall from the first tail's 0.93), and
+that it be used in turns (its yaw measured against the commanded yaw rate).
+The first tail's figures came from a scratch scorer; a success spec could
+name feet, a tip and a judged body, but nothing that is a chain off the
+base.
+
+**Decision.** A general **appendage** (charter O3: a tail, a trunk, a
+mast -- any chain hanging from a floating base that is not a leg):
+- `assembly.success(..., appendage=[root, ..., last])`, components root
+  first. Absent from the spec value, the resolved spec and the bundle when
+  none is named, so every earlier bundle keeps its digest. At most 32.
+- `evaluation_rig(model, appendage=...)` refuses a link the model lacks, a
+  list that is not a chain (each link must hang from the one before; the
+  root from the base), a non-primitive collision shape, and a chain with no
+  collision shape at all; it records each link's primitives and the root's
+  parent body. Needs a floating base over one floor plane.
+- A new need, `appendage`, and three metrics in `CadexEvaluation`:
+  - `appendage_ground_contact_share` (needs `base`, `appendage`): the share
+    of frames any primitive's lowest point is within `STANCE_MM` (1 mm) of
+    the ground under it -- the terrain course's ground when there is one.
+  - `appendage_pitch_parent_correlation` (`base`, `appendage`): Pearson r
+    after the 1 s settle between the root's pitch and its parent's, each
+    the elevation of the base's starting forward direction as that body
+    carries it, so the two are read on one axis whatever each body's frame.
+  - `appendage_yaw_turn_correlation` (`base`, `appendage`, `turn`): |r|
+    after 1 s between the `yaw_rate` goal and the chain's yaw relative to
+    the base (the plan bearing from the root's origin to the centre of the
+    last link's last primitive, less the base's heading). Its magnitude,
+    because whether a tail swings into a turn or out of it is the
+    mechanism's to choose; the signed r and the slope (deg per deg/s) are
+    in the detail. Unmeasured (failed if bounded) when the command never
+    changed.
+- `evaluate_success` puts the links and the parent into the trace and
+  hands the yaw-rate goal in; the report's spec echoes the appendage.
+
+**Not in this decision.** The appendage's own command high-frequency
+share (A2 asks it reported; it is a per-channel reading of the drive
+family, not a pose reading) and any reward term: the R1 task's tail
+clearance term is the project's, written in the reward language.
+
+**Evidence.** `test_appendage_metrics` (engine suite, 9 tests): a tail
+carried rigidly by a pitching base reads r = 1 and one whose root joint
+cancels the base's pitch reads |r| < 0.1; the contact share equals the
+share of frames a synthetic tail is drooped onto the floor, and is read
+against a raised ground under it; a tail swept at −0.4° per deg/s reads
+|r| = 1, signed r = −1 and slope −0.4, and one that ignores the command
+reads < 0.15; a constant command is unmeasured; `measure` reads the family
+only for a rig with an appendage; the API carries the list and omits it
+when empty; a task refuses a stranger; on a MuJoCo model the bundle carries
+it, the rig names the parent, and a missing link, a non-chain and a metric
+without an appendage are refused by reason.
