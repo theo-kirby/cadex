@@ -10,7 +10,8 @@
 // shown more than once (`multi`: the 3D viewport, Activations, Network,
 // ADR-729) opens another copy instead, and a split of its area opens a copy
 // of it. An area may also be empty, showing only its editor picker, so a
-// preset can have more areas than there are editors (ADR-573).
+// preset can have more areas than there are editors (ADR-573). An area's
+// header collapses to a caret in its top right corner, which brings it back.
 //
 // A preset (ADR-573) replaces the whole tree in one step: single, side by
 // side, stacked, 2 over 1, 1 over 2, three columns, three rows or quad, its
@@ -18,7 +19,8 @@
 //
 // The layout is a tree: a split {dir: 'row'|'col', sizes, children} or an
 // area {editor, copy}, copy 0 (left out) being the editor's own markup and
-// the rest copies the editor's `instance(copy)` makes, once, and keeps. It is this browser's own, kept in localStorage; a browser
+// the rest copies the editor's `instance(copy)` makes, once, and keeps, and
+// `collapsed` set when its header is collapsed. It is this browser's own, kept in localStorage; a browser
 // that refuses storage gets the default every visit. Below 700 px there is
 // no room to tile, so one editor fills the screen and a tab bar picks it.
 (function () {
@@ -40,6 +42,8 @@
   var ICONS = {
     row: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M8 2.5v11"/></svg>',
     col: '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M1.5 8h13"/></svg>',
+    hide: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 10l4-4 4 4"/></svg>',
+    unhide: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>',
     max: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg>',
     close: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>'
   };
@@ -75,8 +79,13 @@
       return node;
     }
     function strip(node) {
-      return node.editor ? (node.copy ? { editor: node.editor, copy: node.copy } : { editor: node.editor })
-        : { dir: node.dir, sizes: node.sizes.map(function (s) { return Number(s.toFixed(4)); }), children: node.children.map(strip) };
+      if (node.editor) {
+        var area = { editor: node.editor };
+        if (node.copy) area.copy = node.copy;
+        if (node.collapsed) area.collapsed = true;
+        return area;
+      }
+      return { dir: node.dir, sizes: node.sizes.map(function (s) { return Number(s.toFixed(4)); }), children: node.children.map(strip) };
     }
     function valid(node, seen) {
       if (!node || typeof node !== 'object') return false;
@@ -221,8 +230,16 @@
         detach(sourceId);
         var moved = { id: uid(), editor: source.node.editor };
         if (source.node.copy) moved.copy = source.node.copy;
+        if (source.node.collapsed) moved.collapsed = true;
         insertBeside(targetId, moved, zone);
       }
+      commit();
+      return true;
+    }
+    function collapse(id, on) {
+      var found = find(id);
+      if (!found || !found.node.editor) return false;
+      if (on) found.node.collapsed = true; else delete found.node.collapsed;
       commit();
       return true;
     }
@@ -324,6 +341,7 @@
       area.dataset.area = node.id;
       area.dataset.editor = node.editor;
       if (node.copy) area.dataset.copy = String(node.copy);
+      if (node.collapsed) area.dataset.collapsed = 'true';
       var header = el('header', 'area-header');
       var grip = el('span', 'area-grip');
       grip.title = 'Drag onto another area to move this one';
@@ -340,10 +358,12 @@
       max.setAttribute('aria-pressed', maximized ? 'true' : 'false');
       var shut = iconButton('close', 'Close this area', function () { close(node.id); });
       shut.disabled = alone || !!maximized;
-      [splitRow, splitCol, max, shut].forEach(function (button) { actions.appendChild(button); });
+      var hide = iconButton('hide', 'Collapse the header', function () { collapse(node.id, true); });
+      [hide, splitRow, splitCol, max, shut].forEach(function (button) { actions.appendChild(button); });
       header.appendChild(actions);
       area.appendChild(header);
       area.appendChild(editor.body);
+      area.appendChild(iconButton('unhide', 'Show the header', function () { collapse(node.id, false); }));
       area.addEventListener('pointerenter', function () { hovered = node.id; });
       dragHeader(header, node);
       return area;
@@ -479,7 +499,7 @@
     render();
     return {
       render: render, reset: reset, preset: preset, presets: Object.keys(PRESETS), setEditor: setEditor, split: split, close: close, move: move,
-      maximize: maximize, show: show,
+      maximize: maximize, show: show, collapse: collapse,
       tree: function () { return strip(tree); },
       areas: function () { return areas().map(function (area) { return { id: area.id, editor: area.editor, copy: area.copy || 0 }; }); },
       shown: function () { return narrow.matches ? [tab] : (maximized ? [find(maximized).node.editor] : shown()); },

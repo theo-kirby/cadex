@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
 // The Status editor (ADR-542; an editor since ADR-572; redrawn by ADR-606):
-// what the project is doing, what the agent last did, how the run it reads
-// is training -- reward, loss, episode length and action std, each on its own
-// axes, the best iteration and the checkpoints marked -- the latest
-// evaluation predicate by predicate, and every run with its outcome, its
-// evaluation and how its best moved against the run before.
+// what the project is doing and what the agent last did. And the Training
+// editor (ADR-732), from the same poll: how the run Status reads is training
+// -- reward, loss, episode length and action std, each on its own axes, the
+// best iteration and the checkpoints marked -- the latest evaluation
+// predicate by predicate, and every run with its outcome, its evaluation and
+// how its best moved against the run before.
 //
-// Project (ADR-607): a project whose agent wrote `status.html` shows it in a
+// Project (ADR-607): a project whose agent wrote `status.html` shows it in
+// Status, under the stage and the activity, in a
 // sandboxed iframe with an opaque origin that can fetch nothing; this page
 // posts it the project's data, a `cadex-status-panel-v1` message, on every
 // poll (docs/DASHBOARD.md, "The agent's Status panel").
@@ -25,10 +27,10 @@
   var PANEL_DETAIL_MS = 10000;
   var RUNS_LISTED = 40;
   var CHARTS = [
-    { id: 'status-reward', key: 'curve', label: 'reward per step', marks: true },
-    { id: 'status-loss', key: 'loss_curve', label: 'loss' },
-    { id: 'status-episode', key: 'episode_steps_curve', label: 'episode length' },
-    { id: 'status-std', key: 'action_std_curve', label: 'action std' }
+    { id: 'training-reward', key: 'curve', label: 'reward per step', marks: true },
+    { id: 'training-loss', key: 'loss_curve', label: 'loss' },
+    { id: 'training-episode', key: 'episode_steps_curve', label: 'episode length' },
+    { id: 'training-std', key: 'action_std_curve', label: 'action std' }
   ];
   var TOKENS = ['--bg', '--surface', '--surface-2', '--surface-3', '--rule', '--rule-strong', '--ink', '--ink-2', '--accent',
                 '--ok', '--warn', '--bad', '--info', '--select', '--font', '--mono', '--fs-0', '--fs-1', '--fs-2', '--fs-3'];
@@ -36,7 +38,6 @@
   var review = null, activityKey = null, runsKey = null, evalKey = null, chartKeys = {};
   var evalDetail = { name: null, stamp: null, summary: null };
   var panel = { url: null, frame: null, detail: null, detailKey: null, detailAt: 0, message: null, posted: 0 };
-  var tab = null;
 
   function $(id) { return document.getElementById(id); }
   function el(tag, attrs, children) {
@@ -114,7 +115,9 @@
     renderActivity(now);
     // The run it reads, named when there is more than one to choose from.
     setHidden('status-run', !(stage.run && stage.runs > 1));
-    setText('status-run', stage.run ? 'run ' + stage.run + (t && name !== 'training' ? ' · ' + t.state : '') : '');
+    var run = stage.run ? 'run ' + stage.run + (t && name !== 'training' ? ' · ' + t.state : '') : '';
+    setText('status-run', run);
+    setText('training-run', run || 'no runs').title = run;
     var warning = t ? (t.warning || (t.state === 'stale' ? t.reason : '')) : '';
     setHidden('status-warning', !warning);
     setText('status-warning', warning);
@@ -162,15 +165,15 @@
 
   // -- the numbers and the charts ---------------------------------------------
   function renderStats(t, name) {
-    setHidden('status-stats', !t);
+    setHidden('training-stats', !t);
     if (!t) return;
-    setText('status-reward-now', fmt(t.reward_per_step));
-    setText('status-best', t.best_reward_per_step == null ? '—' : fmt(t.best_reward_per_step) + ' @ ' + (t.best_iteration + 1));
-    setText('status-loss-now', fmt(t.loss));
-    setText('status-episode-now', fmt(t.episode_steps));
-    setText('status-std-now', fmt(t.action_std));
-    setText('status-eta', name === 'training' && t.eta_s ? duration(t.eta_s) : '—');
-    setHidden('status-eta-tile', name !== 'training');
+    setText('training-reward-now', fmt(t.reward_per_step));
+    setText('training-best', t.best_reward_per_step == null ? '—' : fmt(t.best_reward_per_step) + ' @ ' + (t.best_iteration + 1));
+    setText('training-loss-now', fmt(t.loss));
+    setText('training-episode-now', fmt(t.episode_steps));
+    setText('training-std-now', fmt(t.action_std));
+    setText('training-eta', name === 'training' && t.eta_s ? duration(t.eta_s) : '—');
+    setHidden('training-eta-tile', name !== 'training');
   }
 
   function ticks(lo, hi, want) {
@@ -282,7 +285,7 @@
   }
 
   function renderCharts(t) {
-    setHidden('status-charts', !t);
+    setHidden('training-charts', !t);
     if (!t) return;
     var spark = t.spark || {};
     CHARTS.forEach(function (spec) {
@@ -301,7 +304,7 @@
   }
   function renderEvaluation(now) {
     var rows = review.evaluations || [], latest = rows[rows.length - 1];
-    setHidden('status-eval', !latest);
+    setHidden('training-eval', !latest);
     if (!latest) return;
     if (evalDetail.name !== latest.name || evalDetail.stamp !== latest.stamp) {
       evalDetail = { name: latest.name, stamp: latest.stamp, summary: null };
@@ -316,14 +319,14 @@
     var key = JSON.stringify([latest, !!evalDetail.summary, Math.round(now / 60000)]);
     if (key === evalKey) return;
     evalKey = key;
-    var chip = $('status-eval-verdict');
+    var chip = $('training-eval-verdict');
     chip.textContent = latest.verdict + ' ' + latest.passed + '/' + latest.seeds;
     chip.dataset.tone = latest.verdict === 'pass' ? 'ok' : 'bad';
     var ends = Object.keys(latest.terminations || {}).map(function (k) { return k + ' ' + latest.terminations[k]; }).join(', ');
-    $('status-eval-line').textContent = [latest.task_label || latest.task_output, latest.policy_output,
+    $('training-eval-line').textContent = [latest.task_label || latest.task_output, latest.policy_output,
       ago(latest.evaluated_at, now), latest.relation === 'historical' ? 'an earlier revision' : '',
       ends ? 'episodes ended: ' + ends : ''].filter(Boolean).join(' · ');
-    var body = $('status-eval-list').tBodies[0];
+    var body = $('training-eval-list').tBodies[0];
     body.textContent = '';
     var predicates = (evalDetail.summary || {}).predicates;
     if (Array.isArray(predicates)) {
@@ -374,12 +377,12 @@
   }
   function renderRuns(now) {
     var runs = review.runs || [];
-    setHidden('status-runs', !runs.length);
+    setHidden('training-runs', !runs.length);
     var key = JSON.stringify([compactRuns(), (review.evaluations || []).map(function (e) { return [e.name, e.stamp]; }), (review.stage || {}).run]);
     if (key === runsKey) return;
     runsKey = key;
-    setText('status-runs-count', runs.length ? String(runs.length) : '');
-    var evaluated = runEvaluations(runs, review.evaluations || []), body = $('status-runs-body'), previous = null;
+    setText('training-runs-count', runs.length ? String(runs.length) : '');
+    var evaluated = runEvaluations(runs, review.evaluations || []), body = $('training-runs-body'), previous = null;
     var rows = runs.map(function (run) {
       var t = run.telemetry || {}, best = t.best_reward_per_step, delta = best != null && previous != null ? best - previous : null;
       if (best != null) previous = best;
@@ -452,7 +455,7 @@
     // The panel gets the run's full histories, read at most every PANEL_DETAIL_MS
     // and only when the run has moved since.
     var stage = review.stage || {}, t = stage.training;
-    if (!t || !stage.run || tab !== 'project') return;
+    if (!t || !stage.run || !panel.frame) return;
     var key = JSON.stringify([stage.run, t.iteration, t.state]);
     if (key === panel.detailKey || Date.now() - panel.detailAt < PANEL_DETAIL_MS) return;
     panel.detailKey = key; panel.detailAt = Date.now();
@@ -463,13 +466,11 @@
   }
   function renderPanel() {
     var info = (review.stage || {}).panel || { available: false };
-    setHidden('status-tabs', !info.available);
+    setHidden('status-panel', !info.available);
     if (!info.available) {
       if (panel.frame) { $('status-panel').textContent = ''; panel.frame = null; panel.url = null; }
-      if (tab !== 'training') showTab('training');
       return;
     }
-    if (tab == null) showTab('project');
     if (panel.url !== info.url) {
       panel.url = info.url;
       var frame = el('iframe', { id: 'status-panel-frame', title: 'Project status panel, written by the agent', src: info.url });
@@ -483,18 +484,6 @@
       panel.frame = frame;
     }
   }
-  function showTab(name) {
-    tab = name;
-    $('status').dataset.tab = name;
-    setHidden('status-training', name !== 'training');
-    setHidden('status-panel', name !== 'project');
-    $('status-tabs').querySelectorAll('button').forEach(function (button) {
-      button.setAttribute('aria-pressed', button.dataset.tab === name ? 'true' : 'false');
-    });
-    if (name === 'training') { chartKeys = {}; if (review) renderCharts((review.stage || {}).training); }
-    if (name === 'project' && review) { refreshDetail(); postPanel(); }
-  }
-
   function render(next) {
     review = next;
     var stage = review.stage || { state: 'idle', training: null, runs: 0 }, t = stage.training;
@@ -502,19 +491,15 @@
     renderHead(stage, t, now);
     renderPanel();
     renderStats(t, name);
-    if (tab !== 'project') renderCharts(t);
+    renderCharts(t);
     renderEvaluation(now);
     renderRuns(now);
     if (panel.frame) { refreshDetail(); postPanel(); }
   }
 
   function wire() {
-    $('status-tabs').addEventListener('click', function (event) {
-      var button = event.target.closest('button[data-tab]');
-      if (button) showTab(button.dataset.tab);
-    });
     // The charts follow the area's width.
-    if (window.ResizeObserver) new ResizeObserver(function () { if (review && tab !== 'project') renderCharts((review.stage || {}).training); }).observe($('status'));
+    if (window.ResizeObserver) new ResizeObserver(function () { if (review) renderCharts((review.stage || {}).training); }).observe($('training'));
     document.addEventListener('cadex-theme', postPanel);
     // A panel may ask for the newest message once its script is listening.
     window.addEventListener('message', function (event) {
@@ -526,8 +511,6 @@
 
   window.CadexStatus = {
     render: render,
-    showTab: showTab,
-    tab: function () { return tab; },
     panel: function () { return { url: panel.url, posted: panel.posted, message: panel.message }; },
     message: function () { return review ? panelMessage() : null; }
   };
