@@ -4889,7 +4889,11 @@ class AssemblyDomainAPI:
         features being ``bump``, ``step`` and ``slope`` dicts that add. See
         docs/XSCRIPT.md for their keys. ``"form": "boxes"`` builds them from
         placed boxes instead of a heightfield (ADR-716): the form to train
-        on, because MJX steps it stably; no ``cell_mm`` and no dips.
+        on, because MJX steps it stably; no ``cell_mm`` and no dips. A box
+        course may give ``"random": {"seed", "courses", "step_mm",
+        "grade_deg", "bump_mm", ...}`` instead of ``features`` (ADR-717):
+        the model carries course 0, and the trainer re-draws a pooled
+        course per episode.
         """
 
         operation = "mjcf"

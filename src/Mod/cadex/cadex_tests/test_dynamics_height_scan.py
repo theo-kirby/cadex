@@ -313,14 +313,17 @@ def test_mjx_scans_the_course_the_engine_scans() -> None:
 
 def test_the_trainer_trains_with_the_critic_reading_the_scan(tmp_path) -> None:
     """End to end: the scan in the critic's inputs and not the actor's, and
-    the policy verified by the engine against the same bundle, on the box
+    the policy verified by the engine against the same bundle, on a box
     course (ADR-716): MJX steps this rig on placed boxes, where on ADR-714's
-    heightfield it went non-finite."""
+    heightfield it went non-finite. The course is drawn at random and
+    re-drawn per episode (ADR-717), and the header says so."""
+
+    from test_dynamics_terrain_random import RANDOM_COURSE
 
     python = _venv_python()
     if python is None:
         pytest.skip("the offboard trainer's dependencies are not installed here")
-    prepared = scanned(terrain=BOX_COURSE, root=tmp_path, task={
+    prepared = scanned(terrain=RANDOM_COURSE, root=tmp_path, task={
         **TASK, "reward": [{"label": "clear", "expression": "scan_4 / 1000 - abs(q) / 1000",
                             "weight": 1.0}]})
     out = tmp_path / "scanned.cxpolicy"
@@ -336,6 +339,9 @@ def test_the_trainer_trains_with_the_critic_reading_the_scan(tmp_path) -> None:
     assert result.returncode == 0, result.stderr[-4000:]
     container = dyn.decode_policy(out.read_bytes())
     assert not set(container["header"]["observations"]) & set(dyn.scan_channels(prepared["bundle"]))
+    assert container["header"]["training"]["terrain"] == {
+        "mode": "per_episode", "algorithm": _trainer_module().TERRAIN_POOL_ALGORITHM,
+        "bundle_algorithm": dyn.TERRAIN_RANDOM_ALGORITHM, "courses": 6}
     evidence = dyn.verify_policy(
         container, prepared["bundle"],
         task_sha256=hashlib.sha256(prepared["path"].read_bytes()).hexdigest())

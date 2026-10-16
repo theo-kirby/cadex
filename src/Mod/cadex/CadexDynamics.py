@@ -3843,6 +3843,270 @@ def terrain_box_ground_mm(terrain: Mapping[str, Any], x_mm: float, y_mm: float) 
     return ground
 
 
+# ---------------------------------------------------------------------------
+# A seeded random box course, and the pool a trainer re-draws from (ADR-717).
+# ---------------------------------------------------------------------------
+
+#: The keys of ``terrain["random"]`` and their defaults; ``None`` is a kind
+#: the course leaves out. ``step_mm``, ``grade_deg`` and ``bump_mm`` are
+#: magnitude ranges, signed by the draw; at least one is given.
+TERRAIN_RANDOM_DEFAULTS: dict[str, Any] = {
+    "seed": 0,
+    "courses": 32,
+    "clear_mm": 500.0,
+    "run_mm": [300.0, 800.0],
+    "step_mm": None,
+    "grade_deg": None,
+    "slope_mm": [400.0, 1000.0],
+    "bump_mm": None,
+    "bump_radius_mm": [100.0, 200.0],
+    "bumps": 6,
+}
+
+#: The most courses one pool may hold. The pool travels in the task bundle,
+#: each course as its features, so this bounds the bundle: about 2.5 KB a
+#: course on a 13 m course, indented, against the 1 MB cap a 30-joint cat's
+#: bundle already fills to 700 KB.
+MAXIMUM_TERRAIN_COURSES = 64
+
+#: The shortest flat run between two drawn steps or slopes. A run is what
+#: keeps a step clear of a ramp's high end (``terrain_step_off_slope``).
+TERRAIN_MINIMUM_RUN_MM = 50.0
+
+#: Where an empty slot of a re-drawn course parks: a 1 mm cube this far below
+#: the course's plane, under the half-space no foot enters. Every course in a
+#: pool fills the same geoms, so a course with fewer boxes parks the rest.
+TERRAIN_PARKED_DEPTH_MM = 1000.0
+TERRAIN_PARKED_HALF_MM = 1.0
+
+#: How course ``k`` of a pool is drawn, written into the descriptor so a
+#: second reader can say what the pool is without this code.
+TERRAIN_RANDOM_ALGORITHM = (
+    "course k of a pool: random.Random('cadex-terrain:<seed>:<k>'); from "
+    "x = clear_mm, repeat: x += uniform(run_mm); a kind by choice() among "
+    "the given step and slope; a step of uniform(step_mm) at x, a slope of "
+    "uniform(grade_deg) over uniform(slope_mm) from x (stopping at the first "
+    "that leaves the extent), each signed down while the course is above "
+    "z = 0, up while below, by choice() at it; then randint(1, bumps) bumps "
+    "of uniform(bump_mm) and uniform(bump_radius_mm), centred at "
+    "uniform(clear_mm + r/2, x1 - r/2), uniform(y0 + r/2, y1 - r/2). Course "
+    "0 is the one the model carries"
+)
+
+
+def _terrain_random_range(spec: Mapping[str, Any], key: str, context: str,
+                          *, positive: bool = True) -> list[float]:
+    value = spec[key]
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise DynamicsError(
+            f"{context} gives {key!r} as {value!r}; it is [low, high].",
+            reason="malformed_terrain",
+            correction=f"Give {key!r} as two numbers, low then high.",
+            observed={key: repr(value)},
+        )
+    low, high = (_terrain_number({key: item}, key, context) for item in value)
+    if not (0.0 < low if positive else 0.0 <= low) or not low <= high:
+        raise DynamicsError(
+            f"{context} gives {key!r} as {low:g}..{high:g}.",
+            reason="malformed_terrain",
+            correction=f"{key!r} is a magnitude range: 0 < low <= high.",
+            observed={key: [low, high]},
+        )
+    return [low, high]
+
+
+def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str, Any]:
+    """``terrain["random"]``, validated, with its defaults filled (ADR-717)."""
+
+    where = f"{context}'s random"
+    if not isinstance(spec, Mapping):
+        raise DynamicsError(
+            f"{where} is {type(spec).__name__}, not a mapping.",
+            reason="malformed_terrain",
+            correction="Give random as a dict, e.g. {'seed': 0, 'step_mm': [20, 80]}.",
+        )
+    extra = sorted(str(key) for key in spec if key not in TERRAIN_RANDOM_DEFAULTS)
+    if extra:
+        raise DynamicsError(
+            f"{where} has unknown keys {extra}.",
+            reason="malformed_terrain",
+            correction=f"random takes {', '.join(sorted(TERRAIN_RANDOM_DEFAULTS))}.",
+            observed={"unknown": extra},
+        )
+    merged = {**TERRAIN_RANDOM_DEFAULTS, **dict(spec)}
+    for key, low, high in (("seed", 0, 2**31 - 1), ("courses", 1, MAXIMUM_TERRAIN_COURSES),
+                           ("bumps", 1, MAXIMUM_TERRAIN_FEATURES // 2)):
+        value = merged[key]
+        if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+            raise DynamicsError(
+                f"{where} gives {key!r} as {value!r}.",
+                reason=("terrain_too_large" if key == "courses" and isinstance(value, int)
+                        and not isinstance(value, bool) and value > high
+                        else "malformed_terrain"),
+                correction=f"{key!r} is a whole number from {low} to {high}.",
+                observed={key: repr(value)},
+            )
+    record: dict[str, Any] = {"seed": merged["seed"], "courses": merged["courses"],
+                              "bumps": merged["bumps"]}
+    record["clear_mm"] = _terrain_number(merged, "clear_mm", where)
+    if record["clear_mm"] < TERRAIN_MINIMUM_RUN_MM:
+        raise DynamicsError(
+            f"{where} gives clear_mm {record['clear_mm']:g}.",
+            reason="malformed_terrain",
+            correction=(
+                "clear_mm is the flat run ahead of the start, at least "
+                f"{TERRAIN_MINIMUM_RUN_MM:g} mm, so no feature reaches the origin."
+            ),
+            observed={"clear_mm": record["clear_mm"]},
+        )
+    for key in ("run_mm", "slope_mm", "bump_radius_mm"):
+        record[key] = _terrain_random_range(merged, key, where)
+    if record["run_mm"][0] < TERRAIN_MINIMUM_RUN_MM:
+        raise DynamicsError(
+            f"{where} gives run_mm from {record['run_mm'][0]:g} mm.",
+            reason="malformed_terrain",
+            correction=(
+                f"Keep at least {TERRAIN_MINIMUM_RUN_MM:g} mm of flat between "
+                "drawn features, so no step lands on a slope's end."
+            ),
+            observed={"run_mm": record["run_mm"]},
+        )
+    for key, bound in (("step_mm", TERRAIN_MAXIMUM_HEIGHT_MM),
+                       ("grade_deg", TERRAIN_MAXIMUM_GRADE_DEG),
+                       ("bump_mm", TERRAIN_MAXIMUM_HEIGHT_MM)):
+        if merged[key] is None:
+            record[key] = None
+            continue
+        record[key] = _terrain_random_range(merged, key, where)
+        if record[key][1] > bound or (key == "grade_deg" and record[key][1] >= bound):
+            raise DynamicsError(
+                f"{where} gives {key!r} up to {record[key][1]:g}.",
+                reason="malformed_terrain",
+                correction=f"{key!r} stays under {bound:g}.",
+                observed={key: record[key]},
+            )
+    if record["step_mm"] is None and record["grade_deg"] is None and record["bump_mm"] is None:
+        raise DynamicsError(
+            f"{where} draws nothing: it gives none of step_mm, grade_deg and bump_mm.",
+            reason="malformed_terrain",
+            correction="Give at least one of step_mm, grade_deg and bump_mm.",
+        )
+    return record
+
+
+def terrain_random_features(
+    spec: Mapping[str, Any],
+    x_range_mm: Sequence[float],
+    y_range_mm: Sequence[float],
+    course: int,
+) -> list[dict[str, Any]]:
+    """Course ``course`` of a validated random spec, as features (ADR-717).
+
+    Pure and seeded by :data:`TERRAIN_RANDOM_ALGORITHM`: steps and slopes
+    along x, past ``clear_mm``, with a flat run before each; then bumps. Each
+    step or slope is signed back towards z = 0, so a long course climbs and
+    descends rather than drifting off in one direction.
+    """
+
+    import random
+
+    rng = random.Random(f"cadex-terrain:{int(spec['seed'])}:{int(course)}")
+    (x0, x1), (y0, y1) = ([float(v) for v in x_range_mm], [float(v) for v in y_range_mm])
+    kinds = [kind for kind, key in (("step", "step_mm"), ("slope", "grade_deg"))
+             if spec[key] is not None]
+    features: list[dict[str, Any]] = []
+    level, x = 0.0, float(spec["clear_mm"])
+    limit = MAXIMUM_TERRAIN_FEATURES - int(spec["bumps"]) if spec["bump_mm"] else MAXIMUM_TERRAIN_FEATURES
+
+    def signed(magnitude: float) -> float:
+        if level > TERRAIN_FLAT_MM:
+            return -magnitude
+        if level < -TERRAIN_FLAT_MM:
+            return magnitude
+        return rng.choice((-1.0, 1.0)) * magnitude
+
+    while kinds and len(features) < limit:
+        x += rng.uniform(*spec["run_mm"])
+        kind = rng.choice(kinds)
+        if kind == "step":
+            height = signed(rng.uniform(*spec["step_mm"]))
+            if x >= x1:
+                break
+            features.append({"kind": "step", "x_mm": x, "height_mm": height})
+            level += height
+        else:
+            grade = signed(rng.uniform(*spec["grade_deg"]))
+            length = rng.uniform(*spec["slope_mm"])
+            if x + length >= x1:
+                break
+            features.append({"kind": "slope", "from_x_mm": x, "to_x_mm": x + length,
+                             "grade_deg": grade})
+            level += length * math.tan(math.radians(grade))
+            x += length
+    if spec["bump_mm"] is not None:
+        for _ in range(rng.randint(1, int(spec["bumps"]))):
+            height = rng.uniform(*spec["bump_mm"])
+            radius = rng.uniform(*spec["bump_radius_mm"])
+            half = radius / 2.0
+            low_x = float(spec["clear_mm"]) + half
+            features.append({
+                "kind": "bump",
+                "x_mm": rng.uniform(low_x, max(low_x, x1 - half)),
+                "y_mm": rng.uniform(y0 + half, max(y0 + half, y1 - half)),
+                "radius_mm": radius,
+                "height_mm": height,
+            })
+    return features
+
+
+def terrain_box_geoms(
+    boxes: Sequence[Mapping[str, Any]], lowest_mm: float, slots: int | None = None
+) -> dict[str, Any]:
+    """Where a box course's geoms stand (ADR-716, ADR-717), in MuJoCo's units.
+
+    ``plane_z_m`` is the plane's height, and ``pos_m``, ``quat`` and
+    ``size_m`` one row per box: a ``block`` from :data:`TERRAIN_BASE_MM`
+    below the plane to its top, a ``ramp`` a box
+    :data:`TERRAIN_RAMP_HALF_THICKNESS_MM` thick turned about y to its grade
+    with its top face the record's. With ``slots``, the rows run on to that
+    many, each past the course's own boxes parked
+    (:data:`TERRAIN_PARKED_DEPTH_MM`). The MJCF writes these, and a trainer
+    re-placing a pooled course writes the same rows into its model.
+    """
+
+    lowest = float(lowest_mm)
+    pos, quat, size = [], [], []
+    for record in boxes:
+        (xa, xb), (ya, yb) = record["x_range_mm"], record["y_range_mm"]
+        za, zb = record["top_mm"]
+        if record["shape"] == "block":
+            bottom = lowest - TERRAIN_BASE_MM
+            centre = [(xa + xb) / 2.0, (ya + yb) / 2.0, (za + bottom) / 2.0]
+            half = [(xb - xa) / 2.0, (yb - ya) / 2.0, (za - bottom) / 2.0]
+            turn = [1.0, 0.0, 0.0, 0.0]
+        else:
+            grade = math.atan2(zb - za, xb - xa)
+            thick = TERRAIN_RAMP_HALF_THICKNESS_MM
+            # The top face's centre, less the half-thickness along its normal
+            # (-sin, 0, cos); turning about y by -grade lifts +x by the grade.
+            centre = [(xa + xb) / 2.0 + thick * math.sin(grade), (ya + yb) / 2.0,
+                      (za + zb) / 2.0 - thick * math.cos(grade)]
+            half = [math.hypot(xb - xa, zb - za) / 2.0, (yb - ya) / 2.0, thick]
+            turn = [math.cos(grade / 2.0), 0.0, -math.sin(grade / 2.0), 0.0]
+        pos.append(vector_m(centre))
+        quat.append(turn)
+        size.append(vector_m(half))
+    if slots is not None:
+        if len(boxes) > int(slots):
+            raise ValueError(f"{len(boxes)} boxes do not fit {slots} slots")
+        parked = lowest - TERRAIN_BASE_MM - TERRAIN_PARKED_DEPTH_MM
+        for _ in range(int(slots) - len(boxes)):
+            pos.append(vector_m([0.0, 0.0, parked]))
+            quat.append([1.0, 0.0, 0.0, 0.0])
+            size.append(vector_m([TERRAIN_PARKED_HALF_MM] * 3))
+    return {"plane_z_m": length_m(lowest), "pos_m": pos, "quat": quat, "size_m": size}
+
+
 def _terrain_features(terrain: Mapping[str, Any], context: str) -> list[dict[str, Any]]:
     """A course's feature list, validated: non-empty, bounded, each known."""
 
@@ -3901,10 +4165,51 @@ def _terrain_box_course(
     context: str,
 ) -> dict[str, Any]:
     """:func:`terrain_grid` for ``form="boxes"`` (ADR-716): the descriptor
-    carries the boxes, and there is no grid, so ``heights_mm`` is ``None``."""
+    carries the boxes, and there is no grid, so ``heights_mm`` is ``None``.
 
-    features = _terrain_features(terrain, context)
-    built = terrain_boxes(features, x_range, y_range, context=context)
+    With ``random`` (ADR-717) the features are drawn, not listed: course 0
+    is the one the descriptor's ``features`` and ``boxes`` describe and the
+    model carries, and ``pool`` holds every course of the draw as its
+    features, its lowest and highest point and its box count; ``slots`` is
+    the fullest course's, and the model has that many box geoms, so a
+    trainer re-places any pooled course per episode. The pool carries
+    features rather than boxes because the bundle is capped
+    (:data:`MAXIMUM_TASK_BYTES`) and written indented: a box is about
+    3.5 times a feature's bytes."""
+
+    random_spec = None
+    if terrain.get("random") is not None:
+        if terrain.get("features") is not None:
+            raise DynamicsError(
+                f"{context} gives both features and random.",
+                reason="malformed_terrain",
+                correction="A course is listed or drawn: give features or random, not both.",
+            )
+        random_spec = terrain_random_spec(terrain["random"], context=context)
+        courses = []
+        for index in range(int(random_spec["courses"])):
+            where = f"{context}'s random course {index}"
+            features = [
+                _terrain_feature(entry, number, where)
+                for number, entry in enumerate(
+                    terrain_random_features(random_spec, x_range, y_range, index))
+            ]
+            if not features:
+                raise DynamicsError(
+                    f"{where} draws no feature: the extent ends inside the first run.",
+                    reason="terrain_is_flat",
+                    correction="Lengthen x_range_mm, or shorten clear_mm and run_mm.",
+                    observed={"x_range_mm": list(x_range), "clear_mm": random_spec["clear_mm"]},
+                )
+            built = terrain_boxes(features, x_range, y_range, context=where)
+            _terrain_start_and_relief(
+                built["lowest_mm"], built["highest_mm"],
+                terrain_box_ground_mm(built, 0.0, 0.0), where)
+            courses.append((features, built))
+        features, built = courses[0]
+    else:
+        features = _terrain_features(terrain, context)
+        built = terrain_boxes(features, x_range, y_range, context=context)
     descriptor = {
         "geom": ENVIRONMENT_TERRAIN_GEOM,
         "body": "world",
@@ -3922,6 +4227,18 @@ def _terrain_box_course(
         built["lowest_mm"], built["highest_mm"],
         terrain_box_ground_mm(descriptor, 0.0, 0.0), context,
     )
+    if random_spec is not None:
+        slots = max(len(entry["boxes"]) for _, entry in courses)
+        descriptor["random"] = {**random_spec, "algorithm": TERRAIN_RANDOM_ALGORITHM}
+        descriptor["slots"] = slots
+        # The model's metres per course millimetre, which a trainer placing
+        # a pooled course multiplies by rather than converting (ADR-717).
+        descriptor["scale"] = length_m(1.0)
+        descriptor["pool"] = [
+            {"features": drawn, "lowest_mm": entry["lowest_mm"],
+             "highest_mm": entry["highest_mm"], "boxes": len(entry["boxes"])}
+            for drawn, entry in courses
+        ]
     return {"descriptor": descriptor, "heights_mm": None}
 
 
@@ -3950,7 +4267,7 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
             reason="malformed_terrain",
             correction="Give terrain as a dict with x_range_mm, y_range_mm and features.",
         )
-    allowed = {"x_range_mm", "y_range_mm", "cell_mm", "features", "form"}
+    allowed = {"x_range_mm", "y_range_mm", "cell_mm", "features", "form", "random"}
     extra = sorted(str(key) for key in terrain if key not in allowed)
     if extra:
         raise DynamicsError(
@@ -3966,6 +4283,15 @@ def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") ->
             reason="malformed_terrain",
             correction=f"A course's form is one of {', '.join(TERRAIN_FORMS)}.",
             observed={"form": repr(form)},
+        )
+    if form == "heightfield" and terrain.get("random") is not None:
+        raise DynamicsError(
+            f"{context} draws a random heightfield.",
+            reason="malformed_terrain",
+            correction=(
+                "A course re-drawn per episode is placed boxes, the form MJX "
+                "trains on (ADR-716, ADR-717): give form='boxes'."
+            ),
         )
     if form == "boxes" and terrain.get("cell_mm") is not None:
         raise DynamicsError(
@@ -4046,7 +4372,10 @@ def _environment_box_course(mujoco: Any, spec: Any, descriptor: Mapping[str, Any
     descriptor record, ``environment/terrain/<i>``, on the plane's contact
     parameters. A ``block`` runs from :data:`TERRAIN_BASE_MM` below the plane
     to its top; a ``ramp`` is a box :data:`TERRAIN_RAMP_HALF_THICKNESS_MM`
-    thick, turned about y to its grade, whose top face is the record's."""
+    thick, turned about y to its grade, whose top face is the record's
+    (:func:`terrain_box_geoms`). A course drawn at random (ADR-717) has
+    ``slots`` geoms, one per box of its pool's fullest course, and parks
+    those its own boxes leave empty."""
 
     contact = {
         "friction": list(ENVIRONMENT_FLOOR_FRICTION),
@@ -4064,29 +4393,15 @@ def _environment_box_course(mujoco: Any, spec: Any, descriptor: Mapping[str, Any
         size=[0.0, 0.0, length_m(ENVIRONMENT_FLOOR_GRID_MM)],
         **contact,
     )
-    for index, record in enumerate(descriptor["boxes"]):
-        (xa, xb), (ya, yb) = record["x_range_mm"], record["y_range_mm"]
-        za, zb = record["top_mm"]
-        if record["shape"] == "block":
-            bottom = lowest - TERRAIN_BASE_MM
-            centre = [(xa + xb) / 2.0, (ya + yb) / 2.0, (za + bottom) / 2.0]
-            half = [(xb - xa) / 2.0, (yb - ya) / 2.0, (za - bottom) / 2.0]
-            quat = [1.0, 0.0, 0.0, 0.0]
-        else:
-            grade = math.atan2(zb - za, xb - xa)
-            thick = TERRAIN_RAMP_HALF_THICKNESS_MM
-            # The top face's centre, less the half-thickness along its normal
-            # (-sin, 0, cos); turning about y by -grade lifts +x by the grade.
-            centre = [(xa + xb) / 2.0 + thick * math.sin(grade), (ya + yb) / 2.0,
-                      (za + zb) / 2.0 - thick * math.cos(grade)]
-            half = [math.hypot(xb - xa, zb - za) / 2.0, (yb - ya) / 2.0, thick]
-            quat = [math.cos(grade / 2.0), 0.0, -math.sin(grade / 2.0), 0.0]
+    placed = terrain_box_geoms(descriptor["boxes"], lowest, descriptor.get("slots"))
+    for index, (pos, quat, size) in enumerate(
+            zip(placed["pos_m"], placed["quat"], placed["size_m"])):
         spec.worldbody.add_geom(
             name=f"{ENVIRONMENT_TERRAIN_GEOM}/{index}",
             type=mujoco.mjtGeom.mjGEOM_BOX,
-            pos=vector_m(centre),
+            pos=pos,
             quat=quat,
-            size=vector_m(half),
+            size=size,
             **contact,
         )
 

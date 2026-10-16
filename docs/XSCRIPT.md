@@ -98,7 +98,15 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   non-finite. Steps and slopes become flat blocks and turned ramps, a bump a
   square block `radius_mm` across with a flat top (no dips), there is no
   `cell_mm`, beyond the extent the plane goes on, and a step down off a
-  slope's high end is refused (`terrain_step_off_slope`).
+  slope's high end is refused (`terrain_step_off_slope`). A box course may be
+  **drawn instead of listed** (ADR-717): `"random": {"seed", "courses",
+  "step_mm", "grade_deg", "bump_mm", ...}` in place of `features` draws
+  steps, slopes and bumps from magnitude ranges, past a flat `clear_mm`
+  (default 500) with a flat `run_mm` before each, each signed back towards
+  z = 0. Course 0 is the one the model carries; the bundle's `terrain.pool`
+  holds all `courses` (default 32, at most 64) as features, the model has a
+  box geom per box of the fullest, and the trainer gives each episode a
+  pooled course of its own.
 - **`part.box`'s `origin` is a corner, not a centre.** `part.box(40, 40, 200)`
   occupies x ∈ [0, 40], y ∈ [0, 40], z ∈ [0, 200] — the origin is the
   minimum corner, and the solid is entirely on the positive side of the

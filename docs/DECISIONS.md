@@ -42569,3 +42569,79 @@ against MuJoCo's ray and the stock runner, and the trainer's numpy copy.
 Its end-to-end test now trains on the box course with the critic reading
 the scan, where it ran on the plane before. `cli/tests/test_smoke.py`
 gains a block on a box course, supported; it fails without the smoke change.
+
+## ADR-717 — A box course can be drawn from a seed, and the trainer re-draws it per episode (2026-10-16, orun7)
+
+**Context.** orun7's W1 asks for "a seeded random course of [bumps, steps
+and slopes], re-drawn per episode for training", and W2 needs the cat to
+cross courses it was not trained on. ADR-716 made placed boxes the form MJX
+trains on, but a course was one fixed list of features.
+
+**Decision.** A box course may declare `random` in place of `features`.
+- **The draw** (`terrain_random_spec`, `terrain_random_features`, pure):
+  `seed`, `courses` (default 32, 1–64), `clear_mm` (flat start, ≥ 50,
+  default 500), `run_mm` (flat before each step or slope, low ≥ 50, default
+  300–800), and magnitude ranges `step_mm`, `grade_deg` (with `slope_mm`,
+  default 400–1000) and `bump_mm` (with `bump_radius_mm`, default 100–200,
+  and `bumps`, default 6); at least one of the three. Course *k* is
+  `random.Random('cadex-terrain:<seed>:<k>')`: from `clear_mm`, a run, then a
+  step or a slope by `choice`, until one leaves the extent, each signed down
+  while the course is above z = 0 and up while below (by `choice` at it);
+  then one to `bumps` bumps clear of the start. The flat run keeps a step off
+  a ramp's end, and the signing keeps a long course near its start height.
+  Each course is validated as a listed one would be.
+- **Course 0 is the model's.** The descriptor's `features` and `boxes` are
+  course 0's, so the MJCF, `cadex smoke`, the stock runner, evaluation and
+  `rollout_policy` stand on it unchanged.
+- **The pool travels as features.** `terrain.pool` lists every course's
+  features, lowest and highest point and box count; `terrain.slots` is the
+  fullest course's box count, and the model has that many
+  `environment/terrain/<i>` geoms, those course 0 leaves empty parked as
+  1 mm cubes a metre under the plane. Features rather than boxes because the
+  bundle is written indented under `MAXIMUM_TASK_BYTES` (1 MB), the heavy
+  cat's bundle is already 700 KB, and a box costs about 3.5 times a
+  feature's bytes; a 32-course pool on a 13 m course is about 80 KB. That
+  is also why `courses` stops at 64.
+- **The trainer re-draws per episode.** `training/cadex_train.py` rebuilds
+  each pooled course's boxes and geom placements (`course_boxes`,
+  `course_geoms`: the engine's `terrain_boxes` and `terrain_box_geoms`
+  written out again, since it cannot import the engine, and held equal on
+  every pooled course by a test). At every reset each environment gets a
+  course by `jax.random.randint` folded from the reset key with 717 — on
+  device, like the goal pool's pick, and a task without a pool draws the
+  stream it always did. `place_course` writes the course's `geom_pos`,
+  `geom_quat`, `geom_size`, `geom_rbound` and `geom_aabb` (and the plane's
+  height) into the MJX model inside the vmapped step and forward, and the
+  height scan reads the same course's boxes. The descriptor states
+  `scale`, the model's metres per millimetre, so the trainer's placements
+  multiply by it and convert nothing itself (`test_dynamics_units`). The
+  policy header records
+  `training.terrain`: mode `per_episode`, the pool algorithm, the bundle's
+  draw algorithm and the course count; absent without a pool.
+- `terrain` stays in `TASK_SEMANTIC_FIELDS`: another pool is another task,
+  so the warm-start rules are unchanged.
+- **Refused, by reason:** `random` on a heightfield, or with `features`, an
+  unknown key, an empty or inverted range, a grade at 60° or more, a short
+  `run_mm` or `clear_mm`, or a draw of nothing (`malformed_terrain`); more
+  than 64 courses (`terrain_too_large`); an extent that ends inside the
+  first run (`terrain_is_flat`).
+
+**Not in this decision.** Evaluation still judges every seed on course 0; a
+course per evaluation seed is W1's next piece, with the terrain predicates.
+The heightfield is not re-drawn (ADR-716: MJX does not train on it).
+
+**Evidence.** `test_dynamics_terrain_random` (8 tests, 18 cases): one seed
+draws one pool, course 0 is the model's, six distinct courses; every
+pooled course valid, in its ranges, signed back towards z = 0, with a flat
+run before each feature; eleven refusals by reason; the trainer's builder
+equal to the engine's on every course; the model's slots, its parked geoms,
+and MuJoCo's ray meeting course 0's reading; the trainer's placement of each
+course equal to the geoms the engine compiles for that course listed; the
+bundle carries the pool; under MJX (training venv, CPU) 16 environments start
+on several courses, each one's privileged scan reads its own course, resets
+re-draw all six, and everything stays finite; and a block dropped on each
+course under `place_course` rests 10 mm above that course's ground. Stock
+MuJoCo's `mj_ray` cannot check a re-placed course, because it culls static
+geoms with the compile-time bounding-volume tree; hence the compiled-geom
+comparison. `test_dynamics_height_scan`'s end-to-end trainer test now trains
+on the random course and checks the header's `training.terrain`.

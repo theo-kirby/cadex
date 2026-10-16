@@ -319,9 +319,43 @@ heightfield, 0 of 32 on the boxes, and the trainer trains on the box course
 (`test_the_trainer_trains_with_the_critic_reading_the_scan`). The box course
 is also cheaper in MJX than the heightfield (134 s against 338 s for that
 cat run; 82 s on the plane), so ADR-714's contact-cost argument did not
-hold. Still to come in W1: the seeded random course and its per-episode
-re-draw in the trainer, the terrain predicates, and the course in the
-rollout and the dashboard.
+hold.
+
+**A course re-drawn per episode (ADR-717, 2026-10-16).** A box course
+declares `random` in place of `features`: `seed`, `courses` (default 32, at
+most 64), `clear_mm` (flat start, default 500), `run_mm` (flat before each
+feature, default 300–800), and magnitude ranges `step_mm`, `grade_deg`
+(with `slope_mm`, default 400–1000) and `bump_mm` (with `bump_radius_mm`
+and at most `bumps`). Course *k* is drawn by
+`random.Random('cadex-terrain:<seed>:<k>')` (`TERRAIN_RANDOM_ALGORITHM`):
+steps and slopes along x until the extent ends, each signed down while the
+course is above z = 0 and up while below, so a long course climbs and
+descends; then one to `bumps` bumps. Every course is validated like a listed
+one. Course 0 is what the descriptor's `features` and `boxes` describe and
+what the model, the stock runner, `rollout_policy` and evaluation stand on.
+The descriptor's `pool` carries every course as features, its lowest and
+highest point and its box count, and `slots` the fullest course's count: the
+model has that many `environment/terrain/<i>` boxes, the ones course 0 does
+not fill parked as 1 mm cubes a metre under the plane. Features, not boxes,
+because the bundle is written indented under a 1 MB cap the 30-joint cat's
+already fills to 700 KB, and a box is about 3.5 times a feature's bytes
+(about 2.5 KB a course on a 13 m course). The trainer rebuilds each
+course's boxes with its own copy of the builder (`course_boxes`,
+`course_geoms`, held equal to the engine's on every pooled course), and at
+every reset gives each environment a course by `jax.random.randint` folded
+with 717; `place_course` writes that course's positions, turns, sizes and
+derived bounds into the MJX model's terrain geoms inside the vmapped step,
+and the height scan reads the same course. The descriptor states `scale`
+(the model's metres per millimetre), which the trainer multiplies by, so it
+converts no unit itself. Measured under MJX: a block
+dropped on each of six pooled courses rests 10 mm above that course's own
+ground, so what MJX collides with is what the scan reads. The policy header
+records `training.terrain` (mode, the pool algorithm, the bundle's, the
+course count). Stock MuJoCo's `mj_ray` cannot check a re-placed course:
+it culls static geoms with the bounding-volume tree built at compile, so
+the test compiles course *k* as a listed course and compares geoms instead.
+Still to come in W1: the terrain predicates, a course per evaluation seed,
+and the course in the rollout and the dashboard.
 
 **Height scan (ADR-715, 2026-10-16).** `assembly.observation(trunk,
 "height_scan", name="scan", role="privileged")` reads the ground round a
