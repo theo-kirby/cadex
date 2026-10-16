@@ -321,6 +321,8 @@ def browser():
 # from test_review_server.py
 def _open(browser: HeadlessBrowser, url: str):
     page = browser.page(url)
+    # review.js arrives by a dynamic import the load event does not wait for.
+    page.wait_for("window.cadexReview !== undefined")
     page.evaluate("window.cadexReview.ready", await_promise=True)
     return page
 
