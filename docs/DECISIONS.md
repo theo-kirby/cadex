@@ -42353,3 +42353,43 @@ elements that already exist. Nothing reads the project that did not before.
 **Evidence.** The CLI and dashboard suite (`pixi run python -m pytest
 cli/tests`), and a browser check that each gizmo end lands its view.
 
+## ADR-721 — The dashboard gets an Activations editor: motors, the policy's network, and heat in the viewport (2026-10-16)
+
+**Context.** The owner asked for a panel that shows a gauge per motor, the
+activations of the RL policy's network and how they relate to the motors,
+and a "show in viewport" toggle that paints each motor's parts from blue to
+red as it works. Every checkpoint rollout already records its motors' joint
+positions, velocities, efforts and ratings, and sits beside the
+`.cxpolicy` that made it; the dashboard served only the poses and commands.
+
+**Decision.**
+
+- **Playback carries the motors.** `api/playback/run|checkpoint` replies gain
+  `joints`, `velocities` and `efforts` per frame and pass through each
+  channel's `joint` and effort limits when the trace has them, and `policy`,
+  the URL of the policy beside the rollout.
+- **Two read routes**, `api/policy/run/<run>` and
+  `api/policy/checkpoint/<run>/<stem>`: the policy's header, its float32 blob
+  as base64, each input's kind from the run's task bundle, the gait clock
+  period, and the parts each motor moves from the run's MJCF body tree. The
+  server runs nothing; it reads files under the run's own directory.
+- **An Activations editor** (`activations.js`, `docs/DASHBOARD.md` §27):
+  gauges, the network's layers, the picked motor's contributions and
+  drivers, neuron silencing on hover, and Show in viewport through a new
+  `setHeat` on the viewer.
+- **A reconstruction, not a replay** (the owner chose it over an engine
+  change): the page rebuilds the inputs from the trace and runs the network
+  itself, so every existing rollout works and the engine, which orun7 is
+  changing, is untouched. Traces are kept at 25 fps and the policy runs
+  behind a slew limit, so the page reports how well rebuilt commands match
+  recorded ones: r ≈ 0.79 over orun7's f1-g3 checkpoint 250, with frame *k*'s
+  inputs against frame *k + 1*'s command. Recording the policy's real inputs
+  per control step in the engine's trace would make it exact; that is left
+  for after orun7.
+
+**Evidence.** `test_dashboard_activations.py`: the playback and policy
+replies, the parts map, refusals; in Chromium, on a trace whose commands are
+the network's own outputs, the page's rebuilt commands match at r > 0.999 and
+Show in viewport paints exactly the six leg parts. `test_http_api.py` reaches
+both routes in their available and unavailable shapes.
+

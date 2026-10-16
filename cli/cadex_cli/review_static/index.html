@@ -276,10 +276,26 @@
     </div>
   </section>
 
+  <!-- Activations (ADR-721, §27): the rollout's motors and its policy's network, frame by frame. -->
+  <section class="editor" id="editor-activations" data-editor="activations" data-title="Activations" data-short="Motors">
+    <div class="editor-tools">
+      <button id="activations-viewport" type="button" aria-pressed="false"
+              title="Paint each motor and the parts it moves by its load, blue to red">Show in viewport</button>
+    </div>
+    <div class="editor-body" id="activations" data-viewport="off" data-match="">
+      <p id="activations-status" data-state="empty">Play a rollout in the 3D viewport to see its motors and its network.</p>
+      <div class="activations-ramp" aria-hidden="true"><span class="ramp-bar"></span><span style="left:0">idle</span><span style="left:80%">rated</span><span style="left:100%">peak</span></div>
+      <div id="activations-motors"></div>
+      <canvas id="activations-network" aria-label="The policy network's activations"></canvas>
+      <div id="activations-detail"></div>
+    </div>
+  </section>
+
 </div>
 <script src="status.js"></script>
 <script src="outliner.js"></script>
 <script src="gizmo.js"></script>
+<script src="activations.js"></script>
 <script type="module" src="viewer.js"></script>
 </body>
 </html>

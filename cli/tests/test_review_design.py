@@ -267,7 +267,7 @@ def _assert_follows_the_spec(browser, server, size) -> None:
     # §6: on the phone one editor fills the screen, the 3D viewport first, and a tab bar picks it.
     assert m["mode"] == "tabs"
     assert [a["editor"] for a in m["areas"]] == ["view3d"]
-    assert m["tabs"] == ["view3d", "status", "view2d", "outliner"]
+    assert m["tabs"] == ["view3d", "status", "view2d", "outliner", "activations"]
     assert m["canvas"]["width"] >= width - 1
 
 

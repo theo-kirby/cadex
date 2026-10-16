@@ -34,7 +34,7 @@ the page before and after the first spec, kept because the tests check them.
 **The project page is the app (ADR-534).** The same day the owner asked for
 the page to stop being a dashboard and be the app, in Blender's design
 language: the screen is tiled by **areas**, each showing one **editor** —
-the 3D viewport, Status (ADR-572), the 2D viewport and the Outliner
+the 3D viewport, Status (ADR-572), the 2D viewport, the Outliner and Activations (ADR-721, §27)
 (ADR-676, §25) — and each area can be resized, moved, split, maximized or
 closed (§12). There is a light theme
 beside the dark one (§4), and the 3D viewport draws shaded by default or as
@@ -103,6 +103,7 @@ the screen (`#screen[data-mode]`), which `layout.js` tiles with areas
 | **3D viewport** | `view3d` | `#view3d-source`, `#view3d-style button[data-style]`, `#model-fit`, `#model`, `#model-status[data-state]`, `#viewer`, `#view3d-gizmo[data-view]`, `.gizmo-end[data-end]`, `#playback`, `#play-toggle`, `#play-time`, `#play-clock`, `#play-follow[aria-pressed]`, `#checkpoints[data-follow][data-state]`, `#checkpoint-pick`, `#checkpoint-label`, `#checkpoint-status`, `#revision-timeline[data-follow][data-state][data-ordinal]`, `#revision-pick`, `#revision-label`, `#revision-status` | The accepted model or a run's, shaded or wireframe (§10); orbit, pan (shift- or middle-drag, two fingers) and zoom by pointer or touch (§5); **Fit**. `#model-status` says why no model is drawn (loading, missing with its reason in `--warn`, an error in `--bad`). It sits at the bottom left, above the scrubbers, on an opaque `--surface`, because the floor is dark in both themes (ADR-557). A run that kept a rollout trace plays it on the timeline. **Follow** (`#play-follow`, ADR-693, remembered as `cadex.follow`) makes the view travel with the design while a rollout or a checkpoint plays: the camera's target and the key light with its shadow move with the design's centre (the mean of its shown solids' box centres, each carried by its pose, Hann-smoothed over about half a second either way and narrowed symmetrically at the ends so it never trails), by that centre's motion, so the person's orbit, zoom and pan stay theirs and a running machine can be watched close up. Turning it on, or a new rollout while it is on, puts the target on the design. **Checkpoints** (ADR-545): while the run Status reads is the model shown, each of its checkpoints the engine rolled out (ADR-544) is a stop on a scrubber above the timeline, oldest to newest, with the run's own rollout last once it has one; a page left open adds that `final policy` stop on the poll after the walk lands its rollout, with no reload (ADR-554). The newest loops, labelled with its iteration (one-based, as Status counts) and reward per step; `data-follow="true"` while it follows new ones. Picking an older one keeps it while newer ones land; moving back to the newest end follows again. A failed rollout plays nothing, leaves the model at rest and says why in `#checkpoint-status` in `--bad`; the same line counts checkpoints still rolling out. While that run is training the viewport turns to it on its own, unless a source was picked by hand this visit. **Gait references** (ADR-703), a source group offered for each accepted task whose bundle carries a reference (`/api/project`'s `references`, `reference:<task>`): the accepted model posed by the task's generated stride, from `/api/playback/reference/<task>`, which repeats the one stride a stride further on each time for about 4 s. It loops from the start as soon as it is in, on the same timeline and with the same Follow. It is the motion the task asks for, not one simulated, so the owner judges the intended gait before anything trains. **Revision history** (ADR-547), a source offered once anything is accepted: each stored revision is a stop on `#revision-timeline`, oldest to newest, drawn from the model kept when it was accepted (ADR-546). The newest is shown and followed (`data-follow="true"`); picking an older one keeps it, and the newest end follows again. Unchanged parts are drawn in `--paper-ink`, parts whose digest changed against the revision before in `--info`, and that previous revision is a ghost in `--ink-2` at 22% opacity wherever it differs (a part kept as it was, where it was, is not drawn twice; a wireframe diagram leaves the ghost out). `#revision-status` names the changed parts and the revision compared against. A revision whose model was not kept (`data-state="missing"`) draws nothing and says why in `--warn`; the revision after it draws with no ghost and says there is nothing to compare with. |
 | **Status** | `status` | `#editor-status`, `#status-stage[data-stage]`, `#status-tabs`, `#status[data-stage][data-tab]`, `#status-line`, `#status-progress`, `#status-run`, `#status-training`, `#status-stats`, `#status-reward-now`, `#status-best`, `#status-loss-now`, `#status-episode-now`, `#status-std-now`, `#status-eta`, `#status-charts`, `#status-reward`, `#status-loss`, `#status-episode`, `#status-std`, `#status-eval`, `#status-eval-verdict`, `#status-eval-list`, `#status-runs`, `#status-runs-body`, `#status-panel`, `#status-warning`, `#status-activity[data-state]`, `#status-activity-line`, `#status-activity-log`, `#status-activity-list` | Drawn by `status.js` (ADR-606). What the project is doing and how training is going (ADR-542, the first panel back after ADR-533), an editor of its own since ADR-572, beside the 3D viewport rather than over its model: a stage chip in the area's header — **idle**, **designing** (a revision accepted in the last 10 min), **training** (iteration of total and ETA), **evaluating**, **stopped** in `--warn` (the newest run was stopped on request, through `train_stop` or a walk's Ctrl-C or `SIGTERM`; its line is the stop's reason, ADR-559; a run stopped before ADR-559, whose record says `failed` but whose supervisor's `training-status.json` says `stopped`, reads stopped too, ADR-574) or **failed** (a run that failed, or a walk or supervisor killed mid-run whose record still says `running` under a lock nobody holds, ADR-559) — and, in its body, one line (`--fs-1`) with a progress bar while training, the run it reads (named when there are several), tiles for reward per step, the best reward and its iteration, loss, episode length, action std and (while training) ETA; **four charts**, one measure each on its own axes and never two on one (ADR-606): reward per step, loss, episode length and action std by iteration (one-based), from `stage.training.spark`, the x axis running to the run's total while it trains, so the unrun part shows, and to the last iteration it reached once it has ended; y ticks with a `--rule` grid, x ticks, the samples as a faint 1 px `--accent` line under a 2 px `--accent` line of their rolling mean (a window of 1/12 of the samples, so a batch whose episodes end together reads as its trend), on reward the best iteration as a `--ok` dot on a dashed rule labelled `best <value> @ <iteration>` and each reported checkpoint as a tick on the axis; hover puts a crosshair and the iteration and value on the nearest sample; a measure the run did not report says so; the charts tile as many to a row as fit at 300 px and redraw when the area resizes; **Latest evaluation**, its verdict chip, task, policy, age and how the episodes ended, then a row per predicate (its bound, a seeds-passed meter in `--ok`/`--warn`/`--bad`, its median) from `api/evaluation/<name>`, read once per evaluation; **Runs**, newest first (at most 40): name, label and the agent's stated reason (ellipsized), iterations, best reward, its change from the previous run with a best (`--ok` up, `--bad` down), the outcome chip (done, stopped, failed, running) and the verdict of its evaluation (one of its own policy's by digest, else the first evaluation made between it and the next run); the run Status reads is shaded; below 420 px the iterations column goes. And the trainer's collapse `warning` in `--warn` (or, while the run is still recorded as live, that its telemetry has been quiet for over 30 s; never under a run whose record has ended, ADR-574). Read from `/api/project`'s `stage` on the page's own poll. **The agent's activity** (ADR-550), from `/api/project`'s `activity` (ADR-549): one mono line under the run with the newest `cadex mcp` call, its argument summary and how long ago (`data-state="active"`), or `failed: <detail>` in `--bad` (`"error"`); a call still in flight reads `<tool> <args> · running <how long>` in `--info` (`"running"`, ADR-553), never idle, and an in-flight `evaluate` makes the stage **evaluating**, its line `the agent's evaluate call is running` for the whole call, never an evaluation directory's id (ADR-555); a call whose server died before it returned reads `did not return` in `--bad`; once no call has returned for 5 min and none is in flight it reads `agent idle · last call <tool> <ago>` in `--ink-2` (`"idle"`); with no log it shows the reason (`"none"`). `recent calls` opens the newest five, each with its UTC clock time, failures in `--bad`. It never collapses: an area is sized by its edges, and on a phone it is a tab. With no runs it is one line, `idle`. **Project** (ADR-607): when the project has a `status.html`, `#status-tabs` offers **Training** and **Project**, Project first; Project shows the agent's own panel in `#status-panel` (§23) under the stage line and the activity. |
 | **2D viewport** | `view2d` | `#view2d-source`, `#view2d-fit`, `#sheet-stage[data-kind]`, `#sheet-empty` | The project's drawings and presentation images (pan, zoom, double-click to fit), its documents (markdown, drawn as text only), each evaluation's film, newest first (a passed evaluation's hero and print-bed hero first, as images, ADR-570; then its shove video, `· shoves`, with the pushes and the ending captioned below it in `--ink-2` mono, ADR-571; then each filmed seed's rollout video, which plays in place with controls, muted and looping, and its filmstrip and detail sheets as images; ADR-541), and each run's training curves (reward, loss, episode length, action std) as plots. |
+| **Activations** | `activations` | `#editor-activations`, `#activations-viewport[aria-pressed]`, `#activations[data-viewport][data-match]`, `#activations-status[data-state]`, `#activations-motors`, `#activations-network`, `#activations-detail` | What the motors and the policy's network are doing at the moment the 3D viewport's rollout shows (§27, ADR-721): a gauge per motor, the network's layers, the inputs that drive the picked motor, and **Show in viewport**, which paints each motor's parts by its load. |
 | **Menu bar** | — | `#menubar`; `#file-panel` (`#project-select`, `#project-open`, `#project-all`); `#revision-panel` (`#revision-list li[data-revision][data-ordinal][data-current]`, `#revision-empty`); `#view-panel` (`#theme-choice`, `#style-choice`, `#mesh-lines`, `#mesh-strength`, `#reflections`, `#layout-reset`, `#layout-presets button[data-preset]`) | File, Revisions and View in the top bar, each a `<details class="menu">` dropdown (ADR-539): open another project; the revision trail, read-only (§18), where a row (`data-retained` says whether its model was kept) opens that revision on the 3D viewport's revision timeline — a view, never a restore; the theme, the render style, the wireframe's mesh lines (on or off, and a strength slider) and the shaded solids' reflections (a strength slider), each this browser's own (§10), and the layout: Reset, and eight one-click presets (§12). One opens at a time; a click outside or Escape closes it, and with one open, hovering another opens that one. On a phone the dropdown spans the screen between the gutters. |
 
 The element ids and `data-*` attributes above are the hooks the CLI suite
@@ -257,7 +258,7 @@ One.
 | Range | Layout |
 |---|---|
 | **≥ 700 px** (desk; 1400 is the reference width) | A 40 px top bar over the screen, tiled by areas (§12). The page never scrolls; each editor scrolls on its own. |
-| **< 700 px** (phone; 400 × 850 is the reference size) | One editor fills the screen, the 3D viewport first, and a tab bar at the bottom picks it: **3D**, **Status**, **2D**. `--s3` gutters below 600 px. |
+| **< 700 px** (phone; 400 × 850 is the reference size) | One editor fills the screen, the 3D viewport first, and a tab bar at the bottom picks it: **3D**, **Status**, **2D**, **Parts** (the Outliner) and **Motors** (Activations), each by its `data-short`. `--s3` gutters below 600 px. |
 
 The home page is a grid of cards at most 1440 px wide, one column below
 600 px with 16 px gutters; its spotlight stacks its picture over its text
@@ -1056,3 +1057,58 @@ run (no rollout or curves), no Chromium or a busy engine, is named in
 `hero.json` and the rest are made. The folder's `.gitignore` keeps all of it
 out of the project's history, because it is drawn again on request.
 `--only stills,dashboard,sheet,rollout,video` makes a subset.
+
+## 27. Activations (ADR-721)
+
+An editor (`activations.js`) that follows whatever rollout the 3D viewport is
+playing (a checkpoint's, a run's own) frame by frame, through the same
+`seek`, so pausing, scrubbing and looping move it too. It is in no preset;
+an area's editor menu opens it.
+
+**Motors.** A gauge per actuated joint, in the trace's channel order: a 270°
+arc over the joint's command range, the needle where the joint is, a
+`--info` dot at the command the rollout recorded and a ring at the command
+the network gives for this frame. The arc fills from zero to the needle in
+the **heat ramp**, coloured by the joint's effort against its rating; under
+it the angle and the load as `% rated`. A gauge past its rating is outlined
+in its heat. A click picks the motor.
+
+**The heat ramp** runs blue `rgb(43,92,255)`, violet `rgb(140,70,255)`, red
+`rgb(255,54,96)`, orange `rgb(255,122,40)`, and a load `u = |effort| / rated`
+lands on it at `1 − e^(−k·u)` with `k` set so the rating is at 0.8: a load
+rises along a curve and saturates towards the peak rather than clipping. The
+legend under the status line marks idle, rated and peak.
+
+**Network.** A canvas on the dark mat: the inputs, each hidden layer folded
+into a block of cells, and the motor commands, each cell in the ramp by its
+|activation| against its layer's 95th percentile over the rollout (inputs by
+|z| / 3, outputs by |tanh|). For the picked motor, the last hidden layer's
+sixteen strongest contributions (activation × weight) are drawn as curves to
+its output, red where they push the command up and blue where they pull it
+down, and the input column shows input × gradient; `#activations-detail`
+lists the six inputs that drive it most, with their shares. Hovering a hidden
+neuron silences it for one pass: each gauge shows `Δ` the change in its
+command and takes its heat from that, as the viewport does while Show in
+viewport is on.
+
+**Show in viewport** (`#activations-viewport`) paints each motor's parts in
+its heat (`review_scene.js` `setHeat`): the body its joint sits in and what
+is welded to it, and over that its own housing, from the MJCF's body tree
+(`parts` in `api/policy/...`). Every other part turns a quiet grey
+(`#4a4e56`) and the selection still glows. The heat follows a change over
+about 0.12 s rather than flickering. Off, every part has its own colour back.
+
+**A reconstruction, and it says so.** The network is the rollout's own
+policy (`api/policy/checkpoint/<run>/<stem>` or `api/policy/run/<run>`, §2c
+of `docs/CLI.md`), run in the page. Its inputs are rebuilt from the trace by
+each one's kind in the task bundle: joint positions, velocities and efforts
+as recorded; an IMU's orientation from its part's pose and its rate from the
+poses a frame either side; the gait clock from the time and the bundle's
+period. An input of another kind is held at the normaliser's mean and named
+in the status line. A trace is kept at 25 fps while the policy runs faster
+behind a slew limit, so the status line gives how well frame *k*'s rebuilt
+command matches the command frame *k + 1* recorded (Pearson r over the
+rollout, per motor in each gauge's tooltip): about 0.8 on the orun7 cat. A
+policy that is not an MLP, or whose weights do not match its layers, is not
+offered, and the editor shows the motors alone.
+

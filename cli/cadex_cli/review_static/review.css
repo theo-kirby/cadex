@@ -242,6 +242,37 @@ table.status-table { width: 100%; border-collapse: collapse; table-layout: auto;
 #revision-timeline[data-state="missing"] #revision-status { color: var(--warn); }
 #revision-list li[data-retained] { cursor: pointer; }
 
+/* Activations (ADR-721, §27): a gauge per motor and the policy's network, in the heat ramp. */
+#activations { padding: var(--s2) var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
+#activations-status { margin: 0; color: var(--ink-2); font-size: var(--fs-0); }
+#activations-status[data-state="warn"] { color: var(--warn); }
+.activations-ramp { position: relative; width: min(100%, 240px); height: 26px; margin: 0 var(--s4) 0 var(--s1); font-size: var(--fs-0); color: var(--ink-2); flex: none; }
+.activations-ramp span:not(.ramp-bar) { position: absolute; top: 9px; transform: translateX(-50%); white-space: nowrap; }
+.activations-ramp span[style="left:0"] { transform: none; }
+.activations-ramp .ramp-bar { position: absolute; left: 0; right: 0; top: 0; height: 6px; border-radius: 3px;
+  background: linear-gradient(90deg, rgb(43,92,255) 0%, rgb(140,70,255) 45%, rgb(255,54,96) 80%, rgb(255,122,40) 100%); }
+#activations-motors { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: var(--s1); flex: none; }
+.gauge { margin: 0; padding: var(--s1) 0 2px; border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer;
+         border: 1px solid var(--rule); text-align: center; box-shadow: inset 0 -2px 0 var(--heat, transparent); transition: box-shadow .12s; }
+.gauge:hover { background: var(--surface-3); }
+.gauge[data-selected="true"] { border-color: var(--ink-2); }
+.gauge[data-over="true"] { box-shadow: inset 0 -2px 0 var(--heat), 0 0 0 1px var(--heat); }
+.gauge svg { display: block; width: 100%; max-width: 96px; margin: 0 auto; overflow: visible; }
+.gauge figcaption { font-size: var(--fs-0); color: var(--ink-2); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
+.gauge-track { fill: none; stroke: var(--rule); stroke-width: 7; stroke-linecap: round; }
+.gauge-load { fill: none; stroke-width: 7; stroke-linecap: round; transition: stroke .12s; }
+.gauge-needle { stroke: var(--ink); stroke-width: 2.2; stroke-linecap: round; }
+.gauge-hub { fill: var(--ink); }
+.gauge-command { fill: var(--info); }
+.gauge-network { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+.gauge-value { font: 600 13px var(--font); fill: var(--ink); }
+.gauge-effort { font: 400 12px var(--mono); fill: var(--ink-2); }
+#activations-network { display: block; width: 100%; height: 220px; flex: none; border-radius: var(--radius-sm); background: #141414; touch-action: none; }
+#activations-detail .activations-pick { margin: 0 0 var(--s1); font-size: var(--fs-0); color: var(--ink-2); }
+ol.activations-drivers { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font: 400 var(--fs-0) var(--mono); max-width: 420px; }
+ol.activations-drivers li { display: grid; grid-template-columns: minmax(0, 1fr) 3.5em; gap: 2px var(--s2); }
+ol.activations-drivers .bar { grid-column: 1 / -1; height: 3px; border-radius: 2px; }
+
 /* Outliner (ADR-676): every part, in folding groups, an eye and a row each; after Blender's. */
 #outliner { display: flex; flex-direction: column; overflow: hidden; font-size: var(--fs-0); }
 #outliner-bar { flex: none; display: flex; align-items: center; gap: var(--s1); padding: var(--s1) var(--s2); border-bottom: 1px solid var(--rule); }

@@ -165,7 +165,7 @@ export function boardColours(mm, board, base) {
 export function create(canvas, {labels=true}={}) {
   let renderer;
   try { renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true}); }
-  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, centreAt(){return null;}, followTo(){return null;}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setFov(){return 55;}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, screenBox(){return null;}, draw(){}}; }
+  catch (_) { return {available:false, clear(){}, fit(){}, load(){return Promise.reject(new Error('WebGL unavailable'));}, stats(){return {available:false, components:0, triangles:0, showing:'nothing drawn', proxies:{shown:false,drawn:0,listed:0}};}, setProxies(){}, showProxies(){return false;}, setSection(){return null;}, setLines(){return 0;}, showLines(){return false;}, setPoses(){}, centreAt(){return null;}, followTo(){return null;}, setGhost(){return 0;}, loadGhost(){return Promise.resolve(0);}, toScreen(){return null;}, setOnDraw(){}, setStyle(){return 'shaded';}, style(){return 'shaded';}, setMeshLines(){return {shown:false,strength:0};}, setReflections(){return 0;}, setLook(){return 'studio';}, setFov(){return 55;}, setOcclusion(){return false;}, setDetail(){return false;}, setHidden(){return [];}, setHeat(){return false;}, select(){return [];}, highlight(){return null;}, parts(){return [];}, fitTo(){return false;}, screenBox(){return null;}, draw(){}}; }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   // Soft shadows (ADR-676): a variance shadow map, blurred, so a shadow's edge widens with its
@@ -781,6 +781,28 @@ export function create(canvas, {labels=true}={}) {
       p.emissive.setHex(on.has(n)?SELECT.glow:0); t.color.setHex(on.has(n)?SELECT.tint:0xffffff);
     });
     picked=selectedNames.length?selectedNames[selectedNames.length-1]:null;
+    applyHeat();
+  }
+  // The heat view (ADR-721; the Activations editor's "Show in viewport"): a map of part name to
+  // colour paints those parts in it, lit from within a little so a dark part still reads, and
+  // every other part a quiet grey so the heat stands out; null gives every part its own colour
+  // back. Over the selection, which still glows where it is.
+  const HEAT={rest:0x4a4e56, glow:.32};
+  let heat=null;
+  function applyHeat() {
+    const on=new Set(selectedNames), c=new THREE.Color();
+    meshes.forEach((m,n)=> {
+      if (m.userData.world) return;
+      const {parts:p, matcap:t}=m.userData.materials, h=heat&&heat[n];
+      if (!heat) { p.color.copy(m.userData.board?c.setHex(0xffffff):m.userData.colour); p.vertexColors=!!m.userData.board; return; }
+      p.color.setHex(h==null?HEAT.rest:h); p.vertexColors=false; t.color.setHex(h==null?HEAT.rest:h);
+      if (h!=null&&!on.has(n)) p.emissive.setHex(h).multiplyScalar(HEAT.glow);
+    });
+  }
+  function setHeat(map) {
+    const had=!!heat; heat=map&&typeof map==='object'?map:null;
+    if (had!==!!heat) meshes.forEach(m=>{if(!m.userData.world) m.userData.materials.parts.needsUpdate=true;});
+    applySelection(); draw(); return !!heat;
   }
   function select(names) {
     const seen=new Set();
@@ -866,7 +888,7 @@ export function create(canvas, {labels=true}={}) {
   return {available:true,load,install,clear,fit,draw,setPoses,centreAt,followTo,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,
     setSection,setLines,showLines,setStyle,style:()=>style,setMeshLines,meshLines:()=>({...meshLines}),setReflections,reflections:()=>reflections,
     setLook,look:()=>look,setFov,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
-    setHidden,hidden:()=>[...hiddenNames],select,selected:()=>selectedNames.slice(),parts,fitTo,
+    setHidden,hidden:()=>[...hiddenNames],select,setHeat,heat:()=>heat&&{...heat},selected:()=>selectedNames.slice(),parts,fitTo,
     pick,screenPoint,screenBox,toScreen,setOnDraw:fn=>{onDraw=typeof fn==='function'?fn:null;},highlight,picked:()=>picked,setOnPick:fn=>{onPick=typeof fn==='function'?fn:null;},
     camera:()=>JSON.parse(JSON.stringify(c)),stats:()=>({available:true,components:meshes.size,triangles:triangleCount,bounds,
       world:[...meshes].filter(([,m])=>m.userData.world).map(([n])=>n),style:STYLE,render_style:style,stage,showing:showing(),

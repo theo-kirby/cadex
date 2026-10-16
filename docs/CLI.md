@@ -1,6 +1,6 @@
 # CLI.md — Cadex, headless
 
-Verified against source: 2026-10-14. Provenance: [Cadex-new] (ADR-061).
+Verified against source: 2026-10-16. Provenance: [Cadex-new] (ADR-061).
 
 `cli/` is **the client of the cadexd protocol** — the only one since the
 Blender shell was deleted (ADR-498), and it owed that shell nothing: no
@@ -1373,9 +1373,11 @@ of a fixture biped that reaches every route disagree, in the way
 | `GET api/model/accepted` | the accepted attempt's model | `schema`, `view`, `run`, `relation`, `revision`, `digest`, `available`, `reason`, `source`, `placement_source`, `components`, `collision`, `contacts`, `exploded`, `appearance`, `measurements` | `meshes` |
 | `GET api/model/revision/<ordinal>` | one retained revision's model, its ghost and changed parts | `view`, `ordinal`, `revision`, `digest`, `available`, `reason`, `components`, `previous`, `changed`, `source` | `compare` |
 | `GET api/model/run/<run>` | the model a run retained | `schema`, `view`, `run`, `relation`, `revision`, `digest`, `available`, `reason`, `source`, `placement_source`, `components`, `collision`, `contacts`, `exploded`, `appearance`, `measurements` | `playback`, `meshes` |
-| `GET api/playback/run/<run>` | the run's rollout trace as playback frames | `available`, `run`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second` |
-| `GET api/playback/checkpoint/<run>/<stem>` | one checkpoint's rollout as playback frames | `available`, `run`, `stem`, `checkpoint`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second` |
+| `GET api/playback/run/<run>` | the run's rollout trace as playback frames | `available`, `run`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `joints`, `velocities`, `efforts`, `policy` |
+| `GET api/playback/checkpoint/<run>/<stem>` | one checkpoint's rollout as playback frames | `available`, `run`, `stem`, `checkpoint`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `joints`, `velocities`, `efforts`, `policy` |
 | `GET api/playback/reference/<task>` | an accepted task's gait reference (ADR-703) as playback frames: its one stride repeated a stride further on each time, for about 4 s | `available`, `task`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `reference`, `strides` |
+| `GET api/policy/run/<run>` | the run's own policy as the Activations editor runs it (ADR-721): its network, normaliser, input and action names, the weights as base64, each input's kind from the task bundle, the gait clock and the parts each motor moves | `available`, `run`, `source` | `reason`, `label`, `network`, `normaliser`, `observations`, `actions`, `weights`, `inputs`, `clock`, `parts` |
+| `GET api/policy/checkpoint/<run>/<stem>` | one checkpoint's policy, the same way | `available`, `run`, `stem`, `source` | `reason`, `label`, `network`, `normaliser`, `observations`, `actions`, `weights`, `inputs`, `clock`, `parts` |
 
 The files the replies point to — `mesh/...`, `artifact/...`, `video/...`,
 `doc/...`, `evaluation/...`, `presentation/...`, `export/...`,

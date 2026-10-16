@@ -83,7 +83,7 @@ def test_every_preset_lays_the_screen_out_in_one_click_and_areas_drag_with_a_pre
         empty = page.evaluate("(function () { var a = document.querySelector('.area[data-editor=empty]');"
                               " return {text: a.querySelector('.area-empty').textContent,"
                               " options: Array.from(a.querySelectorAll('select.area-type option')).map(function (o) { return o.value; })}; })()")
-        assert "pick an editor" in empty["text"] and empty["options"] == ["view3d", "status", "view2d", "outliner", "empty"]
+        assert "pick an editor" in empty["text"] and empty["options"] == ["view3d", "status", "view2d", "outliner", "activations", "empty"]
         page.evaluate("(function () { var s = document.querySelector('.area[data-editor=empty] select.area-type');"
                       " s.value = 'view2d'; s.dispatchEvent(new Event('change')); })()")
         assert [a["editor"] for a in page.evaluate(AREAS)] == ["view3d", "status", "empty", "view2d"]

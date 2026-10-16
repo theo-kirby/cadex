@@ -33,7 +33,7 @@
   // (`cadex app`) it is `p/<name>/` under the index, and NAME is that project.
   var NAME = (location.pathname.match(/\/p\/([^/]+)\/(?:index\.html)?$/) || [null, null])[1];
   var POLL_MS = 2000;
-  var ORDER = ['view3d', 'status', 'view2d', 'outliner'];
+  var ORDER = ['view3d', 'status', 'view2d', 'outliner', 'activations'];
   // The 3D viewport with the Outliner over Status beside it, as Blender has its Outliner over its
   // Properties; split an area for the 2D one.
   var DEFAULT_LAYOUT = { dir: 'row', sizes: [0.75, 0.25], children: [{ editor: 'view3d' },
@@ -262,7 +262,7 @@
     if (modelAbort) modelAbort.abort();
     var controller = modelAbort = new AbortController(), signal = controller.signal;
     status.dataset.state = 'loading'; status.textContent = 'loading model…';
-    stopPlayback(); playback = null; looping = false; ckpt.shown = null; $('playback').hidden = true;
+    stopPlayback(); playback = null; looping = false; ckpt.shown = null; $('playback').hidden = true; state.activations.setPlayback(null);
     return fetchRetry(path, signal, 2).then(function (response) {
       if (!response.ok) throw new Error('HTTP ' + response.status);
       return response.json();
@@ -433,6 +433,7 @@
     // A new rollout puts the followed view back on the design.
     track = followCam ? trackOf(served) : null;
     state.viewer.followTo(null);
+    state.activations.setPlayback(served);
     if (followCam && track) state.viewer.followTo(track[0], true);
     seek(times[0]);
   }
@@ -457,6 +458,7 @@
     f = Math.max(0, Math.min(1, f));
     if (followCam && track) state.viewer.followTo(trackAt(lo, hi, f));
     state.viewer.setPoses(blend(playback.frames[lo], playback.frames[hi], f));
+    state.activations.setFrame(lo, hi, f);
     $('play-time').value = String(playT);
     $('play-clock').textContent = playT.toFixed(2) + ' s';
   }
@@ -542,7 +544,7 @@
   }
   function showCheckpoint(item, key) {
     var ticket = modelLoad;
-    stopPlayback(); playback = null; ckpt.playing = null;
+    stopPlayback(); playback = null; ckpt.playing = null; state.activations.setPlayback(null);
     if (item.state !== 'ready') {
       $('playback').hidden = true;
       state.viewer.setPoses(restPoses());
@@ -985,6 +987,10 @@
                                                storageKey: 'cadex.layout.v5', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
     state.viewer = window.CadexViewer.create($('viewer'));
     state.gizmo = window.CadexGizmo.create(state.viewer, $('view3d-gizmo'), $('viewer'));
+    state.activations = window.CadexActivations.create({ viewer: function () { return state.viewer; }, body: $('activations'),
+                                                         motors: $('activations-motors'), canvas: $('activations-network'),
+                                                         detail: $('activations-detail'), status: $('activations-status'),
+                                                         toggle: $('activations-viewport') });
     state.outliner = window.CadexOutliner.create({ tree: $('outliner-tree'), filter: $('outliner-filter'), group: $('outliner-group'),
                                                    showAll: $('outliner-show-all'), summary: $('outliner-summary'), scope: $('model'),
                                                    viewer: function () { return state.viewer; } });
@@ -1068,6 +1074,7 @@
     viewer: function () { return state.viewer; },
     layout: function () { return state.layout; },
     gizmo: function () { return state.gizmo; },
+    activations: function () { return state.activations; },
     setStyle: applyStyle,
     renderStyle: function () { return renderStyle; },
     setMeshLines: applyMeshLines,
