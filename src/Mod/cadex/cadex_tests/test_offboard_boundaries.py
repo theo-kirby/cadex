@@ -226,8 +226,8 @@ def test_the_trainer_lives_at_the_repository_root_and_not_under_the_engine() -> 
 def test_no_cmake_rule_installs_the_trainer() -> None:
     """The payload check that does not need a payload built.
 
-    ``test_engine_purity_guardrails`` asserts jax and mjx reach no *staged*
-    payload; this asserts nothing would ever put them there.
+    No test inspects a *staged* payload for jax or mjx since ADR-725; this
+    asserts nothing would ever put them there.
     """
 
     root = TRAINER.parents[1]
@@ -311,8 +311,7 @@ def _imports(path: Path):
 def test_the_trainer_imports_only_the_standard_library_at_module_scope() -> None:
     """So that a test can import it without a GPU box's dependencies.
 
-    The sibling discipline to ``dynamics_task_episode``'s, and it earns its
-    keep here: everything above ``train()`` -- the container encoder, the
+    Everything above ``train()`` -- the container encoder, the
     whitelist, the bundle loader -- is testable in the engine environment
     precisely because none of it needs jax.
     """

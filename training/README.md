@@ -1,12 +1,16 @@
 # training/ — the offboard trainer
 
-Verified against source: 2026-10-15. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-16. Provenance: `[Cadex-new]`. See
 `docs/MUJOCO.md` slice M7 and ADR-084.
 
 This directory is **not part of the engine**. CMake never installs it, it is
-in no payload, and nothing in it enters `pixi.toml` — `test_engine_purity_guardrails`
-asserts that no `jax` and no `mjx` reach a staged payload, and
-`test_dynamics_policy_trainer` asserts no CMake rule references this path.
+in no payload, and nothing in it enters `pixi.toml`.
+`test_offboard_boundaries` asserts that no CMake rule references this path,
+that `requirements.txt` is exactly pinned and stays out of `pixi.toml`, and
+that `cadex_train.py` imports only the standard library at module scope.
+`test_engine_purity_guardrails` asserts that no `jax` or `mjx` appears under
+`src/Mod/cadex`, and the packaged gate (`test_cadexd_lifecycle`) that none
+reaches a staged payload.
 
 It is a thing you **copy to another machine**.
 
@@ -169,24 +173,28 @@ Go1 benchmark that Brax learns to trot in under six minutes (docs/MUJOCO.md
 | `--hidden` | `512 256 128` | the policy MLP; the container records it |
 | `--value-hidden` | the policy's | the critic MLP |
 | `--activation` | `swish` | the hidden activation, recorded in the policy; `tanh` continues a policy trained before ADR-712 |
-| `--entropy`, `--clip`, `--max-grad-norm` | `0.01`, `0.3`, `1.0` | Brax PPO's entropy cost, clip epsilon and gradient-norm clip |
+| `--entropy`, `--clip`, `--max-grad-norm` | `0.01`, `0.3`, `1.0` | Brax PPO's entropy cost, clip epsilon and gradient-norm clip (`0` does not clip) |
 | `--learning-rate`, `--discount`, `--gae-lambda` | `3e-4`, `0.97`, `0.95` | optax Adam's rate; GAE's discount and lambda |
+| `--value-weight`, `--reward-scaling` | `0.5`, `1.0` | the value loss's coefficient; a factor on every reward before the loss |
+| `--initial-std` | unset | the exploration width a run starts at; see `action_std` below |
+| `--goal-pool` | `4096` | episodes of goals drawn before training (ADR-462, below) |
 | `--checkpoint-every` | `0` (off) | write a complete `.cxpolicy` every N iterations, plus `<out>.best.cxpolicy` |
+| `--stop-on-collapse` | off | stop once the mean episode has collapsed (ADR-410, below) |
 | `--progress` | beside `--out` | where to rewrite `progress.json` |
+| `--label`, `--quiet` | | a label recorded in the policy; no stderr curve |
 
-## Shaping the command, and warm-starting across a task change
+## Shaping the command
 
-Three flags arrived from cdx-rl and a fourth with orun6, and they are
-documented here because a merged pull request body is not documentation. All
-four default to **off**, and off means the emitted jax graph is the one this file emitted before the flag existed —
-each is a Python value branched on at trace time, never a `jnp.where`.
+Three flags shape what the policy issues or is paid. All three default to
+**off**, and off means the emitted jax graph is the one this file emitted
+before the flag existed: each is a Python value branched on at trace time,
+never a `jnp.where`.
 
 | Flag | Default | What it is |
 |---|---|---|
 | `--action-filter-alpha` | `1.0` (no filter) | ADR-160. Low-passes the command between the clamp and `data.ctrl`: `a[t] = α·clamped[t] + (1−α)·a[t−1]`, per environment, reset with the episode. Bounds **smoothness**. |
 | `--command-slew-deg` | `0.0` (no limit) | ADR-162. Clips the issued command to `previous ± S` degrees, *after* the filter. Bounds **rate**, which the filter does not. `0` is off here, unlike alpha, where `0` freezes the command and is refused. |
-| `--reward-floor F` | absent (no floor) | ADR-700. Clamps each step's summed reward from below: `r = max(Σ wᵢ·termᵢ, F)`, as MuJoCo Playground's locomotion recipes clip theirs at 0. At or above the cost of dying it removes the pay for ending an episode early while costs outweigh rewards. Training-only: recorded at `training.reward_floor`, never applied by an evaluator. |
-| `--init-from-task-change REASON` | off | ADR-161. Lets `--init-from` cross a task change, as a **curriculum**. Skips the whole-file task digest and nothing else; the keys that differ must be a subset of `CURRICULUM_TASK_KEYS`, which includes `success` (ADR-597): a revised bar is not something the network reads or emits. Requires `--init-from-parent-task`. |
+| `--reward-floor F` | absent (no floor) | ADR-700. Clamps each step's summed reward from below: `r = max(Σ wᵢ·termᵢ, F)`, as MuJoCo Playground's locomotion recipes clip theirs at 0. At or above the cost of dying it removes the pay for ending an episode early while costs outweigh rewards. A task that only pays costs learns nothing under a floor of 0. Training-only: recorded at `training.reward_floor`, never applied by an evaluator. |
 
 **Filter, smooth and rate-limit are three different operators.** An EMA's
 per-step change is `α·|raw − previous|`, so on a ±25° command box at α 0.65 it
@@ -205,6 +213,25 @@ unfiltered, as it was trained. There is no flag to set at evaluation.
 A slew limit at or below the joint's own physical reach in one control step is
 worse than none: it forbids commands the servo *can* execute. Measure it
 against the actuator rather than deriving it — ADR-162 carries the numbers.
+
+## Warm starts, and crossing a task change (ADR-161)
+
+| Flag | What it is |
+|---|---|
+| `--init-from POLICY` | start the actor from an existing `.cxpolicy`. It must match this bundle's task and model digests, its observation channels in order, its action table, the `--hidden` shape and the `--activation` it was trained with. The actor's location half, its exploration width (unless `--initial-std` is given, ADR-471) and the observation normaliser are carried. The critic and the optimiser start fresh: the container holds neither. |
+| `--init-from-task-change REASON` | let `--init-from` cross a task change, as a **curriculum**, with a one-line reason written into the policy header. It skips the whole-file task digest and nothing else. Requires `--init-from-parent-task`. |
+| `--init-from-parent-task BUNDLE` | the bundle the source policy was trained on. Its digest must equal the one in that policy's header, so the change can be named key by key. |
+
+The keys that may differ are `CURRICULUM_TASK_KEYS`: `disturbance`,
+`episode` (`episode_seconds` and `max_steps` only, never the control rate),
+`label`, `randomisation`, `reset_variation`, `reward`, `success` (ADR-597)
+and `termination`. None changes what the network reads or emits. Every
+other key is refused: `observations`, `actions`, `goal`, `reference`,
+`terrain` and the rest. A new course changes the model too, so a warm start
+from flat ground onto a course is refused on the model digest.
+
+Every policy before ADR-712 is `tanh`; continue one with `--activation tanh`.
+`training/test_curriculum_warm_start.py` (training venv) holds these rules.
 
 ## Checkpoints, and the file a run publishes while it runs (ADR-098)
 
@@ -259,16 +286,18 @@ its episodes pays. It says so on stderr and as `progress.json`'s `warning`
 walk` always passes it. hex3 (2026-09-26) fell from 28 to 2 of 200 steps by
 iteration ~80 and then trained for seven hours.
 
-`action_std` is the second row to watch (ADR-103): the mean of
-`exp(log_std)`, the width of the Gaussian the rollout samples its actions
-from. It **starts at `--initial-std` (0.3) on a cold run, at the source policy's own per-action width on `--init-from` unless `--initial-std` is given (ADR-471), and nothing bounds it** — the loss
-subtracts `--entropy` times an entropy that is linear in `log_std`, so
-minimising it pushes this number up for the whole run. A σ that has walked
-well off its start is a policy whose rollouts and whose mean action are no
-longer the same policy, which is the first thing to rule out when a training
-curve and a local replay disagree. Additive on the same terms as
-`episode_steps`; it is also written into every `.cxpolicy` header, per
-action, as the top-level `exploration` key.
+`action_std` is the second row to watch (ADR-103): the mean width of the
+Gaussian the rollout samples its actions from. Brax's network outputs that
+width beside the action, so it depends on the observation. A cold run
+starts where Brax's network does, about 0.69; `--initial-std` sets the
+start instead, and `--init-from` carries the source policy's own per-action
+width unless `--initial-std` is given (ADR-471). Nothing but the loss
+bounds it. A σ that has walked well off its start is a policy whose
+rollouts and whose mean action are no longer the same policy, which is the
+first thing to rule out when a training curve and a local replay disagree.
+Additive on the same terms as `episode_steps`. Every `.cxpolicy` header
+carries it as `exploration.log_std`, per action, the mean over the witness
+observations, with `exploration.state_dependent: true` (ADR-712).
 
 This is the one artifact everything downstream reads —
 `remote_train.sh watch` over rsync, `train_status`, `cadex walk`, and the
@@ -294,10 +323,25 @@ from whichever loop happened to run:
 
 Measured: 1000 seeds give 1000 distinct draw tuples, and seed 0 reproduces
 the bundle's own numbers exactly — so a single-environment run at
-`base_seed` is the episode the engine and the reference runner already agree
-on. What this does *not* do is resample the *mechanism* per episode; that
-would need the batched model rebuilt inside the training loop, and the
-limitation is stated here rather than discovered.
+`base_seed` is the episode the engine already plays. What this does *not*
+do is resample the *mechanism* per episode; that would need the batched
+model rebuilt inside the training loop, and the limitation is stated here
+rather than discovered. The XML is compiled once, and only the drawn fields
+are batched, so host memory does not grow with `--envs` (ADR-695). Fields
+`mj_setConst` derives (for example `body_subtreemass`) are not batched:
+every environment uses environment 0's.
+
+## Courses, re-drawn per episode (ADR-717)
+
+A task on a drawn box course carries its pool of courses in the bundle's
+`terrain.pool`. The trainer rebuilds each pooled course's boxes with its
+own copy of the engine's builder (`course_boxes`, `course_geoms`), and at
+every reset gives each environment a course by `jax.random.randint` folded
+from the reset key. `place_course` writes that course's geoms into the MJX
+model inside the vmapped step, and the height scan (ADR-715) reads the
+same course. The policy header records `training.terrain`. Train on a box
+course, not a heightfield: MJX's heightfield collider is unstable under
+driven motion (ADR-715, ADR-716), and a heightfield is never re-drawn.
 
 ## Goals, and the one draw this trainer takes from the bundle (ADR-462)
 
@@ -320,13 +364,14 @@ stated height. That takes forward kinematics and a contact check, and a
 second rule that only resembled the bundle's would train a policy on
 targets the evaluation never asks for. So `draw_goals` here is a copy of
 `CadexDynamics.draw_episode_goals`, run with stock `mujoco` before training
-starts, and `test_dynamics_goal_trainer` holds the two to the same doubles
-from the same seed. It also holds the segment rule (`goal_segment`:
-`steps // resample_steps`, clamped) to the engine's, and, from the training
-venv, the reward curve of a real run to the goals the engine draws. On a
-coupled mechanism the goal also carries `followers`, which the draw places by
-their coupling law before it forwards the pose (`place_goal_followers`,
-ADR-474), and `test_dynamics_goal_coupled` holds that copy to the engine's.
+starts, with the same segment rule (`goal_segment`: `steps //
+resample_steps`, clamped) and the same scripted openings
+(`GOAL_SEQUENCE_ALGORITHM`, ADR-721: a goal's `sequence` holds its first
+segments, and each draw is still taken). On a coupled mechanism the goal
+also carries `followers`, which the draw places by their coupling law
+before it forwards the pose (`place_goal_followers`, ADR-474). The copies
+are written out because this file cannot import the engine; since ADR-725
+no test holds them equal.
 
 - `--goal-pool N` (default 4096) is how many episodes are drawn. It is
   ignored, and left out of the policy header, for a task with no goal.
@@ -365,24 +410,27 @@ and `training.episode_variation`.
 
 What **must** be identical is the arithmetic: the same quaternion product,
 the same window test, the same centre-of-mass application point. Those are
-written out here rather than shared — this file cannot import the engine —
-and a test pins the lines against `CadexDynamics`.
+written out here rather than shared, because this file cannot import the
+engine.
 
-The scan carry grew from `(data, key)` to `(data, key, forces, starts,
-elapsed, steps)`, because a disturbance is a property of the *episode*: the
-draw has to survive every step between the reset that made it and the reset
-that replaces it, and its window is tested against an **episode-local** clock
-rather than `data.time`, which this trainer's reset does not rewind.
+A disturbance is a property of the *episode*: the draw has to survive every
+step between the reset that made it and the reset that replaces it, and its
+window is tested against an **episode-local** clock rather than `data.time`,
+which this trainer's reset does not rewind. So each environment's state
+carries, beside the MJX data, its pushes (`forces`, `starts`), the
+episode's `elapsed` time and `steps`, and, when the task has them, its
+goal pick, its reference start sample (ADR-709) and its course (ADR-717).
+A task without a goal, a reference start or a course carries no member for
+it and draws no key for it, so it trains as it did.
 
 ## The episode is the bundle's, not the trainer's (ADR-101)
 
-`steps` is the last member of that carry and the newest, and it is what makes
-this an episode at all. An episode ends when the task terminates **or** when
-it reaches the bundle's `episode["max_steps"]` — the same number
-`CadexDynamics.evaluate_episode` bounds its own loop by. For two runs the
-horizon was read out of the bundle and never used, so an environment whose
-policy did not fall over never reset: past the last shove window it was never
-pushed again, never re-drawn, and stood still collecting the `alive` bonus.
+An episode ends when the task terminates **or** when it reaches the bundle's
+`episode["max_steps"]`, the same number `CadexDynamics.evaluate_episode`
+bounds its own loop by. For two runs the horizon was read out of the bundle
+and never used, so an environment whose policy did not fall over never
+reset: past the last shove window it was never pushed again, never re-drawn,
+and stood still collecting the `alive` bonus.
 
 The two endings are **not** the same event and the code keeps them apart:
 
@@ -390,28 +438,25 @@ The two endings are **not** the same event and the code keeps them apart:
 * a **timeout** ends only our looking, so the state we landed in is worth
   whatever the critic thinks.
 
-So `terminated` cuts the GAE **bootstrap** and `done` cuts the GAE **carry**,
-and the value bootstrapped is the critic's on `landed` — the post-step,
-*pre-reset* observation. Feeding a timeout into the bootstrap term would
-teach the critic that surviving to step 600 is worth exactly as much as
-falling over, which at `--discount 0.99` is a large bias traded for the one
-this removed. It still trains, still climbs, and is wrong in a way no
-run-level number reveals — which is why there is a test that reads the two
-lines out of the AST.
+So the step's `truncation` flag marks a timeout and only a timeout (a step
+that terminates on its last step is a failure). Brax's GAE masks a
+truncated step and bootstraps from the critic, and cuts the bootstrap on a
+failure (ADR-712). A reset environment's readings are of its new pose:
+`mjx.forward` runs where an episode ended.
 
-## Three evaluators of one whitelist
+## Two evaluators of one whitelist
 
-`CadexDynamics` compiles reward expressions, `cadex_tests/dynamics_task_episode.py`
-compiles them again, and this compiles them a third time under `jax.numpy` so
-they vectorise. Three is where a whitelist drifts, so the bundle ships its
-`functions` array, this file builds its own from scratch, and it **refuses
-outright** when the two differ rather than failing partway through a run.
-A test asserts all three are equal.
+`CadexDynamics` compiles reward expressions, and this file compiles them
+again under `jax.numpy` so they vectorise. That is where a whitelist
+drifts, so the bundle ships its `functions` array, this file builds its own
+from scratch, and it **refuses outright** when the two differ rather than
+failing partway through a run. (A third evaluator, the stock-MuJoCo
+reference runner `cadex_tests/dynamics_task_episode.py`, went with ADR-725.)
 
 The same discipline covers the container: `encode_policy` here and
-`CadexDynamics.encode_policy` are two implementations of one format, and a
-test compares their bytes. This file cannot import the engine, so the second
-copy is written down and pinned.
+`CadexDynamics.encode_policy` are two implementations of one format. The
+engine decodes and verifies every policy this file writes, witness
+included, so a drift is a refusal on rebuild.
 
 ## A saturated servo is the engine's machine (ADR-465)
 
@@ -423,9 +468,9 @@ that actuator, and a small one saturates most of the time, so ot11's walk
 policies trained forwards here and walked backwards in the engine.
 `match_engine_actuator_derivative` applies the engine's rule inside MJX, and
 `train()` installs it before it builds a model. It replaces a function in a
-private MJX module, which is tolerable only because `mujoco-mjx` is pinned;
-`test_dynamics_mjx_forcelimit` fails the day raw MJX agrees, and then it
-goes.
+private MJX module, which is tolerable only because `mujoco-mjx` is pinned.
+It goes the day raw MJX agrees; since ADR-725 no test watches for that day,
+so re-measure it on any `mujoco-mjx` bump.
 
 ## Screening drives and masses without a rebuild (ADR-710)
 
@@ -479,16 +524,15 @@ configuration that holds goes on to a tracking run, and one that does not
 is out. Like `cadex_train.py` it imports only the standard library at
 module scope.
 
-## What the CI gate does, and does not, prove
+## What the suites do, and do not, prove
 
-`test_dynamics_policy_live` trains a *tiny* task — one hinge, swing-up, a
-fixed seed, a few hundred iterations — **on CPU**, because that is what a
-test machine has. It converges: reward per step goes from 1.10 to 2.487
-against a theoretical maximum of 2.5, in about four seconds.
-
-The GPU is a speed difference, not a semantic one, and it is the same
-trainer file. A remote GPU run is exercised manually and its numbers are
-recorded in ADR-084. **The gate does not prove the GPU path.**
+No suite trains (ADR-725). The engine and CLI suites hold the boundary
+above and nothing of the learner. The training venv's own tests,
+`training/test_cadex_proxy.py` and `training/test_curriculum_warm_start.py`,
+cover the proxy and the warm-start rules. A change to the trainer is
+verified by running it: a few iterations on CPU (`SETUP.md` §b), then the
+engine's own verification of the policy it wrote. The GPU is a speed
+difference, not a semantic one, and it is the same trainer file.
 
 ## Retained review telemetry (ADR-287)
 

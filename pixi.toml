@@ -41,8 +41,8 @@ nlohmann_json = "*"
 # documented OCCT contract and has changed across releases, and five xscript
 # ops take 1-based TopExp::MapShapes ordinals as *saved script arguments*.
 # A patch bump that re-indexes them builds different geometry that still
-# passes isValid(). Gated by cadex_tests/test_subshape_enumeration.py; see
-# docs/DECISIONS.md ADR-025.
+# passes isValid(). See docs/DECISIONS.md ADR-025; its enumeration test went
+# with ADR-725, so re-check the ordinals by hand before bumping this.
 occt = "==7.8.1"
 opencamlib = "*"
 opencv = "*"

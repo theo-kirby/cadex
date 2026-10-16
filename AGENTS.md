@@ -155,16 +155,17 @@ The philosophy is **remove more than we add** (`docs/VISION.md`).
 2. **The suites hold contracts, not coverage (ADR-725).** They pin the
    process boundaries, the protocol, the tool surface, the HTTP API, the
    licence rule and the read-only dashboard, and each runs in under a
-   minute. Add a test only for a contract, or for a regression that
-   actually happened; verify behaviour by running the thing. Many docs
-   still cite test files deleted by ADR-725: read those citations as
-   history.
+   minute (engine: 157 passed, 3 skipped, ~34 s; CLI: 50 passed, ~10 s, on
+   2026-10-16). Add a test only for a contract, or for a regression that
+   actually happened; verify behaviour by running the thing. Live docs cite
+   only surviving tests; `docs/DECISIONS.md` and `docs/probes/` are history
+   and may name deleted ones.
 3. **Verify by running.** `src/Mod/cadex/`: `pixi run test-engine` minimum.
    `cli/`: `pixi run python -m pytest cli/tests` too — it *skips* its
    engine-needing half on a bare checkout, so a green run there proves less
    than it looks. C++/CMake: `pixi run build-release` and `pixi run
-   test-release` (the inherited ctest passes in full, 1,526 tests on
-   2026-10-12, so any failure is new). Protocol or payload: the packaged gate,
+   test-release` (the inherited ctest passes in full, 1,524 tests on
+   2026-10-16, so any failure is new). Protocol or payload: the packaged gate,
    `CADEX_ENGINE_ROOT=<payload> pytest
    src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py` — a passing source
    tree proves nothing about a payload (ADR-023). Report failures honestly.
@@ -191,8 +192,9 @@ The philosophy is **remove more than we add** (`docs/VISION.md`).
   scope; `CARRIED_PYPI_PACKAGES` (`package/rattler-build/scripts/
   relocate_conda_environment.py`, how mujoco reaches the payload) stays one
   entry long.
-- The `test_dynamics_*` suites run headless with no build; MJX-gated tests
-  skip under pixi by design and run from a `training/requirements.txt` venv.
+- Since ADR-725 the engine suite carries no dynamics or MJX tests; the
+  trainer's own tests (`training/test_*.py`) run from a
+  `training/requirements.txt` venv.
 - There is one branch; the old `MJC` ref points at its merge and takes no
   commits.
 

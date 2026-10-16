@@ -1,6 +1,6 @@
 # PROVENANCE.md — Where Cadex's Code Comes From
 
-Verified against source: 2026-10-15
+Verified against source: 2026-10-16
 
 Cadex is not written from scratch. It is a **derivative work of a large
 free-software project, FreeCAD**, carrying the design lessons of two more
@@ -24,22 +24,22 @@ detail. The shell's ledger is history now:
 | [Blender](https://projects.blender.org/blender/blender) | the shell, until it was deleted (ADR-498) — nothing of it remains | GPL-2.0-or-later |
 | VibeCAD (ours, predecessor) | the scripted-modeling engine inside `src/Mod/cadex/` | LGPL-2.1-or-later |
 
-Cadex adds roughly **220,000 lines** of its own, or about **118,000** if
-you do not count its suites:
+Cadex adds roughly **143,000 lines** of its own, or about **135,000** if
+you do not count its suites (cut to contracts by ADR-725):
 
 | Ours | Lines | Where |
 |---|---|---|
-| the engine, Python | 80,255 | `src/Mod/cadex/**/*.py`, suites excluded |
-| the engine's suites | 70,739 | `src/Mod/cadex/cadex_tests/*.py` |
+| the engine, Python | 90,813 | `src/Mod/cadex/**/*.py`, suites excluded |
+| the engine's suites | 6,362 | `src/Mod/cadex/cadex_tests/*.py` |
 | the engine, C++ | 1,032 | `CadexGeometryWorker.cpp` |
-| the CLI, the MCP server and the dashboard server | 21,186 | `cli/cadex_cli/*.py` (ADR-061) |
-| the CLI's suites | 30,960 | `cli/tests/*.py` |
-| the dashboard pages | 4,002 | `cli/cadex_cli/review_static/` JS, CSS and HTML, vendored three.js excluded |
-| the offboard trainer | 4,493 | `training/` (`*.py`, `*.sh`) — **not part of the product** (§5) |
+| the CLI, the MCP server and the dashboard server | 22,789 | `cli/cadex_cli/*.py` (ADR-061) |
+| the CLI's suites | 2,413 | `cli/tests/*.py` |
+| the dashboard pages | 6,979 | `cli/cadex_cli/review_static/` JS, CSS and HTML, vendored three.js excluded |
+| the offboard trainer | 6,074 | `training/` (`*.py`, `*.sh`) — **not part of the product** (§5) |
 | the offboard analysis | 6,986 | `analysis/*.py` — **not part of the product** (§5) |
 
 Everything else in this repository, which is the overwhelming majority of
-it, belongs to FreeCAD. Measured 2026-10-10 with `wc -l` over the tracked
+it, belongs to FreeCAD. Measured 2026-10-16 with `wc -l` over the tracked
 files `git ls-files` lists for each row; these numbers drift as the trees
 grow, so treat the date as part of the claim.
 
@@ -169,17 +169,20 @@ BREP, so `<inertial>` gets exact `GProp_GProps` mass properties.
 `training/cadex_train.py` is `[Cadex-new]`, LGPL-2.1-or-later like the rest
 of the engine, and **it ships in nothing**. CMake never installs it, no
 payload carries it, and it is copied by hand to a machine with a GPU
-(ADR-084). Its four dependencies — `jax`, `mujoco`, `mujoco-mjx`, `numpy` —
-are pinned in `training/requirements.txt` and installed into a venv on that
-machine. None of them is in `pixi.toml`, none is in the payload, and a test
-asserts that no `jax` or `mjx` reaches either.
+(ADR-084). Its seven dependencies — `jax`, `mujoco`, `mujoco-mjx`, `numpy`,
+and since ADR-712 `brax`, `flax` and `optax` — are pinned in
+`training/requirements.txt` and installed into a venv on that machine. None
+of them but `mujoco` and `numpy` is in `pixi.toml` or the payload; tests
+assert that no `jax` or `mjx` is in `pixi.toml` or under `src/Mod/cadex`
+(`test_offboard_boundaries.py`, `test_engine_purity_guardrails.py`), and
+nothing checks a staged payload for them.
 
 `analysis/` is the second tree under that contract (ADR-141, ADR-142,
 ADR-143) and is `[Cadex-new]`, LGPL-2.1-or-later, shipping in nothing on the
 same terms. Its dependencies are **still exactly three** — `numpy`, `scipy`,
 `mujoco` — pinned in `analysis/requirements.txt` and installed into a venv;
-none is in `pixi.toml`, and `test_analysis_stress` asserts that no CMake rule
-references the tree and that nothing from it reaches a staged payload. S2
+none is in `pixi.toml`, and `test_offboard_boundaries.py` asserts that, that
+the pins are exact, and that no CMake rule references the tree. S2
 kept that count by writing its own marching tetrahedra rather than taking
 `scikit-image` for one function (ADR-143).
 
@@ -211,8 +214,8 @@ CMake installs it and the payload carries it. It costs no new payload
 dependency, because `numpy` and `scipy` were already there. It is a **second
 implementation** of `analysis/cadex_stress.py`'s numeric core rather than a
 copy of it, written that way because `analysis/` may not import the engine
-and the engine may not import `analysis/`; a test solves the same benchmark
-through both and requires them to agree. Nothing else crossed: topology
+and the engine may not import `analysis/`. A test solved the same benchmark
+through both and required them to agree until ADR-725 deleted it. Nothing else crossed: topology
 optimisation, refinement sweeps, CalculiX and rollout-measured load cases all
 stay offboard.
 
@@ -757,8 +760,9 @@ construction through ordinary part-domain recipes. Only this stroke, ratio,
 voltage and S-switch variant is accepted. Extension must be finite within
 [0,50] mm. `.spec` carries source links, the older-CAD discrepancy, distinct
 qualified operating points, switch limitations and the omitted details above.
-The library suite checks actual worker BREP bore surfaces, bounds and 180
-canonical/placed material probes, plus publishing through cadexd. No source
+The library suite (deleted by ADR-725) checked actual worker BREP bore
+surfaces, bounds and 180 canonical/placed material probes, plus publishing
+through cadexd. No source
 CAD, artwork or code is redistributed; no dependency or dynamics API added.
 
 ## 8e. Solenoid 412 source and partial geometry audit `[Cadex-new, ADR-208]`
@@ -948,11 +952,11 @@ with the opposing ring at all four tilts (16 nominal shoulder checks).
 Qualification-stage packaged lifecycle/library baseline: 76 passed, no skips, 16.23 s.
 That audit needed no engine-source edits, build, staging or full engine suite;
 the baseline is not packaged joint verification.
-This establishes the stated approximation only. Delivery tests in
-`test_library.py` exercise the recipe through the actual part worker, including
-canonical/placed interfaces, analytic volumes, shoulder clearances and
-material/void probes at four tilts, plus cadexd publication and discovery.
-The commands for delivery verification are the full engine suite,
+This establishes the stated approximation only. Delivery tests (deleted
+by ADR-725) exercised the recipe through the actual
+part worker, including canonical/placed interfaces, analytic volumes, shoulder
+clearances and material/void probes at four tilts, plus cadexd publication and
+discovery. The commands for delivery verification were the full engine suite,
 `pixi run build-engine`, completed `pixi run stage-engine`, then the packaged
 lifecycle/library gate; ADR-211 records the result. Full L3 and the solenoid
 interface gaps remain open.
@@ -990,19 +994,19 @@ tip and root arcs into one counter-clockwise polygon, and extrudes the face;
 below the base circle the flank is a radial line. Root fillets, tip relief,
 backlash, profile shift and helix are omitted, and no density, strength or
 torque rating is supplied. Tip and root vertices lie exactly on their
-circles, so the real-kernel test measures the standard's diameters from the
+circles, so the real-kernel test measured the standard's diameters from the
 built solid's vertices rather than from the recipe.
 
-**Reproduce and result.** `test_gear_real_kernel_diameters_and_volumes`
-builds m2z20 (bore 6), m2z8, m1z60 (bore 4) and m1z6 gears plus m2z10 and
+**Reproduce and result.** A real-kernel test (deleted by ADR-725; its
+result stands as recorded in ADR-233) built m2z20 (bore 6), m2z8, m1z60 (bore 4) and m1z6 gears plus m2z10 and
 m1.5z4 racks through the actual part worker: each is one valid solid, tip
 and root radii match m(z+2)/2 and m(z−2.5)/2 within 1e-7, the volume lies
 between the root and tip cylinders, the bore is the only cylindrical
 surface, pitch-circle probes bracket the π·m/2 thickness, the rack pitch is
 π·m and its tooth height 2.25 m, and the rack volume equals the exact
 trapezoid sum. Placed instances keep their volume. cadexd publication of
-canonical and placed gear and rack outputs is in
-`test_the_library_builds_on_the_real_kernel`; ADR-233 records the gates.
+canonical and placed gear and rack outputs was tested the same way; ADR-233
+records the gates.
 
 **Rack and pinion (ADR-234).** `lib.rack_and_pinion` composes the two
 values above with no new profile: centre distance = pinion pitch radius
@@ -1010,10 +1014,10 @@ plus a backlash shift of `backlash / (2 tan 20°)` (ISO 53's pressure angle;
 the shift is the standard relation between a radial adjustment and the
 circumferential play it opens, not a vendor number), travel per revolution
 π·m·z, root clearance 0.25 m plus the shift on both sides.
-`test_rack_and_pinion_real_kernel_mesh_and_clearance` measures on the built
-solids, at nine phases for three configurations, zero common volume, both
+A real-kernel test (deleted by ADR-725; ADR-234 records the result) measured
+on the built solids, at nine phases for three configurations, zero common volume, both
 root clearances, and a flank gap of `backlash·cos 20°/2` within the chord
-sag; its negative controls measure a half-pitch collision and the
+sag; its negative controls measured a half-pitch collision and the
 interference of an unshifted 12-tooth pinion, so the undercut warning in
 `spec["approximate"]` is backed by a number (0.061 mm³ at m2z12r10, face
 width 8) rather than a citation.

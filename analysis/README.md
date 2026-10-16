@@ -1,13 +1,13 @@
 # analysis/ — offboard structural analysis
 
-Verified against source: 2026-10-10. Provenance: `[Cadex-new]`. See
+Verified against source: 2026-10-16. Provenance: `[Cadex-new]`. See
 `docs/STRUCTURAL.md` slices S0–S4, ADR-141, ADR-142, ADR-143, ADR-146 and
 ADR-147.
 
 This directory is **not part of the engine**. CMake never installs it, it is
 in no payload, and nothing in it enters `pixi.toml` —
-`test_analysis_stress.py` asserts all three, the same way
-`test_dynamics_policy_trainer` asserts them for `training/`.
+`src/Mod/cadex/cadex_tests/test_offboard_boundaries.py` asserts all three,
+for this tree and for `training/` alike.
 
 It is the second tree to live at the repository root under the ADR-084
 contract, and it is here for the same reason the trainer is: it is a thing
@@ -124,14 +124,13 @@ pixi run python analysis/skeleton.py --self-check --out ./fit \
     --project ./bracket
 ```
 
-The suites are `src/Mod/cadex/cadex_tests/test_analysis_stress.py` (S0),
-`test_analysis_search.py` (S1), `test_analysis_topology.py` (S2 and S4a) and
-`test_analysis_skeleton.py` (S4b–d), and all four run with
-`pixi run test-engine`. numpy, scipy, mujoco and `ccx` are all
-in the pixi environment, so the numeric half really runs there; S1 drives a
-real project through the real CLI and S2's round trip drives a real cadexd
-child. They skip cleanly where a dependency or a built engine is absent, and
-are written to run from either interpreter.
+The per-slice suites (S0–S4) were deleted with ADR-725; what a suite still
+holds is the boundary (`test_offboard_boundaries.py`: the tree's place, its
+pins, its imports, the GPL rule and CalculiX as a subprocess). Behaviour is
+checked by running it: the `--self-check` of `cadex_stress.py`,
+`calculix.py`, `topology.py` and `skeleton.py`. numpy, scipy,
+mujoco and `ccx` are all in the pixi environment, so the numeric half runs
+there as well as in the venv.
 
 ## Carving a blank (S2)
 
@@ -466,8 +465,9 @@ It looks like reinventing a wheel. The reasons it is not, measured:
   stays outside the engine: topology optimisation, refinement sweeps,
   CalculiX and rollout-measured load cases are all offboard and staying that
   way. `part.stress` is a *second implementation* of this tree's numeric
-  core, not an import of it — neither side may import the other, and a test
-  solves the same cantilever through both and requires them to agree.
+  core, not an import of it — neither side may import the other. The
+  cantilever agreement between the two was test-held until ADR-725 and is
+  no longer checked.
 - It builds **no button**. ADR-084 already answered the general form of this
   question for training: the agent authors, dispatches and declares; the
   human reads a viewport and judges. A search reports a front; **it never

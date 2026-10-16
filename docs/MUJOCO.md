@@ -55,7 +55,7 @@ same schema needs:
 - no change to the shell's assistant package at all
 
 The entire cost of getting dynamics onto the screen is engine-side, behind
-a contract that already exists and is already test-pinned. That is an
+a contract that already exists. That is an
 unusually cheap seam, and it is the reason to do this now rather than after
 Phase 11 or 12. The same seam carries the whole arc: a *policy rollout* is
 also just a trace.
@@ -132,8 +132,7 @@ both mobilities. A larger joint rank is a loop whose closing axis would have
 to tilt — over-constrained on the bench, floppy in MuJoCo — and is refused
 as `overconstrained_loop`, naming the closure and pointing at a ball end. A
 drive on a coordinate the loops lock (a pinned triangle is a truss) is
-refused as `actuator_locked_by_loop`. Measured in
-`test_dynamics_linkages.py`: a position servo on the crank of a Grashof
+refused as `actuator_locked_by_loop`. Measured (ADR-593): a position servo on the crank of a Grashof
 four-bar (200/80/220/120 mm) turns it 450° and the rocker stays within
 0.01 mm of the circle-intersection answer at every frame; a slider-crank
 (80/200 mm) sweeps its full 160 mm stroke within 0.01 mm of
@@ -199,7 +198,7 @@ residual was 0.0061 mm, and the dynamics evidence now carries it beside
 
 **Machine drives (ADR-640..645, 2026-10-10).** Four refusals that stopped
 a printer, a router, a loader and a tractor hitch are gone, each measured
-in `cadex_tests/test_dynamics_machines.py` and on three proof projects.
+on fixtures and on three proof projects.
 
 * **A slider on a loop.** Breadth-first by joint order still builds every
   tree it always built; only a graph that would close a loop on a slider or
@@ -307,8 +306,8 @@ refused (`terrain_dip_needs_heightfield`), as is a step down off a slope's
 high end, where the ramp's leaning end face would stand proud
 (`terrain_step_off_slope`). The ground is the highest box top over a point,
 or the plane (`terrain_box_ground_mm`), which is what MuJoCo's ray meets
-(tested to 0.001 mm on 165 points), and what the height scan reads in the
-engine, the trainer and the reference runner. Measured on the cat's own
+(to 0.001 mm on 165 points), and what the height scan reads in the
+engine and the trainer. Measured on the cat's own
 rig (the f1-g1 model, 27 actuators, random position targets across each
 action's range, 24 starts on bumps, step edges and ramps at up to 3 m/s,
 300 control steps, MJX 3.10.0 on CPU): the plane and the boxes both stay
@@ -316,7 +315,7 @@ finite with peak joint speed 39 and 48 rad/s, the heightfield stays finite
 but peaks at 179 rad/s; stock MuJoCo peaks at 39–45 on all three. ADR-714's
 block and arm under random ±0.8 N·m: 3 of 32 MJX envs non-finite on the
 heightfield, 0 of 32 on the boxes, and the trainer trains on the box course
-(`test_the_trainer_trains_with_the_critic_reading_the_scan`). The box course
+(ADR-716). The box course
 is also cheaper in MJX than the heightfield (134 s against 338 s for that
 cat run; 82 s on the plane), so ADR-714's contact-cost argument did not
 hold.
@@ -332,7 +331,8 @@ steps and slopes along x until the extent ends, each signed down while the
 course is above z = 0 and up while below, so a long course climbs and
 descends; then one to `bumps` bumps. Every course is validated like a listed
 one. Course 0 is what the descriptor's `features` and `boxes` describe and
-what the model, the stock runner, `rollout_policy` and evaluation stand on.
+what the model and `rollout_policy` stand on; evaluation draws its own
+(ADR-718, below).
 The descriptor's `pool` carries every course as features, its lowest and
 highest point and its box count, and `slots` the fullest course's count: the
 model has that many `environment/terrain/<i>` boxes, the ones course 0 does
@@ -351,11 +351,11 @@ converts no unit itself. Measured under MJX: a block
 dropped on each of six pooled courses rests 10 mm above that course's own
 ground, so what MJX collides with is what the scan reads. The policy header
 records `training.terrain` (mode, the pool algorithm, the bundle's, the
-course count). Stock MuJoCo's `mj_ray` cannot check a re-placed course:
-it culls static geoms with the bounding-volume tree built at compile, so
-the test compiles course *k* as a listed course and compares geoms instead.
-Still to come in W1: the course in the rollout and the dashboard, and the
-proof on a second robot.
+course count). Stock MuJoCo's `mj_ray` cannot check a re-placed course: it
+culls static geoms with the bounding-volume tree built at compile, so
+ADR-717 checked each course by compiling it as a listed course and
+comparing geoms. Still to come: a rollout stands on course 0 only, the
+dashboard does not draw the course, and no second robot has crossed one.
 
 **Turning commands and command tracking (ADR-721, 2026-10-16).** A goal
 of kind `yaw_rate` is the commanded turning rate of the floating base, in
@@ -367,8 +367,8 @@ family reads a floating base against the commands in force at every frame:
 `speed_error_rms_mm_s` and `yaw_rate_error_rms_deg_s` (centred 0.5 s
 window, frames past 1 s and not within 0.5 s after any command change) and
 `reversal_heading_error_deg_max` (a held yaw-rate command that turns the
-commanded heading 180°, judged when it has). The trainer's host draw and
-the reference runner follow the same `GOAL_SEQUENCE_ALGORITHM`.
+commanded heading 180°, judged when it has). The trainer's host draw
+follows the same `GOAL_SEQUENCE_ALGORITHM`.
 
 **Appendage predicates (ADR-722, 2026-10-16).** `assembly.success(...,
 appendage=[root, ..., last])` names a chain that hangs from the base and is
@@ -410,9 +410,9 @@ bilinearly and held at the edge, a box course's highest box top (ADR-716),
 or the plane at z = 0. It is no sensor:
 the bundle's `scans` section names the body by its index and states the
 grid, and the channels come last in every vector, after a reference's
-tracking channels. The engine (`height_scan_values`), the trainer
-(`height_scan_vector`, on MJX's `xpos`/`xmat` and the model's
-`hfield_data`) and the stock-MuJoCo reference runner each compute it. It
+tracking channels. The engine (`height_scan_values`) and the trainer
+(`height_scan_vector`, on MJX's `xpos`/`xmat` and the course's own ground)
+each compute it. It
 must be privileged (orun7 O5): nothing on the robot maps terrain, so the
 critic reads it and the actor never does.
 
@@ -549,7 +549,7 @@ Ranked by how quietly they fail.
 
 1. ~~**Units**~~ (§3.2). **Handled in M2**, which wrote the test before the
    feature: millimetres at the surface, one conversion site in the pure
-   module, `test_dynamics_units.py`. **M3 and M4 were each the predicted
+   module. **M3 and M4 were each the predicted
    regression and it held both times.** M3's contact parameters were named
    as the likeliest place a second conversion site would appear and none
    did; M4 was the harder case and it was answered in the *parameter names*
@@ -558,8 +558,7 @@ Ranked by how quietly they fail.
    `control_deg`/`control_mm`, `stiffness_nmm_per_deg`/`stiffness_n_per_mm`,
    `armature_kgmm2`/`armature_kg` and five more — and passing the wrong one
    is a refusal rather than a factor of five and a half million. All six M4
-   conversions were written into `test_dynamics_units.py` before they had a
-   caller, and the worker forwards actuator parameters without touching a
+   conversions were tested before they had a caller, and the worker forwards actuator parameters without touching a
    number, which it can because they come off the graph and there is nothing
    to read out of FreeCAD for a motor.
    **M5 was the third payment and it held again**, and this time the answer
@@ -578,9 +577,8 @@ Ranked by how quietly they fail.
    conversion is one number computed in `CadexDynamics` and emitted into the
    bundle as a per-channel `scale`, so the trainer *multiplies* rather than
    converts, which is the only shape of the operation that cannot be
-   performed backwards. The four inverse conversions went into
-   `test_dynamics_units.py` before they had a caller and were committed
-   failing. `angle_degrees` is the one that matters: every other conversion
+   performed backwards. The four inverse conversions were tested before
+   they had a caller, and committed failing. `angle_degrees` is the one that matters: every other conversion
    on this boundary is a power of ten, so getting one wrong moves a decimal
    point and *looks* wrong, while 57.29578 looks like a mechanism.
    **M7 was the fifth payment, and it cost nothing.** The direction was new
@@ -592,19 +590,17 @@ Ranked by how quietly they fail.
    mechanism, so the numbers come from a torque limit rather than from the
    trainer. What leaves the forward pass is already in newton-millimetres,
    and the only conversion is the `clamp then × scale` `evaluate_episode`
-   has performed since M6. **Zero new conversion sites**, and
-   `test_dynamics_units`'s existing regex now greps `training/cadex_train.py`
-   too, so one appearing later is a test failure rather than a silent factor.
+   has performed since M6. **Zero new conversion sites.**
    **M8 was the sixth payment and it cost nothing again.** The same action
    vector now reaches a *trace* as well as `data.ctrl`, and there is no new
    arithmetic on either path: the action goes through the `clamp then × scale`
    `evaluate_episode` has performed since M6, and the pose goes through
    `vector_mm` and `quaternion_xyzw_from_wxyz` — the same two calls `simulate`
-   makes, in the one module where the factors are allowed to live. It needed
-   no new test to stay true: `_NO_CONVERSION_MODULES` already covers both
-   halves of the worker and the API, so a conversion appearing in the
-   rollout's worker half is already a failure. Six payments, six holds; the
-   entry can be considered settled unless a new direction appears.
+   makes, in the one module where the factors are allowed to live. Six
+   payments, six holds; the entry can be considered settled unless a new
+   direction appears. **Since ADR-725 no test greps for a second
+   conversion site**: the rule (one site, in `CadexDynamics.py`; a per-channel
+   `scale` the trainer multiplies by) holds by review.
 
 2. ~~**Convexity.**~~ **Handled in M3** (ADR-079), and it needed *two*
    measurements rather than the one this list assumed. Concavity is the
@@ -942,9 +938,10 @@ Ranked by how quietly they fail.
     **What to do:** read the commands, not only the trajectory — each
     rollout frame's `actuator_commands`, its `actuator_efforts` against the
     channel's `effort_low`/`effort_high` (ADR-694; for a position drive the
-    command is a setpoint, so only the effort shows a torque clamp), or
-    `compare.py`'s torque columns (the shell's panel that took one glance
-    went with the shell, ADR-498).
+    command is a setpoint, so only the effort shows a torque clamp), drawn
+    per motor by the dashboard's Activations editor (ADR-727), and bounded
+    in a spec by `effort_clamp_share_max` and `effort_rms_rated_ratio_max`
+    (ADR-704, ADR-707).
     Treat
     "the reward went up" and "the mechanism is doing something a machine
     could do" as two separate claims, and check the second one before
@@ -1066,9 +1063,9 @@ Ranked by how quietly they fail.
     reward that climbs while episode length falls is this hazard happening
     live, and M9b's 170 → 30 would have been visible while it happened.
     **What to do:** never install, rank or stop on the trainer's reward.
-    Play every checkpoint and install by **survival** — `compare.py` is
-    seconds on a laptop and needs no GPU. Play it against **the run's own
-    bundle** (`--task`), because a rebuild replaces `script_artifacts/` and
+    Play every checkpoint and install by **survival** or by the spec
+    (`cadex evaluate`) — seconds on a laptop, no GPU. Play it against **the
+    run's own bundle**, because a rebuild replaces `script_artifacts/` and
     the newest bundle may be a different task entirely. And treat
     `<out>.best.cxpolicy` as a filename, not a verdict: early in a run it can
     be the untrained network scoring well by standing still.
@@ -1110,16 +1107,15 @@ Ranked by how quietly they fail.
     agreement between the two is not available on a contacting biped at all
     and never was — a 1e-7 nudge inside *stock MuJoCo alone* separates just
     as fast — so the two are comparable statistically and in no other way.
-    The instrument is `~/cdx-mjc/mjx_agreement.py`; the guarantee is
-    `test_dynamics_mjx_agreement.py`, and it fails if any of this stops
-    being true.
+    The instrument is `~/cdx-mjc/mjx_agreement.py`. The test that held
+    this went with ADR-725, so re-measure it on a MuJoCo bump.
     **A third number to watch, beside reward and episode length:** mean
     exploration σ (`action_std`, ADR-103), on the stderr line, in
-    `progress.json` and in `remote_train.sh watch`. The loss subtracts
-    `--entropy` times an entropy linear in `log_std`, so nothing bounds it
-    upwards; a σ that has walked off `--initial-std` is a run whose rollouts
-    and whose installable mean policy are no longer the same policy.
-20. **MJX has no contact function for four geom type pairs, so a model
+    `progress.json` and in `remote_train.sh watch`. Nothing but the loss
+    bounds it; a σ that has walked well off its start is a run whose
+    rollouts and whose installable mean policy are no longer the same
+    policy.
+20. **MJX has no contact function for six geom type pairs, so a model
     every engine check accepts can still be untrainable** (ADR-281).
     Measured on the `ot4-mix52` walk: an agent-authored slider-crank gave
     the frame a `cylinder` collision rail and the coupler a `box`, the two
@@ -1128,8 +1124,9 @@ Ranked by how quietly they fail.
     not implemented` 2.27 s into the training leg — after the assembly
     solved, the MJCF exported, the pose held to 0.0015 mm and the rollout
     ran. Stock MuJoCo simulates that contact; the limit is the JAX
-    backend's. The four are **box/cylinder, cylinder/mesh, box/ellipsoid,
-    ellipsoid/mesh**. `assembly.task` now refuses them by name
+    backend's. The six are **box/cylinder, cylinder/mesh, box/ellipsoid,
+    ellipsoid/mesh**, and on a heightfield course **cylinder/hfield and
+    ellipsoid/hfield** (ADR-714). `assembly.task` now refuses them by name
     (`mjx_unsupported_collision_pair`), because a task is only ever read by
     the trainer and the author is still there when it is declared; nothing
     else is refused, and a cylinder stays legal on a model nobody trains.
@@ -1157,8 +1154,7 @@ Ranked by how quietly they fail.
     the design reported zero failing checks. The worker now resolves the
     native slot by the component its reference names; what caught it was
     composing the exported body tree down to world and comparing it with the
-    solved placements, which is what `test_dynamics_connector_sides_live.py`
-    does and what no fixture built forwards ever could.
+    solved placements, which no fixture built forwards ever could.
 22. **A light joint's stop is a weak spring, and a bench at standing load
     does not show it** (ADR-724). MuJoCo's joint limit is a soft constraint
     whose default `solreflimit` (0.02 s, damping ratio 1) scales with the
@@ -1182,8 +1178,8 @@ Ranked by how quietly they fail.
   are quoted. The whole conversion lives in `CadexDynamics.py` and nowhere
   else: the split rule is that the pure module does every arithmetic
   operation *including every unit conversion*, and the worker does every
-  FreeCAD read and nothing else. `test_dynamics_units.py` was written before
-  the feature, per §3.2.
+  FreeCAD read and nothing else. Its test was written before the feature,
+  per §3.2.
 - ~~Does dynamics extend `api.simulation` or become a sibling
   `api.dynamics`?~~ — answered by M2 (ADR-077): **a sibling authoring
   surface, sharing the output type.** Not a compromise but a forced move —
@@ -1430,8 +1426,8 @@ a checkpoint by what it did", as a command.
    The gap between the best iteration and the current one is the stopping
    decision.
 
-8b. **Before dispatching, check that the box's trainer is the one the tests
-   pinned.** `remote_train.sh` copies a bundle and a model and runs the
+8b. **Before dispatching, check that the box's trainer is the one this
+   checkout has.** `remote_train.sh` copies a bundle and a model and runs the
    *box's own checkout* of `training/cadex_train.py` — so a trainer that
    predates a surface addition silently ignores the new fields while
    recording the new algorithm string in the policy header, and nothing
@@ -1457,7 +1453,10 @@ a checkpoint by what it did", as a command.
    catch hazard 15 without a rebuild. Watching two policies *animate* at
    once is not available and should not be faked: ADR-077 is exactly one
    simulation per script, so the numbers compare side by side and the
-   animations do not.
+   animations do not. In the product today, a local run's
+   `--checkpoint-every` rolls each checkpoint out through the engine while
+   it trains (ADR-544) and the dashboard plays them; `cadex evaluate`
+   judges the one you choose against the spec.
 
 11. **Bring it home through `put_asset`.** The digest is required and never
    inferred: `assembly.policy` names a policy by file *and* SHA-256 because
@@ -1472,13 +1471,12 @@ a checkpoint by what it did", as a command.
    length says whether it terminated early, and pelvis height, tilt and drift
    over the episode say what "it stands" actually meant.
 
-13. **Read the commands before you believe any of it** (ADR-096). The
-    Blender shell's Policy Outputs panel drew each actuator's command
-    against its own limit; it went with the shell (ADR-498) and the
-    dashboard has no counterpart, so read each rollout frame's
-    `actuator_commands` against the actuator's limit and its
-    `actuator_efforts` against `effort_low`/`effort_high` (ADR-694), or
-    `compare.py`'s peak/mean torque columns. The
+13. **Read the commands before you believe any of it** (ADR-096). Each
+    rollout frame carries `actuator_commands`, `joint_positions`,
+    `joint_velocities` and `actuator_efforts` against the channel's
+    `effort_low`/`effort_high` (ADR-694), and the dashboard's Activations
+    editor draws a gauge per motor from them and paints the parts each
+    motor moves by how hard it works (ADR-727). The
     trajectory says what the mechanism did; this says what the policy
     decided, and the two can disagree in a way only this one shows —
     hazard 15 is a policy that plays as a clean stand while holding three
@@ -1563,10 +1561,8 @@ which no MuJoCo sensor reads:
 
 The bundle carries these rows in `commands`, after the goal channels, so a
 task without them keeps its digest and a task that gains them keeps every
-other channel's address. `CadexDynamics.evaluate_episode`, the trainer and
-the stock-MuJoCo reference runner each compute them from the commands they
-issued, and `test_dynamics_command_channel` holds the three to one rule.
-They do not count against the 128-channel sensor cap: one per actuator, so
+other channel's address. `CadexDynamics.evaluate_episode` and the trainer
+each compute them from the commands they issued. They do not count against the 128-channel sensor cap: one per actuator, so
 the action list bounds them.
 
 ### Saying "foot down": the contact channel (ADR-698)
@@ -1583,8 +1579,7 @@ swing, and foot slip is a foot's speed while it is down.
 - **The file carries it.** The export draws an invisible box site round the
   component's colliding shapes, from each shape's bounding sphere, and puts
   a `touch` sensor on it. Stock MuJoCo and MJX compute the force; the flag
-  is one comparison the engine, the trainer and the reference reader each
-  make. A component with no collision shape is refused.
+  is one comparison the engine and the trainer each make. A component with no collision shape is refused.
 - **It is privileged.** No sensor in the library measures foot contact, so
   the reward, the terminations and the critic read it and the policy does
   not. A contact schedule term is then `paw_down` (or `1 - paw_down` in
@@ -1597,8 +1592,8 @@ swing, and foot slip is a foot's speed while it is down.
   role="privileged")`** gives `knee_acc`, the joint's `qacc` after the
   control step's last solver step, in deg/s^2 (mm/s^2 on a slider). MuJoCo
   has no sensor for it, so the bundle states the degree of freedom in an
-  `accelerations` section after the command channels, and the engine, MJX
-  and the reference runner each read their own `qacc`. It is the quantity
+  `accelerations` section after the command channels, and the engine and
+  the trainer each read their own simulator's `qacc`. It is the quantity
   MuJoCo Playground's locomotion recipes penalise. It must be privileged:
   nothing on the robot measures it.
 - **Every standard regulariser is then a reward term**, each on a channel a
@@ -1612,8 +1607,8 @@ swing, and foot slip is a foot's speed while it is down.
   | mechanical power, W | `-abs(knee_tau * knee_vel) * 1.745e-05` | `actuator_force`, `velocity` |
   | foot slip | `-sqrt(paw_vx**2 + paw_vy**2) * paw_down` | `component_linear_velocity`, `contact` |
 
-  `test_dynamics_acceleration_channel`'s `REGULARISED_TASK` writes all five
-  on one mechanism, holds each to its formula, and trains it.
+  ADR-699 wrote all five on one mechanism, held each to its formula, and
+  trained it.
 
 ### Showing a gait: the procedural reference (ADR-702)
 
@@ -1707,8 +1702,8 @@ reward=[api.reward("exp(-((q_knee_l - q_knee_l_ref)^2 + (q_hip_l - q_hip_l_ref)^
 ```
 
 The bundle carries the clip as a `tracking` table, one row per sample in
-each observation's own unit, so the engine, the trainer and the stock
-runner interpolate it and never convert. A test holds the three equal.
+each observation's own unit, so the engine and the trainer interpolate it
+and never convert.
 
 **Starting inside it (ADR-709).** An episode that starts at a standstill
 and is asked for 1 m/s at step 0 falls before it learns to stride (track-s1
@@ -1738,6 +1733,35 @@ lags a fast stride, the screen that counts is `--support inverse`
 stance feet carrying the base. It also says how much of the base wrench no
 foot can supply, which is how a reference that is not dynamically possible
 (a gallop whose body does not fall in flight) shows itself.
+
+### Off flat ground, and on command (ADR-714..722)
+
+§2 has the details; the order is:
+
+- **Train on boxes.** Declare the course `terrain={"form": "boxes",
+  "random": {...}}`: a pool of seeded courses the trainer re-draws per
+  episode (ADR-717). A heightfield is the default form and builds, but MJX
+  is unstable on it under driven motion (ADR-715), so it is for smooth
+  hills on a model nobody trains.
+- **Let the critic see the ground.** A privileged `height_scan` on the
+  trunk (ADR-715). The actor never reads it.
+- **Command the turn.** A `speed` goal and a `yaw_rate` goal, resampled in
+  the episode. `sequence=[...]` scripts the opening segments, so every
+  evaluation seed gets the same reversal (ADR-721).
+- **Judge it.** `falls`, `distance_made_good_mm`, `steps_crossed` and their
+  kin on a course, each seed on a held-out course of its own (ADR-718);
+  `speed_error_rms_mm_s`, `yaw_rate_error_rms_deg_s` and
+  `reversal_heading_error_deg_max` for the commands; the `appendage`
+  metrics for a tail (ADR-722).
+- **Stiffen a light stop** with `joint_dynamics(limit_time_constant_s=)`
+  before trusting a passive joint on rough ground (hazard 22, ADR-724).
+
+Two trainer options matter here. `--reward-floor 0` clips each step's
+reward at zero, as Playground's locomotion recipes do (ADR-700). A warm
+start (`--init-from`, with `--init-from-task-change` and
+`--init-from-parent-task` across a reward or disturbance change) cannot
+cross onto a course: `terrain` and the model are not keys a curriculum may
+move (`training/README.md`).
 
 ### What a good result looks like
 
@@ -1791,23 +1815,22 @@ every direction, before the first shove window even opens.
 
 The reward *function* is not the discrepancy: the trainer scores
 `reward_of(vector)` on the raw observation from the bundle's own expressions.
-Why the two disagree is an open question (§6) with three unverified
-candidates — MJX versus MuJoCo dynamics, sampled versus mean action, and the
-auto-reset batch mean not being an episode return. **The operational rule
-does not wait on that answer:**
+Why the two disagreed was §6's question, and ADR-103 closed it: most of the
+inversion was the evaluator compounding its own randomisation (the third
+bullet below). **The operational rule stands regardless:**
 
 > Judge a checkpoint by what it *did* when you played it, never by the number
-> the trainer printed. Install by **survival**. `compare.py` exists for this
-> and it takes seconds on a laptop.
+> the trainer printed. Install by **survival**, or by the spec: `cadex
+> evaluate` exists for this. (These runs used a project script,
+> `compare.py`.)
 
 Two corollaries, both learned by nearly being caught:
 
 * **Play a run against its own bundle, not the newest one.** A rebuild is
   keyed by script digest and replaces `script_artifacts/`, so a finished
   run's task can vanish locally while its checkpoints sit beside you.
-  `remote_train.sh train` rsyncs the bundle to the box, so
-  `sb1x:<work>/<run-id>/stand-task.json` is the copy that survives, and
-  `compare.py --task PATH` is how to use it.
+  `remote_train.sh train` rsyncs the bundle to the box, and `cadex train`
+  exports it into the run's own `--out`: that is the copy that survives.
 * **`<out>.best.cxpolicy` is best-by-reward, and early in a run it can be the
   untrained network** — which scores well by standing still before the
   disturbance distribution has bitten. Check its peak torque: a policy
@@ -1816,10 +1839,10 @@ Two corollaries, both learned by nearly being caught:
   applies the task's domain randomisation by multiplying **in place** into
   the model it is handed, and keeps no baseline — so an evaluator that loops
   episodes over one loaded model compounds every draw it has ever made, and
-  its last row is a different machine from its first. `compare.py` reloads
-  per episode, at four milliseconds against a two-second episode. **Play the
-  same file twice and check the row is the same**; it is a two-second test
-  and it is the one that found this.
+  its last row is a different machine from its first. Reload per episode:
+  four milliseconds against a two-second episode. **Play the same file
+  twice and check the row is the same**; it is a two-second check and it is
+  the one that found this.
 
 **One of the three candidates has since been eliminated, and a fourth found
 (ADR-101).** The trainer read the bundle's episode length and never used it,
@@ -1942,8 +1965,8 @@ the dashboard plots a run under `<project>/runs/<run>/`). Policy home through `p
 - **MJX implements no cylinder↔box collision pair.** The engine accepted a
   puck with the obvious cylinder collision and the trainer refused it at
   `mjx.put_model` (`NotImplementedError`). Box collision on the grounded
-  puck costs nothing. The engine does not currently warn at export time;
-  until it does, this paragraph is the warning.
+  puck costs nothing. Since ADR-281 `assembly.task` refuses the pair by
+  name (hazard 20).
 - **An overpowered tiny mechanism needs its spin-out guard sized against
   exploration, not physics.** 200 N·mm on an 8 g arm is α ≈ 9300 rad/s²:
   one σ-wide exploration action moves the rate ~3200 deg/s in a single
@@ -2003,15 +2026,15 @@ row below was actually run, and the numbers are this run's.
 | 1 | Ideation → design (parts as xscript) | your agent, through `cadex mcp` (ADR-538; `./cadex -p` when this row was run) | Works: §7b's rehearsal, three turns | the agent |
 | 2 | Assembly: joints, masses, actuator torque, sensors | the same script | Works | the agent |
 | 3 | MJCF export + task | any accepted rebuild | Works: `cadex export` rebuilt in **2.6 s** including verify and rollout. On 2026-09-06 it wrote only BREP outputs and the task JSON, model XML, policy receipt and rollout trace came back `"skipped": "not a BREP output"`, so the bundle had to be dug out of `script_artifacts/<revision>/attempt-<id>/outputs/`. **Closed the same day**: `cadex export` now copies every staged non-BREP output into `--out` under its staged filename and names it in the `--json` envelope; the trainer accepted the exported folder as its bundle unchanged (2 it × 8 envs, exit 0, task digest `602d62c1…`, 16 s wall). `docs/CLI.md` §3 | the agent, or a pipeline |
-| 4 | Training | On 2026-09-06 (morning): `.venv/bin/python training/cadex_train.py <bundle> --out … --iterations 200 --envs 64 --progress …` — works, 200 it × 64 envs in **22.5 s**, reward/step 5.24, witness error 3.2e-08, but the CLI agent has no shell and guessed the flags. **Closed the same day** (ADR-191): `cadex train --out DIR --iterations N --envs N --put` rebuilds, exports the bundle, runs the venv's trainer with its real flags and stores the policy, the receipt in the envelope as `training` and the stored sha256 as an `assets` row. `cli/tests/test_train.py` runs the real trainer on the toy task (1 it × 4 envs) and the engine's `put_asset` digests the result to the sha256 the trainer printed. `docs/CLI.md` §2 | the agent's caller, or a pipeline — one command, no flags to know |
+| 4 | Training | On 2026-09-06 (morning): `.venv/bin/python training/cadex_train.py <bundle> --out … --iterations 200 --envs 64 --progress …` — works, 200 it × 64 envs in **22.5 s**, reward/step 5.24, witness error 3.2e-08, but the CLI agent has no shell and guessed the flags. **Closed the same day** (ADR-191): `cadex train --out DIR --iterations N --envs N --put` rebuilds, exports the bundle, runs the venv's trainer with its real flags and stores the policy, the receipt in the envelope as `training` and the stored sha256 as an `assets` row; on the toy task (1 it × 4 envs) the engine's `put_asset` digested the result to the sha256 the trainer printed. `docs/CLI.md` §2 | the agent's caller, or a pipeline — one command, no flags to know |
 | 5 | Policy home | On 2026-09-06 (morning): `put_asset` over raw NDJSON (a 40-line scratch driver on the `cadexd_latency_integration.py` client) — works, 54 577 bytes, but not in the CLI tool surface. **Closed the same day** (ADR-190): `cadex asset --put walk.cxpolicy` for a pipeline, `put_asset` in the agent's tool surface for a turn. On a fresh scratch copy: `cadex export` → 2 it × 8 envs in **16.2 s** → `cadex asset --put` stored 28 053 bytes and returned the sha256 → `cadex script --set` with `weights="walk.cxpolicy"` and that digest accepted at `758ef975…` → the exported trace scored the untrained policy at **−297.4** total reward against the rehearsal policy's 1729.9. No staging path, no NDJSON driver, no human step. `docs/CLI.md` §2 | the agent, or a pipeline |
 | 6 | Verify + rollout | `cadex script --set` with the new `weights=` name and `sha256=` | Works: **1719.2** total reward, full 300-step horizon, against §7b's 1729.9 from a 400-iteration run | a person edits two lines; the agent could, through `edit_script` |
 | 7 | Review | the agent: `inspect scope=output`; a pipeline: the `policy` block of `assembly-simulation-trace.json`, which `cadex export` now copies into `--out` (row 3) | Works for the agent — asked to report the rollout, it read total reward 1719.23 and the five per-term totals through `inspect` unaided. A pipeline reads the same numbers from the exported trace: `total_reward` 1729.95 and the five `reward_totals` on the scratch copy, no staging path read | the agent, or a pipeline |
-| 8 | **Iterate** | `cadex params --set shove_n=0.20` | **Refused, exit 3**: the task digest moved (`602d62c1…` → `369a0dd5…`) and the declared policy no longer fits. Correct by ADR-088 — and it means the refusal also never writes the new bundle, so there is nothing to retrain against. Iterating that morning was six legs: edit the script to drop or re-point the policy → rebuild → dig out the bundle → train (`--init-from … --init-from-task-change`) → `put_asset` → re-declare. Three of the six were the person's. **Closed the same day** (ADR-192) with a script convention and no new `params` flag: the policy is declared behind a numeric switch (`policy_on`), so `cadex params --set policy_on=0 --set shove_n=0.20 --out sweep` is accepted (`set_params` never refuses a dropped output) and exports the bundle at `369a0dd5…`; `cadex train --put --init-from … --init-from-parent-task … --init-from-task-change "…"` retrains warm across the change (the ADR-161 pair, now carried by the dispatcher) — 2 it × 8 envs in **17.8 s** wall, iteration 0 already at +1.52 reward/step where a cold network sits near −0.95; the digest edit and `cadex script --set`; `cadex params --set policy_on=1 --out run2` verifies and rolls out. Trace: **127.8** total reward at 0.20 N after one warm toy step, against 1729.9 at 0.12 N for the 400-iteration policy — the comparison exists; row 9 is where it gets recorded. `cli/tests/test_train.py` runs the whole chain on the toy with the real trainer | the agent for the script, a pipeline for the four commands |
-| 9 | Compare and record | On 2026-09-06 (morning): nothing — no comparison, no `PROGRESS.md`, and the project directory was not a git repository. **Closed the same day** (ADR-194, on row 10's `PROGRESS.md`): a run's `total_reward` or `reward/step` is written **with its change against the last row that carried it** — delta, that run's digest, that run's value — so the comparison is one recorded row a reader does not assemble by eye; and accepted runs attempt a commit in project-root repositories (ownership and ignore rules: `docs/CLI.md`, **Project history depends on repository ownership**). Measured on the scratch copy: `cadex train --put` (2 it × 8 envs, 4.6 s of training, 20.9 s wall) initialised the repository and landed its row and commit; `cadex script --set` re-declaring the new policy landed `total_reward -293.4 (Δ -421.2 vs 2996fb73 at 127.8)` — a fresh 2-iteration policy against the ADR-192 warm one, on the same task — and a commit of exactly `PROGRESS.md`, `script.py`, `script.json` and the history entry (`git show --stat`). Two runs, two rows, two commits. `cli/tests/test_project_docs.py` pins the delta, the repository and the nested-work-tree refusal | the CLI |
-| 10 | Project as a codebase | On 2026-09-06 (morning): nothing — no `ARCHITECTURE.md`, `DECISIONS.md` or `PROGRESS.md`, nothing scaffolds them, nothing reads them on a visit. **Closed the same day** (ADR-193): the CLI scaffolds the three on the first visit (idempotent, never overwrites), pastes them into every turn's system prompt (bounded: architecture head, decisions and progress tails; ADR-265), lands a `PROGRESS.md` row after every accepted run with the revision, digest, what was done and the numbers the run produced (the trace's `total_reward`, the trainer's `reward_per_step`, wall time, sha256), and turns a turn's closing `DECISION:` lines into numbered `DECISIONS.md` entries. Domain docs are a documented convention (`docs/<subject>.md`). `cli/tests/test_project_docs.py` drives it against the engine and a scripted turn. `docs/CLI.md` §2. **Since ADR-538** nothing pastes the documents into a prompt or scrapes `DECISION:` lines — Cadex runs no turn; the agent a person brings reads them and writes `DECISIONS.md` and `docs/<subject>.md` itself | the CLI for the scaffold and the log; the agent for the decisions and notes, with its own file tools |
+| 8 | **Iterate** | `cadex params --set shove_n=0.20` | **Refused, exit 3**: the task digest moved (`602d62c1…` → `369a0dd5…`) and the declared policy no longer fits. Correct by ADR-088 — and it means the refusal also never writes the new bundle, so there is nothing to retrain against. Iterating that morning was six legs: edit the script to drop or re-point the policy → rebuild → dig out the bundle → train (`--init-from … --init-from-task-change`) → `put_asset` → re-declare. Three of the six were the person's. **Closed the same day** (ADR-192) with a script convention and no new `params` flag: the policy is declared behind a numeric switch (`policy_on`), so `cadex params --set policy_on=0 --set shove_n=0.20 --out sweep` is accepted (`set_params` never refuses a dropped output) and exports the bundle at `369a0dd5…`; `cadex train --put --init-from … --init-from-parent-task … --init-from-task-change "…"` retrains warm across the change (the ADR-161 pair, now carried by the dispatcher) — 2 it × 8 envs in **17.8 s** wall, iteration 0 already at +1.52 reward/step where a cold network sits near −0.95; the digest edit and `cadex script --set`; `cadex params --set policy_on=1 --out run2` verifies and rolls out. Trace: **127.8** total reward at 0.20 N after one warm toy step, against 1729.9 at 0.12 N for the 400-iteration policy — the comparison exists; row 9 is where it gets recorded | the agent for the script, a pipeline for the four commands |
+| 9 | Compare and record | On 2026-09-06 (morning): nothing — no comparison, no `PROGRESS.md`, and the project directory was not a git repository. **Closed the same day** (ADR-194, on row 10's `PROGRESS.md`): a run's `total_reward` or `reward/step` is written **with its change against the last row that carried it** — delta, that run's digest, that run's value — so the comparison is one recorded row a reader does not assemble by eye; and accepted runs attempt a commit in project-root repositories (ownership and ignore rules: `docs/CLI.md`, **Project history depends on repository ownership**). Measured on the scratch copy: `cadex train --put` (2 it × 8 envs, 4.6 s of training, 20.9 s wall) initialised the repository and landed its row and commit; `cadex script --set` re-declaring the new policy landed `total_reward -293.4 (Δ -421.2 vs 2996fb73 at 127.8)` — a fresh 2-iteration policy against the ADR-192 warm one, on the same task — and a commit of exactly `PROGRESS.md`, `script.py`, `script.json` and the history entry (`git show --stat`). Two runs, two rows, two commits | the CLI |
+| 10 | Project as a codebase | On 2026-09-06 (morning): nothing — no `ARCHITECTURE.md`, `DECISIONS.md` or `PROGRESS.md`, nothing scaffolds them, nothing reads them on a visit. **Closed the same day** (ADR-193): the CLI scaffolds the three on the first visit (idempotent, never overwrites), pastes them into every turn's system prompt (bounded: architecture head, decisions and progress tails; ADR-265), lands a `PROGRESS.md` row after every accepted run with the revision, digest, what was done and the numbers the run produced (the trace's `total_reward`, the trainer's `reward_per_step`, wall time, sha256), and turns a turn's closing `DECISION:` lines into numbered `DECISIONS.md` entries. Domain docs are a documented convention (`docs/<subject>.md`). `docs/CLI.md` §2. **Since ADR-538** nothing pastes the documents into a prompt or scrapes `DECISION:` lines — Cadex runs no turn; the agent a person brings reads them and writes `DECISIONS.md` and `docs/<subject>.md` itself | the CLI for the scaffold and the log; the agent for the decisions and notes, with its own file tools |
 | 11 | The same walk with the GUI attached | the same `cadex` commands from a terminal beside the open Blender file — **not** the in-app agent, which has only the Mesh tools (`--tools ""`, no shell, no file tool) | **Documented 2026-09-06** (ADR-201, `docs/CLI.md` §2) from the client code, no GUI launched: the CLI's `flock` is per command and released before the `PROGRESS.md` row and the commit; the shell takes no lock, so ownership is sequential by convention; stale shell mutations return `STALE_PROGRAM_REVISION` without adopting the new guard or replaying arguments (ADR-204); Rebuild Model or reopen (`load_post` → `queue_open`), review the refreshed source/values, then retry, never through the re-accept box. Same legs, same docs, same project-relative artifacts. Concurrent rebuilds and simultaneous acceptance are not serialized; sequential use remains required. The headless shell gate covers stale refusal and refresh recovery; no GUI was launched. **Moot since ADR-498**: there is no Blender file to attach; the dashboard beside a walk is read-only (ADR-537) and writes nothing | a person or a pipeline at the terminal; the in-app agent for design turns (today: the agent a person brings, through `cadex mcp`) |
-| 12 | The same walk with training on a remote machine | `training/remote_train.sh` (ADR-089) | **Scripted 2026-09-06** (ADR-200): `cadex train --remote` / `cadex walk --remote` run the train leg through `remote_train.sh train <bundle> <out> -- <the same flags>`, verify the returned policy against the receipt, and change nothing else — same `DIR/train` artifacts, same store, same `review.json`. Offline evidence only: `cli/tests/test_train.py` pins the command against the script's usage line and runs the leg end to end against a stand-in dispatcher (real engine, real store, three refusals). **Not executed**: no dispatch, the box's checkout untouched; B7 stays blocked. **A warm start travels since 2026-09-08** (ADR-268): the dispatcher lifts `--init-from` and `--init-from-parent-task` out of the trailing flags, copies both files into the run directory's `warm/` and re-points the flags, so an iterate has the same shape in both modes; tested against the real script with stand-in `ssh`/`rsync` | none; a person for `check` and the box's config |
+| 12 | The same walk with training on a remote machine | `training/remote_train.sh` (ADR-089) | **Scripted 2026-09-06** (ADR-200): `cadex train --remote` / `cadex walk --remote` run the train leg through `remote_train.sh train <bundle> <out> -- <the same flags>`, verify the returned policy against the receipt, and change nothing else — same `DIR/train` artifacts, same store, same `review.json`. Offline evidence only: the leg was run end to end against a stand-in dispatcher (real engine, real store, three refusals). **Not executed**: no dispatch, the box's checkout untouched; B7 stays blocked. **A warm start travels since 2026-09-08** (ADR-268): the dispatcher lifts `--init-from` and `--init-from-parent-task` out of the trailing flags, copies both files into the run directory's `warm/` and re-points the flags, so an iterate has the same shape in both modes; run against the real script with stand-in `ssh`/`rsync` | none; a person for `check` and the box's config |
 
 **One agent turn on top, to see the refusals today.** The same scratch
 project was given one `./cadex -p` turn (removed, ADR-538) asking it to retrain at toy scale,
@@ -2073,9 +2096,8 @@ left a third, so it is every export, not one).
 3. ~~**A training leg the agent can drive** (row 4).~~ **Done, 2026-09-06**
    (ADR-191, `cli/cadex_cli/train.py` and `__main__.py`, no protocol op):
    `cadex train` is the dispatcher — rebuild, export, the venv's trainer
-   with its flags pinned by name (a test reads them back out of the
-   trainer's own parser, so a rename there fails here), the receipt, and
-   with `--put` the policy in the store. Training stays offboard
+   with its flags by their real names, the receipt, and with `--put` the
+   policy in the store. Training stays offboard
    (ADR-084): the trainer is a subprocess under an interpreter the engine's
    environment does not have, and the CLI never creates a venv. The
    overlay now names `cadex train --out DIR --put` as the caller's one
@@ -2091,8 +2113,7 @@ left a third, so it is every export, not one).
    train` carries the curriculum pair (`--init-from-parent-task`,
    `--init-from-task-change`) so the retrain is warm across the change;
    the digest edit, `cadex script --set` and `cadex params --set
-   policy_on=1` close it. Measured on the scratch copy above and pinned
-   by a real-trainer test. Not taken: a `params --drop-policy` flag —
+   policy_on=1` close it. Measured on the scratch copy above. Not taken: a `params --drop-policy` flag —
    the refusal is the engine's and the switch is the script's, and a
    convention the agent can author is cheaper than an op it must be
    told about. What the convention cannot do is hide that a stored
@@ -2132,28 +2153,13 @@ caller edit the policy filename and digest between commands. The original
 §7b design also lives outside the repository. Neither is a reproducible
 starting point for a fresh machine by itself.
 
-The repo does carry a headless rehearsal, then in
-`cli/tests/test_train.py::test_iterate_blanks_the_policy_retrains_across_the_change_and_redeclares`
-(since ADR-563 split between `test_iterate_refuses_a_task_change_under_a_declared_policy_until_it_is_blanked`
-and `cli/tests/test_walk.py::test_the_walk_takes_the_toy_to_a_verified_rollout_and_iterates`):
-it builds a fresh plate-and-arm mechanism with the real kernel, exports the
-task, trains on CPU, installs and verifies the policy, exports a rollout,
-changes the reward weight, retrains and reviews both traces. Its test helper
-supplies the script and rewrites the policy declaration. This proves the
-legs, including the refusal of an incompatible incumbent policy; it does
-not exercise an agent design turn or a mechanism-independent walk command.
-
-Re-run against the committed CLI at `7dd3d045`: **117 passed in 85.76 s**,
-no skips, including the real trainer (1 iteration × 4 environments per run,
-CPU). The two rollouts completed 50 steps each, scoring **−27.1094** and
-**−55.3480**, with eight project commits and the rounded delta **−28.2** in
-`PROGRESS.md`. The reward weight doubled between tasks, so that delta is
-bookkeeping evidence, not a claim that one policy is better. Trainer-reported
-times were 1.28 s and 1.24 s; the whole suite took 86.26 s under an external
-850 s watchdog, with sampled process-group peak RSS **1.05 GB** under a
-3 GB stop limit. An isolated copy of committed `cli/` excluded pre-existing,
-uncommitted walk edits; the built engine and training venv were reused.
-No agent turn, GUI, remote run, build, or packaged gate was performed.
+The repo then carried a headless rehearsal of these legs as CLI tests: a
+fresh plate-and-arm mechanism built with the real kernel, the task
+exported, trained on CPU, the policy installed and verified, a rollout
+exported, the reward weight changed, retrained and both traces reviewed.
+Re-run at `7dd3d045` it passed with the real trainer (1 iteration × 4
+environments a run), scoring **−27.1094** and **−55.3480**. ADR-725 deleted
+those tests; `examples/lifecycle/` is the reproducible starting point now.
 
 **The entry point, 2026-09-06 (ADR-199).** `cadex walk --out
 <project>/runs/<name>` is the one command: the legs above as child `cadex`
@@ -2165,8 +2171,6 @@ reproduced the audit's numbers exactly (**−27.1094**, then **−55.3480** with
 `Δ -28.2` in `PROGRESS.md` across the doubled reward weight), and showed
 the two things the ADR fixed: the review lived only on stdout, and the
 legs' commits carried the policy twice over plus its `.best` checkpoint.
-`cli/tests/test_walk.py` now runs both walks with the real engine and
-trainer (31.8 s), the review committed and no checkpoint or trace tracked.
 The same entry point now also passes on a vertical linear carriage
 (ADR-203, `examples/lifecycle/`): 1 iteration × 4 CPU environments,
 13.52 s wall, a verified 50-step rollout and total reward −24159.1953563.

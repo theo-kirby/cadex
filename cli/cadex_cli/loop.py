@@ -96,8 +96,8 @@ END_STATES = ("finished", "collapsed", "failed", "stopped", "budget_exhausted",
 _RUN_NAME = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 
 #: Trainer settings beyond ``train.trainer_flags``, by the trainer's own flag
-#: names and types. ``test_loop.py`` reads them back out of the trainer's
-#: source, so a rename there fails here.
+#: names and types. No test reads them back out of the trainer's source since
+#: ADR-725, so rename a flag in both places.
 EXTRA_SETTINGS: dict[str, tuple[str, type]] = {
     "unroll": ("--unroll", int),
     "epochs": ("--epochs", int),

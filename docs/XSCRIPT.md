@@ -569,20 +569,18 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `resample_seconds=...` draws the goal again that often during the
   episode, on a whole number of control steps; omitted, it is held. The
   step a goal changes on is scored against the goal its action was taken
-  under. A task states at most one `speed` and one `point`, up to four
-  goals in all, and a goal may not share a channel name with an
-  observation. An episode played without a seed holds the middle of a
+  under. A task states up to four goals in all, and a goal may not share a
+  channel name with an observation. An episode played without a seed holds the middle of a
   range, or the point the tip already occupies.
   The goals are written into the bundle as `goal`, resolved to addresses
   and SI, beside `goal_algorithm`, which states the draw. **They continue a
   seed's stream after its shoves**, so a goal moves no reset and no shove a
   seed drew before. A task with no goal writes neither key and keeps the
   digest it had. **The trainer draws its goals by the same algorithm**, on
-  the host, as a pool of episodes from its own seed (`training/README.md`);
-  a test holds the two to the same numbers.
+  the host, as a pool of episodes from its own seed (`training/README.md`).
   **`assembly.gait(feet, gait="trot", speed_mm_s=...)` says what the motion
   should look like** (ADR-702, ADR-703), and goes to
-  `api.task(reference=...)`. `feet` is four foot components: left fore,
+  `assembly.task(reference=...)`. `feet` is four foot components: left fore,
   right fore, left hind, right hind. `gait` is one of `walk`, `trot`,
   `pace`, `canter`, `transverse_gallop`, `rotary_gallop`, `half_bound` and
   `bound`, or `offsets={"LF": .., "RF": .., "LH": .., "RH": ..}` (touch-down
@@ -604,8 +602,8 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `rh`. A step is scored against the reference where it lands, so
   `exp(-((q_knee - q_knee_ref) / 15)^2)` is a joint-tracking reward term. A
   name one of them would take is refused as `tracking_channel_clash`.
-  `assembly.task(..., reference_start="random")` starts each seeded episode
-  at a random sample of the stride instead (ADR-709): the clip's pose and
+  `assembly.task(..., reference_start="random")` (default `"phase0"`) starts
+  each seeded episode at a random sample of the stride (ADR-709): the clip's pose and
   velocity there, over the keyframe's ground point, with the clock at that
   phase. A reset variation composes on top, its velocities added.
   **`assembly.success(predicates, seeds=...)` says what the behaviour must
@@ -1042,7 +1040,7 @@ Three rules the library holds itself to:
 
 - **Interface-exact, cosmetically simple.** Hole patterns, flange heights,
   shaft positions and envelopes are the standard's or datasheet's numbers,
-  test-pinned with sources cited; threads and knurls are deliberately not
+  with sources cited; threads and knurls are deliberately not
   modelled — `lib.clearance_hole`/`tap_drill`/`insert_hole` carry the hole
   data instead. A number no datasheet dimensions is named in the spec's
   `approximate` list rather than passed off as measured.
@@ -1311,8 +1309,8 @@ the rack by `backlash / (2 tan 20°)`; `rack_height` defaults to 3.5 module.
 `rack` specs. The mesh is geometric only: no contact ratio, load sharing,
 stiffness or efficiency, and a pinion under 17 teeth interferes with the
 rack tip below its base circle (the undercut ADR-233 warns about, measured
-in ADR-234). The real-kernel test holds the common volume at zero over nine
-phases and the root clearance at 0.25 module plus the shift.
+in ADR-234). Measured on the real kernel (ADR-234), the common volume is
+zero over nine phases and the root clearance 0.25 module plus the shift.
 
 ```python
 drive = lib.rack_and_pinion(1, 24, 30, 5, bore=3, rotation_degrees=45)
@@ -1388,7 +1386,8 @@ manufacturer publishes none (the AK60-6).
 - `.actuator(joint, control_nmm="0", rating="peak")` is a `kind="motor"`
   actuator: the control is the output torque, bounded at the datasheet peak
   (or `rating="rated"`, the continuous figure). A policy's action range is
-  ± that bound.
+  ± that bound. It declares the continuous figure as `rated_torque_nmm`
+  either way, so `effort_rms_rated_ratio_max` can read it (ADR-707).
 - `.joint_dynamics(joint, damping_nmms_per_deg=None)` declares:
   - the peak-to-no-load torque-speed line as damping, so a joint driven flat
     out settles at the no-load speed (ADR-409's servo model);
@@ -1457,7 +1456,8 @@ deck  = part.cut(deck, cover.pilots)                 # the frame's tap-drill pil
 # welded to its piece; the pieces welded to the frame
 ```
 
-`part.envelope(over, *, clearance=1.5, radius=20.0, motion=(), resolution=None)`
+`part.envelope(over, *, clearance=1.5, radius=20.0, motion=(), resolution=None,
+form=None)`
 declares the surface panels are cut from -- not a shape on its own:
 
 - `over`: the solids or `lib.*` parts covered. The frame the panels bolt to
@@ -2298,7 +2298,7 @@ reconstructed from the `cable`/`bundle`/`solder` calls it made, marked
 
 The engine's project tool surface is exactly four operations
 (`PROJECT_LIFECYCLE_OPERATIONS` in `CadexScriptedDomains.py`, pinned by
-`cadex_tests/test_project_tool_surface.py`; ADR-013). They reach the engine
+`cadex_tests/test_project_tool_surface.py`, ADR-013). They reach the engine
 as cadexd ops of the same name (`docs/INTEGRATION.md`), and `cadex mcp`
 serves them to whatever agent the person brings (ADR-538), beside `rebuild`,
 `inspect`, `link_part`, `put_asset` and the tools the CLI answers itself
@@ -2314,8 +2314,9 @@ xscript.project.set_params     values-only patch; re-run without touching source
 
 The dissolved per-domain operations (`create_program`, `edit_source`,
 `set_inputs`, `set_parameter_controls`, `reconfigure_program`,
-`delete_program`, `inspect_program`) stay gone — the guardrail test
-asserts no registered tool may carry them again. Reads go through the
+`delete_program`, `inspect_program`) stay gone, and
+`test_project_tool_surface.py` asserts no registered tool may carry them
+again. Reads go through the
 bounded **`core.inspect`** tool (`CadexInspection.py`; scopes `document`,
 `object`, `script`, `api`, `image`, `output`, `assets`, `history`, `wiring`,
 `inventory`, `clearance`, `contacts`, `anatomy`, `blueprint` — `script`
@@ -2357,7 +2358,7 @@ Source is validated before any worker runs (AST policy in
   frame attributes (`gi_frame`, `f_back`, `f_globals`, `tb_frame`, …,
   `SANDBOX_BLOCKED_ATTRIBUTES`), the same rule the AST policy applies to
   `obj._name` — which now also refuses those frame attributes written as
-  attributes (`_BLOCKED_ATTRIBUTES`, test-held equal). `dir(obj)` lists
+  attributes (`_BLOCKED_ATTRIBUTES`, the same set). `dir(obj)` lists
   public names only, `dir()` the script's own; `type(obj)` takes one
   argument (no class factory); `isinstance`, `callable`, `repr`, and
   `AttributeError`, `KeyError`, `IndexError`, `ZeroDivisionError` join the
@@ -2411,7 +2412,8 @@ Source is validated before any worker runs (AST policy in
   (`_DOMAIN_WORKER_BUNDLES["project"]`, `CadexScriptedRuntime.py:44`). Copied
   in rather than imported, so a worker module can `import` them inside the
   sandbox while `cadexd`'s own module closure never reaches them — which for
-  `CadexDynamics.py` is a test-pinned invariant rather than a convenience.
+  `CadexDynamics.py` is an invariant rather than a convenience
+  (`test_engine_purity_guardrails.py`).
   Plus the project's flat `assets/` directory (bounded: 64 files / 128 MB,
   known suffixes only).
 - Hard bounds from the project's budgets (`agent.json`, ADR-517), else
@@ -2504,10 +2506,10 @@ document back to the accepted revision, and a commit keeps no undo history:
   fresh document under FreeCADCmd and compares digests
   (`pixi run rebuild <project_root>`; exit 0 match / 2 mismatch / 1
   failure).
-- **CI** (Phase 2 exit criterion): `cadex_tests/test_project_rebuild.py`
-  (ctest `CadexProjectRebuildDigest`) seeds a multi-domain project, accepts
-  it, deletes the document, rebuilds twice, and asserts
-  rebuild-vs-accepted AND rebuild-vs-rebuild digest equality.
+- **Restart determinism** is checked on every `open_project`, which re-runs
+  the accepted script and asserts digest equality; `test_cadexd_lifecycle.py`
+  drives that restore pass over the protocol. The Phase 2 rebuild-twice test
+  (`test_project_rebuild.py`) was deleted by ADR-725.
 
 ### The parameter path
 
@@ -2619,9 +2621,9 @@ was dissolved by the Phase 2.4 tool-surface swap (ADR-013); existing v2
 program stores were not migrated (ADR-011 — conversations preserved,
 scripts start empty). The verification record for the still-earlier
 multi-engine runtime is preserved at
-`docs/history/RUNTIME_VERIFICATION.md`. Still-current facts — structured
-failure envelopes, transactional parity, resource budgets, revision
-integrity — are enforced by `src/Mod/cadex/cadex_tests/`.
+`docs/history/RUNTIME_VERIFICATION.md`. Of its still-current facts, the
+failure envelope's shape is pinned by `test_response_schemas.py`; the rest
+are verified by running the engine (ADR-725).
 
 ## Measured assembly fit (ADR-347)
 

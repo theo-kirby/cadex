@@ -1,6 +1,6 @@
 # VISION.md — What Cadex Is Becoming
 
-Verified against source: 2026-10-12
+Verified against source: 2026-10-16
 
 This document is the product vision. It is authoritative: when a change
 conflicts with this document, the change is wrong or the vision needs an
@@ -173,9 +173,9 @@ facts make that honest rather than a walk-back:
   sweeps, CalculiX as a second opinion and load cases measured off a MuJoCo
   rollout all live in `analysis/`, which is not the engine and never will be
   (ADR-141). What came in is the single linear solve that a *rebuild* needs
-  in order for a verdict to follow its part — and it is pinned equal by test
-  to the offboard implementation that was verified against a closed form and
-  against CalculiX.
+  in order for a verdict to follow its part — and it was held equal by test
+  (until ADR-725) to the offboard implementation that was verified against a
+  closed form and against CalculiX.
 
 The prediction in the mesh-editing paragraph above held again: engine ops, on
 declared inputs, with the script still the only thing that authors geometry.
