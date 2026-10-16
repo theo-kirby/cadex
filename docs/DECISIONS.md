@@ -42319,3 +42319,37 @@ check (the built solid's bounding box is Ø98 × 61.7 mm and its mass is
 940 g at the effective density); the mounting test, parametrised over every
 catalogued SKU, puts a screw in each hole. `pixi run test-engine`: 2986
 passed, 72 skipped.
+
+## ADR-720 — The dashboard gets a navigation gizmo and a little motion (2026-10-16)
+
+**Context.** The owner asked for a couple of cosmetic touches to the
+dashboard. The 3D viewport follows Blender's design language (ADR-534) but
+had no orientation cue, so after an orbit nothing says which way is up or
+where +X is, and the only way back to a square view was Fit's one framing.
+The page was also entirely still: nothing distinguished a page that is
+polling from one that has stopped, apart from the word *live*.
+
+**Decision.**
+
+- **A navigation gizmo** (`review_static/gizmo.js`, `window.CadexGizmo`),
+  in the 3D viewport's top right: the X, Y and Z axes as the camera sees
+  them, in Blender's colours (`--axis-x`, `--axis-y`, `--axis-z`). A click
+  on an axis end glides the camera to look along it; a click on the view
+  shown turns to the opposite. It reads and sets the viewer's camera and
+  repaints on the viewer's draw hook; it writes nothing (ADR-537) and keeps
+  nothing in the browser. Fit is unchanged and instant.
+- **The orbit's pitch limit** (±1.5 rad) widens to the current pitch when a
+  snapped top or bottom view is already past it, so the first drag after a
+  snap does not jump.
+- **Motion**: a breathing dot beside *live*, a sheen on progress bars, and
+  a slow push-in on home page pictures under the pointer, all off under
+  `prefers-reduced-motion`.
+- `docs/DASHBOARD.md` §1, §2 and §5 say so; the server serves `gizmo.js`.
+
+**Why this is not more UI.** The gizmo is the one overlay Blender keeps on
+its viewport, and it is a view control, not a panel; the motion is CSS on
+elements that already exist. Nothing reads the project that did not before.
+
+**Evidence.** The CLI and dashboard suite (`pixi run python -m pytest
+cli/tests`), and a browser check that each gizmo end lands its view.
+

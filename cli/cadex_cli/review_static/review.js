@@ -984,6 +984,7 @@
     state.layout = window.CadexLayout.create({ root: $('screen'), shelf: $('editor-shelf'), editors: editors, order: ORDER,
                                                storageKey: 'cadex.layout.v5', defaultLayout: DEFAULT_LAYOUT, onChange: onLayout });
     state.viewer = window.CadexViewer.create($('viewer'));
+    state.gizmo = window.CadexGizmo.create(state.viewer, $('view3d-gizmo'), $('viewer'));
     state.outliner = window.CadexOutliner.create({ tree: $('outliner-tree'), filter: $('outliner-filter'), group: $('outliner-group'),
                                                    showAll: $('outliner-show-all'), summary: $('outliner-summary'), scope: $('model'),
                                                    viewer: function () { return state.viewer; } });
@@ -1066,6 +1067,7 @@
     refresh: function () { return (pendingPoll || Promise.resolve()).then(function () { return poll(); }); },
     viewer: function () { return state.viewer; },
     layout: function () { return state.layout; },
+    gizmo: function () { return state.gizmo; },
     setStyle: applyStyle,
     renderStyle: function () { return renderStyle; },
     setMeshLines: applyMeshLines,

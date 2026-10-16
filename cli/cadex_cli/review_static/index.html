@@ -154,6 +154,8 @@
     </div>
     <div class="editor-body" id="model">
       <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas></div>
+      <!-- The navigation gizmo (ADR-720): the axes as the camera sees them; gizmo.js draws it. -->
+      <svg id="view3d-gizmo" data-view="" role="group" aria-label="View axes" hidden></svg>
       <div class="timelines">
         <!-- The model's own status, on its own surface above the scrubbers (ADR-557). -->
         <div id="model-status" data-state="empty">no model loaded</div>
@@ -274,6 +276,7 @@
 </div>
 <script src="status.js"></script>
 <script src="outliner.js"></script>
+<script src="gizmo.js"></script>
 <script type="module" src="viewer.js"></script>
 </body>
 </html>

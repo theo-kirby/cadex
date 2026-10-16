@@ -843,7 +843,7 @@ export function create(canvas, {labels=true}={}) {
     const p=pointers.get(e.pointerId);if(!p)return;
     if(press&&Math.hypot(e.clientX-press[0],e.clientY-press[1])>=5)press=null;
     if(pointers.size===1&&panning)pan(e.clientX-p[0],e.clientY-p[1]);
-    else if(pointers.size===1){c.yaw-=(e.clientX-p[0])*.01;c.pitch=Math.max(-1.5,Math.min(1.5,c.pitch+(e.clientY-p[1])*.01));}
+    else if(pointers.size===1){const lim=Math.max(1.5,Math.abs(c.pitch));c.yaw-=(e.clientX-p[0])*.01;c.pitch=Math.max(-lim,Math.min(lim,c.pitch+(e.clientY-p[1])*.01));}
     pointers.set(e.pointerId,[e.clientX,e.clientY]);
     if(pointers.size===2){const s=span(),m=centre();if(mid)pan(m[0]-mid[0],m[1]-mid[1]);if(s>0&&pinch>0)zoom(pinch/s);pinch=s;mid=m;}
     draw();
