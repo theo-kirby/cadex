@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cadex Authors
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// More than one of an editor at once (ADR-723; docs/DASHBOARD.md §12): the pieces review.js
+// More than one of an editor at once (ADR-729; docs/DASHBOARD.md §12): the pieces review.js
 // builds the copies from.
 //
 //   group()      every 3D viewport as one viewer: what the model is (load, ghost, poses, the

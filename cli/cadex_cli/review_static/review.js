@@ -321,7 +321,7 @@
     }).finally(function () { if (modelAbort === controller) modelAbort = null; });
   }
 
-  // Each 3D viewport has its own style and lighting (ADR-723): the View menu sets every one, a
+  // Each 3D viewport has its own style and lighting (ADR-729): the View menu sets every one, a
   // viewport's header its own. The first viewport's are the ones this browser keeps.
   function views() { return state.views ? state.views.views() : []; }
   function firstView() { return state.views && state.views.first(); }
@@ -426,7 +426,7 @@
     var a = track[lo], b = track[hi];
     return a.map(function (v, i) { return v + (b[i] - v) * f; });
   }
-  // Follow is each 3D viewport's own (ADR-723): the first's is the one this browser keeps.
+  // Follow is each 3D viewport's own (ADR-729): the first's is the one this browser keeps.
   function anyFollow() { return views().length ? views().some(function (v) { return v.follow; }) : followCam; }
   function applyFollow(on, view) {
     view = view || firstView();
@@ -1031,7 +1031,7 @@
     if (!first && view.follow && playback && track) viewer.followTo(pointAt(playT), true);
     return view;
   }
-  // A copy of an editor that may be shown more than once (ADR-723), from its pristine markup.
+  // A copy of an editor that may be shown more than once (ADR-729), from its pristine markup.
   var templates = {}, shared = {}, MULTI = { view3d: true, activations: true, network: true };
   function makeCopy(type) {
     var copy = window.CadexViewports.copy(templates[type]), ref = function (name) { return window.CadexViewports.ref(copy.home, name); };

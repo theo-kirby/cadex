@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Cadex Authors
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// The navigation gizmo (ADR-720; docs/DASHBOARD.md §5), after Blender's: the model's X, Y and Z
+// The navigation gizmo (ADR-726; docs/DASHBOARD.md §5), after Blender's: the model's X, Y and Z
 // axes as seen from the 3D viewport's camera, in its top right corner, turning as the view orbits.
 // The positive end of each axis is a lettered ball on a stem, the negative end a ring; the ends
 // nearer the camera are drawn over the far ones. A click on an end glides the camera round to look
 // along that axis, keeping its target and distance (Y up for top and bottom); a click on the view
 // already shown turns to the opposite one. The glide is about 0.4 s, eased, and instant under
 // prefers-reduced-motion; a press, pinch or wheel on the canvas takes the camera back mid-glide.
-// It works while a rollout plays and the view follows it (ADR-723): follow moves the target, the
+// It works while a rollout plays and the view follows it (ADR-729): follow moves the target, the
 // gizmo the direction, and each leaves the other's alone.
 //
 // It reads and sets the viewer's camera (review_scene.js camera/setCamera) and repaints on its

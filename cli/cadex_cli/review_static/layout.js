@@ -8,7 +8,7 @@
 // swaps the two (the middle). Most editors are shown at most once, so picking
 // one shown elsewhere swaps the two areas' editors; an editor that may be
 // shown more than once (`multi`: the 3D viewport, Activations, Network,
-// ADR-723) opens another copy instead, and a split of its area opens a copy
+// ADR-729) opens another copy instead, and a split of its area opens a copy
 // of it. An area may also be empty, showing only its editor picker, so a
 // preset can have more areas than there are editors (ADR-573).
 //

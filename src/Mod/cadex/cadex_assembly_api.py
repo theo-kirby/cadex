@@ -100,6 +100,33 @@ _OCCURRENCE_PATH = re.compile(
 )
 
 
+def _plain_terrain(operation: str, value: Any, where: str = "terrain") -> Any:
+    """A terrain declaration as plain data: dicts, lists, strings and numbers.
+
+    The engine validates the course itself (``CadexDynamics.terrain_grid``)
+    and names what to change; this only makes sure what reaches it is data a
+    value can carry, so a NumPy array or a callable fails here, by name.
+    """
+
+    if isinstance(value, Mapping):
+        return {
+            str(key): _plain_terrain(operation, item, f"{where}[{key!r}]")
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [
+            _plain_terrain(operation, item, f"{where}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    raise _error(
+        operation, where,
+        "holds only dicts, lists, strings and numbers",
+        type(value).__name__,
+    )
+
+
 def _error(operation: str, parameter: str, message: str, value: Any = None) -> ValueError:
     received = "" if value is None else f" Received {value!r}."
     return ValueError(f"api.{operation}: invalid {parameter}: {message}.{received}")
@@ -1100,6 +1127,9 @@ _OBSERVATION_KINDS: dict[str, str] = {
     # Not a sensor (ADR-699): a joint's acceleration, read from the
     # simulator's qacc. ``CadexDynamics.STATE_OBSERVATION_KINDS``.
     "acceleration": "joint",
+    # Not a sensor (ADR-715): the body's height above the ground at a fixed
+    # grid round it. ``CadexDynamics.SCAN_OBSERVATION_KINDS``.
+    "height_scan": "component_link",
 }
 
 #: What each observation kind's declared name expands to. A vector channel
@@ -1130,6 +1160,8 @@ _OBSERVATION_SUFFIXES: dict[str, tuple[str, ...]] = {
     "contact": ("", "_down"),
     # One joint coordinate's acceleration (ADR-699).
     "acceleration": ("",),
+    # One per point of ``CadexDynamics.HEIGHT_SCAN_OFFSETS_MM`` (ADR-715).
+    "height_scan": tuple(f"_{index}" for index in range(15)),
 }
 
 
@@ -1205,6 +1237,7 @@ _SUCCESS_PREDICATE_KEYS = frozenset({"id", "metric", "min", "max"})
 _MAX_SUCCESS_PREDICATES = 32
 _MAX_SUCCESS_SEEDS = 64
 _MAX_SUCCESS_FEET = 16
+_MAX_SUCCESS_APPENDAGE = 32
 #: What a spec may say it was written for (``success(scale=...)``). The
 #: engine's ``CadexDynamics.SUCCESS_SCALE_KEYS`` is the same tuple, and
 #: ``test_success_spec_model`` holds the two equal.
@@ -1214,7 +1247,7 @@ _SUCCESS_SCALE_KEYS = (
 
 #: What a goal may be (ADR-462). ``CadexDynamics.GOAL_KINDS`` is the same
 #: tuple, and ``test_goal_api`` holds the two equal.
-_GOAL_KINDS = ("value", "speed", "point", "phase")
+_GOAL_KINDS = ("value", "speed", "point", "phase", "yaw_rate")
 
 #: An observation's name, which becomes a name a reward formula writes. The
 #: same shape as a Python identifier because that is what it turns into,
@@ -2512,6 +2545,8 @@ class AssemblyDomainAPI:
         armature_kg: float | None = None,
         friction_loss_nmm: float | None = None,
         friction_loss_n: float | None = None,
+        limit_time_constant_s: float | None = None,
+        limit_damping_ratio: float | None = None,
         label: str = "",
     ) -> DomainValue:
         """Give one joint the resistance a real one has, which MuJoCo's has not.
@@ -2541,6 +2576,11 @@ class AssemblyDomainAPI:
         one coordinate of each, so it needs an explicit
         ``motion_type='angular'`` or ``'linear'`` exactly as ``api.motion``
         does.
+
+        ``limit_time_constant_s`` and ``limit_damping_ratio`` stiffen the
+        joint's limit stop (MuJoCo ``solreflimit``, ADR-724); the default,
+        0.02 s, lets a light joint fold far past it. Smaller is stiffer; at
+        least two solver steps, on a limited joint.
 
         Loop-closing, coupled (``screw``, ``gears``, ``belt``,
         ``rack_pinion``), ``fixed``, ``ball`` and suppressed joints are all
@@ -2572,12 +2612,43 @@ class AssemblyDomainAPI:
             ("friction_loss_nmm", friction_loss_nmm),
             ("friction_loss_n", friction_loss_n),
         )
-        if damping is None and armature is None and friction_loss is None:
+        limit_time_constant = (
+            None
+            if limit_time_constant_s is None
+            else _number(
+                operation,
+                "limit_time_constant_s",
+                limit_time_constant_s,
+                minimum=0.0,
+                maximum=1.0,
+                strict_minimum=True,
+            )
+        )
+        limit_ratio = (
+            None
+            if limit_damping_ratio is None
+            else _number(
+                operation,
+                "limit_damping_ratio",
+                limit_damping_ratio,
+                minimum=0.0,
+                maximum=10.0,
+                strict_minimum=True,
+            )
+        )
+        if (
+            damping is None
+            and armature is None
+            and friction_loss is None
+            and limit_time_constant is None
+            and limit_ratio is None
+        ):
             raise _error(
                 operation,
-                "damping/armature/friction_loss",
-                "declares nothing: give at least one of damping, armature or "
-                "friction loss, or leave the joint out entirely. An empty "
+                "damping/armature/friction_loss/limit",
+                "declares nothing: give at least one of damping, armature, "
+                "friction loss or a limit stiffness, or leave the joint out "
+                "entirely. An empty "
                 "joint_dynamics reads like a joint that was configured and is "
                 "a joint that was not",
             )
@@ -2589,6 +2660,8 @@ class AssemblyDomainAPI:
             "armature_kg": None,
             "friction_loss_nmm": None,
             "friction_loss_n": None,
+            "limit_time_constant_s": limit_time_constant,
+            "limit_damping_ratio": limit_ratio,
         }
         for entry in (damping, armature, friction_loss):
             if entry is not None:
@@ -3474,6 +3547,15 @@ class AssemblyDomainAPI:
           joint-acceleration regulariser. A drive's torque is already an
           ``actuator_force`` channel, so ``-(knee_tau / peak)^2`` is the
           torque term, and ``abs(knee_tau * knee_vel)`` its mechanical power.
+        * ``height_scan`` -- the ground round a component (ADR-715): its
+          height in mm above the ground at 15 points, 5 along its heading
+          (from 100 mm behind to 300 mm ahead) by 3 across (100 mm apart),
+          read from the declared course (``terrain=`` on ``api.mjcf``) or
+          the plane. ``name="scan"`` gives ``scan_0`` .. ``scan_14``;
+          ``scan_4`` is the point under the body. ``target`` is an
+          ``api.component``. It must be ``role="privileged"``: nothing on
+          the robot maps the terrain, so the critic reads it and the policy
+          does not.
 
         **A vector channel expands to suffixed names.** ``name="hand"`` on a
         ``component_position`` gives ``hand_x``, ``hand_y`` and ``hand_z``;
@@ -4131,6 +4213,7 @@ class AssemblyDomainAPI:
         frame: DomainValue | None = None,
         period_seconds: float | None = None,
         resample_seconds: float | None = None,
+        sequence: Sequence[float] | None = None,
         label: str = "",
     ) -> DomainValue:
         """Tell the policy where to go: a number or a place drawn per episode.
@@ -4187,13 +4270,30 @@ class AssemblyDomainAPI:
           sqrt(x*x + y*y)``. It is the controller's own timer, not a
           sensor reading. Turn the other way with ``-name_sin``.
 
-        A task states at most one ``speed`` and one ``point``; ``value``
-        and ``phase`` goals are free.
+        * ``"yaw_rate"`` -- the **commanded turning rate** of the floating
+          base about world +Z, in degrees per second, anticlockwise
+          (a left turn) positive, between ``between=[low, high]``. Its
+          channel is ``name``. Like ``speed`` it is a ``value`` the engine
+          knows the meaning of (ADR-721): a success spec reads
+          ``yaw_rate_error_rms_deg_s`` and ``reversal_heading_error_deg_max``
+          against it. The reward still has to pay for it.
+
+        A task states at most one ``speed``, one ``yaw_rate`` and one
+        ``point``; ``value`` and ``phase`` goals are free.
 
         ``resample_seconds`` draws the goal again that often during the
         episode, which is what makes a policy learn to *change* what it is
         doing. It must be a whole number of control steps. Omitted, the goal
         is held for the episode.
+
+        ``sequence=[v0, v1, ...]`` scripts the opening of a ``value``,
+        ``speed`` or ``yaw_rate`` goal (ADR-721): segment ``k`` holds
+        ``sequence[k]`` instead of its draw, and the segments past the
+        sequence are drawn as usual. Each value lies in ``between``. It is
+        how a success spec asks every seed the same question -- hold a
+        speed, then turn through 180 degrees -- and the draw is still taken
+        for each scripted segment, so stating a sequence moves no other
+        draw in the seed's stream.
 
         An episode played without a seed holds the middle of a range, or
         the point the tip already occupies.
@@ -4309,6 +4409,34 @@ class AssemblyDomainAPI:
                 )
             properties["low"] = low
             properties["high"] = high
+        if sequence is not None:
+            if clean_kind not in ("value", "speed", "yaw_rate"):
+                raise _error(
+                    operation, "sequence",
+                    "scripts the segments of a value, a speed or a yaw rate; "
+                    f"this is a {clean_kind}", sequence,
+                )
+            if isinstance(sequence, (str, bytes)) or not isinstance(sequence, Sequence) \
+                    or not 1 <= len(sequence) <= 64:
+                raise _error(
+                    operation, "sequence",
+                    "must be a list of 1 to 64 numbers, one per segment",
+                    sequence,
+                )
+            scripted = [
+                _number(operation, f"sequence[{index}]", value)
+                for index, value in enumerate(sequence)
+            ]
+            outside = [value for value in scripted
+                       if not properties["low"] <= value <= properties["high"]]
+            if outside:
+                raise _error(
+                    operation, "sequence",
+                    "holds values the goal's own range does not: every "
+                    f"scripted segment lies in between=[{properties['low']:g}, "
+                    f"{properties['high']:g}]", outside,
+                )
+            properties["sequence"] = scripted
         if resample_seconds is not None:
             properties["resample_seconds"] = _number(
                 operation, "resample_seconds", resample_seconds,
@@ -4450,6 +4578,7 @@ class AssemblyDomainAPI:
         centre: DomainValue | None = None,
         centre_mm: Sequence[float] | None = None,
         centre_axis: Sequence[float] | None = None,
+        appendage: Sequence[DomainValue] = (),
         episode_seconds: float | None = None,
         randomisation: Sequence[DomainValue] | None = None,
         reset_variation: Sequence[DomainValue] | None = None,
@@ -4524,6 +4653,31 @@ class AssemblyDomainAPI:
           ``joint_acceleration_reference_ratio``, smoothness over the
           clip's own (ADR-708). Every foot the reference names must be
           among ``feet``.
+        * with a floating base, on any ground (ADR-718):
+          ``distance_made_good_mm``, net plan travel along the heading the
+          episode started on, and ``falls``, 1 if the base ever tilted 60°
+          or its centre of mass came down to half its starting height above
+          the ground under it; and on a declared ``terrain``,
+          ``steps_crossed``, ``slopes_crossed``,
+          ``largest_step_crossed_mm`` and ``steepest_slope_crossed_deg``,
+          the course's steps and slopes the centre of mass ended beyond.
+          A drawn box course is re-drawn for each evaluation seed from a
+          stream the training pool never uses, so every seed is judged on
+          a course the policy did not train on.
+        * with a floating base and commands that change (ADR-721):
+          ``speed_error_rms_mm_s`` against a ``speed`` goal, and
+          ``yaw_rate_error_rms_deg_s`` and ``reversal_heading_error_deg_max``
+          against a ``yaw_rate`` goal -- each rate over a centred 0.5 s
+          window, on frames past 1 s and not within 0.5 s after any command
+          changed; a reversal is a held yaw-rate command that turns the
+          commanded heading 180°, judged when it has (3 s at 60°/s), and is
+          unmeasured when none was commanded.
+        * ``appendage`` (ADR-722): ``appendage_ground_contact_share``, the
+          share of frames any of its collision shapes is within 1 mm of the
+          ground; ``appendage_pitch_parent_correlation``, r between its
+          root's pitch and the pitch of the body it hangs from, after 1 s;
+          and against a ``yaw_rate`` goal, ``appendage_yaw_turn_correlation``,
+          |r| between the command and the chain's yaw relative to the base.
 
         ``feet`` names the ``api.component`` values that are feet; each
         needs a primitive collision shape, because a foot's height is its
@@ -4538,6 +4692,10 @@ class AssemblyDomainAPI:
         omitted; ``centre_mm`` is the point in that frame (default the
         origin) and ``centre_axis`` the axis turns are counted about
         (default +Z of that frame).
+
+        ``appendage`` names a chain hanging from the base that is not a leg
+        -- a tail, a trunk -- root first, each component below the one
+        before; at least one needs a primitive collision shape.
 
         ``seeds`` are the evaluation seeds, fixed in the script so that two
         evaluations of one policy are the same episodes. **They are never
@@ -4680,6 +4838,17 @@ class AssemblyDomainAPI:
             "seeds": clean_seeds,
             "feet": foot_values,
         }
+        # Absent when none is named, so such a spec is the value it always was.
+        chain = _values(
+            operation, "appendage", appendage, output_type="component_link", minimum=0
+        )
+        if len(chain) > _MAX_SUCCESS_APPENDAGE:
+            raise _error(
+                operation, "appendage",
+                f"may name at most {_MAX_SUCCESS_APPENDAGE} components",
+            )
+        if chain:
+            properties["appendage"] = chain
         if tip is None:
             if tip_offset_mm is not None:
                 raise _error(
@@ -4795,6 +4964,9 @@ class AssemblyDomainAPI:
         observations: Sequence[DomainValue] = (),
         gravity_m_s2: Sequence[float] | None = None,
         solver_step_s: float | None = None,
+        # Unannotated on purpose, like component's covers: the assembly
+        # page is held under one tool result (ADR-360). A mapping, or None.
+        terrain=None,
         label: str = "",
     ) -> DomainValue:
         """Export the assembly as a MuJoCo MJCF model file.
@@ -4839,9 +5011,28 @@ class AssemblyDomainAPI:
         dynamically inert -- measured, not assumed -- so a model that gains
         channels integrates identically to the one that had none, and
         everything this docstring promises above stays true of it.
+
+        ``terrain`` puts a course under a free base instead of the plane
+        (ADR-714): ``{"x_range_mm", "y_range_mm", "cell_mm", "features"}``,
+        features being ``bump``, ``step`` and ``slope`` dicts that add. See
+        docs/XSCRIPT.md for their keys. ``"form": "boxes"`` builds them from
+        placed boxes instead of a heightfield (ADR-716): the form to train
+        on, because MJX steps it stably; no ``cell_mm`` and no dips. A box
+        course may give ``"random": {"seed", "courses", "step_mm",
+        "grade_deg", "bump_mm", ...}`` instead of ``features`` (ADR-717):
+        the model carries course 0, and the trainer re-draws a pooled
+        course per episode.
         """
 
         operation = "mjcf"
+        if terrain is not None:
+            if not isinstance(terrain, Mapping):
+                raise _error(
+                    operation, "terrain",
+                    "is a dict with x_range_mm, y_range_mm and features",
+                    terrain,
+                )
+            terrain = _plain_terrain(operation, terrain)
         shared = self._mujoco_model(
             operation,
             assembly,
@@ -4864,6 +5055,7 @@ class AssemblyDomainAPI:
             observations=channels,
             gravity_m_s2=shared["gravity_m_s2"],
             solver_step_s=shared["solver_step_s"],
+            **({"terrain": terrain} if terrain is not None else {}),
             label=label,
         )
 
@@ -5141,6 +5333,10 @@ class AssemblyDomainAPI:
             ]
             if spec.properties.get("tip") is not None:
                 named.append(("success.tip", spec.properties["tip"]))
+            named.extend(
+                (f"success.appendage[{index}]", entry)
+                for index, entry in enumerate(spec.properties.get("appendage") or ())
+            )
             for parameter in ("body", "centre"):
                 if spec.properties.get(parameter) is not None:
                     named.append((f"success.{parameter}", spec.properties[parameter]))

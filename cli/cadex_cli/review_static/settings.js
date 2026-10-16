@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cadex Authors
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// The Settings editor (ADR-722; docs/DASHBOARD.md §28): this browser's own preferences, which
+// The Settings editor (ADR-728; docs/DASHBOARD.md §28): this browser's own preferences, which
 // change how the page draws and never the project (ADR-537). For now one: the heat colours
 // (heat.js), as a preset or as two or three colours picked by hand.
 (function () {

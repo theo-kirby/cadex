@@ -444,7 +444,7 @@ def trace_playback(trace: Mapping[str, Any] | None) -> dict[str, Any]:
     times: list[float] = []
     frames: list[dict[str, dict[str, list[float]]]] = []
     commands: list[list[float] | None] = []
-    # What the motors did (ADR-721): each frame's joint positions, velocities and efforts, in
+    # What the motors did (ADR-727): each frame's joint positions, velocities and efforts, in
     # the trace's channel order, for the Activations editor.
     measured: dict[str, list[list[float] | None]] = {"joints": [], "velocities": [], "efforts": []}
     previous: dict[str, list[float]] = {}
@@ -483,7 +483,7 @@ def trace_playback(trace: Mapping[str, Any] | None) -> dict[str, Any]:
 
 
 #: A trace channel's keys beyond the command range, passed through when the trace has them: which
-#: joint the actuator drives and its effort limits (ADR-721).
+#: joint the actuator drives and its effort limits (ADR-727).
 _CHANNEL_EXTRAS = ("joint", "kind", "motion_type", "joint_unit", "effort_unit", "effort_rated",
                    "effort_low", "effort_high")
 
@@ -765,7 +765,7 @@ def checkpoint_playback(project_root: Path | str, run: str, stem: str) -> dict[s
     return playback
 
 
-# -- policies: the network behind a rollout, for the Activations editor (ADR-721) --
+# -- policies: the network behind a rollout, for the Activations editor (ADR-727) --
 
 #: The largest ``.cxpolicy`` the page reads; a policy is its header and one float32 blob.
 POLICY_READ_LIMIT = 64 * 1024 * 1024
@@ -811,7 +811,7 @@ def read_policy(path: Path) -> tuple[dict[str, Any] | None, bytes, str]:
 
 
 def _mjcf_parts(path: Path | None, joints: Sequence[str]) -> dict[str, dict[str, list[str]]]:
-    """For each joint, the parts it moves and its motor's housing (ADR-721).
+    """For each joint, the parts it moves and its motor's housing (ADR-727).
 
     A Cadex MJCF names each body after its component. The ``segment`` is the
     body the joint sits in and every body welded to it (no joint of its own);
@@ -876,7 +876,7 @@ def _policy_inputs(bundle: Mapping[str, Any] | None, names: Sequence[str]) -> li
 
 
 def policy_view(train: Path, path: Path, run: str, root: Path) -> dict[str, Any]:
-    """The network behind a rollout, as the Activations editor runs it (ADR-721).
+    """The network behind a rollout, as the Activations editor runs it (ADR-727).
 
     The header's network, normaliser, observation and action names; the blob
     as base64 (the page decodes it to a ``Float32Array``); each input's kind

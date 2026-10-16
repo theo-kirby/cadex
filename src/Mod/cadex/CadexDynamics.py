@@ -1032,7 +1032,7 @@ _COLLISION_FROM_SHAPE = ("mesh", "hull")
 #: names a script writes rather than by MuJoCo's enum. Every one of them is
 #: a perfectly ordinary MuJoCo model that the C engine simulates and this
 #: engine rolls out: the limit belongs to MJX's JAX backend, which builds a
-#: contact function per type pair and has none for these four.
+#: contact function per type pair and has none for these six.
 #:
 #: It is a *static* table on purpose. The engine may not import ``mjx`` or
 #: ``jax`` (ADR-084, ``test_engine_purity_guardrails``), so the one honest
@@ -1048,6 +1048,10 @@ _MJX_UNSUPPORTED_PAIRS: frozenset[tuple[str, str]] = frozenset(
         ("cylinder", "mesh"),
         ("box", "ellipsoid"),
         ("ellipsoid", "mesh"),
+        # A declared course is a heightfield (ADR-714), and MJX has no
+        # heightfield contact for these two either.
+        ("cylinder", "hfield"),
+        ("ellipsoid", "hfield"),
     }
 )
 
@@ -2981,6 +2985,12 @@ def _resolve_coordinate(
     )
 
 
+#: MuJoCo's own ``solreflimit`` (time constant in seconds, damping ratio),
+#: which a joint keeps unless its joint_dynamics says otherwise (ADR-724).
+DEFAULT_LIMIT_TIME_CONSTANT_S = 0.02
+DEFAULT_LIMIT_DAMPING_RATIO = 1.0
+
+
 def joint_dynamics_records(
     entries: Sequence[Mapping[str, Any]],
     tree: Mapping[str, Any],
@@ -3033,6 +3043,34 @@ def joint_dynamics_records(
             )
             or 0.0
         )
+        limit_time_constant = entry.get("limit_time_constant_s")
+        limit_ratio = entry.get("limit_damping_ratio")
+        limit_solref = None
+        if limit_time_constant is not None or limit_ratio is not None:
+            # ADR-724: a stop's stiffness means nothing on a joint that has
+            # no stop, and a value that changes nothing reads like one that
+            # was configured.
+            if record.get("limits") is None:
+                raise DynamicsError(
+                    f"{_coordinate_context(joint, motion)} has no limits, so a "
+                    "limit stiffness on it would set nothing.",
+                    reason="limit_stiffness_without_limits",
+                    correction=(
+                        "Declare the joint's limits on api.joint, or drop "
+                        "limit_time_constant_s and limit_damping_ratio."
+                    ),
+                    observed={"joint": joint, "motion_type": motion},
+                )
+            limit_solref = [
+                float(
+                    DEFAULT_LIMIT_TIME_CONSTANT_S
+                    if limit_time_constant is None
+                    else limit_time_constant
+                ),
+                float(
+                    DEFAULT_LIMIT_DAMPING_RATIO if limit_ratio is None else limit_ratio
+                ),
+            ]
         records.append(
             {
                 "joint": joint,
@@ -3040,6 +3078,7 @@ def joint_dynamics_records(
                 "mujoco_joint": str(record["mujoco_joint"]),
                 "mujoco_type": str(record["mujoco_type"]),
                 "joint_kind": str(record["kind"]),
+                "limit_solref": limit_solref,
                 "damping_si": (
                     damping_nms_per_rad(damping) if angular else damping_ns_per_m(damping)
                 ),
@@ -3053,6 +3092,8 @@ def joint_dynamics_records(
                     "damping": damping,
                     "armature": armature,
                     "friction_loss": friction,
+                    "limit_time_constant_s": limit_time_constant,
+                    "limit_damping_ratio": limit_ratio,
                 },
             }
         )
@@ -3509,6 +3550,1111 @@ def _environment_floor(mujoco: Any, spec: Any, tree: Mapping[str, Any]) -> dict[
     }
 
 
+# ---------------------------------------------------------------------------
+# Terrain: ground that is not flat (ADR-714).
+# ---------------------------------------------------------------------------
+
+#: The heightfield asset and the geom that carries it share one name, beside
+#: :data:`ENVIRONMENT_FLOOR_GEOM` and namespaced the same way: a contact report
+#: that says ``environment/terrain`` is the ground the environment supplied.
+ENVIRONMENT_TERRAIN_GEOM = "environment/terrain"
+
+#: The three things a course is made of. Each is a function of position that
+#: adds to the ground height, so a course is their sum and the order a script
+#: lists them in changes nothing.
+TERRAIN_FEATURE_KINDS = ("bump", "step", "slope")
+
+#: The grid spacing when a script does not choose one. A step is a one-cell
+#: ramp in a heightfield, so this is also how sharp a step is: 20 mm against a
+#: foot that is 40-60 mm across reads as an edge, and an 8 m x 4 m course is
+#: 80,000 cells.
+DEFAULT_TERRAIN_CELL_MM = 20.0
+
+#: Bounds on the spacing. Below 5 mm the cell count for a useful course runs
+#: into the ceiling below; above 200 mm a bump of a paw's size is one cell.
+TERRAIN_CELL_RANGE_MM = (5.0, 200.0)
+
+#: The most cells one course may hold. It bounds the MJCF (about ten bytes a
+#: cell) and the model a trainer copies onto the GPU, not the collision cost,
+#: which MuJoCo spends only on the cells under a geom.
+MAXIMUM_TERRAIN_CELLS = 262_144
+
+#: The most features one course may list. A course is a description, and a
+#: list longer than this is a generator that belongs in a loop in the script.
+MAXIMUM_TERRAIN_FEATURES = 64
+
+#: The solid MuJoCo puts under the lowest point of a heightfield. It is what
+#: a foot meets if it gets below the surface between two contact checks, so
+#: it is thick against a step's worth of penetration, not a visual choice.
+TERRAIN_BASE_MM = 50.0
+
+#: A course whose highest and lowest points are closer than this is flat, and
+#: a flat course is the environment's plane, not a heightfield.
+TERRAIN_FLAT_MM = 0.1
+
+#: How far the ground under the start may sit from z = 0. The solved pose
+#: stands on z = 0, so ground anywhere else there starts the episode
+#: buried or falling.
+TERRAIN_START_TOLERANCE_MM = 1e-6
+
+#: Bounds that catch a unit mistake, not a design: a 5 m step, or a grade
+#: written in percent where degrees were meant.
+TERRAIN_MAXIMUM_HEIGHT_MM = 5000.0
+TERRAIN_MAXIMUM_GRADE_DEG = 60.0
+
+#: The two ways a course reaches the simulator (ADR-714, ADR-716). A
+#: ``heightfield`` samples the features onto a grid, cosine bumps and all; a
+#: ``boxes`` course builds them from placed boxes on a plane at the course's
+#: lowest point, which is the form MJX trains on: on the heightfield its
+#: float32 convex collider throws a box rig to non-finite (ADR-716).
+TERRAIN_FORMS = ("heightfield", "boxes")
+
+#: Half the thickness of a ramp in a box course. A ramp is a box turned to
+#: its grade, so its end faces lean by the grade too; thin, the lean shows as
+#: at most ``2 * 10 * sin(grade)`` mm past its high end, under ground that
+#: is at least as high (``terrain_step_off_slope``), and a support block
+#: fills under it.
+TERRAIN_RAMP_HALF_THICKNESS_MM = 10.0
+
+
+def _terrain_number(
+    entry: Mapping[str, Any], key: str, context: str, *, reason: str = "malformed_terrain"
+) -> float:
+    if key not in entry:
+        raise DynamicsError(
+            f"{context} has no {key!r}.",
+            reason=reason,
+            correction=f"Give {key!r} as a number.",
+            observed={"keys": sorted(str(item) for item in entry)},
+        )
+    value = entry[key]
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+        raise DynamicsError(
+            f"{context} gives {key!r} as {value!r}, which is not a finite number.",
+            reason=reason,
+            correction=f"Give {key!r} as a finite number.",
+            observed={key: repr(value)},
+        )
+    return float(value)
+
+
+def _terrain_range(terrain: Mapping[str, Any], key: str, context: str) -> tuple[float, float]:
+    value = terrain.get(key)
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise DynamicsError(
+            f"{context} gives {key!r} as {value!r}; it is [start, end] in millimetres.",
+            reason="malformed_terrain",
+            correction=f"Give {key!r} as two numbers, start before end, with 0 between them.",
+            observed={key: repr(value)},
+        )
+    start, end = (
+        _terrain_number({key: item}, key, context) for item in value
+    )
+    if not start < 0.0 < end:
+        raise DynamicsError(
+            f"{context} spans {key} {start:g}..{end:g} mm, which does not "
+            "contain the origin the design starts on.",
+            reason="terrain_excludes_start",
+            correction=(
+                f"Make {key!r} start below 0 and end above it: the solved "
+                "pose stands at the origin, on the course."
+            ),
+            observed={key: [start, end]},
+        )
+    return start, end
+
+
+def _terrain_feature(entry: Any, index: int, context: str) -> dict[str, Any]:
+    where = f"{context} feature {index}"
+    if not isinstance(entry, Mapping):
+        raise DynamicsError(
+            f"{where} is {type(entry).__name__}, not a mapping.",
+            reason="malformed_terrain",
+            correction="Give each feature as a dict with a 'kind'.",
+        )
+    kind = entry.get("kind")
+    if kind not in TERRAIN_FEATURE_KINDS:
+        raise DynamicsError(
+            f"{where} has kind {kind!r}.",
+            reason="unknown_terrain_feature",
+            correction=f"A feature's kind is one of {', '.join(TERRAIN_FEATURE_KINDS)}.",
+            observed={"kind": repr(kind)},
+        )
+    expected = {
+        "bump": {"kind", "x_mm", "y_mm", "radius_mm", "height_mm"},
+        "step": {"kind", "x_mm", "height_mm"},
+        "slope": {"kind", "from_x_mm", "to_x_mm", "grade_deg"},
+    }[str(kind)]
+    extra = sorted(str(key) for key in entry if key not in expected)
+    if extra:
+        raise DynamicsError(
+            f"{where} ({kind}) has unknown keys {extra}.",
+            reason="malformed_terrain",
+            correction=f"A {kind} takes {', '.join(sorted(expected - {'kind'}))}.",
+            observed={"unknown": extra},
+        )
+    record: dict[str, Any] = {"kind": str(kind)}
+    for key in sorted(expected - {"kind"}):
+        record[key] = _terrain_number(entry, key, where)
+    if "height_mm" in record and not (
+        0.0 < abs(record["height_mm"]) <= TERRAIN_MAXIMUM_HEIGHT_MM
+    ):
+        raise DynamicsError(
+            f"{where} ({kind}) has height {record['height_mm']:g} mm.",
+            reason="malformed_terrain",
+            correction=(
+                "A height is non-zero (negative is a dip or a step down) and at "
+                f"most {TERRAIN_MAXIMUM_HEIGHT_MM:g} mm."
+            ),
+            observed={"height_mm": record["height_mm"]},
+        )
+    if kind == "bump" and record["radius_mm"] <= 0.0:
+        raise DynamicsError(
+            f"{where} (bump) has radius {record['radius_mm']:g} mm.",
+            reason="malformed_terrain",
+            correction="A bump's radius is positive.",
+            observed={"radius_mm": record["radius_mm"]},
+        )
+    if kind == "slope":
+        if not record["from_x_mm"] < record["to_x_mm"]:
+            raise DynamicsError(
+                f"{where} (slope) runs from x {record['from_x_mm']:g} to "
+                f"{record['to_x_mm']:g} mm.",
+                reason="malformed_terrain",
+                correction="A slope's from_x_mm is before its to_x_mm.",
+                observed={"from_x_mm": record["from_x_mm"], "to_x_mm": record["to_x_mm"]},
+            )
+        if not 0.0 < abs(record["grade_deg"]) < TERRAIN_MAXIMUM_GRADE_DEG:
+            raise DynamicsError(
+                f"{where} (slope) has grade {record['grade_deg']:g} degrees.",
+                reason="malformed_terrain",
+                correction=(
+                    "A grade is in degrees, non-zero (negative runs downhill) "
+                    f"and steeper than nothing but less than {TERRAIN_MAXIMUM_GRADE_DEG:g}."
+                ),
+                observed={"grade_deg": record["grade_deg"]},
+            )
+    return record
+
+
+def terrain_height_mm(features: Sequence[Mapping[str, Any]], x_mm: float, y_mm: float) -> float:
+    """The ground's height at one point, from validated features.
+
+    A step raises (or lowers) everything at and beyond its ``x_mm``, across
+    the whole width; a slope climbs at its grade from ``from_x_mm`` and holds
+    the height it reached after ``to_x_mm``; a bump is a raised cosine of its
+    radius about its centre. They add, so a course of steps is a staircase
+    and a bump on a slope sits on the slope.
+    """
+
+    height = 0.0
+    for feature in features:
+        kind = feature["kind"]
+        if kind == "step":
+            if x_mm >= feature["x_mm"]:
+                height += feature["height_mm"]
+        elif kind == "slope":
+            run = min(max(x_mm, feature["from_x_mm"]), feature["to_x_mm"]) - feature["from_x_mm"]
+            height += run * math.tan(math.radians(feature["grade_deg"]))
+        else:
+            distance = math.hypot(x_mm - feature["x_mm"], y_mm - feature["y_mm"])
+            if distance < feature["radius_mm"]:
+                height += feature["height_mm"] * 0.5 * (
+                    1.0 + math.cos(math.pi * distance / feature["radius_mm"])
+                )
+    return height
+
+
+def _terrain_profile_mm(features: Sequence[Mapping[str, Any]], x_mm: float) -> float:
+    """The steps' and slopes' height at ``x_mm``: a course without its bumps."""
+
+    return terrain_height_mm(
+        [feature for feature in features if feature["kind"] != "bump"], x_mm, 0.0
+    )
+
+
+def terrain_boxes(
+    features: Sequence[Mapping[str, Any]],
+    x_range_mm: Sequence[float],
+    y_range_mm: Sequence[float],
+    *,
+    context: str = "the terrain",
+) -> dict[str, Any]:
+    """A course as placed boxes (ADR-716): one record per box, pure.
+
+    Steps and slopes split the extent along x into segments, each flat or at
+    one grade: a flat one is a ``block`` from below the plane up to its
+    height, a graded one a ``ramp`` (a thin box turned to its grade) on a
+    ``block`` that fills under it to its lower end. A bump is a square
+    ``block`` of half-width ``radius_mm / 2`` -- where its raised cosine is
+    at half its height -- whose flat top stands ``height_mm`` above the
+    steps and slopes at its centre. Every record reads ``x_range_mm``,
+    ``y_range_mm`` and ``top_mm`` (the top's height at the two x ends: equal
+    for a block). Segments at the lowest point need no box: the plane is
+    there. Returns ``boxes``, ``lowest_mm`` and ``highest_mm``.
+    """
+
+    x0, x1 = (float(value) for value in x_range_mm)
+    y0, y1 = (float(value) for value in y_range_mm)
+    cuts = {x0, x1}
+    for feature in features:
+        for key in ("x_mm",) if feature["kind"] == "step" else ("from_x_mm", "to_x_mm"):
+            if feature["kind"] != "bump" and x0 < feature[key] < x1:
+                cuts.add(float(feature[key]))
+    edges = sorted(cuts)
+    segments = []
+    for a, b in zip(edges, edges[1:]):
+        rise = sum(
+            math.tan(math.radians(feature["grade_deg"]))
+            for feature in features
+            if feature["kind"] == "slope"
+            and feature["from_x_mm"] <= a and feature["to_x_mm"] >= b
+        )
+        za = _terrain_profile_mm(features, a)
+        segments.append((a, b, za, za + rise * (b - a)))
+    for index, (a, b, za, zb) in enumerate(segments):
+        if abs(zb - za) <= TERRAIN_FLAT_MM:
+            continue
+        neighbour = index + 1 if zb > za else index - 1
+        if not 0 <= neighbour < len(segments):
+            continue
+        meets = segments[neighbour][2] if zb > za else segments[neighbour][3]
+        if meets < max(za, zb) - TERRAIN_FLAT_MM:
+            raise DynamicsError(
+                f"{context} drops {max(za, zb) - meets:g} mm off the high end of "
+                f"the slope at x {b if zb > za else a:g} mm.",
+                reason="terrain_step_off_slope",
+                correction=(
+                    "A box course builds a slope from a turned box, whose end "
+                    "would stand proud of lower ground. Move the step clear of "
+                    "the slope's end, or use form='heightfield'."
+                ),
+                observed={"x_mm": b if zb > za else a, "drop_mm": max(za, zb) - meets},
+            )
+    lowest = min(0.0, *(min(za, zb) for _, _, za, zb in segments))
+    boxes: list[dict[str, Any]] = []
+
+    def box(shape: str, xs: Sequence[float], ys: Sequence[float], tops: Sequence[float]) -> None:
+        boxes.append({"shape": shape, "x_range_mm": [float(v) for v in xs],
+                      "y_range_mm": [float(v) for v in ys],
+                      "top_mm": [float(v) for v in tops]})
+
+    for a, b, za, zb in segments:
+        low = min(za, zb)
+        if low > lowest + TERRAIN_FLAT_MM:
+            box("block", (a, b), (y0, y1), (low, low))
+        if abs(zb - za) > TERRAIN_FLAT_MM:
+            box("ramp", (a, b), (y0, y1), (za, zb))
+    for feature in features:
+        if feature["kind"] != "bump":
+            continue
+        if feature["height_mm"] <= 0.0:
+            raise DynamicsError(
+                f"{context} has a bump of {feature['height_mm']:g} mm, a dip.",
+                reason="terrain_dip_needs_heightfield",
+                correction=(
+                    "A box course is built up from a plane, so it has no dips. "
+                    "Give the bump a positive height, or use form='heightfield'."
+                ),
+                observed={"height_mm": feature["height_mm"]},
+            )
+        half = feature["radius_mm"] / 2.0
+        top = _terrain_profile_mm(features, feature["x_mm"]) + feature["height_mm"]
+        box("block", (feature["x_mm"] - half, feature["x_mm"] + half),
+            (feature["y_mm"] - half, feature["y_mm"] + half), (top, top))
+    highest = max([lowest, *(max(record["top_mm"]) for record in boxes)])
+    return {"boxes": boxes, "lowest_mm": lowest, "highest_mm": highest}
+
+
+def terrain_box_ground_mm(terrain: Mapping[str, Any], x_mm: float, y_mm: float) -> float:
+    """A box course's ground height at one point (ADR-716): the highest box
+    top over it, or the plane at ``lowest_mm``. ``training/cadex_train.py``
+    writes the same reading in ``jnp``, and a test holds them equal."""
+
+    ground = float(terrain["lowest_mm"])
+    for record in terrain["boxes"]:
+        (xa, xb), (ya, yb) = record["x_range_mm"], record["y_range_mm"]
+        if xa <= x_mm <= xb and ya <= y_mm <= yb:
+            za, zb = record["top_mm"]
+            ground = max(ground, za + (zb - za) * (x_mm - xa) / (xb - xa))
+    return ground
+
+
+# ---------------------------------------------------------------------------
+# A seeded random box course, and the pool a trainer re-draws from (ADR-717).
+# ---------------------------------------------------------------------------
+
+#: The keys of ``terrain["random"]`` and their defaults; ``None`` is a kind
+#: the course leaves out. ``step_mm``, ``grade_deg`` and ``bump_mm`` are
+#: magnitude ranges, signed by the draw; at least one is given.
+TERRAIN_RANDOM_DEFAULTS: dict[str, Any] = {
+    "seed": 0,
+    "courses": 32,
+    "clear_mm": 500.0,
+    "run_mm": [300.0, 800.0],
+    "step_mm": None,
+    "grade_deg": None,
+    "slope_mm": [400.0, 1000.0],
+    "bump_mm": None,
+    "bump_radius_mm": [100.0, 200.0],
+    "bumps": 6,
+}
+
+#: The most courses one pool may hold. The pool travels in the task bundle,
+#: each course as its features, so this bounds the bundle: about 2.5 KB a
+#: course on a 13 m course, indented, against the 1 MB cap a 30-joint cat's
+#: bundle already fills to 700 KB.
+MAXIMUM_TERRAIN_COURSES = 64
+
+#: The shortest flat run between two drawn steps or slopes. A run is what
+#: keeps a step clear of a ramp's high end (``terrain_step_off_slope``).
+TERRAIN_MINIMUM_RUN_MM = 50.0
+
+#: Where an empty slot of a re-drawn course parks: a 1 mm cube this far below
+#: the course's plane, under the half-space no foot enters. Every course in a
+#: pool fills the same geoms, so a course with fewer boxes parks the rest.
+TERRAIN_PARKED_DEPTH_MM = 1000.0
+TERRAIN_PARKED_HALF_MM = 1.0
+
+#: How course ``k`` of a pool is drawn, written into the descriptor so a
+#: second reader can say what the pool is without this code.
+TERRAIN_RANDOM_ALGORITHM = (
+    "course k of a pool: random.Random('cadex-terrain:<seed>:<k>'); from "
+    "x = clear_mm, repeat: x += uniform(run_mm); a kind by choice() among "
+    "the given step and slope; a step of uniform(step_mm) at x, a slope of "
+    "uniform(grade_deg) over uniform(slope_mm) from x (stopping at the first "
+    "that leaves the extent), each signed down while the course is above "
+    "z = 0, up while below, by choice() at it; then randint(1, bumps) bumps "
+    "of uniform(bump_mm) and uniform(bump_radius_mm), centred at "
+    "uniform(clear_mm + r/2, x1 - r/2), uniform(y0 + r/2, y1 - r/2). Course "
+    "0 is the one the model carries"
+)
+
+
+def _terrain_random_range(spec: Mapping[str, Any], key: str, context: str,
+                          *, positive: bool = True) -> list[float]:
+    value = spec[key]
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise DynamicsError(
+            f"{context} gives {key!r} as {value!r}; it is [low, high].",
+            reason="malformed_terrain",
+            correction=f"Give {key!r} as two numbers, low then high.",
+            observed={key: repr(value)},
+        )
+    low, high = (_terrain_number({key: item}, key, context) for item in value)
+    if not (0.0 < low if positive else 0.0 <= low) or not low <= high:
+        raise DynamicsError(
+            f"{context} gives {key!r} as {low:g}..{high:g}.",
+            reason="malformed_terrain",
+            correction=f"{key!r} is a magnitude range: 0 < low <= high.",
+            observed={key: [low, high]},
+        )
+    return [low, high]
+
+
+def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str, Any]:
+    """``terrain["random"]``, validated, with its defaults filled (ADR-717)."""
+
+    where = f"{context}'s random"
+    if not isinstance(spec, Mapping):
+        raise DynamicsError(
+            f"{where} is {type(spec).__name__}, not a mapping.",
+            reason="malformed_terrain",
+            correction="Give random as a dict, e.g. {'seed': 0, 'step_mm': [20, 80]}.",
+        )
+    extra = sorted(str(key) for key in spec if key not in TERRAIN_RANDOM_DEFAULTS)
+    if extra:
+        raise DynamicsError(
+            f"{where} has unknown keys {extra}.",
+            reason="malformed_terrain",
+            correction=f"random takes {', '.join(sorted(TERRAIN_RANDOM_DEFAULTS))}.",
+            observed={"unknown": extra},
+        )
+    merged = {**TERRAIN_RANDOM_DEFAULTS, **dict(spec)}
+    for key, low, high in (("seed", 0, 2**31 - 1), ("courses", 1, MAXIMUM_TERRAIN_COURSES),
+                           ("bumps", 1, MAXIMUM_TERRAIN_FEATURES // 2)):
+        value = merged[key]
+        if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+            raise DynamicsError(
+                f"{where} gives {key!r} as {value!r}.",
+                reason=("terrain_too_large" if key == "courses" and isinstance(value, int)
+                        and not isinstance(value, bool) and value > high
+                        else "malformed_terrain"),
+                correction=f"{key!r} is a whole number from {low} to {high}.",
+                observed={key: repr(value)},
+            )
+    record: dict[str, Any] = {"seed": merged["seed"], "courses": merged["courses"],
+                              "bumps": merged["bumps"]}
+    record["clear_mm"] = _terrain_number(merged, "clear_mm", where)
+    if record["clear_mm"] < TERRAIN_MINIMUM_RUN_MM:
+        raise DynamicsError(
+            f"{where} gives clear_mm {record['clear_mm']:g}.",
+            reason="malformed_terrain",
+            correction=(
+                "clear_mm is the flat run ahead of the start, at least "
+                f"{TERRAIN_MINIMUM_RUN_MM:g} mm, so no feature reaches the origin."
+            ),
+            observed={"clear_mm": record["clear_mm"]},
+        )
+    for key in ("run_mm", "slope_mm", "bump_radius_mm"):
+        record[key] = _terrain_random_range(merged, key, where)
+    if record["run_mm"][0] < TERRAIN_MINIMUM_RUN_MM:
+        raise DynamicsError(
+            f"{where} gives run_mm from {record['run_mm'][0]:g} mm.",
+            reason="malformed_terrain",
+            correction=(
+                f"Keep at least {TERRAIN_MINIMUM_RUN_MM:g} mm of flat between "
+                "drawn features, so no step lands on a slope's end."
+            ),
+            observed={"run_mm": record["run_mm"]},
+        )
+    for key, bound in (("step_mm", TERRAIN_MAXIMUM_HEIGHT_MM),
+                       ("grade_deg", TERRAIN_MAXIMUM_GRADE_DEG),
+                       ("bump_mm", TERRAIN_MAXIMUM_HEIGHT_MM)):
+        if merged[key] is None:
+            record[key] = None
+            continue
+        record[key] = _terrain_random_range(merged, key, where)
+        if record[key][1] > bound or (key == "grade_deg" and record[key][1] >= bound):
+            raise DynamicsError(
+                f"{where} gives {key!r} up to {record[key][1]:g}.",
+                reason="malformed_terrain",
+                correction=f"{key!r} stays under {bound:g}.",
+                observed={key: record[key]},
+            )
+    if record["step_mm"] is None and record["grade_deg"] is None and record["bump_mm"] is None:
+        raise DynamicsError(
+            f"{where} draws nothing: it gives none of step_mm, grade_deg and bump_mm.",
+            reason="malformed_terrain",
+            correction="Give at least one of step_mm, grade_deg and bump_mm.",
+        )
+    return record
+
+
+def terrain_random_features(
+    spec: Mapping[str, Any],
+    x_range_mm: Sequence[float],
+    y_range_mm: Sequence[float],
+    course: int | str,
+) -> list[dict[str, Any]]:
+    """Course ``course`` of a validated random spec, as features (ADR-717).
+
+    Pure and seeded by :data:`TERRAIN_RANDOM_ALGORITHM`: steps and slopes
+    along x, past ``clear_mm``, with a flat run before each; then bumps. Each
+    step or slope is signed back towards z = 0, so a long course climbs and
+    descends rather than drifting off in one direction.
+    """
+
+    import random
+
+    # An int is a pooled course; a string is a held-out stream (ADR-718).
+    key = str(int(course)) if isinstance(course, int) else str(course)
+    rng = random.Random(f"cadex-terrain:{int(spec['seed'])}:{key}")
+    (x0, x1), (y0, y1) = ([float(v) for v in x_range_mm], [float(v) for v in y_range_mm])
+    kinds = [kind for kind, key in (("step", "step_mm"), ("slope", "grade_deg"))
+             if spec[key] is not None]
+    features: list[dict[str, Any]] = []
+    level, x = 0.0, float(spec["clear_mm"])
+    limit = MAXIMUM_TERRAIN_FEATURES - int(spec["bumps"]) if spec["bump_mm"] else MAXIMUM_TERRAIN_FEATURES
+
+    def signed(magnitude: float) -> float:
+        if level > TERRAIN_FLAT_MM:
+            return -magnitude
+        if level < -TERRAIN_FLAT_MM:
+            return magnitude
+        return rng.choice((-1.0, 1.0)) * magnitude
+
+    while kinds and len(features) < limit:
+        x += rng.uniform(*spec["run_mm"])
+        kind = rng.choice(kinds)
+        if kind == "step":
+            height = signed(rng.uniform(*spec["step_mm"]))
+            if x >= x1:
+                break
+            features.append({"kind": "step", "x_mm": x, "height_mm": height})
+            level += height
+        else:
+            grade = signed(rng.uniform(*spec["grade_deg"]))
+            length = rng.uniform(*spec["slope_mm"])
+            if x + length >= x1:
+                break
+            features.append({"kind": "slope", "from_x_mm": x, "to_x_mm": x + length,
+                             "grade_deg": grade})
+            level += length * math.tan(math.radians(grade))
+            x += length
+    if spec["bump_mm"] is not None:
+        for _ in range(rng.randint(1, int(spec["bumps"]))):
+            height = rng.uniform(*spec["bump_mm"])
+            radius = rng.uniform(*spec["bump_radius_mm"])
+            half = radius / 2.0
+            low_x = float(spec["clear_mm"]) + half
+            features.append({
+                "kind": "bump",
+                "x_mm": rng.uniform(low_x, max(low_x, x1 - half)),
+                "y_mm": rng.uniform(y0 + half, max(y0 + half, y1 - half)),
+                "radius_mm": radius,
+                "height_mm": height,
+            })
+    return features
+
+
+def terrain_box_geoms(
+    boxes: Sequence[Mapping[str, Any]], lowest_mm: float, slots: int | None = None
+) -> dict[str, Any]:
+    """Where a box course's geoms stand (ADR-716, ADR-717), in MuJoCo's units.
+
+    ``plane_z_m`` is the plane's height, and ``pos_m``, ``quat`` and
+    ``size_m`` one row per box: a ``block`` from :data:`TERRAIN_BASE_MM`
+    below the plane to its top, a ``ramp`` a box
+    :data:`TERRAIN_RAMP_HALF_THICKNESS_MM` thick turned about y to its grade
+    with its top face the record's. With ``slots``, the rows run on to that
+    many, each past the course's own boxes parked
+    (:data:`TERRAIN_PARKED_DEPTH_MM`). The MJCF writes these, and a trainer
+    re-placing a pooled course writes the same rows into its model.
+    """
+
+    lowest = float(lowest_mm)
+    pos, quat, size = [], [], []
+    for record in boxes:
+        (xa, xb), (ya, yb) = record["x_range_mm"], record["y_range_mm"]
+        za, zb = record["top_mm"]
+        if record["shape"] == "block":
+            bottom = lowest - TERRAIN_BASE_MM
+            centre = [(xa + xb) / 2.0, (ya + yb) / 2.0, (za + bottom) / 2.0]
+            half = [(xb - xa) / 2.0, (yb - ya) / 2.0, (za - bottom) / 2.0]
+            turn = [1.0, 0.0, 0.0, 0.0]
+        else:
+            grade = math.atan2(zb - za, xb - xa)
+            thick = TERRAIN_RAMP_HALF_THICKNESS_MM
+            # The top face's centre, less the half-thickness along its normal
+            # (-sin, 0, cos); turning about y by -grade lifts +x by the grade.
+            centre = [(xa + xb) / 2.0 + thick * math.sin(grade), (ya + yb) / 2.0,
+                      (za + zb) / 2.0 - thick * math.cos(grade)]
+            half = [math.hypot(xb - xa, zb - za) / 2.0, (yb - ya) / 2.0, thick]
+            turn = [math.cos(grade / 2.0), 0.0, -math.sin(grade / 2.0), 0.0]
+        pos.append(vector_m(centre))
+        quat.append(turn)
+        size.append(vector_m(half))
+    if slots is not None:
+        if len(boxes) > int(slots):
+            raise ValueError(f"{len(boxes)} boxes do not fit {slots} slots")
+        parked = lowest - TERRAIN_BASE_MM - TERRAIN_PARKED_DEPTH_MM
+        for _ in range(int(slots) - len(boxes)):
+            pos.append(vector_m([0.0, 0.0, parked]))
+            quat.append([1.0, 0.0, 0.0, 0.0])
+            size.append(vector_m([TERRAIN_PARKED_HALF_MM] * 3))
+    return {"plane_z_m": length_m(lowest), "pos_m": pos, "quat": quat, "size_m": size}
+
+
+#: The most draws :func:`terrain_evaluation_course` makes for one seed before
+#: it refuses: a held-out draw is kept only if its boxes fit the model's
+#: slots, which the pool's fullest course set, so most first draws fit.
+MAXIMUM_TERRAIN_EVALUATION_DRAWS = 16
+
+#: How an evaluation seed's course is drawn (ADR-718), written into the
+#: course it returns so a report can say where the course came from.
+TERRAIN_EVALUATION_ALGORITHM = (
+    "evaluation seed s of a drawn box course: draw n = 0, 1, ... of the "
+    "pool's own algorithm with course key 'eval:<s>:<n>' in place of k, "
+    "i.e. random.Random('cadex-terrain:<seed>:eval:<s>:<n>'); the first whose "
+    "boxes fit the model's slots. Never a pooled course, so no evaluation "
+    "seed plays a course the trainer drew"
+)
+
+
+def terrain_evaluation_course(terrain: Mapping[str, Any], seed: int, *,
+                              context: str = "the terrain") -> dict[str, Any]:
+    """The course evaluation seed ``seed`` is played on (ADR-718), pure.
+
+    A listed course, or a heightfield, is the same on every seed: it is
+    returned as it is. A drawn box course (ADR-717) is re-drawn per seed
+    from a **held-out stream** -- the pool's algorithm with the key
+    ``eval:<seed>:<n>`` in place of a course number -- so a policy is never
+    judged on a course it trained on, the rule evaluation seeds already keep
+    against the training seed. The first draw whose boxes fit the model's
+    ``slots`` is kept. The result is a descriptor like the model's (features,
+    boxes, lowest and highest point, slots and scale) without the pool, with
+    ``course`` saying which draw it is; :func:`place_terrain_course` stands
+    it in a compiled model."""
+
+    if terrain.get("kind") != "boxes" or terrain.get("random") is None:
+        return dict(terrain)
+    spec = terrain["random"]
+    x_range = [float(v) for v in terrain["x_range_mm"]]
+    y_range = [float(v) for v in terrain["y_range_mm"]]
+    slots = int(terrain["slots"])
+    for draw in range(MAXIMUM_TERRAIN_EVALUATION_DRAWS):
+        key = f"eval:{int(seed)}:{draw}"
+        where = f"{context}'s evaluation course for seed {int(seed)}"
+        features = [_terrain_feature(entry, number, where) for number, entry in
+                    enumerate(terrain_random_features(spec, x_range, y_range, key))]
+        if not features:
+            continue
+        built = terrain_boxes(features, x_range, y_range, context=where)
+        if len(built["boxes"]) > slots:
+            continue
+        _terrain_start_and_relief(built["lowest_mm"], built["highest_mm"],
+                                  terrain_box_ground_mm(built, 0.0, 0.0), where)
+        course = {key: value for key, value in terrain.items() if key != "pool"}
+        course.update(features=features, boxes=built["boxes"],
+                      lowest_mm=built["lowest_mm"], highest_mm=built["highest_mm"],
+                      course={"seed": int(seed), "draw": draw, "key": key,
+                              "algorithm": TERRAIN_EVALUATION_ALGORITHM})
+        return course
+    raise DynamicsError(
+        f"{context} drew no course for evaluation seed {int(seed)} that fits the "
+        f"model's {slots} terrain slots in {MAXIMUM_TERRAIN_EVALUATION_DRAWS} draws.",
+        reason="terrain_evaluation_course_unfit",
+        correction=(
+            "Draw a larger pool (random.courses), so its fullest course sets "
+            "more slots, or narrow the ranges so courses vary less in size."
+        ),
+        observed={"seed": int(seed), "slots": slots,
+                  "draws": MAXIMUM_TERRAIN_EVALUATION_DRAWS},
+    )
+
+
+def course_ground(course: Mapping[str, Any]) -> Any:
+    """``ground(x_mm, y_mm)``, the height of a course's ground (ADR-718): a
+    box course's highest box top or its plane, a heightfield's declared
+    features (which its vertices sample)."""
+
+    if course.get("kind") == "boxes":
+        return lambda x_mm, y_mm: terrain_box_ground_mm(course, x_mm, y_mm)
+    features = list(course.get("features") or ())
+    return lambda x_mm, y_mm: terrain_height_mm(features, x_mm, y_mm)
+
+
+def place_terrain_course(model: Any, course: Mapping[str, Any]) -> None:
+    """Stand a box course in a compiled MuJoCo model's terrain geoms, in place
+    (ADR-718): the plane at the course's lowest point and each
+    ``environment/terrain/<i>`` slot's box, or a parked cube, where
+    :func:`terrain_box_geoms` puts it, with each box's bounding radius and
+    box -- what the trainer's ``place_course`` writes into an MJX model.
+
+    Stock MuJoCo also culls a static geom by the world body's bounding-volume
+    tree, built at compile time round course 0's boxes, so a re-placed box
+    outside its old node is never collided with (a block falls through it
+    to the plane). The tree's leaves are re-boxed round the placed geoms and
+    each node round its children; MJX has no such tree."""
+
+    placed = terrain_box_geoms(course["boxes"], float(course["lowest_mm"]), int(course["slots"]))
+    plane = model.geom(ENVIRONMENT_TERRAIN_GEOM).id
+    model.geom_pos[plane][2] = placed["plane_z_m"]
+    for index, (pos, quat, size) in enumerate(
+            zip(placed["pos_m"], placed["quat"], placed["size_m"])):
+        geom = model.geom(f"{ENVIRONMENT_TERRAIN_GEOM}/{index}").id
+        model.geom_pos[geom] = pos
+        model.geom_quat[geom] = quat
+        model.geom_size[geom] = size
+        model.geom_rbound[geom] = math.sqrt(sum(value * value for value in size))
+        model.geom_aabb[geom] = [0.0, 0.0, 0.0, *size]
+    _rebox_world_tree(model)
+
+
+def _rebox_world_tree(model: Any) -> None:
+    """The world body's bounding-volume tree, re-boxed round where its geoms
+    stand now (:func:`place_terrain_course`): a leaf round its geom (its own
+    box turned by its orientation), a node round its two children."""
+
+    start, count = int(model.body_bvhadr[0]), int(model.body_bvhnum[0])
+    if start < 0 or count <= 0:
+        return
+
+    def rebox(node: int) -> tuple[list[float], list[float]]:
+        index = start + node
+        geom = int(model.bvh_nodeid[index])
+        box = [float(value) for value in model.bvh_aabb[index]]
+        if geom >= 0 and int(model.geom_type[geom]) == 0:
+            # A plane is unbounded; its leaf stays as compiled.
+            return ([box[k] - box[3 + k] for k in range(3)],
+                    [box[k] + box[3 + k] for k in range(3)])
+        if geom >= 0:
+            w, x, y, z = (float(value) for value in model.geom_quat[geom])
+            turn = [[1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+                    [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+                    [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)]]
+            own = [float(value) for value in model.geom_aabb[geom]]
+            pos = [float(value) for value in model.geom_pos[geom]]
+            centre = [pos[r] + sum(turn[r][c] * own[c] for c in range(3)) for r in range(3)]
+            half = [sum(abs(turn[r][c]) * own[3 + c] for c in range(3)) for r in range(3)]
+            low = [centre[k] - half[k] for k in range(3)]
+            high = [centre[k] + half[k] for k in range(3)]
+        else:
+            left, right = (int(child) for child in model.bvh_child[index])
+            (la, lb), (ra, rb) = rebox(left), rebox(right)
+            low = [min(a, b) for a, b in zip(la, ra)]
+            high = [max(a, b) for a, b in zip(lb, rb)]
+        model.bvh_aabb[index] = [*((a + b) / 2.0 for a, b in zip(low, high)),
+                                 *((b - a) / 2.0 for a, b in zip(low, high))]
+        return low, high
+
+    rebox(0)
+
+
+def _terrain_features(terrain: Mapping[str, Any], context: str) -> list[dict[str, Any]]:
+    """A course's feature list, validated: non-empty, bounded, each known."""
+
+    entries = terrain.get("features")
+    if not isinstance(entries, (list, tuple)) or not entries:
+        raise DynamicsError(
+            f"{context} lists no features.",
+            reason="malformed_terrain",
+            correction=(
+                "List at least one bump, step or slope. A flat world needs no "
+                "terrain: leave it out and a free base stands on the plane."
+            ),
+        )
+    if len(entries) > MAXIMUM_TERRAIN_FEATURES:
+        raise DynamicsError(
+            f"{context} lists {len(entries)} features; the accepted maximum is "
+            f"{MAXIMUM_TERRAIN_FEATURES}.",
+            reason="terrain_too_large",
+            correction="Merge features, or split the course.",
+            observed={"features": len(entries), "maximum": MAXIMUM_TERRAIN_FEATURES},
+        )
+    return [_terrain_feature(entry, index, context) for index, entry in enumerate(entries)]
+
+
+def _terrain_start_and_relief(
+    lowest: float, highest: float, start_height: float, context: str
+) -> None:
+    """The refusals every form shares: ground under the start off z = 0, and
+    a course with no relief over its extent."""
+
+    if abs(start_height) > TERRAIN_START_TOLERANCE_MM:
+        raise DynamicsError(
+            f"{context} puts the ground at the origin {start_height:g} mm from "
+            "z = 0, where the solved pose stands.",
+            reason="terrain_moves_start",
+            correction=(
+                "Keep the origin on z = 0: start steps and slopes at x > 0 (or "
+                "below and back to 0 before it), and keep bumps clear of it."
+            ),
+            observed={"start_height_mm": start_height},
+        )
+    if highest - lowest < TERRAIN_FLAT_MM:
+        raise DynamicsError(
+            f"{context} is flat over its extent: its features lie outside it "
+            "or cancel.",
+            reason="terrain_is_flat",
+            correction="Put the features inside x_range_mm and y_range_mm, or leave terrain out.",
+            observed={"lowest_mm": lowest, "highest_mm": highest},
+        )
+
+
+def _terrain_box_course(
+    terrain: Mapping[str, Any],
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+    context: str,
+) -> dict[str, Any]:
+    """:func:`terrain_grid` for ``form="boxes"`` (ADR-716): the descriptor
+    carries the boxes, and there is no grid, so ``heights_mm`` is ``None``.
+
+    With ``random`` (ADR-717) the features are drawn, not listed: course 0
+    is the one the descriptor's ``features`` and ``boxes`` describe and the
+    model carries, and ``pool`` holds every course of the draw as its
+    features, its lowest and highest point and its box count; ``slots`` is
+    the fullest course's, and the model has that many box geoms, so a
+    trainer re-places any pooled course per episode. The pool carries
+    features rather than boxes because the bundle is capped
+    (:data:`MAXIMUM_TASK_BYTES`) and written indented: a box is about
+    3.5 times a feature's bytes."""
+
+    random_spec = None
+    if terrain.get("random") is not None:
+        if terrain.get("features") is not None:
+            raise DynamicsError(
+                f"{context} gives both features and random.",
+                reason="malformed_terrain",
+                correction="A course is listed or drawn: give features or random, not both.",
+            )
+        random_spec = terrain_random_spec(terrain["random"], context=context)
+        courses = []
+        for index in range(int(random_spec["courses"])):
+            where = f"{context}'s random course {index}"
+            features = [
+                _terrain_feature(entry, number, where)
+                for number, entry in enumerate(
+                    terrain_random_features(random_spec, x_range, y_range, index))
+            ]
+            if not features:
+                raise DynamicsError(
+                    f"{where} draws no feature: the extent ends inside the first run.",
+                    reason="terrain_is_flat",
+                    correction="Lengthen x_range_mm, or shorten clear_mm and run_mm.",
+                    observed={"x_range_mm": list(x_range), "clear_mm": random_spec["clear_mm"]},
+                )
+            built = terrain_boxes(features, x_range, y_range, context=where)
+            _terrain_start_and_relief(
+                built["lowest_mm"], built["highest_mm"],
+                terrain_box_ground_mm(built, 0.0, 0.0), where)
+            courses.append((features, built))
+        features, built = courses[0]
+    else:
+        features = _terrain_features(terrain, context)
+        built = terrain_boxes(features, x_range, y_range, context=context)
+    descriptor = {
+        "geom": ENVIRONMENT_TERRAIN_GEOM,
+        "body": "world",
+        "kind": "boxes",
+        "x_range_mm": list(x_range),
+        "y_range_mm": list(y_range),
+        "lowest_mm": built["lowest_mm"],
+        "highest_mm": built["highest_mm"],
+        "base_mm": TERRAIN_BASE_MM,
+        "friction": list(ENVIRONMENT_FLOOR_FRICTION),
+        "features": features,
+        "boxes": built["boxes"],
+    }
+    _terrain_start_and_relief(
+        built["lowest_mm"], built["highest_mm"],
+        terrain_box_ground_mm(descriptor, 0.0, 0.0), context,
+    )
+    if random_spec is not None:
+        slots = max(len(entry["boxes"]) for _, entry in courses)
+        descriptor["random"] = {**random_spec, "algorithm": TERRAIN_RANDOM_ALGORITHM}
+        descriptor["slots"] = slots
+        # The model's metres per course millimetre, which a trainer placing
+        # a pooled course multiplies by rather than converting (ADR-717).
+        descriptor["scale"] = length_m(1.0)
+        descriptor["pool"] = [
+            {"features": drawn, "lowest_mm": entry["lowest_mm"],
+             "highest_mm": entry["highest_mm"], "boxes": len(entry["boxes"])}
+            for drawn, entry in courses
+        ]
+    return {"descriptor": descriptor, "heights_mm": None}
+
+
+def terrain_grid(terrain: Mapping[str, Any], *, context: str = "the terrain") -> dict[str, Any]:
+    """A script's terrain declaration, validated and sampled onto a grid.
+
+    ``terrain`` is ``{"x_range_mm": [x0, x1], "y_range_mm": [y0, y1],
+    "cell_mm": 20, "features": [...]}``. The ranges must contain the origin,
+    because the solved pose stands there, and must each be a whole number of
+    cells. Heights are sampled at the grid's vertices: row ``i`` is
+    ``y0 + i * cell``, column ``j`` is ``x0 + j * cell``, which is the order
+    MuJoCo reads a heightfield's data in (row 0 at -Y).
+
+    Pure: no MuJoCo, so a refusal, the grid and the heights are all
+    testable without one. Returns the record the manifest and the task
+    bundle carry (``descriptor``) and the row-major heights, in millimetres.
+
+    ``"form": "boxes"`` (ADR-716) builds the same features from placed boxes
+    instead (:func:`terrain_boxes`): no grid, no ``cell_mm``, and
+    ``heights_mm`` is ``None``. Leaving ``form`` out is ``"heightfield"``.
+    """
+
+    if not isinstance(terrain, Mapping):
+        raise DynamicsError(
+            f"{context} is {type(terrain).__name__}, not a mapping.",
+            reason="malformed_terrain",
+            correction="Give terrain as a dict with x_range_mm, y_range_mm and features.",
+        )
+    allowed = {"x_range_mm", "y_range_mm", "cell_mm", "features", "form", "random"}
+    extra = sorted(str(key) for key in terrain if key not in allowed)
+    if extra:
+        raise DynamicsError(
+            f"{context} has unknown keys {extra}.",
+            reason="malformed_terrain",
+            correction=f"Terrain takes {', '.join(sorted(allowed))}.",
+            observed={"unknown": extra},
+        )
+    form = terrain.get("form", "heightfield")
+    if form not in TERRAIN_FORMS:
+        raise DynamicsError(
+            f"{context} has form {form!r}.",
+            reason="malformed_terrain",
+            correction=f"A course's form is one of {', '.join(TERRAIN_FORMS)}.",
+            observed={"form": repr(form)},
+        )
+    if form == "heightfield" and terrain.get("random") is not None:
+        raise DynamicsError(
+            f"{context} draws a random heightfield.",
+            reason="malformed_terrain",
+            correction=(
+                "A course re-drawn per episode is placed boxes, the form MJX "
+                "trains on (ADR-716, ADR-717): give form='boxes'."
+            ),
+        )
+    if form == "boxes" and terrain.get("cell_mm") is not None:
+        raise DynamicsError(
+            f"{context} gives cell_mm for a box course.",
+            reason="malformed_terrain",
+            correction="cell_mm is a heightfield's grid; a box course has none. Leave it out.",
+            observed={"cell_mm": terrain.get("cell_mm")},
+        )
+    x0, x1 = _terrain_range(terrain, "x_range_mm", context)
+    y0, y1 = _terrain_range(terrain, "y_range_mm", context)
+    if form == "boxes":
+        return _terrain_box_course(terrain, (x0, x1), (y0, y1), context)
+    cell = (
+        DEFAULT_TERRAIN_CELL_MM
+        if terrain.get("cell_mm") is None
+        else _terrain_number(terrain, "cell_mm", context)
+    )
+    low, high = TERRAIN_CELL_RANGE_MM
+    if not low <= cell <= high:
+        raise DynamicsError(
+            f"{context} has cell_mm {cell:g}.",
+            reason="malformed_terrain",
+            correction=f"cell_mm is between {low:g} and {high:g} mm.",
+            observed={"cell_mm": cell},
+        )
+    counts = []
+    for start, end, key in ((x0, x1, "x_range_mm"), (y0, y1, "y_range_mm")):
+        cells = (end - start) / cell
+        if abs(cells - round(cells)) > 1e-6:
+            raise DynamicsError(
+                f"{context}'s {key} is {end - start:g} mm, which is not a whole "
+                f"number of {cell:g} mm cells.",
+                reason="malformed_terrain",
+                correction=f"Make {key}'s length a multiple of cell_mm.",
+                observed={key: [start, end], "cell_mm": cell},
+            )
+        counts.append(int(round(cells)) + 1)
+    ncol, nrow = counts
+    if nrow * ncol > MAXIMUM_TERRAIN_CELLS:
+        raise DynamicsError(
+            f"{context} is {ncol} x {nrow} = {nrow * ncol} cells; the accepted "
+            f"maximum is {MAXIMUM_TERRAIN_CELLS}.",
+            reason="terrain_too_large",
+            correction="Shrink the ranges or coarsen cell_mm.",
+            observed={"cells": nrow * ncol, "maximum": MAXIMUM_TERRAIN_CELLS},
+        )
+    features = _terrain_features(terrain, context)
+    heights = [
+        terrain_height_mm(features, x0 + column * cell, y0 + row * cell)
+        for row in range(nrow)
+        for column in range(ncol)
+    ]
+    lowest, highest = min(heights), max(heights)
+    _terrain_start_and_relief(lowest, highest, terrain_height_mm(features, 0.0, 0.0), context)
+    return {
+        "descriptor": {
+            "geom": ENVIRONMENT_TERRAIN_GEOM,
+            "body": "world",
+            "kind": "heightfield",
+            "x_range_mm": [x0, x1],
+            "y_range_mm": [y0, y1],
+            "cell_mm": cell,
+            "nrow": nrow,
+            "ncol": ncol,
+            "lowest_mm": lowest,
+            "highest_mm": highest,
+            "base_mm": TERRAIN_BASE_MM,
+            "friction": list(ENVIRONMENT_FLOOR_FRICTION),
+            "features": features,
+        },
+        "heights_mm": heights,
+    }
+
+
+def _environment_box_course(mujoco: Any, spec: Any, descriptor: Mapping[str, Any]) -> None:
+    """A box course on the world body (ADR-716): the plane, lowered to the
+    course's lowest point and named ``environment/terrain``, and one box per
+    descriptor record, ``environment/terrain/<i>``, on the plane's contact
+    parameters. A ``block`` runs from :data:`TERRAIN_BASE_MM` below the plane
+    to its top; a ``ramp`` is a box :data:`TERRAIN_RAMP_HALF_THICKNESS_MM`
+    thick, turned about y to its grade, whose top face is the record's
+    (:func:`terrain_box_geoms`). A course drawn at random (ADR-717) has
+    ``slots`` geoms, one per box of its pool's fullest course, and parks
+    those its own boxes leave empty."""
+
+    contact = {
+        "friction": list(ENVIRONMENT_FLOOR_FRICTION),
+        "solref": [CONTACT_TIMECONST_S, 1.0],
+        "condim": 3,
+        "contype": 1,
+        "conaffinity": 1,
+    }
+    lowest = float(descriptor["lowest_mm"])
+    spec.worldbody.add_geom(
+        name=ENVIRONMENT_TERRAIN_GEOM,
+        type=mujoco.mjtGeom.mjGEOM_PLANE,
+        pos=vector_m([0.0, 0.0, lowest]),
+        quat=[1.0, 0.0, 0.0, 0.0],
+        size=[0.0, 0.0, length_m(ENVIRONMENT_FLOOR_GRID_MM)],
+        **contact,
+    )
+    placed = terrain_box_geoms(descriptor["boxes"], lowest, descriptor.get("slots"))
+    for index, (pos, quat, size) in enumerate(
+            zip(placed["pos_m"], placed["quat"], placed["size_m"])):
+        spec.worldbody.add_geom(
+            name=f"{ENVIRONMENT_TERRAIN_GEOM}/{index}",
+            type=mujoco.mjtGeom.mjGEOM_BOX,
+            pos=pos,
+            quat=quat,
+            size=size,
+            **contact,
+        )
+
+
+def _environment_terrain(
+    mujoco: Any, spec: Any, tree: Mapping[str, Any], terrain: Mapping[str, Any]
+) -> dict[str, Any]:
+    """A free base on a declared course, instead of the plane.
+
+    One heightfield on the world body, centred on the declared extent with
+    its lowest vertex at its geom's z. It **replaces** the plane rather than
+    lying on it: a plane at z = 0 would cover every step down, and a plane
+    at the lowest point would double every contact on the flat. Beyond the
+    extent there is no ground, so the extent is the course and a run that
+    leaves it falls. The contact parameters are the plane's, for the reason
+    :func:`_environment_floor` gives.
+    """
+
+    if tree["grounded"]:
+        raise DynamicsError(
+            "Terrain was declared for a model that grounds a component.",
+            reason="terrain_needs_free_base",
+            correction=(
+                "Terrain is the ground a free base stands on (ADR-335). Ground "
+                "nothing, or leave terrain out: a grounded model's ground is "
+                "whatever it grounded."
+            ),
+            observed={"grounded": list(tree["grounded"])},
+        )
+    grid = terrain_grid(terrain)
+    descriptor = grid["descriptor"]
+    if descriptor["kind"] == "boxes":
+        _environment_box_course(mujoco, spec, descriptor)
+        return {"terrain": descriptor}
+    lowest, highest = descriptor["lowest_mm"], descriptor["highest_mm"]
+    span = highest - lowest
+    x0, x1 = descriptor["x_range_mm"]
+    y0, y1 = descriptor["y_range_mm"]
+    spec.add_hfield(
+        name=ENVIRONMENT_TERRAIN_GEOM,
+        size=[
+            length_m((x1 - x0) / 2.0),
+            length_m((y1 - y0) / 2.0),
+            length_m(span),
+            length_m(TERRAIN_BASE_MM),
+        ],
+        nrow=int(descriptor["nrow"]),
+        ncol=int(descriptor["ncol"]),
+        # Normalised here rather than left to the compiler, which does the
+        # same thing: the elevation the file carries is then exactly the one
+        # the size's third entry scales.
+        userdata=[(height - lowest) / span for height in grid["heights_mm"]],
+    )
+    spec.worldbody.add_geom(
+        name=ENVIRONMENT_TERRAIN_GEOM,
+        type=mujoco.mjtGeom.mjGEOM_HFIELD,
+        hfieldname=ENVIRONMENT_TERRAIN_GEOM,
+        pos=vector_m([(x0 + x1) / 2.0, (y0 + y1) / 2.0, lowest]),
+        quat=[1.0, 0.0, 0.0, 0.0],
+        friction=list(ENVIRONMENT_FLOOR_FRICTION),
+        solref=[CONTACT_TIMECONST_S, 1.0],
+        condim=3,
+        contype=1,
+        conaffinity=1,
+    )
+    return {"terrain": descriptor}
+
+
 def _add_collision_geoms(
     mujoco: Any,
     spec: Any,
@@ -3588,6 +4734,7 @@ def build_model(
     joint_dynamics: Sequence[Mapping[str, Any]] = (),
     actuators: Sequence[Mapping[str, Any]] = (),
     couplings: Sequence[Mapping[str, Any]] = (),
+    terrain: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One assembly, as a compiled MuJoCo model plus the evidence for it.
 
@@ -3614,6 +4761,9 @@ def build_model(
       design's own shapes override through the pair rules in :func:`_contact_parameters`
       (friction is the maximum, so a sole's declared friction wins). A
       grounded model gets no floor: its ground is whatever it grounded.
+    * ``terrain``, when a script declares one, replaces that plane with a
+      heightfield over the declared extent (:func:`_environment_terrain`,
+      ADR-714). It is refused on a grounded model.
 
     Returns the spec, the compiled model, the tree, and per-joint records
     carrying each joint's qpos address and its solved coordinate.
@@ -3711,7 +4861,11 @@ def build_model(
     native_bodies: dict[str, Any] = {"": spec.worldbody}
     native_joints: dict[str, Any] = {}
     joint_records: list[dict[str, Any]] = []
-    environment = _environment_floor(mujoco, spec, tree)
+    environment = (
+        _environment_floor(mujoco, spec, tree)
+        if terrain is None
+        else _environment_terrain(mujoco, spec, tree, terrain)
+    )
     for body in tree["bodies"]:
         name = str(body["name"])
         parent_name = body["parent"]
@@ -3827,6 +4981,34 @@ def build_model(
         native_joint.damping = [float(record["damping_si"]), 0.0, 0.0]
         native_joint.armature = float(record["armature_si"])
         native_joint.frictionloss = float(record["friction_loss_si"])
+        if record["limit_solref"] is not None:
+            # MuJoCo's ``refsafe`` raises a time constant below two solver
+            # steps to that floor and says nothing, so the stop would be
+            # softer than declared. Refused instead (ADR-724).
+            time_constant = float(record["limit_solref"][0])
+            floor = 2.0 * float(time_step_s)
+            if time_constant < floor * (1.0 - 1.0e-9):
+                raise DynamicsError(
+                    f"Joint {record['mujoco_joint']!r} asks for a limit time "
+                    f"constant of {time_constant:g} s; the solver step of "
+                    f"{float(time_step_s):g} s cannot resolve one below "
+                    f"{floor:g} s, and MuJoCo would silently use {floor:g}.",
+                    reason="limit_time_constant_below_solver_floor",
+                    correction=(
+                        f"Use limit_time_constant_s >= {floor:g}, or a finer "
+                        "solver_step_s if the stop must be stiffer."
+                    ),
+                    observed={
+                        "joint": str(record["mujoco_joint"]),
+                        "limit_time_constant_s": time_constant,
+                        "solver_step_s": float(time_step_s),
+                        "floor_s": floor,
+                    },
+                )
+            native_joint.solref_limit = [
+                time_constant,
+                float(record["limit_solref"][1]),
+            ]
 
     # Actuators, after every joint exists and before the compile. Each is a
     # MuJoCo actuator on exactly one joint coordinate, with the gear pinned
@@ -5745,6 +6927,11 @@ def model_evidence(
                 "damping_si": float(record["damping_si"]),
                 "armature_si": float(record["armature_si"]),
                 "friction_loss_si": float(record["friction_loss_si"]),
+                "limit_solref": (
+                    None
+                    if record.get("limit_solref") is None
+                    else [float(value) for value in record["limit_solref"]]
+                ),
                 "declared": dict(record["declared"]),
             }
             for record in built["joint_dynamics"]
@@ -5824,7 +7011,8 @@ _MJCF_COUNT_FIELDS = (
 _MJCF_MODEL_FIELDS = (
     "body_mass", "body_inertia", "body_ipos", "body_iquat", "body_pos",
     "body_quat", "jnt_type", "jnt_bodyid", "jnt_pos", "jnt_axis", "jnt_range",
-    "jnt_limited", "jnt_qposadr", "jnt_dofadr", "eq_type", "eq_obj1id",
+    "jnt_limited", "jnt_solref", "jnt_solimp", "jnt_qposadr", "jnt_dofadr",
+    "eq_type", "eq_obj1id",
     "eq_obj2id", "eq_data", "eq_active0", "eq_solref", "eq_solimp",
     "geom_type", "geom_size", "geom_pos", "geom_quat", "geom_friction",
     "geom_solref", "geom_solimp", "geom_condim", "geom_margin", "geom_gap",
@@ -6770,8 +7958,11 @@ MAXIMUM_GOALS = 4
 #: named tip can reach; ``phase`` is an angle that turns once per declared
 #: period from a start drawn per episode, told as its sine and cosine
 #: (ADR-598) -- the controller's own timer, which is the only way a reward
-#: or a policy can know how far an episode has run.
-GOAL_KINDS = ("value", "speed", "point", "phase")
+#: or a policy can know how far an episode has run; ``yaw_rate`` is one
+#: number that *is* the commanded turning rate of the base about world +Z,
+#: in degrees per second, anticlockwise positive (ADR-721), which is what
+#: lets a success spec read how well a turn was followed.
+GOAL_KINDS = ("value", "speed", "point", "phase", "yaw_rate")
 
 #: How many joint configurations a ``point`` goal may draw before the draw
 #: is refused, and how many whole episodes are drawn when the task is built
@@ -6863,6 +8054,10 @@ _SUCCESS_NEED_CORRECTIONS = {
         "judged about: assembly.success(..., body=component, "
         "centre=component, centre_mm=[x, y, z], centre_axis=[0, 0, 1])."
     ),
+    "appendage": (
+        "Name the chain it reads, from the body nearest the base outward: "
+        "assembly.success(..., appendage=[root, ..., last])."
+    ),
     "shove": (
         "Recovery is timed from the end of a shove, and the spec's "
         "conditions apply none. Give assembly.success (or the task it "
@@ -6876,6 +8071,12 @@ _SUCCESS_NEED_CORRECTIONS = {
         "bound a metric that needs none: mean_forward_speed_mm_s is a speed "
         "in millimetres per second."
     ),
+    "turn": (
+        "It is measured against a commanded yaw rate, and this task states "
+        "none. Give the task one -- assembly.goal('turn', kind='yaw_rate', "
+        "between=[low, high], resample_seconds=...) in api.task(goals=[...]) "
+        "-- or bound max_heading_deg, which needs none."
+    ),
     "target": (
         "It is measured against a target point, and this task states none. "
         "Give the task one: assembly.goal('target', kind='point', "
@@ -6886,6 +8087,12 @@ _SUCCESS_NEED_CORRECTIONS = {
         "declares none. Give the task one -- api.task(reference="
         "assembly.gait(feet, gait='trot', speed_mm_s=...)) -- or bound the "
         "gait family, which needs none."
+    ),
+    "terrain": (
+        "Steps and slopes crossed are counted on the task's course, and this "
+        "task stands on flat ground. Declare one -- assembly.mjcf(..., "
+        "terrain={...}) -- or bound distance_made_good_mm or falls, which "
+        "need none."
     ),
 }
 
@@ -6926,6 +8133,11 @@ TASK_SEMANTIC_FIELDS = (
     # rather than judgement: a tracking reward reads it (G2), so a bundle
     # with another stride is another task.
     "reference",
+    # ADR-714: absent on flat ground. Another course is another task.
+    "terrain",
+    # ADR-715: absent unless the task scans the ground. The critic reads it,
+    # so a task that gains a scan trains another value function.
+    "scans",
 )
 
 #: The bundle-level fields deliberately left out, and why each one is out.
@@ -7526,15 +8738,47 @@ STATE_OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
 }
 
 
+#: The height scan's grid (ADR-715): 5 points along the body's heading, from
+#: one spacing behind it to three ahead, by 3 across it, 100 mm apart. Fixed,
+#: so its channels are an enumerable set like every other kind's: channel
+#: ``_i`` is ``HEIGHT_SCAN_OFFSETS_MM[i]``, (ahead, left) in mm, and ``_4``
+#: is the point under the body. Weighted forward because the ground a gait
+#: has to plan for is the ground it is about to reach.
+HEIGHT_SCAN_SPACING_MM = 100.0
+HEIGHT_SCAN_OFFSETS_MM: tuple[tuple[float, float], ...] = tuple(
+    (ahead * HEIGHT_SCAN_SPACING_MM, left * HEIGHT_SCAN_SPACING_MM)
+    for ahead in (-1, 0, 1, 2, 3)
+    for left in (-1, 0, 1)
+)
+
+#: Observation kinds that read the ground around a body (ADR-715). A
+#: ``height_scan`` is the body's height, in mm, above the ground at each
+#: point of :data:`HEIGHT_SCAN_OFFSETS_MM`, laid out in the body's heading
+#: frame (its x axis projected on the ground). The ground is the declared
+#: course's heightfield (ADR-714) -- the elevation the simulator collides
+#: with -- or the plane at z = 0. It is no sensor: its rows travel in the
+#: bundle's ``scans`` section, after every other channel, and do not count
+#: against ``MAXIMUM_OBSERVATION_CHANNELS``. It is ``role: privileged``
+#: (orun7 O5): no sensor this API declares maps the terrain, so the critic
+#: reads it and the policy does not.
+SCAN_OBSERVATION_KINDS: dict[str, dict[str, Any]] = {
+    "height_scan": {
+        "target": "component",
+        "suffixes": tuple(f"_{index}" for index in range(len(HEIGHT_SCAN_OFFSETS_MM))),
+    },
+}
+
+
 def sensor_observations(
     records: Sequence[Mapping[str, Any]],
 ) -> list[Mapping[str, Any]]:
-    """The observation records an MJCF sensor carries: all but commands and
-    state readings (ADR-696, ADR-699)."""
+    """The observation records an MJCF sensor carries: all but commands,
+    state readings and scans (ADR-696, ADR-699, ADR-715)."""
 
     return [record for record in records
             if str(record["kind"]) not in COMMAND_OBSERVATION_KINDS
-            and str(record["kind"]) not in STATE_OBSERVATION_KINDS]
+            and str(record["kind"]) not in STATE_OBSERVATION_KINDS
+            and str(record["kind"]) not in SCAN_OBSERVATION_KINDS]
 
 #: What a randomisation entry may vary, and every compiled-model field one
 #: draw has to move.
@@ -7667,6 +8911,15 @@ GOAL_PHASE_ALGORITHM = (
     "and at control step s the angle is start + radians_per_step * (s - k * "
     "resample_steps) for the segment k in force; its channels are "
     "sin(angle) then cos(angle)"
+)
+
+#: What a scripted goal adds to :data:`GOAL_ALGORITHM` (ADR-721), appended
+#: only to bundles whose goal carries a ``sequence``, so every earlier bundle
+#: keeps its algorithm and its digest. No draw is removed: the stream is the
+#: one the unscripted algorithm states.
+GOAL_SEQUENCE_ALGORITHM = (
+    "; on a goal with a sequence, segment k < len(sequence) still takes its "
+    "uniform(low, high) draw and holds sequence[k] in its place"
 )
 
 #: Everything a reward or termination expression may name beyond the
@@ -7870,6 +9123,11 @@ def observation_records(
         if kind in STATE_OBSERVATION_KINDS:
             records.append(_state_observation(entry, table, refusals, taken))
             stated += 1
+            continue
+        if kind in SCAN_OBSERVATION_KINDS:
+            scanned = _scan_observation(entry, bodies, taken)
+            records.append(scanned)
+            stated += len(scanned["channels"])
             continue
         row = OBSERVATION_KINDS.get(kind)
         if row is None:
@@ -8162,6 +9420,74 @@ def _state_observation(
         "motion_type": motion_type,
         "unit": str(unit),
         "scale": float(convert(1.0)),
+        "role": "privileged",
+    }
+
+
+def _scan_observation(
+    entry: Mapping[str, Any],
+    bodies: Sequence[str],
+    taken: dict[str, str],
+) -> dict[str, Any]:
+    """One ``height_scan`` observation, resolved to its body (ADR-715).
+
+    Its channels are claimed in ``taken`` so nothing can clash with them,
+    and the caller's cap subtracts them again, as it does an acceleration's.
+    """
+
+    name = str(entry.get("name") or "")
+    what = f"observation {name!r}"
+    kind = str(entry["kind"])
+    role = str(entry.get("role") or "policy")
+    if role != "privileged":
+        raise DynamicsError(
+            f"{what} gives the policy a height scan of the ground, and no "
+            "sensor on the robot maps the terrain.",
+            reason="height_scan_not_privileged",
+            correction=(
+                "Declare it role=\"privileged\": the critic, the reward and the "
+                "terminations read it, the policy does not. A policy that has "
+                "to see the ground needs a real sensor that measures it."
+            ),
+            observed={"observation": name, "role": role},
+        )
+    target = str(entry.get("component") or "")
+    if target not in bodies:
+        raise DynamicsError(
+            f"{what} scans the ground around component {target!r}, which is "
+            "not a body in this assembly's dynamics model.",
+            reason="observation_component_missing",
+            correction=(
+                "Pass the same assembly.component value the assembly was "
+                "built from. A component with no api.body has no mass and is "
+                "not part of the model."
+            ),
+            observed={"observation": name, "component": target,
+                      "available": list(bodies)},
+        )
+    channels = [f"{name}{suffix}" for suffix in SCAN_OBSERVATION_KINDS[kind]["suffixes"]]
+    for channel in channels:
+        if channel in taken:
+            raise DynamicsError(
+                f"Two observation channels are both called {channel!r}.",
+                reason="duplicate_observation_channel",
+                correction=(
+                    "A reward formula names channels, so two with one name "
+                    "means whichever was declared second. Rename one. A height "
+                    f"scan named 'scan' occupies scan_0 to scan_{len(channels) - 1}."
+                ),
+                observed={"channel": channel, "observation": name,
+                          "conflicts_with": taken[channel]},
+            )
+        taken[channel] = name
+    return {
+        "name": name,
+        "kind": kind,
+        "target": target,
+        "object_name": target,
+        "channels": channels,
+        "unit": "mm",
+        "scale": 1.0,
         "role": "privileged",
     }
 
@@ -9357,8 +10683,9 @@ def _goal_records(
                 f"{what} is a second {kind} goal beside {seen_kinds[kind]!r}.",
                 reason="duplicate_goal_kind",
                 correction=(
-                    "A success spec reads the commanded speed and the target "
-                    "point by kind, so a task states at most one of each. A "
+                    "A success spec reads the commanded speed, the commanded "
+                    "yaw rate and the target point by kind, so a task states "
+                    "at most one of each. A "
                     "further number a reward gives its own meaning is "
                     "kind='value', and a further clock is kind='phase'."
                 ),
@@ -9457,11 +10784,33 @@ def _goal_records(
                 # A speed is the surface's own unit and is never converted:
                 # the policy reads it, the reward names it and the spec
                 # divides by it, all in millimetres per second.
-                unit="mm/s" if kind == "speed" else "",
+                unit={"speed": "mm/s", "yaw_rate": "deg/s"}.get(kind, ""),
                 low=low,
                 high=high,
                 nominal=[0.5 * (low + high)],
             )
+            scripted = entry.get("sequence")
+            if scripted is not None:
+                # ADR-721: the opening segments, held in order instead of
+                # their draws. Refused here as well as in the API because a
+                # spec's goals arrive by the same road.
+                values = [float(value) for value in scripted]
+                if (
+                    not values
+                    or not all(math.isfinite(v) and low <= v <= high for v in values)
+                ):
+                    raise DynamicsError(
+                        f"{what} scripts {values!r}, which is not a list of "
+                        f"values between {low:g} and {high:g}.",
+                        reason="malformed_goal",
+                        correction=(
+                            "Give sequence=[v0, v1, ...], one finite number "
+                            "per opening segment, each inside the goal's "
+                            "between=[low, high]."
+                        ),
+                        observed={"goal": name, "sequence": [repr(v) for v in values]},
+                    )
+                record["sequence"] = values
             records.append(record)
             continue
 
@@ -9796,20 +11145,26 @@ def _success_records(
     feet = [str(name) for name in spec.get("feet") or ()]
     tip = spec.get("tip")
     body = spec.get("body")
+    appendage = [str(name) for name in spec.get("appendage") or ()]
 
     goal_kinds = {str(entry.get("kind") or "") for entry in goal_entries}
     have = {
         "feet": bool(feet),
         "tip": tip is not None,
         "body": body is not None,
+        "appendage": bool(appendage),
         "shove": any(not entry.get("sustained") for entry in disturbance_entries),
         # Read by kind: the commanded speed is the task's one speed goal and
         # the target its one point goal, and a task that states neither has
         # given a rollout nothing to be measured against.
         "command": "speed" in goal_kinds,
         "target": "point" in goal_kinds,
+        # ADR-721: the turning family reads the task's one yaw-rate goal.
+        "turn": "yaw_rate" in goal_kinds,
         # ADR-705: the reference family reads the task's gait reference.
         "reference": bool(task.get("reference")),
+        # ADR-718: the terrain family reads the course the task stands on.
+        "terrain": bool(task.get("terrain")),
     }
     rows: list[dict[str, Any]] = []
     needed: dict[str, str] = {}
@@ -9975,6 +11330,7 @@ def _success_records(
         ),
         body=body,
         centre=spec.get("centre"),
+        appendage=appendage,
     )
     for need, present in (
         ("base", rig["base"] is not None),
@@ -10050,6 +11406,8 @@ def _success_records(
             {"body": dict(rig["body"]), "centre": dict(rig["centre"])}
             if body is not None else {}
         ),
+        # Absent unless the script named one (ADR-722), likewise.
+        **({"appendage": appendage} if appendage else {}),
         "episode": schedule,
         "randomisation": randomisation,
         "reset_variation": reset_variation,
@@ -10510,6 +11868,134 @@ def _reference_records(
     return clip
 
 
+def _scan_records(
+    observations: Sequence[Mapping[str, Any]],
+    reloaded: Any,
+) -> list[dict[str, Any]]:
+    """The bundle's ``scans`` rows (ADR-715), one per height scan.
+
+    Each names its body by its index in the loaded file, because that is
+    the row of ``xpos`` and ``xmat`` every evaluator holds, and states its
+    grid, so a reader needs nothing but the bundle to know where it looked.
+    """
+
+    mujoco = _mujoco_module()
+    rows: list[dict[str, Any]] = []
+    for record in observations:
+        if str(record["kind"]) not in SCAN_OBSERVATION_KINDS:
+            continue
+        rows.append({
+            "name": str(record["name"]),
+            "kind": str(record["kind"]),
+            "target": str(record["target"]),
+            "body": str(record["object_name"]),
+            "body_id": int(mujoco.mj_name2id(reloaded, mujoco.mjtObj.mjOBJ_BODY,
+                                             str(record["object_name"]))),
+            "offsets_mm": [[float(ahead), float(left)]
+                           for ahead, left in HEIGHT_SCAN_OFFSETS_MM],
+            "channels": [str(channel) for channel in record["channels"]],
+            "unit": "mm",
+            # The world position's metres to the channel's mm, so the trainer
+            # multiplies rather than converts.
+            "scale": float(length_mm(1.0)),
+            "role": "privileged",
+        })
+    return rows
+
+
+def scan_channels(task: Mapping[str, Any]) -> list[str]:
+    """Every height-scan channel a task declares, in bundle order (ADR-715).
+
+    Last in every vector, after a reference's tracking channels. None is a
+    policy channel.
+    """
+
+    return [str(channel) for record in task.get("scans") or ()
+            for channel in record["channels"]]
+
+
+def terrain_ground_mm(
+    terrain: Mapping[str, Any], elevation: Sequence[float], x_mm: float, y_mm: float,
+) -> float:
+    """The course's ground height at one point, from the simulator's elevation.
+
+    ``elevation`` is the heightfield's ``hfield_data``: ``nrow * ncol``
+    values in [0, 1], row 0 at -Y, which ``lowest_mm`` and ``highest_mm``
+    scale. Read bilinearly between the four vertices round the point, so it
+    is exact at every vertex; a point beyond the extent reads the edge's
+    height. ``training/cadex_train.py`` writes the same reading in ``jnp``,
+    and a test holds them equal.
+    """
+
+    x0, x1 = (float(value) for value in terrain["x_range_mm"])
+    y0, y1 = (float(value) for value in terrain["y_range_mm"])
+    nrow, ncol = int(terrain["nrow"]), int(terrain["ncol"])
+    across = (min(max(float(x_mm), x0), x1) - x0) / (x1 - x0) * (ncol - 1)
+    along = (min(max(float(y_mm), y0), y1) - y0) / (y1 - y0) * (nrow - 1)
+    column = min(int(math.floor(across)), ncol - 2)
+    row = min(int(math.floor(along)), nrow - 2)
+    u, v = across - column, along - row
+
+    def at(r: int, c: int) -> float:
+        return float(elevation[r * ncol + c])
+
+    level = ((1.0 - v) * ((1.0 - u) * at(row, column) + u * at(row, column + 1))
+             + v * ((1.0 - u) * at(row + 1, column) + u * at(row + 1, column + 1)))
+    lowest = float(terrain["lowest_mm"])
+    return lowest + (float(terrain["highest_mm"]) - lowest) * level
+
+
+def height_scan_values(
+    task: Mapping[str, Any],
+    xpos: Any,
+    xmat: Any,
+    elevation: Sequence[float] | None,
+) -> dict[str, float]:
+    """The height-scan channels (ADR-715): each body's height above the
+    ground at each point of its grid, in mm.
+
+    ``xpos`` and ``xmat`` are ``MjData``'s (metres, times the row's
+    ``scale``; a row-major 3x3 per body, flat or not). The grid turns with the body's heading -- its x axis
+    projected on the ground -- and not with its pitch or roll; a body whose
+    x axis is vertical has no heading and reads the grid in the world's.
+    ``elevation`` is the course's ``hfield_data``, or ``None`` for the plane
+    at z = 0; a box course (ADR-716) reads its own boxes and ignores it.
+    """
+
+    terrain = task.get("terrain")
+    values: dict[str, float] = {}
+    for record in task.get("scans") or ():
+        body = int(record["body_id"])
+        x, y, z = (float(value) * float(record["scale"]) for value in xpos[body][:3])
+        axes = [float(value) for value in _flat(xmat[body])]
+        ahead_x, ahead_y = axes[0], axes[3]
+        norm = math.hypot(ahead_x, ahead_y)
+        cos, sin = (ahead_x / norm, ahead_y / norm) if norm > 1e-9 else (1.0, 0.0)
+        for (ahead, left), channel in zip(record["offsets_mm"], record["channels"], strict=True):
+            px = x + cos * float(ahead) - sin * float(left)
+            py = y + sin * float(ahead) + cos * float(left)
+            if terrain is not None and terrain.get("kind") == "boxes":
+                ground = terrain_box_ground_mm(terrain, px, py)
+            elif terrain is None or elevation is None:
+                ground = 0.0
+            else:
+                ground = terrain_ground_mm(terrain, elevation, px, py)
+            values[str(channel)] = z - ground
+    return values
+
+
+def _flat(values: Any) -> list[Any]:
+    """A nested sequence's leaves in order: a 3x3 or a flat 9 alike."""
+
+    out: list[Any] = []
+    for value in values:
+        if hasattr(value, "__len__"):
+            out.extend(_flat(value))
+        else:
+            out.append(value)
+    return out
+
+
 def task_records(
     built: Mapping[str, Any],
     reloaded: Any,
@@ -10725,6 +12211,11 @@ def task_records(
     accelerations = _state_records(observations, reloaded)
     command_names = command_names + [str(channel) for record in accelerations
                                      for channel in record["channels"]]
+    # ADR-715: the scans are last in every vector; here they are only names
+    # an expression may use, and order does not matter to a name.
+    scans = _scan_records(observations, reloaded)
+    command_names = command_names + [str(channel) for record in scans
+                                     for channel in record["channels"]]
     goal = _goal_records(
         mujoco,
         reloaded,
@@ -10852,7 +12343,9 @@ def task_records(
             mujoco,
             reloaded,
             task["success"],
-            {**task, "episode": schedule},
+            # ADR-718: the course the model stands on, for the terrain family.
+            {**task, "episode": schedule,
+             "terrain": (built.get("environment") or {}).get("terrain")},
             tree,
             joint_records,
             reward_labels=[str(row["label"]) for row in reward_rows],
@@ -10901,17 +12394,31 @@ def task_records(
         ) + (
             GOAL_PHASE_ALGORITHM
             if any(entry["kind"] == "phase" for entry in goal) else ""
+        ) + (
+            GOAL_SEQUENCE_ALGORITHM
+            if any(entry.get("sequence") for entry in goal) else ""
         )} if goal else {}),
         # ADR-696: absent when the task observes no command, so its bundle
         # and digest are the ones it always had.
         **({"commands": commands} if commands else {}),
         # ADR-699: absent when the task reads no acceleration, on the same terms.
         **({"accelerations": accelerations} if accelerations else {}),
+        # ADR-715: absent when the task scans no ground, on the same terms.
+        **({"scans": scans} if scans else {}),
         # ADR-703: absent when the task declares no gait reference, and with
         # it ADR-706's tracking channels.
         **({"reference": reference, "tracking": tracking}
            if reference is not None else {}),
         **judged,
+        # ADR-714: the declared course, so a trainer, a height scan and a
+        # terrain predicate read it from the bundle rather than parsing the
+        # heightfield back out of the XML. Absent on flat ground, so every
+        # earlier bundle and its digest are unchanged.
+        **(
+            {"terrain": json.loads(json.dumps(built["environment"]["terrain"]))}
+            if (built.get("environment") or {}).get("terrain")
+            else {}
+        ),
         # The two per-episode draw streams, both stated, because they are
         # deliberately different algorithms and a reader has to be able to
         # tell which numbers came from where (M9, ADR-097).
@@ -10949,6 +12456,7 @@ def evaluation_rig(
     tip: Mapping[str, Any] | None = None,
     body: Mapping[str, Any] | None = None,
     centre: Mapping[str, Any] | None = None,
+    appendage: Sequence[str] = (),
     keyframe: str = MJCF_KEYFRAME_NAME,
 ) -> dict[str, Any]:
     """The facts about one model that a rollout's metrics are scaled by.
@@ -10972,6 +12480,11 @@ def evaluation_rig(
     ``body`` is ``{"body": name, "local_mm": [x, y, z]}``, a point whose
     motion is judged about ``centre``, ``{"frame": name or None, "point_mm",
     "axis"}`` (ADR-587). Neither needs a joint: a free ball is a body.
+
+    ``appendage`` names a chain hanging from the base, root first (ADR-722):
+    each body must hang from the one before it (the root from the base), at
+    least one must have a primitive collision shape, and the rig records
+    each body's primitives and the body the root hangs from.
 
     A grounded mechanism has no floating base, and ``base`` is then ``None``:
     an arm is still measured for reach. Two floating bases is a refusal,
@@ -11173,6 +12686,67 @@ def evaluation_rig(
                 context="the centre's point_mm",
             ),
             "axis": axis,
+        }
+    if appendage:
+        if base is None or floor is None:
+            raise DynamicsError(
+                "The evaluation names an appendage, and this model has no "
+                "floating base over exactly one floor plane for it to hang "
+                "from and clear.",
+                reason="evaluation_appendage_needs_a_floor",
+                observed={"floating_bases": len(free), "floor_planes": len(planes)},
+            )
+        ids = [_body(name, "an appendage link") for name in appendage]
+        for name, found, above in zip(appendage, ids, [base] + ids[:-1]):
+            link, hangs = found, False
+            while link not in (0, base):
+                link = int(model.body_parentid[link])
+                if link == above:
+                    hangs = True
+                    break
+            if not hangs:
+                raise DynamicsError(
+                    f"Appendage link {name!r} does not hang from "
+                    f"{str(mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, above))!r}; "
+                    "an appendage is named root first, each link below the one before.",
+                    reason="evaluation_appendage_not_a_chain",
+                    observed={"appendage": [str(n) for n in appendage], "link": str(name)},
+                )
+        shapes: dict[str, list[dict[str, Any]]] = {}
+        for name, found in zip(appendage, ids):
+            shapes[str(name)] = []
+            for geom in range(model.ngeom):
+                if int(model.geom_bodyid[geom]) != found or not (
+                    model.geom_contype[geom] or model.geom_conaffinity[geom]
+                ):
+                    continue
+                kind = _geom_kind_name(mujoco, int(model.geom_type[geom]))
+                if kind not in _EVALUATION_FOOT_GEOMS:
+                    raise DynamicsError(
+                        f"Appendage link {name!r} collides as a {kind}, and "
+                        "its clearance is read from a sphere, a capsule or a box.",
+                        reason="evaluation_appendage_geom_unsupported",
+                        correction="Give the link a primitive collision shape (api.collision).",
+                        observed={"link": str(name), "geom": kind},
+                    )
+                shapes[str(name)].append({
+                    "kind": kind,
+                    "size_mm": vector_mm(model.geom_size[geom]),
+                    "pos_mm": vector_mm(model.geom_pos[geom]),
+                    "quat_xyzw": quaternion_xyzw_from_wxyz(model.geom_quat[geom]),
+                })
+        if not any(shapes.values()):
+            raise DynamicsError(
+                "No link of the appendage has a collision geom, so nothing "
+                "about it can touch the ground.",
+                reason="evaluation_appendage_has_no_geom",
+                observed={"appendage": [str(n) for n in appendage]},
+            )
+        rig["appendage"] = {
+            "bodies": [str(name) for name in appendage],
+            "geoms": shapes,
+            "parent": str(mujoco.mj_id2name(
+                model, mujoco.mjtObj.mjOBJ_BODY, int(model.body_parentid[ids[0]]))),
         }
     return rig
 
@@ -11526,9 +13100,13 @@ def draw_episode_goals(
     for entry in task.get("goal") or ():
         segments: list[list[float]] = []
         if str(entry["kind"]) != "point":
-            for _ in range(int(entry["segments"])):
+            scripted = list(entry.get("sequence") or ())
+            for index in range(int(entry["segments"])):
+                value = rng.uniform(float(entry["low"]), float(entry["high"]))
+                # ADR-721: a scripted segment takes its draw and holds its
+                # script, so the stream after it is the unscripted one.
                 segments.append(
-                    [rng.uniform(float(entry["low"]), float(entry["high"]))]
+                    [float(scripted[index]) if index < len(scripted) else value]
                 )
             drawn.append({"label": str(entry["label"]), "segments": segments})
             continue
@@ -11967,6 +13545,10 @@ def evaluate_episode(
     accelerating = bool(task.get("accelerations"))
     # ADR-706: the reference on the gait clock, a function of the step alone.
     tracking = bool(task.get("tracking"))
+    # ADR-715: the ground the scans read is the elevation the model collides with.
+    scanning = bool(task.get("scans"))
+    elevation = (list(model.hfield_data)
+                 if scanning and task.get("terrain") else None)
     # Before the reset-pose sample below, because the first frame a rollout
     # draws and the first observation a policy acts on both have to be of
     # where the mechanism actually starts.
@@ -12009,6 +13591,8 @@ def evaluate_episode(
             observation.update(acceleration_values(task, data.qacc))
         if tracking:
             observation.update(tracking_values(task, step, origin or 0))
+        if scanning:
+            observation.update(height_scan_values(task, data.xpos, data.xmat, elevation))
         if actions is None:
             commanded = [
                 evaluate_control(code, time_s, context=f"action {index}")
@@ -12048,6 +13632,9 @@ def evaluate_episode(
             # ADR-706: where the step landed is judged against where the
             # reference is when it lands, one step on the clock.
             landed.update(tracking_values(task, step + 1, origin or 0))
+        if scanning:
+            # ADR-715: the ground under where the step landed.
+            landed.update(height_scan_values(task, data.xpos, data.xmat, elevation))
         contributions = []
         reward = 0.0
         for label, weight, code in reward_terms:
@@ -12124,14 +13711,15 @@ def _task_channels(task: Mapping[str, Any]) -> list[str]:
     """Every scalar name an expression may use: the sensor channels in
     slice order, then the goal channels in bundle order (ADR-462), then the
     command channels (ADR-696), then the acceleration channels (ADR-699),
-    then a reference's tracking channels (ADR-706)."""
+    then a reference's tracking channels (ADR-706), then the height scans
+    (ADR-715)."""
 
     return [
         str(channel)
         for record in task["observations"]
         for channel in record["channels"]
     ] + (goal_channels(task) + command_channels(task) + acceleration_channels(task)
-         + tracking_channels(task))
+         + tracking_channels(task) + scan_channels(task))
 
 
 # ---------------------------------------------------------------------------
@@ -13601,6 +15189,7 @@ def evaluate_success(
     rig = evaluation_rig(
         compiled, feet=list(spec.get("feet") or ()), tip=spec.get("tip"),
         body=spec.get("body"), centre=spec.get("centre"),
+        appendage=list(spec.get("appendage") or ()),
     )
     # A surface held off its geometry voids every seed alike: the episode
     # is played and measured, and none of it is a measurement of contact.
@@ -13609,6 +15198,9 @@ def evaluate_success(
     names = [str(name) for name in components]
     wanted = [rig["base"], *rig["feet"], (rig.get("tip") or {}).get("body"),
               (rig.get("body") or {}).get("body"), (rig.get("centre") or {}).get("frame")]
+    # ADR-722: an appendage is read from its links and the body it hangs from.
+    if rig.get("appendage"):
+        wanted += [*rig["appendage"]["bodies"], rig["appendage"]["parent"]]
     # ADR-592: a target held in a body's frame is measured where that body was.
     wanted += [entry.get("frame") for entry in played.get("goal") or ()]
     names += [name for name in wanted if name is not None and name not in names]
@@ -13620,8 +15212,16 @@ def evaluate_success(
 
     rows: list[dict[str, Any]] = []
     for seed in spec["seeds"]:
+        seeded, course = load_model(xml), None
+        if played.get("terrain"):
+            # ADR-718: a drawn course is re-drawn per seed, held out from the
+            # pool the trainer drew from; a listed one is every seed's.
+            course = terrain_evaluation_course(played["terrain"], int(seed), context=context)
+            if course.get("course") is not None:
+                place_terrain_course(seeded, course)
         run = rollout_policy(
-            load_model(xml), played, container, components=names,
+            seeded, played if course is None else {**played, "terrain": course},
+            container, components=names,
             frames_per_second=control_hz, seed=int(seed),
             context=f"{context}, seed {int(seed)}",
         )
@@ -13652,11 +15252,19 @@ def evaluate_success(
         # evaluation from outside.
         command = None
         segments: list[dict[str, Any]] = []
+        # ADR-721: the speed and yaw rate in force at every frame, for the
+        # tracking family.
+        tracked: dict[str, list[float]] = {}
         for entry in episode.get("goal") or ():
-            if entry["kind"] == "speed":
+            if entry["kind"] in ("speed", "yaw_rate"):
                 place = [row["channel"] for row in run["goal_channels"]].index(
                     entry["channels"][0]
                 )
+                tracked[entry["kind"]] = [
+                    float(frame["goal"][place]) for frame in run["frames"]
+                    if frame["frame_kind"] == "solver_output"
+                ]
+            if entry["kind"] == "speed":
                 command = CadexEvaluation.settled_command(
                     [(float(frame["nominal_time_s"]), float(frame["goal"][place]))
                      for frame in run["frames"]
@@ -13678,6 +15286,9 @@ def evaluate_success(
             drives=CadexEvaluation.drive_series(run["frames"], run["actuator_channels"]),
             # ADR-705: the gait against the task's own reference, if it has one.
             reference=task.get("reference"),
+            # ADR-718: the course this seed stood on, for the terrain family.
+            terrain=course, ground=None if course is None else course_ground(course),
+            commands=tracked,
         )
         held = CadexEvaluation.check(spec["predicates"], measured["metrics"])
         steps = max(1, ended["steps"])
@@ -13773,6 +15384,7 @@ def evaluate_success(
             **{key: spec[key] for key in (
                 "predicates", "seeds", "feet", "tip", "episode",
                 "reset_variation", "disturbance", "scale")},
+            **({"appendage": list(spec["appendage"])} if spec.get("appendage") else {}),
             "randomisation": [dict(entry) for entry in played["randomisation"]],
             **({"goal": [dict(entry) for entry in played["goal"]]}
                if played.get("goal") else {}),

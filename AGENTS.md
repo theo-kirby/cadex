@@ -1,6 +1,6 @@
 # AGENTS.md — Agent Entry Point
 
-Verified against source: 2026-10-12. **This is the single agent contract.**
+Verified against source: 2026-10-16. **This is the single agent contract.**
 `CLAUDE.md` only imports it (`@AGENTS.md`), so there is one file to read and
 one to edit (ADR-137).
 
@@ -152,7 +152,14 @@ The philosophy is **remove more than we add** (`docs/VISION.md`).
 
 1. **Trust the docs, then verify.** If code and doc disagree, the code wins
    — fix the doc in your PR.
-2. **Verify by running.** `src/Mod/cadex/`: `pixi run test-engine` minimum.
+2. **The suites hold contracts, not coverage (ADR-725).** They pin the
+   process boundaries, the protocol, the tool surface, the HTTP API, the
+   licence rule and the read-only dashboard, and each runs in under a
+   minute. Add a test only for a contract, or for a regression that
+   actually happened; verify behaviour by running the thing. Many docs
+   still cite test files deleted by ADR-725: read those citations as
+   history.
+3. **Verify by running.** `src/Mod/cadex/`: `pixi run test-engine` minimum.
    `cli/`: `pixi run python -m pytest cli/tests` too — it *skips* its
    engine-needing half on a bare checkout, so a green run there proves less
    than it looks. C++/CMake: `pixi run build-release` and `pixi run
@@ -161,18 +168,18 @@ The philosophy is **remove more than we add** (`docs/VISION.md`).
    `CADEX_ENGINE_ROOT=<payload> pytest
    src/Mod/cadex/cadex_tests/test_cadexd_lifecycle.py` — a passing source
    tree proves nothing about a payload (ADR-023). Report failures honestly.
-3. **Small, owner-mergeable PRs.** One logical change, with outcome, risk
+4. **Small, owner-mergeable PRs.** One logical change, with outcome, risk
    and test evidence.
-4. **Removals are normal work**, logged and proved. Resurrecting deleted
+5. **Removals are normal work**, logged and proved. Resurrecting deleted
    functionality is a direction change: ADR and owner sign-off.
-5. **No UI in the engine.** No Coin3D, no Qt, no workbench concepts under
+6. **No UI in the engine.** No Coin3D, no Qt, no workbench concepts under
    `src/`. A widget belongs in the dashboard (`cli/cadex_cli/review_static/`).
-6. **The protocol keeps the halves swappable.** Requests (`OP_ARG_SPECS`)
+7. **The protocol keeps the halves swappable.** Requests (`OP_ARG_SPECS`)
    and responses (the ADR-027 goldens) are pinned. Changing
    `CadexdProtocol.OP_ARG_SPECS` changes `docs/INTEGRATION.md`'s op table in
    the same commit (test-enforced) and the CLI's client in the same PR.
    One repo is not a licence to reach across the boundary any other way.
-7. **Update `docs/ROADMAP.md` checkboxes** when a work item lands.
+8. **Update `docs/ROADMAP.md` checkboxes** when a work item lands.
 
 ### Dynamics invariants (ADR-102)
 

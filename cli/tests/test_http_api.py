@@ -24,14 +24,14 @@ from cadex_cli import review_server
 from cadex_cli.review_record import WALK_LOCK_FILENAME
 from cadex_cli.review_server import (
     API_RESPONSE_KEYS, API_ROUTES, APP_API_ROUTES, ReviewHandler, serve, serve_projects)
-from test_review_checkpoints import RUN, _training_run
-from test_review_evaluation import _passing
-from test_review_record import REVISION_A, REVISION_B, _manifest, _project
-from test_review_revisions import _biped_store
-from test_review_server import _escaped_run, _get, _json, _mesh_run, _rewrite_record, _stage_accepted
-from test_review_server import _training_run as _untraced_run
-from test_review_reference import reference_bundle
-from test_dashboard_activations import motor_trace, write_policy
+from review_helpers import RUN, _checkpoint_trace, _checkpoint_training_run as _training_run
+from review_helpers import _passing
+from review_helpers import REVISION_A, REVISION_B, _manifest, _project
+from review_helpers import _biped_store
+from review_helpers import _escaped_run, _get, _json, _mesh_run, _rewrite_record, _stage_accepted
+from review_helpers import _training_run as _untraced_run
+from review_helpers import reference_bundle
+from review_helpers import motor_trace, write_policy
 
 REPO = Path(__file__).resolve().parents[2]
 STATIC = REPO / "cli" / "cadex_cli" / "review_static"
@@ -112,7 +112,7 @@ def biped(tmp_path):
     _escaped_run(root, tmp_path)
     run = _training_run(root)
     train = run / "train"
-    # A checkpoint with its policy beside it and a trace that records its motors (ADR-721); a
+    # A checkpoint with its policy beside it and a trace that records its motors (ADR-727); a
     # policy file the page cannot run; and the walk's own policy.
     header = write_policy(train / "walk.000040.cxpolicy")
     (train / "walk.000040.rollout-trace.json").write_text(json.dumps(motor_trace("000040", header)))

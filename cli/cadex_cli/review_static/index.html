@@ -21,7 +21,7 @@
 </head>
 <body class="app">
 <main id="screen" data-mode="areas"></main>
-<!-- The status bar (ADR-722): where you are, the menus, and whether the app is live, along the
+<!-- The status bar (ADR-728): where you are, the menus, and whether the app is live, along the
      bottom of the window as Blender has it; its menus open upwards. -->
 <header id="top">
   <div class="title">
@@ -156,7 +156,7 @@
         </optgroup>
       </select>
       <button id="model-fit" type="button">Fit</button>
-      <!-- The scrubbers ride in the header, after Fit (ADR-722): the revision history's, a run's
+      <!-- The scrubbers ride in the header, after Fit (ADR-728): the revision history's, a run's
            checkpoints' and the rollout's own timeline. -->
       <div class="view3d-play">
         <!-- The design's history (ADR-547): each stored revision's retained model (ADR-546), the one
@@ -186,7 +186,7 @@
     </div>
     <div class="editor-body" id="model">
       <div class="viewport"><canvas id="viewer" width="960" height="540"></canvas></div>
-      <!-- The navigation gizmo (ADR-720): the axes as the camera sees them; gizmo.js draws it. -->
+      <!-- The navigation gizmo (ADR-726): the axes as the camera sees them; gizmo.js draws it. -->
       <svg id="view3d-gizmo" data-view="" role="group" aria-label="View axes" hidden></svg>
       <!-- What the model and its scrubbers have to say, over the bottom left of the view (ADR-557). -->
       <div class="timelines">
@@ -282,7 +282,7 @@
     </div>
   </section>
 
-  <!-- Activations (ADR-721, ADR-722, §27): the rollout's motors, frame by frame, as gauges, as bars
+  <!-- Activations (ADR-727, ADR-728, §27): the rollout's motors, frame by frame, as gauges, as bars
        and by what drives the picked one; each view on its own switch. -->
   <section class="editor" id="editor-activations" data-editor="activations" data-title="Activations" data-short="Motors">
     <div class="editor-tools">
@@ -303,7 +303,7 @@
     </div>
   </section>
 
-  <!-- The policy's network (ADR-722, §27): its layers as a heat map, and the paths through them to
+  <!-- The policy's network (ADR-728, §27): its layers as a heat map, and the paths through them to
        the picked motor; drawn by activations.js with the Activations editor's state. -->
   <section class="editor" id="editor-network" data-editor="network" data-title="Network" data-short="Network">
     <div class="editor-tools">
@@ -319,7 +319,7 @@
     </div>
   </section>
 
-  <!-- This browser's preferences (ADR-722, §28); for now, the heat colours. Drawn by settings.js. -->
+  <!-- This browser's preferences (ADR-728, §28); for now, the heat colours. Drawn by settings.js. -->
   <section class="editor" id="editor-settings" data-editor="settings" data-title="Settings" data-short="Settings">
     <div class="editor-tools"></div>
     <div class="editor-body" id="settings">

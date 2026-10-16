@@ -1,6 +1,6 @@
 # XSCRIPT.md — The Scripting Model
 
-Verified against source: 2026-10-15
+Verified against source: 2026-10-16
 
 xscript is the single scripted modeling engine: the AI writes ONE
 declarative Python project script; the script runs in a sandboxed headless
@@ -81,6 +81,32 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   (reported as `free_base`, never as grounded), the dynamics export gives it
   a free joint, and the ground it stands on is the environment's plane at
   z = 0 — never a part of the script. A grounded assembly gets no such floor.
+  `assembly.mjcf(..., terrain={...})` swaps that plane for a declared course
+  (ADR-714): a heightfield over `x_range_mm` × `y_range_mm` at `cell_mm`
+  (default 20) built from `features` — `bump` (`x_mm`, `y_mm`, `radius_mm`,
+  `height_mm`, a raised cosine), `step` (`x_mm`, `height_mm`, across the
+  width, negative steps down) and `slope` (`from_x_mm`, `to_x_mm`,
+  `grade_deg`, holding its height after) — which add. The ground at the
+  origin stays at z = 0, nothing lies beyond the extent, and a grounded model
+  is refused. The course is in the file and in every task bundle built on it
+  as `terrain`. A step is a one-cell ramp, so `cell_mm` is also how sharp an
+  edge is; MJX has no heightfield contact for a cylinder or an ellipsoid, so a
+  task refuses one that can touch the course. `"form": "boxes"` (ADR-716)
+  builds the same features from placed boxes on a plane at the course's
+  lowest point instead, and is **the form to train on**: MJX steps it as
+  stably as the plane, where the heightfield throws a driven rig to
+  non-finite. Steps and slopes become flat blocks and turned ramps, a bump a
+  square block `radius_mm` across with a flat top (no dips), there is no
+  `cell_mm`, beyond the extent the plane goes on, and a step down off a
+  slope's high end is refused (`terrain_step_off_slope`). A box course may be
+  **drawn instead of listed** (ADR-717): `"random": {"seed", "courses",
+  "step_mm", "grade_deg", "bump_mm", ...}` in place of `features` draws
+  steps, slopes and bumps from magnitude ranges, past a flat `clear_mm`
+  (default 500) with a flat `run_mm` before each, each signed back towards
+  z = 0. Course 0 is the one the model carries; the bundle's `terrain.pool`
+  holds all `courses` (default 32, at most 64) as features, the model has a
+  box geom per box of the fullest, and the trainer gives each episode a
+  pooled course of its own.
 - **`part.box`'s `origin` is a corner, not a centre.** `part.box(40, 40, 200)`
   occupies x ∈ [0, 40], y ∈ [0, 40], z ∈ [0, 200] — the origin is the
   minimum corner, and the solid is entirely on the positive side of the
@@ -304,6 +330,13 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   loop (measured on `proof-loader`: 4.6 mm with none, 0.0005 mm with 5 kg).
   A coupled motor wants its rotor inertia the same way (`armature_kgmm2`,
   a NEMA17's 5.4): without it a velocity gain stretches the belt.
+- **Joint stops** (ADR-724). `assembly.joint_dynamics(joint,
+  limit_time_constant_s=, limit_damping_ratio=)` sets how hard the joint's
+  declared limits stop it (MuJoCo's `solreflimit`). The default, 0.02 s and
+  ratio 1, makes a light passive joint's stop a weak spring (a 144 g paw
+  pin went 25° past its stop at 2 N·m); smaller is stiffer. The time
+  constant must be at least two solver steps (0.004 s at the default
+  step), and the joint must have limits; either is refused otherwise.
   The fit sweep moves every coordinate a coupling ties to the swept joint
   -- an unlimited motor, pulley or screw follows, a limited joint holds --
   and reports those followers `passive`.
@@ -423,6 +456,13 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   `-(knee_tau/peak)^2` on an `actuator_force`, mechanical power
   `abs(knee_tau*knee_vel)` beside a `velocity`, and foot slip
   `sqrt(paw_vx^2+paw_vy^2)*paw_down`.
+  `assembly.observation(trunk, "height_scan", name="scan",
+  role="privileged")` reads the ground round a component (ADR-715):
+  `scan_0` .. `scan_14` are its height in mm above the course (or the plane)
+  at 5 points along its heading, from 100 mm behind to 300 mm ahead, by 3
+  across, 100 mm apart. `scan_4` is under the body. It travels in the
+  bundle's `scans` section, last in every vector, and it must be
+  `privileged`: the critic reads it, the policy does not.
   `assembly.reward(expression, weight=...)` terms are summed and a policy
   maximises the total, reported term by term so "which part of the reward is
   doing the work" is answerable; a cost is a positive quantity with a
@@ -477,6 +517,20 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `speed` | `name`, mm/s | `between=[low, high]`: the commanded forward speed | `speed_ratio`, `lateral_ratio` |
   | `point` | `name_x`, `name_y`, `name_z`, mm, world (or `frame=`'s) | a pose `tip` can reach | the reach metrics |
   | `phase` | `name_sin`, `name_cos` | a start phase over one turn; then it turns once every `period_seconds` | nothing |
+  | `yaw_rate` | `name`, deg/s | `between=[low, high]`: the commanded turning rate of the floating base about world +Z, anticlockwise (left) positive (ADR-721) | `yaw_rate_error_rms_deg_s`, `reversal_heading_error_deg_max` |
+
+  A task states at most one `speed`, one `yaw_rate` and one `point`.
+  `sequence=[v0, v1, ...]` scripts the opening segments of a `value`,
+  `speed` or `yaw_rate` goal (ADR-721): segment *k* holds `sequence[k]`, and
+  the segments past it are drawn. The draw is still taken for a scripted
+  segment, so a sequence moves no other draw in the seed's stream. It is
+  how a success spec asks every seed the same question — two seconds
+  straight, then a reversal:
+
+  ```python
+  turn = assembly.goal("turn", kind="yaw_rate", between=[-60, 60],
+                       resample_seconds=1.0, sequence=[0, 0, 60, 60, 60])
+  ```
 
   A `point` is a place the tip **can be**: the engine draws a pose with
   every joint the task drives in the middle `joint_fraction` (0.8) of its
@@ -592,6 +646,12 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `slip_share_max`, `duty_factor_min`, `duty_factor_max` | the share of a foot's travel made while on the floor; the share of frames in stance | `feet` |
   | `mean_forward_speed_mm_s`, `mean_lateral_speed_mm_s` | speed along and across the base's heading, after 1 s | `feet` |
   | `speed_ratio`, `lateral_ratio` | those speeds over the commanded one: the mean of the `speed` goal over the same settled frames | `feet` and a `speed` goal |
+  | `speed_error_rms_mm_s` | the RMS of the base's forward speed (along its heading, over a centred 0.5 s window) less the `speed` goal in force, over the frames past 1 s and not within 0.5 s after any command changed (ADR-721) | a floating base and a `speed` goal |
+  | `yaw_rate_error_rms_deg_s` | the same for the base's yaw rate about world +Z against the `yaw_rate` goal (ADR-721) | a floating base and a `yaw_rate` goal |
+  | `reversal_heading_error_deg_max` | for every held yaw-rate command that turns the commanded heading through 180° before it changes, the base's heading error at the moment it has (180°/\|rate\| after it was issued: 3 s at 60°/s); the worst one. Unmeasured, so failed, when the episode commanded none or ended first (ADR-721) | a floating base and a `yaw_rate` goal |
+  | `appendage_ground_contact_share` | the share of frames in which any collision shape of the spec's `appendage` (a chain hanging from the base that is not a leg: a tail, a trunk; named root first) is within 1 mm of the ground under it (ADR-722) | a floating base and `appendage` |
+  | `appendage_pitch_parent_correlation` | Pearson r, after 1 s, between the appendage root's pitch and the pitch of the body it hangs from, both read as the elevation of the base's starting forward direction as each body carries it: near 1 is a chain carried rigidly by its parent (ADR-722) | a floating base and `appendage` |
+  | `appendage_yaw_turn_correlation` | \|r\|, after 1 s, between the `yaw_rate` goal and the appendage's yaw relative to the base (the plan bearing from its root to the centre of its last shape); the sign and the slope in deg per deg/s are in the detail. Unmeasured when the command never changed (ADR-722) | a floating base, `appendage` and a `yaw_rate` goal |
   | `final_error_mm_max`, `final_error_arm_lengths_max`, `time_to_target_s_max`, `overshoot_ratio_max` | a tip's worst error, arrival time and overshoot over the targets the episode held | `tip` and a `point` goal |
   | `turns`, `laps` | a body's net signed turns about an axis through a centre (anticlockwise seen from the axis tip is positive), so a body that rocks on an arc reads about zero; whole turns completed in the net direction (ADR-587) | `body` |
   | `final_distance_mm`, `mean_distance_mm`, `max_distance_mm` | the body's distance from the centre point at the last frame, on average, and at its furthest — no goal needed (ADR-587) | `body` |
@@ -603,6 +663,8 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   | `footfall_phase_error_max`, `duty_factor_error_max` | against the task's gait reference, stride by stride with the left hind's landings as the clock: the worst foot's median distance, in cycles, of its landing from where the reference's phase offsets put it (a stride it does not land in exactly once is 0.5); the worst foot's duty factor less the reference's (ADR-705) | `feet` and a task `reference` |
   | `stride_frequency_ratio`, `reference_joint_rms_deg` | the median measured stride's frequency over the reference's; the RMS of every angular drive's joint angle less the reference's at the same phase of its own stride, so a slower stride is still compared pose for pose | `feet` and a task `reference` |
   | `command_rate_reference_ratio`, `joint_acceleration_reference_ratio` | the settled command-rate and joint-acceleration RMS over the reference clip's own, on the angular drives the clip poses: "as smooth as the motion asked for", which a raw RMS cannot say because it grows with stride and speed (ADR-708) | `feet` and a task `reference` |
+  | `distance_made_good_mm`, `falls` | net plan travel along the heading the episode started on; 1 if the base ever tilted 60° or its centre of mass came down to half its starting height above the ground under it, else 0 — read from poses, whatever the task terminates on (ADR-718) | a floating base |
+  | `steps_crossed`, `slopes_crossed`, `largest_step_crossed_mm`, `steepest_slope_crossed_deg` | the course's steps (at `x_mm`) and slopes (by their far end) that the centre of mass started before and ended beyond; the largest magnitude of each, up or down, 0 when none. A drawn box course is re-drawn per evaluation seed from a held-out stream, `eval:<seed>:<n>`, never a pooled course (ADR-718) | a floating base and a `terrain` |
 
   "Every foot" is the worst foot, which is what the `_min` and `_max`
   suffixes say. **That table is the whole vocabulary.** A predicate that

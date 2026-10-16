@@ -810,7 +810,7 @@ export function create(canvas, {labels=true}={}) {
     picked=selectedNames.length?selectedNames[selectedNames.length-1]:null;
     applyHeat();
   }
-  // The heat view (ADR-721; the Activations editor's "Show in viewport"): a map of part name to
+  // The heat view (ADR-727; the Activations editor's "Show in viewport"): a map of part name to
   // colour paints those parts in it, lit from within a little so a dark part still reads, and
   // every other part a quiet grey so the heat stands out; null gives every part its own colour
   // back. Over the selection, which still glows where it is.

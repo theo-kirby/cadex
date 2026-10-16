@@ -8,7 +8,7 @@
    palette the renders use, ADR-331) and `[data-theme="light"]` overrides
    it; theme.js sets the attribute before the first paint.
 
-   An editor that may be shown more than once (ADR-723) is copied with each id turned into a
+   An editor that may be shown more than once (ADR-729) is copied with each id turned into a
    data-ref, so its rules name both: :is(#x, [data-ref="x"]), which keeps the id's weight. */
 :root {
   color-scheme: dark;
@@ -94,7 +94,7 @@ textarea:focus { outline: none; border-color: var(--rule-strong); }
 /* The screen: areas tiled edge to edge, a hairline gap between them (§12). */
 body.app { height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
 #screen { flex: 1; min-height: 0; display: flex; padding: var(--gap) var(--gap) 0; }
-/* In the app the bar is a status bar along the bottom (ADR-722), and its menus open upwards. */
+/* In the app the bar is a status bar along the bottom (ADR-728), and its menus open upwards. */
 body.app header#top { min-height: var(--status-bar); padding: 0 var(--s3); }
 body.app .menu-panel { top: auto; bottom: calc(100% + 4px); }
 #screen > .split, #screen > .area { flex: 1 1 0 !important; }
@@ -144,7 +144,7 @@ nav.tabs .tab { flex: 1 0 auto; padding: 0 var(--s2); }
 :is(#model, [data-ref="model"]) { overflow: hidden; background: var(--bg); }
 :is(#model, [data-ref="model"]) .viewport, canvas:is(#viewer, [data-ref="viewer"]) { position: absolute; inset: 0; }
 canvas:is(#viewer, [data-ref="viewer"]) { display: block; width: 100%; height: 100%; touch-action: none; }
-/* The navigation gizmo (§5, ADR-720): the axes in the viewport's top right, in the viewport's own
+/* The navigation gizmo (§5, ADR-726): the axes in the viewport's top right, in the viewport's own
    dark whatever the theme, as the floor is. A disc shows behind it on hover, as in Blender. */
 :is(#view3d-gizmo, [data-ref="view3d-gizmo"]) { position: absolute; z-index: 1; top: var(--s2); right: var(--s2); width: 88px; height: 88px;
                 overflow: visible; pointer-events: none; user-select: none; }
@@ -233,7 +233,7 @@ table.status-table { width: 100%; border-collapse: collapse; table-layout: auto;
 #status-activity-list li[data-outcome="error"], #status-activity-list li[data-outcome="lost"] { color: var(--bad); }
 #status-activity-list li[data-outcome="running"] { color: var(--info); }
 .timelines { position: absolute; z-index: 1; left: var(--s2); right: var(--s2); bottom: var(--s2); display: flex; flex-direction: column; gap: var(--s1); pointer-events: none; }
-/* The scrubbers ride in the 3D viewport's header after Fit (ADR-722), one row each, wrapping onto a
+/* The scrubbers ride in the 3D viewport's header after Fit (ADR-728), one row each, wrapping onto a
    second header row when the area is narrow. */
 .view3d-play { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); flex: 1 1 320px; min-width: 0; }
 .timeline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); flex: 1 1 320px; min-width: 0; font-size: var(--fs-0); }
@@ -245,7 +245,7 @@ table.status-table { width: 100%; border-collapse: collapse; table-layout: auto;
 :is(#checkpoint-label, [data-ref="checkpoint-label"]), :is(#revision-label, [data-ref="revision-label"]) { flex: 0 1 auto; min-width: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); }
 #revision-list li[data-retained] { cursor: pointer; }
 
-/* Activations (ADR-721, §27): a gauge per motor and the policy's network, in the heat ramp. */
+/* Activations (ADR-727, §27): a gauge per motor and the policy's network, in the heat ramp. */
 :is(#activations, [data-ref="activations"]) { padding: var(--s2) var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
 :is(#activations-status, [data-ref="activations-status"]) { margin: 0; color: var(--ink-2); font-size: var(--fs-0); }
 :is(#activations-status, [data-ref="activations-status"])[data-state="warn"] { color: var(--warn); }
@@ -286,13 +286,13 @@ table.status-table { width: 100%; border-collapse: collapse; table-layout: auto;
 .mbar-network { width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 1.5px solid var(--ink); }
 .mbar-value { font: 400 var(--fs-0) var(--mono); color: var(--ink-2); white-space: nowrap; }
 :is(#activations-detail, [data-ref="activations-detail"]) .activations-pick { margin: 0 0 var(--s1); font-size: var(--fs-0); color: var(--ink-2); }
-/* The Network editor (ADR-722): its views share the area's height, each on the dark mat. */
+/* The Network editor (ADR-728): its views share the area's height, each on the dark mat. */
 :is(#network, [data-ref="network"]) { padding: var(--s2) var(--s3); display: flex; flex-direction: column; gap: var(--s2); }
 :is(#network-status, [data-ref="network-status"]) { margin: 0; color: var(--ink-2); font-size: var(--fs-0); flex: none; }
 :is(#network-status, [data-ref="network-status"])[data-state="warn"] { color: var(--warn); }
 :is(#network, [data-ref="network"]) canvas { display: block; width: 100%; flex: 1 1 0; min-height: 160px; border-radius: var(--radius-sm); background: #141414; touch-action: none; }
 :is(#network, [data-ref="network"])[data-layers="false"] :is(#network-layers, [data-ref="network-layers"]), :is(#network, [data-ref="network"])[data-paths="false"] :is(#network-paths, [data-ref="network-paths"]) { display: none; }
-/* Settings (ADR-722, §28): this browser's preferences, a group each. */
+/* Settings (ADR-728, §28): this browser's preferences, a group each. */
 #settings { padding: var(--s3) var(--s4); }
 .settings-group { max-width: 420px; }
 .settings-group .field select { max-width: 60%; }

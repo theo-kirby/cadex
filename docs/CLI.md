@@ -1376,7 +1376,7 @@ of a fixture biped that reaches every route disagree, in the way
 | `GET api/playback/run/<run>` | the run's rollout trace as playback frames | `available`, `run`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `joints`, `velocities`, `efforts`, `policy` |
 | `GET api/playback/checkpoint/<run>/<stem>` | one checkpoint's rollout as playback frames | `available`, `run`, `stem`, `checkpoint`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `joints`, `velocities`, `efforts`, `policy` |
 | `GET api/playback/reference/<task>` | an accepted task's gait reference (ADR-703) as playback frames: its one stride repeated a stride further on each time, for about 4 s | `available`, `task`, `source` | `reason`, `times_s`, `frames`, `commands`, `channels`, `duration_s`, `frames_per_second`, `reference`, `strides` |
-| `GET api/policy/run/<run>` | the run's own policy as the Activations editor runs it (ADR-721): its network, normaliser, input and action names, the weights as base64, each input's kind from the task bundle, the gait clock and the parts each motor moves | `available`, `run`, `source` | `reason`, `label`, `network`, `normaliser`, `observations`, `actions`, `weights`, `inputs`, `clock`, `parts` |
+| `GET api/policy/run/<run>` | the run's own policy as the Activations editor runs it (ADR-727): its network, normaliser, input and action names, the weights as base64, each input's kind from the task bundle, the gait clock and the parts each motor moves | `available`, `run`, `source` | `reason`, `label`, `network`, `normaliser`, `observations`, `actions`, `weights`, `inputs`, `clock`, `parts` |
 | `GET api/policy/checkpoint/<run>/<stem>` | one checkpoint's policy, the same way | `available`, `run`, `stem`, `source` | `reason`, `label`, `network`, `normaliser`, `observations`, `actions`, `weights`, `inputs`, `clock`, `parts` |
 
 The files the replies point to — `mesh/...`, `artifact/...`, `video/...`,
@@ -1433,9 +1433,9 @@ solids' reflection strength), `cadex.look`, `cadex.occlusion` and
 occlusion and its surface detail, ADR-676), and `cadex.outliner.group` and
 `cadex.outliner.folded` (how the Outliner groups the parts, and which groups
 are folded), and `cadex.follow` (whether the viewport follows a playing
-design, ADR-693), `cadex.heat` (the heat colours Settings picks, ADR-722) and
+design, ADR-693), `cadex.heat` (the heat colours Settings picks, ADR-728) and
 `cadex.activations.views` (which Activations and Network views are on,
-ADR-722) — and the test fails if the page stores any other key. A picked
+ADR-728) — and the test fails if the page stores any other key. A picked
 checkpoint, a scrubbed revision, a selected run, and the parts hidden or
 selected in the Outliner last only as long as the page.
 
@@ -2953,7 +2953,9 @@ The command checks:
   `in_contact` counts those within it, and the dynamics run writes the
   contacts it saw to `smoke-contacts.json`.
 - Floor-proxy penetration no deeper than `--penetration-mm 0.5`, and a free
-  base whose design is touching the environment floor at the end, whose linear
+  base whose design is touching the environment's ground at the end (its
+  floor, or the terrain heightfield a declared course puts in the floor's
+  place, ADR-714), whose linear
   speed is at most `--rest-speed-mm-s 10`, and which has turned no further
   than `--max-tilt-degrees 30` from the attitude its accepted keyframe gave it
   (ADR-377: a design that toppled and settled meets the first two and is not

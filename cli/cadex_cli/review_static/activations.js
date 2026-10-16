@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Cadex Authors
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //
-// The Activations and Network editors (ADR-721, ADR-722; docs/DASHBOARD.md §27): what the motors
+// The Activations and Network editors (ADR-727, ADR-728; docs/DASHBOARD.md §27): what the motors
 // and the policy's network are doing at the moment the 3D viewport's rollout is showing.
 //
 //   Activations  the motors, each view on its own switch:
@@ -194,7 +194,7 @@
 
   // -- the editors -----------------------------------------------------------------------------
   // One core reads the rollout and its policy and runs the network once; any number of panels
-  // (ADR-723) draw it: Activations panels the motors, Network panels the network. The picked
+  // (ADR-729) draw it: Activations panels the motors, Network panels the network. The picked
   // motor and a hovered neuron are the core's, so every panel shows the same moment the same
   // way; which views are on, and whether a panel paints the viewport, is each panel's own.
   var WARM = [255, 80, 100], COOL = [90, 130, 255];
