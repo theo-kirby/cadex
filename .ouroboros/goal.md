@@ -64,6 +64,39 @@ bend laterally at or near it. A4 below adds the joint.
   r1-t1's task, reward and logs remain usable as the first look at the R1
   task; its policy is stale.
 
+**Owner revision 4, 2026-10-16 (iteration 29).** Iteration 29 started r1-t2
+on revision 3b12f90b, which has no lateral spine. The owner stopped it at
+iteration 4 (an interruption, not an attempt). The owner also sees **no
+visible change to the hind feet**, and the operator confirmed it:
+- 3b12f90b's hind-paw collision geometry is byte-identical to f1-g3's: the
+  same two spheres at the same positions. The contact physics did not
+  change.
+- The "after" render is drawn in the build pose (the hock link vertical),
+  where the foot looks as it did before.
+- **The operator measured the hind paw body** (the hock link and the paw,
+  one body) in f1-g3's best policy, seed 1001, using
+  `~/orun7-progress/hindlink.py`. In stance it is pitched **about 58°
+  (p10 53°, p90 61°) from its build pose**; in swing, about 1°. So in
+  stance the whole hock-to-toe link lies down towards the ground, as a
+  cat's foot does. The paw block at its end is built for a vertical link,
+  so in stance it is rotated more than 50° away from flat. That is the
+  owner's complaint.
+- **A3's earlier sole-angle measurement (−4..+5° at mid-stance)
+  contradicts this.** Re-measure in the world frame, and say which was
+  wrong and why.
+- **What A3 must now do:**
+  - design the hind foot for the stance pose: the hock link is the
+    metatarsus;
+  - put the sole, pads and toes so they lie flat on the ground when that
+    link is at its measured stance angle, with the ankle (hock) raised
+    behind them as a cat's is;
+  - move the collision geometry with the visual: pads and toes that carry
+    the contact in stance;
+  - render the before and after **in the measured stance pose**, not the
+    build pose.
+- **Do not launch any R1 training until A3 and A4 are both in the
+  rebuilt model.**
+
 If the run achieves only one thing from here, it is this: **the cat, with a
 supple, actively used tail, turns and changes direction on command, and its
 tail never strikes the ground.**
