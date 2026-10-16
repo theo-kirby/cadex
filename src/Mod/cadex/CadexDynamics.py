@@ -3616,6 +3616,10 @@ TERRAIN_FORMS = ("heightfield", "boxes")
 #: fills under it.
 TERRAIN_RAMP_HALF_THICKNESS_MM = 10.0
 
+#: The geom a box course's dome stands in (ADR-744): a bump is a sphere
+#: buried so that its cap is the bump, ``environment/terrain/dome/<j>``.
+ENVIRONMENT_TERRAIN_DOME_GEOM = "environment/terrain/dome"
+
 
 def _terrain_number(
     entry: Mapping[str, Any], key: str, context: str, *, reason: str = "malformed_terrain"
@@ -3785,13 +3789,18 @@ def terrain_boxes(
     Steps and slopes split the extent along x into segments, each flat or at
     one grade: a flat one is a ``block`` from below the plane up to its
     height, a graded one a ``ramp`` (a thin box turned to its grade) on a
-    ``block`` that fills under it to its lower end. A bump is a square
-    ``block`` of half-width ``radius_mm / 2`` -- where its raised cosine is
-    at half its height -- whose flat top stands ``height_mm`` above the
-    steps and slopes at its centre. Every record reads ``x_range_mm``,
-    ``y_range_mm`` and ``top_mm`` (the top's height at the two x ends: equal
-    for a block). Segments at the lowest point need no box: the plane is
-    there. Returns ``boxes``, ``lowest_mm`` and ``highest_mm``.
+    ``block`` that fills under it to its lower end. Every record reads
+    ``x_range_mm``, ``y_range_mm`` and ``top_mm`` (the top's height at the
+    two x ends: equal for a block). Segments at the lowest point need no
+    box: the plane is there.
+
+    A bump is a **dome** (ADR-744): a sphere buried so that its cap meets
+    the steps and slopes under its centre at ``radius_mm`` from it and
+    stands ``height_mm`` above them there, one record of ``x_mm``,
+    ``y_mm``, ``top_mm`` (the cap's peak) and ``radius_mm`` (the sphere's,
+    ``(r**2 + h**2) / (2 h)``). A bump taller than its radius would be more
+    than a hemisphere, overhanging its own foot, and is refused. Returns
+    ``boxes``, ``domes``, ``lowest_mm`` and ``highest_mm``.
     """
 
     x0, x1 = (float(value) for value in x_range_mm)
@@ -3845,6 +3854,7 @@ def terrain_boxes(
             box("block", (a, b), (y0, y1), (low, low))
         if abs(zb - za) > TERRAIN_FLAT_MM:
             box("ramp", (a, b), (y0, y1), (za, zb))
+    domes: list[dict[str, Any]] = []
     for feature in features:
         if feature["kind"] != "bump":
             continue
@@ -3858,18 +3868,42 @@ def terrain_boxes(
                 ),
                 observed={"height_mm": feature["height_mm"]},
             )
-        half = feature["radius_mm"] / 2.0
-        top = _terrain_profile_mm(features, feature["x_mm"]) + feature["height_mm"]
-        box("block", (feature["x_mm"] - half, feature["x_mm"] + half),
-            (feature["y_mm"] - half, feature["y_mm"] + half), (top, top))
-    highest = max([lowest, *(max(record["top_mm"]) for record in boxes)])
-    return {"boxes": boxes, "lowest_mm": lowest, "highest_mm": highest}
+        foot, rise = feature["radius_mm"], feature["height_mm"]
+        if rise > foot:
+            raise DynamicsError(
+                f"{context} has a bump {rise:g} mm high on a {foot:g} mm radius.",
+                reason="terrain_bump_too_tall",
+                correction=(
+                    "A box course builds a bump as a buried sphere's cap, at "
+                    "most a hemisphere: keep height_mm at most radius_mm, or "
+                    "build the obstacle from steps."
+                ),
+                observed={"height_mm": rise, "radius_mm": foot},
+            )
+        domes.append({
+            "x_mm": float(feature["x_mm"]), "y_mm": float(feature["y_mm"]),
+            "top_mm": _terrain_profile_mm(features, feature["x_mm"]) + rise,
+            "radius_mm": (foot * foot + rise * rise) / (2.0 * rise),
+        })
+    highest = max([lowest, *(max(record["top_mm"]) for record in boxes),
+                   *(record["top_mm"] for record in domes)])
+    return {"boxes": boxes, "domes": domes, "lowest_mm": lowest, "highest_mm": highest}
+
+
+def terrain_dome_top_mm(dome: Mapping[str, Any], x_mm: float, y_mm: float) -> float | None:
+    """A dome's height over one point (ADR-744), or ``None`` off its sphere."""
+
+    radius = float(dome["radius_mm"])
+    reach = radius * radius - (x_mm - dome["x_mm"]) ** 2 - (y_mm - dome["y_mm"]) ** 2
+    if reach < 0.0:
+        return None
+    return float(dome["top_mm"]) - radius + math.sqrt(reach)
 
 
 def terrain_box_ground_mm(terrain: Mapping[str, Any], x_mm: float, y_mm: float) -> float:
     """A box course's ground height at one point (ADR-716): the highest box
-    top over it, or the plane at ``lowest_mm``. ``training/cadex_train.py``
-    writes the same reading in ``jnp``, and a test holds them equal."""
+    top or dome (ADR-744) over it, or the plane at ``lowest_mm``.
+    ``training/cadex_train.py`` writes the same reading in ``jnp``."""
 
     ground = float(terrain["lowest_mm"])
     for record in terrain["boxes"]:
@@ -3877,6 +3911,10 @@ def terrain_box_ground_mm(terrain: Mapping[str, Any], x_mm: float, y_mm: float) 
         if xa <= x_mm <= xb and ya <= y_mm <= yb:
             za, zb = record["top_mm"]
             ground = max(ground, za + (zb - za) * (x_mm - xa) / (xb - xa))
+    for dome in terrain.get("domes") or ():
+        top = terrain_dome_top_mm(dome, x_mm, y_mm)
+        if top is not None:
+            ground = max(ground, top)
     return ground
 
 
@@ -4022,6 +4060,17 @@ def terrain_random_spec(spec: Any, *, context: str = "the terrain") -> dict[str,
                 correction=f"{key!r} stays under {bound:g}.",
                 observed={key: record[key]},
             )
+    if record["bump_mm"] is not None and record["bump_mm"][1] > record["bump_radius_mm"][0]:
+        raise DynamicsError(
+            f"{where} draws bumps up to {record['bump_mm'][1]:g} mm high on radii "
+            f"from {record['bump_radius_mm'][0]:g} mm.",
+            reason="terrain_bump_too_tall",
+            correction=(
+                "A bump is a buried sphere's cap, at most a hemisphere (ADR-744): "
+                "keep bump_mm's top at most bump_radius_mm's bottom."
+            ),
+            observed={"bump_mm": record["bump_mm"], "bump_radius_mm": record["bump_radius_mm"]},
+        )
     if record["step_mm"] is None and record["grade_deg"] is None and record["bump_mm"] is None:
         raise DynamicsError(
             f"{where} draws nothing: it gives none of step_mm, grade_deg and bump_mm.",
@@ -4146,6 +4195,28 @@ def terrain_box_geoms(
     return {"plane_z_m": length_m(lowest), "pos_m": pos, "quat": quat, "size_m": size}
 
 
+def terrain_dome_geoms(
+    domes: Sequence[Mapping[str, Any]], lowest_mm: float, slots: int | None = None
+) -> dict[str, Any]:
+    """Where a box course's dome spheres stand (ADR-744), in MuJoCo's units:
+    ``pos_m`` and ``radius_m`` one row per dome, its centre a radius under
+    its peak; with ``slots``, run on to that many with the rest parked as
+    the box slots are (:func:`terrain_box_geoms`)."""
+
+    pos, radius = [], []
+    for dome in domes:
+        pos.append(vector_m([dome["x_mm"], dome["y_mm"], dome["top_mm"] - dome["radius_mm"]]))
+        radius.append(length_m(dome["radius_mm"]))
+    if slots is not None:
+        if len(domes) > int(slots):
+            raise ValueError(f"{len(domes)} domes do not fit {slots} slots")
+        parked = float(lowest_mm) - TERRAIN_BASE_MM - TERRAIN_PARKED_DEPTH_MM
+        for _ in range(int(slots) - len(domes)):
+            pos.append(vector_m([0.0, 0.0, parked]))
+            radius.append(length_m(TERRAIN_PARKED_HALF_MM))
+    return {"pos_m": pos, "radius_m": radius}
+
+
 #: The most draws :func:`terrain_evaluation_course` makes for one seed before
 #: it refuses: a held-out draw is kept only if its boxes fit the model's
 #: slots, which the pool's fullest course set, so most first draws fit.
@@ -4191,12 +4262,13 @@ def terrain_evaluation_course(terrain: Mapping[str, Any], seed: int, *,
         if not features:
             continue
         built = terrain_boxes(features, x_range, y_range, context=where)
-        if len(built["boxes"]) > slots:
+        if (len(built["boxes"]) > slots
+                or len(built["domes"]) > int(terrain.get("dome_slots") or 0)):
             continue
         _terrain_start_and_relief(built["lowest_mm"], built["highest_mm"],
                                   terrain_box_ground_mm(built, 0.0, 0.0), where)
         course = {key: value for key, value in terrain.items() if key != "pool"}
-        course.update(features=features, boxes=built["boxes"],
+        course.update(features=features, boxes=built["boxes"], domes=built["domes"],
                       lowest_mm=built["lowest_mm"], highest_mm=built["highest_mm"],
                       course={"seed": int(seed), "draw": draw, "key": key,
                               "algorithm": TERRAIN_EVALUATION_ALGORITHM})
@@ -4249,6 +4321,19 @@ def place_terrain_course(model: Any, course: Mapping[str, Any]) -> None:
         model.geom_size[geom] = size
         model.geom_rbound[geom] = math.sqrt(sum(value * value for value in size))
         model.geom_aabb[geom] = [0.0, 0.0, 0.0, *size]
+        # ADR-744: a slot compiled unturned is marked as sharing its body's
+        # frame, and MuJoCo then copies the body's rotation over its quat, so
+        # a ramp re-placed there stood flat. MJX always reads the quat.
+        model.geom_sameframe[geom] = 0
+    domes = terrain_dome_geoms(course.get("domes") or (), float(course["lowest_mm"]),
+                               int(course.get("dome_slots") or 0))
+    for index, (pos, radius) in enumerate(zip(domes["pos_m"], domes["radius_m"])):
+        geom = model.geom(f"{ENVIRONMENT_TERRAIN_DOME_GEOM}/{index}").id
+        model.geom_pos[geom] = pos
+        model.geom_size[geom] = [radius, 0.0, 0.0]
+        model.geom_rbound[geom] = radius
+        model.geom_aabb[geom] = [0.0, 0.0, 0.0, radius, radius, radius]
+        model.geom_sameframe[geom] = 0
     _rebox_world_tree(model)
 
 
@@ -4263,7 +4348,8 @@ def terrain_drawing(course: Mapping[str, Any]) -> dict[str, Any]:
 
     A box course is its boxes as they stand, each a centre, an ``xyzw``
     rotation and half-extents in mm (:func:`terrain_box_geoms`, without the
-    parked slots), and the plane at its lowest point, which goes on beyond
+    parked slots), its domes' spheres, each a centre and a radius in mm
+    (ADR-744), and the plane at its lowest point, which goes on beyond
     the extent. A heightfield is a grid of heights over its extent, sampled
     to at most :data:`TERRAIN_DRAWING_MAXIMUM_VERTICES` a side from its
     declared features, with no plane: beyond it there is no ground. A trace
@@ -4287,6 +4373,12 @@ def terrain_drawing(course: Mapping[str, Any]) -> dict[str, Any]:
              "rotation_xyzw": quaternion_xyzw_from_wxyz(quat), "half_mm": vector_mm(size)}
             for record, pos, quat, size in zip(
                 course["boxes"], placed["pos_m"], placed["quat"], placed["size_m"])
+        ]
+        drawing["domes"] = [
+            {"centre_mm": [float(dome["x_mm"]), float(dome["y_mm"]),
+                           float(dome["top_mm"]) - float(dome["radius_mm"])],
+             "radius_mm": float(dome["radius_mm"])}
+            for dome in course.get("domes") or ()
         ]
         return drawing
     (x0, x1), (y0, y1) = drawing["x_range_mm"], drawing["y_range_mm"]
@@ -4463,6 +4555,7 @@ def _terrain_box_course(
         "friction": list(ENVIRONMENT_FLOOR_FRICTION),
         "features": features,
         "boxes": built["boxes"],
+        "domes": built["domes"],
     }
     _terrain_start_and_relief(
         built["lowest_mm"], built["highest_mm"],
@@ -4472,12 +4565,14 @@ def _terrain_box_course(
         slots = max(len(entry["boxes"]) for _, entry in courses)
         descriptor["random"] = {**random_spec, "algorithm": TERRAIN_RANDOM_ALGORITHM}
         descriptor["slots"] = slots
+        descriptor["dome_slots"] = max(len(entry["domes"]) for _, entry in courses)
         # The model's metres per course millimetre, which a trainer placing
         # a pooled course multiplies by rather than converting (ADR-717).
         descriptor["scale"] = length_m(1.0)
         descriptor["pool"] = [
             {"features": drawn, "lowest_mm": entry["lowest_mm"],
-             "highest_mm": entry["highest_mm"], "boxes": len(entry["boxes"])}
+             "highest_mm": entry["highest_mm"], "boxes": len(entry["boxes"]),
+             "domes": len(entry["domes"])}
             for drawn, entry in courses
         ]
     if terrain.get("collides_with") is not None:
@@ -4634,7 +4729,9 @@ def _environment_box_course(mujoco: Any, spec: Any, descriptor: Mapping[str, Any
     thick, turned about y to its grade, whose top face is the record's
     (:func:`terrain_box_geoms`). A course drawn at random (ADR-717) has
     ``slots`` geoms, one per box of its pool's fullest course, and parks
-    those its own boxes leave empty."""
+    those its own boxes leave empty. Each dome (ADR-744) is a sphere,
+    ``environment/terrain/dome/<j>``, ``dome_slots`` of them on a drawn
+    course, on the same terms."""
 
     contact = {
         "friction": list(ENVIRONMENT_FLOOR_FRICTION),
@@ -4666,6 +4763,17 @@ def _environment_box_course(mujoco: Any, spec: Any, descriptor: Mapping[str, Any
             pos=pos,
             quat=quat,
             size=size,
+            **contact,
+        )
+    domes = descriptor.get("domes") or ()
+    slots = descriptor.get("dome_slots") if descriptor.get("slots") is not None else None
+    placed = terrain_dome_geoms(domes, lowest, slots)
+    for index, (pos, radius) in enumerate(zip(placed["pos_m"], placed["radius_m"])):
+        spec.worldbody.add_geom(
+            name=f"{ENVIRONMENT_TERRAIN_DOME_GEOM}/{index}",
+            type=mujoco.mjtGeom.mjGEOM_SPHERE,
+            pos=pos,
+            size=[radius, 0.0, 0.0],
             **contact,
         )
 

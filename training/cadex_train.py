@@ -800,9 +800,10 @@ def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
     ``(..., nbody, 9)`` or ``(..., nbody, 3, 3)``. ``elevation`` is the
     course's ``hfield_data``, read bilinearly and held at the edge, or
     ``None`` for the plane at z = 0; a box course (ADR-716) reads its boxes.
-    ``course`` is a re-drawn course's ``(scan, lowest)`` from
-    :func:`terrain_pool`, ``(..., S, 6)`` and ``(...)`` with the leading axes
-    ``xpos``'s, read in place of the bundle's boxes (ADR-717).
+    ``course`` is a re-drawn course's ``(scan, lowest, domes)`` from
+    :func:`terrain_pool`, ``(..., S, 6)``, ``(...)`` and ``(..., D, 4)`` with
+    the leading axes ``xpos``'s, read in place of the bundle's boxes and
+    domes (ADR-717, ADR-744).
     """
 
     terrain = task.get("terrain")
@@ -825,10 +826,11 @@ def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
             # ADR-716: the highest box top over the point, or the plane.
             if course is not None:
                 # ADR-717: this environment's course, one row per slot.
-                rows, lowest = course
+                rows, lowest, domes = course
                 xa, xb, ya, yb, za, zb = (rows[..., None, :, column] for column in range(6))
                 lowest = xp.asarray(lowest, dtype=where.dtype)
                 floor, under = lowest[..., None], lowest[..., None, None]
+                dx, dy, dz, dr = (domes[..., None, :, column] for column in range(4))
             else:
                 boxes = terrain["boxes"]
                 xa, xb, ya, yb, za, zb = (
@@ -836,10 +838,19 @@ def height_scan_vector(xp: Any, task: dict[str, Any], xpos: Any, xmat: Any,
                     for key, end in (("x_range_mm", 0), ("x_range_mm", 1), ("y_range_mm", 0),
                                      ("y_range_mm", 1), ("top_mm", 0), ("top_mm", 1)))
                 floor = under = float(terrain["lowest_mm"])
+                dx, dy, dz, dr = (
+                    xp.asarray([float(dome[key]) - (float(dome["radius_mm"]) if key == "top_mm" else 0.0)
+                                for dome in terrain.get("domes") or ()], dtype=where.dtype)
+                    for key in ("x_mm", "y_mm", "top_mm", "radius_mm"))
             bx, by = px[..., None], py[..., None]
             inside = (bx >= xa) & (bx <= xb) & (by >= ya) & (by <= yb)
             top = za + (zb - za) * (bx - xa) / (xb - xa)
             ground = xp.maximum(xp.max(xp.where(inside, top, under), axis=-1), floor)
+            if dr.shape[-1]:
+                # ADR-744: a dome's sphere over the point, about its centre.
+                reach = dr * dr - (bx - dx) ** 2 - (by - dy) ** 2
+                cap = dz + xp.sqrt(xp.maximum(reach, 0.0))
+                ground = xp.maximum(ground, xp.max(xp.where(reach >= 0.0, cap, under), axis=-1))
         elif terrain is None or elevation is None:
             ground = xp.zeros_like(px)
         else:
@@ -891,6 +902,21 @@ TERRAIN_PARKED_DEPTH_MM = 1000.0
 TERRAIN_PARKED_HALF_MM = 1.0
 
 
+def course_domes(features: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """A validated course's dome records (``CadexDynamics.terrain_boxes``'
+    ``domes``, ADR-744): each bump a sphere whose cap is the bump."""
+
+    domes = []
+    for feature in features:
+        if feature["kind"] != "bump":
+            continue
+        foot, rise = feature["radius_mm"], feature["height_mm"]
+        domes.append({"x_mm": float(feature["x_mm"]), "y_mm": float(feature["y_mm"]),
+                      "top_mm": _course_profile_mm(features, feature["x_mm"]) + rise,
+                      "radius_mm": (foot * foot + rise * rise) / (2.0 * rise)})
+    return domes
+
+
 def _course_profile_mm(features: Sequence[dict[str, Any]], x_mm: float) -> float:
     height = 0.0
     for feature in features:
@@ -906,7 +932,8 @@ def _course_profile_mm(features: Sequence[dict[str, Any]], x_mm: float) -> float
 def course_boxes(features: Sequence[dict[str, Any]], x_range_mm: Sequence[float],
                  y_range_mm: Sequence[float]) -> list[dict[str, Any]]:
     """A validated course's box records (``CadexDynamics.terrain_boxes``,
-    without its refusals: the engine made them when it drew the pool)."""
+    without its refusals: the engine made them when it drew the pool); its
+    bumps are :func:`course_domes`."""
 
     x0, x1 = (float(value) for value in x_range_mm)
     y0, y1 = (float(value) for value in y_range_mm)
@@ -940,13 +967,6 @@ def course_boxes(features: Sequence[dict[str, Any]], x_range_mm: Sequence[float]
             box("block", (a, b), (y0, y1), (low, low))
         if abs(zb - za) > TERRAIN_FLAT_MM:
             box("ramp", (a, b), (y0, y1), (za, zb))
-    for feature in features:
-        if feature["kind"] != "bump":
-            continue
-        half = feature["radius_mm"] / 2.0
-        top = _course_profile_mm(features, feature["x_mm"]) + feature["height_mm"]
-        box("block", (feature["x_mm"] - half, feature["x_mm"] + half),
-            (feature["y_mm"] - half, feature["y_mm"] + half), (top, top))
     return boxes
 
 
@@ -992,12 +1012,19 @@ def terrain_pool(np: Any, terrain: dict[str, Any]) -> dict[str, Any]:
     ``(P, S, 4)``; ``rbound`` ``(P, S)`` and ``aabb`` ``(P, S, 6)``, which
     MuJoCo derives from a box's size at compile time; ``scan`` ``(P, S, 6)``,
     each slot's ``x0 x1 y0 y1 top0 top1`` in mm, a parked slot an empty
-    range; and ``lowest`` ``(P,)`` in mm.
+    range; and ``lowest`` ``(P,)`` in mm. Domes (ADR-744): ``dome_pos``
+    ``(P, D, 3)`` and ``dome_size`` ``(P, D, 3)`` (the radius, then zeros),
+    ``dome_rbound`` ``(P, D)``, ``dome_aabb`` ``(P, D, 6)`` and
+    ``dome_scan`` ``(P, D, 4)``, each dome's centre and radius in mm, a
+    parked slot's radius 0.
     """
 
     slots = int(terrain["slots"])
+    dome_slots = int(terrain.get("dome_slots") or 0)
+    scale = float(terrain["scale"])
     columns: dict[str, list[Any]] = {key: [] for key in (
-        "plane_z", "pos", "quat", "size", "scan", "lowest")}
+        "plane_z", "pos", "quat", "size", "scan", "lowest", "dome_pos", "dome_size",
+        "dome_scan")}
     for course in terrain["pool"]:
         boxes = course_boxes(course["features"], terrain["x_range_mm"], terrain["y_range_mm"])
         if len(boxes) != int(course["boxes"]):
@@ -1016,25 +1043,51 @@ def terrain_pool(np: Any, terrain: dict[str, Any]) -> dict[str, Any]:
             [[*record["x_range_mm"], *record["y_range_mm"], *record["top_mm"]]
              for record in boxes]
             + [[0.0, -1.0, 0.0, -1.0, lowest, lowest]] * (slots - len(boxes)))
+        domes = course_domes(course["features"])
+        if len(domes) != int(course.get("domes", 0)):
+            raise SystemExit(
+                f"a pooled course builds {len(domes)} domes here and "
+                f"{course.get('domes', 0)} in the engine, so this trainer's dome "
+                "builder is not the engine's")
+        parked = lowest - TERRAIN_BASE_MM - TERRAIN_PARKED_DEPTH_MM
+        rows = ([[d["x_mm"], d["y_mm"], d["top_mm"] - d["radius_mm"], d["radius_mm"]] for d in domes]
+                + [[0.0, 0.0, parked, 0.0]] * (dome_slots - len(domes)))
+        columns["dome_scan"].append(rows)
+        columns["dome_pos"].append([[row[0] * scale, row[1] * scale, row[2] * scale] for row in rows])
+        columns["dome_size"].append(
+            [[(row[3] or TERRAIN_PARKED_HALF_MM) * scale, 0.0, 0.0] for row in rows])
     arrays = {key: np.asarray(value, dtype=np.float64) for key, value in columns.items()}
+    for key, width in (("dome_pos", 3), ("dome_size", 3), ("dome_scan", 4)):
+        arrays[key] = arrays[key].reshape(len(terrain["pool"]), dome_slots, width)
     arrays["rbound"] = np.linalg.norm(arrays["size"], axis=-1)
     arrays["aabb"] = np.concatenate([np.zeros_like(arrays["size"]), arrays["size"]], axis=-1)
+    arrays["dome_rbound"] = arrays["dome_size"][..., 0]
+    arrays["dome_aabb"] = np.concatenate(
+        [np.zeros_like(arrays["dome_size"]), np.repeat(arrays["dome_size"][..., :1], 3, axis=-1)],
+        axis=-1)
     return arrays
 
 
-def place_course(model: Any, pool: dict[str, Any], slots: Any, plane: int, course: Any) -> Any:
+def place_course(model: Any, pool: dict[str, Any], slots: Any, plane: int, course: Any,
+                 dome_slots: Any) -> Any:
     """An MJX model with one pooled course in its terrain geoms (ADR-717):
     the plane at the course's lowest point, and each slot's box, or a parked
-    cube, where :func:`terrain_pool` stands it. ``pool`` holds its arrays on
-    the device; ``slots`` are the ``environment/terrain/<i>`` geom ids."""
+    cube, where :func:`terrain_pool` stands it, and each dome slot's sphere
+    (ADR-744). ``pool`` holds its arrays on the device; ``slots`` are the
+    ``environment/terrain/<i>`` geom ids, ``dome_slots`` the
+    ``environment/terrain/dome/<j>`` ones."""
 
     return model.replace(
         geom_pos=model.geom_pos.at[slots].set(pool["pos"][course])
+        .at[dome_slots].set(pool["dome_pos"][course])
         .at[plane, 2].set(pool["plane_z"][course]),
         geom_quat=model.geom_quat.at[slots].set(pool["quat"][course]),
-        geom_size=model.geom_size.at[slots].set(pool["size"][course]),
-        geom_rbound=model.geom_rbound.at[slots].set(pool["rbound"][course]),
-        geom_aabb=model.geom_aabb.at[slots].set(pool["aabb"][course]))
+        geom_size=model.geom_size.at[slots].set(pool["size"][course])
+        .at[dome_slots].set(pool["dome_size"][course]),
+        geom_rbound=model.geom_rbound.at[slots].set(pool["rbound"][course])
+        .at[dome_slots].set(pool["dome_rbound"][course]),
+        geom_aabb=model.geom_aabb.at[slots].set(pool["aabb"][course])
+        .at[dome_slots].set(pool["dome_aabb"][course]))
 
 
 def tracking_channels(task: dict[str, Any], *, policy_only: bool = False) -> list[str]:
@@ -2010,20 +2063,25 @@ def build_environment(
         slot_geoms = np.asarray([
             mujoco.mj_name2id(host, mujoco.mjtObj.mjOBJ_GEOM, f"environment/terrain/{index}")
             for index in range(int(task["terrain"]["slots"]))], dtype=np.int32)
-        if plane_geom < 0 or (slot_geoms < 0).any():
+        dome_geoms = np.asarray([
+            mujoco.mj_name2id(host, mujoco.mjtObj.mjOBJ_GEOM, f"environment/terrain/dome/{index}")
+            for index in range(int(task["terrain"].get("dome_slots") or 0))], dtype=np.int32)
+        if plane_geom < 0 or (slot_geoms < 0).any() or (dome_geoms < 0).any():
             raise SystemExit(
                 "the bundle's terrain pool names geoms the model does not carry: "
-                f"environment/terrain and {len(slot_geoms)} environment/terrain/<i>")
+                f"environment/terrain, {len(slot_geoms)} environment/terrain/<i> and "
+                f"{len(dome_geoms)} environment/terrain/dome/<j>")
         pool_device = {key: jnp.asarray(value, dtype=jnp.float32)
                        for key, value in pool.items()}
 
     def placed(m, course):
-        return place_course(m, pool_device, slot_geoms, plane_geom, course)
+        return place_course(m, pool_device, slot_geoms, plane_geom, course, dome_geoms)
 
     def scanned_course(course):
         """``height_scan_vector``'s ``course`` for these course indices."""
 
-        return (pool_device["scan"][course], pool_device["lowest"][course]) if redrawing else None
+        return ((pool_device["scan"][course], pool_device["lowest"][course],
+                 pool_device["dome_scan"][course]) if redrawing else None)
 
     single = mjx.put_model(host)
     model = single

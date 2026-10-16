@@ -43520,3 +43520,55 @@ so the sampler gains a sphere top when the engine gains the kind. The
 5 mm agreement with the physics over 10 held-out courses is G1's own check,
 written when the engine's new kinds land.
 
+
+## ADR-744 — A box course's bump is a dome; a re-placed slot reads its own rotation (2026-10-16)
+
+**Context.** orun8's G1 asks for smooth bumps and moguls, with the drawn
+height agreeing with the physics' within 5 mm, and O5 says to build them
+from large, mostly buried spheres. ADR-716 built a bump on a box course as a
+square block `radius_mm` across with a flat top: a 25 mm bump was a 25 mm
+step up and down, not a mogul.
+
+**Decision.** On a box course a `bump` is a **dome**: a sphere buried so
+its cap stands `height_mm` above the steps and slopes under its centre and
+meets them `radius_mm` from it, of radius `(r² + h²) / 2h`. No new feature
+kind: the heightfield's raised cosine and the dome now share a footprint
+and a height. A bump taller than its radius would be more than a
+hemisphere and overhang its own foot, so it is refused
+(`terrain_bump_too_tall`), in a listed course and in a random spec whose
+`bump_mm` top exceeds its `bump_radius_mm` bottom. `terrain_boxes` returns
+`domes` (`x_mm`, `y_mm`, `top_mm`, `radius_mm`), the descriptor carries
+them, a drawn pool's courses count them and the descriptor gives
+`dome_slots`. The MJCF writes one sphere per slot,
+`environment/terrain/dome/<j>`, on the boxes' contact terms (so
+`collides_with` holds), parking the slots a course leaves empty as the box
+slots are parked. `terrain_box_ground_mm` takes the highest dome cap too.
+`place_terrain_course`, the trainer's `terrain_pool`, `place_course` and
+height scan, the drawing (`domes`: centre and radius), the server's
+`terrain_block` and `mjcf_terrain`, the dashboard's sampler and the film's
+`terrain_triangles` each read domes.
+
+**A bug found on the way.** MuJoCo marks a geom compiled unturned as
+sharing its body's frame (`geom_sameframe`) and then copies the body's
+rotation instead of reading `geom_quat`. A drawn course's slot that was a
+block in course 0 and became a ramp in a re-placed course stood **flat** in
+stock MuJoCo: on one held-out course 66 of 309 ray probes missed the engine's
+ground by up to 60 mm. MJX always reads `geom_quat`, so training was right
+and stock-MuJoCo evaluation on drawn courses (ADR-718) was not. That
+includes ADR-741's stock-side tip rate. `place_terrain_course` now clears
+`geom_sameframe` on every slot it places.
+
+**Evidence.** On a drawn course (steps 20–100 mm, slopes 3–15°, bumps
+20–80 mm on 100–250 mm radii), at 1,000 random points over 10 held-out
+evaluation courses, MuJoCo's ray and `terrain_box_ground_mm` agree within
+2e-12 mm (before the `sameframe` fix: 63 misses over 5 mm on one course).
+The trainer's scan matches the engine's ground exactly at 300 points of a
+pooled course. MJX's `place_course` puts the domes where stock MuJoCo puts
+them (1.8e-7 m), and a ball dropped on a dome in MJX stays finite for 1,000
+steps. `cli/tests/test_dashboard_ground.py` adds a 60 mm mogul on a 250 mm
+foot and holds its peak and side to the sphere within 1 mm.
+
+**Not done here.** Rock (turned boxes), jump platforms and the run-out at
+the course's extent are still to come, and so is G3's MJX probe of the cat
+on domes. A bundle written before this ADR, with block bumps, is refused
+by the trainer's dome-count check rather than trained on different ground.

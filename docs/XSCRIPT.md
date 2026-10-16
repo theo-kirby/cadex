@@ -96,7 +96,8 @@ result = {"plate": plate, "hull": hull, "asm": asm}  # named outputs, by domain
   lowest point instead, and is **the form to train on**: MJX steps it as
   stably as the plane, where the heightfield throws a driven rig to
   non-finite. Steps and slopes become flat blocks and turned ramps, a bump a
-  square block `radius_mm` across with a flat top (no dips), there is no
+  buried sphere whose cap is the bump (ADR-744; no dips, and no taller than
+  its radius), there is no
   `cell_mm`, beyond the extent the plane goes on, and a step down off a
   slope's high end is refused (`terrain_step_off_slope`). A box course may be
   **drawn instead of listed** (ADR-717): `"random": {"seed", "courses",

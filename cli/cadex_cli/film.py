@@ -357,6 +357,22 @@ def terrain_triangles(block: Mapping[str, Any]) -> list[tuple]:
                            ((-1, -1, -1), (1, -1, -1), (1, -1, 1), (-1, -1, 1))):
             p = [corner(*v) for v in (a, b, c, d)]
             triangles += [(p[0], p[1], p[2]), (p[0], p[2], p[3])]
+    plane = block.get("plane_z_mm")
+    for dome in block.get("domes") or ():
+        # The cap above the plane (ADR-744), in rings from its peak to its foot.
+        (cx, cy, cz), radius = dome["centre_mm"], dome["radius_mm"]
+        low = -1.0 if plane is None else max(-1.0, min(1.0, (plane - cz) / radius))
+        rings, sides = 6, 24
+
+        def at(ring: int, side: int) -> tuple[float, float, float]:
+            z = 1.0 - (1.0 - low) * ring / rings
+            r, a = math.sqrt(max(0.0, 1.0 - z * z)), 2 * math.pi * side / sides
+            return (cx + radius * r * math.cos(a), cy + radius * r * math.sin(a), cz + radius * z)
+
+        for ring in range(rings):
+            for side in range(sides):
+                a, b, c, d = at(ring, side), at(ring, side + 1), at(ring + 1, side + 1), at(ring + 1, side)
+                triangles += [(a, d, c)] if ring == 0 else [(a, d, c), (a, c, b)]
     grid = block.get("grid")
     if grid:
         rows, columns, heights = grid["rows"], grid["columns"], grid["heights_mm"]
@@ -805,7 +821,8 @@ def film_evaluation(root: Path, out: Path, report: Mapping[str, Any], *, seeds: 
         entry["target"] = target and {key: target[key] for key in ("goal", "channels", "unit", "positions")}
         if course is not None:
             entry["terrain"] = {"kind": course["kind"], "course": course.get("course"),
-                                "boxes": len(course.get("boxes") or ())}
+                                "boxes": len(course.get("boxes") or ()),
+                                "domes": len(course.get("domes") or ())}
         filmed.append(entry)
         if position == 0:
             first = (frames, times, floor, points, stage.ground)

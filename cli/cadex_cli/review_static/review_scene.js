@@ -284,6 +284,11 @@ export function create(canvas, {labels=true}={}) {
     }
     return lo<=hi?hi:-Infinity;
   };
+  // The top of a dome's sphere (centre, radius; mm) over (x, y), or -Infinity off it (ADR-744).
+  const domeTop=(d,x,y)=> {
+    const reach=d.radius_mm*d.radius_mm-(x-d.centre_mm[0])**2-(y-d.centre_mm[1])**2;
+    return reach>=0?d.centre_mm[2]+Math.sqrt(reach):-Infinity;
+  };
   const corners=b=>[-1,1].flatMap(i=>[-1,1].flatMap(j=>[-1,1].map(k=> {
     const v=new THREE.Vector3(i*b.half_mm[0],j*b.half_mm[1],k*b.half_mm[2]).applyQuaternion(new THREE.Quaternion().fromArray(b.rotation_xyzw));
     return [v.x+b.centre_mm[0],v.y+b.centre_mm[1]];
@@ -300,14 +305,17 @@ export function create(canvas, {labels=true}={}) {
   function sampleSurface(block) {
     let x0=block.x_range_mm[0], x1=block.x_range_mm[1], y0=block.y_range_mm[0], y1=block.y_range_mm[1], height, bx=[], by=[], run;
     if (block.kind==='boxes') {
-      const boxes=block.boxes||[], plane=block.plane_z_mm??block.lowest_mm;
+      const boxes=block.boxes||[], domes=block.domes||[], plane=block.plane_z_mm??block.lowest_mm;
       boxes.forEach(b=>corners(b).forEach(([x,y])=>{bx.push(x); by.push(y); x0=Math.min(x0,x); x1=Math.max(x1,x); y0=Math.min(y0,y); y1=Math.max(y1,y);}));
+      // A dome is smooth, so it adds no breaks; only its foot on the plane widens the extent.
+      domes.forEach(d=>{const r=Math.sqrt(Math.max(0,d.radius_mm**2-(plane-d.centre_mm[2])**2));
+        x0=Math.min(x0,d.centre_mm[0]-r); x1=Math.max(x1,d.centre_mm[0]+r); y0=Math.min(y0,d.centre_mm[1]-r); y1=Math.max(y1,d.centre_mm[1]+r);});
       // Shared edges are one break; a course with more than `breaks` a side gets sloped faces.
       const once=a=>[...new Set(a.map(v=>Math.round(v*100)/100))];
       bx=once(bx); by=once(by);
       if (bx.length>TERRAIN.breaks) bx=[];
       if (by.length>TERRAIN.breaks) by=[];
-      height=(x,y)=>boxes.reduce((z,b)=>Math.max(z,boxTop(b,x,y)),plane);
+      height=(x,y)=>domes.reduce((z,d)=>Math.max(z,domeTop(d,x,y)),boxes.reduce((z,b)=>Math.max(z,boxTop(b,x,y)),plane));
       run=TERRAIN.margin_mm;
     } else {
       const {rows,columns,heights_mm:h}=block.grid, [gx0,gx1]=block.x_range_mm, [gy0,gy1]=block.y_range_mm, mat=block.lowest_mm-50;
@@ -380,7 +388,7 @@ export function create(canvas, {labels=true}={}) {
     // A course arriving where there was none is framed; a course swapped for another (a playback's
     // own) keeps the person's camera.
     if (bounds) {frameBounds(bounds); if (terrain&&!had) fit();}
-    draw(); return terrain?(terrain.boxes||[]).length||1:0;
+    draw(); return terrain?(terrain.boxes||[]).length+(terrain.domes||[]).length||1:0;
   }
   // The timer: one textured quad in an orthographic overlay scene, painted after the stage.
   const hud=new THREE.Scene(), hudCamera=new THREE.OrthographicCamera(0,1,1,0,-1,1);
@@ -1066,7 +1074,7 @@ export function create(canvas, {labels=true}={}) {
       colours:Object.fromEntries([...meshes].map(([n,m])=>[n,'#'+m.userData.colour.getHexString()])),
       hidden_world:[...meshes].filter(([,m])=>m.userData.world&&!m.visible).map(([n])=>n),
       floor:{z_mm:floorZ*1000, source:floorSource, pitch_mm:(stage?.pitch??1)*1000, centre_mm:stageFloor.centre.map(v=>v*1000), size_mm:stageFloor.roomSize*1000},
-      terrain:terrain&&{kind:terrain.kind, boxes:(terrain.boxes||[]).length, course:terrain.course||null,
+      terrain:terrain&&{kind:terrain.kind, boxes:(terrain.boxes||[]).length, domes:(terrain.domes||[]).length, course:terrain.course||null,
         surface:{meshes:ground.children.length, columns:surface.xs.length, rows:surface.ys.length, triangles:2*(surface.xs.length-1)*(surface.ys.length-1),
           x_range_mm:[surface.xs[0],surface.xs.at(-1)], y_range_mm:[surface.ys[0],surface.ys.at(-1)]}},
       clip:{near:camera.near, far:camera.far},

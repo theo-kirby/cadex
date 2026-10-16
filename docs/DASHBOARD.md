@@ -602,7 +602,8 @@ plane is moved and scaled and its texture re-offset.
 **The course is drawn as one ground (ADR-734, ADR-743).** A model that
 stands on a declared course (ADR-714, ADR-716) is drawn on it, as a single
 surface sampled from the served course: at each sample the highest box top
-over that point, or the plane where no box is. A box's top is read exactly
+or dome over that point, or the plane where neither is. A dome (a mogul,
+ADR-744) is a sphere's centre and radius, and its top is the sphere's. A box's top is read exactly
 along the vertical through its own rotation and extents, so a ramp turned
 to its grade and a turned rock are drawn where their tops are. The samples
 run every 25 mm (coarser over a large course, at most `TERRAIN.samples`),
@@ -618,8 +619,8 @@ mat meet without a seam and the mat carries the ground on to the horizon
 mat over 1.5 m. `groundAt(x_mm, y_mm)` reads the drawn height off the
 surface's own triangles, and `stats().terrain.surface` gives the mesh
 count, sample columns and rows, triangles and extent
-(`cli/tests/test_dashboard_ground.py` holds a step, a ramp and a rock to the
-highest box top within 5 mm at 1,000 points). The ground is the stage, not
+(`cli/tests/test_dashboard_ground.py` holds a step, a ramp, a rock and a
+mogul to the highest box or dome top within 5 mm at 1,000 points). The ground is the stage, not
 the design: it sizes, picks and outlines nothing, and casts no shadow,
 since a self-shadowed course would not match the mat it meets. Fit takes in 300 mm of it behind the design and 1.5 m ahead along +x,
 where courses run, and a course appearing where there was none is fitted. `setTerrain(block)` draws it. The block is a model's
@@ -629,9 +630,10 @@ checkpoint or evaluation trace names the course its episode stood on, so an
 evaluation seed is shown on its held-out course. With a course the mat lies
 at a box course's plane, the ground beyond its extent, or 50 mm under a
 heightfield's lowest point (`stats().floor.source` is `terrain`), and
-`stats().terrain` names the kind, the box count and the course. An
+`stats().terrain` names the kind, the box and dome counts and the course. An
 evaluation's film draws the same course under the solids (`film.py`,
-`terrain_triangles`), still as its boxes and not yet as one ground, and its
+`terrain_triangles`), still as its boxes and its domes' caps and not yet as
+one ground, and its
 seed row's `terrain` names it.
 
 **The clip planes follow the shot (ADR-600).** The camera's near plane is

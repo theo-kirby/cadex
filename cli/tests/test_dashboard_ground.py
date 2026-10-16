@@ -9,9 +9,10 @@ where it was. At every frame the design stands over drawn ground, and the
 camera stands far enough inside the mat that its edge lies past the fade.
 
 A served box course -- a step, a ramp turned to its grade as the engine
-builds one, and a turned rock -- is drawn as one mesh whose height, read off
-its own triangles, is the highest box top over each point, and which ends at
-the plane the mat lies on.
+builds one, a turned rock, and a mogul built as the engine builds one, a
+buried sphere (ADR-744) -- is drawn as one mesh whose height, read off its
+own triangles, is the highest box or dome top over each point, and which ends
+at the plane the mat lies on.
 """
 
 from __future__ import annotations
@@ -113,12 +114,22 @@ def _rock() -> dict:
             "half_mm": [180.0, 140.0, 80.0]}
 
 
-# A step up 100 mm, a ramp down from it at -15 degrees onto the plane, and a rock past it.
+def _dome(x: float, y: float, foot: float, rise: float) -> dict:
+    # CadexDynamics.terrain_dome_geoms's mogul: a sphere whose cap stands `rise` over the plane at
+    # `foot` from its centre.
+    radius = (foot * foot + rise * rise) / (2 * rise)
+    return {"centre_mm": [x, y, rise - radius], "radius_mm": radius}
+
+
+# A step up 100 mm, a ramp down from it at -15 degrees onto the plane, a rock past it, and a
+# 60 mm mogul on a 250 mm foot beside the ramp.
 STEP_TOP, RAMP = 100.0, (1200.0, 1200.0 + 100.0 / math.tan(math.radians(15)))
+MOGUL = (2000.0, 450.0, 250.0, 60.0)
 COURSE = terrain_block({
     "kind": "boxes", "x_range_mm": [-500.0, 3000.0], "y_range_mm": [-800.0, 800.0],
     "lowest_mm": 0.0, "highest_mm": STEP_TOP, "plane_z_mm": 0.0,
-    "boxes": [_block(400.0, RAMP[0], -800.0, 800.0, STEP_TOP), _ramp(RAMP[0], RAMP[1], STEP_TOP, 0.0, 800.0), _rock()]})
+    "boxes": [_block(400.0, RAMP[0], -800.0, 800.0, STEP_TOP), _ramp(RAMP[0], RAMP[1], STEP_TOP, 0.0, 800.0), _rock()],
+    "domes": [_dome(*MOGUL)]})
 
 
 def _top(box: dict, x: float, y: float) -> float:
@@ -140,8 +151,14 @@ def _top(box: dict, x: float, y: float) -> float:
     return hi if lo <= hi else -math.inf
 
 
+def _cap(dome: dict, x: float, y: float) -> float:
+    reach = dome["radius_mm"] ** 2 - (x - dome["centre_mm"][0]) ** 2 - (y - dome["centre_mm"][1]) ** 2
+    return dome["centre_mm"][2] + math.sqrt(reach) if reach >= 0 else -math.inf
+
+
 def _ground(x: float, y: float) -> float:
-    return max([COURSE["plane_z_mm"], *(_top(box, x, y) for box in COURSE["boxes"])])
+    return max([COURSE["plane_z_mm"], *(_top(box, x, y) for box in COURSE["boxes"]),
+                *(_cap(dome, x, y) for dome in COURSE["domes"])])
 
 
 @needs_browser
@@ -149,7 +166,7 @@ def test_a_box_course_is_one_ground_at_its_boxes_height(app, small_browser) -> N
     page = _open(small_browser, app.url + "p/biped/")
     assert _model_state(page) == "loaded"
     page.evaluate("window.cadexReview.setLook({occlusion: false, detail: false})")
-    assert page.evaluate("window.cadexReview.viewer().setTerrain(%s)" % json.dumps(COURSE)) == 3
+    assert page.evaluate("window.cadexReview.viewer().setTerrain(%s)" % json.dumps(COURSE)) == 4
     stats = page.evaluate("window.cadexReview.viewer().stats()")
     surface = stats["terrain"]["surface"]
     # One mesh: no box objects, no slab, no edge lines; the mat lies at the plane.
@@ -168,6 +185,10 @@ def test_a_box_course_is_one_ground_at_its_boxes_height(app, small_browser) -> N
     assert worst <= 5.0, worst
     # The rock's top, away from its edges, is drawn where it stands.
     assert abs(page.evaluate("window.cadexReview.viewer().groundAt(2600, -300)") - _ground(2600.0, -300.0)) <= 5.0
+    # The mogul is round: its peak, and half way down its side, are drawn where the sphere is.
+    for dx in (0.0, 125.0):
+        x, y = MOGUL[0] + dx, MOGUL[1]
+        assert abs(page.evaluate("window.cadexReview.viewer().groundAt(%r, %r)" % (x, y)) - _ground(x, y)) <= 1.0
     # The step's face is a wall: 2 mm either side of it the ground is the plane and the step's top.
     assert page.evaluate("window.cadexReview.viewer().groundAt(398, 0)") == pytest.approx(0.0, abs=1e-6)
     assert page.evaluate("window.cadexReview.viewer().groundAt(402, 0)") == pytest.approx(STEP_TOP, abs=1e-3)
