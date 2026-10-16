@@ -599,16 +599,29 @@ is over drawn ground at every frame, and the mat's edge stays past the fade
 (`cli/tests/test_dashboard_ground.py`). Moving it repaints nothing: one
 plane is moved and scaled and its texture re-offset.
 
-**The course is drawn (ADR-734).** A model that stands on a declared course
-(ADR-714, ADR-716) is drawn on it. A box course is its boxes, over a slab
-whose top is its plane across the extent (the course's lowest stretches are
-the plane and have no box of their own), and a heightfield is its surface.
-Both are drawn in the mat's own prototype material (`floor.js`,
-`prototypeMaterial`), one texture for the whole course, its grid anchored to
-the world's whole metres on every face. Their edges are drawn a step lighter
-(`TERRAIN`), so a step or a ramp's lip reads at any distance. The
-course is the stage, not the design: it sizes, picks and outlines nothing,
-but Fit takes in 300 mm of it behind the design and 1.5 m ahead along +x,
+**The course is drawn as one ground (ADR-734, ADR-743).** A model that
+stands on a declared course (ADR-714, ADR-716) is drawn on it, as a single
+surface sampled from the served course: at each sample the highest box top
+over that point, or the plane where no box is. A box's top is read exactly
+along the vertical through its own rotation and extents, so a ramp turned
+to its grade and a turned rock are drawn where their tops are. The samples
+run every 25 mm (coarser over a large course, at most `TERRAIN.samples`),
+and on both sides of every box corner's x and y, 0.5 mm apart, so a step's
+face is a wall and not a ramp. There are no box objects, no slab and no
+edge lines: one mesh, in the mat's own prototype material and palette
+(`floor.js`, `prototypeMaterial`), its grid anchored to the world's whole
+metres on every facet, with crease normals so a wall's edge stays crisp and
+a gentle rise reads smooth. A box course's surface runs 500 mm past its
+extent and ends at its plane, where the mat lies, so the course and the
+mat meet without a seam and the mat carries the ground on to the horizon
+(ADR-742). A heightfield is drawn on its own vertices and eased down to the
+mat over 1.5 m. `groundAt(x_mm, y_mm)` reads the drawn height off the
+surface's own triangles, and `stats().terrain.surface` gives the mesh
+count, sample columns and rows, triangles and extent
+(`cli/tests/test_dashboard_ground.py` holds a step, a ramp and a rock to the
+highest box top within 5 mm at 1,000 points). The ground is the stage, not
+the design: it sizes, picks and outlines nothing, and casts no shadow,
+since a self-shadowed course would not match the mat it meets. Fit takes in 300 mm of it behind the design and 1.5 m ahead along +x,
 where courses run, and a course appearing where there was none is fitted. `setTerrain(block)` draws it. The block is a model's
 `collision.terrain`, which the server reads from the export's world body (course 0
 of a pool), until a playback carries a `terrain` of its own. A rollout,
@@ -618,7 +631,8 @@ at a box course's plane, the ground beyond its extent, or 50 mm under a
 heightfield's lowest point (`stats().floor.source` is `terrain`), and
 `stats().terrain` names the kind, the box count and the course. An
 evaluation's film draws the same course under the solids (`film.py`,
-`terrain_triangles`), and its seed row's `terrain` names it.
+`terrain_triangles`), still as its boxes and not yet as one ground, and its
+seed row's `terrain` names it.
 
 **The clip planes follow the shot (ADR-600).** The camera's near plane is
 0.002 of its distance to the target and its far plane is 1.5× the floor's

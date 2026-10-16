@@ -43479,3 +43479,44 @@ where the mat lies.
 **Not done here.** The course itself (ADR-734's boxes and slab) still ends at
 its extent. G1 replaces it with one surface, and the engine's run-out to
 the base plane is G1's feature work.
+
+## ADR-743 — A course is drawn as one ground (2026-10-16)
+
+**Context.** orun8's G1 asks that a course read as one landscape, not as
+objects on a floor. ADR-734 drew a box course as its boxes, each a mesh with
+light edge lines, over a 10 mm slab at the plane across the extent, in a
+material a step lighter than the mat. The slab and the boxes ended at the
+extent, a seam against the mat, and every step was an outlined object.
+
+**Decision.** `review_scene.js`'s `setTerrain` samples the served course
+into one surface. A sample's height is the highest box top on the vertical
+through it, read by clipping the line to each box's three slabs in its own
+frame (so a ramp turned to its grade and a turned rock are exact), or the
+plane. Samples run every 25 mm, coarser over a course larger than
+`TERRAIN.samples` allows, plus a pair 0.5 mm either side of every box
+corner's x and y, so a step's face is a wall. The surface runs 500 mm past
+the extent and ends at the plane, where the mat lies (ADR-742), in the
+mat's own palette and world-anchored grid, so the two meet without a seam.
+No box objects, no slab, no edge lines; crease normals keep a wall's edge
+crisp. It casts no shadow, so where it lies at the plane it is
+indistinguishable from the mat. A heightfield is drawn on its own vertices
+and eased down to the mat over 1.5 m. `groundAt(x_mm, y_mm)` reads the
+drawn height off the surface's own triangles, for G1's later check against
+the physics' ground, and `stats().terrain.surface` reports the mesh.
+
+**Evidence.** `cli/tests/test_dashboard_ground.py` serves a course with a
+100 mm step, a 15° ramp built as `CadexDynamics.terrain_box_geoms` builds
+one, and a turned rock, through `terrain_block`. It checks one mesh, the
+mat at the plane, the drawn height against an independent Python slab
+clip within 5 mm at 1,000 random points (wall and rock edges excluded), a
+wall 2 mm either side of the step's face, and the rim at the plane. Its
+reference matches the ramp's analytic profile. The test takes about 5 s.
+`docs/probes/orun8/g1-one-ground.png` shows orun8-cat on a course with a
+step, a ramp, a 200 mm platform and rocks.
+
+**Not done here.** The film (`film.py`, `terrain_triangles`) still draws a
+course as its boxes. Moguls (buried spheres or ellipsoids) are not a box,
+so the sampler gains a sphere top when the engine gains the kind. The
+5 mm agreement with the physics over 10 held-out courses is G1's own check,
+written when the engine's new kinds land.
+

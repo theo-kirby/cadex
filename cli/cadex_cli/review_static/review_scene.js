@@ -30,10 +30,12 @@ const PROXY = {color:0xffe08a, opacity:.9};
 // engine's exploded-view segments, in the page's `--muted`.
 const SECTION_NORMALS = {XY:[0,0,1], XZ:[0,1,0], YZ:[1,0,0]};
 const LEADER = {color:0x9aa3ad, opacity:.85};
-// Terrain (ADR-734): the course a free base stands on, in the mat's own prototype material with its
-// grid anchored to the world, its edges drawn light, near the leaders, so a 20 mm step or a ramp's lip reads at any
-// distance; the frame's reach along it.
-const TERRAIN = {edge:0xb4bac2, behind_mm:300, ahead_mm:1500};
+// Terrain (ADR-734, ADR-743): the course a free base stands on, drawn as one ground in the mat's
+// own prototype material. `pitch_mm` is its finest sample spacing and `samples` the most it takes
+// over its extent before the spacing grows; a step's face is `wall_mm` either side of its edge,
+// for up to `breaks` distinct corner lines a side; the surface runs `margin_mm` past a box course's extent and
+// eases a heightfield down to the mat over `blend_mm`; the frame's reach along it.
+const TERRAIN = {pitch_mm:25, samples:120000, wall_mm:.5, breaks:512, margin_mm:500, blend_mm:1500, behind_mm:300, ahead_mm:1500};
 // Render styles (ADR-534, ADR-602). 'shaded' is the lit stage every capture uses and the
 // viewport's default; 'wireframe' (called 'hairline' until ADR-602) is a diagram: silhouettes and
 // creases in ink on flat paper, and no floor, shadow or fog, with an optional soft layer of the
@@ -257,57 +259,123 @@ export function create(canvas, {labels=true}={}) {
     draw(); return flat.length/6;
   }
   function showLines(flag) {if (leaders) leaders.visible=!!flag; draw(); return !!(leaders&&leaders.visible);}
-  // The course the design stands on (ADR-734): a box course's boxes or a heightfield's surface,
-  // in sim coordinates, a step lighter than the mat with its edges drawn so a step reads. It is
-  // the stage, not the design: it sizes, picks and outlines nothing. A box course's plane is where
-  // the mat lies; a heightfield, which has no ground beyond it, puts the mat under its base.
-  // setTerrain(null) removes it.
+  // The course the design stands on (ADR-734), drawn as one ground (ADR-743): a single surface
+  // sampled from the served course -- the highest box top over each point, or the plane, for a box
+  // course; the grid, run out over TERRAIN.blend_mm to the mat, for a heightfield -- in the mat's
+  // own material. The sample lines take every box corner's x and y on both sides of it
+  // (TERRAIN.wall_mm), so a step's face is a wall and not a ramp. A box course's surface ends at
+  // its plane, where the mat lies, so the two meet without a seam. It is the stage, not the
+  // design: it sizes, picks and outlines nothing. setTerrain(null) removes it.
   const ground=new THREE.Group(); world.add(ground);
-  let terrain=null, terrainMaterial=null;
+  let terrain=null, terrainMaterial=null, surface=null;
+  // The highest point of a box (centre, xyzw rotation, half-extents; mm) on the vertical line at
+  // (x, y), or -Infinity: the line, in the box's own frame, clipped to each of its three slabs.
+  const boxTop=(b,x,y)=> {
+    const [qx,qy,qz,qw]=b.rotation_xyzw, dx=x-b.centre_mm[0], dy=y-b.centre_mm[1];
+    // The box's axes in the world (its rotation's columns): a world vector's local components are
+    // its dot with each.
+    const R=[[1-2*(qy*qy+qz*qz),2*(qx*qy+qz*qw),2*(qx*qz-qy*qw)],[2*(qx*qy-qz*qw),1-2*(qx*qx+qz*qz),2*(qy*qz+qx*qw)],
+             [2*(qx*qz+qy*qw),2*(qy*qz-qx*qw),1-2*(qx*qx+qy*qy)]];
+    let lo=-Infinity, hi=Infinity;
+    for (let i=0;i<3;i++) {
+      const o=R[i][0]*dx+R[i][1]*dy-R[i][2]*b.centre_mm[2], d=R[i][2], h=b.half_mm[i];
+      if (Math.abs(d)<1e-12) {if (Math.abs(o)>h) return -Infinity; continue;}
+      const a=(-h-o)/d, c=(h-o)/d; lo=Math.max(lo,Math.min(a,c)); hi=Math.min(hi,Math.max(a,c));
+    }
+    return lo<=hi?hi:-Infinity;
+  };
+  const corners=b=>[-1,1].flatMap(i=>[-1,1].flatMap(j=>[-1,1].map(k=> {
+    const v=new THREE.Vector3(i*b.half_mm[0],j*b.half_mm[1],k*b.half_mm[2]).applyQuaternion(new THREE.Quaternion().fromArray(b.rotation_xyzw));
+    return [v.x+b.centre_mm[0],v.y+b.centre_mm[1]];
+  })));
+  // A sorted axis of samples: every `pitch` across [lo, hi], and each break on both sides of it.
+  const axis=(lo,hi,pitch,breaks)=> {
+    const n=Math.max(1,Math.ceil((hi-lo)/pitch)), at=[];
+    for (let k=0;k<=n;k++) at.push(lo+(hi-lo)*k/n);
+    breaks.forEach(v=>{if (v>lo&&v<hi) at.push(v-TERRAIN.wall_mm,v+TERRAIN.wall_mm);});
+    at.sort((a,b)=>a-b);
+    return at.filter((v,i)=>i===0||v-at[i-1]>.01);
+  };
+  // The surface: sample axes and the height (mm) at each of their crossings, row-major by y.
+  function sampleSurface(block) {
+    let x0=block.x_range_mm[0], x1=block.x_range_mm[1], y0=block.y_range_mm[0], y1=block.y_range_mm[1], height, bx=[], by=[], run;
+    if (block.kind==='boxes') {
+      const boxes=block.boxes||[], plane=block.plane_z_mm??block.lowest_mm;
+      boxes.forEach(b=>corners(b).forEach(([x,y])=>{bx.push(x); by.push(y); x0=Math.min(x0,x); x1=Math.max(x1,x); y0=Math.min(y0,y); y1=Math.max(y1,y);}));
+      // Shared edges are one break; a course with more than `breaks` a side gets sloped faces.
+      const once=a=>[...new Set(a.map(v=>Math.round(v*100)/100))];
+      bx=once(bx); by=once(by);
+      if (bx.length>TERRAIN.breaks) bx=[];
+      if (by.length>TERRAIN.breaks) by=[];
+      height=(x,y)=>boxes.reduce((z,b)=>Math.max(z,boxTop(b,x,y)),plane);
+      run=TERRAIN.margin_mm;
+    } else {
+      const {rows,columns,heights_mm:h}=block.grid, [gx0,gx1]=block.x_range_mm, [gy0,gy1]=block.y_range_mm, mat=block.lowest_mm-50;
+      for (let k=0;k<columns;k++) bx.push(gx0+(gx1-gx0)*k/(columns-1));
+      for (let r=0;r<rows;r++) by.push(gy0+(gy1-gy0)*r/(rows-1));
+      // Inside, the grid's own vertices; outside, its edge eased down to the mat over blend_mm.
+      height=(x,y)=> {
+        const cx=Math.min(gx1,Math.max(gx0,x)), cy=Math.min(gy1,Math.max(gy0,y));
+        const k=Math.round((cx-gx0)/(gx1-gx0)*(columns-1)), r=Math.round((cy-gy0)/(gy1-gy0)*(rows-1)), edge=h[r*columns+k];
+        const t=Math.min(1,Math.hypot(x-cx,y-cy)/TERRAIN.blend_mm), s=t*t*(3-2*t);
+        return edge+(mat-edge)*s;
+      };
+      run=TERRAIN.blend_mm;
+    }
+    x0-=run; x1+=run; y0-=run; y1+=run;
+    const pitch=Math.max(TERRAIN.pitch_mm,Math.sqrt((x1-x0)*(y1-y0)/TERRAIN.samples));
+    // A heightfield's samples are its own vertices over its extent, exactly as it is triangulated,
+    // and the run-out's past them.
+    const own=(a,lo,hi,grid)=>a.filter(v=>v<lo).concat(grid,a.filter(v=>v>hi));
+    const xs=block.kind==='boxes'?axis(x0,x1,pitch,bx):own(axis(x0,x1,pitch,[]),bx[0],bx.at(-1),bx);
+    const ys=block.kind==='boxes'?axis(y0,y1,pitch,by):own(axis(y0,y1,pitch,[]),by[0],by.at(-1),by);
+    const z=new Float64Array(xs.length*ys.length);
+    ys.forEach((y,r)=>xs.forEach((x,k)=>{z[r*xs.length+k]=height(x,y);}));
+    return {xs,ys,z};
+  }
+  // The drawn height at (x, y), mm, read off the surface's own triangles (each cell split on its
+  // (0,0)-(1,1) diagonal, as drawn), or null off the surface.
+  function groundAt(x,y) {
+    if (!surface) return null;
+    const {xs,ys,z}=surface, n=xs.length;
+    const find=(a,v)=>{let lo=0,hi=a.length-1; if (v<a[0]||v>a[hi]) return -1; while (hi-lo>1) {const m=(lo+hi)>>1; if (a[m]<=v) lo=m; else hi=m;} return lo;};
+    const k=find(xs,x), r=find(ys,y);
+    if (k<0||r<0) return null;
+    const u=(x-xs[k])/(xs[k+1]-xs[k]), v=(y-ys[r])/(ys[r+1]-ys[r]);
+    const z00=z[r*n+k], z10=z[r*n+k+1], z01=z[(r+1)*n+k], z11=z[(r+1)*n+k+1];
+    return u>=v?z00+u*(z10-z00)+v*(z11-z10):z00+v*(z01-z00)+u*(z11-z01);
+  }
   function setTerrain(block) {
     const had=!!terrain;
-    ground.children.slice().forEach(o=>{ground.remove(o); o.geometry.dispose(); if (o.material!==terrainMaterial) o.material.dispose();});
-    terrain=block&&(block.kind==='boxes'||block.kind==='heightfield')?block:null;
-    // One material, and one 2048-texel canvas, for the whole course.
+    ground.children.slice().forEach(o=>{ground.remove(o); o.geometry.dispose();});
+    terrain=block&&((block.kind==='boxes'&&Array.isArray(block.boxes))||(block.kind==='heightfield'&&block.grid))?block:null;
+    surface=terrain?sampleSurface(terrain):null;
+    // One material, and one 2048-texel canvas, for the whole course: the mat's own palette, so
+    // where the course lies at the plane it is the mat.
     if (!terrainMaterial) terrainMaterial=prototypeMaterial({palette:STAGE.tile, labels});
-    const solid=()=>terrainMaterial;
-    // World-anchored uvs in blocks (2·pitch, the texture's repeat): each face takes the two world
-    // axes it is most nearly flat along, so every face's grid lines sit on the mat's whole metres.
-    const tile=2*GRID_PITCH, n=new THREE.Vector3(), p=new THREE.Vector3();
-    const anchor=(geo,matrix)=> {
-      const pos=geo.attributes.position, nor=geo.attributes.normal, uv=new Float32Array(pos.count*2), turn=new THREE.Matrix3().getNormalMatrix(matrix);
-      for (let i=0;i<pos.count;i++) {
-        p.fromBufferAttribute(pos,i).applyMatrix4(matrix); n.fromBufferAttribute(nor,i).applyMatrix3(turn);
-        const a=[Math.abs(n.x),Math.abs(n.y),Math.abs(n.z)];
-        const [u,v]=a[2]>=a[0]&&a[2]>=a[1]?[p.x,p.y]:a[0]>=a[1]?[p.y,p.z]:[p.x,p.z];
-        uv[2*i]=u/tile; uv[2*i+1]=v/tile;
+    if (surface) {
+      const {xs,ys,z}=surface, n=xs.length, at=new Float32Array((n-1)*(ys.length-1)*18), uv=new Float32Array(at.length/3*2);
+      const tile=2*GRID_PITCH*1000; let o=0;
+      const corner=(k,r)=>[xs[k]*.001,ys[r]*.001,z[r*n+k]*.001];
+      const face=(a,b,c)=> {
+        // World-anchored uvs in blocks: a facet takes the two world axes it is most nearly flat
+        // along, so its grid lines sit on the mat's whole metres and a wall's are not smeared.
+        const ux=b[0]-a[0], uy=b[1]-a[1], uz=b[2]-a[2], vx=c[0]-a[0], vy=c[1]-a[1], vz=c[2]-a[2];
+        const nx=Math.abs(uy*vz-uz*vy), ny=Math.abs(uz*vx-ux*vz), nz=Math.abs(ux*vy-uy*vx);
+        [a,b,c].forEach(p=> {
+          const [s,t]=nz>=nx&&nz>=ny?[p[0],p[1]]:nx>=ny?[p[1],p[2]]:[p[0],p[2]];
+          uv[o/3*2]=s*1000/tile; uv[o/3*2+1]=t*1000/tile; at[o]=p[0]; at[o+1]=p[1]; at[o+2]=p[2]; o+=3;
+        });
+      };
+      for (let r=0;r+1<ys.length;r++) for (let k=0;k+1<n;k++) {
+        const p00=corner(k,r), p10=corner(k+1,r), p01=corner(k,r+1), p11=corner(k+1,r+1);
+        face(p00,p10,p11); face(p00,p11,p01);
       }
+      const geo=new THREE.BufferGeometry();
+      geo.setAttribute('position',new THREE.BufferAttribute(at,3));
+      geo.setAttribute('normal',new THREE.BufferAttribute(creaseNormals(at),3));
       geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));
-    };
-    const edges=g=>new THREE.LineSegments(new THREE.EdgesGeometry(g,20),new THREE.LineBasicMaterial({color:TERRAIN.edge,toneMapped:false}));
-    // A box course's lowest stretches are its plane, which has no box: drawn over the extent as a
-    // slab whose top is the plane, so the course reads as one ground and not as holes to the mat.
-    const slabs=terrain&&terrain.kind==='boxes'&&terrain.plane_z_mm!=null?[{centre_mm:[(terrain.x_range_mm[0]+terrain.x_range_mm[1])/2,
-      (terrain.y_range_mm[0]+terrain.y_range_mm[1])/2,terrain.plane_z_mm-5], rotation_xyzw:[0,0,0,1],
-      half_mm:[(terrain.x_range_mm[1]-terrain.x_range_mm[0])/2,(terrain.y_range_mm[1]-terrain.y_range_mm[0])/2,5]}]:[];
-    if (terrain&&terrain.kind==='boxes') slabs.concat(terrain.boxes||[]).forEach(b=> {
-      const geo=new THREE.BoxGeometry(...b.half_mm.map(v=>2*v*.001));
-      const placed=new THREE.Matrix4().compose(new THREE.Vector3().fromArray(b.centre_mm).multiplyScalar(.001),
-        new THREE.Quaternion().fromArray(b.rotation_xyzw), new THREE.Vector3(1,1,1));
-      anchor(geo,placed);
-      [new THREE.Mesh(geo,solid()), edges(geo)].forEach(o=>{
-        o.position.fromArray(b.centre_mm).multiplyScalar(.001); o.quaternion.fromArray(b.rotation_xyzw);
-        if (o.isMesh) {o.castShadow=true; o.receiveShadow=true;}
-        ground.add(o);
-      });
-    });
-    if (terrain&&terrain.kind==='heightfield'&&terrain.grid) {
-      const {rows, columns, heights_mm:h}=terrain.grid, [x0,x1]=terrain.x_range_mm, [y0,y1]=terrain.y_range_mm, at=[], index=[];
-      for (let r=0;r<rows;r++) for (let k=0;k<columns;k++) at.push((x0+(x1-x0)*k/(columns-1))*.001,(y0+(y1-y0)*r/(rows-1))*.001,h[r*columns+k]*.001);
-      for (let r=0;r+1<rows;r++) for (let k=0;k+1<columns;k++) {const a=r*columns+k; index.push(a,a+1,a+columns+1,a,a+columns+1,a+columns);}
-      const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.Float32BufferAttribute(at,3)); geo.setIndex(index); geo.computeVertexNormals();
-      anchor(geo,new THREE.Matrix4());
-      const m=new THREE.Mesh(geo,solid()); m.receiveShadow=true; m.castShadow=true; ground.add(m);
+      const m=new THREE.Mesh(geo,terrainMaterial); m.receiveShadow=true; m.name='ground'; ground.add(m);
     }
     // A course arriving where there was none is framed; a course swapped for another (a playback's
     // own) keeps the person's camera.
@@ -987,7 +1055,7 @@ export function create(canvas, {labels=true}={}) {
     meshes.forEach(m=>{m.userData.materials.parts.envMapIntensity=m.userData.env*reflections*lighting.env;}); draw(); return reflections;
   }
   applyLook();
-  return {available:true,load,install,clear,fit,draw,setPoses,centreAt,followTo,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,setTerrain,
+  return {available:true,load,install,clear,fit,draw,setPoses,centreAt,followTo,setGhost,loadGhost,boundsOver,frameBounds,setCamera,setClock,follow,modelPixels,nonBackgroundPixels,setProxies,showProxies,setTerrain,groundAt,
     setSection,setLines,showLines,setStyle,style:()=>style,setMeshLines,meshLines:()=>({...meshLines}),setReflections,reflections:()=>reflections,
     setLook,look:()=>look,setFov,setOcclusion,occlusion:()=>occluded,setDetail,detail:()=>detailed,
     setHidden,hidden:()=>[...hiddenNames],select,setHeat,heat:()=>heat&&{...heat},selected:()=>selectedNames.slice(),parts,fitTo,
@@ -998,7 +1066,9 @@ export function create(canvas, {labels=true}={}) {
       colours:Object.fromEntries([...meshes].map(([n,m])=>[n,'#'+m.userData.colour.getHexString()])),
       hidden_world:[...meshes].filter(([,m])=>m.userData.world&&!m.visible).map(([n])=>n),
       floor:{z_mm:floorZ*1000, source:floorSource, pitch_mm:(stage?.pitch??1)*1000, centre_mm:stageFloor.centre.map(v=>v*1000), size_mm:stageFloor.roomSize*1000},
-      terrain:terrain&&{kind:terrain.kind, boxes:(terrain.boxes||[]).length, course:terrain.course||null},
+      terrain:terrain&&{kind:terrain.kind, boxes:(terrain.boxes||[]).length, course:terrain.course||null,
+        surface:{meshes:ground.children.length, columns:surface.xs.length, rows:surface.ys.length, triangles:2*(surface.xs.length-1)*(surface.ys.length-1),
+          x_range_mm:[surface.xs[0],surface.xs.at(-1)], y_range_mm:[surface.ys[0],surface.ys.at(-1)]}},
       clip:{near:camera.near, far:camera.far},
       finishes:Object.fromEntries([...meshes].map(([n,m])=>[n,m.userData.finish])),
       boards:Object.fromEntries([...meshes].filter(([,m])=>m.userData.board).map(([n,m])=>[n,{...m.userData.board}])),

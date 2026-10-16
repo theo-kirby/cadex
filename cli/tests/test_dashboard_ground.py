@@ -1,20 +1,29 @@
 # SPDX-FileCopyrightText: 2026 Cadex Authors
 # SPDX-License-Identifier: LGPL-2.1-or-later
-"""The ground never ends (ADR-742).
+"""The ground never ends (ADR-742), and a course is one ground (ADR-743).
 
 A synthetic trace carries the design 50 m -- a 12 s episode at a little
 over 4 m/s -- once with the follow camera on, as the playback drives it
 (``followTo`` then ``setPoses``, as ``seek`` does), and once with it off, the camera left
 where it was. At every frame the design stands over drawn ground, and the
 camera stands far enough inside the mat that its edge lies past the fade.
+
+A served box course -- a step, a ramp turned to its grade as the engine
+builds one, and a turned rock -- is drawn as one mesh whose height, read off
+its own triangles, is the highest box top over each point, and which ends at
+the plane the mat lies on.
 """
 
 from __future__ import annotations
 
+import json
+import math
+import random
+
 import pytest
 
 from cadex_cli.browser import HeadlessBrowser
-from cadex_cli.review_server import serve_projects
+from cadex_cli.review_server import serve_projects, terrain_block
 from review_helpers import BROWSER, REVISION_B, _model_state, _open, _projects, _stage_accepted, needs_browser
 
 PLAY = """
@@ -82,3 +91,87 @@ def test_a_50_m_trace_is_over_drawn_ground_every_frame(app, small_browser) -> No
         # The camera never sees the mat end: its edge is past the fade, and inside the far plane.
         assert worst["eye"] >= worst["fog"], worst
         assert worst["corner"] <= worst["far"], worst
+
+
+def _ramp(xa: float, xb: float, za: float, zb: float, y: float) -> dict:
+    # CadexDynamics.terrain_box_geoms's ramp: a 10 mm half-thick box turned about y to its grade.
+    grade, thick = math.atan2(zb - za, xb - xa), 10.0
+    return {"shape": "ramp", "centre_mm": [(xa + xb) / 2 + thick * math.sin(grade), 0.0, (za + zb) / 2 - thick * math.cos(grade)],
+            "rotation_xyzw": [0.0, -math.sin(grade / 2), 0.0, math.cos(grade / 2)], "half_mm": [math.hypot(xb - xa, zb - za) / 2, y, thick]}
+
+
+def _block(xa: float, xb: float, ya: float, yb: float, top: float) -> dict:
+    return {"shape": "block", "centre_mm": [(xa + xb) / 2, (ya + yb) / 2, (top - 50) / 2],
+            "rotation_xyzw": [0.0, 0.0, 0.0, 1.0], "half_mm": [(xb - xa) / 2, (yb - ya) / 2, (top + 50) / 2]}
+
+
+def _rock() -> dict:
+    turn = [0.12, 0.2, 0.3]  # an axis-angle, small enough that one face is on top
+    angle = math.hypot(*turn)
+    xyz = [v / angle * math.sin(angle / 2) for v in turn]
+    return {"shape": "block", "centre_mm": [2600.0, -300.0, -20.0], "rotation_xyzw": [*xyz, math.cos(angle / 2)],
+            "half_mm": [180.0, 140.0, 80.0]}
+
+
+# A step up 100 mm, a ramp down from it at -15 degrees onto the plane, and a rock past it.
+STEP_TOP, RAMP = 100.0, (1200.0, 1200.0 + 100.0 / math.tan(math.radians(15)))
+COURSE = terrain_block({
+    "kind": "boxes", "x_range_mm": [-500.0, 3000.0], "y_range_mm": [-800.0, 800.0],
+    "lowest_mm": 0.0, "highest_mm": STEP_TOP, "plane_z_mm": 0.0,
+    "boxes": [_block(400.0, RAMP[0], -800.0, 800.0, STEP_TOP), _ramp(RAMP[0], RAMP[1], STEP_TOP, 0.0, 800.0), _rock()]})
+
+
+def _top(box: dict, x: float, y: float) -> float:
+    """The highest point of a box on the vertical at (x, y), or -inf: slab clipping, in Python."""
+    qx, qy, qz, qw = box["rotation_xyzw"]
+    axes = [[1 - 2 * (qy * qy + qz * qz), 2 * (qx * qy + qz * qw), 2 * (qx * qz - qy * qw)],
+            [2 * (qx * qy - qz * qw), 1 - 2 * (qx * qx + qz * qz), 2 * (qy * qz + qx * qw)],
+            [2 * (qx * qz + qy * qw), 2 * (qy * qz - qx * qw), 1 - 2 * (qx * qx + qy * qy)]]
+    d = [x - box["centre_mm"][0], y - box["centre_mm"][1], -box["centre_mm"][2]]
+    lo, hi = -math.inf, math.inf
+    for axis, half in zip(axes, box["half_mm"]):
+        offset, slope = sum(a * b for a, b in zip(axis, d)), axis[2]
+        if abs(slope) < 1e-12:
+            if abs(offset) > half:
+                return -math.inf
+            continue
+        a, b = (-half - offset) / slope, (half - offset) / slope
+        lo, hi = max(lo, min(a, b)), min(hi, max(a, b))
+    return hi if lo <= hi else -math.inf
+
+
+def _ground(x: float, y: float) -> float:
+    return max([COURSE["plane_z_mm"], *(_top(box, x, y) for box in COURSE["boxes"])])
+
+
+@needs_browser
+def test_a_box_course_is_one_ground_at_its_boxes_height(app, small_browser) -> None:
+    page = _open(small_browser, app.url + "p/biped/")
+    assert _model_state(page) == "loaded"
+    page.evaluate("window.cadexReview.setLook({occlusion: false, detail: false})")
+    assert page.evaluate("window.cadexReview.viewer().setTerrain(%s)" % json.dumps(COURSE)) == 3
+    stats = page.evaluate("window.cadexReview.viewer().stats()")
+    surface = stats["terrain"]["surface"]
+    # One mesh: no box objects, no slab, no edge lines; the mat lies at the plane.
+    assert surface["meshes"] == 1 and stats["floor"]["z_mm"] == 0.0, stats["terrain"]
+    rng = random.Random(743)
+    (x0, x1), (y0, y1) = surface["x_range_mm"], surface["y_range_mm"]
+    points = [(rng.uniform(x0, x1), rng.uniform(y0, y1)) for _ in range(1000)]
+    drawn = page.evaluate("(function (p) { var v = window.cadexReview.viewer(); "
+                          "return p.map(function (q) { return v.groundAt(q[0], q[1]); }); })(%s)" % json.dumps(points))
+    # The step's and the ramp's edges run along y; a point within a wall's half-width of one is on
+    # the wall, and the rock's turned edges cut cells at a slant, so their neighbourhoods are left out.
+    edges = [400.0, RAMP[0], RAMP[1]]
+    near_rock = lambda x, y: math.hypot(x - 2600.0, y + 300.0) < 300.0
+    worst = max(abs(h - _ground(x, y)) for (x, y), h in zip(points, drawn)
+                if min(abs(x - e) for e in edges) > 1.0 and not near_rock(x, y))
+    assert worst <= 5.0, worst
+    # The rock's top, away from its edges, is drawn where it stands.
+    assert abs(page.evaluate("window.cadexReview.viewer().groundAt(2600, -300)") - _ground(2600.0, -300.0)) <= 5.0
+    # The step's face is a wall: 2 mm either side of it the ground is the plane and the step's top.
+    assert page.evaluate("window.cadexReview.viewer().groundAt(398, 0)") == pytest.approx(0.0, abs=1e-6)
+    assert page.evaluate("window.cadexReview.viewer().groundAt(402, 0)") == pytest.approx(STEP_TOP, abs=1e-3)
+    # The surface ends at the plane on every side, where the mat takes over without a seam.
+    rim = [(x, y) for x in (x0, x1) for y in (y0, (y0 + y1) / 2, y1)] + [((x0 + x1) / 2, y) for y in (y0, y1)]
+    assert page.evaluate("(function (p) { var v = window.cadexReview.viewer(); "
+                         "return p.map(function (q) { return v.groundAt(q[0], q[1]); }); })(%s)" % json.dumps(rim)) == [0.0] * len(rim)
